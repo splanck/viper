@@ -1,5 +1,4 @@
-add_library(support STATIC support/placeholder.cpp)
-set_target_properties(support PROPERTIES LINKER_LANGUAGE CXX)
+add_subdirectory(support)
 
 add_library(il_core STATIC il/core/placeholder.cpp)
 set_target_properties(il_core PROPERTIES LINKER_LANGUAGE CXX)
