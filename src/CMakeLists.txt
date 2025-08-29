@@ -42,3 +42,16 @@ target_link_libraries(il-verify PRIVATE support il_core il_build il_io il_vm il_
 add_executable(il-dis tools/il-dis/main.cpp)
 set_target_properties(il-dis PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/il-dis)
 target_link_libraries(il-dis PRIVATE support il_core il_build il_io)
+
+add_library(fe_basic STATIC
+  frontends/basic/Token.cpp
+  frontends/basic/Lexer.cpp
+  frontends/basic/AST.cpp
+  frontends/basic/AstPrinter.cpp
+  frontends/basic/Parser.cpp)
+target_link_libraries(fe_basic PUBLIC support)
+target_include_directories(fe_basic PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_executable(basic-ast-dump tools/basic-ast-dump/main.cpp)
+set_target_properties(basic-ast-dump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/basic-ast-dump)
+target_link_libraries(basic-ast-dump PRIVATE fe_basic support)
