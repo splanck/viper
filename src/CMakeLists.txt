@@ -16,9 +16,13 @@ add_library(il_build STATIC il/build/IRBuilder.cc)
 target_link_libraries(il_build PUBLIC il_core support)
 target_include_directories(il_build PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-add_library(il_io STATIC il/io/Serializer.cc)
+add_library(il_io STATIC il/io/Serializer.cc il/io/Parser.cc)
 target_link_libraries(il_io PUBLIC il_core)
 target_include_directories(il_io PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_library(il_verify STATIC il/verify/Verifier.cc)
+target_link_libraries(il_verify PUBLIC il_core)
+target_include_directories(il_verify PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_library(il_vm STATIC vm/placeholder.cpp)
 set_target_properties(il_vm PROPERTIES LINKER_LANGUAGE CXX)
@@ -32,7 +36,7 @@ target_link_libraries(ilc PRIVATE support il_core il_build il_io il_vm il_codege
 
 add_executable(il-verify tools/il-verify/il-verify.cpp)
 set_target_properties(il-verify PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/il-verify)
-target_link_libraries(il-verify PRIVATE support il_core il_build il_io il_vm)
+target_link_libraries(il-verify PRIVATE support il_core il_build il_io il_vm il_verify)
 
 add_executable(il-dis tools/il-dis/main.cpp)
 set_target_properties(il-dis PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/il-dis)

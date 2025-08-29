@@ -53,6 +53,11 @@ void Serializer::write(const Module &m, std::ostream &os) {
         } else if (in.op == Opcode::CBr) {
           os << " " << il::core::toString(in.operands[0]) << ", label " << in.labels[0]
              << ", label " << in.labels[1];
+        } else if (in.op == Opcode::Load) {
+          os << " " << in.type.toString() << ", " << il::core::toString(in.operands[0]);
+        } else if (in.op == Opcode::Store) {
+          os << " " << in.type.toString() << ", " << il::core::toString(in.operands[0]) << ", "
+             << il::core::toString(in.operands[1]);
         } else {
           if (!in.operands.empty())
             os << " ";
