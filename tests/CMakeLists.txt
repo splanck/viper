@@ -69,3 +69,19 @@ add_test(NAME il_verify_invalid_bad_load_store
           -DFILE=${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/bad_load_store.il
           -DEXPECT=pointer\ type\ mismatch
           -P ${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/check_invalid.cmake)
+
+add_executable(test_basic_lexer unit/test_basic_lexer.cpp)
+target_link_libraries(test_basic_lexer PRIVATE fe_basic support)
+add_test(NAME test_basic_lexer COMMAND test_basic_lexer)
+
+set(BASIC_AST_DUMP $<TARGET_FILE:basic-ast-dump>)
+add_test(NAME basic_ast_ex1 COMMAND ${CMAKE_COMMAND}
+  -DBASIC_AST_DUMP=${BASIC_AST_DUMP}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex1_hello_cond.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/ex1_hello_cond.ast
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/check_ast.cmake)
+add_test(NAME basic_ast_ex2 COMMAND ${CMAKE_COMMAND}
+  -DBASIC_AST_DUMP=${BASIC_AST_DUMP}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex2_sum_1_to_10.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/ex2_sum_1_to_10.ast
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/check_ast.cmake)
