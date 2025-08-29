@@ -37,5 +37,20 @@
 *.out
 *.app
 
-# debug information files
+# Debug information files
 *.dwo
+
+# CMake build artifacts
+/build/
+/build*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+*.cmake
+*.ninja
+*.o.d
+
+# Others
+*.log
+*.swp
+.DS_Store
