@@ -31,6 +31,8 @@ target_link_libraries(il_vm PUBLIC il_core rt)
 add_library(il_codegen_x86_64 STATIC codegen/x86_64/placeholder.cpp)
 set_target_properties(il_codegen_x86_64 PROPERTIES LINKER_LANGUAGE CXX)
 
+add_subdirectory(frontends/basic)
+
 add_executable(ilc tools/ilc/ilc.cpp)
 set_target_properties(ilc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/ilc)
 target_link_libraries(ilc PRIVATE il_core il_io il_vm il_verify)
@@ -42,3 +44,7 @@ target_link_libraries(il-verify PRIVATE support il_core il_build il_io il_vm il_
 add_executable(il-dis tools/il-dis/main.cpp)
 set_target_properties(il-dis PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/il-dis)
 target_link_libraries(il-dis PRIVATE support il_core il_build il_io)
+
+add_executable(basic-ast tools/basic-ast/main.cpp)
+set_target_properties(basic-ast PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/basic-ast)
+target_link_libraries(basic-ast PRIVATE basic_frontend support)

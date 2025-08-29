@@ -38,6 +38,22 @@ add_test(NAME vm_strings_example COMMAND ${CMAKE_COMMAND}
   -DSRC_DIR=${CMAKE_SOURCE_DIR}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_vm_strings.cmake)
 
+add_executable(test_basic_lexer unit/test_basic_lexer.cpp)
+target_link_libraries(test_basic_lexer PRIVATE basic_frontend support)
+add_test(NAME test_basic_lexer COMMAND test_basic_lexer)
+
+set(BASIC_AST ${CMAKE_BINARY_DIR}/src/tools/basic-ast/basic-ast)
+add_test(NAME basic_ast_ex1 COMMAND ${CMAKE_COMMAND}
+  -DBASIC_AST=${BASIC_AST}
+  -DFILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex1_hello_cond.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/ex1_hello_cond.ast
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/check_ast.cmake)
+add_test(NAME basic_ast_ex2 COMMAND ${CMAKE_COMMAND}
+  -DBASIC_AST=${BASIC_AST}
+  -DFILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex2_sum_1_to_10.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/ex2_sum_1_to_10.ast
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/check_ast.cmake)
+
 set(IL_VERIFY ${CMAKE_BINARY_DIR}/src/tools/il-verify/il-verify)
 add_test(NAME il_verify_invalid_bad_types
   COMMAND ${CMAKE_COMMAND}

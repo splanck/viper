@@ -1,0 +1,8 @@
+10 LET S = 0
+20 LET I = 1
+30 WHILE I <= 10
+40 LET S = S + I
+50 LET I = I + 1
+60 WEND
+70 PRINT S
+80 END
