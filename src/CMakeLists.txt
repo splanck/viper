@@ -24,7 +24,7 @@ add_library(il_verify STATIC il/verify/Verifier.cc)
 target_link_libraries(il_verify PUBLIC il_core)
 target_include_directories(il_verify PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-add_library(il_vm STATIC vm/VM.cpp)
+add_library(il_vm STATIC vm/VM.cpp vm/RuntimeBridge.cpp)
 target_include_directories(il_vm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(il_vm PUBLIC il_core rt)
 
