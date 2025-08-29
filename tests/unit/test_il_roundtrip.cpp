@@ -6,7 +6,10 @@
 #include <sstream>
 
 int main() {
-  const char *files[] = {EXAMPLES_DIR "/il/hello_cond.il", EXAMPLES_DIR "/il/sum_1_to_10.il"};
+  const char *files[] = {
+      EXAMPLES_DIR "/il/ex1_hello_cond.il", EXAMPLES_DIR "/il/ex2_sum_1_to_10.il",
+      EXAMPLES_DIR "/il/ex3_table_5x5.il",  EXAMPLES_DIR "/il/ex4_factorial.il",
+      EXAMPLES_DIR "/il/ex5_strings.il",    EXAMPLES_DIR "/il/ex6_heap_array_avg.il"};
   for (const char *path : files) {
     std::ifstream in(path);
     std::stringstream buf;

@@ -9,6 +9,8 @@ enum class Opcode {
   Mul,
   SDiv,
   UDiv,
+  SRem,
+  URem,
   And,
   Or,
   Xor,
@@ -65,6 +67,10 @@ inline std::string toString(Opcode op) {
     return "sdiv";
   case Opcode::UDiv:
     return "udiv";
+  case Opcode::SRem:
+    return "srem";
+  case Opcode::URem:
+    return "urem";
   case Opcode::And:
     return "and";
   case Opcode::Or:
