@@ -50,6 +50,9 @@ Value parseValue(const std::string &tok, const std::unordered_map<std::string, u
     return Value::null();
   if (tok.size() >= 2 && tok.front() == '"' && tok.back() == '"')
     return Value::constStr(tok.substr(1, tok.size() - 2));
+  if (tok.find('.') != std::string::npos || tok.find('e') != std::string::npos ||
+      tok.find('E') != std::string::npos)
+    return Value::constFloat(std::stod(tok));
   return Value::constInt(std::stoll(tok));
 }
 
@@ -69,7 +72,9 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err) {
   BasicBlock *curBB = nullptr;
   std::unordered_map<std::string, unsigned> tempIds;
   unsigned nextTemp = 0;
+  unsigned lineNo = 0;
   while (std::getline(is, line)) {
+    ++lineNo;
     line = trim(line);
     if (line.empty())
       continue;
@@ -134,7 +139,7 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err) {
         nextTemp = 0;
         continue;
       }
-      err << "Unexpected line: " << line << "\n";
+      err << "line " << lineNo << ": unexpected line: " << line << "\n";
       return false;
     } else {
       if (line[0] == '}') {
@@ -149,7 +154,7 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err) {
         continue;
       }
       if (!curBB) {
-        err << "Instruction outside block\n";
+        err << "line " << lineNo << ": instruction outside block\n";
         return false;
       }
       Instr in;
@@ -165,51 +170,114 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err) {
       std::string op;
       std::istringstream ss(line);
       ss >> op;
-      if (op == "add" || op == "mul" || op == "scmp_gt" || op == "scmp_le") {
-        std::string a = readToken(ss);
-        std::string b = readToken(ss);
-        in.operands.push_back(parseValue(a, tempIds));
-        in.operands.push_back(parseValue(b, tempIds));
-        if (op == "add")
-          in.op = Opcode::Add;
-        else if (op == "mul")
-          in.op = Opcode::Mul;
-        else if (op == "scmp_gt")
-          in.op = Opcode::SCmpGT;
-        else
-          in.op = Opcode::SCmpLE;
-        in.type =
-            (op == "scmp_gt" || op == "scmp_le") ? Type(Type::Kind::I1) : Type(Type::Kind::I64);
-      } else if (op == "alloca") {
+      static const std::unordered_map<std::string, Opcode> opMap = {
+          {"add", Opcode::Add},
+          {"sub", Opcode::Sub},
+          {"mul", Opcode::Mul},
+          {"sdiv", Opcode::SDiv},
+          {"udiv", Opcode::UDiv},
+          {"srem", Opcode::SRem},
+          {"urem", Opcode::URem},
+          {"and", Opcode::And},
+          {"or", Opcode::Or},
+          {"xor", Opcode::Xor},
+          {"shl", Opcode::Shl},
+          {"lshr", Opcode::LShr},
+          {"ashr", Opcode::AShr},
+          {"fadd", Opcode::FAdd},
+          {"fsub", Opcode::FSub},
+          {"fmul", Opcode::FMul},
+          {"fdiv", Opcode::FDiv},
+          {"icmp_eq", Opcode::ICmpEq},
+          {"icmp_ne", Opcode::ICmpNe},
+          {"scmp_lt", Opcode::SCmpLT},
+          {"scmp_le", Opcode::SCmpLE},
+          {"scmp_gt", Opcode::SCmpGT},
+          {"scmp_ge", Opcode::SCmpGE},
+          {"ucmp_lt", Opcode::UCmpLT},
+          {"ucmp_le", Opcode::UCmpLE},
+          {"ucmp_gt", Opcode::UCmpGT},
+          {"ucmp_ge", Opcode::UCmpGE},
+          {"fcmp_lt", Opcode::FCmpLT},
+          {"fcmp_le", Opcode::FCmpLE},
+          {"fcmp_gt", Opcode::FCmpGT},
+          {"fcmp_ge", Opcode::FCmpGE},
+          {"fcmp_eq", Opcode::FCmpEQ},
+          {"fcmp_ne", Opcode::FCmpNE},
+          {"sitofp", Opcode::Sitofp},
+          {"fptosi", Opcode::Fptosi},
+          {"zext1", Opcode::Zext1},
+          {"trunc1", Opcode::Trunc1},
+          {"alloca", Opcode::Alloca},
+          {"gep", Opcode::GEP},
+          {"load", Opcode::Load},
+          {"store", Opcode::Store},
+          {"addr_of", Opcode::AddrOf},
+          {"const_str", Opcode::ConstStr},
+          {"const_null", Opcode::ConstNull},
+          {"call", Opcode::Call},
+          {"br", Opcode::Br},
+          {"cbr", Opcode::CBr},
+          {"ret", Opcode::Ret},
+          {"trap", Opcode::Trap}};
+      auto itOp = opMap.find(op);
+      if (itOp == opMap.end()) {
+        err << "line " << lineNo << ": unknown opcode " << op << "\n";
+        return false;
+      }
+      in.op = itOp->second;
+      switch (in.op) {
+      case Opcode::Alloca: {
         std::string sz = readToken(ss);
-        in.op = Opcode::Alloca;
         in.operands.push_back(parseValue(sz, tempIds));
         in.type = Type(Type::Kind::Ptr);
-      } else if (op == "load") {
+        break;
+      }
+      case Opcode::GEP: {
+        std::string base = readToken(ss);
+        std::string off = readToken(ss);
+        in.operands.push_back(parseValue(base, tempIds));
+        in.operands.push_back(parseValue(off, tempIds));
+        in.type = Type(Type::Kind::Ptr);
+        break;
+      }
+      case Opcode::Load: {
         std::string ty = readToken(ss);
         std::string ptr = readToken(ss);
-        in.op = Opcode::Load;
         in.type = parseType(ty);
         in.operands.push_back(parseValue(ptr, tempIds));
-      } else if (op == "store") {
+        break;
+      }
+      case Opcode::Store: {
         std::string ty = readToken(ss);
         std::string ptr = readToken(ss);
         std::string val = readToken(ss);
-        in.op = Opcode::Store;
         in.type = parseType(ty);
         in.operands.push_back(parseValue(ptr, tempIds));
         in.operands.push_back(parseValue(val, tempIds));
-      } else if (op == "const_str") {
+        break;
+      }
+      case Opcode::AddrOf: {
         std::string g = readToken(ss);
-        in.op = Opcode::ConstStr;
-        if (!g.empty() && g[0] == '@')
-          in.operands.push_back(Value::global(g.substr(1)));
+        in.operands.push_back(parseValue(g, tempIds));
+        in.type = Type(Type::Kind::Ptr);
+        break;
+      }
+      case Opcode::ConstStr: {
+        std::string g = readToken(ss);
+        if (!g.empty())
+          in.operands.push_back(parseValue(g, tempIds));
         in.type = Type(Type::Kind::Str);
-      } else if (op == "call") {
+        break;
+      }
+      case Opcode::ConstNull: {
+        in.type = Type(Type::Kind::Ptr);
+        break;
+      }
+      case Opcode::Call: {
         size_t at = line.find('@');
         size_t lp = line.find('(', at);
         size_t rp = line.find(')', lp);
-        in.op = Opcode::Call;
         in.callee = line.substr(at + 1, lp - at - 1);
         std::string args = line.substr(lp + 1, rp - lp - 1);
         std::stringstream as(args);
@@ -220,32 +288,57 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err) {
             in.operands.push_back(parseValue(a, tempIds));
         }
         in.type = Type(Type::Kind::Void);
-      } else if (op == "br") {
-        std::string w = readToken(ss);
+        break;
+      }
+      case Opcode::Br: {
+        std::string word = readToken(ss);
         std::string l = readToken(ss);
-        in.op = Opcode::Br;
         in.labels.push_back(l);
         in.type = Type(Type::Kind::Void);
-      } else if (op == "cbr") {
+        break;
+      }
+      case Opcode::CBr: {
         std::string c = readToken(ss);
         std::string word = readToken(ss);
         std::string l1 = readToken(ss);
         word = readToken(ss);
         std::string l2 = readToken(ss);
-        in.op = Opcode::CBr;
         in.operands.push_back(parseValue(c, tempIds));
         in.labels.push_back(l1);
         in.labels.push_back(l2);
         in.type = Type(Type::Kind::Void);
-      } else if (op == "ret") {
+        break;
+      }
+      case Opcode::Ret: {
         std::string v;
         if (ss >> v)
           in.operands.push_back(parseValue(v, tempIds));
-        in.op = Opcode::Ret;
         in.type = Type(Type::Kind::Void);
-      } else {
-        err << "Unknown opcode: " << op << "\n";
-        return false;
+        break;
+      }
+      case Opcode::Trap: {
+        in.type = Type(Type::Kind::Void);
+        break;
+      }
+      default: {
+        bool unary = in.op == Opcode::Sitofp || in.op == Opcode::Fptosi || in.op == Opcode::Zext1 ||
+                     in.op == Opcode::Trunc1;
+        std::string a = readToken(ss);
+        in.operands.push_back(parseValue(a, tempIds));
+        if (!unary) {
+          std::string b = readToken(ss);
+          if (!b.empty())
+            in.operands.push_back(parseValue(b, tempIds));
+        }
+        if (op == "fadd" || op == "fsub" || op == "fmul" || op == "fdiv" || op == "sitofp")
+          in.type = Type(Type::Kind::F64);
+        else if (op.rfind("icmp_", 0) == 0 || op.rfind("scmp_", 0) == 0 ||
+                 op.rfind("ucmp_", 0) == 0 || op.rfind("fcmp_", 0) == 0 || op == "trunc1")
+          in.type = Type(Type::Kind::I1);
+        else
+          in.type = Type(Type::Kind::I64);
+        break;
+      }
       }
       curBB->instructions.push_back(std::move(in));
     }
