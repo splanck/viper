@@ -23,3 +23,35 @@ add_test(NAME vm_examples COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DSRC_DIR=${CMAKE_SOURCE_DIR}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_vm_examples.cmake)
+
+set(IL_VERIFY ${CMAKE_BINARY_DIR}/src/tools/il-verify/il-verify)
+add_test(NAME il_verify_invalid_bad_types
+  COMMAND ${CMAKE_COMMAND}
+          -DIL_VERIFY=${IL_VERIFY}
+          -DFILE=${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/bad_types.il
+          -DEXPECT=operand\ type\ mismatch
+          -P ${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/check_invalid.cmake)
+add_test(NAME il_verify_invalid_missing_term
+  COMMAND ${CMAKE_COMMAND}
+          -DIL_VERIFY=${IL_VERIFY}
+          -DFILE=${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/missing_terminator.il
+          -DEXPECT=missing\ terminator
+          -P ${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/check_invalid.cmake)
+add_test(NAME il_verify_invalid_wrong_call_arity
+  COMMAND ${CMAKE_COMMAND}
+          -DIL_VERIFY=${IL_VERIFY}
+          -DFILE=${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/wrong_call_arity.il
+          -DEXPECT=call\ arg\ count
+          -P ${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/check_invalid.cmake)
+add_test(NAME il_verify_invalid_unknown_symbol
+  COMMAND ${CMAKE_COMMAND}
+          -DIL_VERIFY=${IL_VERIFY}
+          -DFILE=${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/unknown_symbol.il
+          -DEXPECT=unknown\ callee
+          -P ${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/check_invalid.cmake)
+add_test(NAME il_verify_invalid_bad_load_store
+  COMMAND ${CMAKE_COMMAND}
+          -DIL_VERIFY=${IL_VERIFY}
+          -DFILE=${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/bad_load_store.il
+          -DEXPECT=pointer\ type\ mismatch
+          -P ${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/check_invalid.cmake)
