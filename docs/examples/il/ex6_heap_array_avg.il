@@ -1,0 +1,59 @@
+il 0.1
+extern @rt_alloc(i64) -> ptr
+extern @rt_print_f64(f64) -> void
+extern @rt_print_str(str) -> void
+
+global const str @.L0 = "DONE"
+
+func @main() -> i32 {
+entry:
+  %n_slot = alloca 8
+  %i_slot = alloca 8
+  %sum_slot = alloca 8
+  %a_slot = alloca 8
+
+  store i64, %n_slot, 5
+  store i64, %i_slot, 0
+  store i64, %sum_slot, 0
+
+  %n0 = load i64, %n_slot
+  %bytes = mul %n0, 8
+  %abase = call @rt_alloc(%bytes)
+  store ptr, %a_slot, %abase
+  br label loop_head
+
+loop_head:
+  %i0 = load i64, %i_slot
+  %n1 = load i64, %n_slot
+  %c = scmp_lt %i0, %n1
+  cbr %c, label loop_body, label done
+
+loop_body:
+  %a0 = load ptr, %a_slot
+  %off = shl %i0, 3
+  %elem_ptr = gep %a0, %off
+
+  %sq = mul %i0, %i0
+  store i64, %elem_ptr, %sq
+
+  %val = load i64, %elem_ptr
+  %sum0 = load i64, %sum_slot
+  %sum1 = add %sum0, %val
+  store i64, %sum_slot, %sum1
+
+  %i1 = add %i0, 1
+  store i64, %i_slot, %i1
+  br label loop_head
+
+done:
+  %sum2 = load i64, %sum_slot
+  %n2 = load i64, %n_slot
+  %fsum = sitofp %sum2
+  %fn = sitofp %n2
+  %avg = fdiv %fsum, %fn
+  call @rt_print_f64(%avg)
+
+  %d = const_str @.L0
+  call @rt_print_str(%d)
+  ret 0
+}

@@ -1,0 +1,60 @@
+il 0.1
+extern @rt_print_str(str) -> void
+extern @rt_print_i64(i64) -> void
+extern @rt_len(str) -> i64
+extern @rt_concat(str, str) -> str
+extern @rt_substr(str, i64, i64) -> str
+extern @rt_str_eq(str, str) -> i1
+
+global const str @.L0 = "JOHN"
+global const str @.L1 = "DOE"
+global const str @.L2 = " "
+global const str @.L3 = "JOHN DOE"
+
+func @main() -> i32 {
+entry:
+  %a_slot = alloca 8
+  %b_slot = alloca 8
+  %c_slot = alloca 8
+  %l_slot = alloca 8
+
+  %sA = const_str @.L0
+  %sB = const_str @.L1
+  store str, %a_slot, %sA
+  store str, %b_slot, %sB
+
+  %sSp = const_str @.L2
+  %a0 = load str, %a_slot
+  %c0 = call @rt_concat(%a0, %sSp)
+  store str, %c_slot, %c0
+
+  %c1 = load str, %c_slot
+  %b0 = load str, %b_slot
+  %c2 = call @rt_concat(%c1, %b0)
+  store str, %c_slot, %c2
+
+  %c3 = load str, %c_slot
+  call @rt_print_str(%c3)
+
+  %len = call @rt_len(%c3)
+  store i64, %l_slot, %len
+  call @rt_print_i64(%len)
+
+  %first = call @rt_substr(%c3, 0, 1)
+  call @rt_print_str(%first)
+
+  %target = const_str @.L3
+  %eq = call @rt_str_eq(%c3, %target)
+  cbr %eq, label then1, label else0
+
+then1:
+  call @rt_print_i64(1)
+  br label exit
+
+else0:
+  call @rt_print_i64(0)
+  br label exit
+
+exit:
+  ret 0
+}

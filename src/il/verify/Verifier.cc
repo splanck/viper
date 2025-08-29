@@ -223,6 +223,8 @@ bool Verifier::verify(const Module &m, std::ostream &err) {
           break;
         }
         default:
+          if (in.result)
+            temps[*in.result] = in.type;
           break;
         }
       }

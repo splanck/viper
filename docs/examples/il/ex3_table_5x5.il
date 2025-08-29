@@ -1,0 +1,51 @@
+il 0.1
+extern @rt_print_str(str) -> void
+extern @rt_print_i64(i64) -> void
+
+global const str @.L0 = "TABLE 5x5"
+
+func @main() -> i32 {
+entry:
+  %n_slot = alloca 8
+  %i_slot = alloca 8
+  %j_slot = alloca 8
+
+  %h = const_str @.L0
+  call @rt_print_str(%h)
+
+  store i64, %n_slot, 5
+  store i64, %i_slot, 1
+  br label outer_head
+
+outer_head:
+  %i0 = load i64, %i_slot
+  %n0 = load i64, %n_slot
+  %oc = scmp_le %i0, %n0
+  cbr %oc, label outer_body, label outer_done
+
+outer_body:
+  store i64, %j_slot, 1
+  br label inner_head
+
+inner_head:
+  %j0 = load i64, %j_slot
+  %n1 = load i64, %n_slot
+  %ic = scmp_le %j0, %n1
+  cbr %ic, label inner_body, label inner_done
+
+inner_body:
+  %i1 = load i64, %i_slot
+  %prod = mul %i1, %j0
+  call @rt_print_i64(%prod)
+  %j1 = add %j0, 1
+  store i64, %j_slot, %j1
+  br label inner_head
+
+inner_done:
+  %i2 = add %i0, 1
+  store i64, %i_slot, %i2
+  br label outer_head
+
+outer_done:
+  ret 0
+}
