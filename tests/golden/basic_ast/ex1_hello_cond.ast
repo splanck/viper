@@ -1,0 +1,3 @@
+10:LET(X, Int(5))
+20:IF(Bin(=, Var(X), Int(5)), PRINT(Str("Hello")), PRINT(Str("Bye")))
+30:END

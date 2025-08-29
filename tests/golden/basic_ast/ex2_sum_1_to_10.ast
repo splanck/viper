@@ -1,0 +1,5 @@
+10:LET(S, Int(0))
+20:LET(I, Int(1))
+30:WHILE(Bin(<=, Var(I), Int(10)))[40:LET(S, Bin(+, Var(S), Var(I))); 50:LET(I, Bin(+, Var(I), Int(1)))]
+70:PRINT(Var(S))
+80:END

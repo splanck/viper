@@ -1,0 +1,3 @@
+10 LET X = 5
+20 IF X = 5 THEN PRINT "Hello" ELSE PRINT "Bye"
+30 END
