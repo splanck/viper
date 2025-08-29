@@ -1,6 +1,7 @@
 #include "vm/VM.h"
 #include "il/core/Instr.h"
 #include "il/core/Opcode.h"
+#include "vm/RuntimeBridge.h"
 #include <cassert>
 #include <cstring>
 #include <iostream>
@@ -181,12 +182,11 @@ int64_t VM::execFunction(const Function &fn) {
       std::vector<Slot> args;
       for (const auto &op : in.operands)
         args.push_back(eval(fr, op));
-      if (in.callee == "rt_print_str") {
-        rt_print_str(args[0].str);
-      } else if (in.callee == "rt_print_i64") {
-        rt_print_i64(args[0].i64);
-      } else {
-        assert(false && "unimplemented call");
+      Slot res = RuntimeBridge::call(in.callee, args);
+      if (in.result) {
+        if (fr.regs.size() <= *in.result)
+          fr.regs.resize(*in.result + 1);
+        fr.regs[*in.result] = res;
       }
       break;
     }

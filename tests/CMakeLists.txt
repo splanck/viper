@@ -24,6 +24,20 @@ add_test(NAME vm_examples COMMAND ${CMAKE_COMMAND}
   -DSRC_DIR=${CMAKE_SOURCE_DIR}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_vm_examples.cmake)
 
+add_executable(test_rt_string unit/test_rt_string.cpp)
+target_link_libraries(test_rt_string PRIVATE rt)
+add_test(NAME test_rt_string COMMAND test_rt_string)
+
+add_executable(test_rt_string_invalid unit/test_rt_string_invalid.cpp)
+target_link_libraries(test_rt_string_invalid PRIVATE rt)
+add_test(NAME test_rt_string_invalid COMMAND test_rt_string_invalid)
+set_tests_properties(test_rt_string_invalid PROPERTIES WILL_FAIL TRUE)
+
+add_test(NAME vm_strings_example COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DSRC_DIR=${CMAKE_SOURCE_DIR}
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_vm_strings.cmake)
+
 set(IL_VERIFY ${CMAKE_BINARY_DIR}/src/tools/il-verify/il-verify)
 add_test(NAME il_verify_invalid_bad_types
   COMMAND ${CMAKE_COMMAND}
