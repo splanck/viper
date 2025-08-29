@@ -24,15 +24,16 @@ add_library(il_verify STATIC il/verify/Verifier.cc)
 target_link_libraries(il_verify PUBLIC il_core)
 target_include_directories(il_verify PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-add_library(il_vm STATIC vm/placeholder.cpp)
-set_target_properties(il_vm PROPERTIES LINKER_LANGUAGE CXX)
+add_library(il_vm STATIC vm/VM.cpp)
+target_link_libraries(il_vm PUBLIC rt)
+target_include_directories(il_vm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_library(il_codegen_x86_64 STATIC codegen/x86_64/placeholder.cpp)
 set_target_properties(il_codegen_x86_64 PROPERTIES LINKER_LANGUAGE CXX)
 
 add_executable(ilc tools/ilc/ilc.cpp)
 set_target_properties(ilc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/ilc)
-target_link_libraries(ilc PRIVATE support il_core il_build il_io il_vm il_codegen_x86_64)
+target_link_libraries(ilc PRIVATE support il_core il_build il_io il_vm il_codegen_x86_64 il_verify)
 
 add_executable(il-verify tools/il-verify/il-verify.cpp)
 set_target_properties(il-verify PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/il-verify)

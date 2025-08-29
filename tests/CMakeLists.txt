@@ -14,3 +14,9 @@ add_test(NAME test_il_roundtrip COMMAND test_il_roundtrip)
 
 add_test(NAME il_verify_hello_cond COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/docs/examples/il/hello_cond.il)
 add_test(NAME il_verify_sum_1_to_10 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/docs/examples/il/sum_1_to_10.il)
+add_test(NAME vm_examples COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DHELLO=${CMAKE_SOURCE_DIR}/docs/examples/il/hello_cond.il
+  -DSUM=${CMAKE_SOURCE_DIR}/docs/examples/il/sum_1_to_10.il
+  -DOUT=${CMAKE_BINARY_DIR}/tests/e2e
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_vm_examples.cmake)
