@@ -3,39 +3,37 @@ extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
 extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
+global const str @.L0 = "SUM"
+global const str @.L1 = "DONE"
 func @main() -> i64 {
 entry:
   %t0 = alloca 8
-  %t1 = alloca 8
   br label L10
 L10:
-  store i64, %t1, 0
+  %t1 = const_str @.L0
+  call @rt_print_str(%t1)
   br label L20
 L20:
-  store i64, %t0, 1
+  %t2 = add 1, 2
+  %t3 = add %t2, 3
+  %t4 = add %t3, 4
+  %t5 = add %t4, 5
+  %t6 = add %t5, 6
+  %t7 = add %t6, 7
+  %t8 = add %t7, 8
+  %t9 = add %t8, 9
+  store i64, %t0, %t9
   br label L30
 L30:
-L70:
-  %t9 = load i64, %t1
-  call @rt_print_i64(%t9)
-  br label L80
-L80:
+  %t10 = load i64, %t0
+  call @rt_print_i64(%t10)
+  br label L40
+L40:
+  %t11 = const_str @.L1
+  call @rt_print_str(%t11)
+  br label L50
+L50:
   br label exit
 exit:
   ret 0
-loop_head:
-  %t2 = load i64, %t0
-  %t3 = scmp_le %t2, 10
-  cbr %t3, label loop_body, label done
-loop_body:
-  %t4 = load i64, %t1
-  %t5 = load i64, %t0
-  %t6 = add %t4, %t5
-  store i64, %t1, %t6
-  %t7 = load i64, %t0
-  %t8 = add %t7, 1
-  store i64, %t0, %t8
-  br label loop_head
-done:
-  br label L70
 }
