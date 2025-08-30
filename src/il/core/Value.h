@@ -23,7 +23,7 @@ struct Value {
 inline std::string toString(const Value &v) {
   switch (v.kind) {
   case Value::Kind::Temp:
-    return "%" + std::to_string(v.id);
+    return "%t" + std::to_string(v.id);
   case Value::Kind::ConstInt:
     return std::to_string(v.i64);
   case Value::Kind::ConstFloat:
