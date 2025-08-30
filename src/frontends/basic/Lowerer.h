@@ -48,10 +48,12 @@ private:
   Value emitBinary(Opcode op, Type ty, Value lhs, Value rhs);
   void emitBr(BasicBlock *target);
   void emitCBr(Value cond, BasicBlock *t, BasicBlock *f);
+  Value emitCallRet(Type ty, const std::string &callee, const std::vector<Value> &args);
   void emitCall(const std::string &callee, const std::vector<Value> &args);
   Value emitConstStr(const std::string &globalName);
   void emitRet(Value v);
   std::string getStringLabel(const std::string &s);
+  unsigned nextTempId();
 
   build::IRBuilder *builder{nullptr};
   Module *mod{nullptr};
@@ -59,7 +61,6 @@ private:
   BasicBlock *cur{nullptr};
   BasicBlock *fnExit{nullptr};
   NameMangler mangler;
-  unsigned nextTemp{0};
   std::unordered_map<int, BasicBlock *> lineBlocks;
   std::unordered_map<std::string, unsigned> varSlots;
   std::unordered_map<std::string, std::string> strings;
