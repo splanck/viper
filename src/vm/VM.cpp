@@ -187,7 +187,7 @@ int64_t VM::execFunction(const Function &fn) {
       std::vector<Slot> args;
       for (const auto &op : in.operands)
         args.push_back(eval(fr, op));
-      Slot res = RuntimeBridge::call(in.callee, args);
+      Slot res = RuntimeBridge::call(in.callee, args, in.loc, fr.func->name, bb->label);
       if (in.result) {
         if (fr.regs.size() <= *in.result)
           fr.regs.resize(*in.result + 1);

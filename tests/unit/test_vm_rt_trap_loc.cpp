@@ -1,7 +1,7 @@
-// File: tests/unit/test_vm_trap_loc.cpp
-// Purpose: Verify VM trap messages include instruction source locations.
-// Key invariants: Trap output must reference function, block, and location.
-// Ownership: Test constructs IL module and executes VM.
+// File: tests/unit/test_vm_rt_trap_loc.cpp
+// Purpose: Verify runtime-originated traps report instruction source locations.
+// Key invariants: Trap output includes function, block, and location.
+// Ownership: Test builds IL calling runtime and runs VM.
 // Links: docs/class-catalog.md
 
 #include "il/build/IRBuilder.h"
@@ -12,16 +12,18 @@
 #include <unistd.h>
 
 int main() {
-  il::core::Module m;
+  using namespace il::core;
+  Module m;
   il::build::IRBuilder b(m);
-  auto &fn = b.startFunction("main", il::core::Type(il::core::Type::Kind::I64), {});
+  b.addExtern("rt_to_int", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
+  b.addGlobalStr("g", "12x");
+  auto &fn = b.startFunction("main", Type(Type::Kind::I64), {});
   auto &bb = b.addBlock(fn, "entry");
   b.setInsertPoint(bb);
-  il::core::Instr in;
-  in.op = il::core::Opcode::Trap;
-  in.type = il::core::Type(il::core::Type::Kind::Void);
-  in.loc = {1, 1, 1};
-  bb.instructions.push_back(in);
+  Value s = b.emitConstStr("g", {1, 1, 1});
+  b.emitCall("rt_to_int", {s}, {1, 1, 1});
+  b.emitRet(std::optional<Value>{}, {1, 1, 1});
+
   int fds[2];
   assert(pipe(fds) == 0);
   pid_t pid = fork();
