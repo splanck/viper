@@ -1,3 +1,8 @@
+// File: src/vm/VM.cpp
+// Purpose: Implements stack-based virtual machine for IL.
+// Key invariants: None.
+// Ownership/Lifetime: VM references module owned externally.
+// Links: docs/il-spec.md
 #include "vm/VM.h"
 #include "il/core/Instr.h"
 #include "il/core/Opcode.h"

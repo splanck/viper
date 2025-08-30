@@ -1,3 +1,8 @@
+// File: src/il/io/Parser.cc
+// Purpose: Implements parser for IL textual format.
+// Key invariants: None.
+// Ownership/Lifetime: Parser operates on externally managed strings.
+// Links: docs/il-spec.md
 #include "il/io/Parser.h"
 #include "il/core/Opcode.h"
 #include "il/core/Value.h"

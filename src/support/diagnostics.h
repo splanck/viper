@@ -1,3 +1,8 @@
+// File: src/support/diagnostics.h
+// Purpose: Declares diagnostic engine for errors and warnings.
+// Key invariants: None.
+// Ownership/Lifetime: Engine owns collected diagnostics.
+// Links: docs/class-catalog.md
 #pragma once
 #include "source_manager.h"
 #include <ostream>

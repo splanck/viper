@@ -1,3 +1,8 @@
+// File: src/vm/RuntimeBridge.cpp
+// Purpose: Bridges VM to C runtime functions.
+// Key invariants: None.
+// Ownership/Lifetime: Bridge does not own VM or runtime resources.
+// Links: docs/il-spec.md
 #include "vm/RuntimeBridge.h"
 #include "vm/VM.h"
 #include <cassert>

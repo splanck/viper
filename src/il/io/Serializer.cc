@@ -1,3 +1,8 @@
+// File: src/il/io/Serializer.cc
+// Purpose: Implements serializer for IL modules to text.
+// Key invariants: None.
+// Ownership/Lifetime: Serializer does not own modules.
+// Links: docs/il-spec.md
 #include "il/io/Serializer.h"
 #include "il/core/Opcode.h"
 #include "il/core/Value.h"

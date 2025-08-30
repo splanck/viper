@@ -1,3 +1,8 @@
+// File: src/frontends/basic/NameMangler.h
+// Purpose: Declares symbol mangling helpers for BASIC frontend.
+// Key invariants: None.
+// Ownership/Lifetime: Functions allocate strings for caller.
+// Links: docs/class-catalog.md
 #pragma once
 #include <string>
 #include <unordered_map>

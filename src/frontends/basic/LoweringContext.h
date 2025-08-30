@@ -1,3 +1,8 @@
+// File: src/frontends/basic/LoweringContext.h
+// Purpose: Declares state container used in BASIC-to-IL lowering.
+// Key invariants: None.
+// Ownership/Lifetime: Does not own referenced module.
+// Links: docs/class-catalog.md
 #pragma once
 #include "frontends/basic/NameMangler.h"
 #include <string>

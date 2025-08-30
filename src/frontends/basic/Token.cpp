@@ -1,3 +1,8 @@
+// File: src/frontends/basic/Token.cpp
+// Purpose: Provides token utilities for BASIC frontend.
+// Key invariants: None.
+// Ownership/Lifetime: Tokens passed by value.
+// Links: docs/class-catalog.md
 #include "frontends/basic/Token.h"
 
 namespace il::frontends::basic {
