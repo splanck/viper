@@ -12,17 +12,32 @@
 /// @invariant Counts reflect reported diagnostics.
 /// @ownership Owns stored diagnostic messages.
 namespace il::support {
+/// @brief Severity levels for diagnostics.
 enum class Severity { Note, Warning, Error };
+
+/// @brief Single diagnostic message with location.
 struct Diagnostic {
-  Severity severity;
-  std::string message;
-  SourceLoc loc;
+  Severity severity;   ///< Message severity
+  std::string message; ///< Human-readable text
+  SourceLoc loc;       ///< Optional source location
 };
+
+/// @brief Collects diagnostics and prints them in order.
 class DiagnosticEngine {
 public:
+  /// @brief Record diagnostic @p d.
+  /// @param d Diagnostic to store.
   void report(Diagnostic d);
+
+  /// @brief Print all recorded diagnostics to stream @p os.
+  /// @param os Output stream.
+  /// @param sm Optional source manager for location info.
   void printAll(std::ostream &os, const SourceManager *sm = nullptr) const;
+
+  /// @brief Number of errors reported.
   size_t errorCount() const { return errors_; }
+
+  /// @brief Number of warnings reported.
   size_t warningCount() const { return warnings_; }
 
 private:
