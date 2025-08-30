@@ -3,11 +3,11 @@
 //          basic validation, and rudimentary type checking.
 // Key invariants: Analyzer tracks defined symbols and reports unknown
 //                 references.
-// Ownership/Lifetime: Analyzer borrows DiagnosticEngine; no AST ownership.
+// Ownership/Lifetime: Analyzer borrows DiagnosticEmitter; no AST ownership.
 // Links: docs/class-catalog.md
 #pragma once
 #include "frontends/basic/AST.h"
-#include "support/diagnostics.h"
+#include "frontends/basic/DiagnosticEmitter.h"
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -19,11 +19,11 @@ namespace il::frontends::basic {
 ///        references, and verify FOR/NEXT nesting.
 /// @invariant Symbol table only contains definitions; unknown uses report
 ///            diagnostics.
-/// @ownership Borrows DiagnosticEngine; AST not owned.
+/// @ownership Borrows DiagnosticEmitter; AST not owned.
 class SemanticAnalyzer {
 public:
   /// @brief Create analyzer reporting to @p de.
-  explicit SemanticAnalyzer(il::support::DiagnosticEngine &de) : de(de) {}
+  explicit SemanticAnalyzer(DiagnosticEmitter &de) : de(de) {}
 
   /// @brief Analyze @p prog collecting symbols and labels.
   /// @param prog Program AST to walk.
@@ -51,7 +51,7 @@ private:
   /// @return Inferred type of the expression.
   Type visitExpr(const Expr &e);
 
-  il::support::DiagnosticEngine &de; ///< Diagnostic sink.
+  DiagnosticEmitter &de; ///< Diagnostic sink.
   std::unordered_set<std::string> symbols_;
   std::unordered_map<std::string, Type> varTypes_;
   std::unordered_set<int> labels_;

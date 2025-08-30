@@ -3,6 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Tool owns loaded modules.
 // Links: docs/class-catalog.md
+#include "frontends/basic/DiagnosticEmitter.h"
 #include "frontends/basic/Lowerer.h"
 #include "frontends/basic/Parser.h"
 #include "frontends/basic/SemanticAnalyzer.h"
@@ -103,10 +104,12 @@ int main(int argc, char **argv) {
       Parser p(src, fid);
       auto prog = p.parseProgram();
       support::DiagnosticEngine de;
-      SemanticAnalyzer sema(de);
+      DiagnosticEmitter em(de, sm);
+      em.addSource(fid, src);
+      SemanticAnalyzer sema(em);
       sema.analyze(*prog);
-      if (de.errorCount() > 0) {
-        de.printAll(std::cerr, &sm);
+      if (em.errorCount() > 0) {
+        em.printAll(std::cerr);
         return 1;
       }
       Lowerer lower;
