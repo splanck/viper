@@ -195,6 +195,10 @@ int64_t VM::execFunction(const Function &fn) {
       }
       break;
     }
+    case Opcode::Trap: {
+      RuntimeBridge::trap("trap", in.loc, fr.func->name, bb->label);
+      return 0; // unreachable
+    }
     default:
       assert(false && "unimplemented opcode");
     }

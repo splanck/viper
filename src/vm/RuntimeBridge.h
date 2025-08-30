@@ -5,6 +5,7 @@
 // Links: docs/il-spec.md
 #pragma once
 #include "rt.h"
+#include "support/source_manager.h"
 #include <string>
 #include <vector>
 
@@ -20,6 +21,11 @@ public:
   /// @param args Evaluated argument slots.
   /// @return Result slot from runtime call.
   static Slot call(const std::string &name, const std::vector<Slot> &args);
+
+  /// @brief Report a trap with source location @p loc within function @p fn and
+  /// block @p block.
+  static void trap(const std::string &msg, const il::support::SourceLoc &loc, const std::string &fn,
+                   const std::string &block);
 };
 
 } // namespace il::vm

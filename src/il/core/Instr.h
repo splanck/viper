@@ -7,6 +7,7 @@
 #include "il/core/Opcode.h"
 #include "il/core/Type.h"
 #include "il/core/Value.h"
+#include "support/source_manager.h"
 #include <optional>
 #include <string>
 #include <vector>
@@ -21,6 +22,7 @@ struct Instr {
   std::vector<Value> operands;
   std::string callee;              ///< for call
   std::vector<std::string> labels; ///< for branch targets
+  il::support::SourceLoc loc;      ///< source location
 };
 
 } // namespace il::core
