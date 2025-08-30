@@ -150,10 +150,23 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e) {
     case BinaryExpr::Op::Add:
     case BinaryExpr::Op::Sub:
     case BinaryExpr::Op::Mul:
+      if ((lt != Type::Unknown && lt != Type::Int) || (rt != Type::Unknown && rt != Type::Int)) {
+        std::string msg = "B2001: operand type mismatch";
+        de.report({il::support::Severity::Error, std::move(msg), b->loc});
+      }
+      return Type::Int;
     case BinaryExpr::Op::Div:
       if ((lt != Type::Unknown && lt != Type::Int) || (rt != Type::Unknown && rt != Type::Int)) {
         std::string msg = "B2001: operand type mismatch";
         de.report({il::support::Severity::Error, std::move(msg), b->loc});
+      }
+      if (dynamic_cast<const IntExpr *>(b->lhs.get()) &&
+          dynamic_cast<const IntExpr *>(b->rhs.get())) {
+        auto *ri = static_cast<const IntExpr *>(b->rhs.get());
+        if (ri->value == 0) {
+          std::string msg = "B2002: divide by zero";
+          de.report({il::support::Severity::Error, std::move(msg), b->loc});
+        }
       }
       return Type::Int;
     case BinaryExpr::Op::Eq:
