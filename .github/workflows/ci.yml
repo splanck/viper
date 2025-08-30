@@ -55,3 +55,11 @@ jobs:
           path: |
             build/Testing/Temporary/LastTest.log
             build/CMakeCache.txt
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Configure
+        run: cmake -S . -B build
+      - name: Docs
+        run: ctest --test-dir build -L Docs --output-on-failure
