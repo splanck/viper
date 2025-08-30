@@ -38,10 +38,11 @@ Module Lowerer::lower(const Program &prog) {
     b.addBlock(f, mangler.block("L" + std::to_string(stmt->line)));
     lines.push_back(stmt->line);
   }
-  fnExit = &b.addBlock(f, mangler.block("exit"));
+  fnExit = f.blocks.size();
+  b.addBlock(f, mangler.block("exit"));
 
   for (size_t i = 0; i < lines.size(); ++i)
-    lineBlocks[lines[i]] = &f.blocks[i + 1];
+    lineBlocks[lines[i]] = i + 1;
 
   vars.clear();
   collectVars(prog);
@@ -54,22 +55,23 @@ Module Lowerer::lower(const Program &prog) {
     varSlots[v] = slot.id; // Value::temp id
   }
   if (!prog.statements.empty())
-    emitBr(lineBlocks[prog.statements.front()->line]);
+    emitBr(&f.blocks[lineBlocks[prog.statements.front()->line]]);
   else
     emitRet(Value::constInt(0));
 
   // lower statements sequentially
   for (size_t i = 0; i < prog.statements.size(); ++i) {
-    cur = lineBlocks[prog.statements[i]->line];
+    cur = &f.blocks[lineBlocks[prog.statements[i]->line]];
     lowerStmt(*prog.statements[i]);
     if (!cur->terminated) {
-      BasicBlock *next =
-          (i + 1 < prog.statements.size()) ? lineBlocks[prog.statements[i + 1]->line] : fnExit;
+      BasicBlock *next = (i + 1 < prog.statements.size())
+                             ? &f.blocks[lineBlocks[prog.statements[i + 1]->line]]
+                             : &f.blocks[fnExit];
       emitBr(next);
     }
   }
 
-  cur = fnExit;
+  cur = &f.blocks[fnExit];
   emitRet(Value::constInt(0));
 
   return m;
@@ -239,9 +241,15 @@ void Lowerer::lowerIf(const IfStmt &stmt) {
 }
 
 void Lowerer::lowerWhile(const WhileStmt &stmt) {
-  BasicBlock *head = &builder->addBlock(*func, mangler.block("loop_head"));
-  BasicBlock *body = &builder->addBlock(*func, mangler.block("loop_body"));
-  BasicBlock *done = &builder->addBlock(*func, mangler.block("done"));
+  // Adding blocks may reallocate the function's block list; capture index and
+  // reacquire pointers to guarantee stability.
+  size_t start = func->blocks.size();
+  builder->addBlock(*func, mangler.block("loop_head"));
+  builder->addBlock(*func, mangler.block("loop_body"));
+  builder->addBlock(*func, mangler.block("done"));
+  BasicBlock *head = &func->blocks[start];
+  BasicBlock *body = &func->blocks[start + 1];
+  BasicBlock *done = &func->blocks[start + 2];
 
   emitBr(head);
 
@@ -266,10 +274,10 @@ void Lowerer::lowerWhile(const WhileStmt &stmt) {
 void Lowerer::lowerGoto(const GotoStmt &stmt) {
   auto it = lineBlocks.find(stmt.target);
   if (it != lineBlocks.end())
-    emitBr(it->second);
+    emitBr(&func->blocks[it->second]);
 }
 
-void Lowerer::lowerEnd(const EndStmt &) { emitBr(fnExit); }
+void Lowerer::lowerEnd(const EndStmt &) { emitBr(&func->blocks[fnExit]); }
 
 Value Lowerer::emitAlloca(int bytes) {
   unsigned id = nextTempId();

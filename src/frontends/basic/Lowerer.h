@@ -59,9 +59,9 @@ private:
   Module *mod{nullptr};
   Function *func{nullptr};
   BasicBlock *cur{nullptr};
-  BasicBlock *fnExit{nullptr};
+  size_t fnExit{0};
   NameMangler mangler;
-  std::unordered_map<int, BasicBlock *> lineBlocks;
+  std::unordered_map<int, size_t> lineBlocks;
   std::unordered_map<std::string, unsigned> varSlots;
   std::unordered_map<std::string, std::string> strings;
   std::unordered_set<std::string> vars;
