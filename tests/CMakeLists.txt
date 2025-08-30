@@ -91,3 +91,15 @@ add_test(NAME basic_ast_ex2 COMMAND ${CMAKE_COMMAND}
   -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex2_sum_1_to_10.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/ex2_sum_1_to_10.ast
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/check_ast.cmake)
+
+set(BASIC_ILC $<TARGET_FILE:ilc>)
+add_test(NAME basic_to_il_ex1 COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex1_hello_cond.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/ex1_hello_cond.il
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
+add_test(NAME basic_to_il_ex2 COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex2_sum_1_to_10.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/ex2_sum_1_to_10.il
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
