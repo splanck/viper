@@ -37,6 +37,7 @@ void SemanticAnalyzer::analyze(const Program &prog) {
   labels_.clear();
   labelRefs_.clear();
   forStack_.clear();
+  varTypes_.clear();
   for (const auto &stmt : prog.statements)
     if (stmt)
       labels_.insert(stmt->line);
@@ -52,7 +53,7 @@ void SemanticAnalyzer::visitStmt(const Stmt &s) {
   } else if (auto *l = dynamic_cast<const LetStmt *>(&s)) {
     symbols_.insert(l->name);
     if (l->expr)
-      visitExpr(*l->expr);
+      varTypes_[l->name] = visitExpr(*l->expr);
   } else if (auto *i = dynamic_cast<const IfStmt *>(&s)) {
     if (i->cond)
       visitExpr(*i->cond);
@@ -103,8 +104,12 @@ void SemanticAnalyzer::visitStmt(const Stmt &s) {
   }
 }
 
-void SemanticAnalyzer::visitExpr(const Expr &e) {
-  if (auto *v = dynamic_cast<const VarExpr *>(&e)) {
+SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e) {
+  if (dynamic_cast<const IntExpr *>(&e)) {
+    return Type::Int;
+  } else if (dynamic_cast<const StringExpr *>(&e)) {
+    return Type::String;
+  } else if (auto *v = dynamic_cast<const VarExpr *>(&e)) {
     if (!symbols_.count(v->name)) {
       std::string best;
       size_t bestDist = std::numeric_limits<size_t>::max();
@@ -119,22 +124,68 @@ void SemanticAnalyzer::visitExpr(const Expr &e) {
       if (!best.empty())
         msg += "; did you mean '" + best + "'?";
       de.report({il::support::Severity::Error, std::move(msg), v->loc});
+      return Type::Unknown;
     }
+    auto it = varTypes_.find(v->name);
+    if (it != varTypes_.end())
+      return it->second;
+    return Type::Unknown;
   } else if (auto *u = dynamic_cast<const UnaryExpr *>(&e)) {
+    Type t = Type::Unknown;
     if (u->expr)
-      visitExpr(*u->expr);
+      t = visitExpr(*u->expr);
+    if (u->op == UnaryExpr::Op::Not && t == Type::String) {
+      std::string msg = "B2001: operand type mismatch";
+      de.report({il::support::Severity::Error, std::move(msg), u->loc});
+    }
+    return Type::Int;
   } else if (auto *b = dynamic_cast<const BinaryExpr *>(&e)) {
+    Type lt = Type::Unknown;
+    Type rt = Type::Unknown;
     if (b->lhs)
-      visitExpr(*b->lhs);
+      lt = visitExpr(*b->lhs);
     if (b->rhs)
-      visitExpr(*b->rhs);
+      rt = visitExpr(*b->rhs);
+    switch (b->op) {
+    case BinaryExpr::Op::Add:
+    case BinaryExpr::Op::Sub:
+    case BinaryExpr::Op::Mul:
+    case BinaryExpr::Op::Div:
+      if ((lt != Type::Unknown && lt != Type::Int) || (rt != Type::Unknown && rt != Type::Int)) {
+        std::string msg = "B2001: operand type mismatch";
+        de.report({il::support::Severity::Error, std::move(msg), b->loc});
+      }
+      return Type::Int;
+    case BinaryExpr::Op::Eq:
+    case BinaryExpr::Op::Ne:
+    case BinaryExpr::Op::Lt:
+    case BinaryExpr::Op::Le:
+    case BinaryExpr::Op::Gt:
+    case BinaryExpr::Op::Ge:
+      if (lt != Type::Unknown && rt != Type::Unknown && lt != rt) {
+        std::string msg = "B2001: operand type mismatch";
+        de.report({il::support::Severity::Error, std::move(msg), b->loc});
+      }
+      return Type::Int;
+    case BinaryExpr::Op::And:
+    case BinaryExpr::Op::Or:
+      if ((lt != Type::Unknown && lt != Type::Int) || (rt != Type::Unknown && rt != Type::Int)) {
+        std::string msg = "B2001: operand type mismatch";
+        de.report({il::support::Severity::Error, std::move(msg), b->loc});
+      }
+      return Type::Int;
+    }
   } else if (auto *c = dynamic_cast<const CallExpr *>(&e)) {
     for (const auto &a : c->args)
       if (a)
         visitExpr(*a);
-  } else {
-    // IntExpr, StringExpr etc. have no symbols
+    if (c->builtin == CallExpr::Builtin::Len)
+      return Type::Int;
+    else if (c->builtin == CallExpr::Builtin::Mid)
+      return Type::String;
   }
+  // Unknown expression type.
+  return Type::Unknown;
 }
 
 } // namespace il::frontends::basic
