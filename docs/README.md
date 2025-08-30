@@ -8,7 +8,8 @@ in [AGENTS.md](../AGENTS.md).
 
 ## Quick links
 
-- [IL specification](il-spec.md)
+- [IL v0.1.1 specification](il-spec.md)
+- [BASIC v0.1 Language Reference](basic-language-reference.md)
 - [Class catalog](class-catalog.md)
 - [Project roadmap](roadmap.md)
 - [Style guide](style-guide.md)

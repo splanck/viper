@@ -36,7 +36,8 @@ ctest --test-dir build -L Docs --output-on-failure
 
 ## Documentation
 - [Docs overview](docs/README.md)
-- [IL specification](docs/il-spec.md)
+- [IL v0.1.1 specification](docs/il-spec.md)
+- [BASIC v0.1 Language Reference](docs/basic-language-reference.md)
 - [Class catalog](docs/class-catalog.md)
 - [Project roadmap](docs/roadmap.md)
 - [Examples](docs/examples/)
