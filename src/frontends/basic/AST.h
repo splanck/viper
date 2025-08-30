@@ -27,6 +27,14 @@ struct VarExpr : Expr {
   std::string name;
 };
 
+/// @brief Unary expression (e.g., NOT).
+struct UnaryExpr : Expr {
+  /// @brief Unary operators supported.
+  enum class Op { Not } op;
+  /// @brief Operand expression.
+  ExprPtr expr;
+};
+
 struct BinaryExpr : Expr {
   enum class Op {
     Add,
@@ -39,6 +47,8 @@ struct BinaryExpr : Expr {
     Le,
     Gt,
     Ge,
+    And,
+    Or,
   } op;
   ExprPtr lhs;
   ExprPtr rhs;
@@ -71,6 +81,18 @@ struct IfStmt : Stmt {
 struct WhileStmt : Stmt {
   ExprPtr cond;
   std::vector<StmtPtr> body;
+};
+/// @brief FOR ... NEXT loop statement.
+struct ForStmt : Stmt {
+  std::string var;           ///< Loop variable name.
+  ExprPtr start;             ///< Initial value.
+  ExprPtr end;               ///< Loop end value.
+  ExprPtr step;              ///< Optional step expression; null means 1.
+  std::vector<StmtPtr> body; ///< Body statements executed each iteration.
+};
+/// @brief NEXT statement closing a FOR.
+struct NextStmt : Stmt {
+  std::string var; ///< Loop variable after NEXT.
 };
 struct GotoStmt : Stmt {
   int target;
