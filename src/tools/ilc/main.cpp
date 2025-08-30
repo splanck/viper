@@ -5,6 +5,7 @@
 // Links: docs/class-catalog.md
 #include "frontends/basic/Lowerer.h"
 #include "frontends/basic/Parser.h"
+#include "frontends/basic/SemanticAnalyzer.h"
 #include "il/io/Parser.h"
 #include "il/io/Serializer.h"
 #include "il/verify/Verifier.h"
@@ -101,6 +102,13 @@ int main(int argc, char **argv) {
       uint32_t fid = sm.addFile(file);
       Parser p(src, fid);
       auto prog = p.parseProgram();
+      support::DiagnosticEngine de;
+      SemanticAnalyzer sema(de);
+      sema.analyze(*prog);
+      if (de.errorCount() > 0) {
+        de.printAll(std::cerr, &sm);
+        return 1;
+      }
       Lowerer lower;
       core::Module m = lower.lower(*prog);
 
