@@ -91,6 +91,10 @@ add_executable(test_basic_loc unit/test_basic_loc.cpp)
 target_link_libraries(test_basic_loc PRIVATE fe_basic il_build il_core support)
 add_test(NAME test_basic_loc COMMAND test_basic_loc)
 
+add_executable(test_basic_semantic unit/test_basic_semantic.cpp)
+target_link_libraries(test_basic_semantic PRIVATE fe_basic support)
+add_test(NAME test_basic_semantic COMMAND test_basic_semantic)
+
 add_executable(test_vm_trap_loc unit/test_vm_trap_loc.cpp)
 target_link_libraries(test_vm_trap_loc PRIVATE il_build il_vm support)
 add_test(NAME test_vm_trap_loc COMMAND test_vm_trap_loc)
