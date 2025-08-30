@@ -1,0 +1,42 @@
+separate_arguments(ASM_FLAGS_LIST NATIVE_COMMAND "${ASM_FLAGS}")
+separate_arguments(LD_FLAGS_LIST  NATIVE_COMMAND "${LD_FLAGS}")
+
+file(WRITE out.s ".text\n.globl main\nmain:\n  mov $0, %eax\n  ret\n")
+
+if(MODE STREQUAL "syntax")
+  execute_process(
+    COMMAND clang ${ASM_FLAGS_LIST} -x assembler -fsyntax-only out.s
+    RESULT_VARIABLE r)
+  if(NOT r EQUAL 0)
+    message(FATAL_ERROR "syntax check failed")
+  endif()
+elseif(MODE STREQUAL "assemble_link")
+  execute_process(COMMAND clang ${ASM_FLAGS_LIST} -c out.s -o out.o
+                  RESULT_VARIABLE r1)
+  if(NOT r1 EQUAL 0)
+    message(FATAL_ERROR "assembly failed")
+  endif()
+  execute_process(COMMAND clang ${LD_FLAGS_LIST} out.o -o a.out
+                  RESULT_VARIABLE r2)
+  if(NOT r2 EQUAL 0)
+    message(FATAL_ERROR "link failed")
+  endif()
+elseif(MODE STREQUAL "run")
+  execute_process(COMMAND clang ${ASM_FLAGS_LIST} -c out.s -o out.o
+                  RESULT_VARIABLE r1)
+  if(NOT r1 EQUAL 0)
+    message(FATAL_ERROR "assembly failed")
+  endif()
+  execute_process(COMMAND clang ${LD_FLAGS_LIST} out.o -o a.out
+                  RESULT_VARIABLE r2)
+  if(NOT r2 EQUAL 0)
+    message(FATAL_ERROR "link failed")
+  endif()
+  execute_process(COMMAND ./a.out RESULT_VARIABLE r3)
+  if(NOT r3 EQUAL 0)
+    message(FATAL_ERROR "run failed")
+  endif()
+else()
+  message(FATAL_ERROR "unknown MODE ${MODE}")
+endif()
+
