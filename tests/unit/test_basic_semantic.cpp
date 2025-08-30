@@ -1,3 +1,9 @@
+// File: tests/unit/test_basic_semantic.cpp
+// Purpose: Unit test verifying BASIC semantic analyzer runs without diagnostics.
+// Key invariants: Analyzer collects symbols and labels without emitting messages.
+// Ownership/Lifetime: Test owns all objects locally.
+// Links: docs/class-catalog.md
+
 #include "frontends/basic/Parser.h"
 #include "frontends/basic/SemanticAnalyzer.h"
 #include "support/source_manager.h"

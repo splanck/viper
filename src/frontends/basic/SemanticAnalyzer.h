@@ -33,7 +33,12 @@ public:
   const std::unordered_set<int> &labelRefs() const { return labelRefs_; }
 
 private:
+  /// @brief Record symbols and labels from a statement.
+  /// @param s Statement node to analyze.
   void visitStmt(const Stmt &s);
+
+  /// @brief Record symbol references from an expression.
+  /// @param e Expression node to analyze.
   void visitExpr(const Expr &e);
 
   il::support::DiagnosticEngine &de; ///< Diagnostic sink (unused for now).
@@ -43,4 +48,3 @@ private:
 };
 
 } // namespace il::frontends::basic
-
