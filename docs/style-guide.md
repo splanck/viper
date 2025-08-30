@@ -1,0 +1,97 @@
+# Style guide
+
+This guide defines comment conventions and file headers for the
+Viper codebase. All contributors must follow these rules when
+adding new code or updating existing files.
+
+## File headers
+
+Every source and header file begins with a short block comment that
+explains the file's role. Use this template:
+
+```
+// File: <path/to/file>
+// Purpose: <one line>
+// Key invariants: <state what must hold>
+// Ownership/Lifetime: <who allocates and frees>
+// Perf/Threading notes: <hot paths or concurrency>
+// Links: <specs, ADRs, docs>
+```
+
+### Notes
+
+- Keep lines concise and factual.
+- Omit fields that do not apply rather than leaving placeholders.
+
+## Doxygen API comments
+
+Public classes, functions, and members use Doxygen comments with
+triple slashes. Common tags:
+
+- `@brief` – one line summary.
+- `@param` – describe each parameter.
+- `@return` – state what the function yields.
+- `@note` – extra context or links.
+- `@invariant` – conditions that always hold.
+
+Keep comments under ~100 characters per line.
+
+## Members and attributes
+
+Member variables have short trailing comments focusing on meaning
+or units:
+
+```
+int count; ///< Number of active users.
+```
+
+Avoid repeating type information or restating obvious details.
+
+## Naming and tone
+
+- Be direct and neutral; avoid marketing phrases.
+- Link to related docs or ADRs with Markdown links when relevant.
+- Prefer verbs for functions, nouns for classes, and short
+  `snake_case` names for variables.
+
+## Examples
+
+### Class
+
+```
+// foo/Bar.h
+/// @brief Manages frobnications.
+/// @invariant ID is unique per instance.
+/// @ownership Caller owns instances.
+/// @note See [IL spec](il-spec.md).
+class Bar {
+public:
+  /// @brief Perform one step.
+  void step();
+
+private:
+  int id; ///< Unique identifier.
+};
+```
+
+### Function
+
+```
+/// @brief Adds two integers.
+/// @param a First operand.
+/// @param b Second operand.
+/// @return Sum of `a` and `b`.
+int add(int a, int b);
+```
+
+### Enum
+
+```
+/// @brief Token categories.
+/// @note Must align with the IL lexer.
+enum class TokenKind {
+  Identifier, ///< Alphanumeric symbol.
+  Number,     ///< Numeric literal.
+  EndOfFile,  ///< Sentinel.
+};
+```
