@@ -11,20 +11,34 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            exclude_label: ""
           - os: macos-latest
+            cc: clang
+            cxx: clang++
             exclude_label: "NativeX64Run"
+          - os: ubuntu-latest
+            cc: clang
+            cxx: clang++
+            exclude_label: ""
+          - os: ubuntu-latest
+            cc: gcc
+            cxx: g++
+            exclude_label: ""
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
     steps:
       - uses: actions/checkout@v3
       - name: Print tool versions
         run: |
+          ${{ matrix.cxx }} --version
           cmake --version
-          clang --version
+      - name: Install clang
+        if: matrix.os == 'ubuntu-latest' && matrix.cc == 'clang'
+        run: sudo apt-get install -y clang lld
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DIL_WARN_AS_ERROR=ON -DIL_USE_LLD=ON
       - name: Build
-        run: cmake --build build --config Debug
+        run: cmake --build build -j2
       - name: Test
         run: |
           if [ -n "${{ matrix.exclude_label }}" ]; then
@@ -33,3 +47,11 @@ jobs:
           else
             ctest --test-dir build --output-on-failure -j2
           fi
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: logs-${{ matrix.os }}-${{ matrix.cc }}
+          path: |
+            build/Testing/Temporary/LastTest.log
+            build/CMakeCache.txt
