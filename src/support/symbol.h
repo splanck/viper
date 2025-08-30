@@ -1,3 +1,8 @@
+// File: src/support/symbol.h
+// Purpose: Defines Symbol handle type for interned strings.
+// Key invariants: Value 0 denotes an invalid symbol.
+// Ownership/Lifetime: Symbols are value types.
+// Links: docs/class-catalog.md
 #pragma once
 #include <cstdint>
 #include <functional>

@@ -1,3 +1,8 @@
+// File: src/tools/il-dis/main.cpp
+// Purpose: Example tool emitting IL for a simple program.
+// Key invariants: None.
+// Ownership/Lifetime: Tool owns constructed module.
+// Links: docs/class-catalog.md
 #include "il/build/IRBuilder.h"
 #include "il/io/Serializer.h"
 #include <iostream>

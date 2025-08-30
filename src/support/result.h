@@ -1,3 +1,8 @@
+// File: src/support/result.h
+// Purpose: Provides a simple Result type for error handling.
+// Key invariants: None.
+// Ownership/Lifetime: Result owns contained value or error.
+// Links: docs/class-catalog.md
 #pragma once
 #include <string>
 #include <utility>

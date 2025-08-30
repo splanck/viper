@@ -1,3 +1,8 @@
+// File: src/frontends/basic/AST.h
+// Purpose: Declares BASIC front-end abstract syntax tree nodes.
+// Key invariants: Nodes carry source locations.
+// Ownership/Lifetime: Caller owns nodes via std::unique_ptr.
+// Links: docs/class-catalog.md
 #pragma once
 #include "support/source_manager.h"
 #include <memory>

@@ -1,3 +1,8 @@
+// File: src/il/core/Module.h
+// Purpose: Container for IL externs, globals, and functions.
+// Key invariants: Names are unique within a module.
+// Ownership/Lifetime: Module owns contained objects by value.
+// Links: docs/il-spec.md
 #pragma once
 #include "il/core/Extern.h"
 #include "il/core/Function.h"

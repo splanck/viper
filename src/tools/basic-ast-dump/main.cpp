@@ -1,3 +1,8 @@
+// File: src/tools/basic-ast-dump/main.cpp
+// Purpose: Command-line tool to dump BASIC AST.
+// Key invariants: None.
+// Ownership/Lifetime: Tool owns loaded source.
+// Links: docs/class-catalog.md
 #include "frontends/basic/AstPrinter.h"
 #include "frontends/basic/Parser.h"
 #include "support/source_manager.h"

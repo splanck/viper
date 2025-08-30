@@ -1,3 +1,8 @@
+// File: src/il/verify/Verifier.cc
+// Purpose: Implements IL verifier checking module correctness.
+// Key invariants: None.
+// Ownership/Lifetime: Verifier does not own modules.
+// Links: docs/il-spec.md
 #include "il/verify/Verifier.h"
 #include "il/core/Opcode.h"
 #include <sstream>

@@ -1,3 +1,8 @@
+// File: src/frontends/basic/NameMangler.cpp
+// Purpose: Implements symbol mangling for BASIC frontend.
+// Key invariants: None.
+// Ownership/Lifetime: Uses strings managed externally.
+// Links: docs/class-catalog.md
 #include "frontends/basic/NameMangler.h"
 
 namespace il::frontends::basic {

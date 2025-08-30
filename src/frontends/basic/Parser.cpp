@@ -1,3 +1,8 @@
+// File: src/frontends/basic/Parser.cpp
+// Purpose: Implements BASIC parser converting tokens to AST.
+// Key invariants: None.
+// Ownership/Lifetime: Parser references tokens managed externally.
+// Links: docs/class-catalog.md
 #include "frontends/basic/Parser.h"
 #include <cstdlib>
 

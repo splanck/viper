@@ -1,3 +1,8 @@
+// File: src/il/build/IRBuilder.cc
+// Purpose: Implements helpers to construct IL modules.
+// Key invariants: None.
+// Ownership/Lifetime: Builder references module owned externally.
+// Links: docs/il-spec.md
 #include "il/build/IRBuilder.h"
 #include <cassert>
 

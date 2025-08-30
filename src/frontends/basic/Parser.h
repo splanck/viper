@@ -1,3 +1,8 @@
+// File: src/frontends/basic/Parser.h
+// Purpose: Declares BASIC parser that builds an AST.
+// Key invariants: Parser state tracks current token.
+// Ownership/Lifetime: Parser does not own token buffer.
+// Links: docs/class-catalog.md
 #pragma once
 #include "frontends/basic/AST.h"
 #include "frontends/basic/Lexer.h"

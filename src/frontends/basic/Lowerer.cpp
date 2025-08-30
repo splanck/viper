@@ -1,3 +1,8 @@
+// File: src/frontends/basic/Lowerer.cpp
+// Purpose: Lowers BASIC AST to IL.
+// Key invariants: None.
+// Ownership/Lifetime: Uses contexts managed externally.
+// Links: docs/class-catalog.md
 #include "frontends/basic/Lowerer.h"
 #include "il/core/BasicBlock.h"
 #include "il/core/Function.h"

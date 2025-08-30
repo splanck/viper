@@ -1,3 +1,8 @@
+// File: src/support/arena.h
+// Purpose: Declares bump allocator for temporary objects.
+// Key invariants: None.
+// Ownership/Lifetime: Arena owns all allocated memory.
+// Links: docs/class-catalog.md
 #pragma once
 #include <cstddef>
 #include <vector>
