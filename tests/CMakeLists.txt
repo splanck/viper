@@ -23,6 +23,7 @@ add_test(NAME vm_examples COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DSRC_DIR=${CMAKE_SOURCE_DIR}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_vm_examples.cmake)
+set_tests_properties(vm_examples PROPERTIES LABELS VM)
 
 add_executable(test_rt_string unit/test_rt_string.cpp)
 target_link_libraries(test_rt_string PRIVATE rt)
@@ -37,6 +38,7 @@ add_test(NAME vm_strings_example COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DSRC_DIR=${CMAKE_SOURCE_DIR}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_vm_strings.cmake)
+set_tests_properties(vm_strings_example PROPERTIES LABELS VM)
 
 add_test(NAME front_basic_example COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
@@ -103,3 +105,29 @@ add_test(NAME basic_to_il_ex2 COMMAND ${CMAKE_COMMAND}
   -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex2_sum_1_to_10.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/ex2_sum_1_to_10.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
+
+set(CODEGEN_E2E ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_codegen.cmake)
+if(IL_ENABLE_X64_ASM_SYNTAX_CHECK)
+  add_test(NAME codegen_syntax_only COMMAND ${CMAKE_COMMAND}
+    "-DASM_FLAGS=${IL_X64_ASM_FLAGS}"
+    "-DLD_FLAGS=${IL_X64_LD_FLAGS}"
+    -DMODE=syntax
+    -P ${CODEGEN_E2E})
+  set_tests_properties(codegen_syntax_only PROPERTIES LABELS CodegenSyntaxOnly)
+endif()
+if(IL_ENABLE_X64_ASM_ASSEMBLE_LINK)
+  add_test(NAME codegen_assemble_link COMMAND ${CMAKE_COMMAND}
+    "-DASM_FLAGS=${IL_X64_ASM_FLAGS}"
+    "-DLD_FLAGS=${IL_X64_LD_FLAGS}"
+    -DMODE=assemble_link
+    -P ${CODEGEN_E2E})
+  set_tests_properties(codegen_assemble_link PROPERTIES LABELS CodegenAssembleLink)
+endif()
+if(IL_ENABLE_X64_NATIVE_RUN)
+  add_test(NAME codegen_native_run COMMAND ${CMAKE_COMMAND}
+    "-DASM_FLAGS=${IL_X64_ASM_FLAGS}"
+    "-DLD_FLAGS=${IL_X64_LD_FLAGS}"
+    -DMODE=run
+    -P ${CODEGEN_E2E})
+  set_tests_properties(codegen_native_run PROPERTIES LABELS NativeX64Run)
+endif()
