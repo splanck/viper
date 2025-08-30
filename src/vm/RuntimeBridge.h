@@ -12,8 +12,13 @@ namespace il::vm {
 
 union Slot; // defined in VM.h
 
+/// @brief Provides entry points from the VM into the C runtime library.
 class RuntimeBridge {
 public:
+  /// @brief Invoke runtime function @p name with arguments @p args.
+  /// @param name Runtime function symbol.
+  /// @param args Evaluated argument slots.
+  /// @return Result slot from runtime call.
   static Slot call(const std::string &name, const std::vector<Slot> &args);
 };
 
