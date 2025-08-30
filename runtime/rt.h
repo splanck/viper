@@ -20,6 +20,10 @@ typedef struct rt_str_impl {
 /// @param msg Null-terminated message string.
 void rt_trap(const char *msg);
 
+/// @brief Print trap message and terminate process.
+/// @param msg Null-terminated message string.
+void rt_abort(const char *msg);
+
 /// @brief Print string @p s to stdout.
 /// @param s Reference-counted string.
 void rt_print_str(rt_str s);
