@@ -1,9 +1,9 @@
 AGENTS.md — Operating Guide for Automated Contributors (Codex)
 Project: IL‑based compiler stack (Frontends → IL → VM → Codegen)
 Primary sources of truth:
-	• /ilspec.md (IL v0.1 spec — normative)
-	• /cppclasselist.md (class list and roles)
-	• /cppoverview.md is an outline of how the C++ project should be laid out.
+	• /docs/il-spec.md (IL v0.1 spec — normative)
+	• /docs/class-catalog.md (class list and roles)
+	• /docs/cpp-overview.md is an outline of how the C++ project should be laid out.
 This document defines how automated changes must be made: scope, quality bars, commit etiquette, and when to propose vs. implement.
 
 1) Mission & Non‑Goals
