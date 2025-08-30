@@ -30,21 +30,25 @@ Module Lowerer::lower(const Program &prog) {
   Function &f = b.startFunction("main", Type(Type::Kind::I64), {});
   func = &f;
 
-  BasicBlock &entry = b.addBlock(f, "entry");
-  cur = &entry;
+  b.addBlock(f, "entry");
 
-  // create blocks for program lines in order
+  std::vector<int> lines;
+  lines.reserve(prog.statements.size());
   for (const auto &stmt : prog.statements) {
-    BasicBlock &bb = b.addBlock(f, mangler.block("L" + std::to_string(stmt->line)));
-    lineBlocks[stmt->line] = &bb;
+    b.addBlock(f, mangler.block("L" + std::to_string(stmt->line)));
+    lines.push_back(stmt->line);
   }
   fnExit = &b.addBlock(f, mangler.block("exit"));
+
+  for (size_t i = 0; i < lines.size(); ++i)
+    lineBlocks[lines[i]] = &f.blocks[i + 1];
 
   vars.clear();
   collectVars(prog);
 
   // allocate slots in entry
-  cur = &entry;
+  BasicBlock *entry = &f.blocks.front();
+  cur = entry;
   for (const auto &v : vars) {
     Value slot = emitAlloca(8);
     varSlots[v] = slot.id; // Value::temp id
