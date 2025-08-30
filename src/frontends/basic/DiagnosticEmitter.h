@@ -48,6 +48,7 @@ public:
   size_t warningCount() const { return de_.warningCount(); }
 
 private:
+  /// @brief Diagnostic record captured for later printing.
   struct Entry {
     il::support::Severity severity; ///< Diagnostic severity.
     std::string code;               ///< Error code like B1001.
@@ -56,12 +57,16 @@ private:
     uint32_t length;                ///< Number of characters to mark.
   };
 
+  /// @brief Retrieve full line text for @p fileId at @p line.
+  /// @param fileId Identifier from SourceManager.
+  /// @param line 1-based line number to fetch.
+  /// @return Line contents without trailing newline; empty if unavailable.
   std::string getLine(uint32_t fileId, uint32_t line) const;
 
-  il::support::DiagnosticEngine &de_;
-  const il::support::SourceManager &sm_;
-  std::vector<Entry> entries_;
-  std::unordered_map<uint32_t, std::string> sources_;
+  il::support::DiagnosticEngine &de_;                 ///< Underlying diagnostic engine.
+  const il::support::SourceManager &sm_;              ///< Source manager for file paths.
+  std::vector<Entry> entries_;                        ///< Diagnostics in emission order.
+  std::unordered_map<uint32_t, std::string> sources_; ///< Source text per file id.
 };
 
 } // namespace il::frontends::basic

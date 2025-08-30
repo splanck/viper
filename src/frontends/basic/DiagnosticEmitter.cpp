@@ -23,6 +23,9 @@ void DiagnosticEmitter::emit(il::support::Severity sev, std::string code,
   entries_.push_back({sev, std::move(code), std::move(message), loc, length});
 }
 
+/// @brief Convert severity enum to human-readable string.
+/// @param s Severity to convert.
+/// @return Null-terminated severity name.
 static const char *toString(il::support::Severity s) {
   using il::support::Severity;
   switch (s) {
@@ -36,6 +39,10 @@ static const char *toString(il::support::Severity s) {
   return "";
 }
 
+/// @brief Retrieve a specific line from stored source text.
+/// @param fileId Source file identifier.
+/// @param line 1-based line number to fetch.
+/// @return Line contents or empty string if unavailable.
 std::string DiagnosticEmitter::getLine(uint32_t fileId, uint32_t line) const {
   auto it = sources_.find(fileId);
   if (it == sources_.end())
