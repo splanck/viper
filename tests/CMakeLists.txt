@@ -142,35 +142,7 @@ add_test(NAME basic_to_il_ex4 COMMAND ${CMAKE_COMMAND}
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/ex4_if_elseif.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 
-add_test(NAME basic_error_unknown_var COMMAND ${CMAKE_COMMAND}
-  -DILC=${BASIC_ILC}
-  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_errors/unknown_var.bas
-  "-DEXPECT=B1001.*did you mean 'A'"
-  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_errors/check_error.cmake)
-
-add_test(NAME basic_error_mismatched_next COMMAND ${CMAKE_COMMAND}
-  -DILC=${BASIC_ILC}
-  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_errors/mismatched_next.bas
-  "-DEXPECT=B1002"
-  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_errors/check_error.cmake)
-
-add_test(NAME basic_error_bad_goto COMMAND ${CMAKE_COMMAND}
-  -DILC=${BASIC_ILC}
-  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_errors/bad_goto.bas
-  "-DEXPECT=B1003"
-  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_errors/check_error.cmake)
-
-add_test(NAME basic_error_string_arith COMMAND ${CMAKE_COMMAND}
-  -DILC=${BASIC_ILC}
-  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_errors/string_arith.bas
-  "-DEXPECT=B2001"
-  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_errors/check_error.cmake)
-
-add_test(NAME basic_error_const_div_zero COMMAND ${CMAKE_COMMAND}
-  -DILC=${BASIC_ILC}
-  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_errors/const_div_zero.bas
-  "-DEXPECT=B2002"
-  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_errors/check_error.cmake)
+add_subdirectory(golden)
 
 set(CODEGEN_E2E ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_codegen.cmake)
 if(IL_ENABLE_X64_ASM_SYNTAX_CHECK)
