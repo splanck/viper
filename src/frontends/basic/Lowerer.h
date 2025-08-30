@@ -43,6 +43,8 @@ private:
   void lowerPrint(const PrintStmt &stmt);
   void lowerIf(const IfStmt &stmt);
   void lowerWhile(const WhileStmt &stmt);
+  void lowerFor(const ForStmt &stmt);
+  void lowerNext(const NextStmt &stmt);
   void lowerGoto(const GotoStmt &stmt);
   void lowerEnd(const EndStmt &stmt);
 
