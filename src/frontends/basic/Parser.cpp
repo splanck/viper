@@ -32,9 +32,16 @@ std::unique_ptr<Program> Parser::parseProgram() {
       line = std::atoi(current_.lexeme.c_str());
       advance();
     }
-    auto stmt = parseStatement(line);
-    stmt->line = line;
-    prog->statements.push_back(std::move(stmt));
+    while (true) {
+      auto stmt = parseStatement(line);
+      stmt->line = line;
+      prog->statements.push_back(std::move(stmt));
+      if (check(TokenKind::Colon)) {
+        advance();
+        continue;
+      }
+      break;
+    }
     if (check(TokenKind::EndOfLine))
       advance();
   }
@@ -50,6 +57,10 @@ StmtPtr Parser::parseStatement(int line) {
     return parseIf(line);
   if (check(TokenKind::KeywordWhile))
     return parseWhile();
+  if (check(TokenKind::KeywordFor))
+    return parseFor();
+  if (check(TokenKind::KeywordNext))
+    return parseNext();
   if (check(TokenKind::KeywordGoto))
     return parseGoto();
   if (check(TokenKind::KeywordEnd))
@@ -78,12 +89,14 @@ StmtPtr Parser::parseLet() {
 }
 
 StmtPtr Parser::parseIf(int line) {
-  advance(); // IF
+  advance(); // IF or ELSEIF
   auto cond = parseExpression();
   consume(TokenKind::KeywordThen);
   auto thenStmt = parseStatement(line);
   StmtPtr elseStmt;
-  if (check(TokenKind::KeywordElse)) {
+  if (check(TokenKind::KeywordElseIf)) {
+    elseStmt = parseIf(line);
+  } else if (check(TokenKind::KeywordElse)) {
     advance();
     elseStmt = parseStatement(line);
   }
@@ -101,7 +114,10 @@ StmtPtr Parser::parseIf(int line) {
 StmtPtr Parser::parseWhile() {
   advance(); // WHILE
   auto cond = parseExpression();
-  consume(TokenKind::EndOfLine);
+  if (check(TokenKind::EndOfLine))
+    advance();
+  else if (check(TokenKind::Colon))
+    advance();
   auto stmt = std::make_unique<WhileStmt>();
   stmt->cond = std::move(cond);
   while (true) {
@@ -121,9 +137,72 @@ StmtPtr Parser::parseWhile() {
     auto bodyStmt = parseStatement(innerLine);
     bodyStmt->line = innerLine;
     stmt->body.push_back(std::move(bodyStmt));
-    if (check(TokenKind::EndOfLine))
+    if (check(TokenKind::Colon))
+      advance();
+    else if (check(TokenKind::EndOfLine))
       advance();
   }
+  return stmt;
+}
+
+StmtPtr Parser::parseFor() {
+  advance(); // FOR
+  std::string var = current_.lexeme;
+  consume(TokenKind::Identifier);
+  consume(TokenKind::Equal);
+  auto start = parseExpression();
+  consume(TokenKind::KeywordTo);
+  auto end = parseExpression();
+  ExprPtr step;
+  if (check(TokenKind::KeywordStep)) {
+    advance();
+    step = parseExpression();
+  }
+  if (check(TokenKind::EndOfLine))
+    advance();
+  else if (check(TokenKind::Colon))
+    advance();
+  auto stmt = std::make_unique<ForStmt>();
+  stmt->var = var;
+  stmt->start = std::move(start);
+  stmt->end = std::move(end);
+  stmt->step = std::move(step);
+  while (true) {
+    while (check(TokenKind::EndOfLine))
+      advance();
+    if (check(TokenKind::EndOfFile))
+      break;
+    int innerLine = 0;
+    if (check(TokenKind::Number)) {
+      innerLine = std::atoi(current_.lexeme.c_str());
+      advance();
+    }
+    if (check(TokenKind::KeywordNext)) {
+      advance();
+      if (check(TokenKind::Identifier))
+        advance();
+      break;
+    }
+    auto bodyStmt = parseStatement(innerLine);
+    bodyStmt->line = innerLine;
+    stmt->body.push_back(std::move(bodyStmt));
+    if (check(TokenKind::Colon))
+      advance();
+    else if (check(TokenKind::EndOfLine))
+      advance();
+  }
+  return stmt;
+}
+
+StmtPtr Parser::parseNext() {
+  advance(); // NEXT
+  std::string name;
+  if (check(TokenKind::Identifier)) {
+    name = current_.lexeme;
+    advance();
+  }
+  auto stmt = std::make_unique<NextStmt>();
+  stmt->var = name;
   return stmt;
 }
 
@@ -145,16 +224,20 @@ int Parser::precedence(TokenKind k) {
   switch (k) {
   case TokenKind::Star:
   case TokenKind::Slash:
-    return 3;
+    return 5;
   case TokenKind::Plus:
   case TokenKind::Minus:
-    return 2;
+    return 4;
   case TokenKind::Equal:
   case TokenKind::NotEqual:
   case TokenKind::Less:
   case TokenKind::LessEqual:
   case TokenKind::Greater:
   case TokenKind::GreaterEqual:
+    return 3;
+  case TokenKind::KeywordAnd:
+    return 2;
+  case TokenKind::KeywordOr:
     return 1;
   default:
     return 0;
@@ -202,6 +285,12 @@ ExprPtr Parser::parseExpression(int min_prec) {
     case TokenKind::GreaterEqual:
       bin->op = BinaryExpr::Op::Ge;
       break;
+    case TokenKind::KeywordAnd:
+      bin->op = BinaryExpr::Op::And;
+      break;
+    case TokenKind::KeywordOr:
+      bin->op = BinaryExpr::Op::Or;
+      break;
     default:
       bin->op = BinaryExpr::Op::Add;
     }
@@ -224,6 +313,14 @@ ExprPtr Parser::parsePrimary() {
     auto e = std::make_unique<StringExpr>();
     e->value = current_.lexeme;
     advance();
+    return e;
+  }
+  if (check(TokenKind::KeywordNot)) {
+    advance();
+    auto operand = parsePrimary();
+    auto e = std::make_unique<UnaryExpr>();
+    e->op = UnaryExpr::Op::Not;
+    e->expr = std::move(operand);
     return e;
   }
   if (check(TokenKind::Identifier)) {

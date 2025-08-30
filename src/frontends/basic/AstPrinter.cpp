@@ -38,6 +38,22 @@ std::string AstPrinter::dump(const Stmt &stmt) {
     }
     res += "})";
     return res;
+  } else if (auto *f = dynamic_cast<const ForStmt *>(&stmt)) {
+    std::string res = "(FOR " + f->var + " = " + dump(*f->start) + " TO " + dump(*f->end);
+    if (f->step)
+      res += " STEP " + dump(*f->step);
+    res += " {";
+    bool first = true;
+    for (auto &s : f->body) {
+      if (!first)
+        res += " ";
+      first = false;
+      res += std::to_string(s->line) + ":" + dump(*s);
+    }
+    res += "})";
+    return res;
+  } else if (auto *n = dynamic_cast<const NextStmt *>(&stmt)) {
+    return "(NEXT " + n->var + ")";
   } else if (auto *g = dynamic_cast<const GotoStmt *>(&stmt)) {
     return "(GOTO " + std::to_string(g->target) + ")";
   } else if (dynamic_cast<const EndStmt *>(&stmt)) {
@@ -86,8 +102,16 @@ std::string AstPrinter::dump(const Expr &expr) {
     case BinaryExpr::Op::Ge:
       op = ">=";
       break;
+    case BinaryExpr::Op::And:
+      op = "AND";
+      break;
+    case BinaryExpr::Op::Or:
+      op = "OR";
+      break;
     }
     return std::string("(") + op + " " + dump(*b->lhs) + " " + dump(*b->rhs) + ")";
+  } else if (auto *u = dynamic_cast<const UnaryExpr *>(&expr)) {
+    return "(NOT " + dump(*u->expr) + ")";
   } else if (auto *c = dynamic_cast<const CallExpr *>(&expr)) {
     std::string name = c->builtin == CallExpr::Builtin::Len ? "LEN" : "MID$";
     std::string res = "(" + name;

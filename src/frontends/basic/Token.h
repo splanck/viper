@@ -20,10 +20,18 @@ enum class TokenKind {
   KeywordIf,
   KeywordThen,
   KeywordElse,
+  KeywordElseIf,
   KeywordWhile,
   KeywordWend,
+  KeywordFor,
+  KeywordTo,
+  KeywordStep,
+  KeywordNext,
   KeywordGoto,
   KeywordEnd,
+  KeywordAnd,
+  KeywordOr,
+  KeywordNot,
   Plus,
   Minus,
   Star,
@@ -37,6 +45,7 @@ enum class TokenKind {
   LParen,
   RParen,
   Comma,
+  Colon,
 };
 
 struct Token {

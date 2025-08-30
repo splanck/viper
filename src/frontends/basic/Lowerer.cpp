@@ -86,6 +86,8 @@ void Lowerer::collectVars(const Program &prog) {
   std::function<void(const Expr &)> ex = [&](const Expr &e) {
     if (auto *v = dynamic_cast<const VarExpr *>(&e)) {
       vars.insert(v->name);
+    } else if (auto *u = dynamic_cast<const UnaryExpr *>(&e)) {
+      ex(*u->expr);
     } else if (auto *b = dynamic_cast<const BinaryExpr *>(&e)) {
       ex(*b->lhs);
       ex(*b->rhs);
@@ -110,6 +112,14 @@ void Lowerer::collectVars(const Program &prog) {
       ex(*w->cond);
       for (auto &bs : w->body)
         st(*bs);
+    } else if (auto *f = dynamic_cast<const ForStmt *>(&s)) {
+      vars.insert(f->var);
+      ex(*f->start);
+      ex(*f->end);
+      if (f->step)
+        ex(*f->step);
+      for (auto &bs : f->body)
+        st(*bs);
     }
   };
   for (auto &s : prog.statements)
@@ -125,6 +135,10 @@ void Lowerer::lowerStmt(const Stmt &stmt) {
     lowerIf(*i);
   else if (auto *w = dynamic_cast<const WhileStmt *>(&stmt))
     lowerWhile(*w);
+  else if (auto *f = dynamic_cast<const ForStmt *>(&stmt))
+    lowerFor(*f);
+  else if (auto *n = dynamic_cast<const NextStmt *>(&stmt))
+    lowerNext(*n);
   else if (auto *g = dynamic_cast<const GotoStmt *>(&stmt))
     lowerGoto(*g);
   else if (auto *e = dynamic_cast<const EndStmt *>(&stmt))
@@ -144,7 +158,44 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr) {
     Value ptr = Value::temp(it->second);
     Value val = emitLoad(Type(Type::Kind::I64), ptr);
     return {val, Type(Type::Kind::I64)};
+  } else if (auto *u = dynamic_cast<const UnaryExpr *>(&expr)) {
+    RVal val = lowerExpr(*u->expr);
+    Value cmp = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), val.value, Value::constInt(0));
+    return {cmp, Type(Type::Kind::I1)};
   } else if (auto *b = dynamic_cast<const BinaryExpr *>(&expr)) {
+    if (b->op == BinaryExpr::Op::And || b->op == BinaryExpr::Op::Or) {
+      RVal lhs = lowerExpr(*b->lhs);
+      Value addr = emitAlloca(1);
+      if (b->op == BinaryExpr::Op::And) {
+        BasicBlock *rhsBB = &builder->addBlock(*func, mangler.block("and_rhs"));
+        BasicBlock *falseBB = &builder->addBlock(*func, mangler.block("and_false"));
+        BasicBlock *doneBB = &builder->addBlock(*func, mangler.block("and_done"));
+        emitCBr(lhs.value, rhsBB, falseBB);
+        cur = rhsBB;
+        RVal rhs = lowerExpr(*b->rhs);
+        emitStore(Type(Type::Kind::I1), addr, rhs.value);
+        emitBr(doneBB);
+        cur = falseBB;
+        emitStore(Type(Type::Kind::I1), addr, Value::constInt(0));
+        emitBr(doneBB);
+        cur = doneBB;
+      } else {
+        BasicBlock *trueBB = &builder->addBlock(*func, mangler.block("or_true"));
+        BasicBlock *rhsBB = &builder->addBlock(*func, mangler.block("or_rhs"));
+        BasicBlock *doneBB = &builder->addBlock(*func, mangler.block("or_done"));
+        emitCBr(lhs.value, trueBB, rhsBB);
+        cur = trueBB;
+        emitStore(Type(Type::Kind::I1), addr, Value::constInt(1));
+        emitBr(doneBB);
+        cur = rhsBB;
+        RVal rhs = lowerExpr(*b->rhs);
+        emitStore(Type(Type::Kind::I1), addr, rhs.value);
+        emitBr(doneBB);
+        cur = doneBB;
+      }
+      Value res = emitLoad(Type(Type::Kind::I1), addr);
+      return {res, Type(Type::Kind::I1)};
+    }
     RVal lhs = lowerExpr(*b->lhs);
     RVal rhs = lowerExpr(*b->rhs);
     Opcode op = Opcode::Add;
@@ -186,6 +237,9 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr) {
       op = Opcode::SCmpGE;
       ty = Type(Type::Kind::I1);
       break;
+    case BinaryExpr::Op::And:
+    case BinaryExpr::Op::Or:
+      break; // handled above
     }
     Value res = emitBinary(op, ty, lhs.value, rhs.value);
     return {res, ty};
@@ -222,27 +276,35 @@ void Lowerer::lowerPrint(const PrintStmt &stmt) {
 
 void Lowerer::lowerIf(const IfStmt &stmt) {
   RVal cond = lowerExpr(*stmt.cond);
-  BasicBlock *thenBB = &builder->addBlock(*func, mangler.block("then"));
-  BasicBlock *exitBB = &builder->addBlock(*func, mangler.block("exit"));
-  BasicBlock *elseBB = nullptr;
-  if (stmt.else_branch)
-    elseBB = &builder->addBlock(*func, mangler.block("else"));
-  emitCBr(cond.value, thenBB, elseBB ? elseBB : exitBB);
+  size_t curIdx = cur - &func->blocks[0];
+  size_t base = func->blocks.size();
+  builder->addBlock(*func, mangler.block("then"));
+  builder->addBlock(*func, mangler.block("exit"));
+  size_t thenIdx = base;
+  size_t exitIdx = base + 1;
+  size_t elseIdx = 0;
+  if (stmt.else_branch) {
+    builder->addBlock(*func, mangler.block("else"));
+    elseIdx = base + 2;
+  }
+  cur = &func->blocks[curIdx];
+  emitCBr(cond.value, &func->blocks[thenIdx],
+          stmt.else_branch ? &func->blocks[elseIdx] : &func->blocks[exitIdx]);
 
   // then branch
-  cur = thenBB;
+  cur = &func->blocks[thenIdx];
   lowerStmt(*stmt.then_branch);
   if (!cur->terminated)
-    emitBr(exitBB);
+    emitBr(&func->blocks[exitIdx]);
 
   if (stmt.else_branch) {
-    cur = elseBB;
+    cur = &func->blocks[elseIdx];
     lowerStmt(*stmt.else_branch);
     if (!cur->terminated)
-      emitBr(exitBB);
+      emitBr(&func->blocks[exitIdx]);
   }
 
-  cur = exitBB;
+  cur = &func->blocks[exitIdx];
 }
 
 void Lowerer::lowerWhile(const WhileStmt &stmt) {
@@ -275,6 +337,97 @@ void Lowerer::lowerWhile(const WhileStmt &stmt) {
 
   cur = done;
 }
+
+void Lowerer::lowerFor(const ForStmt &stmt) {
+  RVal start = lowerExpr(*stmt.start);
+  RVal end = lowerExpr(*stmt.end);
+  RVal step = stmt.step ? lowerExpr(*stmt.step) : RVal{Value::constInt(1), Type(Type::Kind::I64)};
+  auto it = varSlots.find(stmt.var);
+  assert(it != varSlots.end());
+  Value slot = Value::temp(it->second);
+  emitStore(Type(Type::Kind::I64), slot, start.value);
+
+  bool constStep = !stmt.step || dynamic_cast<const IntExpr *>(stmt.step.get());
+  long stepConst = 1;
+  if (stmt.step) {
+    if (auto *ie = dynamic_cast<const IntExpr *>(stmt.step.get()))
+      stepConst = ie->value;
+  }
+  if (constStep) {
+    size_t curIdx = cur - &func->blocks[0];
+    size_t base = func->blocks.size();
+    builder->addBlock(*func, mangler.block("for_head"));
+    builder->addBlock(*func, mangler.block("for_body"));
+    builder->addBlock(*func, mangler.block("for_inc"));
+    builder->addBlock(*func, mangler.block("for_done"));
+    size_t headIdx = base;
+    size_t bodyIdx = base + 1;
+    size_t incIdx = base + 2;
+    size_t doneIdx = base + 3;
+    cur = &func->blocks[curIdx];
+    emitBr(&func->blocks[headIdx]);
+    cur = &func->blocks[headIdx];
+    Value curVal = emitLoad(Type(Type::Kind::I64), slot);
+    Opcode cmp = stepConst >= 0 ? Opcode::SCmpLE : Opcode::SCmpGE;
+    Value cond = emitBinary(cmp, Type(Type::Kind::I1), curVal, end.value);
+    emitCBr(cond, &func->blocks[bodyIdx], &func->blocks[doneIdx]);
+    cur = &func->blocks[bodyIdx];
+    for (auto &s : stmt.body) {
+      lowerStmt(*s);
+      if (cur->terminated)
+        break;
+    }
+    if (!cur->terminated)
+      emitBr(&func->blocks[incIdx]);
+    cur = &func->blocks[incIdx];
+    Value load = emitLoad(Type(Type::Kind::I64), slot);
+    Value add = emitBinary(Opcode::Add, Type(Type::Kind::I64), load, step.value);
+    emitStore(Type(Type::Kind::I64), slot, add);
+    emitBr(&func->blocks[headIdx]);
+    cur = &func->blocks[doneIdx];
+  } else {
+    Value stepNonNeg =
+        emitBinary(Opcode::SCmpGE, Type(Type::Kind::I1), step.value, Value::constInt(0));
+    size_t curIdx = cur - &func->blocks[0];
+    size_t base = func->blocks.size();
+    builder->addBlock(*func, mangler.block("for_head_pos"));
+    builder->addBlock(*func, mangler.block("for_head_neg"));
+    builder->addBlock(*func, mangler.block("for_body"));
+    builder->addBlock(*func, mangler.block("for_inc"));
+    builder->addBlock(*func, mangler.block("for_done"));
+    size_t headPosIdx = base;
+    size_t headNegIdx = base + 1;
+    size_t bodyIdx = base + 2;
+    size_t incIdx = base + 3;
+    size_t doneIdx = base + 4;
+    cur = &func->blocks[curIdx];
+    emitCBr(stepNonNeg, &func->blocks[headPosIdx], &func->blocks[headNegIdx]);
+    cur = &func->blocks[headPosIdx];
+    Value curVal = emitLoad(Type(Type::Kind::I64), slot);
+    Value cmpPos = emitBinary(Opcode::SCmpLE, Type(Type::Kind::I1), curVal, end.value);
+    emitCBr(cmpPos, &func->blocks[bodyIdx], &func->blocks[doneIdx]);
+    cur = &func->blocks[headNegIdx];
+    curVal = emitLoad(Type(Type::Kind::I64), slot);
+    Value cmpNeg = emitBinary(Opcode::SCmpGE, Type(Type::Kind::I1), curVal, end.value);
+    emitCBr(cmpNeg, &func->blocks[bodyIdx], &func->blocks[doneIdx]);
+    cur = &func->blocks[bodyIdx];
+    for (auto &s : stmt.body) {
+      lowerStmt(*s);
+      if (cur->terminated)
+        break;
+    }
+    if (!cur->terminated)
+      emitBr(&func->blocks[incIdx]);
+    cur = &func->blocks[incIdx];
+    Value load = emitLoad(Type(Type::Kind::I64), slot);
+    Value add = emitBinary(Opcode::Add, Type(Type::Kind::I64), load, step.value);
+    emitStore(Type(Type::Kind::I64), slot, add);
+    emitCBr(stepNonNeg, &func->blocks[headPosIdx], &func->blocks[headNegIdx]);
+    cur = &func->blocks[doneIdx];
+  }
+}
+
+void Lowerer::lowerNext(const NextStmt &) {}
 
 void Lowerer::lowerGoto(const GotoStmt &stmt) {
   auto it = lineBlocks.find(stmt.target);

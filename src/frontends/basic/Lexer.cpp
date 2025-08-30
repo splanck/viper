@@ -61,14 +61,30 @@ Token Lexer::lexIdentifierOrKeyword() {
     return {TokenKind::KeywordThen, s, loc};
   if (s == "ELSE")
     return {TokenKind::KeywordElse, s, loc};
+  if (s == "ELSEIF")
+    return {TokenKind::KeywordElseIf, s, loc};
   if (s == "WHILE")
     return {TokenKind::KeywordWhile, s, loc};
   if (s == "WEND")
     return {TokenKind::KeywordWend, s, loc};
+  if (s == "FOR")
+    return {TokenKind::KeywordFor, s, loc};
+  if (s == "TO")
+    return {TokenKind::KeywordTo, s, loc};
+  if (s == "STEP")
+    return {TokenKind::KeywordStep, s, loc};
+  if (s == "NEXT")
+    return {TokenKind::KeywordNext, s, loc};
   if (s == "GOTO")
     return {TokenKind::KeywordGoto, s, loc};
   if (s == "END")
     return {TokenKind::KeywordEnd, s, loc};
+  if (s == "AND")
+    return {TokenKind::KeywordAnd, s, loc};
+  if (s == "OR")
+    return {TokenKind::KeywordOr, s, loc};
+  if (s == "NOT")
+    return {TokenKind::KeywordNot, s, loc};
   return {TokenKind::Identifier, s, loc};
 }
 
@@ -133,6 +149,8 @@ Token Lexer::next() {
     return {TokenKind::RParen, ")", loc};
   case ',':
     return {TokenKind::Comma, ",", loc};
+  case ':':
+    return {TokenKind::Colon, ":", loc};
   }
   return {TokenKind::EndOfFile, "", loc};
 }
