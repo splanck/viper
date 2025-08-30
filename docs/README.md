@@ -4,7 +4,8 @@ This directory hosts specifications, plans, and examples for the IL-based
 compiler stack. Start here for a quick tour of the project and how to
 navigate the available materials. For an overview of the project itself, see
 the [root README](../README.md). Automation and contribution guidelines live
-in [AGENTS.md](../AGENTS.md).
+in [AGENTS.md](../AGENTS.md). Standardized error codes keep diagnostics
+consistent across tools; examples live in the BASIC language reference.
 
 ## Quick links
 
