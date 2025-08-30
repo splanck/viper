@@ -140,6 +140,12 @@ add_test(NAME basic_error_unknown_var COMMAND ${CMAKE_COMMAND}
   "-DEXPECT=B1001.*did you mean 'A'"
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_errors/check_error.cmake)
 
+add_test(NAME basic_error_mismatched_next COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_errors/mismatched_next.bas
+  "-DEXPECT=B1002"
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_errors/check_error.cmake)
+
 set(CODEGEN_E2E ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_codegen.cmake)
 if(IL_ENABLE_X64_ASM_SYNTAX_CHECK)
   add_test(NAME codegen_syntax_only COMMAND ${CMAKE_COMMAND}

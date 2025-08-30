@@ -10,11 +10,12 @@
 #include "support/diagnostics.h"
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 namespace il::frontends::basic {
 
-/// @brief Traverses BASIC AST to collect symbols and labels and validate
-///        variable references.
+/// @brief Traverses BASIC AST to collect symbols and labels, validate variable
+///        references, and verify FOR/NEXT nesting.
 /// @invariant Symbol table only contains definitions; unknown uses report
 ///            diagnostics.
 /// @ownership Borrows DiagnosticEngine; AST not owned.
@@ -49,6 +50,7 @@ private:
   std::unordered_set<std::string> symbols_;
   std::unordered_set<int> labels_;
   std::unordered_set<int> labelRefs_;
+  std::vector<std::string> forStack_; ///< Active FOR loop variables.
 };
 
 } // namespace il::frontends::basic
