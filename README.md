@@ -14,6 +14,15 @@ cmake -S . -B build && cmake --build build -j
 ./build/src/tools/ilc/ilc -run docs/examples/il/ex2_sum_1_to_10.il
 ```
 
+## Documentation checks
+
+To verify file headers and public API comments locally, run:
+
+```sh
+cmake -S . -B build
+ctest --test-dir build -L Docs --output-on-failure
+```
+
 ## Directory layout
 ```
 .

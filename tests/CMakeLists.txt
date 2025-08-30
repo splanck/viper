@@ -1,3 +1,9 @@
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+add_test(NAME docs_comment_check
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/check_comments.py)
+set_tests_properties(docs_comment_check PROPERTIES LABELS Docs)
+
 add_executable(test_support unit/test_support.cpp)
 target_link_libraries(test_support PRIVATE support)
 add_test(NAME test_support COMMAND test_support)
