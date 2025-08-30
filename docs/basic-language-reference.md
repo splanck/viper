@@ -36,7 +36,7 @@ Operators:
 Arithmetic on integers; / is integer division (traps on div/0).
 Comparisons allowed between like types (int with int, str with str using =/<> only).
 Logical operators AND/OR/NOT use short-circuit evaluation and return Boolean.
-Built-ins (all map to runtime; see §9):
+Built-ins (all map to runtime; see §10):
 LEN(s$) -> integer
 MID$(s$, start, length) -> string (1-based indices; clamped)
 VAL(s$) -> integer (traps on invalid; VALF$ for float optional later)
@@ -59,7 +59,13 @@ All variables are function-local to @main in v0.1.
 7. Errors
 Division by zero, invalid VAL, out-of-bounds MID$ length/start after clamping → runtime trap with message.
 Type mismatch in comparisons/operations → compile-time (lowering) error.
-8. Grammar (informal)
+8. Diagnostics
+Errors use standardized codes prefixed with B. Messages show the source line and a caret.
+10 LET X = 1 +
+            ^
+B0001: expected expression.
+Runtime traps use codes like B0002 for division by zero.
+9. Grammar (informal)
 program     ::= (line | stmt)* EOF
 line        ::= (NUMBER)? stmt (":" stmt)* NEWLINE
 stmt        ::= "LET" ident "=" expr
@@ -74,7 +80,7 @@ expr        ::= term (("+"|"-") term)*
 term        ::= factor (("*"|"/") factor)*
 factor      ::= NUMBER | STRING | ident | "(" expr ")" | ("+"|"-") factor | "NOT" factor
 ident       ::= NAME | NAME "$"
-9. Mapping to IL & Runtime
+10. Mapping to IL & Runtime
 BASIC | IL pattern | Runtime
 ---- | ---- | ----
 PRINT "X" | %s = const_str @.L; call @rt_print_str(%s) | rt_print_str(str)
@@ -87,5 +93,5 @@ MID$(S$,i,l) | call @rt_substr(%s, i-1, l) | rt_substr(str,i64,i64)->str
 VAL(S$) | call @rt_to_int(%s) | rt_to_int(str)->i64
 INPUT A$ | %s = call @rt_input_line(); store A$, %s | rt_input_line()->str
 Indexing: BASIC’s 1-based indices are lowered to 0-based for runtime calls (subtract 1).
-10. Examples
+11. Examples
 See /docs/examples/basic/ and the IL equivalents in /docs/examples/il/.
