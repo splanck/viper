@@ -37,12 +37,12 @@ void SemanticAnalyzer::analyze(const Program &prog) {
   labels_.clear();
   labelRefs_.clear();
   forStack_.clear();
-  for (const auto &stmt : prog.statements) {
+  for (const auto &stmt : prog.statements)
     if (stmt)
       labels_.insert(stmt->line);
+  for (const auto &stmt : prog.statements)
     if (stmt)
       visitStmt(*stmt);
-  }
 }
 
 void SemanticAnalyzer::visitStmt(const Stmt &s) {
@@ -81,6 +81,10 @@ void SemanticAnalyzer::visitStmt(const Stmt &s) {
     forStack_.pop_back();
   } else if (auto *g = dynamic_cast<const GotoStmt *>(&s)) {
     labelRefs_.insert(g->target);
+    if (!labels_.count(g->target)) {
+      std::string msg = "B1003: unknown line " + std::to_string(g->target);
+      de.report({il::support::Severity::Error, std::move(msg), g->loc});
+    }
   } else if (auto *n = dynamic_cast<const NextStmt *>(&s)) {
     if (forStack_.empty() || (!n->var.empty() && n->var != forStack_.back())) {
       std::string msg = "B1002: mismatched NEXT";
