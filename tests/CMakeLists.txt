@@ -134,6 +134,12 @@ add_test(NAME basic_to_il_ex4 COMMAND ${CMAKE_COMMAND}
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/ex4_if_elseif.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 
+add_test(NAME basic_error_unknown_var COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_errors/unknown_var.bas
+  "-DEXPECT=B1001.*did you mean 'A'"
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_errors/check_error.cmake)
+
 set(CODEGEN_E2E ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_codegen.cmake)
 if(IL_ENABLE_X64_ASM_SYNTAX_CHECK)
   add_test(NAME codegen_syntax_only COMMAND ${CMAKE_COMMAND}
