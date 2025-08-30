@@ -13,9 +13,9 @@ int main() {
   auto &fn = builder.startFunction("main", il::core::Type(il::core::Type::Kind::I64), {});
   auto &bb = builder.addBlock(fn, "entry");
   builder.setInsertPoint(bb);
-  il::core::Value s0 = builder.emitConstStr(".L0");
-  builder.emitCall("rt_print_str", {s0});
-  builder.emitRet(il::core::Value::constInt(0));
+  il::core::Value s0 = builder.emitConstStr(".L0", {});
+  builder.emitCall("rt_print_str", {s0}, {});
+  builder.emitRet(il::core::Value::constInt(0), {});
   std::string out = il::io::Serializer::toString(m);
   std::ifstream in(std::string(TESTS_DIR) + "/golden/hello_expected.il");
   std::stringstream buf;

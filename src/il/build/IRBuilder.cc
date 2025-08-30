@@ -50,32 +50,36 @@ bool IRBuilder::isTerminator(Opcode op) const {
   return op == Opcode::Br || op == Opcode::CBr || op == Opcode::Ret || op == Opcode::Trap;
 }
 
-Value IRBuilder::emitConstStr(const std::string &globalName) {
+Value IRBuilder::emitConstStr(const std::string &globalName, il::support::SourceLoc loc) {
   unsigned id = nextTemp++;
   Instr instr;
   instr.result = id;
   instr.op = Opcode::ConstStr;
   instr.type = Type(Type::Kind::Str);
   instr.operands.push_back(Value::global(globalName));
+  instr.loc = loc;
   append(std::move(instr));
   return Value::temp(id);
 }
 
-void IRBuilder::emitCall(const std::string &callee, const std::vector<Value> &args) {
+void IRBuilder::emitCall(const std::string &callee, const std::vector<Value> &args,
+                         il::support::SourceLoc loc) {
   Instr instr;
   instr.op = Opcode::Call;
   instr.type = Type(Type::Kind::Void);
   instr.callee = callee;
   instr.operands = args;
+  instr.loc = loc;
   append(std::move(instr));
 }
 
-void IRBuilder::emitRet(const std::optional<Value> &v) {
+void IRBuilder::emitRet(const std::optional<Value> &v, il::support::SourceLoc loc) {
   Instr instr;
   instr.op = Opcode::Ret;
   instr.type = Type(Type::Kind::Void);
   if (v)
     instr.operands.push_back(*v);
+  instr.loc = loc;
   append(std::move(instr));
 }
 
