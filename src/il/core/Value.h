@@ -10,6 +10,7 @@ namespace il::core {
 
 /// @brief Tagged value used as operands and results in IL.
 struct Value {
+  /// @brief Enumerates the different value forms.
   enum class Kind { Temp, ConstInt, ConstFloat, ConstStr, GlobalAddr, NullPtr };
   Kind kind;
   long long i64{0};

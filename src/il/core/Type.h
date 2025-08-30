@@ -10,12 +10,20 @@ namespace il::core {
 
 /// @brief Simple type wrapper for IL primitive types.
 struct Type {
+  /// @brief Enumerates primitive IL types.
   enum class Kind { Void, I1, I64, F64, Ptr, Str };
-  Kind kind;
+  Kind kind; ///< Discriminator specifying the active kind
+  /// @brief Construct a type of kind @p k.
+  /// @param k Desired kind.
   constexpr explicit Type(Kind k = Kind::Void) : kind(k) {}
+  /// @brief Convert type to string representation.
+  /// @return Lowercase type mnemonic.
   std::string toString() const;
 };
 
+/// @brief Convert kind @p k to its mnemonic string.
+/// @param k Kind to convert.
+/// @return Lowercase mnemonic defined in the spec.
 inline std::string kindToString(Type::Kind k) {
   switch (k) {
   case Type::Kind::Void:
@@ -34,6 +42,8 @@ inline std::string kindToString(Type::Kind k) {
   return "";
 }
 
+/// @brief Stringify this type.
+/// @return Lowercase mnemonic of the kind.
 inline std::string Type::toString() const { return kindToString(kind); }
 
 } // namespace il::core

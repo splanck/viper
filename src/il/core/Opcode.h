@@ -8,6 +8,8 @@
 
 namespace il::core {
 
+/// @brief All instruction opcodes defined by the IL.
+/// @see docs/il-spec.md §3 for opcode descriptions.
 enum class Opcode {
   Add,
   Sub,
@@ -60,6 +62,9 @@ enum class Opcode {
   Trap
 };
 
+/// @brief Convert opcode @p op to its mnemonic string.
+/// @param op Opcode to stringify.
+/// @return Lowercase mnemonic defined by the IL spec.
 inline std::string toString(Opcode op) {
   switch (op) {
   case Opcode::Add:
