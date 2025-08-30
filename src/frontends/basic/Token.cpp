@@ -29,14 +29,30 @@ const char *tokenKindToString(TokenKind k) {
     return "THEN";
   case TokenKind::KeywordElse:
     return "ELSE";
+  case TokenKind::KeywordElseIf:
+    return "ELSEIF";
   case TokenKind::KeywordWhile:
     return "WHILE";
   case TokenKind::KeywordWend:
     return "WEND";
+  case TokenKind::KeywordFor:
+    return "FOR";
+  case TokenKind::KeywordTo:
+    return "TO";
+  case TokenKind::KeywordStep:
+    return "STEP";
+  case TokenKind::KeywordNext:
+    return "NEXT";
   case TokenKind::KeywordGoto:
     return "GOTO";
   case TokenKind::KeywordEnd:
     return "END";
+  case TokenKind::KeywordAnd:
+    return "AND";
+  case TokenKind::KeywordOr:
+    return "OR";
+  case TokenKind::KeywordNot:
+    return "NOT";
   case TokenKind::Plus:
     return "+";
   case TokenKind::Minus:
@@ -63,6 +79,8 @@ const char *tokenKindToString(TokenKind k) {
     return ")";
   case TokenKind::Comma:
     return ",";
+  case TokenKind::Colon:
+    return ":";
   }
   return "?";
 }
