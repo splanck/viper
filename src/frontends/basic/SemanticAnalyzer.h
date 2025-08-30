@@ -1,6 +1,6 @@
 // File: src/frontends/basic/SemanticAnalyzer.h
-// Purpose: Declares BASIC semantic analyzer for symbol and label tracking and
-//          basic validation.
+// Purpose: Declares BASIC semantic analyzer for symbol and label tracking,
+//          basic validation, and rudimentary type checking.
 // Key invariants: Analyzer tracks defined symbols and reports unknown
 //                 references.
 // Ownership/Lifetime: Analyzer borrows DiagnosticEngine; no AST ownership.
@@ -9,6 +9,7 @@
 #include "frontends/basic/AST.h"
 #include "support/diagnostics.h"
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -42,12 +43,17 @@ private:
   /// @param s Statement node to analyze.
   void visitStmt(const Stmt &s);
 
+  /// @brief Inferred BASIC value type.
+  enum class Type { Int, String, Unknown };
+
   /// @brief Validate variable references in @p e and recurse into subtrees.
   /// @param e Expression node to analyze.
-  void visitExpr(const Expr &e);
+  /// @return Inferred type of the expression.
+  Type visitExpr(const Expr &e);
 
   il::support::DiagnosticEngine &de; ///< Diagnostic sink.
   std::unordered_set<std::string> symbols_;
+  std::unordered_map<std::string, Type> varTypes_;
   std::unordered_set<int> labels_;
   std::unordered_set<int> labelRefs_;
   std::vector<std::string> forStack_; ///< Active FOR loop variables.
