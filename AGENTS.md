@@ -28,7 +28,7 @@ Before you touch code:
 	3. State the Definition of Done you will satisfy (build + tests + docs).
 While implementing:
 	1. If adding behavior, add or update tests first (unit/golden/e2e as appropriate).
-	2. Keep public headers minimal and stable; no cross‑layer leaks (see §7).
+        2. Keep public headers minimal and stable; no cross‑layer leaks (see §8).
 	3. If you must stub, stub behind a TODO and ensure all tests still pass.
 Before committing:
 	1. Run:
@@ -37,7 +37,7 @@ cmake -S . -B build && cmake --build build
 ctest --output-on-failure
 	2. Format code (.clang-format) and keep warnings at zero.
 	3. Update docs only if behavior or public API changed (and only with ADR approval).
-	4. Write a Conventional Commit message (see §8).
+        4. Write a Conventional Commit message (see §9).
 
 4) Scope & Granularity
 	• Right‑sized task examples:
@@ -56,13 +56,20 @@ A change is Done when:
 	• ✅ Commit follows Conventional Commits and touches only the stated files.
 Never commit a red build or failing tests.
 
-6) Testing Policy
+6) Documentation & Comment Policy
+        • Every source/header file must start with a file header describing purpose, invariants, and ownership.
+        • Every public class/function/member must have Doxygen-style comments.
+        • Behavior changes require updates to /docs and inline comments.
+        • Non-obvious algorithms must include rationale.
+        • IL spec/ABI changes require an ADR.
+
+7) Testing Policy
 	• Unit tests: For leaf utilities (interner, verifier checks, VM opcode semantics).
 	• Golden tests: For stable text outputs (IL serializer, BASIC→IL front end).
 	• E2E tests: VM vs native equivalence for examples in /docs/examples/.
 	• Rule: When adding a feature, add at least one test that would fail before your change and pass after.
 
-7) Architectural Guardrails
+8) Architectural Guardrails
 	• Layering (no exceptions unless ADR approved):
 		○ Frontends (fe/*) → only depend on IL Build/IO/Verify and Support.
 		○ VM (/src/vm) → only depends on IL Core/IO/Verify, Support, and runtime C ABI through a bridge.
@@ -71,7 +78,7 @@ Never commit a red build or failing tests.
 	• No cross‑reach: VM must not include codegen headers; front end must not include VM or codegen.
 	• Spec compliance: Instruction semantics, traps, and typing must match /docs/il-spec.md.
 
-8) Commits & Branching
+9) Commits & Branching
 	• Commit message format (Conventional Commits):
 
 <type>(<scope>): <short summary>
@@ -85,7 +92,7 @@ Types: feat, fix, chore, refactor, test, docs, build, ci.
 		○ fix(vm): correct scmp_gt result for negative values; add unit test
 	• Branching: If available, create feature/<slug> branches; otherwise commit to main with small, atomic commits.
 
-9) ADR (Architecture Decision Record) Process
+10) ADR (Architecture Decision Record) Process
 Use ADRs for any change that affects:
 	• IL semantics or grammar,
 	• public APIs,
@@ -97,7 +104,7 @@ Procedure:
 	3. Commit as docs(adr): propose NNN <title>.
 	4. Do not implement the change until approved (future prompt).
 
-10) Coding Standards (C++20)
+11) Coding Standards (C++20)
 	• Use RAII and smart pointers (std::unique_ptr); avoid raw new/delete.
 	• No exceptions thrown across library boundaries; prefer Result<T> or diagnostics.
 	• Keep headers self‑contained; minimize includes; use forward declarations.
@@ -105,7 +112,7 @@ Procedure:
 	• Public headers must have brief doc comments describing invariants and ownership.
 C Runtime: C99, stable ABI, no dynamic global state visible to C++ layers.
 
-11) Quality Gates (per area)
+12) Quality Gates (per area)
 IL Core
 	• Types/opcodes stable; serializer prints deterministically.
 	• Verifier checks block terminators, operand types, call signatures.
@@ -124,8 +131,8 @@ Tools
 	• ilc -emit-il, -run, -S behave consistently.
 	• il-verify exits non‑zero on errors with clear messages.
 
-12) Dependencies & Tooling
-	• C++20 standard; system toolchain (clang/gcc).
+13) Dependencies & Tooling
+        • C++20 standard; Clang is the canonical toolchain; GCC optional for testing.
 	• Allowed third‑party (vendored if needed): fmt, CLI11/lyra, Catch2 or gtest.
 	• Do not add new dependencies without ADR.
 Build & Test Commands (must run before every commit):
@@ -134,34 +141,41 @@ cmake -S . -B build
 cmake --build build -j
 ctest --output-on-failure
 
-13) Handling Unknowns & Ambiguities
+14) Compiler Preference
+        • Use Clang as the canonical compiler for building, testing, and CI.
+        • GCC builds may be added in CI, but Clang must pass first.
+        • On macOS, Apple Clang is default; on Linux, use clang/clang++; on Windows, prefer clang-cl.
+
+15) Handling Unknowns & Ambiguities
 	• If the spec is unclear, do not improvise in code.
 	• Draft an ADR proposal or add a non‑semantic TODO with a question in code and a note in AGENTS_NOTES.md.
 	• Keep the build green. Prefer stubs returning explicit “unimplemented” errors over partial features.
 
-14) Logging, Errors, and Traps
+16) Logging, Errors, and Traps
 	• Diagnostics should include function, block label, and (if present) SourceLoc.
 	• VM traps: raise a structured error; top‑level prints message and returns non‑zero.
 	• No noisy logging by default. Add --trace/--trace-calls flags rather than ad‑hoc prints.
 
-15) Performance Hygiene
+17) Performance Hygiene
 	• Prefer contiguous containers (std::vector) for IR and VM frames.
 	• Avoid per‑instruction heap allocations; use arenas.
 	• Only micro‑optimize with measurements; add benchmarks later (out of scope for v1).
 
-16) File Ownership & “Do Not Touch” List
+18) File Ownership & “Do Not Touch” List
 	• Do not modify /docs/il-spec.md without an ADR.
 	• Do not change CI workflows to skip tests.
 	• Do not change license headers or project metadata.
 
-17) Templates & Checklists
+19) Templates & Checklists
 Pull/Commit Checklist (copy into commit body):
-	•  Built on macOS/Linux (Debug).
-	•  ctest passed.
-	•  Added/updated tests.
-	•  Code formatted; no new warnings.
-	•  No spec/API deviation (or ADR attached).
-	•  Docs updated if behavior/API changed.
+        - [ ] Built on macOS/Linux (Debug).
+        - [ ] ctest passed.
+        - [ ] Added/updated tests.
+        - [ ] Code formatted; no new warnings.
+        - [ ] No spec/API deviation (or ADR attached).
+        - [ ] Docs updated if behavior/API changed.
+        - [ ] Updated docs/comments per policy.
+        - [ ] Added/updated file headers.
 New Class Header Template:
 
 // <path>/<Name>.h
@@ -181,7 +195,7 @@ private:
 } // namespace il::core
 Test Naming: tests/unit/test_<area>_<thing>.cpp, tests/golden/<case>.il, tests/e2e/<scenario>.cmake.
 
-18) Prompt Template (How to respond to tasks)
+20) Prompt Template (How to respond to tasks)
 When given a task/prompt, respond in this structure:
 	1. Plan: bullet list of steps and files to touch.
 	2. Changes: concise explanation of the implementation approach and any assumptions.
@@ -191,12 +205,12 @@ When given a task/prompt, respond in this structure:
 	6. Next Steps: 2–3 suggested follow‑ups (optional).
 	7. Commit Message: Conventional Commit block.
 
-19) Recovery From Failures
+21) Recovery From Failures
 	• If tests fail, fix or revert within the same prompt.
 	• If a change is too big, split and commit the finished subset; leave a clear TODO and a note in AGENTS_NOTES.md.
 	• Never leave the repository unbuildable.
 
-20) Security & Safety
+22) Security & Safety
 	• No network calls, no file I/O outside the project workspace unless required by tests.
 	• No dynamic code execution or shelling out beyond the documented toolchain (compiler, linker, CMake, ctest).
 	• Treat all inputs (including IL text) as untrusted — verify before execution.
