@@ -1,6 +1,8 @@
 // File: src/frontends/basic/SemanticAnalyzer.h
-// Purpose: Declares BASIC semantic analyzer for symbol and label tracking.
-// Key invariants: Analyzer only records symbols and labels; no validation yet.
+// Purpose: Declares BASIC semantic analyzer for symbol and label tracking and
+//          basic validation.
+// Key invariants: Analyzer tracks defined symbols and reports unknown
+//                 references.
 // Ownership/Lifetime: Analyzer borrows DiagnosticEngine; no AST ownership.
 // Links: docs/class-catalog.md
 #pragma once
@@ -11,8 +13,10 @@
 
 namespace il::frontends::basic {
 
-/// @brief Traverses BASIC AST to collect symbols and labels.
-/// @invariant Does not emit diagnostics for now.
+/// @brief Traverses BASIC AST to collect symbols and labels and validate
+///        variable references.
+/// @invariant Symbol table only contains definitions; unknown uses report
+///            diagnostics.
 /// @ownership Borrows DiagnosticEngine; AST not owned.
 class SemanticAnalyzer {
 public:
@@ -23,7 +27,7 @@ public:
   /// @param prog Program AST to walk.
   void analyze(const Program &prog);
 
-  /// @brief Collected variable names.
+  /// @brief Collected variable names defined in the program.
   const std::unordered_set<std::string> &symbols() const { return symbols_; }
 
   /// @brief Line numbers present in the program.
@@ -37,11 +41,11 @@ private:
   /// @param s Statement node to analyze.
   void visitStmt(const Stmt &s);
 
-  /// @brief Record symbol references from an expression.
+  /// @brief Validate variable references in @p e and recurse into subtrees.
   /// @param e Expression node to analyze.
   void visitExpr(const Expr &e);
 
-  il::support::DiagnosticEngine &de; ///< Diagnostic sink (unused for now).
+  il::support::DiagnosticEngine &de; ///< Diagnostic sink.
   std::unordered_set<std::string> symbols_;
   std::unordered_set<int> labels_;
   std::unordered_set<int> labelRefs_;
