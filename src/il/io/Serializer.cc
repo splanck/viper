@@ -34,7 +34,7 @@ void Serializer::write(const Module &m, std::ostream &os) {
       for (const auto &in : bb.instructions) {
         os << "  ";
         if (in.result)
-          os << "%" << *in.result << " = ";
+          os << "%t" << *in.result << " = ";
         os << il::core::toString(in.op);
         if (in.op == Opcode::Call) {
           os << " @" << in.callee << "(";

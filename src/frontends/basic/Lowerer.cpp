@@ -16,12 +16,16 @@ Module Lowerer::lower(const Program &prog) {
   build::IRBuilder b(m);
   builder = &b;
 
+  mangler = NameMangler();
   lineBlocks.clear();
   varSlots.clear();
   strings.clear();
 
   b.addExtern("rt_print_str", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
   b.addExtern("rt_print_i64", Type(Type::Kind::Void), {Type(Type::Kind::I64)});
+  b.addExtern("rt_len", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
+  b.addExtern("rt_substr", Type(Type::Kind::Str),
+              {Type(Type::Kind::Str), Type(Type::Kind::I64), Type(Type::Kind::I64)});
 
   Function &f = b.startFunction("main", Type(Type::Kind::I64), {});
   func = &f;
@@ -36,7 +40,6 @@ Module Lowerer::lower(const Program &prog) {
   }
   fnExit = &b.addBlock(f, mangler.block("exit"));
 
-  nextTemp = 0;
   vars.clear();
   collectVars(prog);
 
@@ -175,6 +178,18 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr) {
     }
     Value res = emitBinary(op, ty, lhs.value, rhs.value);
     return {res, ty};
+  } else if (auto *c = dynamic_cast<const CallExpr *>(&expr)) {
+    if (c->builtin == CallExpr::Builtin::Len) {
+      RVal s = lowerExpr(*c->args[0]);
+      Value res = emitCallRet(Type(Type::Kind::I64), "rt_len", {s.value});
+      return {res, Type(Type::Kind::I64)};
+    } else if (c->builtin == CallExpr::Builtin::Mid) {
+      RVal s = lowerExpr(*c->args[0]);
+      RVal i = lowerExpr(*c->args[1]);
+      RVal l = lowerExpr(*c->args[2]);
+      Value res = emitCallRet(Type(Type::Kind::Str), "rt_substr", {s.value, i.value, l.value});
+      return {res, Type(Type::Kind::Str)};
+    }
   }
   return {Value::constInt(0), Type(Type::Kind::I64)};
 }
@@ -253,7 +268,7 @@ void Lowerer::lowerGoto(const GotoStmt &stmt) {
 void Lowerer::lowerEnd(const EndStmt &) { emitBr(fnExit); }
 
 Value Lowerer::emitAlloca(int bytes) {
-  unsigned id = nextTemp++;
+  unsigned id = nextTempId();
   Instr in;
   in.result = id;
   in.op = Opcode::Alloca;
@@ -264,7 +279,7 @@ Value Lowerer::emitAlloca(int bytes) {
 }
 
 Value Lowerer::emitLoad(Type ty, Value addr) {
-  unsigned id = nextTemp++;
+  unsigned id = nextTempId();
   Instr in;
   in.result = id;
   in.op = Opcode::Load;
@@ -283,7 +298,7 @@ void Lowerer::emitStore(Type ty, Value addr, Value val) {
 }
 
 Value Lowerer::emitBinary(Opcode op, Type ty, Value lhs, Value rhs) {
-  unsigned id = nextTemp++;
+  unsigned id = nextTempId();
   Instr in;
   in.result = id;
   in.op = op;
@@ -322,8 +337,20 @@ void Lowerer::emitCall(const std::string &callee, const std::vector<Value> &args
   cur->instructions.push_back(in);
 }
 
+Value Lowerer::emitCallRet(Type ty, const std::string &callee, const std::vector<Value> &args) {
+  unsigned id = nextTempId();
+  Instr in;
+  in.result = id;
+  in.op = Opcode::Call;
+  in.type = ty;
+  in.callee = callee;
+  in.operands = args;
+  cur->instructions.push_back(in);
+  return Value::temp(id);
+}
+
 Value Lowerer::emitConstStr(const std::string &globalName) {
-  unsigned id = nextTemp++;
+  unsigned id = nextTempId();
   Instr in;
   in.result = id;
   in.op = Opcode::ConstStr;
@@ -350,6 +377,11 @@ std::string Lowerer::getStringLabel(const std::string &s) {
   builder->addGlobalStr(name, s);
   strings[s] = name;
   return name;
+}
+
+unsigned Lowerer::nextTempId() {
+  std::string name = mangler.nextTemp();
+  return static_cast<unsigned>(std::stoul(name.substr(2)));
 }
 
 } // namespace il::frontends::basic
