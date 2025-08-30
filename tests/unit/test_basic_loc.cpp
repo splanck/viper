@@ -1,3 +1,9 @@
+// File: tests/unit/test_basic_loc.cpp
+// Purpose: Ensure BASIC AST and IL instructions retain source locations.
+// Key invariants: Locations must match expected columns.
+// Ownership: Test owns constructed AST and module.
+// Links: docs/class-catalog.md
+
 #include "frontends/basic/Lowerer.h"
 #include "frontends/basic/Parser.h"
 #include "support/source_manager.h"
