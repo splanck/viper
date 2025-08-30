@@ -9,6 +9,7 @@
 #include "il/core/Module.h"
 #include "il/core/Opcode.h"
 #include "il/core/Value.h"
+#include "support/source_manager.h"
 #include <optional>
 #include <vector>
 
@@ -56,16 +57,17 @@ public:
   /// @brief Emit reference to global string @p globalName.
   /// @param globalName Name of global string.
   /// @return Value representing constant string pointer.
-  Value emitConstStr(const std::string &globalName);
+  Value emitConstStr(const std::string &globalName, il::support::SourceLoc loc);
 
   /// @brief Emit call to function @p callee with arguments @p args.
   /// @param callee Name of function to call.
   /// @param args Argument values.
-  void emitCall(const std::string &callee, const std::vector<Value> &args);
+  void emitCall(const std::string &callee, const std::vector<Value> &args,
+                il::support::SourceLoc loc);
 
   /// @brief Emit return from current function.
   /// @param v Optional return value.
-  void emitRet(const std::optional<Value> &v = std::nullopt);
+  void emitRet(const std::optional<Value> &v, il::support::SourceLoc loc);
 
 private:
   Module &mod;                   ///< Module being constructed

@@ -65,30 +65,37 @@ StmtPtr Parser::parseStatement(int line) {
     return parseGoto();
   if (check(TokenKind::KeywordEnd))
     return parseEnd();
-  return std::make_unique<EndStmt>();
+  auto stmt = std::make_unique<EndStmt>();
+  stmt->loc = current_.loc;
+  return stmt;
 }
 
 StmtPtr Parser::parsePrint() {
+  il::support::SourceLoc loc = current_.loc;
   advance(); // PRINT
   auto e = parseExpression();
   auto stmt = std::make_unique<PrintStmt>();
+  stmt->loc = loc;
   stmt->expr = std::move(e);
   return stmt;
 }
 
 StmtPtr Parser::parseLet() {
+  il::support::SourceLoc loc = current_.loc;
   advance(); // LET
   std::string name = current_.lexeme;
   consume(TokenKind::Identifier);
   consume(TokenKind::Equal);
   auto e = parseExpression();
   auto stmt = std::make_unique<LetStmt>();
+  stmt->loc = loc;
   stmt->name = name;
   stmt->expr = std::move(e);
   return stmt;
 }
 
 StmtPtr Parser::parseIf(int line) {
+  il::support::SourceLoc loc = current_.loc;
   advance(); // IF or ELSEIF
   auto cond = parseExpression();
   consume(TokenKind::KeywordThen);
@@ -101,6 +108,7 @@ StmtPtr Parser::parseIf(int line) {
     elseStmt = parseStatement(line);
   }
   auto stmt = std::make_unique<IfStmt>();
+  stmt->loc = loc;
   stmt->cond = std::move(cond);
   stmt->then_branch = std::move(thenStmt);
   stmt->else_branch = std::move(elseStmt);
@@ -112,6 +120,7 @@ StmtPtr Parser::parseIf(int line) {
 }
 
 StmtPtr Parser::parseWhile() {
+  il::support::SourceLoc loc = current_.loc;
   advance(); // WHILE
   auto cond = parseExpression();
   if (check(TokenKind::EndOfLine))
@@ -119,6 +128,7 @@ StmtPtr Parser::parseWhile() {
   else if (check(TokenKind::Colon))
     advance();
   auto stmt = std::make_unique<WhileStmt>();
+  stmt->loc = loc;
   stmt->cond = std::move(cond);
   while (true) {
     while (check(TokenKind::EndOfLine))
@@ -146,6 +156,7 @@ StmtPtr Parser::parseWhile() {
 }
 
 StmtPtr Parser::parseFor() {
+  il::support::SourceLoc loc = current_.loc;
   advance(); // FOR
   std::string var = current_.lexeme;
   consume(TokenKind::Identifier);
@@ -163,6 +174,7 @@ StmtPtr Parser::parseFor() {
   else if (check(TokenKind::Colon))
     advance();
   auto stmt = std::make_unique<ForStmt>();
+  stmt->loc = loc;
   stmt->var = var;
   stmt->start = std::move(start);
   stmt->end = std::move(end);
@@ -195,6 +207,7 @@ StmtPtr Parser::parseFor() {
 }
 
 StmtPtr Parser::parseNext() {
+  il::support::SourceLoc loc = current_.loc;
   advance(); // NEXT
   std::string name;
   if (check(TokenKind::Identifier)) {
@@ -202,22 +215,28 @@ StmtPtr Parser::parseNext() {
     advance();
   }
   auto stmt = std::make_unique<NextStmt>();
+  stmt->loc = loc;
   stmt->var = name;
   return stmt;
 }
 
 StmtPtr Parser::parseGoto() {
+  il::support::SourceLoc loc = current_.loc;
   advance(); // GOTO
   int target = std::atoi(current_.lexeme.c_str());
   consume(TokenKind::Number);
   auto stmt = std::make_unique<GotoStmt>();
+  stmt->loc = loc;
   stmt->target = target;
   return stmt;
 }
 
 StmtPtr Parser::parseEnd() {
+  il::support::SourceLoc loc = current_.loc;
   advance(); // END
-  return std::make_unique<EndStmt>();
+  auto stmt = std::make_unique<EndStmt>();
+  stmt->loc = loc;
+  return stmt;
 }
 
 int Parser::precedence(TokenKind k) {
@@ -251,9 +270,11 @@ ExprPtr Parser::parseExpression(int min_prec) {
     if (prec < min_prec || prec == 0)
       break;
     TokenKind op = current_.kind;
+    il::support::SourceLoc opLoc = current_.loc;
     advance();
     auto right = parseExpression(prec + 1);
     auto bin = std::make_unique<BinaryExpr>();
+    bin->loc = opLoc;
     switch (op) {
     case TokenKind::Plus:
       bin->op = BinaryExpr::Op::Add;
@@ -304,27 +325,34 @@ ExprPtr Parser::parseExpression(int min_prec) {
 ExprPtr Parser::parsePrimary() {
   if (check(TokenKind::Number)) {
     int v = std::atoi(current_.lexeme.c_str());
+    auto loc = current_.loc;
     auto e = std::make_unique<IntExpr>();
+    e->loc = loc;
     e->value = v;
     advance();
     return e;
   }
   if (check(TokenKind::String)) {
+    auto loc = current_.loc;
     auto e = std::make_unique<StringExpr>();
+    e->loc = loc;
     e->value = current_.lexeme;
     advance();
     return e;
   }
   if (check(TokenKind::KeywordNot)) {
+    il::support::SourceLoc loc = current_.loc;
     advance();
     auto operand = parsePrimary();
     auto e = std::make_unique<UnaryExpr>();
+    e->loc = loc;
     e->op = UnaryExpr::Op::Not;
     e->expr = std::move(operand);
     return e;
   }
   if (check(TokenKind::Identifier)) {
     std::string name = current_.lexeme;
+    il::support::SourceLoc loc = current_.loc;
     advance();
     if (consume(TokenKind::LParen)) {
       std::vector<ExprPtr> args;
@@ -338,6 +366,7 @@ ExprPtr Parser::parsePrimary() {
       }
       consume(TokenKind::RParen);
       auto call = std::make_unique<CallExpr>();
+      call->loc = loc;
       if (name == "LEN")
         call->builtin = CallExpr::Builtin::Len;
       else
@@ -346,6 +375,7 @@ ExprPtr Parser::parsePrimary() {
       return call;
     }
     auto v = std::make_unique<VarExpr>();
+    v->loc = loc;
     v->name = name;
     return v;
   }
@@ -355,6 +385,7 @@ ExprPtr Parser::parsePrimary() {
     return e;
   }
   auto e = std::make_unique<IntExpr>();
+  e->loc = current_.loc;
   e->value = 0;
   return e;
 }

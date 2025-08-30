@@ -6,6 +6,7 @@
 #include "vm/RuntimeBridge.h"
 #include "vm/VM.h"
 #include <cassert>
+#include <sstream>
 
 namespace il::vm {
 
@@ -29,6 +30,14 @@ Slot RuntimeBridge::call(const std::string &name, const std::vector<Slot> &args)
     assert(false && "unknown runtime call");
   }
   return res;
+}
+
+void RuntimeBridge::trap(const std::string &msg, const il::support::SourceLoc &loc,
+                         const std::string &fn, const std::string &block) {
+  std::ostringstream os;
+  os << msg << " in " << fn << ":" << block << " at " << loc.file_id << ":" << loc.line << ":"
+     << loc.column;
+  rt_trap(os.str().c_str());
 }
 
 } // namespace il::vm
