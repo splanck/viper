@@ -8,13 +8,28 @@ jobs:
   build:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            exclude_label: ""
+          - os: macos-latest
+            exclude_label: "NativeX64Run"
     steps:
       - uses: actions/checkout@v3
+      - name: Print tool versions
+        run: |
+          cmake --version
+          clang --version
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
       - name: Build
         run: cmake --build build --config Debug
       - name: Test
-        run: ctest --test-dir build -C Debug --output-on-failure
+        run: |
+          if [ -n "${{ matrix.exclude_label }}" ]; then
+            echo "Excluding tests with label '${{ matrix.exclude_label }}'"
+            ctest --test-dir build --output-on-failure -j2 -LE "${{ matrix.exclude_label }}"
+          else
+            ctest --test-dir build --output-on-failure -j2
+          fi
