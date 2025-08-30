@@ -10,7 +10,7 @@ ilc is an experimental compiler stack built around a small intermediate language
 ## Layout
 - `src/` – libraries, VM, code generator, and tools.
 - `runtime/` – runtime libraries.
-- `docs/` – specifications and planning documents.
+- [docs/](docs/README.md) – specifications and planning documents.
 - `tests/` – unit, golden, and end-to-end tests.
 
 ## Building
