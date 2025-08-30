@@ -1,3 +1,8 @@
+// File: runtime/rt.h
+// Purpose: Declares C runtime utilities for strings and I/O.
+// Key invariants: Reference counts remain non-negative.
+// Ownership/Lifetime: Caller manages returned strings.
+// Links: docs/class-catalog.md
 #pragma once
 #include <stdint.h>
 #ifdef __cplusplus

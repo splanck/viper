@@ -1,3 +1,8 @@
+// File: src/vm/RuntimeBridge.h
+// Purpose: Declares adapter between VM and runtime library.
+// Key invariants: None.
+// Ownership/Lifetime: VM owns the bridge.
+// Links: docs/il-spec.md
 #pragma once
 #include "rt.h"
 #include <string>

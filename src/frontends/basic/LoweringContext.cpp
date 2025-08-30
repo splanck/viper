@@ -1,3 +1,8 @@
+// File: src/frontends/basic/LoweringContext.cpp
+// Purpose: Implements state used during BASIC-to-IL lowering.
+// Key invariants: None.
+// Ownership/Lifetime: Context references module owned externally.
+// Links: docs/class-catalog.md
 #include "frontends/basic/LoweringContext.h"
 #include "il/build/IRBuilder.h"
 #include "il/core/BasicBlock.h"

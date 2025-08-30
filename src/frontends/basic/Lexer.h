@@ -1,3 +1,8 @@
+// File: src/frontends/basic/Lexer.h
+// Purpose: Declares BASIC token lexer.
+// Key invariants: Current position always within source buffer.
+// Ownership/Lifetime: Lexer does not own the source buffer.
+// Links: docs/class-catalog.md
 #pragma once
 #include "frontends/basic/Token.h"
 #include <string_view>

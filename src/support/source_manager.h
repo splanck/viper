@@ -1,3 +1,8 @@
+// File: src/support/source_manager.h
+// Purpose: Declares manager for source file identifiers.
+// Key invariants: File ID 0 is invalid.
+// Ownership/Lifetime: Manager owns file path strings.
+// Links: docs/class-catalog.md
 #pragma once
 #include <cstdint>
 #include <string>

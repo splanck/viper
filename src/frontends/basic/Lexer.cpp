@@ -1,3 +1,8 @@
+// File: src/frontends/basic/Lexer.cpp
+// Purpose: Implements lexer for the BASIC frontend.
+// Key invariants: None.
+// Ownership/Lifetime: Lexer views input managed externally.
+// Links: docs/class-catalog.md
 #include "frontends/basic/Lexer.h"
 #include <cctype>
 #include <string>

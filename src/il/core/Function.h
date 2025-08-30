@@ -1,3 +1,8 @@
+// File: src/il/core/Function.h
+// Purpose: Defines IL function structure.
+// Key invariants: Parameters match function type.
+// Ownership/Lifetime: Module owns functions and their blocks.
+// Links: docs/il-spec.md
 #pragma once
 #include "il/core/BasicBlock.h"
 #include "il/core/Param.h"

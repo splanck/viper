@@ -1,3 +1,8 @@
+// File: src/il/core/Global.h
+// Purpose: Represents global variables in IL modules.
+// Key invariants: Initialized values match declared type.
+// Ownership/Lifetime: Module owns global variables.
+// Links: docs/il-spec.md
 #pragma once
 #include "il/core/Type.h"
 #include <string>

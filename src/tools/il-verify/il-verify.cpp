@@ -1,3 +1,8 @@
+// File: src/tools/il-verify/il-verify.cpp
+// Purpose: Command-line tool verifying IL modules.
+// Key invariants: None.
+// Ownership/Lifetime: Tool owns parsed module.
+// Links: docs/class-catalog.md
 #include "il/io/Parser.h"
 #include "il/verify/Verifier.h"
 #include <fstream>

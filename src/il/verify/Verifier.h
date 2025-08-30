@@ -1,3 +1,8 @@
+// File: src/il/verify/Verifier.h
+// Purpose: Declares IL verifier that checks modules.
+// Key invariants: None.
+// Ownership/Lifetime: Verifier does not own modules.
+// Links: docs/il-spec.md
 #pragma once
 #include "il/core/Module.h"
 #include <ostream>

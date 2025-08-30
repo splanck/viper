@@ -1,3 +1,8 @@
+// File: src/frontends/basic/Token.h
+// Purpose: Defines token types for BASIC lexer.
+// Key invariants: Tokens carry source locations.
+// Ownership/Lifetime: Tokens are value types.
+// Links: docs/class-catalog.md
 #pragma once
 #include "support/source_manager.h"
 #include <string>

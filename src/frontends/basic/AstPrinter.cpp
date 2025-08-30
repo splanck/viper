@@ -1,3 +1,8 @@
+// File: src/frontends/basic/AstPrinter.cpp
+// Purpose: Implements BASIC AST printer for debugging.
+// Key invariants: None.
+// Ownership/Lifetime: Printer does not own AST nodes.
+// Links: docs/class-catalog.md
 #include "frontends/basic/AstPrinter.h"
 #include <sstream>
 

@@ -1,3 +1,8 @@
+// File: src/il/core/Type.h
+// Purpose: Declares IL type representation.
+// Key invariants: Kind field determines payload.
+// Ownership/Lifetime: Types are lightweight values.
+// Links: docs/il-spec.md
 #pragma once
 #include <string>
 
