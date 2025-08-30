@@ -48,7 +48,9 @@ add_library(fe_basic STATIC
   frontends/basic/Lexer.cpp
   frontends/basic/AST.cpp
   frontends/basic/AstPrinter.cpp
-  frontends/basic/Parser.cpp)
+  frontends/basic/Parser.cpp
+  frontends/basic/NameMangler.cpp
+  frontends/basic/LoweringContext.cpp)
 target_link_libraries(fe_basic PUBLIC support)
 target_include_directories(fe_basic PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
