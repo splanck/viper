@@ -50,8 +50,9 @@ add_library(fe_basic STATIC
   frontends/basic/AstPrinter.cpp
   frontends/basic/Parser.cpp
   frontends/basic/NameMangler.cpp
-  frontends/basic/LoweringContext.cpp)
-target_link_libraries(fe_basic PUBLIC support)
+  frontends/basic/LoweringContext.cpp
+  frontends/basic/Lowerer.cpp)
+target_link_libraries(fe_basic PUBLIC support il_build il_core)
 target_include_directories(fe_basic PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_executable(basic-ast-dump tools/basic-ast-dump/main.cpp)

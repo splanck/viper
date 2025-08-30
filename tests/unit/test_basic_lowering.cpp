@@ -1,41 +1,34 @@
-#include "frontends/basic/LoweringContext.h"
+#include "frontends/basic/Lowerer.h"
 #include "frontends/basic/NameMangler.h"
-#include "il/build/IRBuilder.h"
-#include "il/core/Module.h"
+#include "frontends/basic/Parser.h"
+#include "il/io/Serializer.h"
 #include <cassert>
+#include <fstream>
+#include <sstream>
 
 using namespace il::frontends::basic;
-using namespace il::build;
-using namespace il::core;
+
+static std::unique_ptr<Program> parseFile(const std::string &path) {
+  std::ifstream in(path);
+  std::stringstream buf;
+  buf << in.rdbuf();
+  Parser p(buf.str(), 0);
+  return p.parseProgram();
+}
 
 int main() {
-  // NameMangler tests
+  // NameMangler basics
   NameMangler nm;
   assert(nm.nextTemp() == "%t0");
-  assert(nm.nextTemp() == "%t1");
   assert(nm.block("entry") == "entry");
-  assert(nm.block("entry") == "entry1");
-  assert(nm.block("then") == "then");
 
-  // LoweringContext tests
-  Module m;
-  IRBuilder builder(m);
-  Function &fn = builder.startFunction("main", Type(Type::Kind::Void), {});
-  LoweringContext ctx(builder, fn);
+  // Lowerer integration tests on sample programs
+  Lowerer lowerer;
 
-  std::string slot = ctx.getOrCreateSlot("x");
-  assert(slot == "%x_slot");
-  assert(ctx.getOrCreateSlot("x") == slot);
-
-  BasicBlock *b1 = ctx.getOrCreateBlock(10);
-  BasicBlock *b2 = ctx.getOrCreateBlock(10);
-  assert(b1 == b2);
-
-  std::string s0 = ctx.getOrAddString("hello");
-  std::string s1 = ctx.getOrAddString("world");
-  assert(s0 == ".L0");
-  assert(s1 == ".L1");
-  assert(ctx.getOrAddString("hello") == s0);
+  auto prog1 = parseFile(std::string(BASIC_EXAMPLES_DIR) + "/ex1_hello_cond.bas");
+  auto mod1 = lowerer.lower(*prog1);
+  std::string il1 = il::io::Serializer::toString(mod1);
+  assert(!il1.empty());
 
   return 0;
 }

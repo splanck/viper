@@ -75,7 +75,8 @@ target_link_libraries(test_basic_lexer PRIVATE fe_basic support)
 add_test(NAME test_basic_lexer COMMAND test_basic_lexer)
 
 add_executable(test_basic_lowering unit/test_basic_lowering.cpp)
-target_link_libraries(test_basic_lowering PRIVATE fe_basic il_build il_core support)
+target_link_libraries(test_basic_lowering PRIVATE fe_basic il_build il_core il_io support)
+target_compile_definitions(test_basic_lowering PRIVATE BASIC_EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/docs/examples/basic")
 add_test(NAME test_basic_lowering COMMAND test_basic_lowering)
 
 set(BASIC_AST_DUMP $<TARGET_FILE:basic-ast-dump>)
