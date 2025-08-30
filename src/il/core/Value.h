@@ -1,3 +1,8 @@
+// File: src/il/core/Value.h
+// Purpose: Defines IL value variants.
+// Key invariants: Discriminant matches stored payload.
+// Ownership/Lifetime: Values are passed by value.
+// Links: docs/il-spec.md
 #pragma once
 #include <string>
 

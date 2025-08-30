@@ -1,3 +1,8 @@
+// File: src/support/source_manager.cpp
+// Purpose: Implements utilities to manage source buffers.
+// Key invariants: None.
+// Ownership/Lifetime: SourceManager owns loaded buffers.
+// Links: docs/class-catalog.md
 #include "source_manager.h"
 namespace il::support {
 uint32_t SourceManager::addFile(std::string path) {

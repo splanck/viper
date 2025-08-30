@@ -1,3 +1,8 @@
+// File: src/tools/ilc/main.cpp
+// Purpose: Main driver for IL compiler and runner.
+// Key invariants: None.
+// Ownership/Lifetime: Tool owns loaded modules.
+// Links: docs/class-catalog.md
 #include "frontends/basic/Lowerer.h"
 #include "frontends/basic/Parser.h"
 #include "il/io/Parser.h"

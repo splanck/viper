@@ -1,3 +1,8 @@
+// File: src/il/core/BasicBlock.h
+// Purpose: Represents a sequence of IL instructions.
+// Key invariants: terminated is true when block ends with control flow.
+// Ownership/Lifetime: Functions own blocks by value.
+// Links: docs/il-spec.md
 #pragma once
 #include "il/core/Instr.h"
 #include <string>

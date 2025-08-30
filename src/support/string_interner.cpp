@@ -1,3 +1,8 @@
+// File: src/support/string_interner.cpp
+// Purpose: Implements string interning facility.
+// Key invariants: Symbol id 0 is reserved.
+// Ownership/Lifetime: Interner owns interned strings.
+// Links: docs/class-catalog.md
 #include "string_interner.h"
 namespace il::support {
 Symbol StringInterner::intern(std::string_view str) {

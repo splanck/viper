@@ -1,3 +1,8 @@
+// File: src/il/io/Parser.h
+// Purpose: Declares parser for IL textual representation.
+// Key invariants: None.
+// Ownership/Lifetime: Parser views input string without owning.
+// Links: docs/il-spec.md
 #pragma once
 #include "il/core/Module.h"
 #include <istream>

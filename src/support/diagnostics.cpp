@@ -1,3 +1,8 @@
+// File: src/support/diagnostics.cpp
+// Purpose: Implements diagnostic reporting utilities.
+// Key invariants: None.
+// Ownership/Lifetime: Diagnostic engine owns stored messages.
+// Links: docs/class-catalog.md
 #include "diagnostics.h"
 namespace il::support {
 void DiagnosticEngine::report(Diagnostic d) {

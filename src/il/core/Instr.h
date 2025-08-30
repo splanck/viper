@@ -1,3 +1,8 @@
+// File: src/il/core/Instr.h
+// Purpose: Defines IL instruction representation.
+// Key invariants: Opcode determines operand layout.
+// Ownership/Lifetime: Instructions stored by value in basic blocks.
+// Links: docs/il-spec.md
 #pragma once
 #include "il/core/Opcode.h"
 #include "il/core/Type.h"

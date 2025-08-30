@@ -1,3 +1,8 @@
+// File: src/support/string_interner.h
+// Purpose: Declares string interning and symbol types.
+// Key invariants: Symbol id 0 is invalid.
+// Ownership/Lifetime: Interner owns stored strings.
+// Links: docs/class-catalog.md
 #pragma once
 #include "symbol.h"
 #include <string>

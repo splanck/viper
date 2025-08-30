@@ -1,3 +1,8 @@
+// File: src/frontends/basic/Lowerer.h
+// Purpose: Declares lowering from BASIC AST to IL.
+// Key invariants: None.
+// Ownership/Lifetime: Lowerer does not own AST or module.
+// Links: docs/class-catalog.md
 #pragma once
 #include "frontends/basic/AST.h"
 #include "frontends/basic/NameMangler.h"

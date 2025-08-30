@@ -1,3 +1,8 @@
+// File: src/il/build/IRBuilder.h
+// Purpose: Declares helper class for building IL modules.
+// Key invariants: None.
+// Ownership/Lifetime: Does not own the module it modifies.
+// Links: docs/il-spec.md
 #pragma once
 #include "il/core/BasicBlock.h"
 #include "il/core/Function.h"

@@ -1,3 +1,8 @@
+// File: src/il/core/Opcode.h
+// Purpose: Enumerates IL instruction opcodes.
+// Key invariants: Enumeration values match IL spec.
+// Ownership/Lifetime: Not applicable.
+// Links: docs/il-spec.md
 #pragma once
 #include <string>
 
