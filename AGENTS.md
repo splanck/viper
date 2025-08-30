@@ -62,6 +62,7 @@ Never commit a red build or failing tests.
         • Behavior changes require updates to /docs and inline comments.
         • Non-obvious algorithms must include rationale.
         • IL spec/ABI changes require an ADR.
+        • See /docs/style-guide.md for file header and comment conventions.
 
 7) Testing Policy
 	• Unit tests: For leaf utilities (interner, verifier checks, VM opcode semantics).

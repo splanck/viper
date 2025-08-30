@@ -11,6 +11,7 @@ in [AGENTS.md](../AGENTS.md).
 - [IL specification](il-spec.md)
 - [Class catalog](class-catalog.md)
 - [Project roadmap](roadmap.md)
+- [Style guide](style-guide.md)
 - [Examples: BASIC](examples/basic)
 - [Examples: IL](examples/il)
 
