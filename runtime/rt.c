@@ -5,13 +5,17 @@
 #include <stdlib.h>
 #include <string.h>
 
-void rt_trap(const char *msg) {
+void rt_abort(const char *msg) {
   if (msg)
     fprintf(stderr, "runtime trap: %s\n", msg);
   else
     fprintf(stderr, "runtime trap\n");
   exit(1);
 }
+
+__attribute__((weak)) void vm_trap(const char *msg) { rt_abort(msg); }
+
+void rt_trap(const char *msg) { vm_trap(msg); }
 
 void *rt_alloc(int64_t bytes) {
   void *p = malloc((size_t)bytes);

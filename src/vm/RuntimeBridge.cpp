@@ -8,9 +8,25 @@
 #include <cassert>
 #include <sstream>
 
+using il::support::SourceLoc;
+
+namespace {
+SourceLoc curLoc{};
+std::string curFn;
+std::string curBlock;
+} // namespace
+
+extern "C" void vm_trap(const char *msg) {
+  il::vm::RuntimeBridge::trap(msg ? msg : "trap", curLoc, curFn, curBlock);
+}
+
 namespace il::vm {
 
-Slot RuntimeBridge::call(const std::string &name, const std::vector<Slot> &args) {
+Slot RuntimeBridge::call(const std::string &name, const std::vector<Slot> &args,
+                         const SourceLoc &loc, const std::string &fn, const std::string &block) {
+  curLoc = loc;
+  curFn = fn;
+  curBlock = block;
   Slot res{};
   if (name == "rt_print_str") {
     rt_print_str(args[0].str);
@@ -29,15 +45,22 @@ Slot RuntimeBridge::call(const std::string &name, const std::vector<Slot> &args)
   } else {
     assert(false && "unknown runtime call");
   }
+  curLoc = {};
+  curFn.clear();
+  curBlock.clear();
   return res;
 }
 
-void RuntimeBridge::trap(const std::string &msg, const il::support::SourceLoc &loc,
-                         const std::string &fn, const std::string &block) {
+void RuntimeBridge::trap(const std::string &msg, const SourceLoc &loc, const std::string &fn,
+                         const std::string &block) {
   std::ostringstream os;
-  os << msg << " in " << fn << ":" << block << " at " << loc.file_id << ":" << loc.line << ":"
-     << loc.column;
-  rt_trap(os.str().c_str());
+  os << msg;
+  if (!fn.empty()) {
+    os << ' ' << fn << ": " << block;
+    if (loc.isValid())
+      os << " (" << loc.file_id << ':' << loc.line << ':' << loc.column << ')';
+  }
+  rt_abort(os.str().c_str());
 }
 
 } // namespace il::vm
