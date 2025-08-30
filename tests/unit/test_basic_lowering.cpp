@@ -25,10 +25,11 @@ int main() {
   // Lowerer integration tests on sample programs
   Lowerer lowerer;
 
-  auto prog1 = parseFile(std::string(BASIC_EXAMPLES_DIR) + "/ex1_hello_cond.bas");
-  auto mod1 = lowerer.lower(*prog1);
-  std::string il1 = il::io::Serializer::toString(mod1);
-  assert(!il1.empty());
+    auto prog1 = parseFile(std::string(BASIC_EXAMPLES_DIR) + "/ex1_hello_cond.bas");
+    auto mod1 = lowerer.lower(*prog1);
+    std::string il1 = il::io::Serializer::toString(mod1);
+    assert(!il1.empty());
+    // TODO: add golden IL comparison once lowering stabilizes
 
   return 0;
 }
