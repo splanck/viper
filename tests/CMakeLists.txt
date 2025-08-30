@@ -152,6 +152,12 @@ add_test(NAME basic_error_bad_goto COMMAND ${CMAKE_COMMAND}
   "-DEXPECT=B1003"
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_errors/check_error.cmake)
 
+add_test(NAME basic_error_string_arith COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_errors/string_arith.bas
+  "-DEXPECT=B2001"
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_errors/check_error.cmake)
+
 set(CODEGEN_E2E ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_codegen.cmake)
 if(IL_ENABLE_X64_ASM_SYNTAX_CHECK)
   add_test(NAME codegen_syntax_only COMMAND ${CMAKE_COMMAND}
