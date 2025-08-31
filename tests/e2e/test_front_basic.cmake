@@ -47,3 +47,31 @@ string(REGEX MATCH "45" _s3 "${R2}")
 if(NOT _s3)
   message(FATAL_ERROR "missing 45")
 endif()
+
+# test INPUT string echo
+execute_process(COMMAND ${ILC} front basic -run ${SRC_DIR}/docs/examples/basic/ex5_input_echo.bas --stdin-from ${SRC_DIR}/tests/data/input1.txt
+                OUTPUT_FILE run3.txt RESULT_VARIABLE r4)
+if(NOT r4 EQUAL 0)
+  message(FATAL_ERROR "execution ex5 failed")
+endif()
+file(READ run3.txt R3)
+string(REGEX MATCH "hello world" _e1 "${R3}")
+if(NOT _e1)
+  message(FATAL_ERROR "missing echoed input")
+endif()
+
+# test integer INPUT addition
+set(tmp_bas "${CMAKE_BINARY_DIR}/input_add.bas")
+file(WRITE ${tmp_bas} "10 INPUT A\n20 INPUT B\n30 PRINT A + B\n")
+set(tmp_in "${CMAKE_BINARY_DIR}/input_nums.txt")
+file(WRITE ${tmp_in} "3\n4\n")
+execute_process(COMMAND ${ILC} front basic -run ${tmp_bas} --stdin-from ${tmp_in}
+                OUTPUT_FILE run4.txt RESULT_VARIABLE r5)
+if(NOT r5 EQUAL 0)
+  message(FATAL_ERROR "execution add failed")
+endif()
+file(READ run4.txt R4)
+string(REGEX MATCH "7" _n1 "${R4}")
+if(NOT _n1)
+  message(FATAL_ERROR "missing numeric sum")
+endif()

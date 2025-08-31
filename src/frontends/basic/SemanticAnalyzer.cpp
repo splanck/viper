@@ -101,6 +101,12 @@ void SemanticAnalyzer::visitStmt(const Stmt &s) {
     }
   } else if (dynamic_cast<const EndStmt *>(&s)) {
     // nothing
+  } else if (auto *inp = dynamic_cast<const InputStmt *>(&s)) {
+    symbols_.insert(inp->var);
+    if (!inp->var.empty() && inp->var.back() == '$')
+      varTypes_[inp->var] = Type::String;
+    else
+      varTypes_[inp->var] = Type::Int;
   }
 }
 

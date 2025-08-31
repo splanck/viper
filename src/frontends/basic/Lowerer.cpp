@@ -26,11 +26,25 @@ Module Lowerer::lower(const Program &prog) {
   varSlots.clear();
   strings.clear();
 
+  bool needInput = false;
+  bool needToInt = false;
+  for (const auto &s : prog.statements) {
+    if (auto *in = dynamic_cast<InputStmt *>(s.get())) {
+      needInput = true;
+      if (in->var.empty() || in->var.back() != '$')
+        needToInt = true;
+    }
+  }
+
   b.addExtern("rt_print_str", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
   b.addExtern("rt_print_i64", Type(Type::Kind::Void), {Type(Type::Kind::I64)});
   b.addExtern("rt_len", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
   b.addExtern("rt_substr", Type(Type::Kind::Str),
               {Type(Type::Kind::Str), Type(Type::Kind::I64), Type(Type::Kind::I64)});
+  if (needInput)
+    b.addExtern("rt_input_line", Type(Type::Kind::Str), {});
+  if (needToInt)
+    b.addExtern("rt_to_int", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
 
   Function &f = b.startFunction("main", Type(Type::Kind::I64), {});
   func = &f;
@@ -126,6 +140,8 @@ void Lowerer::collectVars(const Program &prog) {
         ex(*f->step);
       for (auto &bs : f->body)
         st(*bs);
+    } else if (auto *inp = dynamic_cast<const InputStmt *>(&s)) {
+      vars.insert(inp->var);
     }
   };
   for (auto &s : prog.statements)
@@ -150,6 +166,8 @@ void Lowerer::lowerStmt(const Stmt &stmt) {
     lowerGoto(*g);
   else if (auto *e = dynamic_cast<const EndStmt *>(&stmt))
     lowerEnd(*e);
+  else if (auto *in = dynamic_cast<const InputStmt *>(&stmt))
+    lowerInput(*in);
 }
 
 Lowerer::RVal Lowerer::lowerExpr(const Expr &expr) {
@@ -164,8 +182,10 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr) {
     auto it = varSlots.find(v->name);
     assert(it != varSlots.end());
     Value ptr = Value::temp(it->second);
-    Value val = emitLoad(Type(Type::Kind::I64), ptr);
-    return {val, Type(Type::Kind::I64)};
+    bool isStr = !v->name.empty() && v->name.back() == '$';
+    Type ty = isStr ? Type(Type::Kind::Str) : Type(Type::Kind::I64);
+    Value val = emitLoad(ty, ptr);
+    return {val, ty};
   } else if (auto *u = dynamic_cast<const UnaryExpr *>(&expr)) {
     RVal val = lowerExpr(*u->expr);
     curLoc = expr.loc;
@@ -501,6 +521,19 @@ void Lowerer::lowerGoto(const GotoStmt &stmt) {
 void Lowerer::lowerEnd(const EndStmt &stmt) {
   curLoc = stmt.loc;
   emitBr(&func->blocks[fnExit]);
+}
+
+void Lowerer::lowerInput(const InputStmt &stmt) {
+  curLoc = stmt.loc;
+  Value s = emitCallRet(Type(Type::Kind::Str), "rt_input_line", {});
+  bool isStr = !stmt.var.empty() && stmt.var.back() == '$';
+  Value target = Value::temp(varSlots[stmt.var]);
+  if (isStr) {
+    emitStore(Type(Type::Kind::Str), target, s);
+  } else {
+    Value n = emitCallRet(Type(Type::Kind::I64), "rt_to_int", {s});
+    emitStore(Type(Type::Kind::I64), target, n);
+  }
 }
 
 Value Lowerer::emitAlloca(int bytes) {
