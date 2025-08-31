@@ -1,13 +1,21 @@
 # ilc
 
 ## Overview
-ilc is an experimental compiler stack centered on a small, well-specified intermediate language (IL). The IL serves as a "thin waist" between source language front ends and eventual native code generation, keeping the core reusable across many languages and targets.
 
-The system is organized as front ends that lower programs into IL, the IL libraries and tools that parse and verify it, and a stack-based virtual machine (VM) that executes IL. Future work will add code generators that translate IL to native code.
+ilc is an experimental compiler stack centered on a small, well-specified intermediate
+language (IL). The IL acts as a “thin waist” between source language front ends and
+eventual native code generation, keeping the core reusable across many languages and
+targets.
 
-Currently the VM and a prototype BASIC front end are functional and can run small examples. Native code generation backends are planned but not yet implemented.
+The system is organized as front ends that lower programs into IL, the IL libraries and
+tools that parse and verify it, and a stack-based virtual machine (VM) that executes IL.
+Future work will add code generators that translate IL to native code.
+
+Currently the VM and a prototype BASIC front end are functional and can run small
+examples. Native code generation backends are planned but not yet implemented.
 
 ## Quickstart
+
 ```sh
 cmake -S . -B build && cmake --build build -j
 ./build/src/tools/il-verify/il-verify docs/examples/il/ex1_hello_cond.il
@@ -24,7 +32,8 @@ ctest --test-dir build -L Docs --output-on-failure
 ```
 
 ## Directory layout
-```
+
+```text
 .
 ├── src/il              # IL core libraries, parser, and verifier
 ├── src/vm              # stack-based virtual machine for IL
@@ -35,6 +44,7 @@ ctest --test-dir build -L Docs --output-on-failure
 ```
 
 ## Documentation
+
 - [Docs overview](docs/README.md)
 - [IL v0.1.1 specification](docs/il-spec.md)
 - [BASIC v0.1 Language Reference](docs/basic-language-reference.md)
@@ -43,7 +53,10 @@ ctest --test-dir build -L Docs --output-on-failure
 - [Examples](docs/examples/)
 
 ## Contributing
-See [AGENTS.md](AGENTS.md) for contribution guidelines and workflow. Architecture changes should start with an ADR as described there.
+
+See [AGENTS.md](AGENTS.md) for contribution guidelines and workflow. Architecture changes
+should start with an ADR as described there.
 
 ## License
+
 Licensed under the [MIT License](LICENSE).

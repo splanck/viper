@@ -9,7 +9,7 @@ adding new code or updating existing files.
 Every source and header file begins with a short block comment that
 explains the file's role. Use this template:
 
-```
+```cpp
 // File: <path/to/file>
 // Purpose: <one line>
 // Key invariants: <state what must hold>
@@ -41,7 +41,7 @@ Keep comments under ~100 characters per line.
 Member variables have short trailing comments focusing on meaning
 or units:
 
-```
+```cpp
 int count; ///< Number of active users.
 ```
 
@@ -58,7 +58,7 @@ Avoid repeating type information or restating obvious details.
 
 ### Class
 
-```
+```cpp
 // foo/Bar.h
 /// @brief Manages frobnications.
 /// @invariant ID is unique per instance.
@@ -76,7 +76,7 @@ private:
 
 ### Function
 
-```
+```cpp
 /// @brief Adds two integers.
 /// @param a First operand.
 /// @param b Second operand.
@@ -86,7 +86,7 @@ int add(int a, int b);
 
 ### Enum
 
-```
+```cpp
 /// @brief Token categories.
 /// @note Must align with the IL lexer.
 enum class TokenKind {
