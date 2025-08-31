@@ -24,6 +24,13 @@ add_library(il_verify STATIC il/verify/Verifier.cc)
 target_link_libraries(il_verify PUBLIC il_core)
 target_include_directories(il_verify PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
+add_library(il_transform STATIC
+  il/transform/PassManager.cpp
+  il/transform/Peephole.cpp
+  il/transform/ConstFold.cpp)
+target_link_libraries(il_transform PUBLIC il_core il_verify)
+target_include_directories(il_transform PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
 add_library(il_vm STATIC vm/VM.cpp vm/RuntimeBridge.cpp)
 target_include_directories(il_vm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(il_vm PUBLIC il_core rt support)
@@ -33,7 +40,7 @@ set_target_properties(il_codegen_x86_64 PROPERTIES LINKER_LANGUAGE CXX)
 
 add_executable(ilc tools/ilc/main.cpp)
 set_target_properties(ilc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/ilc)
-target_link_libraries(ilc PRIVATE il_core il_io il_vm il_verify fe_basic support)
+target_link_libraries(ilc PRIVATE il_core il_io il_vm il_verify il_transform fe_basic support)
 
 add_executable(il-verify tools/il-verify/il-verify.cpp)
 set_target_properties(il-verify PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/il-verify)
@@ -53,6 +60,7 @@ add_library(fe_basic STATIC
   frontends/basic/LoweringContext.cpp
   frontends/basic/Lowerer.cpp
   frontends/basic/SemanticAnalyzer.cpp
+  frontends/basic/ConstFolder.cpp
   frontends/basic/DiagnosticEmitter.cpp)
 target_link_libraries(fe_basic PUBLIC support il_build il_core)
 target_include_directories(fe_basic PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

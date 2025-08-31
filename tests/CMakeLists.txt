@@ -51,6 +51,11 @@ add_test(NAME front_basic_example COMMAND ${CMAKE_COMMAND}
   -DSRC_DIR=${CMAKE_SOURCE_DIR}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_front_basic.cmake)
 
+add_test(NAME il_opt_equiv COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DIL_FILE=${CMAKE_SOURCE_DIR}/tests/golden/il_opt/e2e.in.il
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_il_opt_equiv.cmake)
+
 set(IL_VERIFY ${CMAKE_BINARY_DIR}/src/tools/il-verify/il-verify)
 add_test(NAME il_verify_invalid_bad_types
   COMMAND ${CMAKE_COMMAND}
