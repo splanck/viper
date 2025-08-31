@@ -75,3 +75,17 @@ string(REGEX MATCH "7" _n1 "${R4}")
 if(NOT _n1)
   message(FATAL_ERROR "missing numeric sum")
 endif()
+
+# test array DIM and element access
+set(tmp_arr_in "${CMAKE_BINARY_DIR}/array_n.txt")
+file(WRITE ${tmp_arr_in} "5\n")
+execute_process(COMMAND ${ILC} front basic -run ${SRC_DIR}/docs/examples/basic/ex6_array_sum.bas --stdin-from ${tmp_arr_in}
+                OUTPUT_FILE run5.txt RESULT_VARIABLE r6)
+if(NOT r6 EQUAL 0)
+  message(FATAL_ERROR "execution ex6 failed")
+endif()
+file(READ run5.txt R5)
+string(REGEX MATCH "30" _n2 "${R5}")
+if(NOT _n2)
+  message(FATAL_ERROR "missing array sum")
+endif()

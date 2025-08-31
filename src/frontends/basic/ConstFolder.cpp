@@ -141,6 +141,8 @@ static void foldExpr(ExprPtr &e) {
     foldBinary(e, b);
   } else if (auto *c = dynamic_cast<CallExpr *>(e.get())) {
     foldCall(e, c);
+  } else if (auto *a = dynamic_cast<ArrayExpr *>(e.get())) {
+    foldExpr(a->index);
   }
 }
 
@@ -150,6 +152,7 @@ static void foldStmt(StmtPtr &s) {
   if (auto *p = dynamic_cast<PrintStmt *>(s.get())) {
     foldExpr(p->expr);
   } else if (auto *l = dynamic_cast<LetStmt *>(s.get())) {
+    foldExpr(l->target);
     foldExpr(l->expr);
   } else if (auto *i = dynamic_cast<IfStmt *>(s.get())) {
     foldExpr(i->cond);
@@ -166,6 +169,8 @@ static void foldStmt(StmtPtr &s) {
       foldExpr(f->step);
     for (auto &b : f->body)
       foldStmt(b);
+  } else if (auto *d = dynamic_cast<DimStmt *>(s.get())) {
+    foldExpr(d->size);
   }
 }
 
