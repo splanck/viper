@@ -33,6 +33,7 @@ private:
   StmtPtr parseNext();
   StmtPtr parseGoto();
   StmtPtr parseEnd();
+  StmtPtr parseInput();
 
   ExprPtr parseExpression(int min_prec = 0);
   ExprPtr parsePrimary();

@@ -65,6 +65,8 @@ StmtPtr Parser::parseStatement(int line) {
     return parseGoto();
   if (check(TokenKind::KeywordEnd))
     return parseEnd();
+  if (check(TokenKind::KeywordInput))
+    return parseInput();
   auto stmt = std::make_unique<EndStmt>();
   stmt->loc = current_.loc;
   return stmt;
@@ -236,6 +238,17 @@ StmtPtr Parser::parseEnd() {
   advance(); // END
   auto stmt = std::make_unique<EndStmt>();
   stmt->loc = loc;
+  return stmt;
+}
+
+StmtPtr Parser::parseInput() {
+  il::support::SourceLoc loc = current_.loc;
+  advance(); // INPUT
+  std::string name = current_.lexeme;
+  consume(TokenKind::Identifier);
+  auto stmt = std::make_unique<InputStmt>();
+  stmt->loc = loc;
+  stmt->var = name;
   return stmt;
 }
 
