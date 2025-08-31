@@ -23,6 +23,11 @@ static bool isConstInt(const Value &v, long long &out) {
   return false;
 }
 
+static bool isConstEq(const Value &v, long long target) {
+  long long c;
+  return isConstInt(v, c) && c == target;
+}
+
 static bool sameValue(const Value &a, const Value &b) {
   if (a.kind != b.kind)
     return false;
@@ -167,58 +172,69 @@ void peephole(Module &m) {
         }
         // arithmetic identities
         if (in.result && in.operands.size() == 2) {
-          Value repl;
+          Value repl{};
           bool match = false;
-          long long c;
           switch (in.op) {
           case Opcode::Add:
-            if (isConstInt(in.operands[1], c) && c == 0) {
+            if (isConstEq(in.operands[1], 0)) {
               repl = in.operands[0];
               match = true;
-            } else if (isConstInt(in.operands[0], c) && c == 0) {
+            } else if (isConstEq(in.operands[0], 0)) {
               repl = in.operands[1];
               match = true;
             }
             break;
           case Opcode::Sub:
-            if (isConstInt(in.operands[1], c) && c == 0) {
+            if (isConstEq(in.operands[1], 0)) {
               repl = in.operands[0];
               match = true;
             }
             break;
           case Opcode::Mul:
-            if (isConstInt(in.operands[1], c) && c == 1) {
+            if (isConstEq(in.operands[1], 1)) {
               repl = in.operands[0];
               match = true;
-            } else if (isConstInt(in.operands[0], c) && c == 1) {
+            } else if (isConstEq(in.operands[0], 1)) {
               repl = in.operands[1];
+              match = true;
+            } else if (isConstEq(in.operands[0], 0) || isConstEq(in.operands[1], 0)) {
+              repl = Value::constInt(0);
               match = true;
             }
             break;
           case Opcode::And:
-            if (isConstInt(in.operands[1], c) && c == -1) {
+            if (isConstEq(in.operands[1], -1)) {
               repl = in.operands[0];
               match = true;
-            } else if (isConstInt(in.operands[0], c) && c == -1) {
+            } else if (isConstEq(in.operands[0], -1)) {
               repl = in.operands[1];
+              match = true;
+            } else if (isConstEq(in.operands[0], 0) || isConstEq(in.operands[1], 0)) {
+              repl = Value::constInt(0);
               match = true;
             }
             break;
           case Opcode::Or:
-            if (isConstInt(in.operands[1], c) && c == 0) {
+            if (isConstEq(in.operands[1], 0)) {
               repl = in.operands[0];
               match = true;
-            } else if (isConstInt(in.operands[0], c) && c == 0) {
+            } else if (isConstEq(in.operands[0], 0)) {
               repl = in.operands[1];
+              match = true;
+            } else if (isConstEq(in.operands[0], -1) || isConstEq(in.operands[1], -1)) {
+              repl = Value::constInt(-1);
               match = true;
             }
             break;
           case Opcode::Xor:
-            if (isConstInt(in.operands[1], c) && c == 0) {
+            if (isConstEq(in.operands[1], 0)) {
               repl = in.operands[0];
               match = true;
-            } else if (isConstInt(in.operands[0], c) && c == 0) {
+            } else if (isConstEq(in.operands[0], 0)) {
               repl = in.operands[1];
+              match = true;
+            } else if (sameValue(in.operands[0], in.operands[1])) {
+              repl = Value::constInt(0);
               match = true;
             }
             break;
