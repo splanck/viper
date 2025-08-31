@@ -7,10 +7,8 @@ func @main() -> i64 {
 entry:
   br label L0
 L0:
-  .loc 1 1 8
-  %t0 = add 1, 2
   .loc 1 1 1
-  call @rt_print_i64(%t0)
+  call @rt_print_i64(3)
   .loc 1 1 1
   br label exit
 exit:
