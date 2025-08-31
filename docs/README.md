@@ -25,3 +25,14 @@ ctest --test-dir build --output-on-failure
 ```
 
 Return to the [project README](../README.md).
+
+## Canonical IL
+
+Tools that produce IL for golden tests emit a canonical form:
+
+- one instruction per line with `op arg1, arg2` spacing;
+- extern declarations sorted lexicographically;
+- globals and functions printed in the order they appear in the module;
+- constants rendered deterministically with minimal formatting.
+
+This mode ensures test diffs are stable and comparable across builds.
