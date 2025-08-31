@@ -38,6 +38,8 @@ void SemanticAnalyzer::analyze(const Program &prog) {
   labelRefs_.clear();
   forStack_.clear();
   varTypes_.clear();
+  arrays_.clear();
+  arraySizes_.clear();
   for (const auto &stmt : prog.statements)
     if (stmt)
       labels_.insert(stmt->line);
@@ -51,9 +53,50 @@ void SemanticAnalyzer::visitStmt(const Stmt &s) {
     if (p->expr)
       visitExpr(*p->expr);
   } else if (auto *l = dynamic_cast<const LetStmt *>(&s)) {
-    symbols_.insert(l->name);
-    if (l->expr)
-      varTypes_[l->name] = visitExpr(*l->expr);
+    if (l->index) {
+      if (!arrays_.count(l->name)) {
+        std::string msg = "unknown array '" + l->name + "'";
+        de.emit(il::support::Severity::Error, "B1004", l->loc,
+                static_cast<uint32_t>(l->name.size()), std::move(msg));
+      }
+      if (l->index) {
+        Type t = visitExpr(*l->index);
+        if (t != Type::Unknown && t != Type::Int) {
+          std::string msg = "index type mismatch";
+          de.emit(il::support::Severity::Error, "B2001", l->loc, 1, std::move(msg));
+        }
+        if (auto *ie = dynamic_cast<const IntExpr *>(l->index.get())) {
+          auto it = arraySizes_.find(l->name);
+          if (it != arraySizes_.end() && (ie->value < 0 || ie->value >= it->second)) {
+            std::string msg = "index out of bounds";
+            de.emit(il::support::Severity::Warning, "B3002", l->loc, 1, std::move(msg));
+          }
+        }
+      }
+      if (l->expr)
+        visitExpr(*l->expr);
+    } else {
+      symbols_.insert(l->name);
+      if (l->expr)
+        varTypes_[l->name] = visitExpr(*l->expr);
+    }
+  } else if (auto *d = dynamic_cast<const DimStmt *>(&s)) {
+    arrays_.insert(d->name);
+    if (d->size) {
+      Type t = visitExpr(*d->size);
+      if (t != Type::Unknown && t != Type::Int) {
+        std::string msg = "array size type mismatch";
+        de.emit(il::support::Severity::Error, "B2001", d->loc, 1, std::move(msg));
+      }
+      if (auto *ie = dynamic_cast<const IntExpr *>(d->size.get())) {
+        if (ie->value <= 0) {
+          std::string msg = "array size must be positive";
+          de.emit(il::support::Severity::Error, "B3001", d->loc, 1, std::move(msg));
+        } else {
+          arraySizes_[d->name] = ie->value;
+        }
+      }
+    }
   } else if (auto *i = dynamic_cast<const IfStmt *>(&s)) {
     if (i->cond)
       visitExpr(*i->cond);
@@ -203,6 +246,27 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e) {
       return Type::Int;
     else if (c->builtin == CallExpr::Builtin::Mid)
       return Type::String;
+  } else if (auto *idx = dynamic_cast<const IndexExpr *>(&e)) {
+    if (!arrays_.count(idx->name)) {
+      std::string msg = "unknown array '" + idx->name + "'";
+      de.emit(il::support::Severity::Error, "B1004", idx->loc,
+              static_cast<uint32_t>(idx->name.size()), std::move(msg));
+    }
+    Type t = Type::Unknown;
+    if (idx->index)
+      t = visitExpr(*idx->index);
+    if (t != Type::Unknown && t != Type::Int) {
+      std::string msg = "index type mismatch";
+      de.emit(il::support::Severity::Error, "B2001", idx->loc, 1, std::move(msg));
+    }
+    if (auto *ie = dynamic_cast<const IntExpr *>(idx->index.get())) {
+      auto it = arraySizes_.find(idx->name);
+      if (it != arraySizes_.end() && (ie->value < 0 || ie->value >= it->second)) {
+        std::string msg = "index out of bounds";
+        de.emit(il::support::Severity::Warning, "B3002", idx->loc, 1, std::move(msg));
+      }
+    }
+    return Type::Int;
   }
   // Unknown expression type.
   return Type::Unknown;

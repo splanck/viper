@@ -91,6 +91,8 @@ int64_t VM::execFunction(const Function &fn) {
         res.i64 = *reinterpret_cast<int64_t *>(ptr);
       else if (in.type.kind == Type::Kind::Str)
         res.str = *reinterpret_cast<rt_str *>(ptr);
+      else if (in.type.kind == Type::Kind::Ptr)
+        res.ptr = *reinterpret_cast<void **>(ptr);
       if (in.result) {
         if (fr.regs.size() <= *in.result)
           fr.regs.resize(*in.result + 1);
@@ -106,6 +108,20 @@ int64_t VM::execFunction(const Function &fn) {
         *reinterpret_cast<int64_t *>(ptr) = val.i64;
       else if (in.type.kind == Type::Kind::Str)
         *reinterpret_cast<rt_str *>(ptr) = val.str;
+      else if (in.type.kind == Type::Kind::Ptr)
+        *reinterpret_cast<void **>(ptr) = val.ptr;
+      break;
+    }
+    case Opcode::GEP: {
+      Slot base = eval(fr, in.operands[0]);
+      Slot off = eval(fr, in.operands[1]);
+      Slot res{};
+      res.ptr = static_cast<char *>(base.ptr) + off.i64;
+      if (in.result) {
+        if (fr.regs.size() <= *in.result)
+          fr.regs.resize(*in.result + 1);
+        fr.regs[*in.result] = res;
+      }
       break;
     }
     case Opcode::Add: {
@@ -125,6 +141,30 @@ int64_t VM::execFunction(const Function &fn) {
       Slot b = eval(fr, in.operands[1]);
       Slot res{};
       res.i64 = a.i64 * b.i64;
+      if (in.result) {
+        if (fr.regs.size() <= *in.result)
+          fr.regs.resize(*in.result + 1);
+        fr.regs[*in.result] = res;
+      }
+      break;
+    }
+    case Opcode::Shl: {
+      Slot a = eval(fr, in.operands[0]);
+      Slot b = eval(fr, in.operands[1]);
+      Slot res{};
+      res.i64 = a.i64 << b.i64;
+      if (in.result) {
+        if (fr.regs.size() <= *in.result)
+          fr.regs.resize(*in.result + 1);
+        fr.regs[*in.result] = res;
+      }
+      break;
+    }
+    case Opcode::SCmpLT: {
+      Slot a = eval(fr, in.operands[0]);
+      Slot b = eval(fr, in.operands[1]);
+      Slot res{};
+      res.i64 = (a.i64 < b.i64) ? 1 : 0;
       if (in.result) {
         if (fr.regs.size() <= *in.result)
           fr.regs.resize(*in.result + 1);
