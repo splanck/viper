@@ -47,3 +47,15 @@ add_test(NAME vm_trap_loc COMMAND ${CMAKE_COMMAND}
   -DIL_FILE=${CMAKE_CURRENT_SOURCE_DIR}/vm_trap_loc.il
   "-DEXPECT=${EXPECT_VM_TRAP_LOC}"
   -P ${CMAKE_CURRENT_SOURCE_DIR}/check_vm_trap_loc.cmake)
+
+# IL optimizer golden tests
+add_test(NAME il_opt_const_if COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DIL_FILE=${CMAKE_CURRENT_SOURCE_DIR}/il_opt/const_if.in.il
+  -DGOLDEN=${CMAKE_CURRENT_SOURCE_DIR}/il_opt/const_if.opt.il
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/il_opt/check_opt.cmake)
+add_test(NAME il_opt_arith_id COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DIL_FILE=${CMAKE_CURRENT_SOURCE_DIR}/il_opt/arith_id.in.il
+  -DGOLDEN=${CMAKE_CURRENT_SOURCE_DIR}/il_opt/arith_id.opt.il
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/il_opt/check_opt.cmake)
