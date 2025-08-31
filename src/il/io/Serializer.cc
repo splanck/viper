@@ -37,6 +37,8 @@ void Serializer::write(const Module &m, std::ostream &os) {
     for (const auto &bb : f.blocks) {
       os << bb.label << ":\n";
       for (const auto &in : bb.instructions) {
+        if (in.loc.isValid())
+          os << "  .loc " << in.loc.file_id << ' ' << in.loc.line << ' ' << in.loc.column << "\n";
         os << "  ";
         if (in.result)
           os << "%t" << *in.result << " = ";
