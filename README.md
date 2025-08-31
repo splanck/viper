@@ -1,62 +1,48 @@
-# ilc
+# ilc — IL Compiler & BASIC Frontend (VM-first)
 
-## Overview
-
-ilc is an experimental compiler stack centered on a small, well-specified intermediate
-language (IL). The IL acts as a “thin waist” between source language front ends and
-eventual native code generation, keeping the core reusable across many languages and
-targets.
-
-The system is organized as front ends that lower programs into IL, the IL libraries and
-tools that parse and verify it, and a stack-based virtual machine (VM) that executes IL.
-Future work will add code generators that translate IL to native code.
-
-Currently the VM and a prototype BASIC front end are functional and can run small
-examples. Native code generation backends are planned but not yet implemented.
+ilc is a small compiler stack built around a well-specified intermediate language (IL).
+Front ends lower source programs to IL, IL libraries parse and verify it, and a
+stack-based virtual machine executes it. Native code generation backends are
+planned for a later phase.
 
 ## Quickstart
 
 ```sh
-cmake -S . -B build && cmake --build build -j
+# Configure and build with Clang
+cmake -S . -B build -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+cmake --build build -j
+
+# Verify an IL example
 ./build/src/tools/il-verify/il-verify docs/examples/il/ex1_hello_cond.il
+
+# Run an IL program via the BASIC frontend
 ./build/src/tools/ilc/ilc -run docs/examples/il/ex2_sum_1_to_10.il
 ```
 
-## Documentation checks
-
-To verify file headers and public API comments locally, run:
-
-```sh
-cmake -S . -B build
-ctest --test-dir build -L Docs --output-on-failure
-```
-
-## Directory layout
+## Directory Layout
 
 ```text
 .
-├── src/il              # IL core libraries, parser, and verifier
-├── src/vm              # stack-based virtual machine for IL
-├── src/frontends/basic # tiny BASIC front end lowering to IL
+├── src/il              # IL core libraries, parser, verifier
+├── src/vm              # Stack-based virtual machine for IL
+├── src/frontends/basic # Experimental BASIC frontend
 ├── runtime             # C runtime support for the VM
-├── docs                # specifications, design notes, and examples
-└── tests               # unit, golden, and end-to-end tests
+├── docs                # Specifications, design notes, and examples
+└── tests               # Unit, golden, and end-to-end tests
 ```
 
 ## Documentation
 
-- [Docs overview](docs/README.md)
-- [IL v0.1.1 specification](docs/il-spec.md)
-- [BASIC v0.1 Language Reference](docs/basic-language-reference.md)
-- [Class catalog](docs/class-catalog.md)
-- [Project roadmap](docs/roadmap.md)
-- [Examples](docs/examples/)
+- [Docs index](docs/README.md)
+- [BASIC Language Reference](docs/basic-language-reference.md)
+- [IL Specification](docs/il-spec.md)
 
 ## Contributing
 
-See [AGENTS.md](AGENTS.md) for contribution guidelines and workflow. Architecture changes
-should start with an ADR as described there.
+See [AGENTS.md](AGENTS.md) for contribution workflow and
+[Style Guide](docs/style-guide.md) for code and documentation conventions.
 
 ## License
 
 Licensed under the [MIT License](LICENSE).
+
