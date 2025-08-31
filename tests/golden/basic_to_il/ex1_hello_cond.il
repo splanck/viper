@@ -11,49 +11,47 @@ entry:
   %t1 = alloca 8
   br label L10
 L10:
-  .loc 1 1 14
-  %t2 = add 2, 3
   .loc 1 1 4
-  store i64, %t1, %t2
+  store i64, %t1, 5
   .loc 1 1 4
   br label L20
 L20:
   .loc 1 2 12
-  %t3 = load i64, %t1
+  %t2 = load i64, %t1
   .loc 1 2 14
-  %t4 = mul %t3, 2
+  %t3 = mul %t2, 2
   .loc 1 2 4
-  store i64, %t0, %t4
+  store i64, %t0, %t3
   .loc 1 2 4
   br label L30
 L30:
   .loc 1 3 10
-  %t5 = const_str @.L0
+  %t4 = const_str @.L0
   .loc 1 3 4
-  call @rt_print_str(%t5)
+  call @rt_print_str(%t4)
   .loc 1 3 4
   br label L40
 L40:
   .loc 1 4 10
-  %t6 = const_str @.L1
+  %t5 = const_str @.L1
   .loc 1 4 4
-  call @rt_print_str(%t6)
+  call @rt_print_str(%t5)
   .loc 1 4 4
   br label L50
 L50:
   .loc 1 5 10
-  %t7 = load i64, %t0
+  %t6 = load i64, %t0
   .loc 1 5 4
-  call @rt_print_i64(%t7)
+  call @rt_print_i64(%t6)
   .loc 1 5 4
   br label L60
 L60:
   .loc 1 6 7
-  %t8 = load i64, %t0
+  %t7 = load i64, %t0
   .loc 1 6 9
-  %t9 = scmp_gt %t8, 8
+  %t8 = scmp_gt %t7, 8
   .loc 1 6 4
-  cbr %t9, label then, label else
+  cbr %t8, label then, label else
 L70:
   .loc 1 7 4
   br label exit
@@ -61,9 +59,9 @@ exit:
   ret 0
 then:
   .loc 1 6 24
-  %t10 = load i64, %t0
+  %t9 = load i64, %t0
   .loc 1 6 18
-  call @rt_print_i64(%t10)
+  call @rt_print_i64(%t9)
   .loc 1 6 4
   br label exit1
 exit1:
