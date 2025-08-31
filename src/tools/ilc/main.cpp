@@ -16,9 +16,9 @@
 #include "il/verify/Verifier.h"
 #include "support/source_manager.h"
 #include "vm/VM.h"
+#include <cstdio>
 #include <fstream>
 #include <iostream>
-#include <cstdio>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -130,7 +130,7 @@ int main(int argc, char **argv) {
       std::cerr << "unable to open " << outFile << "\n";
       return 1;
     }
-    io::Serializer::write(m, ofs);
+    io::Serializer::write(m, ofs, io::Serializer::Mode::Canonical);
     return 0;
   }
 
