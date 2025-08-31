@@ -28,12 +28,15 @@ Module Lowerer::lower(const Program &prog) {
 
   bool needInput = false;
   bool needToInt = false;
+  bool needAlloc = false;
   for (const auto &s : prog.statements) {
     if (auto *in = dynamic_cast<InputStmt *>(s.get())) {
       needInput = true;
       if (in->var.empty() || in->var.back() != '$')
         needToInt = true;
     }
+    if (dynamic_cast<DimStmt *>(s.get()))
+      needAlloc = true;
   }
 
   b.addExtern("rt_print_str", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
@@ -45,6 +48,8 @@ Module Lowerer::lower(const Program &prog) {
     b.addExtern("rt_input_line", Type(Type::Kind::Str), {});
   if (needToInt)
     b.addExtern("rt_to_int", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
+  if (needAlloc)
+    b.addExtern("rt_alloc", Type(Type::Kind::Ptr), {Type(Type::Kind::I64)});
 
   Function &f = b.startFunction("main", Type(Type::Kind::I64), {});
   func = &f;
@@ -114,13 +119,16 @@ void Lowerer::collectVars(const Program &prog) {
     } else if (auto *c = dynamic_cast<const CallExpr *>(&e)) {
       for (auto &a : c->args)
         ex(*a);
+    } else if (auto *a = dynamic_cast<const ArrayExpr *>(&e)) {
+      vars.insert(a->name);
+      ex(*a->index);
     }
   };
   std::function<void(const Stmt &)> st = [&](const Stmt &s) {
     if (auto *p = dynamic_cast<const PrintStmt *>(&s)) {
       ex(*p->expr);
     } else if (auto *l = dynamic_cast<const LetStmt *>(&s)) {
-      vars.insert(l->name);
+      ex(*l->target);
       ex(*l->expr);
     } else if (auto *i = dynamic_cast<const IfStmt *>(&s)) {
       ex(*i->cond);
@@ -142,6 +150,9 @@ void Lowerer::collectVars(const Program &prog) {
         st(*bs);
     } else if (auto *inp = dynamic_cast<const InputStmt *>(&s)) {
       vars.insert(inp->var);
+    } else if (auto *d = dynamic_cast<const DimStmt *>(&s)) {
+      vars.insert(d->name);
+      ex(*d->size);
     }
   };
   for (auto &s : prog.statements)
@@ -168,6 +179,8 @@ void Lowerer::lowerStmt(const Stmt &stmt) {
     lowerEnd(*e);
   else if (auto *in = dynamic_cast<const InputStmt *>(&stmt))
     lowerInput(*in);
+  else if (auto *d = dynamic_cast<const DimStmt *>(&stmt))
+    lowerDim(*d);
 }
 
 Lowerer::RVal Lowerer::lowerExpr(const Expr &expr) {
@@ -299,6 +312,11 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr) {
       Value res = emitCallRet(Type(Type::Kind::Str), "rt_substr", {s.value, i.value, l.value});
       return {res, Type(Type::Kind::Str)};
     }
+  } else if (auto *a = dynamic_cast<const ArrayExpr *>(&expr)) {
+    Value ptr = lowerArrayAddr(*a);
+    curLoc = expr.loc;
+    Value val = emitLoad(Type(Type::Kind::I64), ptr);
+    return {val, Type(Type::Kind::I64)};
   }
   curLoc = expr.loc;
   return {Value::constInt(0), Type(Type::Kind::I64)};
@@ -306,10 +324,16 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr) {
 
 void Lowerer::lowerLet(const LetStmt &stmt) {
   RVal v = lowerExpr(*stmt.expr);
-  auto it = varSlots.find(stmt.name);
-  assert(it != varSlots.end());
-  curLoc = stmt.loc;
-  emitStore(v.type, Value::temp(it->second), v.value);
+  if (auto *var = dynamic_cast<const VarExpr *>(stmt.target.get())) {
+    auto it = varSlots.find(var->name);
+    assert(it != varSlots.end());
+    curLoc = stmt.loc;
+    emitStore(v.type, Value::temp(it->second), v.value);
+  } else if (auto *arr = dynamic_cast<const ArrayExpr *>(stmt.target.get())) {
+    Value ptr = lowerArrayAddr(*arr);
+    curLoc = stmt.loc;
+    emitStore(Type(Type::Kind::I64), ptr, v.value);
+  }
 }
 
 void Lowerer::lowerPrint(const PrintStmt &stmt) {
@@ -534,6 +558,28 @@ void Lowerer::lowerInput(const InputStmt &stmt) {
     Value n = emitCallRet(Type(Type::Kind::I64), "rt_to_int", {s});
     emitStore(Type(Type::Kind::I64), target, n);
   }
+}
+
+void Lowerer::lowerDim(const DimStmt &stmt) {
+  RVal sz = lowerExpr(*stmt.size);
+  curLoc = stmt.loc;
+  Value bytes = emitBinary(Opcode::Mul, Type(Type::Kind::I64), sz.value, Value::constInt(8));
+  Value base = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {bytes});
+  auto it = varSlots.find(stmt.name);
+  assert(it != varSlots.end());
+  emitStore(Type(Type::Kind::Ptr), Value::temp(it->second), base);
+}
+
+Value Lowerer::lowerArrayAddr(const ArrayExpr &expr) {
+  auto it = varSlots.find(expr.name);
+  assert(it != varSlots.end());
+  Value slot = Value::temp(it->second);
+  Value base = emitLoad(Type(Type::Kind::Ptr), slot);
+  RVal idx = lowerExpr(*expr.index);
+  curLoc = expr.loc;
+  Value off = emitBinary(Opcode::Shl, Type(Type::Kind::I64), idx.value, Value::constInt(3));
+  Value ptr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), base, off);
+  return ptr;
 }
 
 Value Lowerer::emitAlloca(int bytes) {

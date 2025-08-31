@@ -67,6 +67,8 @@ StmtPtr Parser::parseStatement(int line) {
     return parseEnd();
   if (check(TokenKind::KeywordInput))
     return parseInput();
+  if (check(TokenKind::KeywordDim))
+    return parseDim();
   auto stmt = std::make_unique<EndStmt>();
   stmt->loc = current_.loc;
   return stmt;
@@ -85,13 +87,12 @@ StmtPtr Parser::parsePrint() {
 StmtPtr Parser::parseLet() {
   il::support::SourceLoc loc = current_.loc;
   advance(); // LET
-  std::string name = current_.lexeme;
-  consume(TokenKind::Identifier);
+  auto target = parsePrimary();
   consume(TokenKind::Equal);
   auto e = parseExpression();
   auto stmt = std::make_unique<LetStmt>();
   stmt->loc = loc;
-  stmt->name = name;
+  stmt->target = std::move(target);
   stmt->expr = std::move(e);
   return stmt;
 }
@@ -252,6 +253,21 @@ StmtPtr Parser::parseInput() {
   return stmt;
 }
 
+StmtPtr Parser::parseDim() {
+  il::support::SourceLoc loc = current_.loc;
+  advance(); // DIM
+  std::string name = current_.lexeme;
+  consume(TokenKind::Identifier);
+  consume(TokenKind::LParen);
+  auto sz = parseExpression();
+  consume(TokenKind::RParen);
+  auto stmt = std::make_unique<DimStmt>();
+  stmt->loc = loc;
+  stmt->name = name;
+  stmt->size = std::move(sz);
+  return stmt;
+}
+
 int Parser::precedence(TokenKind k) {
   switch (k) {
   case TokenKind::Star:
@@ -368,24 +384,34 @@ ExprPtr Parser::parsePrimary() {
     il::support::SourceLoc loc = current_.loc;
     advance();
     if (consume(TokenKind::LParen)) {
-      std::vector<ExprPtr> args;
-      if (!check(TokenKind::RParen)) {
-        while (true) {
-          args.push_back(parseExpression());
-          if (consume(TokenKind::Comma))
-            continue;
-          break;
+      if (name == "LEN" || name == "MID$") {
+        std::vector<ExprPtr> args;
+        if (!check(TokenKind::RParen)) {
+          while (true) {
+            args.push_back(parseExpression());
+            if (consume(TokenKind::Comma))
+              continue;
+            break;
+          }
         }
+        consume(TokenKind::RParen);
+        auto call = std::make_unique<CallExpr>();
+        call->loc = loc;
+        if (name == "LEN")
+          call->builtin = CallExpr::Builtin::Len;
+        else
+          call->builtin = CallExpr::Builtin::Mid;
+        call->args = std::move(args);
+        return call;
+      } else {
+        auto idx = parseExpression();
+        consume(TokenKind::RParen);
+        auto arr = std::make_unique<ArrayExpr>();
+        arr->loc = loc;
+        arr->name = name;
+        arr->index = std::move(idx);
+        return arr;
       }
-      consume(TokenKind::RParen);
-      auto call = std::make_unique<CallExpr>();
-      call->loc = loc;
-      if (name == "LEN")
-        call->builtin = CallExpr::Builtin::Len;
-      else
-        call->builtin = CallExpr::Builtin::Mid;
-      call->args = std::move(args);
-      return call;
     }
     auto v = std::make_unique<VarExpr>();
     v->loc = loc;

@@ -20,7 +20,9 @@ std::string AstPrinter::dump(const Stmt &stmt) {
   if (auto *p = dynamic_cast<const PrintStmt *>(&stmt)) {
     return "(PRINT " + dump(*p->expr) + ")";
   } else if (auto *l = dynamic_cast<const LetStmt *>(&stmt)) {
-    return "(LET " + l->name + " " + dump(*l->expr) + ")";
+    return "(LET " + dump(*l->target) + " " + dump(*l->expr) + ")";
+  } else if (auto *d = dynamic_cast<const DimStmt *>(&stmt)) {
+    return "(DIM " + d->name + " " + dump(*d->size) + ")";
   } else if (auto *i = dynamic_cast<const IfStmt *>(&stmt)) {
     std::string res = "(IF " + dump(*i->cond) + " THEN " + dump(*i->then_branch);
     if (i->else_branch)
@@ -119,6 +121,8 @@ std::string AstPrinter::dump(const Expr &expr) {
       res += " " + dump(*a);
     res += ")";
     return res;
+  } else if (auto *a = dynamic_cast<const ArrayExpr *>(&expr)) {
+    return a->name + "(" + dump(*a->index) + ")";
   }
   return "?";
 }
