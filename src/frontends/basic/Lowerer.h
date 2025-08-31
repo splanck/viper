@@ -40,6 +40,7 @@ private:
   RVal lowerExpr(const Expr &expr);
 
   void lowerLet(const LetStmt &stmt);
+  void lowerInput(const InputStmt &stmt);
   void lowerPrint(const PrintStmt &stmt);
   void lowerIf(const IfStmt &stmt);
   void lowerWhile(const WhileStmt &stmt);
@@ -72,6 +73,7 @@ private:
   std::unordered_map<std::string, unsigned> varSlots;
   std::unordered_map<std::string, std::string> strings;
   std::unordered_set<std::string> vars;
+  bool usesInput{false};
   il::support::SourceLoc curLoc{}; ///< current source location for emitted IR
 };
 

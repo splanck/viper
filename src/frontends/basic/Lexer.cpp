@@ -79,6 +79,8 @@ Token Lexer::lexIdentifierOrKeyword() {
     return {TokenKind::KeywordGoto, s, loc};
   if (s == "END")
     return {TokenKind::KeywordEnd, s, loc};
+  if (s == "INPUT")
+    return {TokenKind::KeywordInput, s, loc};
   if (s == "AND")
     return {TokenKind::KeywordAnd, s, loc};
   if (s == "OR")

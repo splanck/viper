@@ -47,3 +47,31 @@ string(REGEX MATCH "45" _s3 "${R2}")
 if(NOT _s3)
   message(FATAL_ERROR "missing 45")
 endif()
+
+execute_process(
+  COMMAND ${ILC} front basic -run ${SRC_DIR}/docs/examples/basic/ex5_input_echo.bas --stdin-from ${SRC_DIR}/tests/data/input1.txt
+  OUTPUT_FILE echo.txt RESULT_VARIABLE r4)
+if(NOT r4 EQUAL 0)
+  message(FATAL_ERROR "execution ex5 failed")
+endif()
+file(READ echo.txt R3)
+file(READ ${SRC_DIR}/tests/data/input1.txt IN1)
+string(STRIP "${R3}" R3S)
+string(STRIP "${IN1}" IN1S)
+if(NOT R3S STREQUAL IN1S)
+  message(FATAL_ERROR "echo mismatch")
+endif()
+
+file(WRITE add.bas "10 INPUT A\n20 INPUT B\n30 PRINT A+B\n")
+file(WRITE add_input.txt "10\n32\n")
+execute_process(
+  COMMAND ${ILC} front basic -run add.bas --stdin-from add_input.txt
+  OUTPUT_FILE add.txt RESULT_VARIABLE r5)
+if(NOT r5 EQUAL 0)
+  message(FATAL_ERROR "integer input execution failed")
+endif()
+file(READ add.txt AOUT)
+string(REGEX MATCH "42" _a1 "${AOUT}")
+if(NOT _a1)
+  message(FATAL_ERROR "missing 42 from addition")
+endif()

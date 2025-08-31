@@ -26,6 +26,7 @@ private:
 
   StmtPtr parseStatement(int line);
   StmtPtr parsePrint();
+  StmtPtr parseInput();
   StmtPtr parseLet();
   StmtPtr parseIf(int line);
   StmtPtr parseWhile();

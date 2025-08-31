@@ -69,6 +69,10 @@ using StmtPtr = std::unique_ptr<Stmt>;
 struct PrintStmt : Stmt {
   ExprPtr expr;
 };
+/// @brief INPUT statement reading into a variable.
+struct InputStmt : Stmt {
+  std::string name; ///< Target variable name.
+};
 struct LetStmt : Stmt {
   std::string name;
   ExprPtr expr;

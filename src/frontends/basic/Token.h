@@ -29,6 +29,7 @@ enum class TokenKind {
   KeywordNext,
   KeywordGoto,
   KeywordEnd,
+  KeywordInput,
   KeywordAnd,
   KeywordOr,
   KeywordNot,

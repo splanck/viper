@@ -47,6 +47,8 @@ const char *tokenKindToString(TokenKind k) {
     return "GOTO";
   case TokenKind::KeywordEnd:
     return "END";
+  case TokenKind::KeywordInput:
+    return "INPUT";
   case TokenKind::KeywordAnd:
     return "AND";
   case TokenKind::KeywordOr:

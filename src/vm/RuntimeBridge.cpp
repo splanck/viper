@@ -40,6 +40,8 @@ Slot RuntimeBridge::call(const std::string &name, const std::vector<Slot> &args,
     res.str = rt_substr(args[0].str, args[1].i64, args[2].i64);
   } else if (name == "rt_str_eq") {
     res.i64 = rt_str_eq(args[0].str, args[1].str);
+  } else if (name == "rt_input_line") {
+    res.str = rt_input_line();
   } else if (name == "rt_to_int") {
     res.i64 = rt_to_int(args[0].str);
   } else {
