@@ -51,6 +51,8 @@ std::unique_ptr<Program> Parser::parseProgram() {
 StmtPtr Parser::parseStatement(int line) {
   if (check(TokenKind::KeywordPrint))
     return parsePrint();
+  if (check(TokenKind::KeywordInput))
+    return parseInput();
   if (check(TokenKind::KeywordLet))
     return parseLet();
   if (check(TokenKind::KeywordIf))
@@ -77,6 +79,17 @@ StmtPtr Parser::parsePrint() {
   auto stmt = std::make_unique<PrintStmt>();
   stmt->loc = loc;
   stmt->expr = std::move(e);
+  return stmt;
+}
+
+StmtPtr Parser::parseInput() {
+  il::support::SourceLoc loc = current_.loc;
+  advance(); // INPUT
+  std::string name = current_.lexeme;
+  consume(TokenKind::Identifier);
+  auto stmt = std::make_unique<InputStmt>();
+  stmt->loc = loc;
+  stmt->name = name;
   return stmt;
 }
 

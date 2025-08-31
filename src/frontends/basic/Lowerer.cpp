@@ -26,11 +26,19 @@ Module Lowerer::lower(const Program &prog) {
   varSlots.clear();
   strings.clear();
 
+  vars.clear();
+  usesInput = false;
+  collectVars(prog);
+
   b.addExtern("rt_print_str", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
   b.addExtern("rt_print_i64", Type(Type::Kind::Void), {Type(Type::Kind::I64)});
   b.addExtern("rt_len", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
   b.addExtern("rt_substr", Type(Type::Kind::Str),
               {Type(Type::Kind::Str), Type(Type::Kind::I64), Type(Type::Kind::I64)});
+  if (usesInput) {
+    b.addExtern("rt_input_line", Type(Type::Kind::Str), {});
+    b.addExtern("rt_to_int", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
+  }
 
   Function &f = b.startFunction("main", Type(Type::Kind::I64), {});
   func = &f;
@@ -48,9 +56,6 @@ Module Lowerer::lower(const Program &prog) {
 
   for (size_t i = 0; i < lines.size(); ++i)
     lineBlocks[lines[i]] = i + 1;
-
-  vars.clear();
-  collectVars(prog);
 
   // allocate slots in entry
   BasicBlock *entry = &f.blocks.front();
@@ -108,6 +113,9 @@ void Lowerer::collectVars(const Program &prog) {
     } else if (auto *l = dynamic_cast<const LetStmt *>(&s)) {
       vars.insert(l->name);
       ex(*l->expr);
+    } else if (auto *in = dynamic_cast<const InputStmt *>(&s)) {
+      vars.insert(in->name);
+      usesInput = true;
     } else if (auto *i = dynamic_cast<const IfStmt *>(&s)) {
       ex(*i->cond);
       if (i->then_branch)
@@ -138,6 +146,8 @@ void Lowerer::lowerStmt(const Stmt &stmt) {
     lowerPrint(*p);
   else if (auto *l = dynamic_cast<const LetStmt *>(&stmt))
     lowerLet(*l);
+  else if (auto *in = dynamic_cast<const InputStmt *>(&stmt))
+    lowerInput(*in);
   else if (auto *i = dynamic_cast<const IfStmt *>(&stmt))
     lowerIf(*i);
   else if (auto *w = dynamic_cast<const WhileStmt *>(&stmt))
@@ -164,6 +174,10 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr) {
     auto it = varSlots.find(v->name);
     assert(it != varSlots.end());
     Value ptr = Value::temp(it->second);
+    if (!v->name.empty() && v->name.back() == '$') {
+      Value val = emitLoad(Type(Type::Kind::Str), ptr);
+      return {val, Type(Type::Kind::Str)};
+    }
     Value val = emitLoad(Type(Type::Kind::I64), ptr);
     return {val, Type(Type::Kind::I64)};
   } else if (auto *u = dynamic_cast<const UnaryExpr *>(&expr)) {
@@ -290,6 +304,19 @@ void Lowerer::lowerLet(const LetStmt &stmt) {
   assert(it != varSlots.end());
   curLoc = stmt.loc;
   emitStore(v.type, Value::temp(it->second), v.value);
+}
+
+void Lowerer::lowerInput(const InputStmt &stmt) {
+  Value line = emitCallRet(Type(Type::Kind::Str), "rt_input_line", {});
+  auto it = varSlots.find(stmt.name);
+  assert(it != varSlots.end());
+  Value slot = Value::temp(it->second);
+  if (!stmt.name.empty() && stmt.name.back() == '$') {
+    emitStore(Type(Type::Kind::Str), slot, line);
+  } else {
+    Value num = emitCallRet(Type(Type::Kind::I64), "rt_to_int", {line});
+    emitStore(Type(Type::Kind::I64), slot, num);
+  }
 }
 
 void Lowerer::lowerPrint(const PrintStmt &stmt) {
