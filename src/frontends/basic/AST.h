@@ -73,6 +73,10 @@ struct LetStmt : Stmt {
   std::string name;
   ExprPtr expr;
 };
+/// @brief INPUT statement reading a line into a variable.
+struct InputStmt : Stmt {
+  std::string name; ///< Target variable name (NAME or NAME$).
+};
 struct IfStmt : Stmt {
   ExprPtr cond;
   StmtPtr then_branch;

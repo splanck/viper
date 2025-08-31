@@ -47,6 +47,7 @@ private:
   void lowerNext(const NextStmt &stmt);
   void lowerGoto(const GotoStmt &stmt);
   void lowerEnd(const EndStmt &stmt);
+  void lowerInput(const InputStmt &stmt);
 
   // helpers
   Value emitAlloca(int bytes);
@@ -61,6 +62,9 @@ private:
   void emitRet(Value v);
   std::string getStringLabel(const std::string &s);
   unsigned nextTempId();
+  Type varType(const std::string &name) const {
+    return name.size() && name.back() == '$' ? Type(Type::Kind::Str) : Type(Type::Kind::I64);
+  }
 
   build::IRBuilder *builder{nullptr};
   Module *mod{nullptr};
@@ -70,8 +74,11 @@ private:
   NameMangler mangler;
   std::unordered_map<int, size_t> lineBlocks;
   std::unordered_map<std::string, unsigned> varSlots;
+  std::unordered_map<std::string, Type> varTypes;
   std::unordered_map<std::string, std::string> strings;
   std::unordered_set<std::string> vars;
+  bool needInputLine = false;
+  bool needToInt = false;
   il::support::SourceLoc curLoc{}; ///< current source location for emitted IR
 };
 

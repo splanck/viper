@@ -54,6 +54,9 @@ void SemanticAnalyzer::visitStmt(const Stmt &s) {
     symbols_.insert(l->name);
     if (l->expr)
       varTypes_[l->name] = visitExpr(*l->expr);
+  } else if (auto *in = dynamic_cast<const InputStmt *>(&s)) {
+    symbols_.insert(in->name);
+    varTypes_[in->name] = in->name.size() && in->name.back() == '$' ? Type::String : Type::Int;
   } else if (auto *i = dynamic_cast<const IfStmt *>(&s)) {
     if (i->cond)
       visitExpr(*i->cond);

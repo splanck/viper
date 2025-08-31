@@ -49,7 +49,9 @@ WHILE cond ... WEND
 FOR var = start TO end [STEP s] ... NEXT var
 GOTO lineNumber
 END — terminate program
-INPUT var$ (optional if runtime wired) — reads a line into a string variable
+INPUT var$ — read a line from stdin into a string variable.
+INPUT var — read a line, trim whitespace, convert to integer with VAL.
+Leading/trailing spaces are ignored for integer INPUT.
 6. Variables & Names
 Names: [A-Za-z][A-Za-z0-9_]* with optional $ suffix for strings (NAME$).
 Type inference:
@@ -92,6 +94,7 @@ LEN(S$) | call @rt_len(%s) | rt_len(str)->i64
 MID$(S$,i,l) | call @rt_substr(%s, i-1, l) | rt_substr(str,i64,i64)->str
 VAL(S$) | call @rt_to_int(%s) | rt_to_int(str)->i64
 INPUT A$ | %s = call @rt_input_line(); store A$, %s | rt_input_line()->str
+INPUT N | %s = call @rt_input_line(); %i = call @rt_to_int(%s); store N, %i | rt_input_line()->str + rt_to_int(str)->i64
 Indexing: BASIC’s 1-based indices are lowered to 0-based for runtime calls (subtract 1).
 11. Examples
 See /docs/examples/basic/ and the IL equivalents in /docs/examples/il/.

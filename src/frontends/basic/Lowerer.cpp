@@ -25,13 +25,21 @@ Module Lowerer::lower(const Program &prog) {
   lineBlocks.clear();
   varSlots.clear();
   strings.clear();
+  varTypes.clear();
+  needInputLine = false;
+  needToInt = false;
+  vars.clear();
+  collectVars(prog);
 
   b.addExtern("rt_print_str", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
   b.addExtern("rt_print_i64", Type(Type::Kind::Void), {Type(Type::Kind::I64)});
   b.addExtern("rt_len", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
   b.addExtern("rt_substr", Type(Type::Kind::Str),
               {Type(Type::Kind::Str), Type(Type::Kind::I64), Type(Type::Kind::I64)});
-
+  if (needInputLine)
+    b.addExtern("rt_input_line", Type(Type::Kind::Str), {});
+  if (needToInt)
+    b.addExtern("rt_to_int", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
   Function &f = b.startFunction("main", Type(Type::Kind::I64), {});
   func = &f;
 
@@ -48,9 +56,6 @@ Module Lowerer::lower(const Program &prog) {
 
   for (size_t i = 0; i < lines.size(); ++i)
     lineBlocks[lines[i]] = i + 1;
-
-  vars.clear();
-  collectVars(prog);
 
   // allocate slots in entry
   BasicBlock *entry = &f.blocks.front();
@@ -89,9 +94,13 @@ Module Lowerer::lower(const Program &prog) {
 }
 
 void Lowerer::collectVars(const Program &prog) {
+  auto record = [&](const std::string &n) {
+    vars.insert(n);
+    varTypes[n] = varType(n);
+  };
   std::function<void(const Expr &)> ex = [&](const Expr &e) {
     if (auto *v = dynamic_cast<const VarExpr *>(&e)) {
-      vars.insert(v->name);
+      record(v->name);
     } else if (auto *u = dynamic_cast<const UnaryExpr *>(&e)) {
       ex(*u->expr);
     } else if (auto *b = dynamic_cast<const BinaryExpr *>(&e)) {
@@ -106,7 +115,7 @@ void Lowerer::collectVars(const Program &prog) {
     if (auto *p = dynamic_cast<const PrintStmt *>(&s)) {
       ex(*p->expr);
     } else if (auto *l = dynamic_cast<const LetStmt *>(&s)) {
-      vars.insert(l->name);
+      record(l->name);
       ex(*l->expr);
     } else if (auto *i = dynamic_cast<const IfStmt *>(&s)) {
       ex(*i->cond);
@@ -119,13 +128,18 @@ void Lowerer::collectVars(const Program &prog) {
       for (auto &bs : w->body)
         st(*bs);
     } else if (auto *f = dynamic_cast<const ForStmt *>(&s)) {
-      vars.insert(f->var);
+      record(f->var);
       ex(*f->start);
       ex(*f->end);
       if (f->step)
         ex(*f->step);
       for (auto &bs : f->body)
         st(*bs);
+    } else if (auto *in = dynamic_cast<const InputStmt *>(&s)) {
+      record(in->name);
+      needInputLine = true;
+      if (varType(in->name).kind == Type::Kind::I64)
+        needToInt = true;
     }
   };
   for (auto &s : prog.statements)
@@ -150,6 +164,8 @@ void Lowerer::lowerStmt(const Stmt &stmt) {
     lowerGoto(*g);
   else if (auto *e = dynamic_cast<const EndStmt *>(&stmt))
     lowerEnd(*e);
+  else if (auto *in = dynamic_cast<const InputStmt *>(&stmt))
+    lowerInput(*in);
 }
 
 Lowerer::RVal Lowerer::lowerExpr(const Expr &expr) {
@@ -164,8 +180,9 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr) {
     auto it = varSlots.find(v->name);
     assert(it != varSlots.end());
     Value ptr = Value::temp(it->second);
-    Value val = emitLoad(Type(Type::Kind::I64), ptr);
-    return {val, Type(Type::Kind::I64)};
+    Type ty = varTypes[v->name];
+    Value val = emitLoad(ty, ptr);
+    return {val, ty};
   } else if (auto *u = dynamic_cast<const UnaryExpr *>(&expr)) {
     RVal val = lowerExpr(*u->expr);
     curLoc = expr.loc;
@@ -501,6 +518,20 @@ void Lowerer::lowerGoto(const GotoStmt &stmt) {
 void Lowerer::lowerEnd(const EndStmt &stmt) {
   curLoc = stmt.loc;
   emitBr(&func->blocks[fnExit]);
+}
+
+void Lowerer::lowerInput(const InputStmt &stmt) {
+  curLoc = stmt.loc;
+  Value line = emitCallRet(Type(Type::Kind::Str), "rt_input_line", {});
+  auto it = varSlots.find(stmt.name);
+  assert(it != varSlots.end());
+  Type ty = varTypes[stmt.name];
+  if (ty.kind == Type::Kind::Str) {
+    emitStore(Type(Type::Kind::Str), Value::temp(it->second), line);
+  } else {
+    Value v = emitCallRet(Type(Type::Kind::I64), "rt_to_int", {line});
+    emitStore(Type(Type::Kind::I64), Value::temp(it->second), v);
+  }
 }
 
 Value Lowerer::emitAlloca(int bytes) {

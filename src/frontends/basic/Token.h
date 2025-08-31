@@ -17,6 +17,7 @@ enum class TokenKind {
   Identifier,
   KeywordPrint,
   KeywordLet,
+  KeywordInput,
   KeywordIf,
   KeywordThen,
   KeywordElse,
