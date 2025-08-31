@@ -98,6 +98,10 @@ struct GotoStmt : Stmt {
   int target;
 };
 struct EndStmt : Stmt {};
+/// @brief INPUT statement to read from stdin into a variable.
+struct InputStmt : Stmt {
+  std::string var; ///< Target variable name (may end with '$').
+};
 
 struct Program {
   std::vector<StmtPtr> statements;

@@ -47,6 +47,7 @@ private:
   void lowerNext(const NextStmt &stmt);
   void lowerGoto(const GotoStmt &stmt);
   void lowerEnd(const EndStmt &stmt);
+  void lowerInput(const InputStmt &stmt);
 
   // helpers
   Value emitAlloca(int bytes);
