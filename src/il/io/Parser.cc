@@ -6,6 +6,7 @@
 #include "il/io/Parser.h"
 #include "il/core/Opcode.h"
 #include "il/core/Value.h"
+#include "support/source_manager.h"
 #include <cctype>
 #include <sstream>
 #include <unordered_map>
@@ -78,6 +79,7 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err) {
   std::unordered_map<std::string, unsigned> tempIds;
   unsigned nextTemp = 0;
   unsigned lineNo = 0;
+  il::support::SourceLoc curLoc{};
   while (std::getline(is, line)) {
     ++lineNo;
     line = trim(line);
@@ -162,7 +164,15 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err) {
         err << "line " << lineNo << ": instruction outside block\n";
         return false;
       }
+      if (line.rfind(".loc", 0) == 0) {
+        std::istringstream ls(line.substr(4));
+        uint32_t fid = 0, ln = 0, col = 0;
+        ls >> fid >> ln >> col;
+        curLoc = {fid, ln, col};
+        continue;
+      }
       Instr in;
+      in.loc = curLoc;
       if (line[0] == '%') {
         size_t eq = line.find('=');
         std::string res = trim(line.substr(1, eq - 1));

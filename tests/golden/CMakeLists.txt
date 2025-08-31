@@ -39,3 +39,11 @@ add_test(NAME basic_error_const_div_zero COMMAND ${CMAKE_COMMAND}
   -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/const_div_zero.bas
   "-DEXPECT=${EXPECT_CONST_DIV_ZERO}"
   -P ${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/check_error.cmake)
+
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/vm_trap_loc.stderr EXPECT_VM_TRAP_LOC)
+string(STRIP "${EXPECT_VM_TRAP_LOC}" EXPECT_VM_TRAP_LOC)
+add_test(NAME vm_trap_loc COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DIL_FILE=${CMAKE_CURRENT_SOURCE_DIR}/vm_trap_loc.il
+  "-DEXPECT=${EXPECT_VM_TRAP_LOC}"
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/check_vm_trap_loc.cmake)
