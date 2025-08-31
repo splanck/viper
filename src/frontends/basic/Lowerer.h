@@ -48,6 +48,7 @@ private:
   void lowerGoto(const GotoStmt &stmt);
   void lowerEnd(const EndStmt &stmt);
   void lowerInput(const InputStmt &stmt);
+  void lowerDim(const DimStmt &stmt);
 
   // helpers
   Value emitAlloca(int bytes);
@@ -62,6 +63,7 @@ private:
   void emitRet(Value v);
   std::string getStringLabel(const std::string &s);
   unsigned nextTempId();
+  Value lowerArrayAddr(const ArrayExpr &expr);
 
   build::IRBuilder *builder{nullptr};
   Module *mod{nullptr};
