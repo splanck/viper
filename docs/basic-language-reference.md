@@ -75,12 +75,13 @@ stmt        ::= "LET" ident "=" expr
              | "IF" expr "THEN" stmt ("ELSEIF" expr "THEN" stmt)* ("ELSE" stmt)?
              | "WHILE" expr (NEWLINE|":") stmt* "WEND"
              | "FOR" ident "=" expr "TO" expr ("STEP" expr)? (NEWLINE|":") stmt* "NEXT" ident
+             | "DIM" ident "(" expr ")"
              | "GOTO" NUMBER
              | "END"
              | "INPUT" ident
 expr        ::= term (("+"|"-") term)*
 term        ::= factor (("*"|"/") factor)*
-factor      ::= NUMBER | STRING | ident | "(" expr ")" | ("+"|"-") factor | "NOT" factor
+factor      ::= NUMBER | STRING | ident | ident "(" expr ")" | "(" expr ")" | ("+"|"-") factor | "NOT" factor
 ident       ::= NAME | NAME "$"
 10. Mapping to IL & Runtime
 BASIC | IL pattern | Runtime
@@ -88,6 +89,9 @@ BASIC | IL pattern | Runtime
 PRINT "X" | %s = const_str @.L; call @rt_print_str(%s) | rt_print_str(str)
 PRINT X | %v = load i64, %slotX; call @rt_print_i64(%v) | rt_print_i64(i64)
 LET X = A + B | load A; load B; %c = add %a,%b; store X,%c | —
+DIM A(N) | %n = ...; %b = mul %n,8; %p = call @rt_alloc(%b); store ptr, %A_slot | rt_alloc(i64)->ptr
+A(I) = E | %off = shl %i,3; %p = gep %A,%off; store i64, %p, %val | —
+X = A(I) | %off = shl %i,3; %p = gep %A,%off; %v = load i64, %p; store X,%v | —
 IF C THEN … ELSE … | %p = …cmp…; cbr %p, then, else | —
 WHILE C … WEND | br loop_head; cbr cond, loop_body, done | —
 LEN(S$) | call @rt_len(%s) | rt_len(str)->i64
@@ -95,6 +99,6 @@ MID$(S$,i,l) | call @rt_substr(%s, i-1, l) | rt_substr(str,i64,i64)->str
 VAL(S$) | call @rt_to_int(%s) | rt_to_int(str)->i64
 INPUT A$ | %s = call @rt_input_line(); store A$, %s | rt_input_line()->str
 INPUT N | %s = call @rt_input_line(); %n = call @rt_to_int(%s); store N, %n | rt_input_line()->str; rt_to_int(str)->i64
-Indexing: BASIC’s 1-based indices are lowered to 0-based for runtime calls (subtract 1).
+Arrays use 0-based indices; bounds are unchecked in v0.1.
 11. Examples
 See /docs/examples/basic/ and the IL equivalents in /docs/examples/il/.

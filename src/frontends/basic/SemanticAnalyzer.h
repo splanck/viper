@@ -53,6 +53,8 @@ private:
 
   DiagnosticEmitter &de; ///< Diagnostic sink.
   std::unordered_set<std::string> symbols_;
+  std::unordered_set<std::string> arrays_;
+  std::unordered_map<std::string, int> arraySizes_;
   std::unordered_map<std::string, Type> varTypes_;
   std::unordered_set<int> labels_;
   std::unordered_set<int> labelRefs_;

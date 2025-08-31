@@ -81,6 +81,8 @@ Token Lexer::lexIdentifierOrKeyword() {
     return {TokenKind::KeywordEnd, s, loc};
   if (s == "INPUT")
     return {TokenKind::KeywordInput, s, loc};
+  if (s == "DIM")
+    return {TokenKind::KeywordDim, s, loc};
   if (s == "AND")
     return {TokenKind::KeywordAnd, s, loc};
   if (s == "OR")

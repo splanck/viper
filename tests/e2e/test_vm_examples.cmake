@@ -36,3 +36,15 @@ string(REGEX MATCH "DONE" _s3 "${S1}")
 if(NOT _s3)
   message(FATAL_ERROR "missing DONE")
 endif()
+
+execute_process(COMMAND ${ILC} -run ${SRC_DIR}/docs/examples/il/ex6_array_sum.il
+                INPUT_FILE ${SRC_DIR}/tests/data/n5.txt
+                OUTPUT_FILE arr.txt RESULT_VARIABLE r3)
+if(NOT r3 EQUAL 0)
+  message(FATAL_ERROR "ex6_array_sum execution failed")
+endif()
+file(READ arr.txt A1)
+string(REGEX MATCH "30" _a1 "${A1}")
+if(NOT _a1)
+  message(FATAL_ERROR "missing 30")
+endif()

@@ -34,6 +34,7 @@ private:
   StmtPtr parseGoto();
   StmtPtr parseEnd();
   StmtPtr parseInput();
+  StmtPtr parseDim();
 
   ExprPtr parseExpression(int min_prec = 0);
   ExprPtr parsePrimary();

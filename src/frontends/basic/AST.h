@@ -27,6 +27,12 @@ struct VarExpr : Expr {
   std::string name;
 };
 
+/// @brief Array element access expression A(i).
+struct IndexExpr : Expr {
+  std::string name; ///< Array variable name.
+  ExprPtr index;    ///< Index expression.
+};
+
 /// @brief Unary expression (e.g., NOT).
 struct UnaryExpr : Expr {
   /// @brief Unary operators supported.
@@ -71,7 +77,13 @@ struct PrintStmt : Stmt {
 };
 struct LetStmt : Stmt {
   std::string name;
+  ExprPtr index; ///< Optional index for array element.
   ExprPtr expr;
+};
+/// @brief DIM statement defining an integer array.
+struct DimStmt : Stmt {
+  std::string name; ///< Array variable name.
+  ExprPtr size;     ///< Array size expression.
 };
 struct IfStmt : Stmt {
   ExprPtr cond;

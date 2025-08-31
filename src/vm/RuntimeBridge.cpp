@@ -44,6 +44,8 @@ Slot RuntimeBridge::call(const std::string &name, const std::vector<Slot> &args,
     res.str = rt_input_line();
   } else if (name == "rt_to_int") {
     res.i64 = rt_to_int(args[0].str);
+  } else if (name == "rt_alloc") {
+    res.ptr = rt_alloc(args[0].i64);
   } else {
     assert(false && "unknown runtime call");
   }
