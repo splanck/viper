@@ -20,6 +20,25 @@ static bool isConstInt(const Value &v, long long &out) {
   return false;
 }
 
+static bool sameValue(const Value &a, const Value &b) {
+  if (a.kind != b.kind)
+    return false;
+  switch (a.kind) {
+  case Value::Kind::Temp:
+    return a.id == b.id;
+  case Value::Kind::ConstInt:
+    return a.i64 == b.i64;
+  case Value::Kind::ConstStr:
+  case Value::Kind::GlobalAddr:
+    return a.str == b.str;
+  case Value::Kind::ConstFloat:
+    return a.f64 == b.f64;
+  case Value::Kind::NullPtr:
+    return true;
+  }
+  return false;
+}
+
 static long long wrapAdd(long long a, long long b) {
   return static_cast<long long>(static_cast<uint64_t>(a) + static_cast<uint64_t>(b));
 }
@@ -47,45 +66,120 @@ void constFold(Module &m) {
         Instr &in = b.instructions[i];
         if (!in.result || in.operands.size() != 2)
           continue;
-        long long lhs, rhs;
-        if (!isConstInt(in.operands[0], lhs) || !isConstInt(in.operands[1], rhs))
+        long long lhsVal = 0, rhsVal = 0;
+        bool lhsConst = isConstInt(in.operands[0], lhsVal);
+        bool rhsConst = isConstInt(in.operands[1], rhsVal);
+        if (!lhsConst && !rhsConst)
           continue;
-        long long res;
-        bool folded = true;
-        switch (in.op) {
-        case Opcode::Add:
-          res = wrapAdd(lhs, rhs);
-          break;
-        case Opcode::Sub:
-          res = wrapSub(lhs, rhs);
-          break;
-        case Opcode::Mul:
-          res = wrapMul(lhs, rhs);
-          break;
-        case Opcode::And:
-          res = lhs & rhs;
-          break;
-        case Opcode::Or:
-          res = lhs | rhs;
-          break;
-        case Opcode::Xor:
-          res = lhs ^ rhs;
-          break;
-        case Opcode::ICmpEq:
-        case Opcode::ICmpNe:
-        case Opcode::SCmpLT:
-        case Opcode::SCmpLE:
-        case Opcode::SCmpGT:
-        case Opcode::SCmpGE:
-          folded = false;
-          break;
-        default:
-          folded = false;
-          break;
+        bool folded = false;
+        Value repl;
+        if (lhsConst && rhsConst) {
+          long long res = 0;
+          folded = true;
+          switch (in.op) {
+          case Opcode::Add:
+            res = wrapAdd(lhsVal, rhsVal);
+            break;
+          case Opcode::Sub:
+            res = wrapSub(lhsVal, rhsVal);
+            break;
+          case Opcode::Mul:
+            res = wrapMul(lhsVal, rhsVal);
+            break;
+          case Opcode::And:
+            res = lhsVal & rhsVal;
+            break;
+          case Opcode::Or:
+            res = lhsVal | rhsVal;
+            break;
+          case Opcode::Xor:
+            res = lhsVal ^ rhsVal;
+            break;
+          case Opcode::ICmpEq:
+          case Opcode::ICmpNe:
+          case Opcode::SCmpLT:
+          case Opcode::SCmpLE:
+          case Opcode::SCmpGT:
+          case Opcode::SCmpGE:
+            folded = false;
+            break;
+          default:
+            folded = false;
+            break;
+          }
+          if (folded)
+            repl = Value::constInt(res);
+        } else {
+          switch (in.op) {
+          case Opcode::Add:
+            if (lhsConst && lhsVal == 0) {
+              repl = in.operands[1];
+              folded = true;
+            } else if (rhsConst && rhsVal == 0) {
+              repl = in.operands[0];
+              folded = true;
+            }
+            break;
+          case Opcode::Sub:
+            if (rhsConst && rhsVal == 0) {
+              repl = in.operands[0];
+              folded = true;
+            }
+            break;
+          case Opcode::Mul:
+            if ((lhsConst && lhsVal == 1)) {
+              repl = in.operands[1];
+              folded = true;
+            } else if ((rhsConst && rhsVal == 1)) {
+              repl = in.operands[0];
+              folded = true;
+            } else if ((lhsConst && lhsVal == 0) || (rhsConst && rhsVal == 0)) {
+              repl = Value::constInt(0);
+              folded = true;
+            }
+            break;
+          case Opcode::And:
+            if ((lhsConst && lhsVal == -1)) {
+              repl = in.operands[1];
+              folded = true;
+            } else if ((rhsConst && rhsVal == -1)) {
+              repl = in.operands[0];
+              folded = true;
+            } else if ((lhsConst && lhsVal == 0) || (rhsConst && rhsVal == 0)) {
+              repl = Value::constInt(0);
+              folded = true;
+            }
+            break;
+          case Opcode::Or:
+            if ((lhsConst && lhsVal == 0)) {
+              repl = in.operands[1];
+              folded = true;
+            } else if ((rhsConst && rhsVal == 0)) {
+              repl = in.operands[0];
+              folded = true;
+            } else if ((lhsConst && lhsVal == -1) || (rhsConst && rhsVal == -1)) {
+              repl = Value::constInt(-1);
+              folded = true;
+            }
+            break;
+          case Opcode::Xor:
+            if ((lhsConst && lhsVal == 0)) {
+              repl = in.operands[1];
+              folded = true;
+            } else if ((rhsConst && rhsVal == 0)) {
+              repl = in.operands[0];
+              folded = true;
+            } else if (sameValue(in.operands[0], in.operands[1])) {
+              repl = Value::constInt(0);
+              folded = true;
+            }
+            break;
+          default:
+            break;
+          }
         }
         if (folded) {
-          Value v = Value::constInt(res);
-          replaceAll(f, *in.result, v);
+          replaceAll(f, *in.result, repl);
           b.instructions.erase(b.instructions.begin() + i);
           --i;
         }
