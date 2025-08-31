@@ -34,7 +34,7 @@ Before committing:
 	1. Run:
 
 cmake -S . -B build && cmake --build build
-ctest --output-on-failure
+ctest --test-dir build --output-on-failure
 	2. Format code (.clang-format) and keep warnings at zero.
 	3. Update docs only if behavior or public API changed (and only with ADR approval).
         4. Write a Conventional Commit message (see §9).
@@ -140,7 +140,7 @@ Build & Test Commands (must run before every commit):
 
 cmake -S . -B build
 cmake --build build -j
-ctest --output-on-failure
+ctest --test-dir build --output-on-failure
 
 14) Compiler Preference
         • Use Clang as the canonical compiler for building, testing, and CI.

@@ -20,7 +20,7 @@ Name new files in `kebab-case.md` and place them under `docs/` or an appropriate
 ```sh
 cmake -S . -B build
 cmake --build build
-ctest --output-on-failure
+ctest --test-dir build --output-on-failure
 ```
 
 Changes to the IL specification require an Architecture Decision Record (ADR) before implementation; use the template in `adr/000-template.md` if available.
