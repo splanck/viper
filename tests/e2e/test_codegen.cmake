@@ -1,7 +1,11 @@
+# File: tests/e2e/test_codegen.cmake
+# Purpose: Smoke-tests x64 assembly assembling, linking, and running.
+# Invariants: Uses a tiny hand-written program and marks stack non-executable.
+# Ownership/Lifetime: Part of e2e tests; temporary files live in build dir.
 separate_arguments(ASM_FLAGS_LIST NATIVE_COMMAND "${ASM_FLAGS}")
 separate_arguments(LD_FLAGS_LIST  NATIVE_COMMAND "${LD_FLAGS}")
 
-file(WRITE out.s ".text\n.globl main\nmain:\n  mov $0, %eax\n  ret\n")
+file(WRITE out.s ".text\n.globl main\nmain:\n  mov $0, %eax\n  ret\n.section .note.GNU-stack,\"\",@progbits\n")
 
 if(MODE STREQUAL "syntax")
   execute_process(
