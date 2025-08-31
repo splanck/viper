@@ -27,6 +27,12 @@ struct VarExpr : Expr {
   std::string name;
 };
 
+/// @brief Array element access A(i).
+struct ArrayExpr : Expr {
+  std::string name; ///< Array variable name.
+  ExprPtr index;    ///< Index expression (0-based).
+};
+
 /// @brief Unary expression (e.g., NOT).
 struct UnaryExpr : Expr {
   /// @brief Unary operators supported.
@@ -69,9 +75,15 @@ using StmtPtr = std::unique_ptr<Stmt>;
 struct PrintStmt : Stmt {
   ExprPtr expr;
 };
+/// @brief Assignment statement to variable or array element.
 struct LetStmt : Stmt {
-  std::string name;
-  ExprPtr expr;
+  ExprPtr target; ///< Variable or ArrayExpr on the left-hand side.
+  ExprPtr expr;   ///< Value expression to store.
+};
+/// @brief DIM statement allocating array storage.
+struct DimStmt : Stmt {
+  std::string name; ///< Array name.
+  ExprPtr size;     ///< Element count expression.
 };
 struct IfStmt : Stmt {
   ExprPtr cond;

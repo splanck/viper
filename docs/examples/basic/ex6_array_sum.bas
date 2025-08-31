@@ -1,0 +1,11 @@
+10 INPUT N
+20 DIM A(N)
+30 LET I = 0
+40 LET S = 0
+50 WHILE I < N
+60   LET A(I) = I * I
+70   LET S = S + A(I)
+80   LET I = I + 1
+90 WEND
+100 PRINT S
+110 END

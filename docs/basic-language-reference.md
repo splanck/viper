@@ -58,6 +58,8 @@ Type inference:
 $ suffix → string
 otherwise integer unless assigned from VALF$(…) (future).
 All variables are function-local to @main in v0.1.
+Arrays: DIM A(N) allocates N i64 elements and must appear before A is used.
+Indices are 0-based; only integer arrays are supported. Out-of-bounds access is undefined (no checks yet).
 7. Errors
 Division by zero, invalid VAL, out-of-bounds MID$ length/start after clamping → runtime trap with message.
 Type mismatch in comparisons/operations → compile-time (lowering) error.
@@ -72,6 +74,7 @@ program     ::= (line | stmt)* EOF
 line        ::= (NUMBER)? stmt (":" stmt)* NEWLINE
 stmt        ::= "LET" ident "=" expr
              | "PRINT" expr
+             | "DIM" ident "(" expr ")"
              | "IF" expr "THEN" stmt ("ELSEIF" expr "THEN" stmt)* ("ELSE" stmt)?
              | "WHILE" expr (NEWLINE|":") stmt* "WEND"
              | "FOR" ident "=" expr "TO" expr ("STEP" expr)? (NEWLINE|":") stmt* "NEXT" ident
@@ -80,7 +83,7 @@ stmt        ::= "LET" ident "=" expr
              | "INPUT" ident
 expr        ::= term (("+"|"-") term)*
 term        ::= factor (("*"|"/") factor)*
-factor      ::= NUMBER | STRING | ident | "(" expr ")" | ("+"|"-") factor | "NOT" factor
+factor      ::= NUMBER | STRING | ident | ident "(" expr ")" | "(" expr ")" | ("+"|"-") factor | "NOT" factor
 ident       ::= NAME | NAME "$"
 10. Mapping to IL & Runtime
 BASIC | IL pattern | Runtime
@@ -95,6 +98,9 @@ MID$(S$,i,l) | call @rt_substr(%s, i-1, l) | rt_substr(str,i64,i64)->str
 VAL(S$) | call @rt_to_int(%s) | rt_to_int(str)->i64
 INPUT A$ | %s = call @rt_input_line(); store A$, %s | rt_input_line()->str
 INPUT N | %s = call @rt_input_line(); %n = call @rt_to_int(%s); store N, %n | rt_input_line()->str; rt_to_int(str)->i64
+DIM A(N) | %bytes = mul N,8; %p = call @rt_alloc(%bytes); store ptr %p, %A | rt_alloc(i64)->ptr
+A(I) | %base = load ptr, %A; %off = shl I,3; %ptr = gep %base,%off; %v = load i64,%ptr | —
+LET A(I) = X | compute %ptr as above; store i64,%ptr,X | —
 Indexing: BASIC’s 1-based indices are lowered to 0-based for runtime calls (subtract 1).
 11. Examples
 See /docs/examples/basic/ and the IL equivalents in /docs/examples/il/.
