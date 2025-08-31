@@ -106,9 +106,9 @@ void peephole(Module &m) {
   for (auto &f : m.functions) {
     for (auto &b : f.blocks) {
       for (size_t i = 0; i < b.instructions.size(); ++i) {
-        Instr &in = b.instructions[i];
         // cbr true/false -> br
-        if (in.op == Opcode::CBr && !in.operands.empty()) {
+        if (b.instructions[i].op == Opcode::CBr && !b.instructions[i].operands.empty()) {
+          Instr &in = b.instructions[i];
           long long v;
           bool known = false;
           size_t defIdx = static_cast<size_t>(-1);
@@ -170,6 +170,9 @@ void peephole(Module &m) {
             cur.operands.clear();
           }
         }
+        if (i >= b.instructions.size())
+          break;
+        Instr &in = b.instructions[i];
         // arithmetic identities
         if (in.result && in.operands.size() == 2) {
           Value repl{};
