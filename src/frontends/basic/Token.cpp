@@ -23,6 +23,8 @@ const char *tokenKindToString(TokenKind k) {
     return "PRINT";
   case TokenKind::KeywordLet:
     return "LET";
+  case TokenKind::KeywordInput:
+    return "INPUT";
   case TokenKind::KeywordIf:
     return "IF";
   case TokenKind::KeywordThen:

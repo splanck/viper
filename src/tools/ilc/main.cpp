@@ -16,6 +16,7 @@
 #include "il/verify/Verifier.h"
 #include "support/source_manager.h"
 #include "vm/VM.h"
+#include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -28,9 +29,9 @@ using namespace il::support;
 
 static void usage() {
   std::cerr << "ilc v0.1.0\n"
-            << "Usage: ilc -run <file.il> [--trace]\n"
+            << "Usage: ilc -run <file.il> [--trace] [--stdin-from <file>]\n"
             << "       ilc front basic -emit-il <file.bas>\n"
-            << "       ilc front basic -run <file.bas> [--trace]\n"
+            << "       ilc front basic -run <file.bas> [--trace] [--stdin-from <file>]\n"
             << "       ilc il-opt <in.il> -o <out.il> --passes p1,p2\n";
 }
 
@@ -49,10 +50,14 @@ int main(int argc, char **argv) {
       return 1;
     }
     std::string ilFile = argv[2];
+    std::string stdinFrom;
     for (int i = 3; i < argc; ++i) {
-      if (std::string(argv[i]) == "--trace")
+      std::string arg = argv[i];
+      if (arg == "--trace") {
         trace = true;
-      else {
+      } else if (arg == "--stdin-from" && i + 1 < argc) {
+        stdinFrom = argv[++i];
+      } else {
         usage();
         return 1;
       }
@@ -67,6 +72,10 @@ int main(int argc, char **argv) {
       return 1;
     if (!verify::Verifier::verify(m, std::cerr))
       return 1;
+    if (!stdinFrom.empty() && !freopen(stdinFrom.c_str(), "r", stdin)) {
+      std::cerr << "unable to open " << stdinFrom << "\n";
+      return 1;
+    }
     vm::VM vm(m, trace);
     return static_cast<int>(vm.run());
   }
@@ -129,6 +138,7 @@ int main(int argc, char **argv) {
       bool emitIl = false;
       bool run = false;
       std::string file;
+      std::string stdinFrom;
       for (int i = 3; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-emit-il" && i + 1 < argc) {
@@ -139,12 +149,14 @@ int main(int argc, char **argv) {
           file = argv[++i];
         } else if (arg == "--trace") {
           trace = true;
+        } else if (arg == "--stdin-from" && i + 1 < argc) {
+          stdinFrom = argv[++i];
         } else {
           usage();
           return 1;
         }
       }
-      if ((emitIl == run) || file.empty()) {
+      if ((emitIl == run) || file.empty() || (!stdinFrom.empty() && !run)) {
         usage();
         return 1;
       }
@@ -181,6 +193,10 @@ int main(int argc, char **argv) {
 
       if (!verify::Verifier::verify(m, std::cerr))
         return 1;
+      if (!stdinFrom.empty() && !freopen(stdinFrom.c_str(), "r", stdin)) {
+        std::cerr << "unable to open " << stdinFrom << "\n";
+        return 1;
+      }
       vm::VM vm(m, trace);
       return static_cast<int>(vm.run());
     }

@@ -55,6 +55,8 @@ Token Lexer::lexIdentifierOrKeyword() {
     return {TokenKind::KeywordPrint, s, loc};
   if (s == "LET")
     return {TokenKind::KeywordLet, s, loc};
+  if (s == "INPUT")
+    return {TokenKind::KeywordInput, s, loc};
   if (s == "IF")
     return {TokenKind::KeywordIf, s, loc};
   if (s == "THEN")
