@@ -91,6 +91,10 @@ add_executable(test_basic_loc unit/test_basic_loc.cpp)
 target_link_libraries(test_basic_loc PRIVATE fe_basic il_build il_core support)
 add_test(NAME test_basic_loc COMMAND test_basic_loc)
 
+add_executable(test_basic_expr_loc unit/test_basic_expr_loc.cpp)
+target_link_libraries(test_basic_expr_loc PRIVATE fe_basic support)
+add_test(NAME test_basic_expr_loc COMMAND test_basic_expr_loc)
+
 add_executable(test_basic_semantic unit/test_basic_semantic.cpp)
 target_link_libraries(test_basic_semantic PRIVATE fe_basic support)
 add_test(NAME test_basic_semantic COMMAND test_basic_semantic)
@@ -140,6 +144,11 @@ add_test(NAME basic_to_il_ex4 COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
   -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex4_if_elseif.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/ex4_if_elseif.il
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
+add_test(NAME basic_to_il_loc COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/loc_add.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/loc_add.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 
 add_subdirectory(golden)
