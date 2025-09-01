@@ -25,6 +25,16 @@ static bool isConstEq(const Value &v, long long target) {
   return isConstInt(v, c) && c == target;
 }
 
+static size_t countUses(const Function &f, unsigned id) {
+  size_t uses = 0;
+  for (const auto &b : f.blocks)
+    for (const auto &in : b.instructions)
+      for (const auto &op : in.operands)
+        if (op.kind == Value::Kind::Temp && op.id == id)
+          ++uses;
+  return uses;
+}
+
 static void replaceAll(Function &f, unsigned id, const Value &v) {
   for (auto &b : f.blocks)
     for (auto &in : b.instructions)
@@ -44,10 +54,12 @@ void peephole(Module &m) {
           long long v;
           bool known = false;
           size_t defIdx = static_cast<size_t>(-1);
+          size_t uses = 0;
           if (isConstInt(in.operands[0], v)) {
             known = true;
           } else if (in.operands[0].kind == Value::Kind::Temp) {
             unsigned id = in.operands[0].id;
+            uses = countUses(f, id);
             for (size_t j = 0; j < i; ++j) {
               Instr &def = b.instructions[j];
               if (def.result && *def.result == id && def.operands.size() == 2) {
@@ -93,7 +105,7 @@ void peephole(Module &m) {
             in.op = Opcode::Br;
             in.labels = {v ? in.labels[0] : in.labels[1]};
             in.operands.clear();
-            if (defIdx != static_cast<size_t>(-1)) {
+            if (defIdx != static_cast<size_t>(-1) && uses == 1) {
               b.instructions.erase(b.instructions.begin() + defIdx);
               --i;
             }
