@@ -3,6 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Parser operates on externally managed strings.
 // Links: docs/il-spec.md
+
 #include "il/io/Parser.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/Value.hpp"
@@ -19,6 +20,7 @@ namespace il::io
 
 namespace
 {
+
 std::string trim(const std::string &s)
 {
     size_t b = 0;

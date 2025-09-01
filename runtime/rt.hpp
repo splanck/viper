@@ -4,7 +4,9 @@
 // Ownership/Lifetime: Caller manages returned strings.
 // Links: docs/class-catalog.md
 #pragma once
+
 #include <stdint.h>
+
 #ifdef __cplusplus
 extern "C"
 {

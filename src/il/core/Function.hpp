@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Module owns functions and their blocks.
 // Links: docs/il-spec.md
 #pragma once
+
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Param.hpp"
 #include "il/core/Type.hpp"

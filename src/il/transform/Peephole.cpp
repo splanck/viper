@@ -3,6 +3,7 @@
 // Key invariants: Transformations preserve program semantics.
 // Ownership/Lifetime: Operates in place on the module.
 // Links: docs/class-catalog.md
+
 #include "il/transform/Peephole.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -11,6 +12,7 @@ using namespace il::core;
 
 namespace il::transform
 {
+
 namespace
 {
 

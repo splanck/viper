@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Functions do not take ownership of nodes.
 // Links: docs/class-catalog.md
 #pragma once
+
 #include "frontends/basic/AST.hpp"
 #include <string>
 

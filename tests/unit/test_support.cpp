@@ -3,6 +3,7 @@
 #include "support/string_interner.hpp"
 #include <cassert>
 #include <sstream>
+
 int main()
 {
     // String interner uniqueness and lookup

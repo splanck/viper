@@ -3,6 +3,7 @@
 // Key invariants: Output is deterministic in canonical mode.
 // Ownership/Lifetime: Serializer does not own modules.
 // Links: docs/il-spec.md
+
 #include "il/io/Serializer.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/Value.hpp"
@@ -94,8 +95,8 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode)
     if (mode == Mode::Canonical)
     {
         std::vector<Extern> ex(m.externs.begin(), m.externs.end());
-        std::sort(ex.begin(), ex.end(),
-                  [](const Extern &a, const Extern &b) { return a.name < b.name; });
+        std::sort(
+            ex.begin(), ex.end(), [](const Extern &a, const Extern &b) { return a.name < b.name; });
         for (const auto &e : ex)
             printExtern(e, os);
     }

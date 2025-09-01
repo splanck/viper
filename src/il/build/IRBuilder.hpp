@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Does not own the module it modifies.
 // Links: docs/il-spec.md
 #pragma once
+
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Module.hpp"
@@ -64,7 +65,8 @@ class IRBuilder
     /// @brief Emit call to function @p callee with arguments @p args.
     /// @param callee Name of function to call.
     /// @param args Argument values.
-    void emitCall(const std::string &callee, const std::vector<Value> &args,
+    void emitCall(const std::string &callee,
+                  const std::vector<Value> &args,
                   il::support::SourceLoc loc);
 
     /// @brief Emit return from current function.

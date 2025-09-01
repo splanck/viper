@@ -3,6 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Types are value objects.
 // Links: docs/il-spec.md
+
 #include "il/core/Type.hpp"
 
 namespace il::core

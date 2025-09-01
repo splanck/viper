@@ -3,6 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Uses strings managed externally.
 // Links: docs/class-catalog.md
+
 #include "frontends/basic/NameMangler.hpp"
 
 namespace il::frontends::basic

@@ -4,17 +4,20 @@
 // Ownership/Lifetime: Does not own referenced module.
 // Links: docs/class-catalog.md
 #pragma once
+
 #include "frontends/basic/NameMangler.hpp"
 #include <string>
 #include <unordered_map>
 
 namespace il
 {
+
 namespace core
 {
 struct BasicBlock;
 class Function;
 } // namespace core
+
 namespace build
 {
 class IRBuilder;

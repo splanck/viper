@@ -3,6 +3,7 @@
 // Key invariants: Diagnostics printed in emission order.
 // Ownership/Lifetime: Holds copies of source text; borrows engine and manager.
 // Links: docs/class-catalog.md
+
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include <algorithm>
 #include <sstream>
@@ -21,8 +22,11 @@ void DiagnosticEmitter::addSource(uint32_t fileId, std::string source)
     sources_[fileId] = std::move(source);
 }
 
-void DiagnosticEmitter::emit(il::support::Severity sev, std::string code,
-                             il::support::SourceLoc loc, uint32_t length, std::string message)
+void DiagnosticEmitter::emit(il::support::Severity sev,
+                             std::string code,
+                             il::support::SourceLoc loc,
+                             uint32_t length,
+                             std::string message)
 {
     de_.report({sev, message, loc});
     entries_.push_back({sev, std::move(code), std::move(message), loc, length});

@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Serializer operates on provided modules.
 // Links: docs/il-spec.md
 #pragma once
+
 #include "il/core/Module.hpp"
 #include <ostream>
 #include <string>

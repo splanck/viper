@@ -3,10 +3,14 @@
 // Key invariants: None.
 // Ownership/Lifetime: Arena owns allocated memory until reset.
 // Links: docs/class-catalog.md
+
 #include "arena.hpp"
+
 namespace il::support
 {
+
 Arena::Arena(size_t size) : buffer_(size) {}
+
 void *Arena::allocate(size_t size, size_t align)
 {
     size_t current = offset_;
@@ -16,6 +20,7 @@ void *Arena::allocate(size_t size, size_t align)
     offset_ = aligned + size;
     return buffer_.data() + aligned;
 }
+
 void Arena::reset()
 {
     offset_ = 0;

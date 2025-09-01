@@ -3,9 +3,12 @@
 // Key invariants: None.
 // Ownership/Lifetime: Diagnostic engine owns stored messages.
 // Links: docs/class-catalog.md
+
 #include "diagnostics.hpp"
+
 namespace il::support
 {
+
 void DiagnosticEngine::report(Diagnostic d)
 {
     if (d.severity == Severity::Error)
@@ -14,6 +17,7 @@ void DiagnosticEngine::report(Diagnostic d)
         ++warnings_;
     diags_.push_back(std::move(d));
 }
+
 static const char *toString(Severity s)
 {
     switch (s)
@@ -27,6 +31,7 @@ static const char *toString(Severity s)
     }
     return "";
 }
+
 void DiagnosticEngine::printAll(std::ostream &os, const SourceManager *sm) const
 {
     for (const auto &d : diags_)

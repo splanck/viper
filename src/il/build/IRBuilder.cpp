@@ -3,6 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Builder references module owned externally.
 // Links: docs/il-spec.md
+
 #include "il/build/IRBuilder.hpp"
 #include <cassert>
 
@@ -23,7 +24,8 @@ Global &IRBuilder::addGlobalStr(const std::string &name, const std::string &valu
     return mod.globals.back();
 }
 
-Function &IRBuilder::startFunction(const std::string &name, Type ret,
+Function &IRBuilder::startFunction(const std::string &name,
+                                   Type ret,
                                    const std::vector<Param> &params)
 {
     mod.functions.push_back({name, ret, params, {}});
@@ -74,7 +76,8 @@ Value IRBuilder::emitConstStr(const std::string &globalName, il::support::Source
     return Value::temp(id);
 }
 
-void IRBuilder::emitCall(const std::string &callee, const std::vector<Value> &args,
+void IRBuilder::emitCall(const std::string &callee,
+                         const std::vector<Value> &args,
                          il::support::SourceLoc loc)
 {
     Instr instr;

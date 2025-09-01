@@ -3,9 +3,11 @@
 // Key invariants: None.
 // Ownership/Lifetime: Module owns global declarations.
 // Links: docs/il-spec.md
+
 #include "il/core/Global.hpp"
 
 namespace il::core
 {
+
 // No out-of-line logic.
 } // namespace il::core

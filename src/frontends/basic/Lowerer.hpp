@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Lowerer does not own AST or module.
 // Links: docs/class-catalog.md
 #pragma once
+
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/NameMangler.hpp"
 #include "il/build/IRBuilder.hpp"

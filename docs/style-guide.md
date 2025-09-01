@@ -68,6 +68,40 @@ Avoid repeating type information or restating obvious details.
 - Prefer verbs for functions, nouns for classes, and short
   `snake_case` names for variables.
 
+## Spacing and indentation
+
+Use 4-space indentation, Allman braces, and blank lines to keep code readable.
+
+### Good
+
+```cpp
+// foo/Calc.cpp
+// Purpose: Example with spacing.
+
+#include "Calc.hpp"
+
+namespace il {
+
+/// @brief Adds two numbers.
+int add(int a, int b)
+{
+    return a + b;
+}
+
+} // namespace il
+```
+
+### Bad
+
+```cpp
+//foo/Calc.cpp
+#include "Calc.hpp"
+namespace il{int add(int a,int b){return a+b;}}
+```
+
+The bad example lacks blank lines, uses cramped K&R braces, and omits the standard
+4-space indentation, making it difficult to read.
+
 ## Examples
 
 ### Class
