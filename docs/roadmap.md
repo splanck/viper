@@ -1,5 +1,7 @@
 # Roadmap
 
+Note: implementation files use `.cpp`; headers use `.hpp`.
+
 ## Milestones
 
 | ID | Stage | Focus |

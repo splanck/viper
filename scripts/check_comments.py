@@ -18,7 +18,7 @@ DECL_RE = re.compile(r'^\s*(class|struct|enum)\s+\w+|^\s*[^/\n][^\n]*\(.*\)\s*(c
 def list_files():
     res = subprocess.run(['git', 'ls-files'], stdout=subprocess.PIPE, text=True, check=True, cwd=ROOT)
     files = [line.strip() for line in res.stdout.splitlines()]
-    files = [f for f in files if f.endswith(('.h', '.hpp', '.c', '.cpp', '.cxx'))]
+    files = [f for f in files if f.endswith(('.hpp', '.c', '.cpp', '.cxx'))]
     ignored = set()
     if IGNORE_FILE.exists():
         ignored = {line.strip() for line in IGNORE_FILE.read_text().splitlines() if line.strip()}
@@ -53,7 +53,7 @@ def main():
         lines = path.read_text().splitlines()
         if not has_file_header(lines):
             missing_headers.append(f)
-        if path.suffix in {'.h', '.hpp'}:
+        if path.suffix == '.hpp':
             missing = check_doxygen(lines)
             if missing:
                 missing_docs.append((f, missing))
