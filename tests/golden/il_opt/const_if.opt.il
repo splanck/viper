@@ -6,6 +6,9 @@ entry:
 L1:
   call @rt_print_i64(1)
   br label exit
+L2:
+  call @rt_print_i64(2)
+  br label exit
 exit:
   ret 0
 }
