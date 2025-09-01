@@ -3,19 +3,24 @@
 // Key invariants: None.
 // Ownership/Lifetime: Uses strings managed externally.
 // Links: docs/class-catalog.md
-#include "frontends/basic/NameMangler.h"
+#include "frontends/basic/NameMangler.hpp"
 
-namespace il::frontends::basic {
+namespace il::frontends::basic
+{
 
-std::string NameMangler::nextTemp() { return "%t" + std::to_string(tempCounter++); }
+std::string NameMangler::nextTemp()
+{
+    return "%t" + std::to_string(tempCounter++);
+}
 
-std::string NameMangler::block(const std::string &hint) {
-  auto &count = blockCounters[hint];
-  std::string name = hint;
-  if (count > 0)
-    name += std::to_string(count);
-  ++count;
-  return name;
+std::string NameMangler::block(const std::string &hint)
+{
+    auto &count = blockCounters[hint];
+    std::string name = hint;
+    if (count > 0)
+        name += std::to_string(count);
+    ++count;
+    return name;
 }
 
 } // namespace il::frontends::basic
