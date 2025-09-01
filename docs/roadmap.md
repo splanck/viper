@@ -1,30 +1,26 @@
 # Roadmap
 
-## Milestone A – Bring-up
+## Milestones
 
-Bootstrap the build system and seed the core [class catalog](class-catalog.md).
-
-## Milestone B – VM
-
-Establish the interpreter and runtime interface per the [IL spec](il-spec.md).
-
-## Milestone C – BASIC front end
-
-Provide a lexer, parser, and lowering path from BASIC source to IL.
-
-## Milestone D – Codegen prep
-
-Lay the groundwork for native code emission and register allocation.
+| ID | Stage | Focus |
+|----|-------|-------|
+| M0 | Bootstrap | Build system and seed the [class catalog](class-catalog.md) |
+| M1 | IL core | Types, instructions, and module scaffolding |
+| M2 | VM | Stack-based interpreter and runtime interface from the [IL spec](il-spec.md) |
+| M3 | BASIC front end | Lexer, parser, and lowering from BASIC to IL |
+| M4 | Codegen prep | Groundwork for native emission and register allocation |
 
 ### Status checklist
 
-- [ ] Milestone A complete
-- [ ] Milestone B complete
-- [ ] Milestone C complete
-- [ ] Milestone D complete
+- [x] M0 Bootstrap
+- [x] M1 IL core
+- [ ] M2 VM
+- [ ] M3 BASIC front end
+- [ ] M4 Codegen prep
 
-### Out of scope for v0.1
+### Future items
 
-- Optimizing code generation beyond basic correctness
-- Alternative language front ends
-- Parallel or concurrent execution models
+- String functions
+- Arrays
+- GOSUB/RETURN
+- SSA-based optimizations

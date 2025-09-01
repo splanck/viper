@@ -1,13 +1,13 @@
 # Style guide
 
-This guide defines comment conventions and file headers for the
-Viper codebase. All contributors must follow these rules when
-adding new code or updating existing files.
+See [AGENTS.md](../AGENTS.md) for project-wide policies. This guide defines
+comment conventions and file headers for the Viper codebase. All contributors
+must follow these rules when adding new code or updating existing files.
 
 ## File headers
 
-Every source and header file begins with a short block comment that
-explains the file's role. Use this template:
+Every source and header file begins with a short block comment that explains
+the file's role. Use this template:
 
 ```cpp
 // File: <path/to/file>
@@ -23,10 +23,20 @@ explains the file's role. Use this template:
 - Keep lines concise and factual.
 - Omit fields that do not apply rather than leaving placeholders.
 
+### Example
+
+```cpp
+// foo/Bar.h
+// Purpose: Declares the Bar helper.
+// Key invariants: ID remains unique.
+// Ownership/Lifetime: Caller frees instances.
+// Links: docs/class-catalog.md
+```
+
 ## Doxygen API comments
 
-Public classes, functions, and members use Doxygen comments with
-triple slashes. Common tags:
+Public classes, functions, and members use Doxygen comments with triple
+slashes. Common tags:
 
 - `@brief` – one line summary.
 - `@param` – describe each parameter.
