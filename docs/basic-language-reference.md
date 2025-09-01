@@ -1,20 +1,16 @@
 # BASIC v0.1 Language Reference
 
-BASIC front-end targets IL v0.1.1 and the VM interpreter.
-See [IL v0.1 spec](./il-spec.md) for the underlying intermediate language.
+BASIC programs lower to [IL v0.1](./il-spec.md) and run on the VM interpreter.  This document describes the subset implemented in v0.1.
 
 ## Goals & scope
-
-- Deterministic subset suitable for early IDE/compiler bring-up.
-- VM-first design: code lowers to IL and executes via the VM (native codegen pending).
-- Covers variables, arithmetic, strings, conditionals, loops, and simple I/O.
+- Deterministic subset for early IDE/compiler bring-up.
+- VM-first design: source lowers to IL; native codegen is future work.
+- Includes variables, arithmetic, strings, conditionals, loops, simple I/O.
 
 ## Program structure & line numbers
-
-A program is a sequence of statements separated by newlines or `:` on the same line.
-Line numbers are optional; when present they act as labels (`GOTO` targets).
-Execution starts at the first line or statement.
-Comments begin with `'` and continue to the end of the line.
+A program is a sequence of statements separated by newlines or `:`.
+Line numbers are optional labels (`GOTO` targets); execution starts at the first statement.
+Comments begin with `'` and continue to end of line.
 
 ```basic
 10 PRINT "HELLO"
@@ -24,22 +20,15 @@ Comments begin with `'` and continue to the end of the line.
 ```
 
 ## Types
-
-| Type    | IL type | Literal examples                    | Notes |
-|---------|---------|-------------------------------------|-------|
-| Integer | `i64`   | `0`, `-12`, `42`                    | default numeric type |
-| Float   | `f64`   | produced via `VAL` (optional)       | optional in v0.1 |
-| String  | `str`   | `"text"`, escape `\" \\ \n \t \xNN` | UTF-8 |
-| Boolean | `i1`    | `TRUE`, `FALSE`                     | results of comparisons |
-
-Coercions:
-- integer operations wrap on overflow.
-- runtime built-ins handle string ↔ numeric conversions.
+| Type    | IL type | Literal examples                    | Notes                            |
+|---------|---------|-------------------------------------|----------------------------------|
+| Integer | `i64`   | `0`, `-12`, `42`                    | default numeric type, wraps      |
+| Float   | `f64`   | produced via `VAL`                  | optional in v0.1                 |
+| String  | `str`   | `"text"`, escape `\\" \\ \n \t \xNN` | UTF-8                            |
+| Boolean | `i1`    | `TRUE`, `FALSE`                     | results of comparisons           |
 
 ## Expressions
-
 ### Operators & precedence (high → low)
-
 1. `()`
 2. Unary `NOT`, `+`, `-`
 3. `*`, `/`
@@ -49,45 +38,40 @@ Coercions:
 7. `OR`
 
 Arithmetic is integer based (`/` is integer division; division by zero traps).
-Comparisons are allowed between like types (strings only support `=`/`<>`).
-Logical operators use short-circuit evaluation and return Boolean.
+Comparisons require like types (strings only support `=`/`<>`).
+Logical operators short-circuit and return Boolean.
 
 ### Built-in functions
-
-| Function          | Signature               | Notes |
-|-------------------|-------------------------|-------|
-| `LEN(s$)`         | `str → i64`             | length in bytes |
-| `MID$(s$, i, l)`  | `str × i64 × i64 → str` | 1‑based `i`; length clamped |
-| `VAL(s$)`         | `str → i64`             | traps on invalid |
+| Function          | Signature               | Notes                    |
+|-------------------|-------------------------|--------------------------|
+| `LEN(s$)`         | `str → i64`             | length in bytes          |
+| `MID$(s$, i, l)`  | `str × i64 × i64 → str` | 1-based index; length clamped |
+| `VAL(s$)`         | `str → i64`             | traps on invalid numeric |
 
 ## Statements
-
 | Statement | Meaning |
 |-----------|---------|
-| `LET v = expr` | assign to variable `v` (auto‑declare) |
+| `LET v = expr` | assign to variable `v` (auto-declare) |
 | `PRINT expr` | write value to stdout |
 | `IF c THEN … [ELSEIF …]* [ELSE …]` | conditional execution |
 | `WHILE c … WEND` | loop while condition `c` is true |
 | `FOR v = start TO end [STEP s] … NEXT v` | counted loop |
-| `GOTO lineNumber` | jump to line label |
+| `GOTO line` | jump to line label |
 | `END` | terminate program |
 | `INPUT v$` / `INPUT v` | read line as string or integer |
 | `DIM A(n)` | allocate integer array of length `n` |
 
-Multi-statement `THEN`/`ELSE` blocks can be placed on subsequent lines or separated by `:`.
+Multi-statement `THEN`/`ELSE` blocks may appear on new lines or be separated by `:`.
 
 ## Variables & naming conventions
-
-Names match `[A-Za-z][A-Za-z0-9_]*` with an optional `$` suffix for strings (`NAME$`).
-Without `$` the variable is inferred as integer unless assigned from `VALF$` (future).
-All variables are local to `@main`.
-Arrays declared with `DIM` hold `i64` elements; indices are 0‑based.
+Identifiers match `[A-Za-z][A-Za-z0-9_]*` with optional `$` suffix for strings.
+Without `$` the variable defaults to integer; all variables are local to `@main`.
+`DIM` arrays store `i64` elements with 0-based indices.
 
 ## Errors & diagnostics
-
-Compile-time errors occur on type mismatches or malformed syntax.
+Compile-time errors report syntax or type issues.
 Runtime traps include division by zero, invalid `VAL`, and out-of-bounds `MID$`.
-Diagnostics use codes prefixed with `B` and show the source line with a caret.
+Diagnostics use codes prefixed with `B` and show source line with a caret.
 
 ```text
 10 LET X = 1 +
@@ -96,7 +80,6 @@ B0001: expected expression
 ```
 
 ## Grammar
-
 ```bnf
 program     ::= (line | stmt)* EOF
 line        ::= (NUMBER)? stmt (":" stmt)* NEWLINE
@@ -117,8 +100,7 @@ ident       ::= NAME | NAME "$"
 ```
 
 ## IL mapping
-
-The front end lowers BASIC into IL; see [IL v0.1 spec](./il-spec.md) for instruction semantics.
+The front end lowers BASIC to IL; see the [IL v0.1 spec](./il-spec.md) for instruction semantics.
 
 | BASIC snippet       | IL pattern                                                | Runtime |
 |---------------------|-----------------------------------------------------------|---------|
@@ -136,8 +118,7 @@ The front end lowers BASIC into IL; see [IL v0.1 spec](./il-spec.md) for instruc
 | `A(I)`              | `%base = load ptr,%A; %off = shl I,3; %ptr = gep %base,%off; %v = load i64,%ptr` | — |
 | `LET A(I) = X`      | compute `%ptr` as above; `store i64,%ptr,X`               | — |
 
-BASIC’s 1-based indices are lowered to 0-based for runtime calls.
+BASIC's 1-based indices become 0-based for runtime calls.
 
 ## Examples
-
-See the [BASIC examples](./examples/basic/) and their IL counterparts in `docs/examples/il/`.
+See the [BASIC examples](./examples/basic/) and their IL counterparts.
