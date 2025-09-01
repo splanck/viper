@@ -3,6 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Tool owns loaded source.
 // Links: docs/class-catalog.md
+
 #include "frontends/basic/AstPrinter.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "support/source_manager.hpp"

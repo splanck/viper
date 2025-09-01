@@ -1,5 +1,6 @@
 #include "rt.hpp"
 #include <cassert>
+
 int main()
 {
     rt_str empty = rt_const_cstr("");

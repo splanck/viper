@@ -3,6 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Parser references tokens managed externally.
 // Links: docs/class-catalog.md
+
 #include "frontends/basic/Parser.hpp"
 #include <cstdlib>
 

@@ -4,9 +4,12 @@
 // Ownership/Lifetime: Caller owns option values.
 // Links: docs/class-catalog.md
 #pragma once
+
 #include <string>
+
 namespace il::support
 {
+
 /// @brief Global options controlling compiler behavior.
 /// @invariant Flags are independent booleans.
 /// @ownership Value type.

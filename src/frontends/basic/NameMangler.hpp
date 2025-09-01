@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Functions allocate strings for caller.
 // Links: docs/class-catalog.md
 #pragma once
+
 #include <string>
 #include <unordered_map>
 

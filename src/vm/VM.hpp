@@ -4,6 +4,7 @@
 // Ownership/Lifetime: VM does not own module or runtime bridge.
 // Links: docs/il-spec.md
 #pragma once
+
 #include "il/core/Module.hpp"
 #include "rt.hpp"
 #include <array>

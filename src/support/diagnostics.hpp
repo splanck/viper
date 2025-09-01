@@ -4,15 +4,18 @@
 // Ownership/Lifetime: Engine owns collected diagnostics.
 // Links: docs/class-catalog.md
 #pragma once
+
 #include "source_manager.hpp"
 #include <ostream>
 #include <string>
 #include <vector>
+
 /// @brief Records diagnostics and prints them later.
 /// @invariant Counts reflect reported diagnostics.
 /// @ownership Owns stored diagnostic messages.
 namespace il::support
 {
+
 /// @brief Severity levels for diagnostics.
 enum class Severity
 {

@@ -4,6 +4,7 @@
 // Ownership/Lifetime: VM owns the bridge.
 // Links: docs/il-spec.md
 #pragma once
+
 #include "rt.hpp"
 #include "support/source_manager.hpp"
 #include <string>
@@ -25,14 +26,18 @@ class RuntimeBridge
     /// @param fn Calling function name.
     /// @param block Calling block label.
     /// @return Result slot from runtime call.
-    static Slot call(const std::string &name, const std::vector<Slot> &args,
-                     const il::support::SourceLoc &loc, const std::string &fn,
+    static Slot call(const std::string &name,
+                     const std::vector<Slot> &args,
+                     const il::support::SourceLoc &loc,
+                     const std::string &fn,
                      const std::string &block);
 
     /// @brief Report a trap with source location @p loc within function @p fn and
     /// block @p block.
-    static void trap(const std::string &msg, const il::support::SourceLoc &loc,
-                     const std::string &fn, const std::string &block);
+    static void trap(const std::string &msg,
+                     const il::support::SourceLoc &loc,
+                     const std::string &fn,
+                     const std::string &block);
 };
 
 } // namespace il::vm

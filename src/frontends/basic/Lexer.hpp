@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Lexer does not own the source buffer.
 // Links: docs/class-catalog.md
 #pragma once
+
 #include "frontends/basic/Token.hpp"
 #include <string_view>
 

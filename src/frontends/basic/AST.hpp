@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Caller owns nodes via std::unique_ptr.
 // Links: docs/class-catalog.md
 #pragma once
+
 #include "support/source_manager.hpp"
 #include <memory>
 #include <string>
@@ -17,16 +18,19 @@ struct Expr
     il::support::SourceLoc loc;
     virtual ~Expr() = default;
 };
+
 using ExprPtr = std::unique_ptr<Expr>;
 
 struct IntExpr : Expr
 {
     int value;
 };
+
 struct StringExpr : Expr
 {
     std::string value;
 };
+
 struct VarExpr : Expr
 {
     std::string name;
@@ -88,35 +92,41 @@ struct Stmt
     il::support::SourceLoc loc;
     virtual ~Stmt() = default;
 };
+
 using StmtPtr = std::unique_ptr<Stmt>;
 
 struct PrintStmt : Stmt
 {
     ExprPtr expr;
 };
+
 /// @brief Assignment statement to variable or array element.
 struct LetStmt : Stmt
 {
     ExprPtr target; ///< Variable or ArrayExpr on the left-hand side.
     ExprPtr expr;   ///< Value expression to store.
 };
+
 /// @brief DIM statement allocating array storage.
 struct DimStmt : Stmt
 {
     std::string name; ///< Array name.
     ExprPtr size;     ///< Element count expression.
 };
+
 struct IfStmt : Stmt
 {
     ExprPtr cond;
     StmtPtr then_branch;
     StmtPtr else_branch; // may be null
 };
+
 struct WhileStmt : Stmt
 {
     ExprPtr cond;
     std::vector<StmtPtr> body;
 };
+
 /// @brief FOR ... NEXT loop statement.
 struct ForStmt : Stmt
 {
@@ -126,18 +136,22 @@ struct ForStmt : Stmt
     ExprPtr step;              ///< Optional step expression; null means 1.
     std::vector<StmtPtr> body; ///< Body statements executed each iteration.
 };
+
 /// @brief NEXT statement closing a FOR.
 struct NextStmt : Stmt
 {
     std::string var; ///< Loop variable after NEXT.
 };
+
 struct GotoStmt : Stmt
 {
     int target;
 };
+
 struct EndStmt : Stmt
 {
 };
+
 /// @brief INPUT statement to read from stdin into a variable.
 struct InputStmt : Stmt
 {

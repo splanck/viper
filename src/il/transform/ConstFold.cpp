@@ -3,6 +3,7 @@
 // Key invariants: Uses wraparound semantics for 64-bit integer arithmetic.
 // Ownership/Lifetime: Operates in place on the module.
 // Links: docs/class-catalog.md
+
 #include "il/transform/ConstFold.hpp"
 #include "il/core/Instr.hpp"
 #include <cstdint>
@@ -11,6 +12,7 @@ using namespace il::core;
 
 namespace il::transform
 {
+
 namespace
 {
 
@@ -28,10 +30,12 @@ static long long wrapAdd(long long a, long long b)
 {
     return static_cast<long long>(static_cast<uint64_t>(a) + static_cast<uint64_t>(b));
 }
+
 static long long wrapSub(long long a, long long b)
 {
     return static_cast<long long>(static_cast<uint64_t>(a) - static_cast<uint64_t>(b));
 }
+
 static long long wrapMul(long long a, long long b)
 {
     return static_cast<long long>(static_cast<uint64_t>(a) * static_cast<uint64_t>(b));

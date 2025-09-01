@@ -3,6 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Verifier does not own modules.
 // Links: docs/il-spec.md
+
 #include "il/verify/Verifier.hpp"
 #include "il/core/Opcode.hpp"
 #include <sstream>
@@ -16,6 +17,7 @@ namespace il::verify
 
 namespace
 {
+
 bool isTerminator(Opcode op)
 {
     return op == Opcode::Br || op == Opcode::CBr || op == Opcode::Ret;

@@ -4,13 +4,16 @@
 // Ownership/Lifetime: Interner owns stored strings.
 // Links: docs/class-catalog.md
 #pragma once
+
 #include "symbol.hpp"
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
+
 namespace il::support
 {
+
 /// @brief Interns strings to provide stable Symbol identifiers.
 /// @invariant Symbol 0 is reserved for invalid.
 /// @ownership Stores copies of strings internally.

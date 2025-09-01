@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Module owns global variables.
 // Links: docs/il-spec.md
 #pragma once
+
 #include "il/core/Type.hpp"
 #include <string>
 

@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Not applicable.
 // Links: docs/il-spec.md
 #pragma once
+
 #include <string>
 
 namespace il::core

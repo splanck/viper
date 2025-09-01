@@ -3,6 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Bridge does not own VM or runtime resources.
 // Links: docs/il-spec.md
+
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VM.hpp"
 #include <cassert>
@@ -12,6 +13,7 @@ using il::support::SourceLoc;
 
 namespace
 {
+
 SourceLoc curLoc{};
 std::string curFn;
 std::string curBlock;
@@ -25,8 +27,11 @@ extern "C" void vm_trap(const char *msg)
 namespace il::vm
 {
 
-Slot RuntimeBridge::call(const std::string &name, const std::vector<Slot> &args,
-                         const SourceLoc &loc, const std::string &fn, const std::string &block)
+Slot RuntimeBridge::call(const std::string &name,
+                         const std::vector<Slot> &args,
+                         const SourceLoc &loc,
+                         const std::string &fn,
+                         const std::string &block)
 {
     curLoc = loc;
     curFn = fn;
@@ -78,7 +83,9 @@ Slot RuntimeBridge::call(const std::string &name, const std::vector<Slot> &args,
     return res;
 }
 
-void RuntimeBridge::trap(const std::string &msg, const SourceLoc &loc, const std::string &fn,
+void RuntimeBridge::trap(const std::string &msg,
+                         const SourceLoc &loc,
+                         const std::string &fn,
                          const std::string &block)
 {
     std::ostringstream os;

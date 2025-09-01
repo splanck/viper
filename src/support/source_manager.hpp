@@ -4,21 +4,25 @@
 // Ownership/Lifetime: Manager owns file path strings.
 // Links: docs/class-catalog.md
 #pragma once
+
 #include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
+
 /// @brief Tracks mapping from file ids to paths and source locations.
 /// @invariant File id 0 is invalid.
 /// @ownership Owns stored file path strings.
 namespace il::support
 {
+
 /// @brief Represents a position within a source file.
 struct SourceLoc
 {
     uint32_t file_id = 0; ///< Identifier returned by SourceManager
     uint32_t line = 0;    ///< 1-based line number
     uint32_t column = 0;  ///< 1-based column number
+
     /// @brief Whether this location refers to a real file.
     bool isValid() const
     {
