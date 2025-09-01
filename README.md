@@ -41,6 +41,7 @@ cmake --build build
 ## Contributing
 
 See [AGENTS.md](AGENTS.md) for contribution workflow and the [style guide](docs/style-guide.md) for formatting rules.
+Run `clang-format -i` on all `.cpp` and `.hpp` files before committing.
 
 ## License
 
