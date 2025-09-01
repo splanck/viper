@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Tokens are value types.
 // Links: docs/class-catalog.md
 #pragma once
+
 #include "support/source_manager.hpp"
 #include <string>
 

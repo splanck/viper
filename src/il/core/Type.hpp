@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Types are lightweight values.
 // Links: docs/il-spec.md
 #pragma once
+
 #include <string>
 
 namespace il::core
@@ -23,9 +24,11 @@ struct Type
         Str
     };
     Kind kind; ///< Discriminator specifying the active kind
+
     /// @brief Construct a type of kind @p k.
     /// @param k Desired kind.
     constexpr explicit Type(Kind k = Kind::Void) : kind(k) {}
+
     /// @brief Convert type to string representation.
     /// @return Lowercase type mnemonic.
     std::string toString() const;

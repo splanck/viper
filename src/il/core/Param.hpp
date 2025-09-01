@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Parameters stored by value.
 // Links: docs/il-spec.md
 #pragma once
+
 #include "il/core/Type.hpp"
 #include <string>
 

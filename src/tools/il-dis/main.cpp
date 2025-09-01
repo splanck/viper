@@ -3,6 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Tool owns constructed module.
 // Links: docs/class-catalog.md
+
 #include "il/build/IRBuilder.hpp"
 #include "il/io/Serializer.hpp"
 #include <iostream>
@@ -11,7 +12,8 @@ int main()
 {
     il::core::Module m;
     il::build::IRBuilder builder(m);
-    builder.addExtern("rt_print_str", il::core::Type(il::core::Type::Kind::Void),
+    builder.addExtern("rt_print_str",
+                      il::core::Type(il::core::Type::Kind::Void),
                       {il::core::Type(il::core::Type::Kind::Str)});
     builder.addGlobalStr(".L0", "HELLO");
     auto &fn = builder.startFunction("main", il::core::Type(il::core::Type::Kind::I64), {});

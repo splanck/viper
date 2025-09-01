@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Parser does not own token buffer.
 // Links: docs/class-catalog.md
 #pragma once
+
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/Lexer.hpp"
 #include <memory>
@@ -23,10 +24,12 @@ class Parser
     Lexer lexer_;
 
     void advance();
+
     bool check(TokenKind k) const
     {
         return current_.kind == k;
     }
+
     bool consume(TokenKind k);
 
     StmtPtr parseStatement(int line);

@@ -14,3 +14,9 @@ SpaceBeforeAssignmentOperators: true
 AlignConsecutiveAssignments: false
 AlignConsecutiveDeclarations: false
 IndentCaseLabels: true
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 2
+SeparateDefinitionBlocks: Always
+BinPackArguments: false
+BinPackParameters: false
+PenaltyReturnTypeOnItsOwnLine: 1000

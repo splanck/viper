@@ -5,6 +5,7 @@
 //                 produce diagnostics.
 // Ownership/Lifetime: Borrowed DiagnosticEngine; AST nodes owned externally.
 // Links: docs/class-catalog.md
+
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include <algorithm>
 #include <limits>
@@ -15,6 +16,7 @@ namespace il::frontends::basic
 
 namespace
 {
+
 /// @brief Compute Levenshtein distance between strings @p a and @p b.
 static size_t levenshtein(const std::string &a, const std::string &b)
 {
@@ -73,8 +75,11 @@ void SemanticAnalyzer::visitStmt(const Stmt &s)
             if (!arrays_.count(a->name))
             {
                 std::string msg = "unknown array '" + a->name + "'";
-                de.emit(il::support::Severity::Error, "B1001", a->loc,
-                        static_cast<uint32_t>(a->name.size()), std::move(msg));
+                de.emit(il::support::Severity::Error,
+                        "B1001",
+                        a->loc,
+                        static_cast<uint32_t>(a->name.size()),
+                        std::move(msg));
             }
             auto ty = visitExpr(*a->index);
             if (ty != Type::Unknown && ty != Type::Int)
@@ -219,8 +224,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
             std::string msg = "unknown variable '" + v->name + "'";
             if (!best.empty())
                 msg += "; did you mean '" + best + "'?";
-            de.emit(il::support::Severity::Error, "B1001", v->loc,
-                    static_cast<uint32_t>(v->name.size()), std::move(msg));
+            de.emit(il::support::Severity::Error,
+                    "B1001",
+                    v->loc,
+                    static_cast<uint32_t>(v->name.size()),
+                    std::move(msg));
             return Type::Unknown;
         }
         auto it = varTypes_.find(v->name);
@@ -316,8 +324,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
         if (!arrays_.count(a->name))
         {
             std::string msg = "unknown array '" + a->name + "'";
-            de.emit(il::support::Severity::Error, "B1001", a->loc,
-                    static_cast<uint32_t>(a->name.size()), std::move(msg));
+            de.emit(il::support::Severity::Error,
+                    "B1001",
+                    a->loc,
+                    static_cast<uint32_t>(a->name.size()),
+                    std::move(msg));
             visitExpr(*a->index);
             return Type::Unknown;
         }

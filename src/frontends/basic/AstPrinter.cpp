@@ -3,6 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Printer does not own AST nodes.
 // Links: docs/class-catalog.md
+
 #include "frontends/basic/AstPrinter.hpp"
 #include <sstream>
 

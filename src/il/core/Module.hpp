@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Module owns contained objects by value.
 // Links: docs/il-spec.md
 #pragma once
+
 #include "il/core/Extern.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Global.hpp"

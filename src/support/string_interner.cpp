@@ -3,9 +3,12 @@
 // Key invariants: Symbol id 0 is reserved.
 // Ownership/Lifetime: Interner owns interned strings.
 // Links: docs/class-catalog.md
+
 #include "string_interner.hpp"
+
 namespace il::support
 {
+
 Symbol StringInterner::intern(std::string_view str)
 {
     auto it = map_.find(std::string(str));
@@ -16,6 +19,7 @@ Symbol StringInterner::intern(std::string_view str)
     map_.emplace(storage_.back(), sym);
     return sym;
 }
+
 std::string_view StringInterner::lookup(Symbol sym) const
 {
     if (sym.id == 0 || sym.id > storage_.size())

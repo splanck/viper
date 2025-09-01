@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Borrows DiagnosticEngine and SourceManager; owns source copies.
 // Links: docs/class-catalog.md
 #pragma once
+
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
 #include <ostream>
@@ -36,8 +37,11 @@ class DiagnosticEmitter
     /// @param loc Start location of the diagnostic.
     /// @param length Number of characters to underline (0 -> 1 caret).
     /// @param message Human-readable explanation.
-    void emit(il::support::Severity sev, std::string code, il::support::SourceLoc loc,
-              uint32_t length, std::string message);
+    void emit(il::support::Severity sev,
+              std::string code,
+              il::support::SourceLoc loc,
+              uint32_t length,
+              std::string message);
 
     /// @brief Print all diagnostics to @p os with source snippets.
     /// @param os Output stream.

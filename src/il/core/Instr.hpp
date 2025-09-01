@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Instructions stored by value in basic blocks.
 // Links: docs/il-spec.md
 #pragma once
+
 #include "il/core/Opcode.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"

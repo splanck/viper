@@ -3,6 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Lexer views input managed externally.
 // Links: docs/class-catalog.md
+
 #include "frontends/basic/Lexer.hpp"
 #include <cctype>
 #include <string>
@@ -16,6 +17,7 @@ char Lexer::peek() const
 {
     return pos_ < src_.size() ? src_[pos_] : '\0';
 }
+
 char Lexer::get()
 {
     if (pos_ >= src_.size())
@@ -32,6 +34,7 @@ char Lexer::get()
     }
     return c;
 }
+
 bool Lexer::eof() const
 {
     return pos_ >= src_.size();

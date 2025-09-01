@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Verifier does not own modules.
 // Links: docs/il-spec.md
 #pragma once
+
 #include "il/core/Module.hpp"
 #include <ostream>
 

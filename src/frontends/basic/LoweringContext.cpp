@@ -3,6 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Context references module owned externally.
 // Links: docs/class-catalog.md
+
 #include "frontends/basic/LoweringContext.hpp"
 #include "il/build/IRBuilder.hpp"
 #include "il/core/BasicBlock.hpp"

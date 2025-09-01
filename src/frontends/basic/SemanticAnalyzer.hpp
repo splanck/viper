@@ -6,6 +6,7 @@
 // Ownership/Lifetime: Analyzer borrows DiagnosticEmitter; no AST ownership.
 // Links: docs/class-catalog.md
 #pragma once
+
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include <string>

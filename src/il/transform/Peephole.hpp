@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Operates in place on the provided module.
 // Links: docs/class-catalog.md
 #pragma once
+
 #include "il/core/Module.hpp"
 
 namespace il::transform

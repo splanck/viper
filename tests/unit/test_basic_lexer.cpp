@@ -16,9 +16,12 @@ int main()
         std::vector<TokenKind> kinds;
         for (Token t = lex.next(); t.kind != TokenKind::EndOfFile; t = lex.next())
             kinds.push_back(t.kind);
-        std::vector<TokenKind> expected = {TokenKind::Number, TokenKind::KeywordPrint,
-                                           TokenKind::String, TokenKind::Plus,
-                                           TokenKind::Number, TokenKind::EndOfLine};
+        std::vector<TokenKind> expected = {TokenKind::Number,
+                                           TokenKind::KeywordPrint,
+                                           TokenKind::String,
+                                           TokenKind::Plus,
+                                           TokenKind::Number,
+                                           TokenKind::EndOfLine};
         assert(kinds == expected);
     }
     {
