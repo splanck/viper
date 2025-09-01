@@ -1,3 +1,10 @@
+# File: tests/golden/il_opt/check_opt.cmake
+# Purpose: Run the IL optimizer and compare its output to a golden file.
+# Key invariants: Uses a unique output file per test to prevent cross-test
+# clobbering during parallel runs. Emits helpful diffs and artifacts on failure.
+# Ownership/Lifetime: Invoked by CTest for IL optimizer golden tests.
+# Links: docs/class-catalog.md
+
 if(NOT DEFINED ILC)
   message(FATAL_ERROR "ILC not set")
 endif()
@@ -10,7 +17,8 @@ endif()
 if(NOT DEFINED PASSES)
   set(PASSES "constfold,peephole")
 endif()
-set(OUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/out.il")
+get_filename_component(test_name ${IL_FILE} NAME_WE)
+set(OUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/${test_name}.out.il")
 execute_process(
   COMMAND ${ILC} il-opt ${IL_FILE} -o ${OUT_FILE} --passes ${PASSES}
   RESULT_VARIABLE res)
@@ -22,7 +30,6 @@ execute_process(
   OUTPUT_VARIABLE diff
   RESULT_VARIABLE diff_res)
 if(NOT diff_res EQUAL 0)
-  get_filename_component(test_name ${IL_FILE} NAME_WE)
   set(art_dir "${CMAKE_CURRENT_BINARY_DIR}/_artifacts/il_opt_${test_name}")
   file(MAKE_DIRECTORY ${art_dir})
   configure_file(${GOLDEN} ${art_dir}/golden.il COPYONLY)
