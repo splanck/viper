@@ -4,6 +4,10 @@ See [AGENTS.md](../AGENTS.md) for project-wide policies. This guide defines
 comment conventions and file headers for the Viper codebase. All contributors
 must follow these rules when adding new code or updating existing files.
 
+## File naming
+
+Use `.cpp` for implementation files and `.hpp` for headers. Do not use `.cc` or `.h`.
+
 ## File headers
 
 Every source and header file begins with a short block comment that explains
@@ -26,7 +30,7 @@ the file's role. Use this template:
 ### Example
 
 ```cpp
-// foo/Bar.h
+// foo/Bar.hpp
 // Purpose: Declares the Bar helper.
 // Key invariants: ID remains unique.
 // Ownership/Lifetime: Caller frees instances.
@@ -69,7 +73,7 @@ Avoid repeating type information or restating obvious details.
 ### Class
 
 ```cpp
-// foo/Bar.h
+// foo/Bar.hpp
 /// @brief Manages frobnications.
 /// @invariant ID is unique per instance.
 /// @ownership Caller owns instances.

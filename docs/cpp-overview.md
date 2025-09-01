@@ -17,7 +17,7 @@ assistant like Codex and to keep you out of the mess that VC drifted into.
 /CMakeLists.txt
 /cmake/ # compiler flags, toolchain helpers
 /docs/ # IL spec, developer docs, ADRs
-/runtime/ # C runtime (librt.a): rt\_*.c, rt\_*.h
+/runtime/ # C runtime (librt.a): rt\_*.c, rt\_*.hpp
 /src/
 /support/ # small utilities shared across libs
 /il/ # IL core: types, IR, builder, verifier, I/O
@@ -137,7 +137,7 @@ void cbr(Value cond, Label t, Label f);
 6. Runtime library (/runtime, C, stable ABI)
 
 - Files: rt_print.c, rt_string.c, rt_input.c, rt_mem.c, rt_math.c
-- Headers: rt.h with declarations:
+- Headers: rt.hpp with declarations:
 
 void rt_print_str(rt_str s);
 void rt_print_i64(int64_t v);
@@ -326,14 +326,14 @@ struct Diagnostic { Severity sev; std::string msg; SourceLoc loc; };
 
 1. What to implement first (files checklist)
 
-- /src/il/Type.h/.cc — Type, equality, helpers
-- /src/il/IR.h/.cc — Value, Instr, BasicBlock, Function, Module
-- /src/il/IRBuilder.h/.cc — helpers
-- /src/il/Serialize.h/.cc — text I/O
-- /src/il/Verify.h/.cc — verifier
-- /src/vm/VM.h/.cc — engine, run(Module&, entry)
-- /runtime/rt.h, rt_print.c, rt_string.c, rt_input.c — minimal runtime
-- /src/tools/ilc.cc — driver with -emit-il and -run
+- /src/il/Type.hpp/.cpp — Type, equality, helpers
+- /src/il/IR.hpp/.cpp — Value, Instr, BasicBlock, Function, Module
+- /src/il/IRBuilder.hpp/.cpp — helpers
+- /src/il/Serialize.hpp/.cpp — text I/O
+- /src/il/Verify.hpp/.cpp — verifier
+- /src/vm/VM.hpp/.cpp — engine, run(Module&, entry)
+- /runtime/rt.hpp, rt_print.c, rt_string.c, rt_input.c — minimal runtime
+- /src/tools/ilc.cpp — driver with -emit-il and -run
 - Tests: unit + two e2e samples (e.g., “HELLO”, “sum 1..10”)
   This gives you a walking skeleton: end‑to‑end from BASIC → IL → VM run, with verify and text I/O, ready for codegen to slot in.
 

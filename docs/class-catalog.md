@@ -2,6 +2,8 @@
 
 Classes grouped by subsystem.
 
+All headers use `.hpp` and sources use `.cpp`.
+
 ## Support
 
 | Class | Description |
