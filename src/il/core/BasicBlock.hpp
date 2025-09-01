@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Functions own blocks by value.
 // Links: docs/il-spec.md
 #pragma once
+
 #include "il/core/Instr.hpp"
 #include <string>
 #include <vector>

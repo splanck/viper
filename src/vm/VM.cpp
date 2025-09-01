@@ -3,6 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: VM references module owned externally.
 // Links: docs/il-spec.md
+
 #include "vm/VM.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"

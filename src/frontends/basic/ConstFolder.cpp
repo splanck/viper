@@ -3,11 +3,13 @@
 // Key invariants: Folding preserves 64-bit wrap-around semantics.
 // Ownership/Lifetime: AST nodes are mutated in place.
 // Links: docs/class-catalog.md
+
 #include "frontends/basic/ConstFolder.hpp"
 #include <cstdint>
 
 namespace il::frontends::basic
 {
+
 namespace
 {
 
@@ -15,10 +17,12 @@ static long long wrapAdd(long long a, long long b)
 {
     return static_cast<long long>(static_cast<uint64_t>(a) + static_cast<uint64_t>(b));
 }
+
 static long long wrapSub(long long a, long long b)
 {
     return static_cast<long long>(static_cast<uint64_t>(a) - static_cast<uint64_t>(b));
 }
+
 static long long wrapMul(long long a, long long b)
 {
     return static_cast<long long>(static_cast<uint64_t>(a) * static_cast<uint64_t>(b));
@@ -33,6 +37,7 @@ static bool isInt(const Expr *e, long long &v)
     }
     return false;
 }
+
 static bool isStr(const Expr *e, std::string &s)
 {
     if (auto *st = dynamic_cast<const StringExpr *>(e))

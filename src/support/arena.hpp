@@ -4,10 +4,13 @@
 // Ownership/Lifetime: Arena owns all allocated memory.
 // Links: docs/class-catalog.md
 #pragma once
+
 #include <cstddef>
 #include <vector>
+
 namespace il::support
 {
+
 /// @brief Simple bump allocator for fast allocations.
 /// @invariant Allocations are not individually freed; use reset() to reuse.
 /// @ownership Owns its internal buffer.

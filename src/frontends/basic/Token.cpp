@@ -3,6 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Tokens passed by value.
 // Links: docs/class-catalog.md
+
 #include "frontends/basic/Token.hpp"
 
 namespace il::frontends::basic

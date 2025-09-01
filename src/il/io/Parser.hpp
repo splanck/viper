@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Parser views input string without owning.
 // Links: docs/il-spec.md
 #pragma once
+
 #include "il/core/Module.hpp"
 #include <istream>
 #include <ostream>

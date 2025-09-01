@@ -4,6 +4,7 @@
 // Ownership/Lifetime: PassManager holds no state beyond registered callbacks.
 // Links: docs/class-catalog.md
 #pragma once
+
 #include "il/core/Module.hpp"
 #include <functional>
 #include <string>

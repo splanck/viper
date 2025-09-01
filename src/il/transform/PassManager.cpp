@@ -3,6 +3,7 @@
 // Key invariants: Verifier is invoked after each pass in debug builds.
 // Ownership/Lifetime: Pass callbacks are stored by value.
 // Links: docs/class-catalog.md
+
 #include "il/transform/PassManager.hpp"
 #include "il/verify/Verifier.hpp"
 #include <cassert>

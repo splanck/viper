@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Functions mutate AST in place, nodes owned by caller.
 // Links: docs/class-catalog.md
 #pragma once
+
 #include "frontends/basic/AST.hpp"
 
 namespace il::frontends::basic

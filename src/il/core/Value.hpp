@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Values are passed by value.
 // Links: docs/il-spec.md
 #pragma once
+
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -35,22 +36,27 @@ struct Value
     {
         return Value{Kind::Temp, 0, 0.0, t, ""};
     }
+
     static Value constInt(long long v)
     {
         return Value{Kind::ConstInt, v, 0.0, 0, ""};
     }
+
     static Value constFloat(double v)
     {
         return Value{Kind::ConstFloat, 0, v, 0, ""};
     }
+
     static Value constStr(std::string s)
     {
         return Value{Kind::ConstStr, 0, 0.0, 0, std::move(s)};
     }
+
     static Value global(std::string s)
     {
         return Value{Kind::GlobalAddr, 0, 0.0, 0, std::move(s)};
     }
+
     static Value null()
     {
         return Value{Kind::NullPtr, 0, 0.0, 0, ""};

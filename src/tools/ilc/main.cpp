@@ -3,6 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Tool owns loaded modules.
 // Links: docs/class-catalog.md
+
 #include "frontends/basic/ConstFolder.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"

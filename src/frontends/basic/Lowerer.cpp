@@ -3,6 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Uses contexts managed externally.
 // Links: docs/class-catalog.md
+
 #include "frontends/basic/Lowerer.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -46,7 +47,8 @@ Module Lowerer::lower(const Program &prog)
     b.addExtern("rt_print_str", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
     b.addExtern("rt_print_i64", Type(Type::Kind::Void), {Type(Type::Kind::I64)});
     b.addExtern("rt_len", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
-    b.addExtern("rt_substr", Type(Type::Kind::Str),
+    b.addExtern("rt_substr",
+                Type(Type::Kind::Str),
                 {Type(Type::Kind::Str), Type(Type::Kind::I64), Type(Type::Kind::I64)});
     if (needInput)
         b.addExtern("rt_input_line", Type(Type::Kind::Str), {});
@@ -427,7 +429,8 @@ void Lowerer::lowerIf(const IfStmt &stmt)
     }
     cur = &func->blocks[curIdx];
     curLoc = stmt.loc;
-    emitCBr(cond.value, &func->blocks[thenIdx],
+    emitCBr(cond.value,
+            &func->blocks[thenIdx],
             stmt.else_branch ? &func->blocks[elseIdx] : &func->blocks[exitIdx]);
 
     // then branch
