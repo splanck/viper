@@ -1,3 +1,16 @@
 BasedOnStyle: LLVM
-IndentWidth: 2
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+BreakBeforeBraces: Allman
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
 ColumnLimit: 100
+SpaceBeforeParens: ControlStatements
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+SpaceBeforeAssignmentOperators: true
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+IndentCaseLabels: true
