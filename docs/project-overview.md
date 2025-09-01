@@ -153,7 +153,7 @@ case OP_RET: return regs[retv];
    ○ Keep the runtime in C with a stable ABI.
    • Repo layout:
 
-/runtime/ (C) rt\_*.c, rt\_*.h, build to librt.a
+/runtime/ (C) rt\_*.c, rt\_*.hpp, build to librt.a
 /il/ (C++) IL core: types, module, builder, verifier, serializer
 /vm/ (C++) IL interpreter
 /codegen/ (C++) x86_64 backend, regalloc, asm emitter
