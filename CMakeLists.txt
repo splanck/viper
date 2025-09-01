@@ -51,6 +51,15 @@ endif()
 add_compile_options(${IL_COMPILE_FLAGS})
 add_link_options(${IL_LINK_FLAGS})
 
+file(GLOB_RECURSE ALL_CXX_SOURCE_FILES
+     src/*.cpp src/*.hpp
+     runtime/*.cpp runtime/*.hpp)
+
+add_custom_target(format
+  COMMAND clang-format -i ${ALL_CXX_SOURCE_FILES}
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
 option(IL_ENABLE_X64_ASM_SYNTAX_CHECK "Check generated x86_64 asm syntax" ON)
 option(IL_ENABLE_X64_ASM_ASSEMBLE_LINK "Assemble+link x86_64 asm" ON)
 option(IL_ENABLE_X64_NATIVE_RUN "Run x86_64 binaries" ON)
