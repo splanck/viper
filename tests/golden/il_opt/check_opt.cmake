@@ -30,10 +30,10 @@ if(NOT diff_res EQUAL 0)
   file(WRITE ${art_dir}/diff.txt "${diff}")
   execute_process(COMMAND ${CMAKE_COMMAND} -E echo
                   "Expected (first 50 lines):")
-  execute_process(COMMAND sh -c "nl -ba ${GOLDEN} | head -n 50")
+  execute_process(COMMAND sh -c "cat -n ${GOLDEN} | head -n 50")
   execute_process(COMMAND ${CMAKE_COMMAND} -E echo
                   "Got (first 50 lines):")
-  execute_process(COMMAND sh -c "nl -ba ${OUT_FILE} | head -n 50")
+  execute_process(COMMAND sh -c "cat -n ${OUT_FILE} | head -n 50")
   execute_process(COMMAND ${CMAKE_COMMAND} -E echo "Diff:\n${diff}")
   message(FATAL_ERROR "IL mismatch")
 endif()
