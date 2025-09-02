@@ -55,6 +55,22 @@ Arithmetic is integer based (`/` is integer division; division by zero traps).
 Comparisons require like types (strings only support `=`/`<>`).
 Logical operators short-circuit and return Boolean.
 
+### Comparisons
+
+String expressions may be compared for equality or inequality only:
+
+```basic
+10 IF "HI" = "HI" THEN PRINT 1
+20 IF "A" <> "B" THEN PRINT 2
+```
+
+Relational operators `<`, `>`, `<=`, `>=` on strings are illegal and produce a
+compile-time error:
+
+```basic
+30 IF "A" < "B" THEN PRINT 3  ' error
+```
+
 ### Unary operators
 
 `NOT e` evaluates `e` as a Boolean, yielding `1` if `e` is zero and `0` otherwise. It binds tighter than `*`/`/` and loosens to integers when assigned.
