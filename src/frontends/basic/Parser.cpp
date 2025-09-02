@@ -298,10 +298,21 @@ StmtPtr Parser::parseInput()
 {
     il::support::SourceLoc loc = current_.loc;
     advance(); // INPUT
+    ExprPtr prompt;
+    if (check(TokenKind::String))
+    {
+        auto s = std::make_unique<StringExpr>();
+        s->loc = current_.loc;
+        s->value = current_.lexeme;
+        prompt = std::move(s);
+        advance();
+        consume(TokenKind::Comma);
+    }
     std::string name = current_.lexeme;
     consume(TokenKind::Identifier);
     auto stmt = std::make_unique<InputStmt>();
     stmt->loc = loc;
+    stmt->prompt = std::move(prompt);
     stmt->var = name;
     return stmt;
 }
