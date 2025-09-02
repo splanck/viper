@@ -95,11 +95,26 @@ struct Stmt
 
 using StmtPtr = std::unique_ptr<Stmt>;
 
-/// @brief PRINT statement outputting expressions separated by spaces.
+/// @brief Item within a PRINT statement.
+struct PrintItem
+{
+    /// @brief Kind of item to output.
+    enum class Kind
+    {
+        Expr,      ///< Expression to print.
+        Comma,     ///< Insert a space.
+        Semicolon, ///< Insert nothing.
+    } kind = Kind::Expr;
+
+    /// @brief Expression value when @ref kind == Expr.
+    ExprPtr expr;
+};
+
+/// @brief PRINT statement outputting a sequence of expressions and separators.
 /// @invariant items.size() > 0
 struct PrintStmt : Stmt
 {
-    std::vector<ExprPtr> items; ///< Expressions to print in order.
+    std::vector<PrintItem> items; ///< Items printed in order; final newline appended.
 };
 
 /// @brief Assignment statement to variable or array element.
