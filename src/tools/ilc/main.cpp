@@ -17,6 +17,7 @@
 #include "il/verify/Verifier.hpp"
 #include "support/source_manager.hpp"
 #include "vm/VM.hpp"
+#include <cstdint>
 #include <cstdio>
 #include <fstream>
 #include <iostream>
@@ -31,9 +32,10 @@ using namespace il::support;
 static void usage()
 {
     std::cerr << "ilc v0.1.0\n"
-              << "Usage: ilc -run <file.il> [--trace] [--stdin-from <file>]\n"
+              << "Usage: ilc -run <file.il> [--trace] [--stdin-from <file>] [--max-steps N]\n"
               << "       ilc front basic -emit-il <file.bas>\n"
-              << "       ilc front basic -run <file.bas> [--trace] [--stdin-from <file>]\n"
+              << "       ilc front basic -run <file.bas> [--trace] [--stdin-from <file>] "
+                 "[--max-steps N]\n"
               << "       ilc il-opt <in.il> -o <out.il> --passes p1,p2\n";
 }
 
@@ -57,6 +59,7 @@ int main(int argc, char **argv)
         }
         std::string ilFile = argv[2];
         std::string stdinPath;
+        uint64_t maxSteps = 0;
         for (int i = 3; i < argc; ++i)
         {
             std::string arg = argv[i];
@@ -67,6 +70,10 @@ int main(int argc, char **argv)
             else if (arg == "--stdin-from" && i + 1 < argc)
             {
                 stdinPath = argv[++i];
+            }
+            else if (arg == "--max-steps" && i + 1 < argc)
+            {
+                maxSteps = std::stoull(argv[++i]);
             }
             else
             {
@@ -93,7 +100,7 @@ int main(int argc, char **argv)
                 return 1;
             }
         }
-        vm::VM vm(m, trace);
+        vm::VM vm(m, trace, maxSteps);
         return static_cast<int>(vm.run());
     }
 
@@ -170,6 +177,7 @@ int main(int argc, char **argv)
             bool run = false;
             std::string file;
             std::string stdinPath;
+            uint64_t maxSteps = 0;
             for (int i = 3; i < argc; ++i)
             {
                 std::string arg = argv[i];
@@ -190,6 +198,10 @@ int main(int argc, char **argv)
                 else if (arg == "--stdin-from" && i + 1 < argc)
                 {
                     stdinPath = argv[++i];
+                }
+                else if (arg == "--max-steps" && i + 1 < argc)
+                {
+                    maxSteps = std::stoull(argv[++i]);
                 }
                 else
                 {
@@ -246,7 +258,7 @@ int main(int argc, char **argv)
                     return 1;
                 }
             }
-            vm::VM vm(m, trace);
+            vm::VM vm(m, trace, maxSteps);
             return static_cast<int>(vm.run());
         }
     }
