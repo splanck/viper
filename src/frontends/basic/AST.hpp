@@ -179,6 +179,12 @@ struct InputStmt : Stmt
     std::string var; ///< Target variable name (may end with '$').
 };
 
+/// @brief Sequence of statements executed left-to-right on one BASIC line.
+struct StmtList : Stmt
+{
+    std::vector<StmtPtr> stmts; ///< Ordered statements sharing the same line.
+};
+
 struct Program
 {
     std::vector<StmtPtr> statements;
