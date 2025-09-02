@@ -60,8 +60,8 @@ void SemanticAnalyzer::visitStmt(const Stmt &s)
     if (auto *p = dynamic_cast<const PrintStmt *>(&s))
     {
         for (const auto &it : p->items)
-            if (it)
-                visitExpr(*it);
+            if (it.kind == PrintItem::Kind::Expr && it.expr)
+                visitExpr(*it.expr);
     }
     else if (auto *l = dynamic_cast<const LetStmt *>(&s))
     {

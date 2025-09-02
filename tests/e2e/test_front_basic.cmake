@@ -59,6 +59,17 @@ if(NOT RC STREQUAL "A 1 B\n")
   message(FATAL_ERROR "unexpected print_commas output: ${RC}")
 endif()
 
+# test PRINT with semicolons
+execute_process(COMMAND ${ILC} front basic -run ${SRC_DIR}/docs/examples/basic/ex_print_semicolons.bas
+                OUTPUT_FILE run_semicolons.txt RESULT_VARIABLE rs)
+if(NOT rs EQUAL 0)
+  message(FATAL_ERROR "execution print_semicolons failed")
+endif()
+file(READ run_semicolons.txt RS)
+if(NOT RS STREQUAL "A1B\n")
+  message(FATAL_ERROR "unexpected print_semicolons output: ${RS}")
+endif()
+
 # test INPUT string echo
 execute_process(COMMAND ${ILC} front basic -run ${SRC_DIR}/docs/examples/basic/ex5_input_echo.bas --stdin-from ${SRC_DIR}/tests/data/input1.txt
                 OUTPUT_FILE run3.txt RESULT_VARIABLE r4)

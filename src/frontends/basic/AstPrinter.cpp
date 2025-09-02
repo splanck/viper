@@ -25,8 +25,22 @@ std::string AstPrinter::dump(const Stmt &stmt)
     if (auto *p = dynamic_cast<const PrintStmt *>(&stmt))
     {
         std::string res = "(PRINT";
-        for (const auto &e : p->items)
-            res += " " + dump(*e);
+        for (const auto &it : p->items)
+        {
+            res += " ";
+            switch (it.kind)
+            {
+                case PrintItem::Kind::Expr:
+                    res += dump(*it.expr);
+                    break;
+                case PrintItem::Kind::Comma:
+                    res += ",";
+                    break;
+                case PrintItem::Kind::Semicolon:
+                    res += ";";
+                    break;
+            }
+        }
         res += ")";
         return res;
     }
