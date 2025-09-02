@@ -165,6 +165,11 @@ add_test(NAME basic_to_il_print_semicolons COMMAND ${CMAKE_COMMAND}
   -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex_print_semicolons.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/print_semicolons.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
+add_test(NAME basic_to_il_print_newline_control COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex_print_newline_control.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/print_newline_control.il
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 add_test(NAME basic_to_il_loc COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
   -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/loc_add.bas
