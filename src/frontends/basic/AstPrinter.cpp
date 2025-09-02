@@ -22,7 +22,15 @@ std::string AstPrinter::dump(const Program &prog)
 
 std::string AstPrinter::dump(const Stmt &stmt)
 {
-    if (auto *p = dynamic_cast<const PrintStmt *>(&stmt))
+    if (auto *lst = dynamic_cast<const StmtList *>(&stmt))
+    {
+        std::string res = "(SEQ";
+        for (auto &s : lst->stmts)
+            res += " " + dump(*s);
+        res += ")";
+        return res;
+    }
+    else if (auto *p = dynamic_cast<const PrintStmt *>(&stmt))
     {
         std::string res = "(PRINT";
         for (const auto &it : p->items)

@@ -187,7 +187,12 @@ static void foldStmt(StmtPtr &s)
 {
     if (!s)
         return;
-    if (auto *p = dynamic_cast<PrintStmt *>(s.get()))
+    if (auto *lst = dynamic_cast<StmtList *>(s.get()))
+    {
+        for (auto &st : lst->stmts)
+            foldStmt(st);
+    }
+    else if (auto *p = dynamic_cast<PrintStmt *>(s.get()))
     {
         for (auto &it : p->items)
             if (it.kind == PrintItem::Kind::Expr)
