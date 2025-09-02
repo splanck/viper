@@ -87,6 +87,8 @@ const char *tokenKindToString(TokenKind k)
             return ")";
         case TokenKind::Comma:
             return ",";
+        case TokenKind::Semicolon:
+            return ";";
         case TokenKind::Colon:
             return ":";
     }

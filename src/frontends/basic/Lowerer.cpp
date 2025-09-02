@@ -153,8 +153,9 @@ void Lowerer::collectVars(const Program &prog)
     {
         if (auto *p = dynamic_cast<const PrintStmt *>(&s))
         {
-            for (const auto &e : p->items)
-                ex(*e);
+            for (const auto &it : p->items)
+                if (it.kind == PrintItem::Kind::Expr)
+                    ex(*it.expr);
         }
         else if (auto *l = dynamic_cast<const LetStmt *>(&s))
         {
@@ -406,23 +407,33 @@ void Lowerer::lowerLet(const LetStmt &stmt)
 
 void Lowerer::lowerPrint(const PrintStmt &stmt)
 {
-    for (size_t i = 0; i < stmt.items.size(); ++i)
+    for (const auto &it : stmt.items)
     {
-        if (i > 0)
+        switch (it.kind)
         {
-            std::string spaceLbl = getStringLabel(" ");
-            Value sp = emitConstStr(spaceLbl);
-            curLoc = stmt.loc;
-            emitCall("rt_print_str", {sp});
+            case PrintItem::Kind::Expr:
+            {
+                RVal v = lowerExpr(*it.expr);
+                curLoc = stmt.loc;
+                if (v.type.kind == Type::Kind::Str)
+                    emitCall("rt_print_str", {v.value});
+                else if (v.type.kind == Type::Kind::F64)
+                    emitCall("rt_print_f64", {v.value});
+                else
+                    emitCall("rt_print_i64", {v.value});
+                break;
+            }
+            case PrintItem::Kind::Comma:
+            {
+                std::string spaceLbl = getStringLabel(" ");
+                Value sp = emitConstStr(spaceLbl);
+                curLoc = stmt.loc;
+                emitCall("rt_print_str", {sp});
+                break;
+            }
+            case PrintItem::Kind::Semicolon:
+                break;
         }
-        RVal v = lowerExpr(*stmt.items[i]);
-        curLoc = stmt.loc;
-        if (v.type.kind == Type::Kind::Str)
-            emitCall("rt_print_str", {v.value});
-        else if (v.type.kind == Type::Kind::F64)
-            emitCall("rt_print_f64", {v.value});
-        else
-            emitCall("rt_print_i64", {v.value});
     }
     std::string nlLbl = getStringLabel("\n");
     Value nl = emitConstStr(nlLbl);

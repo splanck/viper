@@ -50,6 +50,7 @@ enum class TokenKind
     LParen,
     RParen,
     Comma,
+    Semicolon,
     Colon,
 };
 

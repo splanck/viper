@@ -96,9 +96,24 @@ StmtPtr Parser::parsePrint()
     advance(); // PRINT
     auto stmt = std::make_unique<PrintStmt>();
     stmt->loc = loc;
-    stmt->items.push_back(parseExpression());
-    while (consume(TokenKind::Comma))
-        stmt->items.push_back(parseExpression());
+    while (!check(TokenKind::EndOfLine) && !check(TokenKind::EndOfFile) && !check(TokenKind::Colon))
+    {
+        TokenKind k = current_.kind;
+        if (k >= TokenKind::KeywordPrint && k <= TokenKind::KeywordNot &&
+            k != TokenKind::KeywordAnd && k != TokenKind::KeywordOr && k != TokenKind::KeywordNot)
+            break;
+        if (consume(TokenKind::Comma))
+        {
+            stmt->items.push_back(PrintItem{PrintItem::Kind::Comma, nullptr});
+            continue;
+        }
+        if (consume(TokenKind::Semicolon))
+        {
+            stmt->items.push_back(PrintItem{PrintItem::Kind::Semicolon, nullptr});
+            continue;
+        }
+        stmt->items.push_back(PrintItem{PrintItem::Kind::Expr, parseExpression()});
+    }
     return stmt;
 }
 

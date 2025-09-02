@@ -190,7 +190,8 @@ static void foldStmt(StmtPtr &s)
     if (auto *p = dynamic_cast<PrintStmt *>(s.get()))
     {
         for (auto &it : p->items)
-            foldExpr(it);
+            if (it.kind == PrintItem::Kind::Expr)
+                foldExpr(it.expr);
     }
     else if (auto *l = dynamic_cast<LetStmt *>(s.get()))
     {

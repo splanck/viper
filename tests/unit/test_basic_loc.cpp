@@ -24,7 +24,9 @@ int main()
     assert(ps);
     assert(ps->loc.file_id == fid && ps->loc.line == 1 && ps->loc.column == 1);
     assert(ps->items.size() == 1);
-    auto *bin = dynamic_cast<BinaryExpr *>(ps->items[0].get());
+    const auto &item = ps->items[0];
+    assert(item.kind == PrintItem::Kind::Expr);
+    auto *bin = dynamic_cast<BinaryExpr *>(item.expr.get());
     assert(bin);
     assert(bin->loc.column == 8);
     auto *lhs = dynamic_cast<IntExpr *>(bin->lhs.get());
