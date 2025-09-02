@@ -337,6 +337,8 @@ int Parser::precedence(TokenKind k)
 {
     switch (k)
     {
+        case TokenKind::KeywordNot:
+            return 6;
         case TokenKind::Star:
         case TokenKind::Slash:
             return 5;
@@ -361,7 +363,22 @@ int Parser::precedence(TokenKind k)
 
 ExprPtr Parser::parseExpression(int min_prec)
 {
-    auto left = parsePrimary();
+    ExprPtr left;
+    if (check(TokenKind::KeywordNot))
+    {
+        il::support::SourceLoc loc = current_.loc;
+        advance();
+        auto operand = parseExpression(precedence(TokenKind::KeywordNot));
+        auto u = std::make_unique<UnaryExpr>();
+        u->loc = loc;
+        u->op = UnaryExpr::Op::Not;
+        u->expr = std::move(operand);
+        left = std::move(u);
+    }
+    else
+    {
+        left = parsePrimary();
+    }
     while (true)
     {
         int prec = precedence(current_.kind);
@@ -440,17 +457,6 @@ ExprPtr Parser::parsePrimary()
         e->loc = loc;
         e->value = current_.lexeme;
         advance();
-        return e;
-    }
-    if (check(TokenKind::KeywordNot))
-    {
-        il::support::SourceLoc loc = current_.loc;
-        advance();
-        auto operand = parsePrimary();
-        auto e = std::make_unique<UnaryExpr>();
-        e->loc = loc;
-        e->op = UnaryExpr::Op::Not;
-        e->expr = std::move(operand);
         return e;
     }
     if (check(TokenKind::Identifier))

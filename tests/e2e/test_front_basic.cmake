@@ -133,3 +133,14 @@ string(REGEX MATCH "30" _n2 "${R5}")
 if(NOT _n2)
   message(FATAL_ERROR "missing array sum")
 endif()
+
+# test unary NOT
+execute_process(COMMAND ${ILC} front basic -run ${SRC_DIR}/docs/examples/basic/ex_not.bas
+                OUTPUT_FILE run_not.txt RESULT_VARIABLE rn)
+if(NOT rn EQUAL 0)
+  message(FATAL_ERROR "execution ex_not failed")
+endif()
+file(READ run_not.txt Rn)
+if(NOT Rn STREQUAL "1\n")
+  message(FATAL_ERROR "unexpected ex_not output: ${Rn}")
+endif()

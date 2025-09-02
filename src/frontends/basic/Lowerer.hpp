@@ -59,6 +59,8 @@ class Lowerer
     Value emitLoad(Type ty, Value addr);
     void emitStore(Type ty, Value addr, Value val);
     Value emitBinary(Opcode op, Type ty, Value lhs, Value rhs);
+    /// @brief Emit unary instruction of @p op on @p val producing @p ty.
+    Value emitUnary(Opcode op, Type ty, Value val);
     void emitBr(BasicBlock *target);
     void emitCBr(Value cond, BasicBlock *t, BasicBlock *f);
     Value emitCallRet(Type ty, const std::string &callee, const std::vector<Value> &args);
