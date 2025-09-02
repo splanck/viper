@@ -1,10 +1,13 @@
 il 0.1
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
+extern @rt_print_f64(f64) -> void
 extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
 global const str @.L0 = "HELLO"
-global const str @.L1 = "READY"
+global const str @.L1 = "
+"
+global const str @.L2 = "READY"
 func @main() -> i64 {
 entry:
   %t0 = alloca 8
@@ -30,28 +33,40 @@ L30:
   .loc 1 3 4
   call @rt_print_str(%t4)
   .loc 1 3 4
+  %t5 = const_str @.L1
+  .loc 1 3 4
+  call @rt_print_str(%t5)
+  .loc 1 3 4
   br label L40
 L40:
   .loc 1 4 10
-  %t5 = const_str @.L1
+  %t6 = const_str @.L2
   .loc 1 4 4
-  call @rt_print_str(%t5)
+  call @rt_print_str(%t6)
+  .loc 1 4 4
+  %t7 = const_str @.L1
+  .loc 1 4 4
+  call @rt_print_str(%t7)
   .loc 1 4 4
   br label L50
 L50:
   .loc 1 5 10
-  %t6 = load i64, %t0
+  %t8 = load i64, %t0
   .loc 1 5 4
-  call @rt_print_i64(%t6)
+  call @rt_print_i64(%t8)
+  .loc 1 5 4
+  %t9 = const_str @.L1
+  .loc 1 5 4
+  call @rt_print_str(%t9)
   .loc 1 5 4
   br label L60
 L60:
   .loc 1 6 7
-  %t7 = load i64, %t0
+  %t10 = load i64, %t0
   .loc 1 6 9
-  %t8 = scmp_gt %t7, 8
+  %t11 = scmp_gt %t10, 8
   .loc 1 6 4
-  cbr %t8, label then, label else
+  cbr %t11, label then, label else
 L70:
   .loc 1 7 4
   br label exit
@@ -59,9 +74,13 @@ exit:
   ret 0
 then:
   .loc 1 6 24
-  %t9 = load i64, %t0
+  %t12 = load i64, %t0
   .loc 1 6 18
-  call @rt_print_i64(%t9)
+  call @rt_print_i64(%t12)
+  .loc 1 6 18
+  %t13 = const_str @.L1
+  .loc 1 6 18
+  call @rt_print_str(%t13)
   .loc 1 6 4
   br label exit1
 exit1:
@@ -70,6 +89,10 @@ exit1:
 else:
   .loc 1 6 31
   call @rt_print_i64(4)
+  .loc 1 6 31
+  %t14 = const_str @.L1
+  .loc 1 6 31
+  call @rt_print_str(%t14)
   .loc 1 6 4
   br label exit1
 }

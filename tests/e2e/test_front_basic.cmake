@@ -48,6 +48,17 @@ if(NOT _s3)
   message(FATAL_ERROR "missing 45")
 endif()
 
+# test PRINT with commas
+execute_process(COMMAND ${ILC} front basic -run ${SRC_DIR}/docs/examples/basic/ex_print_commas.bas
+                OUTPUT_FILE run_commas.txt RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+  message(FATAL_ERROR "execution print_commas failed")
+endif()
+file(READ run_commas.txt RC)
+if(NOT RC STREQUAL "A 1 B\n")
+  message(FATAL_ERROR "unexpected print_commas output: ${RC}")
+endif()
+
 # test INPUT string echo
 execute_process(COMMAND ${ILC} front basic -run ${SRC_DIR}/docs/examples/basic/ex5_input_echo.bas --stdin-from ${SRC_DIR}/tests/data/input1.txt
                 OUTPUT_FILE run3.txt RESULT_VARIABLE r4)

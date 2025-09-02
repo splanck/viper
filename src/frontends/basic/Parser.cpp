@@ -94,10 +94,11 @@ StmtPtr Parser::parsePrint()
 {
     il::support::SourceLoc loc = current_.loc;
     advance(); // PRINT
-    auto e = parseExpression();
     auto stmt = std::make_unique<PrintStmt>();
     stmt->loc = loc;
-    stmt->expr = std::move(e);
+    stmt->items.push_back(parseExpression());
+    while (consume(TokenKind::Comma))
+        stmt->items.push_back(parseExpression());
     return stmt;
 }
 

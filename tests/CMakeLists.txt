@@ -155,6 +155,11 @@ add_test(NAME basic_to_il_ex6 COMMAND ${CMAKE_COMMAND}
   -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex6_array_sum.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/ex6_array_sum.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
+add_test(NAME basic_to_il_print_commas COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex_print_commas.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/print_commas.il
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 add_test(NAME basic_to_il_loc COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
   -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/loc_add.bas

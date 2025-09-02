@@ -189,7 +189,8 @@ static void foldStmt(StmtPtr &s)
         return;
     if (auto *p = dynamic_cast<PrintStmt *>(s.get()))
     {
-        foldExpr(p->expr);
+        for (auto &it : p->items)
+            foldExpr(it);
     }
     else if (auto *l = dynamic_cast<LetStmt *>(s.get()))
     {
