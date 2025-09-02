@@ -82,6 +82,7 @@ class Lowerer
     std::unordered_map<std::string, std::string> strings;
     std::unordered_set<std::string> vars;
     il::support::SourceLoc curLoc{}; ///< current source location for emitted IR
+    bool usedStrEq{false};
 };
 
 } // namespace il::frontends::basic

@@ -166,3 +166,14 @@ file(READ run_elseif.txt RELIF)
 if(NOT RELIF STREQUAL "TWO\n")
   message(FATAL_ERROR "unexpected ex_elseif output: ${RELIF}")
 endif()
+
+# test string comparisons
+execute_process(COMMAND ${ILC} front basic -run ${SRC_DIR}/docs/examples/basic/ex_str_cmp.bas
+                OUTPUT_FILE run_strcmp.txt RESULT_VARIABLE rsc)
+if(NOT rsc EQUAL 0)
+  message(FATAL_ERROR "execution ex_str_cmp failed")
+endif()
+file(READ run_strcmp.txt RSC)
+if(NOT RSC STREQUAL "1\n2\n")
+  message(FATAL_ERROR "unexpected ex_str_cmp output: ${RSC}")
+endif()

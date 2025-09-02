@@ -313,6 +313,13 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
                     std::string msg = "operand type mismatch";
                     de.emit(il::support::Severity::Error, "B2001", b->loc, 1, std::move(msg));
                 }
+                if (lt == Type::String && rt == Type::String &&
+                    (b->op == BinaryExpr::Op::Lt || b->op == BinaryExpr::Op::Le ||
+                     b->op == BinaryExpr::Op::Gt || b->op == BinaryExpr::Op::Ge))
+                {
+                    std::string msg = "operand type mismatch";
+                    de.emit(il::support::Severity::Error, "B2001", b->loc, 1, std::move(msg));
+                }
                 return Type::Int;
             case BinaryExpr::Op::And:
             case BinaryExpr::Op::Or:

@@ -29,6 +29,7 @@ Module Lowerer::lower(const Program &prog)
     lineBlocks.clear();
     varSlots.clear();
     strings.clear();
+    usedStrEq = false;
 
     bool needInput = false;
     bool needToInt = false;
@@ -118,6 +119,10 @@ Module Lowerer::lower(const Program &prog)
     cur = &f.blocks[fnExit];
     curLoc = {};
     emitRet(Value::constInt(0));
+
+    if (usedStrEq)
+        b.addExtern(
+            "rt_str_eq", Type(Type::Kind::I1), {Type(Type::Kind::Str), Type(Type::Kind::Str)});
 
     return m;
 }
@@ -335,6 +340,20 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
         RVal lhs = lowerExpr(*b->lhs);
         RVal rhs = lowerExpr(*b->rhs);
         curLoc = expr.loc;
+        if ((b->op == BinaryExpr::Op::Eq || b->op == BinaryExpr::Op::Ne) &&
+            lhs.type.kind == Type::Kind::Str && rhs.type.kind == Type::Kind::Str)
+        {
+            usedStrEq = true;
+            Value eq = emitCallRet(Type(Type::Kind::I1), "rt_str_eq", {lhs.value, rhs.value});
+            if (b->op == BinaryExpr::Op::Ne)
+            {
+                Value z = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), eq);
+                Value x = emitBinary(Opcode::Xor, Type(Type::Kind::I64), z, Value::constInt(1));
+                Value res = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), x);
+                return {res, Type(Type::Kind::I1)};
+            }
+            return {eq, Type(Type::Kind::I1)};
+        }
         Opcode op = Opcode::Add;
         Type ty(Type::Kind::I64);
         switch (b->op)

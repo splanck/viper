@@ -1,0 +1,2 @@
+10 IF "HI" = "HI" THEN PRINT 1
+20 IF "A" <> "B" THEN PRINT 2
