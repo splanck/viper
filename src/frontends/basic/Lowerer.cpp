@@ -672,6 +672,15 @@ void Lowerer::lowerEnd(const EndStmt &stmt)
 void Lowerer::lowerInput(const InputStmt &stmt)
 {
     curLoc = stmt.loc;
+    if (stmt.prompt)
+    {
+        if (auto *se = dynamic_cast<const StringExpr *>(stmt.prompt.get()))
+        {
+            std::string lbl = getStringLabel(se->value);
+            Value v = emitConstStr(lbl);
+            emitCall("rt_print_str", {v});
+        }
+    }
     Value s = emitCallRet(Type(Type::Kind::Str), "rt_input_line", {});
     bool isStr = !stmt.var.empty() && stmt.var.back() == '$';
     Value target = Value::temp(varSlots[stmt.var]);

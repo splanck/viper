@@ -169,6 +169,8 @@ void SemanticAnalyzer::visitStmt(const Stmt &s)
     }
     else if (auto *inp = dynamic_cast<const InputStmt *>(&s))
     {
+        if (inp->prompt)
+            visitExpr(*inp->prompt);
         symbols_.insert(inp->var);
         if (!inp->var.empty() && inp->var.back() == '$')
             varTypes_[inp->var] = Type::String;

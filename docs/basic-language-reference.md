@@ -58,9 +58,16 @@ Logical operators short-circuit and return Boolean.
 | `FOR v = start TO end [STEP s] … NEXT v` | counted loop |
 | `GOTO line` | jump to line label |
 | `END` | terminate program |
-| `INPUT v$` / `INPUT v` | read line as string or integer |
+| `INPUT v$` / `INPUT v` / `INPUT "p", v` | read line as string or integer, optional literal prompt |
 | `DIM A(n)` | allocate integer array of length `n` |
 
+An optional string literal prompt may precede the variable:
+
+```basic
+INPUT "N=", N
+```
+
+The prompt must be a literal string for now.
 
 ### PRINT separators
 
@@ -108,7 +115,7 @@ stmt        ::= "LET" ident "=" expr
              | "FOR" ident "=" expr "TO" expr ("STEP" expr)? (NEWLINE|":") stmt* "NEXT" ident
              | "GOTO" NUMBER
              | "END"
-             | "INPUT" ident
+             | "INPUT" (STRING ",")? ident
 expr        ::= term (("+"|"-") term)*
 term        ::= factor (("*"|"/") factor)*
 factor      ::= NUMBER | STRING | ident | ident "(" expr ")"
@@ -134,6 +141,7 @@ The front end lowers BASIC to IL; see the [IL v0.1.1 spec](./il-spec.md) for ins
 | `VAL(S$)`           | `call @rt_to_int(%s)`                                     | `rt_to_int(str)→i64` |
 | `INPUT A$`          | `%s = call @rt_input_line(); store A$, %s`                | `rt_input_line()→str` |
 | `INPUT N`           | `%s = call @rt_input_line(); %n = call @rt_to_int(%s); store N,%n` | `rt_input_line()→str; rt_to_int(str)→i64` |
+| `INPUT "N=", N`    | `call @rt_print_str("N="); %s = call @rt_input_line(); %n = call @rt_to_int(%s); store N,%n` | `rt_print_str(str); rt_input_line()→str; rt_to_int(str)→i64` |
 | `DIM A(N)`          | `%bytes = mul N,8; %p = call @rt_alloc(%bytes); store %A,%p` | `rt_alloc(i64)→ptr` |
 | `A(I)`              | `%base = load ptr,%A; %off = shl I,3; %ptr = gep %base,%off; %v = load i64,%ptr` | — |
 | `LET A(I) = X`      | compute `%ptr` as above; `store i64,%ptr,X`               | — |

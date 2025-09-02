@@ -109,6 +109,17 @@ if(NOT _n1)
   message(FATAL_ERROR "missing numeric sum")
 endif()
 
+# test INPUT prompt literal
+execute_process(COMMAND ${ILC} front basic -run ${SRC_DIR}/docs/examples/basic/ex_input_prompt_min.bas --stdin-from ${SRC_DIR}/tests/data/n_input.txt
+                OUTPUT_FILE run_prompt.txt RESULT_VARIABLE rp)
+if(NOT rp EQUAL 0)
+  message(FATAL_ERROR "execution input_prompt failed")
+endif()
+file(READ run_prompt.txt RP)
+if(NOT RP STREQUAL "N=42\n")
+  message(FATAL_ERROR "unexpected input_prompt output: ${RP}")
+endif()
+
 # test array DIM and element access
 set(tmp_arr_in "${CMAKE_BINARY_DIR}/array_n.txt")
 file(WRITE ${tmp_arr_in} "5\n")
