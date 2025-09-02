@@ -36,3 +36,14 @@ Tools that produce IL for golden tests emit a canonical form:
 - constants rendered deterministically with minimal formatting.
 
 This mode ensures test diffs are stable and comparable across builds.
+
+## Tools
+
+### VM flags
+
+`ilc -run <file.il>` accepts additional debugging flags:
+
+- `--trace` — print executed instructions.
+- `--stdin-from <file>` — read program input from a file.
+- `--max-steps <N>` — abort after executing `N` instructions with the message
+  `VM: step limit exceeded (N); aborting.`

@@ -148,5 +148,15 @@ The front end lowers BASIC to IL; see the [IL v0.1.1 spec](./il-spec.md) for ins
 
 BASIC's 1-based indices become 0-based for runtime calls.
 
+## Debugging the interpreter
+When a program hangs due to an infinite loop, run it with a step limit:
+
+```sh
+ilc -run tests/data/loop.il --max-steps 5
+```
+
+This aborts after five instructions and prints
+`VM: step limit exceeded (5); aborting.`
+
 ## Examples
 See the [BASIC examples](./examples/basic/) and their IL counterparts.
