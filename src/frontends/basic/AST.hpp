@@ -133,11 +133,20 @@ struct DimStmt : Stmt
     ExprPtr size;     ///< Element count expression.
 };
 
+/// @brief IF statement with optional ELSEIF chain and ELSE branch.
 struct IfStmt : Stmt
 {
-    ExprPtr cond;
-    StmtPtr then_branch;
-    StmtPtr else_branch; // may be null
+    /// @brief ELSEIF arm.
+    struct ElseIf
+    {
+        ExprPtr cond;        ///< Condition expression.
+        StmtPtr then_branch; ///< Executed when condition is true.
+    };
+
+    ExprPtr cond;                ///< Initial IF condition.
+    StmtPtr then_branch;         ///< THEN branch when @ref cond is true.
+    std::vector<ElseIf> elseifs; ///< Zero or more ELSEIF arms evaluated in order.
+    StmtPtr else_branch;         ///< Optional trailing ELSE branch (may be null).
 };
 
 struct WhileStmt : Stmt

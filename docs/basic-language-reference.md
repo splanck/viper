@@ -115,6 +115,17 @@ prints `AB` on one line. The semicolon after `"A"` suppresses the newline so the
 
 Multi-statement `THEN`/`ELSE` blocks may appear on new lines or be separated by `:`.
 
+### IF / ELSEIF / ELSE
+
+`IF` evaluates a Boolean expression and executes its `THEN` block when true. Additional tests may follow using `ELSEIF` (one word) or `ELSE IF` (two words); the first matching branch runs. A final `ELSE` handles the default case. `ELSEIF` is equivalent to nesting another `IF` inside the `ELSE` branch.
+
+```basic
+10 LET X = 2
+20 IF X = 1 THEN PRINT "ONE" ELSEIF X = 2 THEN PRINT "TWO" ELSE PRINT "OTHER"
+```
+
+prints `TWO`.
+
 ## Variables & naming conventions
 Identifiers match `[A-Za-z][A-Za-z0-9_]*` with optional `$` suffix for strings.
 Without `$` the variable defaults to integer;

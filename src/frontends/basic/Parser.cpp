@@ -149,29 +149,58 @@ StmtPtr Parser::parseLet()
 StmtPtr Parser::parseIf(int line)
 {
     il::support::SourceLoc loc = current_.loc;
-    advance(); // IF or ELSEIF
+    advance(); // IF
     auto cond = parseExpression();
     consume(TokenKind::KeywordThen);
     auto thenStmt = parseStatement(line);
+    std::vector<IfStmt::ElseIf> elseifs;
     StmtPtr elseStmt;
-    if (check(TokenKind::KeywordElseIf))
+    while (true)
     {
-        elseStmt = parseIf(line);
-    }
-    else if (check(TokenKind::KeywordElse))
-    {
-        advance();
-        elseStmt = parseStatement(line);
+        if (check(TokenKind::KeywordElseIf))
+        {
+            advance();
+            IfStmt::ElseIf ei;
+            ei.cond = parseExpression();
+            consume(TokenKind::KeywordThen);
+            ei.then_branch = parseStatement(line);
+            if (ei.then_branch)
+                ei.then_branch->line = line;
+            elseifs.push_back(std::move(ei));
+            continue;
+        }
+        if (check(TokenKind::KeywordElse))
+        {
+            advance();
+            if (check(TokenKind::KeywordIf))
+            {
+                advance();
+                IfStmt::ElseIf ei;
+                ei.cond = parseExpression();
+                consume(TokenKind::KeywordThen);
+                ei.then_branch = parseStatement(line);
+                if (ei.then_branch)
+                    ei.then_branch->line = line;
+                elseifs.push_back(std::move(ei));
+                continue;
+            }
+            else
+            {
+                elseStmt = parseStatement(line);
+                if (elseStmt)
+                    elseStmt->line = line;
+            }
+        }
+        break;
     }
     auto stmt = std::make_unique<IfStmt>();
     stmt->loc = loc;
     stmt->cond = std::move(cond);
     stmt->then_branch = std::move(thenStmt);
+    stmt->elseifs = std::move(elseifs);
     stmt->else_branch = std::move(elseStmt);
     if (stmt->then_branch)
         stmt->then_branch->line = line;
-    if (stmt->else_branch)
-        stmt->else_branch->line = line;
     return stmt;
 }
 
