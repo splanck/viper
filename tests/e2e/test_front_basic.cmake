@@ -134,6 +134,17 @@ if(NOT _n2)
   message(FATAL_ERROR "missing array sum")
 endif()
 
+# test multi-statement lines with ':'
+execute_process(COMMAND ${ILC} front basic -run ${SRC_DIR}/docs/examples/basic/ex_colon.bas
+                OUTPUT_FILE run_colon.txt RESULT_VARIABLE rcol)
+if(NOT rcol EQUAL 0)
+  message(FATAL_ERROR "execution ex_colon failed")
+endif()
+file(READ run_colon.txt RCOL)
+if(NOT RCOL STREQUAL "1\n2\n")
+  message(FATAL_ERROR "unexpected ex_colon output: ${RCOL}")
+endif()
+
 # test unary NOT
 execute_process(COMMAND ${ILC} front basic -run ${SRC_DIR}/docs/examples/basic/ex_not.bas
                 OUTPUT_FILE run_not.txt RESULT_VARIABLE rn)
