@@ -1,10 +1,13 @@
 il 0.1
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
+extern @rt_print_f64(f64) -> void
 extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
 global const str @.L0 = "SUM"
-global const str @.L1 = "DONE"
+global const str @.L1 = "
+"
+global const str @.L2 = "DONE"
 func @main() -> i64 {
 entry:
   %t0 = alloca 8
@@ -15,6 +18,10 @@ L10:
   .loc 1 1 4
   call @rt_print_str(%t1)
   .loc 1 1 4
+  %t2 = const_str @.L1
+  .loc 1 1 4
+  call @rt_print_str(%t2)
+  .loc 1 1 4
   br label L20
 L20:
   .loc 1 2 4
@@ -23,16 +30,24 @@ L20:
   br label L30
 L30:
   .loc 1 3 10
-  %t2 = load i64, %t0
+  %t3 = load i64, %t0
   .loc 1 3 4
-  call @rt_print_i64(%t2)
+  call @rt_print_i64(%t3)
+  .loc 1 3 4
+  %t4 = const_str @.L1
+  .loc 1 3 4
+  call @rt_print_str(%t4)
   .loc 1 3 4
   br label L40
 L40:
   .loc 1 4 10
-  %t3 = const_str @.L1
+  %t5 = const_str @.L2
   .loc 1 4 4
-  call @rt_print_str(%t3)
+  call @rt_print_str(%t5)
+  .loc 1 4 4
+  %t6 = const_str @.L1
+  .loc 1 4 4
+  call @rt_print_str(%t6)
   .loc 1 4 4
   br label L50
 L50:

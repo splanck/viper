@@ -36,6 +36,10 @@ extern "C"
     /// @param v Value to print.
     void rt_print_i64(int64_t v);
 
+    /// @brief Print 64-bit float @p v to stdout.
+    /// @param v Value to print.
+    void rt_print_f64(double v);
+
     /// @brief Read a line from stdin.
     /// @return Newly allocated string without trailing newline.
     rt_str rt_input_line(void);

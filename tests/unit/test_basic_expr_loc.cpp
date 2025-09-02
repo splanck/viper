@@ -21,7 +21,8 @@ int main()
     assert(prog->statements.size() == 1);
     auto *ps = dynamic_cast<PrintStmt *>(prog->statements[0].get());
     assert(ps);
-    auto *add = dynamic_cast<BinaryExpr *>(ps->expr.get());
+    assert(ps->items.size() == 1);
+    auto *add = dynamic_cast<BinaryExpr *>(ps->items[0].get());
     assert(add);
     assert(add->loc.file_id == fid && add->loc.line == 1 && add->loc.column == 8);
     auto *lhs = dynamic_cast<IntExpr *>(add->lhs.get());

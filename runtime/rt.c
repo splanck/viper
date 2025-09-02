@@ -1,3 +1,9 @@
+// File: runtime/rt.c
+// Purpose: Implements BASIC runtime helpers for strings and I/O.
+// Key invariants: Strings use reference counts; print functions do not append newlines.
+// Ownership/Lifetime: Caller manages returned strings.
+// Links: docs/class-catalog.md
+
 #include "rt.hpp"
 #include <ctype.h>
 #include <errno.h>
@@ -47,15 +53,17 @@ rt_str rt_const_cstr(const char *c)
 void rt_print_str(rt_str s)
 {
     if (s && s->data)
-    {
         fwrite(s->data, 1, (size_t)s->size, stdout);
-        fputc('\n', stdout);
-    }
 }
 
 void rt_print_i64(int64_t v)
 {
-    printf("%lld\n", (long long)v);
+    printf("%lld", (long long)v);
+}
+
+void rt_print_f64(double v)
+{
+    printf("%g", v);
 }
 
 rt_str rt_input_line(void)

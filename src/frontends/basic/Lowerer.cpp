@@ -46,6 +46,7 @@ Module Lowerer::lower(const Program &prog)
 
     b.addExtern("rt_print_str", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
     b.addExtern("rt_print_i64", Type(Type::Kind::Void), {Type(Type::Kind::I64)});
+    b.addExtern("rt_print_f64", Type(Type::Kind::Void), {Type(Type::Kind::F64)});
     b.addExtern("rt_len", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
     b.addExtern("rt_substr",
                 Type(Type::Kind::Str),
@@ -152,7 +153,8 @@ void Lowerer::collectVars(const Program &prog)
     {
         if (auto *p = dynamic_cast<const PrintStmt *>(&s))
         {
-            ex(*p->expr);
+            for (const auto &e : p->items)
+                ex(*e);
         }
         else if (auto *l = dynamic_cast<const LetStmt *>(&s))
         {
@@ -404,12 +406,28 @@ void Lowerer::lowerLet(const LetStmt &stmt)
 
 void Lowerer::lowerPrint(const PrintStmt &stmt)
 {
-    RVal v = lowerExpr(*stmt.expr);
+    for (size_t i = 0; i < stmt.items.size(); ++i)
+    {
+        if (i > 0)
+        {
+            std::string spaceLbl = getStringLabel(" ");
+            Value sp = emitConstStr(spaceLbl);
+            curLoc = stmt.loc;
+            emitCall("rt_print_str", {sp});
+        }
+        RVal v = lowerExpr(*stmt.items[i]);
+        curLoc = stmt.loc;
+        if (v.type.kind == Type::Kind::Str)
+            emitCall("rt_print_str", {v.value});
+        else if (v.type.kind == Type::Kind::F64)
+            emitCall("rt_print_f64", {v.value});
+        else
+            emitCall("rt_print_i64", {v.value});
+    }
+    std::string nlLbl = getStringLabel("\n");
+    Value nl = emitConstStr(nlLbl);
     curLoc = stmt.loc;
-    if (v.type.kind == Type::Kind::Str)
-        emitCall("rt_print_str", {v.value});
-    else
-        emitCall("rt_print_i64", {v.value});
+    emitCall("rt_print_str", {nl});
 }
 
 void Lowerer::lowerIf(const IfStmt &stmt)

@@ -1,8 +1,11 @@
 il 0.1
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
+extern @rt_print_f64(f64) -> void
 extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
+global const str @.L0 = "
+"
 func @main() -> i64 {
 entry:
   %t0 = alloca 8
@@ -27,6 +30,10 @@ exit:
 then:
   .loc 1 2 19
   call @rt_print_i64(1)
+  .loc 1 2 19
+  %t3 = const_str @.L0
+  .loc 1 2 19
+  call @rt_print_str(%t3)
   .loc 1 2 4
   br label exit1
 exit1:
@@ -34,14 +41,18 @@ exit1:
   br label L30
 else:
   .loc 1 2 34
-  %t3 = load i64, %t0
+  %t4 = load i64, %t0
   .loc 1 2 36
-  %t4 = scmp_le %t3, 2
+  %t5 = scmp_le %t4, 2
   .loc 1 2 27
-  cbr %t4, label then1, label else1
+  cbr %t5, label then1, label else1
 then1:
   .loc 1 2 46
   call @rt_print_i64(2)
+  .loc 1 2 46
+  %t6 = const_str @.L0
+  .loc 1 2 46
+  call @rt_print_str(%t6)
   .loc 1 2 27
   br label exit2
 exit2:
@@ -50,6 +61,10 @@ exit2:
 else1:
   .loc 1 2 59
   call @rt_print_i64(3)
+  .loc 1 2 59
+  %t7 = const_str @.L0
+  .loc 1 2 59
+  call @rt_print_str(%t7)
   .loc 1 2 27
   br label exit2
 }

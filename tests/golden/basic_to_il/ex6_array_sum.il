@@ -1,11 +1,14 @@
 il 0.1
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
+extern @rt_print_f64(f64) -> void
 extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
 extern @rt_input_line() -> str
 extern @rt_to_int(str) -> i64
 extern @rt_alloc(i64) -> ptr
+global const str @.L0 = "
+"
 func @main() -> i64 {
 entry:
   %t0 = alloca 8
@@ -51,6 +54,10 @@ L100:
   %t28 = load i64, %t0
   .loc 1 10 5
   call @rt_print_i64(%t28)
+  .loc 1 10 5
+  %t29 = const_str @.L0
+  .loc 1 10 5
+  call @rt_print_str(%t29)
   .loc 1 10 5
   br label L110
 L110:
