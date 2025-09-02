@@ -171,9 +171,11 @@ struct EndStmt : Stmt
 {
 };
 
-/// @brief INPUT statement to read from stdin into a variable.
+/// @brief INPUT statement to read from stdin into a variable, optionally
+/// displaying a string literal prompt.
 struct InputStmt : Stmt
 {
+    ExprPtr prompt;  ///< Optional prompt string literal (nullptr if absent).
     std::string var; ///< Target variable name (may end with '$').
 };
 
