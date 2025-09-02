@@ -22,7 +22,9 @@ int main()
     auto *ps = dynamic_cast<PrintStmt *>(prog->statements[0].get());
     assert(ps);
     assert(ps->items.size() == 1);
-    auto *add = dynamic_cast<BinaryExpr *>(ps->items[0].get());
+    const auto &item = ps->items[0];
+    assert(item.kind == PrintItem::Kind::Expr);
+    auto *add = dynamic_cast<BinaryExpr *>(item.expr.get());
     assert(add);
     assert(add->loc.file_id == fid && add->loc.line == 1 && add->loc.column == 8);
     auto *lhs = dynamic_cast<IntExpr *>(add->lhs.get());

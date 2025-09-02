@@ -181,6 +181,8 @@ Token Lexer::next()
             return {TokenKind::RParen, ")", loc};
         case ',':
             return {TokenKind::Comma, ",", loc};
+        case ';':
+            return {TokenKind::Semicolon, ";", loc};
         case ':':
             return {TokenKind::Colon, ":", loc};
     }

@@ -52,7 +52,7 @@ Logical operators short-circuit and return Boolean.
 | Statement | Meaning |
 |-----------|---------|
 | `LET v = expr` | assign to variable `v` (auto-declare) |
-| `PRINT expr[, expr]*` | write values to stdout separated by spaces, newline appended |
+| `PRINT items` | write values to stdout; separators: `,` inserts space, `;` inserts nothing; newline appended |
 | `IF c THEN … [ELSEIF …]* [ELSE …]` | conditional execution |
 | `WHILE c … WEND` | loop while condition `c` is true |
 | `FOR v = start TO end [STEP s] … NEXT v` | counted loop |
@@ -60,6 +60,14 @@ Logical operators short-circuit and return Boolean.
 | `END` | terminate program |
 | `INPUT v$` / `INPUT v` | read line as string or integer |
 | `DIM A(n)` | allocate integer array of length `n` |
+
+
+### PRINT separators
+
+| Separator | Effect |
+|-----------|--------|
+| `,`       | print space |
+| `;`       | print nothing |
 
 Multi-statement `THEN`/`ELSE` blocks may appear on new lines or be separated by `:`.
 
@@ -84,7 +92,7 @@ B0001: expected expression
 program     ::= (line | stmt)* EOF
 line        ::= (NUMBER)? stmt (":" stmt)* NEWLINE
 stmt        ::= "LET" ident "=" expr
-             | "PRINT" expr ("," expr)*
+| "PRINT" (expr | "," | ";")+
              | "DIM" ident "(" expr ")"
              | "IF" expr "THEN" stmt ("ELSEIF" expr "THEN" stmt)* ("ELSE" stmt)?
              | "WHILE" expr (NEWLINE|":") stmt* "WEND"
@@ -107,6 +115,7 @@ The front end lowers BASIC to IL; see the [IL v0.1.1 spec](./il-spec.md) for ins
 | `PRINT "X"`         | `%s = const_str @.L; call @rt_print_str(%s)`              | `rt_print_str(str)` |
 | `PRINT X`           | `%v = load i64, %slotX; call @rt_print_i64(%v)`           | `rt_print_i64(i64)` |
 | `PRINT "A", 1`     | `call @rt_print_str("A"); call @rt_print_str(" "); call @rt_print_i64(1); call @rt_print_str("\n")` | `rt_print_str(str)`, `rt_print_i64(i64)` |
+| `PRINT "A"; 1`     | `call @rt_print_str("A"); call @rt_print_i64(1); call @rt_print_str("\n")` | `rt_print_str(str)`, `rt_print_i64(i64)` |
 | `LET X = A + B`     | `load A; load B; %c = add %a,%b; store X,%c`              | — |
 | `IF C THEN … ELSE …`| `%p = …cmp…; cbr %p, then, else`                          | — |
 | `WHILE C … WEND`    | `br loop_head; cbr cond, loop_body, done`                 | — |
