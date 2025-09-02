@@ -10,6 +10,7 @@ global const str @.L0 = "JOHN"
 global const str @.L1 = "DOE"
 global const str @.L2 = " "
 global const str @.L3 = "JOHN DOE"
+global const str @.L4 = "\n"
 
 func @main() -> i32 {
 entry:
@@ -35,13 +36,19 @@ entry:
 
   %c3 = load str, %c_slot
   call @rt_print_str(%c3)
+  %nl0 = const_str @.L4
+  call @rt_print_str(%nl0)
 
   %len = call @rt_len(%c3)
   store i64, %l_slot, %len
   call @rt_print_i64(%len)
+  %nl1 = const_str @.L4
+  call @rt_print_str(%nl1)
 
   %first = call @rt_substr(%c3, 0, 1)
   call @rt_print_str(%first)
+  %nl2 = const_str @.L4
+  call @rt_print_str(%nl2)
 
   %target = const_str @.L3
   %eq = call @rt_str_eq(%c3, %target)
@@ -49,10 +56,14 @@ entry:
 
 then1:
   call @rt_print_i64(1)
+  %nl3 = const_str @.L4
+  call @rt_print_str(%nl3)
   br label exit
 
 else0:
   call @rt_print_i64(0)
+  %nl4 = const_str @.L4
+  call @rt_print_str(%nl4)
   br label exit
 
 exit:
