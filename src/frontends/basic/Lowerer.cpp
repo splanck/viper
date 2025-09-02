@@ -435,10 +435,15 @@ void Lowerer::lowerPrint(const PrintStmt &stmt)
                 break;
         }
     }
-    std::string nlLbl = getStringLabel("\n");
-    Value nl = emitConstStr(nlLbl);
-    curLoc = stmt.loc;
-    emitCall("rt_print_str", {nl});
+
+    bool suppress_nl = !stmt.items.empty() && stmt.items.back().kind == PrintItem::Kind::Semicolon;
+    if (!suppress_nl)
+    {
+        std::string nlLbl = getStringLabel("\n");
+        Value nl = emitConstStr(nlLbl);
+        curLoc = stmt.loc;
+        emitCall("rt_print_str", {nl});
+    }
 }
 
 void Lowerer::lowerIf(const IfStmt &stmt)

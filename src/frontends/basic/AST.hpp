@@ -111,10 +111,12 @@ struct PrintItem
 };
 
 /// @brief PRINT statement outputting a sequence of expressions and separators.
+/// Trailing semicolon suppresses the automatic newline.
 /// @invariant items.size() > 0
 struct PrintStmt : Stmt
 {
-    std::vector<PrintItem> items; ///< Items printed in order; final newline appended.
+    std::vector<PrintItem> items; ///< Items printed in order; unless the last item is
+                                  ///< a semicolon, a newline is appended.
 };
 
 /// @brief Assignment statement to variable or array element.

@@ -52,7 +52,7 @@ Logical operators short-circuit and return Boolean.
 | Statement | Meaning |
 |-----------|---------|
 | `LET v = expr` | assign to variable `v` (auto-declare) |
-| `PRINT items` | write values to stdout; separators: `,` inserts space, `;` inserts nothing; newline appended |
+| `PRINT items` | write values to stdout; separators: `,` inserts space, `;` inserts nothing; newline appended unless statement ends with `;` |
 | `IF c THEN … [ELSEIF …]* [ELSE …]` | conditional execution |
 | `WHILE c … WEND` | loop while condition `c` is true |
 | `FOR v = start TO end [STEP s] … NEXT v` | counted loop |
@@ -67,7 +67,16 @@ Logical operators short-circuit and return Boolean.
 | Separator | Effect |
 |-----------|--------|
 | `,`       | print space |
-| `;`       | print nothing |
+| `;`       | print nothing; if last, suppress newline |
+
+An example with trailing `;`:
+
+```basic
+10 PRINT "A";
+20 PRINT "B"
+```
+prints `AB` on one line. The semicolon after `"A"` suppresses the newline so the next
+`PRINT` continues on the same line.
 
 Multi-statement `THEN`/`ELSE` blocks may appear on new lines or be separated by `:`.
 
@@ -114,6 +123,7 @@ The front end lowers BASIC to IL; see the [IL v0.1.1 spec](./il-spec.md) for ins
 |---------------------|-----------------------------------------------------------|---------|
 | `PRINT "X"`         | `%s = const_str @.L; call @rt_print_str(%s)`              | `rt_print_str(str)` |
 | `PRINT X`           | `%v = load i64, %slotX; call @rt_print_i64(%v)`           | `rt_print_i64(i64)` |
+| `PRINT "A";`       | `call @rt_print_str("A")`                               | `rt_print_str(str)` |
 | `PRINT "A", 1`     | `call @rt_print_str("A"); call @rt_print_str(" "); call @rt_print_i64(1); call @rt_print_str("\n")` | `rt_print_str(str)`, `rt_print_i64(i64)` |
 | `PRINT "A"; 1`     | `call @rt_print_str("A"); call @rt_print_i64(1); call @rt_print_str("\n")` | `rt_print_str(str)`, `rt_print_i64(i64)` |
 | `LET X = A + B`     | `load A; load B; %c = add %a,%b; store X,%c`              | — |

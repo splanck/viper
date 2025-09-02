@@ -70,6 +70,17 @@ if(NOT RS STREQUAL "A1B\n")
   message(FATAL_ERROR "unexpected print_semicolons output: ${RS}")
 endif()
 
+# test PRINT newline control with trailing ';'
+execute_process(COMMAND ${ILC} front basic -run ${SRC_DIR}/docs/examples/basic/ex_print_newline_control.bas
+                OUTPUT_FILE run_nl.txt RESULT_VARIABLE rn)
+if(NOT rn EQUAL 0)
+  message(FATAL_ERROR "execution print_newline_control failed")
+endif()
+file(READ run_nl.txt RN)
+if(NOT RN STREQUAL "AB\n")
+  message(FATAL_ERROR "unexpected print_newline_control output: ${RN}")
+endif()
+
 # test INPUT string echo
 execute_process(COMMAND ${ILC} front basic -run ${SRC_DIR}/docs/examples/basic/ex5_input_echo.bas --stdin-from ${SRC_DIR}/tests/data/input1.txt
                 OUTPUT_FILE run3.txt RESULT_VARIABLE r4)
