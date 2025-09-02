@@ -65,6 +65,13 @@ void peephole(Module &m)
                 Instr &in = b.instructions[i];
                 if (in.op == Opcode::CBr)
                 {
+                    if (in.labels.size() == 2 && in.labels[0] == in.labels[1])
+                    {
+                        in.op = Opcode::Br;
+                        in.labels = {in.labels[0]};
+                        in.operands.clear();
+                        continue;
+                    }
                     long long v;
                     bool known = false;
                     size_t defIdx = static_cast<size_t>(-1);
