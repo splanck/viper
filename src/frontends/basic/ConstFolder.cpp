@@ -207,6 +207,11 @@ static void foldStmt(StmtPtr &s)
     {
         foldExpr(i->cond);
         foldStmt(i->then_branch);
+        for (auto &e : i->elseifs)
+        {
+            foldExpr(e.cond);
+            foldStmt(e.then_branch);
+        }
         foldStmt(i->else_branch);
     }
     else if (auto *w = dynamic_cast<WhileStmt *>(s.get()))
