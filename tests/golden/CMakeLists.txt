@@ -67,3 +67,10 @@ add_test(NAME il_opt_arith_id COMMAND ${CMAKE_COMMAND}
   -DIL_FILE=${CMAKE_CURRENT_SOURCE_DIR}/il_opt/arith_id.in.il
   -DGOLDEN=${CMAKE_CURRENT_SOURCE_DIR}/il_opt/arith_id.opt.il
   -P ${CMAKE_CURRENT_SOURCE_DIR}/il_opt/check_opt.cmake)
+add_test(NAME il_opt_cbr_same_target COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DIL_FILE=${CMAKE_CURRENT_SOURCE_DIR}/il_opt/cbr_same_target.in.il
+  -DGOLDEN=${CMAKE_CURRENT_SOURCE_DIR}/il_opt/cbr_same_target.golden
+  -DPASSES=peephole
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/il_opt/check_opt.cmake)
+set_tests_properties(il_opt_cbr_same_target PROPERTIES LABELS Smoke)

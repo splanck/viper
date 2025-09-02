@@ -39,6 +39,12 @@ This mode ensures test diffs are stable and comparable across builds.
 
 ## Tools
 
+### il-opt
+
+`ilc il-opt` applies optimizer passes to IL modules.
+
+- `peephole`: folds `cbr %cond, label L, label L` into `br label L`.
+
 ### VM flags
 
 `ilc -run <file.il>` accepts additional debugging flags:
