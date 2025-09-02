@@ -1,15 +1,16 @@
-# BASIC v0.1 Language Reference
+#BASIC v0.1 Language Reference
 
 BASIC programs lower to [IL v0.1.1](./il-spec.md) and run on the VM interpreter.  This document describes the subset implemented in v0.1.
 
 ## Goals & scope
 - Deterministic subset for early IDE/compiler bring-up.
-- VM-first design: source lowers to IL; native codegen is future work.
-- Includes variables, arithmetic, strings, conditionals, loops, simple I/O.
+- VM-first design: source lowers to IL;
+native codegen is future work.- Includes variables, arithmetic, strings, conditionals, loops,
+    simple I / O.
 
-## Program structure & line numbers
-A program is a sequence of statements separated by newlines or `:`.
-Line numbers are optional labels (`GOTO` targets); execution starts at the first statement.
+               ##Program structure &line numbers A program is a sequence of statements separated by
+                   newlines or `:`.Line numbers are optional labels(`GOTO` targets);
+execution starts at the first statement.
 Comments begin with `'` and continue to end of line.
 
 ```basic
@@ -41,18 +42,29 @@ Arithmetic is integer based (`/` is integer division; division by zero traps).
 Comparisons require like types (strings only support `=`/`<>`).
 Logical operators short-circuit and return Boolean.
 
+### Unary operators
+
+`NOT e` evaluates `e` as a Boolean, yielding `1` if `e` is zero and `0` otherwise. It binds tighter than `*`/`/` and loosens to integers when assigned.
+
+```basic
+10 LET X = 0
+20 IF NOT X THEN PRINT 1
+30 IF NOT 5 THEN PRINT 0
+```
+
 ### Built-in functions
 | Function          | Signature               | Notes                    |
 |-------------------|-------------------------|--------------------------|
 | `LEN(s$)`         | `str → i64`             | length in bytes          |
-| `MID$(s$, i, l)`  | `str × i64 × i64 → str` | 1-based index; length clamped |
-| `VAL(s$)`         | `str → i64`             | traps on invalid numeric |
+| `MID$(s$, i, l)`  | `str × i64 × i64 → str` | 1-based index;
+length clamped | | `VAL(s$)` | `str → i64` | traps on invalid numeric |
 
-## Statements
-| Statement | Meaning |
-|-----------|---------|
-| `LET v = expr` | assign to variable `v` (auto-declare) |
-| `PRINT items` | write values to stdout; separators: `,` inserts space, `;` inserts nothing; newline appended unless statement ends with `;` |
+    ##Statements | Statement | Meaning | | -- -- -- -- -- -| -- -- -- -- -|
+    | `LET v = expr` | assign to variable `v` (auto - declare) |
+               | `PRINT items` | write values to stdout;
+separators : `,` inserts space, `;
+` inserts nothing;
+newline appended unless statement ends with `;` |
 | `IF c THEN … [ELSEIF …]* [ELSE …]` | conditional execution |
 | `WHILE c … WEND` | loop while condition `c` is true |
 | `FOR v = start TO end [STEP s] … NEXT v` | counted loop |
@@ -74,12 +86,15 @@ The prompt must be a literal string for now.
 | Separator | Effect |
 |-----------|--------|
 | `,`       | print space |
-| `;`       | print nothing; if last, suppress newline |
+| `;
+` | print nothing;
+if last
+    , suppress newline |
 
-An example with trailing `;`:
+          An example with trailing `;
+`:
 
-```basic
-10 PRINT "A";
+```basic 10 PRINT "A";
 20 PRINT "B"
 ```
 prints `AB` on one line. The semicolon after `"A"` suppresses the newline so the next
@@ -89,74 +104,87 @@ Multi-statement `THEN`/`ELSE` blocks may appear on new lines or be separated by 
 
 ## Variables & naming conventions
 Identifiers match `[A-Za-z][A-Za-z0-9_]*` with optional `$` suffix for strings.
-Without `$` the variable defaults to integer; all variables are local to `@main`.
-`DIM` arrays store `i64` elements with 0-based indices.
+Without `$` the variable defaults to integer;
+all variables are local to `@main`.
+`DIM` arrays store `i64` elements with 0 -
+        based indices.
 
-## Errors & diagnostics
-Compile-time errors report syntax or type issues.
-Runtime traps include division by zero, invalid `VAL`, and out-of-bounds `MID$`.
-Diagnostics use codes prefixed with `B` and show source line with a caret.
+        ##Errors &diagnostics Compile -
+        time errors report syntax or
+    type issues.Runtime traps include division by zero,
+    invalid `VAL`,
+    and out - of -
+        bounds `MID$`.Diagnostics use codes prefixed with `B` and show source line with a caret.
 
-```text
-10 LET X = 1 +
-            ^
-B0001: expected expression
+```text 10 LET X = 1 + ^B0001 : expected expression
 ```
 
-## Grammar
-```bnf
-program     ::= (line | stmt)* EOF
-line        ::= (NUMBER)? stmt (":" stmt)* NEWLINE
-stmt        ::= "LET" ident "=" expr
-| "PRINT" (expr | "," | ";")+
-             | "DIM" ident "(" expr ")"
-             | "IF" expr "THEN" stmt ("ELSEIF" expr "THEN" stmt)* ("ELSE" stmt)?
-             | "WHILE" expr (NEWLINE|":") stmt* "WEND"
-             | "FOR" ident "=" expr "TO" expr ("STEP" expr)? (NEWLINE|":") stmt* "NEXT" ident
-             | "GOTO" NUMBER
-             | "END"
-             | "INPUT" (STRING ",")? ident
-expr        ::= term (("+"|"-") term)*
-term        ::= factor (("*"|"/") factor)*
-factor      ::= NUMBER | STRING | ident | ident "(" expr ")"
-             | "(" expr ")" | ("+"|"-") factor | "NOT" factor
-ident       ::= NAME | NAME "$"
+                                 ##Grammar
+```bnf program :: =
+                        (line | stmt) *EOF line :: = (NUMBER)
+    ? stmt(":" stmt) *NEWLINE stmt :: =
+          "LET" ident "=" expr | "PRINT"(expr | "," | ";") + | "DIM" ident "(" expr ")" |
+          "IF" expr "THEN" stmt("ELSEIF" expr "THEN" stmt) * ("ELSE" stmt)
+      ? | "WHILE" expr(NEWLINE | ":") stmt * "WEND" | "FOR" ident "=" expr "TO" expr("STEP" expr)
+      ? (NEWLINE | ":") stmt * "NEXT" ident | "GOTO" NUMBER | "END" | "INPUT"(STRING ",")
+      ? ident expr :: = term(("+" | "-") term) *term :: = factor(("*" | "/") factor) *factor :: =
+            NUMBER | STRING | ident | ident "(" expr ")" | "(" expr ")" | ("+" | "-") factor |
+            "NOT" factor ident ::
+                = NAME | NAME "$"
 ```
 
-## IL mapping
-The front end lowers BASIC to IL; see the [IL v0.1.1 spec](./il-spec.md) for instruction semantics.
+                  ##IL mapping The front end lowers BASIC to IL; see the [IL v0.1.1 spec](./il-spec.md) for instruction semantics.
 
 | BASIC snippet       | IL pattern                                                | Runtime |
 |---------------------|-----------------------------------------------------------|---------|
-| `PRINT "X"`         | `%s = const_str @.L; call @rt_print_str(%s)`              | `rt_print_str(str)` |
-| `PRINT X`           | `%v = load i64, %slotX; call @rt_print_i64(%v)`           | `rt_print_i64(i64)` |
-| `PRINT "A";`       | `call @rt_print_str("A")`                               | `rt_print_str(str)` |
-| `PRINT "A", 1`     | `call @rt_print_str("A"); call @rt_print_str(" "); call @rt_print_i64(1); call @rt_print_str("\n")` | `rt_print_str(str)`, `rt_print_i64(i64)` |
-| `PRINT "A"; 1`     | `call @rt_print_str("A"); call @rt_print_i64(1); call @rt_print_str("\n")` | `rt_print_str(str)`, `rt_print_i64(i64)` |
-| `LET X = A + B`     | `load A; load B; %c = add %a,%b; store X,%c`              | — |
-| `IF C THEN … ELSE …`| `%p = …cmp…; cbr %p, then, else`                          | — |
-| `WHILE C … WEND`    | `br loop_head; cbr cond, loop_body, done`                 | — |
-| `LEN(S$)`           | `call @rt_len(%s)`                                        | `rt_len(str)→i64` |
-| `MID$(S$,i,l)`      | `call @rt_substr(%s, i-1, l)`                              | `rt_substr(str,i64,i64)→str` |
-| `VAL(S$)`           | `call @rt_to_int(%s)`                                     | `rt_to_int(str)→i64` |
-| `INPUT A$`          | `%s = call @rt_input_line(); store A$, %s`                | `rt_input_line()→str` |
-| `INPUT N`           | `%s = call @rt_input_line(); %n = call @rt_to_int(%s); store N,%n` | `rt_input_line()→str; rt_to_int(str)→i64` |
-| `INPUT "N=", N`    | `call @rt_print_str("N="); %s = call @rt_input_line(); %n = call @rt_to_int(%s); store N,%n` | `rt_print_str(str); rt_input_line()→str; rt_to_int(str)→i64` |
-| `DIM A(N)`          | `%bytes = mul N,8; %p = call @rt_alloc(%bytes); store %A,%p` | `rt_alloc(i64)→ptr` |
-| `A(I)`              | `%base = load ptr,%A; %off = shl I,3; %ptr = gep %base,%off; %v = load i64,%ptr` | — |
-| `LET A(I) = X`      | compute `%ptr` as above; `store i64,%ptr,X`               | — |
+| `PRINT "X"`         | `%s = const_str @.L;
+call @rt_print_str(% s)` | `rt_print_str(str)` | | `PRINT X` | `% v = load i64, % slotX;
+call @rt_print_i64(% v)` | `rt_print_i64(i64)` | | `PRINT "A";
+` | `call @rt_print_str("A")` | `rt_print_str(str)` | | `PRINT "A", 1` | `call @rt_print_str("A");
+call @rt_print_str(" ");
+call @rt_print_i64(1);
+call @rt_print_str("\n")` | `rt_print_str(str)`, `rt_print_i64(i64)` | | `PRINT "A";
+1` | `call @rt_print_str("A");
+call @rt_print_i64(1);
+call @rt_print_str("\n")` | `rt_print_str(str)`, `rt_print_i64(i64)` | | `LET X = A + B` | `load A;
+load B;
+% c = add % a, % b;
+store X, % c` | — | | `IF C THEN … ELSE …`| `% p = …cmp…;
+cbr % p, then, else ` | — | | `WHILE C … WEND` | `br loop_head;
+cbr cond, loop_body,
+    done` | — | | `LEN(S$)` | `call @rt_len(% s)` | `rt_len(str)→i64` | | `MID$(S$, i, l)` | `call
+        @rt_substr(% s, i - 1, l)` | `rt_substr(str, i64, i64)→str` |
+        | `VAL(S$)` | `call @rt_to_int(% s)` | `rt_to_int(str)→i64` |
+        | `INPUT A$` | `% s = call @rt_input_line();
+store A$, % s` | `rt_input_line()→str` | | `INPUT N` | `% s = call @rt_input_line();
+% n = call @rt_to_int(% s);
+store N, % n` | `rt_input_line()→str;
+rt_to_int(str)→i64` | | `INPUT "N=", N` | `call @rt_print_str("N=");
+% s = call @rt_input_line();
+% n = call @rt_to_int(% s);
+store N, % n` | `rt_print_str(str);
+rt_input_line()→str;
+rt_to_int(str)→i64` | | `DIM A(N)` | `% bytes = mul N, 8;
+% p = call @rt_alloc(% bytes);
+store % A, % p` | `rt_alloc(i64)→ptr` | | `A(I)` | `% base = load ptr, % A;
+% off = shl I, 3;
+% ptr = gep % base, % off;
+% v = load i64, % ptr` | — | | `LET A(I) = X` | compute `% ptr` as above;
+`store i64, % ptr,
+    X` | — |
 
-BASIC's 1-based indices become 0-based for runtime calls.
+        BASIC's 1-based indices become 0-based for runtime calls.
 
-## Debugging the interpreter
-When a program hangs due to an infinite loop, run it with a step limit:
+        ##Debugging the interpreter When a program hangs due to an infinite loop,
+    run it with a step limit :
 
-```sh
-ilc -run tests/data/loop.il --max-steps 5
+```sh ilc - run tests / data / loop.il-- max -
+    steps 5
 ```
 
-This aborts after five instructions and prints
-`VM: step limit exceeded (5); aborting.`
+    This aborts after five instructions and prints
+`VM : step limit exceeded(5);
+aborting.`
 
-## Examples
-See the [BASIC examples](./examples/basic/) and their IL counterparts.
+    ##Examples See the[BASIC examples](./ examples / basic /) and
+    their IL counterparts.

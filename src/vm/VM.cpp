@@ -160,6 +160,20 @@ int64_t VM::execFunction(const Function &fn)
                 }
                 break;
             }
+            case Opcode::Xor:
+            {
+                Slot a = eval(fr, in.operands[0]);
+                Slot b = eval(fr, in.operands[1]);
+                Slot res{};
+                res.i64 = a.i64 ^ b.i64;
+                if (in.result)
+                {
+                    if (fr.regs.size() <= *in.result)
+                        fr.regs.resize(*in.result + 1);
+                    fr.regs[*in.result] = res;
+                }
+                break;
+            }
             case Opcode::Shl:
             {
                 Slot a = eval(fr, in.operands[0]);
@@ -273,6 +287,19 @@ int64_t VM::execFunction(const Function &fn)
                     if (fr.regs.size() <= *in.result)
                         fr.regs.resize(*in.result + 1);
                     fr.regs[*in.result] = res;
+                }
+                break;
+            }
+            case Opcode::Trunc1:
+            case Opcode::Zext1:
+            {
+                Slot v = eval(fr, in.operands[0]);
+                v.i64 &= 1;
+                if (in.result)
+                {
+                    if (fr.regs.size() <= *in.result)
+                        fr.regs.resize(*in.result + 1);
+                    fr.regs[*in.result] = v;
                 }
                 break;
             }
