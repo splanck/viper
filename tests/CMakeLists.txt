@@ -46,6 +46,12 @@ add_test(NAME vm_strings_example COMMAND ${CMAKE_COMMAND}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_vm_strings.cmake)
 set_tests_properties(vm_strings_example PROPERTIES LABELS VM)
 
+add_test(NAME vm_step_limit COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DSRC_DIR=${CMAKE_SOURCE_DIR}
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_vm_step_limit.cmake)
+set_tests_properties(vm_step_limit PROPERTIES LABELS VM)
+
 add_test(NAME front_basic_example COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DSRC_DIR=${CMAKE_SOURCE_DIR}
