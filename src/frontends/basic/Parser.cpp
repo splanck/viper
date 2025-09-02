@@ -114,6 +114,7 @@ StmtPtr Parser::parsePrint()
         }
         stmt->items.push_back(PrintItem{PrintItem::Kind::Expr, parseExpression()});
     }
+    // A trailing ';' produces a final Semicolon item, suppressing the newline.
     return stmt;
 }
 
