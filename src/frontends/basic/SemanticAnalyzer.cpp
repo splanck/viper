@@ -116,6 +116,13 @@ void SemanticAnalyzer::visitStmt(const Stmt &s)
             visitExpr(*i->cond);
         if (i->then_branch)
             visitStmt(*i->then_branch);
+        for (const auto &e : i->elseifs)
+        {
+            if (e.cond)
+                visitExpr(*e.cond);
+            if (e.then_branch)
+                visitStmt(*e.then_branch);
+        }
         if (i->else_branch)
             visitStmt(*i->else_branch);
     }
