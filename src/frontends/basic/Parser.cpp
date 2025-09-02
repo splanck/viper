@@ -45,17 +45,31 @@ std::unique_ptr<Program> Parser::parseProgram()
             line = std::atoi(current_.lexeme.c_str());
             advance();
         }
+        std::vector<StmtPtr> stmts;
         while (true)
         {
             auto stmt = parseStatement(line);
             stmt->line = line;
-            prog->statements.push_back(std::move(stmt));
+            stmts.push_back(std::move(stmt));
             if (check(TokenKind::Colon))
             {
                 advance();
                 continue;
             }
             break;
+        }
+        if (stmts.size() == 1)
+        {
+            prog->statements.push_back(std::move(stmts.front()));
+        }
+        else
+        {
+            il::support::SourceLoc loc = stmts.front()->loc;
+            auto list = std::make_unique<StmtList>();
+            list->line = line;
+            list->loc = loc;
+            list->stmts = std::move(stmts);
+            prog->statements.push_back(std::move(list));
         }
         if (check(TokenKind::EndOfLine))
             advance();

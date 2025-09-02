@@ -8,10 +8,23 @@ BASIC programs lower to [IL v0.1.1](./il-spec.md) and run on the VM interpreter.
 native codegen is future work.- Includes variables, arithmetic, strings, conditionals, loops,
     simple I / O.
 
-               ##Program structure &line numbers A program is a sequence of statements separated by
-                   newlines or `:`.Line numbers are optional labels(`GOTO` targets);
-execution starts at the first statement.
-Comments begin with `'` and continue to end of line.
+## Program structure & line numbers
+A program is a sequence of statements separated by newlines. Line numbers are optional labels (`GOTO` targets);
+execution starts at the first statement. Comments begin with `'` and continue to end of line.
+
+### Multi-statement lines with `:`
+Multiple statements on the same line separated by `:` execute left-to-right.
+
+```basic
+10 LET A = 1 : PRINT A : LET A = A + 1 : PRINT A
+```
+
+prints:
+
+```
+1
+2
+```
 
 ```basic
 10 PRINT "HELLO"

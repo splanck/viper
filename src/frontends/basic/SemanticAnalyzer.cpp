@@ -57,7 +57,13 @@ void SemanticAnalyzer::analyze(const Program &prog)
 
 void SemanticAnalyzer::visitStmt(const Stmt &s)
 {
-    if (auto *p = dynamic_cast<const PrintStmt *>(&s))
+    if (auto *lst = dynamic_cast<const StmtList *>(&s))
+    {
+        for (const auto &st : lst->stmts)
+            if (st)
+                visitStmt(*st);
+    }
+    else if (auto *p = dynamic_cast<const PrintStmt *>(&s))
     {
         for (const auto &it : p->items)
             if (it.kind == PrintItem::Kind::Expr && it.expr)

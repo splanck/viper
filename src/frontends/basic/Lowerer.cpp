@@ -151,7 +151,12 @@ void Lowerer::collectVars(const Program &prog)
     };
     std::function<void(const Stmt &)> st = [&](const Stmt &s)
     {
-        if (auto *p = dynamic_cast<const PrintStmt *>(&s))
+        if (auto *lst = dynamic_cast<const StmtList *>(&s))
+        {
+            for (const auto &sub : lst->stmts)
+                st(*sub);
+        }
+        else if (auto *p = dynamic_cast<const PrintStmt *>(&s))
         {
             for (const auto &it : p->items)
                 if (it.kind == PrintItem::Kind::Expr)
@@ -203,7 +208,16 @@ void Lowerer::collectVars(const Program &prog)
 void Lowerer::lowerStmt(const Stmt &stmt)
 {
     curLoc = stmt.loc;
-    if (auto *p = dynamic_cast<const PrintStmt *>(&stmt))
+    if (auto *lst = dynamic_cast<const StmtList *>(&stmt))
+    {
+        for (const auto &s : lst->stmts)
+        {
+            if (cur->terminated)
+                break;
+            lowerStmt(*s);
+        }
+    }
+    else if (auto *p = dynamic_cast<const PrintStmt *>(&stmt))
         lowerPrint(*p);
     else if (auto *l = dynamic_cast<const LetStmt *>(&stmt))
         lowerLet(*l);
