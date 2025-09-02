@@ -24,7 +24,11 @@ std::string AstPrinter::dump(const Stmt &stmt)
 {
     if (auto *p = dynamic_cast<const PrintStmt *>(&stmt))
     {
-        return "(PRINT " + dump(*p->expr) + ")";
+        std::string res = "(PRINT";
+        for (const auto &e : p->items)
+            res += " " + dump(*e);
+        res += ")";
+        return res;
     }
     else if (auto *l = dynamic_cast<const LetStmt *>(&stmt))
     {

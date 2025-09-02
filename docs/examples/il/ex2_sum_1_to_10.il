@@ -4,6 +4,7 @@ extern @rt_print_i64(i64) -> void
 
 global const str @.L0 = "SUM 1..10"
 global const str @.L1 = "DONE"
+global const str @.L2 = "\n"
 
 func @main() -> i32 {
 entry:
@@ -12,6 +13,8 @@ entry:
 
   %h = const_str @.L0
   call @rt_print_str(%h)
+  %nl0 = const_str @.L2
+  call @rt_print_str(%nl0)
 
   store i64, %i_slot, 1
   store i64, %s_slot, 0
@@ -35,9 +38,13 @@ loop_body:
 done:
   %s2 = load i64, %s_slot
   call @rt_print_i64(%s2)
+  %nl1 = const_str @.L2
+  call @rt_print_str(%nl1)
 
   %d = const_str @.L1
   call @rt_print_str(%d)
+  %nl2 = const_str @.L2
+  call @rt_print_str(%nl2)
 
   ret 0
 }

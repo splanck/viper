@@ -95,9 +95,11 @@ struct Stmt
 
 using StmtPtr = std::unique_ptr<Stmt>;
 
+/// @brief PRINT statement outputting expressions separated by spaces.
+/// @invariant items.size() > 0
 struct PrintStmt : Stmt
 {
-    ExprPtr expr;
+    std::vector<ExprPtr> items; ///< Expressions to print in order.
 };
 
 /// @brief Assignment statement to variable or array element.

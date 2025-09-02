@@ -1,8 +1,11 @@
 il 0.1
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
+extern @rt_print_f64(f64) -> void
 extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
+global const str @.L0 = "
+"
 func @main() -> i64 {
 entry:
   %t0 = alloca 8
@@ -29,11 +32,11 @@ for_body:
   br label for_head1
 for_inc:
   .loc 1 1 4
-  %t11 = load i64, %t1
+  %t12 = load i64, %t1
   .loc 1 1 4
-  %t12 = add %t11, 1
+  %t13 = add %t12, 1
   .loc 1 1 4
-  store i64, %t1, %t12
+  store i64, %t1, %t13
   .loc 1 1 4
   br label for_head
 for_done:
@@ -55,15 +58,19 @@ for_body1:
   %t8 = mul %t6, %t7
   .loc 1 3 4
   call @rt_print_i64(%t8)
+  .loc 1 3 4
+  %t9 = const_str @.L0
+  .loc 1 3 4
+  call @rt_print_str(%t9)
   .loc 1 2 4
   br label for_inc1
 for_inc1:
   .loc 1 2 4
-  %t9 = load i64, %t0
+  %t10 = load i64, %t0
   .loc 1 2 4
-  %t10 = add %t9, 1
+  %t11 = add %t10, 1
   .loc 1 2 4
-  store i64, %t0, %t10
+  store i64, %t0, %t11
   .loc 1 2 4
   br label for_head1
 for_done1:

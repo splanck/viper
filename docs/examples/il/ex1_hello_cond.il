@@ -4,6 +4,7 @@ extern @rt_print_i64(i64) -> void
 
 global const str @.L0 = "HELLO"
 global const str @.L1 = "READY"
+global const str @.L2 = "\n"
 
 func @main() -> i32 {
 entry:
@@ -19,12 +20,18 @@ entry:
 
   %s0 = const_str @.L0
   call @rt_print_str(%s0)
+  %nl0 = const_str @.L2
+  call @rt_print_str(%nl0)
 
   %s1 = const_str @.L1
   call @rt_print_str(%s1)
+  %nl1 = const_str @.L2
+  call @rt_print_str(%nl1)
 
   %yv0 = load i64, %y_slot
   call @rt_print_i64(%yv0)
+  %nl2 = const_str @.L2
+  call @rt_print_str(%nl2)
 
   %yv1 = load i64, %y_slot
   %cond = scmp_gt %yv1, 8
@@ -32,11 +39,15 @@ entry:
 
 else60:
   call @rt_print_i64(4)
+  %nl3 = const_str @.L2
+  call @rt_print_str(%nl3)
   br label after
 
 then80:
   %yv2 = load i64, %y_slot
   call @rt_print_i64(%yv2)
+  %nl4 = const_str @.L2
+  call @rt_print_str(%nl4)
   br label after
 
 after:
