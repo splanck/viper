@@ -1,0 +1,10 @@
+execute_process(COMMAND ${ILC} -run ${SRC_DIR}/tests/data/loop.il --max-steps 5
+                OUTPUT_FILE out.txt ERROR_FILE err.txt RESULT_VARIABLE r)
+if(r EQUAL 0)
+  message(FATAL_ERROR "expected non-zero exit")
+endif()
+file(READ err.txt E)
+string(FIND "${E}" "VM: step limit exceeded (5); aborting." pos)
+if(pos EQUAL -1)
+  message(FATAL_ERROR "missing step limit message")
+endif()

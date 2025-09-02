@@ -17,7 +17,7 @@ using namespace il::core;
 namespace il::vm
 {
 
-VM::VM(const Module &m, bool tr) : mod(m), trace(tr)
+VM::VM(const Module &m, bool tr, uint64_t ms) : mod(m), trace(tr), maxSteps(ms)
 {
     for (const auto &f : m.functions)
         fnMap[f.name] = &f;
@@ -72,9 +72,15 @@ int64_t VM::execFunction(const Function &fn)
     size_t ip = 0;
     while (bb && ip < bb->instructions.size())
     {
+        if (maxSteps && steps >= maxSteps)
+        {
+            std::cerr << "VM: step limit exceeded (" << maxSteps << "); aborting.\n";
+            return 1;
+        }
         const Instr &in = bb->instructions[ip];
         if (trace)
             std::cerr << fn.name << ":" << bb->label << ":" << toString(in.op) << "\n";
+        ++steps;
         switch (in.op)
         {
             case Opcode::Alloca:
