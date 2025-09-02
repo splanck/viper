@@ -63,6 +63,10 @@ std::string AstPrinter::dump(const Stmt &stmt)
     else if (auto *i = dynamic_cast<const IfStmt *>(&stmt))
     {
         std::string res = "(IF " + dump(*i->cond) + " THEN " + dump(*i->then_branch);
+        for (const auto &e : i->elseifs)
+        {
+            res += " ELSEIF " + dump(*e.cond) + " THEN " + dump(*e.then_branch);
+        }
         if (i->else_branch)
             res += " ELSE " + dump(*i->else_branch);
         res += ")";

@@ -155,3 +155,14 @@ file(READ run_not.txt Rn)
 if(NOT Rn STREQUAL "1\n")
   message(FATAL_ERROR "unexpected ex_not output: ${Rn}")
 endif()
+
+# test ELSEIF chain
+execute_process(COMMAND ${ILC} front basic -run ${SRC_DIR}/docs/examples/basic/ex_elseif.bas
+                OUTPUT_FILE run_elseif.txt RESULT_VARIABLE relief)
+if(NOT relief EQUAL 0)
+  message(FATAL_ERROR "execution ex_elseif failed")
+endif()
+file(READ run_elseif.txt RELIF)
+if(NOT RELIF STREQUAL "TWO\n")
+  message(FATAL_ERROR "unexpected ex_elseif output: ${RELIF}")
+endif()

@@ -11,6 +11,7 @@
 #include "il/io/Serializer.hpp" // might not needed but fine
 #include <cassert>
 #include <functional>
+#include <vector>
 
 using namespace il::core;
 
@@ -172,6 +173,12 @@ void Lowerer::collectVars(const Program &prog)
             ex(*i->cond);
             if (i->then_branch)
                 st(*i->then_branch);
+            for (const auto &e : i->elseifs)
+            {
+                ex(*e.cond);
+                if (e.then_branch)
+                    st(*e.then_branch);
+            }
             if (i->else_branch)
                 st(*i->else_branch);
         }
@@ -489,52 +496,75 @@ void Lowerer::lowerPrint(const PrintStmt &stmt)
 
 void Lowerer::lowerIf(const IfStmt &stmt)
 {
-    RVal cond = lowerExpr(*stmt.cond);
-    if (cond.type.kind != Type::Kind::I1)
-    {
-        curLoc = stmt.loc;
-        Value b1 = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), cond.value);
-        cond = {b1, Type(Type::Kind::I1)};
-    }
+    size_t conds = 1 + stmt.elseifs.size();
     size_t curIdx = cur - &func->blocks[0];
-    size_t base = func->blocks.size();
-    builder->addBlock(*func, mangler.block("then"));
-    builder->addBlock(*func, mangler.block("exit"));
-    size_t thenIdx = base;
-    size_t exitIdx = base + 1;
-    size_t elseIdx = 0;
-    if (stmt.else_branch)
+    size_t start = func->blocks.size();
+    for (size_t i = 0; i < conds; ++i)
     {
-        builder->addBlock(*func, mangler.block("else"));
-        elseIdx = base + 2;
+        builder->addBlock(*func, mangler.block("if_test_" + std::to_string(i)));
+        builder->addBlock(*func, mangler.block("if_then_" + std::to_string(i)));
     }
+    builder->addBlock(*func, mangler.block("if_else"));
+    builder->addBlock(*func, mangler.block("if_exit"));
     cur = &func->blocks[curIdx];
-    curLoc = stmt.loc;
-    emitCBr(cond.value,
-            &func->blocks[thenIdx],
-            stmt.else_branch ? &func->blocks[elseIdx] : &func->blocks[exitIdx]);
-
-    // then branch
-    cur = &func->blocks[thenIdx];
-    lowerStmt(*stmt.then_branch);
-    if (!cur->terminated)
+    std::vector<size_t> testIdx(conds);
+    std::vector<size_t> thenIdx(conds);
+    for (size_t i = 0; i < conds; ++i)
     {
-        curLoc = stmt.loc;
-        emitBr(&func->blocks[exitIdx]);
+        testIdx[i] = start + 2 * i;
+        thenIdx[i] = start + 2 * i + 1;
     }
+    BasicBlock *elseBlk = &func->blocks[start + 2 * conds];
+    BasicBlock *exitBlk = &func->blocks[start + 2 * conds + 1];
 
-    if (stmt.else_branch)
+    // jump to first test
+    curLoc = stmt.loc;
+    emitBr(&func->blocks[testIdx[0]]);
+
+    // initial IF
+    std::vector<const Expr *> condExprs;
+    std::vector<const Stmt *> thenStmts;
+    condExprs.push_back(stmt.cond.get());
+    thenStmts.push_back(stmt.then_branch.get());
+    for (const auto &e : stmt.elseifs)
     {
-        cur = &func->blocks[elseIdx];
-        lowerStmt(*stmt.else_branch);
+        condExprs.push_back(e.cond.get());
+        thenStmts.push_back(e.then_branch.get());
+    }
+    for (size_t i = 0; i < conds; ++i)
+    {
+        cur = &func->blocks[testIdx[i]];
+        RVal c = lowerExpr(*condExprs[i]);
+        if (c.type.kind != Type::Kind::I1)
+        {
+            curLoc = stmt.loc;
+            Value b1 = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), c.value);
+            c = {b1, Type(Type::Kind::I1)};
+        }
+        BasicBlock *f = (i + 1 < conds) ? &func->blocks[testIdx[i + 1]] : elseBlk;
+        emitCBr(c.value, &func->blocks[thenIdx[i]], f);
+
+        cur = &func->blocks[thenIdx[i]];
+        if (thenStmts[i])
+            lowerStmt(*thenStmts[i]);
         if (!cur->terminated)
         {
             curLoc = stmt.loc;
-            emitBr(&func->blocks[exitIdx]);
+            emitBr(exitBlk);
         }
     }
 
-    cur = &func->blocks[exitIdx];
+    // else block
+    cur = elseBlk;
+    if (stmt.else_branch)
+        lowerStmt(*stmt.else_branch);
+    if (!cur->terminated)
+    {
+        curLoc = stmt.loc;
+        emitBr(exitBlk);
+    }
+
+    cur = exitBlk;
 }
 
 void Lowerer::lowerWhile(const WhileStmt &stmt)

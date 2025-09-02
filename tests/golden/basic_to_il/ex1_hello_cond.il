@@ -61,18 +61,21 @@ L50:
   .loc 1 5 4
   br label L60
 L60:
-  .loc 1 6 7
-  %t10 = load i64, %t0
-  .loc 1 6 9
-  %t11 = scmp_gt %t10, 8
   .loc 1 6 4
-  cbr %t11, label then, label else
+  br label if_test_0
 L70:
   .loc 1 7 4
   br label exit
 exit:
   ret 0
-then:
+if_test_0:
+  .loc 1 6 7
+  %t10 = load i64, %t0
+  .loc 1 6 9
+  %t11 = scmp_gt %t10, 8
+  .loc 1 6 9
+  cbr %t11, label if_then_0, label if_else
+if_then_0:
   .loc 1 6 24
   %t12 = load i64, %t0
   .loc 1 6 18
@@ -82,11 +85,8 @@ then:
   .loc 1 6 18
   call @rt_print_str(%t13)
   .loc 1 6 4
-  br label exit1
-exit1:
-  .loc 1 6 4
-  br label L70
-else:
+  br label if_exit
+if_else:
   .loc 1 6 31
   call @rt_print_i64(4)
   .loc 1 6 31
@@ -94,5 +94,8 @@ else:
   .loc 1 6 31
   call @rt_print_str(%t14)
   .loc 1 6 4
-  br label exit1
+  br label if_exit
+if_exit:
+  .loc 1 6 4
+  br label L70
 }

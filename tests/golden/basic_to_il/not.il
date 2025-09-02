@@ -16,6 +16,14 @@ L10:
   .loc 1 1 4
   br label L20
 L20:
+  .loc 1 2 4
+  br label if_test_0
+L30:
+  .loc 1 3 4
+  br label if_test_01
+exit:
+  ret 0
+if_test_0:
   .loc 1 2 11
   %t1 = load i64, %t0
   .loc 1 2 7
@@ -26,16 +34,9 @@ L20:
   %t4 = xor %t3, 1
   .loc 1 2 7
   %t5 = trunc1 %t4
-  .loc 1 2 4
-  cbr %t5, label then, label exit1
-L30:
-  .loc 1 3 4
-  %t7 = trunc1 0
-  .loc 1 3 4
-  cbr %t7, label then1, label exit2
-exit:
-  ret 0
-then:
+  .loc 1 2 7
+  cbr %t5, label if_then_0, label if_else
+if_then_0:
   .loc 1 2 18
   call @rt_print_i64(1)
   .loc 1 2 18
@@ -43,11 +44,19 @@ then:
   .loc 1 2 18
   call @rt_print_str(%t6)
   .loc 1 2 4
-  br label exit1
-exit1:
+  br label if_exit
+if_else:
+  .loc 1 2 4
+  br label if_exit
+if_exit:
   .loc 1 2 4
   br label L30
-then1:
+if_test_01:
+  .loc 1 3 4
+  %t7 = trunc1 0
+  .loc 1 3 4
+  cbr %t7, label if_then_01, label if_else1
+if_then_01:
   .loc 1 3 18
   call @rt_print_i64(0)
   .loc 1 3 18
@@ -55,8 +64,11 @@ then1:
   .loc 1 3 18
   call @rt_print_str(%t8)
   .loc 1 3 4
-  br label exit2
-exit2:
+  br label if_exit1
+if_else1:
+  .loc 1 3 4
+  br label if_exit1
+if_exit1:
   .loc 1 3 4
   br label exit
 }

@@ -16,18 +16,21 @@ L10:
   .loc 1 1 4
   br label L20
 L20:
-  .loc 1 2 7
-  %t1 = load i64, %t0
-  .loc 1 2 9
-  %t2 = scmp_le %t1, 1
   .loc 1 2 4
-  cbr %t2, label then, label else
+  br label if_test_0
 L30:
   .loc 1 3 4
   br label exit
 exit:
   ret 0
-then:
+if_test_0:
+  .loc 1 2 7
+  %t1 = load i64, %t0
+  .loc 1 2 9
+  %t2 = scmp_le %t1, 1
+  .loc 1 2 9
+  cbr %t2, label if_then_0, label if_test_1
+if_then_0:
   .loc 1 2 19
   call @rt_print_i64(1)
   .loc 1 2 19
@@ -35,36 +38,33 @@ then:
   .loc 1 2 19
   call @rt_print_str(%t3)
   .loc 1 2 4
-  br label exit1
-exit1:
-  .loc 1 2 4
-  br label L30
-else:
+  br label if_exit
+if_test_1:
   .loc 1 2 34
   %t4 = load i64, %t0
   .loc 1 2 36
   %t5 = scmp_le %t4, 2
-  .loc 1 2 27
-  cbr %t5, label then1, label else1
-then1:
+  .loc 1 2 36
+  cbr %t5, label if_then_1, label if_else
+if_then_1:
   .loc 1 2 46
   call @rt_print_i64(2)
   .loc 1 2 46
   %t6 = const_str @.L0
   .loc 1 2 46
   call @rt_print_str(%t6)
-  .loc 1 2 27
-  br label exit2
-exit2:
   .loc 1 2 4
-  br label exit1
-else1:
+  br label if_exit
+if_else:
   .loc 1 2 59
   call @rt_print_i64(3)
   .loc 1 2 59
   %t7 = const_str @.L0
   .loc 1 2 59
   call @rt_print_str(%t7)
-  .loc 1 2 27
-  br label exit2
+  .loc 1 2 4
+  br label if_exit
+if_exit:
+  .loc 1 2 4
+  br label L30
 }
