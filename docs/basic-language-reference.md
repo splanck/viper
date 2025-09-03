@@ -104,7 +104,7 @@ compile-time error:
 | `VAL(s$)`         | `str → i64`                  | ignores leading/trailing spaces; traps on invalid numeric |
 | `INT(x #)`        | `f64 → i64`                  | truncates toward zero |
 | `SQR(x)`          | `num → f64`                  | square root |
-| `ABS(i)` / `ABS(x #)` | `i64 → i64` / `f64 → f64` | absolute value |
+| `ABS(i)` / `ABS(x #)` | `i64 → i64` / `f64 → f64` | absolute value; mixed numeric expressions widen integers to floats before taking the absolute value |
 | `FLOOR(x)`        | `num → f64`                  | round down |
 | `CEIL(x)`         | `num → f64`                  | round up |
 | `SIN(x)`          | `num → f64`                  | sine |
@@ -115,6 +115,8 @@ compile-time error:
 ```basic
 PRINT ABS(-5)
 PRINT ABS(-1.5#)
+PRINT ABS(1-2)      ' 1
+PRINT ABS(1-2.5#)   ' 1.5
 PRINT FLOOR(1.9#)
 PRINT CEIL(1.1#)
 PRINT SQR(9#)
