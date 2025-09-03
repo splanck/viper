@@ -1,4 +1,4 @@
-il 0.1
+il 0.1.2
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
 extern @rt_print_f64(f64) -> void
@@ -9,7 +9,7 @@ global const str @.L0 = "
 func @main() -> i64 {
 entry:
   %t0 = alloca 8
-  br label L10
+  br L10
 L10:
   .loc 1 1 4
   store i64, %t0, 1
@@ -36,7 +36,7 @@ L10:
   .loc 1 1 42
   call @rt_print_str(%t6)
   .loc 1 1 4
-  br label exit
+  br exit
 exit:
   ret 0
 }

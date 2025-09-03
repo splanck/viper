@@ -57,12 +57,47 @@ void printInstr(const Instr &in, std::ostream &os)
     else if (in.op == Opcode::Br)
     {
         if (!in.labels.empty())
-            os << " label " << in.labels[0];
+        {
+            os << " " << in.labels[0];
+            if (!in.brArgs.empty() && !in.brArgs[0].empty())
+            {
+                os << "(";
+                for (size_t i = 0; i < in.brArgs[0].size(); ++i)
+                {
+                    if (i)
+                        os << ", ";
+                    os << il::core::toString(in.brArgs[0][i]);
+                }
+                os << ")";
+            }
+        }
     }
     else if (in.op == Opcode::CBr)
     {
-        os << " " << il::core::toString(in.operands[0]) << ", label " << in.labels[0] << ", label "
-           << in.labels[1];
+        os << " " << il::core::toString(in.operands[0]) << ", " << in.labels[0];
+        if (!in.brArgs.empty() && !in.brArgs[0].empty())
+        {
+            os << "(";
+            for (size_t i = 0; i < in.brArgs[0].size(); ++i)
+            {
+                if (i)
+                    os << ", ";
+                os << il::core::toString(in.brArgs[0][i]);
+            }
+            os << ")";
+        }
+        os << ", " << in.labels[1];
+        if (in.brArgs.size() > 1 && !in.brArgs[1].empty())
+        {
+            os << "(";
+            for (size_t i = 0; i < in.brArgs[1].size(); ++i)
+            {
+                if (i)
+                    os << ", ";
+                os << il::core::toString(in.brArgs[1][i]);
+            }
+            os << ")";
+        }
     }
     else if (in.op == Opcode::Load)
     {
@@ -91,7 +126,7 @@ void printInstr(const Instr &in, std::ostream &os)
 
 void Serializer::write(const Module &m, std::ostream &os, Mode mode)
 {
-    os << "il 0.1\n";
+    os << "il " << m.version << "\n";
     if (mode == Mode::Canonical)
     {
         std::vector<Extern> ex(m.externs.begin(), m.externs.end());
@@ -123,7 +158,19 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode)
         os << ") -> " << f.retType.toString() << " {\n";
         for (const auto &bb : f.blocks)
         {
-            os << bb.label << ":\n";
+            os << bb.label;
+            if (!bb.params.empty())
+            {
+                os << '(';
+                for (size_t i = 0; i < bb.params.size(); ++i)
+                {
+                    if (i)
+                        os << ", ";
+                    os << '%' << bb.params[i].name << ':' << bb.params[i].type.toString();
+                }
+                os << ')';
+            }
+            os << ":\n";
             for (const auto &in : bb.instructions)
                 printInstr(in, os);
         }

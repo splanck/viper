@@ -32,18 +32,46 @@ std::string trim(const std::string &s)
     return s.substr(b, e - b);
 }
 
-Type parseType(const std::string &t)
+Type parseType(const std::string &t, bool *ok = nullptr)
 {
     if (t == "i64" || t == "i32")
+    {
+        if (ok)
+            *ok = true;
         return Type(Type::Kind::I64);
+    }
     if (t == "i1")
+    {
+        if (ok)
+            *ok = true;
         return Type(Type::Kind::I1);
+    }
     if (t == "f64")
+    {
+        if (ok)
+            *ok = true;
         return Type(Type::Kind::F64);
+    }
     if (t == "ptr")
+    {
+        if (ok)
+            *ok = true;
         return Type(Type::Kind::Ptr);
+    }
     if (t == "str")
+    {
+        if (ok)
+            *ok = true;
         return Type(Type::Kind::Str);
+    }
+    if (t == "void")
+    {
+        if (ok)
+            *ok = true;
+        return Type(Type::Kind::Void);
+    }
+    if (ok)
+        *ok = false;
     return Type(Type::Kind::Void);
 }
 
@@ -53,9 +81,19 @@ Value parseValue(const std::string &tok, const std::unordered_map<std::string, u
         return Value::constInt(0);
     if (tok[0] == '%')
     {
-        auto it = temps.find(tok.substr(1));
+        std::string name = tok.substr(1);
+        auto it = temps.find(name);
         if (it != temps.end())
             return Value::temp(it->second);
+        if (name.size() > 1 && name[0] == 't')
+        {
+            bool digits = true;
+            for (size_t i = 1; i < name.size(); ++i)
+                if (!std::isdigit(static_cast<unsigned char>(name[i])))
+                    digits = false;
+            if (digits)
+                return Value::temp(std::stoul(name.substr(1)));
+        }
         return Value::temp(0); // undefined temp will be diagnosed later
     }
     if (tok[0] == '@')
@@ -90,6 +128,16 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
     unsigned nextTemp = 0;
     unsigned lineNo = 0;
     il::support::SourceLoc curLoc{};
+    std::unordered_map<std::string, size_t> blockParamCount;
+
+    struct PendingBr
+    {
+        std::string label;
+        size_t args;
+        unsigned line;
+    };
+
+    std::vector<PendingBr> pendingBrs;
     while (std::getline(is, line))
     {
         ++lineNo;
@@ -98,8 +146,18 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
             continue;
         if (!curFn)
         {
-            if (line.rfind("il ", 0) == 0)
+            if (line.rfind("il", 0) == 0)
+            {
+                std::istringstream ls(line);
+                std::string kw;
+                ls >> kw;
+                std::string ver;
+                if (ls >> ver)
+                    m.version = ver;
+                else
+                    m.version = "0.1.2";
                 continue;
+            }
             if (line.rfind("extern", 0) == 0)
             {
                 size_t at = line.find('@');
@@ -168,6 +226,8 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
                 curFn = &m.functions.back();
                 curBB = nullptr;
                 nextTemp = idx;
+                blockParamCount.clear();
+                pendingBrs.clear();
                 continue;
             }
             err << "line " << lineNo << ": unexpected line: " << line << "\n";
@@ -181,11 +241,67 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
                 curBB = nullptr;
                 continue;
             }
-            if (line.back() == ':' && line.find(' ') == std::string::npos)
+            if (line.back() == ':')
             {
-                std::string label = line.substr(0, line.size() - 1);
-                curFn->blocks.push_back({label, {}, {}, false});
+                std::string header = line.substr(0, line.size() - 1);
+                size_t lp = header.find('(');
+                std::vector<Param> params;
+                std::string label = trim(header);
+                if (lp != std::string::npos)
+                {
+                    size_t rp = header.find(')', lp);
+                    if (rp == std::string::npos)
+                    {
+                        err << "line " << lineNo << ": mismatched ')\n";
+                        return false;
+                    }
+                    label = trim(header.substr(0, lp));
+                    std::string paramsStr = header.substr(lp + 1, rp - lp - 1);
+                    std::stringstream pss(paramsStr);
+                    std::string p;
+                    while (std::getline(pss, p, ','))
+                    {
+                        p = trim(p);
+                        if (p.empty())
+                            continue;
+                        size_t col = p.find(':');
+                        if (col == std::string::npos)
+                        {
+                            err << "line " << lineNo << ": bad param\n";
+                            return false;
+                        }
+                        std::string nm = trim(p.substr(0, col));
+                        if (!nm.empty() && nm[0] == '%')
+                            nm = nm.substr(1);
+                        std::string tyStr = trim(p.substr(col + 1));
+                        bool ok = true;
+                        Type ty = parseType(tyStr, &ok);
+                        if (!ok || ty.kind == Type::Kind::Void)
+                        {
+                            err << "line " << lineNo << ": unknown param type\n";
+                            return false;
+                        }
+                        params.push_back({nm, ty, nextTemp});
+                        tempIds[nm] = nextTemp++;
+                    }
+                }
+                curFn->blocks.push_back({label, params, {}, false});
                 curBB = &curFn->blocks.back();
+                blockParamCount[label] = params.size();
+                for (auto it = pendingBrs.begin(); it != pendingBrs.end();)
+                {
+                    if (it->label == label)
+                    {
+                        if (it->args != params.size())
+                        {
+                            err << "line " << it->line << ": bad arg count\n";
+                            return false;
+                        }
+                        it = pendingBrs.erase(it);
+                    }
+                    else
+                        ++it;
+                }
                 continue;
             }
             if (!curBB)
@@ -349,22 +465,134 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
                 }
                 case Opcode::Br:
                 {
-                    std::string word = readToken(ss);
-                    std::string l = readToken(ss);
-                    in.labels.push_back(l);
+                    std::string rest;
+                    std::getline(ss, rest);
+                    rest = trim(rest);
+                    if (rest.rfind("label ", 0) == 0)
+                        rest = trim(rest.substr(6));
+                    size_t lp = rest.find('(');
+                    std::vector<Value> args;
+                    std::string lbl;
+                    if (lp == std::string::npos)
+                    {
+                        lbl = rest;
+                    }
+                    else
+                    {
+                        size_t rp = rest.find(')', lp);
+                        if (rp == std::string::npos)
+                        {
+                            err << "line " << lineNo << ": mismatched ')\n";
+                            return false;
+                        }
+                        lbl = trim(rest.substr(0, lp));
+                        std::string argsStr = rest.substr(lp + 1, rp - lp - 1);
+                        std::stringstream as(argsStr);
+                        std::string a;
+                        while (std::getline(as, a, ','))
+                        {
+                            a = trim(a);
+                            if (!a.empty())
+                                args.push_back(parseValue(a, tempIds));
+                        }
+                    }
+                    in.labels.push_back(lbl);
+                    in.brArgs.push_back(args);
+                    size_t argCount = args.size();
+                    auto it = blockParamCount.find(lbl);
+                    if (it != blockParamCount.end())
+                    {
+                        if (it->second != argCount)
+                        {
+                            err << "line " << lineNo << ": bad arg count\n";
+                            return false;
+                        }
+                    }
+                    else
+                        pendingBrs.push_back({lbl, argCount, lineNo});
                     in.type = Type(Type::Kind::Void);
                     break;
                 }
                 case Opcode::CBr:
                 {
                     std::string c = readToken(ss);
-                    std::string word = readToken(ss);
-                    std::string l1 = readToken(ss);
-                    word = readToken(ss);
-                    std::string l2 = readToken(ss);
+                    std::string rest;
+                    std::getline(ss, rest);
+                    rest = trim(rest);
+                    size_t comma = rest.find(',');
+                    if (comma == std::string::npos)
+                    {
+                        err << "line " << lineNo << ": malformed cbr\n";
+                        return false;
+                    }
+                    std::string first = trim(rest.substr(0, comma));
+                    std::string second = trim(rest.substr(comma + 1));
+                    auto parseTarget = [&](const std::string &part,
+                                           std::string &lbl,
+                                           std::vector<Value> &args) -> bool
+                    {
+                        std::string t = part;
+                        if (t.rfind("label ", 0) == 0)
+                            t = trim(t.substr(6));
+                        size_t lp = t.find('(');
+                        if (lp == std::string::npos)
+                        {
+                            lbl = trim(t);
+                        }
+                        else
+                        {
+                            size_t rp = t.find(')', lp);
+                            if (rp == std::string::npos)
+                                return false;
+                            lbl = trim(t.substr(0, lp));
+                            std::string argsStr = t.substr(lp + 1, rp - lp - 1);
+                            std::stringstream as(argsStr);
+                            std::string a;
+                            while (std::getline(as, a, ','))
+                            {
+                                a = trim(a);
+                                if (!a.empty())
+                                    args.push_back(parseValue(a, tempIds));
+                            }
+                        }
+                        return true;
+                    };
+                    std::vector<Value> a1, a2;
+                    std::string l1, l2;
+                    if (!parseTarget(first, l1, a1) || !parseTarget(second, l2, a2))
+                    {
+                        err << "line " << lineNo << ": mismatched ')\n";
+                        return false;
+                    }
                     in.operands.push_back(parseValue(c, tempIds));
                     in.labels.push_back(l1);
                     in.labels.push_back(l2);
+                    in.brArgs.push_back(a1);
+                    in.brArgs.push_back(a2);
+                    size_t n1 = a1.size();
+                    auto it1 = blockParamCount.find(l1);
+                    if (it1 != blockParamCount.end())
+                    {
+                        if (it1->second != n1)
+                        {
+                            err << "line " << lineNo << ": bad arg count\n";
+                            return false;
+                        }
+                    }
+                    else
+                        pendingBrs.push_back({l1, n1, lineNo});
+                    size_t n2 = a2.size();
+                    auto it2 = blockParamCount.find(l2);
+                    if (it2 != blockParamCount.end())
+                    {
+                        if (it2->second != n2)
+                        {
+                            err << "line " << lineNo << ": bad arg count\n";
+                            return false;
+                        }
+                    }
+                    else
+                        pendingBrs.push_back({l2, n2, lineNo});
                     in.type = Type(Type::Kind::Void);
                     break;
                 }

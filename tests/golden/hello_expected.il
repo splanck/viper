@@ -1,4 +1,4 @@
-il 0.1
+il 0.1.2
 extern @rt_print_str(str) -> void
 global const str @.L0 = "HELLO"
 func @main() -> i64 {

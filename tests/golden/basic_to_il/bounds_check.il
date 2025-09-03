@@ -1,4 +1,4 @@
-il 0.1
+il 0.1.2
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
 extern @rt_print_f64(f64) -> void
@@ -13,7 +13,7 @@ func @main() -> i64 {
 entry:
   %t0 = alloca 8
   %t1 = alloca 8
-  br label L10
+  br L10
 L10:
   .loc 1 1 4
   %t2 = mul 2, 8
@@ -24,7 +24,7 @@ L10:
   .loc 1 1 4
   store i64, %t1, 2
   .loc 1 1 4
-  br label L20
+  br L20
 L20:
   .loc 1 2 10
   %t4 = load ptr, %t0
@@ -43,7 +43,7 @@ L20:
   .loc 1 2 10
   %t11 = trunc1 %t10
   .loc 1 2 10
-  cbr %t11, label bc_fail0, label bc_ok0
+  cbr %t11, bc_fail0, bc_ok0
 exit:
   ret 0
 bc_ok0:
@@ -60,7 +60,7 @@ bc_ok0:
   .loc 1 2 4
   call @rt_print_str(%t16)
   .loc 1 2 4
-  br label exit
+  br exit
 bc_fail0:
   .loc 1 2 10
   %t12 = const_str @.L0
