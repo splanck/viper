@@ -20,6 +20,15 @@ int main()
     rt_str subempty = rt_substr(hw, 10, 0);
     assert(rt_len(subempty) == 0);
 
+    rt_str clamp1 = rt_substr(hw, 8, 10);
+    rt_str ld = rt_const_cstr("ld");
+    assert(rt_str_eq(clamp1, ld));
+    rt_str clamp2 = rt_substr(hw, -3, 4);
+    rt_str hell = rt_const_cstr("hell");
+    assert(rt_str_eq(clamp2, hell));
+    rt_str clamp3 = rt_substr(hw, 2, -5);
+    assert(rt_len(clamp3) == 0);
+
     assert(!rt_str_eq(hello, world));
 
     rt_str num = rt_const_cstr("  -42 ");

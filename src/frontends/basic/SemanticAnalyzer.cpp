@@ -334,13 +334,46 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
     }
     else if (auto *c = dynamic_cast<const CallExpr *>(&e))
     {
+        std::vector<Type> argTys;
+        argTys.reserve(c->args.size());
         for (const auto &a : c->args)
-            if (a)
-                visitExpr(*a);
+            argTys.push_back(a ? visitExpr(*a) : Type::Unknown);
+        auto err = [&](size_t idx)
+        {
+            std::string msg = "argument type mismatch";
+            il::support::SourceLoc loc = c->loc;
+            if (idx < c->args.size() && c->args[idx])
+                loc = c->args[idx]->loc;
+            de.emit(il::support::Severity::Error, "B2001", loc, 1, std::move(msg));
+        };
         if (c->builtin == CallExpr::Builtin::Len)
+        {
+            if (argTys.size() != 1 || (argTys[0] != Type::Unknown && argTys[0] != Type::String))
+                err(0);
             return Type::Int;
+        }
         else if (c->builtin == CallExpr::Builtin::Mid)
+        {
+            if (argTys.size() < 2 || argTys.size() > 3)
+                err(0);
+            if (argTys.size() >= 1 && argTys[0] != Type::Unknown && argTys[0] != Type::String)
+                err(0);
+            if (argTys.size() >= 2 && argTys[1] != Type::Unknown && argTys[1] != Type::Int)
+                err(1);
+            if (argTys.size() == 3 && argTys[2] != Type::Unknown && argTys[2] != Type::Int)
+                err(2);
             return Type::String;
+        }
+        else if (c->builtin == CallExpr::Builtin::Left || c->builtin == CallExpr::Builtin::Right)
+        {
+            if (argTys.size() != 2)
+                err(0);
+            if (argTys.size() >= 1 && argTys[0] != Type::Unknown && argTys[0] != Type::String)
+                err(0);
+            if (argTys.size() >= 2 && argTys[1] != Type::Unknown && argTys[1] != Type::Int)
+                err(1);
+            return Type::String;
+        }
     }
     else if (auto *a = dynamic_cast<const ArrayExpr *>(&e))
     {
