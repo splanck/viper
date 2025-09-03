@@ -20,6 +20,19 @@ auto po = postOrder(fn);      // entry last
 auto rpo = reversePostOrder(fn); // entry first
 ```
 
+## Acyclicity & Topological Order
+
+Cycle detection and topological sorting are available for DAG-restricted
+analyses.
+
+```cpp
+bool ok = isAcyclic(fn);      // false if any cycle exists
+auto topo = topoOrder(fn);    // empty if cyclic
+```
+
+These helpers gate passes like the mem2reg v2 prototype, which operates only
+on acyclic control-flow graphs.
+
 ## Dominators
 
 Computes immediate dominators using the algorithm of Cooper, Harvey, and
