@@ -59,6 +59,7 @@ class SemanticAnalyzer
     enum class Type
     {
         Int,
+        Float,
         String,
         Unknown
     };

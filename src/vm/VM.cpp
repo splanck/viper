@@ -107,6 +107,8 @@ int64_t VM::execFunction(const Function &fn)
                 Slot res{};
                 if (in.type.kind == Type::Kind::I64)
                     res.i64 = *reinterpret_cast<int64_t *>(ptr);
+                else if (in.type.kind == Type::Kind::F64)
+                    res.f64 = *reinterpret_cast<double *>(ptr);
                 else if (in.type.kind == Type::Kind::Str)
                     res.str = *reinterpret_cast<rt_str *>(ptr);
                 else if (in.type.kind == Type::Kind::Ptr)
@@ -126,6 +128,8 @@ int64_t VM::execFunction(const Function &fn)
                 Slot val = eval(fr, in.operands[1]);
                 if (in.type.kind == Type::Kind::I64)
                     *reinterpret_cast<int64_t *>(ptr) = val.i64;
+                else if (in.type.kind == Type::Kind::F64)
+                    *reinterpret_cast<double *>(ptr) = val.f64;
                 else if (in.type.kind == Type::Kind::Str)
                     *reinterpret_cast<rt_str *>(ptr) = val.str;
                 else if (in.type.kind == Type::Kind::Ptr)
@@ -166,6 +170,62 @@ int64_t VM::execFunction(const Function &fn)
                 Slot b = eval(fr, in.operands[1]);
                 Slot res{};
                 res.i64 = a.i64 * b.i64;
+                if (in.result)
+                {
+                    if (fr.regs.size() <= *in.result)
+                        fr.regs.resize(*in.result + 1);
+                    fr.regs[*in.result] = res;
+                }
+                break;
+            }
+            case Opcode::FAdd:
+            {
+                Slot a = eval(fr, in.operands[0]);
+                Slot b = eval(fr, in.operands[1]);
+                Slot res{};
+                res.f64 = a.f64 + b.f64;
+                if (in.result)
+                {
+                    if (fr.regs.size() <= *in.result)
+                        fr.regs.resize(*in.result + 1);
+                    fr.regs[*in.result] = res;
+                }
+                break;
+            }
+            case Opcode::FSub:
+            {
+                Slot a = eval(fr, in.operands[0]);
+                Slot b = eval(fr, in.operands[1]);
+                Slot res{};
+                res.f64 = a.f64 - b.f64;
+                if (in.result)
+                {
+                    if (fr.regs.size() <= *in.result)
+                        fr.regs.resize(*in.result + 1);
+                    fr.regs[*in.result] = res;
+                }
+                break;
+            }
+            case Opcode::FMul:
+            {
+                Slot a = eval(fr, in.operands[0]);
+                Slot b = eval(fr, in.operands[1]);
+                Slot res{};
+                res.f64 = a.f64 * b.f64;
+                if (in.result)
+                {
+                    if (fr.regs.size() <= *in.result)
+                        fr.regs.resize(*in.result + 1);
+                    fr.regs[*in.result] = res;
+                }
+                break;
+            }
+            case Opcode::FDiv:
+            {
+                Slot a = eval(fr, in.operands[0]);
+                Slot b = eval(fr, in.operands[1]);
+                Slot res{};
+                res.f64 = a.f64 / b.f64;
                 if (in.result)
                 {
                     if (fr.regs.size() <= *in.result)
@@ -286,6 +346,104 @@ int64_t VM::execFunction(const Function &fn)
                 }
                 break;
             }
+            case Opcode::SCmpGE:
+            {
+                Slot a = eval(fr, in.operands[0]);
+                Slot b = eval(fr, in.operands[1]);
+                Slot res{};
+                res.i64 = (a.i64 >= b.i64) ? 1 : 0;
+                if (in.result)
+                {
+                    if (fr.regs.size() <= *in.result)
+                        fr.regs.resize(*in.result + 1);
+                    fr.regs[*in.result] = res;
+                }
+                break;
+            }
+            case Opcode::FCmpEQ:
+            {
+                Slot a = eval(fr, in.operands[0]);
+                Slot b = eval(fr, in.operands[1]);
+                Slot res{};
+                res.i64 = (a.f64 == b.f64) ? 1 : 0;
+                if (in.result)
+                {
+                    if (fr.regs.size() <= *in.result)
+                        fr.regs.resize(*in.result + 1);
+                    fr.regs[*in.result] = res;
+                }
+                break;
+            }
+            case Opcode::FCmpNE:
+            {
+                Slot a = eval(fr, in.operands[0]);
+                Slot b = eval(fr, in.operands[1]);
+                Slot res{};
+                res.i64 = (a.f64 != b.f64) ? 1 : 0;
+                if (in.result)
+                {
+                    if (fr.regs.size() <= *in.result)
+                        fr.regs.resize(*in.result + 1);
+                    fr.regs[*in.result] = res;
+                }
+                break;
+            }
+            case Opcode::FCmpGT:
+            {
+                Slot a = eval(fr, in.operands[0]);
+                Slot b = eval(fr, in.operands[1]);
+                Slot res{};
+                res.i64 = (a.f64 > b.f64) ? 1 : 0;
+                if (in.result)
+                {
+                    if (fr.regs.size() <= *in.result)
+                        fr.regs.resize(*in.result + 1);
+                    fr.regs[*in.result] = res;
+                }
+                break;
+            }
+            case Opcode::FCmpLT:
+            {
+                Slot a = eval(fr, in.operands[0]);
+                Slot b = eval(fr, in.operands[1]);
+                Slot res{};
+                res.i64 = (a.f64 < b.f64) ? 1 : 0;
+                if (in.result)
+                {
+                    if (fr.regs.size() <= *in.result)
+                        fr.regs.resize(*in.result + 1);
+                    fr.regs[*in.result] = res;
+                }
+                break;
+            }
+            case Opcode::FCmpLE:
+            {
+                Slot a = eval(fr, in.operands[0]);
+                Slot b = eval(fr, in.operands[1]);
+                Slot res{};
+                res.i64 = (a.f64 <= b.f64) ? 1 : 0;
+                if (in.result)
+                {
+                    if (fr.regs.size() <= *in.result)
+                        fr.regs.resize(*in.result + 1);
+                    fr.regs[*in.result] = res;
+                }
+                break;
+            }
+            case Opcode::FCmpGE:
+            {
+                Slot a = eval(fr, in.operands[0]);
+                Slot b = eval(fr, in.operands[1]);
+                Slot res{};
+                res.i64 = (a.f64 >= b.f64) ? 1 : 0;
+                if (in.result)
+                {
+                    if (fr.regs.size() <= *in.result)
+                        fr.regs.resize(*in.result + 1);
+                    fr.regs[*in.result] = res;
+                }
+                break;
+            }
             case Opcode::CBr:
             {
                 Slot c = eval(fr, in.operands[0]);
@@ -324,6 +482,32 @@ int64_t VM::execFunction(const Function &fn)
                 for (const auto &op : in.operands)
                     args.push_back(eval(fr, op));
                 Slot res = RuntimeBridge::call(in.callee, args, in.loc, fr.func->name, bb->label);
+                if (in.result)
+                {
+                    if (fr.regs.size() <= *in.result)
+                        fr.regs.resize(*in.result + 1);
+                    fr.regs[*in.result] = res;
+                }
+                break;
+            }
+            case Opcode::Sitofp:
+            {
+                Slot v = eval(fr, in.operands[0]);
+                Slot res{};
+                res.f64 = static_cast<double>(v.i64);
+                if (in.result)
+                {
+                    if (fr.regs.size() <= *in.result)
+                        fr.regs.resize(*in.result + 1);
+                    fr.regs[*in.result] = res;
+                }
+                break;
+            }
+            case Opcode::Fptosi:
+            {
+                Slot v = eval(fr, in.operands[0]);
+                Slot res{};
+                res.i64 = static_cast<int64_t>(v.f64);
                 if (in.result)
                 {
                     if (fr.regs.size() <= *in.result)
