@@ -1,0 +1,11 @@
+10 RANDOMIZE 1
+20 LET N = 500
+30 LET H = 0
+40 FOR I = 1 TO N
+50 LET X# = RND()
+60 LET Y# = RND()
+70 LET D# = X#*X# + Y#*Y#
+80 IF D# <= 1# THEN LET H = H + 1
+90 NEXT I
+100 LET P# = 4# * H / N
+110 PRINT P#
