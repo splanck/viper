@@ -47,11 +47,44 @@ class IRBuilder
     /// @return Reference to created function.
     Function &startFunction(const std::string &name, Type ret, const std::vector<Param> &params);
 
-    /// @brief Append a basic block with label @p label to @p fn.
+    /// @brief Append a basic block with label @p label and optional params to @p fn.
     /// @param fn Function receiving the block.
     /// @param label Block label.
+    /// @param params Block parameters.
     /// @return Reference to new block.
-    BasicBlock &addBlock(Function &fn, const std::string &label);
+    BasicBlock &addBlock(Function &fn,
+                         const std::string &label,
+                         const std::vector<Param> &params = {});
+
+    /// @brief Create a block in the current function.
+    /// @param label Block label.
+    /// @param params Parameter list.
+    /// @return Reference to new block.
+    BasicBlock &createBlock(const std::string &label, const std::vector<Param> &params = {});
+
+    /// @brief Obtain the @p idx-th parameter of block @p bb as a value.
+    /// @param bb Block containing the parameter.
+    /// @param idx Parameter index.
+    /// @return SSA value representing the parameter.
+    Value blockParam(BasicBlock &bb, unsigned idx);
+
+    /// @brief Emit an unconditional branch to @p dst with arguments @p args.
+    /// @param dst Destination block.
+    /// @param args Arguments passed to destination block.
+    void br(BasicBlock &dst, const std::vector<Value> &args = {}, il::support::SourceLoc loc = {});
+
+    /// @brief Emit a conditional branch on @p cond.
+    /// @param cond Condition value.
+    /// @param t True destination block and args.
+    /// @param targs Arguments for true destination.
+    /// @param f False destination block and args.
+    /// @param fargs Arguments for false destination.
+    void cbr(Value cond,
+             BasicBlock &t,
+             const std::vector<Value> &targs,
+             BasicBlock &f,
+             const std::vector<Value> &fargs,
+             il::support::SourceLoc loc = {});
 
     /// @brief Set current insertion point to block @p bb.
     /// @param bb Target block.
