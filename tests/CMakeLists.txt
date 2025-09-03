@@ -97,6 +97,11 @@ add_test(NAME il_opt_equiv COMMAND ${CMAKE_COMMAND}
   -DIL_FILE=${CMAKE_SOURCE_DIR}/tests/golden/il_opt/e2e.in.il
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_il_opt_equiv.cmake)
 
+add_test(NAME mem2reg_basic COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/data/mem2reg.bas
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_mem2reg_basic.cmake)
+
 set(IL_VERIFY ${CMAKE_BINARY_DIR}/src/tools/il-verify/il-verify)
 add_test(NAME il_verify_invalid_bad_types
   COMMAND ${CMAKE_COMMAND}
