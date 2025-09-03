@@ -28,6 +28,21 @@ extern "C"
         return ceil(x);
     }
 
+    double rt_sin(double x)
+    {
+        return sin(x);
+    }
+
+    double rt_cos(double x)
+    {
+        return cos(x);
+    }
+
+    double rt_pow(double x, double y)
+    {
+        return pow(x, y);
+    }
+
     long long rt_abs_i64(long long v)
     {
         return v < 0 ? -v : v;

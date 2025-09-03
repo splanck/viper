@@ -98,6 +98,18 @@ Slot RuntimeBridge::call(const std::string &name,
     {
         res.f64 = rt_ceil(args[0].f64);
     }
+    else if (name == "rt_sin")
+    {
+        res.f64 = rt_sin(args[0].f64);
+    }
+    else if (name == "rt_cos")
+    {
+        res.f64 = rt_cos(args[0].f64);
+    }
+    else if (name == "rt_pow")
+    {
+        res.f64 = rt_pow(args[0].f64, args[1].f64);
+    }
     else if (name == "rt_abs_i64")
     {
         res.i64 = rt_abs_i64(args[0].i64);
