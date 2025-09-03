@@ -129,3 +129,24 @@ add_test(NAME il_opt_mem2reg_simple COMMAND ${CMAKE_COMMAND}
   -DGOLDEN=${CMAKE_CURRENT_SOURCE_DIR}/il_opt/mem2reg_simple.opt.il
   -DPASSES=mem2reg
   -P ${CMAKE_CURRENT_SOURCE_DIR}/il_opt/check_opt.cmake)
+
+add_test(NAME il_opt_mem2reg_diamond COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DIL_FILE=${CMAKE_CURRENT_SOURCE_DIR}/il_opt/mem2reg_diamond.in.il
+  -DGOLDEN=${CMAKE_CURRENT_SOURCE_DIR}/il_opt/mem2reg_diamond.opt.il
+  -DPASSES=mem2reg
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/il_opt/check_opt.cmake)
+
+add_test(NAME il_opt_mem2reg_nested COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DIL_FILE=${CMAKE_CURRENT_SOURCE_DIR}/il_opt/mem2reg_nested.in.il
+  -DGOLDEN=${CMAKE_CURRENT_SOURCE_DIR}/il_opt/mem2reg_nested.opt.il
+  -DPASSES=mem2reg
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/il_opt/check_opt.cmake)
+
+add_test(NAME il_opt_mem2reg_loop_skip COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DIL_FILE=${CMAKE_CURRENT_SOURCE_DIR}/il_opt/mem2reg_loop.in.il
+  -DGOLDEN=${CMAKE_CURRENT_SOURCE_DIR}/il_opt/mem2reg_loop.opt.il
+  -DPASSES=mem2reg
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/il_opt/check_opt.cmake)

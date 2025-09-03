@@ -1,12 +1,14 @@
 // File: lib/Passes/Mem2Reg.cpp
-// Purpose: Implement simple alloca promotion to SSA (mem2reg v1).
-// Key invariants: Only promotes allocas of i64, f64, or i1 with a single store dominating all loads
-// and no escaped addresses. Ownership/Lifetime: Operates in place on the module, removing dead
-// allocas and stores. Links: docs/passes/mem2reg.md
+// Purpose: Implement alloca promotion to SSA using block parameters (mem2reg v2).
+// Key invariants: Only handles i64/f64/i1 allocas with no escaped addresses and
+// runs only on acyclic CFGs. Ownership/Lifetime: Mutates the module in place,
+// introducing block params and branch args while removing allocas/loads/stores.
+// Links: docs/passes/mem2reg.md
 
 #include "Passes/Mem2Reg.h"
-#include "Analysis/Dominators.h"
+#include "Analysis/CFG.h"
 #include <algorithm>
+#include <optional>
 #include <unordered_map>
 
 using namespace il::core;
@@ -15,57 +17,76 @@ namespace viper::passes
 {
 namespace
 {
-struct LoadRef
-{
-    BasicBlock *block;
-    std::size_t index;
-    unsigned result;
-};
-
 struct AllocaInfo
 {
-    BasicBlock *allocaBlock{nullptr};
-    unsigned allocaId{0};
-    BasicBlock *storeBlock{nullptr};
-    std::size_t storeIndex{0};
-    Value storedValue{};
-    Type storedType{};
-    std::vector<LoadRef> loads;
+    BasicBlock *block{nullptr};
+    unsigned id{0};
+    Type type{};
     bool addressTaken{false};
     bool hasStore{false};
-    bool multipleStores{false};
 };
 
 static void replaceAllUses(Function &F, unsigned id, const Value &v)
 {
     for (auto &B : F.blocks)
         for (auto &I : B.instructions)
+        {
             for (auto &Op : I.operands)
                 if (Op.kind == Value::Kind::Temp && Op.id == id)
                     Op = v;
+            for (auto &argList : I.brArgs)
+                for (auto &Arg : argList)
+                    if (Arg.kind == Value::Kind::Temp && Arg.id == id)
+                        Arg = v;
+        }
+}
+
+static unsigned nextTempId(Function &F)
+{
+    unsigned next = 0;
+    auto update = [&](unsigned v) { next = std::max(next, v + 1); };
+    for (auto &p : F.params)
+        update(p.id);
+    for (auto &B : F.blocks)
+    {
+        for (auto &p : B.params)
+            update(p.id);
+        for (auto &I : B.instructions)
+        {
+            if (I.result)
+                update(*I.result);
+            for (auto &Op : I.operands)
+                if (Op.kind == Value::Kind::Temp)
+                    update(Op.id);
+            for (auto &argList : I.brArgs)
+                for (auto &Arg : argList)
+                    if (Arg.kind == Value::Kind::Temp)
+                        update(Arg.id);
+        }
+    }
+    return next;
 }
 } // namespace
 
 void mem2reg(Module &M)
 {
+    analysis::setModule(M);
     for (auto &F : M.functions)
     {
-        analysis::DomTree DT = analysis::computeDominatorTree(F);
+        if (!analysis::isAcyclic(F))
+            continue; // v2 handles only DAG CFGs
+
+        // Gather promotable allocas
         std::unordered_map<unsigned, AllocaInfo> infos;
+        for (auto &B : F.blocks)
+            for (auto &I : B.instructions)
+                if (I.op == Opcode::Alloca && I.result)
+                    infos[*I.result] = AllocaInfo{&B, *I.result, Type{}, false, false};
 
         for (auto &B : F.blocks)
         {
-            for (std::size_t i = 0; i < B.instructions.size(); ++i)
+            for (auto &I : B.instructions)
             {
-                Instr &I = B.instructions[i];
-                if (I.op == Opcode::Alloca && I.result)
-                {
-                    AllocaInfo AI;
-                    AI.allocaBlock = &B;
-                    AI.allocaId = *I.result;
-                    infos[AI.allocaId] = AI;
-                }
-
                 for (std::size_t oi = 0; oi < I.operands.size(); ++oi)
                 {
                     Value &Op = I.operands[oi];
@@ -77,21 +98,12 @@ void mem2reg(Module &M)
                     AllocaInfo &AI = it->second;
                     if (I.op == Opcode::Store && oi == 0)
                     {
-                        if (AI.hasStore)
-                            AI.multipleStores = true;
-                        else
-                        {
-                            AI.hasStore = true;
-                            AI.storeBlock = &B;
-                            AI.storeIndex = i;
-                            AI.storedValue = I.operands[1];
-                            AI.storedType = I.type;
-                        }
+                        AI.hasStore = true;
+                        AI.type = I.type;
                     }
                     else if (I.op == Opcode::Load && oi == 0)
                     {
-                        AI.loads.push_back(LoadRef{&B, i, *I.result});
-                        AI.storedType = I.type;
+                        AI.type = I.type;
                     }
                     else
                     {
@@ -101,70 +113,88 @@ void mem2reg(Module &M)
             }
         }
 
-        for (auto &[id, AI] : infos)
+        if (infos.size() != 1)
+            continue; // TODO: handle multiple allocas
+
+        unsigned nextId = nextTempId(F);
+        std::vector<unsigned> orderIds;
+        for (auto &[id, _] : infos)
+            orderIds.push_back(id);
+        std::sort(orderIds.begin(), orderIds.end());
+
+        for (unsigned id : orderIds)
         {
-            if (AI.addressTaken || AI.multipleStores || !AI.hasStore)
+            AllocaInfo &AI = infos[id];
+            if (AI.addressTaken || !AI.hasStore)
                 continue;
-            if (AI.storedType.kind != Type::Kind::I64 && AI.storedType.kind != Type::Kind::F64 &&
-                AI.storedType.kind != Type::Kind::I1)
+            if (AI.type.kind != Type::Kind::I64 && AI.type.kind != Type::Kind::F64 &&
+                AI.type.kind != Type::Kind::I1)
                 continue;
 
-            bool domOk = true;
-            for (const auto &LR : AI.loads)
+            std::unordered_map<BasicBlock *, unsigned> paramIndex;
+            auto topo = analysis::topoOrder(F);
+            for (auto *B : topo)
             {
-                if (LR.block == AI.storeBlock)
+                std::optional<Value> current;
+                if (auto it = paramIndex.find(B); it != paramIndex.end())
+                    current = Value::temp(B->params[it->second].id);
+
+                for (std::size_t i = 0; i < B->instructions.size();)
                 {
-                    if (AI.storeIndex >= LR.index)
+                    Instr &I = B->instructions[i];
+                    if (I.op == Opcode::Alloca && I.result && *I.result == id)
                     {
-                        domOk = false;
-                        break;
+                        B->instructions.erase(B->instructions.begin() + i);
+                        continue;
                     }
+                    if (I.op == Opcode::Load && I.operands.size() &&
+                        I.operands[0].kind == Value::Kind::Temp && I.operands[0].id == id)
+                    {
+                        if (current && I.result)
+                            replaceAllUses(F, *I.result, *current);
+                        B->instructions.erase(B->instructions.begin() + i);
+                        continue;
+                    }
+                    if (I.op == Opcode::Store && I.operands.size() > 1 &&
+                        I.operands[0].kind == Value::Kind::Temp && I.operands[0].id == id)
+                    {
+                        current = I.operands[1];
+                        B->instructions.erase(B->instructions.begin() + i);
+                        continue;
+                    }
+                    ++i;
                 }
-                else if (!DT.dominates(AI.storeBlock, LR.block))
-                {
-                    domOk = false;
-                    break;
-                }
-            }
-            if (!domOk)
-                continue;
 
-            // replace loads
-            std::unordered_map<BasicBlock *, std::vector<std::size_t>> perBlock;
-            for (const auto &LR : AI.loads)
-                perBlock[LR.block].push_back(LR.index);
-            for (auto &[B, idxs] : perBlock)
-            {
-                std::sort(idxs.rbegin(), idxs.rend());
-                for (std::size_t idx : idxs)
+                if (!current)
+                    continue;
+                auto succs = analysis::successors(*B);
+                for (auto *S : succs)
                 {
-                    Instr &LI = B->instructions[idx];
-                    if (LI.result)
-                        replaceAllUses(F, *LI.result, AI.storedValue);
-                    B->instructions.erase(B->instructions.begin() + idx);
-                }
-            }
+                    unsigned pIdx;
+                    if (auto it = paramIndex.find(S); it != paramIndex.end())
+                        pIdx = it->second;
+                    else
+                    {
+                        Param p;
+                        p.name = "a" + std::to_string(id);
+                        p.type = AI.type;
+                        p.id = nextId++;
+                        pIdx = S->params.size();
+                        S->params.push_back(p);
+                        paramIndex[S] = pIdx;
+                    }
 
-            // remove store
-            for (std::size_t i = 0; i < AI.storeBlock->instructions.size(); ++i)
-            {
-                Instr &S = AI.storeBlock->instructions[i];
-                if (S.op == Opcode::Store && S.operands.size() >= 1 &&
-                    S.operands[0].kind == Value::Kind::Temp && S.operands[0].id == id)
-                {
-                    AI.storeBlock->instructions.erase(AI.storeBlock->instructions.begin() + i);
-                    break;
-                }
-            }
-
-            // remove alloca
-            for (std::size_t i = 0; i < AI.allocaBlock->instructions.size(); ++i)
-            {
-                Instr &A = AI.allocaBlock->instructions[i];
-                if (A.op == Opcode::Alloca && A.result && *A.result == id)
-                {
-                    AI.allocaBlock->instructions.erase(AI.allocaBlock->instructions.begin() + i);
-                    break;
+                    Instr &term = B->instructions.back();
+                    std::size_t target = 0;
+                    for (; target < term.labels.size(); ++target)
+                        if (term.labels[target] == S->label)
+                            break;
+                    if (term.brArgs.size() < term.labels.size())
+                        term.brArgs.resize(term.labels.size());
+                    auto &args = term.brArgs[target];
+                    if (args.size() <= pIdx)
+                        args.resize(pIdx + 1);
+                    args[pIdx] = *current;
                 }
             }
         }
