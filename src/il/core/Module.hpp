@@ -8,6 +8,7 @@
 #include "il/core/Extern.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Global.hpp"
+#include <string>
 #include <vector>
 
 namespace il::core
@@ -16,6 +17,7 @@ namespace il::core
 /// @brief IL module aggregating externs, globals, and functions.
 struct Module
 {
+    std::string version = "0.1.2"; ///< Parsed module version
     std::vector<Extern> externs;
     std::vector<Global> globals;
     std::vector<Function> functions;
