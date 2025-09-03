@@ -47,11 +47,30 @@ class IRBuilder
     /// @return Reference to created function.
     Function &startFunction(const std::string &name, Type ret, const std::vector<Param> &params);
 
-    /// @brief Append a basic block with label @p label to @p fn.
+    /// @brief Create a basic block with optional parameters.
     /// @param fn Function receiving the block.
     /// @param label Block label.
+    /// @param params Block parameter list.
     /// @return Reference to new block.
+    BasicBlock &createBlock(Function &fn,
+                            const std::string &label,
+                            const std::vector<Param> &params = {});
+
+    /// @brief Backward-compatible helper without parameters.
     BasicBlock &addBlock(Function &fn, const std::string &label);
+
+    /// @brief Access parameter @p idx of block @p bb as a value.
+    Value blockParam(BasicBlock &bb, unsigned idx);
+
+    /// @brief Emit unconditional branch to @p dst with arguments @p args.
+    void br(BasicBlock &dst, const std::vector<Value> &args = {});
+
+    /// @brief Emit conditional branch.
+    void cbr(Value cond,
+             BasicBlock &t,
+             const std::vector<Value> &targs,
+             BasicBlock &f,
+             const std::vector<Value> &fargs);
 
     /// @brief Set current insertion point to block @p bb.
     /// @param bb Target block.
