@@ -12,7 +12,9 @@
 #include "il/core/Opcode.hpp"
 #include <algorithm>
 #include <cstddef>
+#include <queue>
 #include <stack>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace
@@ -138,6 +140,50 @@ std::vector<il::core::Block *> reversePostOrder(il::core::Function &F)
     auto po = postOrder(F);
     std::reverse(po.begin(), po.end());
     return po;
+}
+
+std::vector<il::core::Block *> topoOrder(il::core::Function &F)
+{
+    std::vector<il::core::Block *> out;
+    if (F.blocks.empty())
+        return out;
+
+    std::unordered_map<il::core::Block *, std::size_t> indegree;
+    indegree.reserve(F.blocks.size());
+    for (auto &blk : F.blocks)
+        indegree[&blk] = predecessors(F, blk).size();
+
+    std::queue<il::core::Block *> q;
+    for (auto &blk : F.blocks)
+        if (indegree[&blk] == 0)
+            q.push(&blk);
+
+    while (!q.empty())
+    {
+        auto *b = q.front();
+        q.pop();
+        out.push_back(b);
+        for (auto *succ : successors(*b))
+        {
+            auto it = indegree.find(succ);
+            if (it == indegree.end())
+                continue;
+            if (--(it->second) == 0)
+                q.push(succ);
+        }
+    }
+
+    if (out.size() != F.blocks.size())
+        return {};
+    return out;
+}
+
+bool isAcyclic(il::core::Function &F)
+{
+    if (F.blocks.empty())
+        return true;
+    auto order = topoOrder(F);
+    return order.size() == F.blocks.size();
 }
 
 } // namespace viper::analysis
