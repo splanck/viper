@@ -40,3 +40,10 @@ Kennedy ("A Simple, Fast Dominance Algorithm"). The function iterates to a
 fixed point over reverse post-order, yielding a tree of parent links and
 children for easy traversal. Complexity is linear in practice and worst-case
 \(O(V \times E)\).
+
+## IL utilities
+
+Helpers in `lib/IL/Utils` provide light-weight queries on basic blocks and
+instructions, such as checking block membership or retrieving a block's
+terminator. They depend only on `il_core`, allowing passes to use them without
+pulling in the Analysis layer.
