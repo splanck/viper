@@ -520,13 +520,21 @@ ExprPtr Parser::parsePrimary()
         return e;
     }
     if (check(TokenKind::KeywordSqr) || check(TokenKind::KeywordAbs) ||
-        check(TokenKind::KeywordFloor) || check(TokenKind::KeywordCeil))
+        check(TokenKind::KeywordFloor) || check(TokenKind::KeywordCeil) ||
+        check(TokenKind::KeywordSin) || check(TokenKind::KeywordCos) ||
+        check(TokenKind::KeywordPow))
     {
         TokenKind tk = current_.kind;
         il::support::SourceLoc loc = current_.loc;
         advance();
         consume(TokenKind::LParen);
         auto arg = parseExpression();
+        ExprPtr arg2;
+        if (tk == TokenKind::KeywordPow)
+        {
+            consume(TokenKind::Comma);
+            arg2 = parseExpression();
+        }
         consume(TokenKind::RParen);
         auto call = std::make_unique<CallExpr>();
         call->loc = loc;
@@ -536,9 +544,17 @@ ExprPtr Parser::parsePrimary()
             call->builtin = CallExpr::Builtin::Abs;
         else if (tk == TokenKind::KeywordFloor)
             call->builtin = CallExpr::Builtin::Floor;
-        else
+        else if (tk == TokenKind::KeywordCeil)
             call->builtin = CallExpr::Builtin::Ceil;
+        else if (tk == TokenKind::KeywordSin)
+            call->builtin = CallExpr::Builtin::Sin;
+        else if (tk == TokenKind::KeywordCos)
+            call->builtin = CallExpr::Builtin::Cos;
+        else
+            call->builtin = CallExpr::Builtin::Pow;
         call->args.push_back(std::move(arg));
+        if (tk == TokenKind::KeywordPow)
+            call->args.push_back(std::move(arg2));
         return call;
     }
     if (check(TokenKind::Identifier))

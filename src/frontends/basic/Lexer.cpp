@@ -153,6 +153,12 @@ Token Lexer::lexIdentifierOrKeyword()
         return {TokenKind::KeywordFloor, s, loc};
     if (s == "CEIL")
         return {TokenKind::KeywordCeil, s, loc};
+    if (s == "SIN")
+        return {TokenKind::KeywordSin, s, loc};
+    if (s == "COS")
+        return {TokenKind::KeywordCos, s, loc};
+    if (s == "POW")
+        return {TokenKind::KeywordPow, s, loc};
     return {TokenKind::Identifier, s, loc};
 }
 
