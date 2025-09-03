@@ -6,8 +6,8 @@ This guide shows you how to build the project, run the interpreter, and write th
 
 ## 1) Prerequisites
 
-- **Clang** (preferred) and **CMake**  
-  - macOS: Apple Clang is preinstalled.  
+- **Clang** (preferred) and **CMake**
+  - macOS: Apple Clang is preinstalled.
   - Ubuntu: `sudo apt-get update && sudo apt-get install -y clang cmake`
 
 ---
@@ -24,6 +24,7 @@ ilc — compile/run driver (BASIC → IL → VM)
 il-verify — IL verifier
 
 ## 3) Program #1 — Hello
+
 Create hello.bas:
 10 PRINT "HELLO"
 20 END
@@ -34,13 +35,14 @@ Expected output:
 HELLO
 
 ## 4) Program #2 — Sum 1..10 (loop)
+
 Create sum10.bas:
 10 PRINT "SUM 1..10"
 20 LET I = 1
 30 LET S = 0
 40 WHILE I <= 10
-50   LET S = S + I
-60   LET I = I + 1
+50 LET S = S + I
+60 LET I = I + 1
 70 WEND
 80 PRINT S
 90 END
@@ -51,6 +53,7 @@ SUM 1..10
 45
 
 ## 5) Program #3 — Branching (IF/ELSE)
+
 Create branch.bas:
 10 LET X = 2
 20 IF X = 1 THEN PRINT "ONE" ELSE PRINT "NOT ONE"
@@ -61,6 +64,7 @@ Expected output:
 NOT ONE
 
 ## 6) Tips & Troubleshooting
+
 Verify IL: for .il files, use ./build/src/tools/il-verify/il-verify path/to/file.il.
 Paths: if your build tree differs, adjust the ./build/src/tools/... paths accordingly.
 Docs: BASIC reference → /docs/basic-language-reference.md, IL spec → /docs/il-spec.md.
