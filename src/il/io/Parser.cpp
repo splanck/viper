@@ -156,11 +156,18 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
                         params.push_back({nm.substr(1), parseType(ty)});
                 }
                 std::string retStr = trim(line.substr(arr + 2, lb - arr - 2));
+                tempIds.clear();
+                unsigned idx = 0;
+                for (auto &p : params)
+                {
+                    p.id = idx;
+                    tempIds[p.name] = idx;
+                    ++idx;
+                }
                 m.functions.push_back({name, parseType(retStr), params, {}});
                 curFn = &m.functions.back();
                 curBB = nullptr;
-                tempIds.clear();
-                nextTemp = 0;
+                nextTemp = idx;
                 continue;
             }
             err << "line " << lineNo << ": unexpected line: " << line << "\n";
@@ -177,7 +184,7 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
             if (line.back() == ':' && line.find(' ') == std::string::npos)
             {
                 std::string label = line.substr(0, line.size() - 1);
-                curFn->blocks.push_back({label, {}, false});
+                curFn->blocks.push_back({label, {}, {}, false});
                 curBB = &curFn->blocks.back();
                 continue;
             }
