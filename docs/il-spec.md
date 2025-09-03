@@ -183,7 +183,7 @@ IL has no concurrency in v0.1.2. Pointers are plain addresses; no aliasing rules
 ## Text grammar (EBNF)
 ```ebnf
 module      ::= "il" VERSION (target_decl)? decl_or_def*
-VERSION     ::= NUMBER "." NUMBER
+VERSION     ::= NUMBER "." NUMBER ("." NUMBER)?
 target_decl ::= "target" STRING
 
 decl_or_def ::= extern_decl | global_decl | func_def

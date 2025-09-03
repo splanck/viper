@@ -1,4 +1,4 @@
-il 0.1
+il 0.1.2
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
 extern @rt_print_f64(f64) -> void
@@ -18,17 +18,17 @@ entry:
   %t2 = alloca 8
   %t3 = alloca 8
   %t4 = alloca 8
-  br label L10
+  br L10
 L10:
   .loc 1 1 4
   store i64, %t4, 1
   .loc 1 1 4
-  br label L20
+  br L20
 L20:
   .loc 1 2 4
   store f64, %t3, 2.5
   .loc 1 2 4
-  br label L30
+  br L30
 L30:
   .loc 1 3 15
   %t5 = load i64, %t4
@@ -51,14 +51,14 @@ L30:
   .loc 1 3 4
   call @rt_print_str(%t10)
   .loc 1 3 4
-  br label L40
+  br L40
 L40:
   .loc 1 4 13
   %t11 = const_str @.L2
   .loc 1 4 4
   store str, %t2, %t11
   .loc 1 4 4
-  br label L50
+  br L50
 L50:
   .loc 1 5 14
   %t12 = load str, %t2
@@ -71,12 +71,12 @@ L50:
   .loc 1 5 4
   call @rt_print_str(%t14)
   .loc 1 5 4
-  br label L60
+  br L60
 L60:
   .loc 1 6 4
   store f64, %t1, 1.9
   .loc 1 6 4
-  br label L70
+  br L70
 L70:
   .loc 1 7 13
   %t15 = sitofp 0
@@ -85,7 +85,7 @@ L70:
   .loc 1 7 4
   store f64, %t0, %t16
   .loc 1 7 4
-  br label L80
+  br L80
 L80:
   .loc 1 8 14
   %t17 = load f64, %t1
@@ -108,10 +108,10 @@ L80:
   .loc 1 8 4
   call @rt_print_str(%t22)
   .loc 1 8 4
-  br label L90
+  br L90
 L90:
   .loc 1 9 4
-  br label exit
+  br exit
 exit:
   ret 0
 }
