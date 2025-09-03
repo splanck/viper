@@ -18,6 +18,10 @@ target_link_libraries(test_il_roundtrip PRIVATE il_core il_io il_verify support)
 target_compile_definitions(test_il_roundtrip PRIVATE EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/docs/examples")
 add_test(NAME test_il_roundtrip COMMAND test_il_roundtrip)
 
+add_executable(test_il_block_params unit/test_il_block_params.cpp)
+target_link_libraries(test_il_block_params PRIVATE il_core il_build support)
+add_test(NAME test_il_block_params COMMAND test_il_block_params)
+
 add_test(NAME il_verify_ex1 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/docs/examples/il/ex1_hello_cond.il)
 add_test(NAME il_verify_ex2 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/docs/examples/il/ex2_sum_1_to_10.il)
 add_test(NAME il_verify_ex3 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/docs/examples/il/ex3_table_5x5.il)

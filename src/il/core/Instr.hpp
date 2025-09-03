@@ -21,11 +21,12 @@ struct Instr
 {
     std::optional<unsigned> result; ///< destination temp id
     Opcode op;
-    Type type; ///< result type (or void)
-    std::vector<Value> operands;
-    std::string callee;              ///< for call
-    std::vector<std::string> labels; ///< for branch targets
-    il::support::SourceLoc loc;      ///< source location
+    Type type;                                  ///< result type (or void)
+    std::vector<Value> operands;                ///< general operands
+    std::string callee;                         ///< for call
+    std::vector<std::string> labels;            ///< branch targets
+    std::vector<std::vector<Value>> branchArgs; ///< per-target arguments
+    il::support::SourceLoc loc;                 ///< source location
 };
 
 } // namespace il::core
