@@ -1,6 +1,6 @@
 #BASIC v0.1 Language Reference
 
-BASIC programs lower to [IL v0.1.1](./il-spec.md) and run on the VM interpreter. This document describes the subset implemented in v0.1.
+BASIC programs lower to [IL v0.1.2](./il-spec.md) and run on the VM interpreter. This document describes the subset implemented in v0.1.
 
 ## Goals & scope
 
@@ -226,7 +226,7 @@ A[i]`.The checks are omitted by default and have no effect on program layout.
                     = NAME | NAME "$"
 ```
 
-                      ##IL mapping The front end lowers BASIC to IL; see the [IL v0.1.1 spec](./il-spec.md) for instruction semantics.
+                     ##IL mapping The front end lowers BASIC to IL; see the [IL v0.1.2 spec](./il-spec.md) for instruction semantics.
 
 | BASIC snippet            | IL pattern                | Runtime             |
 | ------------------------ | ------------------------- | ------------------- | ----------- | ------------------------- | ------------------------- |
