@@ -1,7 +1,7 @@
-# IL v0.1.1 Specification
+# IL v0.1.2 Specification
 
 Status: Normative for VM and code generator MVP
-Compatibility: Supersedes v0.1 (tightened typing and traps; syntax compatible)
+Compatibility: Supersedes v0.1.1; older modules parse unchanged
 
 ## Goals & design principles
 - Thin waist between multiple front ends and back ends
@@ -14,14 +14,14 @@ Compatibility: Supersedes v0.1 (tightened typing and traps; syntax compatible)
 Every module begins with a version line and may specify a target triple. Symbols are `@` for globals/functions and `%` for temporaries. Labels end with `:`.
 
 ```text
-il 0.1.1
+il 0.1.2
 target "x86_64-sysv" ; optional, ignored by the VM
 ```
 
 Example:
 
 ```il
-il 0.1.1
+il 0.1.2
 
 extern @rt_print_str(str) -> void
 
@@ -60,6 +60,22 @@ Functions declare parameters and a single return type. Bodies contain one or mor
 - defines temporaries (`%name =`)
 - ends with exactly one terminator (`br`, `cbr`, or `ret`)
 No implicit fallthrough between blocks.
+
+Blocks may declare parameters in their header:
+
+```il
+L(%x: i64, %p: ptr):
+  ...
+```
+
+Terminators supply arguments for the next block's parameters:
+
+```il
+br L(%a, %b)
+cbr %cond, T(%a), F(%b)
+```
+
+The 0-argument shorthand forms `br L` and `cbr %cond, T, F` remain valid. On entry, block parameters are bound to the passed values; each predecessor must provide the exact number and types of parameters declared.
 
 ## Instruction set
 Legend: `→` result type. Traps denote runtime errors.
@@ -147,12 +163,12 @@ Natural alignment: `i64`, `f64`, `ptr`, and `str` require 8-byte alignment. Misa
 | `@rt_to_float` | `str -> f64` | traps on invalid numeric |
 | `@rt_str_eq` | `str × str -> i1` | string equality |
 | `@rt_alloc` | `i64 -> ptr` | allocate bytes; negative size traps |
-| `@rt_free` | `ptr -> void` | deallocate; optional in v0.1.1 |
+| `@rt_free` | `ptr -> void` | deallocate; optional in v0.1.2 |
 
 Strings are ref-counted (implementation detail).
 
 ## Memory model
-IL has no concurrency in v0.1.1. Pointers are plain addresses; no aliasing rules beyond load/store types. `alloca` memory is zero-initialized and lives until the function returns. Loads and stores to `null` or misaligned addresses trap.
+IL has no concurrency in v0.1.2. Pointers are plain addresses; no aliasing rules beyond load/store types. `alloca` memory is zero-initialized and lives until the function returns. Loads and stores to `null` or misaligned addresses trap.
 
 ## Verifier rules
 - First block is entry; every block ends with one terminator
@@ -162,6 +178,7 @@ IL has no concurrency in v0.1.1. Pointers are plain addresses; no aliasing rules
 - `load`/`store` use `ptr` operands and non-void types
 - `alloca` size is `i64` (non-negative if constant)
 - Temporaries are defined before use within a block (dominance across blocks deferred)
+- `br`/`cbr` pass args matching block parameter arity and types
 
 ## Text grammar (EBNF)
 ```ebnf
@@ -178,9 +195,11 @@ params      ::= param ("," param)*
 param       ::= IDENT ":" type
 type_list   ::= type ("," type)*
 
-block       ::= LABEL ":" instr* term
+block       ::= LABEL ("(" params? ")")? ":" instr* term
 instr       ::= TEMP "=" op | op
-term        ::= "ret" value? | "br" LABEL | "cbr" value "," LABEL "," LABEL
+term        ::= "ret" value?
+             | "br" LABEL ("(" value_list? ")")?
+             | "cbr" value "," LABEL ("(" value_list? ")")? "," LABEL ("(" value_list? ")")?
 op          ::= "add" value "," value
              | "sub" value "," value
              | "mul" value "," value
@@ -228,6 +247,7 @@ op          ::= "add" value "," value
              | "call" SYMBOL "(" args? ")"
              | "trap"
 args        ::= value ("," value)*
+value_list  ::= value ("," value)*
 value       ::= TEMP | SYMBOL | literal
 literal     ::= INT | FLOAT | STRING | "true" | "false" | "null"
 type        ::= "void" | "i1" | "i64" | "f64" | "ptr" | "str"
@@ -241,7 +261,7 @@ type        ::= "void" | "i1" | "i64" | "f64" | "ptr" | "str"
 - `i1` arguments are zero-extended to 32 bits
 
 ## Versioning & conformance
-Modules must start with `il 0.1.1`. Future versions must preserve semantics of existing opcodes. A VM or backend is conformant if it:
+Modules must start with `il 0.1.2`. Future versions must preserve semantics of existing opcodes. A VM or backend is conformant if it:
 - accepts this grammar and passes the verifier
 - produces identical observable behaviour (stdout, exit code) on the sample suite under [examples/il](examples/il/)
 - traps on the conditions listed above
