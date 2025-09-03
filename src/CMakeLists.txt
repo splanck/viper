@@ -27,7 +27,8 @@ target_include_directories(il_verify PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 add_library(il_transform STATIC
   il/transform/PassManager.cpp
   il/transform/Peephole.cpp
-  il/transform/ConstFold.cpp)
+  il/transform/ConstFold.cpp
+  il/transform/DCE.cpp)
 target_link_libraries(il_transform PUBLIC il_core il_verify)
 target_include_directories(il_transform PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
