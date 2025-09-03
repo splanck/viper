@@ -495,7 +495,7 @@ ExprPtr Parser::parsePrimary()
     {
         auto loc = current_.loc;
         std::string lex = current_.lexeme;
-        if (lex.find_first_of(".Ee") != std::string::npos)
+        if (lex.find_first_of(".Ee#") != std::string::npos)
         {
             auto e = std::make_unique<FloatExpr>();
             e->loc = loc;
@@ -518,6 +518,28 @@ ExprPtr Parser::parsePrimary()
         e->value = current_.lexeme;
         advance();
         return e;
+    }
+    if (check(TokenKind::KeywordSqr) || check(TokenKind::KeywordAbs) ||
+        check(TokenKind::KeywordFloor) || check(TokenKind::KeywordCeil))
+    {
+        TokenKind tk = current_.kind;
+        il::support::SourceLoc loc = current_.loc;
+        advance();
+        consume(TokenKind::LParen);
+        auto arg = parseExpression();
+        consume(TokenKind::RParen);
+        auto call = std::make_unique<CallExpr>();
+        call->loc = loc;
+        if (tk == TokenKind::KeywordSqr)
+            call->builtin = CallExpr::Builtin::Sqr;
+        else if (tk == TokenKind::KeywordAbs)
+            call->builtin = CallExpr::Builtin::Abs;
+        else if (tk == TokenKind::KeywordFloor)
+            call->builtin = CallExpr::Builtin::Floor;
+        else
+            call->builtin = CallExpr::Builtin::Ceil;
+        call->args.push_back(std::move(arg));
+        return call;
     }
     if (check(TokenKind::Identifier))
     {

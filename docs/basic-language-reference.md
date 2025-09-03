@@ -97,12 +97,24 @@ compile-time error:
 | Function          | Signature                    | Notes |
 | ----------------- | ---------------------------- | ----- |
 | `LEN(s$)`         | `str → i64`                  | length in bytes |
-| `MID$(s$, i [,n])`| `str × i64 × i64? → str`     | 1-based start;
-`n` optional | | `LEFT$(s$, n)` | `str × i64 → str` | `MID$(s$, 1, n)` |
-    | `RIGHT$(s$, n)` | `str × i64 → str` | `MID$(s$, LEN(s$) - n + 1, n)` |
-    | `STR$(i)` / `STR$(x #)` | `i64 → str` / `f64 → str` | decimal formatting |
-    | `VAL(s$)` | `str → i64` | ignores leading / trailing spaces;
-traps on invalid numeric | | `INT(x #)` | `f64 → i64` | truncates toward zero |
+| `MID$(s$, i [,n])`| `str × i64 × i64? → str`     | 1-based start; `n` optional |
+| `LEFT$(s$, n)`    | `str × i64 → str`            | `MID$(s$, 1, n)` |
+| `RIGHT$(s$, n)`   | `str × i64 → str`            | `MID$(s$, LEN(s$) - n + 1, n)` |
+| `STR$(i)` / `STR$(x #)` | `i64 → str` / `f64 → str` | decimal formatting |
+| `VAL(s$)`         | `str → i64`                  | ignores leading/trailing spaces; traps on invalid numeric |
+| `INT(x #)`        | `f64 → i64`                  | truncates toward zero |
+| `SQR(x)`          | `num → f64`                  | square root |
+| `ABS(i)` / `ABS(x #)` | `i64 → i64` / `f64 → f64` | absolute value |
+| `FLOOR(x)`        | `num → f64`                  | round down |
+| `CEIL(x)`         | `num → f64`                  | round up |
+
+```basic
+PRINT ABS(-5)
+PRINT ABS(-1.5#)
+PRINT FLOOR(1.9#)
+PRINT CEIL(1.1#)
+PRINT SQR(9#)
+```
 
     Indices are 1 - based. `MID$` treats `i <= 0` as `1` and returns an empty string when
 `i > LEN(s$)`.Omitting `n` extracts to the end of the string.Counts `n <=

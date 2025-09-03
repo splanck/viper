@@ -1,9 +1,8 @@
 ' File: examples/basic/math_basics.bas
-' Purpose: Illustrates intended use of math runtime helpers.
-' Notes: BASIC bindings not yet implemented.
+' Purpose: Illustrates use of math runtime helpers.
 
-PRINT SQR(9)
-PRINT INT(3.7)
-PRINT -INT(-3.2)
-PRINT ABS(-42)
-PRINT ABS(-3.5)
+PRINT ABS(-5)
+PRINT ABS(-1.5#)
+PRINT FLOOR(1.9#)
+PRINT CEIL(1.1#)
+PRINT SQR(9#)
