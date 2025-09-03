@@ -1,14 +1,14 @@
-il 0.1
+il 0.1.2
 extern @rt_print_i64(i64) -> void
 func @main() -> i64 {
 entry:
-  br label L1
+  br L1
 L1:
   call @rt_print_i64(1)
-  br label exit
+  br exit
 L2:
   call @rt_print_i64(2)
-  br label exit
+  br exit
 exit:
   ret 0
 }

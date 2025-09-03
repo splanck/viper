@@ -15,8 +15,13 @@ add_test(NAME test_il_serialize COMMAND test_il_serialize)
 
 add_executable(test_il_roundtrip unit/test_il_roundtrip.cpp)
 target_link_libraries(test_il_roundtrip PRIVATE il_core il_io il_verify support)
-target_compile_definitions(test_il_roundtrip PRIVATE EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/docs/examples")
+target_compile_definitions(test_il_roundtrip PRIVATE EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/docs/examples" ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/tests/il/roundtrip")
 add_test(NAME test_il_roundtrip COMMAND test_il_roundtrip)
+
+add_executable(test_il_parse_negative unit/test_il_parse_negative.cpp)
+target_link_libraries(test_il_parse_negative PRIVATE il_core il_io support)
+target_compile_definitions(test_il_parse_negative PRIVATE BAD_DIR="${CMAKE_SOURCE_DIR}/tests/il/parse")
+add_test(NAME test_il_parse_negative COMMAND test_il_parse_negative)
 
 add_test(NAME il_verify_ex1 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/docs/examples/il/ex1_hello_cond.il)
 add_test(NAME il_verify_ex2 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/docs/examples/il/ex2_sum_1_to_10.il)

@@ -1,4 +1,4 @@
-il 0.1
+il 0.1.2
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
 extern @rt_print_f64(f64) -> void
@@ -15,7 +15,7 @@ entry:
   %t1 = alloca 8
   %t2 = alloca 8
   %t3 = alloca 8
-  br label L10
+  br L10
 L10:
   .loc 1 1 4
   %t4 = call @rt_input_line()
@@ -24,7 +24,7 @@ L10:
   .loc 1 1 4
   store i64, %t3, %t5
   .loc 1 1 4
-  br label L20
+  br L20
 L20:
   .loc 1 2 10
   %t6 = load i64, %t3
@@ -35,20 +35,20 @@ L20:
   .loc 1 2 4
   store ptr, %t2, %t8
   .loc 1 2 4
-  br label L30
+  br L30
 L30:
   .loc 1 3 4
   store i64, %t1, 0
   .loc 1 3 4
-  br label L40
+  br L40
 L40:
   .loc 1 4 4
   store i64, %t0, 0
   .loc 1 4 4
-  br label L50
+  br L50
 L50:
   .loc 1 5 4
-  br label loop_head
+  br loop_head
 L100:
   .loc 1 10 11
   %t28 = load i64, %t0
@@ -59,10 +59,10 @@ L100:
   .loc 1 10 5
   call @rt_print_str(%t29)
   .loc 1 10 5
-  br label L110
+  br L110
 L110:
   .loc 1 11 5
-  br label exit
+  br exit
 exit:
   ret 0
 loop_head:
@@ -73,7 +73,7 @@ loop_head:
   .loc 1 5 12
   %t11 = scmp_lt %t9, %t10
   .loc 1 5 4
-  cbr %t11, label loop_body, label done
+  cbr %t11, loop_body, done
 loop_body:
   .loc 1 6 17
   %t12 = load i64, %t1
@@ -114,8 +114,8 @@ loop_body:
   .loc 1 8 6
   store i64, %t1, %t27
   .loc 1 5 4
-  br label loop_head
+  br loop_head
 done:
   .loc 1 5 4
-  br label L100
+  br L100
 }

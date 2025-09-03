@@ -1,4 +1,4 @@
-il 0.1
+il 0.1.2
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
 extern @rt_print_f64(f64) -> void
@@ -12,12 +12,12 @@ func @main() -> i64 {
 entry:
   %t0 = alloca 8
   %t1 = alloca 8
-  br label L10
+  br L10
 L10:
   .loc 1 1 4
   store i64, %t1, 5
   .loc 1 1 4
-  br label L20
+  br L20
 L20:
   .loc 1 2 12
   %t2 = load i64, %t1
@@ -26,7 +26,7 @@ L20:
   .loc 1 2 4
   store i64, %t0, %t3
   .loc 1 2 4
-  br label L30
+  br L30
 L30:
   .loc 1 3 10
   %t4 = const_str @.L0
@@ -37,7 +37,7 @@ L30:
   .loc 1 3 4
   call @rt_print_str(%t5)
   .loc 1 3 4
-  br label L40
+  br L40
 L40:
   .loc 1 4 10
   %t6 = const_str @.L2
@@ -48,7 +48,7 @@ L40:
   .loc 1 4 4
   call @rt_print_str(%t7)
   .loc 1 4 4
-  br label L50
+  br L50
 L50:
   .loc 1 5 10
   %t8 = load i64, %t0
@@ -59,13 +59,13 @@ L50:
   .loc 1 5 4
   call @rt_print_str(%t9)
   .loc 1 5 4
-  br label L60
+  br L60
 L60:
   .loc 1 6 4
-  br label if_test_0
+  br if_test_0
 L70:
   .loc 1 7 4
-  br label exit
+  br exit
 exit:
   ret 0
 if_test_0:
@@ -74,7 +74,7 @@ if_test_0:
   .loc 1 6 9
   %t11 = scmp_gt %t10, 8
   .loc 1 6 9
-  cbr %t11, label if_then_0, label if_else
+  cbr %t11, if_then_0, if_else
 if_then_0:
   .loc 1 6 24
   %t12 = load i64, %t0
@@ -85,7 +85,7 @@ if_then_0:
   .loc 1 6 18
   call @rt_print_str(%t13)
   .loc 1 6 4
-  br label if_exit
+  br if_exit
 if_else:
   .loc 1 6 31
   call @rt_print_i64(4)
@@ -94,8 +94,8 @@ if_else:
   .loc 1 6 31
   call @rt_print_str(%t14)
   .loc 1 6 4
-  br label if_exit
+  br if_exit
 if_exit:
   .loc 1 6 4
-  br label L70
+  br L70
 }
