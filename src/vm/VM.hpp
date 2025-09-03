@@ -30,10 +30,11 @@ union Slot
 /// @invariant Stack pointer @c sp never exceeds @c stack size.
 struct Frame
 {
-    const il::core::Function *func;  ///< Executing function
-    std::vector<Slot> regs;          ///< Register file
-    std::array<uint8_t, 1024> stack; ///< Operand stack storage
-    size_t sp = 0;                   ///< Stack pointer in bytes
+    const il::core::Function *func;            ///< Executing function
+    std::vector<Slot> regs;                    ///< Register file
+    std::array<uint8_t, 1024> stack;           ///< Operand stack storage
+    size_t sp = 0;                             ///< Stack pointer in bytes
+    std::unordered_map<unsigned, Slot> params; ///< Pending block parameter values
 };
 
 /// @brief Simple interpreter for the IL.
