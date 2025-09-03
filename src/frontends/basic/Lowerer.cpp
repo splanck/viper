@@ -756,6 +756,69 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             Value res = emitCallRet(Type(Type::Kind::F64), "rt_ceil", {v.value});
             return {res, Type(Type::Kind::F64)};
         }
+        else if (c->builtin == CallExpr::Builtin::Sin)
+        {
+            RVal v = lowerExpr(*c->args[0]);
+            if (v.type.kind == Type::Kind::I64)
+            {
+                curLoc = expr.loc;
+                v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
+                v.type = Type(Type::Kind::F64);
+            }
+            if (!addedRtSin)
+            {
+                builder->addExtern("rt_sin", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+                addedRtSin = true;
+            }
+            curLoc = expr.loc;
+            Value res = emitCallRet(Type(Type::Kind::F64), "rt_sin", {v.value});
+            return {res, Type(Type::Kind::F64)};
+        }
+        else if (c->builtin == CallExpr::Builtin::Cos)
+        {
+            RVal v = lowerExpr(*c->args[0]);
+            if (v.type.kind == Type::Kind::I64)
+            {
+                curLoc = expr.loc;
+                v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
+                v.type = Type(Type::Kind::F64);
+            }
+            if (!addedRtCos)
+            {
+                builder->addExtern("rt_cos", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+                addedRtCos = true;
+            }
+            curLoc = expr.loc;
+            Value res = emitCallRet(Type(Type::Kind::F64), "rt_cos", {v.value});
+            return {res, Type(Type::Kind::F64)};
+        }
+        else if (c->builtin == CallExpr::Builtin::Pow)
+        {
+            RVal a = lowerExpr(*c->args[0]);
+            RVal b = lowerExpr(*c->args[1]);
+            if (a.type.kind == Type::Kind::I64)
+            {
+                curLoc = expr.loc;
+                a.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), a.value);
+                a.type = Type(Type::Kind::F64);
+            }
+            if (b.type.kind == Type::Kind::I64)
+            {
+                curLoc = expr.loc;
+                b.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), b.value);
+                b.type = Type(Type::Kind::F64);
+            }
+            if (!addedRtPow)
+            {
+                builder->addExtern("rt_pow",
+                                   Type(Type::Kind::F64),
+                                   {Type(Type::Kind::F64), Type(Type::Kind::F64)});
+                addedRtPow = true;
+            }
+            curLoc = expr.loc;
+            Value res = emitCallRet(Type(Type::Kind::F64), "rt_pow", {a.value, b.value});
+            return {res, Type(Type::Kind::F64)};
+        }
     }
     else if (auto *a = dynamic_cast<const ArrayExpr *>(&expr))
     {

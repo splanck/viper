@@ -114,6 +114,12 @@ add_test(NAME basic_math_phase1 COMMAND ${CMAKE_COMMAND}
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/basic_math_phase1.bas.out
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_basic_math_phase1.cmake)
 
+add_test(NAME basic_math_phase2 COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/basic_math_phase2.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/basic_math_phase2.bas.out
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_basic_math_phase1.cmake)
+
 add_test(NAME il_opt_equiv COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DIL_FILE=${CMAKE_SOURCE_DIR}/tests/golden/il_opt/e2e.in.il
@@ -325,6 +331,12 @@ add_test(NAME basic_to_il_math_phase1 COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
   -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/math_phase1.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/math_phase1.il
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
+
+add_test(NAME basic_to_il_math_phase2 COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/math_phase2.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/math_phase2.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 
 add_test(NAME basic_to_il_bounds_checks COMMAND ${CMAKE_COMMAND}

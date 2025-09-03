@@ -71,6 +71,12 @@ const char *tokenKindToString(TokenKind k)
             return "FLOOR";
         case TokenKind::KeywordCeil:
             return "CEIL";
+        case TokenKind::KeywordSin:
+            return "SIN";
+        case TokenKind::KeywordCos:
+            return "COS";
+        case TokenKind::KeywordPow:
+            return "POW";
         case TokenKind::Plus:
             return "+";
         case TokenKind::Minus:

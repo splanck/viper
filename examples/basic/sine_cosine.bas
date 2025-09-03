@@ -1,7 +1,9 @@
 ' File: examples/basic/sine_cosine.bas
-' Purpose: Demonstrates sine, cosine, and power runtime helpers.
-' Notes: BASIC bindings not yet implemented.
+' Purpose: Demonstrates SIN, COS, and POW runtime helpers.
+' Prints a small table of angles for 0 and pi/2.
 
-PRINT SIN(0)
-PRINT COS(0)
-PRINT POW(2, 10)
+LET HALFPI# = 1.57079632679#
+PRINT "ANGLE","SIN","COS"
+PRINT 0#; SIN(0#); COS(0#)
+PRINT HALFPI#; SIN(HALFPI#); COS(HALFPI#)
+PRINT POW(2#, 10#)
