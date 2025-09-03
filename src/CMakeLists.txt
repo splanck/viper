@@ -9,6 +9,7 @@ add_library(il_core STATIC
   il/core/Global.cpp
   il/core/Extern.cpp
   il/core/Module.cpp
+  il/Utils.cpp
 )
 target_include_directories(il_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -30,6 +31,12 @@ add_library(il_transform STATIC
   il/transform/ConstFold.cpp)
 target_link_libraries(il_transform PUBLIC il_core il_verify)
 target_include_directories(il_transform PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_library(il_analysis STATIC
+  analysis/CFG.cpp
+  analysis/Dominators.cpp)
+target_link_libraries(il_analysis PUBLIC il_core)
+target_include_directories(il_analysis PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_library(il_vm STATIC vm/VM.cpp vm/RuntimeBridge.cpp)
 target_include_directories(il_vm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
