@@ -81,7 +81,9 @@ struct CallExpr : Expr
     enum class Builtin
     {
         Len,
-        Mid
+        Mid,
+        Left,
+        Right
     } builtin;
     std::vector<ExprPtr> args;
 };

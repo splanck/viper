@@ -11,6 +11,7 @@
 #include "il/io/Serializer.hpp" // might not needed but fine
 #include <cassert>
 #include <functional>
+#include <limits>
 #include <vector>
 
 using namespace il::core;
@@ -414,10 +415,34 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
         {
             RVal s = lowerExpr(*c->args[0]);
             RVal i = lowerExpr(*c->args[1]);
-            RVal l = lowerExpr(*c->args[2]);
+            Value start0 =
+                emitBinary(Opcode::Add, Type(Type::Kind::I64), i.value, Value::constInt(-1));
+            Value count = (c->args.size() >= 3)
+                              ? lowerExpr(*c->args[2]).value
+                              : Value::constInt(std::numeric_limits<int64_t>::max());
             curLoc = expr.loc;
-            Value res =
-                emitCallRet(Type(Type::Kind::Str), "rt_substr", {s.value, i.value, l.value});
+            Value res = emitCallRet(Type(Type::Kind::Str), "rt_substr", {s.value, start0, count});
+            return {res, Type(Type::Kind::Str)};
+        }
+        else if (c->builtin == CallExpr::Builtin::Left)
+        {
+            RVal s = lowerExpr(*c->args[0]);
+            RVal n = lowerExpr(*c->args[1]);
+            curLoc = expr.loc;
+            Value res = emitCallRet(
+                Type(Type::Kind::Str), "rt_substr", {s.value, Value::constInt(0), n.value});
+            return {res, Type(Type::Kind::Str)};
+        }
+        else if (c->builtin == CallExpr::Builtin::Right)
+        {
+            RVal s = lowerExpr(*c->args[0]);
+            RVal n = lowerExpr(*c->args[1]);
+            curLoc = expr.loc;
+            Value len = emitCallRet(Type(Type::Kind::I64), "rt_len", {s.value});
+            Value negN =
+                emitBinary(Opcode::Mul, Type(Type::Kind::I64), n.value, Value::constInt(-1));
+            Value start = emitBinary(Opcode::Add, Type(Type::Kind::I64), len, negN);
+            Value res = emitCallRet(Type(Type::Kind::Str), "rt_substr", {s.value, start, n.value});
             return {res, Type(Type::Kind::Str)};
         }
     }

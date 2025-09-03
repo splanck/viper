@@ -107,8 +107,16 @@ rt_str rt_concat(rt_str a, rt_str b)
 
 rt_str rt_substr(rt_str s, int64_t start, int64_t len)
 {
-    if (!s || start < 0 || len < 0 || start + len > s->size)
-        rt_trap("rt_substr: out of bounds");
+    if (!s)
+        rt_trap("rt_substr: null");
+    if (start < 0)
+        start = 0;
+    if (len < 0)
+        len = 0;
+    if (start > s->size)
+        start = s->size;
+    if (start + len > s->size)
+        len = s->size - start;
     rt_str r = (rt_str)rt_alloc(sizeof(*r));
     r->refcnt = 1;
     r->size = len;
