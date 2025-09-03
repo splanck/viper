@@ -1,7 +1,8 @@
 // File: lib/Passes/Mem2Reg.h
 // Purpose: Promote eligible stack slots to SSA registers.
-// Key invariants: Only handles allocas with a single dominating store and no address escaping.
-// Ownership/Lifetime: Mutates the module in place.
+// Key invariants: Operates on acyclic CFGs, promoting i64/f64/i1 allocas with
+// no escaped addresses by introducing block parameters. Ownership/Lifetime:
+// Mutates the module in place.
 // Links: docs/passes/mem2reg.md
 #pragma once
 
