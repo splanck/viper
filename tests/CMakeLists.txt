@@ -77,6 +77,8 @@ add_executable(test_rt_random runtime/RTRandomTests.cpp)
 target_link_libraries(test_rt_random PRIVATE rt)
 add_test(NAME test_rt_random COMMAND test_rt_random)
 
+add_executable(float_out e2e/support/FloatOut.cpp)
+
 add_test(NAME vm_strings_example COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DSRC_DIR=${CMAKE_SOURCE_DIR}
@@ -134,6 +136,17 @@ add_test(NAME basic_random_repro COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DSRC_DIR=${CMAKE_SOURCE_DIR}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_basic_random_repro.cmake)
+
+add_test(NAME monte_carlo_pi COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DFLOAT_OUT=$<TARGET_FILE:float_out>
+  -DSRC_DIR=${CMAKE_SOURCE_DIR}
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_monte_carlo_pi.cmake)
+
+add_test(NAME random_walk COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DSRC_DIR=${CMAKE_SOURCE_DIR}
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_random_walk.cmake)
 
 add_test(NAME il_opt_equiv COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
