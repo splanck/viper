@@ -31,6 +31,16 @@ add_library(il_transform STATIC
 target_link_libraries(il_transform PUBLIC il_core il_verify)
 target_include_directories(il_transform PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
+add_library(il_utils STATIC il/utils/Utils.cpp)
+target_link_libraries(il_utils PUBLIC il_core)
+target_include_directories(il_utils PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_library(il_analysis STATIC
+  il/analysis/CFG.cpp
+  il/analysis/Dominators.cpp)
+target_link_libraries(il_analysis PUBLIC il_core)
+target_include_directories(il_analysis PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
 add_library(il_vm STATIC vm/VM.cpp vm/RuntimeBridge.cpp)
 target_include_directories(il_vm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(il_vm PUBLIC il_core rt support)
