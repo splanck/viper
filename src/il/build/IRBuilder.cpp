@@ -28,17 +28,73 @@ Function &IRBuilder::startFunction(const std::string &name,
                                    Type ret,
                                    const std::vector<Param> &params)
 {
-    mod.functions.push_back({name, ret, params, {}});
+    mod.functions.push_back({name, ret, {}, {}});
     curFunc = &mod.functions.back();
     curBlock = nullptr;
     nextTemp = 0;
+    for (auto p : params)
+    {
+        Param np = p;
+        np.id = nextTemp++;
+        curFunc->params.push_back(np);
+    }
     return *curFunc;
+}
+
+BasicBlock &IRBuilder::createBlock(Function &fn,
+                                   const std::string &label,
+                                   const std::vector<Param> &params)
+{
+    fn.blocks.push_back({label, {}, {}, false});
+    BasicBlock &bb = fn.blocks.back();
+    for (auto p : params)
+    {
+        Param np = p;
+        np.id = nextTemp++;
+        bb.params.push_back(np);
+    }
+    return bb;
 }
 
 BasicBlock &IRBuilder::addBlock(Function &fn, const std::string &label)
 {
-    fn.blocks.push_back({label, {}, false});
-    return fn.blocks.back();
+    return createBlock(fn, label, {});
+}
+
+Value IRBuilder::blockParam(BasicBlock &bb, unsigned idx)
+{
+    assert(idx < bb.params.size());
+    return Value::temp(bb.params[idx].id);
+}
+
+void IRBuilder::br(BasicBlock &dst, const std::vector<Value> &args)
+{
+    assert(args.size() == dst.params.size());
+    Instr instr;
+    instr.op = Opcode::Br;
+    instr.type = Type(Type::Kind::Void);
+    instr.labels.push_back(dst.label);
+    instr.brArgs.push_back(args);
+    append(std::move(instr));
+}
+
+void IRBuilder::cbr(Value cond,
+                    BasicBlock &t,
+                    const std::vector<Value> &targs,
+                    BasicBlock &f,
+                    const std::vector<Value> &fargs)
+{
+    assert(targs.size() == t.params.size());
+    assert(fargs.size() == f.params.size());
+    Instr instr;
+    instr.op = Opcode::CBr;
+    instr.type = Type(Type::Kind::Void);
+    instr.operands.push_back(cond);
+    instr.labels.push_back(t.label);
+    instr.labels.push_back(f.label);
+    instr.brArgs.push_back(targs);
+    instr.brArgs.push_back(fargs);
+    append(std::move(instr));
 }
 
 void IRBuilder::setInsertPoint(BasicBlock &bb)
