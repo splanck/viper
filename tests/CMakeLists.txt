@@ -73,6 +73,10 @@ add_executable(test_rt_math_core runtime/RTMathCoreTests.cpp)
 target_link_libraries(test_rt_math_core PRIVATE rt)
 add_test(NAME test_rt_math_core COMMAND test_rt_math_core)
 
+add_executable(test_rt_random runtime/RTRandomTests.cpp)
+target_link_libraries(test_rt_random PRIVATE rt)
+add_test(NAME test_rt_random COMMAND test_rt_random)
+
 add_test(NAME vm_strings_example COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DSRC_DIR=${CMAKE_SOURCE_DIR}
