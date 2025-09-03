@@ -35,6 +35,10 @@ add_executable(test_analysis_dominators analysis/DominatorsTests.cpp)
 target_link_libraries(test_analysis_dominators PRIVATE Analysis il_build)
 add_test(NAME test_analysis_dominators COMMAND test_analysis_dominators)
 
+add_executable(test_analysis_acyclic analysis/AcyclicTests.cpp)
+target_link_libraries(test_analysis_acyclic PRIVATE Analysis il_build)
+add_test(NAME test_analysis_acyclic COMMAND test_analysis_acyclic)
+
 add_test(NAME il_verify_ex1 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/docs/examples/il/ex1_hello_cond.il)
 add_test(NAME il_verify_ex2 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/docs/examples/il/ex2_sum_1_to_10.il)
 add_test(NAME il_verify_ex3 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/docs/examples/il/ex3_table_5x5.il)

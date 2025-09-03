@@ -43,4 +43,14 @@ std::vector<il::core::Block *> postOrder(il::core::Function &F);
 /// @return Blocks in RPO; the entry block is first.
 std::vector<il::core::Block *> reversePostOrder(il::core::Function &F);
 
+/// @brief Check whether the control-flow graph of @p F has no cycles.
+/// @param F Function whose CFG is inspected.
+/// @return True if the CFG is acyclic; false otherwise.
+bool isAcyclic(il::core::Function &F);
+
+/// @brief Compute a topological order of blocks in @p F.
+/// @param F Function whose blocks are ordered.
+/// @return Blocks in topological order; empty if @p F contains cycles.
+std::vector<il::core::Block *> topoOrder(il::core::Function &F);
+
 } // namespace viper::analysis
