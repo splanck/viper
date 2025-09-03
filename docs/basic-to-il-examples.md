@@ -18,7 +18,7 @@ BASIC (10 lines)
 
 10 PRINT "HELLO"
 20 LET X = 2 + 3
-30 LET Y = X * 2
+30 LET Y = X \* 2
 35 PRINT "READY"
 40 PRINT Y
 50 IF Y > 8 THEN GOTO 80
@@ -41,7 +41,7 @@ entry:
 ; X = 2 + 3
 %t0 = add 2, 3
 store i64, %x_slot, %t0
-; Y = X * 2
+; Y = X \* 2
 %xv = load i64, %x_slot
 %t1 = mul %xv, 2
 store i64, %y_slot, %t1
@@ -135,7 +135,7 @@ BASIC (12 lines)
 40 WHILE I \<= N
 50 LET J = 1
 60 WHILE J \<= N
-70 PRINT I * J
+70 PRINT I \* J
 80 LET J = J + 1
 90 WEND
 100 LET I = I + 1
@@ -200,7 +200,7 @@ BASIC (11 lines)
 40 LET N = VAL(S$)
 50 LET R = 1
 60 WHILE N > 1
-70 LET R = R * N
+70 LET R = R \* N
 80 LET N = N - 1
 90 WEND
 100 PRINT R
@@ -332,11 +332,11 @@ Example 6 — Heap “array” via rt_alloc, fill with squares, print average as
 BASIC (13 lines)
 
 10 LET N = 5
-20 DIM A(N) ' conceptual; lowered to a heap block of N * 8 bytes
+20 DIM A(N) ' conceptual; lowered to a heap block of N _ 8 bytes
 30 LET I = 0
 40 LET SUM = 0
 50 WHILE I < N
-60 LET A(I) = I * I
+60 LET A(I) = I _ I
 70 LET SUM = SUM + A(I)
 80 LET I = I + 1
 90 WEND
@@ -347,7 +347,7 @@ BASIC (13 lines)
 IL
 
 il 0.1
-extern @rt_alloc(i64) -> ptr
+extern @rt*alloc(i64) -> ptr
 extern @rt_print_f64(f64) -> void
 extern @rt_print_str(str) -> void
 global const str @.L0 = "DONE"
@@ -362,7 +362,7 @@ store i64, %n_slot, 5
 store i64, %i_slot, 0
 store i64, %sum_slot, 0
 ; A = rt_alloc(N * 8)
-%n0 = load i64, %n_slot
+%n0 = load i64, %n*slot
 %bytes = mul %n0, 8
 %abase = call @rt_alloc(%bytes)
 store ptr, %a_slot, %abase
@@ -377,7 +377,7 @@ loop_body:
 %a0 = load ptr, %a_slot
 %off = shl %i0, 3 ; i * 8
 %elem_ptr = gep %a0, %off
-; A(i) = i * i
+; A(i) = i \* i
 %sq = mul %i0, %i0
 store i64, %elem_ptr, %sq
 ; SUM += A(i)
