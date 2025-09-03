@@ -1,6 +1,7 @@
 // File: src/il/transform/ConstFold.hpp
 // Purpose: Declares IL constant folding transformations.
 // Key invariants: Only folds operations with literal operands.
+// Updates integer ops and selected math intrinsics.
 // Ownership/Lifetime: Mutates the module in place.
 // Links: docs/class-catalog.md
 #pragma once
