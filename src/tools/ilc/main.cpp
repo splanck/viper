@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Tool owns loaded modules.
 // Links: docs/class-catalog.md
 
+#include "Passes/Mem2Reg.h"
 #include "frontends/basic/ConstFolder.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"
@@ -161,6 +162,7 @@ int main(int argc, char **argv)
         transform::PassManager pm;
         pm.addPass("constfold", transform::constFold);
         pm.addPass("peephole", transform::peephole);
+        pm.addPass("mem2reg", viper::passes::mem2reg);
         pm.run(m, passList);
         std::ofstream ofs(outFile);
         if (!ofs)
