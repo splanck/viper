@@ -10,6 +10,10 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
+#include <algorithm>
+#include <cstddef>
+#include <stack>
+#include <unordered_set>
 
 namespace
 {
@@ -85,6 +89,55 @@ std::vector<il::core::Block *> predecessors(const il::core::Function &F, const i
         }
     }
     return out;
+}
+
+std::vector<il::core::Block *> postOrder(il::core::Function &F)
+{
+    std::vector<il::core::Block *> out;
+    if (F.blocks.empty())
+        return out;
+
+    std::unordered_set<il::core::Block *> visited;
+
+    struct Frame
+    {
+        il::core::Block *block;
+        std::size_t idx;
+        std::vector<il::core::Block *> succ;
+    };
+
+    std::vector<Frame> stack;
+
+    il::core::Block *entry = &F.blocks[0];
+    stack.push_back({entry, 0, successors(*entry)});
+    visited.insert(entry);
+
+    while (!stack.empty())
+    {
+        Frame &f = stack.back();
+        if (f.idx < f.succ.size())
+        {
+            il::core::Block *next = f.succ[f.idx++];
+            if (!visited.count(next))
+            {
+                visited.insert(next);
+                stack.push_back({next, 0, successors(*next)});
+            }
+        }
+        else
+        {
+            out.push_back(f.block);
+            stack.pop_back();
+        }
+    }
+    return out;
+}
+
+std::vector<il::core::Block *> reversePostOrder(il::core::Function &F)
+{
+    auto po = postOrder(F);
+    std::reverse(po.begin(), po.end());
+    return po;
 }
 
 } // namespace viper::analysis

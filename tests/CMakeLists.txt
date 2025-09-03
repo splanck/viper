@@ -27,6 +27,10 @@ add_executable(test_analysis_cfg analysis/CFGTests.cpp)
 target_link_libraries(test_analysis_cfg PRIVATE Analysis il_build)
 add_test(NAME test_analysis_cfg COMMAND test_analysis_cfg)
 
+add_executable(test_analysis_graph_order analysis/GraphOrderTests.cpp)
+target_link_libraries(test_analysis_graph_order PRIVATE Analysis il_build)
+add_test(NAME test_analysis_graph_order COMMAND test_analysis_graph_order)
+
 add_test(NAME il_verify_ex1 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/docs/examples/il/ex1_hello_cond.il)
 add_test(NAME il_verify_ex2 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/docs/examples/il/ex2_sum_1_to_10.il)
 add_test(NAME il_verify_ex3 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/docs/examples/il/ex3_table_5x5.il)

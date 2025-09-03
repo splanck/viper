@@ -10,3 +10,12 @@ using namespace viper::analysis;
 auto succ = successors(block);
 auto pred = predecessors(func, block);
 ```
+
+## Orders
+
+Standard depth-first orders are available without materializing a graph.
+
+```cpp
+auto po = postOrder(fn);      // entry last
+auto rpo = reversePostOrder(fn); // entry first
+```
