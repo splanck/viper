@@ -6,7 +6,7 @@ IL-based compiler stack. For an overview of the project, see the [root README](.
 ## Table of contents
 
 - [basic-language-reference.md](basic-language-reference.md) — syntax & semantics of BASIC v0.1.
-- [il-spec.md](il-spec.md) — IL v0.1.1 normative spec.
+- [il-spec.md](il-spec.md) — IL v0.1.2 normative spec.
 - [class-catalog.md](class-catalog.md) — C++ class catalog.
 - [roadmap.md](roadmap.md) — milestones and current status.
 - [style-guide.md](style-guide.md) — doc & comment conventions.

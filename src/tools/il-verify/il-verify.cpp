@@ -9,9 +9,15 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <string>
 
 int main(int argc, char **argv)
 {
+    if (argc == 2 && std::string(argv[1]) == "--version")
+    {
+        std::cout << "IL v0.1.2\n";
+        return 0;
+    }
     if (argc != 2)
     {
         std::cerr << "Usage: il-verify <file.il>\n";
