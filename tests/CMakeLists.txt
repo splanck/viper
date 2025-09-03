@@ -139,6 +139,10 @@ add_test(NAME il_opt_equiv COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DIL_FILE=${CMAKE_SOURCE_DIR}/tests/golden/il_opt/e2e.in.il
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_il_opt_equiv.cmake)
+add_test(NAME constfold_equiv COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DIL_FILE=${CMAKE_SOURCE_DIR}/tests/il/e2e/math_constfold.il
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_constfold_equiv.cmake)
 
 add_test(NAME mem2reg_basic COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
