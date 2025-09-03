@@ -122,3 +122,10 @@ add_test(NAME il_opt_cbr_same_target COMMAND ${CMAKE_COMMAND}
   -DPASSES=peephole
   -P ${CMAKE_CURRENT_SOURCE_DIR}/il_opt/check_opt.cmake)
 set_tests_properties(il_opt_cbr_same_target PROPERTIES LABELS Smoke)
+
+add_test(NAME il_opt_mem2reg_simple COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DIL_FILE=${CMAKE_CURRENT_SOURCE_DIR}/il_opt/mem2reg_simple.in.il
+  -DGOLDEN=${CMAKE_CURRENT_SOURCE_DIR}/il_opt/mem2reg_simple.opt.il
+  -DPASSES=mem2reg
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/il_opt/check_opt.cmake)
