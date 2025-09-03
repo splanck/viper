@@ -492,10 +492,12 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
         {
             if (argTys.size() != 1)
                 err(0);
-            Type t = argTys.size() >= 1 ? argTys[0] : Type::Unknown;
-            if (t != Type::Unknown && t != Type::Int && t != Type::Float)
-                err(0);
-            return (t == Type::Float) ? Type::Float : Type::Int;
+            Type t = argTys[0];
+            if (t == Type::Float)
+                return Type::Float;
+            if (t == Type::Int || t == Type::Unknown)
+                return Type::Int;
+            err(0);
         }
         else if (c->builtin == CallExpr::Builtin::Floor || c->builtin == CallExpr::Builtin::Ceil)
         {

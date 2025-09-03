@@ -714,26 +714,26 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
                 v.value = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), v.value);
                 v.type = Type(Type::Kind::I64);
             }
-            if (v.type.kind == Type::Kind::I64)
+            if (v.type.kind == Type::Kind::F64)
             {
-                if (!addedRtAbsI64)
+                if (!addedRtAbsF64)
                 {
                     builder->addExtern(
-                        "rt_abs_i64", Type(Type::Kind::I64), {Type(Type::Kind::I64)});
-                    addedRtAbsI64 = true;
+                        "rt_abs_f64", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+                    addedRtAbsF64 = true;
                 }
                 curLoc = expr.loc;
-                Value res = emitCallRet(Type(Type::Kind::I64), "rt_abs_i64", {v.value});
-                return {res, Type(Type::Kind::I64)};
+                Value res = emitCallRet(Type(Type::Kind::F64), "rt_abs_f64", {v.value});
+                return {res, Type(Type::Kind::F64)};
             }
-            if (!addedRtAbsF64)
+            if (!addedRtAbsI64)
             {
-                builder->addExtern("rt_abs_f64", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
-                addedRtAbsF64 = true;
+                builder->addExtern("rt_abs_i64", Type(Type::Kind::I64), {Type(Type::Kind::I64)});
+                addedRtAbsI64 = true;
             }
             curLoc = expr.loc;
-            Value res = emitCallRet(Type(Type::Kind::F64), "rt_abs_f64", {v.value});
-            return {res, Type(Type::Kind::F64)};
+            Value res = emitCallRet(Type(Type::Kind::I64), "rt_abs_i64", {v.value});
+            return {res, Type(Type::Kind::I64)};
         }
         else if (c->builtin == CallExpr::Builtin::Floor)
         {
