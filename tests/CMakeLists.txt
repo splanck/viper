@@ -69,6 +69,10 @@ add_executable(test_rt_conv unit/test_rt_conv.cpp)
 target_link_libraries(test_rt_conv PRIVATE rt)
 add_test(NAME test_rt_conv COMMAND test_rt_conv)
 
+add_executable(test_rt_math_core runtime/RTMathCoreTests.cpp)
+target_link_libraries(test_rt_math_core PRIVATE rt)
+add_test(NAME test_rt_math_core COMMAND test_rt_math_core)
+
 add_test(NAME vm_strings_example COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DSRC_DIR=${CMAKE_SOURCE_DIR}
@@ -86,6 +90,12 @@ add_test(NAME vm_block_params COMMAND ${CMAKE_COMMAND}
   -DSRC_DIR=${CMAKE_SOURCE_DIR}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_vm_block_params.cmake)
 set_tests_properties(vm_block_params PROPERTIES LABELS VM)
+
+add_test(NAME vm_math_core COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DSRC_DIR=${CMAKE_SOURCE_DIR}
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_vm_math_core.cmake)
+set_tests_properties(vm_math_core PROPERTIES LABELS VM)
 
 add_test(NAME front_basic_example COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>

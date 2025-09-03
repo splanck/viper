@@ -5,6 +5,7 @@
 // Links: docs/il-spec.md
 
 #include "vm/RuntimeBridge.hpp"
+#include "rt_math.h"
 #include "vm/VM.hpp"
 #include <cassert>
 #include <sstream>
@@ -84,6 +85,26 @@ Slot RuntimeBridge::call(const std::string &name,
     else if (name == "rt_alloc")
     {
         res.ptr = rt_alloc(args[0].i64);
+    }
+    else if (name == "rt_sqrt")
+    {
+        res.f64 = rt_sqrt(args[0].f64);
+    }
+    else if (name == "rt_floor")
+    {
+        res.f64 = rt_floor(args[0].f64);
+    }
+    else if (name == "rt_ceil")
+    {
+        res.f64 = rt_ceil(args[0].f64);
+    }
+    else if (name == "rt_abs_i64")
+    {
+        res.i64 = rt_abs_i64(args[0].i64);
+    }
+    else if (name == "rt_abs_f64")
+    {
+        res.f64 = rt_abs_f64(args[0].f64);
     }
     else
     {
