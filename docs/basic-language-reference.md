@@ -37,12 +37,12 @@ prints:
 
 ## Types
 
-| Type    | IL type | Literal examples                     | Notes                       |
-| ------- | ------- | ------------------------------------ | --------------------------- |
-| Integer | `i64`   | `0`, `-12`, `42`                     | default numeric type, wraps |
-| Float   | `f64`   | produced via `VAL`                   | optional in v0.1            |
-| String  | `str`   | `"text"`, escape `\\" \\ \n \t \xNN` | UTF-8                       |
-| Boolean | `i1`    | `TRUE`, `FALSE`                      | results of comparisons      |
+| Type    | IL type | Literal examples                           | Notes                               |
+| ------- | ------- | ------------------------------------------ | ----------------------------------- |
+| Integer | `i64`   | `0`, `-12`, `42`                           | default numeric type, wraps         |
+| Float   | `f64`   | `12.34`, `.5`, `1e3`, `2.5E-2`             | variables use `#` suffix; int widens|
+| String  | `str`   | `"text"`, escape `\\" \\ \n \t \xNN` | UTF-8                               |
+| Boolean | `i1`    | `TRUE`, `FALSE`                            | results of comparisons              |
 
 ## Expressions
 
@@ -58,7 +58,8 @@ prints:
 
 Arithmetic is integer based; `\` performs integer division with quotient
 truncated toward zero, and `MOD` computes the remainder with the same sign as
-the dividend. Division by zero traps at runtime.
+the dividend. Division by zero traps at runtime. Mixed numeric operations and
+comparisons implicitly widen integers to floats.
 Comparisons require like types (strings only support `=`/`<>`).
 Logical operators short-circuit and return Boolean.
 
@@ -163,9 +164,10 @@ prints `TWO`.
 
 ## Variables & naming conventions
 
-Identifiers match `[A-Za-z][A-Za-z0-9_]*` with optional `$` suffix for strings.
-Without `$` the variable defaults to integer;
-all variables are local to `@main`.
+Identifiers match `[A-Za-z][A-Za-z0-9_]*` with optional `$` suffix for strings
+or `#` for floats. Without a suffix the variable defaults to integer. Assigning
+an integer value to a float variable widens the value; assigning a float to an
+integer variable is a compile-time error. All variables are local to `@main`.
 `DIM` arrays store `i64` elements with 0 -
 based indices.
 

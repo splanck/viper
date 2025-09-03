@@ -72,6 +72,22 @@ add_test(NAME basic_error_bad_string_intrinsics COMMAND ${CMAKE_COMMAND}
   "-DEXPECT=${EXPECT_BAD_STRING_INTRINSICS}"
   -P ${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/check_error.cmake)
 
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/float_to_int.stderr EXPECT_FLOAT_TO_INT)
+string(STRIP "${EXPECT_FLOAT_TO_INT}" EXPECT_FLOAT_TO_INT)
+add_test(NAME basic_error_float_to_int COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/float_to_int.bas
+  "-DEXPECT=${EXPECT_FLOAT_TO_INT}"
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/check_error.cmake)
+
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/float_in_string.stderr EXPECT_FLOAT_IN_STRING)
+string(STRIP "${EXPECT_FLOAT_IN_STRING}" EXPECT_FLOAT_IN_STRING)
+add_test(NAME basic_error_float_in_string COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/float_in_string.bas
+  "-DEXPECT=${EXPECT_FLOAT_IN_STRING}"
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/check_error.cmake)
+
 file(READ ${CMAKE_CURRENT_SOURCE_DIR}/vm_trap_loc.stderr EXPECT_VM_TRAP_LOC)
 string(STRIP "${EXPECT_VM_TRAP_LOC}" EXPECT_VM_TRAP_LOC)
 add_test(NAME vm_trap_loc COMMAND ${CMAKE_COMMAND}

@@ -74,8 +74,29 @@ void SemanticAnalyzer::visitStmt(const Stmt &s)
         if (auto *v = dynamic_cast<const VarExpr *>(l->target.get()))
         {
             symbols_.insert(v->name);
+            Type varTy = Type::Int;
+            if (!v->name.empty())
+            {
+                if (v->name.back() == '$')
+                    varTy = Type::String;
+                else if (v->name.back() == '#')
+                    varTy = Type::Float;
+            }
             if (l->expr)
-                varTypes_[v->name] = visitExpr(*l->expr);
+            {
+                Type exprTy = visitExpr(*l->expr);
+                if (varTy == Type::Int && exprTy == Type::Float)
+                {
+                    std::string msg = "operand type mismatch";
+                    de.emit(il::support::Severity::Error, "B2001", l->loc, 1, std::move(msg));
+                }
+                else if (varTy == Type::String && exprTy != Type::Unknown && exprTy != Type::String)
+                {
+                    std::string msg = "operand type mismatch";
+                    de.emit(il::support::Severity::Error, "B2001", l->loc, 1, std::move(msg));
+                }
+            }
+            varTypes_[v->name] = varTy;
         }
         else if (auto *a = dynamic_cast<const ArrayExpr *>(l->target.get()))
         {
@@ -187,6 +208,8 @@ void SemanticAnalyzer::visitStmt(const Stmt &s)
         symbols_.insert(inp->var);
         if (!inp->var.empty() && inp->var.back() == '$')
             varTypes_[inp->var] = Type::String;
+        else if (!inp->var.empty() && inp->var.back() == '#')
+            varTypes_[inp->var] = Type::Float;
         else
             varTypes_[inp->var] = Type::Int;
     }
@@ -217,6 +240,10 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
     if (dynamic_cast<const IntExpr *>(&e))
     {
         return Type::Int;
+    }
+    else if (dynamic_cast<const FloatExpr *>(&e))
+    {
+        return Type::Float;
     }
     else if (dynamic_cast<const StringExpr *>(&e))
     {
@@ -250,14 +277,21 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
         auto it = varTypes_.find(v->name);
         if (it != varTypes_.end())
             return it->second;
-        return Type::Unknown;
+        if (!v->name.empty())
+        {
+            if (v->name.back() == '$')
+                return Type::String;
+            if (v->name.back() == '#')
+                return Type::Float;
+        }
+        return Type::Int;
     }
     else if (auto *u = dynamic_cast<const UnaryExpr *>(&e))
     {
         Type t = Type::Unknown;
         if (u->expr)
             t = visitExpr(*u->expr);
-        if (u->op == UnaryExpr::Op::Not && t == Type::String)
+        if (u->op == UnaryExpr::Op::Not && t != Type::Unknown && t != Type::Int)
         {
             std::string msg = "operand type mismatch";
             de.emit(il::support::Severity::Error, "B2001", u->loc, 3, std::move(msg));
@@ -272,21 +306,45 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
             lt = visitExpr(*b->lhs);
         if (b->rhs)
             rt = visitExpr(*b->rhs);
+        auto isNum = [](Type t)
+        { return t == Type::Int || t == Type::Float || t == Type::Unknown; };
         switch (b->op)
         {
             case BinaryExpr::Op::Add:
             case BinaryExpr::Op::Sub:
             case BinaryExpr::Op::Mul:
-                if ((lt != Type::Unknown && lt != Type::Int) ||
-                    (rt != Type::Unknown && rt != Type::Int))
+            {
+                if (!isNum(lt) || !isNum(rt))
                 {
                     std::string msg = "operand type mismatch";
                     de.emit(il::support::Severity::Error, "B2001", b->loc, 1, std::move(msg));
                 }
-                return Type::Int;
+                return (lt == Type::Float || rt == Type::Float) ? Type::Float : Type::Int;
+            }
             case BinaryExpr::Op::Div:
+            {
+                if (!isNum(lt) || !isNum(rt))
+                {
+                    std::string msg = "operand type mismatch";
+                    de.emit(il::support::Severity::Error, "B2001", b->loc, 1, std::move(msg));
+                }
+                if (lt == Type::Float || rt == Type::Float)
+                    return Type::Float;
+                if (dynamic_cast<const IntExpr *>(b->lhs.get()) &&
+                    dynamic_cast<const IntExpr *>(b->rhs.get()))
+                {
+                    auto *ri = static_cast<const IntExpr *>(b->rhs.get());
+                    if (ri->value == 0)
+                    {
+                        std::string msg = "divide by zero";
+                        de.emit(il::support::Severity::Error, "B2002", b->loc, 1, std::move(msg));
+                    }
+                }
+                return Type::Int;
+            }
             case BinaryExpr::Op::IDiv:
             case BinaryExpr::Op::Mod:
+            {
                 if ((lt != Type::Unknown && lt != Type::Int) ||
                     (rt != Type::Unknown && rt != Type::Int))
                 {
@@ -304,25 +362,35 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
                     }
                 }
                 return Type::Int;
+            }
             case BinaryExpr::Op::Eq:
             case BinaryExpr::Op::Ne:
             case BinaryExpr::Op::Lt:
             case BinaryExpr::Op::Le:
             case BinaryExpr::Op::Gt:
             case BinaryExpr::Op::Ge:
+            {
+                bool lNum = lt == Type::Int || lt == Type::Float;
+                bool rNum = rt == Type::Int || rt == Type::Float;
+                if (lt == Type::String && rt == Type::String)
+                {
+                    if (b->op == BinaryExpr::Op::Lt || b->op == BinaryExpr::Op::Le ||
+                        b->op == BinaryExpr::Op::Gt || b->op == BinaryExpr::Op::Ge)
+                    {
+                        std::string msg = "operand type mismatch";
+                        de.emit(il::support::Severity::Error, "B2001", b->loc, 1, std::move(msg));
+                    }
+                    return Type::Int;
+                }
+                if (lNum && rNum)
+                    return Type::Int;
                 if (lt != Type::Unknown && rt != Type::Unknown && lt != rt)
                 {
                     std::string msg = "operand type mismatch";
                     de.emit(il::support::Severity::Error, "B2001", b->loc, 1, std::move(msg));
                 }
-                if (lt == Type::String && rt == Type::String &&
-                    (b->op == BinaryExpr::Op::Lt || b->op == BinaryExpr::Op::Le ||
-                     b->op == BinaryExpr::Op::Gt || b->op == BinaryExpr::Op::Ge))
-                {
-                    std::string msg = "operand type mismatch";
-                    de.emit(il::support::Severity::Error, "B2001", b->loc, 1, std::move(msg));
-                }
                 return Type::Int;
+            }
             case BinaryExpr::Op::And:
             case BinaryExpr::Op::Or:
                 if ((lt != Type::Unknown && lt != Type::Int) ||

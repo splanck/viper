@@ -26,6 +26,11 @@ struct IntExpr : Expr
     int value;
 };
 
+struct FloatExpr : Expr
+{
+    double value;
+};
+
 struct StringExpr : Expr
 {
     std::string value;
