@@ -107,6 +107,9 @@ compile-time error:
 | `ABS(i)` / `ABS(x #)` | `i64 → i64` / `f64 → f64` | absolute value |
 | `FLOOR(x)`        | `num → f64`                  | round down |
 | `CEIL(x)`         | `num → f64`                  | round up |
+| `SIN(x)`          | `num → f64`                  | sine |
+| `COS(x)`          | `num → f64`                  | cosine |
+| `POW(x, y)`       | `num × num → f64`            | power |
 
 ```basic
 PRINT ABS(-5)
@@ -114,6 +117,9 @@ PRINT ABS(-1.5#)
 PRINT FLOOR(1.9#)
 PRINT CEIL(1.1#)
 PRINT SQR(9#)
+PRINT SIN(0#)
+PRINT COS(0#)
+PRINT POW(2#,10#)
 ```
 
     Indices are 1 - based. `MID$` treats `i <= 0` as `1` and returns an empty string when

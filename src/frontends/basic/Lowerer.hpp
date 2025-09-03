@@ -100,6 +100,9 @@ class Lowerer
     bool addedRtAbsF64{false};
     bool addedRtFloor{false};
     bool addedRtCeil{false};
+    bool addedRtSin{false};
+    bool addedRtCos{false};
+    bool addedRtPow{false};
 };
 
 } // namespace il::frontends::basic
