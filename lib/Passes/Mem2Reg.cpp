@@ -73,7 +73,7 @@ static unsigned nextTempId(Function &F)
 }
 } // namespace
 
-void mem2reg(Module &M)
+void mem2reg(Module &M, Mem2RegStats *stats)
 {
     analysis::setModule(M);
     for (auto &F : M.functions)
@@ -115,6 +115,8 @@ void mem2reg(Module &M)
             }
         }
 
+        if (stats)
+            stats->promotedVars += infos.size();
         if (infos.size() != 1)
             continue; // TODO: handle multiple allocas
 
@@ -271,6 +273,8 @@ void mem2reg(Module &M)
                     if (I.result)
                         replaceAllUses(F, *I.result, v);
                     B->instructions.erase(B->instructions.begin() + i);
+                    if (stats)
+                        stats->removedLoads++;
                     continue;
                 }
                 if (I.op == Opcode::Store && I.operands.size() > 1 &&
@@ -279,6 +283,8 @@ void mem2reg(Module &M)
                     unsigned varId = I.operands[0].id;
                     vars[varId].defs[B] = I.operands[1];
                     B->instructions.erase(B->instructions.begin() + i);
+                    if (stats)
+                        stats->removedStores++;
                     continue;
                 }
                 ++i;

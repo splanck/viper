@@ -13,11 +13,13 @@
 #include "il/io/Parser.hpp"
 #include "il/io/Serializer.hpp"
 #include "il/transform/ConstFold.hpp"
+#include "il/transform/DCE.hpp"
 #include "il/transform/PassManager.hpp"
 #include "il/transform/Peephole.hpp"
 #include "il/verify/Verifier.hpp"
 #include "support/source_manager.hpp"
 #include "vm/VM.hpp"
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -119,6 +121,9 @@ int main(int argc, char **argv)
         std::string inFile = argv[2];
         std::string outFile;
         std::vector<std::string> passList;
+        bool passesExplicit = false;
+        bool noMem2Reg = false;
+        bool mem2regStats = false;
         for (int i = 3; i < argc; ++i)
         {
             std::string arg = argv[i];
@@ -130,6 +135,7 @@ int main(int argc, char **argv)
             {
                 std::string passes = argv[++i];
                 size_t pos = 0;
+                passesExplicit = true;
                 while (pos != std::string::npos)
                 {
                     size_t comma = passes.find(',', pos);
@@ -139,11 +145,28 @@ int main(int argc, char **argv)
                     pos = comma + 1;
                 }
             }
+            else if (arg == "--no-mem2reg")
+            {
+                noMem2Reg = true;
+            }
+            else if (arg == "--mem2reg-stats")
+            {
+                mem2regStats = true;
+            }
             else
             {
                 usage();
                 return 1;
             }
+        }
+        if (!passesExplicit)
+        {
+            passList = {"mem2reg", "constfold", "peephole", "dce"};
+        }
+        if (noMem2Reg)
+        {
+            passList.erase(std::remove(passList.begin(), passList.end(), "mem2reg"),
+                           passList.end());
         }
         if (outFile.empty())
         {
@@ -162,7 +185,19 @@ int main(int argc, char **argv)
         transform::PassManager pm;
         pm.addPass("constfold", transform::constFold);
         pm.addPass("peephole", transform::peephole);
-        pm.addPass("mem2reg", viper::passes::mem2reg);
+        pm.addPass("dce", transform::dce);
+        pm.addPass("mem2reg",
+                   [mem2regStats](core::Module &mod)
+                   {
+                       viper::passes::Mem2RegStats st;
+                       viper::passes::mem2reg(mod, mem2regStats ? &st : nullptr);
+                       if (mem2regStats)
+                       {
+                           std::cout << "mem2reg: promoted " << st.promotedVars
+                                     << ", removed loads " << st.removedLoads << ", removed stores "
+                                     << st.removedStores << "\n";
+                       }
+                   });
         pm.run(m, passList);
         std::ofstream ofs(outFile);
         if (!ofs)
