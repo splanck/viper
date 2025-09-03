@@ -338,6 +338,25 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             Value res = emitLoad(Type(Type::Kind::I1), addr);
             return {res, Type(Type::Kind::I1)};
         }
+        else if (b->op == BinaryExpr::Op::IDiv || b->op == BinaryExpr::Op::Mod)
+        {
+            RVal lhs = lowerExpr(*b->lhs);
+            RVal rhs = lowerExpr(*b->rhs);
+            curLoc = expr.loc;
+            Value cond =
+                emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), rhs.value, Value::constInt(0));
+            BasicBlock *trapBB = &builder->addBlock(*func, mangler.block("div0"));
+            BasicBlock *okBB = &builder->addBlock(*func, mangler.block("divok"));
+            emitCBr(cond, trapBB, okBB);
+            cur = trapBB;
+            curLoc = expr.loc;
+            emitTrap();
+            cur = okBB;
+            curLoc = expr.loc;
+            Opcode op = (b->op == BinaryExpr::Op::IDiv) ? Opcode::SDiv : Opcode::SRem;
+            Value res = emitBinary(op, Type(Type::Kind::I64), lhs.value, rhs.value);
+            return {res, Type(Type::Kind::I64)};
+        }
         RVal lhs = lowerExpr(*b->lhs);
         RVal rhs = lowerExpr(*b->rhs);
         curLoc = expr.loc;
@@ -371,6 +390,12 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             case BinaryExpr::Op::Div:
                 op = Opcode::SDiv;
                 break;
+            case BinaryExpr::Op::IDiv:
+                op = Opcode::SDiv;
+                break;
+            case BinaryExpr::Op::Mod:
+                op = Opcode::SRem;
+                break;
             case BinaryExpr::Op::Eq:
                 op = Opcode::ICmpEq;
                 ty = Type(Type::Kind::I1);
@@ -402,6 +427,7 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
         Value res = emitBinary(op, ty, lhs.value, rhs.value);
         return {res, ty};
     }
+
     else if (auto *c = dynamic_cast<const CallExpr *>(&expr))
     {
         if (c->builtin == CallExpr::Builtin::Len)
@@ -976,6 +1002,16 @@ void Lowerer::emitRet(Value v)
     in.op = Opcode::Ret;
     in.type = Type(Type::Kind::Void);
     in.operands.push_back(v);
+    in.loc = curLoc;
+    cur->instructions.push_back(in);
+    cur->terminated = true;
+}
+
+void Lowerer::emitTrap()
+{
+    Instr in;
+    in.op = Opcode::Trap;
+    in.type = Type(Type::Kind::Void);
     in.loc = curLoc;
     cur->instructions.push_back(in);
     cur->terminated = true;

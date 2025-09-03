@@ -110,6 +110,8 @@ Token Lexer::lexIdentifierOrKeyword()
         return {TokenKind::KeywordOr, s, loc};
     if (s == "NOT")
         return {TokenKind::KeywordNot, s, loc};
+    if (s == "MOD")
+        return {TokenKind::KeywordMod, s, loc};
     return {TokenKind::Identifier, s, loc};
 }
 
@@ -154,6 +156,8 @@ Token Lexer::next()
             return {TokenKind::Star, "*", loc};
         case '/':
             return {TokenKind::Slash, "/", loc};
+        case '\\':
+            return {TokenKind::Backslash, "\\", loc};
         case '=':
             return {TokenKind::Equal, "=", loc};
         case '<':

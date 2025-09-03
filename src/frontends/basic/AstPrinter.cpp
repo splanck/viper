@@ -149,6 +149,12 @@ std::string AstPrinter::dump(const Expr &expr)
             case BinaryExpr::Op::Div:
                 op = "/";
                 break;
+            case BinaryExpr::Op::IDiv:
+                op = "\\";
+                break;
+            case BinaryExpr::Op::Mod:
+                op = "MOD";
+                break;
             case BinaryExpr::Op::Eq:
                 op = "=";
                 break;
