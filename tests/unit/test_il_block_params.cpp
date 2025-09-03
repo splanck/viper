@@ -1,3 +1,9 @@
+// File: tests/unit/test_il_block_params.cpp
+// Purpose: Unit test verifying block parameters and branch arguments.
+// Key invariants: Block parameter count matches branch argument count.
+// Ownership/Lifetime: N/A
+// Links: docs/dev/ir-builder.md
+
 #include "il/build/IRBuilder.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/Type.hpp"
