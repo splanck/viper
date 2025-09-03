@@ -23,6 +23,14 @@ target_link_libraries(test_il_parse_negative PRIVATE il_core il_io support)
 target_compile_definitions(test_il_parse_negative PRIVATE BAD_DIR="${CMAKE_SOURCE_DIR}/tests/il/parse")
 add_test(NAME test_il_parse_negative COMMAND test_il_parse_negative)
 
+add_executable(test_analysis_cfg unit/test_analysis_cfg.cpp)
+target_link_libraries(test_analysis_cfg PRIVATE il_core il_analysis il_utils support)
+add_test(NAME test_analysis_cfg COMMAND test_analysis_cfg)
+
+add_executable(test_analysis_dom unit/test_analysis_dominators.cpp)
+target_link_libraries(test_analysis_dom PRIVATE il_core il_analysis il_utils support)
+add_test(NAME test_analysis_dom COMMAND test_analysis_dom)
+
 add_test(NAME il_verify_ex1 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/docs/examples/il/ex1_hello_cond.il)
 add_test(NAME il_verify_ex2 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/docs/examples/il/ex2_sum_1_to_10.il)
 add_test(NAME il_verify_ex3 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/docs/examples/il/ex3_table_5x5.il)
