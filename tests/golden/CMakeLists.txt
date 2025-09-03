@@ -144,9 +144,10 @@ add_test(NAME il_opt_mem2reg_nested COMMAND ${CMAKE_COMMAND}
   -DPASSES=mem2reg
   -P ${CMAKE_CURRENT_SOURCE_DIR}/il_opt/check_opt.cmake)
 
-add_test(NAME il_opt_mem2reg_loop_skip COMMAND ${CMAKE_COMMAND}
+add_test(NAME il_opt_mem2reg_loop COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
   -DIL_FILE=${CMAKE_CURRENT_SOURCE_DIR}/il_opt/mem2reg_loop.in.il
   -DGOLDEN=${CMAKE_CURRENT_SOURCE_DIR}/il_opt/mem2reg_loop.opt.il
   -DPASSES=mem2reg
   -P ${CMAKE_CURRENT_SOURCE_DIR}/il_opt/check_opt.cmake)
+
