@@ -95,6 +95,11 @@ class Lowerer
     bool addedRtToInt{false};
     bool addedRtIntToStr{false};
     bool addedRtF64ToStr{false};
+    bool addedRtSqrt{false};
+    bool addedRtAbsI64{false};
+    bool addedRtAbsF64{false};
+    bool addedRtFloor{false};
+    bool addedRtCeil{false};
 };
 
 } // namespace il::frontends::basic

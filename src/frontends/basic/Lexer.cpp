@@ -62,6 +62,7 @@ Token Lexer::lexNumber()
     std::string s;
     bool seenDot = false;
     bool seenExp = false;
+    bool seenHash = false;
     if (peek() == '.')
     {
         seenDot = true;
@@ -85,8 +86,15 @@ Token Lexer::lexNumber()
         while (std::isdigit(peek()))
             s.push_back(get());
     }
+    if (peek() == '#')
+    {
+        seenHash = true;
+        get();
+    }
     (void)seenDot;
     (void)seenExp;
+    if (seenHash)
+        s.push_back('#');
     return {TokenKind::Number, s, loc};
 }
 
@@ -137,6 +145,14 @@ Token Lexer::lexIdentifierOrKeyword()
         return {TokenKind::KeywordNot, s, loc};
     if (s == "MOD")
         return {TokenKind::KeywordMod, s, loc};
+    if (s == "SQR")
+        return {TokenKind::KeywordSqr, s, loc};
+    if (s == "ABS")
+        return {TokenKind::KeywordAbs, s, loc};
+    if (s == "FLOOR")
+        return {TokenKind::KeywordFloor, s, loc};
+    if (s == "CEIL")
+        return {TokenKind::KeywordCeil, s, loc};
     return {TokenKind::Identifier, s, loc};
 }
 

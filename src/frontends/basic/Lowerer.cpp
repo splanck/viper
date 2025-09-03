@@ -39,6 +39,11 @@ Module Lowerer::lower(const Program &prog)
     addedRtToInt = false;
     addedRtIntToStr = false;
     addedRtF64ToStr = false;
+    addedRtSqrt = false;
+    addedRtAbsI64 = false;
+    addedRtAbsF64 = false;
+    addedRtFloor = false;
+    addedRtCeil = false;
 
     bool needInput = false;
     bool needAlloc = false;
@@ -666,6 +671,90 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             curLoc = expr.loc;
             Value res = emitUnary(Opcode::Fptosi, Type(Type::Kind::I64), f.value);
             return {res, Type(Type::Kind::I64)};
+        }
+        else if (c->builtin == CallExpr::Builtin::Sqr)
+        {
+            RVal v = lowerExpr(*c->args[0]);
+            if (v.type.kind == Type::Kind::I64)
+            {
+                curLoc = expr.loc;
+                v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
+                v.type = Type(Type::Kind::F64);
+            }
+            if (!addedRtSqrt)
+            {
+                builder->addExtern("rt_sqrt", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+                addedRtSqrt = true;
+            }
+            curLoc = expr.loc;
+            Value res = emitCallRet(Type(Type::Kind::F64), "rt_sqrt", {v.value});
+            return {res, Type(Type::Kind::F64)};
+        }
+        else if (c->builtin == CallExpr::Builtin::Abs)
+        {
+            RVal v = lowerExpr(*c->args[0]);
+            if (v.type.kind == Type::Kind::I1)
+            {
+                curLoc = expr.loc;
+                v.value = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), v.value);
+                v.type = Type(Type::Kind::I64);
+            }
+            if (v.type.kind == Type::Kind::I64)
+            {
+                if (!addedRtAbsI64)
+                {
+                    builder->addExtern(
+                        "rt_abs_i64", Type(Type::Kind::I64), {Type(Type::Kind::I64)});
+                    addedRtAbsI64 = true;
+                }
+                curLoc = expr.loc;
+                Value res = emitCallRet(Type(Type::Kind::I64), "rt_abs_i64", {v.value});
+                return {res, Type(Type::Kind::I64)};
+            }
+            if (!addedRtAbsF64)
+            {
+                builder->addExtern("rt_abs_f64", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+                addedRtAbsF64 = true;
+            }
+            curLoc = expr.loc;
+            Value res = emitCallRet(Type(Type::Kind::F64), "rt_abs_f64", {v.value});
+            return {res, Type(Type::Kind::F64)};
+        }
+        else if (c->builtin == CallExpr::Builtin::Floor)
+        {
+            RVal v = lowerExpr(*c->args[0]);
+            if (v.type.kind == Type::Kind::I64)
+            {
+                curLoc = expr.loc;
+                v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
+                v.type = Type(Type::Kind::F64);
+            }
+            if (!addedRtFloor)
+            {
+                builder->addExtern("rt_floor", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+                addedRtFloor = true;
+            }
+            curLoc = expr.loc;
+            Value res = emitCallRet(Type(Type::Kind::F64), "rt_floor", {v.value});
+            return {res, Type(Type::Kind::F64)};
+        }
+        else if (c->builtin == CallExpr::Builtin::Ceil)
+        {
+            RVal v = lowerExpr(*c->args[0]);
+            if (v.type.kind == Type::Kind::I64)
+            {
+                curLoc = expr.loc;
+                v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
+                v.type = Type(Type::Kind::F64);
+            }
+            if (!addedRtCeil)
+            {
+                builder->addExtern("rt_ceil", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+                addedRtCeil = true;
+            }
+            curLoc = expr.loc;
+            Value res = emitCallRet(Type(Type::Kind::F64), "rt_ceil", {v.value});
+            return {res, Type(Type::Kind::F64)};
         }
     }
     else if (auto *a = dynamic_cast<const ArrayExpr *>(&expr))

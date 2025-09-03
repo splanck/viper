@@ -93,7 +93,11 @@ struct CallExpr : Expr
         Right,
         Str,
         Val,
-        Int
+        Int,
+        Sqr,
+        Abs,
+        Floor,
+        Ceil
     } builtin;
     std::vector<ExprPtr> args;
 };
