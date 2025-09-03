@@ -107,6 +107,11 @@ add_test(NAME vm_math_trigpow COMMAND ${CMAKE_COMMAND}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_vm_math_trigpow.cmake)
 set_tests_properties(vm_math_trigpow PROPERTIES LABELS VM)
 
+add_test(NAME il_opt_equiv_math_constfold COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DIL_FILE=${CMAKE_SOURCE_DIR}/tests/il/e2e/math_constfold.il
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_il_opt_equiv.cmake)
+
 add_test(NAME front_basic_example COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DSRC_DIR=${CMAKE_SOURCE_DIR}
