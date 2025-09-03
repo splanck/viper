@@ -17,5 +17,8 @@ The VM runtime bridge recognizes these symbols:
 - rt_sqrt
 - rt_floor
 - rt_ceil
+- rt_sin
+- rt_cos
+- rt_pow
 - rt_abs_i64
 - rt_abs_f64

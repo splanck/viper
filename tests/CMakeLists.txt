@@ -97,6 +97,12 @@ add_test(NAME vm_math_core COMMAND ${CMAKE_COMMAND}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_vm_math_core.cmake)
 set_tests_properties(vm_math_core PROPERTIES LABELS VM)
 
+add_test(NAME vm_math_trigpow COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DSRC_DIR=${CMAKE_SOURCE_DIR}
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_vm_math_trigpow.cmake)
+set_tests_properties(vm_math_trigpow PROPERTIES LABELS VM)
+
 add_test(NAME front_basic_example COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DSRC_DIR=${CMAKE_SOURCE_DIR}
