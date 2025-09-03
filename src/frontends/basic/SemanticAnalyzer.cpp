@@ -201,6 +201,18 @@ void SemanticAnalyzer::visitStmt(const Stmt &s)
     {
         // nothing
     }
+    else if (auto *r = dynamic_cast<const RandomizeStmt *>(&s))
+    {
+        if (r->seed)
+        {
+            auto ty = visitExpr(*r->seed);
+            if (ty != Type::Unknown && ty != Type::Int && ty != Type::Float)
+            {
+                std::string msg = "seed type mismatch";
+                de.emit(il::support::Severity::Error, "B2001", r->loc, 1, std::move(msg));
+            }
+        }
+    }
     else if (auto *inp = dynamic_cast<const InputStmt *>(&s))
     {
         if (inp->prompt)
@@ -509,6 +521,12 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
             if (argTys.size() >= 2 && argTys[1] != Type::Unknown && argTys[1] != Type::Int &&
                 argTys[1] != Type::Float)
                 err(1);
+            return Type::Float;
+        }
+        else if (c->builtin == CallExpr::Builtin::Rnd)
+        {
+            if (!argTys.empty())
+                err(0);
             return Type::Float;
         }
     }

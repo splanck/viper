@@ -44,6 +44,8 @@ Module Lowerer::lower(const Program &prog)
     addedRtAbsF64 = false;
     addedRtFloor = false;
     addedRtCeil = false;
+    addedRtRandomize = false;
+    addedRtRnd = false;
 
     bool needInput = false;
     bool needAlloc = false;
@@ -369,6 +371,8 @@ void Lowerer::lowerStmt(const Stmt &stmt)
         lowerInput(*in);
     else if (auto *d = dynamic_cast<const DimStmt *>(&stmt))
         lowerDim(*d);
+    else if (auto *r = dynamic_cast<const RandomizeStmt *>(&stmt))
+        lowerRandomize(*r);
 }
 
 Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
@@ -566,7 +570,18 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
 
     else if (auto *c = dynamic_cast<const CallExpr *>(&expr))
     {
-        if (c->builtin == CallExpr::Builtin::Len)
+        if (c->builtin == CallExpr::Builtin::Rnd)
+        {
+            if (!addedRtRnd)
+            {
+                builder->addExtern("rt_rnd", Type(Type::Kind::F64), {});
+                addedRtRnd = true;
+            }
+            curLoc = expr.loc;
+            Value res = emitCallRet(Type(Type::Kind::F64), "rt_rnd", {});
+            return {res, Type(Type::Kind::F64)};
+        }
+        else if (c->builtin == CallExpr::Builtin::Len)
         {
             RVal s = lowerExpr(*c->args[0]);
             curLoc = expr.loc;
@@ -1230,6 +1245,27 @@ void Lowerer::lowerDim(const DimStmt &stmt)
         if (lenIt != arrayLenSlots.end())
             emitStore(Type(Type::Kind::I64), Value::temp(lenIt->second), sz.value);
     }
+}
+
+void Lowerer::lowerRandomize(const RandomizeStmt &stmt)
+{
+    RVal s = lowerExpr(*stmt.seed);
+    Value seed = s.value;
+    if (s.type.kind == Type::Kind::F64)
+    {
+        seed = emitUnary(Opcode::Fptosi, Type(Type::Kind::I64), seed);
+    }
+    else if (s.type.kind == Type::Kind::I1)
+    {
+        seed = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), seed);
+    }
+    if (!addedRtRandomize)
+    {
+        builder->addExtern("rt_randomize_i64", Type(Type::Kind::Void), {Type(Type::Kind::I64)});
+        addedRtRandomize = true;
+    }
+    curLoc = stmt.loc;
+    emitCall("rt_randomize_i64", {seed});
 }
 
 Value Lowerer::lowerArrayAddr(const ArrayExpr &expr)
