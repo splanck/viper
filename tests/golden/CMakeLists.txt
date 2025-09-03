@@ -88,6 +88,14 @@ add_test(NAME basic_error_float_in_string COMMAND ${CMAKE_COMMAND}
   "-DEXPECT=${EXPECT_FLOAT_IN_STRING}"
   -P ${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/check_error.cmake)
 
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/bad_conversions.stderr EXPECT_BAD_CONVERSIONS)
+string(STRIP "${EXPECT_BAD_CONVERSIONS}" EXPECT_BAD_CONVERSIONS)
+add_test(NAME basic_error_bad_conversions COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/bad_conversions.bas
+  "-DEXPECT=${EXPECT_BAD_CONVERSIONS}"
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/check_error.cmake)
+
 file(READ ${CMAKE_CURRENT_SOURCE_DIR}/vm_trap_loc.stderr EXPECT_VM_TRAP_LOC)
 string(STRIP "${EXPECT_VM_TRAP_LOC}" EXPECT_VM_TRAP_LOC)
 add_test(NAME vm_trap_loc COMMAND ${CMAKE_COMMAND}

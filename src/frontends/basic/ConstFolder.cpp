@@ -5,7 +5,11 @@
 // Links: docs/class-catalog.md
 
 #include "frontends/basic/ConstFolder.hpp"
+#include <cctype>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 namespace il::frontends::basic
 {
@@ -43,6 +47,16 @@ static bool isStr(const Expr *e, std::string &s)
     if (auto *st = dynamic_cast<const StringExpr *>(e))
     {
         s = st->value;
+        return true;
+    }
+    return false;
+}
+
+static bool isFloat(const Expr *e, double &v)
+{
+    if (auto *f = dynamic_cast<const FloatExpr *>(e))
+    {
+        v = f->value;
         return true;
     }
     return false;
@@ -92,6 +106,47 @@ static void foldCall(ExprPtr &e, CallExpr *c)
                 size_t pos = static_cast<size_t>(start - 1);
                 replaceWithStr(e, s.substr(pos, static_cast<size_t>(len)), c->loc);
             }
+        }
+    }
+    else if (c->builtin == CallExpr::Builtin::Val)
+    {
+        std::string s;
+        if (c->args.size() == 1 && isStr(c->args[0].get(), s))
+        {
+            const char *p = s.c_str();
+            while (*p && isspace((unsigned char)*p))
+                ++p;
+            const char *q = p + strlen(p);
+            while (q > p && isspace((unsigned char)q[-1]))
+                --q;
+            std::string trimmed(p, q - p);
+            char *endp = nullptr;
+            long long v = strtoll(trimmed.c_str(), &endp, 10);
+            if (endp && *endp == '\0')
+                replaceWithInt(e, v, c->loc);
+        }
+    }
+    else if (c->builtin == CallExpr::Builtin::Int)
+    {
+        double f;
+        if (c->args.size() == 1 && isFloat(c->args[0].get(), f))
+            replaceWithInt(e, static_cast<long long>(f), c->loc);
+    }
+    else if (c->builtin == CallExpr::Builtin::Str)
+    {
+        long long i;
+        double f;
+        if (c->args.size() == 1 && isInt(c->args[0].get(), i))
+        {
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%lld", i);
+            replaceWithStr(e, buf, c->loc);
+        }
+        else if (c->args.size() == 1 && isFloat(c->args[0].get(), f))
+        {
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%g", f);
+            replaceWithStr(e, buf, c->loc);
         }
     }
 }

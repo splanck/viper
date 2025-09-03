@@ -90,7 +90,10 @@ struct CallExpr : Expr
         Len,
         Mid,
         Left,
-        Right
+        Right,
+        Str,
+        Val,
+        Int
     } builtin;
     std::vector<ExprPtr> args;
 };

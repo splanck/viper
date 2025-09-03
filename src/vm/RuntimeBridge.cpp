@@ -73,6 +73,14 @@ Slot RuntimeBridge::call(const std::string &name,
     {
         res.i64 = rt_to_int(args[0].str);
     }
+    else if (name == "rt_int_to_str")
+    {
+        res.str = rt_int_to_str(args[0].i64);
+    }
+    else if (name == "rt_f64_to_str")
+    {
+        res.str = rt_f64_to_str(args[0].f64);
+    }
     else if (name == "rt_alloc")
     {
         res.ptr = rt_alloc(args[0].i64);

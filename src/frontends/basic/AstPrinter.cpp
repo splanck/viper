@@ -209,6 +209,15 @@ std::string AstPrinter::dump(const Expr &expr)
             case CallExpr::Builtin::Right:
                 name = "RIGHT$";
                 break;
+            case CallExpr::Builtin::Str:
+                name = "STR$";
+                break;
+            case CallExpr::Builtin::Val:
+                name = "VAL";
+                break;
+            case CallExpr::Builtin::Int:
+                name = "INT";
+                break;
         }
         std::string res = "(" + name;
         for (auto &a : c->args)
