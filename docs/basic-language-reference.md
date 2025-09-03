@@ -110,6 +110,7 @@ compile-time error:
 | `SIN(x)`          | `num → f64`                  | sine |
 | `COS(x)`          | `num → f64`                  | cosine |
 | `POW(x, y)`       | `num × num → f64`            | power |
+| `RND()`           | `() → f64`                   | pseudo-random [0,1); seed with `RANDOMIZE` |
 
 ```basic
 PRINT ABS(-5)
@@ -151,11 +152,29 @@ newline appended unless statement ends with `;` |
 | `END` | terminate program |
 | `INPUT v$` / `INPUT v` / `INPUT "p", v` | read line as string or integer, optional literal prompt |
 | `DIM A(n)` | allocate integer array of length `n` |
+| `RANDOMIZE n` | seed pseudo-random generator with integer `n` (floats truncate) |
 
 An optional string literal prompt may precede the variable:
 
 ```basic
 INPUT "N=", N
+```
+
+### Random numbers
+
+`RANDOMIZE` seeds the deterministic generator used by `RND()`.
+
+```basic
+RANDOMIZE 1
+PRINT RND() : PRINT RND() : PRINT RND()
+```
+
+prints
+
+```
+0.345001
+0.752709
+0.795745
 ```
 
 The prompt must be a literal string for now.

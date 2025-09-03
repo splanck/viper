@@ -99,6 +99,8 @@ StmtPtr Parser::parseStatement(int line)
         return parseInput();
     if (check(TokenKind::KeywordDim))
         return parseDim();
+    if (check(TokenKind::KeywordRandomize))
+        return parseRandomize();
     auto stmt = std::make_unique<EndStmt>();
     stmt->loc = current_.loc;
     return stmt;
@@ -376,6 +378,16 @@ StmtPtr Parser::parseDim()
     return stmt;
 }
 
+StmtPtr Parser::parseRandomize()
+{
+    il::support::SourceLoc loc = current_.loc;
+    advance(); // RANDOMIZE
+    auto stmt = std::make_unique<RandomizeStmt>();
+    stmt->loc = loc;
+    stmt->seed = parseExpression();
+    return stmt;
+}
+
 int Parser::precedence(TokenKind k)
 {
     switch (k)
@@ -555,6 +567,17 @@ ExprPtr Parser::parsePrimary()
         call->args.push_back(std::move(arg));
         if (tk == TokenKind::KeywordPow)
             call->args.push_back(std::move(arg2));
+        return call;
+    }
+    if (check(TokenKind::KeywordRnd))
+    {
+        il::support::SourceLoc loc = current_.loc;
+        advance();
+        consume(TokenKind::LParen);
+        consume(TokenKind::RParen);
+        auto call = std::make_unique<CallExpr>();
+        call->loc = loc;
+        call->builtin = CallExpr::Builtin::Rnd;
         return call;
     }
     if (check(TokenKind::Identifier))
