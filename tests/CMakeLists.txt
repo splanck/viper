@@ -103,6 +103,34 @@ add_test(NAME il_verify_invalid_bad_load_store
           -DEXPECT=pointer\ type\ mismatch
           -P ${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/check_invalid.cmake)
 
+add_test(NAME il_verify_invalid_wrong_block_arg_arity
+  COMMAND ${CMAKE_COMMAND}
+          -DIL_VERIFY=${IL_VERIFY}
+          -DFILE=${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/wrong_block_arg_arity.il
+          -DEXPECT=bad\ arg\ count
+          -P ${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/check_invalid.cmake)
+
+add_test(NAME il_verify_invalid_wrong_block_arg_type
+  COMMAND ${CMAKE_COMMAND}
+          -DIL_VERIFY=${IL_VERIFY}
+          -DFILE=${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/wrong_block_arg_type.il
+          -DEXPECT=arg\ type\ mismatch
+          -P ${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/check_invalid.cmake)
+
+add_test(NAME il_verify_invalid_duplicate_param
+  COMMAND ${CMAKE_COMMAND}
+          -DIL_VERIFY=${IL_VERIFY}
+          -DFILE=${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/duplicate_param.il
+          -DEXPECT=duplicate\ param
+          -P ${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/check_invalid.cmake)
+
+add_test(NAME il_verify_invalid_param_use_before_entry
+  COMMAND ${CMAKE_COMMAND}
+          -DIL_VERIFY=${IL_VERIFY}
+          -DFILE=${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/param_use_before_entry.il
+          -DEXPECT=use\ before\ def
+          -P ${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/check_invalid.cmake)
+
 add_executable(test_basic_lexer unit/test_basic_lexer.cpp)
 target_link_libraries(test_basic_lexer PRIVATE fe_basic support)
 add_test(NAME test_basic_lexer COMMAND test_basic_lexer)
