@@ -24,13 +24,13 @@ All headers use `.hpp` and sources use `.cpp`.
 | ---------- | --------------------------------------------- |
 | Module     | Top-level container for functions and globals |
 | Function   | Sequence of blocks forming a procedure        |
-| BasicBlock | Linear list of instructions with a label      |
+| BasicBlock | Linear list of instructions with a label and params |
 | Instr      | Single IL instruction                         |
 | Value      | Operand or constant                           |
 | Type       | IL type descriptor                            |
 | Global     | Named global variable                         |
 | Extern     | External function declaration                 |
-| Param      | Function parameter                            |
+| Param      | Function or block parameter with SSA id       |
 
 ### Build / IO / Verify
 

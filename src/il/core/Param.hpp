@@ -11,11 +11,12 @@
 namespace il::core
 {
 
-/// @brief Function parameter.
+/// @brief Parameter for functions or blocks.
 struct Param
 {
-    std::string name;
-    Type type;
+    std::string name; ///< Symbolic name
+    Type type;        ///< Declared type
+    unsigned id;      ///< SSA value id
 };
 
 } // namespace il::core
