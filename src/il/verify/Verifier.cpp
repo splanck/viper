@@ -9,6 +9,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 using namespace il::core;
 
@@ -156,6 +157,7 @@ bool Verifier::verify(const Module &m, std::ostream &err)
         }
 
         std::unordered_set<std::string> labels;
+        std::unordered_map<std::string, const BasicBlock *> blockMap;
         for (const auto &bb : fn.blocks)
         {
             if (!labels.insert(bb.label).second)
@@ -163,6 +165,7 @@ bool Verifier::verify(const Module &m, std::ostream &err)
                 err << fn.name << ": duplicate label " << bb.label << "\n";
                 ok = false;
             }
+            blockMap[bb.label] = &bb;
         }
 
         std::unordered_map<unsigned, Type> temps;
@@ -179,6 +182,26 @@ bool Verifier::verify(const Module &m, std::ostream &err)
             std::unordered_set<unsigned> defined; // track temps defined in this block
             for (const auto &kv : temps)
                 defined.insert(kv.first);
+
+            std::unordered_set<std::string> paramNames;
+            std::vector<unsigned> paramIds;
+            for (const auto &p : bb.params)
+            {
+                if (!paramNames.insert(p.name).second)
+                {
+                    err << fn.name << ":" << bb.label << ": duplicate param %" << p.name << "\n";
+                    ok = false;
+                }
+                if (p.type.kind == Type::Kind::Void)
+                {
+                    err << fn.name << ":" << bb.label << ": param %" << p.name
+                        << " has void type\n";
+                    ok = false;
+                }
+                temps[p.id] = p.type;
+                defined.insert(p.id);
+                paramIds.push_back(p.id);
+            }
             for (const auto &in : bb.instructions)
             {
                 // Use-before-def within block (full dominance analysis TODO).
@@ -625,16 +648,81 @@ bool Verifier::verify(const Module &m, std::ostream &err)
                                 << ": expected 1 label\n";
                             ok = false;
                         }
+                        else
+                        {
+                            const std::vector<Value> *argsVec =
+                                in.brArgs.size() > 0 ? &in.brArgs[0] : nullptr;
+                            auto itB = blockMap.find(in.labels[0]);
+                            if (itB != blockMap.end())
+                            {
+                                const BasicBlock &tgt = *itB->second;
+                                size_t argCount = argsVec ? argsVec->size() : 0;
+                                if (argCount != tgt.params.size())
+                                {
+                                    err << fn.name << ":" << bb.label << ": " << snippet(in)
+                                        << ": branch arg count mismatch for label " << in.labels[0]
+                                        << "\n";
+                                    ok = false;
+                                }
+                                else
+                                {
+                                    for (size_t i = 0; i < argCount; ++i)
+                                        if (valueType((*argsVec)[i], temps).kind !=
+                                            tgt.params[i].type.kind)
+                                        {
+                                            err << fn.name << ":" << bb.label << ": " << snippet(in)
+                                                << ": arg type mismatch for label " << in.labels[0]
+                                                << "\n";
+                                            ok = false;
+                                            break;
+                                        }
+                                }
+                            }
+                        }
                         break;
                     }
                     case Opcode::CBr:
                     {
-                        if (in.operands.size() != 1 || in.labels.size() != 2 ||
-                            valueType(in.operands[0], temps).kind != Type::Kind::I1)
+                        bool condOk = in.operands.size() == 1 && in.labels.size() == 2 &&
+                                      valueType(in.operands[0], temps).kind == Type::Kind::I1;
+                        if (!condOk)
                         {
                             err << fn.name << ":" << bb.label << ": " << snippet(in)
                                 << ": conditional branch mismatch\n";
                             ok = false;
+                        }
+                        else
+                        {
+                            for (size_t t = 0; t < 2; ++t)
+                            {
+                                auto itB = blockMap.find(in.labels[t]);
+                                if (itB == blockMap.end())
+                                    continue;
+                                const BasicBlock &tgt = *itB->second;
+                                const std::vector<Value> *argsVec =
+                                    in.brArgs.size() > t ? &in.brArgs[t] : nullptr;
+                                size_t argCount = argsVec ? argsVec->size() : 0;
+                                if (argCount != tgt.params.size())
+                                {
+                                    err << fn.name << ":" << bb.label << ": " << snippet(in)
+                                        << ": branch arg count mismatch for label " << in.labels[t]
+                                        << "\n";
+                                    ok = false;
+                                }
+                                else
+                                {
+                                    for (size_t i = 0; i < argCount; ++i)
+                                        if (valueType((*argsVec)[i], temps).kind !=
+                                            tgt.params[i].type.kind)
+                                        {
+                                            err << fn.name << ":" << bb.label << ": " << snippet(in)
+                                                << ": arg type mismatch for label " << in.labels[t]
+                                                << "\n";
+                                            ok = false;
+                                            break;
+                                        }
+                                }
+                            }
                         }
                         break;
                     }
@@ -675,6 +763,8 @@ bool Verifier::verify(const Module &m, std::ostream &err)
                 err << fn.name << ":" << bb.label << ": missing terminator\n";
                 ok = false;
             }
+            for (unsigned id : paramIds)
+                temps.erase(id);
         }
 
         // verify referenced labels exist

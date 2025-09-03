@@ -170,7 +170,7 @@ Strings are ref-counted (implementation detail).
 ## Memory model
 IL has no concurrency in v0.1.2. Pointers are plain addresses; no aliasing rules beyond load/store types. `alloca` memory is zero-initialized and lives until the function returns. Loads and stores to `null` or misaligned addresses trap.
 
-## Verifier rules
+## Verifier obligations
 - First block is entry; every block ends with one terminator
 - All referenced labels exist in the same function
 - Operand and result types match instruction signatures
@@ -178,7 +178,18 @@ IL has no concurrency in v0.1.2. Pointers are plain addresses; no aliasing rules
 - `load`/`store` use `ptr` operands and non-void types
 - `alloca` size is `i64` (non-negative if constant)
 - Temporaries are defined before use within a block (dominance across blocks deferred)
-- `br`/`cbr` pass args matching block parameter arity and types
+- Block parameters have unique names per block, non-void types, and are visible only within their block
+- `br`/`cbr` pass arguments matching target block parameter counts and types; `%c` in `cbr` is `i1`
+
+Example diagnostics:
+
+```text
+L(%x: i64, %x: i64):
+              ^ duplicate param %x
+
+br L(1.0)
+       ^ arg type mismatch: expected i64, got f64
+```
 
 ## Text grammar (EBNF)
 ```ebnf
