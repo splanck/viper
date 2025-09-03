@@ -92,6 +92,9 @@ class Lowerer
     bool usedStrEq{false};
     bool boundsChecks{false};
     unsigned boundsCheckId{0};
+    bool addedRtToInt{false};
+    bool addedRtIntToStr{false};
+    bool addedRtF64ToStr{false};
 };
 
 } // namespace il::frontends::basic

@@ -40,6 +40,10 @@ target_link_libraries(test_rt_string_invalid PRIVATE rt)
 add_test(NAME test_rt_string_invalid COMMAND test_rt_string_invalid)
 set_tests_properties(test_rt_string_invalid PROPERTIES WILL_FAIL TRUE)
 
+add_executable(test_rt_conv unit/test_rt_conv.cpp)
+target_link_libraries(test_rt_conv PRIVATE rt)
+add_test(NAME test_rt_conv COMMAND test_rt_conv)
+
 add_test(NAME vm_strings_example COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DSRC_DIR=${CMAKE_SOURCE_DIR}
@@ -212,6 +216,12 @@ add_test(NAME basic_to_il_strings COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
   -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/strings.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/strings.il
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
+
+add_test(NAME basic_to_il_conversions COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/conversions.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/conversions.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 
 add_test(NAME basic_to_il_float_ops COMMAND ${CMAKE_COMMAND}

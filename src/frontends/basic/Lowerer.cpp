@@ -36,21 +36,108 @@ Module Lowerer::lower(const Program &prog)
     usedStrEq = false;
     arrays.clear();
     boundsCheckId = 0;
+    addedRtToInt = false;
+    addedRtIntToStr = false;
+    addedRtF64ToStr = false;
 
     bool needInput = false;
-    bool needToInt = false;
     bool needAlloc = false;
-    for (const auto &s : prog.statements)
+    bool needRtToIntPre = false;
+    bool needRtIntToStrPre = false;
+    bool needRtF64ToStrPre = false;
+
+    std::function<void(const Expr &)> scanExpr = [&](const Expr &e)
     {
-        if (auto *in = dynamic_cast<InputStmt *>(s.get()))
+        if (auto *c = dynamic_cast<const CallExpr *>(&e))
+        {
+            if (c->builtin == CallExpr::Builtin::Val)
+                needRtToIntPre = true;
+            else if (c->builtin == CallExpr::Builtin::Str)
+            {
+                needRtIntToStrPre = true;
+                needRtF64ToStrPre = true;
+            }
+            for (auto &a : c->args)
+                if (a)
+                    scanExpr(*a);
+        }
+        else if (auto *b = dynamic_cast<const BinaryExpr *>(&e))
+        {
+            scanExpr(*b->lhs);
+            scanExpr(*b->rhs);
+        }
+        else if (auto *u = dynamic_cast<const UnaryExpr *>(&e))
+        {
+            scanExpr(*u->expr);
+        }
+        else if (auto *arr = dynamic_cast<const ArrayExpr *>(&e))
+        {
+            scanExpr(*arr->index);
+        }
+    };
+
+    std::function<void(const Stmt &)> scanStmt = [&](const Stmt &s)
+    {
+        if (auto *l = dynamic_cast<const LetStmt *>(&s))
+        {
+            if (l->expr)
+                scanExpr(*l->expr);
+        }
+        else if (auto *p = dynamic_cast<const PrintStmt *>(&s))
+        {
+            for (const auto &it : p->items)
+                if (it.kind == PrintItem::Kind::Expr && it.expr)
+                    scanExpr(*it.expr);
+        }
+        else if (auto *i = dynamic_cast<const IfStmt *>(&s))
+        {
+            if (i->cond)
+                scanExpr(*i->cond);
+            if (i->then_branch)
+                scanStmt(*i->then_branch);
+            for (const auto &ei : i->elseifs)
+            {
+                if (ei.cond)
+                    scanExpr(*ei.cond);
+                if (ei.then_branch)
+                    scanStmt(*ei.then_branch);
+            }
+            if (i->else_branch)
+                scanStmt(*i->else_branch);
+        }
+        else if (auto *w = dynamic_cast<const WhileStmt *>(&s))
+        {
+            scanExpr(*w->cond);
+            for (const auto &st : w->body)
+                scanStmt(*st);
+        }
+        else if (auto *f = dynamic_cast<const ForStmt *>(&s))
+        {
+            scanExpr(*f->start);
+            scanExpr(*f->end);
+            if (f->step)
+                scanExpr(*f->step);
+            for (const auto &st : f->body)
+                scanStmt(*st);
+        }
+        else if (auto *inp = dynamic_cast<const InputStmt *>(&s))
         {
             needInput = true;
-            if (in->var.empty() || in->var.back() != '$')
-                needToInt = true;
+            if (inp->prompt)
+                scanExpr(*inp->prompt);
+            if (inp->var.empty() || inp->var.back() != '$')
+                needRtToIntPre = true;
         }
-        if (dynamic_cast<DimStmt *>(s.get()))
+        else if (auto *d = dynamic_cast<const DimStmt *>(&s))
+        {
             needAlloc = true;
-    }
+            if (d->size)
+                scanExpr(*d->size);
+        }
+    };
+
+    for (const auto &s : prog.statements)
+        scanStmt(*s);
 
     b.addExtern("rt_print_str", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
     b.addExtern("rt_print_i64", Type(Type::Kind::Void), {Type(Type::Kind::I64)});
@@ -63,10 +150,18 @@ Module Lowerer::lower(const Program &prog)
         b.addExtern("rt_trap", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
     if (needInput)
         b.addExtern("rt_input_line", Type(Type::Kind::Str), {});
-    if (needToInt)
+    if (needRtToIntPre)
         b.addExtern("rt_to_int", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
+    if (needRtIntToStrPre)
+        b.addExtern("rt_int_to_str", Type(Type::Kind::Str), {Type(Type::Kind::I64)});
+    if (needRtF64ToStrPre)
+        b.addExtern("rt_f64_to_str", Type(Type::Kind::Str), {Type(Type::Kind::F64)});
     if (needAlloc)
         b.addExtern("rt_alloc", Type(Type::Kind::Ptr), {Type(Type::Kind::I64)});
+
+    addedRtToInt = needRtToIntPre;
+    addedRtIntToStr = needRtIntToStrPre;
+    addedRtF64ToStr = needRtF64ToStrPre;
 
     Function &f = b.startFunction("main", Type(Type::Kind::I64), {});
     func = &f;
@@ -507,6 +602,71 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             Value res = emitCallRet(Type(Type::Kind::Str), "rt_substr", {s.value, start, n.value});
             return {res, Type(Type::Kind::Str)};
         }
+        else if (c->builtin == CallExpr::Builtin::Str)
+        {
+            RVal v = lowerExpr(*c->args[0]);
+            curLoc = expr.loc;
+            if (v.type.kind == Type::Kind::I64)
+            {
+                if (!addedRtIntToStr)
+                {
+                    builder->addExtern(
+                        "rt_int_to_str", Type(Type::Kind::Str), {Type(Type::Kind::I64)});
+                    addedRtIntToStr = true;
+                }
+                Value res = emitCallRet(Type(Type::Kind::Str), "rt_int_to_str", {v.value});
+                return {res, Type(Type::Kind::Str)};
+            }
+            else
+            {
+                if (v.type.kind == Type::Kind::I1)
+                    v.value = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), v.value);
+                if (v.type.kind == Type::Kind::I64)
+                {
+                    if (!addedRtIntToStr)
+                    {
+                        builder->addExtern(
+                            "rt_int_to_str", Type(Type::Kind::Str), {Type(Type::Kind::I64)});
+                        addedRtIntToStr = true;
+                    }
+                    Value res = emitCallRet(Type(Type::Kind::Str), "rt_int_to_str", {v.value});
+                    return {res, Type(Type::Kind::Str)};
+                }
+                if (!addedRtF64ToStr)
+                {
+                    builder->addExtern(
+                        "rt_f64_to_str", Type(Type::Kind::Str), {Type(Type::Kind::F64)});
+                    addedRtF64ToStr = true;
+                }
+                Value res = emitCallRet(Type(Type::Kind::Str), "rt_f64_to_str", {v.value});
+                return {res, Type(Type::Kind::Str)};
+            }
+        }
+        else if (c->builtin == CallExpr::Builtin::Val)
+        {
+            RVal s = lowerExpr(*c->args[0]);
+            curLoc = expr.loc;
+            if (!addedRtToInt)
+            {
+                builder->addExtern("rt_to_int", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
+                addedRtToInt = true;
+            }
+            Value res = emitCallRet(Type(Type::Kind::I64), "rt_to_int", {s.value});
+            return {res, Type(Type::Kind::I64)};
+        }
+        else if (c->builtin == CallExpr::Builtin::Int)
+        {
+            RVal f = lowerExpr(*c->args[0]);
+            if (f.type.kind == Type::Kind::I64)
+            {
+                curLoc = expr.loc;
+                f.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), f.value);
+                f.type = Type(Type::Kind::F64);
+            }
+            curLoc = expr.loc;
+            Value res = emitUnary(Opcode::Fptosi, Type(Type::Kind::I64), f.value);
+            return {res, Type(Type::Kind::I64)};
+        }
     }
     else if (auto *a = dynamic_cast<const ArrayExpr *>(&expr))
     {
@@ -893,6 +1053,11 @@ void Lowerer::lowerInput(const InputStmt &stmt)
     }
     else
     {
+        if (!addedRtToInt)
+        {
+            builder->addExtern("rt_to_int", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
+            addedRtToInt = true;
+        }
         Value n = emitCallRet(Type(Type::Kind::I64), "rt_to_int", {s});
         emitStore(Type(Type::Kind::I64), target, n);
     }

@@ -526,7 +526,8 @@ ExprPtr Parser::parsePrimary()
         advance();
         if (consume(TokenKind::LParen))
         {
-            if (name == "LEN" || name == "MID$" || name == "LEFT$" || name == "RIGHT$")
+            if (name == "LEN" || name == "MID$" || name == "LEFT$" || name == "RIGHT$" ||
+                name == "STR$" || name == "VAL" || name == "INT")
             {
                 std::vector<ExprPtr> args;
                 if (!check(TokenKind::RParen))
@@ -548,8 +549,14 @@ ExprPtr Parser::parsePrimary()
                     call->builtin = CallExpr::Builtin::Mid;
                 else if (name == "LEFT$")
                     call->builtin = CallExpr::Builtin::Left;
-                else
+                else if (name == "RIGHT$")
                     call->builtin = CallExpr::Builtin::Right;
+                else if (name == "STR$")
+                    call->builtin = CallExpr::Builtin::Str;
+                else if (name == "VAL")
+                    call->builtin = CallExpr::Builtin::Val;
+                else
+                    call->builtin = CallExpr::Builtin::Int;
                 call->args = std::move(args);
                 return call;
             }
