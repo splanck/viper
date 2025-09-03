@@ -33,4 +33,14 @@ std::vector<il::core::Block *> successors(const il::core::Block &B);
 /// @return List of predecessor blocks (may be empty).
 std::vector<il::core::Block *> predecessors(const il::core::Function &F, const il::core::Block &B);
 
+/// @brief Compute DFS post-order of blocks in @p F starting from the entry block.
+/// @param F Function whose blocks are traversed.
+/// @return Blocks in post-order; the entry block is last.
+std::vector<il::core::Block *> postOrder(il::core::Function &F);
+
+/// @brief Compute reverse post-order (RPO) of blocks in @p F.
+/// @param F Function whose blocks are traversed.
+/// @return Blocks in RPO; the entry block is first.
+std::vector<il::core::Block *> reversePostOrder(il::core::Function &F);
+
 } // namespace viper::analysis
