@@ -25,6 +25,7 @@ struct Instr
     std::vector<Value> operands;
     std::string callee;              ///< for call
     std::vector<std::string> labels; ///< for branch targets
+    unsigned tArgCount = 0;          ///< true branch arg count for CBr
     il::support::SourceLoc loc;      ///< source location
 };
 

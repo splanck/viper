@@ -47,11 +47,45 @@ class IRBuilder
     /// @return Reference to created function.
     Function &startFunction(const std::string &name, Type ret, const std::vector<Param> &params);
 
+    /// @brief Definition for a block parameter.
+    struct ParamDef
+    {
+        std::string name;
+        Type type;
+    };
+
     /// @brief Append a basic block with label @p label to @p fn.
     /// @param fn Function receiving the block.
     /// @param label Block label.
+    /// @param params Optional block parameters.
     /// @return Reference to new block.
-    BasicBlock &addBlock(Function &fn, const std::string &label);
+    BasicBlock &addBlock(Function &fn,
+                         const std::string &label,
+                         const std::vector<ParamDef> &params = {});
+
+    /// @brief Get value for parameter @p idx of block @p bb.
+    /// @param bb Block containing the parameter.
+    /// @param idx Index of parameter.
+    /// @return Value referencing the parameter.
+    Value blockParam(BasicBlock &bb, unsigned idx);
+
+    /// @brief Emit unconditional branch to @p dst with arguments @p args.
+    /// @param dst Destination block.
+    /// @param args Argument values matching dst params.
+    void br(BasicBlock &dst, const std::vector<Value> &args, il::support::SourceLoc loc);
+
+    /// @brief Emit conditional branch based on @p cond.
+    /// @param cond Condition value.
+    /// @param t True target block and arguments.
+    /// @param targs Arguments for true target.
+    /// @param f False target block and arguments.
+    /// @param fargs Arguments for false target.
+    void cbr(Value cond,
+             BasicBlock &t,
+             const std::vector<Value> &targs,
+             BasicBlock &f,
+             const std::vector<Value> &fargs,
+             il::support::SourceLoc loc);
 
     /// @brief Set current insertion point to block @p bb.
     /// @param bb Target block.

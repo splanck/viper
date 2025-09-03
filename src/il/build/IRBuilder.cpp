@@ -35,10 +35,58 @@ Function &IRBuilder::startFunction(const std::string &name,
     return *curFunc;
 }
 
-BasicBlock &IRBuilder::addBlock(Function &fn, const std::string &label)
+BasicBlock &IRBuilder::addBlock(Function &fn,
+                                const std::string &label,
+                                const std::vector<ParamDef> &params)
 {
-    fn.blocks.push_back({label, {}, false});
+    BasicBlock bb;
+    bb.label = label;
+    for (const auto &p : params)
+    {
+        bb.params.push_back({p.name, p.type, nextTemp++});
+    }
+    fn.blocks.push_back(std::move(bb));
     return fn.blocks.back();
+}
+
+Value IRBuilder::blockParam(BasicBlock &bb, unsigned idx)
+{
+    assert(idx < bb.params.size() && "param index out of range");
+    return Value::temp(bb.params[idx].id);
+}
+
+void IRBuilder::br(BasicBlock &dst, const std::vector<Value> &args, il::support::SourceLoc loc)
+{
+    assert(args.size() == dst.params.size() && "branch arg count mismatch");
+    Instr instr;
+    instr.op = Opcode::Br;
+    instr.type = Type(Type::Kind::Void);
+    instr.labels.push_back(dst.label);
+    instr.operands = args;
+    instr.loc = loc;
+    append(std::move(instr));
+}
+
+void IRBuilder::cbr(Value cond,
+                    BasicBlock &t,
+                    const std::vector<Value> &targs,
+                    BasicBlock &f,
+                    const std::vector<Value> &fargs,
+                    il::support::SourceLoc loc)
+{
+    assert(targs.size() == t.params.size() && "true branch arg count mismatch");
+    assert(fargs.size() == f.params.size() && "false branch arg count mismatch");
+    Instr instr;
+    instr.op = Opcode::CBr;
+    instr.type = Type(Type::Kind::Void);
+    instr.operands.push_back(cond);
+    instr.operands.insert(instr.operands.end(), targs.begin(), targs.end());
+    instr.operands.insert(instr.operands.end(), fargs.begin(), fargs.end());
+    instr.labels.push_back(t.label);
+    instr.labels.push_back(f.label);
+    instr.tArgCount = targs.size();
+    instr.loc = loc;
+    append(std::move(instr));
 }
 
 void IRBuilder::setInsertPoint(BasicBlock &bb)

@@ -13,6 +13,10 @@ target_link_libraries(test_il_serialize PRIVATE il_core il_build il_io support)
 target_compile_definitions(test_il_serialize PRIVATE TESTS_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_test(NAME test_il_serialize COMMAND test_il_serialize)
 
+add_executable(test_il_block_params unit/test_il_block_params.cpp)
+target_link_libraries(test_il_block_params PRIVATE il_core il_build support)
+add_test(NAME test_il_block_params COMMAND test_il_block_params)
+
 add_executable(test_il_roundtrip unit/test_il_roundtrip.cpp)
 target_link_libraries(test_il_roundtrip PRIVATE il_core il_io il_verify support)
 target_compile_definitions(test_il_roundtrip PRIVATE EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/docs/examples")
