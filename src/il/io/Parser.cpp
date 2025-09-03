@@ -177,7 +177,7 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
             if (line.back() == ':' && line.find(' ') == std::string::npos)
             {
                 std::string label = line.substr(0, line.size() - 1);
-                curFn->blocks.push_back({label, {}, false});
+                curFn->blocks.push_back({label, {}, {}, false});
                 curBB = &curFn->blocks.back();
                 continue;
             }
