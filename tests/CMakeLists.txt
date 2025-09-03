@@ -135,6 +135,12 @@ add_test(NAME basic_ast_ex2 COMMAND ${CMAKE_COMMAND}
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/ex2_sum_1_to_10.ast
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/check_ast.cmake)
 
+add_test(NAME basic_ast_divmod_precedence COMMAND ${CMAKE_COMMAND}
+  -DBASIC_AST_DUMP=${BASIC_AST_DUMP}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/divmod_precedence.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/divmod_precedence.ast
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/check_ast.cmake)
+
 set(BASIC_ILC $<TARGET_FILE:ilc>)
 add_test(NAME basic_to_il_ex1 COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}

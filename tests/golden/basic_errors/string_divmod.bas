@@ -1,0 +1,3 @@
+10 PRINT "A" \ 1
+20 PRINT "B" MOD 1
+30 END

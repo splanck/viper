@@ -75,6 +75,10 @@ Legend: `→` result type. Traps denote runtime errors.
 | `srem` | `i64, i64` | `i64` | divisor = 0 |
 | `urem` | `i64, i64` | `i64` | divisor = 0 |
 
+`sdiv` and `srem` follow C semantics: the quotient is truncated toward zero and
+the remainder has the sign of the dividend. Front ends like BASIC map `\` to
+`sdiv` and `MOD` to `srem`.
+
 ### Bitwise and shifts
 | Instruction | Operands | Result | Traps |
 |-------------|----------|--------|-------|

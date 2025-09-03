@@ -63,6 +63,8 @@ struct BinaryExpr : Expr
         Sub,
         Mul,
         Div,
+        IDiv,
+        Mod,
         Eq,
         Ne,
         Lt,
