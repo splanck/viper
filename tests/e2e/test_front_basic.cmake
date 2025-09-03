@@ -177,3 +177,24 @@ file(READ run_strcmp.txt RSC)
 if(NOT RSC STREQUAL "1\n2\n")
   message(FATAL_ERROR "unexpected ex_str_cmp output: ${RSC}")
 endif()
+
+# test string intrinsics edge cases
+set(tmp_str_bas "${CMAKE_BINARY_DIR}/string_intrinsics.bas")
+file(WRITE ${tmp_str_bas} "10 PRINT MID$(\"HELLO\",0,2)\n"
+                          "20 PRINT MID$(\"HELLO\",1,2)\n"
+                          "30 PRINT LEN(MID$(\"HELLO\",6,2))\n"
+                          "40 PRINT LEN(MID$(\"HELLO\",1,-1))\n"
+                          "50 PRINT MID$(\"HELLO\",1,99)\n"
+                          "60 PRINT LEN(LEFT$(\"HELLO\",0))\n"
+                          "70 PRINT LEN(RIGHT$(\"HELLO\",0))\n"
+                          "80 PRINT LEFT$(\"HELLO\",99)\n"
+                          "90 PRINT RIGHT$(\"HELLO\",99)\n")
+execute_process(COMMAND ${ILC} front basic -run ${tmp_str_bas}
+                OUTPUT_FILE run_str_intr.txt RESULT_VARIABLE rsi)
+if(NOT rsi EQUAL 0)
+  message(FATAL_ERROR "execution string_intrinsics failed")
+endif()
+file(READ run_str_intr.txt RSI)
+if(NOT RSI STREQUAL "HE\nHE\n0\n0\nHELLO\n0\n0\nHELLO\nHELLO\n")
+  message(FATAL_ERROR "unexpected string_intrinsics output: ${RSI}")
+endif()

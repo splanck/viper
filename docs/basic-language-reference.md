@@ -88,11 +88,18 @@ compile-time error:
 
 ### Built-in functions
 
-| Function         | Signature               | Notes           |
-| ---------------- | ----------------------- | --------------- | ----------- | ------------------------ |
-| `LEN(s$)`        | `str → i64`             | length in bytes |
-| `MID$(s$, i, l)` | `str × i64 × i64 → str` | 1-based index;  |
-| length clamped   |                         | `VAL(s$)`       | `str → i64` | traps on invalid numeric |
+| Function          | Signature                    | Notes |
+| ----------------- | ---------------------------- | ----- |
+| `LEN(s$)`         | `str → i64`                  | length in bytes |
+| `MID$(s$, i [,n])`| `str × i64 × i64? → str`     | 1-based start; `n` optional |
+| `LEFT$(s$, n)`    | `str × i64 → str`            | `MID$(s$, 1, n)` |
+| `RIGHT$(s$, n)`   | `str × i64 → str`            | `MID$(s$, LEN(s$)-n+1, n)` |
+| `VAL(s$)`         | `str → i64`                  | traps on invalid numeric |
+
+Indices are 1-based. `MID$` treats `i <= 0` as `1` and returns an empty string when
+`i > LEN(s$)`. Omitting `n` extracts to the end of the string. Counts `n <= 0`
+yield empty strings and values exceeding the available length are clamped.
+`LEFT$`/`RIGHT$` clamp `n` to `[0, LEN(s$)]` before slicing.
 
     ##Statements | Statement | Meaning | | -- -- -- -- -- -| -- -- -- -- -|
     | `LET v = expr` | assign to variable `v` (auto - declare) |

@@ -146,6 +146,20 @@ int64_t VM::execFunction(const Function &fn)
                 }
                 break;
             }
+            case Opcode::Sub:
+            {
+                Slot a = eval(fr, in.operands[0]);
+                Slot b = eval(fr, in.operands[1]);
+                Slot res{};
+                res.i64 = a.i64 - b.i64;
+                if (in.result)
+                {
+                    if (fr.regs.size() <= *in.result)
+                        fr.regs.resize(*in.result + 1);
+                    fr.regs[*in.result] = res;
+                }
+                break;
+            }
             case Opcode::Mul:
             {
                 Slot a = eval(fr, in.operands[0]);
