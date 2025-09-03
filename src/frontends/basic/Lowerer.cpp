@@ -278,6 +278,10 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
     {
         return {Value::constInt(i->value), Type(Type::Kind::I64)};
     }
+    else if (auto *f = dynamic_cast<const FloatExpr *>(&expr))
+    {
+        return {Value::constFloat(f->value), Type(Type::Kind::F64)};
+    }
     else if (auto *s = dynamic_cast<const StringExpr *>(&expr))
     {
         std::string lbl = getStringLabel(s->value);
@@ -290,7 +294,9 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
         assert(it != varSlots.end());
         Value ptr = Value::temp(it->second);
         bool isStr = !v->name.empty() && v->name.back() == '$';
-        Type ty = isStr ? Type(Type::Kind::Str) : Type(Type::Kind::I64);
+        bool isF64 = !v->name.empty() && v->name.back() == '#';
+        Type ty =
+            isStr ? Type(Type::Kind::Str) : (isF64 ? Type(Type::Kind::F64) : Type(Type::Kind::I64));
         Value val = emitLoad(ty, ptr);
         return {val, ty};
     }
@@ -393,21 +399,32 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             }
             return {eq, Type(Type::Kind::I1)};
         }
+        if (lhs.type.kind == Type::Kind::I64 && rhs.type.kind == Type::Kind::F64)
+        {
+            lhs.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), lhs.value);
+            lhs.type = Type(Type::Kind::F64);
+        }
+        else if (lhs.type.kind == Type::Kind::F64 && rhs.type.kind == Type::Kind::I64)
+        {
+            rhs.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), rhs.value);
+            rhs.type = Type(Type::Kind::F64);
+        }
+        bool isFloat = lhs.type.kind == Type::Kind::F64;
         Opcode op = Opcode::Add;
-        Type ty(Type::Kind::I64);
+        Type ty = isFloat ? Type(Type::Kind::F64) : Type(Type::Kind::I64);
         switch (b->op)
         {
             case BinaryExpr::Op::Add:
-                op = Opcode::Add;
+                op = isFloat ? Opcode::FAdd : Opcode::Add;
                 break;
             case BinaryExpr::Op::Sub:
-                op = Opcode::Sub;
+                op = isFloat ? Opcode::FSub : Opcode::Sub;
                 break;
             case BinaryExpr::Op::Mul:
-                op = Opcode::Mul;
+                op = isFloat ? Opcode::FMul : Opcode::Mul;
                 break;
             case BinaryExpr::Op::Div:
-                op = Opcode::SDiv;
+                op = isFloat ? Opcode::FDiv : Opcode::SDiv;
                 break;
             case BinaryExpr::Op::IDiv:
                 op = Opcode::SDiv;
@@ -416,27 +433,27 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
                 op = Opcode::SRem;
                 break;
             case BinaryExpr::Op::Eq:
-                op = Opcode::ICmpEq;
+                op = isFloat ? Opcode::FCmpEQ : Opcode::ICmpEq;
                 ty = Type(Type::Kind::I1);
                 break;
             case BinaryExpr::Op::Ne:
-                op = Opcode::ICmpNe;
+                op = isFloat ? Opcode::FCmpNE : Opcode::ICmpNe;
                 ty = Type(Type::Kind::I1);
                 break;
             case BinaryExpr::Op::Lt:
-                op = Opcode::SCmpLT;
+                op = isFloat ? Opcode::FCmpLT : Opcode::SCmpLT;
                 ty = Type(Type::Kind::I1);
                 break;
             case BinaryExpr::Op::Le:
-                op = Opcode::SCmpLE;
+                op = isFloat ? Opcode::FCmpLE : Opcode::SCmpLE;
                 ty = Type(Type::Kind::I1);
                 break;
             case BinaryExpr::Op::Gt:
-                op = Opcode::SCmpGT;
+                op = isFloat ? Opcode::FCmpGT : Opcode::SCmpGT;
                 ty = Type(Type::Kind::I1);
                 break;
             case BinaryExpr::Op::Ge:
-                op = Opcode::SCmpGE;
+                op = isFloat ? Opcode::FCmpGE : Opcode::SCmpGE;
                 ty = Type(Type::Kind::I1);
                 break;
             case BinaryExpr::Op::And:
@@ -510,6 +527,7 @@ void Lowerer::lowerLet(const LetStmt &stmt)
         auto it = varSlots.find(var->name);
         assert(it != varSlots.end());
         bool isStr = !var->name.empty() && var->name.back() == '$';
+        bool isF64 = !var->name.empty() && var->name.back() == '#';
         if (!isStr && v.type.kind == Type::Kind::I1)
         {
             curLoc = stmt.loc;
@@ -517,8 +535,21 @@ void Lowerer::lowerLet(const LetStmt &stmt)
             v.value = z;
             v.type = Type(Type::Kind::I64);
         }
+        if (isF64 && v.type.kind == Type::Kind::I64)
+        {
+            curLoc = stmt.loc;
+            v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
+            v.type = Type(Type::Kind::F64);
+        }
+        else if (!isStr && !isF64 && v.type.kind == Type::Kind::F64)
+        {
+            curLoc = stmt.loc;
+            v.value = emitUnary(Opcode::Fptosi, Type(Type::Kind::I64), v.value);
+            v.type = Type(Type::Kind::I64);
+        }
         curLoc = stmt.loc;
-        Type ty = isStr ? Type(Type::Kind::Str) : Type(Type::Kind::I64);
+        Type ty =
+            isStr ? Type(Type::Kind::Str) : (isF64 ? Type(Type::Kind::F64) : Type(Type::Kind::I64));
         emitStore(ty, Value::temp(it->second), v.value);
     }
     else if (auto *arr = dynamic_cast<const ArrayExpr *>(stmt.target.get()))

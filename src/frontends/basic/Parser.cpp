@@ -493,8 +493,17 @@ ExprPtr Parser::parsePrimary()
 {
     if (check(TokenKind::Number))
     {
-        int v = std::atoi(current_.lexeme.c_str());
         auto loc = current_.loc;
+        std::string lex = current_.lexeme;
+        if (lex.find_first_of(".Ee") != std::string::npos)
+        {
+            auto e = std::make_unique<FloatExpr>();
+            e->loc = loc;
+            e->value = std::strtod(lex.c_str(), nullptr);
+            advance();
+            return e;
+        }
+        int v = std::atoi(lex.c_str());
         auto e = std::make_unique<IntExpr>();
         e->loc = loc;
         e->value = v;
