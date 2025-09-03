@@ -32,10 +32,11 @@ using namespace il::support;
 static void usage()
 {
     std::cerr << "ilc v0.1.0\n"
-              << "Usage: ilc -run <file.il> [--trace] [--stdin-from <file>] [--max-steps N]\n"
-              << "       ilc front basic -emit-il <file.bas>\n"
+              << "Usage: ilc -run <file.il> [--trace] [--stdin-from <file>] [--max-steps N]"
+                 " [--bounds-checks]\n"
+              << "       ilc front basic -emit-il <file.bas> [--bounds-checks]\n"
               << "       ilc front basic -run <file.bas> [--trace] [--stdin-from <file>] "
-                 "[--max-steps N]\n"
+                 "[--max-steps N] [--bounds-checks]\n"
               << "       ilc il-opt <in.il> -o <out.il> --passes p1,p2\n";
 }
 
@@ -74,6 +75,9 @@ int main(int argc, char **argv)
             else if (arg == "--max-steps" && i + 1 < argc)
             {
                 maxSteps = std::stoull(argv[++i]);
+            }
+            else if (arg == "--bounds-checks")
+            {
             }
             else
             {
@@ -178,6 +182,7 @@ int main(int argc, char **argv)
             std::string file;
             std::string stdinPath;
             uint64_t maxSteps = 0;
+            bool boundsChecks = false;
             for (int i = 3; i < argc; ++i)
             {
                 std::string arg = argv[i];
@@ -202,6 +207,10 @@ int main(int argc, char **argv)
                 else if (arg == "--max-steps" && i + 1 < argc)
                 {
                     maxSteps = std::stoull(argv[++i]);
+                }
+                else if (arg == "--bounds-checks")
+                {
+                    boundsChecks = true;
                 }
                 else
                 {
@@ -239,7 +248,7 @@ int main(int argc, char **argv)
                 em.printAll(std::cerr);
                 return 1;
             }
-            Lowerer lower;
+            Lowerer lower(boundsChecks);
             core::Module m = lower.lower(*prog);
 
             if (emitIl)
