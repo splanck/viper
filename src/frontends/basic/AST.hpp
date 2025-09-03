@@ -97,7 +97,10 @@ struct CallExpr : Expr
         Sqr,
         Abs,
         Floor,
-        Ceil
+        Ceil,
+        Sin,
+        Cos,
+        Pow
     } builtin;
     std::vector<ExprPtr> args;
 };
