@@ -124,6 +124,11 @@ add_test(NAME basic_math_phase2 COMMAND ${CMAKE_COMMAND}
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/basic_math_phase2.bas.out
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_basic_math_phase1.cmake)
 
+add_test(NAME basic_random_repro COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DSRC_DIR=${CMAKE_SOURCE_DIR}
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_basic_random_repro.cmake)
+
 add_test(NAME il_opt_equiv COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DIL_FILE=${CMAKE_SOURCE_DIR}/tests/golden/il_opt/e2e.in.il
@@ -348,6 +353,16 @@ add_test(NAME basic_to_il_bounds_checks COMMAND ${CMAKE_COMMAND}
   -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/bounds_check.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/bounds_check.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il_bounds.cmake)
+add_test(NAME basic_to_il_randomize COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/randomize.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/randomize.il
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
+add_test(NAME basic_to_il_rnd COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/rnd.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/rnd.il
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 
 add_subdirectory(golden)
 

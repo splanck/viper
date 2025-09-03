@@ -60,6 +60,10 @@ std::string AstPrinter::dump(const Stmt &stmt)
     {
         return "(DIM " + d->name + " " + dump(*d->size) + ")";
     }
+    else if (auto *r = dynamic_cast<const RandomizeStmt *>(&stmt))
+    {
+        return "(RANDOMIZE " + dump(*r->seed) + ")";
+    }
     else if (auto *i = dynamic_cast<const IfStmt *>(&stmt))
     {
         std::string res = "(IF " + dump(*i->cond) + " THEN " + dump(*i->then_branch);
@@ -238,6 +242,9 @@ std::string AstPrinter::dump(const Expr &expr)
                 break;
             case CallExpr::Builtin::Pow:
                 name = "POW";
+                break;
+            case CallExpr::Builtin::Rnd:
+                name = "RND";
                 break;
         }
         std::string res = "(" + name;

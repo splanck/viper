@@ -57,6 +57,7 @@ class Lowerer
     void lowerEnd(const EndStmt &stmt);
     void lowerInput(const InputStmt &stmt);
     void lowerDim(const DimStmt &stmt);
+    void lowerRandomize(const RandomizeStmt &stmt);
 
     // helpers
     Value emitAlloca(int bytes);
@@ -103,6 +104,8 @@ class Lowerer
     bool addedRtSin{false};
     bool addedRtCos{false};
     bool addedRtPow{false};
+    bool addedRtRandomize{false};
+    bool addedRtRnd{false};
 };
 
 } // namespace il::frontends::basic
