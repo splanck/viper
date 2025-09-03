@@ -22,6 +22,10 @@ namespace il::frontends::basic
 class Lowerer
 {
   public:
+    /// @brief Construct a lowerer.
+    /// @param boundsChecks Enable debug array bounds checks.
+    explicit Lowerer(bool boundsChecks = false);
+
     /// @brief Lower @p prog into an IL module with @main entry.
     il::core::Module lower(const Program &prog);
 
@@ -80,10 +84,14 @@ class Lowerer
     NameMangler mangler;
     std::unordered_map<int, size_t> lineBlocks;
     std::unordered_map<std::string, unsigned> varSlots;
+    std::unordered_map<std::string, unsigned> arrayLenSlots;
     std::unordered_map<std::string, std::string> strings;
     std::unordered_set<std::string> vars;
+    std::unordered_set<std::string> arrays;
     il::support::SourceLoc curLoc{}; ///< current source location for emitted IR
     bool usedStrEq{false};
+    bool boundsChecks{false};
+    unsigned boundsCheckId{0};
 };
 
 } // namespace il::frontends::basic

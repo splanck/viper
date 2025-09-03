@@ -208,6 +208,12 @@ add_test(NAME basic_to_il_strings COMMAND ${CMAKE_COMMAND}
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/strings.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 
+add_test(NAME basic_to_il_bounds_checks COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/bounds_check.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/bounds_check.il
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il_bounds.cmake)
+
 add_subdirectory(golden)
 
 set(CODEGEN_E2E ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_codegen.cmake)

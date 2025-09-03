@@ -169,6 +169,13 @@ all variables are local to `@main`.
 `DIM` arrays store `i64` elements with 0 -
 based indices.
 
+### Optional debug bounds checks
+
+`ilc` can insert runtime bounds checks for `DIM` arrays when invoked with
+`--bounds-checks`. Accessing an index less than 0 or greater than or equal to
+the declared length traps with `bounds check failed: A[i]`. The checks are
+omitted by default and have no effect on program layout.
+
         ##Errors &diagnostics Compile -
         time errors report syntax or
     type issues.Runtime traps include division by zero,
