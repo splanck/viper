@@ -24,7 +24,9 @@ struct Instr
     Type type; ///< result type (or void)
     std::vector<Value> operands;
     std::string callee;              ///< for call
-    std::vector<std::string> labels; ///< for branch targets
+    std::vector<std::string> labels; ///< branch target labels
+    std::vector<Value> targs;        ///< true branch or br arguments
+    std::vector<Value> fargs;        ///< false branch arguments
     il::support::SourceLoc loc;      ///< source location
 };
 

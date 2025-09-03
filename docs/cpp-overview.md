@@ -93,8 +93,8 @@ SourceLoc loc; // optional metadata
 
 - BasicBlock / Function / Module
 
-struct BasicBlock { Symbol name; std::vector<Instr> instrs; };
-struct Param { Symbol name; Type type; };
+struct BasicBlock { Symbol name; std::vector<Param> params; std::vector<Instr> instrs; };
+struct Param { Symbol name; Type type; unsigned id; };
 struct Function {
 Symbol name; std::vector<Param> params; Type ret;
 std::vector<BasicBlock> blocks; AttrMask attrs; Visibility vis;

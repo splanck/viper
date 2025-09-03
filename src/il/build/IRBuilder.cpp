@@ -28,17 +28,66 @@ Function &IRBuilder::startFunction(const std::string &name,
                                    Type ret,
                                    const std::vector<Param> &params)
 {
-    mod.functions.push_back({name, ret, params, {}});
+    mod.functions.push_back({name, ret, {}, {}});
     curFunc = &mod.functions.back();
     curBlock = nullptr;
     nextTemp = 0;
+    curFunc->params.reserve(params.size());
+    for (const auto &p : params)
+    {
+        curFunc->params.push_back({p.name, p.type, nextTemp++});
+    }
     return *curFunc;
 }
 
-BasicBlock &IRBuilder::addBlock(Function &fn, const std::string &label)
+BasicBlock &IRBuilder::addBlock(Function &fn,
+                                const std::string &label,
+                                const std::vector<Param> &params)
 {
-    fn.blocks.push_back({label, {}, false});
+    std::vector<Param> actual;
+    actual.reserve(params.size());
+    for (const auto &p : params)
+    {
+        actual.push_back({p.name, p.type, nextTemp++});
+    }
+    fn.blocks.push_back({label, actual, {}, false});
     return fn.blocks.back();
+}
+
+Value IRBuilder::blockParam(BasicBlock &bb, unsigned idx)
+{
+    assert(idx < bb.params.size());
+    return Value::temp(bb.params[idx].id);
+}
+
+void IRBuilder::br(BasicBlock &dst, const std::vector<Value> &args)
+{
+    assert(dst.params.size() == args.size() && "branch arg count mismatch");
+    Instr instr;
+    instr.op = Opcode::Br;
+    instr.type = Type(Type::Kind::Void);
+    instr.labels.push_back(dst.label);
+    instr.targs = args;
+    append(std::move(instr));
+}
+
+void IRBuilder::cbr(Value cond,
+                    BasicBlock &t,
+                    const std::vector<Value> &targs,
+                    BasicBlock &f,
+                    const std::vector<Value> &fargs)
+{
+    assert(t.params.size() == targs.size() && "true branch arg count mismatch");
+    assert(f.params.size() == fargs.size() && "false branch arg count mismatch");
+    Instr instr;
+    instr.op = Opcode::CBr;
+    instr.type = Type(Type::Kind::Void);
+    instr.operands.push_back(cond);
+    instr.labels.push_back(t.label);
+    instr.labels.push_back(f.label);
+    instr.targs = targs;
+    instr.fargs = fargs;
+    append(std::move(instr));
 }
 
 void IRBuilder::setInsertPoint(BasicBlock &bb)
