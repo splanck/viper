@@ -66,6 +66,7 @@ class Lowerer
     Value emitCallRet(Type ty, const std::string &callee, const std::vector<Value> &args);
     void emitCall(const std::string &callee, const std::vector<Value> &args);
     Value emitConstStr(const std::string &globalName);
+    void emitTrap();
     void emitRet(Value v);
     std::string getStringLabel(const std::string &s);
     unsigned nextTempId();

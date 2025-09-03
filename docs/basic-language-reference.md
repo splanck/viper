@@ -50,13 +50,15 @@ prints:
 
 1. `()`
 2. Unary `NOT`, `+`, `-`
-3. `*`, `/`
+3. `*`, `/`, `\\`, `MOD`
 4. `+`, `-`
 5. Comparisons `= <> < <= > >=`
 6. `AND`
 7. `OR`
 
-Arithmetic is integer based (`/` is integer division; division by zero traps).
+Arithmetic is integer based; `\` performs integer division with quotient
+truncated toward zero, and `MOD` computes the remainder with the same sign as
+the dividend. Division by zero traps at runtime.
 Comparisons require like types (strings only support `=`/`<>`).
 Logical operators short-circuit and return Boolean.
 
@@ -187,7 +189,7 @@ based indices.
           "IF" expr "THEN" stmt("ELSEIF" expr "THEN" stmt) * ("ELSE" stmt)
       ? | "WHILE" expr(NEWLINE | ":") stmt * "WEND" | "FOR" ident "=" expr "TO" expr("STEP" expr)
       ? (NEWLINE | ":") stmt * "NEXT" ident | "GOTO" NUMBER | "END" | "INPUT"(STRING ",")
-      ? ident expr :: = term(("+" | "-") term) *term :: = factor(("*" | "/") factor) *factor :: =
+      ? ident expr :: = term(("+" | "-") term) *term :: = factor(("*" | "/" | "\\" | "MOD") factor) *factor :: =
             NUMBER | STRING | ident | ident "(" expr ")" | "(" expr ")" | ("+" | "-") factor |
             "NOT" factor ident ::
                 = NAME | NAME "$"

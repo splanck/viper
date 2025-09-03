@@ -384,6 +384,8 @@ int Parser::precedence(TokenKind k)
             return 6;
         case TokenKind::Star:
         case TokenKind::Slash:
+        case TokenKind::Backslash:
+        case TokenKind::KeywordMod:
             return 5;
         case TokenKind::Plus:
         case TokenKind::Minus:
@@ -446,6 +448,12 @@ ExprPtr Parser::parseExpression(int min_prec)
                 break;
             case TokenKind::Slash:
                 bin->op = BinaryExpr::Op::Div;
+                break;
+            case TokenKind::Backslash:
+                bin->op = BinaryExpr::Op::IDiv;
+                break;
+            case TokenKind::KeywordMod:
+                bin->op = BinaryExpr::Op::Mod;
                 break;
             case TokenKind::Equal:
                 bin->op = BinaryExpr::Op::Eq;

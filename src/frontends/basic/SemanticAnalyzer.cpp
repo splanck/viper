@@ -285,6 +285,8 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
                 }
                 return Type::Int;
             case BinaryExpr::Op::Div:
+            case BinaryExpr::Op::IDiv:
+            case BinaryExpr::Op::Mod:
                 if ((lt != Type::Unknown && lt != Type::Int) ||
                     (rt != Type::Unknown && rt != Type::Int))
                 {

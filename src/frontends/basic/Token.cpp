@@ -61,6 +61,8 @@ const char *tokenKindToString(TokenKind k)
             return "OR";
         case TokenKind::KeywordNot:
             return "NOT";
+        case TokenKind::KeywordMod:
+            return "MOD";
         case TokenKind::Plus:
             return "+";
         case TokenKind::Minus:
@@ -69,6 +71,8 @@ const char *tokenKindToString(TokenKind k)
             return "*";
         case TokenKind::Slash:
             return "/";
+        case TokenKind::Backslash:
+            return "\\";
         case TokenKind::Equal:
             return "=";
         case TokenKind::NotEqual:

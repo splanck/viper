@@ -126,6 +126,14 @@ static void foldBinary(ExprPtr &e, BinaryExpr *b)
             case BinaryExpr::Op::Mul:
                 replaceWithInt(e, wrapMul(l, r), b->loc);
                 return;
+            case BinaryExpr::Op::IDiv:
+                if (r != 0)
+                    replaceWithInt(e, l / r, b->loc);
+                return;
+            case BinaryExpr::Op::Mod:
+                if (r != 0)
+                    replaceWithInt(e, l % r, b->loc);
+                return;
             case BinaryExpr::Op::Eq:
                 replaceWithInt(e, l == r, b->loc);
                 return;

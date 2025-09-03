@@ -48,6 +48,22 @@ add_test(NAME basic_error_const_div_zero COMMAND ${CMAKE_COMMAND}
   "-DEXPECT=${EXPECT_CONST_DIV_ZERO}"
   -P ${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/check_error.cmake)
 
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/const_divmod_zero.stderr EXPECT_CONST_DIVMOD_ZERO)
+string(STRIP "${EXPECT_CONST_DIVMOD_ZERO}" EXPECT_CONST_DIVMOD_ZERO)
+add_test(NAME basic_error_const_divmod_zero COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/const_divmod_zero.bas
+  "-DEXPECT=${EXPECT_CONST_DIVMOD_ZERO}"
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/check_error.cmake)
+
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/string_divmod.stderr EXPECT_STRING_DIVMOD)
+string(STRIP "${EXPECT_STRING_DIVMOD}" EXPECT_STRING_DIVMOD)
+add_test(NAME basic_error_string_divmod COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/string_divmod.bas
+  "-DEXPECT=${EXPECT_STRING_DIVMOD}"
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/check_error.cmake)
+
 file(READ ${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/bad_string_intrinsics.stderr EXPECT_BAD_STRING_INTRINSICS)
 string(STRIP "${EXPECT_BAD_STRING_INTRINSICS}" EXPECT_BAD_STRING_INTRINSICS)
 add_test(NAME basic_error_bad_string_intrinsics COMMAND ${CMAKE_COMMAND}
