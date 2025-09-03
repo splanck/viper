@@ -137,6 +137,8 @@ Token Lexer::lexIdentifierOrKeyword()
         return {TokenKind::KeywordInput, s, loc};
     if (s == "DIM")
         return {TokenKind::KeywordDim, s, loc};
+    if (s == "RANDOMIZE")
+        return {TokenKind::KeywordRandomize, s, loc};
     if (s == "AND")
         return {TokenKind::KeywordAnd, s, loc};
     if (s == "OR")
@@ -159,6 +161,8 @@ Token Lexer::lexIdentifierOrKeyword()
         return {TokenKind::KeywordCos, s, loc};
     if (s == "POW")
         return {TokenKind::KeywordPow, s, loc};
+    if (s == "RND")
+        return {TokenKind::KeywordRnd, s, loc};
     return {TokenKind::Identifier, s, loc};
 }
 

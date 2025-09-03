@@ -43,6 +43,7 @@ class Parser
     StmtPtr parseEnd();
     StmtPtr parseInput();
     StmtPtr parseDim();
+    StmtPtr parseRandomize();
 
     ExprPtr parseExpression(int min_prec = 0);
     ExprPtr parsePrimary();

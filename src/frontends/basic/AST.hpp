@@ -100,7 +100,8 @@ struct CallExpr : Expr
         Ceil,
         Sin,
         Cos,
-        Pow
+        Pow,
+        Rnd
     } builtin;
     std::vector<ExprPtr> args;
 };
@@ -150,6 +151,12 @@ struct DimStmt : Stmt
 {
     std::string name; ///< Array name.
     ExprPtr size;     ///< Element count expression.
+};
+
+/// @brief RANDOMIZE statement seeding the pseudo-random generator.
+struct RandomizeStmt : Stmt
+{
+    ExprPtr seed; ///< Numeric seed expression, truncated to i64.
 };
 
 /// @brief IF statement with optional ELSEIF chain and ELSE branch.
