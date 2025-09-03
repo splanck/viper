@@ -124,6 +124,12 @@ std::string AstPrinter::dump(const Expr &expr)
     {
         return std::to_string(i->value);
     }
+    else if (auto *f = dynamic_cast<const FloatExpr *>(&expr))
+    {
+        std::ostringstream os;
+        os << f->value;
+        return os.str();
+    }
     else if (auto *s = dynamic_cast<const StringExpr *>(&expr))
     {
         return std::string("\"") + s->value + "\"";

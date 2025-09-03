@@ -45,6 +45,10 @@ Slot RuntimeBridge::call(const std::string &name,
     {
         rt_print_i64(args[0].i64);
     }
+    else if (name == "rt_print_f64")
+    {
+        rt_print_f64(args[0].f64);
+    }
     else if (name == "rt_len")
     {
         res.i64 = rt_len(args[0].str);

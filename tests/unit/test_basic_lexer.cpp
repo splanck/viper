@@ -37,6 +37,14 @@ int main()
         assert(t.kind == TokenKind::Number);
     }
     {
+        std::string src = ".5  X#\n";
+        Lexer lex(src, fid);
+        Token t = lex.next();
+        assert(t.kind == TokenKind::Number && t.lexeme == ".5");
+        t = lex.next();
+        assert(t.kind == TokenKind::Identifier && t.lexeme == "X#");
+    }
+    {
         std::string src = "LEN(\"A\")\n";
         Lexer lex(src, fid);
         Token t = lex.next();

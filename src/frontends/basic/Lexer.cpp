@@ -60,8 +60,33 @@ Token Lexer::lexNumber()
 {
     il::support::SourceLoc loc{file_id_, line_, column_};
     std::string s;
+    bool seenDot = false;
+    bool seenExp = false;
+    if (peek() == '.')
+    {
+        seenDot = true;
+        s.push_back(get());
+    }
     while (std::isdigit(peek()))
         s.push_back(get());
+    if (!seenDot && peek() == '.')
+    {
+        seenDot = true;
+        s.push_back(get());
+        while (std::isdigit(peek()))
+            s.push_back(get());
+    }
+    if ((peek() == 'e' || peek() == 'E'))
+    {
+        seenExp = true;
+        s.push_back(get());
+        if (peek() == '+' || peek() == '-')
+            s.push_back(get());
+        while (std::isdigit(peek()))
+            s.push_back(get());
+    }
+    (void)seenDot;
+    (void)seenExp;
     return {TokenKind::Number, s, loc};
 }
 
@@ -69,7 +94,7 @@ Token Lexer::lexIdentifierOrKeyword()
 {
     il::support::SourceLoc loc{file_id_, line_, column_};
     std::string s;
-    while (std::isalnum(peek()) || peek() == '$')
+    while (std::isalnum(peek()) || peek() == '$' || peek() == '#')
         s.push_back(std::toupper(get()));
     // keywords
     if (s == "PRINT")
@@ -139,7 +164,7 @@ Token Lexer::next()
         get();
         return {TokenKind::EndOfLine, "\n", loc};
     }
-    if (std::isdigit(c))
+    if (std::isdigit(c) || (c == '.' && pos_ + 1 < src_.size() && std::isdigit(src_[pos_ + 1])))
         return lexNumber();
     if (std::isalpha(c))
         return lexIdentifierOrKeyword();

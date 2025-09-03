@@ -178,6 +178,19 @@ if(NOT RSC STREQUAL "1\n2\n")
   message(FATAL_ERROR "unexpected ex_str_cmp output: ${RSC}")
 endif()
 
+# test float arithmetic and printing
+set(tmp_float_bas "${CMAKE_BINARY_DIR}/float_print.bas")
+file(WRITE ${tmp_float_bas} "10 LET X# = 1 + 2.5\n20 PRINT X#\n")
+execute_process(COMMAND ${ILC} front basic -run ${tmp_float_bas}
+                OUTPUT_FILE run_float.txt RESULT_VARIABLE rf)
+if(NOT rf EQUAL 0)
+  message(FATAL_ERROR "execution float failed")
+endif()
+file(READ run_float.txt RF)
+if(NOT RF STREQUAL "3.5\n")
+  message(FATAL_ERROR "unexpected float output: ${RF}")
+endif()
+
 # test string intrinsics edge cases
 set(tmp_str_bas "${CMAKE_BINARY_DIR}/string_intrinsics.bas")
 file(WRITE ${tmp_str_bas} "10 PRINT MID$(\"HELLO\",0,2)\n"
