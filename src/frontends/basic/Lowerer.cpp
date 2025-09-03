@@ -19,6 +19,8 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
+Lowerer::Lowerer(bool boundsChecks) : boundsChecks(boundsChecks) {}
+
 Module Lowerer::lower(const Program &prog)
 {
     Module m;
@@ -29,8 +31,11 @@ Module Lowerer::lower(const Program &prog)
     mangler = NameMangler();
     lineBlocks.clear();
     varSlots.clear();
+    arrayLenSlots.clear();
     strings.clear();
     usedStrEq = false;
+    arrays.clear();
+    boundsCheckId = 0;
 
     bool needInput = false;
     bool needToInt = false;
@@ -54,6 +59,8 @@ Module Lowerer::lower(const Program &prog)
     b.addExtern("rt_substr",
                 Type(Type::Kind::Str),
                 {Type(Type::Kind::Str), Type(Type::Kind::I64), Type(Type::Kind::I64)});
+    if (boundsChecks)
+        b.addExtern("rt_trap", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
     if (needInput)
         b.addExtern("rt_input_line", Type(Type::Kind::Str), {});
     if (needToInt)
@@ -80,6 +87,7 @@ Module Lowerer::lower(const Program &prog)
         lineBlocks[lines[i]] = i + 1;
 
     vars.clear();
+    arrays.clear();
     collectVars(prog);
 
     // allocate slots in entry
@@ -90,6 +98,15 @@ Module Lowerer::lower(const Program &prog)
         curLoc = {};
         Value slot = emitAlloca(8);
         varSlots[v] = slot.id; // Value::temp id
+    }
+    if (boundsChecks)
+    {
+        for (const auto &a : arrays)
+        {
+            curLoc = {};
+            Value slot = emitAlloca(8);
+            arrayLenSlots[a] = slot.id;
+        }
     }
     if (!prog.statements.empty())
     {
@@ -153,6 +170,7 @@ void Lowerer::collectVars(const Program &prog)
         else if (auto *a = dynamic_cast<const ArrayExpr *>(&e))
         {
             vars.insert(a->name);
+            arrays.insert(a->name);
             ex(*a->index);
         }
     };
@@ -211,6 +229,7 @@ void Lowerer::collectVars(const Program &prog)
         else if (auto *d = dynamic_cast<const DimStmt *>(&s))
         {
             vars.insert(d->name);
+            arrays.insert(d->name);
             ex(*d->size);
         }
     };
@@ -857,6 +876,12 @@ void Lowerer::lowerDim(const DimStmt &stmt)
     auto it = varSlots.find(stmt.name);
     assert(it != varSlots.end());
     emitStore(Type(Type::Kind::Ptr), Value::temp(it->second), base);
+    if (boundsChecks)
+    {
+        auto lenIt = arrayLenSlots.find(stmt.name);
+        if (lenIt != arrayLenSlots.end())
+            emitStore(Type(Type::Kind::I64), Value::temp(lenIt->second), sz.value);
+    }
 }
 
 Value Lowerer::lowerArrayAddr(const ArrayExpr &expr)
@@ -867,6 +892,34 @@ Value Lowerer::lowerArrayAddr(const ArrayExpr &expr)
     Value base = emitLoad(Type(Type::Kind::Ptr), slot);
     RVal idx = lowerExpr(*expr.index);
     curLoc = expr.loc;
+    if (boundsChecks)
+    {
+        auto lenIt = arrayLenSlots.find(expr.name);
+        assert(lenIt != arrayLenSlots.end());
+        Value len = emitLoad(Type(Type::Kind::I64), Value::temp(lenIt->second));
+        Value neg = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), idx.value, Value::constInt(0));
+        Value ge = emitBinary(Opcode::SCmpGE, Type(Type::Kind::I1), idx.value, len);
+        Value neg64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), neg);
+        Value ge64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), ge);
+        Value or64 = emitBinary(Opcode::Or, Type(Type::Kind::I64), neg64, ge64);
+        Value cond = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), or64);
+        size_t curIdx = static_cast<size_t>(cur - &func->blocks[0]);
+        size_t okIdx = func->blocks.size();
+        builder->addBlock(*func, mangler.block("bc_ok" + std::to_string(boundsCheckId)));
+        size_t failIdx = func->blocks.size();
+        builder->addBlock(*func, mangler.block("bc_fail" + std::to_string(boundsCheckId)));
+        BasicBlock *ok = &func->blocks[okIdx];
+        BasicBlock *fail = &func->blocks[failIdx];
+        cur = &func->blocks[curIdx];
+        ++boundsCheckId;
+        emitCBr(cond, fail, ok);
+        cur = fail;
+        std::string msg = "bounds check failed: " + expr.name + "[i]";
+        Value s = emitConstStr(getStringLabel(msg));
+        emitCall("rt_trap", {s});
+        emitTrap();
+        cur = ok;
+    }
     Value off = emitBinary(Opcode::Shl, Type(Type::Kind::I64), idx.value, Value::constInt(3));
     Value ptr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), base, off);
     return ptr;
