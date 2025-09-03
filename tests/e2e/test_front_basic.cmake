@@ -211,3 +211,32 @@ file(READ run_str_intr.txt RSI)
 if(NOT RSI STREQUAL "HE\nHE\n0\n0\nHELLO\n0\n0\nHELLO\nHELLO\n")
   message(FATAL_ERROR "unexpected string_intrinsics output: ${RSI}")
 endif()
+
+# test conversions STR$, VAL, INT
+execute_process(COMMAND ${ILC} front basic -run ${SRC_DIR}/docs/examples/basic/ex_conversions.bas
+                OUTPUT_FILE run_conv.txt RESULT_VARIABLE rconv)
+if(NOT rconv EQUAL 0)
+  message(FATAL_ERROR "execution conversions failed")
+endif()
+file(READ run_conv.txt RCONV)
+if(NOT RCONV STREQUAL "42\n1\n-1\n")
+  message(FATAL_ERROR "unexpected conversions output: ${RCONV}")
+endif()
+
+# negative VAL("abc") runtime trap
+set(tmp_val_fail "${CMAKE_BINARY_DIR}/val_fail.bas")
+file(WRITE ${tmp_val_fail} "10 PRINT VAL(\"abc\")\n")
+execute_process(COMMAND ${ILC} front basic -run ${tmp_val_fail}
+                RESULT_VARIABLE rval ERROR_FILE val_err.txt)
+if(rval EQUAL 0)
+  message(FATAL_ERROR "expected VAL failure to trap")
+endif()
+file(READ val_err.txt VERR)
+string(REGEX MATCH "rt_to_int: invalid" _verr1 "${VERR}")
+if(NOT _verr1)
+  message(FATAL_ERROR "missing rt_to_int message: ${VERR}")
+endif()
+string(REGEX MATCH "\\([0-9]+:[0-9]+:[0-9]+\\)" _verr2 "${VERR}")
+if(NOT _verr2)
+  message(FATAL_ERROR "missing caret location: ${VERR}")
+endif()

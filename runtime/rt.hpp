@@ -73,6 +73,16 @@ extern "C"
     /// @return Parsed integer value.
     int64_t rt_to_int(rt_str s);
 
+    /// @brief Convert signed 64-bit integer @p v to decimal string.
+    /// @param v Integer to convert.
+    /// @return Newly allocated string representation.
+    rt_str rt_int_to_str(int64_t v);
+
+    /// @brief Convert 64-bit float @p v to decimal string.
+    /// @param v Float to convert.
+    /// @return Newly allocated string representation.
+    rt_str rt_f64_to_str(double v);
+
     /// @brief Allocate @p bytes of zeroed memory.
     /// @param bytes Number of bytes to allocate.
     /// @return Pointer to zeroed block or trap on failure.
