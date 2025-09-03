@@ -48,6 +48,14 @@ add_test(NAME basic_error_const_div_zero COMMAND ${CMAKE_COMMAND}
   "-DEXPECT=${EXPECT_CONST_DIV_ZERO}"
   -P ${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/check_error.cmake)
 
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/bad_string_intrinsics.stderr EXPECT_BAD_STRING_INTRINSICS)
+string(STRIP "${EXPECT_BAD_STRING_INTRINSICS}" EXPECT_BAD_STRING_INTRINSICS)
+add_test(NAME basic_error_bad_string_intrinsics COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/bad_string_intrinsics.bas
+  "-DEXPECT=${EXPECT_BAD_STRING_INTRINSICS}"
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/check_error.cmake)
+
 file(READ ${CMAKE_CURRENT_SOURCE_DIR}/vm_trap_loc.stderr EXPECT_VM_TRAP_LOC)
 string(STRIP "${EXPECT_VM_TRAP_LOC}" EXPECT_VM_TRAP_LOC)
 add_test(NAME vm_trap_loc COMMAND ${CMAKE_COMMAND}

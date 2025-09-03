@@ -182,7 +182,22 @@ std::string AstPrinter::dump(const Expr &expr)
     }
     else if (auto *c = dynamic_cast<const CallExpr *>(&expr))
     {
-        std::string name = c->builtin == CallExpr::Builtin::Len ? "LEN" : "MID$";
+        std::string name;
+        switch (c->builtin)
+        {
+            case CallExpr::Builtin::Len:
+                name = "LEN";
+                break;
+            case CallExpr::Builtin::Mid:
+                name = "MID$";
+                break;
+            case CallExpr::Builtin::Left:
+                name = "LEFT$";
+                break;
+            case CallExpr::Builtin::Right:
+                name = "RIGHT$";
+                break;
+        }
         std::string res = "(" + name;
         for (auto &a : c->args)
             res += " " + dump(*a);
