@@ -77,6 +77,20 @@ int64_t VM::execFunction(const Function &fn)
             std::cerr << "VM: step limit exceeded (" << maxSteps << "); aborting.\n";
             return 1;
         }
+        if (ip == 0)
+        {
+            for (const auto &p : bb->params)
+            {
+                auto it = fr.params.find(p.id);
+                if (it != fr.params.end())
+                {
+                    if (fr.regs.size() <= p.id)
+                        fr.regs.resize(p.id + 1);
+                    fr.regs[p.id] = it->second;
+                }
+            }
+            fr.params.clear();
+        }
         const Instr &in = bb->instructions[ip];
         if (trace)
             std::cerr << fn.name << ":" << bb->label << ":" << toString(in.op) << "\n";
@@ -447,14 +461,43 @@ int64_t VM::execFunction(const Function &fn)
             case Opcode::CBr:
             {
                 Slot c = eval(fr, in.operands[0]);
-                const std::string &lbl = c.i64 ? in.labels[0] : in.labels[1];
-                bb = blocks[lbl];
+                size_t idx = c.i64 ? 0 : 1;
+                const std::string &lbl = in.labels[idx];
+                const BasicBlock *target = blocks[lbl];
+                if (idx < in.brArgs.size())
+                {
+                    const auto &args = in.brArgs[idx];
+                    if (!args.empty())
+                    {
+                        std::vector<Slot> vals;
+                        vals.reserve(args.size());
+                        for (const auto &op : args)
+                            vals.push_back(eval(fr, op));
+                        const auto &params = target->params;
+                        assert(params.size() == vals.size());
+                        for (size_t i = 0; i < params.size(); ++i)
+                            fr.params[params[i].id] = vals[i];
+                    }
+                }
+                bb = target;
                 ip = 0;
                 continue;
             }
             case Opcode::Br:
             {
-                bb = blocks[in.labels[0]];
+                const BasicBlock *target = blocks[in.labels[0]];
+                if (!in.brArgs.empty() && !in.brArgs[0].empty())
+                {
+                    std::vector<Slot> vals;
+                    vals.reserve(in.brArgs[0].size());
+                    for (const auto &op : in.brArgs[0])
+                        vals.push_back(eval(fr, op));
+                    const auto &params = target->params;
+                    assert(params.size() == vals.size());
+                    for (size_t i = 0; i < params.size(); ++i)
+                        fr.params[params[i].id] = vals[i];
+                }
+                bb = target;
                 ip = 0;
                 continue;
             }
