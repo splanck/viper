@@ -50,8 +50,17 @@ class IRBuilder
     /// @brief Append a basic block with label @p label to @p fn.
     /// @param fn Function receiving the block.
     /// @param label Block label.
+    /// @param params Optional block parameters.
     /// @return Reference to new block.
-    BasicBlock &addBlock(Function &fn, const std::string &label);
+    BasicBlock &addBlock(Function &fn,
+                         const std::string &label,
+                         const std::vector<Param> &params = {});
+
+    /// @brief Obtain value for parameter @p idx of block @p bb.
+    /// @param bb Block containing the parameter.
+    /// @param idx Parameter index.
+    /// @return Temporary value representing the parameter.
+    Value blockParam(const BasicBlock &bb, unsigned idx) const;
 
     /// @brief Set current insertion point to block @p bb.
     /// @param bb Target block.
@@ -68,6 +77,19 @@ class IRBuilder
     void emitCall(const std::string &callee,
                   const std::vector<Value> &args,
                   il::support::SourceLoc loc);
+
+    /// @brief Emit unconditional branch to @p dst with arguments @p args.
+    void emitBr(BasicBlock &dst,
+                const std::vector<Value> &args = {},
+                il::support::SourceLoc loc = {});
+
+    /// @brief Emit conditional branch on @p cond.
+    void emitCBr(Value cond,
+                 BasicBlock &t,
+                 const std::vector<Value> &targs,
+                 BasicBlock &f,
+                 const std::vector<Value> &fargs,
+                 il::support::SourceLoc loc = {});
 
     /// @brief Emit return from current function.
     /// @param v Optional return value.

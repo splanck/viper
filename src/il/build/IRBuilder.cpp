@@ -28,17 +28,31 @@ Function &IRBuilder::startFunction(const std::string &name,
                                    Type ret,
                                    const std::vector<Param> &params)
 {
-    mod.functions.push_back({name, ret, params, {}});
+    nextTemp = 0;
+    std::vector<Param> ps = params;
+    for (auto &p : ps)
+        p.id = nextTemp++;
+    mod.functions.push_back({name, ret, ps, {}});
     curFunc = &mod.functions.back();
     curBlock = nullptr;
-    nextTemp = 0;
     return *curFunc;
 }
 
-BasicBlock &IRBuilder::addBlock(Function &fn, const std::string &label)
+BasicBlock &IRBuilder::addBlock(Function &fn,
+                                const std::string &label,
+                                const std::vector<Param> &params)
 {
-    fn.blocks.push_back({label, {}, false});
+    std::vector<Param> ps = params;
+    for (auto &p : ps)
+        p.id = nextTemp++;
+    fn.blocks.push_back({label, ps, {}, false});
     return fn.blocks.back();
+}
+
+Value IRBuilder::blockParam(const BasicBlock &bb, unsigned idx) const
+{
+    assert(idx < bb.params.size());
+    return Value::temp(bb.params[idx].id);
 }
 
 void IRBuilder::setInsertPoint(BasicBlock &bb)
@@ -85,6 +99,39 @@ void IRBuilder::emitCall(const std::string &callee,
     instr.type = Type(Type::Kind::Void);
     instr.callee = callee;
     instr.operands = args;
+    instr.loc = loc;
+    append(std::move(instr));
+}
+
+void IRBuilder::emitBr(BasicBlock &dst, const std::vector<Value> &args, il::support::SourceLoc loc)
+{
+    assert(args.size() == dst.params.size() && "branch arg count mismatch");
+    Instr instr;
+    instr.op = Opcode::Br;
+    instr.type = Type(Type::Kind::Void);
+    instr.labels.push_back(dst.label);
+    instr.operands = args;
+    instr.loc = loc;
+    append(std::move(instr));
+}
+
+void IRBuilder::emitCBr(Value cond,
+                        BasicBlock &t,
+                        const std::vector<Value> &targs,
+                        BasicBlock &f,
+                        const std::vector<Value> &fargs,
+                        il::support::SourceLoc loc)
+{
+    assert(targs.size() == t.params.size() && "true branch arg count mismatch");
+    assert(fargs.size() == f.params.size() && "false branch arg count mismatch");
+    Instr instr;
+    instr.op = Opcode::CBr;
+    instr.type = Type(Type::Kind::Void);
+    instr.operands.push_back(cond);
+    instr.labels.push_back(t.label);
+    instr.labels.push_back(f.label);
+    instr.operands.insert(instr.operands.end(), targs.begin(), targs.end());
+    instr.operands.insert(instr.operands.end(), fargs.begin(), fargs.end());
     instr.loc = loc;
     append(std::move(instr));
 }

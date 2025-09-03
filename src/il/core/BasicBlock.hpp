@@ -6,6 +6,7 @@
 #pragma once
 
 #include "il/core/Instr.hpp"
+#include "il/core/Param.hpp"
 #include <string>
 #include <vector>
 
@@ -16,7 +17,8 @@ namespace il::core
 struct BasicBlock
 {
     std::string label;
-    std::vector<Instr> instructions;
+    std::vector<Param> params;       ///< Parameters accepted by the block
+    std::vector<Instr> instructions; ///< Instruction sequence
     bool terminated = false;
 };
 

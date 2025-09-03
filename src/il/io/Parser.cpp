@@ -144,6 +144,8 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
                 std::vector<Param> params;
                 std::stringstream pss(paramsStr);
                 std::string p;
+                tempIds.clear();
+                unsigned pid = 0;
                 while (std::getline(pss, p, ','))
                 {
                     p = trim(p);
@@ -153,14 +155,16 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
                     std::string ty, nm;
                     ps >> ty >> nm;
                     if (!ty.empty() && !nm.empty() && nm[0] == '%')
-                        params.push_back({nm.substr(1), parseType(ty)});
+                    {
+                        params.push_back({nm.substr(1), parseType(ty), pid});
+                        tempIds.emplace(nm.substr(1), pid++);
+                    }
                 }
                 std::string retStr = trim(line.substr(arr + 2, lb - arr - 2));
                 m.functions.push_back({name, parseType(retStr), params, {}});
                 curFn = &m.functions.back();
                 curBB = nullptr;
-                tempIds.clear();
-                nextTemp = 0;
+                nextTemp = pid;
                 continue;
             }
             err << "line " << lineNo << ": unexpected line: " << line << "\n";
@@ -177,7 +181,7 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
             if (line.back() == ':' && line.find(' ') == std::string::npos)
             {
                 std::string label = line.substr(0, line.size() - 1);
-                curFn->blocks.push_back({label, {}, false});
+                curFn->blocks.push_back({label, {}, {}, false});
                 curBB = &curFn->blocks.back();
                 continue;
             }
