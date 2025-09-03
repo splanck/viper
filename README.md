@@ -37,6 +37,7 @@ cmake --build build
 - [Docs index](docs/README.md)
 - [BASIC language reference](docs/basic-language-reference.md)
 - [IL specification](docs/il-spec.md)
+- [Getting Started](/docs/getting-started.md)
 
 ## Contributing
 

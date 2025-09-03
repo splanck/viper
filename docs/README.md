@@ -53,3 +53,7 @@ This mode ensures test diffs are stable and comparable across builds.
 - `--stdin-from <file>` — read program input from a file.
 - `--max-steps <N>` — abort after executing `N` instructions with the message
   `VM: step limit exceeded (N); aborting.`
+
+## Quick Links
+
+- [Getting Started](/docs/getting-started.md)
