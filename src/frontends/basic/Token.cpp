@@ -63,6 +63,14 @@ const char *tokenKindToString(TokenKind k)
             return "NOT";
         case TokenKind::KeywordMod:
             return "MOD";
+        case TokenKind::KeywordSqr:
+            return "SQR";
+        case TokenKind::KeywordAbs:
+            return "ABS";
+        case TokenKind::KeywordFloor:
+            return "FLOOR";
+        case TokenKind::KeywordCeil:
+            return "CEIL";
         case TokenKind::Plus:
             return "+";
         case TokenKind::Minus:

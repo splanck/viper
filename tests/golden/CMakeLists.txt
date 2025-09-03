@@ -96,6 +96,14 @@ add_test(NAME basic_error_bad_conversions COMMAND ${CMAKE_COMMAND}
   "-DEXPECT=${EXPECT_BAD_CONVERSIONS}"
   -P ${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/check_error.cmake)
 
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/bad_math_funcs.stderr EXPECT_BAD_MATH_FUNCS)
+string(STRIP "${EXPECT_BAD_MATH_FUNCS}" EXPECT_BAD_MATH_FUNCS)
+add_test(NAME basic_error_bad_math_funcs COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/bad_math_funcs.bas
+  "-DEXPECT=${EXPECT_BAD_MATH_FUNCS}"
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/basic_errors/check_error.cmake)
+
 file(READ ${CMAKE_CURRENT_SOURCE_DIR}/vm_trap_loc.stderr EXPECT_VM_TRAP_LOC)
 string(STRIP "${EXPECT_VM_TRAP_LOC}" EXPECT_VM_TRAP_LOC)
 add_test(NAME vm_trap_loc COMMAND ${CMAKE_COMMAND}
