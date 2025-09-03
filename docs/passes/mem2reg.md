@@ -108,3 +108,8 @@ The loop header `L1` has a block parameter `%a0` representing the running value,
 fed by both the entry edge and the back-edge. The exit block receives the final
 value via parameter `%a1`.
 
+## Stats
+
+`ilc il-opt --mem2reg-stats` prints the number of promoted variables and the
+removed loads/stores when the pass runs.
+

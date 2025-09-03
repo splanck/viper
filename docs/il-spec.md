@@ -76,6 +76,11 @@ cbr %cond, T(%a), F(%b)
 ```
 
 The 0-argument shorthand forms `br L` and `cbr %cond, T, F` remain valid. On entry, block parameters are bound to the passed values; each predecessor must provide the exact number and types of parameters declared.
+Example:
+
+```il
+br L ; equivalent to br L()
+```
 
 ## Instruction set
 Legend: `→` result type. Traps denote runtime errors.

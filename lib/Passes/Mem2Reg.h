@@ -11,8 +11,16 @@
 namespace viper::passes
 {
 
+struct Mem2RegStats
+{
+    unsigned promotedVars{0};
+    unsigned removedLoads{0};
+    unsigned removedStores{0};
+};
+
 /// \brief Promote simple allocas to SSA form.
 /// \param M Module to transform in place.
-void mem2reg(il::core::Module &M);
+/// \param stats Optional statistics output.
+void mem2reg(il::core::Module &M, Mem2RegStats *stats = nullptr);
 
 } // namespace viper::passes
