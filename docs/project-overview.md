@@ -5,14 +5,14 @@ architecture with a “thin waist” Intermediate Language (IL) that everything 
 around. You’ll start with a BASIC front end, run IL via an interpreter, and add an
 IL→assembly backend as a separate module.
 
-0. Project Goals
+## Project Goals
 
-   1. Multi-language front ends (start with BASIC; later add others) that all lower to a common IL.
-   1. Backend interpreter that executes IL directly (great for fast bring‑up, tests, and debugging).
-   1. Backend compiler that translates IL to assembly (x86‑64 SysV first), assembled and linked into native binaries.
-   1. Small, solo‑friendly codebase with clear module boundaries, strong tests, and an extensible runtime ABI.
+- Multi-language front ends (start with BASIC; later add others) that all lower to a common IL.
+- Backend interpreter that executes IL directly (great for fast bring‑up, tests, and debugging).
+- Backend compiler that translates IL to assembly (x86‑64 SysV first), assembled and linked into native binaries.
+- Small, solo‑friendly codebase with clear module boundaries, strong tests, and an extensible runtime ABI.
 
-1. High-Level Architecture
+## High-Level Architecture
 
    ```
     +-----------------------+      +-----------------------+
@@ -33,7 +33,7 @@ IL→assembly backend as a separate module.
        |  (optional)      | ---------->|  .il text/bc     |
        +--------+---------+            +-------+----------+
                 |                              |
-                +------------------------------+  
+                +------------------------------+
                 |
    ```
 
@@ -50,17 +50,19 @@ IL→assembly backend as a separate module.
    Program Native Binary
    Thin waist: All languages produce the same IL; both the VM and codegen consume the same IL.
 
-1. Components & Responsibilities
-   2.1 Front Ends (start with BASIC)
-   • Purpose: Translate source to IL while enforcing language rules (syntax + semantics).
-   • Subcomponents:
-   ○ Lexer: tokens (identifiers, numbers, strings, keywords).
-   ○ Parser: builds an AST for a subset of BASIC (e.g., LET, PRINT, IF/THEN/ELSE, WHILE/WEND, GOTO, GOSUB/RETURN, function calls if present).
-   ○ Semantic Analysis: symbol tables (variables, functions), simple type handling (integer, float, string), constant folding for literals.
-   ○ Desugaring: normalize constructs (e.g., ELSEIF → nested IF).
-   ○ Lowering to IL: walk the AST and emit IL instructions via an IR Builder.
-   • Output: an in-memory IL Module (functions, global variables, string constants).
-   Why this separation: It keeps language-specific work isolated. To add a new language later, you reuse IR Builder and runtime ABI.
+## Components & Responsibilities
+
+### Front Ends (start with BASIC)
+
+- Purpose: Translate source to IL while enforcing language rules (syntax and semantics).
+- Subcomponents:
+  - Lexer: tokens (identifiers, numbers, strings, keywords).
+  - Parser: builds an AST for a subset of BASIC (e.g., `LET`, `PRINT`, `IF`/`THEN`/`ELSE`, `WHILE`/`WEND`, `GOTO`, `GOSUB`/`RETURN`, function calls if present).
+  - Semantic Analysis: symbol tables (variables, functions), simple type handling (integer, float, string), constant folding for literals.
+  - Desugaring: normalize constructs (e.g., `ELSEIF` → nested `IF`).
+  - Lowering to IL: walk the AST and emit IL instructions via an IR Builder.
+- Output: an in-memory IL Module (functions, global variables, string constants).
+- Why this separation: keeps language-specific work isolated. New languages can reuse the IR Builder and runtime ABI.
 
 2.2 Intermediate Language (IL)
 • Purpose: A simple, SSA-optional, three-address style IR that’s easy to interpret and easy to lower to assembly.
@@ -153,7 +155,7 @@ case OP_RET: return regs[retv];
    ○ Keep the runtime in C with a stable ABI.
    • Repo layout:
 
-/runtime/ (C) rt\_*.c, rt\_*.hpp, build to librt.a
+/runtime/ (C) rt\__.c, rt\__.hpp, build to librt.a
 /il/ (C++) IL core: types, module, builder, verifier, serializer
 /vm/ (C++) IL interpreter
 /codegen/ (C++) x86_64 backend, regalloc, asm emitter
@@ -198,7 +200,6 @@ ret const_i32 0
 Note: &X can be modeled as a function‑local stack slot created via alloca in entry.
 
 5. Testing Strategy (solo‑friendly)
-
    1. Golden tests for front ends: source → expected IL text.
    1. VM e2e tests: run IL on interpreter; assert stdout/return code.
    1. Backend e2e tests: same programs compiled to native; compare output to VM.
@@ -276,7 +277,7 @@ ret
     • Tracing (optional): VM flag --trace-il to print each executed IL instruction with values.
     • \*\* REPL (nice-to-have)\*\*: ilc repl runs a BASIC prompt backed by the VM.
 
-01. Performance (when you’re ready)
+1.  Performance (when you’re ready)
     • Interpreter:
     ○ Switch → direct-threaded dispatch (computed goto).
     ○ Intern strings; cache common constant strings.
@@ -285,13 +286,13 @@ ret
     ○ Simple constant folding at IL build time (you’ll get many wins “for free”).
     ○ Linear-scan regalloc with live-interval splitting.
 
-01. Risks & Mitigations
+1.  Risks & Mitigations
     • Scope creep → Strict v1 feature set; milestone-based roadmap.
     • Type system complexity → Keep IL types minimal; push conversions into front end and runtime helpers.
     • String/heap bugs → Start with refcounted strings and a small test suite around them; add ASAN/UBSAN in CI.
     • Codegen pitfalls → Lean on VM-oracle differential tests; begin with a single platform/ABI.
 
-01. Roadmap (suggested)
+1.  Roadmap (suggested)
     Milestone A (bring-up)
     • BASIC front end for PRINT, LET, IF, GOTO.
     • IL core + verifier + textual serializer.
@@ -308,7 +309,7 @@ ret
     • Peephole optimizer, better diagnostics, small library expansion (strings/math/file I/O).
     • Optional: bytecode encoding for faster VM.
 
-01. What’s “Done” for v1
+1.  What’s “Done” for v1
     • BASIC subset compiles to IL, runs correctly on the VM, and compiles to native with matching outputs.
     • Clear CLI, docs, and tests.
     • Clean separation of: front end ↔ IL ↔ VM/Codegen ↔ runtime.

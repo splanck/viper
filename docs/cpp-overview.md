@@ -4,7 +4,7 @@ Here’s a high-level but extensive blueprint for turning the IL + VM + codegen 
 design into a clean, maintainable C++20 project. It’s written to be “handable” to an
 assistant like Codex and to keep you out of the mess that VC drifted into.
 
-1. Guiding principles
+## Guiding principles
 
 - Single thin‑waist IL: all front ends target it; both the VM and codegen consume it.
 - Small core, strong boundaries: each layer compiles to its own library; no cross‑layer reach‑through.
@@ -12,37 +12,40 @@ assistant like Codex and to keep you out of the mess that VC drifted into.
 - Testable units: verifier, serializer, VM, and backend have dedicated golden/e2e tests.
 - Solo‑friendly: minimal dependencies; predictable build; clear incremental milestones.
 
-1. Repository layout (CMake, modular)
+## Repository layout (CMake, modular)
 
+```
 /CMakeLists.txt
-/cmake/ # compiler flags, toolchain helpers
-/docs/ # IL spec, developer docs, ADRs
-/runtime/ # C runtime (librt.a): rt\_*.c, rt\_*.hpp
+/cmake/    # compiler flags, toolchain helpers
+/docs/     # IL spec, developer docs, ADRs
+/runtime/  # C runtime (librt.a): rt__.c, rt__.hpp
 /src/
-/support/ # small utilities shared across libs
-/il/ # IL core: types, IR, builder, verifier, I/O
-/vm/ # IL interpreter
-/codegen/
-/x86_64/ # x86-64 SysV backend
-/frontends/
-/basic/ # BASIC lexer, parser, AST, lowering
-/tools/ # CLI tools: ilc, il-dis, il-verify
+  /support/   # small utilities shared across libs
+  /il/        # IL core: types, IR, builder, verifier, I/O
+  /vm/        # IL interpreter
+  /codegen/
+    /x86_64/  # x86-64 SysV backend
+  /frontends/
+    /basic/   # BASIC lexer, parser, AST, lowering
+  /tools/     # CLI tools: ilc, il-dis, il-verify
 /tests/
-/unit/ # gtest/catch2 unit tests
-/golden/ # text-based golden tests (IL, diagnostics)
-/e2e/ # compile & run comparisons (VM vs native)
-/scripts/ # dev scripts (format, lint, build, test)
-Top-level CMake targets
+  /unit/      # gtest/catch2 unit tests
+  /golden/    # text-based golden tests (IL, diagnostics)
+  /e2e/       # compile & run comparisons (VM vs native)
+/scripts/    # dev scripts (format, lint, build, test)
+```
 
-- il_core (static lib)
-- il_vm (static lib)
-- il_codegen_x86_64 (static lib)
-- frontend_basic (static lib)
-- librt (static lib from /runtime)
-- ilc, il-dis, il-verify (executables)
-- tests\_\* (test executables)
+### Top-level CMake targets
 
-3. Tooling & Build
+- `il_core` (static lib)
+- `il_vm` (static lib)
+- `il_codegen_x86_64` (static lib)
+- `frontend_basic` (static lib)
+- `librt` (static lib from `/runtime`)
+- `ilc`, `il-dis`, `il-verify` (executables)
+- `tests_*` (test executables)
+
+## Tooling & Build
 
 - C++ standard: C++20 (-std=c++20)
 - Warnings: -Wall -Wextra -Wpedantic -Werror
@@ -54,7 +57,7 @@ Top-level CMake targets
 - Style: clang-format, clang-tidy with a minimal config
 - CI: GitHub Actions matrix (Linux, macOS), caches build, runs sanitizers + tests
 
-1. Namespaces and libraries
+## Namespaces and libraries
 
 - il::core — types, values, instructions, module, symbol tables
 - il::build — IRBuilder helpers
@@ -65,8 +68,9 @@ Top-level CMake targets
 - fe::basic — BASIC front end (lexer/parser/AST/lowering)
 - rt — C ABI runtime (no namespace; C headers)
 
-1. Core IL library (C++)
-   5.1 Data model (lightweight, cache‑friendly)
+## Core IL library (C++)
+
+### Data model (lightweight, cache‑friendly)
 
 - Type system
 
@@ -104,12 +108,14 @@ struct Global { Symbol name; Type type; GlobalInit init; bool isConst; Visibilit
 struct Module { Target triple; vector<ExternDecl> externs; vector<Global> globals; vector<Function> funcs; StrTable strlits; };
 
 - Symbol table & interning
-  ○ Symbol is an interned string handle (uint32 id → string table).
-  ○ All names (@main, labels, params) live in a per‑module interner.
+  - Symbol is an interned string handle (uint32 id → string table).
+  - All names (@main, labels, params) live in a per‑module interner.
 - Memory management
-  ○ Use arenas (monotonic buffers) for IR nodes; IR is long‑lived and mostly append‑only.
-  5.2 IRBuilder (ergonomic construction)
-- Fluent helpers that guarantee well‑formedness locally:
+  - Use arenas (monotonic buffers) for IR nodes; IR is long‑lived and mostly append‑only.
+
+### IRBuilder (ergonomic construction)
+
+Fluent helpers that guarantee well‑formedness locally:
 
 class IRBuilder {
 Function\* f\_;
@@ -123,16 +129,21 @@ void cbr(Value cond, Label t, Label f);
 };
 
 - Enforces “exactly one terminator per block”, operand typing, and records source locations from front ends.
-  5.3 IL I/O (text format)
+
+### IL I/O (text format)
+
 - Serializer: pretty, deterministic (sorted externs/globals, stable temp numbering).
 - Parser: Pratt‑style for expressions inside instructions isn’t needed; use a small hand‑rolled tokenizer and recursive descent for the grammar in your spec.
-- Round‑trip tests: parse→print→parse equivalence (modulo whitespace).
-  5.4 Verifier
+- Round-trip tests: parse→print→parse equivalence (modulo whitespace).
+
+### Verifier
+
 - Structural checks (one terminator per block; labels defined/used).
 - Type checks (operand and result types per opcode).
 - Call signature checks.
 - Memory ops alignment rules (load/store size vs natural alignment).
-  Deliverable: il_verify(Module&) -> std::vector<Diagnostic>.
+
+Deliverable: `il_verify(Module&) -> std::vector<Diagnostic>`.
 
 6. Runtime library (/runtime, C, stable ABI)
 
@@ -156,9 +167,9 @@ void\* rt_alloc(int64_t bytes); // simple wrapper on malloc for v1
 
 - VM types
 
-struct Slot { uint64_t u64; double f64; void\* ptr; /\* tagged by Type at use */ };
+struct Slot { uint64_t u64; double f64; void\* ptr; /\* tagged by Type at use _/ };
 struct Frame {
-Function* f;
+Function_ f;
 std::vector<Slot> regs; // virtual regs / temps
 std::vector\<uint8_t> stack; // for alloca
 size_t ip_block, ip_index; // current block, instr index
@@ -181,7 +192,6 @@ std::vector<Frame> callstack;
 
 8. Codegen (il::codegen::x86_64)
    8.1 Pipeline
-
    1. Lowering: turn IL instructions into a simple target‑agnostic MIR (optional) or go direct.
    1. Liveness: compute live intervals of virtual regs within each function (linear time scan).
    1. Regalloc (linear scan):
