@@ -134,6 +134,8 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
             }
             if (line.rfind("func", 0) == 0)
             {
+                tempIds.clear();
+                nextTemp = 0;
                 size_t at = line.find('@');
                 size_t lp = line.find('(', at);
                 size_t rp = line.find(')', lp);
@@ -153,14 +155,15 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
                     std::string ty, nm;
                     ps >> ty >> nm;
                     if (!ty.empty() && !nm.empty() && nm[0] == '%')
-                        params.push_back({nm.substr(1), parseType(ty)});
+                    {
+                        params.push_back({nm.substr(1), parseType(ty), nextTemp});
+                        tempIds[nm.substr(1)] = nextTemp++;
+                    }
                 }
                 std::string retStr = trim(line.substr(arr + 2, lb - arr - 2));
                 m.functions.push_back({name, parseType(retStr), params, {}});
                 curFn = &m.functions.back();
                 curBB = nullptr;
-                tempIds.clear();
-                nextTemp = 0;
                 continue;
             }
             err << "line " << lineNo << ": unexpected line: " << line << "\n";
@@ -177,7 +180,7 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
             if (line.back() == ':' && line.find(' ') == std::string::npos)
             {
                 std::string label = line.substr(0, line.size() - 1);
-                curFn->blocks.push_back({label, {}, false});
+                curFn->blocks.push_back({label, {}, {}, false});
                 curBB = &curFn->blocks.back();
                 continue;
             }
