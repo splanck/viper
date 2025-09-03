@@ -22,3 +22,5 @@ The VM runtime bridge recognizes these symbols:
 - rt_pow
 - rt_abs_i64
 - rt_abs_f64
+- rt_randomize_i64
+- rt_rnd
