@@ -166,3 +166,33 @@ int64_t rt_to_int(rt_str s)
     free(buf);
     return (int64_t)v;
 }
+
+rt_str rt_int_to_str(int64_t v)
+{
+    char buf[32];
+    int n = snprintf(buf, sizeof(buf), "%lld", (long long)v);
+    if (n < 0)
+        rt_trap("rt_int_to_str: format");
+    rt_str s = (rt_str)rt_alloc(sizeof(*s));
+    s->refcnt = 1;
+    s->size = n;
+    s->capacity = n;
+    s->data = (char *)rt_alloc(n + 1);
+    memcpy(s->data, buf, (size_t)n + 1);
+    return s;
+}
+
+rt_str rt_f64_to_str(double v)
+{
+    char buf[32];
+    int n = snprintf(buf, sizeof(buf), "%g", v);
+    if (n < 0)
+        rt_trap("rt_f64_to_str: format");
+    rt_str s = (rt_str)rt_alloc(sizeof(*s));
+    s->refcnt = 1;
+    s->size = n;
+    s->capacity = n;
+    s->data = (char *)rt_alloc(n + 1);
+    memcpy(s->data, buf, (size_t)n + 1);
+    return s;
+}

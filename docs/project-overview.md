@@ -1,7 +1,7 @@
-# Project Overview
+#Project Overview
 
-Here’s a concrete, end-to-end design you can use as a blueprint. It assumes a two-layer
-architecture with a “thin waist” Intermediate Language (IL) that everything revolves
+Here’s a concrete, end - to - end design you can use as a blueprint.It assumes a two -
+                       layer architecture with a “thin waist” Intermediate Language(IL) that everything revolves
 around. You’ll start with a BASIC front end, run IL via an interpreter, and add an
 IL→assembly backend as a separate module.
 
@@ -89,10 +89,12 @@ SSA? Start without SSA to keep it simple. You can add an SSA pass later (with Φ
 • Purpose: Provide I/O and utilities as normal functions callable from IL (and later, from compiled code), so front ends don’t hardcode behavior.
 • Initial surface (prefixed rt\_):
 ○ Console: rt_print_str(str), rt_print_i64(i64), rt_print_f64(f64), rt_input_line() -> str.
-○ Strings: rt_len(str)->i64, rt_concat(str,str)->str, rt_substr(str,i64,i64)->str, rt_to_int(str)->i64, rt_to_float(str)->f64.
+○ Strings: rt_len(str)->i64, rt_concat(str,str)->str, rt_substr(str,i64,i64)->str, rt_to_int(str)->i64, rt_int_to_str(i64)->str, rt_f64_to_str(f64)->str.
 ○ Math (optional): rt_sin(f64), rt_cos, rt_pow, etc., often thin wrappers on libc.
 ○ Memory: rt_alloc(size)->ptr, rt_free(ptr). Strings use internal ref-count or arena.
-• Implementation: C for portability; expose a stable C ABI.
+• Implementation: C for portability;
+
+                                     expose a stable C ABI.
 • Memory/Strings: Start with ref-counted strings (simpler than GC). Later you can swap to a small, precise GC without changing IL.
 The compiler lowers BASIC built-ins like PRINT → call rt_print\_\*. The interpreter and native code both call the same functions.
 
@@ -105,15 +107,27 @@ The compiler lowers BASIC built-ins like PRINT → call rt_print\_\*. The interp
 ○ Globals: addresses bound at module load time.
 • Main loop (sketch):
 
-for (;;) {
-switch (instr.opcode) {
-case OP_ADD: regs[d] = regs[a] + regs[b]; ip++; break;
-case OP_CBR: ip = regs[cond] ? then_bb->first : else_bb->first; break;
-case OP_CALL: regs[dst] = call_runtime_or_fn(fsym, args...); ip++; break;
-case OP_RET: return regs[retv];
-// ...
-}
-}
+for (;;)
+                                     {
+                                         switch (instr.opcode)
+                                         {
+                                             case OP_ADD:
+                                                 regs[d] = regs[a] + regs[b];
+                                                 ip++;
+                                                 break;
+                                             case OP_CBR:
+                                                 ip = regs[cond] ? then_bb->first : else_bb->first;
+                                                 break;
+                                             case OP_CALL:
+                                                 regs[dst] = call_runtime_or_fn(fsym, args...);
+                                                 ip++;
+                                                 break;
+                                             case OP_RET:
+                                                 return regs[retv];
+                                                 // ...
+                                         }
+                                     }
+
 • Diagnostics:
 ○ On runtime error (e.g., wrong type to rt_len), report with source location metadata from the IL and a short backtrace of IL call frames.
 • Performance: Plenty for early stages. If you need more speed, add:
@@ -126,10 +140,16 @@ case OP_RET: return regs[retv];
 • Targets: Start with x86‑64 SysV (Linux/macOS); later add Windows x64 and ARM64.
 • Pipeline:
 1\. Instruction Selection: Greedy mapping of IL ops to asm patterns (no need for DAG selector at first).
-2\. Register Allocation: Start with linear-scan over virtual registers; spill to the stack as needed.
-3\. Prologue/Epilogue: Set up call frame, preserve callee-saved registers, align stack.
-4\. Calling Convention: Map IL calls to native ABI (SysV: integer args in rdi, rsi, rdx, rcx, r8, r9; float args in xmm0..).
-5\. Emitting Assembly: Generate .s (AT&T or Intel syntax); invoke the system assembler and linker.
+2\. Register Allocation: Start with linear-scan over virtual registers;
+spill to the stack as needed.3\.Prologue / Epilogue : Set up call frame,
+    preserve callee - saved registers,
+    align stack.4\
+        .Calling Convention
+    : Map IL calls to native
+      ABI(SysV : integer args in rdi, rsi, rdx, rcx, r8, r9; float args in xmm0..)
+        .5\.Emitting Assembly : Generate.s(AT &T or Intel syntax);
+
+                                                           invoke the system assembler and linker.
 • Files:
 ○ module.s → assemble → module.o → link with librt.a → a.out.
 • Debug Info (optional in v1):
@@ -171,35 +191,38 @@ case OP_RET: return regs[retv];
 40 END
 Lowered IL (textual sketch):
 
-module {
-global str @.L0 = "HELLO"
-func @main() -> i32 {
-entry:
-%t0 = const_str @.L0
-call @rt_print_str(%t0)
-%t1 = const_i64 2
-%t2 = const_i64 3
-%t3 = add %t1, %t2
-store &X, %t3
-%t4 = load &X
-%t5 = cmp_gt %t4, const_i64 4
-cbr %t5, then, else
-then:
-call @rt_print_i64(%t4)
-br exit
-else:
-call @rt_print_i64(const_i64 4)
-br exit
-exit:
-ret const_i32 0
-}
-}
+module
+                                                           {
+                                                               global str @.L0 =
+                                                                   "HELLO" func @main()->i32
+                                                               {
+                                                               entry:
+                                                                   % t0 = const_str @.L0 call
+                                                                          @rt_print_str(% t0) %
+                                                                          t1 =
+                                                                              const_i64 2 % t2 =
+                                                                                  const_i64 3 % t3 =
+                                                                                      add % t1,
+                                                                     % t2 store & X,
+                                                                     % t3 % t4 = load &X % t5 =
+                                                                                     cmp_gt % t4,
+                                                                     const_i64 4 cbr % t5, then,
+                                                                     else then : call
+                                                                                 @rt_print_i64(% t4)
+                                                                                     br exit else
+                                                                       : call
+                                                                         @rt_print_i64(const_i64 4)
+                                                                             br exit exit
+                                                                       : ret const_i32 0
+                                                               }
+                                                           }
+
 Note: &X can be modeled as a function‑local stack slot created via alloca in entry.
 
 5. Testing Strategy (solo‑friendly)
    1. Golden tests for front ends: source → expected IL text.
-   1. VM e2e tests: run IL on interpreter; assert stdout/return code.
-   1. Backend e2e tests: same programs compiled to native; compare output to VM.
+   1. VM e2e tests: run IL on interpreter;
+assert stdout / return code.1. Backend e2e tests : same programs compiled to native; compare output to VM.
    1. Differential testing: VM result vs. native result for each sample.
    1. IL verifier unit tests: deliberately malformed IR to ensure verifier catches issues.
    1. Fuzz lite: fuzz front-end lexer/parser (strings, numbers, nesting) with small seeds.
@@ -208,14 +231,18 @@ Note: &X can be modeled as a function‑local stack slot created via alloca in e
    • Contract: New front end just needs to produce valid IL and adhere to the runtime ABI for I/O and strings.
    • BASIC specifics:
    ○ Keywords map to simple control flow and runtime calls.
-   ○ Dynamic-ish typing can be handled by front-end coercions to a small IL type set (i64, f64, str) plus runtime helpers.
-   Later front ends (Tiny C / Pascal):
-   • Reuse symbol tables and type checker utilities where possible.
-   • Keep desugaring consistent (loops → blocks and branches).
-   • Avoid pushing complexity into IL: keep IL small and orthogonal.
+   ○ Dynamic-ish typing can be handled by front-end coercions to a small IL type set (i64, f64, str)
+plus runtime helpers.Later front ends(Tiny C / Pascal)
+    :
+   • Reuse symbol tables
+    and
+    type checker utilities where possible.
+   • Keep desugaring consistent(loops → blocks and branches).
+   • Avoid pushing complexity into IL : keep IL small and
+    orthogonal.
 
-1. IL Details Worth Nailing Early
-   • Integer width: choose i64 as the canonical integer; i32 only if you need it for external ABIs.
+    1. IL Details Worth Nailing Early
+   • Integer width : choose i64 as the canonical integer; i32 only if you need it for external ABIs.
    • Floats: f64 only at first.
    • Strings: opaque str handle; only manipulated via runtime calls.
    • Booleans: i1 for branch conditions.
@@ -240,29 +267,40 @@ Value v2 = b.const_i64(3);
 Value sum = b.add(v1, v2);
 b.call(sym("rt_print_i64"), {sum});
 b.ret(b.const_i32(0));
-Interpreter dispatch (C-like)
 
-for (;;) {
-Instr \*i = ip++;
-switch (i->op) {
-case OP_ADD: regs[i->dst] = regs[i->a].i64 + regs[i->b].i64; break;
-case OP_CBR: ip = regs[i->cond].i1 ? i->tgt : i->ftgt; break;
-case OP_CALL: regs[i->dst] = call_host(i->callee, regs, i->argc); break;
-case OP_RET: return regs[i->retv];
-// ...
+Interpreter dispatch(C - like)
+
+    for (;;)
+{
+    Instr \*i = ip++;
+    switch (i->op)
+    {
+        case OP_ADD:
+            regs[i->dst] = regs[i->a].i64 + regs[i->b].i64;
+            break;
+        case OP_CBR:
+            ip = regs[i->cond].i1 ? i->tgt : i->ftgt;
+            break;
+        case OP_CALL:
+            regs[i->dst] = call_host(i->callee, regs, i->argc);
+            break;
+        case OP_RET:
+            return regs[i->retv];
+            // ...
+    }
 }
-}
+
 Assembly emission (x86‑64 SysV, sketch)
 
-# prologue
+#prologue
 
 push %rbp
 mov %rsp, %rbp
 sub $32, %rsp # spill area
 
-# ... instructions mapped from IL ...
+#... instructions mapped from IL...
 
-# epilogue
+#epilogue
 
 mov %rbp, %rsp
 pop %rbp
@@ -284,10 +322,13 @@ ret
     ○ Linear-scan regalloc with live-interval splitting.
 
 1.  Risks & Mitigations
-    • Scope creep → Strict v1 feature set; milestone-based roadmap.
-    • Type system complexity → Keep IL types minimal; push conversions into front end and runtime helpers.
-    • String/heap bugs → Start with refcounted strings and a small test suite around them; add ASAN/UBSAN in CI.
-    • Codegen pitfalls → Lean on VM-oracle differential tests; begin with a single platform/ABI.
+    • Scope creep → Strict v1 feature set;
+milestone - based roadmap.
+    • Type system complexity → Keep IL types minimal;
+push conversions into front end and runtime helpers.
+    • String / heap bugs → Start with refcounted strings and a small test suite around them;
+add ASAN / UBSAN in CI.
+    • Codegen pitfalls → Lean on VM - oracle differential tests; begin with a single platform/ABI.
 
 1.  Roadmap (suggested)
     Milestone A (bring-up)
