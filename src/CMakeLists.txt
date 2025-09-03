@@ -24,6 +24,14 @@ add_library(il_verify STATIC il/verify/Verifier.cpp)
 target_link_libraries(il_verify PUBLIC il_core)
 target_include_directories(il_verify PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
+add_library(il_utils STATIC il/utils/Utils.cpp)
+target_link_libraries(il_utils PUBLIC il_core)
+target_include_directories(il_utils PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_library(il_analysis STATIC il/analysis/CFG.cpp il/analysis/Dominators.cpp)
+target_link_libraries(il_analysis PUBLIC il_core il_utils)
+target_include_directories(il_analysis PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
 add_library(il_transform STATIC
   il/transform/PassManager.cpp
   il/transform/Peephole.cpp
