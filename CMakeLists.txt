@@ -96,5 +96,6 @@ enable_testing()
 
 add_subdirectory(runtime)
 add_subdirectory(src)
+add_subdirectory(lib/IL)
 add_subdirectory(lib/Analysis)
 add_subdirectory(tests)
