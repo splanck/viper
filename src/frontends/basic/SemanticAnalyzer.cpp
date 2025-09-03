@@ -469,6 +469,29 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
                 err(0);
             return Type::Int;
         }
+        else if (c->builtin == CallExpr::Builtin::Sqr)
+        {
+            if (argTys.size() != 1 ||
+                (argTys[0] != Type::Unknown && argTys[0] != Type::Int && argTys[0] != Type::Float))
+                err(0);
+            return Type::Float;
+        }
+        else if (c->builtin == CallExpr::Builtin::Abs)
+        {
+            if (argTys.size() != 1)
+                err(0);
+            Type t = argTys.size() >= 1 ? argTys[0] : Type::Unknown;
+            if (t != Type::Unknown && t != Type::Int && t != Type::Float)
+                err(0);
+            return (t == Type::Float) ? Type::Float : Type::Int;
+        }
+        else if (c->builtin == CallExpr::Builtin::Floor || c->builtin == CallExpr::Builtin::Ceil)
+        {
+            if (argTys.size() != 1 ||
+                (argTys[0] != Type::Unknown && argTys[0] != Type::Int && argTys[0] != Type::Float))
+                err(0);
+            return Type::Float;
+        }
     }
     else if (auto *a = dynamic_cast<const ArrayExpr *>(&e))
     {
