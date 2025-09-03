@@ -17,7 +17,7 @@ assistant like Codex and to keep you out of the mess that VC drifted into.
 /CMakeLists.txt
 /cmake/ # compiler flags, toolchain helpers
 /docs/ # IL spec, developer docs, ADRs
-/runtime/ # C runtime (librt.a): rt\_*.c, rt\_*.hpp
+/runtime/ # C runtime (librt.a): rt\__.c, rt\__.hpp
 /src/
 /support/ # small utilities shared across libs
 /il/ # IL core: types, IR, builder, verifier, I/O
@@ -156,9 +156,9 @@ void\* rt_alloc(int64_t bytes); // simple wrapper on malloc for v1
 
 - VM types
 
-struct Slot { uint64_t u64; double f64; void\* ptr; /\* tagged by Type at use */ };
+struct Slot { uint64_t u64; double f64; void\* ptr; /\* tagged by Type at use _/ };
 struct Frame {
-Function* f;
+Function_ f;
 std::vector<Slot> regs; // virtual regs / temps
 std::vector\<uint8_t> stack; // for alloca
 size_t ip_block, ip_index; // current block, instr index
@@ -181,7 +181,6 @@ std::vector<Frame> callstack;
 
 8. Codegen (il::codegen::x86_64)
    8.1 Pipeline
-
    1. Lowering: turn IL instructions into a simple target‑agnostic MIR (optional) or go direct.
    1. Liveness: compute live intervals of virtual regs within each function (linear time scan).
    1. Regalloc (linear scan):
