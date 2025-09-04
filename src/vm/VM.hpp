@@ -5,6 +5,7 @@
 // Links: docs/il-spec.md
 #pragma once
 
+#include "VM/Trace.h"
 #include "il/core/Module.hpp"
 #include "rt.hpp"
 #include <array>
@@ -43,9 +44,9 @@ class VM
   public:
     /// @brief Create VM for module @p m.
     /// @param m IL module to execute.
-    /// @param trace Enable instruction tracing.
+    /// @param tc Trace configuration.
     /// @param maxSteps Abort after executing @p maxSteps instructions (0 = unlimited).
-    VM(const il::core::Module &m, bool trace = false, uint64_t maxSteps = 0);
+    VM(const il::core::Module &m, TraceConfig tc = {}, uint64_t maxSteps = 0);
 
     /// @brief Execute the module's entry function.
     /// @return Exit code from main function.
@@ -53,7 +54,7 @@ class VM
 
   private:
     const il::core::Module &mod; ///< Module to execute
-    bool trace;                  ///< Whether to print executed instructions
+    TraceSink tracer;            ///< Trace output sink
     uint64_t maxSteps;           ///< Step limit; 0 means unlimited
     uint64_t steps = 0;          ///< Executed instruction count
     std::unordered_map<std::string, const il::core::Function *> fnMap; ///< Name lookup
