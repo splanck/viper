@@ -1,0 +1,4 @@
+10 PRINT "A"
+20 LET B = 1
+30 PRINT B
+40 END

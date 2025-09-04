@@ -1,0 +1,16 @@
+[SRC] <unknown>  (fn=@main blk=entry ip=#0)
+[SRC] <unknown>  (fn=@main blk=entry ip=#1)
+[SRC] tests/e2e/TraceSrcTests.bas:1:10  (fn=@main blk=L10 ip=#0)  "A"
+[SRC] tests/e2e/TraceSrcTests.bas:1:4  (fn=@main blk=L10 ip=#1)  PRINT "A"
+[SRC] tests/e2e/TraceSrcTests.bas:1:4  (fn=@main blk=L10 ip=#2)  PRINT "A"
+[SRC] tests/e2e/TraceSrcTests.bas:1:4  (fn=@main blk=L10 ip=#3)  PRINT "A"
+[SRC] tests/e2e/TraceSrcTests.bas:1:4  (fn=@main blk=L10 ip=#4)  PRINT "A"
+[SRC] tests/e2e/TraceSrcTests.bas:2:4  (fn=@main blk=L20 ip=#0)  LET B = 1
+[SRC] tests/e2e/TraceSrcTests.bas:2:4  (fn=@main blk=L20 ip=#1)  LET B = 1
+[SRC] tests/e2e/TraceSrcTests.bas:3:10  (fn=@main blk=L30 ip=#0)  B
+[SRC] tests/e2e/TraceSrcTests.bas:3:4  (fn=@main blk=L30 ip=#1)  PRINT B
+[SRC] tests/e2e/TraceSrcTests.bas:3:4  (fn=@main blk=L30 ip=#2)  PRINT B
+[SRC] tests/e2e/TraceSrcTests.bas:3:4  (fn=@main blk=L30 ip=#3)  PRINT B
+[SRC] tests/e2e/TraceSrcTests.bas:3:4  (fn=@main blk=L30 ip=#4)  PRINT B
+[SRC] tests/e2e/TraceSrcTests.bas:4:4  (fn=@main blk=L40 ip=#0)  END
+[SRC] <unknown>  (fn=@main blk=exit ip=#0)
