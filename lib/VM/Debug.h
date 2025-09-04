@@ -1,5 +1,5 @@
 // File: lib/VM/Debug.h
-// Purpose: Declare breakpoint control for the VM.
+// Purpose: Declare breakpoint control and path normalization utilities for the VM.
 // Key invariants: Breakpoints are keyed by interned block labels and source lines.
 // Ownership/Lifetime: DebugCtrl owns its interner, breakpoint set, and source line list.
 // Links: docs/dev/vm.md
@@ -9,9 +9,11 @@
 #include "il/core/Type.hpp"
 #include "support/string_interner.hpp"
 #include "support/symbol.hpp"
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace il::core
 {
@@ -59,6 +61,11 @@ class DebugCtrl
 
     /// @brief Retrieve associated source manager.
     const il::support::SourceManager *getSourceManager() const;
+
+    /// @brief Normalize @p p by canonicalizing separators and dot segments.
+    /// Replaces backslashes with forward slashes, removes redundant "./", and
+    /// collapses "dir/../" without resolving symlinks.
+    static std::string normalizePath(std::string p);
 
     /// @brief Register a watch on variable @p name.
     void addWatch(std::string_view name);

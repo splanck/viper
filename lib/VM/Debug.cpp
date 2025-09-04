@@ -1,6 +1,6 @@
 // File: lib/VM/Debug.cpp
-// Purpose: Implement breakpoint control for the VM.
-// Key invariants: Interned labels and exact file paths uniquely identify breakpoints.
+// Purpose: Implement breakpoint control and path normalization for the VM.
+// Key invariants: Interned labels and normalized file paths uniquely identify breakpoints.
 // Ownership/Lifetime: DebugCtrl owns its interner, breakpoint set, and source line list.
 // Links: docs/dev/vm.md
 #include "VM/Debug.h"
@@ -10,6 +10,52 @@
 
 namespace il::vm
 {
+
+std::string DebugCtrl::normalizePath(std::string p)
+{
+    for (char &c : p)
+        if (c == '\\')
+            c = '/';
+    bool absolute = !p.empty() && p.front() == '/';
+    std::vector<std::string> stack;
+    std::string segment;
+    auto flush = [&]()
+    {
+        if (segment.empty() || segment == ".")
+        {
+            segment.clear();
+            return;
+        }
+        if (segment == "..")
+        {
+            if (!stack.empty() && stack.back() != "..")
+                stack.pop_back();
+            else if (!absolute)
+                stack.push_back("..");
+        }
+        else
+            stack.push_back(std::move(segment));
+        segment.clear();
+    };
+    for (size_t i = 0; i <= p.size(); ++i)
+    {
+        char c = (i < p.size()) ? p[i] : '/';
+        if (c == '/')
+            flush();
+        else
+            segment += c;
+    }
+    std::string out = absolute ? "/" : "";
+    for (size_t i = 0; i < stack.size(); ++i)
+    {
+        if (i)
+            out += '/';
+        out += stack[i];
+    }
+    if (out.empty())
+        return absolute ? std::string{"/"} : std::string{"."};
+    return out;
+}
 
 il::support::Symbol DebugCtrl::internLabel(std::string_view label)
 {
@@ -30,7 +76,7 @@ bool DebugCtrl::shouldBreak(const il::core::BasicBlock &blk) const
 
 void DebugCtrl::addBreakSrcLine(std::string file, int line)
 {
-    srcLineBPs_.push_back({std::move(file), line});
+    srcLineBPs_.push_back({normalizePath(std::move(file)), line});
 }
 
 bool DebugCtrl::hasSrcLineBPs() const
@@ -52,7 +98,7 @@ bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
 {
     if (!sm_ || srcLineBPs_.empty() || !I.loc.isValid())
         return false;
-    std::string path(sm_->getPath(I.loc.file_id));
+    std::string path = normalizePath(std::string(sm_->getPath(I.loc.file_id)));
     for (const auto &bp : srcLineBPs_)
         if (path == bp.file && static_cast<int>(I.loc.line) == bp.line)
             return true;
