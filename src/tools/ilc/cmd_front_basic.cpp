@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Tool owns loaded modules.
 // Links: docs/class-catalog.md
 
+#include "VM/Debug.h"
 #include "VM/Trace.h"
 #include "cli.hpp"
 #include "frontends/basic/ConstFolder.hpp"
@@ -84,6 +85,7 @@ int cmdFrontBasic(int argc, char **argv)
     uint64_t maxSteps = 0;
     bool boundsChecks = false;
     vm::TraceConfig traceCfg{};
+    vm::DebugCtrl dbg;
     SourceManager sm;
     for (int i = 0; i < argc; ++i)
     {
@@ -118,6 +120,17 @@ int cmdFrontBasic(int argc, char **argv)
         {
             boundsChecks = true;
         }
+        else if (arg == "--break-src" && i + 1 < argc)
+        {
+            std::string spec = argv[++i];
+            auto pos = spec.rfind(':');
+            if (pos != std::string::npos)
+            {
+                std::string f = spec.substr(0, pos);
+                int line = std::stoi(spec.substr(pos + 1));
+                dbg.addBreakSrcLine(f, line);
+            }
+        }
         else
         {
             usage();
@@ -149,6 +162,7 @@ int cmdFrontBasic(int argc, char **argv)
         }
     }
     traceCfg.sm = &sm;
-    vm::VM vm(m, traceCfg, maxSteps);
+    dbg.setSourceManager(&sm);
+    vm::VM vm(m, traceCfg, maxSteps, std::move(dbg));
     return static_cast<int>(vm.run());
 }

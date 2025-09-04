@@ -26,6 +26,29 @@ bool DebugCtrl::shouldBreak(const il::core::BasicBlock &blk) const
     return breaks_.count(sym) != 0;
 }
 
+void DebugCtrl::addBreakSrcLine(std::string file, int line)
+{
+    srcLineBPs_.push_back({std::move(file), line});
+}
+
+bool DebugCtrl::hasSrcLineBPs() const
+{
+    return !srcLineBPs_.empty();
+}
+
+bool DebugCtrl::shouldBreakOn(const il::core::Instr &in) const
+{
+    if (!sm_ || !in.loc.isValid())
+        return false;
+    std::string path(sm_->getPath(in.loc.file_id));
+    for (const auto &bp : srcLineBPs_)
+    {
+        if (bp.line == static_cast<int>(in.loc.line) && bp.file == path)
+            return true;
+    }
+    return false;
+}
+
 void DebugCtrl::addWatch(std::string_view name)
 {
     il::support::Symbol sym = interner_.intern(name);

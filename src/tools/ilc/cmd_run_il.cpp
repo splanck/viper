@@ -71,6 +71,17 @@ int cmdRunIL(int argc, char **argv)
             auto sym = dbg.internLabel(argv[++i]);
             dbg.addBreak(sym);
         }
+        else if (arg == "--break-src" && i + 1 < argc)
+        {
+            std::string spec = argv[++i];
+            auto pos = spec.rfind(':');
+            if (pos != std::string::npos)
+            {
+                std::string file = spec.substr(0, pos);
+                int line = std::stoi(spec.substr(pos + 1));
+                dbg.addBreakSrcLine(file, line);
+            }
+        }
         else if (arg == "--debug-cmds" && i + 1 < argc)
         {
             script = std::make_unique<vm::DebugScript>(argv[++i]);
