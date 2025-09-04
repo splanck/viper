@@ -33,6 +33,8 @@ add_executable(test_vm_break_label vm/BreakLabelTests.cpp)
 add_test(NAME test_vm_break_label COMMAND test_vm_break_label $<TARGET_FILE:ilc> ${CMAKE_SOURCE_DIR}/examples/il/break_label.il)
 add_executable(test_vm_debug_script vm/DebugScriptTests.cpp)
 add_test(NAME test_vm_debug_script COMMAND test_vm_debug_script $<TARGET_FILE:ilc> ${CMAKE_SOURCE_DIR}/examples/il/debug_script.il ${CMAKE_SOURCE_DIR}/examples/il/debug_script.txt)
+add_executable(test_vm_watch vm/WatchTests.cpp)
+add_test(NAME test_vm_watch COMMAND test_vm_watch $<TARGET_FILE:ilc> ${CMAKE_SOURCE_DIR}/tests/vm/WatchTests.il)
 
 
 add_executable(test_analysis_cfg analysis/CFGTests.cpp)

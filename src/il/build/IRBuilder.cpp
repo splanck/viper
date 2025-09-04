@@ -28,7 +28,7 @@ Function &IRBuilder::startFunction(const std::string &name,
                                    Type ret,
                                    const std::vector<Param> &params)
 {
-    mod.functions.push_back({name, ret, {}, {}});
+    mod.functions.push_back({name, ret, {}, {}, {}});
     curFunc = &mod.functions.back();
     curBlock = nullptr;
     nextTemp = 0;
@@ -38,6 +38,9 @@ Function &IRBuilder::startFunction(const std::string &name,
         np.id = nextTemp++;
         curFunc->params.push_back(np);
     }
+    curFunc->valueNames.resize(nextTemp);
+    for (const auto &p : curFunc->params)
+        curFunc->valueNames[p.id] = p.name;
     return *curFunc;
 }
 
@@ -52,6 +55,9 @@ BasicBlock &IRBuilder::createBlock(Function &fn,
         Param np = p;
         np.id = nextTemp++;
         bb.params.push_back(np);
+        if (fn.valueNames.size() <= np.id)
+            fn.valueNames.resize(np.id + 1);
+        fn.valueNames[np.id] = np.name;
     }
     return bb;
 }

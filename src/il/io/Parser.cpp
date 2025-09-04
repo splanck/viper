@@ -222,10 +222,13 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
                     tempIds[p.name] = idx;
                     ++idx;
                 }
-                m.functions.push_back({name, parseType(retStr), params, {}});
+                m.functions.push_back({name, parseType(retStr), params, {}, {}});
                 curFn = &m.functions.back();
                 curBB = nullptr;
                 nextTemp = idx;
+                curFn->valueNames.resize(nextTemp);
+                for (auto &p : params)
+                    curFn->valueNames[p.id] = p.name;
                 blockParamCount.clear();
                 pendingBrs.clear();
                 continue;
@@ -282,7 +285,11 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
                             return false;
                         }
                         params.push_back({nm, ty, nextTemp});
-                        tempIds[nm] = nextTemp++;
+                        tempIds[nm] = nextTemp;
+                        if (curFn->valueNames.size() <= nextTemp)
+                            curFn->valueNames.resize(nextTemp + 1);
+                        curFn->valueNames[nextTemp] = nm;
+                        ++nextTemp;
                     }
                 }
                 curFn->blocks.push_back({label, params, {}, false});
@@ -325,7 +332,12 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
                 std::string res = trim(line.substr(1, eq - 1));
                 auto [it, inserted] = tempIds.emplace(res, nextTemp);
                 if (inserted)
+                {
+                    if (curFn->valueNames.size() <= nextTemp)
+                        curFn->valueNames.resize(nextTemp + 1);
+                    curFn->valueNames[nextTemp] = res;
                     nextTemp++;
+                }
                 in.result = it->second;
                 line = trim(line.substr(eq + 1));
             }
