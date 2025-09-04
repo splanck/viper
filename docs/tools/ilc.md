@@ -13,6 +13,7 @@ Flags:
 | `--trace=il` | emit a line-per-instruction trace. |
 | `--trace=src` | show source file, line, and column for each step; falls back to `<unknown>` when locations are missing. |
 | `--break <Label>` | halt before executing the first instruction of block `Label`; may be repeated. |
+| `--break-src <file>:<line>` | halt before executing instructions at the given source file and line (exact path match); may be repeated. |
 | `--debug-cmds <file>` | read debugger actions from `file` when a breakpoint is hit. |
 | `--step` | enter debug mode, break at entry, and step one instruction. |
 | `--continue` | ignore breakpoints and run to completion. |
@@ -21,6 +22,14 @@ Flags:
 | `--time` | print wall-clock execution time in milliseconds. |
 
 `--time` measures wall-clock time and may vary between runs and systems.
+
+`--break-src` compares the file path literally; relative and absolute paths are not normalized.
+
+Example:
+
+```
+ilc -run examples/il/trace_min.il --break-src examples/il/trace_min.il:2
+```
 
 Example:
 

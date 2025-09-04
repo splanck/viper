@@ -10,6 +10,7 @@
 #include "cli.hpp"
 #include "il/io/Parser.hpp"
 #include "il/verify/Verifier.hpp"
+#include "support/source_manager.hpp"
 #include "vm/VM.hpp"
 #include <algorithm>
 #include <chrono>
@@ -39,6 +40,8 @@ int cmdRunIL(int argc, char **argv)
     }
     std::string ilFile = argv[0];
     vm::TraceConfig traceCfg{};
+    il::support::SourceManager sm;
+    sm.addFile(ilFile);
     std::string stdinPath;
     uint64_t maxSteps = 0;
     vm::DebugCtrl dbg;
@@ -70,6 +73,19 @@ int cmdRunIL(int argc, char **argv)
         {
             auto sym = dbg.internLabel(argv[++i]);
             dbg.addBreak(sym);
+        }
+        else if (arg == "--break-src" && i + 1 < argc)
+        {
+            std::string spec = argv[++i];
+            size_t pos = spec.rfind(':');
+            if (pos == std::string::npos)
+            {
+                usage();
+                return 1;
+            }
+            std::string file = spec.substr(0, pos);
+            int line = std::stoi(spec.substr(pos + 1));
+            dbg.addBreakSrcLine(file, line);
         }
         else if (arg == "--debug-cmds" && i + 1 < argc)
         {
@@ -105,6 +121,7 @@ int cmdRunIL(int argc, char **argv)
             return 1;
         }
     }
+    traceCfg.sm = &sm;
     if (continueFlag)
     {
         dbg = vm::DebugCtrl();
@@ -146,6 +163,7 @@ int cmdRunIL(int argc, char **argv)
         }
         script->addStep(1);
     }
+    dbg.setSourceManager(traceCfg.sm);
     vm::VM vm(m, traceCfg, maxSteps, std::move(dbg), script.get());
     std::chrono::steady_clock::time_point start;
     if (timeFlag)

@@ -9,9 +9,11 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 #include "vm/RuntimeBridge.hpp"
+#include "support/source_manager.hpp"
 #include <cassert>
 #include <cstring>
 #include <iostream>
+#include <string>
 #include <utility>
 
 using namespace il::core;
@@ -116,6 +118,16 @@ int64_t VM::execFunction(const Function &fn)
         }
         skipBreakOnce = false;
         const Instr &in = bb->instructions[ip];
+        if (debug.hasSrcLineBPs() && debug.shouldBreakOn(in))
+        {
+            std::string path;
+            if (const auto *sm = debug.sourceManager(); sm && in.loc.isValid())
+                path = std::string(sm->getPath(in.loc.file_id));
+            std::cerr << "[BREAK] src=" << path << ':' << in.loc.line
+                      << " fn=@" << fr.func->name << " blk=" << bb->label
+                      << " ip=#" << ip << "\n";
+            return 10;
+        }
         tracer.onStep(in, fr);
         ++instrCount;
         bool jumped = false;

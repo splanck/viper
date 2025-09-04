@@ -4,6 +4,8 @@
 // Ownership/Lifetime: DebugCtrl owns its interner and breakpoint set.
 // Links: docs/dev/vm.md
 #include "VM/Debug.h"
+#include "il/core/Instr.hpp"
+#include "support/source_manager.hpp"
 #include <iostream>
 
 namespace il::vm
@@ -24,6 +26,29 @@ bool DebugCtrl::shouldBreak(const il::core::BasicBlock &blk) const
 {
     il::support::Symbol sym = interner_.intern(blk.label);
     return breaks_.count(sym) != 0;
+}
+
+void DebugCtrl::addBreakSrcLine(std::string file, int line)
+{
+    srcLineBPs_.push_back({std::move(file), line});
+}
+
+bool DebugCtrl::hasSrcLineBPs() const
+{
+    return !srcLineBPs_.empty();
+}
+
+bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
+{
+    if (!sm_ || !I.loc.isValid())
+        return false;
+    std::string path(sm_->getPath(I.loc.file_id));
+    for (const auto &bp : srcLineBPs_)
+    {
+        if (path == bp.file && static_cast<int>(I.loc.line) == bp.line)
+            return true;
+    }
+    return false;
 }
 
 void DebugCtrl::addWatch(std::string_view name)
