@@ -12,6 +12,7 @@
 #include <cassert>
 #include <cstring>
 #include <iostream>
+#include <string_view>
 #include <utility>
 
 using namespace il::core;
@@ -20,7 +21,7 @@ namespace il::vm
 {
 
 VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript *script)
-    : mod(m), tracer(tc), debug(std::move(dbg)), script(script), maxSteps(ms)
+    : mod(m), tracer(tc), debug(std::move(dbg)), script(script), sm(tc.sm), maxSteps(ms)
 {
     for (const auto &f : m.functions)
         fnMap[f.name] = &f;
@@ -114,8 +115,21 @@ int64_t VM::execFunction(const Function &fn)
             }
             fr.params.clear();
         }
-        skipBreakOnce = false;
         const Instr &in = bb->instructions[ip];
+        if (stepBudget == 0 && !skipBreakOnce && debug.shouldBreak(in, sm))
+        {
+            std::string_view path = sm ? sm->getPath(in.loc.file_id) : "<unknown>";
+            std::cerr << "[BREAK] fn=@" << fr.func->name << " src=" << path << ':' << in.loc.line
+                      << " reason=src-line\n";
+            if (!script || script->empty())
+                return 10;
+            auto act = script->nextAction();
+            if (act.kind == DebugActionKind::Step)
+                stepBudget = act.count;
+            skipBreakOnce = true;
+            continue;
+        }
+        skipBreakOnce = false;
         tracer.onStep(in, fr);
         ++instrCount;
         bool jumped = false;
