@@ -6,6 +6,7 @@
 #pragma once
 
 #include "frontends/basic/AST.hpp"
+#include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lexer.hpp"
 #include <memory>
 #include <string_view>
@@ -17,12 +18,13 @@ namespace il::frontends::basic
 class Parser
 {
   public:
-    Parser(std::string_view src, uint32_t file_id);
+    Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *emitter = nullptr);
     std::unique_ptr<Program> parseProgram();
 
   private:
     mutable Lexer lexer_;
     mutable std::vector<Token> tokens_;
+    DiagnosticEmitter *emitter_ = nullptr;
 
 #include "frontends/basic/Parser_Token.hpp"
 

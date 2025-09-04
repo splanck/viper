@@ -12,6 +12,6 @@ const Token &peek(int n = 0) const;
 /// @brief Consume and return the current token.
 Token consume();
 /// @brief Consume a token of kind @p k or report a mismatch.
-Token expect(TokenKind k, const char *what);
+Token expect(TokenKind k);
 /// @brief Advance to the next statement boundary token.
 void syncToStmtBoundary();
