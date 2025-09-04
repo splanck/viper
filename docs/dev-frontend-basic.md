@@ -15,3 +15,12 @@ The BASIC parser is split into focused components:
 
 This separation keeps statement logic clear and isolates token mechanics and
 expression handling.
+
+## Constant Folding Rules
+
+The constant folder evaluates pure expressions composed only of literals. When
+both operands are numeric, they are promoted so that if either is a float, the
+other is converted to float before the operation. Integer arithmetic uses
+64-bit wrap-around semantics. String operands fold `+` as concatenation and
+support equality/inequality comparisons. Mixed string and numeric operations
+are left to the semantic analyzer for diagnostics.
