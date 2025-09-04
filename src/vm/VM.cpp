@@ -81,12 +81,14 @@ int64_t VM::execFunction(const Function &fn)
             std::cerr << "VM: step limit exceeded (" << maxSteps << "); aborting.\n";
             return 1;
         }
-        if (ip == 0 && stepBudget == 0 && !skipBreakOnce)
+        const Instr &in = bb->instructions[ip];
+        if (stepBudget == 0 && !skipBreakOnce)
         {
-            if (debug.shouldBreak(*bb))
+            if (auto reason = debug.shouldBreak(*bb, in, ip))
             {
                 std::cerr << "[BREAK] fn=@" << fr.func->name << " blk=" << bb->label
-                          << " reason=label\n";
+                          << " reason=" << (*reason == Breakpoint::Kind::SrcLine ? "src" : "label")
+                          << "\n";
                 if (!script || script->empty())
                     return 10;
                 auto act = script->nextAction();
@@ -94,28 +96,29 @@ int64_t VM::execFunction(const Function &fn)
                     stepBudget = act.count;
                 skipBreakOnce = true;
             }
-
-            for (const auto &p : bb->params)
+            if (ip == 0)
             {
-                auto it = fr.params.find(p.id);
-                if (it != fr.params.end())
+                for (const auto &p : bb->params)
                 {
-                    if (fr.regs.size() <= p.id)
-                        fr.regs.resize(p.id + 1);
-                    fr.regs[p.id] = it->second;
-                    debug.onStore(p.name,
-                                  p.type.kind,
-                                  fr.regs[p.id].i64,
-                                  fr.regs[p.id].f64,
-                                  fr.func->name,
-                                  bb->label,
-                                  0);
+                    auto it = fr.params.find(p.id);
+                    if (it != fr.params.end())
+                    {
+                        if (fr.regs.size() <= p.id)
+                            fr.regs.resize(p.id + 1);
+                        fr.regs[p.id] = it->second;
+                        debug.onStore(p.name,
+                                      p.type.kind,
+                                      fr.regs[p.id].i64,
+                                      fr.regs[p.id].f64,
+                                      fr.func->name,
+                                      bb->label,
+                                      0);
+                    }
                 }
+                fr.params.clear();
             }
-            fr.params.clear();
         }
         skipBreakOnce = false;
-        const Instr &in = bb->instructions[ip];
         tracer.onStep(in, fr);
         ++instrCount;
         bool jumped = false;

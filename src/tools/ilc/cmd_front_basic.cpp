@@ -4,6 +4,8 @@
 // Ownership/Lifetime: Tool owns loaded modules.
 // Links: docs/class-catalog.md
 
+#include "VM/Debug.h"
+#include "VM/DebugScript.h"
 #include "VM/Trace.h"
 #include "cli.hpp"
 #include "frontends/basic/ConstFolder.hpp"
@@ -15,10 +17,13 @@
 #include "il/verify/Verifier.hpp"
 #include "support/source_manager.hpp"
 #include "vm/VM.hpp"
+#include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <string>
 
@@ -85,6 +90,12 @@ int cmdFrontBasic(int argc, char **argv)
     bool boundsChecks = false;
     vm::TraceConfig traceCfg{};
     SourceManager sm;
+    vm::DebugCtrl dbg;
+    std::unique_ptr<vm::DebugScript> script;
+    bool stepFlag = false;
+    bool continueFlag = false;
+    bool countFlag = false;
+    bool timeFlag = false;
     for (int i = 0; i < argc; ++i)
     {
         std::string arg = argv[i];
@@ -118,6 +129,45 @@ int cmdFrontBasic(int argc, char **argv)
         {
             boundsChecks = true;
         }
+        else if (arg == "--break" && i + 1 < argc)
+        {
+            std::string spec = argv[++i];
+            size_t colon = spec.find(':');
+            if (colon != std::string::npos && spec.rfind('.', colon) != std::string::npos)
+            {
+                int line = std::stoi(spec.substr(colon + 1));
+                dbg.addSrcBreak(spec.substr(0, colon), line);
+            }
+            else
+            {
+                auto sym = dbg.internLabel(spec);
+                dbg.addBreak(sym);
+            }
+        }
+        else if (arg == "--debug-cmds" && i + 1 < argc)
+        {
+            script = std::make_unique<vm::DebugScript>(argv[++i]);
+        }
+        else if (arg == "--step")
+        {
+            stepFlag = true;
+        }
+        else if (arg == "--continue")
+        {
+            continueFlag = true;
+        }
+        else if (arg == "--watch" && i + 1 < argc)
+        {
+            dbg.addWatch(argv[++i]);
+        }
+        else if (arg == "--count")
+        {
+            countFlag = true;
+        }
+        else if (arg == "--time")
+        {
+            timeFlag = true;
+        }
         else
         {
             usage();
@@ -140,6 +190,7 @@ int cmdFrontBasic(int argc, char **argv)
     }
     if (!verify::Verifier::verify(m, std::cerr))
         return 1;
+    dbg.setSourceManager(&sm);
     if (!stdinPath.empty())
     {
         if (!freopen(stdinPath.c_str(), "r", stdin))
@@ -149,6 +200,47 @@ int cmdFrontBasic(int argc, char **argv)
         }
     }
     traceCfg.sm = &sm;
-    vm::VM vm(m, traceCfg, maxSteps);
-    return static_cast<int>(vm.run());
+    if (continueFlag)
+    {
+        dbg = vm::DebugCtrl();
+        script.reset();
+        stepFlag = false;
+    }
+    if (stepFlag)
+    {
+        auto it = std::find_if(m.functions.begin(),
+                               m.functions.end(),
+                               [](const core::Function &f) { return f.name == "main"; });
+        if (it != m.functions.end() && !it->blocks.empty())
+        {
+            auto sym = dbg.internLabel(it->blocks.front().label);
+            dbg.addBreak(sym);
+        }
+        if (!script)
+        {
+            script = std::make_unique<vm::DebugScript>();
+        }
+        script->addStep(1);
+    }
+    vm::VM vm(m, traceCfg, maxSteps, std::move(dbg), script.get());
+    std::chrono::steady_clock::time_point start;
+    if (timeFlag)
+        start = std::chrono::steady_clock::now();
+    int rc = static_cast<int>(vm.run());
+    std::chrono::steady_clock::time_point end;
+    if (timeFlag)
+        end = std::chrono::steady_clock::now();
+    if (countFlag || timeFlag)
+    {
+        std::cerr << "[SUMMARY]";
+        if (countFlag)
+            std::cerr << " instr=" << vm.getInstrCount();
+        if (timeFlag)
+        {
+            double ms = std::chrono::duration<double, std::milli>(end - start).count();
+            std::cerr << " time_ms=" << ms;
+        }
+        std::cerr << "\n";
+    }
+    return rc;
 }
