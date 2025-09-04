@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Tool owns loaded modules.
 // Links: docs/class-catalog.md
 
+#include "VM/Trace.h"
 #include "cli.hpp"
 #include "frontends/basic/ConstFolder.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
@@ -80,7 +81,7 @@ int cmdFrontBasic(int argc, char **argv)
     std::string stdinPath;
     uint64_t maxSteps = 0;
     bool boundsChecks = false;
-    bool trace = false;
+    vm::TraceConfig traceCfg{};
     for (int i = 0; i < argc; ++i)
     {
         std::string arg = argv[i];
@@ -94,9 +95,9 @@ int cmdFrontBasic(int argc, char **argv)
             run = true;
             file = argv[++i];
         }
-        else if (arg == "--trace")
+        else if (arg == "--trace" || arg == "--trace=il")
         {
-            trace = true;
+            traceCfg.mode = vm::TraceConfig::IL;
         }
         else if (arg == "--stdin-from" && i + 1 < argc)
         {
@@ -140,6 +141,6 @@ int cmdFrontBasic(int argc, char **argv)
             return 1;
         }
     }
-    vm::VM vm(m, trace, maxSteps);
+    vm::VM vm(m, traceCfg, maxSteps);
     return static_cast<int>(vm.run());
 }
