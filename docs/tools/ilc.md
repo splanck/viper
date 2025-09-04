@@ -11,6 +11,8 @@ Flags:
 - `--trace=il` — emit a line-per-instruction trace.
 - `--trace=src` — show source file, line, and column for each step; falls back to
   `<unknown>` when locations are missing.
+- `--break <Label>` — break before the first instruction of block `<Label>`; may
+  be specified multiple times.
 
 Example:
 

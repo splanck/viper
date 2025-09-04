@@ -4,16 +4,19 @@
 // Ownership/Lifetime: Tool owns loaded modules.
 // Links: docs/class-catalog.md
 
+#include "VM/Debug.h"
 #include "VM/Trace.h"
 #include "cli.hpp"
 #include "il/io/Parser.hpp"
 #include "il/verify/Verifier.hpp"
+#include "support/string_interner.hpp"
 #include "vm/VM.hpp"
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <vector>
 
 using namespace il;
 
@@ -35,6 +38,7 @@ int cmdRunIL(int argc, char **argv)
     vm::TraceConfig traceCfg{};
     std::string stdinPath;
     uint64_t maxSteps = 0;
+    std::vector<std::string> breaks;
     for (int i = 1; i < argc; ++i)
     {
         std::string arg = argv[i];
@@ -53,6 +57,10 @@ int cmdRunIL(int argc, char **argv)
         else if (arg == "--max-steps" && i + 1 < argc)
         {
             maxSteps = std::stoull(argv[++i]);
+        }
+        else if (arg == "--break" && i + 1 < argc)
+        {
+            breaks.push_back(argv[++i]);
         }
         else if (arg == "--bounds-checks")
         {
@@ -83,6 +91,10 @@ int cmdRunIL(int argc, char **argv)
             return 1;
         }
     }
-    vm::VM vm(m, traceCfg, maxSteps);
+    il::support::StringInterner interner;
+    vm::DebugCtrl dbg(&interner);
+    for (const auto &b : breaks)
+        dbg.addBreak(interner.intern(b));
+    vm::VM vm(m, traceCfg, dbg, maxSteps);
     return static_cast<int>(vm.run());
 }
