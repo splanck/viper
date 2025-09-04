@@ -43,6 +43,10 @@ add_executable(test_vm_path_normalize unit/PathNormalizeTests.cpp)
 target_link_libraries(test_vm_path_normalize PRIVATE VMTrace)
 add_test(NAME test_vm_path_normalize COMMAND test_vm_path_normalize)
 
+add_executable(test_il_opt_passes unit/test_il_opt_passes.cpp)
+target_link_libraries(test_il_opt_passes PRIVATE il_core il_io il_transform support)
+add_test(NAME test_il_opt_passes COMMAND test_il_opt_passes)
+
 
 add_executable(test_analysis_cfg analysis/CFGTests.cpp)
 target_link_libraries(test_analysis_cfg PRIVATE Analysis il_build)
