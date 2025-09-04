@@ -1,7 +1,7 @@
 // File: lib/VM/Debug.h
 // Purpose: Declare breakpoint control for the VM.
-// Key invariants: Breakpoints are keyed by interned block labels.
-// Ownership/Lifetime: DebugCtrl owns its interner and breakpoint set.
+// Key invariants: Breakpoints are keyed by interned block labels and source lines.
+// Ownership/Lifetime: DebugCtrl owns its interner, breakpoint set, and source line list.
 // Links: docs/dev/vm.md
 #pragma once
 
@@ -12,6 +12,16 @@
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+
+namespace il::core
+{
+struct Instr;
+} // namespace il::core
+
+namespace il::support
+{
+class SourceManager;
+} // namespace il::support
 
 namespace il::vm
 {
@@ -35,6 +45,21 @@ class DebugCtrl
     /// @brief Check whether entering @p blk triggers a breakpoint.
     bool shouldBreak(const il::core::BasicBlock &blk) const;
 
+    /// @brief Add breakpoint at source @p file and line @p line.
+    void addBreakSrcLine(std::string file, int line);
+
+    /// @brief Check if any source line breakpoints are registered.
+    bool hasSrcLineBPs() const;
+
+    /// @brief Check whether instruction @p I matches a source line breakpoint.
+    bool shouldBreakOn(const il::core::Instr &I) const;
+
+    /// @brief Set source manager used to resolve file paths.
+    void setSourceManager(const il::support::SourceManager *sm);
+
+    /// @brief Retrieve associated source manager.
+    const il::support::SourceManager *getSourceManager() const;
+
     /// @brief Register a watch on variable @p name.
     void addWatch(std::string_view name);
 
@@ -50,6 +75,15 @@ class DebugCtrl
   private:
     mutable il::support::StringInterner interner_;   ///< Label interner
     std::unordered_set<il::support::Symbol> breaks_; ///< Registered breakpoints
+
+    struct SrcLineBP
+    {
+        std::string file; ///< Source file path
+        int line;         ///< 1-based line number
+    };
+
+    const il::support::SourceManager *sm_ = nullptr; ///< Source manager for paths
+    std::vector<SrcLineBP> srcLineBPs_;              ///< Source line breakpoints
 
     struct WatchEntry
     {
