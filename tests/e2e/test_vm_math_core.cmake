@@ -1,3 +1,9 @@
+## File: tests/e2e/test_vm_math_core.cmake
+## Purpose: Verify VM core math operations emit expected output.
+## Key invariants: Execution output matches golden file.
+## Ownership/Lifetime: Invoked by CTest.
+## Links: docs/class-catalog.md
+
 if(NOT DEFINED ILC)
   message(FATAL_ERROR "ILC not set")
 endif()
@@ -6,11 +12,13 @@ if(NOT DEFINED SRC_DIR)
 endif()
 set(IL_FILE "${SRC_DIR}/tests/il/e2e/math_core.il")
 set(GOLDEN "${SRC_DIR}/tests/il/e2e/math_core.out")
-execute_process(COMMAND ${ILC} -run ${IL_FILE} OUTPUT_FILE out.txt RESULT_VARIABLE r)
+# Use a unique filename to avoid collisions when tests run in parallel.
+set(OUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/vm_math_core.out.txt")
+execute_process(COMMAND ${ILC} -run ${IL_FILE} OUTPUT_FILE ${OUT_FILE} RESULT_VARIABLE r)
 if(NOT r EQUAL 0)
   message(FATAL_ERROR "math_core execution failed")
 endif()
-file(READ out.txt OUT)
+file(READ ${OUT_FILE} OUT)
 file(READ ${GOLDEN} EXP)
 if(NOT OUT STREQUAL EXP)
   message(FATAL_ERROR "stdout mismatch")

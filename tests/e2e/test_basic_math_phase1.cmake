@@ -1,3 +1,9 @@
+## File: tests/e2e/test_basic_math_phase1.cmake
+## Purpose: Validate BASIC math example (phase1) output matches golden file.
+## Key invariants: VM execution output equals expected golden output.
+## Ownership/Lifetime: Invoked by CTest.
+## Links: docs/class-catalog.md
+
 if(NOT DEFINED ILC)
   message(FATAL_ERROR "ILC not set")
 endif()
@@ -7,11 +13,13 @@ endif()
 if(NOT DEFINED GOLDEN)
   message(FATAL_ERROR "GOLDEN not set")
 endif()
-execute_process(COMMAND ${ILC} front basic -run ${BAS_FILE} OUTPUT_FILE out.txt RESULT_VARIABLE r)
+# Use a unique filename to avoid collisions when tests run in parallel.
+set(OUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/basic_math_phase1.out.txt")
+execute_process(COMMAND ${ILC} front basic -run ${BAS_FILE} OUTPUT_FILE ${OUT_FILE} RESULT_VARIABLE r)
 if(NOT r EQUAL 0)
   message(FATAL_ERROR "execution failed")
 endif()
-file(READ out.txt OUT)
+file(READ ${OUT_FILE} OUT)
 file(READ ${GOLDEN} EXP)
 if(NOT OUT STREQUAL EXP)
   message(FATAL_ERROR "stdout mismatch")

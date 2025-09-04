@@ -1,9 +1,17 @@
+## File: tests/e2e/test_vm_strings.cmake
+## Purpose: Ensure VM string operations behave as expected.
+## Key invariants: Execution output contains specific substrings.
+## Ownership/Lifetime: Invoked by CTest.
+## Links: docs/class-catalog.md
+
+# Use a unique filename to avoid collisions when tests run in parallel.
+set(OUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/vm_strings.out.txt")
 execute_process(COMMAND ${ILC} -run ${SRC_DIR}/docs/examples/il/ex5_strings.il
-                OUTPUT_FILE out.txt RESULT_VARIABLE r)
+                OUTPUT_FILE ${OUT_FILE} RESULT_VARIABLE r)
 if(NOT r EQUAL 0)
   message(FATAL_ERROR "ex5_strings execution failed")
 endif()
-file(READ out.txt S)
+file(READ ${OUT_FILE} S)
 string(REGEX MATCH "JOHN DOE" _m1 "${S}")
 if(NOT _m1)
   message(FATAL_ERROR "missing JOHN DOE")
