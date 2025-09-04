@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Tool owns loaded modules.
 // Links: docs/class-catalog.md
 
+#include "VM/Debug.h"
 #include "VM/Trace.h"
 #include "cli.hpp"
 #include "frontends/basic/ConstFolder.hpp"
@@ -14,6 +15,7 @@
 #include "il/io/Serializer.hpp"
 #include "il/verify/Verifier.hpp"
 #include "support/source_manager.hpp"
+#include "support/string_interner.hpp"
 #include "vm/VM.hpp"
 #include <cstdint>
 #include <cstdio>
@@ -84,6 +86,9 @@ int cmdFrontBasic(int argc, char **argv)
     uint64_t maxSteps = 0;
     bool boundsChecks = false;
     vm::TraceConfig traceCfg{};
+    support::StringInterner interner;
+    vm::DebugCtrl dbg(interner);
+    bool hasBreaks = false;
     SourceManager sm;
     for (int i = 0; i < argc; ++i)
     {
@@ -113,6 +118,12 @@ int cmdFrontBasic(int argc, char **argv)
         else if (arg == "--max-steps" && i + 1 < argc)
         {
             maxSteps = std::stoull(argv[++i]);
+        }
+        else if (arg == "--break" && i + 1 < argc)
+        {
+            auto sym = interner.intern(argv[++i]);
+            dbg.addBreak(sym);
+            hasBreaks = true;
         }
         else if (arg == "--bounds-checks")
         {
@@ -149,6 +160,6 @@ int cmdFrontBasic(int argc, char **argv)
         }
     }
     traceCfg.sm = &sm;
-    vm::VM vm(m, traceCfg, maxSteps);
+    vm::VM vm(m, traceCfg, maxSteps, hasBreaks ? &dbg : nullptr);
     return static_cast<int>(vm.run());
 }
