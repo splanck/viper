@@ -1,9 +1,11 @@
 // File: lib/VM/Debug.cpp
 // Purpose: Implement breakpoint control for the VM.
-// Key invariants: Interned labels uniquely identify breakpoints.
-// Ownership/Lifetime: DebugCtrl owns its interner and breakpoint set.
+// Key invariants: Interned labels and exact file paths uniquely identify breakpoints.
+// Ownership/Lifetime: DebugCtrl owns its interner, breakpoint set, and source line list.
 // Links: docs/dev/vm.md
 #include "VM/Debug.h"
+#include "il/core/Instr.hpp"
+#include "support/source_manager.hpp"
 #include <iostream>
 
 namespace il::vm
@@ -24,6 +26,37 @@ bool DebugCtrl::shouldBreak(const il::core::BasicBlock &blk) const
 {
     il::support::Symbol sym = interner_.intern(blk.label);
     return breaks_.count(sym) != 0;
+}
+
+void DebugCtrl::addBreakSrcLine(std::string file, int line)
+{
+    srcLineBPs_.push_back({std::move(file), line});
+}
+
+bool DebugCtrl::hasSrcLineBPs() const
+{
+    return !srcLineBPs_.empty();
+}
+
+void DebugCtrl::setSourceManager(const il::support::SourceManager *sm)
+{
+    sm_ = sm;
+}
+
+const il::support::SourceManager *DebugCtrl::getSourceManager() const
+{
+    return sm_;
+}
+
+bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
+{
+    if (!sm_ || srcLineBPs_.empty() || !I.loc.isValid())
+        return false;
+    std::string path(sm_->getPath(I.loc.file_id));
+    for (const auto &bp : srcLineBPs_)
+        if (path == bp.file && static_cast<int>(I.loc.line) == bp.line)
+            return true;
+    return false;
 }
 
 void DebugCtrl::addWatch(std::string_view name)

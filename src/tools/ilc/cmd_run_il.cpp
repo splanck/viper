@@ -10,6 +10,7 @@
 #include "cli.hpp"
 #include "il/io/Parser.hpp"
 #include "il/verify/Verifier.hpp"
+#include "support/source_manager.hpp"
 #include "vm/VM.hpp"
 #include <algorithm>
 #include <chrono>
@@ -43,6 +44,7 @@ int cmdRunIL(int argc, char **argv)
     uint64_t maxSteps = 0;
     vm::DebugCtrl dbg;
     std::unique_ptr<vm::DebugScript> script;
+    il::support::SourceManager sm;
     bool stepFlag = false;
     bool continueFlag = false;
     bool countFlag = false;
@@ -70,6 +72,17 @@ int cmdRunIL(int argc, char **argv)
         {
             auto sym = dbg.internLabel(argv[++i]);
             dbg.addBreak(sym);
+        }
+        else if (arg == "--break-src" && i + 1 < argc)
+        {
+            std::string spec = argv[++i];
+            auto pos = spec.rfind(':');
+            if (pos != std::string::npos)
+            {
+                std::string file = spec.substr(0, pos);
+                int line = std::stoi(spec.substr(pos + 1));
+                dbg.addBreakSrcLine(file, line);
+            }
         }
         else if (arg == "--debug-cmds" && i + 1 < argc)
         {
@@ -111,6 +124,9 @@ int cmdRunIL(int argc, char **argv)
         script.reset();
         stepFlag = false;
     }
+    sm.addFile(ilFile);
+    traceCfg.sm = &sm;
+    dbg.setSourceManager(&sm);
     std::ifstream ifs(ilFile);
     if (!ifs)
     {
