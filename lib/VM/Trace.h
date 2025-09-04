@@ -5,6 +5,11 @@
 // Links: docs/dev/vm.md
 #pragma once
 
+#include <cstdint>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 namespace il::core
 {
 struct Instr;
@@ -21,8 +26,12 @@ struct TraceConfig
     enum Mode
     {
         Off, ///< Tracing disabled
-        IL   ///< Trace IL instructions
+        IL,  ///< Trace IL instructions
+        SRC  ///< Trace source locations
     } mode{Off};
+
+    /// @brief Source file paths indexed by SourceLoc file_id-1.
+    std::vector<std::string> files;
 
     /// @brief Check whether tracing is enabled.
     /// @return True if mode is not Off.
@@ -43,7 +52,9 @@ class TraceSink
     void onStep(const il::core::Instr &in, const Frame &fr);
 
   private:
-    TraceConfig cfg; ///< Active configuration
+    TraceConfig cfg;                                                 ///< Active configuration
+    std::unordered_map<std::string, std::vector<std::string>> cache; ///< Cached file lines
+    const std::string &getLine(const std::string &path, uint32_t line);
 };
 
 } // namespace il::vm

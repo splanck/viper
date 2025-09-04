@@ -1,0 +1,2 @@
+10 PRINT 1
+20 PRINT 2

@@ -1,0 +1,10 @@
+[SRC] <unknown>  (fn=@main blk=entry ip=#0)
+[SRC] TraceSrcTests.bas:1:4  (fn=@main blk=L10 ip=#0)  PRINT 1
+[SRC] TraceSrcTests.bas:1:4  (fn=@main blk=L10 ip=#1)  PRINT 1
+[SRC] TraceSrcTests.bas:1:4  (fn=@main blk=L10 ip=#2)  PRINT 1
+[SRC] TraceSrcTests.bas:1:4  (fn=@main blk=L10 ip=#3)  PRINT 1
+[SRC] TraceSrcTests.bas:2:4  (fn=@main blk=L20 ip=#0)  PRINT 2
+[SRC] TraceSrcTests.bas:2:4  (fn=@main blk=L20 ip=#1)  PRINT 2
+[SRC] TraceSrcTests.bas:2:4  (fn=@main blk=L20 ip=#2)  PRINT 2
+[SRC] TraceSrcTests.bas:2:4  (fn=@main blk=L20 ip=#3)  PRINT 2
+[SRC] <unknown>  (fn=@main blk=exit ip=#0)

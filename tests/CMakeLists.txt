@@ -151,6 +151,12 @@ add_test(NAME random_walk COMMAND ${CMAKE_COMMAND}
   -DSRC_DIR=${CMAKE_SOURCE_DIR}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_random_walk.cmake)
 
+add_test(NAME trace_src COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/TraceSrcTests.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/TraceSrcTests.bas.out
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_trace_src.cmake)
+
 add_test(NAME il_opt_equiv COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DIL_FILE=${CMAKE_SOURCE_DIR}/tests/golden/il_opt/e2e.in.il
