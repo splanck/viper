@@ -103,6 +103,13 @@ int64_t VM::execFunction(const Function &fn)
                     if (fr.regs.size() <= p.id)
                         fr.regs.resize(p.id + 1);
                     fr.regs[p.id] = it->second;
+                    debug.onStore(p.name,
+                                  p.type.kind,
+                                  fr.regs[p.id].i64,
+                                  fr.regs[p.id].f64,
+                                  fr.func->name,
+                                  bb->label,
+                                  0);
                 }
             }
             fr.params.clear();
@@ -165,6 +172,17 @@ int64_t VM::execFunction(const Function &fn)
                     *reinterpret_cast<rt_str *>(ptr) = val.str;
                 else if (in.type.kind == Type::Kind::Ptr)
                     *reinterpret_cast<void **>(ptr) = val.ptr;
+                if (in.operands[0].kind == Value::Kind::Temp)
+                {
+                    unsigned id = in.operands[0].id;
+                    if (id < fr.func->valueNames.size())
+                    {
+                        const std::string &nm = fr.func->valueNames[id];
+                        if (!nm.empty())
+                            debug.onStore(
+                                nm, in.type.kind, val.i64, val.f64, fr.func->name, bb->label, ip);
+                    }
+                }
                 break;
             }
             case Opcode::Add:
