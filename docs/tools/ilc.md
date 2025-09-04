@@ -12,7 +12,7 @@ Flags:
 | ---- | ----------- |
 | `--trace=il` | emit a line-per-instruction trace. |
 | `--trace=src` | show source file, line, and column for each step; falls back to `<unknown>` when locations are missing. |
-| `--break <Label>` | halt before executing the first instruction of block `Label`; may be repeated. |
+| `--break <Label\|file:line>` | halt before entering block `Label` or before the first instruction whose source is `file:line`; may be repeated. |
 | `--debug-cmds <file>` | read debugger actions from `file` when a breakpoint is hit. |
 | `--step` | enter debug mode, break at entry, and step one instruction. |
 | `--continue` | ignore breakpoints and run to completion. |
@@ -21,6 +21,9 @@ Flags:
 | `--time` | print wall-clock execution time in milliseconds. |
 
 `--time` measures wall-clock time and may vary between runs and systems.
+
+When both a label and a source-line breakpoint refer to the same instruction,
+the source-line breakpoint takes precedence.
 
 Example:
 
@@ -48,6 +51,12 @@ script:
 
 ```
 ilc -run examples/il/debug_script.il --break L3 --trace=il --debug-cmds examples/il/debug_script.txt
+```
+
+To stop at a source line, provide a `file:line` argument:
+
+```
+ilc front basic -run examples/basic/break_src_line.bas --break examples/basic/break_src_line.bas:20 --debug-cmds script.txt
 ```
 
 ### Watching scalars

@@ -68,8 +68,18 @@ int cmdRunIL(int argc, char **argv)
         }
         else if (arg == "--break" && i + 1 < argc)
         {
-            auto sym = dbg.internLabel(argv[++i]);
-            dbg.addBreak(sym);
+            std::string spec = argv[++i];
+            size_t colon = spec.find(':');
+            if (colon != std::string::npos && spec.rfind('.', colon) != std::string::npos)
+            {
+                int line = std::stoi(spec.substr(colon + 1));
+                dbg.addSrcBreak(spec.substr(0, colon), line);
+            }
+            else
+            {
+                auto sym = dbg.internLabel(spec);
+                dbg.addBreak(sym);
+            }
         }
         else if (arg == "--debug-cmds" && i + 1 < argc)
         {
@@ -122,6 +132,7 @@ int cmdRunIL(int argc, char **argv)
         return 1;
     if (!verify::Verifier::verify(m, std::cerr))
         return 1;
+    dbg.setSourceManager(traceCfg.sm);
     if (!stdinPath.empty())
     {
         if (!freopen(stdinPath.c_str(), "r", stdin))
