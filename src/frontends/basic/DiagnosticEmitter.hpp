@@ -5,6 +5,7 @@
 // Links: docs/class-catalog.md
 #pragma once
 
+#include "frontends/basic/Token.hpp"
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
 #include <ostream>
@@ -42,6 +43,12 @@ class DiagnosticEmitter
               il::support::SourceLoc loc,
               uint32_t length,
               std::string message);
+
+    /// @brief Emit standardized "expected vs got" parse diagnostic.
+    /// @param got Actual token encountered.
+    /// @param expect Expected token kind.
+    /// @param loc Source location of the unexpected token.
+    void emitExpected(TokenKind got, TokenKind expect, il::support::SourceLoc loc);
 
     /// @brief Print all diagnostics to @p os with source snippets.
     /// @param os Output stream.
