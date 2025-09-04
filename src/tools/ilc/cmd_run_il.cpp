@@ -11,6 +11,7 @@
 #include "il/io/Parser.hpp"
 #include "il/verify/Verifier.hpp"
 #include "vm/VM.hpp"
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -41,6 +42,8 @@ int cmdRunIL(int argc, char **argv)
     uint64_t maxSteps = 0;
     vm::DebugCtrl dbg;
     std::unique_ptr<vm::DebugScript> script;
+    bool stepFlag = false;
+    bool continueFlag = false;
     for (int i = 1; i < argc; ++i)
     {
         std::string arg = argv[i];
@@ -69,6 +72,14 @@ int cmdRunIL(int argc, char **argv)
         {
             script = std::make_unique<vm::DebugScript>(argv[++i]);
         }
+        else if (arg == "--step")
+        {
+            stepFlag = true;
+        }
+        else if (arg == "--continue")
+        {
+            continueFlag = true;
+        }
         else if (arg == "--bounds-checks")
         {
             // Flag accepted for parity with front-end run mode.
@@ -78,6 +89,12 @@ int cmdRunIL(int argc, char **argv)
             usage();
             return 1;
         }
+    }
+    if (continueFlag)
+    {
+        dbg = vm::DebugCtrl();
+        script.reset();
+        stepFlag = false;
     }
     std::ifstream ifs(ilFile);
     if (!ifs)
@@ -97,6 +114,22 @@ int cmdRunIL(int argc, char **argv)
             std::cerr << "unable to open stdin file\n";
             return 1;
         }
+    }
+    if (stepFlag)
+    {
+        auto it = std::find_if(m.functions.begin(),
+                               m.functions.end(),
+                               [](const core::Function &f) { return f.name == "main"; });
+        if (it != m.functions.end() && !it->blocks.empty())
+        {
+            auto sym = dbg.internLabel(it->blocks.front().label);
+            dbg.addBreak(sym);
+        }
+        if (!script)
+        {
+            script = std::make_unique<vm::DebugScript>();
+        }
+        script->addStep(1);
     }
     vm::VM vm(m, traceCfg, maxSteps, std::move(dbg), script.get());
     return static_cast<int>(vm.run());

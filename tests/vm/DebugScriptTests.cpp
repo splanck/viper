@@ -21,8 +21,13 @@ int main(int argc, char **argv)
     std::string dbgOut = "dbg.out";
     std::string dbgErr = "dbg.err";
     std::string refOut = "ref.out";
-    std::string cmd = ilc + " -run " + ilFile + " --trace=il --break L3 --debug-cmds " + script +
-                      " >" + dbgOut + " 2>" + dbgErr;
+    std::string cmd = ilc + " -run " + ilFile + " --step >step.out 2>step.err";
+    if (std::system(cmd.c_str()) != 10 * 256)
+        return 1;
+    std::remove("step.out");
+    std::remove("step.err");
+    cmd = ilc + " -run " + ilFile + " --trace=il --break L3 --debug-cmds " + script + " >" +
+          dbgOut + " 2>" + dbgErr;
     if (std::system(cmd.c_str()) != 0)
         return 1;
     std::ifstream err(dbgErr);
@@ -61,8 +66,27 @@ int main(int argc, char **argv)
     }
     if (std::getline(refO, r))
         return 1;
+    std::string contOut = "cont.out";
+    std::string contErr = "cont.err";
+    cmd = ilc + " -run " + ilFile + " --break L3 --continue >" + contOut + " 2>" + contErr;
+    if (std::system(cmd.c_str()) != 0)
+        return 1;
+    std::ifstream contE(contErr);
+    if (std::getline(contE, line))
+        return 1;
+    std::ifstream contO(contOut);
+    std::ifstream refO2(refOut);
+    while (std::getline(contO, d))
+    {
+        if (!std::getline(refO2, r) || d != r)
+            return 1;
+    }
+    if (std::getline(refO2, r))
+        return 1;
     std::remove(dbgOut.c_str());
     std::remove(dbgErr.c_str());
     std::remove(refOut.c_str());
+    std::remove(contOut.c_str());
+    std::remove(contErr.c_str());
     return 0;
 }
