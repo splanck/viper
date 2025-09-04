@@ -12,19 +12,92 @@
 #include "il/core/Value.hpp"
 #include "support/source_manager.hpp"
 #include "vm/VM.hpp"
+#include <clocale>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <locale>
+#include <string>
+
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#endif
 
 namespace il::vm
 {
 
-TraceSink::TraceSink(TraceConfig cfg) : cfg(cfg) {}
+namespace
+{
+/// @brief Temporarily force the C locale for numeric formatting.
+class LocaleGuard
+{
+    std::ostream &os;
+    std::locale oldLoc;
+    std::string oldC;
+
+  public:
+    explicit LocaleGuard(std::ostream &s) : os(s), oldLoc(s.getloc())
+    {
+        if (const char *c = std::setlocale(LC_NUMERIC, nullptr))
+            oldC = c;
+        os.imbue(std::locale::classic());
+        std::setlocale(LC_NUMERIC, "C");
+    }
+
+    ~LocaleGuard()
+    {
+        if (!oldC.empty())
+            std::setlocale(LC_NUMERIC, oldC.c_str());
+        os.imbue(oldLoc);
+    }
+};
+
+/// @brief Print a Value with stable numeric formatting.
+void printValue(std::ostream &os, const il::core::Value &v)
+{
+    switch (v.kind)
+    {
+        case il::core::Value::Kind::Temp:
+            os << "%t" << std::dec << v.id;
+            break;
+        case il::core::Value::Kind::ConstInt:
+            os << std::dec << v.i64;
+            break;
+        case il::core::Value::Kind::ConstFloat:
+        {
+            char buf[32];
+            std::snprintf(buf, sizeof(buf), "%.17g", v.f64);
+            os << buf;
+            break;
+        }
+        case il::core::Value::Kind::ConstStr:
+            os << '"' << v.str << '"';
+            break;
+        case il::core::Value::Kind::GlobalAddr:
+            os << '@' << v.str;
+            break;
+        case il::core::Value::Kind::NullPtr:
+            os << "null";
+            break;
+    }
+}
+} // namespace
+
+TraceSink::TraceSink(TraceConfig cfg) : cfg(cfg)
+{
+#ifdef _WIN32
+    _setmode(_fileno(stderr), _O_BINARY);
+#endif
+}
 
 void TraceSink::onStep(const il::core::Instr &in, const Frame &fr)
 {
     if (!cfg.enabled())
         return;
+    LocaleGuard lg(std::cerr);
+    std::cerr << std::noboolalpha << std::dec;
     const auto *fn = fr.func;
     const il::core::BasicBlock *blk = nullptr;
     size_t ip = 0;
@@ -55,11 +128,11 @@ void TraceSink::onStep(const il::core::Instr &in, const Frame &fr)
             {
                 if (i)
                     std::cerr << ", ";
-                std::cerr << il::core::toString(in.operands[i]);
+                printValue(std::cerr, in.operands[i]);
             }
         }
         if (in.result)
-            std::cerr << " -> %t" << *in.result;
+            std::cerr << " -> %t" << std::dec << *in.result;
         std::cerr << '\n' << std::flush;
         return;
     }

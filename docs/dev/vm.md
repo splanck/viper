@@ -17,3 +17,9 @@ executed. Enable this via `--trace=il` in `ilc -run`:
 ```
 [IL] fn=@foo blk=L3 ip=#12 op=add %t1, %t2 -> %t3
 ```
+
+## Trace format stability
+
+Trace output is identical across platforms. All numbers use the C locale with
+booleans printed as `0` or `1`, integers in base‑10, and floating-point values
+formatted using `%.17g`. Line endings are normalized to `\n` even on Windows.
