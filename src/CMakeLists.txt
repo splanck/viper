@@ -34,7 +34,7 @@ target_include_directories(il_transform PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_library(il_vm STATIC vm/VM.cpp vm/RuntimeBridge.cpp)
 target_include_directories(il_vm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(il_vm PUBLIC il_core rt support)
+target_link_libraries(il_vm PUBLIC il_core rt support VMTrace)
 
 add_library(il_codegen_x86_64 STATIC codegen/x86_64/placeholder.cpp)
 set_target_properties(il_codegen_x86_64 PROPERTIES LINKER_LANGUAGE CXX)

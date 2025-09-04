@@ -17,7 +17,7 @@ using namespace il::core;
 namespace il::vm
 {
 
-VM::VM(const Module &m, bool tr, uint64_t ms) : mod(m), trace(tr), maxSteps(ms)
+VM::VM(const Module &m, TraceConfig tc, uint64_t ms) : mod(m), tracer(tc), maxSteps(ms)
 {
     for (const auto &f : m.functions)
         fnMap[f.name] = &f;
@@ -92,8 +92,7 @@ int64_t VM::execFunction(const Function &fn)
             fr.params.clear();
         }
         const Instr &in = bb->instructions[ip];
-        if (trace)
-            std::cerr << fn.name << ":" << bb->label << ":" << toString(in.op) << "\n";
+        tracer.onStep(in, fr);
         ++steps;
         switch (in.op)
         {

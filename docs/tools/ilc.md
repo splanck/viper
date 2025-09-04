@@ -2,6 +2,23 @@
 
 `ilc` compiles and runs IL modules and front-end sources.
 
+## run
+
+`ilc -run <file.il>` executes an IL module.
+
+Flags:
+
+- `--trace=il` — emit a line-per-instruction trace.
+
+Example:
+
+```
+$ ilc -run examples/il/trace_min.il --trace=il
+  [IL] fn=@main blk=entry ip=#0 op=add 1, 2 -> %t0
+  [IL] fn=@main blk=entry ip=#1 op=mul %t0, 3 -> %t1
+  [IL] fn=@main blk=entry ip=#2 op=ret 0
+```
+
 ## il-opt
 
 `ilc il-opt <in.il> -o <out.il>` runs optimization passes. Without
