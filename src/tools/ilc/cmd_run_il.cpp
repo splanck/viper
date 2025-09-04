@@ -10,6 +10,7 @@
 #include "cli.hpp"
 #include "il/io/Parser.hpp"
 #include "il/verify/Verifier.hpp"
+#include "support/source_manager.hpp"
 #include "vm/VM.hpp"
 #include <algorithm>
 #include <chrono>
@@ -41,7 +42,8 @@ int cmdRunIL(int argc, char **argv)
     vm::TraceConfig traceCfg{};
     std::string stdinPath;
     uint64_t maxSteps = 0;
-    vm::DebugCtrl dbg;
+    il::support::SourceManager sm;
+    vm::DebugCtrl dbg(&sm);
     std::unique_ptr<vm::DebugScript> script;
     bool stepFlag = false;
     bool continueFlag = false;
@@ -70,6 +72,17 @@ int cmdRunIL(int argc, char **argv)
         {
             auto sym = dbg.internLabel(argv[++i]);
             dbg.addBreak(sym);
+        }
+        else if (arg == "--break-src" && i + 1 < argc)
+        {
+            std::string spec = argv[++i];
+            size_t pos = spec.find_last_of(':');
+            if (pos != std::string::npos)
+            {
+                std::string file = spec.substr(0, pos);
+                int line = std::stoi(spec.substr(pos + 1));
+                dbg.addBreakSrcLine(file, line);
+            }
         }
         else if (arg == "--debug-cmds" && i + 1 < argc)
         {
@@ -117,6 +130,7 @@ int cmdRunIL(int argc, char **argv)
         std::cerr << "unable to open " << ilFile << "\n";
         return 1;
     }
+    sm.addFile(ilFile);
     core::Module m;
     if (!io::Parser::parse(ifs, m, std::cerr))
         return 1;
@@ -146,6 +160,7 @@ int cmdRunIL(int argc, char **argv)
         }
         script->addStep(1);
     }
+    traceCfg.sm = &sm;
     vm::VM vm(m, traceCfg, maxSteps, std::move(dbg), script.get());
     std::chrono::steady_clock::time_point start;
     if (timeFlag)

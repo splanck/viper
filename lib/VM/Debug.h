@@ -6,12 +6,16 @@
 #pragma once
 
 #include "il/core/BasicBlock.hpp"
+#include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
+#include "support/source_manager.hpp"
 #include "support/string_interner.hpp"
 #include "support/symbol.hpp"
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace il::vm
 {
@@ -22,10 +26,20 @@ struct Breakpoint
     il::support::Symbol label; ///< Target block label
 };
 
+/// @brief Source-line breakpoint descriptor.
+struct SrcLineBP
+{
+    std::string file; ///< Exact file path
+    int line = 0;     ///< 1-based line number
+};
+
 /// @brief Controller for debug breakpoints.
 class DebugCtrl
 {
   public:
+    /// @brief Create controller optionally bound to @p sm for path resolution.
+    explicit DebugCtrl(const il::support::SourceManager *sm = nullptr) : sm_(sm) {}
+
     /// @brief Intern @p label and return its symbol.
     il::support::Symbol internLabel(std::string_view label);
 
@@ -47,9 +61,27 @@ class DebugCtrl
                  std::string_view blk,
                  size_t ip);
 
+    /// @brief Add breakpoint at exact source location @p file:@p line.
+    void addBreakSrcLine(std::string file, int line);
+
+    /// @brief Whether any source-line breakpoints are registered.
+    bool hasSrcLineBPs() const;
+
+    /// @brief Check whether instruction @p I matches a source-line breakpoint.
+    bool shouldBreakOn(const il::core::Instr &I) const;
+
+    /// @brief Access bound source manager.
+    const il::support::SourceManager *sourceManager() const
+    {
+        return sm_;
+    }
+
   private:
     mutable il::support::StringInterner interner_;   ///< Label interner
     std::unordered_set<il::support::Symbol> breaks_; ///< Registered breakpoints
+    const il::support::SourceManager *sm_;           ///< Source manager for locs
+
+    std::vector<SrcLineBP> srcLineBPs_; ///< Registered source-line breakpoints
 
     struct WatchEntry
     {
