@@ -68,8 +68,18 @@ int cmdRunIL(int argc, char **argv)
         }
         else if (arg == "--break" && i + 1 < argc)
         {
-            auto sym = dbg.internLabel(argv[++i]);
-            dbg.addBreak(sym);
+            std::string br = argv[++i];
+            size_t colon = br.find(':');
+            if (colon != std::string::npos && br.rfind('.', colon) != std::string::npos)
+            {
+                int line = std::stoi(br.substr(colon + 1));
+                dbg.addSrcBreak(br.substr(0, colon), line);
+            }
+            else
+            {
+                auto sym = dbg.internLabel(br);
+                dbg.addBreak(sym);
+            }
         }
         else if (arg == "--debug-cmds" && i + 1 < argc)
         {
