@@ -13,6 +13,7 @@ Flags:
 | `--trace=il` | emit a line-per-instruction trace. |
 | `--trace=src` | show source file, line, and column for each step; falls back to `<unknown>` when locations are missing. |
 | `--break <Label>` | halt before executing the first instruction of block `Label`; may be repeated. |
+| `--break <file:line>` | halt before executing the instruction at `file:line`. |
 | `--debug-cmds <file>` | read debugger actions from `file` when a breakpoint is hit. |
 | `--step` | enter debug mode, break at entry, and step one instruction. |
 | `--continue` | ignore breakpoints and run to completion. |
@@ -21,6 +22,11 @@ Flags:
 | `--time` | print wall-clock execution time in milliseconds. |
 
 `--time` measures wall-clock time and may vary between runs and systems.
+
+Label breakpoints fire when entering a basic block. Source-line breakpoints
+fire before executing the first instruction tagged with the matching
+`file:line`. If both breakpoints apply to the same instruction, the label
+breakpoint is reported.
 
 Example:
 
