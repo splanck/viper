@@ -9,17 +9,73 @@
 #include "il/core/Type.hpp"
 #include "support/string_interner.hpp"
 #include "support/symbol.hpp"
+#include <string>
 #include <string_view>
 #include <unordered_map>
-#include <unordered_set>
+#include <vector>
 
 namespace il::vm
 {
 
-/// @brief Breakpoint identified by a block label symbol.
+/// @brief Debug breakpoint by label or source location.
 struct Breakpoint
 {
-    il::support::Symbol label; ///< Target block label
+    /// @brief Kinds of breakpoints.
+    enum class Kind
+    {
+        Label,   ///< Break before block with matching label
+        SrcLine, ///< Break before instruction at file:line
+    } kind;
+
+    union
+    {
+        il::support::Symbol label; ///< Target block label
+
+        struct
+        {
+            std::string file; ///< Source file path
+            int line;         ///< 1-based line number
+        } src;
+    };
+
+    /// @brief Construct label breakpoint.
+    explicit Breakpoint(il::support::Symbol l) : kind(Kind::Label), label(l) {}
+
+    /// @brief Construct source line breakpoint.
+    Breakpoint(std::string f, int ln) : kind(Kind::SrcLine)
+    {
+        new (&src) decltype(src){std::move(f), ln};
+    }
+
+    /// @brief Copy constructor.
+    Breakpoint(const Breakpoint &o) : kind(o.kind)
+    {
+        if (kind == Kind::Label)
+            label = o.label;
+        else
+            new (&src) decltype(src){o.src.file, o.src.line};
+    }
+
+    /// @brief Assignment operator.
+    Breakpoint &operator=(const Breakpoint &o)
+    {
+        if (this == &o)
+            return *this;
+        this->~Breakpoint();
+        kind = o.kind;
+        if (kind == Kind::Label)
+            label = o.label;
+        else
+            new (&src) decltype(src){o.src.file, o.src.line};
+        return *this;
+    }
+
+    /// @brief Destructor.
+    ~Breakpoint()
+    {
+        if (kind == Kind::SrcLine)
+            src.file.~basic_string();
+    }
 };
 
 /// @brief Controller for debug breakpoints.
@@ -30,10 +86,20 @@ class DebugCtrl
     il::support::Symbol internLabel(std::string_view label);
 
     /// @brief Add breakpoint for block label @p sym.
-    void addBreak(il::support::Symbol sym);
+    void addBreakLabel(il::support::Symbol sym);
 
-    /// @brief Check whether entering @p blk triggers a breakpoint.
-    bool shouldBreak(const il::core::BasicBlock &blk) const;
+    /// @brief Add breakpoint for source file and line.
+    void addBreakSrc(std::string file, int line);
+
+    /// @brief Check label breakpoint when entering @p blk.
+    bool shouldBreakLabel(const il::core::BasicBlock &blk) const;
+
+    /// @brief Check source line breakpoint for @p loc.
+    /// @param loc Instruction source location.
+    /// @param sm  Source manager for resolving file paths.
+    /// @return Pointer to matching breakpoint or null.
+    const Breakpoint *shouldBreakSrc(const il::support::SourceLoc &loc,
+                                     const il::support::SourceManager *sm) const;
 
     /// @brief Register a watch on variable @p name.
     void addWatch(std::string_view name);
@@ -48,8 +114,8 @@ class DebugCtrl
                  size_t ip);
 
   private:
-    mutable il::support::StringInterner interner_;   ///< Label interner
-    std::unordered_set<il::support::Symbol> breaks_; ///< Registered breakpoints
+    mutable il::support::StringInterner interner_; ///< Label interner
+    std::vector<Breakpoint> breaks_;               ///< Registered breakpoints
 
     struct WatchEntry
     {

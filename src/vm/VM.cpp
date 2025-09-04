@@ -20,7 +20,7 @@ namespace il::vm
 {
 
 VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript *script)
-    : mod(m), tracer(tc), debug(std::move(dbg)), script(script), maxSteps(ms)
+    : mod(m), tracer(tc), debug(std::move(dbg)), script(script), maxSteps(ms), sm(tc.sm)
 {
     for (const auto &f : m.functions)
         fnMap[f.name] = &f;
@@ -74,6 +74,9 @@ int64_t VM::execFunction(const Function &fn)
     const BasicBlock *bb = fn.blocks.empty() ? nullptr : &fn.blocks.front();
     size_t ip = 0;
     bool skipBreakOnce = false;
+    bool skipSrcLine = false;
+    uint32_t lastSrcFile = 0;
+    uint32_t lastSrcLine = 0;
     while (bb && ip < bb->instructions.size())
     {
         if (maxSteps && instrCount >= maxSteps)
@@ -83,7 +86,7 @@ int64_t VM::execFunction(const Function &fn)
         }
         if (ip == 0 && stepBudget == 0 && !skipBreakOnce)
         {
-            if (debug.shouldBreak(*bb))
+            if (debug.shouldBreakLabel(*bb))
             {
                 std::cerr << "[BREAK] fn=@" << fr.func->name << " blk=" << bb->label
                           << " reason=label\n";
@@ -114,8 +117,29 @@ int64_t VM::execFunction(const Function &fn)
             }
             fr.params.clear();
         }
-        skipBreakOnce = false;
         const Instr &in = bb->instructions[ip];
+        if (skipSrcLine && (in.loc.file_id != lastSrcFile || in.loc.line != lastSrcLine))
+            skipSrcLine = false;
+        if (stepBudget == 0 && !skipBreakOnce && !skipSrcLine)
+        {
+            if (const auto *bp = debug.shouldBreakSrc(in.loc, sm))
+            {
+                std::cerr << "[BREAK] fn=@" << fr.func->name << " blk=" << bb->label
+                          << " file=" << bp->src.file << " line=" << bp->src.line
+                          << " reason=src\n";
+                if (!script || script->empty())
+                    return 10;
+                auto act = script->nextAction();
+                if (act.kind == DebugActionKind::Step)
+                    stepBudget = act.count;
+                skipBreakOnce = true;
+                skipSrcLine = true;
+                lastSrcFile = in.loc.file_id;
+                lastSrcLine = in.loc.line;
+                continue;
+            }
+        }
+        skipBreakOnce = false;
         tracer.onStep(in, fr);
         ++instrCount;
         bool jumped = false;
