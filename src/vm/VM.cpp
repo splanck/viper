@@ -114,8 +114,19 @@ int64_t VM::execFunction(const Function &fn)
             }
             fr.params.clear();
         }
-        skipBreakOnce = false;
         const Instr &in = bb->instructions[ip];
+        if (stepBudget == 0 && !skipBreakOnce && debug.shouldBreak(in.loc))
+        {
+            std::cerr << "[BREAK] fn=@" << fr.func->name << " blk=" << bb->label << " reason=src\n";
+            if (!script || script->empty())
+                return 10;
+            auto act = script->nextAction();
+            if (act.kind == DebugActionKind::Step)
+                stepBudget = act.count;
+            skipBreakOnce = true;
+            continue;
+        }
+        skipBreakOnce = false;
         tracer.onStep(in, fr);
         ++instrCount;
         bool jumped = false;

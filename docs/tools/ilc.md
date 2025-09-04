@@ -13,6 +13,7 @@ Flags:
 | `--trace=il` | emit a line-per-instruction trace. |
 | `--trace=src` | show source file, line, and column for each step; falls back to `<unknown>` when locations are missing. |
 | `--break <Label>` | halt before executing the first instruction of block `Label`; may be repeated. |
+| `--break <file:line>` | halt before executing the next instruction mapped to `file` and 1-based `line`. |
 | `--debug-cmds <file>` | read debugger actions from `file` when a breakpoint is hit. |
 | `--step` | enter debug mode, break at entry, and step one instruction. |
 | `--continue` | ignore breakpoints and run to completion. |
@@ -49,6 +50,12 @@ script:
 ```
 ilc -run examples/il/debug_script.il --break L3 --trace=il --debug-cmds examples/il/debug_script.txt
 ```
+
+### Breakpoint precedence
+
+Label breakpoints trigger when control enters a block. Source-line breakpoints
+trigger before executing an instruction mapped to the requested file and line.
+If both apply, the label breakpoint fires first.
 
 ### Watching scalars
 

@@ -5,9 +5,86 @@
 // Links: docs/dev/vm.md
 #include "VM/Debug.h"
 #include <iostream>
+#include <utility>
 
 namespace il::vm
 {
+
+Breakpoint::Breakpoint(il::support::Symbol sym) : kind(Kind::Label)
+{
+    label = sym;
+}
+
+Breakpoint::Breakpoint(std::string file, int line) : kind(Kind::SrcLine)
+{
+    new (&src.file) std::string(std::move(file));
+    src.line = line;
+}
+
+Breakpoint::Breakpoint(const Breakpoint &other) : kind(other.kind)
+{
+    if (kind == Kind::Label)
+        label = other.label;
+    else
+    {
+        new (&src.file) std::string(other.src.file);
+        src.line = other.src.line;
+    }
+}
+
+Breakpoint::Breakpoint(Breakpoint &&other) noexcept : kind(other.kind)
+{
+    if (kind == Kind::Label)
+        label = other.label;
+    else
+    {
+        new (&src.file) std::string(std::move(other.src.file));
+        src.line = other.src.line;
+    }
+}
+
+Breakpoint &Breakpoint::operator=(const Breakpoint &other)
+{
+    if (this != &other)
+    {
+        this->~Breakpoint();
+        kind = other.kind;
+        if (kind == Kind::Label)
+            label = other.label;
+        else
+        {
+            new (&src.file) std::string(other.src.file);
+            src.line = other.src.line;
+        }
+    }
+    return *this;
+}
+
+Breakpoint &Breakpoint::operator=(Breakpoint &&other) noexcept
+{
+    if (this != &other)
+    {
+        this->~Breakpoint();
+        kind = other.kind;
+        if (kind == Kind::Label)
+            label = other.label;
+        else
+        {
+            new (&src.file) std::string(std::move(other.src.file));
+            src.line = other.src.line;
+        }
+    }
+    return *this;
+}
+
+Breakpoint::~Breakpoint()
+{
+    if (kind == Kind::SrcLine)
+    {
+        using std::string;
+        src.file.~string();
+    }
+}
 
 il::support::Symbol DebugCtrl::internLabel(std::string_view label)
 {
@@ -17,13 +94,36 @@ il::support::Symbol DebugCtrl::internLabel(std::string_view label)
 void DebugCtrl::addBreak(il::support::Symbol sym)
 {
     if (sym)
-        breaks_.insert(sym);
+        breaks_.emplace_back(sym);
 }
 
 bool DebugCtrl::shouldBreak(const il::core::BasicBlock &blk) const
 {
     il::support::Symbol sym = interner_.intern(blk.label);
-    return breaks_.count(sym) != 0;
+    for (const auto &b : breaks_)
+        if (b.kind == Breakpoint::Kind::Label && b.label == sym)
+            return true;
+    return false;
+}
+
+void DebugCtrl::addBreak(std::string file, int line)
+{
+    breaks_.emplace_back(std::move(file), line);
+}
+
+bool DebugCtrl::shouldBreak(const il::support::SourceLoc &loc)
+{
+    if (!loc.isValid() || !sm_)
+        return false;
+    std::string_view path = sm_->getPath(loc.file_id);
+    for (auto it = breaks_.begin(); it != breaks_.end(); ++it)
+        if (it->kind == Breakpoint::Kind::SrcLine && it->src.line == static_cast<int>(loc.line) &&
+            it->src.file == path)
+        {
+            breaks_.erase(it);
+            return true;
+        }
+    return false;
 }
 
 void DebugCtrl::addWatch(std::string_view name)

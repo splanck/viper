@@ -4,6 +4,8 @@
 // Ownership/Lifetime: Tool owns loaded modules.
 // Links: docs/class-catalog.md
 
+#include "VM/Debug.h"
+#include "VM/DebugScript.h"
 #include "VM/Trace.h"
 #include "cli.hpp"
 #include "frontends/basic/ConstFolder.hpp"
@@ -15,6 +17,7 @@
 #include "il/verify/Verifier.hpp"
 #include "support/source_manager.hpp"
 #include "vm/VM.hpp"
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -85,6 +88,8 @@ int cmdFrontBasic(int argc, char **argv)
     bool boundsChecks = false;
     vm::TraceConfig traceCfg{};
     SourceManager sm;
+    vm::DebugCtrl dbg(&sm);
+    std::unique_ptr<vm::DebugScript> script;
     for (int i = 0; i < argc; ++i)
     {
         std::string arg = argv[i];
@@ -118,6 +123,31 @@ int cmdFrontBasic(int argc, char **argv)
         {
             boundsChecks = true;
         }
+        else if (arg == "--break" && i + 1 < argc)
+        {
+            std::string targ = argv[++i];
+            size_t colon = targ.rfind(':');
+            if (colon != std::string::npos)
+            {
+                std::string file = targ.substr(0, colon);
+                std::string lineStr = targ.substr(colon + 1);
+                bool digits =
+                    !lineStr.empty() && std::all_of(lineStr.begin(), lineStr.end(), ::isdigit);
+                bool hasExt = file.find('.') != std::string::npos;
+                if (digits && hasExt)
+                    dbg.addBreak(file, std::stoi(lineStr));
+                else
+                    dbg.addBreak(dbg.internLabel(targ));
+            }
+            else
+            {
+                dbg.addBreak(dbg.internLabel(targ));
+            }
+        }
+        else if (arg == "--debug-cmds" && i + 1 < argc)
+        {
+            script = std::make_unique<vm::DebugScript>(argv[++i]);
+        }
         else
         {
             usage();
@@ -149,6 +179,6 @@ int cmdFrontBasic(int argc, char **argv)
         }
     }
     traceCfg.sm = &sm;
-    vm::VM vm(m, traceCfg, maxSteps);
+    vm::VM vm(m, traceCfg, maxSteps, std::move(dbg), script.get());
     return static_cast<int>(vm.run());
 }
