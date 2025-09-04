@@ -13,6 +13,16 @@ Flags:
   `<unknown>` when locations are missing.
 - `--break <Label>` — halt before executing the first instruction of block `<Label>`; may be repeated.
 - `--debug-cmds <file>` — read debugger actions from `<file>` when a breakpoint is hit.
+- `--step` — start in debug mode with an implicit breakpoint at `entry`.
+- `--continue` — ignore all breakpoints.
+
+Exit codes:
+
+| Code | Meaning |
+| ---- | ------- |
+| 0 | Program completed successfully |
+| 10 | Halted at a breakpoint with no debug script |
+| >0 | Runtime trap or error |
 
 Example:
 
