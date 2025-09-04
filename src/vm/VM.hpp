@@ -18,6 +18,9 @@
 namespace il::vm
 {
 
+/// @brief Scripted debug actions.
+class DebugScript;
+
 /// @brief Runtime slot capable of holding IL values.
 /// @invariant Only one member is valid based on value type.
 union Slot
@@ -47,7 +50,11 @@ class VM
     /// @param m IL module to execute.
     /// @param tc Trace configuration.
     /// @param maxSteps Abort after executing @p maxSteps instructions (0 = unlimited).
-    VM(const il::core::Module &m, TraceConfig tc = {}, uint64_t maxSteps = 0, DebugCtrl dbg = {});
+    VM(const il::core::Module &m,
+       TraceConfig tc = {},
+       uint64_t maxSteps = 0,
+       DebugCtrl dbg = {},
+       DebugScript *script = nullptr);
 
     /// @brief Execute the module's entry function.
     /// @return Exit code from main function.
@@ -57,8 +64,10 @@ class VM
     const il::core::Module &mod; ///< Module to execute
     TraceSink tracer;            ///< Trace output sink
     DebugCtrl debug;             ///< Breakpoint controller
+    DebugScript *script;         ///< Optional debug command script
     uint64_t maxSteps;           ///< Step limit; 0 means unlimited
     uint64_t steps = 0;          ///< Executed instruction count
+    uint64_t stepBudget = 0;     ///< Remaining instructions to step before pausing
     std::unordered_map<std::string, const il::core::Function *> fnMap; ///< Name lookup
     std::unordered_map<std::string, rt_str> strMap;                    ///< String pool
 

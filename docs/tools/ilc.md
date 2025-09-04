@@ -12,6 +12,7 @@ Flags:
 - `--trace=src` — show source file, line, and column for each step; falls back to
   `<unknown>` when locations are missing.
 - `--break <Label>` — halt before executing the first instruction of block `<Label>`; may be repeated.
+- `--debug-cmds <file>` — read debugger actions from `<file>` when a breakpoint is hit.
 
 Example:
 
@@ -20,6 +21,25 @@ $ ilc -run examples/il/trace_min.il --trace=il
   [IL] fn=@main blk=entry ip=#0 op=add 1, 2 -> %t0
   [IL] fn=@main blk=entry ip=#1 op=mul %t0, 3 -> %t1
   [IL] fn=@main blk=entry ip=#2 op=ret 0
+```
+
+### Non-interactive debugging with --debug-cmds
+
+`ilc` can resume from breakpoints using a scripted command file. Each line
+contains a debugger action:
+
+```
+step 2
+continue
+```
+
+`step` executes one instruction; `step N` runs `N` instructions; `continue`
+resumes normal execution. Unknown lines are ignored with a `[DEBUG]` message.
+Invoke with `--break` to set a breakpoint and `--debug-cmds` to supply the
+script:
+
+```
+ilc -run examples/il/debug_script.il --break L3 --trace=il --debug-cmds examples/il/debug_script.txt
 ```
 
 ```
