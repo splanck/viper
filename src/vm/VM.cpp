@@ -11,13 +11,15 @@
 #include <cassert>
 #include <cstring>
 #include <iostream>
+#include <utility>
 
 using namespace il::core;
 
 namespace il::vm
 {
 
-VM::VM(const Module &m, TraceConfig tc, uint64_t ms) : mod(m), tracer(tc), maxSteps(ms)
+VM::VM(const Module &m, TraceConfig tc, DebugCtrl dbg, uint64_t ms)
+    : mod(m), tracer(tc), dbg(std::move(dbg)), maxSteps(ms)
 {
     for (const auto &f : m.functions)
         fnMap[f.name] = &f;
@@ -79,6 +81,11 @@ int64_t VM::execFunction(const Function &fn)
         }
         if (ip == 0)
         {
+            if (dbg.shouldBreak(*bb))
+            {
+                std::cerr << "[BREAK] fn=@" << fn.name << " blk=" << bb->label << " reason=label\n";
+                return 0;
+            }
             for (const auto &p : bb->params)
             {
                 auto it = fr.params.find(p.id);
