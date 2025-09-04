@@ -15,6 +15,7 @@
 #include "il/verify/Verifier.hpp"
 #include "support/source_manager.hpp"
 #include "vm/VM.hpp"
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -83,6 +84,8 @@ int cmdFrontBasic(int argc, char **argv)
     std::string stdinPath;
     uint64_t maxSteps = 0;
     bool boundsChecks = false;
+    bool timeFlag = false;
+    bool countFlag = false;
     vm::TraceConfig traceCfg{};
     SourceManager sm;
     for (int i = 0; i < argc; ++i)
@@ -113,6 +116,14 @@ int cmdFrontBasic(int argc, char **argv)
         else if (arg == "--max-steps" && i + 1 < argc)
         {
             maxSteps = std::stoull(argv[++i]);
+        }
+        else if (arg == "--time")
+        {
+            timeFlag = true;
+        }
+        else if (arg == "--count")
+        {
+            countFlag = true;
         }
         else if (arg == "--bounds-checks")
         {
@@ -150,5 +161,22 @@ int cmdFrontBasic(int argc, char **argv)
     }
     traceCfg.sm = &sm;
     vm::VM vm(m, traceCfg, maxSteps);
-    return static_cast<int>(vm.run());
+    auto start = std::chrono::steady_clock::now();
+    int rc = static_cast<int>(vm.run());
+    auto end = std::chrono::steady_clock::now();
+    if (countFlag || timeFlag)
+    {
+        std::cerr << "[SUMMARY]";
+        if (countFlag)
+            std::cerr << " instr=" << vm.getInstrCount();
+        if (timeFlag)
+        {
+            double ms = std::chrono::duration<double, std::milli>(end - start).count();
+            if (countFlag)
+                std::cerr << ' ';
+            std::cerr << "time_ms=" << ms;
+        }
+        std::cerr << "\n";
+    }
+    return rc;
 }

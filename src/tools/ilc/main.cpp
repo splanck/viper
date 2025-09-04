@@ -12,10 +12,10 @@ void usage()
 {
     std::cerr << "ilc v0.1.0\n"
               << "Usage: ilc -run <file.il> [--trace=il|src] [--stdin-from <file>] [--max-steps N]"
-                 " [--watch name]* [--bounds-checks]\n"
+                 " [--count] [--time] [--watch name]* [--bounds-checks]\n"
               << "       ilc front basic -emit-il <file.bas> [--bounds-checks]\n"
               << "       ilc front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>] "
-                 "[--max-steps N] [--bounds-checks]\n"
+                 "[--max-steps N] [--count] [--time] [--bounds-checks]\n"
               << "       ilc il-opt <in.il> -o <out.il> --passes p1,p2\n";
 }
 
