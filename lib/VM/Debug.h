@@ -1,25 +1,59 @@
 // File: lib/VM/Debug.h
 // Purpose: Declare breakpoint control for the VM.
-// Key invariants: Breakpoints are keyed by interned block labels.
+// Key invariants: Breakpoints are keyed by interned block labels or
+//                 file+line pairs.
 // Ownership/Lifetime: DebugCtrl owns its interner and breakpoint set.
 // Links: docs/dev/vm.md
 #pragma once
 
 #include "il/core/BasicBlock.hpp"
+#include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
 #include "support/string_interner.hpp"
 #include "support/symbol.hpp"
+#include <optional>
 #include <string_view>
 #include <unordered_map>
-#include <unordered_set>
+#include <vector>
+
+namespace il::support
+{
+class SourceManager;
+} // namespace il::support
 
 namespace il::vm
 {
 
-/// @brief Breakpoint identified by a block label symbol.
+/// @brief Breakpoint either by block label or source location.
 struct Breakpoint
 {
-    il::support::Symbol label; ///< Target block label
+    /// @brief Kinds of breakpoint.
+    enum Kind
+    {
+        Label,  ///< Break on block entry
+        SrcLine ///< Break on source file and line
+    } kind{Label};
+
+    union
+    {
+        il::support::Symbol label; ///< Target block label
+
+        struct
+        {
+            il::support::Symbol file; ///< Source file symbol
+            int line;                 ///< 1-based source line
+        } src;                        ///< Source location breakpoint
+    };
+
+    /// @brief Construct label breakpoint.
+    explicit Breakpoint(il::support::Symbol l) : kind(Label), label(l) {}
+
+    /// @brief Construct source line breakpoint.
+    Breakpoint(il::support::Symbol f, int ln) : kind(SrcLine)
+    {
+        src.file = f;
+        src.line = ln;
+    }
 };
 
 /// @brief Controller for debug breakpoints.
@@ -32,8 +66,14 @@ class DebugCtrl
     /// @brief Add breakpoint for block label @p sym.
     void addBreak(il::support::Symbol sym);
 
-    /// @brief Check whether entering @p blk triggers a breakpoint.
+    /// @brief Add breakpoint for source file @p file and line @p line.
+    void addBreak(il::support::Symbol file, int line);
+
+    /// @brief Check whether entering @p blk triggers a label breakpoint.
     bool shouldBreak(const il::core::BasicBlock &blk) const;
+
+    /// @brief Check whether executing @p in triggers a source-line breakpoint.
+    bool shouldBreak(const il::core::Instr &in) const;
 
     /// @brief Register a watch on variable @p name.
     void addWatch(std::string_view name);
@@ -47,9 +87,24 @@ class DebugCtrl
                  std::string_view blk,
                  size_t ip);
 
+    /// @brief Attach source manager for file path resolution.
+    void setSourceManager(const il::support::SourceManager *sm)
+    {
+        sm_ = sm;
+    }
+
   private:
-    mutable il::support::StringInterner interner_;   ///< Label interner
-    std::unordered_set<il::support::Symbol> breaks_; ///< Registered breakpoints
+    mutable il::support::StringInterner interner_;   ///< String interner
+    std::vector<Breakpoint> breaks_;                 ///< Registered breakpoints
+    const il::support::SourceManager *sm_ = nullptr; ///< Source manager
+
+    struct SrcPos
+    {
+        il::support::Symbol file;
+        int line;
+    };
+
+    mutable std::optional<SrcPos> lastSrc_; ///< Last triggered source location
 
     struct WatchEntry
     {

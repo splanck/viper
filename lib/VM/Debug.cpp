@@ -1,9 +1,11 @@
 // File: lib/VM/Debug.cpp
 // Purpose: Implement breakpoint control for the VM.
-// Key invariants: Interned labels uniquely identify breakpoints.
+// Key invariants: Interned labels or file paths uniquely identify breakpoints.
 // Ownership/Lifetime: DebugCtrl owns its interner and breakpoint set.
 // Links: docs/dev/vm.md
 #include "VM/Debug.h"
+#include "il/core/Instr.hpp"
+#include "support/source_manager.hpp"
 #include <iostream>
 
 namespace il::vm
@@ -17,13 +19,46 @@ il::support::Symbol DebugCtrl::internLabel(std::string_view label)
 void DebugCtrl::addBreak(il::support::Symbol sym)
 {
     if (sym)
-        breaks_.insert(sym);
+        breaks_.emplace_back(sym);
+}
+
+void DebugCtrl::addBreak(il::support::Symbol file, int line)
+{
+    if (file && line > 0)
+        breaks_.emplace_back(file, line);
 }
 
 bool DebugCtrl::shouldBreak(const il::core::BasicBlock &blk) const
 {
     il::support::Symbol sym = interner_.intern(blk.label);
-    return breaks_.count(sym) != 0;
+    for (const auto &b : breaks_)
+        if (b.kind == Breakpoint::Label && b.label == sym)
+            return true;
+    return false;
+}
+
+bool DebugCtrl::shouldBreak(const il::core::Instr &in) const
+{
+    if (!sm_ || !in.loc.isValid())
+    {
+        lastSrc_.reset();
+        return false;
+    }
+    il::support::Symbol fileSym = interner_.intern(sm_->getPath(in.loc.file_id));
+    for (const auto &b : breaks_)
+    {
+        if (b.kind == Breakpoint::SrcLine && b.src.file == fileSym &&
+            b.src.line == static_cast<int>(in.loc.line))
+        {
+            if (lastSrc_ && lastSrc_->file == fileSym &&
+                lastSrc_->line == static_cast<int>(in.loc.line))
+                return false;
+            lastSrc_ = SrcPos{fileSym, static_cast<int>(in.loc.line)};
+            return true;
+        }
+    }
+    lastSrc_.reset();
+    return false;
 }
 
 void DebugCtrl::addWatch(std::string_view name)

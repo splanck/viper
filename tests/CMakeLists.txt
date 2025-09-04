@@ -129,6 +129,14 @@ add_test(NAME vm_trace_src COMMAND ${CMAKE_COMMAND}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_trace_src.cmake)
 set_tests_properties(vm_trace_src PROPERTIES LABELS VM)
 
+add_test(NAME vm_break_src_line COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/break_src_line.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/BreakSrcLine.bas.out
+  -DDBG_SCRIPT=${CMAKE_SOURCE_DIR}/tests/e2e/support/continue.dbg
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_break_src_line.cmake)
+set_tests_properties(vm_break_src_line PROPERTIES LABELS VM)
+
 add_test(NAME front_basic_example COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DSRC_DIR=${CMAKE_SOURCE_DIR}
