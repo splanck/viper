@@ -99,6 +99,10 @@ int cmdFrontBasic(int argc, char **argv)
         {
             traceCfg.mode = vm::TraceConfig::IL;
         }
+        else if (arg == "--trace=src")
+        {
+            traceCfg.mode = vm::TraceConfig::SRC;
+        }
         else if (arg == "--stdin-from" && i + 1 < argc)
         {
             stdinPath = argv[++i];
@@ -122,6 +126,8 @@ int cmdFrontBasic(int argc, char **argv)
         usage();
         return 1;
     }
+    if (traceCfg.mode == vm::TraceConfig::SRC)
+        traceCfg.files.push_back(file);
     bool hadErrors = false;
     core::Module m = compileBasicToIL(file, boundsChecks, hadErrors);
     if (hadErrors)
