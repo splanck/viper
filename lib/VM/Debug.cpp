@@ -1,7 +1,8 @@
 // File: lib/VM/Debug.cpp
 // Purpose: Implement breakpoint control and path normalization for the VM.
-// Key invariants: Interned labels and normalized file paths uniquely identify breakpoints.
-// Ownership/Lifetime: DebugCtrl owns its interner, breakpoint set, and source line list.
+// Key invariants: Interned labels and normalized file paths (with basenames)
+// uniquely identify breakpoints. Ownership/Lifetime: DebugCtrl owns its interner,
+// breakpoint set, and source line list.
 // Links: docs/dev/vm.md
 #include "VM/Debug.h"
 #include "il/core/Instr.hpp"
@@ -76,7 +77,10 @@ bool DebugCtrl::shouldBreak(const il::core::BasicBlock &blk) const
 
 void DebugCtrl::addBreakSrcLine(std::string file, int line)
 {
-    srcLineBPs_.push_back({normalizePath(std::move(file)), line});
+    std::string normFile = normalizePath(std::move(file));
+    size_t pos = normFile.find_last_of('/');
+    std::string base = (pos == std::string::npos) ? normFile : normFile.substr(pos + 1);
+    srcLineBPs_.push_back({normFile, base, line});
 }
 
 bool DebugCtrl::hasSrcLineBPs() const
@@ -99,8 +103,10 @@ bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
     if (!sm_ || srcLineBPs_.empty() || !I.loc.isValid())
         return false;
     std::string path = normalizePath(std::string(sm_->getPath(I.loc.file_id)));
+    size_t pos = path.find_last_of('/');
+    std::string base = (pos == std::string::npos) ? path : path.substr(pos + 1);
     for (const auto &bp : srcLineBPs_)
-        if (path == bp.file && static_cast<int>(I.loc.line) == bp.line)
+        if (static_cast<int>(I.loc.line) == bp.line && (path == bp.normFile || base == bp.base))
             return true;
     return false;
 }
