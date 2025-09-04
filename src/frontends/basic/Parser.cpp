@@ -10,7 +10,8 @@
 namespace il::frontends::basic
 {
 
-Parser::Parser(std::string_view src, uint32_t file_id) : lexer_(src, file_id)
+Parser::Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *de)
+    : lexer_(src, file_id), de_(de)
 {
     tokens_.push_back(lexer_.next());
 }

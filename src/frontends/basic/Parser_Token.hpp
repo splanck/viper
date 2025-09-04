@@ -12,6 +12,7 @@ const Token &peek(int n = 0) const;
 /// @brief Consume and return the current token.
 Token consume();
 /// @brief Consume a token of kind @p k or report a mismatch.
+///        Mismatches are reported via DiagnosticEmitter when available.
 Token expect(TokenKind k, const char *what);
 /// @brief Advance to the next statement boundary token.
 void syncToStmtBoundary();

@@ -45,7 +45,7 @@ void Lexer::skipWhitespaceExceptNewline()
     while (!eof())
     {
         char c = peek();
-        if (c == ' ' || c == '\t' || c == '\r')
+        if (c != '\n' && std::isspace(static_cast<unsigned char>(c)))
         {
             get();
         }

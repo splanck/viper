@@ -39,3 +39,10 @@ creates or looks up blocks through the lowering context, sets the builder's
 insert point, emits the condition and body, and finally branches to a merge
 block. Runtime externs required by a program are declared once up front via
 `declareRequiredRuntime`, keeping control-flow lowering focused on IL structure.
+
+## Diagnostics
+
+Token mismatches are reported using `DiagnosticEmitter::emitExpected`, which
+standardizes messages in the form `expected <token>, got <token>`. The parser's
+`expect` helper funnels all such errors through this single routine to keep
+wording and formatting consistent.
