@@ -1,7 +1,8 @@
 // File: lib/VM/Debug.cpp
 // Purpose: Implement breakpoint control and path normalization for the VM.
-// Key invariants: Interned labels and normalized file paths (with basenames)
-// uniquely identify breakpoints. Ownership/Lifetime: DebugCtrl owns its interner,
+// Key invariants: Interned labels identify block breakpoints; source line
+// breakpoints match when either the normalized file path and line or the
+// basename and line coincide. Ownership/Lifetime: DebugCtrl owns its interner,
 // breakpoint set, and source line list.
 // Links: docs/dev/vm.md
 #include "VM/Debug.h"
@@ -102,11 +103,16 @@ bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
 {
     if (!sm_ || srcLineBPs_.empty() || !I.loc.isValid())
         return false;
-    std::string path = normalizePath(std::string(sm_->getPath(I.loc.file_id)));
-    size_t pos = path.find_last_of('/');
-    std::string base = (pos == std::string::npos) ? path : path.substr(pos + 1);
+
+    // Resolve the instruction's source file, normalize the path, and derive its
+    // basename. A breakpoint matches if both the line number and either the
+    // normalized path or basename are equal.
+    std::string normFile = normalizePath(std::string(sm_->getPath(I.loc.file_id)));
+    size_t pos = normFile.find_last_of('/');
+    std::string base = (pos == std::string::npos) ? normFile : normFile.substr(pos + 1);
+    int line = static_cast<int>(I.loc.line);
     for (const auto &bp : srcLineBPs_)
-        if (static_cast<int>(I.loc.line) == bp.line && (path == bp.normFile || base == bp.base))
+        if ((normFile == bp.normFile && line == bp.line) || (base == bp.base && line == bp.line))
             return true;
     return false;
 }
