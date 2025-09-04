@@ -34,7 +34,10 @@ using namespace il::support;
  * @param hadErrors Set to true if compilation fails.
  * @return Compiled IL module or empty module on error.
  */
-static core::Module compileBasicToIL(const std::string &path, bool boundsChecks, bool &hadErrors)
+static core::Module compileBasicToIL(const std::string &path,
+                                     bool boundsChecks,
+                                     bool &hadErrors,
+                                     support::SourceManager &sm)
 {
     hadErrors = true;
     std::ifstream in(path);
@@ -46,7 +49,6 @@ static core::Module compileBasicToIL(const std::string &path, bool boundsChecks,
     std::ostringstream ss;
     ss << in.rdbuf();
     std::string src = ss.str();
-    SourceManager sm;
     uint32_t fid = sm.addFile(path);
     Parser p(src, fid);
     auto prog = p.parseProgram();
@@ -82,6 +84,7 @@ int cmdFrontBasic(int argc, char **argv)
     uint64_t maxSteps = 0;
     bool boundsChecks = false;
     vm::TraceConfig traceCfg{};
+    support::SourceManager sm;
     for (int i = 0; i < argc; ++i)
     {
         std::string arg = argv[i];
@@ -98,6 +101,10 @@ int cmdFrontBasic(int argc, char **argv)
         else if (arg == "--trace" || arg == "--trace=il")
         {
             traceCfg.mode = vm::TraceConfig::IL;
+        }
+        else if (arg == "--trace=src")
+        {
+            traceCfg.mode = vm::TraceConfig::SRC;
         }
         else if (arg == "--stdin-from" && i + 1 < argc)
         {
@@ -123,7 +130,7 @@ int cmdFrontBasic(int argc, char **argv)
         return 1;
     }
     bool hadErrors = false;
-    core::Module m = compileBasicToIL(file, boundsChecks, hadErrors);
+    core::Module m = compileBasicToIL(file, boundsChecks, hadErrors, sm);
     if (hadErrors)
         return 1;
     if (emitIl)
@@ -141,6 +148,7 @@ int cmdFrontBasic(int argc, char **argv)
             return 1;
         }
     }
+    traceCfg.sm = &sm;
     vm::VM vm(m, traceCfg, maxSteps);
     return static_cast<int>(vm.run());
 }

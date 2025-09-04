@@ -94,6 +94,13 @@ add_test(NAME vm_step_limit COMMAND ${CMAKE_COMMAND}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_vm_step_limit.cmake)
 set_tests_properties(vm_step_limit PROPERTIES LABELS VM)
 
+add_test(NAME vm_trace_src COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DBAS_FILE=tests/e2e/TraceSrcTests.bas
+  -DGOLDEN=tests/e2e/TraceSrcTests.bas.out
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_trace_src.cmake)
+set_tests_properties(vm_trace_src PROPERTIES LABELS VM WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 add_test(NAME vm_block_params COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DSRC_DIR=${CMAKE_SOURCE_DIR}

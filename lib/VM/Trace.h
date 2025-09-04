@@ -10,6 +10,11 @@ namespace il::core
 struct Instr;
 } // namespace il::core
 
+namespace il::support
+{
+class SourceManager;
+} // namespace il::support
+
 namespace il::vm
 {
 struct Frame;
@@ -21,8 +26,12 @@ struct TraceConfig
     enum Mode
     {
         Off, ///< Tracing disabled
-        IL   ///< Trace IL instructions
+        IL,  ///< Trace IL instructions
+        SRC  ///< Trace original source lines
     } mode{Off};
+
+    /// @brief Optional source manager for mapping file ids to paths.
+    const il::support::SourceManager *sm = nullptr;
 
     /// @brief Check whether tracing is enabled.
     /// @return True if mode is not Off.
