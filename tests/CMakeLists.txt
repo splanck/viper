@@ -29,6 +29,9 @@ add_test(NAME test_il_utils COMMAND test_il_utils)
 
 add_executable(test_vm_trace_il vm/TraceILTests.cpp)
 add_test(NAME test_vm_trace_il COMMAND test_vm_trace_il $<TARGET_FILE:ilc> ${CMAKE_SOURCE_DIR}/examples/il/trace_min.il ${CMAKE_SOURCE_DIR}/tests/vm/trace_min.trace)
+add_executable(test_vm_break_label vm/BreakLabelTests.cpp)
+add_test(NAME test_vm_break_label COMMAND test_vm_break_label $<TARGET_FILE:ilc> ${CMAKE_SOURCE_DIR}/examples/il/break_label.il)
+
 
 add_executable(test_analysis_cfg analysis/CFGTests.cpp)
 target_link_libraries(test_analysis_cfg PRIVATE Analysis il_build)
