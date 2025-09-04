@@ -11,6 +11,7 @@
 #include "vm/RuntimeBridge.hpp"
 #include <cassert>
 #include <cstring>
+#include <filesystem>
 #include <iostream>
 #include <utility>
 
@@ -22,6 +23,7 @@ namespace il::vm
 VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript *script)
     : mod(m), tracer(tc), debug(std::move(dbg)), script(script), maxSteps(ms)
 {
+    debug.setSourceManager(tc.sm);
     for (const auto &f : m.functions)
         fnMap[f.name] = &f;
     for (const auto &g : m.globals)
@@ -81,6 +83,7 @@ int64_t VM::execFunction(const Function &fn)
             std::cerr << "VM: step limit exceeded (" << maxSteps << "); aborting.\n";
             return 1;
         }
+        const Instr &in = bb->instructions[ip];
         if (ip == 0 && stepBudget == 0 && !skipBreakOnce)
         {
             if (debug.shouldBreak(*bb))
@@ -92,7 +95,6 @@ int64_t VM::execFunction(const Function &fn)
                 auto act = script->nextAction();
                 if (act.kind == DebugActionKind::Step)
                     stepBudget = act.count;
-                skipBreakOnce = true;
             }
 
             for (const auto &p : bb->params)
@@ -114,8 +116,23 @@ int64_t VM::execFunction(const Function &fn)
             }
             fr.params.clear();
         }
+        if (stepBudget == 0 && debug.shouldBreak(in))
+        {
+            std::string file = "<unknown>";
+            if (auto sm = debug.sourceManager(); sm && in.loc.isValid())
+            {
+                std::filesystem::path p(sm->getPath(in.loc.file_id));
+                file = p.filename().string();
+            }
+            std::cerr << "[BREAK] fn=@" << fr.func->name << " blk=" << bb->label << " reason=src "
+                      << file << ':' << in.loc.line << "\n";
+            if (!script || script->empty())
+                return 10;
+            auto act = script->nextAction();
+            if (act.kind == DebugActionKind::Step)
+                stepBudget = act.count;
+        }
         skipBreakOnce = false;
-        const Instr &in = bb->instructions[ip];
         tracer.onStep(in, fr);
         ++instrCount;
         bool jumped = false;
