@@ -11,8 +11,8 @@
 void usage()
 {
     std::cerr << "ilc v0.1.0\n"
-              << "Usage: ilc -run <file.il> [--trace=il|src] [--stdin-from <file>] [--max-steps N]"
-                 " [--bounds-checks]\n"
+              << "Usage: ilc -run <file.il> [--trace=il|src] [--stdin-from <file>] [--max-steps N] "
+                 "[--break <Label>] [--debug-cmds <file>] [--step] [--continue] [--bounds-checks]\n"
               << "       ilc front basic -emit-il <file.bas> [--bounds-checks]\n"
               << "       ilc front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>] "
                  "[--max-steps N] [--bounds-checks]\n"

@@ -87,8 +87,8 @@ int64_t VM::execFunction(const Function &fn)
             {
                 std::cerr << "[BREAK] fn=@" << fr.func->name << " blk=" << bb->label
                           << " reason=label\n";
-                if (!script)
-                    return 0;
+                if (!script || script->empty())
+                    return 10;
                 auto act = script->nextAction();
                 if (act.kind == DebugActionKind::Step)
                     stepBudget = act.count;
@@ -608,8 +608,8 @@ int64_t VM::execFunction(const Function &fn)
             {
                 std::cerr << "[BREAK] fn=@" << fr.func->name << " blk=" << bb->label
                           << " reason=step\n";
-                if (!script)
-                    return 0;
+                if (!script || script->empty())
+                    return 10;
                 auto act = script->nextAction();
                 if (act.kind == DebugActionKind::Step)
                     stepBudget = act.count;

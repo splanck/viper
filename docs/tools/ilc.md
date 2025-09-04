@@ -8,11 +8,14 @@
 
 Flags:
 
-- `--trace=il` — emit a line-per-instruction trace.
-- `--trace=src` — show source file, line, and column for each step; falls back to
-  `<unknown>` when locations are missing.
-- `--break <Label>` — halt before executing the first instruction of block `<Label>`; may be repeated.
-- `--debug-cmds <file>` — read debugger actions from `<file>` when a breakpoint is hit.
+| Flag | Description |
+|------|-------------|
+| `--trace=il` | Emit a line-per-instruction trace. |
+| `--trace=src` | Show source file, line, and column for each step; falls back to `<unknown>` when locations are missing. |
+| `--break <Label>` | Halt before executing the first instruction of block `<Label>`; may be repeated. |
+| `--debug-cmds <file>` | Read debugger actions from `<file>` when a breakpoint is hit. |
+| `--step` | Break at entry and step one instruction by default. |
+| `--continue` | Ignore all breakpoints and run to completion. |
 
 Example:
 
@@ -41,6 +44,14 @@ script:
 ```
 ilc -run examples/il/debug_script.il --break L3 --trace=il --debug-cmds examples/il/debug_script.txt
 ```
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success. |
+| 10 | Halted at breakpoint with no debug script. |
+| >0 | Trap or error. |
 
 ```
 $ ilc front basic -run examples/basic/trace_src.bas --trace=src
