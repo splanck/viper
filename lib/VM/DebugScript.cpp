@@ -49,6 +49,11 @@ DebugScript::DebugScript(const std::string &path)
     }
 }
 
+void DebugScript::addStep(uint64_t count)
+{
+    actions.push({DebugActionKind::Step, count});
+}
+
 DebugAction DebugScript::nextAction()
 {
     if (actions.empty())
@@ -56,6 +61,11 @@ DebugAction DebugScript::nextAction()
     auto act = actions.front();
     actions.pop();
     return act;
+}
+
+bool DebugScript::empty() const
+{
+    return actions.empty();
 }
 
 } // namespace il::vm
