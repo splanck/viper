@@ -17,6 +17,10 @@ Flags:
 | `--step` | enter debug mode, break at entry, and step one instruction. |
 | `--continue` | ignore breakpoints and run to completion. |
 | `--watch <name>` | print when scalar `name` changes; may be repeated. |
+| `--count` | print executed instruction count at exit. |
+| `--time` | print wall-clock execution time in milliseconds. |
+
+`--time` measures wall-clock time and may vary between runs and systems.
 
 Example:
 

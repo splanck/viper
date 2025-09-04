@@ -36,6 +36,9 @@ add_test(NAME test_vm_debug_script COMMAND test_vm_debug_script $<TARGET_FILE:il
 add_executable(test_vm_watch vm/WatchTests.cpp)
 add_test(NAME test_vm_watch COMMAND test_vm_watch $<TARGET_FILE:ilc> ${CMAKE_SOURCE_DIR}/tests/vm/WatchTests.il)
 
+add_executable(test_vm_summary vm/SummaryTests.cpp)
+add_test(NAME test_vm_summary COMMAND test_vm_summary $<TARGET_FILE:ilc> ${CMAKE_SOURCE_DIR}/examples/il/summary.il)
+
 
 add_executable(test_analysis_cfg analysis/CFGTests.cpp)
 target_link_libraries(test_analysis_cfg PRIVATE Analysis il_build)
