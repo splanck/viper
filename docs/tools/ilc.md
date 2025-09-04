@@ -12,7 +12,7 @@ Flags:
 | ---- | ----------- |
 | `--trace=il` | emit a line-per-instruction trace. |
 | `--trace=src` | show source file, line, and column for each step; falls back to `<unknown>` when locations are missing. |
-| `--break <Label>` | halt before executing the first instruction of block `Label`; may be repeated. |
+| `--break <Label \| file:line>` | halt at block `Label` or before executing the first instruction with matching source location; may be repeated. |
 | `--debug-cmds <file>` | read debugger actions from `file` when a breakpoint is hit. |
 | `--step` | enter debug mode, break at entry, and step one instruction. |
 | `--continue` | ignore breakpoints and run to completion. |
@@ -21,6 +21,15 @@ Flags:
 | `--time` | print wall-clock execution time in milliseconds. |
 
 `--time` measures wall-clock time and may vary between runs and systems.
+
+Breakpoints are checked in this order:
+
+1. Block label breakpoints trigger on entry to the block.
+2. Source line breakpoints trigger before executing an instruction whose
+   source file and line match.
+
+Label breakpoints take precedence when both types would fire at the same
+instruction.
 
 Example:
 
@@ -43,11 +52,11 @@ continue
 
 `step` executes one instruction; `step N` runs `N` instructions; `continue`
 resumes normal execution. Unknown lines are ignored with a `[DEBUG]` message.
-Invoke with `--break` to set a breakpoint and `--debug-cmds` to supply the
-script:
+Invoke with `--break` to set breakpoints and `--debug-cmds` to supply the
+script. Breakpoints may target block labels or source locations (`file:line`):
 
 ```
-ilc -run examples/il/debug_script.il --break L3 --trace=il --debug-cmds examples/il/debug_script.txt
+ilc -run examples/il/debug_script.il --break L3 --break src.bas:20 --trace=il --debug-cmds examples/il/debug_script.txt
 ```
 
 ### Watching scalars
