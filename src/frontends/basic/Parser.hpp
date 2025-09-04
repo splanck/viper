@@ -1,7 +1,7 @@
 // File: src/frontends/basic/Parser.hpp
 // Purpose: Declares BASIC parser that builds an AST.
-// Key invariants: Parser state tracks current token.
-// Ownership/Lifetime: Parser does not own token buffer.
+// Key invariants: Maintains token lookahead buffer.
+// Ownership/Lifetime: Parser owns lexer and token buffer.
 // Links: docs/class-catalog.md
 #pragma once
 
@@ -9,6 +9,7 @@
 #include "frontends/basic/Lexer.hpp"
 #include <memory>
 #include <string_view>
+#include <vector>
 
 namespace il::frontends::basic
 {
@@ -20,17 +21,10 @@ class Parser
     std::unique_ptr<Program> parseProgram();
 
   private:
-    Token current_;
-    Lexer lexer_;
+    mutable Lexer lexer_;
+    mutable std::vector<Token> tokens_;
 
-    void advance();
-
-    bool check(TokenKind k) const
-    {
-        return current_.kind == k;
-    }
-
-    bool consume(TokenKind k);
+#include "frontends/basic/Parser_Token.hpp"
 
     StmtPtr parseStatement(int line);
     StmtPtr parsePrint();
