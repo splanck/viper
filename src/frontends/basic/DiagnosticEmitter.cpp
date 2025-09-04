@@ -32,6 +32,13 @@ void DiagnosticEmitter::emit(il::support::Severity sev,
     entries_.push_back({sev, std::move(code), std::move(message), loc, length});
 }
 
+void DiagnosticEmitter::emitExpected(TokenKind got, TokenKind expect, il::support::SourceLoc loc)
+{
+    std::string msg =
+        std::string("expected ") + tokenKindToString(expect) + ", got " + tokenKindToString(got);
+    emit(il::support::Severity::Error, "B0001", loc, 0, std::move(msg));
+}
+
 /// @brief Convert severity enum to human-readable string.
 /// @param s Severity to convert.
 /// @return Null-terminated severity name.

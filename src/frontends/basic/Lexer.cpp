@@ -180,22 +180,30 @@ Token Lexer::lexString()
 
 Token Lexer::next()
 {
+    // Skip leading spaces and tabs but preserve newlines for tokenization.
     skipWhitespaceExceptNewline();
-    il::support::SourceLoc loc{file_id_, line_, column_};
+
     if (eof())
-        return {TokenKind::EndOfFile, "", loc};
+        return {TokenKind::EndOfFile, "", {file_id_, line_, column_}};
+
     char c = peek();
+
+    // Handle newline explicitly so skipWhitespaceExceptNewline is called only once.
     if (c == '\n')
     {
+        il::support::SourceLoc loc{file_id_, line_, column_};
         get();
         return {TokenKind::EndOfLine, "\n", loc};
     }
+
     if (std::isdigit(c) || (c == '.' && pos_ + 1 < src_.size() && std::isdigit(src_[pos_ + 1])))
         return lexNumber();
     if (std::isalpha(c))
         return lexIdentifierOrKeyword();
     if (c == '"')
         return lexString();
+
+    il::support::SourceLoc loc{file_id_, line_, column_};
     get();
     switch (c)
     {

@@ -159,15 +159,15 @@ ExprPtr Parser::parsePrimary()
         TokenKind tk = peek().kind;
         auto loc = peek().loc;
         consume();
-        expect(TokenKind::LParen, "(");
+        expect(TokenKind::LParen);
         auto arg = parseExpression();
         ExprPtr arg2;
         if (tk == TokenKind::KeywordPow)
         {
-            expect(TokenKind::Comma, ",");
+            expect(TokenKind::Comma);
             arg2 = parseExpression();
         }
-        expect(TokenKind::RParen, ")");
+        expect(TokenKind::RParen);
         auto call = std::make_unique<CallExpr>();
         call->loc = loc;
         if (tk == TokenKind::KeywordSqr)
@@ -193,8 +193,8 @@ ExprPtr Parser::parsePrimary()
     {
         auto loc = peek().loc;
         consume();
-        expect(TokenKind::LParen, "(");
-        expect(TokenKind::RParen, ")");
+        expect(TokenKind::LParen);
+        expect(TokenKind::RParen);
         auto call = std::make_unique<CallExpr>();
         call->loc = loc;
         call->builtin = CallExpr::Builtin::Rnd;
@@ -225,7 +225,7 @@ ExprPtr Parser::parsePrimary()
                         break;
                     }
                 }
-                expect(TokenKind::RParen, ")");
+                expect(TokenKind::RParen);
                 auto call = std::make_unique<CallExpr>();
                 call->loc = loc;
                 if (name == "LEN")
@@ -248,7 +248,7 @@ ExprPtr Parser::parsePrimary()
             else
             {
                 auto idx = parseExpression();
-                expect(TokenKind::RParen, ")");
+                expect(TokenKind::RParen);
                 auto arr = std::make_unique<ArrayExpr>();
                 arr->loc = loc;
                 arr->name = name;
@@ -265,7 +265,7 @@ ExprPtr Parser::parsePrimary()
     {
         consume();
         auto e = parseExpression();
-        expect(TokenKind::RParen, ")");
+        expect(TokenKind::RParen);
         return e;
     }
     auto e = std::make_unique<IntExpr>();
