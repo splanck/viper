@@ -1,12 +1,14 @@
 // File: lib/VM/Debug.cpp
 // Purpose: Implement breakpoint control for the VM.
-// Key invariants: Interned labels and exact file paths uniquely identify breakpoints.
+// Key invariants: Interned labels and normalized file paths uniquely identify breakpoints.
 // Ownership/Lifetime: DebugCtrl owns its interner, breakpoint set, and source line list.
 // Links: docs/dev/vm.md
 #include "VM/Debug.h"
 #include "il/core/Instr.hpp"
 #include "support/source_manager.hpp"
+#include <algorithm>
 #include <iostream>
+#include <vector>
 
 namespace il::vm
 {
@@ -30,7 +32,10 @@ bool DebugCtrl::shouldBreak(const il::core::BasicBlock &blk) const
 
 void DebugCtrl::addBreakSrcLine(std::string file, int line)
 {
-    srcLineBPs_.push_back({std::move(file), line});
+    std::string norm = normalizePath(std::move(file));
+    size_t pos = norm.find_last_of('/');
+    std::string base = pos == std::string::npos ? norm : norm.substr(pos + 1);
+    srcLineBPs_.push_back({std::move(norm), std::move(base), line});
 }
 
 bool DebugCtrl::hasSrcLineBPs() const
@@ -53,10 +58,52 @@ bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
     if (!sm_ || srcLineBPs_.empty() || !I.loc.isValid())
         return false;
     std::string path(sm_->getPath(I.loc.file_id));
+    std::string norm = normalizePath(std::move(path));
+    size_t pos = norm.find_last_of('/');
+    std::string base = pos == std::string::npos ? norm : norm.substr(pos + 1);
+    int line = static_cast<int>(I.loc.line);
     for (const auto &bp : srcLineBPs_)
-        if (path == bp.file && static_cast<int>(I.loc.line) == bp.line)
+        if (line == bp.line && (norm == bp.normFile || base == bp.base))
             return true;
     return false;
+}
+
+std::string DebugCtrl::normalizePath(std::string p)
+{
+    std::replace(p.begin(), p.end(), '\\', '/');
+    std::vector<std::string> parts;
+    std::string cur;
+    for (char c : p)
+    {
+        if (c == '/')
+        {
+            if (cur == "..")
+            {
+                if (!parts.empty())
+                    parts.pop_back();
+            }
+            else if (cur != "" && cur != ".")
+                parts.push_back(cur);
+            cur.clear();
+        }
+        else
+            cur.push_back(c);
+    }
+    if (cur == "..")
+    {
+        if (!parts.empty())
+            parts.pop_back();
+    }
+    else if (cur != "" && cur != ".")
+        parts.push_back(cur);
+    std::string out;
+    for (size_t i = 0; i < parts.size(); ++i)
+    {
+        if (i)
+            out.push_back('/');
+        out += parts[i];
+    }
+    return out;
 }
 
 void DebugCtrl::addWatch(std::string_view name)

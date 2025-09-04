@@ -40,6 +40,10 @@ add_executable(test_vm_summary vm/SummaryTests.cpp)
 add_test(NAME test_vm_summary COMMAND test_vm_summary $<TARGET_FILE:ilc> ${CMAKE_SOURCE_DIR}/examples/il/summary.il)
 
 
+add_executable(test_vm_path_normalize unit/PathNormalizeTests.cpp)
+target_link_libraries(test_vm_path_normalize PRIVATE VMTrace)
+add_test(NAME test_vm_path_normalize COMMAND test_vm_path_normalize)
+
 add_executable(test_analysis_cfg analysis/CFGTests.cpp)
 target_link_libraries(test_analysis_cfg PRIVATE Analysis il_build)
 add_test(NAME test_analysis_cfg COMMAND test_analysis_cfg)
