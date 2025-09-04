@@ -30,11 +30,20 @@ struct DebugAction
 class DebugScript
 {
   public:
+    /// @brief Construct an empty script.
+    DebugScript() = default;
+
     /// @brief Load actions from script file @p path.
     explicit DebugScript(const std::string &path);
 
+    /// @brief Add a step action of @p count instructions.
+    void addStep(uint64_t count);
+
     /// @brief Retrieve next action; defaults to Continue when empty.
     DebugAction nextAction();
+
+    /// @brief Check whether any actions remain.
+    bool empty() const;
 
   private:
     std::queue<DebugAction> actions; ///< Pending actions
