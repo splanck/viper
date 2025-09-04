@@ -1,5 +1,6 @@
 // File: src/frontends/basic/ConstFolder.cpp
-// Purpose: Implements constant folding for BASIC AST nodes.
+// Purpose: Implements constant folding for BASIC AST nodes with table-driven
+// dispatch.
 // Key invariants: Folding preserves 64-bit wrap-around semantics.
 // Ownership/Lifetime: AST nodes are mutated in place.
 // Links: docs/class-catalog.md
@@ -10,12 +11,81 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
+#include <optional>
+#include <unordered_map>
 
 namespace il::frontends::basic
 {
 
+namespace detail
+{
+std::optional<Numeric> asNumeric(const Expr &e)
+{
+    if (auto *i = dynamic_cast<const IntExpr *>(&e))
+        return Numeric{false, static_cast<double>(i->value), static_cast<long long>(i->value)};
+    if (auto *f = dynamic_cast<const FloatExpr *>(&e))
+        return Numeric{true, f->value, static_cast<long long>(f->value)};
+    return std::nullopt;
+}
+
+Numeric promote(const Numeric &a, const Numeric &b)
+{
+    if (a.isFloat || b.isFloat)
+        return Numeric{true, a.isFloat ? a.f : static_cast<double>(a.i), a.i};
+    return a;
+}
+
+ExprPtr foldStringBinary(const StringExpr &l, TokenKind op, const StringExpr &r)
+{
+    switch (op)
+    {
+        case TokenKind::Plus:
+        {
+            auto out = std::make_unique<StringExpr>();
+            out->value = l.value + r.value;
+            return out;
+        }
+        case TokenKind::Equal:
+        case TokenKind::NotEqual:
+        {
+            auto out = std::make_unique<IntExpr>();
+            bool res = (op == TokenKind::Equal) ? (l.value == r.value) : (l.value != r.value);
+            out->value = res ? 1 : 0;
+            return out;
+        }
+        default:
+            return nullptr;
+    }
+}
+} // namespace detail
+
+template <typename F> ExprPtr detail::foldNumericBinary(const Expr &l, const Expr &r, F op)
+{
+    auto ln = asNumeric(l);
+    auto rn = asNumeric(r);
+    if (!ln || !rn)
+        return nullptr;
+    Numeric a = promote(*ln, *rn);
+    Numeric b = promote(*rn, *ln);
+    auto res = op(a, b);
+    if (!res)
+        return nullptr;
+    if (res->isFloat)
+    {
+        auto out = std::make_unique<FloatExpr>();
+        out->value = res->f;
+        return out;
+    }
+    auto out = std::make_unique<IntExpr>();
+    out->value = static_cast<int>(res->i);
+    return out;
+}
+
 namespace
 {
+
+using detail::Numeric;
 
 static long long wrapAdd(long long a, long long b)
 {
@@ -32,31 +102,11 @@ static long long wrapMul(long long a, long long b)
     return static_cast<long long>(static_cast<uint64_t>(a) * static_cast<uint64_t>(b));
 }
 
-static bool isInt(const Expr *e, long long &v)
-{
-    if (auto *i = dynamic_cast<const IntExpr *>(e))
-    {
-        v = i->value;
-        return true;
-    }
-    return false;
-}
-
 static bool isStr(const Expr *e, std::string &s)
 {
     if (auto *st = dynamic_cast<const StringExpr *>(e))
     {
         s = st->value;
-        return true;
-    }
-    return false;
-}
-
-static bool isFloat(const Expr *e, double &v)
-{
-    if (auto *f = dynamic_cast<const FloatExpr *>(e))
-    {
-        v = f->value;
         return true;
     }
     return false;
@@ -68,7 +118,7 @@ static void replaceWithInt(ExprPtr &e, long long v, support::SourceLoc loc)
 {
     auto ni = std::make_unique<IntExpr>();
     ni->loc = loc;
-    ni->value = v;
+    ni->value = static_cast<int>(v);
     e = std::move(ni);
 }
 
@@ -95,16 +145,21 @@ static void foldCall(ExprPtr &e, CallExpr *c)
         if (c->args.size() == 3)
         {
             std::string s;
-            long long start, len;
-            if (isStr(c->args[0].get(), s) && isInt(c->args[1].get(), start) &&
-                isInt(c->args[2].get(), len))
+            if (isStr(c->args[0].get(), s))
             {
-                if (start < 1)
-                    start = 1;
-                if (len < 0)
-                    len = 0;
-                size_t pos = static_cast<size_t>(start - 1);
-                replaceWithStr(e, s.substr(pos, static_cast<size_t>(len)), c->loc);
+                auto nStart = detail::asNumeric(*c->args[1]);
+                auto nLen = detail::asNumeric(*c->args[2]);
+                if (nStart && nLen && !nStart->isFloat && !nLen->isFloat)
+                {
+                    long long start = nStart->i;
+                    long long len = nLen->i;
+                    if (start < 1)
+                        start = 1;
+                    if (len < 0)
+                        len = 0;
+                    size_t pos = static_cast<size_t>(start - 1);
+                    replaceWithStr(e, s.substr(pos, static_cast<size_t>(len)), c->loc);
+                }
             }
         }
     }
@@ -128,25 +183,27 @@ static void foldCall(ExprPtr &e, CallExpr *c)
     }
     else if (c->builtin == CallExpr::Builtin::Int)
     {
-        double f;
-        if (c->args.size() == 1 && isFloat(c->args[0].get(), f))
-            replaceWithInt(e, static_cast<long long>(f), c->loc);
+        if (c->args.size() == 1)
+        {
+            auto n = detail::asNumeric(*c->args[0]);
+            if (n && n->isFloat)
+                replaceWithInt(e, static_cast<long long>(n->f), c->loc);
+        }
     }
     else if (c->builtin == CallExpr::Builtin::Str)
     {
-        long long i;
-        double f;
-        if (c->args.size() == 1 && isInt(c->args[0].get(), i))
+        if (c->args.size() == 1)
         {
-            char buf[32];
-            snprintf(buf, sizeof(buf), "%lld", i);
-            replaceWithStr(e, buf, c->loc);
-        }
-        else if (c->args.size() == 1 && isFloat(c->args[0].get(), f))
-        {
-            char buf[32];
-            snprintf(buf, sizeof(buf), "%g", f);
-            replaceWithStr(e, buf, c->loc);
+            auto n = detail::asNumeric(*c->args[0]);
+            if (n)
+            {
+                char buf[32];
+                if (n->isFloat)
+                    snprintf(buf, sizeof(buf), "%g", n->f);
+                else
+                    snprintf(buf, sizeof(buf), "%lld", n->i);
+                replaceWithStr(e, buf, c->loc);
+            }
         }
     }
 }
@@ -154,73 +211,273 @@ static void foldCall(ExprPtr &e, CallExpr *c)
 static void foldUnary(ExprPtr &e, UnaryExpr *u)
 {
     foldExpr(u->expr);
-    long long v;
-    if (isInt(u->expr.get(), v))
+    auto n = detail::asNumeric(*u->expr);
+    if (n && !n->isFloat && u->op == UnaryExpr::Op::Not)
+        replaceWithInt(e, n->i == 0 ? 1 : 0, u->loc);
+}
+
+static TokenKind toToken(BinaryExpr::Op op)
+{
+    switch (op)
     {
-        if (u->op == UnaryExpr::Op::Not)
-            replaceWithInt(e, v == 0 ? 1 : 0, u->loc);
+        case BinaryExpr::Op::Add:
+            return TokenKind::Plus;
+        case BinaryExpr::Op::Sub:
+            return TokenKind::Minus;
+        case BinaryExpr::Op::Mul:
+            return TokenKind::Star;
+        case BinaryExpr::Op::Div:
+            return TokenKind::Slash;
+        case BinaryExpr::Op::IDiv:
+            return TokenKind::Backslash;
+        case BinaryExpr::Op::Mod:
+            return TokenKind::KeywordMod;
+        case BinaryExpr::Op::Eq:
+            return TokenKind::Equal;
+        case BinaryExpr::Op::Ne:
+            return TokenKind::NotEqual;
+        case BinaryExpr::Op::Lt:
+            return TokenKind::Less;
+        case BinaryExpr::Op::Le:
+            return TokenKind::LessEqual;
+        case BinaryExpr::Op::Gt:
+            return TokenKind::Greater;
+        case BinaryExpr::Op::Ge:
+            return TokenKind::GreaterEqual;
+        case BinaryExpr::Op::And:
+            return TokenKind::KeywordAnd;
+        case BinaryExpr::Op::Or:
+            return TokenKind::KeywordOr;
     }
+    return TokenKind::EndOfFile;
 }
 
 static void foldBinary(ExprPtr &e, BinaryExpr *b)
 {
     foldExpr(b->lhs);
     foldExpr(b->rhs);
-    long long l, r;
-    std::string ls, rs;
-    if (isInt(b->lhs.get(), l) && isInt(b->rhs.get(), r))
+    TokenKind tk = toToken(b->op);
+
+    using FoldFn = std::function<ExprPtr(const Expr &, const Expr &)>;
+    static const std::unordered_map<TokenKind, FoldFn> numOps = {
+        {TokenKind::Plus,
+         [](const Expr &l, const Expr &r)
+         {
+             return detail::foldNumericBinary(
+                 l,
+                 r,
+                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+                 {
+                     if (a.isFloat)
+                     {
+                         double v = a.f + b.f;
+                         return Numeric{true, v, static_cast<long long>(v)};
+                     }
+                     long long v = wrapAdd(a.i, b.i);
+                     return Numeric{false, static_cast<double>(v), v};
+                 });
+         }},
+        {TokenKind::Minus,
+         [](const Expr &l, const Expr &r)
+         {
+             return detail::foldNumericBinary(
+                 l,
+                 r,
+                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+                 {
+                     if (a.isFloat)
+                     {
+                         double v = a.f - b.f;
+                         return Numeric{true, v, static_cast<long long>(v)};
+                     }
+                     long long v = wrapSub(a.i, b.i);
+                     return Numeric{false, static_cast<double>(v), v};
+                 });
+         }},
+        {TokenKind::Star,
+         [](const Expr &l, const Expr &r)
+         {
+             return detail::foldNumericBinary(
+                 l,
+                 r,
+                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+                 {
+                     if (a.isFloat)
+                     {
+                         double v = a.f * b.f;
+                         return Numeric{true, v, static_cast<long long>(v)};
+                     }
+                     long long v = wrapMul(a.i, b.i);
+                     return Numeric{false, static_cast<double>(v), v};
+                 });
+         }},
+        {TokenKind::Slash,
+         [](const Expr &l, const Expr &r)
+         {
+             return detail::foldNumericBinary(
+                 l,
+                 r,
+                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+                 {
+                     double rv = b.isFloat ? b.f : static_cast<double>(b.i);
+                     if (rv == 0.0)
+                         return std::nullopt;
+                     double lv = a.isFloat ? a.f : static_cast<double>(a.i);
+                     double v = lv / rv;
+                     return Numeric{true, v, static_cast<long long>(v)};
+                 });
+         }},
+        {TokenKind::Backslash,
+         [](const Expr &l, const Expr &r)
+         {
+             return detail::foldNumericBinary(
+                 l,
+                 r,
+                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+                 {
+                     if (a.isFloat || b.isFloat || b.i == 0)
+                         return std::nullopt;
+                     long long v = a.i / b.i;
+                     return Numeric{false, static_cast<double>(v), v};
+                 });
+         }},
+        {TokenKind::KeywordMod,
+         [](const Expr &l, const Expr &r)
+         {
+             return detail::foldNumericBinary(
+                 l,
+                 r,
+                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+                 {
+                     if (a.isFloat || b.isFloat || b.i == 0)
+                         return std::nullopt;
+                     long long v = a.i % b.i;
+                     return Numeric{false, static_cast<double>(v), v};
+                 });
+         }},
+        {TokenKind::Equal,
+         [](const Expr &l, const Expr &r)
+         {
+             return detail::foldNumericBinary(
+                 l,
+                 r,
+                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+                 {
+                     bool res = a.isFloat ? (a.f == b.f) : (a.i == b.i);
+                     return Numeric{false, static_cast<double>(res ? 1 : 0), res ? 1 : 0};
+                 });
+         }},
+        {TokenKind::NotEqual,
+         [](const Expr &l, const Expr &r)
+         {
+             return detail::foldNumericBinary(
+                 l,
+                 r,
+                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+                 {
+                     bool res = a.isFloat ? (a.f != b.f) : (a.i != b.i);
+                     return Numeric{false, static_cast<double>(res ? 1 : 0), res ? 1 : 0};
+                 });
+         }},
+        {TokenKind::Less,
+         [](const Expr &l, const Expr &r)
+         {
+             return detail::foldNumericBinary(
+                 l,
+                 r,
+                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+                 {
+                     bool res = a.isFloat ? (a.f < b.f) : (a.i < b.i);
+                     return Numeric{false, static_cast<double>(res ? 1 : 0), res ? 1 : 0};
+                 });
+         }},
+        {TokenKind::LessEqual,
+         [](const Expr &l, const Expr &r)
+         {
+             return detail::foldNumericBinary(
+                 l,
+                 r,
+                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+                 {
+                     bool res = a.isFloat ? (a.f <= b.f) : (a.i <= b.i);
+                     return Numeric{false, static_cast<double>(res ? 1 : 0), res ? 1 : 0};
+                 });
+         }},
+        {TokenKind::Greater,
+         [](const Expr &l, const Expr &r)
+         {
+             return detail::foldNumericBinary(
+                 l,
+                 r,
+                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+                 {
+                     bool res = a.isFloat ? (a.f > b.f) : (a.i > b.i);
+                     return Numeric{false, static_cast<double>(res ? 1 : 0), res ? 1 : 0};
+                 });
+         }},
+        {TokenKind::GreaterEqual,
+         [](const Expr &l, const Expr &r)
+         {
+             return detail::foldNumericBinary(
+                 l,
+                 r,
+                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+                 {
+                     bool res = a.isFloat ? (a.f >= b.f) : (a.i >= b.i);
+                     return Numeric{false, static_cast<double>(res ? 1 : 0), res ? 1 : 0};
+                 });
+         }},
+        {TokenKind::KeywordAnd,
+         [](const Expr &l, const Expr &r)
+         {
+             return detail::foldNumericBinary(
+                 l,
+                 r,
+                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+                 {
+                     if (a.isFloat || b.isFloat)
+                         return std::nullopt;
+                     long long v = (a.i != 0 && b.i != 0) ? 1 : 0;
+                     return Numeric{false, static_cast<double>(v), v};
+                 });
+         }},
+        {TokenKind::KeywordOr,
+         [](const Expr &l, const Expr &r)
+         {
+             return detail::foldNumericBinary(
+                 l,
+                 r,
+                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+                 {
+                     if (a.isFloat || b.isFloat)
+                         return std::nullopt;
+                     long long v = (a.i != 0 || b.i != 0) ? 1 : 0;
+                     return Numeric{false, static_cast<double>(v), v};
+                 });
+         }},
+    };
+
+    auto it = numOps.find(tk);
+    if (it != numOps.end())
     {
-        switch (b->op)
+        if (auto res = it->second(*b->lhs, *b->rhs))
         {
-            case BinaryExpr::Op::Add:
-                replaceWithInt(e, wrapAdd(l, r), b->loc);
-                return;
-            case BinaryExpr::Op::Sub:
-                replaceWithInt(e, wrapSub(l, r), b->loc);
-                return;
-            case BinaryExpr::Op::Mul:
-                replaceWithInt(e, wrapMul(l, r), b->loc);
-                return;
-            case BinaryExpr::Op::IDiv:
-                if (r != 0)
-                    replaceWithInt(e, l / r, b->loc);
-                return;
-            case BinaryExpr::Op::Mod:
-                if (r != 0)
-                    replaceWithInt(e, l % r, b->loc);
-                return;
-            case BinaryExpr::Op::Eq:
-                replaceWithInt(e, l == r, b->loc);
-                return;
-            case BinaryExpr::Op::Ne:
-                replaceWithInt(e, l != r, b->loc);
-                return;
-            case BinaryExpr::Op::Lt:
-                replaceWithInt(e, l < r, b->loc);
-                return;
-            case BinaryExpr::Op::Le:
-                replaceWithInt(e, l <= r, b->loc);
-                return;
-            case BinaryExpr::Op::Gt:
-                replaceWithInt(e, l > r, b->loc);
-                return;
-            case BinaryExpr::Op::Ge:
-                replaceWithInt(e, l >= r, b->loc);
-                return;
-            case BinaryExpr::Op::And:
-                replaceWithInt(e, (l != 0 && r != 0) ? 1 : 0, b->loc);
-                return;
-            case BinaryExpr::Op::Or:
-                replaceWithInt(e, (l != 0 || r != 0) ? 1 : 0, b->loc);
-                return;
-            default:
-                break;
+            res->loc = b->loc;
+            e = std::move(res);
+            return;
         }
     }
-    else if (b->op == BinaryExpr::Op::Add && isStr(b->lhs.get(), ls) && isStr(b->rhs.get(), rs))
+
+    if (auto *ls = dynamic_cast<StringExpr *>(b->lhs.get()))
     {
-        replaceWithStr(e, ls + rs, b->loc);
-        return;
+        if (auto *rs = dynamic_cast<StringExpr *>(b->rhs.get()))
+        {
+            if (auto res = detail::foldStringBinary(*ls, tk, *rs))
+            {
+                res->loc = b->loc;
+                e = std::move(res);
+            }
+        }
     }
 }
 

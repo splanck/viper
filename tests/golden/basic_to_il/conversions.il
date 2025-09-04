@@ -78,35 +78,31 @@ L60:
   .loc 1 6 4
   br L70
 L70:
-  .loc 1 7 13
-  %t15 = sitofp 0
-  .loc 1 7 13
-  %t16 = fsub %t15, 1.9
   .loc 1 7 4
-  store f64, %t0, %t16
+  store f64, %t0, -1.9
   .loc 1 7 4
   br L80
 L80:
   .loc 1 8 14
-  %t17 = load f64, %t1
+  %t15 = load f64, %t1
   .loc 1 8 10
-  %t18 = fptosi %t17
+  %t16 = fptosi %t15
   .loc 1 8 4
-  call @rt_print_i64(%t18)
+  call @rt_print_i64(%t16)
   .loc 1 8 4
-  %t19 = const_str @.L0
+  %t17 = const_str @.L0
   .loc 1 8 4
-  call @rt_print_str(%t19)
+  call @rt_print_str(%t17)
   .loc 1 8 23
-  %t20 = load f64, %t0
+  %t18 = load f64, %t0
   .loc 1 8 19
-  %t21 = fptosi %t20
+  %t19 = fptosi %t18
   .loc 1 8 4
-  call @rt_print_i64(%t21)
+  call @rt_print_i64(%t19)
   .loc 1 8 4
-  %t22 = const_str @.L1
+  %t20 = const_str @.L1
   .loc 1 8 4
-  call @rt_print_str(%t22)
+  call @rt_print_str(%t20)
   .loc 1 8 4
   br L90
 L90:
