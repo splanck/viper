@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Tool owns loaded modules.
 // Links: docs/class-catalog.md
 
+#include "VM/Trace.h"
 #include "cli.hpp"
 #include "il/io/Parser.hpp"
 #include "il/verify/Verifier.hpp"
@@ -31,15 +32,15 @@ int cmdRunIL(int argc, char **argv)
         return 1;
     }
     std::string ilFile = argv[0];
-    bool trace = false;
+    vm::TraceConfig traceCfg{};
     std::string stdinPath;
     uint64_t maxSteps = 0;
     for (int i = 1; i < argc; ++i)
     {
         std::string arg = argv[i];
-        if (arg == "--trace")
+        if (arg == "--trace" || arg == "--trace=il")
         {
-            trace = true;
+            traceCfg.mode = vm::TraceConfig::IL;
         }
         else if (arg == "--stdin-from" && i + 1 < argc)
         {
@@ -78,6 +79,6 @@ int cmdRunIL(int argc, char **argv)
             return 1;
         }
     }
-    vm::VM vm(m, trace, maxSteps);
+    vm::VM vm(m, traceCfg, maxSteps);
     return static_cast<int>(vm.run());
 }
