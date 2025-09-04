@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Tool owns loaded modules.
 // Links: docs/class-catalog.md
 
+#include "VM/Debug.h"
 #include "VM/Trace.h"
 #include "cli.hpp"
 #include "il/io/Parser.hpp"
@@ -33,6 +34,7 @@ int cmdRunIL(int argc, char **argv)
     }
     std::string ilFile = argv[0];
     vm::TraceConfig traceCfg{};
+    vm::DebugCtrl debugCtrl{};
     std::string stdinPath;
     uint64_t maxSteps = 0;
     for (int i = 1; i < argc; ++i)
@@ -57,6 +59,11 @@ int cmdRunIL(int argc, char **argv)
         else if (arg == "--bounds-checks")
         {
             // Flag accepted for parity with front-end run mode.
+        }
+        else if (arg == "--break" && i + 1 < argc)
+        {
+            auto sym = debugCtrl.internLabel(argv[++i]);
+            debugCtrl.addBreak(sym);
         }
         else
         {
@@ -83,6 +90,6 @@ int cmdRunIL(int argc, char **argv)
             return 1;
         }
     }
-    vm::VM vm(m, traceCfg, maxSteps);
+    vm::VM vm(m, traceCfg, maxSteps, &debugCtrl);
     return static_cast<int>(vm.run());
 }
