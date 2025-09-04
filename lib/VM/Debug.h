@@ -1,6 +1,6 @@
 // File: lib/VM/Debug.h
 // Purpose: Declare breakpoint control for the VM.
-// Key invariants: Breakpoints are keyed by interned block labels and source lines.
+// Key invariants: Breakpoints are keyed by interned block labels and normalized source lines.
 // Ownership/Lifetime: DebugCtrl owns its interner, breakpoint set, and source line list.
 // Links: docs/dev/vm.md
 #pragma once
@@ -60,6 +60,9 @@ class DebugCtrl
     /// @brief Retrieve associated source manager.
     const il::support::SourceManager *getSourceManager() const;
 
+    /// @brief Normalize path by replacing '\\' with '/' and collapsing '.' and '..' segments.
+    static std::string normalizePath(std::string p);
+
     /// @brief Register a watch on variable @p name.
     void addWatch(std::string_view name);
 
@@ -78,8 +81,9 @@ class DebugCtrl
 
     struct SrcLineBP
     {
-        std::string file; ///< Source file path
-        int line;         ///< 1-based line number
+        std::string normFile; ///< Normalized source file path
+        std::string base;     ///< Basename of source file
+        int line;             ///< 1-based line number
     };
 
     const il::support::SourceManager *sm_ = nullptr; ///< Source manager for paths

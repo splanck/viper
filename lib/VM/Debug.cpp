@@ -1,15 +1,56 @@
 // File: lib/VM/Debug.cpp
 // Purpose: Implement breakpoint control for the VM.
-// Key invariants: Interned labels and exact file paths uniquely identify breakpoints.
+// Key invariants: Interned labels and normalized file paths uniquely identify breakpoints.
 // Ownership/Lifetime: DebugCtrl owns its interner, breakpoint set, and source line list.
 // Links: docs/dev/vm.md
 #include "VM/Debug.h"
 #include "il/core/Instr.hpp"
 #include "support/source_manager.hpp"
+#include <algorithm>
 #include <iostream>
+#include <vector>
 
 namespace il::vm
 {
+
+std::string DebugCtrl::normalizePath(std::string p)
+{
+    std::replace(p.begin(), p.end(), '\\', '/');
+    bool abs = !p.empty() && p[0] == '/';
+    std::vector<std::string> parts;
+    size_t i = 0;
+    while (i < p.size())
+    {
+        size_t j = p.find('/', i);
+        std::string part = p.substr(i, j - i);
+        if (part.empty() || part == ".")
+        {
+            // skip
+        }
+        else if (part == "..")
+        {
+            if (!parts.empty() && parts.back() != "..")
+                parts.pop_back();
+            else if (!abs)
+                parts.push_back("..");
+        }
+        else
+        {
+            parts.push_back(std::move(part));
+        }
+        if (j == std::string::npos)
+            break;
+        i = j + 1;
+    }
+    std::string out = abs ? "/" : "";
+    for (size_t k = 0; k < parts.size(); ++k)
+    {
+        if (k)
+            out += '/';
+        out += parts[k];
+    }
+    return out;
+}
 
 il::support::Symbol DebugCtrl::internLabel(std::string_view label)
 {
@@ -30,7 +71,14 @@ bool DebugCtrl::shouldBreak(const il::core::BasicBlock &blk) const
 
 void DebugCtrl::addBreakSrcLine(std::string file, int line)
 {
-    srcLineBPs_.push_back({std::move(file), line});
+    std::string norm = normalizePath(std::move(file));
+    std::string base;
+    size_t pos = norm.find_last_of('/');
+    if (pos != std::string::npos)
+        base = norm.substr(pos + 1);
+    else
+        base = norm;
+    srcLineBPs_.push_back({std::move(norm), std::move(base), line});
 }
 
 bool DebugCtrl::hasSrcLineBPs() const
@@ -53,8 +101,16 @@ bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
     if (!sm_ || srcLineBPs_.empty() || !I.loc.isValid())
         return false;
     std::string path(sm_->getPath(I.loc.file_id));
+    std::string norm = normalizePath(std::move(path));
+    std::string base;
+    size_t pos = norm.find_last_of('/');
+    if (pos != std::string::npos)
+        base = norm.substr(pos + 1);
+    else
+        base = norm;
+    int line = static_cast<int>(I.loc.line);
     for (const auto &bp : srcLineBPs_)
-        if (path == bp.file && static_cast<int>(I.loc.line) == bp.line)
+        if ((norm == bp.normFile && line == bp.line) || (base == bp.base && line == bp.line))
             return true;
     return false;
 }
