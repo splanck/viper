@@ -66,7 +66,7 @@ class VM
     DebugCtrl debug;             ///< Breakpoint controller
     DebugScript *script;         ///< Optional debug command script
     uint64_t maxSteps;           ///< Step limit; 0 means unlimited
-    uint64_t steps = 0;          ///< Executed instruction count
+    uint64_t instrCount = 0;     ///< Executed instruction count
     uint64_t stepBudget = 0;     ///< Remaining instructions to step before pausing
     std::unordered_map<std::string, const il::core::Function *> fnMap; ///< Name lookup
     std::unordered_map<std::string, rt_str> strMap;                    ///< String pool
@@ -81,6 +81,13 @@ class VM
     /// @param v Value to evaluate.
     /// @return Result stored in a Slot.
     Slot eval(Frame &fr, const il::core::Value &v);
+
+  public:
+    /// @brief Return executed instruction count.
+    uint64_t getInstrCount() const
+    {
+        return instrCount;
+    }
 };
 
 } // namespace il::vm

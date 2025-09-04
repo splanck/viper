@@ -12,6 +12,7 @@
 #include "il/verify/Verifier.hpp"
 #include "vm/VM.hpp"
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -44,6 +45,8 @@ int cmdRunIL(int argc, char **argv)
     std::unique_ptr<vm::DebugScript> script;
     bool stepFlag = false;
     bool continueFlag = false;
+    bool countFlag = false;
+    bool timeFlag = false;
     for (int i = 1; i < argc; ++i)
     {
         std::string arg = argv[i];
@@ -87,6 +90,14 @@ int cmdRunIL(int argc, char **argv)
         else if (arg == "--watch" && i + 1 < argc)
         {
             dbg.addWatch(argv[++i]);
+        }
+        else if (arg == "--count")
+        {
+            countFlag = true;
+        }
+        else if (arg == "--time")
+        {
+            timeFlag = true;
         }
         else
         {
@@ -136,5 +147,24 @@ int cmdRunIL(int argc, char **argv)
         script->addStep(1);
     }
     vm::VM vm(m, traceCfg, maxSteps, std::move(dbg), script.get());
-    return static_cast<int>(vm.run());
+    std::chrono::steady_clock::time_point start;
+    if (timeFlag)
+        start = std::chrono::steady_clock::now();
+    int rc = static_cast<int>(vm.run());
+    std::chrono::steady_clock::time_point end;
+    if (timeFlag)
+        end = std::chrono::steady_clock::now();
+    if (countFlag || timeFlag)
+    {
+        std::cerr << "[SUMMARY]";
+        if (countFlag)
+            std::cerr << " instr=" << vm.getInstrCount();
+        if (timeFlag)
+        {
+            double ms = std::chrono::duration<double, std::milli>(end - start).count();
+            std::cerr << " time_ms=" << ms;
+        }
+        std::cerr << "\n";
+    }
+    return rc;
 }
