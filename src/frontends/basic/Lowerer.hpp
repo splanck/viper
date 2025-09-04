@@ -1,5 +1,6 @@
 // File: src/frontends/basic/Lowerer.hpp
-// Purpose: Declares lowering from BASIC AST to IL.
+// Purpose: Declares lowering from BASIC AST to IL with helper routines and
+// centralized runtime declarations.
 // Key invariants: None.
 // Ownership/Lifetime: Lowerer does not own AST or module.
 // Links: docs/class-catalog.md
@@ -12,6 +13,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace il::frontends::basic
 {
@@ -90,22 +92,43 @@ class Lowerer
     std::unordered_set<std::string> vars;
     std::unordered_set<std::string> arrays;
     il::support::SourceLoc curLoc{}; ///< current source location for emitted IR
-    bool usedStrEq{false};
     bool boundsChecks{false};
     unsigned boundsCheckId{0};
-    bool addedRtToInt{false};
-    bool addedRtIntToStr{false};
-    bool addedRtF64ToStr{false};
-    bool addedRtSqrt{false};
-    bool addedRtAbsI64{false};
-    bool addedRtAbsF64{false};
-    bool addedRtFloor{false};
-    bool addedRtCeil{false};
-    bool addedRtSin{false};
-    bool addedRtCos{false};
-    bool addedRtPow{false};
-    bool addedRtRandomize{false};
-    bool addedRtRnd{false};
+
+    // runtime requirement tracking
+    bool needInputLine{false};
+    bool needRtToInt{false};
+    bool needRtIntToStr{false};
+    bool needRtF64ToStr{false};
+    bool needAlloc{false};
+    bool needRtStrEq{false};
+
+    enum class RuntimeFn
+    {
+        Sqrt,
+        AbsI64,
+        AbsF64,
+        Floor,
+        Ceil,
+        Sin,
+        Cos,
+        Pow,
+        RandomizeI64,
+        Rnd,
+    };
+
+    struct RuntimeFnHash
+    {
+        size_t operator()(RuntimeFn f) const
+        {
+            return static_cast<size_t>(f);
+        }
+    };
+
+    std::vector<RuntimeFn> runtimeOrder;
+    std::unordered_set<RuntimeFn, RuntimeFnHash> runtimeSet;
+
+    void declareRequiredRuntime(build::IRBuilder &b);
 };
 
 } // namespace il::frontends::basic
