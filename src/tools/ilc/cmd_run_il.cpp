@@ -42,6 +42,10 @@ int cmdRunIL(int argc, char **argv)
         {
             traceCfg.mode = vm::TraceConfig::IL;
         }
+        else if (arg == "--trace=src")
+        {
+            traceCfg.mode = vm::TraceConfig::SRC;
+        }
         else if (arg == "--stdin-from" && i + 1 < argc)
         {
             stdinPath = argv[++i];

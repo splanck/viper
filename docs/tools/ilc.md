@@ -9,6 +9,7 @@
 Flags:
 
 - `--trace=il` — emit a line-per-instruction trace.
+- `--trace=src` — trace with source locations; prints `<unknown>` if a location is absent.
 
 Example:
 
@@ -17,6 +18,16 @@ $ ilc -run examples/il/trace_min.il --trace=il
   [IL] fn=@main blk=entry ip=#0 op=add 1, 2 -> %t0
   [IL] fn=@main blk=entry ip=#1 op=mul %t0, 3 -> %t1
   [IL] fn=@main blk=entry ip=#2 op=ret 0
+```
+
+With BASIC sources, `--trace=src` prefixes each line with `file:line:col`:
+
+```
+$ ilc front basic -run examples/basic/trace_src.bas --trace=src
+  [SRC] trace_src.bas:1:10  (fn=@main blk=L10 ip=#0)  const_str @.L0 -> %t0
+  [SRC] trace_src.bas:1:4  (fn=@main blk=L10 ip=#1)  call %t0
+  ...
+  [SRC] <unknown>  (fn=@main blk=exit ip=#0)  ret 0
 ```
 
 ## il-opt

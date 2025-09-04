@@ -135,6 +135,13 @@ add_test(NAME basic_abs_mixed COMMAND ${CMAKE_COMMAND}
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/basic_abs_mixed.bas.out
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_basic_math_phase1.cmake)
 
+add_test(NAME trace_src COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/TraceSrcTests.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/TraceSrcTests.bas.out
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_trace_src.cmake)
+set_tests_properties(trace_src PROPERTIES LABELS VM)
+
 add_test(NAME basic_random_repro COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DSRC_DIR=${CMAKE_SOURCE_DIR}
