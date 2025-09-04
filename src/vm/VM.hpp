@@ -53,7 +53,7 @@ class VM
     VM(const il::core::Module &m,
        TraceConfig tc = {},
        uint64_t maxSteps = 0,
-       DebugCtrl dbg = {},
+       DebugCtrl dbg = DebugCtrl(),
        DebugScript *script = nullptr);
 
     /// @brief Execute the module's entry function.
