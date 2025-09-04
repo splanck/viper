@@ -288,6 +288,10 @@ add_executable(test_vm_rt_trap_loc unit/test_vm_rt_trap_loc.cpp)
 target_link_libraries(test_vm_rt_trap_loc PRIVATE il_build il_vm support)
 add_test(NAME test_vm_rt_trap_loc COMMAND test_vm_rt_trap_loc)
 
+add_executable(test_vm_path_normalize unit/PathNormalizeTests.cpp)
+target_link_libraries(test_vm_path_normalize PRIVATE VMTrace)
+add_test(NAME test_vm_path_normalize COMMAND test_vm_path_normalize)
+
 
 set(BASIC_AST_DUMP $<TARGET_FILE:basic-ast-dump>)
 add_test(NAME basic_ast_ex1 COMMAND ${CMAKE_COMMAND}
