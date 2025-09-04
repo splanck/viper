@@ -1,3 +1,3 @@
-add_library(VMTrace Trace.cpp)
+add_library(VMTrace Trace.cpp Debug.cpp)
 target_link_libraries(VMTrace PUBLIC il_core rt support)
 target_include_directories(VMTrace PUBLIC ${CMAKE_SOURCE_DIR}/lib ${CMAKE_SOURCE_DIR}/src)
