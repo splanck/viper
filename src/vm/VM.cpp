@@ -76,7 +76,7 @@ int64_t VM::execFunction(const Function &fn)
     bool skipBreakOnce = false;
     while (bb && ip < bb->instructions.size())
     {
-        if (maxSteps && steps >= maxSteps)
+        if (maxSteps && instrCount >= maxSteps)
         {
             std::cerr << "VM: step limit exceeded (" << maxSteps << "); aborting.\n";
             return 1;
@@ -117,7 +117,7 @@ int64_t VM::execFunction(const Function &fn)
         skipBreakOnce = false;
         const Instr &in = bb->instructions[ip];
         tracer.onStep(in, fr);
-        ++steps;
+        ++instrCount;
         bool jumped = false;
         switch (in.op)
         {

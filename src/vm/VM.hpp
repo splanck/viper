@@ -60,13 +60,20 @@ class VM
     /// @return Exit code from main function.
     int64_t run();
 
+    /// @brief Total executed instruction count.
+    /// @return Number of instructions executed by the VM.
+    uint64_t getInstrCount() const
+    {
+        return instrCount;
+    }
+
   private:
     const il::core::Module &mod; ///< Module to execute
     TraceSink tracer;            ///< Trace output sink
     DebugCtrl debug;             ///< Breakpoint controller
     DebugScript *script;         ///< Optional debug command script
     uint64_t maxSteps;           ///< Step limit; 0 means unlimited
-    uint64_t steps = 0;          ///< Executed instruction count
+    uint64_t instrCount = 0;     ///< Executed instruction count
     uint64_t stepBudget = 0;     ///< Remaining instructions to step before pausing
     std::unordered_map<std::string, const il::core::Function *> fnMap; ///< Name lookup
     std::unordered_map<std::string, rt_str> strMap;                    ///< String pool

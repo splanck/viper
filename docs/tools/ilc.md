@@ -17,6 +17,8 @@ Flags:
 | `--step` | enter debug mode, break at entry, and step one instruction. |
 | `--continue` | ignore breakpoints and run to completion. |
 | `--watch <name>` | print when scalar `name` changes; may be repeated. |
+| `--count` | print total instructions executed. |
+| `--time` | print wall-clock execution time in milliseconds (may vary between runs). |
 
 Example:
 
@@ -25,6 +27,13 @@ $ ilc -run examples/il/trace_min.il --trace=il
   [IL] fn=@main blk=entry ip=#0 op=add 1, 2 -> %t0
   [IL] fn=@main blk=entry ip=#1 op=mul %t0, 3 -> %t1
   [IL] fn=@main blk=entry ip=#2 op=ret 0
+```
+
+Using `--count` and `--time` prints a summary line at program exit:
+
+```
+$ ilc -run examples/il/summary.il --count --time
+[SUMMARY] instr=3 time_ms=0.01
 ```
 
 ### Non-interactive debugging with --debug-cmds
