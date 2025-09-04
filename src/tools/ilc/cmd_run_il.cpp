@@ -84,6 +84,10 @@ int cmdRunIL(int argc, char **argv)
         {
             // Flag accepted for parity with front-end run mode.
         }
+        else if (arg == "--watch" && i + 1 < argc)
+        {
+            dbg.addWatch(argv[++i]);
+        }
         else
         {
             usage();
