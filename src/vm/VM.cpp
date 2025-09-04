@@ -22,6 +22,7 @@ namespace il::vm
 VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript *script)
     : mod(m), tracer(tc), debug(std::move(dbg)), script(script), maxSteps(ms)
 {
+    debug.setSourceManager(tc.sm);
     for (const auto &f : m.functions)
         fnMap[f.name] = &f;
     for (const auto &g : m.globals)
@@ -116,6 +117,16 @@ int64_t VM::execFunction(const Function &fn)
         }
         skipBreakOnce = false;
         const Instr &in = bb->instructions[ip];
+        if (debug.hasSrcLineBPs() && debug.shouldBreakOn(in))
+        {
+            const auto *sm = debug.getSourceManager();
+            std::string path;
+            if (sm && in.loc.isValid())
+                path = std::string(sm->getPath(in.loc.file_id));
+            std::cerr << "[BREAK] src=" << path << ':' << in.loc.line << " fn=@" << fr.func->name
+                      << " blk=" << bb->label << " ip=#" << ip << "\n";
+            return 10;
+        }
         tracer.onStep(in, fr);
         ++instrCount;
         bool jumped = false;
