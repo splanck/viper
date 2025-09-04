@@ -5,6 +5,7 @@
 // Links: docs/class-catalog.md
 
 #include "VM/Debug.h"
+#include "VM/DebugScript.h"
 #include "VM/Trace.h"
 #include "cli.hpp"
 #include "il/io/Parser.hpp"
@@ -14,6 +15,7 @@
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -38,6 +40,7 @@ int cmdRunIL(int argc, char **argv)
     std::string stdinPath;
     uint64_t maxSteps = 0;
     vm::DebugCtrl dbg;
+    std::unique_ptr<vm::DebugScript> script;
     for (int i = 1; i < argc; ++i)
     {
         std::string arg = argv[i];
@@ -61,6 +64,10 @@ int cmdRunIL(int argc, char **argv)
         {
             auto sym = dbg.internLabel(argv[++i]);
             dbg.addBreak(sym);
+        }
+        else if (arg == "--debug-cmds" && i + 1 < argc)
+        {
+            script = std::make_unique<vm::DebugScript>(argv[++i]);
         }
         else if (arg == "--bounds-checks")
         {
@@ -91,6 +98,6 @@ int cmdRunIL(int argc, char **argv)
             return 1;
         }
     }
-    vm::VM vm(m, traceCfg, maxSteps, std::move(dbg));
+    vm::VM vm(m, traceCfg, maxSteps, std::move(dbg), script.get());
     return static_cast<int>(vm.run());
 }
