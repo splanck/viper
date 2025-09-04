@@ -85,6 +85,7 @@ int cmdFrontBasic(int argc, char **argv)
     bool boundsChecks = false;
     vm::TraceConfig traceCfg{};
     SourceManager sm;
+    vm::DebugCtrl dbg(&sm);
     for (int i = 0; i < argc; ++i)
     {
         std::string arg = argv[i];
@@ -113,6 +114,17 @@ int cmdFrontBasic(int argc, char **argv)
         else if (arg == "--max-steps" && i + 1 < argc)
         {
             maxSteps = std::stoull(argv[++i]);
+        }
+        else if (arg == "--break-src" && i + 1 < argc)
+        {
+            std::string spec = argv[++i];
+            size_t pos = spec.find_last_of(':');
+            if (pos != std::string::npos)
+            {
+                std::string file2 = spec.substr(0, pos);
+                int line = std::stoi(spec.substr(pos + 1));
+                dbg.addBreakSrcLine(file2, line);
+            }
         }
         else if (arg == "--bounds-checks")
         {
@@ -149,6 +161,6 @@ int cmdFrontBasic(int argc, char **argv)
         }
     }
     traceCfg.sm = &sm;
-    vm::VM vm(m, traceCfg, maxSteps);
+    vm::VM vm(m, traceCfg, maxSteps, std::move(dbg));
     return static_cast<int>(vm.run());
 }

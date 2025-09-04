@@ -110,6 +110,12 @@ add_test(NAME vm_block_params COMMAND ${CMAKE_COMMAND}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_vm_block_params.cmake)
 set_tests_properties(vm_block_params PROPERTIES LABELS VM)
 
+add_test(NAME vm_break_src_exact COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DSRC_DIR=${CMAKE_SOURCE_DIR}
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_break_src_exact.cmake)
+set_tests_properties(vm_break_src_exact PROPERTIES LABELS VM)
+
 add_test(NAME vm_math_core COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DSRC_DIR=${CMAKE_SOURCE_DIR}

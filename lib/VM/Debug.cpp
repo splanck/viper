@@ -5,6 +5,7 @@
 // Links: docs/dev/vm.md
 #include "VM/Debug.h"
 #include <iostream>
+#include <utility>
 
 namespace il::vm
 {
@@ -74,6 +75,29 @@ void DebugCtrl::onStore(std::string_view name,
     }
     w.type = ty;
     w.hasValue = true;
+}
+
+void DebugCtrl::addBreakSrcLine(std::string file, int line)
+{
+    srcLineBPs_.push_back({std::move(file), line});
+}
+
+bool DebugCtrl::hasSrcLineBPs() const
+{
+    return !srcLineBPs_.empty();
+}
+
+bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
+{
+    if (!sm_ || !I.loc.isValid())
+        return false;
+    std::string_view path = sm_->getPath(I.loc.file_id);
+    for (const auto &bp : srcLineBPs_)
+    {
+        if (bp.file == path && static_cast<int>(I.loc.line) == bp.line)
+            return true;
+    }
+    return false;
 }
 
 } // namespace il::vm
