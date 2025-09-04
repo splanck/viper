@@ -35,7 +35,8 @@ entry:
   store str, %c_slot, %c2
 
   %c3 = load str, %c_slot
-  call @rt_print_str(%c3)
+  %out = const_str @.L3
+  call @rt_print_str(%out)
   %nl0 = const_str @.L4
   call @rt_print_str(%nl0)
 
