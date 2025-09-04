@@ -61,13 +61,14 @@ class VM
     int64_t run();
 
   private:
-    const il::core::Module &mod; ///< Module to execute
-    TraceSink tracer;            ///< Trace output sink
-    DebugCtrl debug;             ///< Breakpoint controller
-    DebugScript *script;         ///< Optional debug command script
-    uint64_t maxSteps;           ///< Step limit; 0 means unlimited
-    uint64_t instrCount = 0;     ///< Executed instruction count
-    uint64_t stepBudget = 0;     ///< Remaining instructions to step before pausing
+    const il::core::Module &mod;          ///< Module to execute
+    TraceSink tracer;                     ///< Trace output sink
+    DebugCtrl debug;                      ///< Breakpoint controller
+    DebugScript *script;                  ///< Optional debug command script
+    const il::support::SourceManager *sm; ///< Source manager for locations
+    uint64_t maxSteps;                    ///< Step limit; 0 means unlimited
+    uint64_t instrCount = 0;              ///< Executed instruction count
+    uint64_t stepBudget = 0;              ///< Remaining instructions to step before pausing
     std::unordered_map<std::string, const il::core::Function *> fnMap; ///< Name lookup
     std::unordered_map<std::string, rt_str> strMap;                    ///< String pool
 

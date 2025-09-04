@@ -17,13 +17,37 @@ il::support::Symbol DebugCtrl::internLabel(std::string_view label)
 void DebugCtrl::addBreak(il::support::Symbol sym)
 {
     if (sym)
-        breaks_.insert(sym);
+        breaks_.emplace_back(sym);
+}
+
+void DebugCtrl::addBreak(il::support::Symbol file, int line)
+{
+    if (file)
+        breaks_.emplace_back(file, line);
 }
 
 bool DebugCtrl::shouldBreak(const il::core::BasicBlock &blk) const
 {
     il::support::Symbol sym = interner_.intern(blk.label);
-    return breaks_.count(sym) != 0;
+    for (const auto &b : breaks_)
+        if (b.kind == Breakpoint::Kind::Label && b.label == sym)
+            return true;
+    return false;
+}
+
+bool DebugCtrl::shouldBreak(const il::core::Instr &in, const il::support::SourceManager *sm) const
+{
+    if (!sm || !in.loc.isValid())
+        return false;
+    il::support::Symbol file = interner_.intern(sm->getPath(in.loc.file_id));
+    for (auto it = breaks_.begin(); it != breaks_.end(); ++it)
+        if (it->kind == Breakpoint::Kind::SrcLine && it->src.file == file &&
+            it->src.line == static_cast<int>(in.loc.line))
+        {
+            breaks_.erase(it);
+            return true;
+        }
+    return false;
 }
 
 void DebugCtrl::addWatch(std::string_view name)

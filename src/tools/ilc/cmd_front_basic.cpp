@@ -4,6 +4,8 @@
 // Ownership/Lifetime: Tool owns loaded modules.
 // Links: docs/class-catalog.md
 
+#include "VM/Debug.h"
+#include "VM/DebugScript.h"
 #include "VM/Trace.h"
 #include "cli.hpp"
 #include "frontends/basic/ConstFolder.hpp"
@@ -19,6 +21,7 @@
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <string>
 
@@ -84,6 +87,8 @@ int cmdFrontBasic(int argc, char **argv)
     uint64_t maxSteps = 0;
     bool boundsChecks = false;
     vm::TraceConfig traceCfg{};
+    vm::DebugCtrl dbg;
+    std::unique_ptr<vm::DebugScript> script;
     SourceManager sm;
     for (int i = 0; i < argc; ++i)
     {
@@ -118,6 +123,27 @@ int cmdFrontBasic(int argc, char **argv)
         {
             boundsChecks = true;
         }
+        else if (arg == "--break" && i + 1 < argc)
+        {
+            std::string spec = argv[++i];
+            auto pos = spec.rfind(':');
+            if (pos != std::string::npos && spec.rfind('.', pos) != std::string::npos)
+            {
+                std::string f = spec.substr(0, pos);
+                int line = std::stoi(spec.substr(pos + 1));
+                auto fs = dbg.internLabel(f);
+                dbg.addBreak(fs, line);
+            }
+            else
+            {
+                auto sym = dbg.internLabel(spec);
+                dbg.addBreak(sym);
+            }
+        }
+        else if (arg == "--debug-cmds" && i + 1 < argc)
+        {
+            script = std::make_unique<vm::DebugScript>(argv[++i]);
+        }
         else
         {
             usage();
@@ -149,6 +175,6 @@ int cmdFrontBasic(int argc, char **argv)
         }
     }
     traceCfg.sm = &sm;
-    vm::VM vm(m, traceCfg, maxSteps);
+    vm::VM vm(m, traceCfg, maxSteps, std::move(dbg), script.get());
     return static_cast<int>(vm.run());
 }
