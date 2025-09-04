@@ -10,7 +10,8 @@
 namespace il::frontends::basic
 {
 
-Parser::Parser(std::string_view src, uint32_t file_id) : lexer_(src, file_id)
+Parser::Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *emitter)
+    : lexer_(src, file_id), emitter_(emitter)
 {
     tokens_.push_back(lexer_.next());
 }
@@ -125,7 +126,7 @@ StmtPtr Parser::parseLet()
     auto loc = peek().loc;
     consume(); // LET
     auto target = parsePrimary();
-    expect(TokenKind::Equal, "=");
+    expect(TokenKind::Equal);
     auto e = parseExpression();
     auto stmt = std::make_unique<LetStmt>();
     stmt->loc = loc;
@@ -139,7 +140,7 @@ StmtPtr Parser::parseIf(int line)
     auto loc = peek().loc;
     consume(); // IF
     auto cond = parseExpression();
-    expect(TokenKind::KeywordThen, "THEN");
+    expect(TokenKind::KeywordThen);
     auto thenStmt = parseStatement(line);
     std::vector<IfStmt::ElseIf> elseifs;
     StmtPtr elseStmt;
@@ -150,7 +151,7 @@ StmtPtr Parser::parseIf(int line)
             consume();
             IfStmt::ElseIf ei;
             ei.cond = parseExpression();
-            expect(TokenKind::KeywordThen, "THEN");
+            expect(TokenKind::KeywordThen);
             ei.then_branch = parseStatement(line);
             if (ei.then_branch)
                 ei.then_branch->line = line;
@@ -165,7 +166,7 @@ StmtPtr Parser::parseIf(int line)
                 consume();
                 IfStmt::ElseIf ei;
                 ei.cond = parseExpression();
-                expect(TokenKind::KeywordThen, "THEN");
+                expect(TokenKind::KeywordThen);
                 ei.then_branch = parseStatement(line);
                 if (ei.then_branch)
                     ei.then_branch->line = line;
@@ -237,10 +238,10 @@ StmtPtr Parser::parseFor()
     auto loc = peek().loc;
     consume(); // FOR
     std::string var = peek().lexeme;
-    expect(TokenKind::Identifier, "identifier");
-    expect(TokenKind::Equal, "=");
+    expect(TokenKind::Identifier);
+    expect(TokenKind::Equal);
     auto start = parseExpression();
-    expect(TokenKind::KeywordTo, "TO");
+    expect(TokenKind::KeywordTo);
     auto end = parseExpression();
     ExprPtr step;
     if (at(TokenKind::KeywordStep))
@@ -309,7 +310,7 @@ StmtPtr Parser::parseGoto()
     auto loc = peek().loc;
     consume(); // GOTO
     int target = std::atoi(peek().lexeme.c_str());
-    expect(TokenKind::Number, "line number");
+    expect(TokenKind::Number);
     auto stmt = std::make_unique<GotoStmt>();
     stmt->loc = loc;
     stmt->target = target;
@@ -337,10 +338,10 @@ StmtPtr Parser::parseInput()
         s->value = peek().lexeme;
         prompt = std::move(s);
         consume();
-        expect(TokenKind::Comma, ",");
+        expect(TokenKind::Comma);
     }
     std::string name = peek().lexeme;
-    expect(TokenKind::Identifier, "identifier");
+    expect(TokenKind::Identifier);
     auto stmt = std::make_unique<InputStmt>();
     stmt->loc = loc;
     stmt->prompt = std::move(prompt);
@@ -353,10 +354,10 @@ StmtPtr Parser::parseDim()
     auto loc = peek().loc;
     consume(); // DIM
     std::string name = peek().lexeme;
-    expect(TokenKind::Identifier, "identifier");
-    expect(TokenKind::LParen, "(");
+    expect(TokenKind::Identifier);
+    expect(TokenKind::LParen);
     auto sz = parseExpression();
-    expect(TokenKind::RParen, ")");
+    expect(TokenKind::RParen);
     auto stmt = std::make_unique<DimStmt>();
     stmt->loc = loc;
     stmt->name = name;

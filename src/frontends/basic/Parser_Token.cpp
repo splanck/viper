@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Parser owns lexer and token buffer.
 // Links: docs/class-catalog.md
 
+#include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"
 #include <cstdio>
 
@@ -31,12 +32,20 @@ Token Parser::consume()
     return t;
 }
 
-Token Parser::expect(TokenKind k, const char *what)
+Token Parser::expect(TokenKind k)
 {
     if (!at(k))
     {
         Token t = peek();
-        std::fprintf(stderr, "expected %s, got %s\n", what, tokenKindToString(t.kind));
+        if (emitter_)
+        {
+            emitter_->emitExpected(t.kind, k, t.loc);
+        }
+        else
+        {
+            std::fprintf(
+                stderr, "expected %s, got %s\n", tokenKindToString(k), tokenKindToString(t.kind));
+        }
         syncToStmtBoundary();
         return t;
     }

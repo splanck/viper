@@ -10,11 +10,18 @@ The BASIC parser is split into focused components:
   - `bool at(TokenKind)`
   - `const Token &peek(int)`
   - `Token consume()`
-  - `Token expect(TokenKind, const char*)`
+  - `Token expect(TokenKind)`
   - `void syncToStmtBoundary()`
 
 This separation keeps statement logic clear and isolates token mechanics and
 expression handling.
+
+## Diagnostics
+
+`Parser::expect` now reports unexpected tokens via
+`DiagnosticEmitter::emitExpected`, producing a consistent "expected X, got Y"
+message. Each lexer invocation calls `skipWhitespaceExceptNewline` exactly once
+per token so newlines are preserved unless explicitly consumed.
 
 ## Constant Folding Rules
 
