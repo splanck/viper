@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Tool owns loaded modules.
 // Links: docs/class-catalog.md
 
+#include "VM/Debug.h"
 #include "VM/Trace.h"
 #include "cli.hpp"
 #include "il/io/Parser.hpp"
@@ -14,6 +15,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <utility>
 
 using namespace il;
 
@@ -35,6 +37,7 @@ int cmdRunIL(int argc, char **argv)
     vm::TraceConfig traceCfg{};
     std::string stdinPath;
     uint64_t maxSteps = 0;
+    vm::DebugCtrl dbg;
     for (int i = 1; i < argc; ++i)
     {
         std::string arg = argv[i];
@@ -53,6 +56,11 @@ int cmdRunIL(int argc, char **argv)
         else if (arg == "--max-steps" && i + 1 < argc)
         {
             maxSteps = std::stoull(argv[++i]);
+        }
+        else if (arg == "--break" && i + 1 < argc)
+        {
+            auto sym = dbg.internLabel(argv[++i]);
+            dbg.addBreak(sym);
         }
         else if (arg == "--bounds-checks")
         {
@@ -83,6 +91,6 @@ int cmdRunIL(int argc, char **argv)
             return 1;
         }
     }
-    vm::VM vm(m, traceCfg, maxSteps);
+    vm::VM vm(m, traceCfg, maxSteps, std::move(dbg));
     return static_cast<int>(vm.run());
 }
