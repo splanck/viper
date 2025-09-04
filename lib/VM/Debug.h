@@ -9,9 +9,11 @@
 #include "il/core/Type.hpp"
 #include "support/string_interner.hpp"
 #include "support/symbol.hpp"
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace il::core
 {
@@ -54,6 +56,9 @@ class DebugCtrl
     /// @brief Check whether instruction @p I matches a source line breakpoint.
     bool shouldBreakOn(const il::core::Instr &I) const;
 
+    /// @brief Lexically normalize @p p for breakpoint matching.
+    static std::string normalizePath(std::string p);
+
     /// @brief Set source manager used to resolve file paths.
     void setSourceManager(const il::support::SourceManager *sm);
 
@@ -78,8 +83,9 @@ class DebugCtrl
 
     struct SrcLineBP
     {
-        std::string file; ///< Source file path
-        int line;         ///< 1-based line number
+        std::string normFile; ///< Normalized source file path
+        std::string base;     ///< Basename of source file
+        int line;             ///< 1-based line number
     };
 
     const il::support::SourceManager *sm_ = nullptr; ///< Source manager for paths

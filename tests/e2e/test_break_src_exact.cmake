@@ -26,3 +26,15 @@ file(READ ${GOLDEN} EXP)
 if(NOT OUT STREQUAL EXP)
   message(FATAL_ERROR "break output mismatch")
 endif()
+
+execute_process(COMMAND ${ILC} -run ${SRC_FILE} --break-src BreakSrcExact.bas:${LINE}
+                ERROR_FILE ${BREAK_FILE}
+                RESULT_VARIABLE r2
+                WORKING_DIRECTORY ${ROOT})
+if(NOT r2 EQUAL 10)
+  message(FATAL_ERROR "expected breakpoint (basename)")
+endif()
+file(READ ${BREAK_FILE} OUT2)
+if(NOT OUT2 STREQUAL EXP)
+  message(FATAL_ERROR "break output mismatch (basename)")
+endif()
