@@ -1,7 +1,8 @@
 // File: lib/VM/Debug.h
 // Purpose: Declare breakpoint control and path normalization utilities for the VM.
-// Key invariants: Breakpoints are keyed by interned block labels; source line
-// breakpoints track normalized paths, basenames, and line numbers.
+// Key invariants: Block breakpoints use interned labels. Source line breakpoints
+// match when both the line number and either the normalized path or basename are
+// equal.
 // Ownership/Lifetime: DebugCtrl owns its interner, breakpoint set, and source
 // line list.
 // Links: docs/dev/vm.md
@@ -56,6 +57,8 @@ class DebugCtrl
     bool hasSrcLineBPs() const;
 
     /// @brief Check whether instruction @p I matches a source line breakpoint.
+    /// A match occurs when the instruction's line number equals a breakpoint's
+    /// line and either the normalized path or basename also matches.
     bool shouldBreakOn(const il::core::Instr &I) const;
 
     /// @brief Set source manager used to resolve file paths.
@@ -93,8 +96,8 @@ class DebugCtrl
     };
 
     const il::support::SourceManager *sm_ = nullptr; ///< Source manager for paths
-    std::vector<SrcLineBP> srcLineBPs_;              ///< Source line breakpoints
-                                                     ///< (normalized path + basename)
+    std::vector<SrcLineBP> srcLineBPs_;              ///< Source line breakpoints;
+                                                     ///< match by path or basename
 
     struct WatchEntry
     {
