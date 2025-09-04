@@ -5,6 +5,7 @@
 // Links: docs/il-spec.md
 #pragma once
 
+#include "VM/Debug.h"
 #include "VM/Trace.h"
 #include "il/core/Module.hpp"
 #include "rt.hpp"
@@ -46,7 +47,11 @@ class VM
     /// @param m IL module to execute.
     /// @param tc Trace configuration.
     /// @param maxSteps Abort after executing @p maxSteps instructions (0 = unlimited).
-    VM(const il::core::Module &m, TraceConfig tc = {}, uint64_t maxSteps = 0);
+    /// @param dbg Optional debug controller for breakpoints.
+    VM(const il::core::Module &m,
+       TraceConfig tc = {},
+       uint64_t maxSteps = 0,
+       const DebugCtrl *dbg = nullptr);
 
     /// @brief Execute the module's entry function.
     /// @return Exit code from main function.
@@ -59,6 +64,7 @@ class VM
     uint64_t steps = 0;          ///< Executed instruction count
     std::unordered_map<std::string, const il::core::Function *> fnMap; ///< Name lookup
     std::unordered_map<std::string, rt_str> strMap;                    ///< String pool
+    const DebugCtrl *debug;                                            ///< Breakpoint controller
 
     /// @brief Execute function @p fn.
     /// @param fn Function to execute.
