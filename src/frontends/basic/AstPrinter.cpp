@@ -2,262 +2,245 @@
 // Purpose: Implements BASIC AST printer for debugging.
 // Key invariants: None.
 // Ownership/Lifetime: Printer does not own AST nodes.
+// Notes: Uses internal Printer helper for consistent formatting.
 // Links: docs/class-catalog.md
 
 #include "frontends/basic/AstPrinter.hpp"
+#include <array>
 #include <sstream>
 
 namespace il::frontends::basic
 {
 
-std::string AstPrinter::dump(const Program &prog)
+void AstPrinter::Printer::line(std::string_view text)
 {
-    std::string out;
-    for (auto &stmt : prog.statements)
-    {
-        out += std::to_string(stmt->line) + ": " + dump(*stmt) + "\n";
-    }
-    return out;
+    for (int i = 0; i < indent; ++i)
+        os << "  ";
+    os << text << '\n';
 }
 
-std::string AstPrinter::dump(const Stmt &stmt)
+AstPrinter::Printer::Indent AstPrinter::Printer::push()
+{
+    ++indent;
+    return Indent{*this};
+}
+
+std::string AstPrinter::dump(const Program &prog)
+{
+    std::ostringstream os;
+    Printer p{os};
+    for (auto &stmt : prog.statements)
+    {
+        std::ostringstream line_os;
+        line_os << stmt->line << ": ";
+        Printer line_p{line_os};
+        dump(*stmt, line_p);
+        p.line(line_os.str());
+    }
+    return os.str();
+}
+
+void AstPrinter::dump(const Stmt &stmt, Printer &p)
 {
     if (auto *lst = dynamic_cast<const StmtList *>(&stmt))
     {
-        std::string res = "(SEQ";
+        p.os << "(SEQ";
         for (auto &s : lst->stmts)
-            res += " " + dump(*s);
-        res += ")";
-        return res;
-    }
-    else if (auto *p = dynamic_cast<const PrintStmt *>(&stmt))
-    {
-        std::string res = "(PRINT";
-        for (const auto &it : p->items)
         {
-            res += " ";
+            p.os << ' ';
+            dump(*s, p);
+        }
+        p.os << ')';
+    }
+    else if (auto *pr = dynamic_cast<const PrintStmt *>(&stmt))
+    {
+        p.os << "(PRINT";
+        for (const auto &it : pr->items)
+        {
+            p.os << ' ';
             switch (it.kind)
             {
                 case PrintItem::Kind::Expr:
-                    res += dump(*it.expr);
+                    dump(*it.expr, p);
                     break;
                 case PrintItem::Kind::Comma:
-                    res += ",";
+                    p.os << ',';
                     break;
                 case PrintItem::Kind::Semicolon:
-                    res += ";";
+                    p.os << ';';
                     break;
             }
         }
-        res += ")";
-        return res;
+        p.os << ')';
     }
     else if (auto *l = dynamic_cast<const LetStmt *>(&stmt))
     {
-        return "(LET " + dump(*l->target) + " " + dump(*l->expr) + ")";
+        p.os << "(LET ";
+        dump(*l->target, p);
+        p.os << ' ';
+        dump(*l->expr, p);
+        p.os << ')';
     }
     else if (auto *d = dynamic_cast<const DimStmt *>(&stmt))
     {
-        return "(DIM " + d->name + " " + dump(*d->size) + ")";
+        p.os << "(DIM " << d->name << ' ';
+        dump(*d->size, p);
+        p.os << ')';
     }
     else if (auto *r = dynamic_cast<const RandomizeStmt *>(&stmt))
     {
-        return "(RANDOMIZE " + dump(*r->seed) + ")";
+        p.os << "(RANDOMIZE ";
+        dump(*r->seed, p);
+        p.os << ')';
     }
     else if (auto *i = dynamic_cast<const IfStmt *>(&stmt))
     {
-        std::string res = "(IF " + dump(*i->cond) + " THEN " + dump(*i->then_branch);
+        p.os << "(IF ";
+        dump(*i->cond, p);
+        p.os << " THEN ";
+        dump(*i->then_branch, p);
         for (const auto &e : i->elseifs)
         {
-            res += " ELSEIF " + dump(*e.cond) + " THEN " + dump(*e.then_branch);
+            p.os << " ELSEIF ";
+            dump(*e.cond, p);
+            p.os << " THEN ";
+            dump(*e.then_branch, p);
         }
         if (i->else_branch)
-            res += " ELSE " + dump(*i->else_branch);
-        res += ")";
-        return res;
+        {
+            p.os << " ELSE ";
+            dump(*i->else_branch, p);
+        }
+        p.os << ')';
     }
     else if (auto *w = dynamic_cast<const WhileStmt *>(&stmt))
     {
-        std::string res = "(WHILE " + dump(*w->cond) + " {";
+        p.os << "(WHILE ";
+        dump(*w->cond, p);
+        p.os << " {";
         bool first = true;
         for (auto &s : w->body)
         {
             if (!first)
-                res += " ";
+                p.os << ' ';
             first = false;
-            res += std::to_string(s->line) + ":" + dump(*s);
+            p.os << std::to_string(s->line) << ':';
+            dump(*s, p);
         }
-        res += "})";
-        return res;
+        p.os << "})";
     }
     else if (auto *f = dynamic_cast<const ForStmt *>(&stmt))
     {
-        std::string res = "(FOR " + f->var + " = " + dump(*f->start) + " TO " + dump(*f->end);
+        p.os << "(FOR " << f->var << " = ";
+        dump(*f->start, p);
+        p.os << " TO ";
+        dump(*f->end, p);
         if (f->step)
-            res += " STEP " + dump(*f->step);
-        res += " {";
+        {
+            p.os << " STEP ";
+            dump(*f->step, p);
+        }
+        p.os << " {";
         bool first = true;
         for (auto &s : f->body)
         {
             if (!first)
-                res += " ";
+                p.os << ' ';
             first = false;
-            res += std::to_string(s->line) + ":" + dump(*s);
+            p.os << std::to_string(s->line) << ':';
+            dump(*s, p);
         }
-        res += "})";
-        return res;
+        p.os << "})";
     }
     else if (auto *n = dynamic_cast<const NextStmt *>(&stmt))
     {
-        return "(NEXT " + n->var + ")";
+        p.os << "(NEXT " << n->var << ')';
     }
     else if (auto *g = dynamic_cast<const GotoStmt *>(&stmt))
     {
-        return "(GOTO " + std::to_string(g->target) + ")";
+        p.os << "(GOTO " << g->target << ')';
     }
     else if (dynamic_cast<const EndStmt *>(&stmt))
     {
-        return "(END)";
+        p.os << "(END)";
     }
-    return "(?)";
+    else
+    {
+        p.os << "(?)";
+    }
 }
 
-std::string AstPrinter::dump(const Expr &expr)
+void AstPrinter::dump(const Expr &expr, Printer &p)
 {
     if (auto *i = dynamic_cast<const IntExpr *>(&expr))
     {
-        return std::to_string(i->value);
+        p.os << i->value;
     }
     else if (auto *f = dynamic_cast<const FloatExpr *>(&expr))
     {
         std::ostringstream os;
         os << f->value;
-        return os.str();
+        p.os << os.str();
     }
     else if (auto *s = dynamic_cast<const StringExpr *>(&expr))
     {
-        return std::string("\"") + s->value + "\"";
+        p.os << '"' << s->value << '"';
     }
     else if (auto *v = dynamic_cast<const VarExpr *>(&expr))
     {
-        return v->name;
+        p.os << v->name;
     }
     else if (auto *b = dynamic_cast<const BinaryExpr *>(&expr))
     {
-        const char *op = "?";
-        switch (b->op)
-        {
-            case BinaryExpr::Op::Add:
-                op = "+";
-                break;
-            case BinaryExpr::Op::Sub:
-                op = "-";
-                break;
-            case BinaryExpr::Op::Mul:
-                op = "*";
-                break;
-            case BinaryExpr::Op::Div:
-                op = "/";
-                break;
-            case BinaryExpr::Op::IDiv:
-                op = "\\";
-                break;
-            case BinaryExpr::Op::Mod:
-                op = "MOD";
-                break;
-            case BinaryExpr::Op::Eq:
-                op = "=";
-                break;
-            case BinaryExpr::Op::Ne:
-                op = "<>";
-                break;
-            case BinaryExpr::Op::Lt:
-                op = "<";
-                break;
-            case BinaryExpr::Op::Le:
-                op = "<=";
-                break;
-            case BinaryExpr::Op::Gt:
-                op = ">";
-                break;
-            case BinaryExpr::Op::Ge:
-                op = ">=";
-                break;
-            case BinaryExpr::Op::And:
-                op = "AND";
-                break;
-            case BinaryExpr::Op::Or:
-                op = "OR";
-                break;
-        }
-        return std::string("(") + op + " " + dump(*b->lhs) + " " + dump(*b->rhs) + ")";
+        static constexpr std::array<const char *, 14> ops = {
+            "+", "-", "*", "/", "\\", "MOD", "=", "<>", "<", "<=", ">", ">=", "AND", "OR"};
+        p.os << '(' << ops[static_cast<size_t>(b->op)] << ' ';
+        dump(*b->lhs, p);
+        p.os << ' ';
+        dump(*b->rhs, p);
+        p.os << ')';
     }
     else if (auto *u = dynamic_cast<const UnaryExpr *>(&expr))
     {
-        return "(NOT " + dump(*u->expr) + ")";
+        p.os << "(NOT ";
+        dump(*u->expr, p);
+        p.os << ')';
     }
     else if (auto *c = dynamic_cast<const CallExpr *>(&expr))
     {
-        std::string name;
-        switch (c->builtin)
-        {
-            case CallExpr::Builtin::Len:
-                name = "LEN";
-                break;
-            case CallExpr::Builtin::Mid:
-                name = "MID$";
-                break;
-            case CallExpr::Builtin::Left:
-                name = "LEFT$";
-                break;
-            case CallExpr::Builtin::Right:
-                name = "RIGHT$";
-                break;
-            case CallExpr::Builtin::Str:
-                name = "STR$";
-                break;
-            case CallExpr::Builtin::Val:
-                name = "VAL";
-                break;
-            case CallExpr::Builtin::Int:
-                name = "INT";
-                break;
-            case CallExpr::Builtin::Sqr:
-                name = "SQR";
-                break;
-            case CallExpr::Builtin::Abs:
-                name = "ABS";
-                break;
-            case CallExpr::Builtin::Floor:
-                name = "FLOOR";
-                break;
-            case CallExpr::Builtin::Ceil:
-                name = "CEIL";
-                break;
-            case CallExpr::Builtin::Sin:
-                name = "SIN";
-                break;
-            case CallExpr::Builtin::Cos:
-                name = "COS";
-                break;
-            case CallExpr::Builtin::Pow:
-                name = "POW";
-                break;
-            case CallExpr::Builtin::Rnd:
-                name = "RND";
-                break;
-        }
-        std::string res = "(" + name;
+        static constexpr std::array<const char *, 15> names = {"LEN",
+                                                               "MID$",
+                                                               "LEFT$",
+                                                               "RIGHT$",
+                                                               "STR$",
+                                                               "VAL",
+                                                               "INT",
+                                                               "SQR",
+                                                               "ABS",
+                                                               "FLOOR",
+                                                               "CEIL",
+                                                               "SIN",
+                                                               "COS",
+                                                               "POW",
+                                                               "RND"};
+        p.os << '(' << names[static_cast<size_t>(c->builtin)];
         for (auto &a : c->args)
-            res += " " + dump(*a);
-        res += ")";
-        return res;
+        {
+            p.os << ' ';
+            dump(*a, p);
+        }
+        p.os << ')';
     }
     else if (auto *a = dynamic_cast<const ArrayExpr *>(&expr))
     {
-        return a->name + "(" + dump(*a->index) + ")";
+        p.os << a->name << '(';
+        dump(*a->index, p);
+        p.os << ')';
     }
-    return "?";
+    else
+    {
+        p.os << '?';
+    }
 }
 
 } // namespace il::frontends::basic

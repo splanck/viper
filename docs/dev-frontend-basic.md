@@ -24,3 +24,9 @@ other is converted to float before the operation. Integer arithmetic uses
 64-bit wrap-around semantics. String operands fold `+` as concatenation and
 support equality/inequality comparisons. Mixed string and numeric operations
 are left to the semantic analyzer for diagnostics.
+
+## AST printing conventions
+
+`AstPrinter` renders a compact, Lisp-style representation of the AST for
+debugging. An internal `Printer` helper centralizes indentation so nested
+blocks are indented uniformly.
