@@ -5,6 +5,7 @@
 // Links: docs/il-spec.md
 
 #include "vm/VM.hpp"
+#include "VM/DebugScript.h"
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 #include "vm/RuntimeBridge.hpp"
@@ -18,8 +19,8 @@ using namespace il::core;
 namespace il::vm
 {
 
-VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg)
-    : mod(m), tracer(tc), debug(std::move(dbg)), maxSteps(ms)
+VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript *script)
+    : mod(m), tracer(tc), debug(std::move(dbg)), script(script), maxSteps(ms)
 {
     for (const auto &f : m.functions)
         fnMap[f.name] = &f;
@@ -72,6 +73,7 @@ int64_t VM::execFunction(const Function &fn)
         blocks[b.label] = &b;
     const BasicBlock *bb = fn.blocks.empty() ? nullptr : &fn.blocks.front();
     size_t ip = 0;
+    bool skipBreakOnce = false;
     while (bb && ip < bb->instructions.size())
     {
         if (maxSteps && steps >= maxSteps)
@@ -79,13 +81,18 @@ int64_t VM::execFunction(const Function &fn)
             std::cerr << "VM: step limit exceeded (" << maxSteps << "); aborting.\n";
             return 1;
         }
-        if (ip == 0)
+        if (ip == 0 && stepBudget == 0 && !skipBreakOnce)
         {
             if (debug.shouldBreak(*bb))
             {
                 std::cerr << "[BREAK] fn=@" << fr.func->name << " blk=" << bb->label
                           << " reason=label\n";
-                return 0;
+                if (!script)
+                    return 0;
+                auto act = script->nextAction();
+                if (act.kind == DebugActionKind::Step)
+                    stepBudget = act.count;
+                skipBreakOnce = true;
             }
 
             for (const auto &p : bb->params)
@@ -100,9 +107,11 @@ int64_t VM::execFunction(const Function &fn)
             }
             fr.params.clear();
         }
+        skipBreakOnce = false;
         const Instr &in = bb->instructions[ip];
         tracer.onStep(in, fr);
         ++steps;
+        bool jumped = false;
         switch (in.op)
         {
             case Opcode::Alloca:
@@ -489,7 +498,8 @@ int64_t VM::execFunction(const Function &fn)
                 }
                 bb = target;
                 ip = 0;
-                continue;
+                jumped = true;
+                break;
             }
             case Opcode::Br:
             {
@@ -507,7 +517,8 @@ int64_t VM::execFunction(const Function &fn)
                 }
                 bb = target;
                 ip = 0;
-                continue;
+                jumped = true;
+                break;
             }
             case Opcode::Ret:
             {
@@ -588,7 +599,23 @@ int64_t VM::execFunction(const Function &fn)
             default:
                 assert(false && "unimplemented opcode");
         }
-        ++ip;
+        if (!jumped)
+            ++ip;
+        if (stepBudget > 0)
+        {
+            --stepBudget;
+            if (stepBudget == 0)
+            {
+                std::cerr << "[BREAK] fn=@" << fr.func->name << " blk=" << bb->label
+                          << " reason=step\n";
+                if (!script)
+                    return 0;
+                auto act = script->nextAction();
+                if (act.kind == DebugActionKind::Step)
+                    stepBudget = act.count;
+                skipBreakOnce = true;
+            }
+        }
     }
     return 0;
 }
