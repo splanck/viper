@@ -1,5 +1,5 @@
 // File: src/frontends/basic/Lowerer.hpp
-// Purpose: Declares lowering from BASIC AST to IL.
+// Purpose: Declares lowering from BASIC AST to IL using helpers per control construct.
 // Key invariants: None.
 // Ownership/Lifetime: Lowerer does not own AST or module.
 // Links: docs/class-catalog.md
@@ -12,6 +12,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace il::frontends::basic
 {
@@ -48,16 +49,18 @@ class Lowerer
     RVal lowerExpr(const Expr &expr);
 
     void lowerLet(const LetStmt &stmt);
-    void lowerPrint(const PrintStmt &stmt);
-    void lowerIf(const IfStmt &stmt);
-    void lowerWhile(const WhileStmt &stmt);
-    void lowerFor(const ForStmt &stmt);
+    void lowerPrint(const PrintStmt &stmt, Function &fn);
+    void lowerIf(const IfStmt &stmt, Function &fn);
+    void lowerWhile(const WhileStmt &stmt, Function &fn);
+    void lowerFor(const ForStmt &stmt, Function &fn);
     void lowerNext(const NextStmt &stmt);
     void lowerGoto(const GotoStmt &stmt);
     void lowerEnd(const EndStmt &stmt);
     void lowerInput(const InputStmt &stmt);
     void lowerDim(const DimStmt &stmt);
     void lowerRandomize(const RandomizeStmt &stmt);
+
+    void declareRequiredRuntime();
 
     // helpers
     Value emitAlloca(int bytes);
@@ -93,6 +96,8 @@ class Lowerer
     bool usedStrEq{false};
     bool boundsChecks{false};
     unsigned boundsCheckId{0};
+    bool needInput{false};
+    bool needAlloc{false};
     bool addedRtToInt{false};
     bool addedRtIntToStr{false};
     bool addedRtF64ToStr{false};
@@ -106,6 +111,7 @@ class Lowerer
     bool addedRtPow{false};
     bool addedRtRandomize{false};
     bool addedRtRnd{false};
+    std::vector<std::string> runtimeOrder;
 };
 
 } // namespace il::frontends::basic

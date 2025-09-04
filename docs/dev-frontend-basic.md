@@ -1,4 +1,4 @@
-# BASIC Frontend Developer Notes
+#BASIC Frontend Developer Notes
 
 ## Parser structure
 
@@ -30,3 +30,11 @@ are left to the semantic analyzer for diagnostics.
 `AstPrinter` renders a compact, Lisp-style representation of the AST for
 debugging. An internal `Printer` helper centralizes indentation so nested
 blocks are indented uniformly.
+
+## Lowering conventions
+
+`Lowerer` factors control-flow constructs into dedicated helpers such as
+`lowerIf`, `lowerWhile`, `lowerFor`, and `lowerPrint`. Each helper builds the
+required basic blocks, emits the condition and branches, lowers the body, and
+finally branches to a merge block. Runtime extern declarations are centralized
+in `declareRequiredRuntime()` and issued once per module.

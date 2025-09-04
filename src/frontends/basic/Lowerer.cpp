@@ -1,7 +1,6 @@
 // File: src/frontends/basic/Lowerer.cpp
-// Purpose: Lowers BASIC AST to IL.
-// Key invariants: None.
-// Ownership/Lifetime: Uses contexts managed externally.
+// Purpose: Implements lowering from BASIC AST to IL with control-flow helpers and centralized
+// runtime declarations. Key invariants: None. Ownership/Lifetime: Uses contexts managed externally.
 // Links: docs/class-catalog.md
 
 #include "frontends/basic/Lowerer.hpp"
@@ -46,9 +45,12 @@ Module Lowerer::lower(const Program &prog)
     addedRtCeil = false;
     addedRtRandomize = false;
     addedRtRnd = false;
+    runtimeOrder.clear();
 
-    bool needInput = false;
-    bool needAlloc = false;
+    needInput = false;
+    needAlloc = false;
+    bool needInputPre = false;
+    bool needAllocPre = false;
     bool needRtToIntPre = false;
     bool needRtIntToStrPre = false;
     bool needRtF64ToStrPre = false;
@@ -129,7 +131,7 @@ Module Lowerer::lower(const Program &prog)
         }
         else if (auto *inp = dynamic_cast<const InputStmt *>(&s))
         {
-            needInput = true;
+            needInputPre = true;
             if (inp->prompt)
                 scanExpr(*inp->prompt);
             if (inp->var.empty() || inp->var.back() != '$')
@@ -137,7 +139,7 @@ Module Lowerer::lower(const Program &prog)
         }
         else if (auto *d = dynamic_cast<const DimStmt *>(&s))
         {
-            needAlloc = true;
+            needAllocPre = true;
             if (d->size)
                 scanExpr(*d->size);
         }
@@ -146,29 +148,11 @@ Module Lowerer::lower(const Program &prog)
     for (const auto &s : prog.statements)
         scanStmt(*s);
 
-    b.addExtern("rt_print_str", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
-    b.addExtern("rt_print_i64", Type(Type::Kind::Void), {Type(Type::Kind::I64)});
-    b.addExtern("rt_print_f64", Type(Type::Kind::Void), {Type(Type::Kind::F64)});
-    b.addExtern("rt_len", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
-    b.addExtern("rt_substr",
-                Type(Type::Kind::Str),
-                {Type(Type::Kind::Str), Type(Type::Kind::I64), Type(Type::Kind::I64)});
-    if (boundsChecks)
-        b.addExtern("rt_trap", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
-    if (needInput)
-        b.addExtern("rt_input_line", Type(Type::Kind::Str), {});
-    if (needRtToIntPre)
-        b.addExtern("rt_to_int", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
-    if (needRtIntToStrPre)
-        b.addExtern("rt_int_to_str", Type(Type::Kind::Str), {Type(Type::Kind::I64)});
-    if (needRtF64ToStrPre)
-        b.addExtern("rt_f64_to_str", Type(Type::Kind::Str), {Type(Type::Kind::F64)});
-    if (needAlloc)
-        b.addExtern("rt_alloc", Type(Type::Kind::Ptr), {Type(Type::Kind::I64)});
-
     addedRtToInt = needRtToIntPre;
     addedRtIntToStr = needRtIntToStrPre;
     addedRtF64ToStr = needRtF64ToStrPre;
+    needInput = needInputPre;
+    needAlloc = needAllocPre;
 
     Function &f = b.startFunction("main", Type(Type::Kind::I64), {});
     func = &f;
@@ -239,11 +223,7 @@ Module Lowerer::lower(const Program &prog)
     cur = &f.blocks[fnExit];
     curLoc = {};
     emitRet(Value::constInt(0));
-
-    if (usedStrEq)
-        b.addExtern(
-            "rt_str_eq", Type(Type::Kind::I1), {Type(Type::Kind::Str), Type(Type::Kind::Str)});
-
+    declareRequiredRuntime();
     return m;
 }
 
@@ -352,15 +332,15 @@ void Lowerer::lowerStmt(const Stmt &stmt)
         }
     }
     else if (auto *p = dynamic_cast<const PrintStmt *>(&stmt))
-        lowerPrint(*p);
+        lowerPrint(*p, *func);
     else if (auto *l = dynamic_cast<const LetStmt *>(&stmt))
         lowerLet(*l);
     else if (auto *i = dynamic_cast<const IfStmt *>(&stmt))
-        lowerIf(*i);
+        lowerIf(*i, *func);
     else if (auto *w = dynamic_cast<const WhileStmt *>(&stmt))
-        lowerWhile(*w);
+        lowerWhile(*w, *func);
     else if (auto *f = dynamic_cast<const ForStmt *>(&stmt))
-        lowerFor(*f);
+        lowerFor(*f, *func);
     else if (auto *n = dynamic_cast<const NextStmt *>(&stmt))
         lowerNext(*n);
     else if (auto *g = dynamic_cast<const GotoStmt *>(&stmt))
@@ -492,7 +472,11 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
         if ((b->op == BinaryExpr::Op::Eq || b->op == BinaryExpr::Op::Ne) &&
             lhs.type.kind == Type::Kind::Str && rhs.type.kind == Type::Kind::Str)
         {
-            usedStrEq = true;
+            if (!usedStrEq)
+            {
+                usedStrEq = true;
+                runtimeOrder.push_back("rt_str_eq");
+            }
             Value eq = emitCallRet(Type(Type::Kind::I1), "rt_str_eq", {lhs.value, rhs.value});
             if (b->op == BinaryExpr::Op::Ne)
             {
@@ -574,8 +558,8 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
         {
             if (!addedRtRnd)
             {
-                builder->addExtern("rt_rnd", Type(Type::Kind::F64), {});
                 addedRtRnd = true;
+                runtimeOrder.push_back("rt_rnd");
             }
             curLoc = expr.loc;
             Value res = emitCallRet(Type(Type::Kind::F64), "rt_rnd", {});
@@ -629,11 +613,7 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             if (v.type.kind == Type::Kind::I64)
             {
                 if (!addedRtIntToStr)
-                {
-                    builder->addExtern(
-                        "rt_int_to_str", Type(Type::Kind::Str), {Type(Type::Kind::I64)});
                     addedRtIntToStr = true;
-                }
                 Value res = emitCallRet(Type(Type::Kind::Str), "rt_int_to_str", {v.value});
                 return {res, Type(Type::Kind::Str)};
             }
@@ -644,20 +624,12 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
                 if (v.type.kind == Type::Kind::I64)
                 {
                     if (!addedRtIntToStr)
-                    {
-                        builder->addExtern(
-                            "rt_int_to_str", Type(Type::Kind::Str), {Type(Type::Kind::I64)});
                         addedRtIntToStr = true;
-                    }
                     Value res = emitCallRet(Type(Type::Kind::Str), "rt_int_to_str", {v.value});
                     return {res, Type(Type::Kind::Str)};
                 }
                 if (!addedRtF64ToStr)
-                {
-                    builder->addExtern(
-                        "rt_f64_to_str", Type(Type::Kind::Str), {Type(Type::Kind::F64)});
                     addedRtF64ToStr = true;
-                }
                 Value res = emitCallRet(Type(Type::Kind::Str), "rt_f64_to_str", {v.value});
                 return {res, Type(Type::Kind::Str)};
             }
@@ -667,10 +639,7 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             RVal s = lowerExpr(*c->args[0]);
             curLoc = expr.loc;
             if (!addedRtToInt)
-            {
-                builder->addExtern("rt_to_int", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
                 addedRtToInt = true;
-            }
             Value res = emitCallRet(Type(Type::Kind::I64), "rt_to_int", {s.value});
             return {res, Type(Type::Kind::I64)};
         }
@@ -698,8 +667,8 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             }
             if (!addedRtSqrt)
             {
-                builder->addExtern("rt_sqrt", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
                 addedRtSqrt = true;
+                runtimeOrder.push_back("rt_sqrt");
             }
             curLoc = expr.loc;
             Value res = emitCallRet(Type(Type::Kind::F64), "rt_sqrt", {v.value});
@@ -718,9 +687,8 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             {
                 if (!addedRtAbsF64)
                 {
-                    builder->addExtern(
-                        "rt_abs_f64", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
                     addedRtAbsF64 = true;
+                    runtimeOrder.push_back("rt_abs_f64");
                 }
                 curLoc = expr.loc;
                 Value res = emitCallRet(Type(Type::Kind::F64), "rt_abs_f64", {v.value});
@@ -728,8 +696,8 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             }
             if (!addedRtAbsI64)
             {
-                builder->addExtern("rt_abs_i64", Type(Type::Kind::I64), {Type(Type::Kind::I64)});
                 addedRtAbsI64 = true;
+                runtimeOrder.push_back("rt_abs_i64");
             }
             curLoc = expr.loc;
             Value res = emitCallRet(Type(Type::Kind::I64), "rt_abs_i64", {v.value});
@@ -746,8 +714,8 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             }
             if (!addedRtFloor)
             {
-                builder->addExtern("rt_floor", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
                 addedRtFloor = true;
+                runtimeOrder.push_back("rt_floor");
             }
             curLoc = expr.loc;
             Value res = emitCallRet(Type(Type::Kind::F64), "rt_floor", {v.value});
@@ -764,8 +732,8 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             }
             if (!addedRtCeil)
             {
-                builder->addExtern("rt_ceil", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
                 addedRtCeil = true;
+                runtimeOrder.push_back("rt_ceil");
             }
             curLoc = expr.loc;
             Value res = emitCallRet(Type(Type::Kind::F64), "rt_ceil", {v.value});
@@ -782,8 +750,8 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             }
             if (!addedRtSin)
             {
-                builder->addExtern("rt_sin", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
                 addedRtSin = true;
+                runtimeOrder.push_back("rt_sin");
             }
             curLoc = expr.loc;
             Value res = emitCallRet(Type(Type::Kind::F64), "rt_sin", {v.value});
@@ -800,8 +768,8 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             }
             if (!addedRtCos)
             {
-                builder->addExtern("rt_cos", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
                 addedRtCos = true;
+                runtimeOrder.push_back("rt_cos");
             }
             curLoc = expr.loc;
             Value res = emitCallRet(Type(Type::Kind::F64), "rt_cos", {v.value});
@@ -825,10 +793,8 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             }
             if (!addedRtPow)
             {
-                builder->addExtern("rt_pow",
-                                   Type(Type::Kind::F64),
-                                   {Type(Type::Kind::F64), Type(Type::Kind::F64)});
                 addedRtPow = true;
+                runtimeOrder.push_back("rt_pow");
             }
             curLoc = expr.loc;
             Value res = emitCallRet(Type(Type::Kind::F64), "rt_pow", {a.value, b.value});
@@ -893,7 +859,7 @@ void Lowerer::lowerLet(const LetStmt &stmt)
     }
 }
 
-void Lowerer::lowerPrint(const PrintStmt &stmt)
+void Lowerer::lowerPrint(const PrintStmt &stmt, Function & /*fn*/)
 {
     for (const auto &it : stmt.items)
     {
@@ -941,19 +907,19 @@ void Lowerer::lowerPrint(const PrintStmt &stmt)
     }
 }
 
-void Lowerer::lowerIf(const IfStmt &stmt)
+void Lowerer::lowerIf(const IfStmt &stmt, Function &fn)
 {
     size_t conds = 1 + stmt.elseifs.size();
-    size_t curIdx = cur - &func->blocks[0];
-    size_t start = func->blocks.size();
+    size_t curIdx = cur - &fn.blocks[0];
+    size_t start = fn.blocks.size();
     for (size_t i = 0; i < conds; ++i)
     {
-        builder->addBlock(*func, mangler.block("if_test_" + std::to_string(i)));
-        builder->addBlock(*func, mangler.block("if_then_" + std::to_string(i)));
+        builder->addBlock(fn, mangler.block("if_test_" + std::to_string(i)));
+        builder->addBlock(fn, mangler.block("if_then_" + std::to_string(i)));
     }
-    builder->addBlock(*func, mangler.block("if_else"));
-    builder->addBlock(*func, mangler.block("if_exit"));
-    cur = &func->blocks[curIdx];
+    builder->addBlock(fn, mangler.block("if_else"));
+    builder->addBlock(fn, mangler.block("if_exit"));
+    cur = &fn.blocks[curIdx];
     std::vector<size_t> testIdx(conds);
     std::vector<size_t> thenIdx(conds);
     for (size_t i = 0; i < conds; ++i)
@@ -961,12 +927,12 @@ void Lowerer::lowerIf(const IfStmt &stmt)
         testIdx[i] = start + 2 * i;
         thenIdx[i] = start + 2 * i + 1;
     }
-    BasicBlock *elseBlk = &func->blocks[start + 2 * conds];
-    BasicBlock *exitBlk = &func->blocks[start + 2 * conds + 1];
+    BasicBlock *elseBlk = &fn.blocks[start + 2 * conds];
+    BasicBlock *exitBlk = &fn.blocks[start + 2 * conds + 1];
 
     // jump to first test
     curLoc = stmt.loc;
-    emitBr(&func->blocks[testIdx[0]]);
+    emitBr(&fn.blocks[testIdx[0]]);
 
     // initial IF
     std::vector<const Expr *> condExprs;
@@ -980,7 +946,7 @@ void Lowerer::lowerIf(const IfStmt &stmt)
     }
     for (size_t i = 0; i < conds; ++i)
     {
-        cur = &func->blocks[testIdx[i]];
+        cur = &fn.blocks[testIdx[i]];
         RVal c = lowerExpr(*condExprs[i]);
         if (c.type.kind != Type::Kind::I1)
         {
@@ -988,10 +954,10 @@ void Lowerer::lowerIf(const IfStmt &stmt)
             Value b1 = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), c.value);
             c = {b1, Type(Type::Kind::I1)};
         }
-        BasicBlock *f = (i + 1 < conds) ? &func->blocks[testIdx[i + 1]] : elseBlk;
-        emitCBr(c.value, &func->blocks[thenIdx[i]], f);
+        BasicBlock *f = (i + 1 < conds) ? &fn.blocks[testIdx[i + 1]] : elseBlk;
+        emitCBr(c.value, &fn.blocks[thenIdx[i]], f);
 
-        cur = &func->blocks[thenIdx[i]];
+        cur = &fn.blocks[thenIdx[i]];
         if (thenStmts[i])
             lowerStmt(*thenStmts[i]);
         if (!cur->terminated)
@@ -1014,17 +980,17 @@ void Lowerer::lowerIf(const IfStmt &stmt)
     cur = exitBlk;
 }
 
-void Lowerer::lowerWhile(const WhileStmt &stmt)
+void Lowerer::lowerWhile(const WhileStmt &stmt, Function &fn)
 {
     // Adding blocks may reallocate the function's block list; capture index and
     // reacquire pointers to guarantee stability.
-    size_t start = func->blocks.size();
-    builder->addBlock(*func, mangler.block("loop_head"));
-    builder->addBlock(*func, mangler.block("loop_body"));
-    builder->addBlock(*func, mangler.block("done"));
-    BasicBlock *head = &func->blocks[start];
-    BasicBlock *body = &func->blocks[start + 1];
-    BasicBlock *done = &func->blocks[start + 2];
+    size_t start = fn.blocks.size();
+    builder->addBlock(fn, mangler.block("loop_head"));
+    builder->addBlock(fn, mangler.block("loop_body"));
+    builder->addBlock(fn, mangler.block("done"));
+    BasicBlock *head = &fn.blocks[start];
+    BasicBlock *body = &fn.blocks[start + 1];
+    BasicBlock *done = &fn.blocks[start + 2];
 
     curLoc = stmt.loc;
     emitBr(head);
@@ -1058,7 +1024,7 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
     cur = done;
 }
 
-void Lowerer::lowerFor(const ForStmt &stmt)
+void Lowerer::lowerFor(const ForStmt &stmt, Function &fn)
 {
     RVal start = lowerExpr(*stmt.start);
     RVal end = lowerExpr(*stmt.end);
@@ -1078,28 +1044,28 @@ void Lowerer::lowerFor(const ForStmt &stmt)
     }
     if (constStep)
     {
-        size_t curIdx = cur - &func->blocks[0];
-        size_t base = func->blocks.size();
-        builder->addBlock(*func, mangler.block("for_head"));
-        builder->addBlock(*func, mangler.block("for_body"));
-        builder->addBlock(*func, mangler.block("for_inc"));
-        builder->addBlock(*func, mangler.block("for_done"));
+        size_t curIdx = cur - &fn.blocks[0];
+        size_t base = fn.blocks.size();
+        builder->addBlock(fn, mangler.block("for_head"));
+        builder->addBlock(fn, mangler.block("for_body"));
+        builder->addBlock(fn, mangler.block("for_inc"));
+        builder->addBlock(fn, mangler.block("for_done"));
         size_t headIdx = base;
         size_t bodyIdx = base + 1;
         size_t incIdx = base + 2;
         size_t doneIdx = base + 3;
-        cur = &func->blocks[curIdx];
+        cur = &fn.blocks[curIdx];
         curLoc = stmt.loc;
-        emitBr(&func->blocks[headIdx]);
-        cur = &func->blocks[headIdx];
+        emitBr(&fn.blocks[headIdx]);
+        cur = &fn.blocks[headIdx];
         curLoc = stmt.loc;
         Value curVal = emitLoad(Type(Type::Kind::I64), slot);
         Opcode cmp = stepConst >= 0 ? Opcode::SCmpLE : Opcode::SCmpGE;
         curLoc = stmt.loc;
         Value cond = emitBinary(cmp, Type(Type::Kind::I1), curVal, end.value);
         curLoc = stmt.loc;
-        emitCBr(cond, &func->blocks[bodyIdx], &func->blocks[doneIdx]);
-        cur = &func->blocks[bodyIdx];
+        emitCBr(cond, &fn.blocks[bodyIdx], &fn.blocks[doneIdx]);
+        cur = &fn.blocks[bodyIdx];
         for (auto &s : stmt.body)
         {
             lowerStmt(*s);
@@ -1109,9 +1075,9 @@ void Lowerer::lowerFor(const ForStmt &stmt)
         if (!cur->terminated)
         {
             curLoc = stmt.loc;
-            emitBr(&func->blocks[incIdx]);
+            emitBr(&fn.blocks[incIdx]);
         }
-        cur = &func->blocks[incIdx];
+        cur = &fn.blocks[incIdx];
         curLoc = stmt.loc;
         Value load = emitLoad(Type(Type::Kind::I64), slot);
         curLoc = stmt.loc;
@@ -1119,44 +1085,44 @@ void Lowerer::lowerFor(const ForStmt &stmt)
         curLoc = stmt.loc;
         emitStore(Type(Type::Kind::I64), slot, add);
         curLoc = stmt.loc;
-        emitBr(&func->blocks[headIdx]);
-        cur = &func->blocks[doneIdx];
+        emitBr(&fn.blocks[headIdx]);
+        cur = &fn.blocks[doneIdx];
     }
     else
     {
         curLoc = stmt.loc;
         Value stepNonNeg =
             emitBinary(Opcode::SCmpGE, Type(Type::Kind::I1), step.value, Value::constInt(0));
-        size_t curIdx = cur - &func->blocks[0];
-        size_t base = func->blocks.size();
-        builder->addBlock(*func, mangler.block("for_head_pos"));
-        builder->addBlock(*func, mangler.block("for_head_neg"));
-        builder->addBlock(*func, mangler.block("for_body"));
-        builder->addBlock(*func, mangler.block("for_inc"));
-        builder->addBlock(*func, mangler.block("for_done"));
+        size_t curIdx = cur - &fn.blocks[0];
+        size_t base = fn.blocks.size();
+        builder->addBlock(fn, mangler.block("for_head_pos"));
+        builder->addBlock(fn, mangler.block("for_head_neg"));
+        builder->addBlock(fn, mangler.block("for_body"));
+        builder->addBlock(fn, mangler.block("for_inc"));
+        builder->addBlock(fn, mangler.block("for_done"));
         size_t headPosIdx = base;
         size_t headNegIdx = base + 1;
         size_t bodyIdx = base + 2;
         size_t incIdx = base + 3;
         size_t doneIdx = base + 4;
-        cur = &func->blocks[curIdx];
+        cur = &fn.blocks[curIdx];
         curLoc = stmt.loc;
-        emitCBr(stepNonNeg, &func->blocks[headPosIdx], &func->blocks[headNegIdx]);
-        cur = &func->blocks[headPosIdx];
+        emitCBr(stepNonNeg, &fn.blocks[headPosIdx], &fn.blocks[headNegIdx]);
+        cur = &fn.blocks[headPosIdx];
         curLoc = stmt.loc;
         Value curVal = emitLoad(Type(Type::Kind::I64), slot);
         curLoc = stmt.loc;
         Value cmpPos = emitBinary(Opcode::SCmpLE, Type(Type::Kind::I1), curVal, end.value);
         curLoc = stmt.loc;
-        emitCBr(cmpPos, &func->blocks[bodyIdx], &func->blocks[doneIdx]);
-        cur = &func->blocks[headNegIdx];
+        emitCBr(cmpPos, &fn.blocks[bodyIdx], &fn.blocks[doneIdx]);
+        cur = &fn.blocks[headNegIdx];
         curLoc = stmt.loc;
         curVal = emitLoad(Type(Type::Kind::I64), slot);
         curLoc = stmt.loc;
         Value cmpNeg = emitBinary(Opcode::SCmpGE, Type(Type::Kind::I1), curVal, end.value);
         curLoc = stmt.loc;
-        emitCBr(cmpNeg, &func->blocks[bodyIdx], &func->blocks[doneIdx]);
-        cur = &func->blocks[bodyIdx];
+        emitCBr(cmpNeg, &fn.blocks[bodyIdx], &fn.blocks[doneIdx]);
+        cur = &fn.blocks[bodyIdx];
         for (auto &s : stmt.body)
         {
             lowerStmt(*s);
@@ -1166,9 +1132,9 @@ void Lowerer::lowerFor(const ForStmt &stmt)
         if (!cur->terminated)
         {
             curLoc = stmt.loc;
-            emitBr(&func->blocks[incIdx]);
+            emitBr(&fn.blocks[incIdx]);
         }
-        cur = &func->blocks[incIdx];
+        cur = &fn.blocks[incIdx];
         curLoc = stmt.loc;
         Value load = emitLoad(Type(Type::Kind::I64), slot);
         curLoc = stmt.loc;
@@ -1176,8 +1142,8 @@ void Lowerer::lowerFor(const ForStmt &stmt)
         curLoc = stmt.loc;
         emitStore(Type(Type::Kind::I64), slot, add);
         curLoc = stmt.loc;
-        emitCBr(stepNonNeg, &func->blocks[headPosIdx], &func->blocks[headNegIdx]);
-        cur = &func->blocks[doneIdx];
+        emitCBr(stepNonNeg, &fn.blocks[headPosIdx], &fn.blocks[headNegIdx]);
+        cur = &fn.blocks[doneIdx];
     }
 }
 
@@ -1221,10 +1187,7 @@ void Lowerer::lowerInput(const InputStmt &stmt)
     else
     {
         if (!addedRtToInt)
-        {
-            builder->addExtern("rt_to_int", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
             addedRtToInt = true;
-        }
         Value n = emitCallRet(Type(Type::Kind::I64), "rt_to_int", {s});
         emitStore(Type(Type::Kind::I64), target, n);
     }
@@ -1261,11 +1224,63 @@ void Lowerer::lowerRandomize(const RandomizeStmt &stmt)
     }
     if (!addedRtRandomize)
     {
-        builder->addExtern("rt_randomize_i64", Type(Type::Kind::Void), {Type(Type::Kind::I64)});
         addedRtRandomize = true;
+        runtimeOrder.push_back("rt_randomize_i64");
     }
     curLoc = stmt.loc;
     emitCall("rt_randomize_i64", {seed});
+}
+
+void Lowerer::declareRequiredRuntime()
+{
+    build::IRBuilder &b = *builder;
+    b.addExtern("rt_print_str", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
+    b.addExtern("rt_print_i64", Type(Type::Kind::Void), {Type(Type::Kind::I64)});
+    b.addExtern("rt_print_f64", Type(Type::Kind::Void), {Type(Type::Kind::F64)});
+    b.addExtern("rt_len", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
+    b.addExtern("rt_substr",
+                Type(Type::Kind::Str),
+                {Type(Type::Kind::Str), Type(Type::Kind::I64), Type(Type::Kind::I64)});
+    if (boundsChecks)
+        b.addExtern("rt_trap", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
+    if (needInput)
+        b.addExtern("rt_input_line", Type(Type::Kind::Str), {});
+    if (addedRtToInt)
+        b.addExtern("rt_to_int", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
+    if (addedRtIntToStr)
+        b.addExtern("rt_int_to_str", Type(Type::Kind::Str), {Type(Type::Kind::I64)});
+    if (addedRtF64ToStr)
+        b.addExtern("rt_f64_to_str", Type(Type::Kind::Str), {Type(Type::Kind::F64)});
+    if (needAlloc)
+        b.addExtern("rt_alloc", Type(Type::Kind::Ptr), {Type(Type::Kind::I64)});
+
+    for (const auto &name : runtimeOrder)
+    {
+        if (name == "rt_rnd")
+            b.addExtern("rt_rnd", Type(Type::Kind::F64), {});
+        else if (name == "rt_str_eq")
+            b.addExtern(
+                "rt_str_eq", Type(Type::Kind::I1), {Type(Type::Kind::Str), Type(Type::Kind::Str)});
+        else if (name == "rt_sqrt")
+            b.addExtern("rt_sqrt", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+        else if (name == "rt_abs_i64")
+            b.addExtern("rt_abs_i64", Type(Type::Kind::I64), {Type(Type::Kind::I64)});
+        else if (name == "rt_abs_f64")
+            b.addExtern("rt_abs_f64", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+        else if (name == "rt_floor")
+            b.addExtern("rt_floor", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+        else if (name == "rt_ceil")
+            b.addExtern("rt_ceil", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+        else if (name == "rt_sin")
+            b.addExtern("rt_sin", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+        else if (name == "rt_cos")
+            b.addExtern("rt_cos", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+        else if (name == "rt_pow")
+            b.addExtern(
+                "rt_pow", Type(Type::Kind::F64), {Type(Type::Kind::F64), Type(Type::Kind::F64)});
+        else if (name == "rt_randomize_i64")
+            b.addExtern("rt_randomize_i64", Type(Type::Kind::Void), {Type(Type::Kind::I64)});
+    }
 }
 
 Value Lowerer::lowerArrayAddr(const ArrayExpr &expr)
