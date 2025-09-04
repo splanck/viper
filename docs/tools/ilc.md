@@ -16,6 +16,7 @@ Flags:
 | `--debug-cmds <file>` | read debugger actions from `file` when a breakpoint is hit. |
 | `--step` | enter debug mode, break at entry, and step one instruction. |
 | `--continue` | ignore breakpoints and run to completion. |
+| `--watch <name>` | print when scalar `name` changes; may be repeated. |
 
 Example:
 
@@ -43,6 +44,16 @@ script:
 
 ```
 ilc -run examples/il/debug_script.il --break L3 --trace=il --debug-cmds examples/il/debug_script.txt
+```
+
+### Watching scalars
+
+Use `--watch` to monitor scalar IL variables by name:
+
+```
+ilc -run examples/il/watch_scalars.il --watch x
+  [WATCH] x=i64:1  (fn=@main blk=entry ip=#1)
+  [WATCH] x=i64:2  (fn=@main blk=entry ip=#3)
 ```
 
 ### Exit codes

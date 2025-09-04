@@ -6,9 +6,11 @@
 #pragma once
 
 #include "il/core/BasicBlock.hpp"
+#include "il/core/Type.hpp"
 #include "support/string_interner.hpp"
 #include "support/symbol.hpp"
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace il::vm
@@ -33,9 +35,31 @@ class DebugCtrl
     /// @brief Check whether entering @p blk triggers a breakpoint.
     bool shouldBreak(const il::core::BasicBlock &blk) const;
 
+    /// @brief Register a watch on variable @p name.
+    void addWatch(std::string_view name);
+
+    /// @brief Record store to watched variable.
+    void onStore(std::string_view name,
+                 il::core::Type::Kind ty,
+                 int64_t i64,
+                 double f64,
+                 std::string_view fn,
+                 std::string_view blk,
+                 size_t ip);
+
   private:
     mutable il::support::StringInterner interner_;   ///< Label interner
     std::unordered_set<il::support::Symbol> breaks_; ///< Registered breakpoints
+
+    struct WatchEntry
+    {
+        il::core::Type::Kind type = il::core::Type::Kind::Void;
+        int64_t i64 = 0;
+        double f64 = 0.0;
+        bool hasValue = false;
+    };
+
+    std::unordered_map<il::support::Symbol, WatchEntry> watches_; ///< Watched variables
 };
 
 } // namespace il::vm

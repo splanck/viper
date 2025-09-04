@@ -21,6 +21,7 @@ struct Function
     Type retType;
     std::vector<Param> params;
     std::vector<BasicBlock> blocks;
+    std::vector<std::string> valueNames; ///< Temp id to original name mapping
 };
 
 } // namespace il::core
