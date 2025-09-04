@@ -57,6 +57,8 @@ add_library(fe_basic STATIC
   frontends/basic/AST.cpp
   frontends/basic/AstPrinter.cpp
   frontends/basic/Parser.cpp
+  frontends/basic/Parser_Expr.cpp
+  frontends/basic/Parser_Token.cpp
   frontends/basic/NameMangler.cpp
   frontends/basic/LoweringContext.cpp
   frontends/basic/Lowerer.cpp
