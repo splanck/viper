@@ -13,6 +13,7 @@ Flags:
 | `--trace=il` | emit a line-per-instruction trace. |
 | `--trace=src` | show source file, line, and column for each step; falls back to `<unknown>` when locations are missing. |
 | `--break <Label>` | halt before executing the first instruction of block `Label`; may be repeated. |
+| `--break-src <file>:<line>` | halt before executing instructions with matching source file and line; requires exact path; may be repeated. |
 | `--debug-cmds <file>` | read debugger actions from `file` when a breakpoint is hit. |
 | `--step` | enter debug mode, break at entry, and step one instruction. |
 | `--continue` | ignore breakpoints and run to completion. |
@@ -29,6 +30,13 @@ $ ilc -run examples/il/trace_min.il --trace=il
   [IL] fn=@main blk=entry ip=#0 op=add 1, 2 -> %t0
   [IL] fn=@main blk=entry ip=#1 op=mul %t0, 3 -> %t1
   [IL] fn=@main blk=entry ip=#2 op=ret 0
+```
+
+Set a breakpoint on a specific source line (path must match exactly):
+
+```
+$ ilc front basic -run examples/basic/trace_src.bas --break-src examples/basic/trace_src.bas:2
+  [BREAK] src=examples/basic/trace_src.bas:2 fn=@main blk=L20 ip=#0
 ```
 
 ### Non-interactive debugging with --debug-cmds

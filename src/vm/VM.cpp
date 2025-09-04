@@ -12,6 +12,7 @@
 #include <cassert>
 #include <cstring>
 #include <iostream>
+#include <string>
 #include <utility>
 
 using namespace il::core;
@@ -116,6 +117,16 @@ int64_t VM::execFunction(const Function &fn)
         }
         skipBreakOnce = false;
         const Instr &in = bb->instructions[ip];
+        if (debug.hasSrcLineBPs() && debug.shouldBreakOn(in))
+        {
+            const auto *sm = debug.getSourceManager();
+            std::string file;
+            if (sm)
+                file = std::string(sm->getPath(in.loc.file_id));
+            std::cerr << "[BREAK] src=" << file << ":" << in.loc.line << " fn=@" << fr.func->name
+                      << " blk=" << bb->label << " ip=#" << ip << "\n";
+            return 10;
+        }
         tracer.onStep(in, fr);
         ++instrCount;
         bool jumped = false;
