@@ -11,6 +11,7 @@
 #include "vm/RuntimeBridge.hpp"
 #include <cassert>
 #include <cstring>
+#include <filesystem>
 #include <iostream>
 #include <utility>
 
@@ -114,8 +115,26 @@ int64_t VM::execFunction(const Function &fn)
             }
             fr.params.clear();
         }
-        skipBreakOnce = false;
         const Instr &in = bb->instructions[ip];
+        if (stepBudget == 0 && !skipBreakOnce && debug.shouldBreak(in))
+        {
+            auto *sm = debug.getSourceManager();
+            std::string file;
+            if (sm && in.loc.isValid())
+                file = std::filesystem::path(sm->getPath(in.loc.file_id)).filename().string();
+            std::cerr << "[BREAK] fn=@" << fr.func->name << " blk=" << bb->label;
+            if (!file.empty())
+                std::cerr << " loc=" << file << ':' << in.loc.line;
+            std::cerr << " reason=src\n";
+            if (!script || script->empty())
+                return 10;
+            auto act = script->nextAction();
+            if (act.kind == DebugActionKind::Step)
+                stepBudget = act.count;
+            skipBreakOnce = true;
+            continue;
+        }
+        skipBreakOnce = false;
         tracer.onStep(in, fr);
         ++instrCount;
         bool jumped = false;

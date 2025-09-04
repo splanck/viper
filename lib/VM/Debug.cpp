@@ -4,6 +4,7 @@
 // Ownership/Lifetime: DebugCtrl owns its interner and breakpoint set.
 // Links: docs/dev/vm.md
 #include "VM/Debug.h"
+#include <algorithm>
 #include <iostream>
 
 namespace il::vm
@@ -17,13 +18,57 @@ il::support::Symbol DebugCtrl::internLabel(std::string_view label)
 void DebugCtrl::addBreak(il::support::Symbol sym)
 {
     if (sym)
-        breaks_.insert(sym);
+    {
+        Breakpoint bp;
+        bp.kind = Breakpoint::Kind::Label;
+        bp.label = sym;
+        breaks_.push_back(std::move(bp));
+    }
+}
+
+void DebugCtrl::addSrcBreak(std::string file, int line)
+{
+    Breakpoint bp;
+    bp.kind = Breakpoint::Kind::SrcLine;
+    bp.file = std::move(file);
+    bp.line = line;
+    breaks_.push_back(std::move(bp));
 }
 
 bool DebugCtrl::shouldBreak(const il::core::BasicBlock &blk) const
 {
     il::support::Symbol sym = interner_.intern(blk.label);
-    return breaks_.count(sym) != 0;
+    return std::any_of(breaks_.begin(),
+                       breaks_.end(),
+                       [sym](const Breakpoint &b)
+                       { return b.kind == Breakpoint::Kind::Label && b.label == sym; });
+}
+
+bool DebugCtrl::shouldBreak(const il::core::Instr &in)
+{
+    if (!sm_ || !in.loc.isValid())
+        return false;
+    std::string path(sm_->getPath(in.loc.file_id));
+    for (auto it = breaks_.begin(); it != breaks_.end(); ++it)
+    {
+        if (it->kind == Breakpoint::Kind::SrcLine && it->line == static_cast<int>(in.loc.line) &&
+            it->file == path)
+        {
+            breaks_.erase(it);
+            return true;
+        }
+    }
+    return false;
+}
+
+void DebugCtrl::setSourceManager(const il::support::SourceManager *sm)
+{
+    sm_ = sm;
+}
+
+const il::support::SourceManager *DebugCtrl::getSourceManager() const
+{
+    return sm_;
 }
 
 void DebugCtrl::addWatch(std::string_view name)

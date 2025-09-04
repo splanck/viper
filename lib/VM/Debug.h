@@ -6,20 +6,32 @@
 #pragma once
 
 #include "il/core/BasicBlock.hpp"
+#include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
+#include "support/source_manager.hpp"
 #include "support/string_interner.hpp"
 #include "support/symbol.hpp"
+#include <string>
 #include <string_view>
 #include <unordered_map>
-#include <unordered_set>
+#include <vector>
 
 namespace il::vm
 {
 
-/// @brief Breakpoint identified by a block label symbol.
+/// @brief Breakpoint identified either by a block label or source location.
 struct Breakpoint
 {
-    il::support::Symbol label; ///< Target block label
+    /// @brief Kind of breakpoint.
+    enum class Kind
+    {
+        Label,   ///< Break on block label
+        SrcLine, ///< Break on source file and line
+    } kind{Kind::Label};
+
+    il::support::Symbol label{}; ///< Target block label when kind==Label
+    std::string file;            ///< Source file path when kind==SrcLine
+    int line = 0;                ///< 1-based line number when kind==SrcLine
 };
 
 /// @brief Controller for debug breakpoints.
@@ -32,8 +44,20 @@ class DebugCtrl
     /// @brief Add breakpoint for block label @p sym.
     void addBreak(il::support::Symbol sym);
 
-    /// @brief Check whether entering @p blk triggers a breakpoint.
+    /// @brief Add breakpoint for source @p file:@p line.
+    void addSrcBreak(std::string file, int line);
+
+    /// @brief Check whether entering @p blk triggers a label breakpoint.
     bool shouldBreak(const il::core::BasicBlock &blk) const;
+
+    /// @brief Check whether executing @p in triggers a source breakpoint.
+    bool shouldBreak(const il::core::Instr &in);
+
+    /// @brief Provide source manager for file resolution.
+    void setSourceManager(const il::support::SourceManager *sm);
+
+    /// @brief Access the source manager, if any.
+    const il::support::SourceManager *getSourceManager() const;
 
     /// @brief Register a watch on variable @p name.
     void addWatch(std::string_view name);
@@ -49,7 +73,8 @@ class DebugCtrl
 
   private:
     mutable il::support::StringInterner interner_;   ///< Label interner
-    std::unordered_set<il::support::Symbol> breaks_; ///< Registered breakpoints
+    std::vector<Breakpoint> breaks_;                 ///< Registered breakpoints
+    const il::support::SourceManager *sm_ = nullptr; ///< Optional source manager
 
     struct WatchEntry
     {
