@@ -23,18 +23,14 @@ L10:
   .loc 1 1 4
   br L20
 L20:
-  .loc 1 2 15
-  %t2 = sitofp 1
-  .loc 1 2 15
-  %t3 = fsub %t2, 2.5
   .loc 1 2 10
-  %t4 = call @rt_abs_f64(%t3)
+  %t2 = call @rt_abs_f64(-1.5)
   .loc 1 2 4
-  call @rt_print_f64(%t4)
+  call @rt_print_f64(%t2)
   .loc 1 2 4
-  %t5 = const_str @.L0
+  %t3 = const_str @.L0
   .loc 1 2 4
-  call @rt_print_str(%t5)
+  call @rt_print_str(%t3)
   .loc 1 2 4
   br exit
 exit:

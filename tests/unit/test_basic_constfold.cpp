@@ -1,0 +1,66 @@
+// File: tests/unit/test_basic_constfold.cpp
+// Purpose: Unit tests for BASIC constant folder numeric promotion and string rules.
+// Key invariants: Numeric ops promote to float; string concatenation is folded; invalid mixes keep
+// diagnostics. Ownership/Lifetime: Test owns all objects locally. Links: docs/class-catalog.md
+
+#include "frontends/basic/ConstFolder.hpp"
+#include "frontends/basic/DiagnosticEmitter.hpp"
+#include "frontends/basic/Parser.hpp"
+#include "frontends/basic/SemanticAnalyzer.hpp"
+#include "support/source_manager.hpp"
+#include <cassert>
+#include <sstream>
+#include <string>
+
+using namespace il::frontends::basic;
+using namespace il::support;
+
+int main()
+{
+    // int + float promotes to float
+    {
+        std::string src = "10 LET X = 1 + 2.5\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("test.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        foldConstants(*prog);
+        auto *let = dynamic_cast<LetStmt *>(prog->statements[0].get());
+        auto *flt = dynamic_cast<FloatExpr *>(let->expr.get());
+        assert(flt && flt->value == 3.5);
+    }
+
+    // string concatenation
+    {
+        std::string src = "10 PRINT \"foo\" + \"bar\"\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("test.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        foldConstants(*prog);
+        auto *pr = dynamic_cast<PrintStmt *>(prog->statements[0].get());
+        auto *se = dynamic_cast<StringExpr *>(pr->items[0].expr.get());
+        assert(se && se->value == "foobar");
+    }
+
+    // rejected string arithmetic retains diagnostic code
+    {
+        std::string src = "10 PRINT \"a\" * \"b\"\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("test.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        foldConstants(*prog);
+        DiagnosticEngine de;
+        DiagnosticEmitter em(de, sm);
+        em.addSource(fid, src);
+        SemanticAnalyzer sema(em);
+        sema.analyze(*prog);
+        std::ostringstream oss;
+        em.printAll(oss);
+        assert(em.errorCount() == 1);
+        assert(oss.str().find("B2001") != std::string::npos);
+    }
+
+    return 0;
+}
