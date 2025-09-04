@@ -41,6 +41,8 @@ int cmdRunIL(int argc, char **argv)
     uint64_t maxSteps = 0;
     vm::DebugCtrl dbg;
     std::unique_ptr<vm::DebugScript> script;
+    bool step = false;
+    bool cont = false;
     for (int i = 1; i < argc; ++i)
     {
         std::string arg = argv[i];
@@ -69,6 +71,14 @@ int cmdRunIL(int argc, char **argv)
         {
             script = std::make_unique<vm::DebugScript>(argv[++i]);
         }
+        else if (arg == "--step")
+        {
+            step = true;
+        }
+        else if (arg == "--continue")
+        {
+            cont = true;
+        }
         else if (arg == "--bounds-checks")
         {
             // Flag accepted for parity with front-end run mode.
@@ -78,6 +88,16 @@ int cmdRunIL(int argc, char **argv)
             usage();
             return 1;
         }
+    }
+    if (cont)
+    {
+        dbg = vm::DebugCtrl{};
+        script.reset();
+    }
+    else if (step)
+    {
+        auto sym = dbg.internLabel("entry");
+        dbg.addBreak(sym);
     }
     std::ifstream ifs(ilFile);
     if (!ifs)
