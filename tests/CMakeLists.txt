@@ -104,6 +104,13 @@ add_test(NAME vm_step_limit COMMAND ${CMAKE_COMMAND}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_vm_step_limit.cmake)
 set_tests_properties(vm_step_limit PROPERTIES LABELS VM)
 
+add_test(NAME vm_break_src_line COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DSRC_DIR=${CMAKE_SOURCE_DIR}
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/BreakSrcLine.bas.out
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_break_src_line.cmake)
+set_tests_properties(vm_break_src_line PROPERTIES LABELS VM)
+
 add_test(NAME vm_block_params COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DSRC_DIR=${CMAKE_SOURCE_DIR}
