@@ -1,5 +1,6 @@
 // File: src/frontends/basic/Lowerer.cpp
-// Purpose: Lowers BASIC AST to IL.
+// Purpose: Lowers BASIC AST to IL with control-flow helpers and centralized
+// runtime declarations.
 // Key invariants: None.
 // Ownership/Lifetime: Uses contexts managed externally.
 // Links: docs/class-catalog.md
@@ -33,54 +34,151 @@ Module Lowerer::lower(const Program &prog)
     varSlots.clear();
     arrayLenSlots.clear();
     strings.clear();
-    usedStrEq = false;
     arrays.clear();
     boundsCheckId = 0;
-    addedRtToInt = false;
-    addedRtIntToStr = false;
-    addedRtF64ToStr = false;
-    addedRtSqrt = false;
-    addedRtAbsI64 = false;
-    addedRtAbsF64 = false;
-    addedRtFloor = false;
-    addedRtCeil = false;
-    addedRtRandomize = false;
-    addedRtRnd = false;
 
-    bool needInput = false;
-    bool needAlloc = false;
-    bool needRtToIntPre = false;
-    bool needRtIntToStrPre = false;
-    bool needRtF64ToStrPre = false;
+    needInputLine = false;
+    needRtToInt = false;
+    needRtIntToStr = false;
+    needRtF64ToStr = false;
+    needAlloc = false;
+    needRtStrEq = false;
+    runtimeOrder.clear();
+    runtimeSet.clear();
 
-    std::function<void(const Expr &)> scanExpr = [&](const Expr &e)
+    enum class ExprType
     {
-        if (auto *c = dynamic_cast<const CallExpr *>(&e))
+        I64,
+        F64,
+        Str,
+        Bool,
+    };
+
+    auto markRuntime = [&](RuntimeFn fn)
+    {
+        if (runtimeSet.insert(fn).second)
+            runtimeOrder.push_back(fn);
+    };
+
+    std::function<ExprType(const Expr &)> scanExpr = [&](const Expr &e) -> ExprType
+    {
+        if (dynamic_cast<const IntExpr *>(&e))
+            return ExprType::I64;
+        if (dynamic_cast<const FloatExpr *>(&e))
+            return ExprType::F64;
+        if (dynamic_cast<const StringExpr *>(&e))
+            return ExprType::Str;
+        if (auto *v = dynamic_cast<const VarExpr *>(&e))
         {
-            if (c->builtin == CallExpr::Builtin::Val)
-                needRtToIntPre = true;
-            else if (c->builtin == CallExpr::Builtin::Str)
+            if (!v->name.empty() && v->name.back() == '$')
+                return ExprType::Str;
+            if (!v->name.empty() && v->name.back() == '#')
+                return ExprType::F64;
+            return ExprType::I64;
+        }
+        if (auto *u = dynamic_cast<const UnaryExpr *>(&e))
+            return scanExpr(*u->expr);
+        if (auto *b = dynamic_cast<const BinaryExpr *>(&e))
+        {
+            ExprType lt = scanExpr(*b->lhs);
+            ExprType rt = scanExpr(*b->rhs);
+            if (b->op == BinaryExpr::Op::Eq || b->op == BinaryExpr::Op::Ne)
             {
-                needRtIntToStrPre = true;
-                needRtF64ToStrPre = true;
+                if (lt == ExprType::Str || rt == ExprType::Str)
+                    needRtStrEq = true;
+                return ExprType::Bool;
             }
-            for (auto &a : c->args)
-                if (a)
-                    scanExpr(*a);
+            if (lt == ExprType::F64 || rt == ExprType::F64)
+                return ExprType::F64;
+            return ExprType::I64;
         }
-        else if (auto *b = dynamic_cast<const BinaryExpr *>(&e))
-        {
-            scanExpr(*b->lhs);
-            scanExpr(*b->rhs);
-        }
-        else if (auto *u = dynamic_cast<const UnaryExpr *>(&e))
-        {
-            scanExpr(*u->expr);
-        }
-        else if (auto *arr = dynamic_cast<const ArrayExpr *>(&e))
+        if (auto *arr = dynamic_cast<const ArrayExpr *>(&e))
         {
             scanExpr(*arr->index);
+            return ExprType::I64;
         }
+        if (auto *c = dynamic_cast<const CallExpr *>(&e))
+        {
+            switch (c->builtin)
+            {
+                case CallExpr::Builtin::Rnd:
+                    markRuntime(RuntimeFn::Rnd);
+                    return ExprType::F64;
+                case CallExpr::Builtin::Val:
+                    needRtToInt = true;
+                    if (c->args[0])
+                        scanExpr(*c->args[0]);
+                    return ExprType::I64;
+                case CallExpr::Builtin::Str:
+                    needRtIntToStr = true;
+                    needRtF64ToStr = true;
+                    if (c->args[0])
+                        scanExpr(*c->args[0]);
+                    return ExprType::Str;
+                case CallExpr::Builtin::Len:
+                    if (c->args[0])
+                        scanExpr(*c->args[0]);
+                    return ExprType::I64;
+                case CallExpr::Builtin::Mid:
+                    for (auto &a : c->args)
+                        if (a)
+                            scanExpr(*a);
+                    return ExprType::Str;
+                case CallExpr::Builtin::Sqr:
+                    if (c->args[0])
+                        scanExpr(*c->args[0]);
+                    markRuntime(RuntimeFn::Sqrt);
+                    return ExprType::F64;
+                case CallExpr::Builtin::Abs:
+                {
+                    ExprType ty = ExprType::I64;
+                    if (c->args[0])
+                        ty = scanExpr(*c->args[0]);
+                    if (ty == ExprType::F64)
+                        markRuntime(RuntimeFn::AbsF64);
+                    else
+                        markRuntime(RuntimeFn::AbsI64);
+                    return ty;
+                }
+                case CallExpr::Builtin::Floor:
+                    if (c->args[0])
+                        scanExpr(*c->args[0]);
+                    markRuntime(RuntimeFn::Floor);
+                    return ExprType::F64;
+                case CallExpr::Builtin::Ceil:
+                    if (c->args[0])
+                        scanExpr(*c->args[0]);
+                    markRuntime(RuntimeFn::Ceil);
+                    return ExprType::F64;
+                case CallExpr::Builtin::Sin:
+                    if (c->args[0])
+                        scanExpr(*c->args[0]);
+                    markRuntime(RuntimeFn::Sin);
+                    return ExprType::F64;
+                case CallExpr::Builtin::Cos:
+                    if (c->args[0])
+                        scanExpr(*c->args[0]);
+                    markRuntime(RuntimeFn::Cos);
+                    return ExprType::F64;
+                case CallExpr::Builtin::Pow:
+                    if (c->args[0])
+                        scanExpr(*c->args[0]);
+                    if (c->args[1])
+                        scanExpr(*c->args[1]);
+                    markRuntime(RuntimeFn::Pow);
+                    return ExprType::F64;
+                case CallExpr::Builtin::Int:
+                    if (c->args[0])
+                        scanExpr(*c->args[0]);
+                    return ExprType::I64;
+                default:
+                    for (auto &a : c->args)
+                        if (a)
+                            scanExpr(*a);
+                    return ExprType::I64;
+            }
+        }
+        return ExprType::I64;
     };
 
     std::function<void(const Stmt &)> scanStmt = [&](const Stmt &s)
@@ -89,6 +187,8 @@ Module Lowerer::lower(const Program &prog)
         {
             if (l->expr)
                 scanExpr(*l->expr);
+            if (auto *arr = dynamic_cast<const ArrayExpr *>(l->target.get()))
+                scanExpr(*arr->index);
         }
         else if (auto *p = dynamic_cast<const PrintStmt *>(&s))
         {
@@ -129,11 +229,11 @@ Module Lowerer::lower(const Program &prog)
         }
         else if (auto *inp = dynamic_cast<const InputStmt *>(&s))
         {
-            needInput = true;
+            needInputLine = true;
             if (inp->prompt)
                 scanExpr(*inp->prompt);
             if (inp->var.empty() || inp->var.back() != '$')
-                needRtToIntPre = true;
+                needRtToInt = true;
         }
         else if (auto *d = dynamic_cast<const DimStmt *>(&s))
         {
@@ -141,34 +241,23 @@ Module Lowerer::lower(const Program &prog)
             if (d->size)
                 scanExpr(*d->size);
         }
+        else if (auto *r = dynamic_cast<const RandomizeStmt *>(&s))
+        {
+            markRuntime(RuntimeFn::RandomizeI64);
+            if (r->seed)
+                scanExpr(*r->seed);
+        }
+        else if (auto *lst = dynamic_cast<const StmtList *>(&s))
+        {
+            for (const auto &sub : lst->stmts)
+                scanStmt(*sub);
+        }
     };
 
     for (const auto &s : prog.statements)
         scanStmt(*s);
 
-    b.addExtern("rt_print_str", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
-    b.addExtern("rt_print_i64", Type(Type::Kind::Void), {Type(Type::Kind::I64)});
-    b.addExtern("rt_print_f64", Type(Type::Kind::Void), {Type(Type::Kind::F64)});
-    b.addExtern("rt_len", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
-    b.addExtern("rt_substr",
-                Type(Type::Kind::Str),
-                {Type(Type::Kind::Str), Type(Type::Kind::I64), Type(Type::Kind::I64)});
-    if (boundsChecks)
-        b.addExtern("rt_trap", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
-    if (needInput)
-        b.addExtern("rt_input_line", Type(Type::Kind::Str), {});
-    if (needRtToIntPre)
-        b.addExtern("rt_to_int", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
-    if (needRtIntToStrPre)
-        b.addExtern("rt_int_to_str", Type(Type::Kind::Str), {Type(Type::Kind::I64)});
-    if (needRtF64ToStrPre)
-        b.addExtern("rt_f64_to_str", Type(Type::Kind::Str), {Type(Type::Kind::F64)});
-    if (needAlloc)
-        b.addExtern("rt_alloc", Type(Type::Kind::Ptr), {Type(Type::Kind::I64)});
-
-    addedRtToInt = needRtToIntPre;
-    addedRtIntToStr = needRtIntToStrPre;
-    addedRtF64ToStr = needRtF64ToStrPre;
+    declareRequiredRuntime(b);
 
     Function &f = b.startFunction("main", Type(Type::Kind::I64), {});
     func = &f;
@@ -240,11 +329,74 @@ Module Lowerer::lower(const Program &prog)
     curLoc = {};
     emitRet(Value::constInt(0));
 
-    if (usedStrEq)
+    return m;
+}
+
+void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
+{
+    using Type = il::core::Type;
+    b.addExtern("rt_print_str", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
+    b.addExtern("rt_print_i64", Type(Type::Kind::Void), {Type(Type::Kind::I64)});
+    b.addExtern("rt_print_f64", Type(Type::Kind::Void), {Type(Type::Kind::F64)});
+    b.addExtern("rt_len", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
+    b.addExtern("rt_substr",
+                Type(Type::Kind::Str),
+                {Type(Type::Kind::Str), Type(Type::Kind::I64), Type(Type::Kind::I64)});
+    if (boundsChecks)
+        b.addExtern("rt_trap", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
+    if (needInputLine)
+        b.addExtern("rt_input_line", Type(Type::Kind::Str), {});
+    if (needRtToInt)
+        b.addExtern("rt_to_int", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
+    if (needRtIntToStr)
+        b.addExtern("rt_int_to_str", Type(Type::Kind::Str), {Type(Type::Kind::I64)});
+    if (needRtF64ToStr)
+        b.addExtern("rt_f64_to_str", Type(Type::Kind::Str), {Type(Type::Kind::F64)});
+    if (needAlloc)
+        b.addExtern("rt_alloc", Type(Type::Kind::Ptr), {Type(Type::Kind::I64)});
+
+    for (RuntimeFn fn : runtimeOrder)
+    {
+        switch (fn)
+        {
+            case RuntimeFn::Sqrt:
+                b.addExtern("rt_sqrt", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+                break;
+            case RuntimeFn::AbsI64:
+                b.addExtern("rt_abs_i64", Type(Type::Kind::I64), {Type(Type::Kind::I64)});
+                break;
+            case RuntimeFn::AbsF64:
+                b.addExtern("rt_abs_f64", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+                break;
+            case RuntimeFn::Floor:
+                b.addExtern("rt_floor", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+                break;
+            case RuntimeFn::Ceil:
+                b.addExtern("rt_ceil", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+                break;
+            case RuntimeFn::Sin:
+                b.addExtern("rt_sin", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+                break;
+            case RuntimeFn::Cos:
+                b.addExtern("rt_cos", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+                break;
+            case RuntimeFn::Pow:
+                b.addExtern("rt_pow",
+                            Type(Type::Kind::F64),
+                            {Type(Type::Kind::F64), Type(Type::Kind::F64)});
+                break;
+            case RuntimeFn::RandomizeI64:
+                b.addExtern("rt_randomize_i64", Type(Type::Kind::Void), {Type(Type::Kind::I64)});
+                break;
+            case RuntimeFn::Rnd:
+                b.addExtern("rt_rnd", Type(Type::Kind::F64), {});
+                break;
+        }
+    }
+
+    if (needRtStrEq)
         b.addExtern(
             "rt_str_eq", Type(Type::Kind::I1), {Type(Type::Kind::Str), Type(Type::Kind::Str)});
-
-    return m;
 }
 
 void Lowerer::collectVars(const Program &prog)
@@ -492,7 +644,6 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
         if ((b->op == BinaryExpr::Op::Eq || b->op == BinaryExpr::Op::Ne) &&
             lhs.type.kind == Type::Kind::Str && rhs.type.kind == Type::Kind::Str)
         {
-            usedStrEq = true;
             Value eq = emitCallRet(Type(Type::Kind::I1), "rt_str_eq", {lhs.value, rhs.value});
             if (b->op == BinaryExpr::Op::Ne)
             {
@@ -572,11 +723,6 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
     {
         if (c->builtin == CallExpr::Builtin::Rnd)
         {
-            if (!addedRtRnd)
-            {
-                builder->addExtern("rt_rnd", Type(Type::Kind::F64), {});
-                addedRtRnd = true;
-            }
             curLoc = expr.loc;
             Value res = emitCallRet(Type(Type::Kind::F64), "rt_rnd", {});
             return {res, Type(Type::Kind::F64)};
@@ -628,12 +774,6 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             curLoc = expr.loc;
             if (v.type.kind == Type::Kind::I64)
             {
-                if (!addedRtIntToStr)
-                {
-                    builder->addExtern(
-                        "rt_int_to_str", Type(Type::Kind::Str), {Type(Type::Kind::I64)});
-                    addedRtIntToStr = true;
-                }
                 Value res = emitCallRet(Type(Type::Kind::Str), "rt_int_to_str", {v.value});
                 return {res, Type(Type::Kind::Str)};
             }
@@ -643,20 +783,8 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
                     v.value = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), v.value);
                 if (v.type.kind == Type::Kind::I64)
                 {
-                    if (!addedRtIntToStr)
-                    {
-                        builder->addExtern(
-                            "rt_int_to_str", Type(Type::Kind::Str), {Type(Type::Kind::I64)});
-                        addedRtIntToStr = true;
-                    }
                     Value res = emitCallRet(Type(Type::Kind::Str), "rt_int_to_str", {v.value});
                     return {res, Type(Type::Kind::Str)};
-                }
-                if (!addedRtF64ToStr)
-                {
-                    builder->addExtern(
-                        "rt_f64_to_str", Type(Type::Kind::Str), {Type(Type::Kind::F64)});
-                    addedRtF64ToStr = true;
                 }
                 Value res = emitCallRet(Type(Type::Kind::Str), "rt_f64_to_str", {v.value});
                 return {res, Type(Type::Kind::Str)};
@@ -666,11 +794,6 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
         {
             RVal s = lowerExpr(*c->args[0]);
             curLoc = expr.loc;
-            if (!addedRtToInt)
-            {
-                builder->addExtern("rt_to_int", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
-                addedRtToInt = true;
-            }
             Value res = emitCallRet(Type(Type::Kind::I64), "rt_to_int", {s.value});
             return {res, Type(Type::Kind::I64)};
         }
@@ -696,11 +819,6 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
                 v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
                 v.type = Type(Type::Kind::F64);
             }
-            if (!addedRtSqrt)
-            {
-                builder->addExtern("rt_sqrt", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
-                addedRtSqrt = true;
-            }
             curLoc = expr.loc;
             Value res = emitCallRet(Type(Type::Kind::F64), "rt_sqrt", {v.value});
             return {res, Type(Type::Kind::F64)};
@@ -716,20 +834,9 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             }
             if (v.type.kind == Type::Kind::F64)
             {
-                if (!addedRtAbsF64)
-                {
-                    builder->addExtern(
-                        "rt_abs_f64", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
-                    addedRtAbsF64 = true;
-                }
                 curLoc = expr.loc;
                 Value res = emitCallRet(Type(Type::Kind::F64), "rt_abs_f64", {v.value});
                 return {res, Type(Type::Kind::F64)};
-            }
-            if (!addedRtAbsI64)
-            {
-                builder->addExtern("rt_abs_i64", Type(Type::Kind::I64), {Type(Type::Kind::I64)});
-                addedRtAbsI64 = true;
             }
             curLoc = expr.loc;
             Value res = emitCallRet(Type(Type::Kind::I64), "rt_abs_i64", {v.value});
@@ -744,11 +851,6 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
                 v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
                 v.type = Type(Type::Kind::F64);
             }
-            if (!addedRtFloor)
-            {
-                builder->addExtern("rt_floor", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
-                addedRtFloor = true;
-            }
             curLoc = expr.loc;
             Value res = emitCallRet(Type(Type::Kind::F64), "rt_floor", {v.value});
             return {res, Type(Type::Kind::F64)};
@@ -761,11 +863,6 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
                 curLoc = expr.loc;
                 v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
                 v.type = Type(Type::Kind::F64);
-            }
-            if (!addedRtCeil)
-            {
-                builder->addExtern("rt_ceil", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
-                addedRtCeil = true;
             }
             curLoc = expr.loc;
             Value res = emitCallRet(Type(Type::Kind::F64), "rt_ceil", {v.value});
@@ -780,11 +877,6 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
                 v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
                 v.type = Type(Type::Kind::F64);
             }
-            if (!addedRtSin)
-            {
-                builder->addExtern("rt_sin", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
-                addedRtSin = true;
-            }
             curLoc = expr.loc;
             Value res = emitCallRet(Type(Type::Kind::F64), "rt_sin", {v.value});
             return {res, Type(Type::Kind::F64)};
@@ -797,11 +889,6 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
                 curLoc = expr.loc;
                 v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
                 v.type = Type(Type::Kind::F64);
-            }
-            if (!addedRtCos)
-            {
-                builder->addExtern("rt_cos", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
-                addedRtCos = true;
             }
             curLoc = expr.loc;
             Value res = emitCallRet(Type(Type::Kind::F64), "rt_cos", {v.value});
@@ -822,13 +909,6 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
                 curLoc = expr.loc;
                 b.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), b.value);
                 b.type = Type(Type::Kind::F64);
-            }
-            if (!addedRtPow)
-            {
-                builder->addExtern("rt_pow",
-                                   Type(Type::Kind::F64),
-                                   {Type(Type::Kind::F64), Type(Type::Kind::F64)});
-                addedRtPow = true;
             }
             curLoc = expr.loc;
             Value res = emitCallRet(Type(Type::Kind::F64), "rt_pow", {a.value, b.value});
@@ -1220,11 +1300,6 @@ void Lowerer::lowerInput(const InputStmt &stmt)
     }
     else
     {
-        if (!addedRtToInt)
-        {
-            builder->addExtern("rt_to_int", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
-            addedRtToInt = true;
-        }
         Value n = emitCallRet(Type(Type::Kind::I64), "rt_to_int", {s});
         emitStore(Type(Type::Kind::I64), target, n);
     }
@@ -1258,11 +1333,6 @@ void Lowerer::lowerRandomize(const RandomizeStmt &stmt)
     else if (s.type.kind == Type::Kind::I1)
     {
         seed = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), seed);
-    }
-    if (!addedRtRandomize)
-    {
-        builder->addExtern("rt_randomize_i64", Type(Type::Kind::Void), {Type(Type::Kind::I64)});
-        addedRtRandomize = true;
     }
     curLoc = stmt.loc;
     emitCall("rt_randomize_i64", {seed});
