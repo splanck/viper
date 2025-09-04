@@ -14,15 +14,18 @@
 namespace il::frontends::basic
 {
 
+class DiagnosticEmitter;
+
 class Parser
 {
   public:
-    Parser(std::string_view src, uint32_t file_id);
+    Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *de = nullptr);
     std::unique_ptr<Program> parseProgram();
 
   private:
     mutable Lexer lexer_;
     mutable std::vector<Token> tokens_;
+    DiagnosticEmitter *de_;
 
 #include "frontends/basic/Parser_Token.hpp"
 
