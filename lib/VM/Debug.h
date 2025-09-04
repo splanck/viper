@@ -30,12 +30,16 @@ class DebugCtrl
     /// @brief Add breakpoint for block label @p sym.
     void addBreak(il::support::Symbol sym);
 
+    /// @brief Ignore all breakpoints when set to true.
+    void setIgnoreBreaks(bool ignore);
+
     /// @brief Check whether entering @p blk triggers a breakpoint.
     bool shouldBreak(const il::core::BasicBlock &blk) const;
 
   private:
     mutable il::support::StringInterner interner_;   ///< Label interner
     std::unordered_set<il::support::Symbol> breaks_; ///< Registered breakpoints
+    bool ignoreBreaks_ = false;                      ///< When true, disables breaking
 };
 
 } // namespace il::vm

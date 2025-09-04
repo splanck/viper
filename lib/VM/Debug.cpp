@@ -19,8 +19,15 @@ void DebugCtrl::addBreak(il::support::Symbol sym)
         breaks_.insert(sym);
 }
 
+void DebugCtrl::setIgnoreBreaks(bool ignore)
+{
+    ignoreBreaks_ = ignore;
+}
+
 bool DebugCtrl::shouldBreak(const il::core::BasicBlock &blk) const
 {
+    if (ignoreBreaks_)
+        return false;
     il::support::Symbol sym = interner_.intern(blk.label);
     return breaks_.count(sym) != 0;
 }

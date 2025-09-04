@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 
 int main(int argc, char **argv)
@@ -51,18 +52,39 @@ int main(int argc, char **argv)
     cmd = ilc + " -run " + ilFile + " >" + refOut;
     if (std::system(cmd.c_str()) != 0)
         return 1;
+    std::ifstream refF(refOut);
+    std::stringstream refBuf;
+    refBuf << refF.rdbuf();
+    std::string refData = refBuf.str();
     std::ifstream dbgO(dbgOut);
-    std::ifstream refO(refOut);
+    std::istringstream refStream(refData);
     std::string d, r;
     while (std::getline(dbgO, d))
     {
-        if (!std::getline(refO, r) || d != r)
+        if (!std::getline(refStream, r) || d != r)
             return 1;
     }
-    if (std::getline(refO, r))
+    if (std::getline(refStream, r))
+        return 1;
+    std::string stepCmd = ilc + " -run " + ilFile + " --step >/dev/null 2>/dev/null";
+    if (std::system(stepCmd.c_str()) != (10 << 8))
+        return 1;
+    std::string contOut = "cont.out";
+    cmd = ilc + " -run " + ilFile + " --break L3 --continue >" + contOut;
+    if (std::system(cmd.c_str()) != 0)
+        return 1;
+    std::ifstream contO(contOut);
+    std::istringstream refStream2(refData);
+    while (std::getline(contO, d))
+    {
+        if (!std::getline(refStream2, r) || d != r)
+            return 1;
+    }
+    if (std::getline(refStream2, r))
         return 1;
     std::remove(dbgOut.c_str());
     std::remove(dbgErr.c_str());
     std::remove(refOut.c_str());
+    std::remove(contOut.c_str());
     return 0;
 }
