@@ -1,0 +1,10 @@
+[SRC] <unknown>  (fn=@main blk=entry ip=#0)  br
+[SRC] TraceSrcTests.bas:1:4  (fn=@main blk=L10 ip=#0)  call 1
+[SRC] TraceSrcTests.bas:1:4  (fn=@main blk=L10 ip=#1)  const_str @.L0 -> %t0
+[SRC] TraceSrcTests.bas:1:4  (fn=@main blk=L10 ip=#2)  call %t0
+[SRC] TraceSrcTests.bas:1:4  (fn=@main blk=L10 ip=#3)  br
+[SRC] TraceSrcTests.bas:2:4  (fn=@main blk=L20 ip=#0)  call 2
+[SRC] TraceSrcTests.bas:2:4  (fn=@main blk=L20 ip=#1)  const_str @.L0 -> %t1
+[SRC] TraceSrcTests.bas:2:4  (fn=@main blk=L20 ip=#2)  call %t1
+[SRC] TraceSrcTests.bas:2:4  (fn=@main blk=L20 ip=#3)  br
+[SRC] <unknown>  (fn=@main blk=exit ip=#0)  ret 0
