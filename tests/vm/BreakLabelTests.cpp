@@ -20,7 +20,7 @@ int main(int argc, char **argv)
     std::string ilFile = argv[2];
     std::string outFile = "break.out";
     std::string cmd = ilc + " -run " + ilFile + " --break L3 2>" + outFile;
-    if (std::system(cmd.c_str()) != 0)
+    if (std::system(cmd.c_str()) != 10 * 256)
         return 1;
     std::ifstream out(outFile);
     std::string line;
