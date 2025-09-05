@@ -8,6 +8,7 @@
 #include "VM/Debug.h"
 #include "il/core/Instr.hpp"
 #include "support/source_manager.hpp"
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
 
