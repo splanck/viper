@@ -854,26 +854,15 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
             auto argTy = argTys[i];
             if (sig.params[i].is_array)
             {
-                if (auto *v = dynamic_cast<VarExpr *>(c->args[i].get()))
+                // ByRef array parameters require a direct array variable.
+                auto *argExpr = c->args[i].get();
+                auto *v = dynamic_cast<VarExpr *>(argExpr);
+                if (!v || !arrays_.count(v->name))
                 {
-                    if (!arrays_.count(v->name))
-                    {
-                        std::string msg = "array argument must be array variable";
-                        de.emit(il::support::Severity::Error,
-                                "B2006",
-                                c->loc,
-                                static_cast<uint32_t>(c->callee.size()),
-                                std::move(msg));
-                    }
-                }
-                else
-                {
-                    std::string msg = "array argument must be array variable";
-                    de.emit(il::support::Severity::Error,
-                            "B2006",
-                            c->loc,
-                            static_cast<uint32_t>(c->callee.size()),
-                            std::move(msg));
+                    il::support::SourceLoc loc = argExpr ? argExpr->loc : c->loc;
+                    std::string msg = "argument " + std::to_string(i + 1) + " to " + c->callee +
+                                      " must be an array variable (ByRef)";
+                    de.emit(il::support::Severity::Error, "B2006", loc, 1, std::move(msg));
                 }
                 continue;
             }
