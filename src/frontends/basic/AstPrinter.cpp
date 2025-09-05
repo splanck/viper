@@ -160,6 +160,67 @@ void AstPrinter::dump(const Stmt &stmt, Printer &p)
     {
         p.os << "(GOTO " << g->target << ')';
     }
+    else if (auto *r = dynamic_cast<const ReturnStmt *>(&stmt))
+    {
+        p.os << "(RETURN";
+        if (r->value)
+        {
+            p.os << ' ';
+            dump(*r->value, p);
+        }
+        p.os << ')';
+    }
+    else if (auto *f = dynamic_cast<const FunctionDecl *>(&stmt))
+    {
+        static constexpr std::array<const char *, 3> types = {"I64", "F64", "STR"};
+        p.os << "(FUNCTION " << f->name << " RET " << types[static_cast<size_t>(f->ret)] << " (";
+        bool first = true;
+        for (auto &pa : f->params)
+        {
+            if (!first)
+                p.os << ' ';
+            first = false;
+            p.os << pa.name;
+            if (pa.is_array)
+                p.os << "()";
+        }
+        p.os << ") {";
+        bool firstStmt = true;
+        for (auto &s : f->body)
+        {
+            if (!firstStmt)
+                p.os << ' ';
+            firstStmt = false;
+            p.os << std::to_string(s->line) << ':';
+            dump(*s, p);
+        }
+        p.os << "})";
+    }
+    else if (auto *sb = dynamic_cast<const SubDecl *>(&stmt))
+    {
+        p.os << "(SUB " << sb->name << " (";
+        bool first = true;
+        for (auto &pa : sb->params)
+        {
+            if (!first)
+                p.os << ' ';
+            first = false;
+            p.os << pa.name;
+            if (pa.is_array)
+                p.os << "()";
+        }
+        p.os << ") {";
+        bool firstStmt = true;
+        for (auto &s : sb->body)
+        {
+            if (!firstStmt)
+                p.os << ' ';
+            firstStmt = false;
+            p.os << std::to_string(s->line) << ':';
+            dump(*s, p);
+        }
+        p.os << "})";
+    }
     else if (dynamic_cast<const EndStmt *>(&stmt))
     {
         p.os << "(END)";

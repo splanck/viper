@@ -21,6 +21,16 @@ struct Expr
 
 using ExprPtr = std::unique_ptr<Expr>;
 
+using Identifier = std::string;
+
+/// @brief BASIC primitive types.
+enum class Type
+{
+    I64,
+    F64,
+    Str,
+};
+
 struct IntExpr : Expr
 {
     int value;
@@ -212,6 +222,38 @@ struct InputStmt : Stmt
 {
     ExprPtr prompt;  ///< Optional prompt string literal (nullptr if absent).
     std::string var; ///< Target variable name (may end with '$').
+};
+
+/// @brief RETURN statement optionally yielding a value.
+struct ReturnStmt : Stmt
+{
+    ExprPtr value; ///< Null when no expression is provided.
+};
+
+/// @brief Parameter in FUNCTION or SUB declaration.
+struct Param
+{
+    Identifier name;       ///< Parameter name including optional suffix.
+    Type type = Type::I64; ///< Resolved type from suffix.
+    bool is_array = false; ///< True if parameter declared with ().
+    il::support::SourceLoc loc;
+};
+
+/// @brief FUNCTION declaration with optional parameters and return type.
+struct FunctionDecl : Stmt
+{
+    Identifier name;           ///< Function name including suffix.
+    Type ret = Type::I64;      ///< Return type derived from name suffix.
+    std::vector<Param> params; ///< Ordered parameter list.
+    std::vector<StmtPtr> body; ///< Function body statements.
+};
+
+/// @brief SUB declaration representing a void procedure.
+struct SubDecl : Stmt
+{
+    Identifier name;           ///< Subroutine name including suffix.
+    std::vector<Param> params; ///< Ordered parameter list.
+    std::vector<StmtPtr> body; ///< Body statements.
 };
 
 /// @brief Sequence of statements executed left-to-right on one BASIC line.

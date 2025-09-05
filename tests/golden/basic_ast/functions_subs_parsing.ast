@@ -1,0 +1,2 @@
+0: (FUNCTION F# RET F64 (X Y# S$ A()) {0:(RETURN X)})
+0: (SUB P (A() B$) {0:(PRINT B$)})

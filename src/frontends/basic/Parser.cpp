@@ -87,6 +87,12 @@ StmtPtr Parser::parseStatement(int line)
         return parseDim();
     if (at(TokenKind::KeywordRandomize))
         return parseRandomize();
+    if (at(TokenKind::KeywordFunction))
+        return parseFunction();
+    if (at(TokenKind::KeywordSub))
+        return parseSub();
+    if (at(TokenKind::KeywordReturn))
+        return parseReturn();
     auto stmt = std::make_unique<EndStmt>();
     stmt->loc = peek().loc;
     return stmt;
@@ -372,6 +378,147 @@ StmtPtr Parser::parseRandomize()
     auto stmt = std::make_unique<RandomizeStmt>();
     stmt->loc = loc;
     stmt->seed = parseExpression();
+    return stmt;
+}
+
+Type Parser::typeFromSuffix(std::string_view name)
+{
+    if (!name.empty())
+    {
+        char c = name.back();
+        if (c == '#')
+            return Type::F64;
+        if (c == '$')
+            return Type::Str;
+    }
+    return Type::I64;
+}
+
+std::vector<Param> Parser::parseParamList()
+{
+    std::vector<Param> params;
+    if (!at(TokenKind::LParen))
+        return params;
+    consume(); // (
+    if (at(TokenKind::RParen))
+    {
+        consume();
+        return params;
+    }
+    while (true)
+    {
+        Token id = expect(TokenKind::Identifier);
+        Param p;
+        p.loc = id.loc;
+        p.name = id.lexeme;
+        p.type = typeFromSuffix(id.lexeme);
+        if (at(TokenKind::LParen))
+        {
+            consume();
+            expect(TokenKind::RParen);
+            p.is_array = true;
+        }
+        params.push_back(std::move(p));
+        if (at(TokenKind::Comma))
+        {
+            consume();
+            continue;
+        }
+        break;
+    }
+    expect(TokenKind::RParen);
+    return params;
+}
+
+StmtPtr Parser::parseFunction()
+{
+    auto loc = peek().loc;
+    consume(); // FUNCTION
+    Token nameTok = expect(TokenKind::Identifier);
+    auto fn = std::make_unique<FunctionDecl>();
+    fn->loc = loc;
+    fn->name = nameTok.lexeme;
+    fn->ret = typeFromSuffix(nameTok.lexeme);
+    fn->params = parseParamList();
+    if (at(TokenKind::EndOfLine))
+        consume();
+    else if (at(TokenKind::Colon))
+        consume();
+    while (true)
+    {
+        while (at(TokenKind::EndOfLine))
+            consume();
+        if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordFunction)
+        {
+            consume(); // END
+            consume(); // FUNCTION
+            break;
+        }
+        int innerLine = 0;
+        if (at(TokenKind::Number))
+        {
+            innerLine = std::atoi(peek().lexeme.c_str());
+            consume();
+        }
+        auto stmt = parseStatement(innerLine);
+        stmt->line = innerLine;
+        fn->body.push_back(std::move(stmt));
+        if (at(TokenKind::Colon))
+            consume();
+        else if (at(TokenKind::EndOfLine))
+            consume();
+    }
+    return fn;
+}
+
+StmtPtr Parser::parseSub()
+{
+    auto loc = peek().loc;
+    consume(); // SUB
+    Token nameTok = expect(TokenKind::Identifier);
+    auto sub = std::make_unique<SubDecl>();
+    sub->loc = loc;
+    sub->name = nameTok.lexeme;
+    sub->params = parseParamList();
+    if (at(TokenKind::EndOfLine))
+        consume();
+    else if (at(TokenKind::Colon))
+        consume();
+    while (true)
+    {
+        while (at(TokenKind::EndOfLine))
+            consume();
+        if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordSub)
+        {
+            consume();
+            consume();
+            break;
+        }
+        int innerLine = 0;
+        if (at(TokenKind::Number))
+        {
+            innerLine = std::atoi(peek().lexeme.c_str());
+            consume();
+        }
+        auto stmt = parseStatement(innerLine);
+        stmt->line = innerLine;
+        sub->body.push_back(std::move(stmt));
+        if (at(TokenKind::Colon))
+            consume();
+        else if (at(TokenKind::EndOfLine))
+            consume();
+    }
+    return sub;
+}
+
+StmtPtr Parser::parseReturn()
+{
+    auto loc = peek().loc;
+    consume(); // RETURN
+    auto stmt = std::make_unique<ReturnStmt>();
+    stmt->loc = loc;
+    if (!at(TokenKind::EndOfLine) && !at(TokenKind::EndOfFile) && !at(TokenKind::Colon))
+        stmt->value = parseExpression();
     return stmt;
 }
 

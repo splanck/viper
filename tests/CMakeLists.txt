@@ -342,6 +342,12 @@ add_test(NAME basic_ast_float_literals COMMAND ${CMAKE_COMMAND}
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/float_literals.ast
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/check_ast.cmake)
 
+add_test(NAME basic_ast_functions_subs_parsing COMMAND ${CMAKE_COMMAND}
+  -DBASIC_AST_DUMP=${BASIC_AST_DUMP}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/functions_subs_parsing.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/functions_subs_parsing.ast
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/check_ast.cmake)
+
 set(BASIC_ILC $<TARGET_FILE:ilc>)
 add_test(NAME basic_to_il_ex1 COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
