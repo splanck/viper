@@ -17,6 +17,22 @@ cmake --build build
 ./build/src/tools/ilc/ilc front basic -run docs/examples/basic/ex1_hello_cond.bas
 ```
 
+## Cleaning
+
+Out-of-source builds (for example, using a dedicated `build/` directory) are recommended.
+
+- **Buildsystem clean** (portable):
+  ```sh
+  cmake --build build --target clean
+  ```
+  For multi-config generators such as MSVC or Xcode, add `--config Debug` or `--config Release`.
+
+- **Full purge**: remove the entire build directory for a fresh start.
+  ```sh
+  rm -rf build
+  ```
+  Convenience scripts will be added in later prompts.
+
 ## Directory layout
 
 ```text
