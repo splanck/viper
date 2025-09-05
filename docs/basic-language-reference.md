@@ -155,6 +155,11 @@ newline appended unless statement ends with `;` |
 | `INPUT v$` / `INPUT v` / `INPUT "p", v` | read line as string or integer, optional literal prompt |
 | `DIM A(n)` | allocate integer array of length `n` |
 | `RANDOMIZE n` | seed pseudo-random generator with integer `n` (floats truncate) |
+| `FUNCTION name[(params)] ... END FUNCTION` | define function, return type from name suffix |
+| `SUB name[(params)] ... END SUB` | define subroutine |
+| `RETURN [expr]` | return from FUNCTION (expression required); SUB must use bare `RETURN` |
+
+Parameters may include a type suffix (`#` for `f64`, `$` for `str`). Appending `()` denotes a 1-D array parameter.
 
 An optional string literal prompt may precede the variable:
 

@@ -40,6 +40,11 @@ class Parser
     StmtPtr parseInput();
     StmtPtr parseDim();
     StmtPtr parseRandomize();
+    StmtPtr parseFunction();
+    StmtPtr parseSub();
+    StmtPtr parseReturn();
+    std::vector<Param> parseParamList();
+    Type typeFromSuffix(std::string_view name);
 
     ExprPtr parseExpression(int min_prec = 0);
     ExprPtr parsePrimary();
