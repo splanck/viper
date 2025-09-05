@@ -8,6 +8,7 @@
 #include "VM/Debug.h"
 #include "il/core/Instr.hpp"
 #include "support/source_manager.hpp"
+#include <filesystem>
 #include <iostream>
 
 namespace il::vm
@@ -15,47 +16,19 @@ namespace il::vm
 
 std::string DebugCtrl::normalizePath(std::string p)
 {
-    for (char &c : p)
-        if (c == '\\')
-            c = '/';
-    bool absolute = !p.empty() && p.front() == '/';
-    std::vector<std::string> stack;
-    std::string segment;
-    auto flush = [&]()
-    {
-        if (segment.empty() || segment == ".")
-        {
-            segment.clear();
-            return;
-        }
-        if (segment == "..")
-        {
-            if (!stack.empty() && stack.back() != "..")
-                stack.pop_back();
-            else if (!absolute)
-                stack.push_back("..");
-        }
-        else
-            stack.push_back(std::move(segment));
-        segment.clear();
-    };
-    for (size_t i = 0; i <= p.size(); ++i)
-    {
-        char c = (i < p.size()) ? p[i] : '/';
-        if (c == '/')
-            flush();
-        else
-            segment += c;
-    }
-    std::string out = absolute ? "/" : "";
-    for (size_t i = 0; i < stack.size(); ++i)
-    {
-        if (i)
-            out += '/';
-        out += stack[i];
-    }
+    std::replace(p.begin(), p.end(), '\\', '/');
+    namespace fs = std::filesystem;
+    fs::path path{p};
+    std::error_code ec;
+    fs::path canon = fs::weakly_canonical(path, ec);
+    if (ec)
+        canon = path.lexically_normal();
+    fs::path rel = canon.lexically_relative(fs::current_path());
+    if (rel.empty())
+        rel = canon;
+    std::string out = rel.generic_string();
     if (out.empty())
-        return absolute ? std::string{"/"} : std::string{"."};
+        out = ".";
     return out;
 }
 
@@ -122,10 +95,16 @@ bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
             lastHitSrc_ = std::make_pair(key, line);
             return true;
         };
-        if (normFile == bp.normFile && check(bp.normFile))
-            return true;
-        if (base == bp.base && check(bp.base))
-            return true;
+        if (normFile == bp.normFile)
+        {
+            if (check(bp.normFile))
+                return true;
+        }
+        else if (base == bp.base)
+        {
+            if (check(bp.base))
+                return true;
+        }
     }
     return false;
 }

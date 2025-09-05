@@ -2,7 +2,8 @@
 // Purpose: Declare breakpoint control and path normalization utilities for the VM.
 // Key invariants: Block breakpoints use interned labels. Source line breakpoints
 // match when both the line number and either the normalized path or basename are
-// equal.
+// equal. Normalization resolves symlinks and emits paths relative to the current
+// working directory.
 // Ownership/Lifetime: DebugCtrl owns its interner, breakpoint set, and source
 // line list.
 // Links: docs/dev/vm.md
@@ -59,7 +60,8 @@ class DebugCtrl
 
     /// @brief Check whether instruction @p I matches a source line breakpoint.
     /// A match occurs when the instruction's line number equals a breakpoint's
-    /// line and either the normalized path or basename also matches.
+    /// line and either the normalized path or basename also matches. If the
+    /// full normalized paths differ, comparison falls back to the basename.
     bool shouldBreakOn(const il::core::Instr &I) const;
 
     /// @brief Set source manager used to resolve file paths.
@@ -68,9 +70,10 @@ class DebugCtrl
     /// @brief Retrieve associated source manager.
     const il::support::SourceManager *getSourceManager() const;
 
-    /// @brief Normalize @p p by canonicalizing separators and dot segments.
-    /// Replaces backslashes with forward slashes, removes redundant "./", and
-    /// collapses "dir/../" without resolving symlinks.
+    /// @brief Normalize @p p by resolving symlinks and expressing it relative
+    /// to the current working directory. Uses std::filesystem to canonicalize
+    /// separators and dot segments, returning a generic path with forward
+    /// slashes.
     static std::string normalizePath(std::string p);
 
     /// @brief Register a watch on variable @p name.
