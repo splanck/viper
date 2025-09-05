@@ -36,5 +36,19 @@ Remove the entire build directory to start fresh:
 rm -rf build
 ```
 
-Future prompts will add `scripts/clean.*` helpers and a `distclean` target.
+### Full purge (POSIX)
+
+Use the helper script to remove build directories. It prompts before deleting
+unless `YES=1` is set:
+
+```sh
+# auto-detect build* dirs at repo root
+scripts/clean.sh
+
+# explicit directories
+scripts/clean.sh build build-rel
+
+# non-interactive
+YES=1 scripts/clean.sh
+```
 
