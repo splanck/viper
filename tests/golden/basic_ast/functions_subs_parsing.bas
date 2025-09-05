@@ -1,0 +1,8 @@
+FUNCTION F#(X, Y#, S$, A())
+  RETURN X
+END FUNCTION
+
+SUB P(A(), B$)
+  PRINT B$
+END SUB
+

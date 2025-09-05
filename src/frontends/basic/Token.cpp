@@ -81,6 +81,12 @@ const char *tokenKindToString(TokenKind k)
             return "POW";
         case TokenKind::KeywordRnd:
             return "RND";
+        case TokenKind::KeywordFunction:
+            return "FUNCTION";
+        case TokenKind::KeywordSub:
+            return "SUB";
+        case TokenKind::KeywordReturn:
+            return "RETURN";
         case TokenKind::Plus:
             return "+";
         case TokenKind::Minus:
