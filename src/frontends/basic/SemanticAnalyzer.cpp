@@ -557,7 +557,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
                 return Type::Int;
         }
     }
-    else if (auto *c = dynamic_cast<const CallExpr *>(&e))
+    else if (auto *c = dynamic_cast<const BuiltinCallExpr *>(&e))
     {
         std::vector<Type> argTys;
         argTys.reserve(c->args.size());
@@ -571,13 +571,13 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
                 loc = c->args[idx]->loc;
             de.emit(il::support::Severity::Error, "B2001", loc, 1, std::move(msg));
         };
-        if (c->builtin == CallExpr::Builtin::Len)
+        if (c->builtin == BuiltinCallExpr::Builtin::Len)
         {
             if (argTys.size() != 1 || (argTys[0] != Type::Unknown && argTys[0] != Type::String))
                 err(0);
             return Type::Int;
         }
-        else if (c->builtin == CallExpr::Builtin::Mid)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Mid)
         {
             if (argTys.size() < 2 || argTys.size() > 3)
                 err(0);
@@ -589,7 +589,8 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
                 err(2);
             return Type::String;
         }
-        else if (c->builtin == CallExpr::Builtin::Left || c->builtin == CallExpr::Builtin::Right)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Left ||
+                 c->builtin == BuiltinCallExpr::Builtin::Right)
         {
             if (argTys.size() != 2)
                 err(0);
@@ -599,7 +600,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
                 err(1);
             return Type::String;
         }
-        else if (c->builtin == CallExpr::Builtin::Str)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Str)
         {
             if (argTys.size() != 1)
                 err(0);
@@ -608,7 +609,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
                 err(0);
             return Type::String;
         }
-        else if (c->builtin == CallExpr::Builtin::Val)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Val)
         {
             if (argTys.size() != 1)
                 err(0);
@@ -616,7 +617,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
                 err(0);
             return Type::Int;
         }
-        else if (c->builtin == CallExpr::Builtin::Int)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Int)
         {
             if (argTys.size() != 1)
                 err(0);
@@ -624,14 +625,14 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
                 err(0);
             return Type::Int;
         }
-        else if (c->builtin == CallExpr::Builtin::Sqr)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Sqr)
         {
             if (argTys.size() != 1 ||
                 (argTys[0] != Type::Unknown && argTys[0] != Type::Int && argTys[0] != Type::Float))
                 err(0);
             return Type::Float;
         }
-        else if (c->builtin == CallExpr::Builtin::Abs)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Abs)
         {
             if (argTys.size() != 1)
                 err(0);
@@ -642,21 +643,23 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
                 return Type::Int;
             err(0);
         }
-        else if (c->builtin == CallExpr::Builtin::Floor || c->builtin == CallExpr::Builtin::Ceil)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Floor ||
+                 c->builtin == BuiltinCallExpr::Builtin::Ceil)
         {
             if (argTys.size() != 1 ||
                 (argTys[0] != Type::Unknown && argTys[0] != Type::Int && argTys[0] != Type::Float))
                 err(0);
             return Type::Float;
         }
-        else if (c->builtin == CallExpr::Builtin::Sin || c->builtin == CallExpr::Builtin::Cos)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Sin ||
+                 c->builtin == BuiltinCallExpr::Builtin::Cos)
         {
             if (argTys.size() != 1 ||
                 (argTys[0] != Type::Unknown && argTys[0] != Type::Int && argTys[0] != Type::Float))
                 err(0);
             return Type::Float;
         }
-        else if (c->builtin == CallExpr::Builtin::Pow)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Pow)
         {
             if (argTys.size() != 2)
                 err(0);
@@ -668,12 +671,99 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
                 err(1);
             return Type::Float;
         }
-        else if (c->builtin == CallExpr::Builtin::Rnd)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Rnd)
         {
             if (!argTys.empty())
                 err(0);
             return Type::Float;
         }
+    }
+    else if (auto *c = dynamic_cast<const CallExpr *>(&e))
+    {
+        auto it = procs_.find(c->callee);
+        if (it == procs_.end())
+        {
+            std::string msg = "unknown procedure '" + c->callee + "'";
+            de.emit(il::support::Severity::Error,
+                    "B1006",
+                    c->loc,
+                    static_cast<uint32_t>(c->callee.size()),
+                    std::move(msg));
+            for (auto &a : c->args)
+                if (a)
+                    visitExpr(*a);
+            return Type::Unknown;
+        }
+        const ProcSignature &sig = it->second;
+        if (sig.kind == ProcSignature::Kind::Sub)
+        {
+            std::string msg = "subroutine '" + c->callee + "' used in expression";
+            de.emit(il::support::Severity::Error,
+                    "B2005",
+                    c->loc,
+                    static_cast<uint32_t>(c->callee.size()),
+                    std::move(msg));
+            for (auto &a : c->args)
+                if (a)
+                    visitExpr(*a);
+            return Type::Unknown;
+        }
+        std::vector<Type> argTys;
+        for (auto &a : c->args)
+            argTys.push_back(a ? visitExpr(*a) : Type::Unknown);
+        if (argTys.size() != sig.params.size())
+        {
+            std::string msg = "wrong number of arguments";
+            de.emit(il::support::Severity::Error, "B2005", c->loc, 1, std::move(msg));
+        }
+        size_t n = std::min(argTys.size(), sig.params.size());
+        for (size_t i = 0; i < n; ++i)
+        {
+            auto expectTy = sig.params[i].type;
+            auto argTy = argTys[i];
+            if (sig.params[i].is_array)
+            {
+                if (auto *v = dynamic_cast<VarExpr *>(c->args[i].get()))
+                {
+                    if (!arrays_.count(v->name))
+                    {
+                        std::string msg = "array argument must be array variable";
+                        de.emit(il::support::Severity::Error,
+                                "B2006",
+                                c->loc,
+                                static_cast<uint32_t>(c->callee.size()),
+                                std::move(msg));
+                    }
+                }
+                else
+                {
+                    std::string msg = "array argument must be array variable";
+                    de.emit(il::support::Severity::Error,
+                            "B2006",
+                            c->loc,
+                            static_cast<uint32_t>(c->callee.size()),
+                            std::move(msg));
+                }
+                continue;
+            }
+            if (expectTy == ::il::frontends::basic::Type::F64 && argTy == Type::Int)
+                continue;
+            Type want = Type::Int;
+            if (expectTy == ::il::frontends::basic::Type::F64)
+                want = Type::Float;
+            else if (expectTy == ::il::frontends::basic::Type::Str)
+                want = Type::String;
+            if (argTy != Type::Unknown && argTy != want)
+            {
+                std::string msg = "argument type mismatch";
+                de.emit(il::support::Severity::Error, "B2001", c->loc, 1, std::move(msg));
+            }
+        }
+        if (sig.retType == ::il::frontends::basic::Type::F64)
+            return Type::Float;
+        if (sig.retType == ::il::frontends::basic::Type::Str)
+            return Type::String;
+        return Type::Int;
     }
     else if (auto *a = dynamic_cast<const ArrayExpr *>(&e))
     {

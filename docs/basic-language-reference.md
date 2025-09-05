@@ -170,6 +170,17 @@ procedure.
 
 Parameters may include a type suffix (`#` for `f64`, `$` for `str`). Appending `()` denotes a 1-D array parameter.
 
+#### Calling FUNCTIONS and SUBS
+
+Invoke a FUNCTION or SUB by writing `name(expr, ...)`. The number of
+arguments must match the declaration. Each argument must be type compatible
+with its parameter; `i64` values may widen to `f64`, but numeric and string
+types are not coerced. Array parameters are passed by reference – supply the
+array variable itself, not an indexed element like `A(i)`.
+SUBs do not yield a value and may only appear as standalone statements; using a
+SUB in an expression is an error. String parameters behave like handles and are
+effectively passed by reference.
+
 An optional string literal prompt may precede the variable:
 
 ```basic

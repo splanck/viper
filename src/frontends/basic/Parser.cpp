@@ -368,6 +368,7 @@ StmtPtr Parser::parseDim()
     stmt->loc = loc;
     stmt->name = name;
     stmt->size = std::move(sz);
+    arrays_.insert(name);
     return stmt;
 }
 

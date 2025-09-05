@@ -9,7 +9,9 @@
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lexer.hpp"
 #include <memory>
+#include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 namespace il::frontends::basic
@@ -25,6 +27,7 @@ class Parser
     mutable Lexer lexer_;
     mutable std::vector<Token> tokens_;
     DiagnosticEmitter *emitter_ = nullptr;
+    std::unordered_set<std::string> arrays_; ///< Known DIM'd arrays.
 
 #include "frontends/basic/Parser_Token.hpp"
 
