@@ -46,6 +46,8 @@ $ ilc -run foo.il --break foo.il:3
 
 Paths are normalized before comparison. If the normalized path still does not match the path recorded in the IL, `ilc` compares only the basename and triggers the breakpoint on a match.
 
+When multiple IL instructions map to the same source line, `ilc` reports a breakpoint only once per line until control transfers to a different basic block.
+
 ### Non-interactive debugging with --debug-cmds
 
 `ilc` can resume from breakpoints using a scripted command file. Each line
