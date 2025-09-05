@@ -101,3 +101,8 @@ add_subdirectory(lib/IL)
 add_subdirectory(lib/Passes)
 add_subdirectory(lib/VM)
 add_subdirectory(tests)
+
+add_custom_target(distclean
+  COMMAND "${CMAKE_COMMAND}" -P "${CMAKE_SOURCE_DIR}/cmake/DistClean.cmake"
+  COMMENT "Scrub CMake-generated files in this build tree"
+)
