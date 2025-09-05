@@ -8,6 +8,7 @@
 #include "VM/Debug.h"
 #include "il/core/Instr.hpp"
 #include "support/source_manager.hpp"
+#include <filesystem>
 #include <iostream>
 
 namespace il::vm
@@ -56,6 +57,18 @@ std::string DebugCtrl::normalizePath(std::string p)
     }
     if (out.empty())
         return absolute ? std::string{"/"} : std::string{"."};
+    if (absolute)
+    {
+        static const std::string cwd = []
+        { return std::filesystem::current_path().lexically_normal().generic_string(); }();
+        if (out.compare(0, cwd.size(), cwd) == 0)
+        {
+            if (out.size() == cwd.size())
+                return std::string{"."};
+            if (out.size() > cwd.size() && out[cwd.size()] == '/')
+                return out.substr(cwd.size() + 1);
+        }
+    }
     return out;
 }
 
