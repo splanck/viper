@@ -10,15 +10,14 @@
 
 int main()
 {
-    const char *src =
-        "// File: dummy.il\n"
-        "// Purpose: test comment handling\n"
-        "il 0.1\n"
-        "\n"
-        "func @main() -> i64 {\n"
-        "entry:\n"
-        "  ret 0\n"
-        "}\n";
+    const char *src = "// File: dummy.il\n"
+                      "// Purpose: test comment handling\n"
+                      "il 0.1\n"
+                      "\n"
+                      "func @main() -> i64 {\n"
+                      "entry:\n"
+                      "  ret 0\n"
+                      "}\n";
     il::core::Module m;
     std::stringstream buf(src);
     std::ostringstream err;
