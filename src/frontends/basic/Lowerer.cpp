@@ -247,6 +247,21 @@ Module Lowerer::lower(const Program &prog)
             if (r->seed)
                 scanExpr(*r->seed);
         }
+        else if (auto *ret = dynamic_cast<const ReturnStmt *>(&s))
+        {
+            if (ret->value)
+                scanExpr(*ret->value);
+        }
+        else if (auto *fn = dynamic_cast<const FunctionDecl *>(&s))
+        {
+            for (const auto &bs : fn->body)
+                scanStmt(*bs);
+        }
+        else if (auto *sub = dynamic_cast<const SubDecl *>(&s))
+        {
+            for (const auto &bs : sub->body)
+                scanStmt(*bs);
+        }
         else if (auto *lst = dynamic_cast<const StmtList *>(&s))
         {
             for (const auto &sub : lst->stmts)
@@ -259,14 +274,27 @@ Module Lowerer::lower(const Program &prog)
 
     declareRequiredRuntime(b);
 
+    std::vector<const Stmt *> mainStmts;
+    for (const auto &s : prog.statements)
+    {
+        if (auto *fn = dynamic_cast<const FunctionDecl *>(s.get()))
+            lowerFunctionDecl(*fn);
+        else if (auto *sub = dynamic_cast<const SubDecl *>(s.get()))
+            lowerSubDecl(*sub);
+        else
+            mainStmts.push_back(s.get());
+    }
+
+    lineBlocks.clear();
+
     Function &f = b.startFunction("main", Type(Type::Kind::I64), {});
     func = &f;
 
     b.addBlock(f, "entry");
 
     std::vector<int> lines;
-    lines.reserve(prog.statements.size());
-    for (const auto &stmt : prog.statements)
+    lines.reserve(mainStmts.size());
+    for (const auto *stmt : mainStmts)
     {
         b.addBlock(f, mangler.block("L" + std::to_string(stmt->line)));
         lines.push_back(stmt->line);
@@ -279,7 +307,7 @@ Module Lowerer::lower(const Program &prog)
 
     vars.clear();
     arrays.clear();
-    collectVars(prog);
+    collectVars(mainStmts);
 
     // allocate slots in entry
     BasicBlock *entry = &f.blocks.front();
@@ -299,10 +327,10 @@ Module Lowerer::lower(const Program &prog)
             arrayLenSlots[a] = slot.id;
         }
     }
-    if (!prog.statements.empty())
+    if (!mainStmts.empty())
     {
         curLoc = {};
-        emitBr(&f.blocks[lineBlocks[prog.statements.front()->line]]);
+        emitBr(&f.blocks[lineBlocks[mainStmts.front()->line]]);
     }
     else
     {
@@ -311,16 +339,16 @@ Module Lowerer::lower(const Program &prog)
     }
 
     // lower statements sequentially
-    for (size_t i = 0; i < prog.statements.size(); ++i)
+    for (size_t i = 0; i < mainStmts.size(); ++i)
     {
-        cur = &f.blocks[lineBlocks[prog.statements[i]->line]];
-        lowerStmt(*prog.statements[i]);
+        cur = &f.blocks[lineBlocks[mainStmts[i]->line]];
+        lowerStmt(*mainStmts[i]);
         if (!cur->terminated)
         {
-            BasicBlock *next = (i + 1 < prog.statements.size())
-                                   ? &f.blocks[lineBlocks[prog.statements[i + 1]->line]]
+            BasicBlock *next = (i + 1 < mainStmts.size())
+                                   ? &f.blocks[lineBlocks[mainStmts[i + 1]->line]]
                                    : &f.blocks[fnExit];
-            curLoc = prog.statements[i]->loc;
+            curLoc = mainStmts[i]->loc;
             emitBr(next);
         }
     }
@@ -399,7 +427,7 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
             "rt_str_eq", Type(Type::Kind::I1), {Type(Type::Kind::Str), Type(Type::Kind::Str)});
 }
 
-void Lowerer::collectVars(const Program &prog)
+void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
 {
     std::function<void(const Expr &)> ex = [&](const Expr &e)
     {
@@ -487,8 +515,260 @@ void Lowerer::collectVars(const Program &prog)
             ex(*d->size);
         }
     };
-    for (auto &s : prog.statements)
+    for (auto &s : stmts)
         st(*s);
+}
+
+/// @brief Lower FUNCTION body into an IL function.
+void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
+{
+    vars.clear();
+    arrays.clear();
+    varSlots.clear();
+    arrayLenSlots.clear();
+    lineBlocks.clear();
+    boundsCheckId = 0;
+
+    using ASTType = ::il::frontends::basic::Type;
+    std::vector<const Stmt *> bodyPtrs;
+    for (const auto &s : decl.body)
+        bodyPtrs.push_back(s.get());
+    collectVars(bodyPtrs);
+
+    std::unordered_set<std::string> paramNames;
+    std::vector<il::core::Param> params;
+    for (const auto &p : decl.params)
+    {
+        paramNames.insert(p.name);
+        il::core::Type ty =
+            p.is_array
+                ? il::core::Type(il::core::Type::Kind::Ptr)
+                : (p.type == ASTType::I64
+                       ? il::core::Type(il::core::Type::Kind::I64)
+                       : (p.type == ASTType::F64 ? il::core::Type(il::core::Type::Kind::F64)
+                                                 : il::core::Type(il::core::Type::Kind::Str)));
+        params.push_back({p.name, ty});
+    }
+
+    il::core::Type retTy =
+        decl.ret == ASTType::I64
+            ? il::core::Type(il::core::Type::Kind::I64)
+            : (decl.ret == ASTType::F64 ? il::core::Type(il::core::Type::Kind::F64)
+                                        : il::core::Type(il::core::Type::Kind::Str));
+
+    Function &f = builder->startFunction(decl.name, retTy, params);
+    func = &f;
+
+    builder->addBlock(f, "entry_" + decl.name);
+
+    std::vector<int> lines;
+    lines.reserve(decl.body.size());
+    for (const auto &stmt : decl.body)
+    {
+        builder->addBlock(f, mangler.block("L" + std::to_string(stmt->line) + "_" + decl.name));
+        lines.push_back(stmt->line);
+    }
+    fnExit = f.blocks.size();
+    builder->addBlock(f, mangler.block("ret_" + decl.name));
+
+    for (size_t i = 0; i < lines.size(); ++i)
+        lineBlocks[lines[i]] = i + 1;
+
+    BasicBlock *entry = &f.blocks.front();
+    cur = entry;
+    materializeParams(decl.params);
+
+    for (const auto &v : vars)
+    {
+        if (paramNames.count(v))
+            continue;
+        curLoc = {};
+        Value slot = emitAlloca(8);
+        varSlots[v] = slot.id;
+    }
+    if (boundsChecks)
+    {
+        for (const auto &a : arrays)
+        {
+            if (paramNames.count(a))
+                continue;
+            curLoc = {};
+            Value slot = emitAlloca(8);
+            arrayLenSlots[a] = slot.id;
+        }
+    }
+
+    auto defaultRet = [&]()
+    {
+        switch (decl.ret)
+        {
+            case ASTType::I64:
+                return Value::constInt(0);
+            case ASTType::F64:
+                return Value::constFloat(0.0);
+            case ASTType::Str:
+                return emitConstStr(getStringLabel(""));
+        }
+        return Value::constInt(0);
+    };
+
+    if (!decl.body.empty())
+    {
+        curLoc = {};
+        emitBr(&f.blocks[lineBlocks[decl.body.front()->line]]);
+    }
+    else
+    {
+        curLoc = {};
+        emitRet(defaultRet());
+        return;
+    }
+
+    for (size_t i = 0; i < decl.body.size(); ++i)
+    {
+        cur = &f.blocks[lineBlocks[decl.body[i]->line]];
+        lowerStmt(*decl.body[i]);
+        if (!cur->terminated)
+        {
+            BasicBlock *next = (i + 1 < decl.body.size())
+                                   ? &f.blocks[lineBlocks[decl.body[i + 1]->line]]
+                                   : &f.blocks[fnExit];
+            emitBr(next);
+        }
+    }
+
+    cur = &f.blocks[fnExit];
+    curLoc = {};
+    emitRet(defaultRet());
+}
+
+/// @brief Lower SUB body into an IL function.
+void Lowerer::lowerSubDecl(const SubDecl &decl)
+{
+    vars.clear();
+    arrays.clear();
+    varSlots.clear();
+    arrayLenSlots.clear();
+    lineBlocks.clear();
+    boundsCheckId = 0;
+
+    using ASTType = ::il::frontends::basic::Type;
+    std::vector<const Stmt *> bodyPtrs;
+    for (const auto &s : decl.body)
+        bodyPtrs.push_back(s.get());
+    collectVars(bodyPtrs);
+
+    std::unordered_set<std::string> paramNames;
+    std::vector<il::core::Param> params;
+    for (const auto &p : decl.params)
+    {
+        paramNames.insert(p.name);
+        il::core::Type ty =
+            p.is_array
+                ? il::core::Type(il::core::Type::Kind::Ptr)
+                : (p.type == ASTType::I64
+                       ? il::core::Type(il::core::Type::Kind::I64)
+                       : (p.type == ASTType::F64 ? il::core::Type(il::core::Type::Kind::F64)
+                                                 : il::core::Type(il::core::Type::Kind::Str)));
+        params.push_back({p.name, ty});
+    }
+
+    Function &f =
+        builder->startFunction(decl.name, il::core::Type(il::core::Type::Kind::Void), params);
+    func = &f;
+
+    builder->addBlock(f, "entry_" + decl.name);
+
+    std::vector<int> lines;
+    lines.reserve(decl.body.size());
+    for (const auto &stmt : decl.body)
+    {
+        builder->addBlock(f, mangler.block("L" + std::to_string(stmt->line) + "_" + decl.name));
+        lines.push_back(stmt->line);
+    }
+    fnExit = f.blocks.size();
+    builder->addBlock(f, mangler.block("ret_" + decl.name));
+
+    for (size_t i = 0; i < lines.size(); ++i)
+        lineBlocks[lines[i]] = i + 1;
+
+    BasicBlock *entry = &f.blocks.front();
+    cur = entry;
+    materializeParams(decl.params);
+
+    for (const auto &v : vars)
+    {
+        if (paramNames.count(v))
+            continue;
+        curLoc = {};
+        Value slot = emitAlloca(8);
+        varSlots[v] = slot.id;
+    }
+    if (boundsChecks)
+    {
+        for (const auto &a : arrays)
+        {
+            if (paramNames.count(a))
+                continue;
+            curLoc = {};
+            Value slot = emitAlloca(8);
+            arrayLenSlots[a] = slot.id;
+        }
+    }
+
+    if (!decl.body.empty())
+    {
+        curLoc = {};
+        emitBr(&f.blocks[lineBlocks[decl.body.front()->line]]);
+    }
+    else
+    {
+        curLoc = {};
+        emitRetVoid();
+        return;
+    }
+
+    for (size_t i = 0; i < decl.body.size(); ++i)
+    {
+        cur = &f.blocks[lineBlocks[decl.body[i]->line]];
+        lowerStmt(*decl.body[i]);
+        if (!cur->terminated)
+        {
+            BasicBlock *next = (i + 1 < decl.body.size())
+                                   ? &f.blocks[lineBlocks[decl.body[i + 1]->line]]
+                                   : &f.blocks[fnExit];
+            emitBr(next);
+        }
+    }
+
+    cur = &f.blocks[fnExit];
+    curLoc = {};
+    emitRetVoid();
+}
+
+/// @brief Allocate stack slots for parameters and store incoming values. Array
+/// parameters keep their pointer/handle without copying.
+void Lowerer::materializeParams(const std::vector<Param> &params)
+{
+    for (size_t i = 0; i < params.size(); ++i)
+    {
+        const auto &p = params[i];
+        Value slot = emitAlloca(8);
+        varSlots[p.name] = slot.id;
+        il::core::Type ty = func->params[i].type;
+        Value incoming = Value::temp(func->params[i].id);
+        emitStore(ty, slot, incoming);
+        if (p.is_array)
+            arrays.insert(p.name);
+    }
+}
+
+void Lowerer::collectVars(const Program &prog)
+{
+    std::vector<const Stmt *> ptrs;
+    for (const auto &s : prog.statements)
+        ptrs.push_back(s.get());
+    collectVars(ptrs);
 }
 
 void Lowerer::lowerStmt(const Stmt &stmt)
@@ -525,6 +805,18 @@ void Lowerer::lowerStmt(const Stmt &stmt)
         lowerDim(*d);
     else if (auto *r = dynamic_cast<const RandomizeStmt *>(&stmt))
         lowerRandomize(*r);
+    else if (auto *ret = dynamic_cast<const ReturnStmt *>(&stmt))
+    {
+        if (ret->value)
+        {
+            RVal v = lowerExpr(*ret->value);
+            emitRet(v.value);
+        }
+        else
+        {
+            emitRetVoid();
+        }
+    }
 }
 
 Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
@@ -1509,6 +1801,16 @@ void Lowerer::emitRet(Value v)
     in.op = Opcode::Ret;
     in.type = Type(Type::Kind::Void);
     in.operands.push_back(v);
+    in.loc = curLoc;
+    cur->instructions.push_back(in);
+    cur->terminated = true;
+}
+
+void Lowerer::emitRetVoid()
+{
+    Instr in;
+    in.op = Opcode::Ret;
+    in.type = Type(Type::Kind::Void);
     in.loc = curLoc;
     cur->instructions.push_back(in);
     cur->terminated = true;
