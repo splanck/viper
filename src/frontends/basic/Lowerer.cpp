@@ -82,6 +82,11 @@ Module Lowerer::lower(const Program &prog)
         {
             ExprType lt = scanExpr(*b->lhs);
             ExprType rt = scanExpr(*b->rhs);
+            if (b->op == BinaryExpr::Op::Add && lt == ExprType::Str && rt == ExprType::Str)
+            {
+                needRtConcat = true;
+                return ExprType::Str;
+            }
             if (b->op == BinaryExpr::Op::Eq || b->op == BinaryExpr::Op::Ne)
             {
                 if (lt == ExprType::Str || rt == ExprType::Str)
@@ -177,6 +182,13 @@ Module Lowerer::lower(const Program &prog)
                             scanExpr(*a);
                     return ExprType::I64;
             }
+        }
+        if (auto *c = dynamic_cast<const CallExpr *>(&e))
+        {
+            for (const auto &a : c->args)
+                if (a)
+                    scanExpr(*a);
+            return ExprType::I64;
         }
         return ExprType::I64;
     };
@@ -370,6 +382,9 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
     b.addExtern("rt_substr",
                 Type(Type::Kind::Str),
                 {Type(Type::Kind::Str), Type(Type::Kind::I64), Type(Type::Kind::I64)});
+    if (needRtConcat)
+        b.addExtern(
+            "rt_concat", Type(Type::Kind::Str), {Type(Type::Kind::Str), Type(Type::Kind::Str)});
     if (boundsChecks)
         b.addExtern("rt_trap", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
     if (needInputLine)
@@ -445,6 +460,11 @@ void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
             ex(*b->rhs);
         }
         else if (auto *c = dynamic_cast<const BuiltinCallExpr *>(&e))
+        {
+            for (auto &a : c->args)
+                ex(*a);
+        }
+        else if (auto *c = dynamic_cast<const CallExpr *>(&e))
         {
             for (auto &a : c->args)
                 ex(*a);
@@ -560,6 +580,9 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
     func = &f;
 
     builder->addBlock(f, "entry_" + decl.name);
+
+    for (size_t i = 0; i < decl.params.size(); ++i)
+        mangler.nextTemp();
 
     std::vector<int> lines;
     lines.reserve(decl.body.size());
@@ -678,6 +701,9 @@ void Lowerer::lowerSubDecl(const SubDecl &decl)
     func = &f;
 
     builder->addBlock(f, "entry_" + decl.name);
+
+    for (size_t i = 0; i < decl.params.size(); ++i)
+        mangler.nextTemp();
 
     std::vector<int> lines;
     lines.reserve(decl.body.size());
@@ -841,10 +867,12 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
         auto it = varSlots.find(v->name);
         assert(it != varSlots.end());
         Value ptr = Value::temp(it->second);
+        bool isArray = arrays.count(v->name);
         bool isStr = !v->name.empty() && v->name.back() == '$';
         bool isF64 = !v->name.empty() && v->name.back() == '#';
-        Type ty =
-            isStr ? Type(Type::Kind::Str) : (isF64 ? Type(Type::Kind::F64) : Type(Type::Kind::I64));
+        Type ty = isArray ? Type(Type::Kind::Ptr)
+                          : (isStr ? Type(Type::Kind::Str)
+                                   : (isF64 ? Type(Type::Kind::F64) : Type(Type::Kind::I64)));
         Value val = emitLoad(ty, ptr);
         return {val, ty};
     }
@@ -933,6 +961,12 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
         RVal lhs = lowerExpr(*b->lhs);
         RVal rhs = lowerExpr(*b->rhs);
         curLoc = expr.loc;
+        if (b->op == BinaryExpr::Op::Add && lhs.type.kind == Type::Kind::Str &&
+            rhs.type.kind == Type::Kind::Str)
+        {
+            Value res = emitCallRet(Type(Type::Kind::Str), "rt_concat", {lhs.value, rhs.value});
+            return {res, Type(Type::Kind::Str)};
+        }
         if ((b->op == BinaryExpr::Op::Eq || b->op == BinaryExpr::Op::Ne) &&
             lhs.type.kind == Type::Kind::Str && rhs.type.kind == Type::Kind::Str)
         {
@@ -1206,6 +1240,53 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             Value res = emitCallRet(Type(Type::Kind::F64), "rt_pow", {a.value, b.value});
             return {res, Type(Type::Kind::F64)};
         }
+    }
+    else if (auto *c = dynamic_cast<const CallExpr *>(&expr))
+    {
+        const Function *callee = nullptr;
+        for (const auto &f : mod->functions)
+            if (f.name == c->callee)
+            {
+                callee = &f;
+                break;
+            }
+        std::vector<Value> args;
+        for (size_t i = 0; i < c->args.size(); ++i)
+        {
+            RVal a = lowerExpr(*c->args[i]);
+            if (callee && i < callee->params.size())
+            {
+                Type paramTy = callee->params[i].type;
+                if (paramTy.kind == Type::Kind::F64 && a.type.kind == Type::Kind::I64)
+                {
+                    curLoc = expr.loc;
+                    a.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), a.value);
+                    a.type = Type(Type::Kind::F64);
+                }
+                else if (paramTy.kind == Type::Kind::F64 && a.type.kind == Type::Kind::I1)
+                {
+                    curLoc = expr.loc;
+                    a.value = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), a.value);
+                    a.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), a.value);
+                    a.type = Type(Type::Kind::F64);
+                }
+                else if (paramTy.kind == Type::Kind::I64 && a.type.kind == Type::Kind::I1)
+                {
+                    curLoc = expr.loc;
+                    a.value = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), a.value);
+                    a.type = Type(Type::Kind::I64);
+                }
+            }
+            args.push_back(a.value);
+        }
+        curLoc = expr.loc;
+        if (callee && callee->retType.kind != Type::Kind::Void)
+        {
+            Value res = emitCallRet(callee->retType, c->callee, args);
+            return {res, callee->retType};
+        }
+        emitCall(c->callee, args);
+        return {Value::constInt(0), Type(Type::Kind::I64)};
     }
     else if (auto *a = dynamic_cast<const ArrayExpr *>(&expr))
     {
