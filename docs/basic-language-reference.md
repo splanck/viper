@@ -159,6 +159,15 @@ newline appended unless statement ends with `;` |
 | `SUB name[(params)] ... END SUB` | define subroutine |
 | `RETURN [expr]` | return from FUNCTION (expression required); SUB must use bare `RETURN` |
 
+### Procedures
+
+FUNCTION names derive their return type from a suffix: `name$` returns `str`,
+`name#` returns `f64`, and names without a suffix return `i64`. SUB always
+returns `void`. Parameter types similarly follow the name suffix and may be
+marked as arrays with `()`. Array parameters are limited to `i64[]` and
+`str[]`; `f64[]` is currently rejected. Parameter names must be unique within a
+procedure.
+
 Parameters may include a type suffix (`#` for `f64`, `$` for `str`). Appending `()` denotes a 1-D array parameter.
 
 An optional string literal prompt may precede the variable:
