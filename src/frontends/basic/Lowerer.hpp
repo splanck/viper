@@ -46,6 +46,11 @@ class Lowerer
     };
 
     void collectVars(const Program &prog);
+    void collectVars(const std::vector<const Stmt *> &stmts);
+    void lowerFunctionDecl(const FunctionDecl &decl);
+    void lowerSubDecl(const SubDecl &decl);
+    /// @brief Stack-allocate parameters and seed local map.
+    void materializeParams(const std::vector<Param> &params);
     void lowerStmt(const Stmt &stmt);
     RVal lowerExpr(const Expr &expr);
 
@@ -75,6 +80,7 @@ class Lowerer
     Value emitConstStr(const std::string &globalName);
     void emitTrap();
     void emitRet(Value v);
+    void emitRetVoid();
     std::string getStringLabel(const std::string &s);
     unsigned nextTempId();
     Value lowerArrayAddr(const ArrayExpr &expr);
