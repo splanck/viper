@@ -27,6 +27,10 @@ add_executable(test_il_utils il/UtilsTests.cpp)
 target_link_libraries(test_il_utils PRIVATE IL)
 add_test(NAME test_il_utils COMMAND test_il_utils)
 
+add_executable(test_break_parsing tools/BreakParsingTests.cpp)
+target_include_directories(test_break_parsing PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME test_break_parsing COMMAND test_break_parsing)
+
 add_executable(test_vm_trace_il vm/TraceILTests.cpp)
 add_test(NAME test_vm_trace_il COMMAND test_vm_trace_il $<TARGET_FILE:ilc> ${CMAKE_SOURCE_DIR}/examples/il/trace_min.il ${CMAKE_SOURCE_DIR}/tests/vm/trace_min.trace)
 add_executable(test_vm_break_label vm/BreakLabelTests.cpp)

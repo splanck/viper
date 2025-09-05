@@ -12,8 +12,8 @@ Flags:
 | ---- | ----------- |
 | `--trace=il` | emit a line-per-instruction trace. |
 | `--trace=src` | show source file, line, and column for each step; falls back to `<unknown>` when locations are missing. |
-| `--break <Label>` | halt before executing the first instruction of block `Label`; may be repeated. |
-| `--break-src <file>:<line>` | halt before executing the instruction at source line; paths are normalized (platform separators and `.`/`..` segments). If the normalized path does not match, `ilc` falls back to a basename match; may be repeated. |
+| `--break <label\|file:line>` | halt before executing the first instruction of block `label` or the instruction at `file:line`. A token is treated as `file:line` if it matches `^.+:[0-9]+$` and the left side contains `/`, `\\`, or `.`; may be repeated. |
+| `--break-src <file>:<line>` | explicit source-line breakpoint, equivalent to `--break file:line`; paths are normalized (platform separators and `.`/`..` segments). If the normalized path does not match, `ilc` falls back to a basename match; may be repeated. |
 | `--debug-cmds <file>` | read debugger actions from `file` when a breakpoint is hit. |
 | `--step` | enter debug mode, break at entry, and step one instruction. |
 | `--continue` | ignore breakpoints and run to completion. |
@@ -35,7 +35,7 @@ $ ilc -run examples/il/trace_min.il --trace=il
 Example using a source-line breakpoint:
 
 ```
-$ ilc -run foo.il --break-src foo.il:3
+$ ilc -run foo.il --break foo.il:3
   [BREAK] src=foo.il:3 fn=@main blk=entry ip=#0
 ```
 
