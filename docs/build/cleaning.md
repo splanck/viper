@@ -52,3 +52,12 @@ scripts/clean.sh build build-rel
 YES=1 scripts/clean.sh
 ```
 
+
+### Full purge (Windows)
+
+Use the PowerShell helper script. It prompts before deleting unless `-Yes` is set:
+
+```powershell
+# non-interactive
+powershell -ExecutionPolicy Bypass -File scripts/clean.ps1 -Yes
+```
