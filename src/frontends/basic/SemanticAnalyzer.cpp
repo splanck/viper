@@ -1,6 +1,6 @@
 // File: src/frontends/basic/SemanticAnalyzer.cpp
-// Purpose: Implements BASIC semantic analyzer that collects symbols and labels
-//          and validates variable usage.
+// Purpose: Implements BASIC semantic analyzer that collects symbols and labels,
+//          validates variable usage, and registers procedures.
 // Key invariants: Symbol table reflects only definitions; unknown references
 //                 produce diagnostics.
 // Ownership/Lifetime: Borrowed DiagnosticEngine; AST nodes owned externally.
@@ -47,6 +47,7 @@ void SemanticAnalyzer::analyze(const Program &prog)
     forStack_.clear();
     varTypes_.clear();
     arrays_.clear();
+    procs_.clear();
     for (const auto &stmt : prog.statements)
         if (stmt)
             labels_.insert(stmt->line);
@@ -244,6 +245,148 @@ void SemanticAnalyzer::visitStmt(const Stmt &s)
             }
         }
         arrays_[d->name] = sz;
+    }
+    else if (auto *f = dynamic_cast<const FunctionDecl *>(&s))
+    {
+        if (procs_.count(f->name))
+        {
+            std::string msg = "duplicate procedure '" + f->name + "'";
+            de.emit(il::support::Severity::Error,
+                    "B1004",
+                    f->loc,
+                    static_cast<uint32_t>(f->name.size()),
+                    std::move(msg));
+        }
+        else
+        {
+            ProcSignature sig;
+            sig.kind = ProcSignature::Kind::Function;
+            sig.retType = f->ret;
+            std::unordered_set<std::string> paramNames;
+            for (const auto &p : f->params)
+            {
+                if (!paramNames.insert(p.name).second)
+                {
+                    std::string msg = "duplicate parameter '" + p.name + "'";
+                    de.emit(il::support::Severity::Error,
+                            "B1005",
+                            p.loc,
+                            static_cast<uint32_t>(p.name.size()),
+                            std::move(msg));
+                }
+                if (p.is_array && p.type != ::il::frontends::basic::Type::I64 &&
+                    p.type != ::il::frontends::basic::Type::Str)
+                {
+                    std::string msg = "array parameter must be i64 or str";
+                    de.emit(il::support::Severity::Error,
+                            "B2004",
+                            p.loc,
+                            static_cast<uint32_t>(p.name.size()),
+                            std::move(msg));
+                }
+                sig.params.push_back({p.type, p.is_array});
+            }
+            procs_.emplace(f->name, std::move(sig));
+
+            auto symSave = symbols_;
+            auto typeSave = varTypes_;
+            auto arrSave = arrays_;
+            auto labelSave = labels_;
+            auto labelRefSave = labelRefs_;
+            auto forSave = forStack_;
+            for (const auto &p : f->params)
+            {
+                symbols_.insert(p.name);
+                SemanticAnalyzer::Type vt = SemanticAnalyzer::Type::Int;
+                if (p.type == ::il::frontends::basic::Type::Str)
+                    vt = SemanticAnalyzer::Type::String;
+                else if (p.type == ::il::frontends::basic::Type::F64)
+                    vt = SemanticAnalyzer::Type::Float;
+                varTypes_[p.name] = vt;
+                if (p.is_array)
+                    arrays_[p.name] = -1;
+            }
+            for (const auto &st : f->body)
+                if (st)
+                    visitStmt(*st);
+            symbols_ = std::move(symSave);
+            varTypes_ = std::move(typeSave);
+            arrays_ = std::move(arrSave);
+            labels_ = std::move(labelSave);
+            labelRefs_ = std::move(labelRefSave);
+            forStack_ = std::move(forSave);
+        }
+    }
+    else if (auto *sub = dynamic_cast<const SubDecl *>(&s))
+    {
+        if (procs_.count(sub->name))
+        {
+            std::string msg = "duplicate procedure '" + sub->name + "'";
+            de.emit(il::support::Severity::Error,
+                    "B1004",
+                    sub->loc,
+                    static_cast<uint32_t>(sub->name.size()),
+                    std::move(msg));
+        }
+        else
+        {
+            ProcSignature sig;
+            sig.kind = ProcSignature::Kind::Sub;
+            sig.retType = ::il::frontends::basic::Type::I64;
+            std::unordered_set<std::string> paramNames;
+            for (const auto &p : sub->params)
+            {
+                if (!paramNames.insert(p.name).second)
+                {
+                    std::string msg = "duplicate parameter '" + p.name + "'";
+                    de.emit(il::support::Severity::Error,
+                            "B1005",
+                            p.loc,
+                            static_cast<uint32_t>(p.name.size()),
+                            std::move(msg));
+                }
+                if (p.is_array && p.type != ::il::frontends::basic::Type::I64 &&
+                    p.type != ::il::frontends::basic::Type::Str)
+                {
+                    std::string msg = "array parameter must be i64 or str";
+                    de.emit(il::support::Severity::Error,
+                            "B2004",
+                            p.loc,
+                            static_cast<uint32_t>(p.name.size()),
+                            std::move(msg));
+                }
+                sig.params.push_back({p.type, p.is_array});
+            }
+            procs_.emplace(sub->name, std::move(sig));
+
+            auto symSave = symbols_;
+            auto typeSave = varTypes_;
+            auto arrSave = arrays_;
+            auto labelSave = labels_;
+            auto labelRefSave = labelRefs_;
+            auto forSave = forStack_;
+            for (const auto &p : sub->params)
+            {
+                symbols_.insert(p.name);
+                SemanticAnalyzer::Type vt = SemanticAnalyzer::Type::Int;
+                if (p.type == ::il::frontends::basic::Type::Str)
+                    vt = SemanticAnalyzer::Type::String;
+                else if (p.type == ::il::frontends::basic::Type::F64)
+                    vt = SemanticAnalyzer::Type::Float;
+                varTypes_[p.name] = vt;
+                if (p.is_array)
+                    arrays_[p.name] = -1;
+            }
+            for (const auto &st : sub->body)
+                if (st)
+                    visitStmt(*st);
+            symbols_ = std::move(symSave);
+            varTypes_ = std::move(typeSave);
+            arrays_ = std::move(arrSave);
+            labels_ = std::move(labelSave);
+            labelRefs_ = std::move(labelRefSave);
+            forStack_ = std::move(forSave);
+        }
     }
 }
 
