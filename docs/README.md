@@ -10,6 +10,7 @@ IL-based compiler stack. For an overview of the project, see the [root README](.
 - [class-catalog.md](class-catalog.md) — C++ class catalog.
 - [roadmap.md](roadmap.md) — milestones and current status.
 - [style-guide.md](style-guide.md) — doc & comment conventions.
+- [build/cleaning.md](build/cleaning.md) — cleaning build directories.
 - [examples/](examples/) — sample BASIC + IL programs.
 
 ## Contributing to docs

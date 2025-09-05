@@ -17,6 +17,24 @@ cmake --build build
 ./build/src/tools/ilc/ilc front basic -run docs/examples/basic/ex1_hello_cond.bas
 ```
 
+## Cleaning
+
+Out-of-source builds place artifacts under a separate `build/` directory.
+To remove compiler outputs but keep the directory structure intact, run:
+
+```sh
+cmake --build build --target clean
+# Multi-config generators like MSVC or Xcode require a configuration:
+cmake --build build --target clean --config Debug
+```
+
+For a full purge, delete the entire build directory (or use the upcoming
+`scripts/clean.*` helpers):
+
+```sh
+rm -rf build
+```
+
 ## Directory layout
 
 ```text
