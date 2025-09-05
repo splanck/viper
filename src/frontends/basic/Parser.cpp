@@ -451,8 +451,10 @@ StmtPtr Parser::parseFunction()
             consume();
         if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordFunction)
         {
+            auto endLoc = peek().loc;
             consume(); // END
             consume(); // FUNCTION
+            fn->endLoc = endLoc;
             break;
         }
         int innerLine = 0;

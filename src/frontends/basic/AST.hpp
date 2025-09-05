@@ -250,10 +250,11 @@ struct Param
 /// @brief FUNCTION declaration with optional parameters and return type.
 struct FunctionDecl : Stmt
 {
-    Identifier name;           ///< Function name including suffix.
-    Type ret = Type::I64;      ///< Return type derived from name suffix.
-    std::vector<Param> params; ///< Ordered parameter list.
-    std::vector<StmtPtr> body; ///< Function body statements.
+    Identifier name;               ///< Function name including suffix.
+    Type ret = Type::I64;          ///< Return type derived from name suffix.
+    std::vector<Param> params;     ///< Ordered parameter list.
+    std::vector<StmtPtr> body;     ///< Function body statements.
+    il::support::SourceLoc endLoc; ///< Location of trailing END FUNCTION keyword.
 };
 
 /// @brief SUB declaration representing a void procedure.

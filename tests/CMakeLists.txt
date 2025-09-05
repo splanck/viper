@@ -480,6 +480,14 @@ add_test(NAME basic_semantics_proc_registration COMMAND ${CMAKE_COMMAND}
   "-DEXPECT=${EXPECT_PROC_REG}"
   -P ${CMAKE_CURRENT_SOURCE_DIR}/golden/basic_errors/check_error.cmake)
 
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/missing_return.err EXPECT_MISSING_RET)
+string(STRIP "${EXPECT_MISSING_RET}" EXPECT_MISSING_RET)
+add_test(NAME basic_semantics_missing_return COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/missing_return.bas
+  "-DEXPECT=${EXPECT_MISSING_RET}"
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/golden/basic_errors/check_error.cmake)
+
 add_subdirectory(golden)
 
 set(CODEGEN_E2E ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_codegen.cmake)
