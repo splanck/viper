@@ -36,9 +36,13 @@ elseif(MODE STREQUAL "run")
   if(NOT r2 EQUAL 0)
     message(FATAL_ERROR "link failed")
   endif()
-  execute_process(COMMAND ./a.out RESULT_VARIABLE r3)
-  if(NOT r3 EQUAL 0)
-    message(FATAL_ERROR "run failed")
+  execute_process(
+    COMMAND ./a.out
+    RESULT_VARIABLE run_result
+    OUTPUT_VARIABLE run_output
+    ERROR_VARIABLE run_error)
+  if(NOT run_result EQUAL 0)
+    message(FATAL_ERROR "run failed: ${run_output} ${run_error}")
   endif()
 else()
   message(FATAL_ERROR "unknown MODE ${MODE}")
