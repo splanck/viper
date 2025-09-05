@@ -13,7 +13,7 @@ Flags:
 | `--trace=il` | emit a line-per-instruction trace. |
 | `--trace=src` | show source file, line, and column for each step; falls back to `<unknown>` when locations are missing. |
 | `--break <Label>` | halt before executing the first instruction of block `Label`; may be repeated. |
-| `--break-src <file>:<line>` | halt before executing the instruction at source line; file path must match exactly; may be repeated. |
+| `--break-src <file>:<line>` | halt before executing the instruction at source line; paths are normalized (platform separators and `.`/`..` segments). If the normalized path does not match, `ilc` falls back to a basename match; may be repeated. |
 | `--debug-cmds <file>` | read debugger actions from `file` when a breakpoint is hit. |
 | `--step` | enter debug mode, break at entry, and step one instruction. |
 | `--continue` | ignore breakpoints and run to completion. |
@@ -39,7 +39,7 @@ $ ilc -run foo.il --break-src foo.il:3
   [BREAK] src=foo.il:3 fn=@main blk=entry ip=#0
 ```
 
-The file path must match exactly as recorded in the IL.
+Paths are normalized before comparison. If the normalized path still does not match the path recorded in the IL, `ilc` compares only the basename and triggers the breakpoint on a match.
 
 ### Non-interactive debugging with --debug-cmds
 
