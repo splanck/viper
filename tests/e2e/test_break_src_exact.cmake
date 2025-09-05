@@ -1,3 +1,8 @@
+## File: tests/e2e/test_break_src_exact.cmake
+## Purpose: Verify source-line breakpoints report expected paths.
+## Key invariants: Break output equals golden after whitespace stripping.
+## Ownership/Lifetime: Part of the test suite.
+
 if(NOT DEFINED ILC)
   message(FATAL_ERROR "ILC not set")
 endif()
@@ -25,6 +30,8 @@ if(NOT r EQUAL 10)
 endif()
 file(READ ${BREAK_FILE} OUT)
 file(READ ${GOLDEN} EXP)
+string(STRIP "${OUT}" OUT)
+string(STRIP "${EXP}" EXP)
 if(NOT OUT STREQUAL EXP)
   message(FATAL_ERROR "break output mismatch (full path)")
 endif()
@@ -37,6 +44,7 @@ if(NOT r EQUAL 10)
   message(FATAL_ERROR "expected breakpoint")
 endif()
 file(READ ${BREAK_FILE} OUT)
+string(STRIP "${OUT}" OUT)
 if(NOT OUT STREQUAL EXP)
   message(FATAL_ERROR "break output mismatch (basename)")
 endif()
