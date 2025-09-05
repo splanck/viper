@@ -27,6 +27,10 @@ add_executable(test_il_parse_comment unit/test_il_parse_comment.cpp)
 target_link_libraries(test_il_parse_comment PRIVATE il_core il_io support)
 add_test(NAME test_il_parse_comment COMMAND test_il_parse_comment)
 
+add_executable(test_il_comments unit/test_il_comments.cpp)
+target_link_libraries(test_il_comments PRIVATE il_core il_io support)
+add_test(NAME test_il_comments COMMAND test_il_comments)
+
 add_executable(test_il_utils il/UtilsTests.cpp)
 target_link_libraries(test_il_utils PRIVATE IL)
 add_test(NAME test_il_utils COMMAND test_il_utils)
