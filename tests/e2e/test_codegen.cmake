@@ -3,6 +3,8 @@
 # Invariants: Uses a tiny hand-written program and marks stack non-executable.
 # Ownership/Lifetime: Part of e2e tests; temporary files live in build dir.
 separate_arguments(ASM_FLAGS_LIST NATIVE_COMMAND "${ASM_FLAGS}")
+# Force non-PIE output so the test binary can run on minimal environments.
+set(LD_FLAGS "${LD_FLAGS} -no-pie")
 separate_arguments(LD_FLAGS_LIST  NATIVE_COMMAND "${LD_FLAGS}")
 
 file(WRITE out.s ".text\n.globl main\nmain:\n  mov $0, %eax\n  ret\n.section .note.GNU-stack,\"\",@progbits\n")
