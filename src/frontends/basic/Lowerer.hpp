@@ -108,6 +108,7 @@ class Lowerer
     bool needRtF64ToStr{false};
     bool needAlloc{false};
     bool needRtStrEq{false};
+    bool needRtConcat{false};
 
     enum class RuntimeFn
     {
