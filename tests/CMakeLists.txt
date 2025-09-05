@@ -461,6 +461,12 @@ add_test(NAME basic_to_il_rnd COMMAND ${CMAKE_COMMAND}
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/rnd.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 
+add_test(NAME basic_to_il_lower_funcdef_only COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/lower_funcdef_only.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/lower_funcdef_only.il
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
+
 file(READ ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/proc_registration_ok.err EXPECT_PROC_REG)
 string(STRIP "${EXPECT_PROC_REG}" EXPECT_PROC_REG)
 add_test(NAME basic_semantics_proc_registration COMMAND ${CMAKE_COMMAND}
