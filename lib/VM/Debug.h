@@ -12,6 +12,7 @@
 #include "il/core/Type.hpp"
 #include "support/string_interner.hpp"
 #include "support/symbol.hpp"
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -84,6 +85,9 @@ class DebugCtrl
                  std::string_view blk,
                  size_t ip);
 
+    /// @brief Reset coalesced source line state.
+    void resetLastHit();
+
   private:
     mutable il::support::StringInterner interner_;   ///< Label interner
     std::unordered_set<il::support::Symbol> breaks_; ///< Registered breakpoints
@@ -98,6 +102,9 @@ class DebugCtrl
     const il::support::SourceManager *sm_ = nullptr; ///< Source manager for paths
     std::vector<SrcLineBP> srcLineBPs_;              ///< Source line breakpoints;
                                                      ///< match by path or basename
+
+    mutable std::optional<std::pair<std::string, int>>
+        lastHitSrc_; ///< (normFile or base choice + line)
 
     struct WatchEntry
     {

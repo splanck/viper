@@ -142,6 +142,15 @@ add_test(NAME vm_break_src_exact COMMAND ${CMAKE_COMMAND}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_break_src_exact.cmake)
 set_tests_properties(vm_break_src_exact PROPERTIES LABELS VM)
 
+add_test(NAME vm_break_src_coalesce COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DSRC_FILE=tests/e2e/BreakSrcCoalesce.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/goldens/break_src_coalesce.out
+  -DLINE=1
+  -DROOT=${CMAKE_SOURCE_DIR}
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_break_src_exact.cmake)
+set_tests_properties(vm_break_src_coalesce PROPERTIES LABELS VM)
+
 add_test(NAME front_basic_example COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DSRC_DIR=${CMAKE_SOURCE_DIR}

@@ -73,6 +73,7 @@ int64_t VM::execFunction(const Function &fn)
     for (const auto &b : fn.blocks)
         blocks[b.label] = &b;
     const BasicBlock *bb = fn.blocks.empty() ? nullptr : &fn.blocks.front();
+    debug.resetLastHit();
     size_t ip = 0;
     bool skipBreakOnce = false;
     while (bb && ip < bb->instructions.size())
@@ -628,7 +629,9 @@ int64_t VM::execFunction(const Function &fn)
             default:
                 assert(false && "unimplemented opcode");
         }
-        if (!jumped)
+        if (jumped)
+            debug.resetLastHit();
+        else
             ++ip;
         if (stepBudget > 0)
         {
