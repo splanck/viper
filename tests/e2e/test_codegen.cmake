@@ -18,25 +18,33 @@ if(MODE STREQUAL "syntax")
   endif()
 elseif(MODE STREQUAL "assemble_link")
   execute_process(COMMAND clang ${ASM_FLAGS_LIST} -c out.s -o out.o
-                  RESULT_VARIABLE r1)
+                  RESULT_VARIABLE r1
+                  OUTPUT_VARIABLE asm_out
+                  ERROR_VARIABLE asm_err)
   if(NOT r1 EQUAL 0)
-    message(FATAL_ERROR "assembly failed")
+    message(FATAL_ERROR "assembly failed: ${asm_out} ${asm_err}")
   endif()
   execute_process(COMMAND clang ${LD_FLAGS_LIST} out.o -o a.out
-                  RESULT_VARIABLE r2)
+                  RESULT_VARIABLE r2
+                  OUTPUT_VARIABLE ld_out
+                  ERROR_VARIABLE ld_err)
   if(NOT r2 EQUAL 0)
-    message(FATAL_ERROR "link failed")
+    message(FATAL_ERROR "link failed: ${ld_out} ${ld_err}")
   endif()
 elseif(MODE STREQUAL "run")
   execute_process(COMMAND clang ${ASM_FLAGS_LIST} -c out.s -o out.o
-                  RESULT_VARIABLE r1)
+                  RESULT_VARIABLE r1
+                  OUTPUT_VARIABLE asm_out
+                  ERROR_VARIABLE asm_err)
   if(NOT r1 EQUAL 0)
-    message(FATAL_ERROR "assembly failed")
+    message(FATAL_ERROR "assembly failed: ${asm_out} ${asm_err}")
   endif()
   execute_process(COMMAND clang ${LD_FLAGS_LIST} out.o -o a.out
-                  RESULT_VARIABLE r2)
+                  RESULT_VARIABLE r2
+                  OUTPUT_VARIABLE ld_out
+                  ERROR_VARIABLE ld_err)
   if(NOT r2 EQUAL 0)
-    message(FATAL_ERROR "link failed")
+    message(FATAL_ERROR "link failed: ${ld_out} ${ld_err}")
   endif()
   execute_process(
     COMMAND ./a.out
