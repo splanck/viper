@@ -23,6 +23,10 @@ target_link_libraries(test_il_parse_negative PRIVATE il_core il_io support)
 target_compile_definitions(test_il_parse_negative PRIVATE BAD_DIR="${CMAKE_SOURCE_DIR}/tests/il/parse")
 add_test(NAME test_il_parse_negative COMMAND test_il_parse_negative)
 
+add_executable(test_il_parse_comment unit/test_il_parse_comment.cpp)
+target_link_libraries(test_il_parse_comment PRIVATE il_core il_io support)
+add_test(NAME test_il_parse_comment COMMAND test_il_parse_comment)
+
 add_executable(test_il_utils il/UtilsTests.cpp)
 target_link_libraries(test_il_utils PRIVATE IL)
 add_test(NAME test_il_utils COMMAND test_il_utils)

@@ -142,7 +142,7 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
     {
         ++lineNo;
         line = trim(line);
-        if (line.empty())
+        if (line.empty() || line.rfind("//", 0) == 0)
             continue;
         if (!curFn)
         {
