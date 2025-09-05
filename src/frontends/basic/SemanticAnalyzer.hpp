@@ -101,6 +101,11 @@ class SemanticAnalyzer
     /// @return Inferred type of the expression.
     Type visitExpr(const Expr &e);
 
+    /// @brief Determine if @p stmts guarantees a return value on all control paths.
+    bool mustReturn(const std::vector<StmtPtr> &stmts) const;
+    /// @brief Determine if single statement @p s guarantees a return value.
+    bool mustReturn(const Stmt &s) const;
+
     DiagnosticEmitter &de; ///< Diagnostic sink.
     std::unordered_set<std::string> symbols_;
     std::unordered_map<std::string, Type> varTypes_;
