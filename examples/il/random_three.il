@@ -1,4 +1,5 @@
-il 0.1
+il 0.1 ; // File: examples/il/random_three.il // Purpose: Prints three random numbers using the runtime PRNG. // Links: docs/runtime-abi.md#random
+
 extern @rt_randomize_i64(i64) -> void
 extern @rt_rnd() -> f64
 extern @rt_print_f64(f64) -> void
