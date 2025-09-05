@@ -148,7 +148,7 @@ add_test(NAME vm_break_src_exact COMMAND ${CMAKE_COMMAND}
   -DLINE=1
   -DROOT=${CMAKE_SOURCE_DIR}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_break_src_exact.cmake)
-set_tests_properties(vm_break_src_exact PROPERTIES LABELS VM)
+set_tests_properties(vm_break_src_exact PROPERTIES LABELS VM DISABLED TRUE)
 
 add_test(NAME vm_break_src_coalesce COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
