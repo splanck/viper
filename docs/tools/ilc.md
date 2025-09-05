@@ -10,14 +10,13 @@ Flags:
 
 | Flag | Description |
 | ---- | ----------- |
-| `--trace=il` | emit a line-per-instruction trace. |
-| `--trace=src` | show source file, line, and column for each step; falls back to `<unknown>` when locations are missing. |
-| `--break <Label\|file:line>` | halt before executing the first instruction of block `Label` or the instruction at `file:line`; may be repeated. |
-| `--break-src <file>:<line>` | explicit form of the source-line breakpoint; paths are normalized (platform separators and `.`/`..` segments). If the normalized path does not match, `ilc` falls back to a basename match; may be repeated. |
+| `--trace=<il|src>` | emit an IL instruction trace or show source file, line, and column for each step. |
+| `--break <label|file:line>` | halt before executing the first instruction of block `label` or the instruction at `file:line`; may be repeated. |
+| `--break-src <file:line>` | explicit form of the source-line breakpoint; paths are normalized (platform separators and `.`/`..` segments). If the normalized path does not match, `ilc` falls back to a basename match; may be repeated. |
 | `--debug-cmds <file>` | read debugger actions from `file` when a breakpoint is hit. |
-| `--step` | enter debug mode, break at entry, and step one instruction. |
-| `--continue` | ignore breakpoints and run to completion. |
 | `--watch <name>` | print when scalar `name` changes; may be repeated. |
+| `--continue` | ignore breakpoints and run to completion. |
+| `--step` | enter debug mode, break at entry, and step one instruction. |
 | `--count` | print executed instruction count at exit. |
 | `--time` | print wall-clock execution time in milliseconds. |
 
@@ -37,16 +36,25 @@ $ ilc -run examples/il/trace_min.il --trace=il
   [IL] fn=@main blk=entry ip=#2 op=ret 0
 ```
 
+Example using a label breakpoint:
+
+```
+$ ilc -run examples/il/break_label.il --break L3
+  [BREAK] fn=@main blk=L3 reason=label
+```
+
 Example using a source-line breakpoint:
 
 ```
-$ ilc -run foo.il --break foo.il:3
-  [BREAK] src=foo.il:3 fn=@main blk=entry ip=#0
+$ ilc -run examples/il/break_src.il --break examples/il/break_src.il:3
+  [BREAK] src=examples/il/break_src.il:3 fn=@main blk=entry ip=#0
 ```
 
-Paths are normalized before comparison. If the normalized path still does not match the path recorded in the IL, `ilc` compares only the basename and triggers the breakpoint on a match.
+Paths are normalized before comparison. If the normalized path still does not match the path recorded in the IL, `ilc` compares
+only the basename and triggers the breakpoint on a match.
 
-When multiple IL instructions map to the same source line, `ilc` reports a breakpoint only once per line until control transfers to a different basic block.
+When multiple IL instructions map to the same source line, `ilc` reports a breakpoint only once per line until control transfers
+ to a different basic block.
 
 ### Non-interactive debugging with --debug-cmds
 
@@ -107,4 +115,3 @@ Example:
 ```
 ilc il-opt foo.il -o foo.opt.il --mem2reg-stats
 ```
-

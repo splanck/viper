@@ -18,7 +18,10 @@ void usage()
         << "       ilc front basic -emit-il <file.bas> [--bounds-checks]\n"
         << "       ilc front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>] "
            "[--max-steps N] [--break label|file:line]* [--break-src file:line]* [--bounds-checks]\n"
-        << "       ilc il-opt <in.il> -o <out.il> --passes p1,p2\n";
+        << "       ilc il-opt <in.il> -o <out.il> --passes p1,p2\n"
+        << "\n"
+        << "       --break <label|file:line>  break at a block label or source line\n"
+        << "       --break-src <file:line>    alias for --break file:line\n";
 }
 
 int main(int argc, char **argv)
