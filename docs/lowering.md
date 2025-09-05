@@ -7,5 +7,6 @@
 | `ABS(x#)`     | `call @rt_abs_f64(x)` |
 | `FLOOR(x)`    | `call @rt_floor(x)` |
 | `CEIL(x)`     | `call @rt_ceil(x)` |
+| `F(x)`        | _user FUNCTION call (TBD)_ |
 
 Integer arguments to `SQR`, `FLOOR`, and `CEIL` are first widened to `f64`.

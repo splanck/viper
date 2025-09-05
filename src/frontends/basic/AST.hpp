@@ -93,7 +93,7 @@ struct BinaryExpr : Expr
     ExprPtr rhs;
 };
 
-struct CallExpr : Expr
+struct BuiltinCallExpr : Expr
 {
     enum class Builtin
     {
@@ -114,6 +114,14 @@ struct CallExpr : Expr
         Rnd
     } builtin;
     std::vector<ExprPtr> args;
+};
+
+/// @brief Call to user-defined FUNCTION or SUB.
+struct CallExpr : Expr
+{
+    Identifier callee;          ///< Procedure name.
+    std::vector<ExprPtr> args;  ///< Ordered arguments.
+    il::support::SourceLoc loc; ///< Call site location.
 };
 
 struct Stmt
