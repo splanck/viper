@@ -24,3 +24,10 @@ error[B2004]: array parameter must be i64[] or str[]
             ^
 error[B1004]: duplicate procedure 'S'
 ```
+
+## Scope stack
+
+Each `FUNCTION` or `SUB` is analyzed with a stack of lexical scopes. A new
+scope is pushed when entering a nested block and popped on exit. `DIM` adds a
+symbol to the current scope; the name may shadow one from an outer scope but
+redeclaring within the same scope is rejected.

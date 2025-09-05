@@ -253,8 +253,14 @@ Identifiers match `[A-Za-z][A-Za-z0-9_]*` with optional `$` suffix for strings
 or `#` for floats. Without a suffix the variable defaults to integer. Assigning
 an integer value to a float variable widens the value; assigning a float to an
 integer variable is a compile-time error. All variables are local to `@main`.
-`DIM` arrays store `i64` elements with 0 -
-based indices.
+`DIM` arrays store `i64` elements with 0-based indices.
+
+### Locals and scope
+
+`DIM` inside a `FUNCTION` or `SUB` declares a local array. The name is visible
+from its declaration to the end of the enclosing block. Inner blocks may
+shadow outer locals by reusing a name; the innermost definition is used. A
+duplicate `DIM` of the same name within one block is a compile-time error.
 
 ### Optional debug bounds checks
 
