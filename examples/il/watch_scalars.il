@@ -1,4 +1,4 @@
-il 0.1
+il 0.1 ; // File: examples/il/watch_scalars.il // Purpose: Demonstrates watching scalar variables with ilc. // Links: docs/tools/ilc.md#watching-scalars
 
 func @main() -> i64 {
 entry:

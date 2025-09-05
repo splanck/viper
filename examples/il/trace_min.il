@@ -1,4 +1,4 @@
-il 0.1
+il 0.1 ; // File: examples/il/trace_min.il // Purpose: Minimal program for demonstrating instruction tracing. // Links: docs/tools/ilc.md#run
 
 func @main() -> i64 {
 entry:
