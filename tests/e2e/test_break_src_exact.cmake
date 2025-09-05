@@ -16,7 +16,7 @@ endif()
 get_filename_component(SRC_NAME ${SRC_FILE} NAME)
 set(BREAK_FILE ${ROOT}/break.txt)
 
-execute_process(COMMAND ${ILC} -run ${SRC_FILE} --break-src ${SRC_FILE}:${LINE}
+execute_process(COMMAND ${ILC} -run ${SRC_FILE} --break ${SRC_FILE}:${LINE}
                 ERROR_FILE ${BREAK_FILE}
                 RESULT_VARIABLE r
                 WORKING_DIRECTORY ${ROOT})
@@ -29,7 +29,7 @@ if(NOT OUT STREQUAL EXP)
   message(FATAL_ERROR "break output mismatch (full path)")
 endif()
 
-execute_process(COMMAND ${ILC} -run ${SRC_FILE} --break-src ${SRC_NAME}:${LINE}
+execute_process(COMMAND ${ILC} -run ${SRC_FILE} --break ${SRC_NAME}:${LINE}
                 ERROR_FILE ${BREAK_FILE}
                 RESULT_VARIABLE r
                 WORKING_DIRECTORY ${ROOT})

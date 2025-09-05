@@ -12,14 +12,19 @@ Flags:
 | ---- | ----------- |
 | `--trace=il` | emit a line-per-instruction trace. |
 | `--trace=src` | show source file, line, and column for each step; falls back to `<unknown>` when locations are missing. |
-| `--break <Label>` | halt before executing the first instruction of block `Label`; may be repeated. |
-| `--break-src <file>:<line>` | halt before executing the instruction at source line; paths are normalized (platform separators and `.`/`..` segments). If the normalized path does not match, `ilc` falls back to a basename match; may be repeated. |
+| `--break <Label\|file:line>` | halt before executing the first instruction of block `Label` or the instruction at `file:line`; may be repeated. |
+| `--break-src <file>:<line>` | explicit form of the source-line breakpoint; paths are normalized (platform separators and `.`/`..` segments). If the normalized path does not match, `ilc` falls back to a basename match; may be repeated. |
 | `--debug-cmds <file>` | read debugger actions from `file` when a breakpoint is hit. |
 | `--step` | enter debug mode, break at entry, and step one instruction. |
 | `--continue` | ignore breakpoints and run to completion. |
 | `--watch <name>` | print when scalar `name` changes; may be repeated. |
 | `--count` | print executed instruction count at exit. |
 | `--time` | print wall-clock execution time in milliseconds. |
+
+`--break` inspects its argument. Tokens of the form `<file>:<line>` whose
+left side contains a path separator (`/` or `\\`) or a dot are interpreted as
+source breakpoints. All other tokens are treated as block labels. The
+`--break-src` flag remains as an explicit alternative for source breakpoints.
 
 `--time` measures wall-clock time and may vary between runs and systems.
 
@@ -35,7 +40,7 @@ $ ilc -run examples/il/trace_min.il --trace=il
 Example using a source-line breakpoint:
 
 ```
-$ ilc -run foo.il --break-src foo.il:3
+$ ilc -run foo.il --break foo.il:3
   [BREAK] src=foo.il:3 fn=@main blk=entry ip=#0
 ```
 
