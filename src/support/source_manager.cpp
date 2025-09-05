@@ -6,12 +6,15 @@
 
 #include "source_manager.hpp"
 
+#include <filesystem>
+
 namespace il::support
 {
 
 uint32_t SourceManager::addFile(std::string path)
 {
-    files_.push_back(std::move(path));
+    std::filesystem::path p(std::move(path));
+    files_.push_back(p.lexically_normal().generic_string());
     return static_cast<uint32_t>(files_.size());
 }
 
