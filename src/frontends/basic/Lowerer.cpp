@@ -97,39 +97,39 @@ Module Lowerer::lower(const Program &prog)
             scanExpr(*arr->index);
             return ExprType::I64;
         }
-        if (auto *c = dynamic_cast<const CallExpr *>(&e))
+        if (auto *c = dynamic_cast<const BuiltinCallExpr *>(&e))
         {
             switch (c->builtin)
             {
-                case CallExpr::Builtin::Rnd:
+                case BuiltinCallExpr::Builtin::Rnd:
                     markRuntime(RuntimeFn::Rnd);
                     return ExprType::F64;
-                case CallExpr::Builtin::Val:
+                case BuiltinCallExpr::Builtin::Val:
                     needRtToInt = true;
                     if (c->args[0])
                         scanExpr(*c->args[0]);
                     return ExprType::I64;
-                case CallExpr::Builtin::Str:
+                case BuiltinCallExpr::Builtin::Str:
                     needRtIntToStr = true;
                     needRtF64ToStr = true;
                     if (c->args[0])
                         scanExpr(*c->args[0]);
                     return ExprType::Str;
-                case CallExpr::Builtin::Len:
+                case BuiltinCallExpr::Builtin::Len:
                     if (c->args[0])
                         scanExpr(*c->args[0]);
                     return ExprType::I64;
-                case CallExpr::Builtin::Mid:
+                case BuiltinCallExpr::Builtin::Mid:
                     for (auto &a : c->args)
                         if (a)
                             scanExpr(*a);
                     return ExprType::Str;
-                case CallExpr::Builtin::Sqr:
+                case BuiltinCallExpr::Builtin::Sqr:
                     if (c->args[0])
                         scanExpr(*c->args[0]);
                     markRuntime(RuntimeFn::Sqrt);
                     return ExprType::F64;
-                case CallExpr::Builtin::Abs:
+                case BuiltinCallExpr::Builtin::Abs:
                 {
                     ExprType ty = ExprType::I64;
                     if (c->args[0])
@@ -140,34 +140,34 @@ Module Lowerer::lower(const Program &prog)
                         markRuntime(RuntimeFn::AbsI64);
                     return ty;
                 }
-                case CallExpr::Builtin::Floor:
+                case BuiltinCallExpr::Builtin::Floor:
                     if (c->args[0])
                         scanExpr(*c->args[0]);
                     markRuntime(RuntimeFn::Floor);
                     return ExprType::F64;
-                case CallExpr::Builtin::Ceil:
+                case BuiltinCallExpr::Builtin::Ceil:
                     if (c->args[0])
                         scanExpr(*c->args[0]);
                     markRuntime(RuntimeFn::Ceil);
                     return ExprType::F64;
-                case CallExpr::Builtin::Sin:
+                case BuiltinCallExpr::Builtin::Sin:
                     if (c->args[0])
                         scanExpr(*c->args[0]);
                     markRuntime(RuntimeFn::Sin);
                     return ExprType::F64;
-                case CallExpr::Builtin::Cos:
+                case BuiltinCallExpr::Builtin::Cos:
                     if (c->args[0])
                         scanExpr(*c->args[0]);
                     markRuntime(RuntimeFn::Cos);
                     return ExprType::F64;
-                case CallExpr::Builtin::Pow:
+                case BuiltinCallExpr::Builtin::Pow:
                     if (c->args[0])
                         scanExpr(*c->args[0]);
                     if (c->args[1])
                         scanExpr(*c->args[1]);
                     markRuntime(RuntimeFn::Pow);
                     return ExprType::F64;
-                case CallExpr::Builtin::Int:
+                case BuiltinCallExpr::Builtin::Int:
                     if (c->args[0])
                         scanExpr(*c->args[0]);
                     return ExprType::I64;
@@ -416,7 +416,7 @@ void Lowerer::collectVars(const Program &prog)
             ex(*b->lhs);
             ex(*b->rhs);
         }
-        else if (auto *c = dynamic_cast<const CallExpr *>(&e))
+        else if (auto *c = dynamic_cast<const BuiltinCallExpr *>(&e))
         {
             for (auto &a : c->args)
                 ex(*a);
@@ -719,22 +719,22 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
         return {res, ty};
     }
 
-    else if (auto *c = dynamic_cast<const CallExpr *>(&expr))
+    else if (auto *c = dynamic_cast<const BuiltinCallExpr *>(&expr))
     {
-        if (c->builtin == CallExpr::Builtin::Rnd)
+        if (c->builtin == BuiltinCallExpr::Builtin::Rnd)
         {
             curLoc = expr.loc;
             Value res = emitCallRet(Type(Type::Kind::F64), "rt_rnd", {});
             return {res, Type(Type::Kind::F64)};
         }
-        else if (c->builtin == CallExpr::Builtin::Len)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Len)
         {
             RVal s = lowerExpr(*c->args[0]);
             curLoc = expr.loc;
             Value res = emitCallRet(Type(Type::Kind::I64), "rt_len", {s.value});
             return {res, Type(Type::Kind::I64)};
         }
-        else if (c->builtin == CallExpr::Builtin::Mid)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Mid)
         {
             RVal s = lowerExpr(*c->args[0]);
             RVal i = lowerExpr(*c->args[1]);
@@ -747,7 +747,7 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             Value res = emitCallRet(Type(Type::Kind::Str), "rt_substr", {s.value, start0, count});
             return {res, Type(Type::Kind::Str)};
         }
-        else if (c->builtin == CallExpr::Builtin::Left)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Left)
         {
             RVal s = lowerExpr(*c->args[0]);
             RVal n = lowerExpr(*c->args[1]);
@@ -756,7 +756,7 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
                 Type(Type::Kind::Str), "rt_substr", {s.value, Value::constInt(0), n.value});
             return {res, Type(Type::Kind::Str)};
         }
-        else if (c->builtin == CallExpr::Builtin::Right)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Right)
         {
             RVal s = lowerExpr(*c->args[0]);
             RVal n = lowerExpr(*c->args[1]);
@@ -768,7 +768,7 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             Value res = emitCallRet(Type(Type::Kind::Str), "rt_substr", {s.value, start, n.value});
             return {res, Type(Type::Kind::Str)};
         }
-        else if (c->builtin == CallExpr::Builtin::Str)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Str)
         {
             RVal v = lowerExpr(*c->args[0]);
             curLoc = expr.loc;
@@ -790,14 +790,14 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
                 return {res, Type(Type::Kind::Str)};
             }
         }
-        else if (c->builtin == CallExpr::Builtin::Val)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Val)
         {
             RVal s = lowerExpr(*c->args[0]);
             curLoc = expr.loc;
             Value res = emitCallRet(Type(Type::Kind::I64), "rt_to_int", {s.value});
             return {res, Type(Type::Kind::I64)};
         }
-        else if (c->builtin == CallExpr::Builtin::Int)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Int)
         {
             RVal f = lowerExpr(*c->args[0]);
             if (f.type.kind == Type::Kind::I64)
@@ -810,7 +810,7 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             Value res = emitUnary(Opcode::Fptosi, Type(Type::Kind::I64), f.value);
             return {res, Type(Type::Kind::I64)};
         }
-        else if (c->builtin == CallExpr::Builtin::Sqr)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Sqr)
         {
             RVal v = lowerExpr(*c->args[0]);
             if (v.type.kind == Type::Kind::I64)
@@ -823,7 +823,7 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             Value res = emitCallRet(Type(Type::Kind::F64), "rt_sqrt", {v.value});
             return {res, Type(Type::Kind::F64)};
         }
-        else if (c->builtin == CallExpr::Builtin::Abs)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Abs)
         {
             RVal v = lowerExpr(*c->args[0]);
             if (v.type.kind == Type::Kind::I1)
@@ -842,7 +842,7 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             Value res = emitCallRet(Type(Type::Kind::I64), "rt_abs_i64", {v.value});
             return {res, Type(Type::Kind::I64)};
         }
-        else if (c->builtin == CallExpr::Builtin::Floor)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Floor)
         {
             RVal v = lowerExpr(*c->args[0]);
             if (v.type.kind == Type::Kind::I64)
@@ -855,7 +855,7 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             Value res = emitCallRet(Type(Type::Kind::F64), "rt_floor", {v.value});
             return {res, Type(Type::Kind::F64)};
         }
-        else if (c->builtin == CallExpr::Builtin::Ceil)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Ceil)
         {
             RVal v = lowerExpr(*c->args[0]);
             if (v.type.kind == Type::Kind::I64)
@@ -868,7 +868,7 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             Value res = emitCallRet(Type(Type::Kind::F64), "rt_ceil", {v.value});
             return {res, Type(Type::Kind::F64)};
         }
-        else if (c->builtin == CallExpr::Builtin::Sin)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Sin)
         {
             RVal v = lowerExpr(*c->args[0]);
             if (v.type.kind == Type::Kind::I64)
@@ -881,7 +881,7 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             Value res = emitCallRet(Type(Type::Kind::F64), "rt_sin", {v.value});
             return {res, Type(Type::Kind::F64)};
         }
-        else if (c->builtin == CallExpr::Builtin::Cos)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Cos)
         {
             RVal v = lowerExpr(*c->args[0]);
             if (v.type.kind == Type::Kind::I64)
@@ -894,7 +894,7 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             Value res = emitCallRet(Type(Type::Kind::F64), "rt_cos", {v.value});
             return {res, Type(Type::Kind::F64)};
         }
-        else if (c->builtin == CallExpr::Builtin::Pow)
+        else if (c->builtin == BuiltinCallExpr::Builtin::Pow)
         {
             RVal a = lowerExpr(*c->args[0]);
             RVal b = lowerExpr(*c->args[1]);

@@ -267,7 +267,7 @@ void AstPrinter::dump(const Expr &expr, Printer &p)
         dump(*u->expr, p);
         p.os << ')';
     }
-    else if (auto *c = dynamic_cast<const CallExpr *>(&expr))
+    else if (auto *c = dynamic_cast<const BuiltinCallExpr *>(&expr))
     {
         static constexpr std::array<const char *, 15> names = {"LEN",
                                                                "MID$",
@@ -285,6 +285,16 @@ void AstPrinter::dump(const Expr &expr, Printer &p)
                                                                "POW",
                                                                "RND"};
         p.os << '(' << names[static_cast<size_t>(c->builtin)];
+        for (auto &a : c->args)
+        {
+            p.os << ' ';
+            dump(*a, p);
+        }
+        p.os << ')';
+    }
+    else if (auto *c = dynamic_cast<const CallExpr *>(&expr))
+    {
+        p.os << '(' << c->callee;
         for (auto &a : c->args)
         {
             p.os << ' ';
