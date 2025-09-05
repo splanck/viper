@@ -1,4 +1,4 @@
-# IL v0.1.2 Specification
+#IL v0.1.2 Specification
 
 Status: Normative for VM and code generator MVP
 Compatibility: Supersedes v0.1.1; older modules parse unchanged
@@ -15,24 +15,27 @@ Every module begins with a version line and may specify a target triple. Symbols
 
 ```text
 il 0.1.2
-target "x86_64-sysv" ; optional, ignored by the VM
+target "x86_64-sysv" ;
+
+optional, ignored by the VM
 ```
 
-Example:
+          Example :
 
-```il
-il 0.1.2
+```il il 0.1.2
 
-extern @rt_print_str(str) -> void
+    extern @rt_print_str(str)
+        ->void
 
-global const str @.L0 = "HELLO"
+    global const str @.L0 = "HELLO"
 
-func @main() -> i32 {
+                            func @main()
+                                ->i32
+{
 entry:
-  %s = const_str @.L0
-  call @rt_print_str(%s)
-  ret 0
+    % s = const_str @.L0 call @rt_print_str(% s) ret 0
 }
+
 ```
 
 See [examples/il](examples/il/) for complete programs.
@@ -61,6 +64,9 @@ Functions declare parameters and a single return type. Bodies contain one or mor
 - ends with exactly one terminator (`br`, `cbr`, or `ret`)
 No implicit fallthrough between blocks.
 
+Producers often use deterministic labels such as `entry_<fn>` for function
+entries, but the spec does not mandate any naming scheme.
+
 Blocks may declare parameters in their header:
 
 ```il
@@ -75,63 +81,64 @@ br L(%a, %b)
 cbr %cond, T(%a), F(%b)
 ```
 
-The 0-argument shorthand forms `br L` and `cbr %cond, T, F` remain valid. On entry, block parameters are bound to the passed values; each predecessor must provide the exact number and types of parameters declared.
-Example:
+The 0-argument shorthand forms `br L` and `cbr %cond, T, F` remain valid. On entry, block parameters are bound to the passed values;
+each predecessor must provide the exact number and types of parameters declared.Example :
 
-```il
-br L ; equivalent to br L()
+```il br L;
+equivalent to br L()
 ```
 
-## Instruction set
-Legend: `→` result type. Traps denote runtime errors.
+    ##Instruction set Legend : `→` result type.Traps denote runtime errors.
 
-### Integer arithmetic
-| Instruction | Operands | Result | Traps |
-|-------------|----------|--------|-------|
-| `add` | `i64, i64` | `i64` | — |
-| `sub` | `i64, i64` | `i64` | — |
-| `mul` | `i64, i64` | `i64` | — |
-| `sdiv` | `i64, i64` | `i64` | divisor = 0 or (`INT64_MIN`, `-1`) |
-| `udiv` | `i64, i64` | `i64` | divisor = 0 |
-| `srem` | `i64, i64` | `i64` | divisor = 0 |
-| `urem` | `i64, i64` | `i64` | divisor = 0 |
+    ## #Integer arithmetic
+    | Instruction | Operands | Result | Traps | | -- -- -- -- -- -- -| -- -- -- -- --| -- -- -- --|
+    -- -- -- -| | `add` | `i64,
+    i64` | `i64` | — | | `sub` | `i64, i64` | `i64` | — | | `mul` | `i64,
+    i64` | `i64` | — | | `sdiv` | `i64,
+    i64` | `i64` |
+        divisor = 0 or (`INT64_MIN`, `- 1`) | | `udiv` | `i64,
+        i64` | `i64` | divisor = 0 | | `srem` | `i64, i64` | `i64` | divisor = 0 | | `urem` | `i64,
+        i64` | `i64` | divisor = 0 |
 
-`sdiv` and `srem` follow C semantics: the quotient is truncated toward zero and
-the remainder has the sign of the dividend. Front ends like BASIC map `\` to
+`sdiv` and `srem` follow C semantics
+    : the quotient is truncated toward zero
+      and
+      the remainder has the sign of the dividend.Front ends like BASIC map `\` to
 `sdiv` and `MOD` to `srem`.
 
-### Bitwise and shifts
-| Instruction | Operands | Result | Traps |
-|-------------|----------|--------|-------|
-| `and` / `or` / `xor` | `i64, i64` | `i64` | — |
-| `shl` / `lshr` / `ashr` | `i64, i64` | `i64` | shift count masked mod 64 |
+            ## #Bitwise
+      and
+      shifts | Instruction | Operands | Result | Traps | | -- -- -- -- -- -- -| -- -- -- -- --|
+          -- -- -- --| -- -- -- -| | `and` / `or` / `xor` | `i64,
+        i64` | `i64` | — | | `shl` / `lshr` / `ashr` | `i64,
+        i64` | `i64` | shift count masked mod 64 |
 
-### Floating-point arithmetic
-| Instruction | Operands | Result | Traps |
-|-------------|----------|--------|-------|
-| `fadd` / `fsub` / `fmul` / `fdiv` | `f64, f64` | `f64` | — |
+            ## #Floating - point arithmetic | Instruction | Operands | Result | Traps | |
+            -- -- -- -- -- -- -| -- -- -- -- --| -- -- -- --| -- -- -- -|
+            | `fadd` / `fsub` / `fmul` / `fdiv` | `f64,
+        f64` | `f64` | — |
 
-### Comparisons
-| Instruction | Operands | Result | Notes/Traps |
-|-------------|----------|--------|-------------|
-| `icmp_eq` / `icmp_ne` | `i64, i64` | `i1` | — |
-| `scmp_lt` / `scmp_le` / `scmp_gt` / `scmp_ge` | `i64, i64` | `i1` | signed |
-| `ucmp_lt` / `ucmp_le` / `ucmp_gt` / `ucmp_ge` | `i64, i64` | `i1` | unsigned |
-| `fcmp_lt` / `fcmp_le` / `fcmp_gt` / `fcmp_ge` / `fcmp_eq` / `fcmp_ne` | `f64, f64` | `i1` | `fcmp_eq` false and `fcmp_ne` true on NaN |
+            ## #Comparisons | Instruction | Operands | Result | Notes / Traps | |
+            -- -- -- -- -- -- -| -- -- -- -- --| -- -- -- --| -- -- -- -- -- -- -|
+            | `icmp_eq` / `icmp_ne` | `i64,
+        i64` | `i1` | — | | `scmp_lt` / `scmp_le` / `scmp_gt` / `scmp_ge` | `i64,
+        i64` | `i1` | signed | | `ucmp_lt` / `ucmp_le` / `ucmp_gt` / `ucmp_ge` | `i64,
+        i64` | `i1` | unsigned |
+            | `fcmp_lt` / `fcmp_le` / `fcmp_gt` / `fcmp_ge` / `fcmp_eq` / `fcmp_ne` | `f64,
+        f64` | `i1` | `fcmp_eq` false and `fcmp_ne` true on NaN |
 
-### Conversions
-| Instruction | Operands | Result | Traps |
-|-------------|----------|--------|-------|
-| `sitofp` | `i64` | `f64` | — |
-| `fptosi` | `f64` | `i64` | NaN or out-of-range |
-| `zext1` | `i1` | `i64` | — |
-| `trunc1` | `i64` | `i1` | — |
+                                              ## #Conversions | Instruction | Operands | Result
+                                              | Traps | | -- -- -- -- -- -- -| -- -- -- -- --|
+                                              -- -- -- --| -- -- -- -|
+                                              | `sitofp` | `i64` | `f64` | — |
+                                              | `fptosi` | `f64` | `i64` | NaN
+            or out - of - range | | `zext1` | `i1` | `i64` | — | | `trunc1` | `i64` | `i1` | — |
 
-### Memory & pointers
-| Instruction | Operands | Result | Traps/Notes |
-|-------------|----------|--------|-------------|
-| `alloca` | `i64` size | `ptr` | size < 0 (if constant); zero-initialized, frame-local |
-| `gep` | `ptr, i64` | `ptr` | pointer + offset; no bounds checks |
+                   ## #Memory &pointers | Instruction | Operands | Result | Traps / Notes | |
+                   -- -- -- -- -- -- -| -- -- -- -- --| -- -- -- --| -- -- -- -- -- -- -|
+                   | `alloca` | `i64` size | `ptr` | size < 0(if constant);
+zero - initialized, frame - local | | `gep` | `ptr, i64` | `ptr` | pointer + offset;
+no bounds checks |
 | `load` | `type, ptr` | `type` | null or misaligned pointer |
 | `store` | `type, ptr, type` | — | null or misaligned pointer |
 | `addr_of` | `@global` | `ptr` | — |
@@ -163,28 +170,33 @@ Natural alignment: `i64`, `f64`, `ptr`, and `str` require 8-byte alignment. Misa
 | `@rt_input_line` | `-> str` | read line, newline stripped |
 | `@rt_len` | `str -> i64` | length in bytes |
 | `@rt_concat` | `str × str -> str` | concatenate strings |
-| `@rt_substr` | `str × i64 × i64 -> str` | indices clamp; negative params trap |
-| `@rt_to_int` | `str -> i64` | traps on invalid numeric |
-| `@rt_to_float` | `str -> f64` | traps on invalid numeric |
-| `@rt_str_eq` | `str × str -> i1` | string equality |
-| `@rt_alloc` | `i64 -> ptr` | allocate bytes; negative size traps |
-| `@rt_free` | `ptr -> void` | deallocate; optional in v0.1.2 |
+| `@rt_substr` | `str × i64 × i64 -> str` | indices clamp;
+negative params trap | | `@rt_to_int` | `str->i64` | traps on invalid numeric |
+    | `@rt_to_float` | `str->f64` | traps on invalid numeric | | `@rt_str_eq` | `str × str->i1` |
+    string equality | | `@rt_alloc` | `i64->ptr` | allocate bytes;
+negative size traps | | `@rt_free` | `ptr->void` | deallocate;
+optional in v0.1.2 |
 
-Strings are ref-counted (implementation detail).
+    Strings are ref - counted(implementation detail)
+                          .
 
-## Memory model
-IL has no concurrency in v0.1.2. Pointers are plain addresses; no aliasing rules beyond load/store types. `alloca` memory is zero-initialized and lives until the function returns. Loads and stores to `null` or misaligned addresses trap.
+                      ##Memory model IL has no concurrency in v0.1.2. Pointers are plain addresses;
+no aliasing rules beyond load / store types. `alloca` memory is zero -
+        initialized and lives until the function returns.Loads and stores to `null` or
+    misaligned addresses trap.
 
-## Verifier obligations
-- First block is entry; every block ends with one terminator
-- All referenced labels exist in the same function
-- Operand and result types match instruction signatures
-- Calls match callee arity and types
-- `load`/`store` use `ptr` operands and non-void types
-- `alloca` size is `i64` (non-negative if constant)
-- Temporaries are defined before use within a block (dominance across blocks deferred)
-- Block parameters have unique names per block, non-void types, and are visible only within their block
-- `br`/`cbr` pass arguments matching target block parameter counts and types; `%c` in `cbr` is `i1`
+        ##Verifier obligations -
+        First block is entry;
+every block ends with one terminator - All referenced labels exist in the same function -
+    Operand and result types match instruction signatures -
+    Calls match callee arity and types - `load`/`store` use `ptr` operands and non -
+    void types - `alloca` size is `i64` (non - negative if constant) -
+    Temporaries are defined before use within a block(dominance across blocks deferred) -
+    Block parameters have unique names per block,
+    non - void types,
+    and are visible only within their block
+        - `br`/`cbr` pass arguments matching target block parameter counts and types;
+`%c` in `cbr` is `i1`
 
 Example diagnostics:
 

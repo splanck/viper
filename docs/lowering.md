@@ -1,4 +1,4 @@
-# Lowering Reference
+#Lowering Reference
 
 | BASIC         | IL runtime call |
 |---------------|-----------------|
@@ -10,3 +10,12 @@
 | `F(x)`        | _user FUNCTION call (TBD)_ |
 
 Integer arguments to `SQR`, `FLOOR`, and `CEIL` are first widened to `f64`.
+
+## Procedure Definitions
+
+Each BASIC `FUNCTION` or `SUB` becomes an IL function named `@<name>`. The
+entry block label is deterministically `entry_<name>` and a closing block
+`ret_<name>` carries the fallthrough `ret`. Scalar parameters are
+materialized by allocating stack slots and storing the incoming values. Array
+parameters (`i64[]` or `str[]`) are passed as pointers/handles and stored
+directly without copying.
