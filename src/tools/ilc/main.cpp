@@ -10,15 +10,18 @@
 
 void usage()
 {
-    std::cerr
-        << "ilc v0.1.0\n"
-        << "Usage: ilc -run <file.il> [--trace=il|src] [--stdin-from <file>] [--max-steps N]"
-           " [--break label|file:line]* [--break-src file:line]* [--watch name]* [--bounds-checks] "
-           "[--count] [--time]\n"
-        << "       ilc front basic -emit-il <file.bas> [--bounds-checks]\n"
-        << "       ilc front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>] "
-           "[--max-steps N] [--break label|file:line]* [--break-src file:line]* [--bounds-checks]\n"
-        << "       ilc il-opt <in.il> -o <out.il> --passes p1,p2\n";
+    std::cerr << "ilc v0.1.0\n"
+              << "Usage: ilc -run <file.il> [--trace=il|src] [--stdin-from <file>] [--max-steps N]"
+                 " [--break label|file:line]* [--break-src file:line]* [--debug-cmds <file>]"
+                 " [--watch name]* [--continue] [--step] [--count] [--time] [--bounds-checks]\n"
+              << "       ilc front basic -emit-il <file.bas> [--bounds-checks]\n"
+              << "       ilc front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>] "
+                 "[--max-steps N] [--break label|file:line]* [--break-src file:line]* "
+                 "[--debug-cmds <file>]"
+                 " [--watch name]* [--continue] [--step] [--count] [--time] [--bounds-checks]\n"
+              << "       ilc il-opt <in.il> -o <out.il> --passes p1,p2\n"
+              << "\n--break accepts a block label or file:line; use --break-src for an explicit"
+                 " source-line breakpoint.\n";
 }
 
 int main(int argc, char **argv)
