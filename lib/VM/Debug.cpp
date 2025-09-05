@@ -112,8 +112,21 @@ bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
     std::string base = (pos == std::string::npos) ? normFile : normFile.substr(pos + 1);
     int line = static_cast<int>(I.loc.line);
     for (const auto &bp : srcLineBPs_)
-        if ((normFile == bp.normFile && line == bp.line) || (base == bp.base && line == bp.line))
+    {
+        if (line != bp.line)
+            continue;
+        auto check = [&](const std::string &key)
+        {
+            if (lastHitSrc_ && lastHitSrc_->first == key && lastHitSrc_->second == line)
+                return false;
+            lastHitSrc_ = std::make_pair(key, line);
             return true;
+        };
+        if (normFile == bp.normFile && check(bp.normFile))
+            return true;
+        if (base == bp.base && check(bp.base))
+            return true;
+    }
     return false;
 }
 
@@ -165,6 +178,11 @@ void DebugCtrl::onStore(std::string_view name,
     }
     w.type = ty;
     w.hasValue = true;
+}
+
+void DebugCtrl::resetLastHit()
+{
+    lastHitSrc_.reset();
 }
 
 } // namespace il::vm
