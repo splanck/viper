@@ -130,17 +130,17 @@ static void replaceWithStr(ExprPtr &e, std::string s, support::SourceLoc loc)
     e = std::move(ns);
 }
 
-static void foldCall(ExprPtr &e, CallExpr *c)
+static void foldCall(ExprPtr &e, BuiltinCallExpr *c)
 {
     for (auto &a : c->args)
         foldExpr(a);
-    if (c->builtin == CallExpr::Builtin::Len)
+    if (c->builtin == BuiltinCallExpr::Builtin::Len)
     {
         std::string s;
         if (c->args.size() == 1 && isStr(c->args[0].get(), s))
             replaceWithInt(e, static_cast<long long>(s.size()), c->loc);
     }
-    else if (c->builtin == CallExpr::Builtin::Mid)
+    else if (c->builtin == BuiltinCallExpr::Builtin::Mid)
     {
         if (c->args.size() == 3)
         {
@@ -163,7 +163,7 @@ static void foldCall(ExprPtr &e, CallExpr *c)
             }
         }
     }
-    else if (c->builtin == CallExpr::Builtin::Val)
+    else if (c->builtin == BuiltinCallExpr::Builtin::Val)
     {
         std::string s;
         if (c->args.size() == 1 && isStr(c->args[0].get(), s))
@@ -181,7 +181,7 @@ static void foldCall(ExprPtr &e, CallExpr *c)
                 replaceWithInt(e, v, c->loc);
         }
     }
-    else if (c->builtin == CallExpr::Builtin::Int)
+    else if (c->builtin == BuiltinCallExpr::Builtin::Int)
     {
         if (c->args.size() == 1)
         {
@@ -190,7 +190,7 @@ static void foldCall(ExprPtr &e, CallExpr *c)
                 replaceWithInt(e, static_cast<long long>(n->f), c->loc);
         }
     }
-    else if (c->builtin == CallExpr::Builtin::Str)
+    else if (c->builtin == BuiltinCallExpr::Builtin::Str)
     {
         if (c->args.size() == 1)
         {
@@ -493,7 +493,7 @@ static void foldExpr(ExprPtr &e)
     {
         foldBinary(e, b);
     }
-    else if (auto *c = dynamic_cast<CallExpr *>(e.get()))
+    else if (auto *c = dynamic_cast<BuiltinCallExpr *>(e.get()))
     {
         foldCall(e, c);
     }
