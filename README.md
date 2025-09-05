@@ -21,17 +21,22 @@ cmake --build build
 
 Out-of-source builds (for example, using a dedicated `build/` directory) are recommended.
 
-- **Buildsystem clean** (portable):
+- **Buildsystem clean**:
   ```sh
-  cmake --build build --target clean
+  make clean
   ```
-  For multi-config generators such as MSVC or Xcode, add `--config Debug` or `--config Release`.
+  For multi-config generators such as MSVC or Xcode, pass `CONFIG=Debug` or `CONFIG=Release`.
 
-- **Full purge**: remove the entire build directory for a fresh start.
+- **Distclean**: scrub CMake files inside `build/`:
   ```sh
-  rm -rf build
+  make distclean
   ```
-  Convenience scripts will be added in later prompts.
+
+- **Full purge**: delete `build*` directories via the cleanup script:
+  ```sh
+  make nuke
+  ```
+  The Makefile is a convenience for POSIX shells. Windows users should run `scripts/clean.ps1` or invoke the `cmake --build` commands directly.
 
 ## Directory layout
 
