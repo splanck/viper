@@ -9,6 +9,7 @@
 
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -108,6 +109,18 @@ class SemanticAnalyzer
     std::unordered_set<int> labelRefs_;
     std::vector<std::string> forStack_; ///< Active FOR loop variables.
     ProcTable procs_;                   ///< Registered procedures.
+
+    // scope management
+    std::vector<std::unordered_map<std::string, std::string>>
+        scopeStack_;          ///< @brief Stack of scopes mapping original names to mangled.
+    unsigned nextLocalId_{0}; ///< @brief Counter for unique local names.
+
+    /// @brief Enter a new lexical scope.
+    void pushScope();
+    /// @brief Exit the current lexical scope.
+    void popScope();
+    /// @brief Resolve @p name, returning mangled form if found.
+    std::optional<std::string> resolve(const std::string &name) const;
 };
 
 } // namespace il::frontends::basic

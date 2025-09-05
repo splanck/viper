@@ -530,7 +530,7 @@ void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
         }
         else if (auto *d = dynamic_cast<const DimStmt *>(&s))
         {
-            vars.insert(d->name);
+            vars.insert(d->name); // DIM locals become stack slots in entry
             arrays.insert(d->name);
             ex(*d->size);
         }
@@ -601,6 +601,7 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
     cur = entry;
     materializeParams(decl.params);
 
+    // allocate slots for locals (including DIM declarations) in entry
     for (const auto &v : vars)
     {
         if (paramNames.count(v))
@@ -722,6 +723,7 @@ void Lowerer::lowerSubDecl(const SubDecl &decl)
     cur = entry;
     materializeParams(decl.params);
 
+    // allocate slots for locals (including DIM declarations) in entry
     for (const auto &v : vars)
     {
         if (paramNames.count(v))
