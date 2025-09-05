@@ -144,6 +144,8 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
         line = trim(line);
         if (line.empty())
             continue;
+        if (line.rfind("//", 0) == 0)
+            continue;
         if (!curFn)
         {
             if (line.rfind("il", 0) == 0)

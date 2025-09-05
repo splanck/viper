@@ -27,6 +27,10 @@ add_executable(test_il_utils il/UtilsTests.cpp)
 target_link_libraries(test_il_utils PRIVATE IL)
 add_test(NAME test_il_utils COMMAND test_il_utils)
 
+add_executable(test_il_comments unit/test_il_comments.cpp)
+target_link_libraries(test_il_comments PRIVATE il_core il_io support)
+add_test(NAME test_il_comments COMMAND test_il_comments)
+
 add_executable(test_tools_break_parsing tools/BreakParsingTests.cpp)
 target_include_directories(test_tools_break_parsing PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME test_tools_break_parsing COMMAND test_tools_break_parsing)
