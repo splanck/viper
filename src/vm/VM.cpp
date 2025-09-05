@@ -5,6 +5,7 @@
 // Links: docs/il-spec.md
 
 #include "vm/VM.hpp"
+#include "VM/Debug.h"
 #include "VM/DebugScript.h"
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
@@ -123,7 +124,7 @@ int64_t VM::execFunction(const Function &fn)
             const auto *sm = debug.getSourceManager();
             std::string path;
             if (sm && in.loc.isValid())
-                path = std::string(sm->getPath(in.loc.file_id));
+                path = DebugCtrl::normalizePath(std::string(sm->getPath(in.loc.file_id)));
             std::cerr << "[BREAK] src=" << path << ':' << in.loc.line << " fn=@" << fr.func->name
                       << " blk=" << bb->label << " ip=#" << ip << "\n";
             return 10;
