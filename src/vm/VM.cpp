@@ -11,6 +11,7 @@
 #include "vm/RuntimeBridge.hpp"
 #include <cassert>
 #include <cstring>
+#include <filesystem>
 #include <iostream>
 #include <utility>
 
@@ -123,7 +124,16 @@ int64_t VM::execFunction(const Function &fn)
             const auto *sm = debug.getSourceManager();
             std::string path;
             if (sm && in.loc.isValid())
-                path = std::string(sm->getPath(in.loc.file_id));
+            {
+                std::filesystem::path p{sm->getPath(in.loc.file_id)};
+                if (p.is_absolute())
+                {
+                    std::error_code ec;
+                    auto rel = std::filesystem::relative(p, std::filesystem::current_path(), ec);
+                    p = ec ? p : rel;
+                }
+                path = DebugCtrl::normalizePath(p.string());
+            }
             std::cerr << "[BREAK] src=" << path << ':' << in.loc.line << " fn=@" << fr.func->name
                       << " blk=" << bb->label << " ip=#" << ip << "\n";
             return 10;
