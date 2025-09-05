@@ -10,6 +10,7 @@
 #include "support/source_manager.hpp"
 #include <filesystem>
 #include <iostream>
+#include <system_error>
 
 namespace il::vm
 {
@@ -19,56 +20,22 @@ std::string DebugCtrl::normalizePath(std::string p)
     for (char &c : p)
         if (c == '\\')
             c = '/';
-    bool absolute = !p.empty() && p.front() == '/';
-    std::vector<std::string> stack;
-    std::string segment;
-    auto flush = [&]()
-    {
-        if (segment.empty() || segment == ".")
-        {
-            segment.clear();
-            return;
-        }
-        if (segment == "..")
-        {
-            if (!stack.empty() && stack.back() != "..")
-                stack.pop_back();
-            else if (!absolute)
-                stack.push_back("..");
-        }
-        else
-            stack.push_back(std::move(segment));
-        segment.clear();
-    };
-    for (size_t i = 0; i <= p.size(); ++i)
-    {
-        char c = (i < p.size()) ? p[i] : '/';
-        if (c == '/')
-            flush();
-        else
-            segment += c;
-    }
-    std::string out = absolute ? "/" : "";
-    for (size_t i = 0; i < stack.size(); ++i)
-    {
-        if (i)
-            out += '/';
-        out += stack[i];
-    }
+    std::error_code ec;
+    std::filesystem::path cwd =
+        std::filesystem::weakly_canonical(std::filesystem::current_path(), ec);
+    if (ec)
+        cwd = std::filesystem::current_path();
+    std::filesystem::path path = std::filesystem::weakly_canonical(p, ec);
+    if (ec)
+        path = std::filesystem::path(p).lexically_normal();
+    std::filesystem::path rel = path.lexically_relative(cwd);
+    std::string out;
+    if (!rel.empty() && rel.native().compare(0, 2, "..") != 0)
+        out = rel.generic_string();
+    else
+        out = path.generic_string();
     if (out.empty())
-        return absolute ? std::string{"/"} : std::string{"."};
-    if (absolute)
-    {
-        static const std::string cwd = []
-        { return std::filesystem::current_path().lexically_normal().generic_string(); }();
-        if (out.compare(0, cwd.size(), cwd) == 0)
-        {
-            if (out.size() == cwd.size())
-                return std::string{"."};
-            if (out.size() > cwd.size() && out[cwd.size()] == '/')
-                return out.substr(cwd.size() + 1);
-        }
-    }
+        out = ".";
     return out;
 }
 

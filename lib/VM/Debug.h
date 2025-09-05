@@ -68,9 +68,10 @@ class DebugCtrl
     /// @brief Retrieve associated source manager.
     const il::support::SourceManager *getSourceManager() const;
 
-    /// @brief Normalize @p p by canonicalizing separators and dot segments.
-    /// Replaces backslashes with forward slashes, removes redundant "./", and
-    /// collapses "dir/../" without resolving symlinks.
+    /// @brief Normalize @p p and, if possible, express it relative to the
+    /// current working directory.
+    /// Uses @c std::filesystem to canonicalize segments and resolve symlinks
+    /// and returns a path with forward slashes.
     static std::string normalizePath(std::string p);
 
     /// @brief Register a watch on variable @p name.
