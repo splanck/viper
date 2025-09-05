@@ -181,7 +181,6 @@ add_test(NAME basic_abs_mixed COMMAND ${CMAKE_COMMAND}
   -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/basic_abs_mixed.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/basic_abs_mixed.bas.out
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_basic_math_phase1.cmake)
-
 add_test(NAME basic_random_repro COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DSRC_DIR=${CMAKE_SOURCE_DIR}
@@ -465,6 +464,12 @@ add_test(NAME basic_to_il_lower_funcdef_only COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
   -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/lower_funcdef_only.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/lower_funcdef_only.il
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
+
+add_test(NAME basic_to_il_calls_lowering COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/calls_lowering.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/calls_lowering.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 
 file(READ ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/proc_registration_ok.err EXPECT_PROC_REG)
