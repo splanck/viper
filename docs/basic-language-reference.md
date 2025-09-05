@@ -168,6 +168,19 @@ marked as arrays with `()`. Array parameters are limited to `i64[]` and
 `str[]`; `f64[]` is currently rejected. Parameter names must be unique within a
 procedure.
 
+A `FUNCTION` must reach a `RETURN` with an expression along every control
+path. Falling off the end or omitting an `ELSE` arm yields a compile-time
+error:
+
+```basic
+10 FUNCTION F()
+20 IF 1 THEN RETURN 1
+30 END FUNCTION  ' missing return in FUNCTION F
+```
+
+The analyzer treats loops conservatively—ending a function with `WHILE` or
+`FOR` requires an explicit `RETURN` after the loop.
+
 Parameters may include a type suffix (`#` for `f64`, `$` for `str`). Appending `()` denotes a 1-D array parameter.
 
 #### Calling FUNCTIONS and SUBS
