@@ -28,6 +28,19 @@ Multi-config:
 cmake --build build --target clean --config Debug
 ```
 
+## CMake distclean (from a build dir)
+
+Scrub CMake-generated files in the current build tree:
+
+```sh
+cmake --build . --target distclean
+# or
+cmake -P cmake/DistClean.cmake
+```
+
+On Windows, files that are still in use may require running the command again
+after closing the program holding the lock.
+
 ## Full purge
 
 Remove the entire build directory to start fresh:
