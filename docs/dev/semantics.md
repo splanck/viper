@@ -31,3 +31,18 @@ Each `FUNCTION` or `SUB` is analyzed with a stack of lexical scopes. A new
 scope is pushed when entering a nested block and popped on exit. `DIM` adds a
 symbol to the current scope; the name may shadow one from an outer scope but
 redeclaring within the same scope is rejected.
+
+## Return-path analysis
+
+Functions must return a value along every control-flow path. The analyzer
+implements a simple structural check:
+
+- `RETURN` with an expression marks a returning path.
+- `IF`/`ELSEIF`/`ELSE` returns only when all arms return.
+- `WHILE` and `FOR` are assumed to possibly skip execution or loop forever and
+  therefore do not guarantee a return.
+- For a sequence of statements, only the final statement is considered.
+
+If analysis fails, `missing return in FUNCTION <name>` is reported at the
+`END FUNCTION` keyword. This pass is conservative and does not attempt deep
+flow analysis (e.g., constant conditions or loop bounds).

@@ -63,6 +63,44 @@ std::optional<std::string> SemanticAnalyzer::resolve(const std::string &name) co
     return std::nullopt;
 }
 
+/// @brief Check whether a sequence of statements guarantees a return value.
+///
+/// The analysis is structural and conservative:
+/// - `RETURN` with an expression returns true.
+/// - `IF`/`ELSEIF`/`ELSE` returns only if all arms return.
+/// - `WHILE` and `FOR` are treated as potentially non-terminating and thus do
+///   not guarantee a return, regardless of their bodies.
+/// - For a list of statements, only the last statement is considered.
+bool SemanticAnalyzer::mustReturn(const std::vector<StmtPtr> &stmts) const
+{
+    if (stmts.empty())
+        return false;
+    return mustReturn(*stmts.back());
+}
+
+/// @brief Determine whether a single statement returns a value on all paths.
+bool SemanticAnalyzer::mustReturn(const Stmt &s) const
+{
+    if (auto *lst = dynamic_cast<const StmtList *>(&s))
+        return !lst->stmts.empty() && mustReturn(*lst->stmts.back());
+    if (auto *ret = dynamic_cast<const ReturnStmt *>(&s))
+        return ret->value != nullptr;
+    if (auto *ifs = dynamic_cast<const IfStmt *>(&s))
+    {
+        if (!ifs->then_branch || !mustReturn(*ifs->then_branch))
+            return false;
+        for (const auto &e : ifs->elseifs)
+            if (!e.then_branch || !mustReturn(*e.then_branch))
+                return false;
+        if (!ifs->else_branch)
+            return false;
+        return mustReturn(*ifs->else_branch);
+    }
+    if (dynamic_cast<const WhileStmt *>(&s) || dynamic_cast<const ForStmt *>(&s))
+        return false;
+    return false;
+}
+
 void SemanticAnalyzer::analyze(const Program &prog)
 {
     symbols_.clear();
@@ -385,6 +423,7 @@ void SemanticAnalyzer::visitStmt(const Stmt &s)
             for (const auto &st : f->body)
                 if (st)
                     visitStmt(*st);
+            bool allPathsReturn = mustReturn(f->body);
             popScope(); // exit function scope
             symbols_ = std::move(symSave);
             varTypes_ = std::move(typeSave);
@@ -392,6 +431,15 @@ void SemanticAnalyzer::visitStmt(const Stmt &s)
             labels_ = std::move(labelSave);
             labelRefs_ = std::move(labelRefSave);
             forStack_ = std::move(forSave);
+            if (!allPathsReturn)
+            {
+                std::string msg = "missing return in FUNCTION " + f->name;
+                de.emit(il::support::Severity::Error,
+                        "B1007",
+                        f->endLoc.isValid() ? f->endLoc : f->loc,
+                        3,
+                        std::move(msg));
+            }
         }
     }
     else if (auto *sub = dynamic_cast<const SubDecl *>(&s))
