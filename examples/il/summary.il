@@ -1,4 +1,4 @@
-il 0.1
+il 0.1 ; // File: examples/il/summary.il // Purpose: Exercises integer add and mul instructions. // Links: docs/il-spec.md#integer-arithmetic
 
 func @main() -> i64 {
 entry:
