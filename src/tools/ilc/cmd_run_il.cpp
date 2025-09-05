@@ -7,6 +7,7 @@
 #include "VM/Debug.h"
 #include "VM/DebugScript.h"
 #include "VM/Trace.h"
+#include "break_spec.hpp"
 #include "cli.hpp"
 #include "il/io/Parser.hpp"
 #include "il/verify/Verifier.hpp"
@@ -70,8 +71,19 @@ int cmdRunIL(int argc, char **argv)
         }
         else if (arg == "--break" && i + 1 < argc)
         {
-            auto sym = dbg.internLabel(argv[++i]);
-            dbg.addBreak(sym);
+            std::string spec = argv[++i];
+            if (ilc::isSrcBreakSpec(spec))
+            {
+                auto pos = spec.rfind(':');
+                std::string file = spec.substr(0, pos);
+                int line = std::stoi(spec.substr(pos + 1));
+                dbg.addBreakSrcLine(file, line);
+            }
+            else
+            {
+                auto sym = dbg.internLabel(spec.c_str());
+                dbg.addBreak(sym);
+            }
         }
         else if (arg == "--break-src" && i + 1 < argc)
         {
