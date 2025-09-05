@@ -1,6 +1,6 @@
 // File: src/frontends/basic/SemanticAnalyzer.hpp
 // Purpose: Declares BASIC semantic analyzer for symbol and label tracking,
-//          basic validation, and rudimentary type checking.
+//          basic validation, rudimentary type checking, and ProcTable registration.
 // Key invariants: Analyzer tracks defined symbols and reports unknown
 //                 references.
 // Ownership/Lifetime: Analyzer borrows DiagnosticEmitter; no AST ownership.
@@ -16,6 +16,31 @@
 
 namespace il::frontends::basic
 {
+
+/// @brief Signature information for a declared procedure.
+struct ProcSignature
+{
+    /// @brief Procedure kind distinguishing FUNCTION from SUB.
+    enum class Kind
+    {
+        Function,
+        Sub
+    } kind{Kind::Function};
+
+    Type retType{Type::I64}; ///< Return type for FUNCTION; ignored for SUB.
+
+    /// @brief Parameter type descriptor.
+    struct Param
+    {
+        Type type{Type::I64}; ///< Parameter BASIC type.
+        bool is_array{false}; ///< True if parameter declared with ().
+    };
+
+    std::vector<Param> params; ///< Ordered parameter types.
+};
+
+/// @brief Table mapping procedure name to its signature.
+using ProcTable = std::unordered_map<std::string, ProcSignature>;
 
 /// @brief Traverses BASIC AST to collect symbols and labels, validate variable
 ///        references, and verify FOR/NEXT nesting.
@@ -50,6 +75,12 @@ class SemanticAnalyzer
         return labelRefs_;
     }
 
+    /// @brief Registered procedures and their signatures.
+    const ProcTable &procs() const
+    {
+        return procs_;
+    }
+
   private:
     /// @brief Record symbols and labels from a statement.
     /// @param s Statement node to analyze.
@@ -76,6 +107,7 @@ class SemanticAnalyzer
     std::unordered_set<int> labels_;
     std::unordered_set<int> labelRefs_;
     std::vector<std::string> forStack_; ///< Active FOR loop variables.
+    ProcTable procs_;                   ///< Registered procedures.
 };
 
 } // namespace il::frontends::basic
