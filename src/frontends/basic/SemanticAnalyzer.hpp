@@ -113,6 +113,13 @@ class SemanticAnalyzer
     /// @brief Analyze DIM statement @p s.
     void analyzeDim(const DimStmt &s);
 
+    /// @brief Analyze assignment to a simple variable in LET.
+    void analyzeVarAssignment(VarExpr &v, const LetStmt &s);
+    /// @brief Analyze assignment to an array element in LET.
+    void analyzeArrayAssignment(ArrayExpr &a, const LetStmt &s);
+    /// @brief Report error for LET with a non-assignable left-hand side.
+    void analyzeConstExpr(const LetStmt &s);
+
     /// @brief Inferred BASIC value type.
     enum class Type
     {
