@@ -203,6 +203,26 @@ ExprPtr Parser::parseBuiltinCall(BuiltinCallExpr::Builtin builtin, il::support::
     return call;
 }
 
+ExprPtr Parser::parseVariableRef(std::string name, il::support::SourceLoc loc)
+{
+    auto v = std::make_unique<VarExpr>();
+    v->loc = loc;
+    v->name = std::move(name);
+    return v;
+}
+
+ExprPtr Parser::parseArrayRef(std::string name, il::support::SourceLoc loc)
+{
+    expect(TokenKind::LParen);
+    auto index = parseExpression();
+    expect(TokenKind::RParen);
+    auto arr = std::make_unique<ArrayExpr>();
+    arr->loc = loc;
+    arr->name = std::move(name);
+    arr->index = std::move(index);
+    return arr;
+}
+
 ExprPtr Parser::parseArrayOrVar()
 {
     std::string name = peek().lexeme;
@@ -232,66 +252,33 @@ ExprPtr Parser::parseArrayOrVar()
         if (is_builtin)
             return parseBuiltinCall(builtin, loc);
 
-        consume();
         if (arrays_.count(name))
+            return parseArrayRef(name, loc);
+
+        expect(TokenKind::LParen);
+        std::vector<ExprPtr> args;
+        if (!at(TokenKind::RParen))
         {
-            auto first = parseExpression();
-            if (at(TokenKind::RParen))
-            {
-                consume();
-                auto arr = std::make_unique<ArrayExpr>();
-                arr->loc = loc;
-                arr->name = name;
-                arr->index = std::move(first);
-                return arr;
-            }
-            // treat as call if more arguments follow
-            std::vector<ExprPtr> args;
-            args.push_back(std::move(first));
             while (true)
             {
-                expect(TokenKind::Comma);
                 args.push_back(parseExpression());
-                if (!at(TokenKind::Comma))
-                    break;
-            }
-            expect(TokenKind::RParen);
-            auto call = std::make_unique<CallExpr>();
-            call->loc = loc;
-            call->Expr::loc = loc;
-            call->callee = name;
-            call->args = std::move(args);
-            return call;
-        }
-        else
-        {
-            std::vector<ExprPtr> args;
-            if (!at(TokenKind::RParen))
-            {
-                while (true)
+                if (at(TokenKind::Comma))
                 {
-                    args.push_back(parseExpression());
-                    if (at(TokenKind::Comma))
-                    {
-                        consume();
-                        continue;
-                    }
-                    break;
+                    consume();
+                    continue;
                 }
+                break;
             }
-            expect(TokenKind::RParen);
-            auto call = std::make_unique<CallExpr>();
-            call->loc = loc;
-            call->Expr::loc = loc;
-            call->callee = name;
-            call->args = std::move(args);
-            return call;
         }
+        expect(TokenKind::RParen);
+        auto call = std::make_unique<CallExpr>();
+        call->loc = loc;
+        call->Expr::loc = loc;
+        call->callee = name;
+        call->args = std::move(args);
+        return call;
     }
-    auto v = std::make_unique<VarExpr>();
-    v->loc = loc;
-    v->name = name;
-    return v;
+    return parseVariableRef(name, loc);
 }
 
 ExprPtr Parser::parsePrimary()
