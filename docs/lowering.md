@@ -85,3 +85,11 @@ IF X THEN F = 1 ELSE F = 2 END IF RETURN F END FUNCTION
           if_end_0_F : ... br ret_F ret_F : ret 0
       }
 ```
+
+## Return statements
+
+`RETURN` lowers directly to an IL `ret` terminator (or `ret void` for `SUB`).
+Once emitted, the current block is considered closed and no further statements
+from the same BASIC block are lowered. This prevents generating dead
+instructions after a `RETURN` and ensures each block has exactly one
+terminator.
