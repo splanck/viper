@@ -464,7 +464,8 @@ bool parseInstruction(const std::string &line, ParserState &st, std::ostream &er
     return true;
 }
 
-bool parseFunction(std::istream &is, std::string &header, ParserState &st, std::ostream &err)
+/// @brief Parse a function's header and initialize parser state.
+bool parseFunctionHeader(const std::string &header, ParserState &st, std::ostream &err)
 {
     size_t at = header.find('@');
     size_t lp = header.find('(', at);
@@ -505,6 +506,82 @@ bool parseFunction(std::istream &is, std::string &header, ParserState &st, std::
         st.curFn->valueNames[param.id] = param.name;
     st.blockParamCount.clear();
     st.pendingBrs.clear();
+    (void)err; // err currently unused
+    return true;
+}
+
+/// @brief Parse a block label and parameters, creating the basic block.
+bool parseBlockHeader(const std::string &header, ParserState &st, std::ostream &err)
+{
+    size_t lp = header.find('(');
+    std::vector<Param> bparams;
+    std::string label = trim(header);
+    if (lp != std::string::npos)
+    {
+        size_t rp = header.find(')', lp);
+        if (rp == std::string::npos)
+        {
+            err << "line " << st.lineNo << ": mismatched ')\n";
+            return false;
+        }
+        label = trim(header.substr(0, lp));
+        std::string paramsStr = header.substr(lp + 1, rp - lp - 1);
+        std::stringstream pss(paramsStr);
+        std::string q;
+        while (std::getline(pss, q, ','))
+        {
+            q = trim(q);
+            if (q.empty())
+                continue;
+            size_t col = q.find(':');
+            if (col == std::string::npos)
+            {
+                err << "line " << st.lineNo << ": bad param\n";
+                return false;
+            }
+            std::string nm = trim(q.substr(0, col));
+            if (!nm.empty() && nm[0] == '%')
+                nm = nm.substr(1);
+            std::string tyStr = trim(q.substr(col + 1));
+            bool ok = true;
+            Type ty = parseType(tyStr, &ok);
+            if (!ok || ty.kind == Type::Kind::Void)
+            {
+                err << "line " << st.lineNo << ": unknown param type\n";
+                return false;
+            }
+            bparams.push_back({nm, ty, st.nextTemp});
+            st.tempIds[nm] = st.nextTemp;
+            if (st.curFn->valueNames.size() <= st.nextTemp)
+                st.curFn->valueNames.resize(st.nextTemp + 1);
+            st.curFn->valueNames[st.nextTemp] = nm;
+            ++st.nextTemp;
+        }
+    }
+    st.curFn->blocks.push_back({label, bparams, {}, false});
+    st.curBB = &st.curFn->blocks.back();
+    st.blockParamCount[label] = bparams.size();
+    for (auto it = st.pendingBrs.begin(); it != st.pendingBrs.end();)
+    {
+        if (it->label == label)
+        {
+            if (it->args != bparams.size())
+            {
+                err << "line " << it->line << ": bad arg count\n";
+                return false;
+            }
+            it = st.pendingBrs.erase(it);
+        }
+        else
+            ++it;
+    }
+    return true;
+}
+
+bool parseFunction(std::istream &is, std::string &header, ParserState &st, std::ostream &err)
+{
+    if (!parseFunctionHeader(header, st, err))
+        return false;
 
     std::string line;
     while (std::getline(is, line))
@@ -521,69 +598,8 @@ bool parseFunction(std::istream &is, std::string &header, ParserState &st, std::
         }
         if (line.back() == ':')
         {
-            std::string header2 = line.substr(0, line.size() - 1);
-            size_t lp2 = header2.find('(');
-            std::vector<Param> bparams;
-            std::string label = trim(header2);
-            if (lp2 != std::string::npos)
-            {
-                size_t rp2 = header2.find(')', lp2);
-                if (rp2 == std::string::npos)
-                {
-                    err << "line " << st.lineNo << ": mismatched ')\n";
-                    return false;
-                }
-                label = trim(header2.substr(0, lp2));
-                std::string paramsStr2 = header2.substr(lp2 + 1, rp2 - lp2 - 1);
-                std::stringstream pss2(paramsStr2);
-                std::string q;
-                while (std::getline(pss2, q, ','))
-                {
-                    q = trim(q);
-                    if (q.empty())
-                        continue;
-                    size_t col = q.find(':');
-                    if (col == std::string::npos)
-                    {
-                        err << "line " << st.lineNo << ": bad param\n";
-                        return false;
-                    }
-                    std::string nm = trim(q.substr(0, col));
-                    if (!nm.empty() && nm[0] == '%')
-                        nm = nm.substr(1);
-                    std::string tyStr = trim(q.substr(col + 1));
-                    bool ok = true;
-                    Type ty = parseType(tyStr, &ok);
-                    if (!ok || ty.kind == Type::Kind::Void)
-                    {
-                        err << "line " << st.lineNo << ": unknown param type\n";
-                        return false;
-                    }
-                    bparams.push_back({nm, ty, st.nextTemp});
-                    st.tempIds[nm] = st.nextTemp;
-                    if (st.curFn->valueNames.size() <= st.nextTemp)
-                        st.curFn->valueNames.resize(st.nextTemp + 1);
-                    st.curFn->valueNames[st.nextTemp] = nm;
-                    ++st.nextTemp;
-                }
-            }
-            st.curFn->blocks.push_back({label, bparams, {}, false});
-            st.curBB = &st.curFn->blocks.back();
-            st.blockParamCount[label] = bparams.size();
-            for (auto it = st.pendingBrs.begin(); it != st.pendingBrs.end();)
-            {
-                if (it->label == label)
-                {
-                    if (it->args != bparams.size())
-                    {
-                        err << "line " << it->line << ": bad arg count\n";
-                        return false;
-                    }
-                    it = st.pendingBrs.erase(it);
-                }
-                else
-                    ++it;
-            }
+            if (!parseBlockHeader(line.substr(0, line.size() - 1), st, err))
+                return false;
             continue;
         }
         if (!st.curBB)
