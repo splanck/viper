@@ -374,6 +374,10 @@ class Lowerer
         Bool,
     };
     ExprType scanExpr(const Expr &e);
+    ExprType scanUnaryExpr(const UnaryExpr &u);
+    ExprType scanBinaryExpr(const BinaryExpr &b);
+    ExprType scanArrayExpr(const ArrayExpr &arr);
+    ExprType scanBuiltinCallExpr(const BuiltinCallExpr &c);
     void scanStmt(const Stmt &s);
     /// @brief Analyze @p prog for runtime usage prior to emission.
     void scanProgram(const Program &prog);
