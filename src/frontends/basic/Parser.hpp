@@ -57,6 +57,8 @@ class Parser
     ExprPtr parseNumber();
     ExprPtr parseString();
     ExprPtr parseBuiltinCall(BuiltinCallExpr::Builtin builtin, il::support::SourceLoc loc);
+    ExprPtr parseVariableRef(std::string name, il::support::SourceLoc loc);
+    ExprPtr parseArrayRef(std::string name, il::support::SourceLoc loc);
     ExprPtr parseArrayOrVar();
     int precedence(TokenKind k);
 };
