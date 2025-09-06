@@ -185,6 +185,22 @@ class Lowerer
     void materializeParams(const std::vector<Param> &params);
     void lowerStmt(const Stmt &stmt);
     RVal lowerExpr(const Expr &expr);
+    /// @brief Lower a variable reference expression.
+    /// @param expr Variable expression node.
+    /// @return Loaded value and its type.
+    RVal lowerVarExpr(const VarExpr &expr);
+    /// @brief Lower a unary expression (e.g. NOT).
+    /// @param expr Unary expression node.
+    /// @return Resulting value and type.
+    RVal lowerUnaryExpr(const UnaryExpr &expr);
+    /// @brief Lower a binary expression.
+    /// @param expr Binary expression node.
+    /// @return Resulting value and type.
+    RVal lowerBinaryExpr(const BinaryExpr &expr);
+    /// @brief Lower a built-in call expression.
+    /// @param expr Built-in call expression node.
+    /// @return Resulting value and type.
+    RVal lowerBuiltinCall(const BuiltinCallExpr &expr);
 
     void lowerLet(const LetStmt &stmt);
     void lowerPrint(const PrintStmt &stmt);
