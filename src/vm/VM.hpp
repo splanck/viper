@@ -132,6 +132,36 @@ class VM
     using BlockMap =
         std::unordered_map<std::string, const il::core::BasicBlock *>; ///< Block lookup table
 
+    /// @brief Aggregate execution state for a running function.
+    struct ExecState
+    {
+        Frame fr;                                 ///< Current frame
+        BlockMap blocks;                          ///< Basic block lookup
+        const il::core::BasicBlock *bb = nullptr; ///< Active basic block
+        size_t ip = 0;                            ///< Instruction pointer within @p bb
+        bool skipBreakOnce = false;               ///< Whether to skip next breakpoint
+    };
+
+    /// @brief Prepare initial execution state for @p fn.
+    /// @param fn Function to execute.
+    /// @param args Argument slots for the callee's entry block.
+    /// @return Fully initialized execution state.
+    ExecState prepareExecution(const il::core::Function &fn, const std::vector<Slot> &args);
+
+    /// @brief Process step limits and debug breakpoints.
+    /// @param st Current execution state.
+    /// @param in Optional instruction for source breakpoints.
+    /// @param postExec True if called after executing an opcode.
+    /// @return Slot signalling pause/stop if engaged.
+    std::optional<Slot> processDebugControl(ExecState &st,
+                                            const il::core::Instr *in,
+                                            bool postExec);
+
+    /// @brief Run the main interpreter loop.
+    /// @param st Prepared execution state.
+    /// @return Return value slot.
+    Slot runFunctionLoop(ExecState &st);
+
     /// @brief Handle alloca opcode.
     ExecResult handleAlloca(Frame &fr, const il::core::Instr &in);
 
