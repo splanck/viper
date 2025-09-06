@@ -52,6 +52,10 @@ class Parser
 
     ExprPtr parseExpression(int min_prec = 0);
     ExprPtr parsePrimary();
+    ExprPtr parseNumber();
+    ExprPtr parseString();
+    ExprPtr parseBuiltinCall(BuiltinCallExpr::Builtin builtin, il::support::SourceLoc loc);
+    ExprPtr parseArrayOrVar();
     int precedence(TokenKind k);
 };
 
