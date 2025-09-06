@@ -175,6 +175,16 @@ class Lowerer
         }
     };
 
+    struct ForBlocks
+    {
+        size_t headIdx{0};
+        size_t headPosIdx{0};
+        size_t headNegIdx{0};
+        size_t bodyIdx{0};
+        size_t incIdx{0};
+        size_t doneIdx{0};
+    };
+
     std::unique_ptr<BlockNamer> blockNamer;
 
     void collectVars(const Program &prog);
@@ -249,6 +259,10 @@ class Lowerer
     void lowerIf(const IfStmt &stmt);
     void lowerWhile(const WhileStmt &stmt);
     void lowerFor(const ForStmt &stmt);
+    void lowerForConstStep(const ForStmt &stmt, Value slot, RVal end, RVal step, long stepConst);
+    void lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal step);
+    ForBlocks setupForBlocks(bool varStep);
+    void emitForStep(Value slot, Value step);
     void lowerNext(const NextStmt &stmt);
     void lowerGoto(const GotoStmt &stmt);
     void lowerEnd(const EndStmt &stmt);
