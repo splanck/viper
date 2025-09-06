@@ -117,11 +117,9 @@ std::string readToken(std::istringstream &ss)
     return t;
 }
 
-} // namespace
-
-bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
+struct ParserState
 {
-    std::string line;
+    Module &m;
     Function *curFn = nullptr;
     BasicBlock *curBB = nullptr;
     std::unordered_map<std::string, unsigned> tempIds;
@@ -138,515 +136,541 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
     };
 
     std::vector<PendingBr> pendingBrs;
-    while (std::getline(is, line))
+
+    explicit ParserState(Module &mod) : m(mod) {}
+};
+
+bool parseInstruction(const std::string &line, ParserState &st, std::ostream &err)
+{
+    Instr in;
+    in.loc = st.curLoc;
+    std::string work = line;
+    if (work[0] == '%')
     {
-        ++lineNo;
-        line = trim(line);
-        if (line.empty() || line.rfind("//", 0) == 0)
-            continue;
-        if (!curFn)
+        size_t eq = work.find('=');
+        std::string res = trim(work.substr(1, eq - 1));
+        auto [it, inserted] = st.tempIds.emplace(res, st.nextTemp);
+        if (inserted)
         {
-            if (line.rfind("il", 0) == 0)
-            {
-                std::istringstream ls(line);
-                std::string kw;
-                ls >> kw;
-                std::string ver;
-                if (ls >> ver)
-                    m.version = ver;
-                else
-                    m.version = "0.1.2";
-                continue;
-            }
-            if (line.rfind("extern", 0) == 0)
-            {
-                size_t at = line.find('@');
-                size_t lp = line.find('(', at);
-                size_t rp = line.find(')', lp);
-                size_t arr = line.find("->", rp);
-                std::string name = line.substr(at + 1, lp - at - 1);
-                std::string paramsStr = line.substr(lp + 1, rp - lp - 1);
-                std::vector<Type> params;
-                std::stringstream pss(paramsStr);
-                std::string p;
-                while (std::getline(pss, p, ','))
-                {
-                    p = trim(p);
-                    if (!p.empty())
-                        params.push_back(parseType(p));
-                }
-                std::string retStr = trim(line.substr(arr + 2));
-                m.externs.push_back({name, parseType(retStr), params});
-                continue;
-            }
-            if (line.rfind("global", 0) == 0)
-            {
-                size_t at = line.find('@');
-                size_t eq = line.find('=', at);
-                size_t q1 = line.find('"', eq);
-                size_t q2 = line.rfind('"');
-                std::string name = trim(line.substr(at + 1, eq - at - 1));
-                std::string init = line.substr(q1 + 1, q2 - q1 - 1);
-                m.globals.push_back({name, Type(Type::Kind::Str), init});
-                continue;
-            }
-            if (line.rfind("func", 0) == 0)
-            {
-                size_t at = line.find('@');
-                size_t lp = line.find('(', at);
-                size_t rp = line.find(')', lp);
-                size_t arr = line.find("->", rp);
-                size_t lb = line.find('{', arr);
-                std::string name = line.substr(at + 1, lp - at - 1);
-                std::string paramsStr = line.substr(lp + 1, rp - lp - 1);
-                std::vector<Param> params;
-                std::stringstream pss(paramsStr);
-                std::string p;
-                while (std::getline(pss, p, ','))
-                {
-                    p = trim(p);
-                    if (p.empty())
-                        continue;
-                    std::stringstream ps(p);
-                    std::string ty, nm;
-                    ps >> ty >> nm;
-                    if (!ty.empty() && !nm.empty() && nm[0] == '%')
-                        params.push_back({nm.substr(1), parseType(ty)});
-                }
-                std::string retStr = trim(line.substr(arr + 2, lb - arr - 2));
-                tempIds.clear();
-                unsigned idx = 0;
-                for (auto &p : params)
-                {
-                    p.id = idx;
-                    tempIds[p.name] = idx;
-                    ++idx;
-                }
-                m.functions.push_back({name, parseType(retStr), params, {}, {}});
-                curFn = &m.functions.back();
-                curBB = nullptr;
-                nextTemp = idx;
-                curFn->valueNames.resize(nextTemp);
-                for (auto &p : params)
-                    curFn->valueNames[p.id] = p.name;
-                blockParamCount.clear();
-                pendingBrs.clear();
-                continue;
-            }
-            err << "line " << lineNo << ": unexpected line: " << line << "\n";
-            return false;
+            if (st.curFn->valueNames.size() <= st.nextTemp)
+                st.curFn->valueNames.resize(st.nextTemp + 1);
+            st.curFn->valueNames[st.nextTemp] = res;
+            st.nextTemp++;
         }
-        else
+        in.result = it->second;
+        work = trim(work.substr(eq + 1));
+    }
+    std::string op;
+    std::istringstream ss(work);
+    ss >> op;
+    static const std::unordered_map<std::string, Opcode> opMap = {{"add", Opcode::Add},
+                                                                  {"sub", Opcode::Sub},
+                                                                  {"mul", Opcode::Mul},
+                                                                  {"sdiv", Opcode::SDiv},
+                                                                  {"udiv", Opcode::UDiv},
+                                                                  {"srem", Opcode::SRem},
+                                                                  {"urem", Opcode::URem},
+                                                                  {"and", Opcode::And},
+                                                                  {"or", Opcode::Or},
+                                                                  {"xor", Opcode::Xor},
+                                                                  {"shl", Opcode::Shl},
+                                                                  {"lshr", Opcode::LShr},
+                                                                  {"ashr", Opcode::AShr},
+                                                                  {"fadd", Opcode::FAdd},
+                                                                  {"fsub", Opcode::FSub},
+                                                                  {"fmul", Opcode::FMul},
+                                                                  {"fdiv", Opcode::FDiv},
+                                                                  {"icmp_eq", Opcode::ICmpEq},
+                                                                  {"icmp_ne", Opcode::ICmpNe},
+                                                                  {"scmp_lt", Opcode::SCmpLT},
+                                                                  {"scmp_le", Opcode::SCmpLE},
+                                                                  {"scmp_gt", Opcode::SCmpGT},
+                                                                  {"scmp_ge", Opcode::SCmpGE},
+                                                                  {"ucmp_lt", Opcode::UCmpLT},
+                                                                  {"ucmp_le", Opcode::UCmpLE},
+                                                                  {"ucmp_gt", Opcode::UCmpGT},
+                                                                  {"ucmp_ge", Opcode::UCmpGE},
+                                                                  {"fcmp_lt", Opcode::FCmpLT},
+                                                                  {"fcmp_le", Opcode::FCmpLE},
+                                                                  {"fcmp_gt", Opcode::FCmpGT},
+                                                                  {"fcmp_ge", Opcode::FCmpGE},
+                                                                  {"fcmp_eq", Opcode::FCmpEQ},
+                                                                  {"fcmp_ne", Opcode::FCmpNE},
+                                                                  {"sitofp", Opcode::Sitofp},
+                                                                  {"fptosi", Opcode::Fptosi},
+                                                                  {"zext1", Opcode::Zext1},
+                                                                  {"trunc1", Opcode::Trunc1},
+                                                                  {"alloca", Opcode::Alloca},
+                                                                  {"gep", Opcode::GEP},
+                                                                  {"load", Opcode::Load},
+                                                                  {"store", Opcode::Store},
+                                                                  {"addr_of", Opcode::AddrOf},
+                                                                  {"const_str", Opcode::ConstStr},
+                                                                  {"const_null", Opcode::ConstNull},
+                                                                  {"call", Opcode::Call},
+                                                                  {"br", Opcode::Br},
+                                                                  {"cbr", Opcode::CBr},
+                                                                  {"ret", Opcode::Ret},
+                                                                  {"trap", Opcode::Trap}};
+    auto itOp = opMap.find(op);
+    if (itOp == opMap.end())
+    {
+        err << "line " << st.lineNo << ": unknown opcode " << op << "\n";
+        return false;
+    }
+    in.op = itOp->second;
+    switch (in.op)
+    {
+        case Opcode::Alloca:
         {
-            if (line[0] == '}')
+            std::string sz = readToken(ss);
+            in.operands.push_back(parseValue(sz, st.tempIds));
+            in.type = Type(Type::Kind::Ptr);
+            break;
+        }
+        case Opcode::GEP:
+        {
+            std::string base = readToken(ss);
+            std::string off = readToken(ss);
+            in.operands.push_back(parseValue(base, st.tempIds));
+            in.operands.push_back(parseValue(off, st.tempIds));
+            in.type = Type(Type::Kind::Ptr);
+            break;
+        }
+        case Opcode::Load:
+        {
+            std::string ty = readToken(ss);
+            std::string ptr = readToken(ss);
+            in.type = parseType(ty);
+            in.operands.push_back(parseValue(ptr, st.tempIds));
+            break;
+        }
+        case Opcode::Store:
+        {
+            std::string ty = readToken(ss);
+            std::string ptr = readToken(ss);
+            std::string val = readToken(ss);
+            in.type = parseType(ty);
+            in.operands.push_back(parseValue(ptr, st.tempIds));
+            in.operands.push_back(parseValue(val, st.tempIds));
+            break;
+        }
+        case Opcode::AddrOf:
+        {
+            std::string g = readToken(ss);
+            in.operands.push_back(parseValue(g, st.tempIds));
+            in.type = Type(Type::Kind::Ptr);
+            break;
+        }
+        case Opcode::ConstStr:
+        {
+            std::string g = readToken(ss);
+            if (!g.empty())
+                in.operands.push_back(parseValue(g, st.tempIds));
+            in.type = Type(Type::Kind::Str);
+            break;
+        }
+        case Opcode::ConstNull:
+        {
+            in.type = Type(Type::Kind::Ptr);
+            break;
+        }
+        case Opcode::Call:
+        {
+            size_t at = work.find('@');
+            size_t lp = work.find('(', at);
+            size_t rp = work.find(')', lp);
+            in.callee = work.substr(at + 1, lp - at - 1);
+            std::string args = work.substr(lp + 1, rp - lp - 1);
+            std::stringstream as(args);
+            std::string a;
+            while (std::getline(as, a, ','))
             {
-                curFn = nullptr;
-                curBB = nullptr;
-                continue;
+                a = trim(a);
+                if (!a.empty())
+                    in.operands.push_back(parseValue(a, st.tempIds));
             }
-            if (line.back() == ':')
+            in.type = Type(Type::Kind::Void);
+            break;
+        }
+        case Opcode::Br:
+        {
+            std::string rest;
+            std::getline(ss, rest);
+            rest = trim(rest);
+            if (rest.rfind("label ", 0) == 0)
+                rest = trim(rest.substr(6));
+            size_t lp = rest.find('(');
+            std::vector<Value> args;
+            std::string lbl;
+            if (lp == std::string::npos)
             {
-                std::string header = line.substr(0, line.size() - 1);
-                size_t lp = header.find('(');
-                std::vector<Param> params;
-                std::string label = trim(header);
-                if (lp != std::string::npos)
+                lbl = rest;
+            }
+            else
+            {
+                size_t rp = rest.find(')', lp);
+                if (rp == std::string::npos)
                 {
-                    size_t rp = header.find(')', lp);
+                    err << "line " << st.lineNo << ": mismatched ')\n";
+                    return false;
+                }
+                lbl = trim(rest.substr(0, lp));
+                std::string argsStr = rest.substr(lp + 1, rp - lp - 1);
+                std::stringstream as(argsStr);
+                std::string a;
+                while (std::getline(as, a, ','))
+                {
+                    a = trim(a);
+                    if (!a.empty())
+                        args.push_back(parseValue(a, st.tempIds));
+                }
+            }
+            in.labels.push_back(lbl);
+            in.brArgs.push_back(args);
+            size_t argCount = args.size();
+            auto it = st.blockParamCount.find(lbl);
+            if (it != st.blockParamCount.end())
+            {
+                if (it->second != argCount)
+                {
+                    err << "line " << st.lineNo << ": bad arg count\n";
+                    return false;
+                }
+            }
+            else
+                st.pendingBrs.push_back({lbl, argCount, st.lineNo});
+            in.type = Type(Type::Kind::Void);
+            break;
+        }
+        case Opcode::CBr:
+        {
+            std::string c = readToken(ss);
+            std::string rest;
+            std::getline(ss, rest);
+            rest = trim(rest);
+            size_t comma = rest.find(',');
+            if (comma == std::string::npos)
+            {
+                err << "line " << st.lineNo << ": malformed cbr\n";
+                return false;
+            }
+            std::string first = trim(rest.substr(0, comma));
+            std::string second = trim(rest.substr(comma + 1));
+            auto parseTarget =
+                [&](const std::string &part, std::string &lbl, std::vector<Value> &args) -> bool
+            {
+                std::string t = part;
+                if (t.rfind("label ", 0) == 0)
+                    t = trim(t.substr(6));
+                size_t lp = t.find('(');
+                if (lp == std::string::npos)
+                {
+                    lbl = trim(t);
+                }
+                else
+                {
+                    size_t rp = t.find(')', lp);
                     if (rp == std::string::npos)
-                    {
-                        err << "line " << lineNo << ": mismatched ')\n";
                         return false;
-                    }
-                    label = trim(header.substr(0, lp));
-                    std::string paramsStr = header.substr(lp + 1, rp - lp - 1);
-                    std::stringstream pss(paramsStr);
-                    std::string p;
-                    while (std::getline(pss, p, ','))
-                    {
-                        p = trim(p);
-                        if (p.empty())
-                            continue;
-                        size_t col = p.find(':');
-                        if (col == std::string::npos)
-                        {
-                            err << "line " << lineNo << ": bad param\n";
-                            return false;
-                        }
-                        std::string nm = trim(p.substr(0, col));
-                        if (!nm.empty() && nm[0] == '%')
-                            nm = nm.substr(1);
-                        std::string tyStr = trim(p.substr(col + 1));
-                        bool ok = true;
-                        Type ty = parseType(tyStr, &ok);
-                        if (!ok || ty.kind == Type::Kind::Void)
-                        {
-                            err << "line " << lineNo << ": unknown param type\n";
-                            return false;
-                        }
-                        params.push_back({nm, ty, nextTemp});
-                        tempIds[nm] = nextTemp;
-                        if (curFn->valueNames.size() <= nextTemp)
-                            curFn->valueNames.resize(nextTemp + 1);
-                        curFn->valueNames[nextTemp] = nm;
-                        ++nextTemp;
-                    }
-                }
-                curFn->blocks.push_back({label, params, {}, false});
-                curBB = &curFn->blocks.back();
-                blockParamCount[label] = params.size();
-                for (auto it = pendingBrs.begin(); it != pendingBrs.end();)
-                {
-                    if (it->label == label)
-                    {
-                        if (it->args != params.size())
-                        {
-                            err << "line " << it->line << ": bad arg count\n";
-                            return false;
-                        }
-                        it = pendingBrs.erase(it);
-                    }
-                    else
-                        ++it;
-                }
-                continue;
-            }
-            if (!curBB)
-            {
-                err << "line " << lineNo << ": instruction outside block\n";
-                return false;
-            }
-            if (line.rfind(".loc", 0) == 0)
-            {
-                std::istringstream ls(line.substr(4));
-                uint32_t fid = 0, ln = 0, col = 0;
-                ls >> fid >> ln >> col;
-                curLoc = {fid, ln, col};
-                continue;
-            }
-            Instr in;
-            in.loc = curLoc;
-            if (line[0] == '%')
-            {
-                size_t eq = line.find('=');
-                std::string res = trim(line.substr(1, eq - 1));
-                auto [it, inserted] = tempIds.emplace(res, nextTemp);
-                if (inserted)
-                {
-                    if (curFn->valueNames.size() <= nextTemp)
-                        curFn->valueNames.resize(nextTemp + 1);
-                    curFn->valueNames[nextTemp] = res;
-                    nextTemp++;
-                }
-                in.result = it->second;
-                line = trim(line.substr(eq + 1));
-            }
-            std::string op;
-            std::istringstream ss(line);
-            ss >> op;
-            static const std::unordered_map<std::string, Opcode> opMap = {
-                {"add", Opcode::Add},
-                {"sub", Opcode::Sub},
-                {"mul", Opcode::Mul},
-                {"sdiv", Opcode::SDiv},
-                {"udiv", Opcode::UDiv},
-                {"srem", Opcode::SRem},
-                {"urem", Opcode::URem},
-                {"and", Opcode::And},
-                {"or", Opcode::Or},
-                {"xor", Opcode::Xor},
-                {"shl", Opcode::Shl},
-                {"lshr", Opcode::LShr},
-                {"ashr", Opcode::AShr},
-                {"fadd", Opcode::FAdd},
-                {"fsub", Opcode::FSub},
-                {"fmul", Opcode::FMul},
-                {"fdiv", Opcode::FDiv},
-                {"icmp_eq", Opcode::ICmpEq},
-                {"icmp_ne", Opcode::ICmpNe},
-                {"scmp_lt", Opcode::SCmpLT},
-                {"scmp_le", Opcode::SCmpLE},
-                {"scmp_gt", Opcode::SCmpGT},
-                {"scmp_ge", Opcode::SCmpGE},
-                {"ucmp_lt", Opcode::UCmpLT},
-                {"ucmp_le", Opcode::UCmpLE},
-                {"ucmp_gt", Opcode::UCmpGT},
-                {"ucmp_ge", Opcode::UCmpGE},
-                {"fcmp_lt", Opcode::FCmpLT},
-                {"fcmp_le", Opcode::FCmpLE},
-                {"fcmp_gt", Opcode::FCmpGT},
-                {"fcmp_ge", Opcode::FCmpGE},
-                {"fcmp_eq", Opcode::FCmpEQ},
-                {"fcmp_ne", Opcode::FCmpNE},
-                {"sitofp", Opcode::Sitofp},
-                {"fptosi", Opcode::Fptosi},
-                {"zext1", Opcode::Zext1},
-                {"trunc1", Opcode::Trunc1},
-                {"alloca", Opcode::Alloca},
-                {"gep", Opcode::GEP},
-                {"load", Opcode::Load},
-                {"store", Opcode::Store},
-                {"addr_of", Opcode::AddrOf},
-                {"const_str", Opcode::ConstStr},
-                {"const_null", Opcode::ConstNull},
-                {"call", Opcode::Call},
-                {"br", Opcode::Br},
-                {"cbr", Opcode::CBr},
-                {"ret", Opcode::Ret},
-                {"trap", Opcode::Trap}};
-            auto itOp = opMap.find(op);
-            if (itOp == opMap.end())
-            {
-                err << "line " << lineNo << ": unknown opcode " << op << "\n";
-                return false;
-            }
-            in.op = itOp->second;
-            switch (in.op)
-            {
-                case Opcode::Alloca:
-                {
-                    std::string sz = readToken(ss);
-                    in.operands.push_back(parseValue(sz, tempIds));
-                    in.type = Type(Type::Kind::Ptr);
-                    break;
-                }
-                case Opcode::GEP:
-                {
-                    std::string base = readToken(ss);
-                    std::string off = readToken(ss);
-                    in.operands.push_back(parseValue(base, tempIds));
-                    in.operands.push_back(parseValue(off, tempIds));
-                    in.type = Type(Type::Kind::Ptr);
-                    break;
-                }
-                case Opcode::Load:
-                {
-                    std::string ty = readToken(ss);
-                    std::string ptr = readToken(ss);
-                    in.type = parseType(ty);
-                    in.operands.push_back(parseValue(ptr, tempIds));
-                    break;
-                }
-                case Opcode::Store:
-                {
-                    std::string ty = readToken(ss);
-                    std::string ptr = readToken(ss);
-                    std::string val = readToken(ss);
-                    in.type = parseType(ty);
-                    in.operands.push_back(parseValue(ptr, tempIds));
-                    in.operands.push_back(parseValue(val, tempIds));
-                    break;
-                }
-                case Opcode::AddrOf:
-                {
-                    std::string g = readToken(ss);
-                    in.operands.push_back(parseValue(g, tempIds));
-                    in.type = Type(Type::Kind::Ptr);
-                    break;
-                }
-                case Opcode::ConstStr:
-                {
-                    std::string g = readToken(ss);
-                    if (!g.empty())
-                        in.operands.push_back(parseValue(g, tempIds));
-                    in.type = Type(Type::Kind::Str);
-                    break;
-                }
-                case Opcode::ConstNull:
-                {
-                    in.type = Type(Type::Kind::Ptr);
-                    break;
-                }
-                case Opcode::Call:
-                {
-                    size_t at = line.find('@');
-                    size_t lp = line.find('(', at);
-                    size_t rp = line.find(')', lp);
-                    in.callee = line.substr(at + 1, lp - at - 1);
-                    std::string args = line.substr(lp + 1, rp - lp - 1);
-                    std::stringstream as(args);
+                    lbl = trim(t.substr(0, lp));
+                    std::string argsStr = t.substr(lp + 1, rp - lp - 1);
+                    std::stringstream as(argsStr);
                     std::string a;
                     while (std::getline(as, a, ','))
                     {
                         a = trim(a);
                         if (!a.empty())
-                            in.operands.push_back(parseValue(a, tempIds));
+                            args.push_back(parseValue(a, st.tempIds));
                     }
-                    in.type = Type(Type::Kind::Void);
-                    break;
                 }
-                case Opcode::Br:
+                return true;
+            };
+            std::vector<Value> a1, a2;
+            std::string l1, l2;
+            if (!parseTarget(first, l1, a1) || !parseTarget(second, l2, a2))
+            {
+                err << "line " << st.lineNo << ": mismatched ')\n";
+                return false;
+            }
+            in.operands.push_back(parseValue(c, st.tempIds));
+            in.labels.push_back(l1);
+            in.labels.push_back(l2);
+            in.brArgs.push_back(a1);
+            in.brArgs.push_back(a2);
+            size_t n1 = a1.size();
+            auto it1 = st.blockParamCount.find(l1);
+            if (it1 != st.blockParamCount.end())
+            {
+                if (it1->second != n1)
                 {
-                    std::string rest;
-                    std::getline(ss, rest);
-                    rest = trim(rest);
-                    if (rest.rfind("label ", 0) == 0)
-                        rest = trim(rest.substr(6));
-                    size_t lp = rest.find('(');
-                    std::vector<Value> args;
-                    std::string lbl;
-                    if (lp == std::string::npos)
-                    {
-                        lbl = rest;
-                    }
-                    else
-                    {
-                        size_t rp = rest.find(')', lp);
-                        if (rp == std::string::npos)
-                        {
-                            err << "line " << lineNo << ": mismatched ')\n";
-                            return false;
-                        }
-                        lbl = trim(rest.substr(0, lp));
-                        std::string argsStr = rest.substr(lp + 1, rp - lp - 1);
-                        std::stringstream as(argsStr);
-                        std::string a;
-                        while (std::getline(as, a, ','))
-                        {
-                            a = trim(a);
-                            if (!a.empty())
-                                args.push_back(parseValue(a, tempIds));
-                        }
-                    }
-                    in.labels.push_back(lbl);
-                    in.brArgs.push_back(args);
-                    size_t argCount = args.size();
-                    auto it = blockParamCount.find(lbl);
-                    if (it != blockParamCount.end())
-                    {
-                        if (it->second != argCount)
-                        {
-                            err << "line " << lineNo << ": bad arg count\n";
-                            return false;
-                        }
-                    }
-                    else
-                        pendingBrs.push_back({lbl, argCount, lineNo});
-                    in.type = Type(Type::Kind::Void);
-                    break;
-                }
-                case Opcode::CBr:
-                {
-                    std::string c = readToken(ss);
-                    std::string rest;
-                    std::getline(ss, rest);
-                    rest = trim(rest);
-                    size_t comma = rest.find(',');
-                    if (comma == std::string::npos)
-                    {
-                        err << "line " << lineNo << ": malformed cbr\n";
-                        return false;
-                    }
-                    std::string first = trim(rest.substr(0, comma));
-                    std::string second = trim(rest.substr(comma + 1));
-                    auto parseTarget = [&](const std::string &part,
-                                           std::string &lbl,
-                                           std::vector<Value> &args) -> bool
-                    {
-                        std::string t = part;
-                        if (t.rfind("label ", 0) == 0)
-                            t = trim(t.substr(6));
-                        size_t lp = t.find('(');
-                        if (lp == std::string::npos)
-                        {
-                            lbl = trim(t);
-                        }
-                        else
-                        {
-                            size_t rp = t.find(')', lp);
-                            if (rp == std::string::npos)
-                                return false;
-                            lbl = trim(t.substr(0, lp));
-                            std::string argsStr = t.substr(lp + 1, rp - lp - 1);
-                            std::stringstream as(argsStr);
-                            std::string a;
-                            while (std::getline(as, a, ','))
-                            {
-                                a = trim(a);
-                                if (!a.empty())
-                                    args.push_back(parseValue(a, tempIds));
-                            }
-                        }
-                        return true;
-                    };
-                    std::vector<Value> a1, a2;
-                    std::string l1, l2;
-                    if (!parseTarget(first, l1, a1) || !parseTarget(second, l2, a2))
-                    {
-                        err << "line " << lineNo << ": mismatched ')\n";
-                        return false;
-                    }
-                    in.operands.push_back(parseValue(c, tempIds));
-                    in.labels.push_back(l1);
-                    in.labels.push_back(l2);
-                    in.brArgs.push_back(a1);
-                    in.brArgs.push_back(a2);
-                    size_t n1 = a1.size();
-                    auto it1 = blockParamCount.find(l1);
-                    if (it1 != blockParamCount.end())
-                    {
-                        if (it1->second != n1)
-                        {
-                            err << "line " << lineNo << ": bad arg count\n";
-                            return false;
-                        }
-                    }
-                    else
-                        pendingBrs.push_back({l1, n1, lineNo});
-                    size_t n2 = a2.size();
-                    auto it2 = blockParamCount.find(l2);
-                    if (it2 != blockParamCount.end())
-                    {
-                        if (it2->second != n2)
-                        {
-                            err << "line " << lineNo << ": bad arg count\n";
-                            return false;
-                        }
-                    }
-                    else
-                        pendingBrs.push_back({l2, n2, lineNo});
-                    in.type = Type(Type::Kind::Void);
-                    break;
-                }
-                case Opcode::Ret:
-                {
-                    std::string v;
-                    if (ss >> v)
-                        in.operands.push_back(parseValue(v, tempIds));
-                    in.type = Type(Type::Kind::Void);
-                    break;
-                }
-                case Opcode::Trap:
-                {
-                    in.type = Type(Type::Kind::Void);
-                    break;
-                }
-                default:
-                {
-                    bool unary = in.op == Opcode::Sitofp || in.op == Opcode::Fptosi ||
-                                 in.op == Opcode::Zext1 || in.op == Opcode::Trunc1;
-                    std::string a = readToken(ss);
-                    in.operands.push_back(parseValue(a, tempIds));
-                    if (!unary)
-                    {
-                        std::string b = readToken(ss);
-                        if (!b.empty())
-                            in.operands.push_back(parseValue(b, tempIds));
-                    }
-                    if (op == "fadd" || op == "fsub" || op == "fmul" || op == "fdiv" ||
-                        op == "sitofp")
-                        in.type = Type(Type::Kind::F64);
-                    else if (op.rfind("icmp_", 0) == 0 || op.rfind("scmp_", 0) == 0 ||
-                             op.rfind("ucmp_", 0) == 0 || op.rfind("fcmp_", 0) == 0 ||
-                             op == "trunc1")
-                        in.type = Type(Type::Kind::I1);
-                    else
-                        in.type = Type(Type::Kind::I64);
-                    break;
+                    err << "line " << st.lineNo << ": bad arg count\n";
+                    return false;
                 }
             }
-            curBB->instructions.push_back(std::move(in));
+            else
+                st.pendingBrs.push_back({l1, n1, st.lineNo});
+            size_t n2 = a2.size();
+            auto it2 = st.blockParamCount.find(l2);
+            if (it2 != st.blockParamCount.end())
+            {
+                if (it2->second != n2)
+                {
+                    err << "line " << st.lineNo << ": bad arg count\n";
+                    return false;
+                }
+            }
+            else
+                st.pendingBrs.push_back({l2, n2, st.lineNo});
+            in.type = Type(Type::Kind::Void);
+            break;
         }
+        case Opcode::Ret:
+        {
+            std::string v;
+            if (ss >> v)
+                in.operands.push_back(parseValue(v, st.tempIds));
+            in.type = Type(Type::Kind::Void);
+            break;
+        }
+        case Opcode::Trap:
+        {
+            in.type = Type(Type::Kind::Void);
+            break;
+        }
+        default:
+        {
+            bool unary = in.op == Opcode::Sitofp || in.op == Opcode::Fptosi ||
+                         in.op == Opcode::Zext1 || in.op == Opcode::Trunc1;
+            std::string a = readToken(ss);
+            in.operands.push_back(parseValue(a, st.tempIds));
+            if (!unary)
+            {
+                std::string b = readToken(ss);
+                if (!b.empty())
+                    in.operands.push_back(parseValue(b, st.tempIds));
+            }
+            if (op == "fadd" || op == "fsub" || op == "fmul" || op == "fdiv" || op == "sitofp")
+                in.type = Type(Type::Kind::F64);
+            else if (op.rfind("icmp_", 0) == 0 || op.rfind("scmp_", 0) == 0 ||
+                     op.rfind("ucmp_", 0) == 0 || op.rfind("fcmp_", 0) == 0 || op == "trunc1")
+                in.type = Type(Type::Kind::I1);
+            else
+                in.type = Type(Type::Kind::I64);
+            break;
+        }
+    }
+    st.curBB->instructions.push_back(std::move(in));
+    return true;
+}
+
+bool parseFunction(std::istream &is, std::string &header, ParserState &st, std::ostream &err)
+{
+    size_t at = header.find('@');
+    size_t lp = header.find('(', at);
+    size_t rp = header.find(')', lp);
+    size_t arr = header.find("->", rp);
+    size_t lb = header.find('{', arr);
+    std::string name = header.substr(at + 1, lp - at - 1);
+    std::string paramsStr = header.substr(lp + 1, rp - lp - 1);
+    std::vector<Param> params;
+    std::stringstream pss(paramsStr);
+    std::string p;
+    while (std::getline(pss, p, ','))
+    {
+        p = trim(p);
+        if (p.empty())
+            continue;
+        std::stringstream ps(p);
+        std::string ty, nm;
+        ps >> ty >> nm;
+        if (!ty.empty() && !nm.empty() && nm[0] == '%')
+            params.push_back({nm.substr(1), parseType(ty)});
+    }
+    std::string retStr = trim(header.substr(arr + 2, lb - arr - 2));
+    st.tempIds.clear();
+    unsigned idx = 0;
+    for (auto &param : params)
+    {
+        param.id = idx;
+        st.tempIds[param.name] = idx;
+        ++idx;
+    }
+    st.m.functions.push_back({name, parseType(retStr), params, {}, {}});
+    st.curFn = &st.m.functions.back();
+    st.curBB = nullptr;
+    st.nextTemp = idx;
+    st.curFn->valueNames.resize(st.nextTemp);
+    for (auto &param : params)
+        st.curFn->valueNames[param.id] = param.name;
+    st.blockParamCount.clear();
+    st.pendingBrs.clear();
+
+    std::string line;
+    while (std::getline(is, line))
+    {
+        ++st.lineNo;
+        line = trim(line);
+        if (line.empty() || line.rfind("//", 0) == 0)
+            continue;
+        if (line[0] == '}')
+        {
+            st.curFn = nullptr;
+            st.curBB = nullptr;
+            return true;
+        }
+        if (line.back() == ':')
+        {
+            std::string header2 = line.substr(0, line.size() - 1);
+            size_t lp2 = header2.find('(');
+            std::vector<Param> bparams;
+            std::string label = trim(header2);
+            if (lp2 != std::string::npos)
+            {
+                size_t rp2 = header2.find(')', lp2);
+                if (rp2 == std::string::npos)
+                {
+                    err << "line " << st.lineNo << ": mismatched ')\n";
+                    return false;
+                }
+                label = trim(header2.substr(0, lp2));
+                std::string paramsStr2 = header2.substr(lp2 + 1, rp2 - lp2 - 1);
+                std::stringstream pss2(paramsStr2);
+                std::string q;
+                while (std::getline(pss2, q, ','))
+                {
+                    q = trim(q);
+                    if (q.empty())
+                        continue;
+                    size_t col = q.find(':');
+                    if (col == std::string::npos)
+                    {
+                        err << "line " << st.lineNo << ": bad param\n";
+                        return false;
+                    }
+                    std::string nm = trim(q.substr(0, col));
+                    if (!nm.empty() && nm[0] == '%')
+                        nm = nm.substr(1);
+                    std::string tyStr = trim(q.substr(col + 1));
+                    bool ok = true;
+                    Type ty = parseType(tyStr, &ok);
+                    if (!ok || ty.kind == Type::Kind::Void)
+                    {
+                        err << "line " << st.lineNo << ": unknown param type\n";
+                        return false;
+                    }
+                    bparams.push_back({nm, ty, st.nextTemp});
+                    st.tempIds[nm] = st.nextTemp;
+                    if (st.curFn->valueNames.size() <= st.nextTemp)
+                        st.curFn->valueNames.resize(st.nextTemp + 1);
+                    st.curFn->valueNames[st.nextTemp] = nm;
+                    ++st.nextTemp;
+                }
+            }
+            st.curFn->blocks.push_back({label, bparams, {}, false});
+            st.curBB = &st.curFn->blocks.back();
+            st.blockParamCount[label] = bparams.size();
+            for (auto it = st.pendingBrs.begin(); it != st.pendingBrs.end();)
+            {
+                if (it->label == label)
+                {
+                    if (it->args != bparams.size())
+                    {
+                        err << "line " << it->line << ": bad arg count\n";
+                        return false;
+                    }
+                    it = st.pendingBrs.erase(it);
+                }
+                else
+                    ++it;
+            }
+            continue;
+        }
+        if (!st.curBB)
+        {
+            err << "line " << st.lineNo << ": instruction outside block\n";
+            return false;
+        }
+        if (line.rfind(".loc", 0) == 0)
+        {
+            std::istringstream ls(line.substr(4));
+            uint32_t fid = 0, ln = 0, col = 0;
+            ls >> fid >> ln >> col;
+            st.curLoc = {fid, ln, col};
+            continue;
+        }
+        if (!parseInstruction(line, st, err))
+            return false;
+    }
+    return true;
+}
+
+bool parseModuleHeader(std::istream &is, std::string &line, ParserState &st, std::ostream &err)
+{
+    if (line.rfind("il", 0) == 0)
+    {
+        std::istringstream ls(line);
+        std::string kw;
+        ls >> kw;
+        std::string ver;
+        if (ls >> ver)
+            st.m.version = ver;
+        else
+            st.m.version = "0.1.2";
+        return true;
+    }
+    if (line.rfind("extern", 0) == 0)
+    {
+        size_t at = line.find('@');
+        size_t lp = line.find('(', at);
+        size_t rp = line.find(')', lp);
+        size_t arr = line.find("->", rp);
+        std::string name = line.substr(at + 1, lp - at - 1);
+        std::string paramsStr = line.substr(lp + 1, rp - lp - 1);
+        std::vector<Type> params;
+        std::stringstream pss(paramsStr);
+        std::string p;
+        while (std::getline(pss, p, ','))
+        {
+            p = trim(p);
+            if (!p.empty())
+                params.push_back(parseType(p));
+        }
+        std::string retStr = trim(line.substr(arr + 2));
+        st.m.externs.push_back({name, parseType(retStr), params});
+        return true;
+    }
+    if (line.rfind("global", 0) == 0)
+    {
+        size_t at = line.find('@');
+        size_t eq = line.find('=', at);
+        size_t q1 = line.find('"', eq);
+        size_t q2 = line.rfind('"');
+        std::string name = trim(line.substr(at + 1, eq - at - 1));
+        std::string init = line.substr(q1 + 1, q2 - q1 - 1);
+        st.m.globals.push_back({name, Type(Type::Kind::Str), init});
+        return true;
+    }
+    if (line.rfind("func", 0) == 0)
+        return parseFunction(is, line, st, err);
+    err << "line " << st.lineNo << ": unexpected line: " << line << "\n";
+    return false;
+}
+
+} // namespace
+
+bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
+{
+    ParserState st{m};
+    std::string line;
+    while (std::getline(is, line))
+    {
+        ++st.lineNo;
+        line = trim(line);
+        if (line.empty() || line.rfind("//", 0) == 0)
+            continue;
+        if (!parseModuleHeader(is, line, st, err))
+            return false;
     }
     return true;
 }
