@@ -11,9 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <functional>
 #include <optional>
-#include <unordered_map>
 
 namespace il::frontends::basic
 {
@@ -252,220 +250,249 @@ static TokenKind toToken(BinaryExpr::Op op)
     return TokenKind::EndOfFile;
 }
 
+static ExprPtr foldAdd(const Expr &l, const Expr &r)
+{
+    return detail::foldNumericBinary(
+        l,
+        r,
+        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+        {
+            if (a.isFloat)
+            {
+                double v = a.f + b.f;
+                return Numeric{true, v, static_cast<long long>(v)};
+            }
+            long long v = wrapAdd(a.i, b.i);
+            return Numeric{false, static_cast<double>(v), v};
+        });
+}
+
+static ExprPtr foldSub(const Expr &l, const Expr &r)
+{
+    return detail::foldNumericBinary(
+        l,
+        r,
+        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+        {
+            if (a.isFloat)
+            {
+                double v = a.f - b.f;
+                return Numeric{true, v, static_cast<long long>(v)};
+            }
+            long long v = wrapSub(a.i, b.i);
+            return Numeric{false, static_cast<double>(v), v};
+        });
+}
+
+static ExprPtr foldMul(const Expr &l, const Expr &r)
+{
+    return detail::foldNumericBinary(
+        l,
+        r,
+        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+        {
+            if (a.isFloat)
+            {
+                double v = a.f * b.f;
+                return Numeric{true, v, static_cast<long long>(v)};
+            }
+            long long v = wrapMul(a.i, b.i);
+            return Numeric{false, static_cast<double>(v), v};
+        });
+}
+
+static ExprPtr foldDiv(const Expr &l, const Expr &r)
+{
+    return detail::foldNumericBinary(
+        l,
+        r,
+        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+        {
+            double rv = b.isFloat ? b.f : static_cast<double>(b.i);
+            if (rv == 0.0)
+                return std::nullopt;
+            double lv = a.isFloat ? a.f : static_cast<double>(a.i);
+            double v = lv / rv;
+            return Numeric{true, v, static_cast<long long>(v)};
+        });
+}
+
+static ExprPtr foldIDiv(const Expr &l, const Expr &r)
+{
+    return detail::foldNumericBinary(
+        l,
+        r,
+        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+        {
+            if (a.isFloat || b.isFloat || b.i == 0)
+                return std::nullopt;
+            long long v = a.i / b.i;
+            return Numeric{false, static_cast<double>(v), v};
+        });
+}
+
+static ExprPtr foldMod(const Expr &l, const Expr &r)
+{
+    return detail::foldNumericBinary(
+        l,
+        r,
+        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+        {
+            if (a.isFloat || b.isFloat || b.i == 0)
+                return std::nullopt;
+            long long v = a.i % b.i;
+            return Numeric{false, static_cast<double>(v), v};
+        });
+}
+
+static ExprPtr foldEq(const Expr &l, const Expr &r)
+{
+    return detail::foldNumericBinary(
+        l,
+        r,
+        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+        {
+            bool res = a.isFloat ? (a.f == b.f) : (a.i == b.i);
+            return Numeric{false, static_cast<double>(res ? 1 : 0), res ? 1 : 0};
+        });
+}
+
+static ExprPtr foldNe(const Expr &l, const Expr &r)
+{
+    return detail::foldNumericBinary(
+        l,
+        r,
+        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+        {
+            bool res = a.isFloat ? (a.f != b.f) : (a.i != b.i);
+            return Numeric{false, static_cast<double>(res ? 1 : 0), res ? 1 : 0};
+        });
+}
+
+static ExprPtr foldLt(const Expr &l, const Expr &r)
+{
+    return detail::foldNumericBinary(
+        l,
+        r,
+        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+        {
+            bool res = a.isFloat ? (a.f < b.f) : (a.i < b.i);
+            return Numeric{false, static_cast<double>(res ? 1 : 0), res ? 1 : 0};
+        });
+}
+
+static ExprPtr foldLe(const Expr &l, const Expr &r)
+{
+    return detail::foldNumericBinary(
+        l,
+        r,
+        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+        {
+            bool res = a.isFloat ? (a.f <= b.f) : (a.i <= b.i);
+            return Numeric{false, static_cast<double>(res ? 1 : 0), res ? 1 : 0};
+        });
+}
+
+static ExprPtr foldGt(const Expr &l, const Expr &r)
+{
+    return detail::foldNumericBinary(
+        l,
+        r,
+        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+        {
+            bool res = a.isFloat ? (a.f > b.f) : (a.i > b.i);
+            return Numeric{false, static_cast<double>(res ? 1 : 0), res ? 1 : 0};
+        });
+}
+
+static ExprPtr foldGe(const Expr &l, const Expr &r)
+{
+    return detail::foldNumericBinary(
+        l,
+        r,
+        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+        {
+            bool res = a.isFloat ? (a.f >= b.f) : (a.i >= b.i);
+            return Numeric{false, static_cast<double>(res ? 1 : 0), res ? 1 : 0};
+        });
+}
+
+static ExprPtr foldAnd(const Expr &l, const Expr &r)
+{
+    return detail::foldNumericBinary(
+        l,
+        r,
+        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+        {
+            if (a.isFloat || b.isFloat)
+                return std::nullopt;
+            long long v = (a.i != 0 && b.i != 0) ? 1 : 0;
+            return Numeric{false, static_cast<double>(v), v};
+        });
+}
+
+static ExprPtr foldOr(const Expr &l, const Expr &r)
+{
+    return detail::foldNumericBinary(
+        l,
+        r,
+        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+        {
+            if (a.isFloat || b.isFloat)
+                return std::nullopt;
+            long long v = (a.i != 0 || b.i != 0) ? 1 : 0;
+            return Numeric{false, static_cast<double>(v), v};
+        });
+}
+
+static ExprPtr foldNumeric(TokenKind tk, const Expr &l, const Expr &r)
+{
+    switch (tk)
+    {
+        case TokenKind::Plus:
+            return foldAdd(l, r);
+        case TokenKind::Minus:
+            return foldSub(l, r);
+        case TokenKind::Star:
+            return foldMul(l, r);
+        case TokenKind::Slash:
+            return foldDiv(l, r);
+        case TokenKind::Backslash:
+            return foldIDiv(l, r);
+        case TokenKind::KeywordMod:
+            return foldMod(l, r);
+        case TokenKind::Equal:
+            return foldEq(l, r);
+        case TokenKind::NotEqual:
+            return foldNe(l, r);
+        case TokenKind::Less:
+            return foldLt(l, r);
+        case TokenKind::LessEqual:
+            return foldLe(l, r);
+        case TokenKind::Greater:
+            return foldGt(l, r);
+        case TokenKind::GreaterEqual:
+            return foldGe(l, r);
+        case TokenKind::KeywordAnd:
+            return foldAnd(l, r);
+        case TokenKind::KeywordOr:
+            return foldOr(l, r);
+        default:
+            return nullptr;
+    }
+}
+
 static void foldBinary(ExprPtr &e, BinaryExpr *b)
 {
     foldExpr(b->lhs);
     foldExpr(b->rhs);
     TokenKind tk = toToken(b->op);
 
-    using FoldFn = std::function<ExprPtr(const Expr &, const Expr &)>;
-    static const std::unordered_map<TokenKind, FoldFn> numOps = {
-        {TokenKind::Plus,
-         [](const Expr &l, const Expr &r)
-         {
-             return detail::foldNumericBinary(
-                 l,
-                 r,
-                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-                 {
-                     if (a.isFloat)
-                     {
-                         double v = a.f + b.f;
-                         return Numeric{true, v, static_cast<long long>(v)};
-                     }
-                     long long v = wrapAdd(a.i, b.i);
-                     return Numeric{false, static_cast<double>(v), v};
-                 });
-         }},
-        {TokenKind::Minus,
-         [](const Expr &l, const Expr &r)
-         {
-             return detail::foldNumericBinary(
-                 l,
-                 r,
-                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-                 {
-                     if (a.isFloat)
-                     {
-                         double v = a.f - b.f;
-                         return Numeric{true, v, static_cast<long long>(v)};
-                     }
-                     long long v = wrapSub(a.i, b.i);
-                     return Numeric{false, static_cast<double>(v), v};
-                 });
-         }},
-        {TokenKind::Star,
-         [](const Expr &l, const Expr &r)
-         {
-             return detail::foldNumericBinary(
-                 l,
-                 r,
-                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-                 {
-                     if (a.isFloat)
-                     {
-                         double v = a.f * b.f;
-                         return Numeric{true, v, static_cast<long long>(v)};
-                     }
-                     long long v = wrapMul(a.i, b.i);
-                     return Numeric{false, static_cast<double>(v), v};
-                 });
-         }},
-        {TokenKind::Slash,
-         [](const Expr &l, const Expr &r)
-         {
-             return detail::foldNumericBinary(
-                 l,
-                 r,
-                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-                 {
-                     double rv = b.isFloat ? b.f : static_cast<double>(b.i);
-                     if (rv == 0.0)
-                         return std::nullopt;
-                     double lv = a.isFloat ? a.f : static_cast<double>(a.i);
-                     double v = lv / rv;
-                     return Numeric{true, v, static_cast<long long>(v)};
-                 });
-         }},
-        {TokenKind::Backslash,
-         [](const Expr &l, const Expr &r)
-         {
-             return detail::foldNumericBinary(
-                 l,
-                 r,
-                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-                 {
-                     if (a.isFloat || b.isFloat || b.i == 0)
-                         return std::nullopt;
-                     long long v = a.i / b.i;
-                     return Numeric{false, static_cast<double>(v), v};
-                 });
-         }},
-        {TokenKind::KeywordMod,
-         [](const Expr &l, const Expr &r)
-         {
-             return detail::foldNumericBinary(
-                 l,
-                 r,
-                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-                 {
-                     if (a.isFloat || b.isFloat || b.i == 0)
-                         return std::nullopt;
-                     long long v = a.i % b.i;
-                     return Numeric{false, static_cast<double>(v), v};
-                 });
-         }},
-        {TokenKind::Equal,
-         [](const Expr &l, const Expr &r)
-         {
-             return detail::foldNumericBinary(
-                 l,
-                 r,
-                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-                 {
-                     bool res = a.isFloat ? (a.f == b.f) : (a.i == b.i);
-                     return Numeric{false, static_cast<double>(res ? 1 : 0), res ? 1 : 0};
-                 });
-         }},
-        {TokenKind::NotEqual,
-         [](const Expr &l, const Expr &r)
-         {
-             return detail::foldNumericBinary(
-                 l,
-                 r,
-                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-                 {
-                     bool res = a.isFloat ? (a.f != b.f) : (a.i != b.i);
-                     return Numeric{false, static_cast<double>(res ? 1 : 0), res ? 1 : 0};
-                 });
-         }},
-        {TokenKind::Less,
-         [](const Expr &l, const Expr &r)
-         {
-             return detail::foldNumericBinary(
-                 l,
-                 r,
-                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-                 {
-                     bool res = a.isFloat ? (a.f < b.f) : (a.i < b.i);
-                     return Numeric{false, static_cast<double>(res ? 1 : 0), res ? 1 : 0};
-                 });
-         }},
-        {TokenKind::LessEqual,
-         [](const Expr &l, const Expr &r)
-         {
-             return detail::foldNumericBinary(
-                 l,
-                 r,
-                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-                 {
-                     bool res = a.isFloat ? (a.f <= b.f) : (a.i <= b.i);
-                     return Numeric{false, static_cast<double>(res ? 1 : 0), res ? 1 : 0};
-                 });
-         }},
-        {TokenKind::Greater,
-         [](const Expr &l, const Expr &r)
-         {
-             return detail::foldNumericBinary(
-                 l,
-                 r,
-                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-                 {
-                     bool res = a.isFloat ? (a.f > b.f) : (a.i > b.i);
-                     return Numeric{false, static_cast<double>(res ? 1 : 0), res ? 1 : 0};
-                 });
-         }},
-        {TokenKind::GreaterEqual,
-         [](const Expr &l, const Expr &r)
-         {
-             return detail::foldNumericBinary(
-                 l,
-                 r,
-                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-                 {
-                     bool res = a.isFloat ? (a.f >= b.f) : (a.i >= b.i);
-                     return Numeric{false, static_cast<double>(res ? 1 : 0), res ? 1 : 0};
-                 });
-         }},
-        {TokenKind::KeywordAnd,
-         [](const Expr &l, const Expr &r)
-         {
-             return detail::foldNumericBinary(
-                 l,
-                 r,
-                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-                 {
-                     if (a.isFloat || b.isFloat)
-                         return std::nullopt;
-                     long long v = (a.i != 0 && b.i != 0) ? 1 : 0;
-                     return Numeric{false, static_cast<double>(v), v};
-                 });
-         }},
-        {TokenKind::KeywordOr,
-         [](const Expr &l, const Expr &r)
-         {
-             return detail::foldNumericBinary(
-                 l,
-                 r,
-                 [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-                 {
-                     if (a.isFloat || b.isFloat)
-                         return std::nullopt;
-                     long long v = (a.i != 0 || b.i != 0) ? 1 : 0;
-                     return Numeric{false, static_cast<double>(v), v};
-                 });
-         }},
-    };
-
-    auto it = numOps.find(tk);
-    if (it != numOps.end())
+    if (auto res = foldNumeric(tk, *b->lhs, *b->rhs))
     {
-        if (auto res = it->second(*b->lhs, *b->rhs))
-        {
-            res->loc = b->loc;
-            e = std::move(res);
-            return;
-        }
+        res->loc = b->loc;
+        e = std::move(res);
+        return;
     }
 
     if (auto *ls = dynamic_cast<StringExpr *>(b->lhs.get()))
