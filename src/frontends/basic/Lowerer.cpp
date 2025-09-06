@@ -22,8 +22,9 @@ namespace il::frontends::basic
 
 Lowerer::Lowerer(bool boundsChecks) : boundsChecks(boundsChecks) {}
 
-Module Lowerer::lower(const Program &prog)
+Module Lowerer::lowerProgram(const Program &prog)
 {
+    // Procs first, then a synthetic @main for top-level statements.
     Module m;
     mod = &m;
     build::IRBuilder b(m);
@@ -372,6 +373,11 @@ Module Lowerer::lower(const Program &prog)
     emitRet(Value::constInt(0));
 
     return m;
+}
+
+Module Lowerer::lower(const Program &prog)
+{
+    return lowerProgram(prog);
 }
 
 void Lowerer::declareRequiredRuntime(build::IRBuilder &b)

@@ -30,6 +30,11 @@ class Lowerer
     explicit Lowerer(bool boundsChecks = false);
 
     /// @brief Lower @p prog into an IL module with @main entry.
+    /// @notes Procedures are lowered before a synthetic `@main` encompassing
+    ///        the program's top-level statements.
+    il::core::Module lowerProgram(const Program &prog);
+
+    /// @brief Backward-compatibility wrapper for older call sites.
     il::core::Module lower(const Program &prog);
 
   private:

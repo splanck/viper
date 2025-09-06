@@ -22,6 +22,19 @@ types:
 - Array parameters (`i64[]` or `str[]`) pass the pointer/handle without any
   load.
 
+## Compilation unit lowering
+
+BASIC programs lower procedures first, then wrap remaining top-level statements
+into a synthetic `@main` function:
+
+```
+Program
+├─ procs[] → @<name>
+└─ main[]  → @main
+```
+
+This ordering guarantees functions are listed before `@main`.
+
 ## Procedure Definitions
 
 Each BASIC `FUNCTION` or `SUB` becomes an IL function named `@<name>`. The
