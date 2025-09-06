@@ -1,15 +1,17 @@
 // File: src/frontends/basic/Lowerer.hpp
 // Purpose: Declares lowering from BASIC AST to IL with helper routines and
 // centralized runtime declarations.
-// Key invariants: None.
+// Key invariants: Deterministic per-procedure block naming.
 // Ownership/Lifetime: Lowerer does not own AST or module.
 // Links: docs/class-catalog.md
 #pragma once
 
 #include "frontends/basic/AST.hpp"
+#include "frontends/basic/BlockNamer.hpp"
 #include "frontends/basic/NameMangler.hpp"
 #include "il/build/IRBuilder.hpp"
 #include "il/core/Module.hpp"
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -19,7 +21,7 @@ namespace il::frontends::basic
 {
 
 /// @brief Lowers BASIC AST into IL Module.
-/// @invariant Generates deterministic block names via NameMangler.
+/// @invariant Generates deterministic block names via BlockNamer.
 /// @ownership Owns produced Module; uses IRBuilder for structure emission.
 class Lowerer
 {
@@ -91,6 +93,7 @@ class Lowerer
     BasicBlock *cur{nullptr};
     size_t fnExit{0};
     NameMangler mangler;
+    std::optional<BlockNamer> blockNamer; ///< active when lowering a procedure
     std::unordered_map<int, size_t> lineBlocks;
     std::unordered_map<std::string, unsigned> varSlots;
     std::unordered_map<std::string, unsigned> arrayLenSlots;

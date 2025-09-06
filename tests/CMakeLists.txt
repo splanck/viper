@@ -472,6 +472,12 @@ add_test(NAME basic_to_il_calls_lowering COMMAND ${CMAKE_COMMAND}
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/calls_lowering.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 
+add_test(NAME basic_to_il_labels_proc_simple COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/goldens/labels_proc_simple.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/basic/goldens/labels_proc_simple.il
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
+
 file(READ ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/proc_registration_ok.err EXPECT_PROC_REG)
 string(STRIP "${EXPECT_PROC_REG}" EXPECT_PROC_REG)
 add_test(NAME basic_semantics_proc_registration COMMAND ${CMAKE_COMMAND}

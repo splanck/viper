@@ -1,7 +1,7 @@
 // File: src/frontends/basic/Lowerer.cpp
 // Purpose: Lowers BASIC AST to IL with control-flow helpers and centralized
 // runtime declarations.
-// Key invariants: None.
+// Key invariants: Uses BlockNamer for deterministic per-procedure block labels.
 // Ownership/Lifetime: Uses contexts managed externally.
 // Links: docs/class-catalog.md
 
@@ -30,6 +30,7 @@ Module Lowerer::lower(const Program &prog)
     builder = &b;
 
     mangler = NameMangler();
+    blockNamer.reset();
     lineBlocks.clear();
     varSlots.clear();
     arrayLenSlots.clear();
@@ -579,7 +580,8 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
     Function &f = builder->startFunction(decl.name, retTy, params);
     func = &f;
 
-    builder->addBlock(f, "entry_" + decl.name);
+    blockNamer.emplace(decl.name);
+    builder->addBlock(f, blockNamer->entry());
 
     for (size_t i = 0; i < decl.params.size(); ++i)
         mangler.nextTemp();
@@ -588,11 +590,11 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
     lines.reserve(decl.body.size());
     for (const auto &stmt : decl.body)
     {
-        builder->addBlock(f, mangler.block("L" + std::to_string(stmt->line) + "_" + decl.name));
+        builder->addBlock(f, blockNamer->line(stmt->line));
         lines.push_back(stmt->line);
     }
     fnExit = f.blocks.size();
-    builder->addBlock(f, mangler.block("ret_" + decl.name));
+    builder->addBlock(f, blockNamer->ret());
 
     for (size_t i = 0; i < lines.size(); ++i)
         lineBlocks[lines[i]] = i + 1;
@@ -645,6 +647,7 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
     {
         curLoc = {};
         emitRet(defaultRet());
+        blockNamer.reset();
         return;
     }
 
@@ -664,6 +667,7 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
     cur = &f.blocks[fnExit];
     curLoc = {};
     emitRet(defaultRet());
+    blockNamer.reset();
 }
 
 /// @brief Lower SUB body into an IL function.
@@ -701,7 +705,8 @@ void Lowerer::lowerSubDecl(const SubDecl &decl)
         builder->startFunction(decl.name, il::core::Type(il::core::Type::Kind::Void), params);
     func = &f;
 
-    builder->addBlock(f, "entry_" + decl.name);
+    blockNamer.emplace(decl.name);
+    builder->addBlock(f, blockNamer->entry());
 
     for (size_t i = 0; i < decl.params.size(); ++i)
         mangler.nextTemp();
@@ -710,11 +715,11 @@ void Lowerer::lowerSubDecl(const SubDecl &decl)
     lines.reserve(decl.body.size());
     for (const auto &stmt : decl.body)
     {
-        builder->addBlock(f, mangler.block("L" + std::to_string(stmt->line) + "_" + decl.name));
+        builder->addBlock(f, blockNamer->line(stmt->line));
         lines.push_back(stmt->line);
     }
     fnExit = f.blocks.size();
-    builder->addBlock(f, mangler.block("ret_" + decl.name));
+    builder->addBlock(f, blockNamer->ret());
 
     for (size_t i = 0; i < lines.size(); ++i)
         lineBlocks[lines[i]] = i + 1;
@@ -753,6 +758,7 @@ void Lowerer::lowerSubDecl(const SubDecl &decl)
     {
         curLoc = {};
         emitRetVoid();
+        blockNamer.reset();
         return;
     }
 
@@ -772,6 +778,7 @@ void Lowerer::lowerSubDecl(const SubDecl &decl)
     cur = &f.blocks[fnExit];
     curLoc = {};
     emitRetVoid();
+    blockNamer.reset();
 }
 
 /// @brief Allocate stack slots for parameters and store incoming values. Array
@@ -899,9 +906,13 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             Value addr = emitAlloca(1);
             if (b->op == BinaryExpr::Op::And)
             {
-                BasicBlock *rhsBB = &builder->addBlock(*func, mangler.block("and_rhs"));
-                BasicBlock *falseBB = &builder->addBlock(*func, mangler.block("and_false"));
-                BasicBlock *doneBB = &builder->addBlock(*func, mangler.block("and_done"));
+                BasicBlock *rhsBB = &builder->addBlock(
+                    *func, blockNamer ? blockNamer->unique("and_rhs") : mangler.block("and_rhs"));
+                BasicBlock *falseBB = &builder->addBlock(
+                    *func,
+                    blockNamer ? blockNamer->unique("and_false") : mangler.block("and_false"));
+                BasicBlock *doneBB = &builder->addBlock(
+                    *func, blockNamer ? blockNamer->unique("and_done") : mangler.block("and_done"));
                 curLoc = expr.loc;
                 emitCBr(lhs.value, rhsBB, falseBB);
                 cur = rhsBB;
@@ -919,9 +930,12 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             }
             else
             {
-                BasicBlock *trueBB = &builder->addBlock(*func, mangler.block("or_true"));
-                BasicBlock *rhsBB = &builder->addBlock(*func, mangler.block("or_rhs"));
-                BasicBlock *doneBB = &builder->addBlock(*func, mangler.block("or_done"));
+                BasicBlock *trueBB = &builder->addBlock(
+                    *func, blockNamer ? blockNamer->unique("or_true") : mangler.block("or_true"));
+                BasicBlock *rhsBB = &builder->addBlock(
+                    *func, blockNamer ? blockNamer->unique("or_rhs") : mangler.block("or_rhs"));
+                BasicBlock *doneBB = &builder->addBlock(
+                    *func, blockNamer ? blockNamer->unique("or_done") : mangler.block("or_done"));
                 curLoc = expr.loc;
                 emitCBr(lhs.value, trueBB, rhsBB);
                 cur = trueBB;
@@ -948,8 +962,10 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
             curLoc = expr.loc;
             Value cond =
                 emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), rhs.value, Value::constInt(0));
-            BasicBlock *trapBB = &builder->addBlock(*func, mangler.block("div0"));
-            BasicBlock *okBB = &builder->addBlock(*func, mangler.block("divok"));
+            BasicBlock *trapBB = &builder->addBlock(
+                *func, blockNamer ? blockNamer->unique("div0") : mangler.block("div0"));
+            BasicBlock *okBB = &builder->addBlock(
+                *func, blockNamer ? blockNamer->unique("divok") : mangler.block("divok"));
             emitCBr(cond, trapBB, okBB);
             cur = trapBB;
             curLoc = expr.loc;
@@ -1398,16 +1414,65 @@ void Lowerer::lowerPrint(const PrintStmt &stmt)
 
 void Lowerer::lowerIf(const IfStmt &stmt)
 {
+    if (blockNamer && stmt.elseifs.empty())
+    {
+        auto names = blockNamer->nextIf();
+        size_t curIdx = cur - &func->blocks[0];
+        size_t thenIdx = func->blocks.size();
+        builder->addBlock(*func, names.thenBB);
+        size_t elseIdx = func->blocks.size();
+        builder->addBlock(*func, names.elseBB);
+        size_t endIdx = func->blocks.size();
+        builder->addBlock(*func, names.endBB);
+        cur = &func->blocks[curIdx];
+        BasicBlock *thenBB = &func->blocks[thenIdx];
+        BasicBlock *elseBB = &func->blocks[elseIdx];
+        BasicBlock *endBB = &func->blocks[endIdx];
+        RVal c = lowerExpr(*stmt.cond);
+        if (c.type.kind != Type::Kind::I1)
+        {
+            curLoc = stmt.loc;
+            Value b1 = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), c.value);
+            c = {b1, Type(Type::Kind::I1)};
+        }
+        emitCBr(c.value, thenBB, elseBB);
+
+        cur = thenBB;
+        if (stmt.then_branch)
+            lowerStmt(*stmt.then_branch);
+        if (!cur->terminated)
+        {
+            curLoc = stmt.loc;
+            emitBr(endBB);
+        }
+
+        cur = elseBB;
+        if (stmt.else_branch)
+            lowerStmt(*stmt.else_branch);
+        if (!cur->terminated)
+        {
+            curLoc = stmt.loc;
+            emitBr(endBB);
+        }
+
+        cur = endBB;
+        return;
+    }
+
     size_t conds = 1 + stmt.elseifs.size();
     size_t curIdx = cur - &func->blocks[0];
     size_t start = func->blocks.size();
     for (size_t i = 0; i < conds; ++i)
     {
-        builder->addBlock(*func, mangler.block("if_test_" + std::to_string(i)));
-        builder->addBlock(*func, mangler.block("if_then_" + std::to_string(i)));
+        std::string testName = blockNamer ? blockNamer->unique("if_head")
+                                          : mangler.block("if_test_" + std::to_string(i));
+        std::string thenName = blockNamer ? blockNamer->unique("if_then")
+                                          : mangler.block("if_then_" + std::to_string(i));
+        builder->addBlock(*func, testName);
+        builder->addBlock(*func, thenName);
     }
-    builder->addBlock(*func, mangler.block("if_else"));
-    builder->addBlock(*func, mangler.block("if_exit"));
+    builder->addBlock(*func, blockNamer ? blockNamer->unique("if_else") : mangler.block("if_else"));
+    builder->addBlock(*func, blockNamer ? blockNamer->unique("if_end") : mangler.block("if_exit"));
     cur = &func->blocks[curIdx];
     std::vector<size_t> testIdx(conds);
     std::vector<size_t> thenIdx(conds);
@@ -1474,12 +1539,28 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
     // Adding blocks may reallocate the function's block list; capture index and
     // reacquire pointers to guarantee stability.
     size_t start = func->blocks.size();
-    builder->addBlock(*func, mangler.block("loop_head"));
-    builder->addBlock(*func, mangler.block("loop_body"));
-    builder->addBlock(*func, mangler.block("done"));
-    BasicBlock *head = &func->blocks[start];
-    BasicBlock *body = &func->blocks[start + 1];
-    BasicBlock *done = &func->blocks[start + 2];
+    BasicBlock *head;
+    BasicBlock *body;
+    BasicBlock *done;
+    if (blockNamer)
+    {
+        auto names = blockNamer->nextWhile();
+        builder->addBlock(*func, names.head);
+        builder->addBlock(*func, names.body);
+        builder->addBlock(*func, names.end);
+        head = &func->blocks[start];
+        body = &func->blocks[start + 1];
+        done = &func->blocks[start + 2];
+    }
+    else
+    {
+        builder->addBlock(*func, mangler.block("loop_head"));
+        builder->addBlock(*func, mangler.block("loop_body"));
+        builder->addBlock(*func, mangler.block("done"));
+        head = &func->blocks[start];
+        body = &func->blocks[start + 1];
+        done = &func->blocks[start + 2];
+    }
 
     curLoc = stmt.loc;
     emitBr(head);
@@ -1535,10 +1616,21 @@ void Lowerer::lowerFor(const ForStmt &stmt)
     {
         size_t curIdx = cur - &func->blocks[0];
         size_t base = func->blocks.size();
-        builder->addBlock(*func, mangler.block("for_head"));
-        builder->addBlock(*func, mangler.block("for_body"));
-        builder->addBlock(*func, mangler.block("for_inc"));
-        builder->addBlock(*func, mangler.block("for_done"));
+        if (blockNamer)
+        {
+            auto names = blockNamer->nextFor();
+            builder->addBlock(*func, names.head);
+            builder->addBlock(*func, names.body);
+            builder->addBlock(*func, names.inc);
+            builder->addBlock(*func, names.end);
+        }
+        else
+        {
+            builder->addBlock(*func, mangler.block("for_head"));
+            builder->addBlock(*func, mangler.block("for_body"));
+            builder->addBlock(*func, mangler.block("for_inc"));
+            builder->addBlock(*func, mangler.block("for_done"));
+        }
         size_t headIdx = base;
         size_t bodyIdx = base + 1;
         size_t incIdx = base + 2;
@@ -1584,11 +1676,22 @@ void Lowerer::lowerFor(const ForStmt &stmt)
             emitBinary(Opcode::SCmpGE, Type(Type::Kind::I1), step.value, Value::constInt(0));
         size_t curIdx = cur - &func->blocks[0];
         size_t base = func->blocks.size();
-        builder->addBlock(*func, mangler.block("for_head_pos"));
-        builder->addBlock(*func, mangler.block("for_head_neg"));
-        builder->addBlock(*func, mangler.block("for_body"));
-        builder->addBlock(*func, mangler.block("for_inc"));
-        builder->addBlock(*func, mangler.block("for_done"));
+        if (blockNamer)
+        {
+            builder->addBlock(*func, blockNamer->unique("for_head_pos"));
+            builder->addBlock(*func, blockNamer->unique("for_head_neg"));
+            builder->addBlock(*func, blockNamer->unique("for_body"));
+            builder->addBlock(*func, blockNamer->unique("for_inc"));
+            builder->addBlock(*func, blockNamer->unique("for_end"));
+        }
+        else
+        {
+            builder->addBlock(*func, mangler.block("for_head_pos"));
+            builder->addBlock(*func, mangler.block("for_head_neg"));
+            builder->addBlock(*func, mangler.block("for_body"));
+            builder->addBlock(*func, mangler.block("for_inc"));
+            builder->addBlock(*func, mangler.block("for_done"));
+        }
         size_t headPosIdx = base;
         size_t headNegIdx = base + 1;
         size_t bodyIdx = base + 2;
@@ -1734,9 +1837,23 @@ Value Lowerer::lowerArrayAddr(const ArrayExpr &expr)
         Value cond = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), or64);
         size_t curIdx = static_cast<size_t>(cur - &func->blocks[0]);
         size_t okIdx = func->blocks.size();
-        builder->addBlock(*func, mangler.block("bc_ok" + std::to_string(boundsCheckId)));
+        if (blockNamer)
+        {
+            builder->addBlock(*func, blockNamer->unique("bc_ok"));
+        }
+        else
+        {
+            builder->addBlock(*func, mangler.block("bc_ok" + std::to_string(boundsCheckId)));
+        }
         size_t failIdx = func->blocks.size();
-        builder->addBlock(*func, mangler.block("bc_fail" + std::to_string(boundsCheckId)));
+        if (blockNamer)
+        {
+            builder->addBlock(*func, blockNamer->unique("bc_fail"));
+        }
+        else
+        {
+            builder->addBlock(*func, mangler.block("bc_fail" + std::to_string(boundsCheckId)));
+        }
         BasicBlock *ok = &func->blocks[okIdx];
         BasicBlock *fail = &func->blocks[failIdx];
         cur = &func->blocks[curIdx];
