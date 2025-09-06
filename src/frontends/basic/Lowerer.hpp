@@ -197,6 +197,26 @@ class Lowerer
     /// @param expr Binary expression node.
     /// @return Resulting value and type.
     RVal lowerBinaryExpr(const BinaryExpr &expr);
+    /// @brief Lower logical (`AND`/`OR`) expressions with short-circuiting.
+    /// @param expr Binary expression node.
+    /// @return Resulting value and type.
+    RVal lowerLogicalBinary(const BinaryExpr &expr);
+    /// @brief Lower integer division and modulo with divide-by-zero check.
+    /// @param expr Binary expression node.
+    /// @return Resulting value and type.
+    RVal lowerDivOrMod(const BinaryExpr &expr);
+    /// @brief Lower string concatenation and equality/inequality comparisons.
+    /// @param expr Binary expression node.
+    /// @param lhs Pre-lowered left-hand side.
+    /// @param rhs Pre-lowered right-hand side.
+    /// @return Resulting value and type.
+    RVal lowerStringBinary(const BinaryExpr &expr, RVal lhs, RVal rhs);
+    /// @brief Lower numeric arithmetic and comparisons.
+    /// @param expr Binary expression node.
+    /// @param lhs Pre-lowered left-hand side.
+    /// @param rhs Pre-lowered right-hand side.
+    /// @return Resulting value and type.
+    RVal lowerNumericBinary(const BinaryExpr &expr, RVal lhs, RVal rhs);
     /// @brief Lower a built-in call expression.
     /// @param expr Built-in call expression node.
     /// @return Resulting value and type.
