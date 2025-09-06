@@ -381,6 +381,114 @@ bool verifyConstNull(const Instr &in,
     return true;
 }
 
+bool validateBlockParams(const Function &fn,
+                         const BasicBlock &bb,
+                         std::unordered_map<unsigned, Type> &temps,
+                         std::unordered_set<unsigned> &defined,
+                         std::vector<unsigned> &paramIds,
+                         std::ostream &err)
+{
+    bool ok = true;
+    std::unordered_set<std::string> paramNames;
+    for (const auto &p : bb.params)
+    {
+        if (!paramNames.insert(p.name).second)
+        {
+            err << fn.name << ":" << bb.label << ": duplicate param %" << p.name << "\n";
+            ok = false;
+        }
+        if (p.type.kind == Type::Kind::Void)
+        {
+            err << fn.name << ":" << bb.label << ": param %" << p.name << " has void type\n";
+            ok = false;
+        }
+        temps[p.id] = p.type;
+        defined.insert(p.id);
+        paramIds.push_back(p.id);
+    }
+    return ok;
+}
+
+using VerifyInstrFn = bool (*)(const Function &fn,
+                               const BasicBlock &bb,
+                               const Instr &in,
+                               const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                               const std::unordered_map<std::string, const Extern *> &externs,
+                               const std::unordered_map<std::string, const Function *> &funcs,
+                               std::unordered_map<unsigned, Type> &temps,
+                               std::unordered_set<unsigned> &defined,
+                               std::ostream &err);
+
+bool iterateBlockInstructions(VerifyInstrFn verifyInstrFn,
+                              const Function &fn,
+                              const BasicBlock &bb,
+                              const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                              const std::unordered_map<std::string, const Extern *> &externs,
+                              const std::unordered_map<std::string, const Function *> &funcs,
+                              std::unordered_map<unsigned, Type> &temps,
+                              std::unordered_set<unsigned> &defined,
+                              std::ostream &err)
+{
+    bool ok = true;
+    for (const auto &in : bb.instructions)
+    {
+        for (const auto &op : in.operands)
+            if (op.kind == Value::Kind::Temp && !defined.count(op.id))
+            {
+                err << fn.name << ":" << bb.label << ": " << snippet(in) << ": use before def of %"
+                    << op.id << "\n";
+                ok = false;
+            }
+
+        ok &= verifyInstrFn(fn, bb, in, blockMap, externs, funcs, temps, defined, err);
+
+        if (isTerminator(in.op))
+            break;
+    }
+    return ok;
+}
+
+bool checkBlockTerminators(const Function &fn, const BasicBlock &bb, std::ostream &err)
+{
+    if (bb.instructions.empty())
+    {
+        err << fn.name << ":" << bb.label << ": empty block\n";
+        return false;
+    }
+
+    bool ok = true;
+    bool seenTerm = false;
+    for (const auto &in : bb.instructions)
+    {
+        if (isTerminator(in.op))
+        {
+            if (seenTerm)
+            {
+                err << fn.name << ":" << bb.label << ": " << snippet(in)
+                    << ": multiple terminators\n";
+                ok = false;
+                break;
+            }
+            seenTerm = true;
+        }
+        else if (seenTerm)
+        {
+            err << fn.name << ":" << bb.label << ": " << snippet(in)
+                << ": instruction after terminator\n";
+            ok = false;
+            break;
+        }
+    }
+
+    if (ok && !isTerminator(bb.instructions.back().op))
+    {
+        err << fn.name << ":" << bb.label << ": missing terminator\n";
+        ok = false;
+    }
+
+    return ok;
+}
+
 bool verifyCall(const Function &fn,
                 const BasicBlock &bb,
                 const Instr &in,
@@ -697,69 +805,13 @@ bool Verifier::verifyBlock(const Function &fn,
     std::unordered_set<unsigned> defined;
     for (const auto &kv : temps)
         defined.insert(kv.first);
-    std::unordered_set<std::string> paramNames;
+
     std::vector<unsigned> paramIds;
-    for (const auto &p : bb.params)
-    {
-        if (!paramNames.insert(p.name).second)
-        {
-            err << fn.name << ":" << bb.label << ": duplicate param %" << p.name << "\n";
-            ok = false;
-        }
-        if (p.type.kind == Type::Kind::Void)
-        {
-            err << fn.name << ":" << bb.label << ": param %" << p.name << " has void type\n";
-            ok = false;
-        }
-        temps[p.id] = p.type;
-        defined.insert(p.id);
-        paramIds.push_back(p.id);
-    }
-
-    if (bb.instructions.empty())
-    {
-        err << fn.name << ":" << bb.label << ": empty block\n";
-        ok = false;
-    }
-
-    bool seenTerm = false;
-    for (const auto &in : bb.instructions)
-    {
-        for (const auto &op : in.operands)
-            if (op.kind == Value::Kind::Temp && !defined.count(op.id))
-            {
-                err << fn.name << ":" << bb.label << ": " << snippet(in) << ": use before def of %"
-                    << op.id << "\n";
-                ok = false;
-            }
-
-        if (isTerminator(in.op))
-        {
-            if (seenTerm)
-            {
-                err << fn.name << ":" << bb.label << ": " << snippet(in)
-                    << ": multiple terminators\n";
-                ok = false;
-                break;
-            }
-            seenTerm = true;
-        }
-        else if (seenTerm)
-        {
-            err << fn.name << ":" << bb.label << ": " << snippet(in)
-                << ": instruction after terminator\n";
-            ok = false;
-            break;
-        }
-
-        ok &= verifyInstr(fn, bb, in, blockMap, externs, funcs, temps, defined, err);
-    }
-
-    if (!bb.instructions.empty() && !isTerminator(bb.instructions.back().op))
-    {
-        err << fn.name << ":" << bb.label << ": missing terminator\n";
-        ok = false;
-    }
+    ok &= validateBlockParams(fn, bb, temps, defined, paramIds, err);
+    auto verifyInstrFn = &Verifier::verifyInstr;
+    ok &= iterateBlockInstructions(
+        verifyInstrFn, fn, bb, blockMap, externs, funcs, temps, defined, err);
+    ok &= checkBlockTerminators(fn, bb, err);
 
     for (unsigned id : paramIds)
         temps.erase(id);
