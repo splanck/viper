@@ -202,6 +202,28 @@ class Lowerer
     /// @return Resulting value and type.
     RVal lowerBuiltinCall(const BuiltinCallExpr &expr);
 
+    // Built-in helpers
+    RVal lowerLen(const BuiltinCallExpr &expr);
+    RVal lowerMid(const BuiltinCallExpr &expr);
+    RVal lowerLeft(const BuiltinCallExpr &expr);
+    RVal lowerRight(const BuiltinCallExpr &expr);
+    RVal lowerStr(const BuiltinCallExpr &expr);
+    RVal lowerVal(const BuiltinCallExpr &expr);
+    RVal lowerInt(const BuiltinCallExpr &expr);
+    RVal lowerSqr(const BuiltinCallExpr &expr);
+    RVal lowerAbs(const BuiltinCallExpr &expr);
+    RVal lowerFloor(const BuiltinCallExpr &expr);
+    RVal lowerCeil(const BuiltinCallExpr &expr);
+    RVal lowerSin(const BuiltinCallExpr &expr);
+    RVal lowerCos(const BuiltinCallExpr &expr);
+    RVal lowerPow(const BuiltinCallExpr &expr);
+    RVal lowerRnd(const BuiltinCallExpr &expr);
+
+    // Shared argument helpers
+    RVal lowerArg(const BuiltinCallExpr &c, size_t idx);
+    RVal ensureI64(RVal v, il::support::SourceLoc loc);
+    RVal ensureF64(RVal v, il::support::SourceLoc loc);
+
     void lowerLet(const LetStmt &stmt);
     void lowerPrint(const PrintStmt &stmt);
     void lowerIf(const IfStmt &stmt);
