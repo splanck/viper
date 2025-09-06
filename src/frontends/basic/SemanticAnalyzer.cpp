@@ -644,20 +644,46 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeBinary(const BinaryExpr &b)
         lt = visitExpr(*b.lhs);
     if (b.rhs)
         rt = visitExpr(*b.rhs);
-    auto isNum = [](Type t) { return t == Type::Int || t == Type::Float || t == Type::Unknown; };
     switch (b.op)
     {
         case BinaryExpr::Op::Add:
         case BinaryExpr::Op::Sub:
         case BinaryExpr::Op::Mul:
-        {
-            if (!isNum(lt) || !isNum(rt))
-            {
-                std::string msg = "operand type mismatch";
-                de.emit(il::support::Severity::Error, "B2001", b.loc, 1, std::move(msg));
-            }
-            return (lt == Type::Float || rt == Type::Float) ? Type::Float : Type::Int;
-        }
+            return analyzeArithmetic(b, lt, rt);
+        case BinaryExpr::Op::Div:
+        case BinaryExpr::Op::IDiv:
+        case BinaryExpr::Op::Mod:
+            return analyzeDivMod(b, lt, rt);
+        case BinaryExpr::Op::Eq:
+        case BinaryExpr::Op::Ne:
+        case BinaryExpr::Op::Lt:
+        case BinaryExpr::Op::Le:
+        case BinaryExpr::Op::Gt:
+        case BinaryExpr::Op::Ge:
+            return analyzeComparison(b, lt, rt);
+        case BinaryExpr::Op::And:
+        case BinaryExpr::Op::Or:
+            return analyzeLogical(b, lt, rt);
+    }
+    return Type::Unknown;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeArithmetic(const BinaryExpr &b, Type lt, Type rt)
+{
+    auto isNum = [](Type t) { return t == Type::Int || t == Type::Float || t == Type::Unknown; };
+    if (!isNum(lt) || !isNum(rt))
+    {
+        std::string msg = "operand type mismatch";
+        de.emit(il::support::Severity::Error, "B2001", b.loc, 1, std::move(msg));
+    }
+    return (lt == Type::Float || rt == Type::Float) ? Type::Float : Type::Int;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeDivMod(const BinaryExpr &b, Type lt, Type rt)
+{
+    auto isNum = [](Type t) { return t == Type::Int || t == Type::Float || t == Type::Unknown; };
+    switch (b.op)
+    {
         case BinaryExpr::Op::Div:
         {
             if (!isNum(lt) || !isNum(rt))
@@ -700,33 +726,31 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeBinary(const BinaryExpr &b)
             }
             return Type::Int;
         }
-        case BinaryExpr::Op::Eq:
-        case BinaryExpr::Op::Ne:
-        case BinaryExpr::Op::Lt:
-        case BinaryExpr::Op::Le:
-        case BinaryExpr::Op::Gt:
-        case BinaryExpr::Op::Ge:
-        {
-            if (!isNum(lt) || !isNum(rt))
-            {
-                std::string msg = "operand type mismatch";
-                de.emit(il::support::Severity::Error, "B2001", b.loc, 1, std::move(msg));
-            }
-            return Type::Int;
-        }
-        case BinaryExpr::Op::And:
-        case BinaryExpr::Op::Or:
-        {
-            if ((lt != Type::Unknown && lt != Type::Int) ||
-                (rt != Type::Unknown && rt != Type::Int))
-            {
-                std::string msg = "operand type mismatch";
-                de.emit(il::support::Severity::Error, "B2001", b.loc, 1, std::move(msg));
-            }
-            return Type::Int;
-        }
+        default:
+            break;
     }
     return Type::Unknown;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeComparison(const BinaryExpr &b, Type lt, Type rt)
+{
+    auto isNum = [](Type t) { return t == Type::Int || t == Type::Float || t == Type::Unknown; };
+    if (!isNum(lt) || !isNum(rt))
+    {
+        std::string msg = "operand type mismatch";
+        de.emit(il::support::Severity::Error, "B2001", b.loc, 1, std::move(msg));
+    }
+    return Type::Int;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeLogical(const BinaryExpr &b, Type lt, Type rt)
+{
+    if ((lt != Type::Unknown && lt != Type::Int) || (rt != Type::Unknown && rt != Type::Int))
+    {
+        std::string msg = "operand type mismatch";
+        de.emit(il::support::Severity::Error, "B2001", b.loc, 1, std::move(msg));
+    }
+    return Type::Int;
 }
 
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeBuiltinCall(const BuiltinCallExpr &c)
