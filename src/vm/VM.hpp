@@ -71,10 +71,11 @@ class VM
     std::unordered_map<std::string, const il::core::Function *> fnMap; ///< Name lookup
     std::unordered_map<std::string, rt_str> strMap;                    ///< String pool
 
-    /// @brief Execute function @p fn.
+    /// @brief Execute function @p fn with optional arguments.
     /// @param fn Function to execute.
-    /// @return Return value as 64-bit integer.
-    int64_t execFunction(const il::core::Function &fn);
+    /// @param args Argument slots for the callee's entry block.
+    /// @return Return value slot.
+    Slot execFunction(const il::core::Function &fn, const std::vector<Slot> &args = {});
 
     /// @brief Evaluate IL value @p v within frame @p fr.
     /// @param fr Current frame.

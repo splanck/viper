@@ -134,6 +134,12 @@ add_test(NAME vm_math_trigpow COMMAND ${CMAKE_COMMAND}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_vm_math_trigpow.cmake)
 set_tests_properties(vm_math_trigpow PROPERTIES LABELS VM)
 
+add_test(NAME vm_rec_fact COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DSRC_DIR=${CMAKE_SOURCE_DIR}
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_vm_rec_fact.cmake)
+set_tests_properties(vm_rec_fact PROPERTIES LABELS VM)
+
 add_test(NAME vm_trace_src COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/trace_src.bas

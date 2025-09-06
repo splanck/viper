@@ -23,3 +23,10 @@ executed. Enable this via `--trace=il` in `ilc -run`:
 Trace output is identical across platforms. All numbers use the C locale with
 booleans printed as `0` or `1`, integers in base‑10, and floating-point values
 formatted using `%.17g`. Line endings are normalized to `\n` even on Windows.
+
+## Recursion
+
+The interpreter allocates a fresh frame for each call. Recursive functions thus
+nest frames naturally; see `tests/il/e2e/rec_fact.il` for an end-to-end factorial
+example.
+

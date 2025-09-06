@@ -34,7 +34,7 @@ int64_t VM::run()
 {
     auto it = fnMap.find("main");
     assert(it != fnMap.end());
-    return execFunction(*it->second);
+    return execFunction(*it->second, {}).i64;
 }
 
 Slot VM::eval(Frame &fr, const Value &v)
@@ -65,7 +65,7 @@ Slot VM::eval(Frame &fr, const Value &v)
     return s;
 }
 
-int64_t VM::execFunction(const Function &fn)
+Slot VM::execFunction(const Function &fn, const std::vector<Slot> &args)
 {
     Frame fr;
     fr.func = &fn;
@@ -74,6 +74,12 @@ int64_t VM::execFunction(const Function &fn)
     for (const auto &b : fn.blocks)
         blocks[b.label] = &b;
     const BasicBlock *bb = fn.blocks.empty() ? nullptr : &fn.blocks.front();
+    if (bb)
+    {
+        const auto &params = bb->params;
+        for (size_t i = 0; i < params.size() && i < args.size(); ++i)
+            fr.params[params[i].id] = args[i];
+    }
     debug.resetLastHit();
     size_t ip = 0;
     bool skipBreakOnce = false;
@@ -82,7 +88,9 @@ int64_t VM::execFunction(const Function &fn)
         if (maxSteps && instrCount >= maxSteps)
         {
             std::cerr << "VM: step limit exceeded (" << maxSteps << "); aborting.\n";
-            return 1;
+            Slot s{};
+            s.i64 = 1;
+            return s;
         }
         if (ip == 0 && stepBudget == 0 && !skipBreakOnce)
         {
@@ -91,7 +99,11 @@ int64_t VM::execFunction(const Function &fn)
                 std::cerr << "[BREAK] fn=@" << fr.func->name << " blk=" << bb->label
                           << " reason=label\n";
                 if (!script || script->empty())
-                    return 10;
+                {
+                    Slot s{};
+                    s.i64 = 10;
+                    return s;
+                }
                 auto act = script->nextAction();
                 if (act.kind == DebugActionKind::Step)
                     stepBudget = act.count;
@@ -127,7 +139,9 @@ int64_t VM::execFunction(const Function &fn)
                 path = std::filesystem::path(sm->getPath(in.loc.file_id)).filename().string();
             std::cerr << "[BREAK] src=" << path << ':' << in.loc.line << " fn=@" << fr.func->name
                       << " blk=" << bb->label << " ip=#" << ip << "\n";
-            return 10;
+            Slot s{};
+            s.i64 = 10;
+            return s;
         }
         tracer.onStep(in, fr);
         ++instrCount;
@@ -554,8 +568,10 @@ int64_t VM::execFunction(const Function &fn)
             case Opcode::Ret:
             {
                 if (!in.operands.empty())
-                    return eval(fr, in.operands[0]).i64;
-                return 0;
+                    return eval(fr, in.operands[0]);
+                Slot s{};
+                s.i64 = 0;
+                return s;
             }
             case Opcode::ConstStr:
             {
@@ -571,10 +587,16 @@ int64_t VM::execFunction(const Function &fn)
             }
             case Opcode::Call:
             {
-                std::vector<Slot> args;
+                std::vector<Slot> callArgs;
                 for (const auto &op : in.operands)
-                    args.push_back(eval(fr, op));
-                Slot res = RuntimeBridge::call(in.callee, args, in.loc, fr.func->name, bb->label);
+                    callArgs.push_back(eval(fr, op));
+                Slot res{};
+                auto itFn = fnMap.find(in.callee);
+                if (itFn != fnMap.end())
+                    res = execFunction(*itFn->second, callArgs);
+                else
+                    res =
+                        RuntimeBridge::call(in.callee, callArgs, in.loc, fr.func->name, bb->label);
                 if (in.result)
                 {
                     if (fr.regs.size() <= *in.result)
@@ -625,7 +647,9 @@ int64_t VM::execFunction(const Function &fn)
             case Opcode::Trap:
             {
                 RuntimeBridge::trap("trap", in.loc, fr.func->name, bb->label);
-                return 0; // unreachable
+                Slot s{};
+                s.i64 = 0; // unreachable
+                return s;
             }
             default:
                 assert(false && "unimplemented opcode");
@@ -642,7 +666,11 @@ int64_t VM::execFunction(const Function &fn)
                 std::cerr << "[BREAK] fn=@" << fr.func->name << " blk=" << bb->label
                           << " reason=step\n";
                 if (!script || script->empty())
-                    return 10;
+                {
+                    Slot s{};
+                    s.i64 = 10;
+                    return s;
+                }
                 auto act = script->nextAction();
                 if (act.kind == DebugActionKind::Step)
                     stepBudget = act.count;
@@ -650,7 +678,9 @@ int64_t VM::execFunction(const Function &fn)
             }
         }
     }
-    return 0;
+    Slot s{};
+    s.i64 = 0;
+    return s;
 }
 
 } // namespace il::vm
