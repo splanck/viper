@@ -10,6 +10,7 @@
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include <algorithm>
 #include <limits>
+#include <typeindex>
 #include <vector>
 
 namespace il::frontends::basic
@@ -17,6 +18,11 @@ namespace il::frontends::basic
 
 namespace
 {
+template <typename T, void (SemanticAnalyzer::*Fn)(const T &)>
+void dispatchHelper(SemanticAnalyzer *sa, const Stmt &s)
+{
+    (sa->*Fn)(static_cast<const T &>(s));
+}
 
 /// @brief Compute Levenshtein distance between strings @p a and @p b.
 static size_t levenshtein(const std::string &a, const std::string &b)
@@ -51,6 +57,16 @@ void SemanticAnalyzer::popScope()
     // exit lexical scope
     if (!scopeStack_.empty())
         scopeStack_.pop_back();
+}
+
+SemanticAnalyzer::ScopedScope::ScopedScope(SemanticAnalyzer &sa) : sa_(sa)
+{
+    sa.pushScope();
+}
+
+SemanticAnalyzer::ScopedScope::~ScopedScope()
+{
+    sa_.popScope();
 }
 
 std::optional<std::string> SemanticAnalyzer::resolve(const std::string &name) const
@@ -300,244 +316,271 @@ void SemanticAnalyzer::analyze(const Program &prog)
             visitStmt(*stmt);
 }
 
-void SemanticAnalyzer::visitStmt(const Stmt &s)
+void SemanticAnalyzer::analyzeStmtList(const StmtList &lst)
 {
-    if (auto *lst = dynamic_cast<const StmtList *>(&s))
+    for (const auto &st : lst.stmts)
+        if (st)
+            visitStmt(*st);
+}
+
+void SemanticAnalyzer::analyzePrint(const PrintStmt &p)
+{
+    for (const auto &it : p.items)
+        if (it.kind == PrintItem::Kind::Expr && it.expr)
+            visitExpr(*it.expr);
+}
+
+void SemanticAnalyzer::analyzeLet(const LetStmt &l)
+{
+    if (auto *v = const_cast<VarExpr *>(dynamic_cast<const VarExpr *>(l.target.get())))
     {
-        for (const auto &st : lst->stmts)
-            if (st)
-                visitStmt(*st);
-    }
-    else if (auto *p = dynamic_cast<const PrintStmt *>(&s))
-    {
-        for (const auto &it : p->items)
-            if (it.kind == PrintItem::Kind::Expr && it.expr)
-                visitExpr(*it.expr);
-    }
-    else if (auto *l = dynamic_cast<const LetStmt *>(&s))
-    {
-        if (auto *v = const_cast<VarExpr *>(dynamic_cast<const VarExpr *>(l->target.get())))
+        if (auto mapped = resolve(v->name))
+            v->name = *mapped;
+        symbols_.insert(v->name);
+        Type varTy = Type::Int;
+        if (!v->name.empty())
         {
-            if (auto mapped = resolve(v->name))
-                v->name = *mapped;
-            symbols_.insert(v->name);
-            Type varTy = Type::Int;
-            if (!v->name.empty())
-            {
-                if (v->name.back() == '$')
-                    varTy = Type::String;
-                else if (v->name.back() == '#')
-                    varTy = Type::Float;
-            }
-            if (l->expr)
-            {
-                Type exprTy = visitExpr(*l->expr);
-                if (varTy == Type::Int && exprTy == Type::Float)
-                {
-                    std::string msg = "operand type mismatch";
-                    de.emit(il::support::Severity::Error, "B2001", l->loc, 1, std::move(msg));
-                }
-                else if (varTy == Type::String && exprTy != Type::Unknown && exprTy != Type::String)
-                {
-                    std::string msg = "operand type mismatch";
-                    de.emit(il::support::Severity::Error, "B2001", l->loc, 1, std::move(msg));
-                }
-            }
-            varTypes_[v->name] = varTy;
+            if (v->name.back() == '$')
+                varTy = Type::String;
+            else if (v->name.back() == '#')
+                varTy = Type::Float;
         }
-        else if (auto *a =
-                     const_cast<ArrayExpr *>(dynamic_cast<const ArrayExpr *>(l->target.get())))
+        if (l.expr)
         {
-            if (auto mapped = resolve(a->name))
-                a->name = *mapped;
-            if (!arrays_.count(a->name))
+            Type exprTy = visitExpr(*l.expr);
+            if (varTy == Type::Int && exprTy == Type::Float)
             {
-                std::string msg = "unknown array '" + a->name + "'";
-                de.emit(il::support::Severity::Error,
-                        "B1001",
-                        a->loc,
-                        static_cast<uint32_t>(a->name.size()),
-                        std::move(msg));
+                std::string msg = "operand type mismatch";
+                de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
             }
-            auto ty = visitExpr(*a->index);
-            if (ty != Type::Unknown && ty != Type::Int)
+            else if (varTy == Type::String && exprTy != Type::Unknown && exprTy != Type::String)
             {
-                std::string msg = "index type mismatch";
-                de.emit(il::support::Severity::Error, "B2001", a->loc, 1, std::move(msg));
-            }
-            if (l->expr)
-                visitExpr(*l->expr);
-            auto it = arrays_.find(a->name);
-            if (it != arrays_.end() && it->second >= 0)
-            {
-                if (auto *ci = dynamic_cast<const IntExpr *>(a->index.get()))
-                {
-                    if (ci->value < 0 || ci->value >= it->second)
-                    {
-                        std::string msg = "index out of bounds";
-                        de.emit(il::support::Severity::Warning, "B3001", a->loc, 1, std::move(msg));
-                    }
-                }
+                std::string msg = "operand type mismatch";
+                de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
             }
         }
+        varTypes_[v->name] = varTy;
     }
-    else if (auto *i = dynamic_cast<const IfStmt *>(&s))
+    else if (auto *a = const_cast<ArrayExpr *>(dynamic_cast<const ArrayExpr *>(l.target.get())))
     {
-        if (i->cond)
-            visitExpr(*i->cond);
-        if (i->then_branch)
+        if (auto mapped = resolve(a->name))
+            a->name = *mapped;
+        if (!arrays_.count(a->name))
         {
-            pushScope(); // enter scope
-            visitStmt(*i->then_branch);
-            popScope(); // exit scope
+            std::string msg = "unknown array '" + a->name + "'";
+            de.emit(il::support::Severity::Error,
+                    "B1001",
+                    a->loc,
+                    static_cast<uint32_t>(a->name.size()),
+                    std::move(msg));
         }
-        for (const auto &e : i->elseifs)
-        {
-            if (e.cond)
-                visitExpr(*e.cond);
-            if (e.then_branch)
-            {
-                pushScope(); // enter scope
-                visitStmt(*e.then_branch);
-                popScope(); // exit scope
-            }
-        }
-        if (i->else_branch)
-        {
-            pushScope(); // enter scope
-            visitStmt(*i->else_branch);
-            popScope(); // exit scope
-        }
-    }
-    else if (auto *w = dynamic_cast<const WhileStmt *>(&s))
-    {
-        if (w->cond)
-            visitExpr(*w->cond);
-        pushScope(); // enter scope
-        for (const auto &bs : w->body)
-            if (bs)
-                visitStmt(*bs);
-        popScope(); // exit scope
-    }
-    else if (auto *f = dynamic_cast<const ForStmt *>(&s))
-    {
-        auto *fc = const_cast<ForStmt *>(f);
-        if (auto mapped = resolve(fc->var))
-            fc->var = *mapped;
-        symbols_.insert(fc->var);
-        if (f->start)
-            visitExpr(*f->start);
-        if (f->end)
-            visitExpr(*f->end);
-        if (f->step)
-            visitExpr(*f->step);
-        forStack_.push_back(fc->var);
-        pushScope(); // enter scope
-        for (const auto &bs : f->body)
-            if (bs)
-                visitStmt(*bs);
-        popScope(); // exit scope
-        forStack_.pop_back();
-    }
-    else if (auto *g = dynamic_cast<const GotoStmt *>(&s))
-    {
-        labelRefs_.insert(g->target);
-        if (!labels_.count(g->target))
-        {
-            std::string msg = "unknown line " + std::to_string(g->target);
-            de.emit(il::support::Severity::Error, "B1003", g->loc, 4, std::move(msg));
-        }
-    }
-    else if (auto *n = dynamic_cast<const NextStmt *>(&s))
-    {
-        if (forStack_.empty() || (!n->var.empty() && n->var != forStack_.back()))
-        {
-            std::string msg = "mismatched NEXT";
-            if (!n->var.empty())
-                msg += " '" + n->var + "'";
-            if (!forStack_.empty())
-                msg += ", expected '" + forStack_.back() + "'";
-            else
-                msg += ", no active FOR";
-            de.emit(il::support::Severity::Error, "B1002", n->loc, 4, std::move(msg));
-        }
-        else
-        {
-            forStack_.pop_back();
-        }
-    }
-    else if (dynamic_cast<const EndStmt *>(&s))
-    {
-        // nothing
-    }
-    else if (auto *r = dynamic_cast<const RandomizeStmt *>(&s))
-    {
-        if (r->seed)
-        {
-            auto ty = visitExpr(*r->seed);
-            if (ty != Type::Unknown && ty != Type::Int && ty != Type::Float)
-            {
-                std::string msg = "seed type mismatch";
-                de.emit(il::support::Severity::Error, "B2001", r->loc, 1, std::move(msg));
-            }
-        }
-    }
-    else if (auto *inp = dynamic_cast<const InputStmt *>(&s))
-    {
-        if (inp->prompt)
-            visitExpr(*inp->prompt);
-        auto *ic = const_cast<InputStmt *>(inp);
-        if (auto mapped = resolve(ic->var))
-            ic->var = *mapped;
-        symbols_.insert(ic->var);
-        if (!ic->var.empty() && ic->var.back() == '$')
-            varTypes_[ic->var] = Type::String;
-        else if (!ic->var.empty() && ic->var.back() == '#')
-            varTypes_[ic->var] = Type::Float;
-        else
-            varTypes_[ic->var] = Type::Int;
-    }
-    else if (auto *d = dynamic_cast<const DimStmt *>(&s))
-    {
-        auto *dc = const_cast<DimStmt *>(d);
-        auto ty = visitExpr(*dc->size);
+        auto ty = visitExpr(*a->index);
         if (ty != Type::Unknown && ty != Type::Int)
         {
-            std::string msg = "size type mismatch";
-            de.emit(il::support::Severity::Error, "B2001", dc->loc, 1, std::move(msg));
+            std::string msg = "index type mismatch";
+            de.emit(il::support::Severity::Error, "B2001", a->loc, 1, std::move(msg));
         }
-        long long sz = -1;
-        if (auto *ci = dynamic_cast<const IntExpr *>(dc->size.get()))
+        if (l.expr)
+            visitExpr(*l.expr);
+        auto it = arrays_.find(a->name);
+        if (it != arrays_.end() && it->second >= 0)
         {
-            sz = ci->value;
-            if (sz <= 0)
+            if (auto *ci = dynamic_cast<const IntExpr *>(a->index.get()))
             {
-                std::string msg = "array size must be positive";
-                de.emit(il::support::Severity::Error, "B2003", dc->loc, 1, std::move(msg));
+                if (ci->value < 0 || ci->value >= it->second)
+                {
+                    std::string msg = "index out of bounds";
+                    de.emit(il::support::Severity::Warning, "B3001", a->loc, 1, std::move(msg));
+                }
             }
         }
-        if (!scopeStack_.empty())
-        {
-            auto &cur = scopeStack_.back();
-            if (cur.count(dc->name))
-            {
-                std::string msg = "duplicate local '" + dc->name + "'";
-                de.emit(il::support::Severity::Error,
-                        "B1006",
-                        dc->loc,
-                        static_cast<uint32_t>(dc->name.size()),
-                        std::move(msg));
-            }
-            else
-            {
-                std::string unique = dc->name + "_" + std::to_string(nextLocalId_++);
-                cur[dc->name] = unique;
-                dc->name = unique;
-                symbols_.insert(unique);
-            }
-        }
-        arrays_[dc->name] = sz;
     }
+}
+
+void SemanticAnalyzer::analyzeIf(const IfStmt &i)
+{
+    if (i.cond)
+        visitExpr(*i.cond);
+    if (i.then_branch)
+    {
+        ScopedScope scope(*this);
+        visitStmt(*i.then_branch);
+    }
+    for (const auto &e : i.elseifs)
+    {
+        if (e.cond)
+            visitExpr(*e.cond);
+        if (e.then_branch)
+        {
+            ScopedScope scope(*this);
+            visitStmt(*e.then_branch);
+        }
+    }
+    if (i.else_branch)
+    {
+        ScopedScope scope(*this);
+        visitStmt(*i.else_branch);
+    }
+}
+
+void SemanticAnalyzer::analyzeWhile(const WhileStmt &w)
+{
+    if (w.cond)
+        visitExpr(*w.cond);
+    ScopedScope scope(*this);
+    for (const auto &bs : w.body)
+        if (bs)
+            visitStmt(*bs);
+}
+
+void SemanticAnalyzer::analyzeFor(const ForStmt &f)
+{
+    auto *fc = const_cast<ForStmt *>(&f);
+    if (auto mapped = resolve(fc->var))
+        fc->var = *mapped;
+    symbols_.insert(fc->var);
+    if (f.start)
+        visitExpr(*f.start);
+    if (f.end)
+        visitExpr(*f.end);
+    if (f.step)
+        visitExpr(*f.step);
+    forStack_.push_back(fc->var);
+    {
+        ScopedScope scope(*this);
+        for (const auto &bs : f.body)
+            if (bs)
+                visitStmt(*bs);
+    }
+    forStack_.pop_back();
+}
+
+void SemanticAnalyzer::analyzeGoto(const GotoStmt &g)
+{
+    labelRefs_.insert(g.target);
+    if (!labels_.count(g.target))
+    {
+        std::string msg = "unknown line " + std::to_string(g.target);
+        de.emit(il::support::Severity::Error, "B1003", g.loc, 4, std::move(msg));
+    }
+}
+
+void SemanticAnalyzer::analyzeNext(const NextStmt &n)
+{
+    if (forStack_.empty() || (!n.var.empty() && n.var != forStack_.back()))
+    {
+        std::string msg = "mismatched NEXT";
+        if (!n.var.empty())
+            msg += " '" + n.var + "'";
+        if (!forStack_.empty())
+            msg += ", expected '" + forStack_.back() + "'";
+        else
+            msg += ", no active FOR";
+        de.emit(il::support::Severity::Error, "B1002", n.loc, 4, std::move(msg));
+    }
+    else
+    {
+        forStack_.pop_back();
+    }
+}
+
+void SemanticAnalyzer::analyzeEnd(const EndStmt &)
+{
+    // nothing
+}
+
+void SemanticAnalyzer::analyzeRandomize(const RandomizeStmt &r)
+{
+    if (r.seed)
+    {
+        auto ty = visitExpr(*r.seed);
+        if (ty != Type::Unknown && ty != Type::Int && ty != Type::Float)
+        {
+            std::string msg = "seed type mismatch";
+            de.emit(il::support::Severity::Error, "B2001", r.loc, 1, std::move(msg));
+        }
+    }
+}
+
+void SemanticAnalyzer::analyzeInput(const InputStmt &inp)
+{
+    if (inp.prompt)
+        visitExpr(*inp.prompt);
+    auto *ic = const_cast<InputStmt *>(&inp);
+    if (auto mapped = resolve(ic->var))
+        ic->var = *mapped;
+    symbols_.insert(ic->var);
+    if (!ic->var.empty() && ic->var.back() == '$')
+        varTypes_[ic->var] = Type::String;
+    else if (!ic->var.empty() && ic->var.back() == '#')
+        varTypes_[ic->var] = Type::Float;
+    else
+        varTypes_[ic->var] = Type::Int;
+}
+
+void SemanticAnalyzer::analyzeDim(const DimStmt &d)
+{
+    auto *dc = const_cast<DimStmt *>(&d);
+    auto ty = visitExpr(*dc->size);
+    if (ty != Type::Unknown && ty != Type::Int)
+    {
+        std::string msg = "size type mismatch";
+        de.emit(il::support::Severity::Error, "B2001", dc->loc, 1, std::move(msg));
+    }
+    long long sz = -1;
+    if (auto *ci = dynamic_cast<const IntExpr *>(dc->size.get()))
+    {
+        sz = ci->value;
+        if (sz <= 0)
+        {
+            std::string msg = "array size must be positive";
+            de.emit(il::support::Severity::Error, "B2003", dc->loc, 1, std::move(msg));
+        }
+    }
+    if (!scopeStack_.empty())
+    {
+        auto &cur = scopeStack_.back();
+        if (cur.count(dc->name))
+        {
+            std::string msg = "duplicate local '" + dc->name + "'";
+            de.emit(il::support::Severity::Error,
+                    "B1006",
+                    dc->loc,
+                    static_cast<uint32_t>(dc->name.size()),
+                    std::move(msg));
+        }
+        else
+        {
+            std::string unique = dc->name + "_" + std::to_string(nextLocalId_++);
+            cur[dc->name] = unique;
+            dc->name = unique;
+            symbols_.insert(unique);
+        }
+    }
+    arrays_[dc->name] = sz;
+}
+
+void SemanticAnalyzer::visitStmt(const Stmt &s)
+{
+    using Handler = void (*)(SemanticAnalyzer *, const Stmt &);
+    static const std::unordered_map<std::type_index, Handler> table = {
+        {typeid(StmtList), &dispatchHelper<StmtList, &SemanticAnalyzer::analyzeStmtList>},
+        {typeid(PrintStmt), &dispatchHelper<PrintStmt, &SemanticAnalyzer::analyzePrint>},
+        {typeid(LetStmt), &dispatchHelper<LetStmt, &SemanticAnalyzer::analyzeLet>},
+        {typeid(IfStmt), &dispatchHelper<IfStmt, &SemanticAnalyzer::analyzeIf>},
+        {typeid(WhileStmt), &dispatchHelper<WhileStmt, &SemanticAnalyzer::analyzeWhile>},
+        {typeid(ForStmt), &dispatchHelper<ForStmt, &SemanticAnalyzer::analyzeFor>},
+        {typeid(GotoStmt), &dispatchHelper<GotoStmt, &SemanticAnalyzer::analyzeGoto>},
+        {typeid(NextStmt), &dispatchHelper<NextStmt, &SemanticAnalyzer::analyzeNext>},
+        {typeid(EndStmt), &dispatchHelper<EndStmt, &SemanticAnalyzer::analyzeEnd>},
+        {typeid(RandomizeStmt),
+         &dispatchHelper<RandomizeStmt, &SemanticAnalyzer::analyzeRandomize>},
+        {typeid(InputStmt), &dispatchHelper<InputStmt, &SemanticAnalyzer::analyzeInput>},
+        {typeid(DimStmt), &dispatchHelper<DimStmt, &SemanticAnalyzer::analyzeDim>},
+    };
+    auto it = table.find(typeid(s));
+    if (it != table.end())
+        it->second(this, s);
 }
 
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeVar(VarExpr &v)
