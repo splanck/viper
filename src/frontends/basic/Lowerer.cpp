@@ -1623,6 +1623,124 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
     cur->terminated = term;
 }
 
+Lowerer::ForBlocks Lowerer::setupForBlocks(bool varStep)
+{
+    size_t curIdx = cur - &func->blocks[0];
+    size_t base = func->blocks.size();
+    unsigned id = blockNamer ? blockNamer->nextFor() : 0;
+    ForBlocks fb;
+    if (varStep)
+    {
+        std::string headPosLbl =
+            blockNamer ? blockNamer->generic("for_head_pos") : mangler.block("for_head_pos");
+        std::string headNegLbl =
+            blockNamer ? blockNamer->generic("for_head_neg") : mangler.block("for_head_neg");
+        builder->addBlock(*func, headPosLbl);
+        builder->addBlock(*func, headNegLbl);
+        fb.headPosIdx = base;
+        fb.headNegIdx = base + 1;
+        base += 2;
+    }
+    else
+    {
+        std::string headLbl = blockNamer ? blockNamer->forHead(id) : mangler.block("for_head");
+        builder->addBlock(*func, headLbl);
+        fb.headIdx = base;
+        base += 1;
+    }
+    std::string bodyLbl = blockNamer ? blockNamer->forBody(id) : mangler.block("for_body");
+    std::string incLbl = blockNamer ? blockNamer->forInc(id) : mangler.block("for_inc");
+    std::string doneLbl = blockNamer ? blockNamer->forEnd(id) : mangler.block("for_done");
+    builder->addBlock(*func, bodyLbl);
+    builder->addBlock(*func, incLbl);
+    builder->addBlock(*func, doneLbl);
+    fb.bodyIdx = base;
+    fb.incIdx = base + 1;
+    fb.doneIdx = base + 2;
+    cur = &func->blocks[curIdx];
+    return fb;
+}
+
+void Lowerer::lowerForConstStep(
+    const ForStmt &stmt, Value slot, RVal end, RVal step, long stepConst)
+{
+    ForBlocks fb = setupForBlocks(false);
+    curLoc = stmt.loc;
+    emitBr(&func->blocks[fb.headIdx]);
+    cur = &func->blocks[fb.headIdx];
+    curLoc = stmt.loc;
+    Value curVal = emitLoad(Type(Type::Kind::I64), slot);
+    Opcode cmp = stepConst >= 0 ? Opcode::SCmpLE : Opcode::SCmpGE;
+    curLoc = stmt.loc;
+    Value cond = emitBinary(cmp, Type(Type::Kind::I1), curVal, end.value);
+    curLoc = stmt.loc;
+    emitCBr(cond, &func->blocks[fb.bodyIdx], &func->blocks[fb.doneIdx]);
+    cur = &func->blocks[fb.bodyIdx];
+    for (auto &s : stmt.body)
+    {
+        lowerStmt(*s);
+        if (cur->terminated)
+            break;
+    }
+    bool term = cur->terminated;
+    if (!term)
+    {
+        curLoc = stmt.loc;
+        emitBr(&func->blocks[fb.incIdx]);
+        cur = &func->blocks[fb.incIdx];
+        curLoc = stmt.loc;
+        emitForStep(slot, step.value);
+        curLoc = stmt.loc;
+        emitBr(&func->blocks[fb.headIdx]);
+    }
+    cur = &func->blocks[fb.doneIdx];
+    cur->terminated = term;
+}
+
+void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal step)
+{
+    curLoc = stmt.loc;
+    Value stepNonNeg =
+        emitBinary(Opcode::SCmpGE, Type(Type::Kind::I1), step.value, Value::constInt(0));
+    ForBlocks fb = setupForBlocks(true);
+    curLoc = stmt.loc;
+    emitCBr(stepNonNeg, &func->blocks[fb.headPosIdx], &func->blocks[fb.headNegIdx]);
+    cur = &func->blocks[fb.headPosIdx];
+    curLoc = stmt.loc;
+    Value curVal = emitLoad(Type(Type::Kind::I64), slot);
+    curLoc = stmt.loc;
+    Value cmpPos = emitBinary(Opcode::SCmpLE, Type(Type::Kind::I1), curVal, end.value);
+    curLoc = stmt.loc;
+    emitCBr(cmpPos, &func->blocks[fb.bodyIdx], &func->blocks[fb.doneIdx]);
+    cur = &func->blocks[fb.headNegIdx];
+    curLoc = stmt.loc;
+    curVal = emitLoad(Type(Type::Kind::I64), slot);
+    curLoc = stmt.loc;
+    Value cmpNeg = emitBinary(Opcode::SCmpGE, Type(Type::Kind::I1), curVal, end.value);
+    curLoc = stmt.loc;
+    emitCBr(cmpNeg, &func->blocks[fb.bodyIdx], &func->blocks[fb.doneIdx]);
+    cur = &func->blocks[fb.bodyIdx];
+    for (auto &s : stmt.body)
+    {
+        lowerStmt(*s);
+        if (cur->terminated)
+            break;
+    }
+    bool term = cur->terminated;
+    if (!term)
+    {
+        curLoc = stmt.loc;
+        emitBr(&func->blocks[fb.incIdx]);
+        cur = &func->blocks[fb.incIdx];
+        curLoc = stmt.loc;
+        emitForStep(slot, step.value);
+        curLoc = stmt.loc;
+        emitCBr(stepNonNeg, &func->blocks[fb.headPosIdx], &func->blocks[fb.headNegIdx]);
+    }
+    cur = &func->blocks[fb.doneIdx];
+    cur->terminated = term;
+}
+
 void Lowerer::lowerFor(const ForStmt &stmt)
 {
     RVal start = lowerExpr(*stmt.start);
@@ -1636,131 +1754,15 @@ void Lowerer::lowerFor(const ForStmt &stmt)
 
     bool constStep = !stmt.step || dynamic_cast<const IntExpr *>(stmt.step.get());
     long stepConst = 1;
-    if (stmt.step)
+    if (constStep && stmt.step)
     {
         if (auto *ie = dynamic_cast<const IntExpr *>(stmt.step.get()))
             stepConst = ie->value;
     }
     if (constStep)
-    {
-        size_t curIdx = cur - &func->blocks[0];
-        size_t base = func->blocks.size();
-        unsigned id = blockNamer ? blockNamer->nextFor() : 0;
-        std::string headLbl = blockNamer ? blockNamer->forHead(id) : mangler.block("for_head");
-        std::string bodyLbl = blockNamer ? blockNamer->forBody(id) : mangler.block("for_body");
-        std::string incLbl = blockNamer ? blockNamer->forInc(id) : mangler.block("for_inc");
-        std::string doneLbl = blockNamer ? blockNamer->forEnd(id) : mangler.block("for_done");
-        builder->addBlock(*func, headLbl);
-        builder->addBlock(*func, bodyLbl);
-        builder->addBlock(*func, incLbl);
-        builder->addBlock(*func, doneLbl);
-        size_t headIdx = base;
-        size_t bodyIdx = base + 1;
-        size_t incIdx = base + 2;
-        size_t doneIdx = base + 3;
-        cur = &func->blocks[curIdx];
-        curLoc = stmt.loc;
-        emitBr(&func->blocks[headIdx]);
-        cur = &func->blocks[headIdx];
-        curLoc = stmt.loc;
-        Value curVal = emitLoad(Type(Type::Kind::I64), slot);
-        Opcode cmp = stepConst >= 0 ? Opcode::SCmpLE : Opcode::SCmpGE;
-        curLoc = stmt.loc;
-        Value cond = emitBinary(cmp, Type(Type::Kind::I1), curVal, end.value);
-        curLoc = stmt.loc;
-        emitCBr(cond, &func->blocks[bodyIdx], &func->blocks[doneIdx]);
-        cur = &func->blocks[bodyIdx];
-        for (auto &s : stmt.body)
-        {
-            lowerStmt(*s);
-            if (cur->terminated)
-                break;
-        }
-        bool term = cur->terminated;
-        if (!term)
-        {
-            curLoc = stmt.loc;
-            emitBr(&func->blocks[incIdx]);
-            cur = &func->blocks[incIdx];
-            curLoc = stmt.loc;
-            Value load = emitLoad(Type(Type::Kind::I64), slot);
-            curLoc = stmt.loc;
-            Value add = emitBinary(Opcode::Add, Type(Type::Kind::I64), load, step.value);
-            curLoc = stmt.loc;
-            emitStore(Type(Type::Kind::I64), slot, add);
-            curLoc = stmt.loc;
-            emitBr(&func->blocks[headIdx]);
-        }
-        cur = &func->blocks[doneIdx];
-        cur->terminated = term;
-    }
+        lowerForConstStep(stmt, slot, end, step, stepConst);
     else
-    {
-        curLoc = stmt.loc;
-        Value stepNonNeg =
-            emitBinary(Opcode::SCmpGE, Type(Type::Kind::I1), step.value, Value::constInt(0));
-        size_t curIdx = cur - &func->blocks[0];
-        size_t base = func->blocks.size();
-        unsigned id = blockNamer ? blockNamer->nextFor() : 0;
-        std::string headPosLbl =
-            blockNamer ? blockNamer->generic("for_head_pos") : mangler.block("for_head_pos");
-        std::string headNegLbl =
-            blockNamer ? blockNamer->generic("for_head_neg") : mangler.block("for_head_neg");
-        std::string bodyLbl = blockNamer ? blockNamer->forBody(id) : mangler.block("for_body");
-        std::string incLbl = blockNamer ? blockNamer->forInc(id) : mangler.block("for_inc");
-        std::string doneLbl = blockNamer ? blockNamer->forEnd(id) : mangler.block("for_done");
-        builder->addBlock(*func, headPosLbl);
-        builder->addBlock(*func, headNegLbl);
-        builder->addBlock(*func, bodyLbl);
-        builder->addBlock(*func, incLbl);
-        builder->addBlock(*func, doneLbl);
-        size_t headPosIdx = base;
-        size_t headNegIdx = base + 1;
-        size_t bodyIdx = base + 2;
-        size_t incIdx = base + 3;
-        size_t doneIdx = base + 4;
-        cur = &func->blocks[curIdx];
-        curLoc = stmt.loc;
-        emitCBr(stepNonNeg, &func->blocks[headPosIdx], &func->blocks[headNegIdx]);
-        cur = &func->blocks[headPosIdx];
-        curLoc = stmt.loc;
-        Value curVal = emitLoad(Type(Type::Kind::I64), slot);
-        curLoc = stmt.loc;
-        Value cmpPos = emitBinary(Opcode::SCmpLE, Type(Type::Kind::I1), curVal, end.value);
-        curLoc = stmt.loc;
-        emitCBr(cmpPos, &func->blocks[bodyIdx], &func->blocks[doneIdx]);
-        cur = &func->blocks[headNegIdx];
-        curLoc = stmt.loc;
-        curVal = emitLoad(Type(Type::Kind::I64), slot);
-        curLoc = stmt.loc;
-        Value cmpNeg = emitBinary(Opcode::SCmpGE, Type(Type::Kind::I1), curVal, end.value);
-        curLoc = stmt.loc;
-        emitCBr(cmpNeg, &func->blocks[bodyIdx], &func->blocks[doneIdx]);
-        cur = &func->blocks[bodyIdx];
-        for (auto &s : stmt.body)
-        {
-            lowerStmt(*s);
-            if (cur->terminated)
-                break;
-        }
-        bool term = cur->terminated;
-        if (!term)
-        {
-            curLoc = stmt.loc;
-            emitBr(&func->blocks[incIdx]);
-            cur = &func->blocks[incIdx];
-            curLoc = stmt.loc;
-            Value load = emitLoad(Type(Type::Kind::I64), slot);
-            curLoc = stmt.loc;
-            Value add = emitBinary(Opcode::Add, Type(Type::Kind::I64), load, step.value);
-            curLoc = stmt.loc;
-            emitStore(Type(Type::Kind::I64), slot, add);
-            curLoc = stmt.loc;
-            emitCBr(stepNonNeg, &func->blocks[headPosIdx], &func->blocks[headNegIdx]);
-        }
-        cur = &func->blocks[doneIdx];
-        cur->terminated = term;
-    }
+        lowerForVarStep(stmt, slot, end, step);
 }
 
 void Lowerer::lowerNext(const NextStmt &) {}
@@ -1920,6 +1922,13 @@ void Lowerer::emitStore(Type ty, Value addr, Value val)
     in.operands = {addr, val};
     in.loc = curLoc;
     cur->instructions.push_back(in);
+}
+
+void Lowerer::emitForStep(Value slot, Value step)
+{
+    Value load = emitLoad(Type(Type::Kind::I64), slot);
+    Value add = emitBinary(Opcode::Add, Type(Type::Kind::I64), load, step);
+    emitStore(Type(Type::Kind::I64), slot, add);
 }
 
 Value Lowerer::emitBinary(Opcode op, Type ty, Value lhs, Value rhs)
