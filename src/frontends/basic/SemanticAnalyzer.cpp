@@ -731,13 +731,6 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeBinary(const BinaryExpr &b)
 
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeBuiltinCall(const BuiltinCallExpr &c)
 {
-    auto err = [&](size_t idx)
-    {
-        il::support::SourceLoc loc =
-            (idx < c.args.size() && c.args[idx]) ? c.args[idx]->loc : c.loc;
-        std::string msg = "argument type mismatch";
-        de.emit(il::support::Severity::Error, "B2001", loc, 1, std::move(msg));
-    };
     std::vector<Type> argTys;
     for (auto &a : c.args)
         argTys.push_back(a ? visitExpr(*a) : Type::Unknown);
@@ -745,89 +738,210 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeBuiltinCall(const BuiltinCallExp
     switch (c.builtin)
     {
         case B::Len:
-            if (argTys.size() != 1 || (argTys[0] != Type::Unknown && argTys[0] != Type::String))
-                err(0);
-            return Type::Int;
+            return analyzeLen(c, argTys);
         case B::Mid:
-            if (argTys.size() < 2 || argTys.size() > 3)
-                err(0);
-            if (argTys.size() >= 1 && argTys[0] != Type::Unknown && argTys[0] != Type::String)
-                err(0);
-            if (argTys.size() >= 2 && argTys[1] != Type::Unknown && argTys[1] != Type::Int)
-                err(1);
-            if (argTys.size() == 3 && argTys[2] != Type::Unknown && argTys[2] != Type::Int)
-                err(2);
-            return Type::String;
+            return analyzeMid(c, argTys);
         case B::Left:
+            return analyzeLeft(c, argTys);
         case B::Right:
-            if (argTys.size() != 2)
-                err(0);
-            if (argTys.size() >= 1 && argTys[0] != Type::Unknown && argTys[0] != Type::String)
-                err(0);
-            if (argTys.size() >= 2 && argTys[1] != Type::Unknown && argTys[1] != Type::Int)
-                err(1);
-            return Type::String;
+            return analyzeRight(c, argTys);
         case B::Str:
-            if (argTys.size() != 1)
-                err(0);
-            if (argTys.size() >= 1 && argTys[0] != Type::Unknown && argTys[0] != Type::Int &&
-                argTys[0] != Type::Float)
-                err(0);
-            return Type::String;
+            return analyzeStr(c, argTys);
         case B::Val:
-            if (argTys.size() != 1)
-                err(0);
-            if (argTys.size() >= 1 && argTys[0] != Type::Unknown && argTys[0] != Type::String)
-                err(0);
-            return Type::Int;
+            return analyzeVal(c, argTys);
         case B::Int:
-            if (argTys.size() != 1)
-                err(0);
-            if (argTys.size() >= 1 && argTys[0] != Type::Unknown && argTys[0] != Type::Float)
-                err(0);
-            return Type::Int;
+            return analyzeInt(c, argTys);
         case B::Sqr:
-            if (argTys.size() != 1 ||
-                (argTys[0] != Type::Unknown && argTys[0] != Type::Int && argTys[0] != Type::Float))
-                err(0);
-            return Type::Float;
+            return analyzeSqr(c, argTys);
         case B::Abs:
-            if (argTys.size() != 1)
-                err(0);
-            if (argTys[0] == Type::Float)
-                return Type::Float;
-            if (argTys[0] == Type::Int || argTys[0] == Type::Unknown)
-                return Type::Int;
-            err(0);
-            return Type::Int;
+            return analyzeAbs(c, argTys);
         case B::Floor:
+            return analyzeFloor(c, argTys);
         case B::Ceil:
-            if (argTys.size() != 1 ||
-                (argTys[0] != Type::Unknown && argTys[0] != Type::Int && argTys[0] != Type::Float))
-                err(0);
-            return Type::Float;
+            return analyzeCeil(c, argTys);
         case B::Sin:
+            return analyzeSin(c, argTys);
         case B::Cos:
-            if (argTys.size() != 1 ||
-                (argTys[0] != Type::Unknown && argTys[0] != Type::Int && argTys[0] != Type::Float))
-                err(0);
-            return Type::Float;
+            return analyzeCos(c, argTys);
         case B::Pow:
-            if (argTys.size() != 2)
-                err(0);
-            if (argTys.size() >= 1 && argTys[0] != Type::Unknown && argTys[0] != Type::Int &&
-                argTys[0] != Type::Float)
-                err(0);
-            if (argTys.size() >= 2 && argTys[1] != Type::Unknown && argTys[1] != Type::Int &&
-                argTys[1] != Type::Float)
-                err(1);
-            return Type::Float;
+            return analyzePow(c, argTys);
         case B::Rnd:
-            if (!argTys.empty())
-                err(0);
-            return Type::Float;
+            return analyzeRnd(c, argTys);
     }
     return Type::Unknown;
+}
+
+void SemanticAnalyzer::argTypeMismatch(const BuiltinCallExpr &c, size_t idx)
+{
+    il::support::SourceLoc loc = (idx < c.args.size() && c.args[idx]) ? c.args[idx]->loc : c.loc;
+    std::string msg = "argument type mismatch";
+    de.emit(il::support::Severity::Error, "B2001", loc, 1, std::move(msg));
+}
+
+bool SemanticAnalyzer::checkArgCount(const BuiltinCallExpr &c,
+                                     const std::vector<Type> &args,
+                                     size_t min,
+                                     size_t max)
+{
+    if (args.size() < min || args.size() > max)
+    {
+        argTypeMismatch(c, 0);
+        return false;
+    }
+    return true;
+}
+
+bool SemanticAnalyzer::checkArgType(const BuiltinCallExpr &c,
+                                    size_t idx,
+                                    Type argTy,
+                                    std::initializer_list<Type> allowed)
+{
+    if (argTy == Type::Unknown)
+        return true;
+    for (Type t : allowed)
+        if (t == argTy)
+            return true;
+    argTypeMismatch(c, idx);
+    return false;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeRnd(const BuiltinCallExpr &c,
+                                                    const std::vector<Type> &args)
+{
+    checkArgCount(c, args, 0, 0);
+    return Type::Float;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeLen(const BuiltinCallExpr &c,
+                                                    const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 1))
+        checkArgType(c, 0, args[0], {Type::String});
+    return Type::Int;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeMid(const BuiltinCallExpr &c,
+                                                    const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 2, 3))
+    {
+        checkArgType(c, 0, args[0], {Type::String});
+        checkArgType(c, 1, args[1], {Type::Int});
+        if (args.size() == 3)
+            checkArgType(c, 2, args[2], {Type::Int});
+    }
+    return Type::String;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeLeft(const BuiltinCallExpr &c,
+                                                     const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 2, 2))
+    {
+        checkArgType(c, 0, args[0], {Type::String});
+        checkArgType(c, 1, args[1], {Type::Int});
+    }
+    return Type::String;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeRight(const BuiltinCallExpr &c,
+                                                      const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 2, 2))
+    {
+        checkArgType(c, 0, args[0], {Type::String});
+        checkArgType(c, 1, args[1], {Type::Int});
+    }
+    return Type::String;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeStr(const BuiltinCallExpr &c,
+                                                    const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 1))
+        checkArgType(c, 0, args[0], {Type::Int, Type::Float});
+    return Type::String;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeVal(const BuiltinCallExpr &c,
+                                                    const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 1))
+        checkArgType(c, 0, args[0], {Type::String});
+    return Type::Int;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeInt(const BuiltinCallExpr &c,
+                                                    const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 1))
+        checkArgType(c, 0, args[0], {Type::Float});
+    return Type::Int;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeSqr(const BuiltinCallExpr &c,
+                                                    const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 1))
+        checkArgType(c, 0, args[0], {Type::Int, Type::Float});
+    return Type::Float;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeAbs(const BuiltinCallExpr &c,
+                                                    const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 1) && !args.empty())
+    {
+        if (args[0] == Type::Float)
+            return Type::Float;
+        if (args[0] == Type::Int || args[0] == Type::Unknown)
+            return Type::Int;
+        argTypeMismatch(c, 0);
+    }
+    return Type::Int;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeFloor(const BuiltinCallExpr &c,
+                                                      const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 1))
+        checkArgType(c, 0, args[0], {Type::Int, Type::Float});
+    return Type::Float;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeCeil(const BuiltinCallExpr &c,
+                                                     const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 1))
+        checkArgType(c, 0, args[0], {Type::Int, Type::Float});
+    return Type::Float;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeSin(const BuiltinCallExpr &c,
+                                                    const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 1))
+        checkArgType(c, 0, args[0], {Type::Int, Type::Float});
+    return Type::Float;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeCos(const BuiltinCallExpr &c,
+                                                    const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 1))
+        checkArgType(c, 0, args[0], {Type::Int, Type::Float});
+    return Type::Float;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzePow(const BuiltinCallExpr &c,
+                                                    const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 2, 2))
+    {
+        checkArgType(c, 0, args[0], {Type::Int, Type::Float});
+        checkArgType(c, 1, args[1], {Type::Int, Type::Float});
+    }
+    return Type::Float;
 }
 
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeCall(const CallExpr &c)

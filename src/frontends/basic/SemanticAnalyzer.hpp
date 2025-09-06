@@ -9,6 +9,7 @@
 
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
+#include <initializer_list>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -134,6 +135,49 @@ class SemanticAnalyzer
     Type analyzeBinary(const BinaryExpr &b);
     /// @brief Analyze built-in function call.
     Type analyzeBuiltinCall(const BuiltinCallExpr &c);
+    /// @brief Analyze RND builtin.
+    Type analyzeRnd(const BuiltinCallExpr &c, const std::vector<Type> &args);
+    /// @brief Analyze LEN builtin.
+    Type analyzeLen(const BuiltinCallExpr &c, const std::vector<Type> &args);
+    /// @brief Analyze MID$ builtin.
+    Type analyzeMid(const BuiltinCallExpr &c, const std::vector<Type> &args);
+    /// @brief Analyze LEFT$ builtin.
+    Type analyzeLeft(const BuiltinCallExpr &c, const std::vector<Type> &args);
+    /// @brief Analyze RIGHT$ builtin.
+    Type analyzeRight(const BuiltinCallExpr &c, const std::vector<Type> &args);
+    /// @brief Analyze STR$ builtin.
+    Type analyzeStr(const BuiltinCallExpr &c, const std::vector<Type> &args);
+    /// @brief Analyze VAL builtin.
+    Type analyzeVal(const BuiltinCallExpr &c, const std::vector<Type> &args);
+    /// @brief Analyze INT builtin.
+    Type analyzeInt(const BuiltinCallExpr &c, const std::vector<Type> &args);
+    /// @brief Analyze SQR builtin.
+    Type analyzeSqr(const BuiltinCallExpr &c, const std::vector<Type> &args);
+    /// @brief Analyze ABS builtin.
+    Type analyzeAbs(const BuiltinCallExpr &c, const std::vector<Type> &args);
+    /// @brief Analyze FLOOR builtin.
+    Type analyzeFloor(const BuiltinCallExpr &c, const std::vector<Type> &args);
+    /// @brief Analyze CEIL builtin.
+    Type analyzeCeil(const BuiltinCallExpr &c, const std::vector<Type> &args);
+    /// @brief Analyze SIN builtin.
+    Type analyzeSin(const BuiltinCallExpr &c, const std::vector<Type> &args);
+    /// @brief Analyze COS builtin.
+    Type analyzeCos(const BuiltinCallExpr &c, const std::vector<Type> &args);
+    /// @brief Analyze POW builtin.
+    Type analyzePow(const BuiltinCallExpr &c, const std::vector<Type> &args);
+
+    /// @brief Emit argument type mismatch diagnostic for argument @p idx.
+    void argTypeMismatch(const BuiltinCallExpr &c, size_t idx);
+    /// @brief Check argument count is within [@p min,@p max].
+    bool checkArgCount(const BuiltinCallExpr &c,
+                       const std::vector<Type> &args,
+                       size_t min,
+                       size_t max);
+    /// @brief Verify argument @p idx is one of @p allowed types.
+    bool checkArgType(const BuiltinCallExpr &c,
+                      size_t idx,
+                      Type argTy,
+                      std::initializer_list<Type> allowed);
     /// @brief Analyze user-defined procedure call.
     Type analyzeCall(const CallExpr &c);
     /// @brief Analyze array access expression.
