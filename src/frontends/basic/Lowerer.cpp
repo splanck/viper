@@ -1481,16 +1481,16 @@ void Lowerer::lowerPrint(const PrintStmt &stmt)
     }
 }
 
-void Lowerer::lowerIf(const IfStmt &stmt)
+Lowerer::IfBlocks Lowerer::emitIfBlocks(size_t conds)
 {
-    size_t conds = 1 + stmt.elseifs.size();
     size_t curIdx = cur - &func->blocks[0];
     size_t start = func->blocks.size();
-    std::vector<unsigned> ifIds(conds);
+    unsigned firstId = 0;
     for (size_t i = 0; i < conds; ++i)
     {
         unsigned id = blockNamer ? blockNamer->nextIf() : static_cast<unsigned>(i);
-        ifIds[i] = id;
+        if (i == 0)
+            firstId = id;
         std::string testLbl = blockNamer ? blockNamer->generic("if_test")
                                          : mangler.block("if_test_" + std::to_string(i));
         std::string thenLbl =
@@ -1498,8 +1498,8 @@ void Lowerer::lowerIf(const IfStmt &stmt)
         builder->addBlock(*func, testLbl);
         builder->addBlock(*func, thenLbl);
     }
-    std::string elseLbl = blockNamer ? blockNamer->ifElse(ifIds.front()) : mangler.block("if_else");
-    std::string endLbl = blockNamer ? blockNamer->ifEnd(ifIds.front()) : mangler.block("if_exit");
+    std::string elseLbl = blockNamer ? blockNamer->ifElse(firstId) : mangler.block("if_else");
+    std::string endLbl = blockNamer ? blockNamer->ifEnd(firstId) : mangler.block("if_exit");
     builder->addBlock(*func, elseLbl);
     builder->addBlock(*func, endLbl);
     cur = &func->blocks[curIdx];
@@ -1512,13 +1512,47 @@ void Lowerer::lowerIf(const IfStmt &stmt)
     }
     BasicBlock *elseBlk = &func->blocks[start + 2 * conds];
     BasicBlock *exitBlk = &func->blocks[start + 2 * conds + 1];
-    bool fallthrough = false;
+    return {std::move(testIdx), std::move(thenIdx), elseBlk, exitBlk};
+}
 
-    // jump to first test
-    curLoc = stmt.loc;
-    emitBr(&func->blocks[testIdx[0]]);
+void Lowerer::lowerIfCondition(const Expr &cond,
+                               BasicBlock *testBlk,
+                               BasicBlock *thenBlk,
+                               BasicBlock *falseBlk,
+                               il::support::SourceLoc loc)
+{
+    cur = testBlk;
+    RVal c = lowerExpr(cond);
+    if (c.type.kind != Type::Kind::I1)
+    {
+        curLoc = loc;
+        Value b1 = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), c.value);
+        c = {b1, Type(Type::Kind::I1)};
+    }
+    emitCBr(c.value, thenBlk, falseBlk);
+}
 
-    // initial IF
+bool Lowerer::lowerIfBranch(const Stmt *stmt,
+                            BasicBlock *thenBlk,
+                            BasicBlock *exitBlk,
+                            il::support::SourceLoc loc)
+{
+    cur = thenBlk;
+    if (stmt)
+        lowerStmt(*stmt);
+    if (!cur->terminated)
+    {
+        curLoc = loc;
+        emitBr(exitBlk);
+        return true;
+    }
+    return false;
+}
+
+void Lowerer::lowerIf(const IfStmt &stmt)
+{
+    size_t conds = 1 + stmt.elseifs.size();
+    IfBlocks blocks = emitIfBlocks(conds);
     std::vector<const Expr *> condExprs;
     std::vector<const Stmt *> thenStmts;
     condExprs.push_back(stmt.cond.get());
@@ -1528,49 +1562,33 @@ void Lowerer::lowerIf(const IfStmt &stmt)
         condExprs.push_back(e.cond.get());
         thenStmts.push_back(e.then_branch.get());
     }
+
+    curLoc = stmt.loc;
+    emitBr(&func->blocks[blocks.tests[0]]);
+
+    bool fallthrough = false;
     for (size_t i = 0; i < conds; ++i)
     {
-        cur = &func->blocks[testIdx[i]];
-        RVal c = lowerExpr(*condExprs[i]);
-        if (c.type.kind != Type::Kind::I1)
-        {
-            curLoc = stmt.loc;
-            Value b1 = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), c.value);
-            c = {b1, Type(Type::Kind::I1)};
-        }
-        BasicBlock *f = (i + 1 < conds) ? &func->blocks[testIdx[i + 1]] : elseBlk;
-        emitCBr(c.value, &func->blocks[thenIdx[i]], f);
-
-        cur = &func->blocks[thenIdx[i]];
-        if (thenStmts[i])
-            lowerStmt(*thenStmts[i]);
-        if (!cur->terminated)
-        {
-            curLoc = stmt.loc;
-            emitBr(exitBlk);
-            fallthrough = true;
-        }
+        BasicBlock *testBlk = &func->blocks[blocks.tests[i]];
+        BasicBlock *thenBlk = &func->blocks[blocks.thens[i]];
+        BasicBlock *falseBlk =
+            (i + 1 < conds) ? &func->blocks[blocks.tests[i + 1]] : blocks.elseBlk;
+        lowerIfCondition(*condExprs[i], testBlk, thenBlk, falseBlk, stmt.loc);
+        bool branchFall = lowerIfBranch(thenStmts[i], thenBlk, blocks.exitBlk, stmt.loc);
+        fallthrough = fallthrough || branchFall;
     }
 
-    // else block
-    cur = elseBlk;
-    if (stmt.else_branch)
-        lowerStmt(*stmt.else_branch);
-    if (!cur->terminated)
-    {
-        curLoc = stmt.loc;
-        emitBr(exitBlk);
-        fallthrough = true;
-    }
+    bool elseFall = lowerIfBranch(stmt.else_branch.get(), blocks.elseBlk, blocks.exitBlk, stmt.loc);
+    fallthrough = fallthrough || elseFall;
 
     if (!fallthrough)
     {
         func->blocks.pop_back();
-        cur = elseBlk;
+        cur = blocks.elseBlk;
         return;
     }
 
-    cur = exitBlk;
+    cur = blocks.exitBlk;
 }
 
 void Lowerer::lowerWhile(const WhileStmt &stmt)
