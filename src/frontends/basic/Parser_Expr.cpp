@@ -42,7 +42,12 @@ int Parser::precedence(TokenKind k)
 
 ExprPtr Parser::parseExpression(int min_prec)
 {
-    ExprPtr left;
+    auto left = parseUnaryExpression();
+    return parseInfixRhs(std::move(left), min_prec);
+}
+
+ExprPtr Parser::parseUnaryExpression()
+{
     if (at(TokenKind::KeywordNot))
     {
         auto loc = peek().loc;
@@ -52,12 +57,13 @@ ExprPtr Parser::parseExpression(int min_prec)
         u->loc = loc;
         u->op = UnaryExpr::Op::Not;
         u->expr = std::move(operand);
-        left = std::move(u);
+        return u;
     }
-    else
-    {
-        left = parsePrimary();
-    }
+    return parsePrimary();
+}
+
+ExprPtr Parser::parseInfixRhs(ExprPtr left, int min_prec)
+{
     while (true)
     {
         int prec = precedence(peek().kind);
