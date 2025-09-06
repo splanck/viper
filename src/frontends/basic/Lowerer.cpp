@@ -136,6 +136,119 @@ void Lowerer::trackRuntime(RuntimeFn fn)
         runtimeOrder.push_back(fn);
 }
 
+Lowerer::ExprType Lowerer::scanUnaryExpr(const UnaryExpr &u)
+{
+    return scanExpr(*u.expr);
+}
+
+Lowerer::ExprType Lowerer::scanBinaryExpr(const BinaryExpr &b)
+{
+    ExprType lt = scanExpr(*b.lhs);
+    ExprType rt = scanExpr(*b.rhs);
+    if (b.op == BinaryExpr::Op::Add && lt == ExprType::Str && rt == ExprType::Str)
+    {
+        needRtConcat = true;
+        return ExprType::Str;
+    }
+    if (b.op == BinaryExpr::Op::Eq || b.op == BinaryExpr::Op::Ne)
+    {
+        if (lt == ExprType::Str || rt == ExprType::Str)
+            needRtStrEq = true;
+        return ExprType::Bool;
+    }
+    if (lt == ExprType::F64 || rt == ExprType::F64)
+        return ExprType::F64;
+    return ExprType::I64;
+}
+
+Lowerer::ExprType Lowerer::scanArrayExpr(const ArrayExpr &arr)
+{
+    scanExpr(*arr.index);
+    return ExprType::I64;
+}
+
+Lowerer::ExprType Lowerer::scanBuiltinCallExpr(const BuiltinCallExpr &c)
+{
+    switch (c.builtin)
+    {
+        case BuiltinCallExpr::Builtin::Rnd:
+            trackRuntime(RuntimeFn::Rnd);
+            return ExprType::F64;
+        case BuiltinCallExpr::Builtin::Val:
+            needRtToInt = true;
+            if (c.args[0])
+                scanExpr(*c.args[0]);
+            return ExprType::I64;
+        case BuiltinCallExpr::Builtin::Str:
+            needRtIntToStr = true;
+            needRtF64ToStr = true;
+            if (c.args[0])
+                scanExpr(*c.args[0]);
+            return ExprType::Str;
+        case BuiltinCallExpr::Builtin::Len:
+            if (c.args[0])
+                scanExpr(*c.args[0]);
+            return ExprType::I64;
+        case BuiltinCallExpr::Builtin::Mid:
+            for (auto &a : c.args)
+                if (a)
+                    scanExpr(*a);
+            return ExprType::Str;
+        case BuiltinCallExpr::Builtin::Sqr:
+            if (c.args[0])
+                scanExpr(*c.args[0]);
+            trackRuntime(RuntimeFn::Sqrt);
+            return ExprType::F64;
+        case BuiltinCallExpr::Builtin::Abs:
+        {
+            ExprType ty = ExprType::I64;
+            if (c.args[0])
+                ty = scanExpr(*c.args[0]);
+            if (ty == ExprType::F64)
+                trackRuntime(RuntimeFn::AbsF64);
+            else
+                trackRuntime(RuntimeFn::AbsI64);
+            return ty;
+        }
+        case BuiltinCallExpr::Builtin::Floor:
+            if (c.args[0])
+                scanExpr(*c.args[0]);
+            trackRuntime(RuntimeFn::Floor);
+            return ExprType::F64;
+        case BuiltinCallExpr::Builtin::Ceil:
+            if (c.args[0])
+                scanExpr(*c.args[0]);
+            trackRuntime(RuntimeFn::Ceil);
+            return ExprType::F64;
+        case BuiltinCallExpr::Builtin::Sin:
+            if (c.args[0])
+                scanExpr(*c.args[0]);
+            trackRuntime(RuntimeFn::Sin);
+            return ExprType::F64;
+        case BuiltinCallExpr::Builtin::Cos:
+            if (c.args[0])
+                scanExpr(*c.args[0]);
+            trackRuntime(RuntimeFn::Cos);
+            return ExprType::F64;
+        case BuiltinCallExpr::Builtin::Pow:
+            if (c.args[0])
+                scanExpr(*c.args[0]);
+            if (c.args[1])
+                scanExpr(*c.args[1]);
+            trackRuntime(RuntimeFn::Pow);
+            return ExprType::F64;
+        case BuiltinCallExpr::Builtin::Int:
+            if (c.args[0])
+                scanExpr(*c.args[0]);
+            return ExprType::I64;
+        default:
+            for (auto &a : c.args)
+                if (a)
+                    scanExpr(*a);
+            return ExprType::I64;
+    }
+}
+
 Lowerer::ExprType Lowerer::scanExpr(const Expr &e)
 {
     if (dynamic_cast<const IntExpr *>(&e))
@@ -153,112 +266,13 @@ Lowerer::ExprType Lowerer::scanExpr(const Expr &e)
         return ExprType::I64;
     }
     if (auto *u = dynamic_cast<const UnaryExpr *>(&e))
-        return scanExpr(*u->expr);
+        return scanUnaryExpr(*u);
     if (auto *b = dynamic_cast<const BinaryExpr *>(&e))
-    {
-        ExprType lt = scanExpr(*b->lhs);
-        ExprType rt = scanExpr(*b->rhs);
-        if (b->op == BinaryExpr::Op::Add && lt == ExprType::Str && rt == ExprType::Str)
-        {
-            needRtConcat = true;
-            return ExprType::Str;
-        }
-        if (b->op == BinaryExpr::Op::Eq || b->op == BinaryExpr::Op::Ne)
-        {
-            if (lt == ExprType::Str || rt == ExprType::Str)
-                needRtStrEq = true;
-            return ExprType::Bool;
-        }
-        if (lt == ExprType::F64 || rt == ExprType::F64)
-            return ExprType::F64;
-        return ExprType::I64;
-    }
+        return scanBinaryExpr(*b);
     if (auto *arr = dynamic_cast<const ArrayExpr *>(&e))
-    {
-        scanExpr(*arr->index);
-        return ExprType::I64;
-    }
+        return scanArrayExpr(*arr);
     if (auto *c = dynamic_cast<const BuiltinCallExpr *>(&e))
-    {
-        switch (c->builtin)
-        {
-            case BuiltinCallExpr::Builtin::Rnd:
-                trackRuntime(RuntimeFn::Rnd);
-                return ExprType::F64;
-            case BuiltinCallExpr::Builtin::Val:
-                needRtToInt = true;
-                if (c->args[0])
-                    scanExpr(*c->args[0]);
-                return ExprType::I64;
-            case BuiltinCallExpr::Builtin::Str:
-                needRtIntToStr = true;
-                needRtF64ToStr = true;
-                if (c->args[0])
-                    scanExpr(*c->args[0]);
-                return ExprType::Str;
-            case BuiltinCallExpr::Builtin::Len:
-                if (c->args[0])
-                    scanExpr(*c->args[0]);
-                return ExprType::I64;
-            case BuiltinCallExpr::Builtin::Mid:
-                for (auto &a : c->args)
-                    if (a)
-                        scanExpr(*a);
-                return ExprType::Str;
-            case BuiltinCallExpr::Builtin::Sqr:
-                if (c->args[0])
-                    scanExpr(*c->args[0]);
-                trackRuntime(RuntimeFn::Sqrt);
-                return ExprType::F64;
-            case BuiltinCallExpr::Builtin::Abs:
-            {
-                ExprType ty = ExprType::I64;
-                if (c->args[0])
-                    ty = scanExpr(*c->args[0]);
-                if (ty == ExprType::F64)
-                    trackRuntime(RuntimeFn::AbsF64);
-                else
-                    trackRuntime(RuntimeFn::AbsI64);
-                return ty;
-            }
-            case BuiltinCallExpr::Builtin::Floor:
-                if (c->args[0])
-                    scanExpr(*c->args[0]);
-                trackRuntime(RuntimeFn::Floor);
-                return ExprType::F64;
-            case BuiltinCallExpr::Builtin::Ceil:
-                if (c->args[0])
-                    scanExpr(*c->args[0]);
-                trackRuntime(RuntimeFn::Ceil);
-                return ExprType::F64;
-            case BuiltinCallExpr::Builtin::Sin:
-                if (c->args[0])
-                    scanExpr(*c->args[0]);
-                trackRuntime(RuntimeFn::Sin);
-                return ExprType::F64;
-            case BuiltinCallExpr::Builtin::Cos:
-                if (c->args[0])
-                    scanExpr(*c->args[0]);
-                trackRuntime(RuntimeFn::Cos);
-                return ExprType::F64;
-            case BuiltinCallExpr::Builtin::Pow:
-                if (c->args[0])
-                    scanExpr(*c->args[0]);
-                if (c->args[1])
-                    scanExpr(*c->args[1]);
-                trackRuntime(RuntimeFn::Pow);
-                return ExprType::F64;
-            case BuiltinCallExpr::Builtin::Int:
-                if (c->args[0])
-                    scanExpr(*c->args[0]);
-                return ExprType::I64;
-            default:
-                for (auto &a : c->args)
-                    if (a)
-                        scanExpr(*a);
-                return ExprType::I64;
-        }
-    }
+        return scanBuiltinCallExpr(*c);
     if (auto *c = dynamic_cast<const CallExpr *>(&e))
     {
         for (const auto &a : c->args)
