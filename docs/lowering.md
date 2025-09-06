@@ -30,3 +30,34 @@ entry block label is deterministically `entry_<name>` and a closing block
 materialized by allocating stack slots and storing the incoming values. Array
 parameters (`i64[]` or `str[]`) are passed as pointers/handles and stored
 directly without copying.
+
+### Deterministic label naming (procedures)
+
+Blocks created while lowering a procedure use predictable labels so goldens
+stay stable. Within a procedure `proc`, a per-procedure counter assigns
+monotonic IDs `k` used by common control-flow shapes:
+
+* `entry_proc` and `ret_proc` for the entry and synthetic return blocks.
+* `if_then_k_proc`, `if_else_k_proc`, `if_end_k_proc` for `IF` constructs.
+* `while_head_k_proc`, `while_body_k_proc`, `while_end_k_proc` for `WHILE`.
+* `for_head_k_proc`, `for_body_k_proc`, `for_inc_k_proc`, `for_end_k_proc` for
+  `FOR` loops.
+
+Example:
+
+```
+FUNCTION F(X)
+IF X THEN F = 1 ELSE F = 2 END IF RETURN F END FUNCTION
+```
+
+                         Lowers
+                         to(abridged)
+    :
+
+``` func @F()->i64{
+          entry_F : br if_test_0_F if_test_0_F : ... cbr % t0,
+          if_then_0_F,
+          if_else_0_F if_then_0_F : ... br if_end_0_F if_else_0_F : ... br if_end_0_F
+          if_end_0_F : ... br ret_F ret_F : ret 0
+      }
+```

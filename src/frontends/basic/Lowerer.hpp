@@ -1,7 +1,7 @@
 // File: src/frontends/basic/Lowerer.hpp
 // Purpose: Declares lowering from BASIC AST to IL with helper routines and
 // centralized runtime declarations.
-// Key invariants: None.
+// Key invariants: Procedure block labels are deterministic.
 // Ownership/Lifetime: Lowerer does not own AST or module.
 // Links: docs/class-catalog.md
 #pragma once
@@ -10,6 +10,7 @@
 #include "frontends/basic/NameMangler.hpp"
 #include "il/build/IRBuilder.hpp"
 #include "il/core/Module.hpp"
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -19,7 +20,7 @@ namespace il::frontends::basic
 {
 
 /// @brief Lowers BASIC AST into IL Module.
-/// @invariant Generates deterministic block names via NameMangler.
+/// @invariant Generates deterministic block names per procedure using BlockNamer.
 /// @ownership Owns produced Module; uses IRBuilder for structure emission.
 class Lowerer
 {
@@ -44,6 +45,119 @@ class Lowerer
         Value value;
         Type type;
     };
+
+    /// @brief Deterministic per-procedure block name generator.
+    /// @invariant Counters start at 0 and increase monotonically for each shape.
+    /// @ownership Owned by Lowerer; scoped to a single procedure.
+    struct BlockNamer
+    {
+        std::string proc;                                          ///< procedure name
+        unsigned ifCounter{0};                                     ///< sequential IF identifiers
+        unsigned whileCounter{0};                                  ///< sequential WHILE identifiers
+        unsigned forCounter{0};                                    ///< sequential FOR identifiers
+        std::unordered_map<std::string, unsigned> genericCounters; ///< other shapes
+
+        explicit BlockNamer(std::string p) : proc(std::move(p)) {}
+
+        std::string entry() const
+        {
+            return "entry_" + proc;
+        }
+
+        std::string ret() const
+        {
+            return "ret_" + proc;
+        }
+
+        std::string line(int line) const
+        {
+            return "L" + std::to_string(line) + "_" + proc;
+        }
+
+        unsigned nextIf()
+        {
+            return ifCounter++;
+        }
+
+        std::string ifTest(unsigned id) const
+        {
+            return "if_test_" + std::to_string(id) + "_" + proc;
+        }
+
+        std::string ifThen(unsigned id) const
+        {
+            return "if_then_" + std::to_string(id) + "_" + proc;
+        }
+
+        std::string ifElse(unsigned id) const
+        {
+            return "if_else_" + std::to_string(id) + "_" + proc;
+        }
+
+        std::string ifEnd(unsigned id) const
+        {
+            return "if_end_" + std::to_string(id) + "_" + proc;
+        }
+
+        unsigned nextWhile()
+        {
+            return whileCounter++;
+        }
+
+        std::string whileHead(unsigned id) const
+        {
+            return "while_head_" + std::to_string(id) + "_" + proc;
+        }
+
+        std::string whileBody(unsigned id) const
+        {
+            return "while_body_" + std::to_string(id) + "_" + proc;
+        }
+
+        std::string whileEnd(unsigned id) const
+        {
+            return "while_end_" + std::to_string(id) + "_" + proc;
+        }
+
+        unsigned nextFor()
+        {
+            return forCounter++;
+        }
+
+        std::string forHead(unsigned id) const
+        {
+            return "for_head_" + std::to_string(id) + "_" + proc;
+        }
+
+        std::string forBody(unsigned id) const
+        {
+            return "for_body_" + std::to_string(id) + "_" + proc;
+        }
+
+        std::string forInc(unsigned id) const
+        {
+            return "for_inc_" + std::to_string(id) + "_" + proc;
+        }
+
+        std::string forEnd(unsigned id) const
+        {
+            return "for_end_" + std::to_string(id) + "_" + proc;
+        }
+
+        std::string generic(const std::string &hint)
+        {
+            auto &n = genericCounters[hint];
+            std::string label = hint + "_" + std::to_string(n++) + "_" + proc;
+            return label;
+        }
+
+        std::string tag(const std::string &base) const
+        {
+            return base + "_" + proc;
+        }
+    };
+
+    std::unique_ptr<BlockNamer> blockNamer;
 
     void collectVars(const Program &prog);
     void collectVars(const std::vector<const Stmt *> &stmts);
