@@ -18,6 +18,13 @@ REM Using REM
 20 REM trailing REM comment
 ```
 
+## Program Structure
+
+A BASIC source file may begin with zero or more `FUNCTION` or `SUB`
+declarations followed by top-level statements that form the main program. The
+procedure section and the main section are both optional, and procedures may be
+invoked before or after their textual definitions.
+
 ## Array Parameters ByRef
 
 Array parameters in `FUNCTION` and `SUB` declarations are passed by reference. The caller must supply an array variable declared with `DIM`; expressions or indexed elements are rejected.

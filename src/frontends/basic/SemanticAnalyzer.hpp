@@ -1,6 +1,6 @@
 // File: src/frontends/basic/SemanticAnalyzer.hpp
 // Purpose: Declares BASIC semantic analyzer for symbol and label tracking,
-//          basic validation, rudimentary type checking, and ProcTable registration.
+//          basic validation, and two-pass procedure registration.
 // Key invariants: Analyzer tracks defined symbols and reports unknown
 //                 references.
 // Ownership/Lifetime: Analyzer borrows DiagnosticEmitter; no AST ownership.
@@ -126,6 +126,15 @@ class SemanticAnalyzer
     void popScope();
     /// @brief Resolve @p name, returning mangled form if found.
     std::optional<std::string> resolve(const std::string &name) const;
+
+    /// @brief Register FUNCTION declaration @p f in the procedure table.
+    void registerProc(const FunctionDecl &f);
+    /// @brief Register SUB declaration @p s in the procedure table.
+    void registerProc(const SubDecl &s);
+    /// @brief Analyze body of FUNCTION @p f.
+    void analyzeProc(const FunctionDecl &f);
+    /// @brief Analyze body of SUB @p s.
+    void analyzeProc(const SubDecl &s);
 };
 
 } // namespace il::frontends::basic

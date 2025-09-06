@@ -281,21 +281,23 @@ Module Lowerer::lower(const Program &prog)
         }
     };
 
-    for (const auto &s : prog.statements)
+    for (const auto &s : prog.procs)
+        scanStmt(*s);
+    for (const auto &s : prog.main)
         scanStmt(*s);
 
     declareRequiredRuntime(b);
 
     std::vector<const Stmt *> mainStmts;
-    for (const auto &s : prog.statements)
+    for (const auto &s : prog.procs)
     {
         if (auto *fn = dynamic_cast<const FunctionDecl *>(s.get()))
             lowerFunctionDecl(*fn);
         else if (auto *sub = dynamic_cast<const SubDecl *>(s.get()))
             lowerSubDecl(*sub);
-        else
-            mainStmts.push_back(s.get());
     }
+    for (const auto &s : prog.main)
+        mainStmts.push_back(s.get());
 
     lineBlocks.clear();
 
@@ -814,7 +816,9 @@ void Lowerer::materializeParams(const std::vector<Param> &params)
 void Lowerer::collectVars(const Program &prog)
 {
     std::vector<const Stmt *> ptrs;
-    for (const auto &s : prog.statements)
+    for (const auto &s : prog.procs)
+        ptrs.push_back(s.get());
+    for (const auto &s : prog.main)
         ptrs.push_back(s.get());
     collectVars(ptrs);
 }

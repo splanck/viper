@@ -559,7 +559,9 @@ static void foldStmt(StmtPtr &s)
 
 void foldConstants(Program &prog)
 {
-    for (auto &s : prog.statements)
+    for (auto &s : prog.procs)
+        foldStmt(s);
+    for (auto &s : prog.main)
         foldStmt(s);
 }
 

@@ -1,3 +1,8 @@
+<!--
+File: docs/dev/semantics.md
+Purpose: Notes on BASIC semantic analysis passes.
+-->
+
 # BASIC Semantics
 
 The semantic analyzer walks the BASIC AST to perform checks and annotate
@@ -8,6 +13,13 @@ structures for later phases.
 A `ProcTable` maps each declared FUNCTION or SUB to its signature: kind,
 return type inferred from the name suffix, and parameter types along with array
 flags. This table enables call checking in later passes.
+
+## Two-pass Analysis
+
+Semantic analysis runs in two phases. First all procedure declarations are
+registered in the `ProcTable`. In the second pass each procedure body is
+checked followed by the top-level statements. This enables calls to functions
+that are defined later in the file and supports recursion.
 
 Example diagnostics emitted by the analyzer:
 
