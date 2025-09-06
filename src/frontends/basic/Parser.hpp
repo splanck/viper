@@ -1,5 +1,6 @@
 // File: src/frontends/basic/Parser.hpp
-// Purpose: Declares BASIC parser that builds an AST.
+// Purpose: Declares BASIC parser producing Program with separate procedure and
+//          main statement lists.
 // Key invariants: Maintains token lookahead buffer.
 // Ownership/Lifetime: Parser owns lexer and token buffer.
 // Links: docs/class-catalog.md

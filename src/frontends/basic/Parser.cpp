@@ -1,5 +1,6 @@
 // File: src/frontends/basic/Parser.cpp
-// Purpose: Implements BASIC statement parser using token helpers.
+// Purpose: Implements BASIC parser building Program with separate procedure and
+//          main statement sections.
 // Key invariants: Relies on token buffer for lookahead.
 // Ownership/Lifetime: Parser owns tokens produced by lexer.
 // Links: docs/class-catalog.md
@@ -19,6 +20,8 @@ Parser::Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *emitte
 std::unique_ptr<Program> Parser::parseProgram()
 {
     auto prog = std::make_unique<Program>();
+    prog->loc = peek().loc;
+    bool inMain = false;
     while (!at(TokenKind::EndOfFile))
     {
         while (at(TokenKind::EndOfLine))
@@ -44,9 +47,10 @@ std::unique_ptr<Program> Parser::parseProgram()
             }
             break;
         }
+        StmtPtr root;
         if (stmts.size() == 1)
         {
-            prog->statements.push_back(std::move(stmts.front()));
+            root = std::move(stmts.front());
         }
         else
         {
@@ -55,7 +59,17 @@ std::unique_ptr<Program> Parser::parseProgram()
             list->line = line;
             list->loc = loc;
             list->stmts = std::move(stmts);
-            prog->statements.push_back(std::move(list));
+            root = std::move(list);
+        }
+        if (!inMain &&
+            (dynamic_cast<FunctionDecl *>(root.get()) || dynamic_cast<SubDecl *>(root.get())))
+        {
+            prog->procs.push_back(std::move(root));
+        }
+        else
+        {
+            inMain = true;
+            prog->main.push_back(std::move(root));
         }
         if (at(TokenKind::EndOfLine))
             consume();

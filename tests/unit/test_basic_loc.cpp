@@ -19,8 +19,8 @@ int main()
     std::string src = "PRINT 1+2\n";
     Parser p(src, fid);
     auto prog = p.parseProgram();
-    assert(prog->statements.size() == 1);
-    auto *ps = dynamic_cast<PrintStmt *>(prog->statements[0].get());
+    assert(prog->main.size() == 1);
+    auto *ps = dynamic_cast<PrintStmt *>(prog->main[0].get());
     assert(ps);
     assert(ps->loc.file_id == fid && ps->loc.line == 1 && ps->loc.column == 1);
     assert(ps->items.size() == 1);

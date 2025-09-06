@@ -25,7 +25,7 @@ int main()
         Parser p(src, fid);
         auto prog = p.parseProgram();
         foldConstants(*prog);
-        auto *let = dynamic_cast<LetStmt *>(prog->statements[0].get());
+        auto *let = dynamic_cast<LetStmt *>(prog->main[0].get());
         auto *flt = dynamic_cast<FloatExpr *>(let->expr.get());
         assert(flt && flt->value == 3.5);
     }
@@ -38,7 +38,7 @@ int main()
         Parser p(src, fid);
         auto prog = p.parseProgram();
         foldConstants(*prog);
-        auto *pr = dynamic_cast<PrintStmt *>(prog->statements[0].get());
+        auto *pr = dynamic_cast<PrintStmt *>(prog->main[0].get());
         auto *se = dynamic_cast<StringExpr *>(pr->items[0].expr.get());
         assert(se && se->value == "foobar");
     }

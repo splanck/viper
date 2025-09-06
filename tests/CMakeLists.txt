@@ -347,6 +347,12 @@ add_test(NAME basic_ast_functions_subs_parsing COMMAND ${CMAKE_COMMAND}
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/functions_subs_parsing.ast
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/check_ast.cmake)
 
+add_test(NAME basic_ast_funcs_then_code COMMAND ${CMAKE_COMMAND}
+  -DBASIC_AST_DUMP=${BASIC_AST_DUMP}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/parse/FuncsThenCode.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/basic/parse/FuncsThenCode.ast
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/check_ast.cmake)
+
 set(BASIC_LEX_DUMP $<TARGET_FILE:basic-lex-dump>)
 add_test(NAME basic_lex_comments COMMAND ${CMAKE_COMMAND}
   -DBASIC_LEX_DUMP=${BASIC_LEX_DUMP}
@@ -500,6 +506,11 @@ add_test(NAME basic_semantics_missing_return COMMAND ${CMAKE_COMMAND}
   -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/missing_return.bas
   "-DEXPECT=${EXPECT_MISSING_RET}"
   -P ${CMAKE_CURRENT_SOURCE_DIR}/golden/basic_errors/check_error.cmake)
+
+add_test(NAME basic_semantics_funcs_then_code COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/FuncsThenCode.ok.bas
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/check_ok.cmake)
 
 add_subdirectory(golden)
 
