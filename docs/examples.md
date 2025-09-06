@@ -33,3 +33,7 @@ Top-level BASIC statements are lowered into an IL function named `@main`.
 `FUNCTION` calls. `tests / e2e / func_calls_concat.bas` shows a string -
     returning
 `FUNCTION` that concatenates its arguments.
+
+## Factorial
+
+`tests/e2e/factorial.bas` computes `FACT(10)` recursively and prints `3628800`.
