@@ -553,12 +553,7 @@ void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
 /// @brief Lower FUNCTION body into an IL function.
 void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
 {
-    vars.clear();
-    arrays.clear();
-    varSlots.clear();
-    arrayLenSlots.clear();
-    lineBlocks.clear();
-    boundsCheckId = 0;
+    resetLoweringState();
 
     using ASTType = ::il::frontends::basic::Type;
     std::vector<const Stmt *> bodyPtrs;
@@ -655,46 +650,19 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
         return Value::constInt(0);
     };
 
-    if (!decl.body.empty())
+    if (!lowerFunctionBody(decl, defaultRet))
     {
-        curLoc = {};
-        emitBr(&f.blocks[lineBlocks[decl.body.front()->line]]);
-    }
-    else
-    {
-        curLoc = {};
-        emitRet(defaultRet());
+        blockNamer.reset();
         return;
     }
 
-    for (size_t i = 0; i < decl.body.size(); ++i)
-    {
-        cur = &f.blocks[lineBlocks[decl.body[i]->line]];
-        lowerStmt(*decl.body[i]);
-        if (cur->terminated)
-            break;
-        BasicBlock *next = (i + 1 < decl.body.size())
-                               ? &f.blocks[lineBlocks[decl.body[i + 1]->line]]
-                               : &f.blocks[fnExit];
-        emitBr(next);
-    }
-
-    cur = &f.blocks[fnExit];
-    curLoc = {};
-    emitRet(defaultRet());
-
-    blockNamer.reset();
+    finalizeFunction(defaultRet);
 }
 
 /// @brief Lower SUB body into an IL function.
 void Lowerer::lowerSubDecl(const SubDecl &decl)
 {
-    vars.clear();
-    arrays.clear();
-    varSlots.clear();
-    arrayLenSlots.clear();
-    lineBlocks.clear();
-    boundsCheckId = 0;
+    resetLoweringState();
 
     using ASTType = ::il::frontends::basic::Type;
     std::vector<const Stmt *> bodyPtrs;
@@ -800,6 +768,54 @@ void Lowerer::lowerSubDecl(const SubDecl &decl)
     curLoc = {};
     emitRetVoid();
 
+    blockNamer.reset();
+}
+
+void Lowerer::resetLoweringState()
+{
+    vars.clear();
+    arrays.clear();
+    varSlots.clear();
+    arrayLenSlots.clear();
+    lineBlocks.clear();
+    boundsCheckId = 0;
+}
+
+bool Lowerer::lowerFunctionBody(const FunctionDecl &decl, const std::function<Value()> &defaultRet)
+{
+    Function &f = *func;
+    if (!decl.body.empty())
+    {
+        curLoc = {};
+        emitBr(&f.blocks[lineBlocks[decl.body.front()->line]]);
+    }
+    else
+    {
+        curLoc = {};
+        emitRet(defaultRet());
+        return false;
+    }
+
+    for (size_t i = 0; i < decl.body.size(); ++i)
+    {
+        cur = &f.blocks[lineBlocks[decl.body[i]->line]];
+        lowerStmt(*decl.body[i]);
+        if (cur->terminated)
+            break;
+        BasicBlock *next = (i + 1 < decl.body.size())
+                               ? &f.blocks[lineBlocks[decl.body[i + 1]->line]]
+                               : &f.blocks[fnExit];
+        emitBr(next);
+    }
+
+    return true;
+}
+
+void Lowerer::finalizeFunction(const std::function<Value()> &defaultRet)
+{
+    cur = &func->blocks[fnExit];
+    curLoc = {};
+    emitRet(defaultRet());
     blockNamer.reset();
 }
 

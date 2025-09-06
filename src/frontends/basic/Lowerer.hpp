@@ -10,6 +10,7 @@
 #include "frontends/basic/NameMangler.hpp"
 #include "il/build/IRBuilder.hpp"
 #include "il/core/Module.hpp"
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -202,6 +203,13 @@ class Lowerer
     void lowerSubDecl(const SubDecl &decl);
     /// @brief Stack-allocate parameters and seed local map.
     void materializeParams(const std::vector<Param> &params);
+    /// @brief Reset procedure-level lowering state.
+    void resetLoweringState();
+    /// @brief Lower function body statements.
+    /// @return True if body contained statements, requiring finalization.
+    bool lowerFunctionBody(const FunctionDecl &decl, const std::function<Value()> &defaultRet);
+    /// @brief Emit final return block after body lowering.
+    void finalizeFunction(const std::function<Value()> &defaultRet);
     void lowerStmt(const Stmt &stmt);
     RVal lowerExpr(const Expr &expr);
     /// @brief Lower a variable reference expression.
