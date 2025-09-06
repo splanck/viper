@@ -47,14 +47,15 @@ class Lowerer
     };
 
     /// @brief Deterministic per-procedure block name generator.
-    /// @invariant Counters start at 0 and increase monotonically for each shape.
+    /// @invariant `k` starts at 0 per procedure and increases monotonically.
+    ///            WHILE, FOR, and synthetic call continuations share the same
+    ///            sequence to reflect lexical ordering.
     /// @ownership Owned by Lowerer; scoped to a single procedure.
     struct BlockNamer
     {
-        std::string proc;                                          ///< procedure name
-        unsigned ifCounter{0};                                     ///< sequential IF identifiers
-        unsigned whileCounter{0};                                  ///< sequential WHILE identifiers
-        unsigned forCounter{0};                                    ///< sequential FOR identifiers
+        std::string proc;        ///< procedure name
+        unsigned ifCounter{0};   ///< sequential IF identifiers
+        unsigned loopCounter{0}; ///< WHILE/FOR/call_cont identifiers
         std::unordered_map<std::string, unsigned> genericCounters; ///< other shapes
 
         explicit BlockNamer(std::string p) : proc(std::move(p)) {}
@@ -101,7 +102,7 @@ class Lowerer
 
         unsigned nextWhile()
         {
-            return whileCounter++;
+            return loopCounter++;
         }
 
         std::string whileHead(unsigned id) const
@@ -121,7 +122,13 @@ class Lowerer
 
         unsigned nextFor()
         {
-            return forCounter++;
+            return loopCounter++;
+        }
+
+        /// @brief Allocate next sequential ID for a call continuation.
+        unsigned nextCall()
+        {
+            return loopCounter++;
         }
 
         std::string forHead(unsigned id) const
@@ -142,6 +149,12 @@ class Lowerer
         std::string forEnd(unsigned id) const
         {
             return "for_end_" + std::to_string(id) + "_" + proc;
+        }
+
+        /// @brief Build label for a synthetic call continuation block.
+        std::string callCont(unsigned id) const
+        {
+            return "call_cont_" + std::to_string(id) + "_" + proc;
         }
 
         std::string generic(const std::string &hint)

@@ -39,9 +39,20 @@ monotonic IDs `k` used by common control-flow shapes:
 
 * `entry_proc` and `ret_proc` for the entry and synthetic return blocks.
 * `if_then_k_proc`, `if_else_k_proc`, `if_end_k_proc` for `IF` constructs.
-* `while_head_k_proc`, `while_body_k_proc`, `while_end_k_proc` for `WHILE`.
-* `for_head_k_proc`, `for_body_k_proc`, `for_inc_k_proc`, `for_end_k_proc` for
-  `FOR` loops.
+
+Loop and call-continuation labels share a single counter so their `k` reflects
+lexical ordering:
+
+| Construct           | Label pattern      |
+|---------------------|--------------------|
+| `WHILE` head        | `while_head_k_proc`|
+| `WHILE` body        | `while_body_k_proc`|
+| `WHILE` end         | `while_end_k_proc` |
+| `FOR` head          | `for_head_k_proc`  |
+| `FOR` body          | `for_body_k_proc`  |
+| `FOR` increment     | `for_inc_k_proc`   |
+| `FOR` end           | `for_end_k_proc`   |
+| Call continuation   | `call_cont_k_proc` |
 
 Example:
 
