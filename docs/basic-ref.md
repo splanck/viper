@@ -25,6 +25,28 @@ declarations followed by top-level statements that form the main program. The
 procedure section and the main section are both optional, and procedures may be
 invoked before or after their textual definitions.
 
+## FUNCTION
+
+Defines a procedure that returns a value. The return type is determined by the
+name suffix: `#` → `f64`, `$` → `str`, no suffix → `i64`. Parameters are passed
+by value unless an argument is an array, in which case a bare array variable
+must be supplied and is passed by reference. See the lowering tables for
+[procedure definitions](lowering.md#procedure-definitions) and
+[procedure calls](lowering.md#procedure-calls).
+
+## SUB
+
+Declares a procedure with no return value. Parameter rules match those of
+`FUNCTION`, including ByRef array parameters. Lowering details are listed under
+[procedure definitions](lowering.md#procedure-definitions) and
+[procedure calls](lowering.md#procedure-calls).
+
+## RETURN
+
+Transfers control out of the current `FUNCTION` or `SUB`. In a `FUNCTION`,
+assign the result to the function name before `RETURN`. This lowers directly to
+an IL `ret`; see [Return statements](lowering.md#return-statements).
+
 ## Array Parameters ByRef
 
 Array parameters in `FUNCTION` and `SUB` declarations are passed by reference. The caller must supply an array variable declared with `DIM`; expressions or indexed elements are rejected.
