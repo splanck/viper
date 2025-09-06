@@ -169,6 +169,8 @@ bool Verifier::verify(const Module &m, std::ostream &err)
         }
 
         std::unordered_map<unsigned, Type> temps;
+        for (const auto &p : fn.params)
+            temps[p.id] = p.type;
         for (const auto &bb : fn.blocks)
         {
             if (bb.instructions.empty())
@@ -586,6 +588,7 @@ bool Verifier::verify(const Module &m, std::ostream &err)
                     case Opcode::Call:
                     {
                         const Extern *sig = nullptr;
+                        const Function *fnSig = nullptr;
                         auto itE = externs.find(in.callee);
                         if (itE != externs.end())
                             sig = itE->second;
@@ -593,29 +596,34 @@ bool Verifier::verify(const Module &m, std::ostream &err)
                         {
                             auto itF = funcs.find(in.callee);
                             if (itF != funcs.end())
-                                sig = reinterpret_cast<const Extern *>(itF->second);
+                                fnSig = itF->second;
                         }
-                        if (!sig)
+                        if (!sig && !fnSig)
                         {
                             err << fn.name << ":" << bb.label << ": " << snippet(in)
                                 << ": unknown callee @" << in.callee << "\n";
                             ok = false;
                             break;
                         }
-                        if (in.operands.size() != sig->params.size())
+                        size_t paramCount = sig ? sig->params.size() : fnSig->params.size();
+                        if (in.operands.size() != paramCount)
                         {
                             err << fn.name << ":" << bb.label << ": " << snippet(in)
                                 << ": call arg count mismatch\n";
                             ok = false;
                         }
-                        for (size_t i = 0; i < in.operands.size() && i < sig->params.size(); ++i)
-                            if (valueType(in.operands[i], temps).kind != sig->params[i].kind)
+                        for (size_t i = 0; i < in.operands.size() && i < paramCount; ++i)
+                        {
+                            Type expected = sig ? sig->params[i] : fnSig->params[i].type;
+                            if (valueType(in.operands[i], temps).kind != expected.kind)
                             {
                                 err << fn.name << ":" << bb.label << ": " << snippet(in)
                                     << ": call arg type mismatch\n";
                                 ok = false;
                             }
-                        if (sig->retType.kind == Type::Kind::Void)
+                        }
+                        Type retTy = sig ? sig->retType : fnSig->retType;
+                        if (retTy.kind == Type::Kind::Void)
                         {
                             if (in.result)
                             {
@@ -634,7 +642,7 @@ bool Verifier::verify(const Module &m, std::ostream &err)
                             }
                             else
                             {
-                                temps[*in.result] = sig->retType;
+                                temps[*in.result] = retTy;
                                 defined.insert(*in.result);
                             }
                         }
