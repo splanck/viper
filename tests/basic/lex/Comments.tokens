@@ -1,0 +1,17 @@
+1:37 eol
+2:46 eol
+3:27 eol
+4:1 eol
+5:1 number 10
+5:4 PRINT
+5:10 string HI
+5:44 eol
+6:1 number 20
+6:26 eol
+7:1 number 30
+7:4 LET
+7:8 ident X
+7:10 =
+7:12 number 1
+7:13 eol
+8:1 eof

@@ -1,4 +1,24 @@
-# BASIC Array Parameters ByRef
+<!--
+File: docs/basic-ref.md
+Purpose: BASIC language reference and examples.
+-->
+
+# BASIC Language Reference
+
+## Comments
+
+Single-line comments begin with an apostrophe `'` or the keyword `REM`.
+`REM` is case-insensitive and must appear at the start of a line or after
+whitespace. Both forms consume characters until the end of the line.
+
+```basic
+' Using apostrophe
+REM Using REM
+10 PRINT "HI" ' trailing comment
+20 REM trailing REM comment
+```
+
+## Array Parameters ByRef
 
 Array parameters in `FUNCTION` and `SUB` declarations are passed by reference. The caller must supply an array variable declared with `DIM`; expressions or indexed elements are rejected.
 

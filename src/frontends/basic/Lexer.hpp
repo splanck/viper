@@ -1,5 +1,5 @@
 // File: src/frontends/basic/Lexer.hpp
-// Purpose: Declares BASIC token lexer.
+// Purpose: Declares BASIC token lexer with single-line comment support.
 // Key invariants: Current position always within source buffer.
 // Ownership/Lifetime: Lexer does not own the source buffer.
 // Links: docs/class-catalog.md
@@ -22,6 +22,8 @@ class Lexer
     char get();
     bool eof() const;
     void skipWhitespaceExceptNewline();
+    /// @brief Skip spaces, tabs, and BASIC comments starting with `'` or REM.
+    void skipWhitespaceAndComments();
     Token lexNumber();
     Token lexIdentifierOrKeyword();
     Token lexString();
