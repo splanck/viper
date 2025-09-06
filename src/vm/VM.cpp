@@ -9,6 +9,7 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 #include "vm/RuntimeBridge.hpp"
+#include <array>
 #include <cassert>
 #include <cstring>
 #include <filesystem>
@@ -401,81 +402,138 @@ VM::ExecResult VM::executeOpcode(Frame &fr,
                                  const BasicBlock *&bb,
                                  size_t &ip)
 {
-    switch (in.op)
+    using Handler = ExecResult (*)(
+        VM &, Frame &, const Instr &, const BlockMap &, const BasicBlock *&, size_t &);
+    static const std::array<Handler, static_cast<size_t>(Opcode::Trap) + 1> table = []
     {
-        case Opcode::Alloca:
-            return handleAlloca(fr, in);
-        case Opcode::Load:
-            return handleLoad(fr, in);
-        case Opcode::Store:
-            return handleStore(fr, in, bb, ip);
-        case Opcode::Add:
-            return handleAdd(fr, in);
-        case Opcode::Sub:
-            return handleSub(fr, in);
-        case Opcode::Mul:
-            return handleMul(fr, in);
-        case Opcode::FAdd:
-            return handleFAdd(fr, in);
-        case Opcode::FSub:
-            return handleFSub(fr, in);
-        case Opcode::FMul:
-            return handleFMul(fr, in);
-        case Opcode::FDiv:
-            return handleFDiv(fr, in);
-        case Opcode::Xor:
-            return handleXor(fr, in);
-        case Opcode::Shl:
-            return handleShl(fr, in);
-        case Opcode::GEP:
-            return handleGEP(fr, in);
-        case Opcode::ICmpEq:
-            return handleICmpEq(fr, in);
-        case Opcode::ICmpNe:
-            return handleICmpNe(fr, in);
-        case Opcode::SCmpGT:
-            return handleSCmpGT(fr, in);
-        case Opcode::SCmpLT:
-            return handleSCmpLT(fr, in);
-        case Opcode::SCmpLE:
-            return handleSCmpLE(fr, in);
-        case Opcode::SCmpGE:
-            return handleSCmpGE(fr, in);
-        case Opcode::FCmpEQ:
-            return handleFCmpEQ(fr, in);
-        case Opcode::FCmpNE:
-            return handleFCmpNE(fr, in);
-        case Opcode::FCmpGT:
-            return handleFCmpGT(fr, in);
-        case Opcode::FCmpLT:
-            return handleFCmpLT(fr, in);
-        case Opcode::FCmpLE:
-            return handleFCmpLE(fr, in);
-        case Opcode::FCmpGE:
-            return handleFCmpGE(fr, in);
-        case Opcode::Br:
-            return handleBr(fr, in, blocks, bb, ip);
-        case Opcode::CBr:
-            return handleCBr(fr, in, blocks, bb, ip);
-        case Opcode::Ret:
-            return handleRet(fr, in);
-        case Opcode::ConstStr:
-            return handleConstStr(fr, in);
-        case Opcode::Call:
-            return handleCall(fr, in, bb);
-        case Opcode::Sitofp:
-            return handleSitofp(fr, in);
-        case Opcode::Fptosi:
-            return handleFptosi(fr, in);
-        case Opcode::Trunc1:
-        case Opcode::Zext1:
-            return handleTruncOrZext1(fr, in);
-        case Opcode::Trap:
-            return handleTrap(fr, in, bb);
-        default:
-            assert(false && "unimplemented opcode");
+        std::array<Handler, static_cast<size_t>(Opcode::Trap) + 1> t{};
+        t[static_cast<size_t>(Opcode::Alloca)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleAlloca(fr, in); };
+        t[static_cast<size_t>(Opcode::Load)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleLoad(fr, in); };
+        t[static_cast<size_t>(Opcode::Store)] = [](VM &vm,
+                                                   Frame &fr,
+                                                   const Instr &in,
+                                                   const BlockMap &,
+                                                   const BasicBlock *&b,
+                                                   size_t &i)
+        { return vm.handleStore(fr, in, b, i); };
+        t[static_cast<size_t>(Opcode::Add)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleAdd(fr, in); };
+        t[static_cast<size_t>(Opcode::Sub)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleSub(fr, in); };
+        t[static_cast<size_t>(Opcode::Mul)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleMul(fr, in); };
+        t[static_cast<size_t>(Opcode::FAdd)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleFAdd(fr, in); };
+        t[static_cast<size_t>(Opcode::FSub)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleFSub(fr, in); };
+        t[static_cast<size_t>(Opcode::FMul)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleFMul(fr, in); };
+        t[static_cast<size_t>(Opcode::FDiv)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleFDiv(fr, in); };
+        t[static_cast<size_t>(Opcode::Xor)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleXor(fr, in); };
+        t[static_cast<size_t>(Opcode::Shl)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleShl(fr, in); };
+        t[static_cast<size_t>(Opcode::GEP)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleGEP(fr, in); };
+        t[static_cast<size_t>(Opcode::ICmpEq)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleICmpEq(fr, in); };
+        t[static_cast<size_t>(Opcode::ICmpNe)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleICmpNe(fr, in); };
+        t[static_cast<size_t>(Opcode::SCmpGT)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleSCmpGT(fr, in); };
+        t[static_cast<size_t>(Opcode::SCmpLT)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleSCmpLT(fr, in); };
+        t[static_cast<size_t>(Opcode::SCmpLE)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleSCmpLE(fr, in); };
+        t[static_cast<size_t>(Opcode::SCmpGE)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleSCmpGE(fr, in); };
+        t[static_cast<size_t>(Opcode::FCmpEQ)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleFCmpEQ(fr, in); };
+        t[static_cast<size_t>(Opcode::FCmpNE)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleFCmpNE(fr, in); };
+        t[static_cast<size_t>(Opcode::FCmpGT)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleFCmpGT(fr, in); };
+        t[static_cast<size_t>(Opcode::FCmpLT)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleFCmpLT(fr, in); };
+        t[static_cast<size_t>(Opcode::FCmpLE)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleFCmpLE(fr, in); };
+        t[static_cast<size_t>(Opcode::FCmpGE)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleFCmpGE(fr, in); };
+        t[static_cast<size_t>(Opcode::Br)] = [](VM &vm,
+                                                Frame &fr,
+                                                const Instr &in,
+                                                const BlockMap &blk,
+                                                const BasicBlock *&b,
+                                                size_t &i)
+        { return vm.handleBr(fr, in, blk, b, i); };
+        t[static_cast<size_t>(Opcode::CBr)] = [](VM &vm,
+                                                 Frame &fr,
+                                                 const Instr &in,
+                                                 const BlockMap &blk,
+                                                 const BasicBlock *&b,
+                                                 size_t &i)
+        { return vm.handleCBr(fr, in, blk, b, i); };
+        t[static_cast<size_t>(Opcode::Ret)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleRet(fr, in); };
+        t[static_cast<size_t>(Opcode::ConstStr)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleConstStr(fr, in); };
+        t[static_cast<size_t>(Opcode::Call)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&b, size_t &)
+        { return vm.handleCall(fr, in, b); };
+        t[static_cast<size_t>(Opcode::Sitofp)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleSitofp(fr, in); };
+        t[static_cast<size_t>(Opcode::Fptosi)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleFptosi(fr, in); };
+        t[static_cast<size_t>(Opcode::Trunc1)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleTruncOrZext1(fr, in); };
+        t[static_cast<size_t>(Opcode::Zext1)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleTruncOrZext1(fr, in); };
+        t[static_cast<size_t>(Opcode::Trap)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&b, size_t &)
+        { return vm.handleTrap(fr, in, b); };
+        return t;
+    }();
+
+    Handler handler = table[static_cast<size_t>(in.op)];
+    if (!handler)
+    {
+        assert(false && "unimplemented opcode");
+        return {};
     }
-    return {};
+    return handler(*this, fr, in, blocks, bb, ip);
 }
 
 VM::ExecState VM::prepareExecution(const Function &fn, const std::vector<Slot> &args)
