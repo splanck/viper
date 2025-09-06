@@ -37,3 +37,9 @@ Top-level BASIC statements are lowered into an IL function named `@main`.
 ## Factorial
 
 `tests/e2e/factorial.bas` computes `FACT(10)` recursively and prints `3628800`.
+
+## Fibonacci
+
+`tests/e2e/fibonacci.bas` computes `FIB(10)` recursively and prints `55`. It
+finishes in roughly 180 VM steps, so a guard of 200 suffices if using
+`--max-steps`.
