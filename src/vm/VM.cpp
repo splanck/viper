@@ -478,15 +478,19 @@ VM::ExecResult VM::executeOpcode(Frame &fr,
     return {};
 }
 
-Slot VM::execFunction(const Function &fn, const std::vector<Slot> &args)
+VM::ExecState VM::prepareExecution(const Function &fn, const std::vector<Slot> &args)
 {
-    std::unordered_map<std::string, const BasicBlock *> blocks;
-    const BasicBlock *bb = nullptr;
-    Frame fr = setupFrame(fn, args, blocks, bb);
+    ExecState st;
+    st.fr = setupFrame(fn, args, st.blocks, st.bb);
     debug.resetLastHit();
-    size_t ip = 0;
-    bool skipBreakOnce = false;
-    while (bb && ip < bb->instructions.size())
+    st.ip = 0;
+    st.skipBreakOnce = false;
+    return st;
+}
+
+std::optional<Slot> VM::processDebugControl(ExecState &st, const Instr *in, bool postExec)
+{
+    if (!postExec)
     {
         if (maxSteps && instrCount >= maxSteps)
         {
@@ -495,45 +499,65 @@ Slot VM::execFunction(const Function &fn, const std::vector<Slot> &args)
             s.i64 = 1;
             return s;
         }
-        if (ip == 0 && stepBudget == 0 && !skipBreakOnce)
-            if (auto br = handleDebugBreak(fr, *bb, ip, skipBreakOnce, nullptr))
-                return *br;
-        skipBreakOnce = false;
-        const Instr &in = bb->instructions[ip];
-        if (auto br = handleDebugBreak(fr, *bb, ip, skipBreakOnce, &in))
+        if (st.ip == 0 && stepBudget == 0 && !st.skipBreakOnce)
+            if (auto br = handleDebugBreak(st.fr, *st.bb, st.ip, st.skipBreakOnce, nullptr))
+                return br;
+        st.skipBreakOnce = false;
+        if (in)
+            if (auto br = handleDebugBreak(st.fr, *st.bb, st.ip, st.skipBreakOnce, in))
+                return br;
+        return std::nullopt;
+    }
+    if (stepBudget > 0)
+    {
+        --stepBudget;
+        if (stepBudget == 0)
+        {
+            std::cerr << "[BREAK] fn=@" << st.fr.func->name << " blk=" << st.bb->label
+                      << " reason=step\n";
+            if (!script || script->empty())
+            {
+                Slot s{};
+                s.i64 = 10;
+                return s;
+            }
+            auto act = script->nextAction();
+            if (act.kind == DebugActionKind::Step)
+                stepBudget = act.count;
+            st.skipBreakOnce = true;
+        }
+    }
+    return std::nullopt;
+}
+
+Slot VM::runFunctionLoop(ExecState &st)
+{
+    while (st.bb && st.ip < st.bb->instructions.size())
+    {
+        const Instr &in = st.bb->instructions[st.ip];
+        if (auto br = processDebugControl(st, &in, false))
             return *br;
-        tracer.onStep(in, fr);
+        tracer.onStep(in, st.fr);
         ++instrCount;
-        auto res = executeOpcode(fr, in, blocks, bb, ip);
+        auto res = executeOpcode(st.fr, in, st.blocks, st.bb, st.ip);
         if (res.returned)
             return res.value;
         if (res.jumped)
             debug.resetLastHit();
         else
-            ++ip;
-        if (stepBudget > 0)
-        {
-            --stepBudget;
-            if (stepBudget == 0)
-            {
-                std::cerr << "[BREAK] fn=@" << fr.func->name << " blk=" << bb->label
-                          << " reason=step\n";
-                if (!script || script->empty())
-                {
-                    Slot s{};
-                    s.i64 = 10;
-                    return s;
-                }
-                auto act = script->nextAction();
-                if (act.kind == DebugActionKind::Step)
-                    stepBudget = act.count;
-                skipBreakOnce = true;
-            }
-        }
+            ++st.ip;
+        if (auto br = processDebugControl(st, nullptr, true))
+            return *br;
     }
     Slot s{};
     s.i64 = 0;
     return s;
+}
+
+Slot VM::execFunction(const Function &fn, const std::vector<Slot> &args)
+{
+    auto st = prepareExecution(fn, args);
+    return runFunctionLoop(st);
 }
 
 } // namespace il::vm
