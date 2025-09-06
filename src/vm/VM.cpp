@@ -20,6 +20,20 @@ using namespace il::core;
 namespace il::vm
 {
 
+namespace
+{
+/// @brief Store opcode result @p val into destination register if present.
+inline void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val)
+{
+    if (in.result)
+    {
+        if (fr.regs.size() <= *in.result)
+            fr.regs.resize(*in.result + 1);
+        fr.regs[*in.result] = val;
+    }
+}
+} // namespace
+
 VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript *script)
     : mod(m), tracer(tc), debug(std::move(dbg)), script(script), maxSteps(ms)
 {
@@ -140,506 +154,328 @@ std::optional<Slot> VM::handleDebugBreak(
     return std::nullopt;
 }
 
+//===----------------------------------------------------------------------===//
+// Opcode handlers
+//===----------------------------------------------------------------------===//
+
+#define DEFINE_BIN_INT_OP(NAME, OP)                                                                \
+    VM::ExecResult VM::handle##NAME(Frame &fr, const Instr &in)                                    \
+    {                                                                                              \
+        Slot a = eval(fr, in.operands[0]);                                                         \
+        Slot b = eval(fr, in.operands[1]);                                                         \
+        Slot res{};                                                                                \
+        res.i64 = a.i64 OP b.i64;                                                                  \
+        storeResult(fr, in, res);                                                                  \
+        return {};                                                                                 \
+    }
+
+#define DEFINE_BIN_FLOAT_OP(NAME, OP)                                                              \
+    VM::ExecResult VM::handle##NAME(Frame &fr, const Instr &in)                                    \
+    {                                                                                              \
+        Slot a = eval(fr, in.operands[0]);                                                         \
+        Slot b = eval(fr, in.operands[1]);                                                         \
+        Slot res{};                                                                                \
+        res.f64 = a.f64 OP b.f64;                                                                  \
+        storeResult(fr, in, res);                                                                  \
+        return {};                                                                                 \
+    }
+
+#define DEFINE_INT_CMP(NAME, CMP)                                                                  \
+    VM::ExecResult VM::handle##NAME(Frame &fr, const Instr &in)                                    \
+    {                                                                                              \
+        Slot a = eval(fr, in.operands[0]);                                                         \
+        Slot b = eval(fr, in.operands[1]);                                                         \
+        Slot res{};                                                                                \
+        res.i64 = (a.i64 CMP b.i64) ? 1 : 0;                                                       \
+        storeResult(fr, in, res);                                                                  \
+        return {};                                                                                 \
+    }
+
+#define DEFINE_FLOAT_CMP(NAME, CMP)                                                                \
+    VM::ExecResult VM::handle##NAME(Frame &fr, const Instr &in)                                    \
+    {                                                                                              \
+        Slot a = eval(fr, in.operands[0]);                                                         \
+        Slot b = eval(fr, in.operands[1]);                                                         \
+        Slot res{};                                                                                \
+        res.i64 = (a.f64 CMP b.f64) ? 1 : 0;                                                       \
+        storeResult(fr, in, res);                                                                  \
+        return {};                                                                                 \
+    }
+
+VM::ExecResult VM::handleAlloca(Frame &fr, const Instr &in)
+{
+    size_t sz = (size_t)eval(fr, in.operands[0]).i64;
+    size_t addr = fr.sp;
+    assert(addr + sz <= fr.stack.size());
+    std::memset(fr.stack.data() + addr, 0, sz);
+    Slot res{};
+    res.ptr = fr.stack.data() + addr;
+    fr.sp += sz;
+    storeResult(fr, in, res);
+    return {};
+}
+
+VM::ExecResult VM::handleLoad(Frame &fr, const Instr &in)
+{
+    void *ptr = eval(fr, in.operands[0]).ptr;
+    assert(ptr && "null load");
+    Slot res{};
+    if (in.type.kind == Type::Kind::I64)
+        res.i64 = *reinterpret_cast<int64_t *>(ptr);
+    else if (in.type.kind == Type::Kind::F64)
+        res.f64 = *reinterpret_cast<double *>(ptr);
+    else if (in.type.kind == Type::Kind::Str)
+        res.str = *reinterpret_cast<rt_str *>(ptr);
+    else if (in.type.kind == Type::Kind::Ptr)
+        res.ptr = *reinterpret_cast<void **>(ptr);
+    storeResult(fr, in, res);
+    return {};
+}
+
+VM::ExecResult VM::handleStore(Frame &fr, const Instr &in, const BasicBlock *bb, size_t ip)
+{
+    void *ptr = eval(fr, in.operands[0]).ptr;
+    assert(ptr && "null store");
+    Slot val = eval(fr, in.operands[1]);
+    if (in.type.kind == Type::Kind::I64)
+        *reinterpret_cast<int64_t *>(ptr) = val.i64;
+    else if (in.type.kind == Type::Kind::F64)
+        *reinterpret_cast<double *>(ptr) = val.f64;
+    else if (in.type.kind == Type::Kind::Str)
+        *reinterpret_cast<rt_str *>(ptr) = val.str;
+    else if (in.type.kind == Type::Kind::Ptr)
+        *reinterpret_cast<void **>(ptr) = val.ptr;
+    if (in.operands[0].kind == Value::Kind::Temp)
+    {
+        unsigned id = in.operands[0].id;
+        if (id < fr.func->valueNames.size())
+        {
+            const std::string &nm = fr.func->valueNames[id];
+            if (!nm.empty())
+                debug.onStore(nm, in.type.kind, val.i64, val.f64, fr.func->name, bb->label, ip);
+        }
+    }
+    return {};
+}
+
+DEFINE_BIN_INT_OP(Add, +)
+DEFINE_BIN_INT_OP(Sub, -)
+DEFINE_BIN_INT_OP(Mul, *)
+DEFINE_BIN_FLOAT_OP(FAdd, +)
+DEFINE_BIN_FLOAT_OP(FSub, -)
+DEFINE_BIN_FLOAT_OP(FMul, *)
+DEFINE_BIN_FLOAT_OP(FDiv, /)
+DEFINE_BIN_INT_OP(Xor, ^)
+DEFINE_BIN_INT_OP(Shl, <<)
+
+VM::ExecResult VM::handleGEP(Frame &fr, const Instr &in)
+{
+    Slot base = eval(fr, in.operands[0]);
+    Slot off = eval(fr, in.operands[1]);
+    Slot res{};
+    res.ptr = static_cast<char *>(base.ptr) + off.i64;
+    storeResult(fr, in, res);
+    return {};
+}
+
+DEFINE_INT_CMP(ICmpEq, ==)
+DEFINE_INT_CMP(ICmpNe, !=)
+DEFINE_INT_CMP(SCmpGT, >)
+DEFINE_INT_CMP(SCmpLT, <)
+DEFINE_INT_CMP(SCmpLE, <=)
+DEFINE_INT_CMP(SCmpGE, >=)
+DEFINE_FLOAT_CMP(FCmpEQ, ==)
+DEFINE_FLOAT_CMP(FCmpNE, !=)
+DEFINE_FLOAT_CMP(FCmpGT, >)
+DEFINE_FLOAT_CMP(FCmpLT, <)
+DEFINE_FLOAT_CMP(FCmpLE, <=)
+DEFINE_FLOAT_CMP(FCmpGE, >=)
+
+VM::ExecResult VM::handleBr(
+    Frame &fr, const Instr &in, const BlockMap &blocks, const BasicBlock *&bb, size_t &ip)
+{
+    const auto &targetLabel = in.labels[0];
+    auto itBlk = blocks.find(targetLabel);
+    assert(itBlk != blocks.end() && "invalid block");
+    const BasicBlock *target = itBlk->second;
+    const auto &args = in.brArgs.empty() ? std::vector<Value>{} : in.brArgs[0];
+    for (size_t i = 0; i < args.size() && i < target->params.size(); ++i)
+        fr.params[target->params[i].id] = eval(fr, args[i]);
+    bb = target;
+    ip = 0;
+    ExecResult r{};
+    r.jumped = true;
+    return r;
+}
+
+VM::ExecResult VM::handleCBr(
+    Frame &fr, const Instr &in, const BlockMap &blocks, const BasicBlock *&bb, size_t &ip)
+{
+    Slot cond = eval(fr, in.operands[0]);
+    size_t idx = cond.i64 ? 0 : 1;
+    const auto &targetLabel = in.labels[idx];
+    auto itBlk = blocks.find(targetLabel);
+    assert(itBlk != blocks.end() && "invalid block");
+    const BasicBlock *target = itBlk->second;
+    const auto &args = in.brArgs.size() > idx ? in.brArgs[idx] : std::vector<Value>{};
+    for (size_t i = 0; i < args.size() && i < target->params.size(); ++i)
+        fr.params[target->params[i].id] = eval(fr, args[i]);
+    bb = target;
+    ip = 0;
+    ExecResult r{};
+    r.jumped = true;
+    return r;
+}
+
+VM::ExecResult VM::handleRet(Frame &fr, const Instr &in)
+{
+    ExecResult r{};
+    r.value.i64 = 0;
+    if (!in.operands.empty())
+        r.value = eval(fr, in.operands[0]);
+    r.returned = true;
+    return r;
+}
+
+VM::ExecResult VM::handleConstStr(Frame &fr, const Instr &in)
+{
+    Slot res{};
+    res.str = strMap[in.operands[0].str];
+    storeResult(fr, in, res);
+    return {};
+}
+
+VM::ExecResult VM::handleCall(Frame &fr, const Instr &in, const BasicBlock *bb)
+{
+    std::vector<Slot> callArgs;
+    for (const auto &op : in.operands)
+        callArgs.push_back(eval(fr, op));
+    Slot res{};
+    auto itFn = fnMap.find(in.callee);
+    if (itFn != fnMap.end())
+        res = execFunction(*itFn->second, callArgs);
+    else
+        res = RuntimeBridge::call(in.callee, callArgs, in.loc, fr.func->name, bb->label);
+    storeResult(fr, in, res);
+    return {};
+}
+
+VM::ExecResult VM::handleSitofp(Frame &fr, const Instr &in)
+{
+    Slot v = eval(fr, in.operands[0]);
+    Slot res{};
+    res.f64 = static_cast<double>(v.i64);
+    storeResult(fr, in, res);
+    return {};
+}
+
+VM::ExecResult VM::handleFptosi(Frame &fr, const Instr &in)
+{
+    Slot v = eval(fr, in.operands[0]);
+    Slot res{};
+    res.i64 = static_cast<int64_t>(v.f64);
+    storeResult(fr, in, res);
+    return {};
+}
+
+VM::ExecResult VM::handleTruncOrZext1(Frame &fr, const Instr &in)
+{
+    Slot v = eval(fr, in.operands[0]);
+    v.i64 &= 1;
+    storeResult(fr, in, v);
+    return {};
+}
+
+VM::ExecResult VM::handleTrap(Frame &fr, const Instr &in, const BasicBlock *bb)
+{
+    RuntimeBridge::trap("trap", in.loc, fr.func->name, bb->label);
+    ExecResult r{};
+    r.value.i64 = 0; // unreachable
+    r.returned = true;
+    return r;
+}
+
 VM::ExecResult VM::executeOpcode(Frame &fr,
                                  const Instr &in,
                                  const std::unordered_map<std::string, const BasicBlock *> &blocks,
                                  const BasicBlock *&bb,
                                  size_t &ip)
 {
-    ExecResult r{};
     switch (in.op)
     {
         case Opcode::Alloca:
-        {
-            size_t sz = (size_t)eval(fr, in.operands[0]).i64;
-            size_t addr = fr.sp;
-            assert(addr + sz <= fr.stack.size());
-            std::memset(fr.stack.data() + addr, 0, sz);
-            Slot res{};
-            res.ptr = fr.stack.data() + addr;
-            fr.sp += sz;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleAlloca(fr, in);
         case Opcode::Load:
-        {
-            void *ptr = eval(fr, in.operands[0]).ptr;
-            assert(ptr && "null load");
-            Slot res{};
-            if (in.type.kind == Type::Kind::I64)
-                res.i64 = *reinterpret_cast<int64_t *>(ptr);
-            else if (in.type.kind == Type::Kind::F64)
-                res.f64 = *reinterpret_cast<double *>(ptr);
-            else if (in.type.kind == Type::Kind::Str)
-                res.str = *reinterpret_cast<rt_str *>(ptr);
-            else if (in.type.kind == Type::Kind::Ptr)
-                res.ptr = *reinterpret_cast<void **>(ptr);
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleLoad(fr, in);
         case Opcode::Store:
-        {
-            void *ptr = eval(fr, in.operands[0]).ptr;
-            assert(ptr && "null store");
-            Slot val = eval(fr, in.operands[1]);
-            if (in.type.kind == Type::Kind::I64)
-                *reinterpret_cast<int64_t *>(ptr) = val.i64;
-            else if (in.type.kind == Type::Kind::F64)
-                *reinterpret_cast<double *>(ptr) = val.f64;
-            else if (in.type.kind == Type::Kind::Str)
-                *reinterpret_cast<rt_str *>(ptr) = val.str;
-            else if (in.type.kind == Type::Kind::Ptr)
-                *reinterpret_cast<void **>(ptr) = val.ptr;
-            if (in.operands[0].kind == Value::Kind::Temp)
-            {
-                unsigned id = in.operands[0].id;
-                if (id < fr.func->valueNames.size())
-                {
-                    const std::string &nm = fr.func->valueNames[id];
-                    if (!nm.empty())
-                        debug.onStore(
-                            nm, in.type.kind, val.i64, val.f64, fr.func->name, bb->label, ip);
-                }
-            }
-            break;
-        }
+            return handleStore(fr, in, bb, ip);
         case Opcode::Add:
-        {
-            Slot a = eval(fr, in.operands[0]);
-            Slot b = eval(fr, in.operands[1]);
-            Slot res{};
-            res.i64 = a.i64 + b.i64;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleAdd(fr, in);
         case Opcode::Sub:
-        {
-            Slot a = eval(fr, in.operands[0]);
-            Slot b = eval(fr, in.operands[1]);
-            Slot res{};
-            res.i64 = a.i64 - b.i64;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleSub(fr, in);
         case Opcode::Mul:
-        {
-            Slot a = eval(fr, in.operands[0]);
-            Slot b = eval(fr, in.operands[1]);
-            Slot res{};
-            res.i64 = a.i64 * b.i64;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleMul(fr, in);
         case Opcode::FAdd:
-        {
-            Slot a = eval(fr, in.operands[0]);
-            Slot b = eval(fr, in.operands[1]);
-            Slot res{};
-            res.f64 = a.f64 + b.f64;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleFAdd(fr, in);
         case Opcode::FSub:
-        {
-            Slot a = eval(fr, in.operands[0]);
-            Slot b = eval(fr, in.operands[1]);
-            Slot res{};
-            res.f64 = a.f64 - b.f64;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleFSub(fr, in);
         case Opcode::FMul:
-        {
-            Slot a = eval(fr, in.operands[0]);
-            Slot b = eval(fr, in.operands[1]);
-            Slot res{};
-            res.f64 = a.f64 * b.f64;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleFMul(fr, in);
         case Opcode::FDiv:
-        {
-            Slot a = eval(fr, in.operands[0]);
-            Slot b = eval(fr, in.operands[1]);
-            Slot res{};
-            res.f64 = a.f64 / b.f64;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleFDiv(fr, in);
         case Opcode::Xor:
-        {
-            Slot a = eval(fr, in.operands[0]);
-            Slot b = eval(fr, in.operands[1]);
-            Slot res{};
-            res.i64 = a.i64 ^ b.i64;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleXor(fr, in);
         case Opcode::Shl:
-        {
-            Slot a = eval(fr, in.operands[0]);
-            Slot b = eval(fr, in.operands[1]);
-            Slot res{};
-            res.i64 = a.i64 << b.i64;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleShl(fr, in);
         case Opcode::GEP:
-        {
-            Slot base = eval(fr, in.operands[0]);
-            Slot off = eval(fr, in.operands[1]);
-            Slot res{};
-            res.ptr = static_cast<char *>(base.ptr) + off.i64;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleGEP(fr, in);
         case Opcode::ICmpEq:
-        {
-            Slot a = eval(fr, in.operands[0]);
-            Slot b = eval(fr, in.operands[1]);
-            Slot res{};
-            res.i64 = (a.i64 == b.i64) ? 1 : 0;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleICmpEq(fr, in);
         case Opcode::ICmpNe:
-        {
-            Slot a = eval(fr, in.operands[0]);
-            Slot b = eval(fr, in.operands[1]);
-            Slot res{};
-            res.i64 = (a.i64 != b.i64) ? 1 : 0;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleICmpNe(fr, in);
         case Opcode::SCmpGT:
-        {
-            Slot a = eval(fr, in.operands[0]);
-            Slot b = eval(fr, in.operands[1]);
-            Slot res{};
-            res.i64 = (a.i64 > b.i64) ? 1 : 0;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleSCmpGT(fr, in);
         case Opcode::SCmpLT:
-        {
-            Slot a = eval(fr, in.operands[0]);
-            Slot b = eval(fr, in.operands[1]);
-            Slot res{};
-            res.i64 = (a.i64 < b.i64) ? 1 : 0;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleSCmpLT(fr, in);
         case Opcode::SCmpLE:
-        {
-            Slot a = eval(fr, in.operands[0]);
-            Slot b = eval(fr, in.operands[1]);
-            Slot res{};
-            res.i64 = (a.i64 <= b.i64) ? 1 : 0;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleSCmpLE(fr, in);
         case Opcode::SCmpGE:
-        {
-            Slot a = eval(fr, in.operands[0]);
-            Slot b = eval(fr, in.operands[1]);
-            Slot res{};
-            res.i64 = (a.i64 >= b.i64) ? 1 : 0;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleSCmpGE(fr, in);
         case Opcode::FCmpEQ:
-        {
-            Slot a = eval(fr, in.operands[0]);
-            Slot b = eval(fr, in.operands[1]);
-            Slot res{};
-            res.i64 = (a.f64 == b.f64) ? 1 : 0;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleFCmpEQ(fr, in);
         case Opcode::FCmpNE:
-        {
-            Slot a = eval(fr, in.operands[0]);
-            Slot b = eval(fr, in.operands[1]);
-            Slot res{};
-            res.i64 = (a.f64 != b.f64) ? 1 : 0;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleFCmpNE(fr, in);
         case Opcode::FCmpGT:
-        {
-            Slot a = eval(fr, in.operands[0]);
-            Slot b = eval(fr, in.operands[1]);
-            Slot res{};
-            res.i64 = (a.f64 > b.f64) ? 1 : 0;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleFCmpGT(fr, in);
         case Opcode::FCmpLT:
-        {
-            Slot a = eval(fr, in.operands[0]);
-            Slot b = eval(fr, in.operands[1]);
-            Slot res{};
-            res.i64 = (a.f64 < b.f64) ? 1 : 0;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleFCmpLT(fr, in);
         case Opcode::FCmpLE:
-        {
-            Slot a = eval(fr, in.operands[0]);
-            Slot b = eval(fr, in.operands[1]);
-            Slot res{};
-            res.i64 = (a.f64 <= b.f64) ? 1 : 0;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleFCmpLE(fr, in);
         case Opcode::FCmpGE:
-        {
-            Slot a = eval(fr, in.operands[0]);
-            Slot b = eval(fr, in.operands[1]);
-            Slot res{};
-            res.i64 = (a.f64 >= b.f64) ? 1 : 0;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleFCmpGE(fr, in);
         case Opcode::Br:
-        {
-            const auto &targetLabel = in.labels[0];
-            auto itBlk = blocks.find(targetLabel);
-            assert(itBlk != blocks.end() && "invalid block");
-            const BasicBlock *target = itBlk->second;
-            const auto &args = in.brArgs.empty() ? std::vector<Value>{} : in.brArgs[0];
-            for (size_t i = 0; i < args.size() && i < target->params.size(); ++i)
-                fr.params[target->params[i].id] = eval(fr, args[i]);
-            bb = target;
-            ip = 0;
-            r.jumped = true;
-            break;
-        }
+            return handleBr(fr, in, blocks, bb, ip);
         case Opcode::CBr:
-        {
-            Slot cond = eval(fr, in.operands[0]);
-            size_t idx = cond.i64 ? 0 : 1;
-            const auto &targetLabel = in.labels[idx];
-            auto itBlk = blocks.find(targetLabel);
-            assert(itBlk != blocks.end() && "invalid block");
-            const BasicBlock *target = itBlk->second;
-            const auto &args = in.brArgs.size() > idx ? in.brArgs[idx] : std::vector<Value>{};
-            for (size_t i = 0; i < args.size() && i < target->params.size(); ++i)
-                fr.params[target->params[i].id] = eval(fr, args[i]);
-            bb = target;
-            ip = 0;
-            r.jumped = true;
-            break;
-        }
+            return handleCBr(fr, in, blocks, bb, ip);
         case Opcode::Ret:
-        {
-            r.value.i64 = 0;
-            if (!in.operands.empty())
-                r.value = eval(fr, in.operands[0]);
-            r.returned = true;
-            break;
-        }
+            return handleRet(fr, in);
         case Opcode::ConstStr:
-        {
-            Slot res{};
-            res.str = strMap[in.operands[0].str];
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleConstStr(fr, in);
         case Opcode::Call:
-        {
-            std::vector<Slot> callArgs;
-            for (const auto &op : in.operands)
-                callArgs.push_back(eval(fr, op));
-            Slot res{};
-            auto itFn = fnMap.find(in.callee);
-            if (itFn != fnMap.end())
-                res = execFunction(*itFn->second, callArgs);
-            else
-                res = RuntimeBridge::call(in.callee, callArgs, in.loc, fr.func->name, bb->label);
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleCall(fr, in, bb);
         case Opcode::Sitofp:
-        {
-            Slot v = eval(fr, in.operands[0]);
-            Slot res{};
-            res.f64 = static_cast<double>(v.i64);
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleSitofp(fr, in);
         case Opcode::Fptosi:
-        {
-            Slot v = eval(fr, in.operands[0]);
-            Slot res{};
-            res.i64 = static_cast<int64_t>(v.f64);
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = res;
-            }
-            break;
-        }
+            return handleFptosi(fr, in);
         case Opcode::Trunc1:
         case Opcode::Zext1:
-        {
-            Slot v = eval(fr, in.operands[0]);
-            v.i64 &= 1;
-            if (in.result)
-            {
-                if (fr.regs.size() <= *in.result)
-                    fr.regs.resize(*in.result + 1);
-                fr.regs[*in.result] = v;
-            }
-            break;
-        }
+            return handleTruncOrZext1(fr, in);
         case Opcode::Trap:
-        {
-            RuntimeBridge::trap("trap", in.loc, fr.func->name, bb->label);
-            r.value.i64 = 0; // unreachable
-            r.returned = true;
-            break;
-        }
+            return handleTrap(fr, in, bb);
         default:
             assert(false && "unimplemented opcode");
     }
-    return r;
+    return {};
 }
 
 Slot VM::execFunction(const Function &fn, const std::vector<Slot> &args)
