@@ -968,7 +968,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzePow(const BuiltinCallExpr &c,
     return Type::Float;
 }
 
-SemanticAnalyzer::Type SemanticAnalyzer::analyzeCall(const CallExpr &c)
+const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c)
 {
     auto it = procs_.find(c.callee);
     if (it == procs_.end())
@@ -979,10 +979,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeCall(const CallExpr &c)
                 c.loc,
                 static_cast<uint32_t>(c.callee.size()),
                 std::move(msg));
-        for (auto &a : c.args)
-            if (a)
-                visitExpr(*a);
-        return Type::Unknown;
+        return nullptr;
     }
     const ProcSignature &sig = it->second;
     if (sig.kind == ProcSignature::Kind::Sub)
@@ -993,25 +990,33 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeCall(const CallExpr &c)
                 c.loc,
                 static_cast<uint32_t>(c.callee.size()),
                 std::move(msg));
-        for (auto &a : c.args)
-            if (a)
-                visitExpr(*a);
-        return Type::Unknown;
+        return nullptr;
     }
+    return &sig;
+}
+
+std::vector<SemanticAnalyzer::Type> SemanticAnalyzer::checkCallArgs(const CallExpr &c,
+                                                                    const ProcSignature *sig)
+{
     std::vector<Type> argTys;
     for (auto &a : c.args)
         argTys.push_back(a ? visitExpr(*a) : Type::Unknown);
-    if (argTys.size() != sig.params.size())
+
+    if (!sig)
+        return argTys;
+
+    if (argTys.size() != sig->params.size())
     {
         std::string msg = "wrong number of arguments";
         de.emit(il::support::Severity::Error, "B2005", c.loc, 1, std::move(msg));
     }
-    size_t n = std::min(argTys.size(), sig.params.size());
+
+    size_t n = std::min(argTys.size(), sig->params.size());
     for (size_t i = 0; i < n; ++i)
     {
-        auto expectTy = sig.params[i].type;
+        auto expectTy = sig->params[i].type;
         auto argTy = argTys[i];
-        if (sig.params[i].is_array)
+        if (sig->params[i].is_array)
         {
             auto *argExpr = c.args[i].get();
             auto *v = dynamic_cast<VarExpr *>(argExpr);
@@ -1037,11 +1042,26 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeCall(const CallExpr &c)
             de.emit(il::support::Severity::Error, "B2001", c.loc, 1, std::move(msg));
         }
     }
-    if (sig.retType == ::il::frontends::basic::Type::F64)
+    return argTys;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::inferCallType([[maybe_unused]] const CallExpr &c,
+                                                       const ProcSignature *sig)
+{
+    if (!sig)
+        return Type::Unknown;
+    if (sig->retType == ::il::frontends::basic::Type::F64)
         return Type::Float;
-    if (sig.retType == ::il::frontends::basic::Type::Str)
+    if (sig->retType == ::il::frontends::basic::Type::Str)
         return Type::String;
     return Type::Int;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeCall(const CallExpr &c)
+{
+    const ProcSignature *sig = resolveCallee(c);
+    auto argTys [[maybe_unused]] = checkCallArgs(c, sig);
+    return inferCallType(c, sig);
 }
 
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)

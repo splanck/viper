@@ -186,6 +186,12 @@ class SemanticAnalyzer
                       size_t idx,
                       Type argTy,
                       std::initializer_list<Type> allowed);
+    /// @brief Resolve callee of user-defined call.
+    const ProcSignature *resolveCallee(const CallExpr &c);
+    /// @brief Collect and validate argument types for user-defined call.
+    std::vector<Type> checkCallArgs(const CallExpr &c, const ProcSignature *sig);
+    /// @brief Infer return type for user-defined call.
+    Type inferCallType(const CallExpr &c, const ProcSignature *sig);
     /// @brief Analyze user-defined procedure call.
     Type analyzeCall(const CallExpr &c);
     /// @brief Analyze array access expression.
