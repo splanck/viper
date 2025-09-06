@@ -29,7 +29,15 @@ std::string AstPrinter::dump(const Program &prog)
 {
     std::ostringstream os;
     Printer p{os};
-    for (auto &stmt : prog.statements)
+    for (auto &stmt : prog.procs)
+    {
+        std::ostringstream line_os;
+        line_os << stmt->line << ": ";
+        Printer line_p{line_os};
+        dump(*stmt, line_p);
+        p.line(line_os.str());
+    }
+    for (auto &stmt : prog.main)
     {
         std::ostringstream line_os;
         line_os << stmt->line << ": ";
