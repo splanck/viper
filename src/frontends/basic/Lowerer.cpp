@@ -876,6 +876,401 @@ void Lowerer::lowerStmt(const Stmt &stmt)
     }
 }
 
+Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v)
+{
+    curLoc = v.loc;
+    auto it = varSlots.find(v.name);
+    assert(it != varSlots.end());
+    Value ptr = Value::temp(it->second);
+    bool isArray = arrays.count(v.name);
+    bool isStr = !v.name.empty() && v.name.back() == '$';
+    bool isF64 = !v.name.empty() && v.name.back() == '#';
+    Type ty = isArray ? Type(Type::Kind::Ptr)
+                      : (isStr ? Type(Type::Kind::Str)
+                               : (isF64 ? Type(Type::Kind::F64) : Type(Type::Kind::I64)));
+    Value val = emitLoad(ty, ptr);
+    return {val, ty};
+}
+
+Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
+{
+    RVal val = lowerExpr(*u.expr);
+    curLoc = u.loc;
+    Value b1 = val.value;
+    if (val.type.kind != Type::Kind::I1)
+        b1 = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), val.value);
+    Value b64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), b1);
+    Value x = emitBinary(Opcode::Xor, Type(Type::Kind::I64), b64, Value::constInt(1));
+    Value res = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), x);
+    return {res, Type(Type::Kind::I1)};
+}
+
+Lowerer::RVal Lowerer::lowerBinaryExpr(const BinaryExpr &b)
+{
+    if (b.op == BinaryExpr::Op::And || b.op == BinaryExpr::Op::Or)
+    {
+        RVal lhs = lowerExpr(*b.lhs);
+        curLoc = b.loc;
+        Value addr = emitAlloca(1);
+        if (b.op == BinaryExpr::Op::And)
+        {
+            std::string rhsLbl =
+                blockNamer ? blockNamer->generic("and_rhs") : mangler.block("and_rhs");
+            std::string falseLbl =
+                blockNamer ? blockNamer->generic("and_false") : mangler.block("and_false");
+            std::string doneLbl =
+                blockNamer ? blockNamer->generic("and_done") : mangler.block("and_done");
+            BasicBlock *rhsBB = &builder->addBlock(*func, rhsLbl);
+            BasicBlock *falseBB = &builder->addBlock(*func, falseLbl);
+            BasicBlock *doneBB = &builder->addBlock(*func, doneLbl);
+            curLoc = b.loc;
+            emitCBr(lhs.value, rhsBB, falseBB);
+            cur = rhsBB;
+            RVal rhs = lowerExpr(*b.rhs);
+            curLoc = b.loc;
+            emitStore(Type(Type::Kind::I1), addr, rhs.value);
+            curLoc = b.loc;
+            emitBr(doneBB);
+            cur = falseBB;
+            curLoc = b.loc;
+            emitStore(Type(Type::Kind::I1), addr, Value::constInt(0));
+            curLoc = b.loc;
+            emitBr(doneBB);
+            cur = doneBB;
+        }
+        else
+        {
+            std::string trueLbl =
+                blockNamer ? blockNamer->generic("or_true") : mangler.block("or_true");
+            std::string rhsLbl =
+                blockNamer ? blockNamer->generic("or_rhs") : mangler.block("or_rhs");
+            std::string doneLbl =
+                blockNamer ? blockNamer->generic("or_done") : mangler.block("or_done");
+            BasicBlock *trueBB = &builder->addBlock(*func, trueLbl);
+            BasicBlock *rhsBB = &builder->addBlock(*func, rhsLbl);
+            BasicBlock *doneBB = &builder->addBlock(*func, doneLbl);
+            curLoc = b.loc;
+            emitCBr(lhs.value, trueBB, rhsBB);
+            cur = trueBB;
+            curLoc = b.loc;
+            emitStore(Type(Type::Kind::I1), addr, Value::constInt(1));
+            curLoc = b.loc;
+            emitBr(doneBB);
+            cur = rhsBB;
+            RVal rhs = lowerExpr(*b.rhs);
+            curLoc = b.loc;
+            emitStore(Type(Type::Kind::I1), addr, rhs.value);
+            curLoc = b.loc;
+            emitBr(doneBB);
+            cur = doneBB;
+        }
+        curLoc = b.loc;
+        Value res = emitLoad(Type(Type::Kind::I1), addr);
+        return {res, Type(Type::Kind::I1)};
+    }
+    else if (b.op == BinaryExpr::Op::IDiv || b.op == BinaryExpr::Op::Mod)
+    {
+        RVal lhs = lowerExpr(*b.lhs);
+        RVal rhs = lowerExpr(*b.rhs);
+        curLoc = b.loc;
+        Value cond =
+            emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), rhs.value, Value::constInt(0));
+        std::string trapLbl = blockNamer ? blockNamer->generic("div0") : mangler.block("div0");
+        std::string okLbl = blockNamer ? blockNamer->generic("divok") : mangler.block("divok");
+        BasicBlock *trapBB = &builder->addBlock(*func, trapLbl);
+        BasicBlock *okBB = &builder->addBlock(*func, okLbl);
+        emitCBr(cond, trapBB, okBB);
+        cur = trapBB;
+        curLoc = b.loc;
+        emitTrap();
+        cur = okBB;
+        curLoc = b.loc;
+        Opcode op = (b.op == BinaryExpr::Op::IDiv) ? Opcode::SDiv : Opcode::SRem;
+        Value res = emitBinary(op, Type(Type::Kind::I64), lhs.value, rhs.value);
+        return {res, Type(Type::Kind::I64)};
+    }
+    RVal lhs = lowerExpr(*b.lhs);
+    RVal rhs = lowerExpr(*b.rhs);
+    curLoc = b.loc;
+    if (b.op == BinaryExpr::Op::Add && lhs.type.kind == Type::Kind::Str &&
+        rhs.type.kind == Type::Kind::Str)
+    {
+        Value res = emitCallRet(Type(Type::Kind::Str), "rt_concat", {lhs.value, rhs.value});
+        return {res, Type(Type::Kind::Str)};
+    }
+    if ((b.op == BinaryExpr::Op::Eq || b.op == BinaryExpr::Op::Ne) &&
+        lhs.type.kind == Type::Kind::Str && rhs.type.kind == Type::Kind::Str)
+    {
+        Value eq = emitCallRet(Type(Type::Kind::I1), "rt_str_eq", {lhs.value, rhs.value});
+        if (b.op == BinaryExpr::Op::Ne)
+        {
+            Value z = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), eq);
+            Value x = emitBinary(Opcode::Xor, Type(Type::Kind::I64), z, Value::constInt(1));
+            Value res = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), x);
+            return {res, Type(Type::Kind::I1)};
+        }
+        return {eq, Type(Type::Kind::I1)};
+    }
+    if (lhs.type.kind == Type::Kind::I64 && rhs.type.kind == Type::Kind::F64)
+    {
+        lhs.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), lhs.value);
+        lhs.type = Type(Type::Kind::F64);
+    }
+    else if (lhs.type.kind == Type::Kind::F64 && rhs.type.kind == Type::Kind::I64)
+    {
+        rhs.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), rhs.value);
+        rhs.type = Type(Type::Kind::F64);
+    }
+    bool isFloat = lhs.type.kind == Type::Kind::F64;
+    Opcode op = Opcode::Add;
+    Type ty = isFloat ? Type(Type::Kind::F64) : Type(Type::Kind::I64);
+    switch (b.op)
+    {
+        case BinaryExpr::Op::Add:
+            op = isFloat ? Opcode::FAdd : Opcode::Add;
+            break;
+        case BinaryExpr::Op::Sub:
+            op = isFloat ? Opcode::FSub : Opcode::Sub;
+            break;
+        case BinaryExpr::Op::Mul:
+            op = isFloat ? Opcode::FMul : Opcode::Mul;
+            break;
+        case BinaryExpr::Op::Div:
+            op = isFloat ? Opcode::FDiv : Opcode::SDiv;
+            break;
+        case BinaryExpr::Op::IDiv:
+            op = Opcode::SDiv;
+            break;
+        case BinaryExpr::Op::Mod:
+            op = Opcode::SRem;
+            break;
+        case BinaryExpr::Op::Eq:
+            op = isFloat ? Opcode::FCmpEQ : Opcode::ICmpEq;
+            ty = Type(Type::Kind::I1);
+            break;
+        case BinaryExpr::Op::Ne:
+            op = isFloat ? Opcode::FCmpNE : Opcode::ICmpNe;
+            ty = Type(Type::Kind::I1);
+            break;
+        case BinaryExpr::Op::Lt:
+            op = isFloat ? Opcode::FCmpLT : Opcode::SCmpLT;
+            ty = Type(Type::Kind::I1);
+            break;
+        case BinaryExpr::Op::Le:
+            op = isFloat ? Opcode::FCmpLE : Opcode::SCmpLE;
+            ty = Type(Type::Kind::I1);
+            break;
+        case BinaryExpr::Op::Gt:
+            op = isFloat ? Opcode::FCmpGT : Opcode::SCmpGT;
+            ty = Type(Type::Kind::I1);
+            break;
+        case BinaryExpr::Op::Ge:
+            op = isFloat ? Opcode::FCmpGE : Opcode::SCmpGE;
+            ty = Type(Type::Kind::I1);
+            break;
+        case BinaryExpr::Op::And:
+        case BinaryExpr::Op::Or:
+            break; // handled above
+    }
+    Value res = emitBinary(op, ty, lhs.value, rhs.value);
+    return {res, ty};
+}
+
+Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
+{
+    if (c.builtin == BuiltinCallExpr::Builtin::Rnd)
+    {
+        curLoc = c.loc;
+        Value res = emitCallRet(Type(Type::Kind::F64), "rt_rnd", {});
+        return {res, Type(Type::Kind::F64)};
+    }
+    else if (c.builtin == BuiltinCallExpr::Builtin::Len)
+    {
+        RVal s = lowerExpr(*c.args[0]);
+        curLoc = c.loc;
+        Value res = emitCallRet(Type(Type::Kind::I64), "rt_len", {s.value});
+        return {res, Type(Type::Kind::I64)};
+    }
+    else if (c.builtin == BuiltinCallExpr::Builtin::Mid)
+    {
+        RVal s = lowerExpr(*c.args[0]);
+        RVal i = lowerExpr(*c.args[1]);
+        Value start0 = emitBinary(Opcode::Add, Type(Type::Kind::I64), i.value, Value::constInt(-1));
+        Value count = (c.args.size() >= 3) ? lowerExpr(*c.args[2]).value
+                                           : Value::constInt(std::numeric_limits<int64_t>::max());
+        curLoc = c.loc;
+        Value res = emitCallRet(Type(Type::Kind::Str), "rt_substr", {s.value, start0, count});
+        return {res, Type(Type::Kind::Str)};
+    }
+    else if (c.builtin == BuiltinCallExpr::Builtin::Left)
+    {
+        RVal s = lowerExpr(*c.args[0]);
+        RVal n = lowerExpr(*c.args[1]);
+        curLoc = c.loc;
+        Value res =
+            emitCallRet(Type(Type::Kind::Str), "rt_substr", {s.value, Value::constInt(0), n.value});
+        return {res, Type(Type::Kind::Str)};
+    }
+    else if (c.builtin == BuiltinCallExpr::Builtin::Right)
+    {
+        RVal s = lowerExpr(*c.args[0]);
+        RVal n = lowerExpr(*c.args[1]);
+        curLoc = c.loc;
+        Value len = emitCallRet(Type(Type::Kind::I64), "rt_len", {s.value});
+        Value negN = emitBinary(Opcode::Mul, Type(Type::Kind::I64), n.value, Value::constInt(-1));
+        Value start = emitBinary(Opcode::Add, Type(Type::Kind::I64), len, negN);
+        Value res = emitCallRet(Type(Type::Kind::Str), "rt_substr", {s.value, start, n.value});
+        return {res, Type(Type::Kind::Str)};
+    }
+    else if (c.builtin == BuiltinCallExpr::Builtin::Str)
+    {
+        RVal v = lowerExpr(*c.args[0]);
+        curLoc = c.loc;
+        if (v.type.kind == Type::Kind::I64)
+        {
+            Value res = emitCallRet(Type(Type::Kind::Str), "rt_int_to_str", {v.value});
+            return {res, Type(Type::Kind::Str)};
+        }
+        else
+        {
+            if (v.type.kind == Type::Kind::I1)
+                v.value = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), v.value);
+            if (v.type.kind == Type::Kind::I64)
+            {
+                Value res = emitCallRet(Type(Type::Kind::Str), "rt_int_to_str", {v.value});
+                return {res, Type(Type::Kind::Str)};
+            }
+            Value res = emitCallRet(Type(Type::Kind::Str), "rt_f64_to_str", {v.value});
+            return {res, Type(Type::Kind::Str)};
+        }
+    }
+    else if (c.builtin == BuiltinCallExpr::Builtin::Val)
+    {
+        RVal s = lowerExpr(*c.args[0]);
+        curLoc = c.loc;
+        Value res = emitCallRet(Type(Type::Kind::I64), "rt_to_int", {s.value});
+        return {res, Type(Type::Kind::I64)};
+    }
+    else if (c.builtin == BuiltinCallExpr::Builtin::Int)
+    {
+        RVal f = lowerExpr(*c.args[0]);
+        if (f.type.kind == Type::Kind::I64)
+        {
+            curLoc = c.loc;
+            f.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), f.value);
+            f.type = Type(Type::Kind::F64);
+        }
+        curLoc = c.loc;
+        Value res = emitUnary(Opcode::Fptosi, Type(Type::Kind::I64), f.value);
+        return {res, Type(Type::Kind::I64)};
+    }
+    else if (c.builtin == BuiltinCallExpr::Builtin::Sqr)
+    {
+        RVal v = lowerExpr(*c.args[0]);
+        if (v.type.kind == Type::Kind::I64)
+        {
+            curLoc = c.loc;
+            v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
+            v.type = Type(Type::Kind::F64);
+        }
+        curLoc = c.loc;
+        Value res = emitCallRet(Type(Type::Kind::F64), "rt_sqrt", {v.value});
+        return {res, Type(Type::Kind::F64)};
+    }
+    else if (c.builtin == BuiltinCallExpr::Builtin::Abs)
+    {
+        RVal v = lowerExpr(*c.args[0]);
+        if (v.type.kind == Type::Kind::I1)
+        {
+            curLoc = c.loc;
+            v.value = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), v.value);
+            v.type = Type(Type::Kind::I64);
+        }
+        if (v.type.kind == Type::Kind::F64)
+        {
+            curLoc = c.loc;
+            Value res = emitCallRet(Type(Type::Kind::F64), "rt_abs_f64", {v.value});
+            return {res, Type(Type::Kind::F64)};
+        }
+        curLoc = c.loc;
+        Value res = emitCallRet(Type(Type::Kind::I64), "rt_abs_i64", {v.value});
+        return {res, Type(Type::Kind::I64)};
+    }
+    else if (c.builtin == BuiltinCallExpr::Builtin::Floor)
+    {
+        RVal v = lowerExpr(*c.args[0]);
+        if (v.type.kind == Type::Kind::I64)
+        {
+            curLoc = c.loc;
+            v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
+            v.type = Type(Type::Kind::F64);
+        }
+        curLoc = c.loc;
+        Value res = emitCallRet(Type(Type::Kind::F64), "rt_floor", {v.value});
+        return {res, Type(Type::Kind::F64)};
+    }
+    else if (c.builtin == BuiltinCallExpr::Builtin::Ceil)
+    {
+        RVal v = lowerExpr(*c.args[0]);
+        if (v.type.kind == Type::Kind::I64)
+        {
+            curLoc = c.loc;
+            v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
+            v.type = Type(Type::Kind::F64);
+        }
+        curLoc = c.loc;
+        Value res = emitCallRet(Type(Type::Kind::F64), "rt_ceil", {v.value});
+        return {res, Type(Type::Kind::F64)};
+    }
+    else if (c.builtin == BuiltinCallExpr::Builtin::Sin)
+    {
+        RVal v = lowerExpr(*c.args[0]);
+        if (v.type.kind == Type::Kind::I64)
+        {
+            curLoc = c.loc;
+            v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
+            v.type = Type(Type::Kind::F64);
+        }
+        curLoc = c.loc;
+        Value res = emitCallRet(Type(Type::Kind::F64), "rt_sin", {v.value});
+        return {res, Type(Type::Kind::F64)};
+    }
+    else if (c.builtin == BuiltinCallExpr::Builtin::Cos)
+    {
+        RVal v = lowerExpr(*c.args[0]);
+        if (v.type.kind == Type::Kind::I64)
+        {
+            curLoc = c.loc;
+            v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
+            v.type = Type(Type::Kind::F64);
+        }
+        curLoc = c.loc;
+        Value res = emitCallRet(Type(Type::Kind::F64), "rt_cos", {v.value});
+        return {res, Type(Type::Kind::F64)};
+    }
+    else if (c.builtin == BuiltinCallExpr::Builtin::Pow)
+    {
+        RVal a = lowerExpr(*c.args[0]);
+        RVal b = lowerExpr(*c.args[1]);
+        if (a.type.kind == Type::Kind::I64)
+        {
+            curLoc = c.loc;
+            a.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), a.value);
+            a.type = Type(Type::Kind::F64);
+        }
+        if (b.type.kind == Type::Kind::I64)
+        {
+            curLoc = c.loc;
+            b.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), b.value);
+            b.type = Type(Type::Kind::F64);
+        }
+        curLoc = c.loc;
+        Value res = emitCallRet(Type(Type::Kind::F64), "rt_pow", {a.value, b.value});
+        return {res, Type(Type::Kind::F64)};
+    }
+    return {Value::constInt(0), Type(Type::Kind::I64)};
+}
+
 Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
 {
     curLoc = expr.loc;
@@ -895,396 +1290,20 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
     }
     else if (auto *v = dynamic_cast<const VarExpr *>(&expr))
     {
-        auto it = varSlots.find(v->name);
-        assert(it != varSlots.end());
-        Value ptr = Value::temp(it->second);
-        bool isArray = arrays.count(v->name);
-        bool isStr = !v->name.empty() && v->name.back() == '$';
-        bool isF64 = !v->name.empty() && v->name.back() == '#';
-        Type ty = isArray ? Type(Type::Kind::Ptr)
-                          : (isStr ? Type(Type::Kind::Str)
-                                   : (isF64 ? Type(Type::Kind::F64) : Type(Type::Kind::I64)));
-        Value val = emitLoad(ty, ptr);
-        return {val, ty};
+        return lowerVarExpr(*v);
     }
     else if (auto *u = dynamic_cast<const UnaryExpr *>(&expr))
     {
-        RVal val = lowerExpr(*u->expr);
-        curLoc = expr.loc;
-        Value b1 = val.value;
-        if (val.type.kind != Type::Kind::I1)
-            b1 = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), val.value);
-        Value b64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), b1);
-        Value x = emitBinary(Opcode::Xor, Type(Type::Kind::I64), b64, Value::constInt(1));
-        Value res = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), x);
-        return {res, Type(Type::Kind::I1)};
+        return lowerUnaryExpr(*u);
     }
     else if (auto *b = dynamic_cast<const BinaryExpr *>(&expr))
     {
-        if (b->op == BinaryExpr::Op::And || b->op == BinaryExpr::Op::Or)
-        {
-            RVal lhs = lowerExpr(*b->lhs);
-            curLoc = expr.loc;
-            Value addr = emitAlloca(1);
-            if (b->op == BinaryExpr::Op::And)
-            {
-                std::string rhsLbl =
-                    blockNamer ? blockNamer->generic("and_rhs") : mangler.block("and_rhs");
-                std::string falseLbl =
-                    blockNamer ? blockNamer->generic("and_false") : mangler.block("and_false");
-                std::string doneLbl =
-                    blockNamer ? blockNamer->generic("and_done") : mangler.block("and_done");
-                BasicBlock *rhsBB = &builder->addBlock(*func, rhsLbl);
-                BasicBlock *falseBB = &builder->addBlock(*func, falseLbl);
-                BasicBlock *doneBB = &builder->addBlock(*func, doneLbl);
-                curLoc = expr.loc;
-                emitCBr(lhs.value, rhsBB, falseBB);
-                cur = rhsBB;
-                RVal rhs = lowerExpr(*b->rhs);
-                curLoc = expr.loc;
-                emitStore(Type(Type::Kind::I1), addr, rhs.value);
-                curLoc = expr.loc;
-                emitBr(doneBB);
-                cur = falseBB;
-                curLoc = expr.loc;
-                emitStore(Type(Type::Kind::I1), addr, Value::constInt(0));
-                curLoc = expr.loc;
-                emitBr(doneBB);
-                cur = doneBB;
-            }
-            else
-            {
-                std::string trueLbl =
-                    blockNamer ? blockNamer->generic("or_true") : mangler.block("or_true");
-                std::string rhsLbl =
-                    blockNamer ? blockNamer->generic("or_rhs") : mangler.block("or_rhs");
-                std::string doneLbl =
-                    blockNamer ? blockNamer->generic("or_done") : mangler.block("or_done");
-                BasicBlock *trueBB = &builder->addBlock(*func, trueLbl);
-                BasicBlock *rhsBB = &builder->addBlock(*func, rhsLbl);
-                BasicBlock *doneBB = &builder->addBlock(*func, doneLbl);
-                curLoc = expr.loc;
-                emitCBr(lhs.value, trueBB, rhsBB);
-                cur = trueBB;
-                curLoc = expr.loc;
-                emitStore(Type(Type::Kind::I1), addr, Value::constInt(1));
-                curLoc = expr.loc;
-                emitBr(doneBB);
-                cur = rhsBB;
-                RVal rhs = lowerExpr(*b->rhs);
-                curLoc = expr.loc;
-                emitStore(Type(Type::Kind::I1), addr, rhs.value);
-                curLoc = expr.loc;
-                emitBr(doneBB);
-                cur = doneBB;
-            }
-            curLoc = expr.loc;
-            Value res = emitLoad(Type(Type::Kind::I1), addr);
-            return {res, Type(Type::Kind::I1)};
-        }
-        else if (b->op == BinaryExpr::Op::IDiv || b->op == BinaryExpr::Op::Mod)
-        {
-            RVal lhs = lowerExpr(*b->lhs);
-            RVal rhs = lowerExpr(*b->rhs);
-            curLoc = expr.loc;
-            Value cond =
-                emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), rhs.value, Value::constInt(0));
-            std::string trapLbl = blockNamer ? blockNamer->generic("div0") : mangler.block("div0");
-            std::string okLbl = blockNamer ? blockNamer->generic("divok") : mangler.block("divok");
-            BasicBlock *trapBB = &builder->addBlock(*func, trapLbl);
-            BasicBlock *okBB = &builder->addBlock(*func, okLbl);
-            emitCBr(cond, trapBB, okBB);
-            cur = trapBB;
-            curLoc = expr.loc;
-            emitTrap();
-            cur = okBB;
-            curLoc = expr.loc;
-            Opcode op = (b->op == BinaryExpr::Op::IDiv) ? Opcode::SDiv : Opcode::SRem;
-            Value res = emitBinary(op, Type(Type::Kind::I64), lhs.value, rhs.value);
-            return {res, Type(Type::Kind::I64)};
-        }
-        RVal lhs = lowerExpr(*b->lhs);
-        RVal rhs = lowerExpr(*b->rhs);
-        curLoc = expr.loc;
-        if (b->op == BinaryExpr::Op::Add && lhs.type.kind == Type::Kind::Str &&
-            rhs.type.kind == Type::Kind::Str)
-        {
-            Value res = emitCallRet(Type(Type::Kind::Str), "rt_concat", {lhs.value, rhs.value});
-            return {res, Type(Type::Kind::Str)};
-        }
-        if ((b->op == BinaryExpr::Op::Eq || b->op == BinaryExpr::Op::Ne) &&
-            lhs.type.kind == Type::Kind::Str && rhs.type.kind == Type::Kind::Str)
-        {
-            Value eq = emitCallRet(Type(Type::Kind::I1), "rt_str_eq", {lhs.value, rhs.value});
-            if (b->op == BinaryExpr::Op::Ne)
-            {
-                Value z = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), eq);
-                Value x = emitBinary(Opcode::Xor, Type(Type::Kind::I64), z, Value::constInt(1));
-                Value res = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), x);
-                return {res, Type(Type::Kind::I1)};
-            }
-            return {eq, Type(Type::Kind::I1)};
-        }
-        if (lhs.type.kind == Type::Kind::I64 && rhs.type.kind == Type::Kind::F64)
-        {
-            lhs.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), lhs.value);
-            lhs.type = Type(Type::Kind::F64);
-        }
-        else if (lhs.type.kind == Type::Kind::F64 && rhs.type.kind == Type::Kind::I64)
-        {
-            rhs.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), rhs.value);
-            rhs.type = Type(Type::Kind::F64);
-        }
-        bool isFloat = lhs.type.kind == Type::Kind::F64;
-        Opcode op = Opcode::Add;
-        Type ty = isFloat ? Type(Type::Kind::F64) : Type(Type::Kind::I64);
-        switch (b->op)
-        {
-            case BinaryExpr::Op::Add:
-                op = isFloat ? Opcode::FAdd : Opcode::Add;
-                break;
-            case BinaryExpr::Op::Sub:
-                op = isFloat ? Opcode::FSub : Opcode::Sub;
-                break;
-            case BinaryExpr::Op::Mul:
-                op = isFloat ? Opcode::FMul : Opcode::Mul;
-                break;
-            case BinaryExpr::Op::Div:
-                op = isFloat ? Opcode::FDiv : Opcode::SDiv;
-                break;
-            case BinaryExpr::Op::IDiv:
-                op = Opcode::SDiv;
-                break;
-            case BinaryExpr::Op::Mod:
-                op = Opcode::SRem;
-                break;
-            case BinaryExpr::Op::Eq:
-                op = isFloat ? Opcode::FCmpEQ : Opcode::ICmpEq;
-                ty = Type(Type::Kind::I1);
-                break;
-            case BinaryExpr::Op::Ne:
-                op = isFloat ? Opcode::FCmpNE : Opcode::ICmpNe;
-                ty = Type(Type::Kind::I1);
-                break;
-            case BinaryExpr::Op::Lt:
-                op = isFloat ? Opcode::FCmpLT : Opcode::SCmpLT;
-                ty = Type(Type::Kind::I1);
-                break;
-            case BinaryExpr::Op::Le:
-                op = isFloat ? Opcode::FCmpLE : Opcode::SCmpLE;
-                ty = Type(Type::Kind::I1);
-                break;
-            case BinaryExpr::Op::Gt:
-                op = isFloat ? Opcode::FCmpGT : Opcode::SCmpGT;
-                ty = Type(Type::Kind::I1);
-                break;
-            case BinaryExpr::Op::Ge:
-                op = isFloat ? Opcode::FCmpGE : Opcode::SCmpGE;
-                ty = Type(Type::Kind::I1);
-                break;
-            case BinaryExpr::Op::And:
-            case BinaryExpr::Op::Or:
-                break; // handled above
-        }
-        Value res = emitBinary(op, ty, lhs.value, rhs.value);
-        return {res, ty};
+        return lowerBinaryExpr(*b);
     }
 
     else if (auto *c = dynamic_cast<const BuiltinCallExpr *>(&expr))
     {
-        if (c->builtin == BuiltinCallExpr::Builtin::Rnd)
-        {
-            curLoc = expr.loc;
-            Value res = emitCallRet(Type(Type::Kind::F64), "rt_rnd", {});
-            return {res, Type(Type::Kind::F64)};
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Len)
-        {
-            RVal s = lowerExpr(*c->args[0]);
-            curLoc = expr.loc;
-            Value res = emitCallRet(Type(Type::Kind::I64), "rt_len", {s.value});
-            return {res, Type(Type::Kind::I64)};
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Mid)
-        {
-            RVal s = lowerExpr(*c->args[0]);
-            RVal i = lowerExpr(*c->args[1]);
-            Value start0 =
-                emitBinary(Opcode::Add, Type(Type::Kind::I64), i.value, Value::constInt(-1));
-            Value count = (c->args.size() >= 3)
-                              ? lowerExpr(*c->args[2]).value
-                              : Value::constInt(std::numeric_limits<int64_t>::max());
-            curLoc = expr.loc;
-            Value res = emitCallRet(Type(Type::Kind::Str), "rt_substr", {s.value, start0, count});
-            return {res, Type(Type::Kind::Str)};
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Left)
-        {
-            RVal s = lowerExpr(*c->args[0]);
-            RVal n = lowerExpr(*c->args[1]);
-            curLoc = expr.loc;
-            Value res = emitCallRet(
-                Type(Type::Kind::Str), "rt_substr", {s.value, Value::constInt(0), n.value});
-            return {res, Type(Type::Kind::Str)};
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Right)
-        {
-            RVal s = lowerExpr(*c->args[0]);
-            RVal n = lowerExpr(*c->args[1]);
-            curLoc = expr.loc;
-            Value len = emitCallRet(Type(Type::Kind::I64), "rt_len", {s.value});
-            Value negN =
-                emitBinary(Opcode::Mul, Type(Type::Kind::I64), n.value, Value::constInt(-1));
-            Value start = emitBinary(Opcode::Add, Type(Type::Kind::I64), len, negN);
-            Value res = emitCallRet(Type(Type::Kind::Str), "rt_substr", {s.value, start, n.value});
-            return {res, Type(Type::Kind::Str)};
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Str)
-        {
-            RVal v = lowerExpr(*c->args[0]);
-            curLoc = expr.loc;
-            if (v.type.kind == Type::Kind::I64)
-            {
-                Value res = emitCallRet(Type(Type::Kind::Str), "rt_int_to_str", {v.value});
-                return {res, Type(Type::Kind::Str)};
-            }
-            else
-            {
-                if (v.type.kind == Type::Kind::I1)
-                    v.value = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), v.value);
-                if (v.type.kind == Type::Kind::I64)
-                {
-                    Value res = emitCallRet(Type(Type::Kind::Str), "rt_int_to_str", {v.value});
-                    return {res, Type(Type::Kind::Str)};
-                }
-                Value res = emitCallRet(Type(Type::Kind::Str), "rt_f64_to_str", {v.value});
-                return {res, Type(Type::Kind::Str)};
-            }
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Val)
-        {
-            RVal s = lowerExpr(*c->args[0]);
-            curLoc = expr.loc;
-            Value res = emitCallRet(Type(Type::Kind::I64), "rt_to_int", {s.value});
-            return {res, Type(Type::Kind::I64)};
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Int)
-        {
-            RVal f = lowerExpr(*c->args[0]);
-            if (f.type.kind == Type::Kind::I64)
-            {
-                curLoc = expr.loc;
-                f.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), f.value);
-                f.type = Type(Type::Kind::F64);
-            }
-            curLoc = expr.loc;
-            Value res = emitUnary(Opcode::Fptosi, Type(Type::Kind::I64), f.value);
-            return {res, Type(Type::Kind::I64)};
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Sqr)
-        {
-            RVal v = lowerExpr(*c->args[0]);
-            if (v.type.kind == Type::Kind::I64)
-            {
-                curLoc = expr.loc;
-                v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
-                v.type = Type(Type::Kind::F64);
-            }
-            curLoc = expr.loc;
-            Value res = emitCallRet(Type(Type::Kind::F64), "rt_sqrt", {v.value});
-            return {res, Type(Type::Kind::F64)};
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Abs)
-        {
-            RVal v = lowerExpr(*c->args[0]);
-            if (v.type.kind == Type::Kind::I1)
-            {
-                curLoc = expr.loc;
-                v.value = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), v.value);
-                v.type = Type(Type::Kind::I64);
-            }
-            if (v.type.kind == Type::Kind::F64)
-            {
-                curLoc = expr.loc;
-                Value res = emitCallRet(Type(Type::Kind::F64), "rt_abs_f64", {v.value});
-                return {res, Type(Type::Kind::F64)};
-            }
-            curLoc = expr.loc;
-            Value res = emitCallRet(Type(Type::Kind::I64), "rt_abs_i64", {v.value});
-            return {res, Type(Type::Kind::I64)};
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Floor)
-        {
-            RVal v = lowerExpr(*c->args[0]);
-            if (v.type.kind == Type::Kind::I64)
-            {
-                curLoc = expr.loc;
-                v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
-                v.type = Type(Type::Kind::F64);
-            }
-            curLoc = expr.loc;
-            Value res = emitCallRet(Type(Type::Kind::F64), "rt_floor", {v.value});
-            return {res, Type(Type::Kind::F64)};
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Ceil)
-        {
-            RVal v = lowerExpr(*c->args[0]);
-            if (v.type.kind == Type::Kind::I64)
-            {
-                curLoc = expr.loc;
-                v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
-                v.type = Type(Type::Kind::F64);
-            }
-            curLoc = expr.loc;
-            Value res = emitCallRet(Type(Type::Kind::F64), "rt_ceil", {v.value});
-            return {res, Type(Type::Kind::F64)};
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Sin)
-        {
-            RVal v = lowerExpr(*c->args[0]);
-            if (v.type.kind == Type::Kind::I64)
-            {
-                curLoc = expr.loc;
-                v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
-                v.type = Type(Type::Kind::F64);
-            }
-            curLoc = expr.loc;
-            Value res = emitCallRet(Type(Type::Kind::F64), "rt_sin", {v.value});
-            return {res, Type(Type::Kind::F64)};
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Cos)
-        {
-            RVal v = lowerExpr(*c->args[0]);
-            if (v.type.kind == Type::Kind::I64)
-            {
-                curLoc = expr.loc;
-                v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
-                v.type = Type(Type::Kind::F64);
-            }
-            curLoc = expr.loc;
-            Value res = emitCallRet(Type(Type::Kind::F64), "rt_cos", {v.value});
-            return {res, Type(Type::Kind::F64)};
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Pow)
-        {
-            RVal a = lowerExpr(*c->args[0]);
-            RVal b = lowerExpr(*c->args[1]);
-            if (a.type.kind == Type::Kind::I64)
-            {
-                curLoc = expr.loc;
-                a.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), a.value);
-                a.type = Type(Type::Kind::F64);
-            }
-            if (b.type.kind == Type::Kind::I64)
-            {
-                curLoc = expr.loc;
-                b.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), b.value);
-                b.type = Type(Type::Kind::F64);
-            }
-            curLoc = expr.loc;
-            Value res = emitCallRet(Type(Type::Kind::F64), "rt_pow", {a.value, b.value});
-            return {res, Type(Type::Kind::F64)};
-        }
+        return lowerBuiltinCall(*c);
     }
     else if (auto *c = dynamic_cast<const CallExpr *>(&expr))
     {
