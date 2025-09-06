@@ -51,6 +51,15 @@ class Lowerer
         Type type;
     };
 
+    /// @brief Layout of blocks emitted for an IF/ELSEIF chain.
+    struct IfBlocks
+    {
+        std::vector<size_t> tests; ///< indexes of test blocks
+        std::vector<size_t> thens; ///< indexes of THEN blocks
+        BasicBlock *elseBlk;       ///< pointer to ELSE block
+        BasicBlock *exitBlk;       ///< pointer to common exit
+    };
+
     /// @brief Deterministic per-procedure block name generator.
     /// @invariant `k` starts at 0 per procedure and increases monotonically.
     ///            WHILE, FOR, and synthetic call continuations share the same
@@ -246,6 +255,22 @@ class Lowerer
 
     void lowerLet(const LetStmt &stmt);
     void lowerPrint(const PrintStmt &stmt);
+    /// @brief Emit blocks for an IF/ELSEIF chain.
+    /// @param conds Number of conditions (IF + ELSEIFs).
+    /// @return Indices for test/then blocks and ELSE/exit blocks.
+    IfBlocks emitIfBlocks(size_t conds);
+    /// @brief Evaluate @p cond and branch to @p thenBlk or @p falseBlk.
+    void lowerIfCondition(const Expr &cond,
+                          BasicBlock *testBlk,
+                          BasicBlock *thenBlk,
+                          BasicBlock *falseBlk,
+                          il::support::SourceLoc loc);
+    /// @brief Lower a THEN/ELSE branch and link to exit.
+    /// @return True if branch falls through to @p exitBlk.
+    bool lowerIfBranch(const Stmt *stmt,
+                       BasicBlock *thenBlk,
+                       BasicBlock *exitBlk,
+                       il::support::SourceLoc loc);
     void lowerIf(const IfStmt &stmt);
     void lowerWhile(const WhileStmt &stmt);
     void lowerFor(const ForStmt &stmt);
