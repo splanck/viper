@@ -496,6 +496,11 @@ add_test(NAME basic_to_il_lower_program_with_proc COMMAND ${CMAKE_COMMAND}
   -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/goldens/LowerProgramWithProc.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/basic/goldens/LowerProgramWithProc.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
+add_test(NAME basic_to_il_return_nest COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/goldens/ReturnNest.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/basic/goldens/ReturnNest.il
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 
 file(READ ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/proc_registration_ok.err EXPECT_PROC_REG)
 string(STRIP "${EXPECT_PROC_REG}" EXPECT_PROC_REG)
