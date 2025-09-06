@@ -129,6 +129,122 @@ class VM
         const il::core::BasicBlock *&bb,
         size_t &ip);
 
+    using BlockMap =
+        std::unordered_map<std::string, const il::core::BasicBlock *>; ///< Block lookup table
+
+    /// @brief Handle alloca opcode.
+    ExecResult handleAlloca(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle load opcode.
+    ExecResult handleLoad(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle store opcode.
+    ExecResult handleStore(Frame &fr,
+                           const il::core::Instr &in,
+                           const il::core::BasicBlock *bb,
+                           size_t ip);
+
+    /// @brief Handle integer addition opcode.
+    ExecResult handleAdd(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle integer subtraction opcode.
+    ExecResult handleSub(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle integer multiplication opcode.
+    ExecResult handleMul(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle floating add opcode.
+    ExecResult handleFAdd(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle floating subtract opcode.
+    ExecResult handleFSub(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle floating multiply opcode.
+    ExecResult handleFMul(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle floating divide opcode.
+    ExecResult handleFDiv(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle bitwise xor opcode.
+    ExecResult handleXor(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle shift-left opcode.
+    ExecResult handleShl(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle pointer arithmetic opcode.
+    ExecResult handleGEP(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle integer equality comparison opcode.
+    ExecResult handleICmpEq(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle integer inequality comparison opcode.
+    ExecResult handleICmpNe(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle signed greater-than comparison opcode.
+    ExecResult handleSCmpGT(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle signed less-than comparison opcode.
+    ExecResult handleSCmpLT(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle signed less-equal comparison opcode.
+    ExecResult handleSCmpLE(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle signed greater-equal comparison opcode.
+    ExecResult handleSCmpGE(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle floating equality comparison opcode.
+    ExecResult handleFCmpEQ(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle floating inequality comparison opcode.
+    ExecResult handleFCmpNE(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle floating greater-than comparison opcode.
+    ExecResult handleFCmpGT(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle floating less-than comparison opcode.
+    ExecResult handleFCmpLT(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle floating less-equal comparison opcode.
+    ExecResult handleFCmpLE(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle floating greater-equal comparison opcode.
+    ExecResult handleFCmpGE(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle unconditional branch opcode.
+    ExecResult handleBr(Frame &fr,
+                        const il::core::Instr &in,
+                        const BlockMap &blocks,
+                        const il::core::BasicBlock *&bb,
+                        size_t &ip);
+
+    /// @brief Handle conditional branch opcode.
+    ExecResult handleCBr(Frame &fr,
+                         const il::core::Instr &in,
+                         const BlockMap &blocks,
+                         const il::core::BasicBlock *&bb,
+                         size_t &ip);
+
+    /// @brief Handle return opcode.
+    ExecResult handleRet(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle const string opcode.
+    ExecResult handleConstStr(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle call opcode.
+    ExecResult handleCall(Frame &fr, const il::core::Instr &in, const il::core::BasicBlock *bb);
+
+    /// @brief Handle integer-to-float cast opcode.
+    ExecResult handleSitofp(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle float-to-integer cast opcode.
+    ExecResult handleFptosi(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle truncation or zero-extension opcode.
+    ExecResult handleTruncOrZext1(Frame &fr, const il::core::Instr &in);
+
+    /// @brief Handle trap opcode.
+    ExecResult handleTrap(Frame &fr, const il::core::Instr &in, const il::core::BasicBlock *bb);
+
   public:
     /// @brief Return executed instruction count.
     uint64_t getInstrCount() const
