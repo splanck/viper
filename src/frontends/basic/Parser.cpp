@@ -445,7 +445,7 @@ std::vector<Param> Parser::parseParamList()
     return params;
 }
 
-StmtPtr Parser::parseFunction()
+std::unique_ptr<FunctionDecl> Parser::parseFunctionHeader()
 {
     auto loc = peek().loc;
     consume(); // FUNCTION
@@ -455,6 +455,11 @@ StmtPtr Parser::parseFunction()
     fn->name = nameTok.lexeme;
     fn->ret = typeFromSuffix(nameTok.lexeme);
     fn->params = parseParamList();
+    return fn;
+}
+
+void Parser::parseFunctionBody(FunctionDecl *fn)
+{
     if (at(TokenKind::EndOfLine))
         consume();
     else if (at(TokenKind::Colon))
@@ -485,6 +490,12 @@ StmtPtr Parser::parseFunction()
         else if (at(TokenKind::EndOfLine))
             consume();
     }
+}
+
+StmtPtr Parser::parseFunction()
+{
+    auto fn = parseFunctionHeader();
+    parseFunctionBody(fn.get());
     return fn;
 }
 
