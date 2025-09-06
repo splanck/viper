@@ -11,6 +11,7 @@
 #include "rt.hpp"
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -82,6 +83,51 @@ class VM
     /// @param v Value to evaluate.
     /// @return Result stored in a Slot.
     Slot eval(Frame &fr, const il::core::Value &v);
+
+    /// @brief Result of executing one opcode.
+    struct ExecResult
+    {
+        bool jumped = false;   ///< Whether control transferred to another block.
+        bool returned = false; ///< Whether execution returned from the function.
+        Slot value{};          ///< Return value if @c returned is true.
+    };
+
+    /// @brief Initialize a frame for @p fn with arguments.
+    /// @param fn Function to execute.
+    /// @param args Argument slots for entry block parameters.
+    /// @param blocks Map populated with basic block labels.
+    /// @param bb Set to point at the entry block.
+    Frame setupFrame(const il::core::Function &fn,
+                     const std::vector<Slot> &args,
+                     std::unordered_map<std::string, const il::core::BasicBlock *> &blocks,
+                     const il::core::BasicBlock *&bb);
+
+    /// @brief Handle pending debug breaks and parameter transfers.
+    /// @param fr Current frame.
+    /// @param bb Current basic block.
+    /// @param ip Instruction index within @p bb.
+    /// @param skipBreakOnce Internal flag to skip a single break.
+    /// @param in Optional instruction for source-line breaks.
+    /// @return Slot signalling pause if engaged.
+    std::optional<Slot> handleDebugBreak(Frame &fr,
+                                         const il::core::BasicBlock &bb,
+                                         size_t ip,
+                                         bool &skipBreakOnce,
+                                         const il::core::Instr *in);
+
+    /// @brief Execute instruction @p in updating control flow state.
+    /// @param fr Current frame.
+    /// @param in Instruction to execute.
+    /// @param blocks Block lookup table.
+    /// @param bb [in,out] Current basic block.
+    /// @param ip [in,out] Instruction pointer within @p bb.
+    /// @return Result describing jump or return.
+    ExecResult executeOpcode(
+        Frame &fr,
+        const il::core::Instr &in,
+        const std::unordered_map<std::string, const il::core::BasicBlock *> &blocks,
+        const il::core::BasicBlock *&bb,
+        size_t &ip);
 
   public:
     /// @brief Return executed instruction count.
