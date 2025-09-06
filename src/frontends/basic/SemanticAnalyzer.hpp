@@ -101,6 +101,19 @@ class SemanticAnalyzer
     /// @return Inferred type of the expression.
     Type visitExpr(const Expr &e);
 
+    /// @brief Analyze variable reference.
+    Type analyzeVar(VarExpr &v);
+    /// @brief Analyze unary expression.
+    Type analyzeUnary(const UnaryExpr &u);
+    /// @brief Analyze binary expression.
+    Type analyzeBinary(const BinaryExpr &b);
+    /// @brief Analyze built-in function call.
+    Type analyzeBuiltinCall(const BuiltinCallExpr &c);
+    /// @brief Analyze user-defined procedure call.
+    Type analyzeCall(const CallExpr &c);
+    /// @brief Analyze array access expression.
+    Type analyzeArray(ArrayExpr &a);
+
     /// @brief Determine if @p stmts guarantees a return value on all control paths.
     bool mustReturn(const std::vector<StmtPtr> &stmts) const;
     /// @brief Determine if single statement @p s guarantees a return value.
