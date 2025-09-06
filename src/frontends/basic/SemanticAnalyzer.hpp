@@ -87,6 +87,31 @@ class SemanticAnalyzer
     /// @param s Statement node to analyze.
     void visitStmt(const Stmt &s);
 
+    /// @brief Analyze statement list @p s.
+    void analyzeStmtList(const StmtList &s);
+    /// @brief Analyze PRINT statement @p s.
+    void analyzePrint(const PrintStmt &s);
+    /// @brief Analyze LET statement @p s.
+    void analyzeLet(const LetStmt &s);
+    /// @brief Analyze IF statement @p s.
+    void analyzeIf(const IfStmt &s);
+    /// @brief Analyze WHILE statement @p s.
+    void analyzeWhile(const WhileStmt &s);
+    /// @brief Analyze FOR statement @p s.
+    void analyzeFor(const ForStmt &s);
+    /// @brief Analyze GOTO statement @p s.
+    void analyzeGoto(const GotoStmt &s);
+    /// @brief Analyze NEXT statement @p s.
+    void analyzeNext(const NextStmt &s);
+    /// @brief Analyze END statement @p s.
+    void analyzeEnd(const EndStmt &s);
+    /// @brief Analyze RANDOMIZE statement @p s.
+    void analyzeRandomize(const RandomizeStmt &s);
+    /// @brief Analyze INPUT statement @p s.
+    void analyzeInput(const InputStmt &s);
+    /// @brief Analyze DIM statement @p s.
+    void analyzeDim(const DimStmt &s);
+
     /// @brief Inferred BASIC value type.
     enum class Type
     {
@@ -132,6 +157,19 @@ class SemanticAnalyzer
     std::vector<std::unordered_map<std::string, std::string>>
         scopeStack_;          ///< @brief Stack of scopes mapping original names to mangled.
     unsigned nextLocalId_{0}; ///< @brief Counter for unique local names.
+
+    /// @brief RAII helper entering a scope on construction and leaving on destruction.
+    class ScopedScope
+    {
+      public:
+        /// @brief Construct and push a new scope on @p sa.
+        explicit ScopedScope(SemanticAnalyzer &sa);
+        /// @brief Pop the managed scope.
+        ~ScopedScope();
+
+      private:
+        SemanticAnalyzer &sa_;
+    };
 
     /// @brief Enter a new lexical scope.
     void pushScope();
