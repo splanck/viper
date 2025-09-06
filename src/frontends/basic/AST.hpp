@@ -132,6 +132,7 @@ struct Stmt
 };
 
 using StmtPtr = std::unique_ptr<Stmt>;
+using ProcDecl = StmtPtr; ///< Either FunctionDecl or SubDecl.
 
 /// @brief Item within a PRINT statement.
 struct PrintItem
@@ -271,9 +272,12 @@ struct StmtList : Stmt
     std::vector<StmtPtr> stmts; ///< Ordered statements sharing the same line.
 };
 
+/// @brief Root node partitioning procedure declarations from main statements.
 struct Program
 {
-    std::vector<StmtPtr> statements;
+    std::vector<ProcDecl> procs; ///< FUNCTION/SUB declarations in order.
+    std::vector<StmtPtr> main;   ///< Top-level statements forming program entry.
+    il::support::SourceLoc loc;  ///< Location of first token in source.
 };
 
 } // namespace il::frontends::basic
