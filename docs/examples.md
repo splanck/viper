@@ -43,3 +43,7 @@ Top-level BASIC statements are lowered into an IL function named `@main`.
 `tests/e2e/fibonacci.bas` computes `FIB(10)` recursively and prints `55`. It
 finishes in roughly 180 VM steps, so a guard of 200 suffices if using
 `--max-steps`.
+
+## Nested calls
+
+`tests/e2e/nested_calls.bas` combines a side-effecting `SUB` with a string-returning `FUNCTION`.
