@@ -1,0 +1,45 @@
+il 0.1.2
+extern @rt_print_str(str) -> void
+extern @rt_print_i64(i64) -> void
+extern @rt_print_f64(f64) -> void
+extern @rt_len(str) -> i64
+extern @rt_substr(str, i64, i64) -> str
+global const str @.L0 = "
+"
+func @F() -> i64 {
+entry_F:
+  br L0_F
+L0_F:
+  .loc 1 2 1
+  br if_test_0_F
+ret_F:
+  ret 0
+if_test_0_F:
+  .loc 1 2 1
+  %t0 = trunc1 1
+  .loc 1 2 1
+  cbr %t0, if_then_0_F, if_else_0_F
+if_then_0_F:
+  .loc 1 2 18
+  ret 1
+if_else_0_F:
+  .loc 1 2 32
+  ret 2
+}
+func @main() -> i64 {
+entry:
+  br L0
+L0:
+  .loc 1 4 7
+  %t1 = call @F()
+  .loc 1 4 1
+  call @rt_print_i64(%t1)
+  .loc 1 4 1
+  %t2 = const_str @.L0
+  .loc 1 4 1
+  call @rt_print_str(%t2)
+  .loc 1 4 1
+  br exit
+exit:
+  ret 0
+}
