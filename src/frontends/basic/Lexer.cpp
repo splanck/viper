@@ -1,5 +1,5 @@
 // File: src/frontends/basic/Lexer.cpp
-// Purpose: Implements lexer for the BASIC frontend.
+// Purpose: Implements lexer for the BASIC frontend with support for line comments.
 // Key invariants: None.
 // Ownership/Lifetime: Lexer views input managed externally.
 // Links: docs/class-catalog.md
@@ -53,6 +53,38 @@ void Lexer::skipWhitespaceExceptNewline()
         {
             break;
         }
+    }
+}
+
+void Lexer::skipWhitespaceAndComments()
+{
+    while (true)
+    {
+        skipWhitespaceExceptNewline();
+
+        if (peek() == '\'')
+        {
+            while (!eof() && peek() != '\n')
+                get();
+            continue;
+        }
+
+        if (std::toupper(peek()) == 'R' && pos_ + 2 < src_.size() &&
+            std::toupper(src_[pos_ + 1]) == 'E' && std::toupper(src_[pos_ + 2]) == 'M')
+        {
+            char after = (pos_ + 3 < src_.size()) ? src_[pos_ + 3] : '\0';
+            if (!std::isalnum(after) && after != '$' && after != '#')
+            {
+                get();
+                get();
+                get();
+                while (!eof() && peek() != '\n')
+                    get();
+                continue;
+            }
+        }
+
+        break;
     }
 }
 
@@ -187,14 +219,14 @@ Token Lexer::lexString()
 Token Lexer::next()
 {
     // Skip leading spaces and tabs but preserve newlines for tokenization.
-    skipWhitespaceExceptNewline();
+    skipWhitespaceAndComments();
 
     if (eof())
         return {TokenKind::EndOfFile, "", {file_id_, line_, column_}};
 
     char c = peek();
 
-    // Handle newline explicitly so skipWhitespaceExceptNewline is called only once.
+    // Handle newline explicitly so skipWhitespaceAndComments is called only once.
     if (c == '\n')
     {
         il::support::SourceLoc loc{file_id_, line_, column_};

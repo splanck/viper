@@ -347,6 +347,13 @@ add_test(NAME basic_ast_functions_subs_parsing COMMAND ${CMAKE_COMMAND}
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/functions_subs_parsing.ast
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/check_ast.cmake)
 
+set(BASIC_LEX_DUMP $<TARGET_FILE:basic-lex-dump>)
+add_test(NAME basic_lex_comments COMMAND ${CMAKE_COMMAND}
+  -DBASIC_LEX_DUMP=${BASIC_LEX_DUMP}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/lex/Comments.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/basic/lex/Comments.tokens
+  -P ${CMAKE_SOURCE_DIR}/tests/basic/lex/check_tokens.cmake)
+
 set(BASIC_ILC $<TARGET_FILE:ilc>)
 add_test(NAME basic_to_il_ex1 COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
