@@ -194,6 +194,12 @@ add_test(NAME basic_factorial COMMAND ${CMAKE_COMMAND}
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/goldens/factorial.out
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_basic_math_phase1.cmake)
 set_tests_properties(basic_factorial PROPERTIES WILL_FAIL TRUE)
+add_test(NAME basic_fibonacci COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/fibonacci.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/goldens/fibonacci.out
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_basic_math_phase1.cmake)
+set_tests_properties(basic_fibonacci PROPERTIES WILL_FAIL TRUE)
 add_test(NAME basic_random_repro COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
   -DSRC_DIR=${CMAKE_SOURCE_DIR}
