@@ -9,7 +9,6 @@
 
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
-#include <initializer_list>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -88,38 +87,6 @@ class SemanticAnalyzer
     /// @param s Statement node to analyze.
     void visitStmt(const Stmt &s);
 
-    /// @brief Analyze statement list @p s.
-    void analyzeStmtList(const StmtList &s);
-    /// @brief Analyze PRINT statement @p s.
-    void analyzePrint(const PrintStmt &s);
-    /// @brief Analyze LET statement @p s.
-    void analyzeLet(const LetStmt &s);
-    /// @brief Analyze IF statement @p s.
-    void analyzeIf(const IfStmt &s);
-    /// @brief Analyze WHILE statement @p s.
-    void analyzeWhile(const WhileStmt &s);
-    /// @brief Analyze FOR statement @p s.
-    void analyzeFor(const ForStmt &s);
-    /// @brief Analyze GOTO statement @p s.
-    void analyzeGoto(const GotoStmt &s);
-    /// @brief Analyze NEXT statement @p s.
-    void analyzeNext(const NextStmt &s);
-    /// @brief Analyze END statement @p s.
-    void analyzeEnd(const EndStmt &s);
-    /// @brief Analyze RANDOMIZE statement @p s.
-    void analyzeRandomize(const RandomizeStmt &s);
-    /// @brief Analyze INPUT statement @p s.
-    void analyzeInput(const InputStmt &s);
-    /// @brief Analyze DIM statement @p s.
-    void analyzeDim(const DimStmt &s);
-
-    /// @brief Analyze assignment to a simple variable in LET.
-    void analyzeVarAssignment(VarExpr &v, const LetStmt &s);
-    /// @brief Analyze assignment to an array element in LET.
-    void analyzeArrayAssignment(ArrayExpr &a, const LetStmt &s);
-    /// @brief Report error for LET with a non-assignable left-hand side.
-    void analyzeConstExpr(const LetStmt &s);
-
     /// @brief Inferred BASIC value type.
     enum class Type
     {
@@ -133,76 +100,6 @@ class SemanticAnalyzer
     /// @param e Expression node to analyze.
     /// @return Inferred type of the expression.
     Type visitExpr(const Expr &e);
-
-    /// @brief Analyze variable reference.
-    Type analyzeVar(VarExpr &v);
-    /// @brief Analyze unary expression.
-    Type analyzeUnary(const UnaryExpr &u);
-    /// @brief Analyze binary expression.
-    Type analyzeBinary(const BinaryExpr &b);
-    /// @brief Analyze arithmetic operators (+, -, *).
-    Type analyzeArithmetic(const BinaryExpr &b, Type lt, Type rt);
-    /// @brief Analyze division and modulus operators.
-    Type analyzeDivMod(const BinaryExpr &b, Type lt, Type rt);
-    /// @brief Analyze comparison operators (==, <>, <, <=, >, >=).
-    Type analyzeComparison(const BinaryExpr &b, Type lt, Type rt);
-    /// @brief Analyze logical operators (AND, OR).
-    Type analyzeLogical(const BinaryExpr &b, Type lt, Type rt);
-    /// @brief Analyze built-in function call.
-    Type analyzeBuiltinCall(const BuiltinCallExpr &c);
-    /// @brief Analyze RND builtin.
-    Type analyzeRnd(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze LEN builtin.
-    Type analyzeLen(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze MID$ builtin.
-    Type analyzeMid(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze LEFT$ builtin.
-    Type analyzeLeft(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze RIGHT$ builtin.
-    Type analyzeRight(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze STR$ builtin.
-    Type analyzeStr(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze VAL builtin.
-    Type analyzeVal(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze INT builtin.
-    Type analyzeInt(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze SQR builtin.
-    Type analyzeSqr(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze ABS builtin.
-    Type analyzeAbs(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze FLOOR builtin.
-    Type analyzeFloor(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze CEIL builtin.
-    Type analyzeCeil(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze SIN builtin.
-    Type analyzeSin(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze COS builtin.
-    Type analyzeCos(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze POW builtin.
-    Type analyzePow(const BuiltinCallExpr &c, const std::vector<Type> &args);
-
-    /// @brief Emit argument type mismatch diagnostic for argument @p idx.
-    void argTypeMismatch(const BuiltinCallExpr &c, size_t idx);
-    /// @brief Check argument count is within [@p min,@p max].
-    bool checkArgCount(const BuiltinCallExpr &c,
-                       const std::vector<Type> &args,
-                       size_t min,
-                       size_t max);
-    /// @brief Verify argument @p idx is one of @p allowed types.
-    bool checkArgType(const BuiltinCallExpr &c,
-                      size_t idx,
-                      Type argTy,
-                      std::initializer_list<Type> allowed);
-    /// @brief Resolve callee of user-defined call.
-    const ProcSignature *resolveCallee(const CallExpr &c);
-    /// @brief Collect and validate argument types for user-defined call.
-    std::vector<Type> checkCallArgs(const CallExpr &c, const ProcSignature *sig);
-    /// @brief Infer return type for user-defined call.
-    Type inferCallType(const CallExpr &c, const ProcSignature *sig);
-    /// @brief Analyze user-defined procedure call.
-    Type analyzeCall(const CallExpr &c);
-    /// @brief Analyze array access expression.
-    Type analyzeArray(ArrayExpr &a);
 
     /// @brief Determine if @p stmts guarantees a return value on all control paths.
     bool mustReturn(const std::vector<StmtPtr> &stmts) const;
@@ -222,19 +119,6 @@ class SemanticAnalyzer
     std::vector<std::unordered_map<std::string, std::string>>
         scopeStack_;          ///< @brief Stack of scopes mapping original names to mangled.
     unsigned nextLocalId_{0}; ///< @brief Counter for unique local names.
-
-    /// @brief RAII helper entering a scope on construction and leaving on destruction.
-    class ScopedScope
-    {
-      public:
-        /// @brief Construct and push a new scope on @p sa.
-        explicit ScopedScope(SemanticAnalyzer &sa);
-        /// @brief Pop the managed scope.
-        ~ScopedScope();
-
-      private:
-        SemanticAnalyzer &sa_;
-    };
 
     /// @brief Enter a new lexical scope.
     void pushScope();
