@@ -123,191 +123,222 @@ ExprPtr Parser::parseExpression(int min_prec)
     return left;
 }
 
+ExprPtr Parser::parseNumber()
+{
+    auto loc = peek().loc;
+    std::string lex = peek().lexeme;
+    if (lex.find_first_of(".Ee#") != std::string::npos)
+    {
+        auto e = std::make_unique<FloatExpr>();
+        e->loc = loc;
+        e->value = std::strtod(lex.c_str(), nullptr);
+        consume();
+        return e;
+    }
+    int v = std::atoi(lex.c_str());
+    auto e = std::make_unique<IntExpr>();
+    e->loc = loc;
+    e->value = v;
+    consume();
+    return e;
+}
+
+ExprPtr Parser::parseString()
+{
+    auto e = std::make_unique<StringExpr>();
+    e->loc = peek().loc;
+    e->value = peek().lexeme;
+    consume();
+    return e;
+}
+
+ExprPtr Parser::parseBuiltinCall(BuiltinCallExpr::Builtin builtin, il::support::SourceLoc loc)
+{
+    expect(TokenKind::LParen);
+    std::vector<ExprPtr> args;
+    if (builtin == BuiltinCallExpr::Builtin::Rnd)
+    {
+        expect(TokenKind::RParen);
+    }
+    else if (builtin == BuiltinCallExpr::Builtin::Pow)
+    {
+        auto first = parseExpression();
+        expect(TokenKind::Comma);
+        auto second = parseExpression();
+        expect(TokenKind::RParen);
+        args.push_back(std::move(first));
+        args.push_back(std::move(second));
+    }
+    else if (builtin == BuiltinCallExpr::Builtin::Len || builtin == BuiltinCallExpr::Builtin::Mid ||
+             builtin == BuiltinCallExpr::Builtin::Left ||
+             builtin == BuiltinCallExpr::Builtin::Right ||
+             builtin == BuiltinCallExpr::Builtin::Str || builtin == BuiltinCallExpr::Builtin::Val ||
+             builtin == BuiltinCallExpr::Builtin::Int)
+    {
+        if (!at(TokenKind::RParen))
+        {
+            while (true)
+            {
+                args.push_back(parseExpression());
+                if (at(TokenKind::Comma))
+                {
+                    consume();
+                    continue;
+                }
+                break;
+            }
+        }
+        expect(TokenKind::RParen);
+    }
+    else
+    {
+        args.push_back(parseExpression());
+        expect(TokenKind::RParen);
+    }
+    auto call = std::make_unique<BuiltinCallExpr>();
+    call->loc = loc;
+    call->Expr::loc = loc;
+    call->builtin = builtin;
+    call->args = std::move(args);
+    return call;
+}
+
+ExprPtr Parser::parseArrayOrVar()
+{
+    std::string name = peek().lexeme;
+    auto loc = peek().loc;
+    consume();
+    if (at(TokenKind::LParen))
+    {
+        BuiltinCallExpr::Builtin builtin = BuiltinCallExpr::Builtin::Len;
+        bool is_builtin = true;
+        if (name == "LEN")
+            builtin = BuiltinCallExpr::Builtin::Len;
+        else if (name == "MID$")
+            builtin = BuiltinCallExpr::Builtin::Mid;
+        else if (name == "LEFT$")
+            builtin = BuiltinCallExpr::Builtin::Left;
+        else if (name == "RIGHT$")
+            builtin = BuiltinCallExpr::Builtin::Right;
+        else if (name == "STR$")
+            builtin = BuiltinCallExpr::Builtin::Str;
+        else if (name == "VAL")
+            builtin = BuiltinCallExpr::Builtin::Val;
+        else if (name == "INT")
+            builtin = BuiltinCallExpr::Builtin::Int;
+        else
+            is_builtin = false;
+
+        if (is_builtin)
+            return parseBuiltinCall(builtin, loc);
+
+        consume();
+        if (arrays_.count(name))
+        {
+            auto first = parseExpression();
+            if (at(TokenKind::RParen))
+            {
+                consume();
+                auto arr = std::make_unique<ArrayExpr>();
+                arr->loc = loc;
+                arr->name = name;
+                arr->index = std::move(first);
+                return arr;
+            }
+            // treat as call if more arguments follow
+            std::vector<ExprPtr> args;
+            args.push_back(std::move(first));
+            while (true)
+            {
+                expect(TokenKind::Comma);
+                args.push_back(parseExpression());
+                if (!at(TokenKind::Comma))
+                    break;
+            }
+            expect(TokenKind::RParen);
+            auto call = std::make_unique<CallExpr>();
+            call->loc = loc;
+            call->Expr::loc = loc;
+            call->callee = name;
+            call->args = std::move(args);
+            return call;
+        }
+        else
+        {
+            std::vector<ExprPtr> args;
+            if (!at(TokenKind::RParen))
+            {
+                while (true)
+                {
+                    args.push_back(parseExpression());
+                    if (at(TokenKind::Comma))
+                    {
+                        consume();
+                        continue;
+                    }
+                    break;
+                }
+            }
+            expect(TokenKind::RParen);
+            auto call = std::make_unique<CallExpr>();
+            call->loc = loc;
+            call->Expr::loc = loc;
+            call->callee = name;
+            call->args = std::move(args);
+            return call;
+        }
+    }
+    auto v = std::make_unique<VarExpr>();
+    v->loc = loc;
+    v->name = name;
+    return v;
+}
+
 ExprPtr Parser::parsePrimary()
 {
     if (at(TokenKind::Number))
-    {
-        auto loc = peek().loc;
-        std::string lex = peek().lexeme;
-        if (lex.find_first_of(".Ee#") != std::string::npos)
-        {
-            auto e = std::make_unique<FloatExpr>();
-            e->loc = loc;
-            e->value = std::strtod(lex.c_str(), nullptr);
-            consume();
-            return e;
-        }
-        int v = std::atoi(lex.c_str());
-        auto e = std::make_unique<IntExpr>();
-        e->loc = loc;
-        e->value = v;
-        consume();
-        return e;
-    }
+        return parseNumber();
     if (at(TokenKind::String))
-    {
-        auto e = std::make_unique<StringExpr>();
-        e->loc = peek().loc;
-        e->value = peek().lexeme;
-        consume();
-        return e;
-    }
+        return parseString();
     if (at(TokenKind::KeywordSqr) || at(TokenKind::KeywordAbs) || at(TokenKind::KeywordFloor) ||
         at(TokenKind::KeywordCeil) || at(TokenKind::KeywordSin) || at(TokenKind::KeywordCos) ||
-        at(TokenKind::KeywordPow))
+        at(TokenKind::KeywordPow) || at(TokenKind::KeywordRnd))
     {
         TokenKind tk = peek().kind;
         auto loc = peek().loc;
         consume();
-        expect(TokenKind::LParen);
-        auto arg = parseExpression();
-        ExprPtr arg2;
-        if (tk == TokenKind::KeywordPow)
+        BuiltinCallExpr::Builtin builtin;
+        switch (tk)
         {
-            expect(TokenKind::Comma);
-            arg2 = parseExpression();
+            case TokenKind::KeywordSqr:
+                builtin = BuiltinCallExpr::Builtin::Sqr;
+                break;
+            case TokenKind::KeywordAbs:
+                builtin = BuiltinCallExpr::Builtin::Abs;
+                break;
+            case TokenKind::KeywordFloor:
+                builtin = BuiltinCallExpr::Builtin::Floor;
+                break;
+            case TokenKind::KeywordCeil:
+                builtin = BuiltinCallExpr::Builtin::Ceil;
+                break;
+            case TokenKind::KeywordSin:
+                builtin = BuiltinCallExpr::Builtin::Sin;
+                break;
+            case TokenKind::KeywordCos:
+                builtin = BuiltinCallExpr::Builtin::Cos;
+                break;
+            case TokenKind::KeywordPow:
+                builtin = BuiltinCallExpr::Builtin::Pow;
+                break;
+            default:
+                builtin = BuiltinCallExpr::Builtin::Rnd;
+                break;
         }
-        expect(TokenKind::RParen);
-        auto call = std::make_unique<BuiltinCallExpr>();
-        call->loc = loc;
-        call->Expr::loc = loc;
-        if (tk == TokenKind::KeywordSqr)
-            call->builtin = BuiltinCallExpr::Builtin::Sqr;
-        else if (tk == TokenKind::KeywordAbs)
-            call->builtin = BuiltinCallExpr::Builtin::Abs;
-        else if (tk == TokenKind::KeywordFloor)
-            call->builtin = BuiltinCallExpr::Builtin::Floor;
-        else if (tk == TokenKind::KeywordCeil)
-            call->builtin = BuiltinCallExpr::Builtin::Ceil;
-        else if (tk == TokenKind::KeywordSin)
-            call->builtin = BuiltinCallExpr::Builtin::Sin;
-        else if (tk == TokenKind::KeywordCos)
-            call->builtin = BuiltinCallExpr::Builtin::Cos;
-        else
-            call->builtin = BuiltinCallExpr::Builtin::Pow;
-        call->args.push_back(std::move(arg));
-        if (tk == TokenKind::KeywordPow)
-            call->args.push_back(std::move(arg2));
-        return call;
-    }
-    if (at(TokenKind::KeywordRnd))
-    {
-        auto loc = peek().loc;
-        consume();
-        expect(TokenKind::LParen);
-        expect(TokenKind::RParen);
-        auto call = std::make_unique<BuiltinCallExpr>();
-        call->loc = loc;
-        call->Expr::loc = loc;
-        call->builtin = BuiltinCallExpr::Builtin::Rnd;
-        return call;
+        return parseBuiltinCall(builtin, loc);
     }
     if (at(TokenKind::Identifier))
-    {
-        std::string name = peek().lexeme;
-        auto loc = peek().loc;
-        consume();
-        if (at(TokenKind::LParen))
-        {
-            consume();
-            if (name == "LEN" || name == "MID$" || name == "LEFT$" || name == "RIGHT$" ||
-                name == "STR$" || name == "VAL" || name == "INT")
-            {
-                std::vector<ExprPtr> args;
-                if (!at(TokenKind::RParen))
-                {
-                    while (true)
-                    {
-                        args.push_back(parseExpression());
-                        if (at(TokenKind::Comma))
-                        {
-                            consume();
-                            continue;
-                        }
-                        break;
-                    }
-                }
-                expect(TokenKind::RParen);
-                auto call = std::make_unique<BuiltinCallExpr>();
-                call->loc = loc;
-                call->Expr::loc = loc;
-                if (name == "LEN")
-                    call->builtin = BuiltinCallExpr::Builtin::Len;
-                else if (name == "MID$")
-                    call->builtin = BuiltinCallExpr::Builtin::Mid;
-                else if (name == "LEFT$")
-                    call->builtin = BuiltinCallExpr::Builtin::Left;
-                else if (name == "RIGHT$")
-                    call->builtin = BuiltinCallExpr::Builtin::Right;
-                else if (name == "STR$")
-                    call->builtin = BuiltinCallExpr::Builtin::Str;
-                else if (name == "VAL")
-                    call->builtin = BuiltinCallExpr::Builtin::Val;
-                else
-                    call->builtin = BuiltinCallExpr::Builtin::Int;
-                call->args = std::move(args);
-                return call;
-            }
-            else if (arrays_.count(name))
-            {
-                auto first = parseExpression();
-                if (at(TokenKind::RParen))
-                {
-                    consume();
-                    auto arr = std::make_unique<ArrayExpr>();
-                    arr->loc = loc;
-                    arr->name = name;
-                    arr->index = std::move(first);
-                    return arr;
-                }
-                // treat as call if more arguments follow
-                std::vector<ExprPtr> args;
-                args.push_back(std::move(first));
-                while (true)
-                {
-                    expect(TokenKind::Comma);
-                    args.push_back(parseExpression());
-                    if (!at(TokenKind::Comma))
-                        break;
-                }
-                expect(TokenKind::RParen);
-                auto call = std::make_unique<CallExpr>();
-                call->loc = loc;
-                call->Expr::loc = loc;
-                call->callee = name;
-                call->args = std::move(args);
-                return call;
-            }
-            else
-            {
-                std::vector<ExprPtr> args;
-                if (!at(TokenKind::RParen))
-                {
-                    while (true)
-                    {
-                        args.push_back(parseExpression());
-                        if (at(TokenKind::Comma))
-                        {
-                            consume();
-                            continue;
-                        }
-                        break;
-                    }
-                }
-                expect(TokenKind::RParen);
-                auto call = std::make_unique<CallExpr>();
-                call->loc = loc;
-                call->Expr::loc = loc;
-                call->callee = name;
-                call->args = std::move(args);
-                return call;
-            }
-        }
-        auto v = std::make_unique<VarExpr>();
-        v->loc = loc;
-        v->name = name;
-        return v;
-    }
+        return parseArrayOrVar();
     if (at(TokenKind::LParen))
     {
         consume();
