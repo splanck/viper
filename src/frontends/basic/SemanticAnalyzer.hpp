@@ -133,6 +133,14 @@ class SemanticAnalyzer
     Type analyzeUnary(const UnaryExpr &u);
     /// @brief Analyze binary expression.
     Type analyzeBinary(const BinaryExpr &b);
+    /// @brief Analyze arithmetic operators (+, -, *).
+    Type analyzeArithmetic(const BinaryExpr &b, Type lt, Type rt);
+    /// @brief Analyze division and modulus operators.
+    Type analyzeDivMod(const BinaryExpr &b, Type lt, Type rt);
+    /// @brief Analyze comparison operators (==, <>, <, <=, >, >=).
+    Type analyzeComparison(const BinaryExpr &b, Type lt, Type rt);
+    /// @brief Analyze logical operators (AND, OR).
+    Type analyzeLogical(const BinaryExpr &b, Type lt, Type rt);
     /// @brief Analyze built-in function call.
     Type analyzeBuiltinCall(const BuiltinCallExpr &c);
     /// @brief Analyze RND builtin.
