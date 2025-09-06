@@ -283,6 +283,21 @@ class Lowerer
     std::vector<RuntimeFn> runtimeOrder;
     std::unordered_set<RuntimeFn, RuntimeFnHash> runtimeSet;
 
+    void trackRuntime(RuntimeFn fn);
+
+    enum class ExprType
+    {
+        I64,
+        F64,
+        Str,
+        Bool,
+    };
+    ExprType scanExpr(const Expr &e);
+    void scanStmt(const Stmt &s);
+    /// @brief Analyze @p prog for runtime usage prior to emission.
+    void scanProgram(const Program &prog);
+    /// @brief Emit IR for @p prog after scanning.
+    void emitProgram(const Program &prog);
     void declareRequiredRuntime(build::IRBuilder &b);
 };
 
