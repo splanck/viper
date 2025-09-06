@@ -2,6 +2,8 @@
 
 A few BASIC samples illustrate the runtime.
 
+Top-level BASIC statements are lowered into an IL function named `@main`.
+
         ##Monte Carlo π
 
 `examples /
