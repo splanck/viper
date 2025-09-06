@@ -45,23 +45,13 @@ class Parser
     StmtPtr parseDim();
     StmtPtr parseRandomize();
     StmtPtr parseFunction();
-    std::unique_ptr<FunctionDecl> parseFunctionHeader();
-    void parseFunctionBody(FunctionDecl *fn);
     StmtPtr parseSub();
     StmtPtr parseReturn();
     std::vector<Param> parseParamList();
     Type typeFromSuffix(std::string_view name);
 
     ExprPtr parseExpression(int min_prec = 0);
-    ExprPtr parseUnaryExpression();
-    ExprPtr parseInfixRhs(ExprPtr left, int min_prec);
     ExprPtr parsePrimary();
-    ExprPtr parseNumber();
-    ExprPtr parseString();
-    ExprPtr parseBuiltinCall(BuiltinCallExpr::Builtin builtin, il::support::SourceLoc loc);
-    ExprPtr parseVariableRef(std::string name, il::support::SourceLoc loc);
-    ExprPtr parseArrayRef(std::string name, il::support::SourceLoc loc);
-    ExprPtr parseArrayOrVar();
     int precedence(TokenKind k);
 };
 
