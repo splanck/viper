@@ -540,198 +540,172 @@ void SemanticAnalyzer::visitStmt(const Stmt &s)
     }
 }
 
-SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeVar(VarExpr &v)
 {
-    if (dynamic_cast<const IntExpr *>(&e))
+    if (auto mapped = resolve(v.name))
+        v.name = *mapped;
+    if (!symbols_.count(v.name))
     {
-        return Type::Int;
-    }
-    else if (dynamic_cast<const FloatExpr *>(&e))
-    {
-        return Type::Float;
-    }
-    else if (dynamic_cast<const StringExpr *>(&e))
-    {
-        return Type::String;
-    }
-    else if (auto *v = dynamic_cast<const VarExpr *>(&e))
-    {
-        auto *vc = const_cast<VarExpr *>(v);
-        if (auto mapped = resolve(vc->name))
-            vc->name = *mapped;
-        if (!symbols_.count(vc->name))
+        std::string best;
+        size_t bestDist = std::numeric_limits<size_t>::max();
+        for (const auto &s : symbols_)
         {
-            std::string best;
-            size_t bestDist = std::numeric_limits<size_t>::max();
-            for (const auto &s : symbols_)
+            size_t d = levenshtein(v.name, s);
+            if (d < bestDist)
             {
-                size_t d = levenshtein(vc->name, s);
-                if (d < bestDist)
-                {
-                    bestDist = d;
-                    best = s;
-                }
+                bestDist = d;
+                best = s;
             }
-            std::string msg = "unknown variable '" + vc->name + "'";
-            if (!best.empty())
-                msg += "; did you mean '" + best + "'?";
-            de.emit(il::support::Severity::Error,
-                    "B1001",
-                    vc->loc,
-                    static_cast<uint32_t>(vc->name.size()),
-                    std::move(msg));
-            return Type::Unknown;
         }
-        auto it = varTypes_.find(vc->name);
-        if (it != varTypes_.end())
-            return it->second;
-        if (!vc->name.empty())
+        std::string msg = "unknown variable '" + v.name + "'";
+        if (!best.empty())
+            msg += "; did you mean '" + best + "'?";
+        de.emit(il::support::Severity::Error,
+                "B1001",
+                v.loc,
+                static_cast<uint32_t>(v.name.size()),
+                std::move(msg));
+        return Type::Unknown;
+    }
+    auto it = varTypes_.find(v.name);
+    if (it != varTypes_.end())
+        return it->second;
+    if (!v.name.empty())
+    {
+        if (v.name.back() == '$')
+            return Type::String;
+        if (v.name.back() == '#')
+            return Type::Float;
+    }
+    return Type::Int;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeUnary(const UnaryExpr &u)
+{
+    Type t = Type::Unknown;
+    if (u.expr)
+        t = visitExpr(*u.expr);
+    if (u.op == UnaryExpr::Op::Not && t != Type::Unknown && t != Type::Int)
+    {
+        std::string msg = "operand type mismatch";
+        de.emit(il::support::Severity::Error, "B2001", u.loc, 3, std::move(msg));
+    }
+    return Type::Int;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeBinary(const BinaryExpr &b)
+{
+    Type lt = Type::Unknown;
+    Type rt = Type::Unknown;
+    if (b.lhs)
+        lt = visitExpr(*b.lhs);
+    if (b.rhs)
+        rt = visitExpr(*b.rhs);
+    auto isNum = [](Type t) { return t == Type::Int || t == Type::Float || t == Type::Unknown; };
+    switch (b.op)
+    {
+        case BinaryExpr::Op::Add:
+        case BinaryExpr::Op::Sub:
+        case BinaryExpr::Op::Mul:
         {
-            if (vc->name.back() == '$')
-                return Type::String;
-            if (vc->name.back() == '#')
+            if (!isNum(lt) || !isNum(rt))
+            {
+                std::string msg = "operand type mismatch";
+                de.emit(il::support::Severity::Error, "B2001", b.loc, 1, std::move(msg));
+            }
+            return (lt == Type::Float || rt == Type::Float) ? Type::Float : Type::Int;
+        }
+        case BinaryExpr::Op::Div:
+        {
+            if (!isNum(lt) || !isNum(rt))
+            {
+                std::string msg = "operand type mismatch";
+                de.emit(il::support::Severity::Error, "B2001", b.loc, 1, std::move(msg));
+            }
+            if (lt == Type::Float || rt == Type::Float)
                 return Type::Float;
+            if (dynamic_cast<const IntExpr *>(b.lhs.get()) &&
+                dynamic_cast<const IntExpr *>(b.rhs.get()))
+            {
+                auto *ri = static_cast<const IntExpr *>(b.rhs.get());
+                if (ri->value == 0)
+                {
+                    std::string msg = "divide by zero";
+                    de.emit(il::support::Severity::Error, "B2002", b.loc, 1, std::move(msg));
+                }
+            }
+            return Type::Int;
         }
-        return Type::Int;
-    }
-    else if (auto *u = dynamic_cast<const UnaryExpr *>(&e))
-    {
-        Type t = Type::Unknown;
-        if (u->expr)
-            t = visitExpr(*u->expr);
-        if (u->op == UnaryExpr::Op::Not && t != Type::Unknown && t != Type::Int)
+        case BinaryExpr::Op::IDiv:
+        case BinaryExpr::Op::Mod:
         {
-            std::string msg = "operand type mismatch";
-            de.emit(il::support::Severity::Error, "B2001", u->loc, 3, std::move(msg));
+            if ((lt != Type::Unknown && lt != Type::Int) ||
+                (rt != Type::Unknown && rt != Type::Int))
+            {
+                std::string msg = "operand type mismatch";
+                de.emit(il::support::Severity::Error, "B2001", b.loc, 1, std::move(msg));
+            }
+            if (dynamic_cast<const IntExpr *>(b.lhs.get()) &&
+                dynamic_cast<const IntExpr *>(b.rhs.get()))
+            {
+                auto *ri = static_cast<const IntExpr *>(b.rhs.get());
+                if (ri->value == 0)
+                {
+                    std::string msg = "divide by zero";
+                    de.emit(il::support::Severity::Error, "B2002", b.loc, 1, std::move(msg));
+                }
+            }
+            return Type::Int;
         }
-        return Type::Int;
-    }
-    else if (auto *b = dynamic_cast<const BinaryExpr *>(&e))
-    {
-        Type lt = Type::Unknown;
-        Type rt = Type::Unknown;
-        if (b->lhs)
-            lt = visitExpr(*b->lhs);
-        if (b->rhs)
-            rt = visitExpr(*b->rhs);
-        auto isNum = [](Type t)
-        { return t == Type::Int || t == Type::Float || t == Type::Unknown; };
-        switch (b->op)
+        case BinaryExpr::Op::Eq:
+        case BinaryExpr::Op::Ne:
+        case BinaryExpr::Op::Lt:
+        case BinaryExpr::Op::Le:
+        case BinaryExpr::Op::Gt:
+        case BinaryExpr::Op::Ge:
         {
-            case BinaryExpr::Op::Add:
-            case BinaryExpr::Op::Sub:
-            case BinaryExpr::Op::Mul:
+            if (!isNum(lt) || !isNum(rt))
             {
-                if (!isNum(lt) || !isNum(rt))
-                {
-                    std::string msg = "operand type mismatch";
-                    de.emit(il::support::Severity::Error, "B2001", b->loc, 1, std::move(msg));
-                }
-                return (lt == Type::Float || rt == Type::Float) ? Type::Float : Type::Int;
+                std::string msg = "operand type mismatch";
+                de.emit(il::support::Severity::Error, "B2001", b.loc, 1, std::move(msg));
             }
-            case BinaryExpr::Op::Div:
+            return Type::Int;
+        }
+        case BinaryExpr::Op::And:
+        case BinaryExpr::Op::Or:
+        {
+            if ((lt != Type::Unknown && lt != Type::Int) ||
+                (rt != Type::Unknown && rt != Type::Int))
             {
-                if (!isNum(lt) || !isNum(rt))
-                {
-                    std::string msg = "operand type mismatch";
-                    de.emit(il::support::Severity::Error, "B2001", b->loc, 1, std::move(msg));
-                }
-                if (lt == Type::Float || rt == Type::Float)
-                    return Type::Float;
-                if (dynamic_cast<const IntExpr *>(b->lhs.get()) &&
-                    dynamic_cast<const IntExpr *>(b->rhs.get()))
-                {
-                    auto *ri = static_cast<const IntExpr *>(b->rhs.get());
-                    if (ri->value == 0)
-                    {
-                        std::string msg = "divide by zero";
-                        de.emit(il::support::Severity::Error, "B2002", b->loc, 1, std::move(msg));
-                    }
-                }
-                return Type::Int;
+                std::string msg = "operand type mismatch";
+                de.emit(il::support::Severity::Error, "B2001", b.loc, 1, std::move(msg));
             }
-            case BinaryExpr::Op::IDiv:
-            case BinaryExpr::Op::Mod:
-            {
-                if ((lt != Type::Unknown && lt != Type::Int) ||
-                    (rt != Type::Unknown && rt != Type::Int))
-                {
-                    std::string msg = "operand type mismatch";
-                    de.emit(il::support::Severity::Error, "B2001", b->loc, 1, std::move(msg));
-                }
-                if (dynamic_cast<const IntExpr *>(b->lhs.get()) &&
-                    dynamic_cast<const IntExpr *>(b->rhs.get()))
-                {
-                    auto *ri = static_cast<const IntExpr *>(b->rhs.get());
-                    if (ri->value == 0)
-                    {
-                        std::string msg = "divide by zero";
-                        de.emit(il::support::Severity::Error, "B2002", b->loc, 1, std::move(msg));
-                    }
-                }
-                return Type::Int;
-            }
-            case BinaryExpr::Op::Eq:
-            case BinaryExpr::Op::Ne:
-            case BinaryExpr::Op::Lt:
-            case BinaryExpr::Op::Le:
-            case BinaryExpr::Op::Gt:
-            case BinaryExpr::Op::Ge:
-            {
-                bool lNum = lt == Type::Int || lt == Type::Float;
-                bool rNum = rt == Type::Int || rt == Type::Float;
-                if (lt == Type::String && rt == Type::String)
-                {
-                    if (b->op == BinaryExpr::Op::Lt || b->op == BinaryExpr::Op::Le ||
-                        b->op == BinaryExpr::Op::Gt || b->op == BinaryExpr::Op::Ge)
-                    {
-                        std::string msg = "operand type mismatch";
-                        de.emit(il::support::Severity::Error, "B2001", b->loc, 1, std::move(msg));
-                    }
-                    return Type::Int;
-                }
-                if (lNum && rNum)
-                    return Type::Int;
-                if (lt != Type::Unknown && rt != Type::Unknown && lt != rt)
-                {
-                    std::string msg = "operand type mismatch";
-                    de.emit(il::support::Severity::Error, "B2001", b->loc, 1, std::move(msg));
-                }
-                return Type::Int;
-            }
-            case BinaryExpr::Op::And:
-            case BinaryExpr::Op::Or:
-                if ((lt != Type::Unknown && lt != Type::Int) ||
-                    (rt != Type::Unknown && rt != Type::Int))
-                {
-                    std::string msg = "operand type mismatch";
-                    de.emit(il::support::Severity::Error, "B2001", b->loc, 1, std::move(msg));
-                }
-                return Type::Int;
+            return Type::Int;
         }
     }
-    else if (auto *c = dynamic_cast<const BuiltinCallExpr *>(&e))
+    return Type::Unknown;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeBuiltinCall(const BuiltinCallExpr &c)
+{
+    auto err = [&](size_t idx)
     {
-        std::vector<Type> argTys;
-        argTys.reserve(c->args.size());
-        for (const auto &a : c->args)
-            argTys.push_back(a ? visitExpr(*a) : Type::Unknown);
-        auto err = [&](size_t idx)
-        {
-            std::string msg = "argument type mismatch";
-            il::support::SourceLoc loc = c->loc;
-            if (idx < c->args.size() && c->args[idx])
-                loc = c->args[idx]->loc;
-            de.emit(il::support::Severity::Error, "B2001", loc, 1, std::move(msg));
-        };
-        if (c->builtin == BuiltinCallExpr::Builtin::Len)
-        {
+        il::support::SourceLoc loc =
+            (idx < c.args.size() && c.args[idx]) ? c.args[idx]->loc : c.loc;
+        std::string msg = "argument type mismatch";
+        de.emit(il::support::Severity::Error, "B2001", loc, 1, std::move(msg));
+    };
+    std::vector<Type> argTys;
+    for (auto &a : c.args)
+        argTys.push_back(a ? visitExpr(*a) : Type::Unknown);
+    using B = BuiltinCallExpr::Builtin;
+    switch (c.builtin)
+    {
+        case B::Len:
             if (argTys.size() != 1 || (argTys[0] != Type::Unknown && argTys[0] != Type::String))
                 err(0);
             return Type::Int;
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Mid)
-        {
+        case B::Mid:
             if (argTys.size() < 2 || argTys.size() > 3)
                 err(0);
             if (argTys.size() >= 1 && argTys[0] != Type::Unknown && argTys[0] != Type::String)
@@ -741,10 +715,8 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
             if (argTys.size() == 3 && argTys[2] != Type::Unknown && argTys[2] != Type::Int)
                 err(2);
             return Type::String;
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Left ||
-                 c->builtin == BuiltinCallExpr::Builtin::Right)
-        {
+        case B::Left:
+        case B::Right:
             if (argTys.size() != 2)
                 err(0);
             if (argTys.size() >= 1 && argTys[0] != Type::Unknown && argTys[0] != Type::String)
@@ -752,68 +724,52 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
             if (argTys.size() >= 2 && argTys[1] != Type::Unknown && argTys[1] != Type::Int)
                 err(1);
             return Type::String;
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Str)
-        {
+        case B::Str:
             if (argTys.size() != 1)
                 err(0);
             if (argTys.size() >= 1 && argTys[0] != Type::Unknown && argTys[0] != Type::Int &&
                 argTys[0] != Type::Float)
                 err(0);
             return Type::String;
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Val)
-        {
+        case B::Val:
             if (argTys.size() != 1)
                 err(0);
             if (argTys.size() >= 1 && argTys[0] != Type::Unknown && argTys[0] != Type::String)
                 err(0);
             return Type::Int;
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Int)
-        {
+        case B::Int:
             if (argTys.size() != 1)
                 err(0);
             if (argTys.size() >= 1 && argTys[0] != Type::Unknown && argTys[0] != Type::Float)
                 err(0);
             return Type::Int;
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Sqr)
-        {
+        case B::Sqr:
             if (argTys.size() != 1 ||
                 (argTys[0] != Type::Unknown && argTys[0] != Type::Int && argTys[0] != Type::Float))
                 err(0);
             return Type::Float;
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Abs)
-        {
+        case B::Abs:
             if (argTys.size() != 1)
                 err(0);
-            Type t = argTys[0];
-            if (t == Type::Float)
+            if (argTys[0] == Type::Float)
                 return Type::Float;
-            if (t == Type::Int || t == Type::Unknown)
+            if (argTys[0] == Type::Int || argTys[0] == Type::Unknown)
                 return Type::Int;
             err(0);
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Floor ||
-                 c->builtin == BuiltinCallExpr::Builtin::Ceil)
-        {
+            return Type::Int;
+        case B::Floor:
+        case B::Ceil:
             if (argTys.size() != 1 ||
                 (argTys[0] != Type::Unknown && argTys[0] != Type::Int && argTys[0] != Type::Float))
                 err(0);
             return Type::Float;
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Sin ||
-                 c->builtin == BuiltinCallExpr::Builtin::Cos)
-        {
+        case B::Sin:
+        case B::Cos:
             if (argTys.size() != 1 ||
                 (argTys[0] != Type::Unknown && argTys[0] != Type::Int && argTys[0] != Type::Float))
                 err(0);
             return Type::Float;
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Pow)
-        {
+        case B::Pow:
             if (argTys.size() != 2)
                 err(0);
             if (argTys.size() >= 1 && argTys[0] != Type::Unknown && argTys[0] != Type::Int &&
@@ -823,127 +779,146 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
                 argTys[1] != Type::Float)
                 err(1);
             return Type::Float;
-        }
-        else if (c->builtin == BuiltinCallExpr::Builtin::Rnd)
-        {
+        case B::Rnd:
             if (!argTys.empty())
                 err(0);
             return Type::Float;
-        }
     }
-    else if (auto *c = dynamic_cast<const CallExpr *>(&e))
+    return Type::Unknown;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeCall(const CallExpr &c)
+{
+    auto it = procs_.find(c.callee);
+    if (it == procs_.end())
     {
-        auto it = procs_.find(c->callee);
-        if (it == procs_.end())
-        {
-            std::string msg = "unknown procedure '" + c->callee + "'";
-            de.emit(il::support::Severity::Error,
-                    "B1006",
-                    c->loc,
-                    static_cast<uint32_t>(c->callee.size()),
-                    std::move(msg));
-            for (auto &a : c->args)
-                if (a)
-                    visitExpr(*a);
-            return Type::Unknown;
-        }
-        const ProcSignature &sig = it->second;
-        if (sig.kind == ProcSignature::Kind::Sub)
-        {
-            std::string msg = "subroutine '" + c->callee + "' used in expression";
-            de.emit(il::support::Severity::Error,
-                    "B2005",
-                    c->loc,
-                    static_cast<uint32_t>(c->callee.size()),
-                    std::move(msg));
-            for (auto &a : c->args)
-                if (a)
-                    visitExpr(*a);
-            return Type::Unknown;
-        }
-        std::vector<Type> argTys;
-        for (auto &a : c->args)
-            argTys.push_back(a ? visitExpr(*a) : Type::Unknown);
-        if (argTys.size() != sig.params.size())
-        {
-            std::string msg = "wrong number of arguments";
-            de.emit(il::support::Severity::Error, "B2005", c->loc, 1, std::move(msg));
-        }
-        size_t n = std::min(argTys.size(), sig.params.size());
-        for (size_t i = 0; i < n; ++i)
-        {
-            auto expectTy = sig.params[i].type;
-            auto argTy = argTys[i];
-            if (sig.params[i].is_array)
-            {
-                // ByRef array parameters require a direct array variable.
-                auto *argExpr = c->args[i].get();
-                auto *v = dynamic_cast<VarExpr *>(argExpr);
-                if (!v || !arrays_.count(v->name))
-                {
-                    il::support::SourceLoc loc = argExpr ? argExpr->loc : c->loc;
-                    std::string msg = "argument " + std::to_string(i + 1) + " to " + c->callee +
-                                      " must be an array variable (ByRef)";
-                    de.emit(il::support::Severity::Error, "B2006", loc, 1, std::move(msg));
-                }
-                continue;
-            }
-            if (expectTy == ::il::frontends::basic::Type::F64 && argTy == Type::Int)
-                continue;
-            Type want = Type::Int;
-            if (expectTy == ::il::frontends::basic::Type::F64)
-                want = Type::Float;
-            else if (expectTy == ::il::frontends::basic::Type::Str)
-                want = Type::String;
-            if (argTy != Type::Unknown && argTy != want)
-            {
-                std::string msg = "argument type mismatch";
-                de.emit(il::support::Severity::Error, "B2001", c->loc, 1, std::move(msg));
-            }
-        }
-        if (sig.retType == ::il::frontends::basic::Type::F64)
-            return Type::Float;
-        if (sig.retType == ::il::frontends::basic::Type::Str)
-            return Type::String;
-        return Type::Int;
+        std::string msg = "unknown procedure '" + c.callee + "'";
+        de.emit(il::support::Severity::Error,
+                "B1006",
+                c.loc,
+                static_cast<uint32_t>(c.callee.size()),
+                std::move(msg));
+        for (auto &a : c.args)
+            if (a)
+                visitExpr(*a);
+        return Type::Unknown;
     }
-    else if (auto *a = dynamic_cast<const ArrayExpr *>(&e))
+    const ProcSignature &sig = it->second;
+    if (sig.kind == ProcSignature::Kind::Sub)
     {
-        auto *ac = const_cast<ArrayExpr *>(a);
-        if (auto mapped = resolve(ac->name))
-            ac->name = *mapped;
-        if (!arrays_.count(ac->name))
+        std::string msg = "subroutine '" + c.callee + "' used in expression";
+        de.emit(il::support::Severity::Error,
+                "B2005",
+                c.loc,
+                static_cast<uint32_t>(c.callee.size()),
+                std::move(msg));
+        for (auto &a : c.args)
+            if (a)
+                visitExpr(*a);
+        return Type::Unknown;
+    }
+    std::vector<Type> argTys;
+    for (auto &a : c.args)
+        argTys.push_back(a ? visitExpr(*a) : Type::Unknown);
+    if (argTys.size() != sig.params.size())
+    {
+        std::string msg = "wrong number of arguments";
+        de.emit(il::support::Severity::Error, "B2005", c.loc, 1, std::move(msg));
+    }
+    size_t n = std::min(argTys.size(), sig.params.size());
+    for (size_t i = 0; i < n; ++i)
+    {
+        auto expectTy = sig.params[i].type;
+        auto argTy = argTys[i];
+        if (sig.params[i].is_array)
         {
-            std::string msg = "unknown array '" + ac->name + "'";
-            de.emit(il::support::Severity::Error,
-                    "B1001",
-                    ac->loc,
-                    static_cast<uint32_t>(ac->name.size()),
-                    std::move(msg));
-            visitExpr(*ac->index);
-            return Type::Unknown;
-        }
-        Type ty = visitExpr(*ac->index);
-        if (ty != Type::Unknown && ty != Type::Int)
-        {
-            std::string msg = "index type mismatch";
-            de.emit(il::support::Severity::Error, "B2001", ac->loc, 1, std::move(msg));
-        }
-        auto it = arrays_.find(ac->name);
-        if (it != arrays_.end() && it->second >= 0)
-        {
-            if (auto *ci = dynamic_cast<const IntExpr *>(ac->index.get()))
+            auto *argExpr = c.args[i].get();
+            auto *v = dynamic_cast<VarExpr *>(argExpr);
+            if (!v || !arrays_.count(v->name))
             {
-                if (ci->value < 0 || ci->value >= it->second)
-                {
-                    std::string msg = "index out of bounds";
-                    de.emit(il::support::Severity::Warning, "B3001", ac->loc, 1, std::move(msg));
-                }
+                il::support::SourceLoc loc = argExpr ? argExpr->loc : c.loc;
+                std::string msg = "argument " + std::to_string(i + 1) + " to " + c.callee +
+                                  " must be an array variable (ByRef)";
+                de.emit(il::support::Severity::Error, "B2006", loc, 1, std::move(msg));
+            }
+            continue;
+        }
+        if (expectTy == ::il::frontends::basic::Type::F64 && argTy == Type::Int)
+            continue;
+        Type want = Type::Int;
+        if (expectTy == ::il::frontends::basic::Type::F64)
+            want = Type::Float;
+        else if (expectTy == ::il::frontends::basic::Type::Str)
+            want = Type::String;
+        if (argTy != Type::Unknown && argTy != want)
+        {
+            std::string msg = "argument type mismatch";
+            de.emit(il::support::Severity::Error, "B2001", c.loc, 1, std::move(msg));
+        }
+    }
+    if (sig.retType == ::il::frontends::basic::Type::F64)
+        return Type::Float;
+    if (sig.retType == ::il::frontends::basic::Type::Str)
+        return Type::String;
+    return Type::Int;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
+{
+    if (auto mapped = resolve(a.name))
+        a.name = *mapped;
+    if (!arrays_.count(a.name))
+    {
+        std::string msg = "unknown array '" + a.name + "'";
+        de.emit(il::support::Severity::Error,
+                "B1001",
+                a.loc,
+                static_cast<uint32_t>(a.name.size()),
+                std::move(msg));
+        visitExpr(*a.index);
+        return Type::Unknown;
+    }
+    Type ty = visitExpr(*a.index);
+    if (ty != Type::Unknown && ty != Type::Int)
+    {
+        std::string msg = "index type mismatch";
+        de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
+    }
+    auto it = arrays_.find(a.name);
+    if (it != arrays_.end() && it->second >= 0)
+    {
+        if (auto *ci = dynamic_cast<const IntExpr *>(a.index.get()))
+        {
+            if (ci->value < 0 || ci->value >= it->second)
+            {
+                std::string msg = "index out of bounds";
+                de.emit(il::support::Severity::Warning, "B3001", a.loc, 1, std::move(msg));
             }
         }
-        return Type::Int;
     }
-    // Unknown expression type.
+    return Type::Int;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
+{
+    if (dynamic_cast<const IntExpr *>(&e))
+        return Type::Int;
+    if (dynamic_cast<const FloatExpr *>(&e))
+        return Type::Float;
+    if (dynamic_cast<const StringExpr *>(&e))
+        return Type::String;
+    if (auto *v = const_cast<VarExpr *>(dynamic_cast<const VarExpr *>(&e)))
+        return analyzeVar(*v);
+    if (auto *u = dynamic_cast<const UnaryExpr *>(&e))
+        return analyzeUnary(*u);
+    if (auto *b = dynamic_cast<const BinaryExpr *>(&e))
+        return analyzeBinary(*b);
+    if (auto *bc = dynamic_cast<const BuiltinCallExpr *>(&e))
+        return analyzeBuiltinCall(*bc);
+    if (auto *c = dynamic_cast<const CallExpr *>(&e))
+        return analyzeCall(*c);
+    if (auto *a = const_cast<ArrayExpr *>(dynamic_cast<const ArrayExpr *>(&e)))
+        return analyzeArray(*a);
     return Type::Unknown;
 }
 
