@@ -53,6 +53,8 @@ class Parser
     Type typeFromSuffix(std::string_view name);
 
     ExprPtr parseExpression(int min_prec = 0);
+    ExprPtr parseUnaryExpression();
+    ExprPtr parseInfixRhs(ExprPtr left, int min_prec);
     ExprPtr parsePrimary();
     ExprPtr parseNumber();
     ExprPtr parseString();
