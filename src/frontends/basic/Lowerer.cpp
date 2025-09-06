@@ -668,13 +668,12 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
     {
         cur = &f.blocks[lineBlocks[decl.body[i]->line]];
         lowerStmt(*decl.body[i]);
-        if (!cur->terminated)
-        {
-            BasicBlock *next = (i + 1 < decl.body.size())
-                                   ? &f.blocks[lineBlocks[decl.body[i + 1]->line]]
-                                   : &f.blocks[fnExit];
-            emitBr(next);
-        }
+        if (cur->terminated)
+            break;
+        BasicBlock *next = (i + 1 < decl.body.size())
+                               ? &f.blocks[lineBlocks[decl.body[i + 1]->line]]
+                               : &f.blocks[fnExit];
+        emitBr(next);
     }
 
     cur = &f.blocks[fnExit];
@@ -786,13 +785,12 @@ void Lowerer::lowerSubDecl(const SubDecl &decl)
     {
         cur = &f.blocks[lineBlocks[decl.body[i]->line]];
         lowerStmt(*decl.body[i]);
-        if (!cur->terminated)
-        {
-            BasicBlock *next = (i + 1 < decl.body.size())
-                                   ? &f.blocks[lineBlocks[decl.body[i + 1]->line]]
-                                   : &f.blocks[fnExit];
-            emitBr(next);
-        }
+        if (cur->terminated)
+            break;
+        BasicBlock *next = (i + 1 < decl.body.size())
+                               ? &f.blocks[lineBlocks[decl.body[i + 1]->line]]
+                               : &f.blocks[fnExit];
+        emitBr(next);
     }
 
     cur = &f.blocks[fnExit];
@@ -874,6 +872,7 @@ void Lowerer::lowerStmt(const Stmt &stmt)
         {
             emitRetVoid();
         }
+        // Block closed after RETURN; callers should skip further statements.
     }
 }
 
@@ -1471,6 +1470,7 @@ void Lowerer::lowerIf(const IfStmt &stmt)
     }
     BasicBlock *elseBlk = &func->blocks[start + 2 * conds];
     BasicBlock *exitBlk = &func->blocks[start + 2 * conds + 1];
+    bool fallthrough = false;
 
     // jump to first test
     curLoc = stmt.loc;
@@ -1506,6 +1506,7 @@ void Lowerer::lowerIf(const IfStmt &stmt)
         {
             curLoc = stmt.loc;
             emitBr(exitBlk);
+            fallthrough = true;
         }
     }
 
@@ -1517,6 +1518,14 @@ void Lowerer::lowerIf(const IfStmt &stmt)
     {
         curLoc = stmt.loc;
         emitBr(exitBlk);
+        fallthrough = true;
+    }
+
+    if (!fallthrough)
+    {
+        func->blocks.pop_back();
+        cur = elseBlk;
+        return;
     }
 
     cur = exitBlk;
@@ -1561,13 +1570,15 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
         if (cur->terminated)
             break;
     }
-    if (!cur->terminated)
+    bool term = cur->terminated;
+    if (!term)
     {
         curLoc = stmt.loc;
         emitBr(head);
     }
 
     cur = done;
+    cur->terminated = term;
 }
 
 void Lowerer::lowerFor(const ForStmt &stmt)
@@ -1623,21 +1634,23 @@ void Lowerer::lowerFor(const ForStmt &stmt)
             if (cur->terminated)
                 break;
         }
-        if (!cur->terminated)
+        bool term = cur->terminated;
+        if (!term)
         {
             curLoc = stmt.loc;
             emitBr(&func->blocks[incIdx]);
+            cur = &func->blocks[incIdx];
+            curLoc = stmt.loc;
+            Value load = emitLoad(Type(Type::Kind::I64), slot);
+            curLoc = stmt.loc;
+            Value add = emitBinary(Opcode::Add, Type(Type::Kind::I64), load, step.value);
+            curLoc = stmt.loc;
+            emitStore(Type(Type::Kind::I64), slot, add);
+            curLoc = stmt.loc;
+            emitBr(&func->blocks[headIdx]);
         }
-        cur = &func->blocks[incIdx];
-        curLoc = stmt.loc;
-        Value load = emitLoad(Type(Type::Kind::I64), slot);
-        curLoc = stmt.loc;
-        Value add = emitBinary(Opcode::Add, Type(Type::Kind::I64), load, step.value);
-        curLoc = stmt.loc;
-        emitStore(Type(Type::Kind::I64), slot, add);
-        curLoc = stmt.loc;
-        emitBr(&func->blocks[headIdx]);
         cur = &func->blocks[doneIdx];
+        cur->terminated = term;
     }
     else
     {
@@ -1688,21 +1701,23 @@ void Lowerer::lowerFor(const ForStmt &stmt)
             if (cur->terminated)
                 break;
         }
-        if (!cur->terminated)
+        bool term = cur->terminated;
+        if (!term)
         {
             curLoc = stmt.loc;
             emitBr(&func->blocks[incIdx]);
+            cur = &func->blocks[incIdx];
+            curLoc = stmt.loc;
+            Value load = emitLoad(Type(Type::Kind::I64), slot);
+            curLoc = stmt.loc;
+            Value add = emitBinary(Opcode::Add, Type(Type::Kind::I64), load, step.value);
+            curLoc = stmt.loc;
+            emitStore(Type(Type::Kind::I64), slot, add);
+            curLoc = stmt.loc;
+            emitCBr(stepNonNeg, &func->blocks[headPosIdx], &func->blocks[headNegIdx]);
         }
-        cur = &func->blocks[incIdx];
-        curLoc = stmt.loc;
-        Value load = emitLoad(Type(Type::Kind::I64), slot);
-        curLoc = stmt.loc;
-        Value add = emitBinary(Opcode::Add, Type(Type::Kind::I64), load, step.value);
-        curLoc = stmt.loc;
-        emitStore(Type(Type::Kind::I64), slot, add);
-        curLoc = stmt.loc;
-        emitCBr(stepNonNeg, &func->blocks[headPosIdx], &func->blocks[headNegIdx]);
         cur = &func->blocks[doneIdx];
+        cur->terminated = term;
     }
 }
 
