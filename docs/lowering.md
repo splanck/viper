@@ -22,6 +22,8 @@ types:
 - Array parameters (`i64[]` or `str[]`) pass the pointer/handle without any
   load.
 
+Recursive calls lower the same way; see [factorial.bas](examples.md#factorial) for a recursion sanity check.
+
 ## Compilation unit lowering
 
 BASIC programs lower procedures first, then wrap remaining top-level statements
