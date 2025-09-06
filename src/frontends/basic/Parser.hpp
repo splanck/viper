@@ -45,6 +45,8 @@ class Parser
     StmtPtr parseDim();
     StmtPtr parseRandomize();
     StmtPtr parseFunction();
+    std::unique_ptr<FunctionDecl> parseFunctionHeader();
+    void parseFunctionBody(FunctionDecl *fn);
     StmtPtr parseSub();
     StmtPtr parseReturn();
     std::vector<Param> parseParamList();
