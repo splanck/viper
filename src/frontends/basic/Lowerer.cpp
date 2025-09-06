@@ -908,112 +908,109 @@ Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
     return {res, Type(Type::Kind::I1)};
 }
 
-Lowerer::RVal Lowerer::lowerBinaryExpr(const BinaryExpr &b)
+Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
 {
-    if (b.op == BinaryExpr::Op::And || b.op == BinaryExpr::Op::Or)
+    RVal lhs = lowerExpr(*b.lhs);
+    curLoc = b.loc;
+    Value addr = emitAlloca(1);
+    if (b.op == BinaryExpr::Op::And)
     {
-        RVal lhs = lowerExpr(*b.lhs);
+        std::string rhsLbl = blockNamer ? blockNamer->generic("and_rhs") : mangler.block("and_rhs");
+        std::string falseLbl =
+            blockNamer ? blockNamer->generic("and_false") : mangler.block("and_false");
+        std::string doneLbl =
+            blockNamer ? blockNamer->generic("and_done") : mangler.block("and_done");
+        BasicBlock *rhsBB = &builder->addBlock(*func, rhsLbl);
+        BasicBlock *falseBB = &builder->addBlock(*func, falseLbl);
+        BasicBlock *doneBB = &builder->addBlock(*func, doneLbl);
         curLoc = b.loc;
-        Value addr = emitAlloca(1);
-        if (b.op == BinaryExpr::Op::And)
-        {
-            std::string rhsLbl =
-                blockNamer ? blockNamer->generic("and_rhs") : mangler.block("and_rhs");
-            std::string falseLbl =
-                blockNamer ? blockNamer->generic("and_false") : mangler.block("and_false");
-            std::string doneLbl =
-                blockNamer ? blockNamer->generic("and_done") : mangler.block("and_done");
-            BasicBlock *rhsBB = &builder->addBlock(*func, rhsLbl);
-            BasicBlock *falseBB = &builder->addBlock(*func, falseLbl);
-            BasicBlock *doneBB = &builder->addBlock(*func, doneLbl);
-            curLoc = b.loc;
-            emitCBr(lhs.value, rhsBB, falseBB);
-            cur = rhsBB;
-            RVal rhs = lowerExpr(*b.rhs);
-            curLoc = b.loc;
-            emitStore(Type(Type::Kind::I1), addr, rhs.value);
-            curLoc = b.loc;
-            emitBr(doneBB);
-            cur = falseBB;
-            curLoc = b.loc;
-            emitStore(Type(Type::Kind::I1), addr, Value::constInt(0));
-            curLoc = b.loc;
-            emitBr(doneBB);
-            cur = doneBB;
-        }
-        else
-        {
-            std::string trueLbl =
-                blockNamer ? blockNamer->generic("or_true") : mangler.block("or_true");
-            std::string rhsLbl =
-                blockNamer ? blockNamer->generic("or_rhs") : mangler.block("or_rhs");
-            std::string doneLbl =
-                blockNamer ? blockNamer->generic("or_done") : mangler.block("or_done");
-            BasicBlock *trueBB = &builder->addBlock(*func, trueLbl);
-            BasicBlock *rhsBB = &builder->addBlock(*func, rhsLbl);
-            BasicBlock *doneBB = &builder->addBlock(*func, doneLbl);
-            curLoc = b.loc;
-            emitCBr(lhs.value, trueBB, rhsBB);
-            cur = trueBB;
-            curLoc = b.loc;
-            emitStore(Type(Type::Kind::I1), addr, Value::constInt(1));
-            curLoc = b.loc;
-            emitBr(doneBB);
-            cur = rhsBB;
-            RVal rhs = lowerExpr(*b.rhs);
-            curLoc = b.loc;
-            emitStore(Type(Type::Kind::I1), addr, rhs.value);
-            curLoc = b.loc;
-            emitBr(doneBB);
-            cur = doneBB;
-        }
-        curLoc = b.loc;
-        Value res = emitLoad(Type(Type::Kind::I1), addr);
-        return {res, Type(Type::Kind::I1)};
-    }
-    else if (b.op == BinaryExpr::Op::IDiv || b.op == BinaryExpr::Op::Mod)
-    {
-        RVal lhs = lowerExpr(*b.lhs);
+        emitCBr(lhs.value, rhsBB, falseBB);
+        cur = rhsBB;
         RVal rhs = lowerExpr(*b.rhs);
         curLoc = b.loc;
-        Value cond =
-            emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), rhs.value, Value::constInt(0));
-        std::string trapLbl = blockNamer ? blockNamer->generic("div0") : mangler.block("div0");
-        std::string okLbl = blockNamer ? blockNamer->generic("divok") : mangler.block("divok");
-        BasicBlock *trapBB = &builder->addBlock(*func, trapLbl);
-        BasicBlock *okBB = &builder->addBlock(*func, okLbl);
-        emitCBr(cond, trapBB, okBB);
-        cur = trapBB;
+        emitStore(Type(Type::Kind::I1), addr, rhs.value);
         curLoc = b.loc;
-        emitTrap();
-        cur = okBB;
+        emitBr(doneBB);
+        cur = falseBB;
         curLoc = b.loc;
-        Opcode op = (b.op == BinaryExpr::Op::IDiv) ? Opcode::SDiv : Opcode::SRem;
-        Value res = emitBinary(op, Type(Type::Kind::I64), lhs.value, rhs.value);
-        return {res, Type(Type::Kind::I64)};
+        emitStore(Type(Type::Kind::I1), addr, Value::constInt(0));
+        curLoc = b.loc;
+        emitBr(doneBB);
+        cur = doneBB;
     }
+    else
+    {
+        std::string trueLbl =
+            blockNamer ? blockNamer->generic("or_true") : mangler.block("or_true");
+        std::string rhsLbl = blockNamer ? blockNamer->generic("or_rhs") : mangler.block("or_rhs");
+        std::string doneLbl =
+            blockNamer ? blockNamer->generic("or_done") : mangler.block("or_done");
+        BasicBlock *trueBB = &builder->addBlock(*func, trueLbl);
+        BasicBlock *rhsBB = &builder->addBlock(*func, rhsLbl);
+        BasicBlock *doneBB = &builder->addBlock(*func, doneLbl);
+        curLoc = b.loc;
+        emitCBr(lhs.value, trueBB, rhsBB);
+        cur = trueBB;
+        curLoc = b.loc;
+        emitStore(Type(Type::Kind::I1), addr, Value::constInt(1));
+        curLoc = b.loc;
+        emitBr(doneBB);
+        cur = rhsBB;
+        RVal rhs = lowerExpr(*b.rhs);
+        curLoc = b.loc;
+        emitStore(Type(Type::Kind::I1), addr, rhs.value);
+        curLoc = b.loc;
+        emitBr(doneBB);
+        cur = doneBB;
+    }
+    curLoc = b.loc;
+    Value res = emitLoad(Type(Type::Kind::I1), addr);
+    return {res, Type(Type::Kind::I1)};
+}
+
+Lowerer::RVal Lowerer::lowerDivOrMod(const BinaryExpr &b)
+{
     RVal lhs = lowerExpr(*b.lhs);
     RVal rhs = lowerExpr(*b.rhs);
     curLoc = b.loc;
-    if (b.op == BinaryExpr::Op::Add && lhs.type.kind == Type::Kind::Str &&
-        rhs.type.kind == Type::Kind::Str)
+    Value cond = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), rhs.value, Value::constInt(0));
+    std::string trapLbl = blockNamer ? blockNamer->generic("div0") : mangler.block("div0");
+    std::string okLbl = blockNamer ? blockNamer->generic("divok") : mangler.block("divok");
+    BasicBlock *trapBB = &builder->addBlock(*func, trapLbl);
+    BasicBlock *okBB = &builder->addBlock(*func, okLbl);
+    emitCBr(cond, trapBB, okBB);
+    cur = trapBB;
+    curLoc = b.loc;
+    emitTrap();
+    cur = okBB;
+    curLoc = b.loc;
+    Opcode op = (b.op == BinaryExpr::Op::IDiv) ? Opcode::SDiv : Opcode::SRem;
+    Value res = emitBinary(op, Type(Type::Kind::I64), lhs.value, rhs.value);
+    return {res, Type(Type::Kind::I64)};
+}
+
+Lowerer::RVal Lowerer::lowerStringBinary(const BinaryExpr &b, RVal lhs, RVal rhs)
+{
+    curLoc = b.loc;
+    if (b.op == BinaryExpr::Op::Add)
     {
         Value res = emitCallRet(Type(Type::Kind::Str), "rt_concat", {lhs.value, rhs.value});
         return {res, Type(Type::Kind::Str)};
     }
-    if ((b.op == BinaryExpr::Op::Eq || b.op == BinaryExpr::Op::Ne) &&
-        lhs.type.kind == Type::Kind::Str && rhs.type.kind == Type::Kind::Str)
+    Value eq = emitCallRet(Type(Type::Kind::I1), "rt_str_eq", {lhs.value, rhs.value});
+    if (b.op == BinaryExpr::Op::Ne)
     {
-        Value eq = emitCallRet(Type(Type::Kind::I1), "rt_str_eq", {lhs.value, rhs.value});
-        if (b.op == BinaryExpr::Op::Ne)
-        {
-            Value z = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), eq);
-            Value x = emitBinary(Opcode::Xor, Type(Type::Kind::I64), z, Value::constInt(1));
-            Value res = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), x);
-            return {res, Type(Type::Kind::I1)};
-        }
-        return {eq, Type(Type::Kind::I1)};
+        Value z = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), eq);
+        Value x = emitBinary(Opcode::Xor, Type(Type::Kind::I64), z, Value::constInt(1));
+        Value res = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), x);
+        return {res, Type(Type::Kind::I1)};
     }
+    return {eq, Type(Type::Kind::I1)};
+}
+
+Lowerer::RVal Lowerer::lowerNumericBinary(const BinaryExpr &b, RVal lhs, RVal rhs)
+{
+    curLoc = b.loc;
     if (lhs.type.kind == Type::Kind::I64 && rhs.type.kind == Type::Kind::F64)
     {
         lhs.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), lhs.value);
@@ -1041,12 +1038,6 @@ Lowerer::RVal Lowerer::lowerBinaryExpr(const BinaryExpr &b)
         case BinaryExpr::Op::Div:
             op = isFloat ? Opcode::FDiv : Opcode::SDiv;
             break;
-        case BinaryExpr::Op::IDiv:
-            op = Opcode::SDiv;
-            break;
-        case BinaryExpr::Op::Mod:
-            op = Opcode::SRem;
-            break;
         case BinaryExpr::Op::Eq:
             op = isFloat ? Opcode::FCmpEQ : Opcode::ICmpEq;
             ty = Type(Type::Kind::I1);
@@ -1071,12 +1062,26 @@ Lowerer::RVal Lowerer::lowerBinaryExpr(const BinaryExpr &b)
             op = isFloat ? Opcode::FCmpGE : Opcode::SCmpGE;
             ty = Type(Type::Kind::I1);
             break;
-        case BinaryExpr::Op::And:
-        case BinaryExpr::Op::Or:
-            break; // handled above
+        default:
+            break; // other ops handled elsewhere
     }
     Value res = emitBinary(op, ty, lhs.value, rhs.value);
     return {res, ty};
+}
+
+Lowerer::RVal Lowerer::lowerBinaryExpr(const BinaryExpr &b)
+{
+    if (b.op == BinaryExpr::Op::And || b.op == BinaryExpr::Op::Or)
+        return lowerLogicalBinary(b);
+    if (b.op == BinaryExpr::Op::IDiv || b.op == BinaryExpr::Op::Mod)
+        return lowerDivOrMod(b);
+
+    RVal lhs = lowerExpr(*b.lhs);
+    RVal rhs = lowerExpr(*b.rhs);
+    if ((b.op == BinaryExpr::Op::Add || b.op == BinaryExpr::Op::Eq || b.op == BinaryExpr::Op::Ne) &&
+        lhs.type.kind == Type::Kind::Str && rhs.type.kind == Type::Kind::Str)
+        return lowerStringBinary(b, lhs, rhs);
+    return lowerNumericBinary(b, lhs, rhs);
 }
 
 Lowerer::RVal Lowerer::lowerArg(const BuiltinCallExpr &c, size_t idx)
