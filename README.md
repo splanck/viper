@@ -1,91 +1,55 @@
 <!--
 File: README.md
-Purpose: Project overview, build, and testing instructions.
+Purpose: High-signal landing page with build and run instructions.
 -->
 
-# Viper
+# Viper — IL-first Compiler Stack (BASIC → IL v0.1.2 → VM)
 
-**IL Compiler & BASIC Frontend (VM-first)**
+Viper is a small, deterministic compiler toolchain:
 
-Viper is an experimental compiler stack centered on a small, well-specified Intermediate Language (IL).
-Language frontends (currently a tiny BASIC) lower source programs to IL, IL libraries parse and verify modules, and a stack-based virtual machine executes IL today.
-The architecture flows from frontends → IL → VM, with native code generators planned for future phases.
+- **Front end:** BASIC lowers to a minimal, well-typed [IL v0.1.2](docs/references/il.md).
+- **Runtime/VM:** A portable C runtime and C++ VM execute IL directly.
+- **Backends:** Native codegen is deferred until IL + VM + front ends are solid.
 
-## Quickstart
+## Build
 
-```sh
-# Configure and build with Clang
-cmake -S . -B build -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-cmake --build build
-
-# Run a BASIC example on the VM
-./build/src/tools/ilc/ilc front basic -run docs/examples/basic/ex1_hello_cond.bas
-```
-## Testing
-
-Run the full test suite after building:
-
-```sh
-ctest --test-dir build --output-on-failure
+```bash
+cmake -S . -B build
+cmake --build build -j
 ```
 
-To enable the optional docs comment lint test (disabled by default), configure with:
+## Run Your First Programs
 
-```sh
-cmake -S . -B build -DIL_ENABLE_DOCS_LINT=ON
-```
+```bash
+# BASIC factorial
+./build/src/tools/ilc/ilc front basic examples/basic/fact.bas -run
+# prints 3628800
 
-This runs `scripts/check_comments.py` to verify header and Doxygen comments.
-
-
-## Cleaning
-
-Out-of-source builds (for example, using a dedicated `build/` directory) are recommended.
-
-- **Buildsystem clean**:
-  ```sh
-  make clean
-  ```
-  For multi-config generators such as MSVC or Xcode, pass `CONFIG=Debug` or `CONFIG=Release`.
-
-- **Distclean**: scrub CMake files inside `build/`:
-  ```sh
-  make distclean
-  ```
-
-- **Full purge**: delete `build*` directories via the cleanup script:
-  ```sh
-  make nuke
-  ```
-  The Makefile is a convenience for POSIX shells. Windows users should run `scripts/clean.ps1` or invoke the `cmake --build` commands directly.
-
-## Directory layout
-
-```text
-.
-├── src/               # C++ sources: IL core, VM, frontends
-│   ├── il/            # IL core libraries, parser, verifier
-│   ├── vm/            # Stack-based virtual machine
-│   └── frontends/     # Language frontends (BASIC implemented)
-├── runtime/           # C runtime support for the VM
-├── docs/              # Specifications, guides, and examples
-├── tests/             # Unit, golden, and end-to-end tests
-├── scripts/           # Build and utility helpers
-└── CMakeLists.txt     # Top-level build configuration
+# IL hello
+./build/src/tools/ilc/ilc -run examples/il/ex1_hello_cond.il
 ```
 
 ## Documentation
 
-- [Docs index](docs/README.md)
-- [BASIC language reference](docs/basic-language-reference.md)
-- [IL specification](docs/il-spec.md)
-- [Getting Started](/docs/getting-started.md)
+- [Getting Started](docs/getting-started.md)
+- [BASIC Reference](docs/references/basic.md)
+- [IL Spec (v0.1.2)](docs/references/il.md)
+- [Lowering (BASIC → IL)](docs/references/lowering.md)
+- [Tutorials: BASIC](docs/tutorials/basic.md), [IL](docs/tutorials/il.md)
+- [Architecture (contributors)](docs/dev/architecture.md)
+- [CLI (ilc)](docs/references/ilc.md)
+- Examples: [BASIC](examples/basic), [IL](examples/il)
 
-## Contributing
+## Layout
 
-See [AGENTS.md](AGENTS.md) for contribution workflow and the [style guide](docs/style-guide.md) for formatting rules.
-Run `cmake --build build --target format` to apply clang-format to all `.cpp` and `.hpp` files before committing.
+```
+/examples     sample BASIC & IL programs (canonical)
+/docs         references, tutorials, dev notes
+/lib          IL core, VM, front ends, passes
+/runtime      C runtime used by VM
+/tests        unit, golden, and e2e tests
+```
 
-## License
+## Contributing & License
 
-Licensed under the [MIT License](LICENSE).
+See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md). License: see [LICENSE](LICENSE).
