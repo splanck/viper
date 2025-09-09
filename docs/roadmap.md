@@ -1,3 +1,9 @@
+<!--
+SPDX-License-Identifier: MIT
+File: docs/roadmap.md
+Purpose: Project milestones and current status.
+-->
+
 # Roadmap
 
 Note: implementation files use `.cpp`; headers use `.hpp`.
@@ -8,7 +14,7 @@ Note: implementation files use `.cpp`; headers use `.hpp`.
 | --- | --------------- | ---------------------------------------------------------------------------- |
 | M0  | Bootstrap       | Build system and seed the [class catalog](class-catalog.md)                  |
 | M1  | IL core         | Types, instructions, and module scaffolding                                  |
-| M2  | VM              | Stack-based interpreter and runtime interface from the [IL spec](il-spec.md) |
+| M2  | VM              | Stack-based interpreter and runtime interface from the [IL spec](references/il.md) |
 | M3  | BASIC front end | Lexer, parser, and lowering from BASIC to IL                                 |
 | M4  | Codegen prep    | Groundwork for native emission and register allocation                       |
 

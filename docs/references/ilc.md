@@ -1,3 +1,9 @@
+<!--
+SPDX-License-Identifier: MIT
+File: docs/references/ilc.md
+Purpose: Command-line reference for ilc.
+-->
+
 # ilc
 
 `ilc` compiles and runs IL modules and front-end sources.

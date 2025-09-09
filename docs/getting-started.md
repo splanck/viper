@@ -1,3 +1,9 @@
+<!--
+SPDX-License-Identifier: MIT
+File: docs/getting-started.md
+Purpose: Build and run guide for first BASIC programs.
+-->
+
 # Getting Started: Build, Run, and Your First 3 BASIC Programs
 
 This guide shows you how to build the project, run the interpreter, and write three tiny BASIC programs.
@@ -68,4 +74,4 @@ NOT ONE
 
 Verify IL: for .il files, use ./build/src/tools/il-verify/il-verify path/to/file.il.
 Paths: if your build tree differs, adjust the ./build/src/tools/... paths accordingly.
-Docs: BASIC reference → /docs/basic-language-reference.md, IL spec → /docs/il-spec.md.
+Docs: BASIC reference → references/basic.md, IL spec → references/il.md.

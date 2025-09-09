@@ -1,3 +1,9 @@
+<!--
+SPDX-License-Identifier: MIT
+File: docs/cpp-overview.md
+Purpose: C++ project layout overview.
+-->
+
 # C++ Project Overview
 
 Here’s a high-level but extensive blueprint for turning the IL + VM + codegen + front end
@@ -282,7 +288,7 @@ struct Diagnostic { Severity sev; std::string msg; SourceLoc loc; };
 
 1. Documentation & governance
 
-- /docs/il-spec.md — the spec you wrote (versioned, with change log).
+ - references/il.md — the spec you wrote (versioned, with change log).
 - /docs/adr/ — short Architecture Decision Records (e.g., “no φ in v0.1”).
 - /docs/dev/ — build/run instructions, backend ABI notes, coding standards.
 - Auto‑generated API docs with Doxygen (optional).

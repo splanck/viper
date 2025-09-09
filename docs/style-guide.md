@@ -1,3 +1,9 @@
+<!--
+SPDX-License-Identifier: MIT
+File: docs/style-guide.md
+Purpose: Documentation and comment conventions.
+-->
+
 # Style guide
 
 See [AGENTS.md](../AGENTS.md) for project-wide policies. This guide defines
@@ -111,7 +117,7 @@ The bad example lacks blank lines, uses cramped K&R braces, and omits the standa
 /// @brief Manages frobnications.
 /// @invariant ID is unique per instance.
 /// @ownership Caller owns instances.
-/// @note See [IL spec](il-spec.md).
+/// @note See [IL spec](references/il.md).
 class Bar {
 public:
   /// @brief Perform one step.

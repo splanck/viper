@@ -1,5 +1,6 @@
 <!--
-File: docs/basic-ref.md
+SPDX-License-Identifier: MIT
+File: docs/references/basic.md
 Purpose: BASIC language reference and examples.
 -->
 
