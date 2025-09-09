@@ -9,6 +9,7 @@ This guide shows you how to build the project, run the interpreter, and write th
 - **Clang** (preferred) and **CMake**
   - macOS: Apple Clang is preinstalled.
   - Ubuntu: `sudo apt-get update && sudo apt-get install -y clang cmake`
+  - If Clang is missing, codegen smoke tests are skipped automatically.
 
 ---
 

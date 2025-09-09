@@ -563,27 +563,34 @@ add_test(NAME basic_semantics_funcs_then_code COMMAND ${CMAKE_COMMAND}
 add_subdirectory(golden)
 
 set(CODEGEN_E2E ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_codegen.cmake)
-if(IL_ENABLE_X64_ASM_SYNTAX_CHECK)
+# Toolchain smoke tests (require Clang)
+if(IL_ENABLE_X64_ASM_SYNTAX_CHECK AND CLANG_FOUND)
   add_test(NAME codegen_syntax_only COMMAND ${CMAKE_COMMAND}
     "-DASM_FLAGS=${IL_X64_ASM_FLAGS}"
     "-DLD_FLAGS=${IL_X64_LD_FLAGS}"
     -DMODE=syntax
     -P ${CODEGEN_E2E})
   set_tests_properties(codegen_syntax_only PROPERTIES LABELS CodegenSyntaxOnly)
+else()
+  message(STATUS "Skipping codegen_* tests (CLANG not found or flags OFF)")
 endif()
-if(IL_ENABLE_X64_ASM_ASSEMBLE_LINK)
+if(IL_ENABLE_X64_ASM_ASSEMBLE_LINK AND CLANG_FOUND)
   add_test(NAME codegen_assemble_link COMMAND ${CMAKE_COMMAND}
     "-DASM_FLAGS=${IL_X64_ASM_FLAGS}"
     "-DLD_FLAGS=${IL_X64_LD_FLAGS}"
     -DMODE=assemble_link
     -P ${CODEGEN_E2E})
   set_tests_properties(codegen_assemble_link PROPERTIES LABELS CodegenAssembleLink)
+else()
+  message(STATUS "Skipping codegen_* tests (CLANG not found or flags OFF)")
 endif()
-if(IL_ENABLE_X64_NATIVE_RUN)
+if(IL_ENABLE_X64_NATIVE_RUN AND CLANG_FOUND)
   add_test(NAME codegen_native_run COMMAND ${CMAKE_COMMAND}
     "-DASM_FLAGS=${IL_X64_ASM_FLAGS}"
     "-DLD_FLAGS=${IL_X64_LD_FLAGS}"
     -DMODE=run
     -P ${CODEGEN_E2E})
   set_tests_properties(codegen_native_run PROPERTIES LABELS NativeX64Run)
+else()
+  message(STATUS "Skipping codegen_* tests (CLANG not found or flags OFF)")
 endif()
