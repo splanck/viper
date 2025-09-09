@@ -1,8 +1,22 @@
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
+# File: tests/CMakeLists.txt
+# Purpose: Configure test targets and optional docs comment lint.
 
-add_test(NAME docs_comment_check
-  COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/check_comments.py)
-set_tests_properties(docs_comment_check PROPERTIES LABELS Docs)
+option(IL_ENABLE_DOCS_LINT "Run header/Doxygen docs check (scripts/check_comments.py)" OFF)
+
+if(IL_ENABLE_DOCS_LINT)
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  execute_process(COMMAND git rev-parse --is-inside-work-tree
+                  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                  RESULT_VARIABLE GIT_OK
+                  OUTPUT_QUIET ERROR_QUIET)
+  if(GIT_OK EQUAL 0)
+    add_test(NAME docs_comment_check
+      COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/check_comments.py)
+    set_tests_properties(docs_comment_check PROPERTIES LABELS Docs)
+  else()
+    message(STATUS "Skipping docs_comment_check (not a Git working tree)")
+  endif()
+endif()
 
 add_executable(test_support unit/test_support.cpp)
 target_link_libraries(test_support PRIVATE support)

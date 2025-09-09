@@ -1,3 +1,8 @@
+<!--
+File: README.md
+Purpose: Project overview, build, and testing instructions.
+-->
+
 # Viper
 
 **IL Compiler & BASIC Frontend (VM-first)**
@@ -16,6 +21,22 @@ cmake --build build
 # Run a BASIC example on the VM
 ./build/src/tools/ilc/ilc front basic -run docs/examples/basic/ex1_hello_cond.bas
 ```
+## Testing
+
+Run the full test suite after building:
+
+```sh
+ctest --test-dir build --output-on-failure
+```
+
+To enable the optional docs comment lint test (disabled by default), configure with:
+
+```sh
+cmake -S . -B build -DIL_ENABLE_DOCS_LINT=ON
+```
+
+This runs `scripts/check_comments.py` to verify header and Doxygen comments.
+
 
 ## Cleaning
 
