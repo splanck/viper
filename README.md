@@ -1,63 +1,42 @@
 <!--
 File: README.md
-Purpose: Project overview, build, and testing instructions.
+Purpose: Project overview, build, testing, and documentation links.
 -->
 
 # Viper
 
 **IL Compiler & BASIC Frontend (VM-first)**
 
-Viper is an experimental compiler stack centered on a small, well-specified Intermediate Language (IL).
-Language frontends (currently a tiny BASIC) lower source programs to IL, IL libraries parse and verify modules, and a stack-based virtual machine executes IL today.
-The architecture flows from frontends → IL → VM, with native code generators planned for future phases.
+Viper is an experimental compiler stack centered on a small, well-specified
+Intermediate Language (IL). Language frontends (currently a tiny BASIC) lower
+programs to IL. Libraries parse and verify modules, and a stack-based virtual
+machine executes IL today. Native code generation is planned for future phases.
 
-## Quickstart
+## Quick Links
+
+- [Getting Started](docs/getting-started.md)
+- [Docs index](docs/index.md)
+- [BASIC reference](docs/references/basic.md)
+- [IL specification](docs/references/il.md)
+
+## Build
 
 ```sh
-# Configure and build with Clang
 cmake -S . -B build -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
 cmake --build build
-
-# Run a BASIC example on the VM
-./build/src/tools/ilc/ilc front basic -run docs/examples/basic/ex1_hello_cond.bas
 ```
-## Testing
 
-Run the full test suite after building:
+## Test
 
 ```sh
 ctest --test-dir build --output-on-failure
 ```
 
-To enable the optional docs comment lint test (disabled by default), configure with:
+## Run an example
 
 ```sh
-cmake -S . -B build -DIL_ENABLE_DOCS_LINT=ON
+./build/src/tools/ilc/ilc front basic -run docs/examples/basic/ex1_hello_cond.bas
 ```
-
-This runs `scripts/check_comments.py` to verify header and Doxygen comments.
-
-
-## Cleaning
-
-Out-of-source builds (for example, using a dedicated `build/` directory) are recommended.
-
-- **Buildsystem clean**:
-  ```sh
-  make clean
-  ```
-  For multi-config generators such as MSVC or Xcode, pass `CONFIG=Debug` or `CONFIG=Release`.
-
-- **Distclean**: scrub CMake files inside `build/`:
-  ```sh
-  make distclean
-  ```
-
-- **Full purge**: delete `build*` directories via the cleanup script:
-  ```sh
-  make nuke
-  ```
-  The Makefile is a convenience for POSIX shells. Windows users should run `scripts/clean.ps1` or invoke the `cmake --build` commands directly.
 
 ## Directory layout
 
@@ -74,17 +53,11 @@ Out-of-source builds (for example, using a dedicated `build/` directory) are rec
 └── CMakeLists.txt     # Top-level build configuration
 ```
 
-## Documentation
-
-- [Docs index](docs/README.md)
-- [BASIC language reference](docs/basic-language-reference.md)
-- [IL specification](docs/il-spec.md)
-- [Getting Started](/docs/getting-started.md)
-
 ## Contributing
 
-See [AGENTS.md](AGENTS.md) for contribution workflow and the [style guide](docs/style-guide.md) for formatting rules.
-Run `cmake --build build --target format` to apply clang-format to all `.cpp` and `.hpp` files before committing.
+See [AGENTS.md](AGENTS.md) for workflow guidance and the
+[style guide](docs/style-guide.md) for formatting rules. Run
+`cmake --build build --target format` to apply clang-format before committing.
 
 ## License
 

@@ -1,5 +1,5 @@
 <!--
-File: docs/basic-ref.md
+File: docs/references/basic.md
 Purpose: BASIC language reference and examples.
 -->
 

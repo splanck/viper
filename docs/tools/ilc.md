@@ -108,3 +108,5 @@ Example:
 ilc il-opt foo.il -o foo.opt.il --mem2reg-stats
 ```
 
+Return to the [docs index](../index.md).
+
