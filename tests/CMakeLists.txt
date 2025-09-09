@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # File: tests/CMakeLists.txt
 # Purpose: Configure test targets and optional docs comment lint.
 
@@ -29,7 +30,7 @@ add_test(NAME test_il_serialize COMMAND test_il_serialize)
 
 add_executable(test_il_roundtrip unit/test_il_roundtrip.cpp)
 target_link_libraries(test_il_roundtrip PRIVATE il_core il_io il_verify support)
-target_compile_definitions(test_il_roundtrip PRIVATE EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/docs/examples" ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/tests/il/roundtrip")
+target_compile_definitions(test_il_roundtrip PRIVATE EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/examples" ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/tests/il/roundtrip")
 add_test(NAME test_il_roundtrip COMMAND test_il_roundtrip)
 
 add_executable(test_il_parse_negative unit/test_il_parse_negative.cpp)
@@ -82,12 +83,12 @@ add_executable(test_analysis_acyclic analysis/AcyclicTests.cpp)
 target_link_libraries(test_analysis_acyclic PRIVATE Analysis il_build)
 add_test(NAME test_analysis_acyclic COMMAND test_analysis_acyclic)
 
-add_test(NAME il_verify_ex1 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/docs/examples/il/ex1_hello_cond.il)
-add_test(NAME il_verify_ex2 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/docs/examples/il/ex2_sum_1_to_10.il)
-add_test(NAME il_verify_ex3 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/docs/examples/il/ex3_table_5x5.il)
-add_test(NAME il_verify_ex4 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/docs/examples/il/ex4_factorial.il)
-add_test(NAME il_verify_ex5 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/docs/examples/il/ex5_strings.il)
-add_test(NAME il_verify_ex6 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/docs/examples/il/ex6_heap_array_avg.il)
+add_test(NAME il_verify_ex1 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/examples/il/ex1_hello_cond.il)
+add_test(NAME il_verify_ex2 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/examples/il/ex2_sum_1_to_10.il)
+add_test(NAME il_verify_ex3 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/examples/il/ex3_table_5x5.il)
+add_test(NAME il_verify_ex4 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/examples/il/ex4_factorial.il)
+add_test(NAME il_verify_ex5 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/examples/il/ex5_strings.il)
+add_test(NAME il_verify_ex6 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/examples/il/ex6_heap_array_avg.il)
 
 add_test(NAME vm_examples COMMAND ${CMAKE_COMMAND}
   -DILC=$<TARGET_FILE:ilc>
@@ -357,12 +358,12 @@ add_test(NAME test_path_normalize COMMAND test_path_normalize)
 set(BASIC_AST_DUMP $<TARGET_FILE:basic-ast-dump>)
 add_test(NAME basic_ast_ex1 COMMAND ${CMAKE_COMMAND}
   -DBASIC_AST_DUMP=${BASIC_AST_DUMP}
-  -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex1_hello_cond.bas
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex1_hello_cond.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/ex1_hello_cond.ast
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/check_ast.cmake)
 add_test(NAME basic_ast_ex2 COMMAND ${CMAKE_COMMAND}
   -DBASIC_AST_DUMP=${BASIC_AST_DUMP}
-  -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex2_sum_1_to_10.bas
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex2_sum_1_to_10.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/ex2_sum_1_to_10.ast
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/check_ast.cmake)
 
@@ -400,57 +401,57 @@ add_test(NAME basic_lex_comments COMMAND ${CMAKE_COMMAND}
 set(BASIC_ILC $<TARGET_FILE:ilc>)
 add_test(NAME basic_to_il_ex1 COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
-  -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex1_hello_cond.bas
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex1_hello_cond.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/ex1_hello_cond.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 add_test(NAME basic_to_il_ex2 COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
-  -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex2_sum_1_to_10.bas
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex2_sum_1_to_10.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/ex2_sum_1_to_10.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 add_test(NAME basic_to_il_ex3 COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
-  -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex3_for_table.bas
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex3_for_table.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/ex3_for_table.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 add_test(NAME basic_to_il_ex4 COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
-  -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex4_if_elseif.bas
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex4_if_elseif.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/ex4_if_elseif.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 add_test(NAME basic_to_il_ex_elseif COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
-  -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex_elseif.bas
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex_elseif.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/ex_elseif.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 add_test(NAME basic_to_il_ex6 COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
-  -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex6_array_sum.bas
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex6_array_sum.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/ex6_array_sum.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 add_test(NAME basic_to_il_not COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
-  -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex_not.bas
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex_not.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/not.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 add_test(NAME basic_to_il_print_commas COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
-  -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex_print_commas.bas
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex_print_commas.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/print_commas.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 add_test(NAME basic_to_il_print_semicolons COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
-  -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex_print_semicolons.bas
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex_print_semicolons.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/print_semicolons.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 add_test(NAME basic_to_il_print_newline_control COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
-  -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex_print_newline_control.bas
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex_print_newline_control.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/print_newline_control.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 add_test(NAME basic_to_il_colon COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
-  -DBAS_FILE=${CMAKE_SOURCE_DIR}/docs/examples/basic/ex_colon.bas
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex_colon.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/ex_colon.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 add_test(NAME basic_to_il_loc COMMAND ${CMAKE_COMMAND}
