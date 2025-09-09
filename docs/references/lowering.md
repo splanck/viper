@@ -1,3 +1,9 @@
+<!--
+SPDX-License-Identifier: MIT
+File: docs/references/lowering.md
+Purpose: Mapping BASIC constructs to IL.
+-->
+
 #Lowering Reference
 
 | BASIC         | IL runtime call |
