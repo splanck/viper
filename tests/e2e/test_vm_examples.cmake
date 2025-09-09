@@ -1,4 +1,11 @@
-execute_process(COMMAND ${ILC} -run ${SRC_DIR}/docs/examples/il/ex1_hello_cond.il
+## SPDX-License-Identifier: MIT
+## File: tests/e2e/test_vm_examples.cmake
+## Purpose: Validate VM with simple IL examples.
+## Key invariants: Example programs produce expected outputs.
+## Ownership/Lifetime: Invoked by CTest.
+## Links: docs/examples.md
+
+execute_process(COMMAND ${ILC} -run ${SRC_DIR}/examples/il/ex1_hello_cond.il
                 OUTPUT_FILE hello.txt RESULT_VARIABLE r1)
 if(NOT r1 EQUAL 0)
   message(FATAL_ERROR "hello_cond execution failed")
@@ -18,7 +25,7 @@ if(NOT n1 EQUAL 2)
   message(FATAL_ERROR "expected two integers in hello output")
 endif()
 
-execute_process(COMMAND ${ILC} -run ${SRC_DIR}/docs/examples/il/ex2_sum_1_to_10.il
+execute_process(COMMAND ${ILC} -run ${SRC_DIR}/examples/il/ex2_sum_1_to_10.il
                 OUTPUT_FILE sum.txt RESULT_VARIABLE r2)
 if(NOT r2 EQUAL 0)
   message(FATAL_ERROR "sum_1_to_10 execution failed")
