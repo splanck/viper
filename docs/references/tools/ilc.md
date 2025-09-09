@@ -1,3 +1,8 @@
+<!--
+File: docs/references/tools/ilc.md
+Purpose: Command-line reference for ilc.
+-->
+
 # ilc
 
 `ilc` compiles and runs IL modules and front-end sources.
@@ -11,7 +16,7 @@ Flags:
 | Flag | Description |
 | ---- | ----------- |
 | `--trace=il` | emit a line-per-instruction trace. |
-| `--trace=src` | show source file, line, and column for each step; falls back to `<unknown>` when locations are missing. See [debug-recursion guide](../dev/debug-recursion.md). |
+| `--trace=src` | show source file, line, and column for each step; falls back to `<unknown>` when locations are missing. See [debug-recursion guide](../../dev/debug-recursion.md). |
 | `--break <Label\|file:line>` | halt before executing the first instruction of block `Label` or the instruction at `file:line`; may be repeated. |
 | `--break-src <file>:<line>` | explicit form of the source-line breakpoint; paths are normalized (platform separators and `.`/`..` segments). If the normalized path does not match, `ilc` falls back to a basename match; may be repeated. |
 | `--debug-cmds <file>` | read debugger actions from `file` when a breakpoint is hit. |

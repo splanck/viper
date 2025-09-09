@@ -1,7 +1,7 @@
 AGENTS.md — Operating Guide for Automated Contributors (Codex)
 Project: IL‑based compiler stack (Frontends → IL → VM → Codegen)
 Primary sources of truth:
-	• /docs/il-spec.md (IL v0.1 spec — normative)
+	• /docs/references/il.md (IL v0.1 spec — normative)
 	• /docs/class-catalog.md (class list and roles)
 	• /docs/cpp-overview.md is an outline of how the C++ project should be laid out.
 This document defines how automated changes must be made: scope, quality bars, commit etiquette, and when to propose vs. implement.
@@ -10,12 +10,12 @@ This document defines how automated changes must be made: scope, quality bars, c
 Mission: Implement the project methodically, delivering small, verifiable increments that conform to the IL spec and architecture.
 Non‑Goals (unless explicitly instructed):
 	• No large refactors.
-	• No spec changes to /docs/il-spec.md.
+	• No spec changes to /docs/references/il.md.
 	• No new external dependencies.
 	• No breaking changes to public APIs without an ADR (Architecture Decision Record).
 
 2) Core Principles
-	1. Spec first: Obey /docs/il-spec.md. If a task conflicts with the spec, create an ADR proposal; do not silently diverge.
+	1. Spec first: Obey /docs/references/il.md. If a task conflicts with the spec, create an ADR proposal; do not silently diverge.
 	2. Small steps: Prefer many small, complete commits over one large change.
 	3. Always green: Builds and tests must pass at every commit.
 	4. Single responsibility: Each prompt = one coherent change set.
@@ -23,7 +23,7 @@ Non‑Goals (unless explicitly instructed):
 
 3) Work Protocol (Follow for every prompt)
 Before you touch code:
-	1. Read /docs/roadmap.md and the relevant section(s) of /docs/il-spec.md.
+	1. Read /docs/roadmap.md and the relevant section(s) of /docs/references/il.md.
 	2. List the intended changes and files to touch (keep it under ~10 files unless told otherwise).
 	3. State the Definition of Done you will satisfy (build + tests + docs).
 While implementing:
@@ -77,7 +77,7 @@ Never commit a red build or failing tests.
 		○ Codegen (/src/codegen/...) → only depends on IL Core/Verify/Support.
 		○ Runtime (/runtime) → C library, no C++ or compiler dependencies.
 	• No cross‑reach: VM must not include codegen headers; front end must not include VM or codegen.
-	• Spec compliance: Instruction semantics, traps, and typing must match /docs/il-spec.md.
+	• Spec compliance: Instruction semantics, traps, and typing must match /docs/references/il.md.
 
 9) Commits & Branching
 	• Commit message format (Conventional Commits):
@@ -163,7 +163,7 @@ ctest --test-dir build --output-on-failure
 	• Only micro‑optimize with measurements; add benchmarks later (out of scope for v1).
 
 18) File Ownership & “Do Not Touch” List
-	• Do not modify /docs/il-spec.md without an ADR.
+	• Do not modify /docs/references/il.md without an ADR.
 	• Do not change CI workflows to skip tests.
 	• Do not change license headers or project metadata.
 

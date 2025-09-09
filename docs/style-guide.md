@@ -111,7 +111,7 @@ The bad example lacks blank lines, uses cramped K&R braces, and omits the standa
 /// @brief Manages frobnications.
 /// @invariant ID is unique per instance.
 /// @ownership Caller owns instances.
-/// @note See [IL spec](il-spec.md).
+/// @note See [IL spec](references/il.md).
 class Bar {
 public:
   /// @brief Perform one step.

@@ -76,10 +76,10 @@ Out-of-source builds (for example, using a dedicated `build/` directory) are rec
 
 ## Documentation
 
-- [Docs index](docs/README.md)
-- [BASIC language reference](docs/basic-language-reference.md)
-- [IL specification](docs/il-spec.md)
-- [Getting Started](/docs/getting-started.md)
+- [Docs index](docs/index.md)
+- [BASIC language reference](docs/references/basic.md)
+- [IL specification](docs/references/il.md)
+- [Getting Started](docs/getting-started.md)
 
 ## Contributing
 

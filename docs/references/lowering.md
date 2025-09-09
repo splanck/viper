@@ -1,3 +1,8 @@
+<!--
+File: docs/references/lowering.md
+Purpose: Mapping from BASIC constructs to IL.
+-->
+
 #Lowering Reference
 
 | BASIC         | IL runtime call |
@@ -26,7 +31,7 @@ types:
 | `CALL S()`                         | `call void @S()`                                      | `SUB` call used as a statement.                     |
 | `X = F()`                          | `%x = call i64 @F()`                                  | `FUNCTION` call used as an expression.              |
 
-Recursive calls lower the same way; see [factorial.bas](examples.md#factorial)
+Recursive calls lower the same way; see [factorial.bas](../examples.md#factorial)
 for a recursion sanity check.
 
 ## Compilation unit lowering

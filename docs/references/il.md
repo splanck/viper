@@ -1,3 +1,8 @@
+<!--
+File: docs/references/il.md
+Purpose: IL v0.1.2 specification (normative).
+-->
+
 #IL v0.1.2 Specification
 
 Status: Normative for VM and code generator MVP
