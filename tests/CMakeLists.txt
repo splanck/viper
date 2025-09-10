@@ -109,6 +109,10 @@ add_executable(test_rt_conv unit/test_rt_conv.cpp)
 target_link_libraries(test_rt_conv PRIVATE rt)
 add_test(NAME test_rt_conv COMMAND test_rt_conv)
 
+add_executable(test_rt_val_str runtime/RTValStrTests.cpp)
+target_link_libraries(test_rt_val_str PRIVATE rt)
+add_test(NAME test_rt_val_str COMMAND test_rt_val_str)
+
 add_executable(test_rt_math_core runtime/RTMathCoreTests.cpp)
 target_link_libraries(test_rt_math_core PRIVATE rt)
 add_test(NAME test_rt_math_core COMMAND test_rt_math_core)

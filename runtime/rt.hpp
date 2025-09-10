@@ -161,9 +161,9 @@ extern "C"
     /// @return Newly allocated string representation.
     rt_string rt_f64_to_str(double v);
 
-    /// @brief Parse decimal numeric string @p s.
-    /// @param s Input string; traps on invalid format.
-    /// @return Floating-point value of @p s.
+    /// @brief Parse leading decimal numeric prefix of @p s.
+    /// @param s Input string; leading spaces allowed.
+    /// @return Parsed value or 0 if no digits found.
     double rt_val(rt_string s);
 
     /// @brief Convert numeric @p v to decimal string.
