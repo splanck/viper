@@ -125,6 +125,15 @@ add_executable(test_rt_trim_case runtime/RTTrimCaseTests.cpp)
 target_link_libraries(test_rt_trim_case PRIVATE rt)
 add_test(NAME test_rt_trim_case COMMAND test_rt_trim_case)
 
+add_executable(test_rt_chr_asc runtime/RTChrAscTests.cpp)
+target_link_libraries(test_rt_chr_asc PRIVATE rt)
+add_test(NAME test_rt_chr_asc COMMAND test_rt_chr_asc)
+
+add_executable(test_rt_chr_invalid runtime/RTChrInvalidTests.cpp)
+target_link_libraries(test_rt_chr_invalid PRIVATE rt)
+add_test(NAME test_rt_chr_invalid COMMAND test_rt_chr_invalid)
+set_tests_properties(test_rt_chr_invalid PROPERTIES WILL_FAIL TRUE)
+
 add_executable(float_out e2e/support/FloatOut.cpp)
 
 add_test(NAME vm_strings_example COMMAND ${CMAKE_COMMAND}
