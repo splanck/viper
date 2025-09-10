@@ -216,6 +216,79 @@ int64_t rt_instr3(int64_t start, rt_string hay, rt_string needle)
     return rt_find(hay, start, needle);
 }
 
+rt_string rt_ltrim(rt_string s)
+{
+    if (!s)
+        rt_trap("rt_ltrim: null");
+    int64_t i = 0;
+    while (i < s->size && (s->data[i] == ' ' || s->data[i] == '\t'))
+        ++i;
+    return rt_substr(s, i, s->size - i);
+}
+
+rt_string rt_rtrim(rt_string s)
+{
+    if (!s)
+        rt_trap("rt_rtrim: null");
+    int64_t end = s->size;
+    while (end > 0 && (s->data[end - 1] == ' ' || s->data[end - 1] == '\t'))
+        --end;
+    return rt_substr(s, 0, end);
+}
+
+rt_string rt_trim(rt_string s)
+{
+    if (!s)
+        rt_trap("rt_trim: null");
+    int64_t start = 0;
+    int64_t end = s->size;
+    while (start < end && (s->data[start] == ' ' || s->data[start] == '\t'))
+        ++start;
+    while (end > start && (s->data[end - 1] == ' ' || s->data[end - 1] == '\t'))
+        --end;
+    return rt_substr(s, start, end - start);
+}
+
+rt_string rt_ucase(rt_string s)
+{
+    if (!s)
+        rt_trap("rt_ucase: null");
+    rt_string r = (rt_string)rt_alloc(sizeof(*r));
+    r->refcnt = 1;
+    r->size = s->size;
+    r->capacity = r->size;
+    r->data = (char *)rt_alloc(r->size + 1);
+    for (int64_t i = 0; i < r->size; ++i)
+    {
+        unsigned char c = (unsigned char)s->data[i];
+        if (c >= 'a' && c <= 'z')
+            c = (unsigned char)(c - 'a' + 'A');
+        r->data[i] = (char)c;
+    }
+    r->data[r->size] = '\0';
+    return r;
+}
+
+rt_string rt_lcase(rt_string s)
+{
+    if (!s)
+        rt_trap("rt_lcase: null");
+    rt_string r = (rt_string)rt_alloc(sizeof(*r));
+    r->refcnt = 1;
+    r->size = s->size;
+    r->capacity = r->size;
+    r->data = (char *)rt_alloc(r->size + 1);
+    for (int64_t i = 0; i < r->size; ++i)
+    {
+        unsigned char c = (unsigned char)s->data[i];
+        if (c >= 'A' && c <= 'Z')
+            c = (unsigned char)(c - 'A' + 'a');
+        r->data[i] = (char)c;
+    }
+    r->data[r->size] = '\0';
+    return r;
+}
+
 int64_t rt_str_eq(rt_string a, rt_string b)
 {
     if (!a || !b)
