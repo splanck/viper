@@ -5,6 +5,7 @@
 // Links: docs/class-catalog.md
 
 #include "cli.hpp"
+#include "frontends/basic/Intrinsics.hpp"
 #include <iostream>
 #include <string>
 
@@ -22,7 +23,10 @@ void usage()
         << "\nBASIC notes:\n"
         << "  FUNCTION must RETURN a value on all paths.\n"
         << "  SUB cannot be used as an expression.\n"
-        << "  Array parameters are ByRef; pass the array variable, not an index.\n";
+        << "  Array parameters are ByRef; pass the array variable, not an index.\n"
+        << "  Intrinsics: ";
+    il::frontends::basic::intrinsics::dumpNames(std::cerr);
+    std::cerr << "\n";
 }
 
 int main(int argc, char **argv)
