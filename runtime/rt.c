@@ -38,11 +38,11 @@ void *rt_alloc(int64_t bytes)
     return p;
 }
 
-rt_str rt_const_cstr(const char *c)
+rt_string rt_const_cstr(const char *c)
 {
     if (!c)
         return NULL;
-    rt_str s = (rt_str)rt_alloc(sizeof(*s));
+    rt_string s = (rt_string)rt_alloc(sizeof(*s));
     s->refcnt = 1;
     s->size = (int64_t)strlen(c);
     s->capacity = s->size;
@@ -50,7 +50,7 @@ rt_str rt_const_cstr(const char *c)
     return s;
 }
 
-void rt_print_str(rt_str s)
+void rt_print_str(rt_string s)
 {
     if (s && s->data)
         fwrite(s->data, 1, (size_t)s->size, stdout);
@@ -66,7 +66,7 @@ void rt_print_f64(double v)
     printf("%g", v);
 }
 
-rt_str rt_input_line(void)
+rt_string rt_input_line(void)
 {
     char buf[1024];
     if (!fgets(buf, sizeof(buf), stdin))
@@ -74,7 +74,7 @@ rt_str rt_input_line(void)
     size_t len = strlen(buf);
     if (len && buf[len - 1] == '\n')
         buf[--len] = '\0';
-    rt_str s = (rt_str)rt_alloc(sizeof(*s));
+    rt_string s = (rt_string)rt_alloc(sizeof(*s));
     s->refcnt = 1;
     s->size = (int64_t)len;
     s->capacity = s->size;
@@ -83,16 +83,16 @@ rt_str rt_input_line(void)
     return s;
 }
 
-int64_t rt_len(rt_str s)
+int64_t rt_len(rt_string s)
 {
     return s ? s->size : 0;
 }
 
-rt_str rt_concat(rt_str a, rt_str b)
+rt_string rt_concat(rt_string a, rt_string b)
 {
     int64_t asz = a ? a->size : 0;
     int64_t bsz = b ? b->size : 0;
-    rt_str s = (rt_str)rt_alloc(sizeof(*s));
+    rt_string s = (rt_string)rt_alloc(sizeof(*s));
     s->refcnt = 1;
     s->size = asz + bsz;
     s->capacity = s->size;
@@ -105,7 +105,7 @@ rt_str rt_concat(rt_str a, rt_str b)
     return s;
 }
 
-rt_str rt_substr(rt_str s, int64_t start, int64_t len)
+rt_string rt_substr(rt_string s, int64_t start, int64_t len)
 {
     if (!s)
         rt_trap("rt_substr: null");
@@ -117,7 +117,7 @@ rt_str rt_substr(rt_str s, int64_t start, int64_t len)
         start = s->size;
     if (start + len > s->size)
         len = s->size - start;
-    rt_str r = (rt_str)rt_alloc(sizeof(*r));
+    rt_string r = (rt_string)rt_alloc(sizeof(*r));
     r->refcnt = 1;
     r->size = len;
     r->capacity = len;
@@ -128,29 +128,29 @@ rt_str rt_substr(rt_str s, int64_t start, int64_t len)
     return r;
 }
 
-rt_str rt_left(rt_str s, int64_t n)
+rt_string rt_left(rt_string s, int64_t n)
 {
     return rt_substr(s, 0, n);
 }
 
-rt_str rt_right(rt_str s, int64_t n)
+rt_string rt_right(rt_string s, int64_t n)
 {
     int64_t len = rt_len(s);
     int64_t start = len - n;
     return rt_substr(s, start, n);
 }
 
-rt_str rt_mid2(rt_str s, int64_t start)
+rt_string rt_mid2(rt_string s, int64_t start)
 {
     return rt_substr(s, start, INT64_MAX);
 }
 
-rt_str rt_mid3(rt_str s, int64_t start, int64_t len)
+rt_string rt_mid3(rt_string s, int64_t start, int64_t len)
 {
     return rt_substr(s, start, len);
 }
 
-static int64_t rt_find(rt_str hay, int64_t start, rt_str needle)
+static int64_t rt_find(rt_string hay, int64_t start, rt_string needle)
 {
     if (!hay || !needle)
         return 0;
@@ -164,17 +164,17 @@ static int64_t rt_find(rt_str hay, int64_t start, rt_str needle)
     return 0;
 }
 
-int64_t rt_instr2(rt_str hay, rt_str needle)
+int64_t rt_instr2(rt_string hay, rt_string needle)
 {
     return rt_find(hay, 0, needle);
 }
 
-int64_t rt_instr3(int64_t start, rt_str hay, rt_str needle)
+int64_t rt_instr3(int64_t start, rt_string hay, rt_string needle)
 {
     return rt_find(hay, start, needle);
 }
 
-int64_t rt_str_eq(rt_str a, rt_str b)
+int64_t rt_str_eq(rt_string a, rt_string b)
 {
     if (!a || !b)
         return 0;
@@ -183,7 +183,7 @@ int64_t rt_str_eq(rt_str a, rt_str b)
     return memcmp(a->data, b->data, (size_t)a->size) == 0;
 }
 
-int64_t rt_to_int(rt_str s)
+int64_t rt_to_int(rt_string s)
 {
     if (!s)
         rt_trap("rt_to_int: null");
@@ -213,13 +213,13 @@ int64_t rt_to_int(rt_str s)
     return (int64_t)v;
 }
 
-rt_str rt_int_to_str(int64_t v)
+rt_string rt_int_to_str(int64_t v)
 {
     char buf[32];
     int n = snprintf(buf, sizeof(buf), "%lld", (long long)v);
     if (n < 0)
         rt_trap("rt_int_to_str: format");
-    rt_str s = (rt_str)rt_alloc(sizeof(*s));
+    rt_string s = (rt_string)rt_alloc(sizeof(*s));
     s->refcnt = 1;
     s->size = n;
     s->capacity = n;
@@ -228,13 +228,13 @@ rt_str rt_int_to_str(int64_t v)
     return s;
 }
 
-rt_str rt_f64_to_str(double v)
+rt_string rt_f64_to_str(double v)
 {
     char buf[32];
     int n = snprintf(buf, sizeof(buf), "%g", v);
     if (n < 0)
         rt_trap("rt_f64_to_str: format");
-    rt_str s = (rt_str)rt_alloc(sizeof(*s));
+    rt_string s = (rt_string)rt_alloc(sizeof(*s));
     s->refcnt = 1;
     s->size = n;
     s->capacity = n;

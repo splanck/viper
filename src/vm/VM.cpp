@@ -226,7 +226,7 @@ VM::ExecResult VM::handleLoad(Frame &fr, const Instr &in)
     else if (in.type.kind == Type::Kind::F64)
         res.f64 = *reinterpret_cast<double *>(ptr);
     else if (in.type.kind == Type::Kind::Str)
-        res.str = *reinterpret_cast<rt_str *>(ptr);
+        res.str = *reinterpret_cast<rt_string *>(ptr);
     else if (in.type.kind == Type::Kind::Ptr)
         res.ptr = *reinterpret_cast<void **>(ptr);
     storeResult(fr, in, res);
@@ -243,7 +243,7 @@ VM::ExecResult VM::handleStore(Frame &fr, const Instr &in, const BasicBlock *bb,
     else if (in.type.kind == Type::Kind::F64)
         *reinterpret_cast<double *>(ptr) = val.f64;
     else if (in.type.kind == Type::Kind::Str)
-        *reinterpret_cast<rt_str *>(ptr) = val.str;
+        *reinterpret_cast<rt_string *>(ptr) = val.str;
     else if (in.type.kind == Type::Kind::Ptr)
         *reinterpret_cast<void **>(ptr) = val.ptr;
     if (in.operands[0].kind == Value::Kind::Temp)
