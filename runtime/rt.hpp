@@ -64,26 +64,26 @@ extern "C"
 
     /// @brief Return leftmost @p n characters of @p s.
     /// @param s Source string; traps if null.
-    /// @param n Number of characters to copy (clamped at [0,len]).
+    /// @param n Number of characters to copy; traps if negative.
     /// @return Newly allocated substring of length @c n or less.
     rt_string rt_left(rt_string s, int64_t n);
 
     /// @brief Return rightmost @p n characters of @p s.
     /// @param s Source string; traps if null.
-    /// @param n Number of characters to copy (clamped at [0,len]).
+    /// @param n Number of characters to copy; traps if negative.
     /// @return Newly allocated substring of length @c n or less.
     rt_string rt_right(rt_string s, int64_t n);
 
     /// @brief Return substring starting at @p start to end.
     /// @param s Source string; traps if null.
-    /// @param start Starting offset (0-based; negative treated as 0).
+    /// @param start Starting offset (0-based); traps if negative.
     /// @return Newly allocated substring from @p start to end.
     rt_string rt_mid2(rt_string s, int64_t start);
 
     /// @brief Return substring of length @p len starting at @p start.
     /// @param s Source string; traps if null.
-    /// @param start Starting offset (0-based; negative treated as 0).
-    /// @param len Number of characters to copy (clamped at end).
+    /// @param start Starting offset (0-based); traps if negative.
+    /// @param len Number of characters to copy; traps if negative.
     /// @return Newly allocated substring.
     rt_string rt_mid3(rt_string s, int64_t start, int64_t len);
 
