@@ -257,6 +257,7 @@ class Lowerer
     RVal lowerStr(const BuiltinCallExpr &expr);
     RVal lowerVal(const BuiltinCallExpr &expr);
     RVal lowerInt(const BuiltinCallExpr &expr);
+    RVal lowerInstr(const BuiltinCallExpr &expr);
     RVal lowerSqr(const BuiltinCallExpr &expr);
     RVal lowerAbs(const BuiltinCallExpr &expr);
     RVal lowerFloor(const BuiltinCallExpr &expr);

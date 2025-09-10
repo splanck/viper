@@ -194,6 +194,11 @@ Lowerer::ExprType Lowerer::scanBuiltinCallExpr(const BuiltinCallExpr &c)
                 if (a)
                     scanExpr(*a);
             return ExprType::Str;
+        case BuiltinCallExpr::Builtin::Instr:
+            for (auto &a : c.args)
+                if (a)
+                    scanExpr(*a);
+            return ExprType::I64;
         case BuiltinCallExpr::Builtin::Sqr:
             if (c.args[0])
                 scanExpr(*c.args[0]);
@@ -1223,6 +1228,17 @@ Lowerer::RVal Lowerer::lowerInt(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::I64)};
 }
 
+Lowerer::RVal Lowerer::lowerInstr(const BuiltinCallExpr &c)
+{
+    std::vector<Value> args;
+    for (size_t i = 0; i < c.args.size(); ++i)
+        if (c.args[i])
+            args.push_back(lowerArg(c, i).value);
+    curLoc = c.loc;
+    Value res = emitCallRet(Type(Type::Kind::I64), "rt_instr", args);
+    return {res, Type(Type::Kind::I64)};
+}
+
 Lowerer::RVal Lowerer::lowerSqr(const BuiltinCallExpr &c)
 {
     RVal v = ensureF64(lowerArg(c, 0), c.loc);
@@ -1304,6 +1320,8 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
             return lowerVal(c);
         case B::Int:
             return lowerInt(c);
+        case B::Instr:
+            return lowerInstr(c);
         case B::Sqr:
             return lowerSqr(c);
         case B::Abs:
