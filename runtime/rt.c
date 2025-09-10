@@ -130,23 +130,52 @@ rt_string rt_substr(rt_string s, int64_t start, int64_t len)
 
 rt_string rt_left(rt_string s, int64_t n)
 {
+    if (!s)
+        rt_trap("rt_left: null");
+    if (n < 0)
+        rt_trap("rt_left: negative");
+    if (n > s->size)
+        n = s->size;
     return rt_substr(s, 0, n);
 }
 
 rt_string rt_right(rt_string s, int64_t n)
 {
-    int64_t len = rt_len(s);
+    if (!s)
+        rt_trap("rt_right: null");
+    if (n < 0)
+        rt_trap("rt_right: negative");
+    int64_t len = s->size;
+    if (n > len)
+        n = len;
     int64_t start = len - n;
     return rt_substr(s, start, n);
 }
 
 rt_string rt_mid2(rt_string s, int64_t start)
 {
-    return rt_substr(s, start, INT64_MAX);
+    if (!s)
+        rt_trap("rt_mid2: null");
+    if (start < 0)
+        rt_trap("rt_mid2: negative");
+    int64_t len = s->size;
+    if (start > len)
+        start = len;
+    int64_t n = len - start;
+    return rt_substr(s, start, n);
 }
 
 rt_string rt_mid3(rt_string s, int64_t start, int64_t len)
 {
+    if (!s)
+        rt_trap("rt_mid3: null");
+    if (start < 0 || len < 0)
+        rt_trap("rt_mid3: negative");
+    int64_t slen = s->size;
+    if (start > slen)
+        start = slen;
+    if (len > slen - start)
+        len = slen - start;
     return rt_substr(s, start, len);
 }
 
