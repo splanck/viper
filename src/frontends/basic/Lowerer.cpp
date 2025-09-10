@@ -1133,11 +1133,19 @@ Lowerer::RVal Lowerer::ensureI64(RVal v, il::support::SourceLoc loc)
         v.value = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), v.value);
         v.type = Type(Type::Kind::I64);
     }
+    else if (v.type.kind == Type::Kind::F64)
+    {
+        curLoc = loc;
+        v.value = emitUnary(Opcode::Fptosi, Type(Type::Kind::I64), v.value);
+        v.type = Type(Type::Kind::I64);
+    }
     return v;
 }
 
 Lowerer::RVal Lowerer::ensureF64(RVal v, il::support::SourceLoc loc)
 {
+    if (v.type.kind == Type::Kind::F64)
+        return v;
     v = ensureI64(std::move(v), loc);
     if (v.type.kind == Type::Kind::I64)
     {
@@ -1166,10 +1174,10 @@ Lowerer::RVal Lowerer::lowerLen(const BuiltinCallExpr &c)
 Lowerer::RVal Lowerer::lowerMid(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
-    RVal i = lowerArg(c, 1);
+    RVal i = ensureI64(lowerArg(c, 1), c.loc);
     Value start0 = emitBinary(Opcode::Add, Type(Type::Kind::I64), i.value, Value::constInt(-1));
     Value count = (c.args.size() >= 3 && c.args[2])
-                      ? lowerArg(c, 2).value
+                      ? ensureI64(lowerArg(c, 2), c.loc).value
                       : Value::constInt(std::numeric_limits<int64_t>::max());
     curLoc = c.loc;
     Value res = emitCallRet(Type(Type::Kind::Str), "rt_substr", {s.value, start0, count});
@@ -1179,7 +1187,7 @@ Lowerer::RVal Lowerer::lowerMid(const BuiltinCallExpr &c)
 Lowerer::RVal Lowerer::lowerLeft(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
-    RVal n = lowerArg(c, 1);
+    RVal n = ensureI64(lowerArg(c, 1), c.loc);
     curLoc = c.loc;
     Value res =
         emitCallRet(Type(Type::Kind::Str), "rt_substr", {s.value, Value::constInt(0), n.value});
@@ -1189,7 +1197,7 @@ Lowerer::RVal Lowerer::lowerLeft(const BuiltinCallExpr &c)
 Lowerer::RVal Lowerer::lowerRight(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
-    RVal n = lowerArg(c, 1);
+    RVal n = ensureI64(lowerArg(c, 1), c.loc);
     curLoc = c.loc;
     Value len = emitCallRet(Type(Type::Kind::I64), "rt_len", {s.value});
     Value negN = emitBinary(Opcode::Mul, Type(Type::Kind::I64), n.value, Value::constInt(-1));
@@ -1201,14 +1209,16 @@ Lowerer::RVal Lowerer::lowerRight(const BuiltinCallExpr &c)
 Lowerer::RVal Lowerer::lowerStr(const BuiltinCallExpr &c)
 {
     RVal v = lowerArg(c, 0);
-    v = ensureI64(std::move(v), c.loc);
-    curLoc = c.loc;
-    if (v.type.kind == Type::Kind::I64)
+    if (v.type.kind == Type::Kind::F64)
     {
-        Value res = emitCallRet(Type(Type::Kind::Str), "rt_int_to_str", {v.value});
+        v = ensureF64(std::move(v), c.loc);
+        curLoc = c.loc;
+        Value res = emitCallRet(Type(Type::Kind::Str), "rt_f64_to_str", {v.value});
         return {res, Type(Type::Kind::Str)};
     }
-    Value res = emitCallRet(Type(Type::Kind::Str), "rt_f64_to_str", {v.value});
+    v = ensureI64(std::move(v), c.loc);
+    curLoc = c.loc;
+    Value res = emitCallRet(Type(Type::Kind::Str), "rt_int_to_str", {v.value});
     return {res, Type(Type::Kind::Str)};
 }
 
@@ -1231,9 +1241,16 @@ Lowerer::RVal Lowerer::lowerInt(const BuiltinCallExpr &c)
 Lowerer::RVal Lowerer::lowerInstr(const BuiltinCallExpr &c)
 {
     std::vector<Value> args;
-    for (size_t i = 0; i < c.args.size(); ++i)
-        if (c.args[i])
-            args.push_back(lowerArg(c, i).value);
+    size_t idx = 0;
+    if (c.args.size() == 3)
+    {
+        RVal start = ensureI64(lowerArg(c, idx++), c.loc);
+        args.push_back(start.value);
+    }
+    RVal hay = lowerArg(c, idx++);
+    args.push_back(hay.value);
+    RVal needle = lowerArg(c, idx++);
+    args.push_back(needle.value);
     curLoc = c.loc;
     Value res = emitCallRet(Type(Type::Kind::I64), "rt_instr", args);
     return {res, Type(Type::Kind::I64)};
@@ -1249,13 +1266,16 @@ Lowerer::RVal Lowerer::lowerSqr(const BuiltinCallExpr &c)
 
 Lowerer::RVal Lowerer::lowerAbs(const BuiltinCallExpr &c)
 {
-    RVal v = ensureI64(lowerArg(c, 0), c.loc);
-    curLoc = c.loc;
+    RVal v = lowerArg(c, 0);
     if (v.type.kind == Type::Kind::F64)
     {
+        v = ensureF64(std::move(v), c.loc);
+        curLoc = c.loc;
         Value res = emitCallRet(Type(Type::Kind::F64), "rt_abs_f64", {v.value});
         return {res, Type(Type::Kind::F64)};
     }
+    v = ensureI64(std::move(v), c.loc);
+    curLoc = c.loc;
     Value res = emitCallRet(Type(Type::Kind::I64), "rt_abs_i64", {v.value});
     return {res, Type(Type::Kind::I64)};
 }
