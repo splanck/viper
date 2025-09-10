@@ -100,27 +100,32 @@ extern "C"
     /// @return 1-based index of match or 0 if not found. Empty @p needle returns 1.
     int64_t rt_instr2(rt_string hay, rt_string needle);
 
-    /// @brief Remove leading ASCII whitespace.
+    /// @brief Remove leading spaces and tabs.
+    /// Whitespace is ASCII space (0x20) or tab (0x09).
     /// @param s Source string; traps if null.
     /// @return Newly allocated trimmed string.
     rt_string rt_ltrim(rt_string s);
 
-    /// @brief Remove trailing ASCII whitespace.
+    /// @brief Remove trailing spaces and tabs.
+    /// Whitespace is ASCII space (0x20) or tab (0x09).
     /// @param s Source string; traps if null.
     /// @return Newly allocated trimmed string.
     rt_string rt_rtrim(rt_string s);
 
-    /// @brief Remove leading and trailing ASCII whitespace.
+    /// @brief Remove leading and trailing spaces and tabs.
+    /// Whitespace is ASCII space (0x20) or tab (0x09).
     /// @param s Source string; traps if null.
     /// @return Newly allocated trimmed string.
     rt_string rt_trim(rt_string s);
 
-    /// @brief Convert string to uppercase (ASCII only).
+    /// @brief Convert string to uppercase (ASCII a-z).
+    /// Non-ASCII bytes are left unchanged.
     /// @param s Source string; traps if null.
     /// @return Newly allocated uppercase string.
     rt_string rt_ucase(rt_string s);
 
-    /// @brief Convert string to lowercase (ASCII only).
+    /// @brief Convert string to lowercase (ASCII A-Z).
+    /// Non-ASCII bytes are left unchanged.
     /// @param s Source string; traps if null.
     /// @return Newly allocated lowercase string.
     rt_string rt_lcase(rt_string s);
