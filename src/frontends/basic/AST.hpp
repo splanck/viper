@@ -111,7 +111,8 @@ struct BuiltinCallExpr : Expr
         Sin,
         Cos,
         Pow,
-        Rnd
+        Rnd,
+        Instr
     } builtin;
     std::vector<ExprPtr> args;
 };

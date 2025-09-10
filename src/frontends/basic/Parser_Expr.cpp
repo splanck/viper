@@ -179,7 +179,7 @@ ExprPtr Parser::parseBuiltinCall(BuiltinCallExpr::Builtin builtin, il::support::
              builtin == BuiltinCallExpr::Builtin::Left ||
              builtin == BuiltinCallExpr::Builtin::Right ||
              builtin == BuiltinCallExpr::Builtin::Str || builtin == BuiltinCallExpr::Builtin::Val ||
-             builtin == BuiltinCallExpr::Builtin::Int)
+             builtin == BuiltinCallExpr::Builtin::Int || builtin == BuiltinCallExpr::Builtin::Instr)
     {
         if (!at(TokenKind::RParen))
         {
@@ -252,6 +252,8 @@ ExprPtr Parser::parseArrayOrVar()
             builtin = BuiltinCallExpr::Builtin::Val;
         else if (name == "INT")
             builtin = BuiltinCallExpr::Builtin::Int;
+        else if (name == "INSTR")
+            builtin = BuiltinCallExpr::Builtin::Instr;
         else
             is_builtin = false;
 

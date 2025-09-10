@@ -277,7 +277,7 @@ void AstPrinter::dump(const Expr &expr, Printer &p)
     }
     else if (auto *c = dynamic_cast<const BuiltinCallExpr *>(&expr))
     {
-        static constexpr std::array<const char *, 15> names = {"LEN",
+        static constexpr std::array<const char *, 16> names = {"LEN",
                                                                "MID$",
                                                                "LEFT$",
                                                                "RIGHT$",
@@ -291,7 +291,8 @@ void AstPrinter::dump(const Expr &expr, Printer &p)
                                                                "SIN",
                                                                "COS",
                                                                "POW",
-                                                               "RND"};
+                                                               "RND",
+                                                               "INSTR"};
         p.os << '(' << names[static_cast<size_t>(c->builtin)];
         for (auto &a : c->args)
         {
