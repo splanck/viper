@@ -134,7 +134,9 @@ Token Lexer::lexIdentifierOrKeyword()
 {
     il::support::SourceLoc loc{file_id_, line_, column_};
     std::string s;
-    while (std::isalnum(peek()) || peek() == '$' || peek() == '#')
+    while (std::isalnum(peek()))
+        s.push_back(std::toupper(get()));
+    if (peek() == '$' || peek() == '#')
         s.push_back(std::toupper(get()));
     // keywords
     if (s == "PRINT")

@@ -166,6 +166,8 @@ class SemanticAnalyzer
     Type analyzeVal(const BuiltinCallExpr &c, const std::vector<Type> &args);
     /// @brief Analyze INT builtin.
     Type analyzeInt(const BuiltinCallExpr &c, const std::vector<Type> &args);
+    /// @brief Analyze INSTR builtin.
+    Type analyzeInstr(const BuiltinCallExpr &c, const std::vector<Type> &args);
     /// @brief Analyze SQR builtin.
     Type analyzeSqr(const BuiltinCallExpr &c, const std::vector<Type> &args);
     /// @brief Analyze ABS builtin.
