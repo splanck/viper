@@ -817,6 +817,8 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeBuiltinCall(const BuiltinCallExp
             return analyzePow(c, argTys);
         case B::Rnd:
             return analyzeRnd(c, argTys);
+        case B::Instr:
+            return analyzeInstr(c, argTys);
     }
     return Type::Unknown;
 }
@@ -926,6 +928,24 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeInt(const BuiltinCallExpr &c,
 {
     if (checkArgCount(c, args, 1, 1))
         checkArgType(c, 0, args[0], {Type::Float});
+    return Type::Int;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeInstr(const BuiltinCallExpr &c,
+                                                      const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 2, 3))
+    {
+        size_t idx = 0;
+        if (args.size() == 3)
+        {
+            checkArgType(c, idx, args[idx], {Type::Int});
+            idx++;
+        }
+        checkArgType(c, idx, args[idx], {Type::String});
+        idx++;
+        checkArgType(c, idx, args[idx], {Type::String});
+    }
     return Type::Int;
 }
 
