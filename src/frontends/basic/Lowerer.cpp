@@ -12,7 +12,6 @@
 #include "il/io/Serializer.hpp" // might not needed but fine
 #include <cassert>
 #include <functional>
-#include <limits>
 #include <vector>
 
 using namespace il::core;
@@ -45,6 +44,12 @@ Module Lowerer::lowerProgram(const Program &prog)
     needAlloc = false;
     needRtStrEq = false;
     needRtConcat = false;
+    needRtLeft = false;
+    needRtRight = false;
+    needRtMid2 = false;
+    needRtMid3 = false;
+    needRtInstr2 = false;
+    needRtInstr3 = false;
     runtimeOrder.clear();
     runtimeSet.clear();
 
@@ -85,6 +90,26 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         b.addExtern("rt_f64_to_str", Type(Type::Kind::Str), {Type(Type::Kind::F64)});
     if (needAlloc)
         b.addExtern("rt_alloc", Type(Type::Kind::Ptr), {Type(Type::Kind::I64)});
+    if (needRtLeft)
+        b.addExtern(
+            "rt_left", Type(Type::Kind::Str), {Type(Type::Kind::Str), Type(Type::Kind::I64)});
+    if (needRtRight)
+        b.addExtern(
+            "rt_right", Type(Type::Kind::Str), {Type(Type::Kind::Str), Type(Type::Kind::I64)});
+    if (needRtMid2)
+        b.addExtern(
+            "rt_mid2", Type(Type::Kind::Str), {Type(Type::Kind::Str), Type(Type::Kind::I64)});
+    if (needRtMid3)
+        b.addExtern("rt_mid3",
+                    Type(Type::Kind::Str),
+                    {Type(Type::Kind::Str), Type(Type::Kind::I64), Type(Type::Kind::I64)});
+    if (needRtInstr2)
+        b.addExtern(
+            "rt_instr2", Type(Type::Kind::I64), {Type(Type::Kind::Str), Type(Type::Kind::Str)});
+    if (needRtInstr3)
+        b.addExtern("rt_instr3",
+                    Type(Type::Kind::I64),
+                    {Type(Type::Kind::I64), Type(Type::Kind::Str), Type(Type::Kind::Str)});
 
     for (RuntimeFn fn : runtimeOrder)
     {
@@ -189,12 +214,32 @@ Lowerer::ExprType Lowerer::scanBuiltinCallExpr(const BuiltinCallExpr &c)
             if (c.args[0])
                 scanExpr(*c.args[0]);
             return ExprType::I64;
+        case BuiltinCallExpr::Builtin::Left:
+            needRtLeft = true;
+            for (auto &a : c.args)
+                if (a)
+                    scanExpr(*a);
+            return ExprType::Str;
+        case BuiltinCallExpr::Builtin::Right:
+            needRtRight = true;
+            for (auto &a : c.args)
+                if (a)
+                    scanExpr(*a);
+            return ExprType::Str;
         case BuiltinCallExpr::Builtin::Mid:
+            if (c.args.size() >= 3 && c.args[2])
+                needRtMid3 = true;
+            else
+                needRtMid2 = true;
             for (auto &a : c.args)
                 if (a)
                     scanExpr(*a);
             return ExprType::Str;
         case BuiltinCallExpr::Builtin::Instr:
+            if (c.args.size() == 3)
+                needRtInstr3 = true;
+            else
+                needRtInstr2 = true;
             for (auto &a : c.args)
                 if (a)
                     scanExpr(*a);
@@ -1176,11 +1221,16 @@ Lowerer::RVal Lowerer::lowerMid(const BuiltinCallExpr &c)
     RVal s = lowerArg(c, 0);
     RVal i = ensureI64(lowerArg(c, 1), c.loc);
     Value start0 = emitBinary(Opcode::Add, Type(Type::Kind::I64), i.value, Value::constInt(-1));
-    Value count = (c.args.size() >= 3 && c.args[2])
-                      ? ensureI64(lowerArg(c, 2), c.loc).value
-                      : Value::constInt(std::numeric_limits<int64_t>::max());
     curLoc = c.loc;
-    Value res = emitCallRet(Type(Type::Kind::Str), "rt_substr", {s.value, start0, count});
+    if (c.args.size() >= 3 && c.args[2])
+    {
+        RVal n = ensureI64(lowerArg(c, 2), c.loc);
+        Value res = emitCallRet(Type(Type::Kind::Str), "rt_mid3", {s.value, start0, n.value});
+        needRtMid3 = true;
+        return {res, Type(Type::Kind::Str)};
+    }
+    Value res = emitCallRet(Type(Type::Kind::Str), "rt_mid2", {s.value, start0});
+    needRtMid2 = true;
     return {res, Type(Type::Kind::Str)};
 }
 
@@ -1189,8 +1239,8 @@ Lowerer::RVal Lowerer::lowerLeft(const BuiltinCallExpr &c)
     RVal s = lowerArg(c, 0);
     RVal n = ensureI64(lowerArg(c, 1), c.loc);
     curLoc = c.loc;
-    Value res =
-        emitCallRet(Type(Type::Kind::Str), "rt_substr", {s.value, Value::constInt(0), n.value});
+    Value res = emitCallRet(Type(Type::Kind::Str), "rt_left", {s.value, n.value});
+    needRtLeft = true;
     return {res, Type(Type::Kind::Str)};
 }
 
@@ -1199,10 +1249,8 @@ Lowerer::RVal Lowerer::lowerRight(const BuiltinCallExpr &c)
     RVal s = lowerArg(c, 0);
     RVal n = ensureI64(lowerArg(c, 1), c.loc);
     curLoc = c.loc;
-    Value len = emitCallRet(Type(Type::Kind::I64), "rt_len", {s.value});
-    Value negN = emitBinary(Opcode::Mul, Type(Type::Kind::I64), n.value, Value::constInt(-1));
-    Value start = emitBinary(Opcode::Add, Type(Type::Kind::I64), len, negN);
-    Value res = emitCallRet(Type(Type::Kind::Str), "rt_substr", {s.value, start, n.value});
+    Value res = emitCallRet(Type(Type::Kind::Str), "rt_right", {s.value, n.value});
+    needRtRight = true;
     return {res, Type(Type::Kind::Str)};
 }
 
@@ -1240,19 +1288,23 @@ Lowerer::RVal Lowerer::lowerInt(const BuiltinCallExpr &c)
 
 Lowerer::RVal Lowerer::lowerInstr(const BuiltinCallExpr &c)
 {
-    std::vector<Value> args;
-    size_t idx = 0;
+    curLoc = c.loc;
     if (c.args.size() == 3)
     {
-        RVal start = ensureI64(lowerArg(c, idx++), c.loc);
-        args.push_back(start.value);
+        RVal start = ensureI64(lowerArg(c, 0), c.loc);
+        Value start0 =
+            emitBinary(Opcode::Add, Type(Type::Kind::I64), start.value, Value::constInt(-1));
+        RVal hay = lowerArg(c, 1);
+        RVal needle = lowerArg(c, 2);
+        Value res =
+            emitCallRet(Type(Type::Kind::I64), "rt_instr3", {start0, hay.value, needle.value});
+        needRtInstr3 = true;
+        return {res, Type(Type::Kind::I64)};
     }
-    RVal hay = lowerArg(c, idx++);
-    args.push_back(hay.value);
-    RVal needle = lowerArg(c, idx++);
-    args.push_back(needle.value);
-    curLoc = c.loc;
-    Value res = emitCallRet(Type(Type::Kind::I64), "rt_instr", args);
+    RVal hay = lowerArg(c, 0);
+    RVal needle = lowerArg(c, 1);
+    Value res = emitCallRet(Type(Type::Kind::I64), "rt_instr2", {hay.value, needle.value});
+    needRtInstr2 = true;
     return {res, Type(Type::Kind::I64)};
 }
 

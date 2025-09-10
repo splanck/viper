@@ -62,6 +62,24 @@ extern "C"
     /// @return Newly allocated substring.
     rt_str rt_substr(rt_str s, int64_t start, int64_t len);
 
+    /// @brief Return leftmost @p n characters of @p s.
+    rt_str rt_left(rt_str s, int64_t n);
+
+    /// @brief Return rightmost @p n characters of @p s.
+    rt_str rt_right(rt_str s, int64_t n);
+
+    /// @brief Return substring starting at @p start to end.
+    rt_str rt_mid2(rt_str s, int64_t start);
+
+    /// @brief Return substring of length @p len starting at @p start.
+    rt_str rt_mid3(rt_str s, int64_t start, int64_t len);
+
+    /// @brief Find @p needle within @p hay starting at @p start.
+    int64_t rt_instr3(int64_t start, rt_str hay, rt_str needle);
+
+    /// @brief Find @p needle within @p hay starting at 0.
+    int64_t rt_instr2(rt_str hay, rt_str needle);
+
     /// @brief Compare strings for equality.
     /// @param a First string.
     /// @param b Second string.
