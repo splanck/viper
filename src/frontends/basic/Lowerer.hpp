@@ -347,6 +347,12 @@ class Lowerer
     bool needAlloc{false};
     bool needRtStrEq{false};
     bool needRtConcat{false};
+    bool needRtLeft{false};
+    bool needRtRight{false};
+    bool needRtMid2{false};
+    bool needRtMid3{false};
+    bool needRtInstr2{false};
+    bool needRtInstr3{false};
 
     enum class RuntimeFn
     {

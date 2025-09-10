@@ -128,6 +128,52 @@ rt_str rt_substr(rt_str s, int64_t start, int64_t len)
     return r;
 }
 
+rt_str rt_left(rt_str s, int64_t n)
+{
+    return rt_substr(s, 0, n);
+}
+
+rt_str rt_right(rt_str s, int64_t n)
+{
+    int64_t len = rt_len(s);
+    int64_t start = len - n;
+    return rt_substr(s, start, n);
+}
+
+rt_str rt_mid2(rt_str s, int64_t start)
+{
+    return rt_substr(s, start, INT64_MAX);
+}
+
+rt_str rt_mid3(rt_str s, int64_t start, int64_t len)
+{
+    return rt_substr(s, start, len);
+}
+
+static int64_t rt_find(rt_str hay, int64_t start, rt_str needle)
+{
+    if (!hay || !needle)
+        return 0;
+    if (start < 0)
+        start = 0;
+    if (start > hay->size)
+        start = hay->size;
+    for (int64_t i = start; i + needle->size <= hay->size; ++i)
+        if (memcmp(hay->data + i, needle->data, (size_t)needle->size) == 0)
+            return i + 1;
+    return 0;
+}
+
+int64_t rt_instr2(rt_str hay, rt_str needle)
+{
+    return rt_find(hay, 0, needle);
+}
+
+int64_t rt_instr3(int64_t start, rt_str hay, rt_str needle)
+{
+    return rt_find(hay, start, needle);
+}
+
 int64_t rt_str_eq(rt_str a, rt_str b)
 {
     if (!a || !b)
