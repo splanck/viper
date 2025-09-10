@@ -878,9 +878,9 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeMid(const BuiltinCallExpr &c,
     if (checkArgCount(c, args, 2, 3))
     {
         checkArgType(c, 0, args[0], {Type::String});
-        checkArgType(c, 1, args[1], {Type::Int});
+        checkArgType(c, 1, args[1], {Type::Int, Type::Float});
         if (args.size() == 3)
-            checkArgType(c, 2, args[2], {Type::Int});
+            checkArgType(c, 2, args[2], {Type::Int, Type::Float});
     }
     return Type::String;
 }
@@ -891,7 +891,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeLeft(const BuiltinCallExpr &c,
     if (checkArgCount(c, args, 2, 2))
     {
         checkArgType(c, 0, args[0], {Type::String});
-        checkArgType(c, 1, args[1], {Type::Int});
+        checkArgType(c, 1, args[1], {Type::Int, Type::Float});
     }
     return Type::String;
 }
@@ -902,7 +902,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeRight(const BuiltinCallExpr &c,
     if (checkArgCount(c, args, 2, 2))
     {
         checkArgType(c, 0, args[0], {Type::String});
-        checkArgType(c, 1, args[1], {Type::Int});
+        checkArgType(c, 1, args[1], {Type::Int, Type::Float});
     }
     return Type::String;
 }
@@ -939,7 +939,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeInstr(const BuiltinCallExpr &c,
         size_t idx = 0;
         if (args.size() == 3)
         {
-            checkArgType(c, idx, args[idx], {Type::Int});
+            checkArgType(c, idx, args[idx], {Type::Int, Type::Float});
             idx++;
         }
         checkArgType(c, idx, args[idx], {Type::String});
