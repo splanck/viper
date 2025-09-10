@@ -34,5 +34,23 @@ int main()
     rt_string num = rt_const_cstr("  -42 ");
     assert(rt_to_int(num) == -42);
 
+    rt_string abcde = rt_const_cstr("ABCDE");
+
+    rt_string left = rt_left(abcde, 2);
+    rt_string ab = rt_const_cstr("AB");
+    assert(rt_str_eq(left, ab));
+
+    rt_string right = rt_right(abcde, 3);
+    rt_string cde = rt_const_cstr("CDE");
+    assert(rt_str_eq(right, cde));
+
+    rt_string mid_full = rt_mid2(abcde, 1);
+    rt_string bcde = rt_const_cstr("BCDE");
+    assert(rt_str_eq(mid_full, bcde));
+
+    rt_string mid_part = rt_mid3(abcde, 1, 2);
+    rt_string bc = rt_const_cstr("BC");
+    assert(rt_str_eq(mid_part, bc));
+
     return 0;
 }
