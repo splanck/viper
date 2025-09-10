@@ -236,7 +236,7 @@ Lowerer::ExprType Lowerer::scanBuiltinCallExpr(const BuiltinCallExpr &c)
                     scanExpr(*a);
             return ExprType::Str;
         case BuiltinCallExpr::Builtin::Instr:
-            if (c.args.size() == 3)
+            if (c.args.size() >= 3 && c.args[0])
                 needRtInstr3 = true;
             else
                 needRtInstr2 = true;
@@ -1289,7 +1289,7 @@ Lowerer::RVal Lowerer::lowerInt(const BuiltinCallExpr &c)
 Lowerer::RVal Lowerer::lowerInstr(const BuiltinCallExpr &c)
 {
     curLoc = c.loc;
-    if (c.args.size() == 3)
+    if (c.args.size() >= 3 && c.args[0])
     {
         RVal start = ensureI64(lowerArg(c, 0), c.loc);
         Value start0 =

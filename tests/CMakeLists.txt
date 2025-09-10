@@ -564,6 +564,18 @@ add_test(NAME basic_to_il_instr COMMAND ${CMAKE_COMMAND}
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/instr.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 
+add_test(NAME basic_to_il_len_mid COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/goldens/LenMid.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/basic/goldens/LenMid.il
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
+
+add_test(NAME basic_to_il_instr_dispatch COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/goldens/Instr.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/basic/goldens/Instr.il
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
+
 add_test(NAME basic_to_il_labels_proc_loops COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
   -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/goldens/labels_proc_loops.bas
