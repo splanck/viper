@@ -109,3 +109,8 @@ To execute IL with the interpreter:
 ```bash
 build/src/tools/ilc/ilc -run examples/il/ex1_hello_cond.il
 ```
+
+## References
+
+- [BASIC Reference](docs/references/basic.md)
+- [IL Reference](docs/references/il.md)
