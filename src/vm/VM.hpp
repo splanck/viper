@@ -26,10 +26,10 @@ class DebugScript;
 /// @invariant Only one member is valid based on value type.
 union Slot
 {
-    int64_t i64; ///< Signed integer value
-    double f64;  ///< Floating-point value
-    void *ptr;   ///< Generic pointer
-    rt_str str;  ///< Runtime string handle
+    int64_t i64;   ///< Signed integer value
+    double f64;    ///< Floating-point value
+    void *ptr;     ///< Generic pointer
+    rt_string str; ///< Runtime string handle
 };
 
 /// @brief Call frame storing registers and operand stack.
@@ -70,7 +70,7 @@ class VM
     uint64_t instrCount = 0;     ///< Executed instruction count
     uint64_t stepBudget = 0;     ///< Remaining instructions to step before pausing
     std::unordered_map<std::string, const il::core::Function *> fnMap; ///< Name lookup
-    std::unordered_map<std::string, rt_str> strMap;                    ///< String pool
+    std::unordered_map<std::string, rt_string> strMap;                 ///< String pool
 
     /// @brief Execute function @p fn with optional arguments.
     /// @param fn Function to execute.
