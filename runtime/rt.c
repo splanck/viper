@@ -289,6 +289,29 @@ rt_string rt_lcase(rt_string s)
     return r;
 }
 
+rt_string rt_chr(int64_t code)
+{
+    if (code < 0 || code > 255)
+        rt_trap("rt_chr: range");
+    rt_string s = (rt_string)rt_alloc(sizeof(*s));
+    s->refcnt = 1;
+    s->size = 1;
+    s->capacity = 1;
+    s->data = (char *)rt_alloc(2);
+    s->data[0] = (char)(unsigned char)code;
+    s->data[1] = '\0';
+    return s;
+}
+
+int64_t rt_asc(rt_string s)
+{
+    if (!s)
+        rt_trap("rt_asc: null");
+    if (s->size <= 0 || !s->data)
+        return 0;
+    return (int64_t)(unsigned char)s->data[0];
+}
+
 int64_t rt_str_eq(rt_string a, rt_string b)
 {
     if (!a || !b)
