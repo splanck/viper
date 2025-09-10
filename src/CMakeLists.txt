@@ -64,6 +64,7 @@ add_library(fe_basic STATIC
   frontends/basic/Lowerer.cpp
   frontends/basic/SemanticAnalyzer.cpp
   frontends/basic/ConstFolder.cpp
+  frontends/basic/Intrinsics.cpp
   frontends/basic/DiagnosticEmitter.cpp)
 target_link_libraries(fe_basic PUBLIC support il_build il_core)
 target_include_directories(fe_basic PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
