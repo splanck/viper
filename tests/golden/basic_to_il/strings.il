@@ -4,6 +4,10 @@ extern @rt_print_i64(i64) -> void
 extern @rt_print_f64(f64) -> void
 extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
+extern @rt_left(str, i64) -> str
+extern @rt_right(str, i64) -> str
+extern @rt_mid2(str, i64) -> str
+extern @rt_mid3(str, i64, i64) -> str
 global const str @.L0 = "HELLO"
 global const str @.L1 = "
 "
@@ -36,8 +40,8 @@ L30:
   %t5 = load str, %t0
   .loc 1 3 19
   %t6 = add 2, -1
-  .loc 1 3 10
-  %t7 = call @rt_substr(%t5, %t6, 3)
+  .loc 1 3 22
+  %t7 = call @rt_mid3(%t5, %t6, 3)
   .loc 1 3 4
   call @rt_print_str(%t7)
   .loc 1 3 4
@@ -52,7 +56,7 @@ L40:
   .loc 1 4 19
   %t10 = add 3, -1
   .loc 1 4 10
-  %t11 = call @rt_substr(%t9, %t10, 9223372036854775807)
+  %t11 = call @rt_mid2(%t9, %t10)
   .loc 1 4 4
   call @rt_print_str(%t11)
   .loc 1 4 4
@@ -65,7 +69,7 @@ L50:
   .loc 1 5 16
   %t13 = load str, %t0
   .loc 1 5 10
-  %t14 = call @rt_substr(%t13, 0, 2)
+  %t14 = call @rt_left(%t13, 2)
   .loc 1 5 4
   call @rt_print_str(%t14)
   .loc 1 5 4
@@ -78,19 +82,13 @@ L60:
   .loc 1 6 17
   %t16 = load str, %t0
   .loc 1 6 10
-  %t17 = call @rt_len(%t16)
-  .loc 1 6 10
-  %t18 = mul 2, -1
-  .loc 1 6 10
-  %t19 = add %t17, %t18
-  .loc 1 6 10
-  %t20 = call @rt_substr(%t16, %t19, 2)
+  %t17 = call @rt_right(%t16, 2)
   .loc 1 6 4
-  call @rt_print_str(%t20)
+  call @rt_print_str(%t17)
   .loc 1 6 4
-  %t21 = const_str @.L1
+  %t18 = const_str @.L1
   .loc 1 6 4
-  call @rt_print_str(%t21)
+  call @rt_print_str(%t18)
   .loc 1 6 4
   br L70
 L70:

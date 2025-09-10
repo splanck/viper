@@ -87,6 +87,30 @@ Slot RuntimeBridge::call(const std::string &name,
     {
         res.ptr = rt_alloc(args[0].i64);
     }
+    else if (name == "rt_left")
+    {
+        res.str = rt_left(args[0].str, args[1].i64);
+    }
+    else if (name == "rt_right")
+    {
+        res.str = rt_right(args[0].str, args[1].i64);
+    }
+    else if (name == "rt_mid2")
+    {
+        res.str = rt_mid2(args[0].str, args[1].i64);
+    }
+    else if (name == "rt_mid3")
+    {
+        res.str = rt_mid3(args[0].str, args[1].i64, args[2].i64);
+    }
+    else if (name == "rt_instr2")
+    {
+        res.i64 = rt_instr2(args[0].str, args[1].str);
+    }
+    else if (name == "rt_instr3")
+    {
+        res.i64 = rt_instr3(args[0].i64, args[1].str, args[2].str);
+    }
     else if (name == "rt_sqrt")
     {
         res.f64 = rt_sqrt(args[0].f64);
