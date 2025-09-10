@@ -88,16 +88,16 @@ extern "C"
     rt_string rt_mid3(rt_string s, int64_t start, int64_t len);
 
     /// @brief Find @p needle within @p hay starting at @p start.
-    /// @param start Starting offset in @p hay (0-based).
+    /// @param start 1-based index after which search begins; clamped to [1, rt_len(hay) + 1].
     /// @param hay Haystack string; null returns 0.
     /// @param needle Needle string; null returns 0.
-    /// @return 1-based index of match or 0 if not found.
+    /// @return 1-based index of match or 0 if not found. Empty @p needle returns @p start.
     int64_t rt_instr3(int64_t start, rt_string hay, rt_string needle);
 
-    /// @brief Find @p needle within @p hay starting at 0.
+    /// @brief Find @p needle within @p hay starting at index 1.
     /// @param hay Haystack string; null returns 0.
     /// @param needle Needle string; null returns 0.
-    /// @return 1-based index of match or 0 if not found.
+    /// @return 1-based index of match or 0 if not found. Empty @p needle returns 1.
     int64_t rt_instr2(rt_string hay, rt_string needle);
 
     /// @brief Remove leading ASCII whitespace.

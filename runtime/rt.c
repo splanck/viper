@@ -195,11 +195,24 @@ static int64_t rt_find(rt_string hay, int64_t start, rt_string needle)
 
 int64_t rt_instr2(rt_string hay, rt_string needle)
 {
+    if (!hay || !needle)
+        return 0;
+    if (needle->size == 0)
+        return 1;
     return rt_find(hay, 0, needle);
 }
 
 int64_t rt_instr3(int64_t start, rt_string hay, rt_string needle)
 {
+    if (!hay || !needle)
+        return 0;
+    int64_t len = hay->size;
+    if (start < 1)
+        start = 1;
+    if (start > len + 1)
+        start = len + 1;
+    if (needle->size == 0)
+        return start;
     return rt_find(hay, start, needle);
 }
 
