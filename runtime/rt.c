@@ -380,3 +380,19 @@ rt_string rt_f64_to_str(double v)
     memcpy(s->data, buf, (size_t)n + 1);
     return s;
 }
+
+double rt_val(rt_string s)
+{
+    if (!s)
+        rt_trap("rt_val: null");
+    char *endp = NULL;
+    double v = strtod(s->data, &endp);
+    if (endp == s->data)
+        return 0.0;
+    return v;
+}
+
+rt_string rt_str(double v)
+{
+    return rt_f64_to_str(v);
+}
