@@ -136,8 +136,8 @@ extern "C"
     rt_string rt_chr(int64_t code);
 
     /// @brief Return ASCII code of first character of @p s.
-    /// @param s Source string; traps if null or empty.
-    /// @return Code 0-255 of first character.
+    /// @param s Source string; traps if null.
+    /// @return Code 0-255 of first character, or 0 if empty.
     int64_t rt_asc(rt_string s);
 
     /// @brief Compare strings for equality.
