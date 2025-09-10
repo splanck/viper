@@ -145,12 +145,12 @@ void cbr(Value cond, Label t, Label f);
 - Files: rt_print.c, rt_string.c, rt_input.c, rt_mem.c, rt_math.c
 - Headers: rt.hpp with declarations:
 
-void rt_print_str(rt_str s);
+void rt_print_str(rt_string s);
 void rt_print_i64(int64_t v);
 void rt_print_f64(double v);
-rt_str rt_input_line(void);
-int64_t rt_len(rt_str s);
-rt_str rt_concat(rt_str a, rt_str b);
+rt_string rt_input_line(void);
+int64_t rt_len(rt_string s);
+rt_string rt_concat(rt_string a, rt_string b);
 // ...
 void\* rt_alloc(int64_t bytes); // simple wrapper on malloc for v1
 
