@@ -2,7 +2,7 @@
 
 int main()
 {
-    rt_string bad = rt_const_cstr("12x");
-    rt_to_int(bad);
+    rt_string abcde = rt_const_cstr("ABCDE");
+    rt_mid2(abcde, -1);
     return 0;
 }
