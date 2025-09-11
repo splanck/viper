@@ -9,6 +9,12 @@
 #include <iostream>
 #include <string>
 
+/// @brief Print synopsis and option hints for the `ilc` CLI.
+/// @details Lists supported subcommands (`-run`, `front basic`, and `il-opt`)
+///          along with their expected arguments. This function serves as a
+///          reference when no or invalid arguments are provided and mirrors the
+///          capabilities of the associated handlers `cmdRunIL`, `cmdFrontBasic`,
+///          and `cmdILOpt`.
 void usage()
 {
     std::cerr
@@ -29,6 +35,15 @@ void usage()
     std::cerr << "\n";
 }
 
+/// @brief Program entry for the `ilc` command-line tool.
+/// @param argc Number of command-line arguments.
+/// @param argv Array of argument strings.
+/// @return Exit status of the selected subcommand or `1` on error.
+/// @details The first argument determines which handler processes the request:
+///          `cmdRunIL` executes `.il` programs, `cmdILOpt` performs optimization
+///          passes, and `cmdFrontBasic` drives the BASIC front end. Overall
+///          flow: validate the argument count, parse the subcommand, dispatch to
+///          the matching handler, and show usage on failure.
 int main(int argc, char **argv)
 {
     if (argc < 2)
