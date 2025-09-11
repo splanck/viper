@@ -131,9 +131,13 @@ rt_string rt_substr(rt_string s, int64_t start, int64_t len)
 rt_string rt_left(rt_string s, int64_t n)
 {
     if (!s)
-        rt_trap("rt_left: null");
+        rt_trap("LEFT$: null string");
     if (n < 0)
-        rt_trap("rt_left: negative");
+    {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "LEFT$: len must be >= 0 (got %lld)", (long long)n);
+        rt_trap(buf);
+    }
     if (n > s->size)
         n = s->size;
     return rt_substr(s, 0, n);
@@ -142,9 +146,13 @@ rt_string rt_left(rt_string s, int64_t n)
 rt_string rt_right(rt_string s, int64_t n)
 {
     if (!s)
-        rt_trap("rt_right: null");
+        rt_trap("RIGHT$: null string");
     if (n < 0)
-        rt_trap("rt_right: negative");
+    {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "RIGHT$: len must be >= 0 (got %lld)", (long long)n);
+        rt_trap(buf);
+    }
     int64_t len = s->size;
     if (n > len)
         n = len;
@@ -155,9 +163,13 @@ rt_string rt_right(rt_string s, int64_t n)
 rt_string rt_mid2(rt_string s, int64_t start)
 {
     if (!s)
-        rt_trap("rt_mid2: null");
+        rt_trap("MID$: null string");
     if (start < 0)
-        rt_trap("rt_mid2: negative");
+    {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "MID$: start must be >= 0 (got %lld)", (long long)start);
+        rt_trap(buf);
+    }
     int64_t len = s->size;
     if (start > len)
         start = len;
@@ -168,9 +180,19 @@ rt_string rt_mid2(rt_string s, int64_t start)
 rt_string rt_mid3(rt_string s, int64_t start, int64_t len)
 {
     if (!s)
-        rt_trap("rt_mid3: null");
-    if (start < 0 || len < 0)
-        rt_trap("rt_mid3: negative");
+        rt_trap("MID$: null string");
+    if (start < 0)
+    {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "MID$: start must be >= 0 (got %lld)", (long long)start);
+        rt_trap(buf);
+    }
+    if (len < 0)
+    {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "MID$: len must be >= 0 (got %lld)", (long long)len);
+        rt_trap(buf);
+    }
     int64_t slen = s->size;
     if (start > slen)
         start = slen;
@@ -292,7 +314,11 @@ rt_string rt_lcase(rt_string s)
 rt_string rt_chr(int64_t code)
 {
     if (code < 0 || code > 255)
-        rt_trap("rt_chr: range");
+    {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "CHR$: code must be 0-255 (got %lld)", (long long)code);
+        rt_trap(buf);
+    }
     rt_string s = (rt_string)rt_alloc(sizeof(*s));
     s->refcnt = 1;
     s->size = 1;

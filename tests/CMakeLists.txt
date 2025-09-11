@@ -136,7 +136,10 @@ add_test(NAME test_rt_chr_asc COMMAND test_rt_chr_asc)
 add_executable(test_rt_chr_invalid runtime/RTChrInvalidTests.cpp)
 target_link_libraries(test_rt_chr_invalid PRIVATE rt)
 add_test(NAME test_rt_chr_invalid COMMAND test_rt_chr_invalid)
-set_tests_properties(test_rt_chr_invalid PROPERTIES WILL_FAIL TRUE)
+
+add_executable(test_rt_string_ranges runtime/RTStringRangeTests.cpp)
+target_link_libraries(test_rt_string_ranges PRIVATE rt)
+add_test(NAME test_rt_string_ranges COMMAND test_rt_string_ranges)
 
 add_executable(float_out e2e/support/FloatOut.cpp)
 
