@@ -5,7 +5,7 @@ extern @rt_print_str(str) -> void
 
 global const str @.L0 = "DONE"
 
-func @main() -> i32 {
+func @main() -> i64 {
 entry:
   %n_slot = alloca 8
   %i_slot = alloca 8

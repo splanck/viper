@@ -12,7 +12,7 @@ global const str @.L2 = " "
 global const str @.L3 = "JOHN DOE"
 global const str @.L4 = "\n"
 
-func @main() -> i32 {
+func @main() -> i64 {
 entry:
   %a_slot = alloca 8
   %b_slot = alloca 8

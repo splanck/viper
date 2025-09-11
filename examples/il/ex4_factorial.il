@@ -7,7 +7,7 @@ extern @rt_to_int(str) -> i64
 global const str @.L0 = "FACTORIAL"
 global const str @.L1 = "ENTER N:"
 
-func @main() -> i32 {
+func @main() -> i64 {
 entry:
   %s_slot = alloca 8
   %n_slot = alloca 8

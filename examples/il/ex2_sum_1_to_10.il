@@ -6,7 +6,7 @@ global const str @.L0 = "SUM 1..10"
 global const str @.L1 = "DONE"
 global const str @.L2 = "\n"
 
-func @main() -> i32 {
+func @main() -> i64 {
 entry:
   %i_slot = alloca 8
   %s_slot = alloca 8
