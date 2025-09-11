@@ -8,7 +8,9 @@
 
 namespace il::support
 {
-
+/// @brief Record a diagnostic and update counters.
+/// @param d Diagnostic to store.
+/// @note Increments error or warning counts based on severity.
 void DiagnosticEngine::report(Diagnostic d)
 {
     if (d.severity == Severity::Error)
@@ -18,6 +20,9 @@ void DiagnosticEngine::report(Diagnostic d)
     diags_.push_back(std::move(d));
 }
 
+/// @brief Convert a severity enum to a string.
+/// @param s Severity value to convert.
+/// @return Lowercase string representation of @p s.
 static const char *toString(Severity s)
 {
     switch (s)
@@ -32,6 +37,10 @@ static const char *toString(Severity s)
     return "";
 }
 
+/// @brief Print all recorded diagnostics.
+/// @param os Output stream receiving diagnostic text.
+/// @param sm Optional source manager for resolving locations.
+/// @note Each diagnostic appears on its own line with severity and message.
 void DiagnosticEngine::printAll(std::ostream &os, const SourceManager *sm) const
 {
     for (const auto &d : diags_)
