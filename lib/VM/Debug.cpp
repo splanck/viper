@@ -13,6 +13,9 @@
 namespace il::vm
 {
 
+/// @brief Normalize a file system path for breakpoint comparison.
+/// @param p Path to normalize. Backslashes are replaced with '/'.
+/// @return Canonical path with resolved '.' and '..' segments.
 std::string DebugCtrl::normalizePath(std::string p)
 {
     for (char &c : p)
@@ -59,23 +62,36 @@ std::string DebugCtrl::normalizePath(std::string p)
     return out;
 }
 
+/// @brief Intern a block label for breakpoint lookup.
+/// @param label Block label to intern.
+/// @return Symbol representing the interned label.
 il::support::Symbol DebugCtrl::internLabel(std::string_view label)
 {
     return interner_.intern(label);
 }
 
+/// @brief Register a block-level breakpoint.
+/// @param sym Interned symbol of the target block.
 void DebugCtrl::addBreak(il::support::Symbol sym)
 {
     if (sym)
         breaks_.insert(sym);
 }
 
+/// @brief Determine if a basic block has a breakpoint.
+/// @param blk Block being executed.
+/// @return True when a breakpoint for @p blk exists.
 bool DebugCtrl::shouldBreak(const il::core::BasicBlock &blk) const
 {
     il::support::Symbol sym = interner_.intern(blk.label);
     return breaks_.count(sym) != 0;
 }
 
+/// @brief Add a source line breakpoint.
+/// @param file Path to the source file; normalized for comparison.
+/// @param line One-based line number to break on.
+/// @details Both the normalized path and its basename are stored so a
+///          breakpoint can match by either.
 void DebugCtrl::addBreakSrcLine(std::string file, int line)
 {
     std::string normFile = normalizePath(std::move(file));
@@ -84,21 +100,33 @@ void DebugCtrl::addBreakSrcLine(std::string file, int line)
     srcLineBPs_.push_back({normFile, base, line});
 }
 
+/// @brief Check if any source line breakpoints are registered.
+/// @return True when there is at least one source line breakpoint.
 bool DebugCtrl::hasSrcLineBPs() const
 {
     return !srcLineBPs_.empty();
 }
 
+/// @brief Set the source manager used for resolving file paths.
+/// @param sm Pointer to the source manager instance.
 void DebugCtrl::setSourceManager(const il::support::SourceManager *sm)
 {
     sm_ = sm;
 }
 
+/// @brief Retrieve the source manager used for resolving file paths.
+/// @return Pointer previously supplied via setSourceManager().
 const il::support::SourceManager *DebugCtrl::getSourceManager() const
 {
     return sm_;
 }
 
+/// @brief Decide whether an instruction triggers a source line breakpoint.
+/// @param I Instruction to test.
+/// @return True when a registered breakpoint matches the instruction's source.
+/// @details The instruction's file is normalized and compared by both full
+///          path and basename. A matching line number causes a break unless it
+///          was the most recent hit.
 bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
 {
     if (!sm_ || srcLineBPs_.empty() || !I.loc.isValid())
@@ -130,6 +158,8 @@ bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
     return false;
 }
 
+/// @brief Register a variable to watch for changes.
+/// @param name Identifier of the variable to watch.
 void DebugCtrl::addWatch(std::string_view name)
 {
     il::support::Symbol sym = interner_.intern(name);
@@ -137,6 +167,15 @@ void DebugCtrl::addWatch(std::string_view name)
         watches_[sym];
 }
 
+/// @brief Handle a store to a watched variable.
+/// @param name Identifier being stored to.
+/// @param ty Type of the stored value.
+/// @param i64 Integer payload when @p ty is an integer type.
+/// @param f64 Floating payload when @p ty is F64.
+/// @param fn Function name containing the store.
+/// @param blk Basic block label.
+/// @param ip Instruction position within the block.
+/// @details Emits a message when the watched value changes.
 void DebugCtrl::onStore(std::string_view name,
                         il::core::Type::Kind ty,
                         int64_t i64,
@@ -180,6 +219,7 @@ void DebugCtrl::onStore(std::string_view name,
     w.hasValue = true;
 }
 
+/// @brief Clear the record of the last source-line breakpoint hit.
 void DebugCtrl::resetLastHit()
 {
     lastHitSrc_.reset();
