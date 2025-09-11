@@ -16,12 +16,18 @@
 namespace il::support
 {
 
-/// @brief Represents a position within a source file.
+/// Represents an absolute position within a source file as tracked by
+/// SourceManager. A zero file_id denotes an invalid location.
 struct SourceLoc
 {
-    uint32_t file_id = 0; ///< Identifier returned by SourceManager
-    uint32_t line = 0;    ///< 1-based line number
-    uint32_t column = 0;  ///< 1-based column number
+    /// Identifier assigned by SourceManager; 0 indicates an invalid location.
+    uint32_t file_id = 0;
+
+    /// 1-based line number within the file; 0 if the line is unknown.
+    uint32_t line = 0;
+
+    /// 1-based column number within the line; 0 if the column is unknown.
+    uint32_t column = 0;
 
     /// @brief Whether this location refers to a real file.
     bool isValid() const
@@ -30,7 +36,9 @@ struct SourceLoc
     }
 };
 
-/// @brief Manages file identifiers and paths.
+/// Maintains the mapping between numeric file identifiers and their
+/// corresponding filesystem paths. Clients can register files and look up
+/// paths by identifier.
 class SourceManager
 {
   public:
@@ -45,6 +53,7 @@ class SourceManager
     std::string_view getPath(uint32_t file_id) const;
 
   private:
-    std::vector<std::string> files_; ///< Stored file paths
+    /// Stored file paths. Index corresponds to file identifier; index 0 is reserved.
+    std::vector<std::string> files_;
 };
 } // namespace il::support
