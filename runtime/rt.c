@@ -11,12 +11,35 @@
 #include <stdlib.h>
 #include <string.h>
 
+/**
+ * Purpose: Provide a canonical empty runtime string to callers.
+ *
+ * Parameters: none.
+ *
+ * Returns: Pointer to a shared empty string instance. The refcount is set to
+ * INT64_MAX so the singleton is never freed.
+ *
+ * Side effects: Initializes a static string on first invocation but performs
+ * no dynamic allocation thereafter.
+ */
 static rt_string rt_empty_string(void)
 {
+    // Singleton empty string with effectively infinite refcount to prevent
+    // deallocation.
     static struct rt_string_impl empty = {INT64_MAX, 0, 0, ""};
     return &empty;
 }
 
+/**
+ * Purpose: Terminate the program immediately due to a fatal runtime error.
+ *
+ * Parameters:
+ *   msg - Optional message describing the reason for the abort.
+ *
+ * Returns: Never returns.
+ *
+ * Side effects: Writes an error message to stderr and exits with status 1.
+ */
 void rt_abort(const char *msg)
 {
     if (msg)
@@ -26,16 +49,49 @@ void rt_abort(const char *msg)
     exit(1);
 }
 
+/**
+ * Purpose: Trap handler used by the VM layer. Can be overridden by hosts.
+ *
+ * Parameters:
+ *   msg - Optional message describing the trap condition.
+ *
+ * Returns: Never returns.
+ *
+ * Side effects: Delegates to rt_abort by default. Marked weak so embedders may
+ * supply their own implementation.
+ */
 __attribute__((weak)) void vm_trap(const char *msg)
 {
     rt_abort(msg);
 }
 
+/**
+ * Purpose: Entry point for raising runtime traps from helper routines.
+ *
+ * Parameters:
+ *   msg - Message describing the trap condition.
+ *
+ * Returns: Never returns.
+ *
+ * Side effects: Forwards the message to the VM trap handler.
+ */
 void rt_trap(const char *msg)
 {
     vm_trap(msg);
 }
 
+/**
+ * Purpose: Allocate a block of memory for runtime usage.
+ *
+ * Parameters:
+ *   bytes - Number of bytes to allocate. Must be non-negative.
+ *
+ * Returns: Pointer to the allocated memory on success; does not return on
+ * allocation failure or negative size.
+ *
+ * Side effects: May terminate the program via rt_trap on invalid inputs or
+ * allocation failures.
+ */
 void *rt_alloc(int64_t bytes)
 {
     if (bytes < 0)
@@ -46,6 +102,18 @@ void *rt_alloc(int64_t bytes)
     return p;
 }
 
+/**
+ * Purpose: Wrap a constant C string in the runtime string structure without
+ * copying its contents.
+ *
+ * Parameters:
+ *   c - NUL-terminated C string to wrap. Must outlive the returned object.
+ *
+ * Returns: Runtime string referencing the existing character data, or NULL if
+ * c is NULL.
+ *
+ * Side effects: Allocates a runtime string header but not the underlying data.
+ */
 rt_string rt_const_cstr(const char *c)
 {
     if (!c)
@@ -58,22 +126,64 @@ rt_string rt_const_cstr(const char *c)
     return s;
 }
 
+/**
+ * Purpose: Write a runtime string to standard output without a trailing
+ * newline.
+ *
+ * Parameters:
+ *   s - String to print; NULL strings are ignored.
+ *
+ * Returns: void.
+ *
+ * Side effects: Writes to stdout.
+ */
 void rt_print_str(rt_string s)
 {
     if (s && s->data)
         fwrite(s->data, 1, (size_t)s->size, stdout);
 }
 
+/**
+ * Purpose: Print a 64-bit integer in decimal form to stdout.
+ *
+ * Parameters:
+ *   v - Value to print.
+ *
+ * Returns: void.
+ *
+ * Side effects: Writes to stdout.
+ */
 void rt_print_i64(int64_t v)
 {
     printf("%lld", (long long)v);
 }
 
+/**
+ * Purpose: Print a double-precision floating-point number to stdout.
+ *
+ * Parameters:
+ *   v - Value to print.
+ *
+ * Returns: void.
+ *
+ * Side effects: Writes to stdout.
+ */
 void rt_print_f64(double v)
 {
     printf("%g", v);
 }
 
+/**
+ * Purpose: Read a single line of input from stdin into a runtime string.
+ *
+ * Parameters: none.
+ *
+ * Returns: Newly allocated runtime string containing the line without the
+ * trailing newline. Returns NULL on EOF before any characters are read.
+ *
+ * Side effects: Reads from stdin and performs heap allocations. May terminate
+ * via rt_trap on allocation failures.
+ */
 rt_string rt_input_line(void)
 {
     size_t cap = 1024;
@@ -119,11 +229,33 @@ rt_string rt_input_line(void)
     return s;
 }
 
+/**
+ * Purpose: Return the length of a runtime string.
+ *
+ * Parameters:
+ *   s - Runtime string; may be NULL.
+ *
+ * Returns: Number of characters in the string, or 0 if s is NULL.
+ *
+ * Side effects: None.
+ */
 int64_t rt_len(rt_string s)
 {
     return s ? s->size : 0;
 }
 
+/**
+ * Purpose: Concatenate two runtime strings into a new string.
+ *
+ * Parameters:
+ *   a - Left operand; may be NULL.
+ *   b - Right operand; may be NULL.
+ *
+ * Returns: Newly allocated runtime string containing the concatenation of a
+ * and b.
+ *
+ * Side effects: Allocates memory; may terminate via rt_trap on failure.
+ */
 rt_string rt_concat(rt_string a, rt_string b)
 {
     int64_t asz = a ? a->size : 0;
@@ -142,6 +274,19 @@ rt_string rt_concat(rt_string a, rt_string b)
     return s;
 }
 
+/**
+ * Purpose: Extract a substring from a runtime string.
+ *
+ * Parameters:
+ *   s     - Source string; must not be NULL.
+ *   start - Starting index (0-based); negative values clamp to 0.
+ *   len   - Maximum number of characters to copy; negative values yield 0.
+ *
+ * Returns: Newly allocated substring, or a reference to s if start is 0 and
+ * len equals the string's length.
+ *
+ * Side effects: May increment reference count of s or allocate new memory.
+ */
 rt_string rt_substr(rt_string s, int64_t start, int64_t len)
 {
     if (!s)
@@ -173,6 +318,18 @@ rt_string rt_substr(rt_string s, int64_t start, int64_t len)
     return r;
 }
 
+/**
+ * Purpose: Return the leftmost n characters of a string.
+ *
+ * Parameters:
+ *   s - Source string; must not be NULL.
+ *   n - Number of characters to take; must be non-negative.
+ *
+ * Returns: Newly allocated string containing the prefix, or a reference to s
+ * if n covers the entire string.
+ *
+ * Side effects: May allocate memory or increment reference count of s.
+ */
 rt_string rt_left(rt_string s, int64_t n)
 {
     if (!s)
@@ -194,6 +351,18 @@ rt_string rt_left(rt_string s, int64_t n)
     return rt_substr(s, 0, n);
 }
 
+/**
+ * Purpose: Return the rightmost n characters of a string.
+ *
+ * Parameters:
+ *   s - Source string; must not be NULL.
+ *   n - Number of characters to take; must be non-negative.
+ *
+ * Returns: Newly allocated string containing the suffix, or a reference to s
+ * if n covers the entire string.
+ *
+ * Side effects: May allocate memory or increment reference count of s.
+ */
 rt_string rt_right(rt_string s, int64_t n)
 {
     if (!s)
@@ -217,6 +386,17 @@ rt_string rt_right(rt_string s, int64_t n)
     return rt_substr(s, start, n);
 }
 
+/**
+ * Purpose: Return a substring starting at index start extending to the end.
+ *
+ * Parameters:
+ *   s     - Source string; must not be NULL.
+ *   start - Starting index; must be non-negative.
+ *
+ * Returns: Newly allocated substring or reference to s if start <= 0.
+ *
+ * Side effects: May allocate memory or increment reference count of s.
+ */
 rt_string rt_mid2(rt_string s, int64_t start)
 {
     if (!s)
@@ -240,6 +420,20 @@ rt_string rt_mid2(rt_string s, int64_t start)
     return rt_substr(s, start, n);
 }
 
+/**
+ * Purpose: Return a substring starting at index start with at most len
+ * characters.
+ *
+ * Parameters:
+ *   s     - Source string; must not be NULL.
+ *   start - Starting index; must be non-negative.
+ *   len   - Number of characters to extract; must be non-negative.
+ *
+ * Returns: Newly allocated substring, or a reference to s when the entire
+ * string is selected.
+ *
+ * Side effects: May allocate memory or increment reference count of s.
+ */
 rt_string rt_mid3(rt_string s, int64_t start, int64_t len)
 {
     if (!s)
@@ -270,6 +464,19 @@ rt_string rt_mid3(rt_string s, int64_t start, int64_t len)
     return rt_substr(s, start, len);
 }
 
+/**
+ * Purpose: Search for a substring within another string starting at a given
+ * position.
+ *
+ * Parameters:
+ *   hay    - Haystack string to search.
+ *   start  - 0-based starting position for the search.
+ *   needle - Needle string to locate.
+ *
+ * Returns: 1-based index of the first occurrence, or 0 if not found.
+ *
+ * Side effects: None.
+ */
 static int64_t rt_find(rt_string hay, int64_t start, rt_string needle)
 {
     if (!hay || !needle)
@@ -284,6 +491,18 @@ static int64_t rt_find(rt_string hay, int64_t start, rt_string needle)
     return 0;
 }
 
+/**
+ * Purpose: Find the position of one string within another.
+ *
+ * Parameters:
+ *   hay    - Haystack string to search.
+ *   needle - Needle string to locate.
+ *
+ * Returns: 1-based index of the first occurrence, or 0 if not found. An empty
+ * needle returns 1.
+ *
+ * Side effects: None.
+ */
 int64_t rt_instr2(rt_string hay, rt_string needle)
 {
     if (!hay || !needle)
@@ -293,6 +512,20 @@ int64_t rt_instr2(rt_string hay, rt_string needle)
     return rt_find(hay, 0, needle);
 }
 
+/**
+ * Purpose: Find the position of a substring starting from a specific 1-based
+ * offset.
+ *
+ * Parameters:
+ *   start  - 1-based starting index for the search.
+ *   hay    - Haystack string to search.
+ *   needle - Needle string to locate.
+ *
+ * Returns: 1-based index of the first occurrence at or after start, or 0 if
+ * not found. An empty needle returns start clamped to [1, len+1].
+ *
+ * Side effects: None.
+ */
 int64_t rt_instr3(int64_t start, rt_string hay, rt_string needle)
 {
     if (!hay || !needle)
@@ -307,6 +540,16 @@ int64_t rt_instr3(int64_t start, rt_string hay, rt_string needle)
     return rt_find(hay, start, needle);
 }
 
+/**
+ * Purpose: Remove leading spaces and tabs from a string.
+ *
+ * Parameters:
+ *   s - Source string; must not be NULL.
+ *
+ * Returns: Newly allocated trimmed string.
+ *
+ * Side effects: Allocates memory via rt_substr.
+ */
 rt_string rt_ltrim(rt_string s)
 {
     if (!s)
@@ -317,6 +560,16 @@ rt_string rt_ltrim(rt_string s)
     return rt_substr(s, i, s->size - i);
 }
 
+/**
+ * Purpose: Remove trailing spaces and tabs from a string.
+ *
+ * Parameters:
+ *   s - Source string; must not be NULL.
+ *
+ * Returns: Newly allocated trimmed string.
+ *
+ * Side effects: Allocates memory via rt_substr.
+ */
 rt_string rt_rtrim(rt_string s)
 {
     if (!s)
@@ -327,6 +580,16 @@ rt_string rt_rtrim(rt_string s)
     return rt_substr(s, 0, end);
 }
 
+/**
+ * Purpose: Remove leading and trailing spaces and tabs from a string.
+ *
+ * Parameters:
+ *   s - Source string; must not be NULL.
+ *
+ * Returns: Newly allocated trimmed string.
+ *
+ * Side effects: Allocates memory via rt_substr.
+ */
 rt_string rt_trim(rt_string s)
 {
     if (!s)
@@ -340,6 +603,16 @@ rt_string rt_trim(rt_string s)
     return rt_substr(s, start, end - start);
 }
 
+/**
+ * Purpose: Convert all alphabetic characters in a string to uppercase.
+ *
+ * Parameters:
+ *   s - Source string; must not be NULL.
+ *
+ * Returns: Newly allocated uppercase string.
+ *
+ * Side effects: Allocates memory for the new string.
+ */
 rt_string rt_ucase(rt_string s)
 {
     if (!s)
@@ -361,6 +634,16 @@ rt_string rt_ucase(rt_string s)
     return r;
 }
 
+/**
+ * Purpose: Convert all alphabetic characters in a string to lowercase.
+ *
+ * Parameters:
+ *   s - Source string; must not be NULL.
+ *
+ * Returns: Newly allocated lowercase string.
+ *
+ * Side effects: Allocates memory for the new string.
+ */
 rt_string rt_lcase(rt_string s)
 {
     if (!s)
@@ -382,6 +665,16 @@ rt_string rt_lcase(rt_string s)
     return r;
 }
 
+/**
+ * Purpose: Create a one-character string from an ASCII code.
+ *
+ * Parameters:
+ *   code - Integer in the range [0,255] representing the character.
+ *
+ * Returns: Newly allocated string of length one containing the character.
+ *
+ * Side effects: Allocates memory; traps on out-of-range codes.
+ */
 rt_string rt_chr(int64_t code)
 {
     if (code < 0 || code > 255)
@@ -401,6 +694,16 @@ rt_string rt_chr(int64_t code)
     return s;
 }
 
+/**
+ * Purpose: Return the ASCII code of the first character of a string.
+ *
+ * Parameters:
+ *   s - Source string; must not be NULL.
+ *
+ * Returns: Integer value of the first character, or 0 for empty strings.
+ *
+ * Side effects: None.
+ */
 int64_t rt_asc(rt_string s)
 {
     if (!s)
@@ -410,6 +713,17 @@ int64_t rt_asc(rt_string s)
     return (int64_t)(unsigned char)s->data[0];
 }
 
+/**
+ * Purpose: Compare two strings for equality.
+ *
+ * Parameters:
+ *   a - First string.
+ *   b - Second string.
+ *
+ * Returns: Non-zero if equal, zero otherwise.
+ *
+ * Side effects: None.
+ */
 int64_t rt_str_eq(rt_string a, rt_string b)
 {
     if (!a || !b)
@@ -419,6 +733,17 @@ int64_t rt_str_eq(rt_string a, rt_string b)
     return memcmp(a->data, b->data, (size_t)a->size) == 0;
 }
 
+/**
+ * Purpose: Parse a runtime string as a signed 64-bit integer.
+ *
+ * Parameters:
+ *   s - String to parse; must not be NULL.
+ *
+ * Returns: Parsed integer value.
+ *
+ * Side effects: May call rt_trap on invalid or out-of-range values. Allocates
+ * temporary buffer for parsing.
+ */
 int64_t rt_to_int(rt_string s)
 {
     if (!s)
@@ -449,6 +774,16 @@ int64_t rt_to_int(rt_string s)
     return (int64_t)v;
 }
 
+/**
+ * Purpose: Convert a 64-bit integer to its decimal string representation.
+ *
+ * Parameters:
+ *   v - Value to convert.
+ *
+ * Returns: Newly allocated runtime string representing v.
+ *
+ * Side effects: Allocates memory; traps on formatting failures.
+ */
 rt_string rt_int_to_str(int64_t v)
 {
     char buf[32];
@@ -465,6 +800,16 @@ rt_string rt_int_to_str(int64_t v)
     return s;
 }
 
+/**
+ * Purpose: Convert a double-precision floating-point number to a string.
+ *
+ * Parameters:
+ *   v - Value to convert.
+ *
+ * Returns: Newly allocated runtime string representing v.
+ *
+ * Side effects: Allocates memory; traps on formatting failures.
+ */
 rt_string rt_f64_to_str(double v)
 {
     char buf[32];
@@ -481,6 +826,16 @@ rt_string rt_f64_to_str(double v)
     return s;
 }
 
+/**
+ * Purpose: Parse a string as a floating-point number.
+ *
+ * Parameters:
+ *   s - String to parse; must not be NULL.
+ *
+ * Returns: Parsed double value, or 0.0 if no conversion could be performed.
+ *
+ * Side effects: May call rt_trap on NULL input.
+ */
 double rt_val(rt_string s)
 {
     if (!s)
@@ -492,6 +847,16 @@ double rt_val(rt_string s)
     return v;
 }
 
+/**
+ * Purpose: Convert a floating-point value to its string representation.
+ *
+ * Parameters:
+ *   v - Value to convert.
+ *
+ * Returns: Newly allocated runtime string representing v.
+ *
+ * Side effects: Allocates memory via rt_f64_to_str.
+ */
 rt_string rt_str(double v)
 {
     return rt_f64_to_str(v);
