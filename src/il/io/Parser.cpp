@@ -76,39 +76,6 @@ Type parseType(const std::string &t, bool *ok = nullptr)
     return Type(); // error indicator
 }
 
-Value parseValue(const std::string &tok, const std::unordered_map<std::string, unsigned> &temps)
-{
-    if (tok.empty())
-        return Value::constInt(0);
-    if (tok[0] == '%')
-    {
-        std::string name = tok.substr(1);
-        auto it = temps.find(name);
-        if (it != temps.end())
-            return Value::temp(it->second);
-        if (name.size() > 1 && name[0] == 't')
-        {
-            bool digits = true;
-            for (size_t i = 1; i < name.size(); ++i)
-                if (!std::isdigit(static_cast<unsigned char>(name[i])))
-                    digits = false;
-            if (digits)
-                return Value::temp(std::stoul(name.substr(1)));
-        }
-        return Value::temp(0); // undefined temp will be diagnosed later
-    }
-    if (tok[0] == '@')
-        return Value::global(tok.substr(1));
-    if (tok == "null")
-        return Value::null();
-    if (tok.size() >= 2 && tok.front() == '"' && tok.back() == '"')
-        return Value::constStr(tok.substr(1, tok.size() - 2));
-    if (tok.find('.') != std::string::npos || tok.find('e') != std::string::npos ||
-        tok.find('E') != std::string::npos)
-        return Value::constFloat(std::stod(tok));
-    return Value::constInt(std::stoll(tok));
-}
-
 std::string readToken(std::istringstream &ss)
 {
     std::string t;
@@ -128,6 +95,7 @@ struct ParserState
     unsigned lineNo = 0;
     il::support::SourceLoc curLoc{};
     std::unordered_map<std::string, size_t> blockParamCount;
+    bool hasError = false;
 
     struct PendingBr
     {
@@ -141,21 +109,93 @@ struct ParserState
     explicit ParserState(Module &mod) : m(mod) {}
 };
 
+Value parseValue(const std::string &tok, ParserState &st, std::ostream &err)
+{
+    if (tok.empty())
+        return Value::constInt(0);
+    if (tok[0] == '%')
+    {
+        std::string name = tok.substr(1);
+        auto it = st.tempIds.find(name);
+        if (it != st.tempIds.end())
+            return Value::temp(it->second);
+        if (name.size() > 1 && name[0] == 't')
+        {
+            bool digits = true;
+            for (size_t i = 1; i < name.size(); ++i)
+                if (!std::isdigit(static_cast<unsigned char>(name[i])))
+                    digits = false;
+            if (digits)
+            {
+                try
+                {
+                    return Value::temp(std::stoul(name.substr(1)));
+                }
+                catch (const std::exception &)
+                {
+                    st.hasError = true;
+                    err << "Line " << st.lineNo << ": invalid temp id '" << tok << "'\n";
+                    return Value::temp(0);
+                }
+            }
+        }
+        return Value::temp(0); // undefined temp will be diagnosed later
+    }
+    if (tok[0] == '@')
+        return Value::global(tok.substr(1));
+    if (tok == "null")
+        return Value::null();
+    if (tok.size() >= 2 && tok.front() == '"' && tok.back() == '"')
+        return Value::constStr(tok.substr(1, tok.size() - 2));
+    if (tok.find('.') != std::string::npos || tok.find('e') != std::string::npos ||
+        tok.find('E') != std::string::npos)
+    {
+        try
+        {
+            size_t idx = 0;
+            double val = std::stod(tok, &idx);
+            if (idx != tok.size())
+                throw std::invalid_argument("trailing characters");
+            return Value::constFloat(val);
+        }
+        catch (const std::exception &)
+        {
+            st.hasError = true;
+            err << "Line " << st.lineNo << ": invalid floating literal '" << tok << "'\n";
+            return Value::constFloat(0.0);
+        }
+    }
+    try
+    {
+        size_t idx = 0;
+        long long val = std::stoll(tok, &idx);
+        if (idx != tok.size())
+            throw std::invalid_argument("trailing characters");
+        return Value::constInt(val);
+    }
+    catch (const std::exception &)
+    {
+        st.hasError = true;
+        err << "Line " << st.lineNo << ": invalid integer literal '" << tok << "'\n";
+        return Value::constInt(0);
+    }
+}
+
 using InstrHandler =
     std::function<bool(const std::string &, Instr &, ParserState &, std::ostream &)>;
 
 InstrHandler makeBinaryHandler(Opcode op, Type ty)
 {
-    return [op, ty](const std::string &rest, Instr &in, ParserState &st, std::ostream &)
+    return [op, ty](const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
     {
         std::istringstream ss(rest);
         std::string a = readToken(ss);
         std::string b = readToken(ss);
         in.op = op;
         if (!a.empty())
-            in.operands.push_back(parseValue(a, st.tempIds));
+            in.operands.push_back(parseValue(a, st, err));
         if (!b.empty())
-            in.operands.push_back(parseValue(b, st.tempIds));
+            in.operands.push_back(parseValue(b, st, err));
         in.type = ty;
         return true;
     };
@@ -163,13 +203,13 @@ InstrHandler makeBinaryHandler(Opcode op, Type ty)
 
 InstrHandler makeUnaryHandler(Opcode op, Type ty)
 {
-    return [op, ty](const std::string &rest, Instr &in, ParserState &st, std::ostream &)
+    return [op, ty](const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
     {
         std::istringstream ss(rest);
         std::string a = readToken(ss);
         in.op = op;
         if (!a.empty())
-            in.operands.push_back(parseValue(a, st.tempIds));
+            in.operands.push_back(parseValue(a, st, err));
         in.type = ty;
         return true;
     };
@@ -244,41 +284,41 @@ static const std::unordered_map<std::string, InstrHandler> kInstrHandlers = {
     {"ret", parseRetInstr},
     {"trap", parseTrapInstr}};
 
-bool parseAllocaInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &)
+bool parseAllocaInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
 {
     std::istringstream ss(rest);
     std::string sz = readToken(ss);
     in.op = Opcode::Alloca;
     if (!sz.empty())
-        in.operands.push_back(parseValue(sz, st.tempIds));
+        in.operands.push_back(parseValue(sz, st, err));
     in.type = Type(Type::Kind::Ptr);
     return true;
 }
 
-bool parseGEPInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &)
+bool parseGEPInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
 {
     std::istringstream ss(rest);
     std::string base = readToken(ss);
     std::string off = readToken(ss);
     in.op = Opcode::GEP;
-    in.operands.push_back(parseValue(base, st.tempIds));
-    in.operands.push_back(parseValue(off, st.tempIds));
+    in.operands.push_back(parseValue(base, st, err));
+    in.operands.push_back(parseValue(off, st, err));
     in.type = Type(Type::Kind::Ptr);
     return true;
 }
 
-bool parseLoadInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &)
+bool parseLoadInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
 {
     std::istringstream ss(rest);
     std::string ty = readToken(ss);
     std::string ptr = readToken(ss);
     in.op = Opcode::Load;
     in.type = parseType(ty);
-    in.operands.push_back(parseValue(ptr, st.tempIds));
+    in.operands.push_back(parseValue(ptr, st, err));
     return true;
 }
 
-bool parseStoreInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &)
+bool parseStoreInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
 {
     std::istringstream ss(rest);
     std::string ty = readToken(ss);
@@ -286,29 +326,29 @@ bool parseStoreInstr(const std::string &rest, Instr &in, ParserState &st, std::o
     std::string val = readToken(ss);
     in.op = Opcode::Store;
     in.type = parseType(ty);
-    in.operands.push_back(parseValue(ptr, st.tempIds));
-    in.operands.push_back(parseValue(val, st.tempIds));
+    in.operands.push_back(parseValue(ptr, st, err));
+    in.operands.push_back(parseValue(val, st, err));
     return true;
 }
 
-bool parseAddrOfInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &)
+bool parseAddrOfInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
 {
     std::istringstream ss(rest);
     std::string g = readToken(ss);
     in.op = Opcode::AddrOf;
     if (!g.empty())
-        in.operands.push_back(parseValue(g, st.tempIds));
+        in.operands.push_back(parseValue(g, st, err));
     in.type = Type(Type::Kind::Ptr);
     return true;
 }
 
-bool parseConstStrInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &)
+bool parseConstStrInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
 {
     std::istringstream ss(rest);
     std::string g = readToken(ss);
     in.op = Opcode::ConstStr;
     if (!g.empty())
-        in.operands.push_back(parseValue(g, st.tempIds));
+        in.operands.push_back(parseValue(g, st, err));
     in.type = Type(Type::Kind::Str);
     return true;
 }
@@ -340,7 +380,7 @@ bool parseCallInstr(const std::string &rest, Instr &in, ParserState &st, std::os
     {
         a = trim(a);
         if (!a.empty())
-            in.operands.push_back(parseValue(a, st.tempIds));
+            in.operands.push_back(parseValue(a, st, err));
     }
     in.type = Type(Type::Kind::Void);
     return true;
@@ -375,7 +415,7 @@ bool parseBrInstr(const std::string &rest, Instr &in, ParserState &st, std::ostr
         {
             a = trim(a);
             if (!a.empty())
-                args.push_back(parseValue(a, st.tempIds));
+                args.push_back(parseValue(a, st, err));
         }
     }
     in.labels.push_back(lbl);
@@ -436,7 +476,7 @@ bool parseCBrInstr(const std::string &rest, Instr &in, ParserState &st, std::ost
             {
                 a = trim(a);
                 if (!a.empty())
-                    args.push_back(parseValue(a, st.tempIds));
+                    args.push_back(parseValue(a, st, err));
             }
         }
         return true;
@@ -448,7 +488,7 @@ bool parseCBrInstr(const std::string &rest, Instr &in, ParserState &st, std::ost
         err << "line " << st.lineNo << ": mismatched ')\n";
         return false;
     }
-    in.operands.push_back(parseValue(c, st.tempIds));
+    in.operands.push_back(parseValue(c, st, err));
     in.labels.push_back(l1);
     in.labels.push_back(l2);
     in.brArgs.push_back(a1);
@@ -481,12 +521,12 @@ bool parseCBrInstr(const std::string &rest, Instr &in, ParserState &st, std::ost
     return true;
 }
 
-bool parseRetInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &)
+bool parseRetInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
 {
     in.op = Opcode::Ret;
     std::string v = trim(rest);
     if (!v.empty())
-        in.operands.push_back(parseValue(v, st.tempIds));
+        in.operands.push_back(parseValue(v, st, err));
     in.type = Type(Type::Kind::Void);
     return true;
 }
@@ -760,7 +800,7 @@ bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
         if (!parseModuleHeader(is, line, st, err))
             return false;
     }
-    return true;
+    return !st.hasError;
 }
 
 } // namespace il::io
