@@ -21,47 +21,155 @@ namespace il::frontends::basic
 class Parser
 {
   public:
+    /// @brief Construct a parser over a BASIC source buffer.
+    /// @param src Source code to parse.
+    /// @param file_id Identifier used for diagnostics.
+    /// @param emitter Optional diagnostic emitter; not owned.
     Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *emitter = nullptr);
+
+    /// @brief Parse the entire BASIC program.
+    /// @return Program AST on success or nullptr on failure.
     std::unique_ptr<Program> parseProgram();
 
   private:
-    mutable Lexer lexer_;
-    mutable std::vector<Token> tokens_;
-    DiagnosticEmitter *emitter_ = nullptr;
-    std::unordered_set<std::string> arrays_; ///< Known DIM'd arrays.
+    mutable Lexer lexer_;                    ///< Provides tokens from the source buffer.
+    mutable std::vector<Token> tokens_;      ///< Lookahead token buffer.
+    DiagnosticEmitter *emitter_ = nullptr;   ///< Diagnostic sink; not owned.
+    std::unordered_set<std::string> arrays_; ///< Names of arrays declared via DIM.
 
 #include "frontends/basic/Parser_Token.hpp"
 
+    /// @brief Parse a single BASIC statement at the given line number.
+    /// @param line Line number associated with the statement.
+    /// @return Parsed statement or nullptr on error.
     StmtPtr parseStatement(int line);
+
+    /// @brief Parse a PRINT statement.
+    /// @return PRINT statement node.
     StmtPtr parsePrint();
+
+    /// @brief Parse a LET assignment statement.
+    /// @return LET statement node.
     StmtPtr parseLet();
+
+    /// @brief Parse an IF statement starting at @p line.
+    /// @param line Line number of the IF keyword.
+    /// @return IF statement node.
     StmtPtr parseIf(int line);
+
+    /// @brief Parse a WHILE loop.
+    /// @return WHILE statement node.
     StmtPtr parseWhile();
+
+    /// @brief Parse a FOR loop.
+    /// @return FOR statement node.
     StmtPtr parseFor();
+
+    /// @brief Parse a NEXT statement closing a loop.
+    /// @return NEXT statement node.
     StmtPtr parseNext();
+
+    /// @brief Parse a GOTO statement.
+    /// @return GOTO statement node.
     StmtPtr parseGoto();
+
+    /// @brief Parse an END statement.
+    /// @return END statement node.
     StmtPtr parseEnd();
+
+    /// @brief Parse an INPUT statement.
+    /// @return INPUT statement node.
     StmtPtr parseInput();
+
+    /// @brief Parse a DIM statement defining arrays.
+    /// @return DIM statement node.
     StmtPtr parseDim();
+
+    /// @brief Parse a RANDOMIZE statement.
+    /// @return RANDOMIZE statement node.
     StmtPtr parseRandomize();
+
+    /// @brief Parse a FUNCTION definition including body.
+    /// @return FUNCTION statement node.
     StmtPtr parseFunction();
+
+    /// @brief Parse the header of a FUNCTION without its body.
+    /// @return Newly allocated function declaration.
     std::unique_ptr<FunctionDecl> parseFunctionHeader();
+
+    /// @brief Parse the body of a function and attach statements to @p fn.
+    /// @param fn Function declaration to populate.
     void parseFunctionBody(FunctionDecl *fn);
+
+    /// @brief Parse a SUB definition including body.
+    /// @return SUB statement node.
     StmtPtr parseSub();
+
+    /// @brief Parse a RETURN statement.
+    /// @return RETURN statement node.
     StmtPtr parseReturn();
+
+    /// @brief Parse a comma-separated parameter list inside parentheses.
+    /// @return Vector of parsed parameters.
     std::vector<Param> parseParamList();
+
+    /// @brief Determine BASIC type from identifier suffix.
+    /// @param name Identifier possibly carrying a type suffix.
+    /// @return Resolved type.
     Type typeFromSuffix(std::string_view name);
 
+    /// @brief Parse an expression using precedence climbing.
+    /// @param min_prec Minimum precedence to enforce.
+    /// @return Parsed expression node.
     ExprPtr parseExpression(int min_prec = 0);
+
+    /// @brief Parse a unary expression.
+    /// @return Parsed unary expression node.
     ExprPtr parseUnaryExpression();
+
+    /// @brief Parse the right-hand side of an infix expression.
+    /// @param left Already parsed left-hand side.
+    /// @param min_prec Minimum precedence to enforce.
+    /// @return Combined expression node.
     ExprPtr parseInfixRhs(ExprPtr left, int min_prec);
+
+    /// @brief Parse a primary expression such as literals or parenthesized forms.
+    /// @return Parsed primary expression node.
     ExprPtr parsePrimary();
+
+    /// @brief Parse a numeric literal expression.
+    /// @return Parsed number expression node.
     ExprPtr parseNumber();
+
+    /// @brief Parse a string literal expression.
+    /// @return Parsed string expression node.
     ExprPtr parseString();
+
+    /// @brief Parse a call to a builtin function.
+    /// @param builtin Which builtin is being invoked.
+    /// @param loc Source location of the call.
+    /// @return Parsed builtin call expression node.
     ExprPtr parseBuiltinCall(BuiltinCallExpr::Builtin builtin, il::support::SourceLoc loc);
+
+    /// @brief Parse a reference to a variable.
+    /// @param name Variable identifier.
+    /// @param loc Source location of the identifier.
+    /// @return Variable reference expression node.
     ExprPtr parseVariableRef(std::string name, il::support::SourceLoc loc);
+
+    /// @brief Parse a reference to an array element.
+    /// @param name Array identifier.
+    /// @param loc Source location of the identifier.
+    /// @return Array reference expression node.
     ExprPtr parseArrayRef(std::string name, il::support::SourceLoc loc);
+
+    /// @brief Parse either an array or variable reference based on lookahead.
+    /// @return Parsed reference expression node.
     ExprPtr parseArrayOrVar();
+
+    /// @brief Return the precedence value for operator token @p k.
+    /// @param k Operator token kind.
+    /// @return Numeric precedence used by the expression parser.
     int precedence(TokenKind k);
 };
 
