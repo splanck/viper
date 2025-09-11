@@ -112,7 +112,14 @@ struct BuiltinCallExpr : Expr
         Cos,
         Pow,
         Rnd,
-        Instr
+        Instr,
+        Ltrim,
+        Rtrim,
+        Trim,
+        Ucase,
+        Lcase,
+        Chr,
+        Asc
     } builtin;
     std::vector<ExprPtr> args;
 };

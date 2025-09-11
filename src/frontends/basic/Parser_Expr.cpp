@@ -254,6 +254,20 @@ ExprPtr Parser::parseArrayOrVar()
             builtin = BuiltinCallExpr::Builtin::Int;
         else if (name == "INSTR")
             builtin = BuiltinCallExpr::Builtin::Instr;
+        else if (name == "LTRIM$")
+            builtin = BuiltinCallExpr::Builtin::Ltrim;
+        else if (name == "RTRIM$")
+            builtin = BuiltinCallExpr::Builtin::Rtrim;
+        else if (name == "TRIM$")
+            builtin = BuiltinCallExpr::Builtin::Trim;
+        else if (name == "UCASE$")
+            builtin = BuiltinCallExpr::Builtin::Ucase;
+        else if (name == "LCASE$")
+            builtin = BuiltinCallExpr::Builtin::Lcase;
+        else if (name == "CHR$")
+            builtin = BuiltinCallExpr::Builtin::Chr;
+        else if (name == "ASC")
+            builtin = BuiltinCallExpr::Builtin::Asc;
         else
             is_builtin = false;
 
