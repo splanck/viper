@@ -24,7 +24,9 @@ bool isTerminator(Opcode op)
     return op == Opcode::Br || op == Opcode::CBr || op == Opcode::Ret;
 }
 
-Type valueType(const Value &v, const std::unordered_map<unsigned, Type> &temps)
+Type valueType(const Value &v,
+               const std::unordered_map<unsigned, Type> &temps,
+               bool *missing = nullptr)
 {
     switch (v.kind)
     {
@@ -33,6 +35,8 @@ Type valueType(const Value &v, const std::unordered_map<unsigned, Type> &temps)
             auto it = temps.find(v.id);
             if (it != temps.end())
                 return it->second;
+            if (missing)
+                *missing = true;
             return Type(Type::Kind::Void);
         }
         case Value::Kind::ConstInt:
@@ -478,12 +482,25 @@ bool iterateBlockInstructions(VerifyInstrFn verifyInstrFn,
     for (const auto &in : bb.instructions)
     {
         for (const auto &op : in.operands)
-            if (op.kind == Value::Kind::Temp && !defined.count(op.id))
+        {
+            if (op.kind == Value::Kind::Temp)
             {
-                err << fn.name << ":" << bb.label << ": " << snippet(in) << ": use before def of %"
-                    << op.id << "\n";
-                ok = false;
+                bool missing = false;
+                valueType(op, temps, &missing);
+                if (missing)
+                {
+                    err << fn.name << ":" << bb.label << ": " << snippet(in) << ": unknown temp %"
+                        << op.id << "\n";
+                    ok = false;
+                }
+                if (!defined.count(op.id))
+                {
+                    err << fn.name << ":" << bb.label << ": " << snippet(in)
+                        << ": use before def of %" << op.id << "\n";
+                    ok = false;
+                }
             }
+        }
 
         ok &= verifyInstrFn(fn, bb, in, blockMap, externs, funcs, temps, defined, err);
 
