@@ -56,35 +56,45 @@ extern "C"
     rt_string rt_concat(rt_string a, rt_string b);
 
     /// @brief Slice substring of @p s.
+    /// Complexity: O(len) with one allocation and copy. Returns @p s unchanged when
+    /// the full range is requested and a shared empty string when @p len is 0.
     /// @param s Source string.
     /// @param start Starting index (0-based).
     /// @param len Number of bytes to copy.
-    /// @return Newly allocated substring.
+    /// @return Substring view.
     rt_string rt_substr(rt_string s, int64_t start, int64_t len);
 
     /// @brief Return leftmost @p n characters of @p s.
     /// @param s Source string; traps if null.
     /// @param n Number of characters to copy; traps if negative.
-    /// @return Newly allocated substring of length @c n or less.
+    /// Complexity: O(n) copy. Returns @p s unchanged if @p n >= rt_len(@p s) and a
+    /// shared empty string when @p n == 0.
+    /// @return Substring of length @c n or less.
     rt_string rt_left(rt_string s, int64_t n);
 
     /// @brief Return rightmost @p n characters of @p s.
     /// @param s Source string; traps if null.
     /// @param n Number of characters to copy; traps if negative.
-    /// @return Newly allocated substring of length @c n or less.
+    /// Complexity: O(n) copy. Returns @p s unchanged if @p n >= rt_len(@p s) and a
+    /// shared empty string when @p n == 0.
+    /// @return Substring of length @c n or less.
     rt_string rt_right(rt_string s, int64_t n);
 
     /// @brief Return substring starting at @p start to end.
     /// @param s Source string; traps if null.
     /// @param start Starting offset (0-based); traps if negative.
-    /// @return Newly allocated substring from @p start to end.
+    /// Complexity: O(n) copy of trailing slice. Returns @p s unchanged if
+    /// @p start <= 0 and a shared empty string when @p start >= rt_len(@p s).
+    /// @return Substring from @p start to end.
     rt_string rt_mid2(rt_string s, int64_t start);
 
     /// @brief Return substring of length @p len starting at @p start.
     /// @param s Source string; traps if null.
     /// @param start Starting offset (0-based); traps if negative.
     /// @param len Number of characters to copy; traps if negative.
-    /// @return Newly allocated substring.
+    /// Complexity: O(len) copy. Returns @p s unchanged when requesting the full
+    /// string and a shared empty string if @p len == 0 or @p start >= rt_len(@p s).
+    /// @return Substring view.
     rt_string rt_mid3(rt_string s, int64_t start, int64_t len);
 
     /// @brief Find @p needle within @p hay starting at @p start.
