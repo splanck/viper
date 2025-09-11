@@ -29,6 +29,7 @@ struct AllocaInfo
     Type type{};
     bool addressTaken{false};
     bool hasStore{false};
+    bool singleBlock{true};
 };
 
 static void replaceAllUses(Function &F, unsigned id, const Value &v)
@@ -110,6 +111,8 @@ static AllocaMap collectAllocas(Function &F)
                 if (it == infos.end())
                     continue;
                 AllocaInfo &AI = it->second;
+                if (&B != AI.block)
+                    AI.singleBlock = false;
                 if (I.op == Opcode::Store && oi == 0)
                 {
                     AI.hasStore = true;
@@ -236,6 +239,9 @@ static void promoteVariables(Function &F, const AllocaMap &infos, Mem2RegStats *
         vars[id] = VarState{AI.type, {}};
     }
 
+    if (stats)
+        stats->promotedVars += vars.size();
+
     if (vars.empty())
         return;
 
@@ -320,11 +326,13 @@ void mem2reg(Module &M, Mem2RegStats *stats)
     for (auto &F : M.functions)
     {
         AllocaMap infos = collectAllocas(F);
-        if (stats)
-            stats->promotedVars += infos.size();
-        if (infos.size() != 1)
-            continue; // TODO: handle multiple allocas
-        promoteVariables(F, infos, stats);
+        for (auto &[id, info] : infos)
+        {
+            if (infos.size() > 1 && !info.singleBlock)
+                continue;
+            AllocaMap single{{id, info}};
+            promoteVariables(F, single, stats);
+        }
     }
 }
 
