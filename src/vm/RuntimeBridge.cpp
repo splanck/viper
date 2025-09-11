@@ -15,12 +15,21 @@ using il::support::SourceLoc;
 
 namespace
 {
-
+/// @brief Global scratch space for recording the current source location.
+/// @details Runtime calls may trigger traps inside the C runtime. The VM
+/// populates these globals prior to dispatch so that the hook `vm_trap` can
+/// report a precise function/block/SourceLoc. They are cleared after every call.
 SourceLoc curLoc{};
+/// @brief Fully qualified name of the function currently executing.
 std::string curFn;
+/// @brief Label of the current basic block within the function.
 std::string curBlock;
 } // namespace
 
+/// @brief Entry point invoked from the C runtime when a trap occurs.
+/// @details Uses the globals recorded by `RuntimeBridge::call` to route the
+/// message through `RuntimeBridge::trap`, preserving the source location
+/// and function context for diagnostics.
 extern "C" void vm_trap(const char *msg)
 {
     il::vm::RuntimeBridge::trap(msg ? msg : "trap", curLoc, curFn, curBlock);
@@ -29,12 +38,18 @@ extern "C" void vm_trap(const char *msg)
 namespace il::vm
 {
 
+/// @brief Dispatch a VM runtime call to the corresponding C implementation.
+/// @details The VM passes the symbolic runtime `name` along with any
+/// arguments. The bridge records the current function and source location
+/// before selecting the matching C function, enabling any nested trap to
+/// report meaningful diagnostics.
 Slot RuntimeBridge::call(const std::string &name,
                          const std::vector<Slot> &args,
                          const SourceLoc &loc,
                          const std::string &fn,
                          const std::string &block)
 {
+    // Stash call site info so `vm_trap` can find it if the callee traps.
     curLoc = loc;
     curFn = fn;
     curBlock = block;
