@@ -2,6 +2,7 @@
 #include "support/diagnostics.hpp"
 #include "support/string_interner.hpp"
 #include <cassert>
+#include <cstdint>
 #include <sstream>
 
 int main()
@@ -29,5 +30,7 @@ int main()
     (void)p1;
     void *p2 = arena.allocate(sizeof(double), alignof(double));
     assert(reinterpret_cast<uintptr_t>(p2) % alignof(double) == 0);
+    assert(arena.allocate(1, 0) == nullptr);
+    assert(arena.allocate(1, 3) == nullptr);
     return 0;
 }
