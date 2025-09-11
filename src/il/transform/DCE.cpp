@@ -12,7 +12,15 @@ using namespace il::core;
 
 namespace il::transform
 {
-
+/// \brief Count temporary identifier uses within a function.
+/// \param F Function whose temporaries are inspected.
+/// \return Map from temporary id to number of references.
+/// Algorithm: seeds the map with block parameters then scans every
+/// instruction and branch argument, bumping the count for each temporary
+/// operand encountered.
+/// Data structures: std::unordered_map for the id→count mapping.
+/// Mutations: none; purely analyzes \p F.
+/// Limitations: purely syntactic and only considers temporaries.
 static std::unordered_map<unsigned, size_t> countUses(Function &F)
 {
     std::unordered_map<unsigned, size_t> uses;
@@ -35,6 +43,18 @@ static std::unordered_map<unsigned, size_t> countUses(Function &F)
     return uses;
 }
 
+/// \brief Eliminate trivially dead code from a module.
+/// \param M Module simplified in place.
+/// Steps:
+/// 1. Count temp uses via countUses().
+/// 2. Track allocas and whether a load exists for each.
+/// 3. Remove loads with unused results, stores to never-loaded temps, and
+///    allocas never loaded.
+/// 4. Erase block parameters that have zero uses and adjust branch args.
+/// Data structures: unordered maps for temp use counts and load presence.
+/// Mutation: erases instructions and block params within \p M.
+/// Limitations: handles only local, trivially dead loads/stores/allocas and
+/// unused block params; no global or side-effect analysis.
 void dce(Module &M)
 {
     for (auto &F : M.functions)
