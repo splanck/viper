@@ -25,7 +25,9 @@ class NameMangler
     std::string block(const std::string &hint);
 
   private:
+    /// @brief Monotonically increasing ID for temporary names.
     unsigned tempCounter{0};
+    /// @brief Map of block name hints to the number of times they've been used.
     std::unordered_map<std::string, unsigned> blockCounters;
 };
 
