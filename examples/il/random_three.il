@@ -7,7 +7,7 @@ extern @rt_print_str(str) -> void
 
 global const str @.L0 = "\n"
 
-func @main() -> i32 {
+func @main() -> i64 {
 entry:
   call @rt_randomize_i64(42)
   %r0 = call @rt_rnd()

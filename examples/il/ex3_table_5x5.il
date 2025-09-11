@@ -4,7 +4,7 @@ extern @rt_print_i64(i64) -> void
 
 global const str @.L0 = "TABLE 5x5"
 
-func @main() -> i32 {
+func @main() -> i64 {
 entry:
   %n_slot = alloca 8
   %i_slot = alloca 8

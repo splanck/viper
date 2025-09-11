@@ -13,7 +13,8 @@ int main()
 {
     const char *files[] = {BAD_DIR "/mismatched_paren.il",
                            BAD_DIR "/bad_arg_count.il",
-                           BAD_DIR "/unknown_param_type.il"};
+                           BAD_DIR "/unknown_param_type.il",
+                           BAD_DIR "/bad_i32.il"};
     for (const char *path : files)
     {
         std::ifstream in(path);

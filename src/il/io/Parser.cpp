@@ -35,7 +35,7 @@ std::string trim(const std::string &s)
 
 Type parseType(const std::string &t, bool *ok = nullptr)
 {
-    if (t == "i64" || t == "i32")
+    if (t == "i64")
     {
         if (ok)
             *ok = true;
@@ -73,7 +73,7 @@ Type parseType(const std::string &t, bool *ok = nullptr)
     }
     if (ok)
         *ok = false;
-    return Type(Type::Kind::Void);
+    return Type(); // error indicator
 }
 
 Value parseValue(const std::string &tok, const std::unordered_map<std::string, unsigned> &temps)
