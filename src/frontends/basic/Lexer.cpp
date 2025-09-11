@@ -69,11 +69,12 @@ void Lexer::skipWhitespaceAndComments()
             continue;
         }
 
-        if (std::toupper(peek()) == 'R' && pos_ + 2 < src_.size() &&
-            std::toupper(src_[pos_ + 1]) == 'E' && std::toupper(src_[pos_ + 2]) == 'M')
+        if (std::toupper(static_cast<unsigned char>(peek())) == 'R' && pos_ + 2 < src_.size() &&
+            std::toupper(static_cast<unsigned char>(src_[pos_ + 1])) == 'E' &&
+            std::toupper(static_cast<unsigned char>(src_[pos_ + 2])) == 'M')
         {
             char after = (pos_ + 3 < src_.size()) ? src_[pos_ + 3] : '\0';
-            if (!std::isalnum(after) && after != '$' && after != '#')
+            if (!std::isalnum(static_cast<unsigned char>(after)) && after != '$' && after != '#')
             {
                 get();
                 get();
@@ -100,13 +101,13 @@ Token Lexer::lexNumber()
         seenDot = true;
         s.push_back(get());
     }
-    while (std::isdigit(peek()))
+    while (std::isdigit(static_cast<unsigned char>(peek())))
         s.push_back(get());
     if (!seenDot && peek() == '.')
     {
         seenDot = true;
         s.push_back(get());
-        while (std::isdigit(peek()))
+        while (std::isdigit(static_cast<unsigned char>(peek())))
             s.push_back(get());
     }
     if ((peek() == 'e' || peek() == 'E'))
@@ -115,7 +116,7 @@ Token Lexer::lexNumber()
         s.push_back(get());
         if (peek() == '+' || peek() == '-')
             s.push_back(get());
-        while (std::isdigit(peek()))
+        while (std::isdigit(static_cast<unsigned char>(peek())))
             s.push_back(get());
     }
     if (peek() == '#')
@@ -134,10 +135,10 @@ Token Lexer::lexIdentifierOrKeyword()
 {
     il::support::SourceLoc loc{file_id_, line_, column_};
     std::string s;
-    while (std::isalnum(peek()))
-        s.push_back(std::toupper(get()));
+    while (std::isalnum(static_cast<unsigned char>(peek())))
+        s.push_back(std::toupper(static_cast<unsigned char>(get())));
     if (peek() == '$' || peek() == '#')
-        s.push_back(std::toupper(get()));
+        s.push_back(std::toupper(static_cast<unsigned char>(get())));
     // keywords
     if (s == "PRINT")
         return {TokenKind::KeywordPrint, s, loc};
@@ -236,7 +237,9 @@ Token Lexer::next()
         return {TokenKind::EndOfLine, "\n", loc};
     }
 
-    if (std::isdigit(c) || (c == '.' && pos_ + 1 < src_.size() && std::isdigit(src_[pos_ + 1])))
+    if (std::isdigit(static_cast<unsigned char>(c)) ||
+        (c == '.' && pos_ + 1 < src_.size() &&
+         std::isdigit(static_cast<unsigned char>(src_[pos_ + 1]))))
         return lexNumber();
     if (std::isalpha(c))
         return lexIdentifierOrKeyword();
