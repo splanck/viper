@@ -399,6 +399,10 @@ add_executable(test_vm_rt_trap_loc unit/test_vm_rt_trap_loc.cpp)
 target_link_libraries(test_vm_rt_trap_loc PRIVATE il_build il_vm support)
 add_test(NAME test_vm_rt_trap_loc COMMAND test_vm_rt_trap_loc)
 
+add_executable(test_vm_alloca_negative unit/test_vm_alloca_negative.cpp)
+target_link_libraries(test_vm_alloca_negative PRIVATE il_build il_vm support)
+add_test(NAME test_vm_alloca_negative COMMAND test_vm_alloca_negative)
+
 add_executable(test_vm_normalize_path unit/test_vm_normalize_path.cpp)
 target_link_libraries(test_vm_normalize_path PRIVATE VMTrace)
 add_test(NAME test_vm_normalize_path COMMAND test_vm_normalize_path)
