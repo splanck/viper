@@ -74,29 +74,44 @@ void printInstr(const Instr &in, std::ostream &os)
     }
     else if (in.op == Opcode::CBr)
     {
-        os << " " << il::core::toString(in.operands[0]) << ", " << in.labels[0];
-        if (!in.brArgs.empty() && !in.brArgs[0].empty())
+        os << " " << il::core::toString(in.operands[0]);
+        if (in.labels.empty())
         {
-            os << "(";
-            for (size_t i = 0; i < in.brArgs[0].size(); ++i)
-            {
-                if (i)
-                    os << ", ";
-                os << il::core::toString(in.brArgs[0][i]);
-            }
-            os << ")";
+            os << " ; missing label";
         }
-        os << ", " << in.labels[1];
-        if (in.brArgs.size() > 1 && !in.brArgs[1].empty())
+        else
         {
-            os << "(";
-            for (size_t i = 0; i < in.brArgs[1].size(); ++i)
+            os << ", " << in.labels[0];
+            if (!in.brArgs.empty() && !in.brArgs[0].empty())
             {
-                if (i)
-                    os << ", ";
-                os << il::core::toString(in.brArgs[1][i]);
+                os << "(";
+                for (size_t i = 0; i < in.brArgs[0].size(); ++i)
+                {
+                    if (i)
+                        os << ", ";
+                    os << il::core::toString(in.brArgs[0][i]);
+                }
+                os << ")";
             }
-            os << ")";
+            if (in.labels.size() >= 2)
+            {
+                os << ", " << in.labels[1];
+                if (in.brArgs.size() > 1 && !in.brArgs[1].empty())
+                {
+                    os << "(";
+                    for (size_t i = 0; i < in.brArgs[1].size(); ++i)
+                    {
+                        if (i)
+                            os << ", ";
+                        os << il::core::toString(in.brArgs[1][i]);
+                    }
+                    os << ")";
+                }
+            }
+            else
+            {
+                os << " ; missing label";
+            }
         }
     }
     else if (in.op == Opcode::Load)
