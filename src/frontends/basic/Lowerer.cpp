@@ -50,6 +50,13 @@ Module Lowerer::lowerProgram(const Program &prog)
     needRtMid3 = false;
     needRtInstr2 = false;
     needRtInstr3 = false;
+    needRtLtrim = false;
+    needRtRtrim = false;
+    needRtTrim = false;
+    needRtUcase = false;
+    needRtLcase = false;
+    needRtChr = false;
+    needRtAsc = false;
     runtimeOrder.clear();
     runtimeSet.clear();
 
@@ -110,6 +117,20 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         b.addExtern("rt_instr3",
                     Type(Type::Kind::I64),
                     {Type(Type::Kind::I64), Type(Type::Kind::Str), Type(Type::Kind::Str)});
+    if (needRtLtrim)
+        b.addExtern("rt_ltrim", Type(Type::Kind::Str), {Type(Type::Kind::Str)});
+    if (needRtRtrim)
+        b.addExtern("rt_rtrim", Type(Type::Kind::Str), {Type(Type::Kind::Str)});
+    if (needRtTrim)
+        b.addExtern("rt_trim", Type(Type::Kind::Str), {Type(Type::Kind::Str)});
+    if (needRtUcase)
+        b.addExtern("rt_ucase", Type(Type::Kind::Str), {Type(Type::Kind::Str)});
+    if (needRtLcase)
+        b.addExtern("rt_lcase", Type(Type::Kind::Str), {Type(Type::Kind::Str)});
+    if (needRtChr)
+        b.addExtern("rt_chr", Type(Type::Kind::Str), {Type(Type::Kind::I64)});
+    if (needRtAsc)
+        b.addExtern("rt_asc", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
 
     for (RuntimeFn fn : runtimeOrder)
     {
@@ -243,6 +264,41 @@ Lowerer::ExprType Lowerer::scanBuiltinCallExpr(const BuiltinCallExpr &c)
             for (auto &a : c.args)
                 if (a)
                     scanExpr(*a);
+            return ExprType::I64;
+        case BuiltinCallExpr::Builtin::Ltrim:
+            needRtLtrim = true;
+            if (c.args[0])
+                scanExpr(*c.args[0]);
+            return ExprType::Str;
+        case BuiltinCallExpr::Builtin::Rtrim:
+            needRtRtrim = true;
+            if (c.args[0])
+                scanExpr(*c.args[0]);
+            return ExprType::Str;
+        case BuiltinCallExpr::Builtin::Trim:
+            needRtTrim = true;
+            if (c.args[0])
+                scanExpr(*c.args[0]);
+            return ExprType::Str;
+        case BuiltinCallExpr::Builtin::Ucase:
+            needRtUcase = true;
+            if (c.args[0])
+                scanExpr(*c.args[0]);
+            return ExprType::Str;
+        case BuiltinCallExpr::Builtin::Lcase:
+            needRtLcase = true;
+            if (c.args[0])
+                scanExpr(*c.args[0]);
+            return ExprType::Str;
+        case BuiltinCallExpr::Builtin::Chr:
+            needRtChr = true;
+            if (c.args[0])
+                scanExpr(*c.args[0]);
+            return ExprType::Str;
+        case BuiltinCallExpr::Builtin::Asc:
+            needRtAsc = true;
+            if (c.args[0])
+                scanExpr(*c.args[0]);
             return ExprType::I64;
         case BuiltinCallExpr::Builtin::Sqr:
             if (c.args[0])
@@ -1308,6 +1364,69 @@ Lowerer::RVal Lowerer::lowerInstr(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::I64)};
 }
 
+Lowerer::RVal Lowerer::lowerLtrim(const BuiltinCallExpr &c)
+{
+    RVal s = lowerArg(c, 0);
+    curLoc = c.loc;
+    Value res = emitCallRet(Type(Type::Kind::Str), "rt_ltrim", {s.value});
+    needRtLtrim = true;
+    return {res, Type(Type::Kind::Str)};
+}
+
+Lowerer::RVal Lowerer::lowerRtrim(const BuiltinCallExpr &c)
+{
+    RVal s = lowerArg(c, 0);
+    curLoc = c.loc;
+    Value res = emitCallRet(Type(Type::Kind::Str), "rt_rtrim", {s.value});
+    needRtRtrim = true;
+    return {res, Type(Type::Kind::Str)};
+}
+
+Lowerer::RVal Lowerer::lowerTrim(const BuiltinCallExpr &c)
+{
+    RVal s = lowerArg(c, 0);
+    curLoc = c.loc;
+    Value res = emitCallRet(Type(Type::Kind::Str), "rt_trim", {s.value});
+    needRtTrim = true;
+    return {res, Type(Type::Kind::Str)};
+}
+
+Lowerer::RVal Lowerer::lowerUcase(const BuiltinCallExpr &c)
+{
+    RVal s = lowerArg(c, 0);
+    curLoc = c.loc;
+    Value res = emitCallRet(Type(Type::Kind::Str), "rt_ucase", {s.value});
+    needRtUcase = true;
+    return {res, Type(Type::Kind::Str)};
+}
+
+Lowerer::RVal Lowerer::lowerLcase(const BuiltinCallExpr &c)
+{
+    RVal s = lowerArg(c, 0);
+    curLoc = c.loc;
+    Value res = emitCallRet(Type(Type::Kind::Str), "rt_lcase", {s.value});
+    needRtLcase = true;
+    return {res, Type(Type::Kind::Str)};
+}
+
+Lowerer::RVal Lowerer::lowerChr(const BuiltinCallExpr &c)
+{
+    RVal code = ensureI64(lowerArg(c, 0), c.loc);
+    curLoc = c.loc;
+    Value res = emitCallRet(Type(Type::Kind::Str), "rt_chr", {code.value});
+    needRtChr = true;
+    return {res, Type(Type::Kind::Str)};
+}
+
+Lowerer::RVal Lowerer::lowerAsc(const BuiltinCallExpr &c)
+{
+    RVal s = lowerArg(c, 0);
+    curLoc = c.loc;
+    Value res = emitCallRet(Type(Type::Kind::I64), "rt_asc", {s.value});
+    needRtAsc = true;
+    return {res, Type(Type::Kind::I64)};
+}
+
 Lowerer::RVal Lowerer::lowerSqr(const BuiltinCallExpr &c)
 {
     RVal v = ensureF64(lowerArg(c, 0), c.loc);
@@ -1394,6 +1513,20 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
             return lowerInt(c);
         case B::Instr:
             return lowerInstr(c);
+        case B::Ltrim:
+            return lowerLtrim(c);
+        case B::Rtrim:
+            return lowerRtrim(c);
+        case B::Trim:
+            return lowerTrim(c);
+        case B::Ucase:
+            return lowerUcase(c);
+        case B::Lcase:
+            return lowerLcase(c);
+        case B::Chr:
+            return lowerChr(c);
+        case B::Asc:
+            return lowerAsc(c);
         case B::Sqr:
             return lowerSqr(c);
         case B::Abs:

@@ -819,6 +819,20 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeBuiltinCall(const BuiltinCallExp
             return analyzeRnd(c, argTys);
         case B::Instr:
             return analyzeInstr(c, argTys);
+        case B::Ltrim:
+            return analyzeLtrim(c, argTys);
+        case B::Rtrim:
+            return analyzeRtrim(c, argTys);
+        case B::Trim:
+            return analyzeTrim(c, argTys);
+        case B::Ucase:
+            return analyzeUcase(c, argTys);
+        case B::Lcase:
+            return analyzeLcase(c, argTys);
+        case B::Chr:
+            return analyzeChr(c, argTys);
+        case B::Asc:
+            return analyzeAsc(c, argTys);
     }
     return Type::Unknown;
 }
@@ -946,6 +960,62 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeInstr(const BuiltinCallExpr &c,
         idx++;
         checkArgType(c, idx, args[idx], {Type::String});
     }
+    return Type::Int;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeLtrim(const BuiltinCallExpr &c,
+                                                      const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 1))
+        checkArgType(c, 0, args[0], {Type::String});
+    return Type::String;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeRtrim(const BuiltinCallExpr &c,
+                                                      const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 1))
+        checkArgType(c, 0, args[0], {Type::String});
+    return Type::String;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeTrim(const BuiltinCallExpr &c,
+                                                     const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 1))
+        checkArgType(c, 0, args[0], {Type::String});
+    return Type::String;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeUcase(const BuiltinCallExpr &c,
+                                                      const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 1))
+        checkArgType(c, 0, args[0], {Type::String});
+    return Type::String;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeLcase(const BuiltinCallExpr &c,
+                                                      const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 1))
+        checkArgType(c, 0, args[0], {Type::String});
+    return Type::String;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeChr(const BuiltinCallExpr &c,
+                                                    const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 1))
+        checkArgType(c, 0, args[0], {Type::Int, Type::Float});
+    return Type::String;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeAsc(const BuiltinCallExpr &c,
+                                                    const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 1))
+        checkArgType(c, 0, args[0], {Type::String});
     return Type::Int;
 }
 
