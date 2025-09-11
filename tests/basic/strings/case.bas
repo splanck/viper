@@ -1,0 +1,2 @@
+10 PRINT UCASE$("abC")
+20 PRINT LCASE$("AbC")

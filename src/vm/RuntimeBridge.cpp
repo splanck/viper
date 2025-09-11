@@ -111,6 +111,34 @@ Slot RuntimeBridge::call(const std::string &name,
     {
         res.i64 = rt_instr3(args[0].i64, args[1].str, args[2].str);
     }
+    else if (name == "rt_ltrim")
+    {
+        res.str = rt_ltrim(args[0].str);
+    }
+    else if (name == "rt_rtrim")
+    {
+        res.str = rt_rtrim(args[0].str);
+    }
+    else if (name == "rt_trim")
+    {
+        res.str = rt_trim(args[0].str);
+    }
+    else if (name == "rt_ucase")
+    {
+        res.str = rt_ucase(args[0].str);
+    }
+    else if (name == "rt_lcase")
+    {
+        res.str = rt_lcase(args[0].str);
+    }
+    else if (name == "rt_chr")
+    {
+        res.str = rt_chr(args[0].i64);
+    }
+    else if (name == "rt_asc")
+    {
+        res.i64 = rt_asc(args[0].str);
+    }
     else if (name == "rt_sqrt")
     {
         res.f64 = rt_sqrt(args[0].f64);

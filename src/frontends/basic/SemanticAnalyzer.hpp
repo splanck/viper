@@ -168,6 +168,20 @@ class SemanticAnalyzer
     Type analyzeInt(const BuiltinCallExpr &c, const std::vector<Type> &args);
     /// @brief Analyze INSTR builtin.
     Type analyzeInstr(const BuiltinCallExpr &c, const std::vector<Type> &args);
+    /// @brief Analyze LTRIM$ builtin.
+    Type analyzeLtrim(const BuiltinCallExpr &c, const std::vector<Type> &args);
+    /// @brief Analyze RTRIM$ builtin.
+    Type analyzeRtrim(const BuiltinCallExpr &c, const std::vector<Type> &args);
+    /// @brief Analyze TRIM$ builtin.
+    Type analyzeTrim(const BuiltinCallExpr &c, const std::vector<Type> &args);
+    /// @brief Analyze UCASE$ builtin.
+    Type analyzeUcase(const BuiltinCallExpr &c, const std::vector<Type> &args);
+    /// @brief Analyze LCASE$ builtin.
+    Type analyzeLcase(const BuiltinCallExpr &c, const std::vector<Type> &args);
+    /// @brief Analyze CHR$ builtin.
+    Type analyzeChr(const BuiltinCallExpr &c, const std::vector<Type> &args);
+    /// @brief Analyze ASC builtin.
+    Type analyzeAsc(const BuiltinCallExpr &c, const std::vector<Type> &args);
     /// @brief Analyze SQR builtin.
     Type analyzeSqr(const BuiltinCallExpr &c, const std::vector<Type> &args);
     /// @brief Analyze ABS builtin.

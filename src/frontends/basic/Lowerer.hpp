@@ -258,6 +258,13 @@ class Lowerer
     RVal lowerVal(const BuiltinCallExpr &expr);
     RVal lowerInt(const BuiltinCallExpr &expr);
     RVal lowerInstr(const BuiltinCallExpr &expr);
+    RVal lowerLtrim(const BuiltinCallExpr &expr);
+    RVal lowerRtrim(const BuiltinCallExpr &expr);
+    RVal lowerTrim(const BuiltinCallExpr &expr);
+    RVal lowerUcase(const BuiltinCallExpr &expr);
+    RVal lowerLcase(const BuiltinCallExpr &expr);
+    RVal lowerChr(const BuiltinCallExpr &expr);
+    RVal lowerAsc(const BuiltinCallExpr &expr);
     RVal lowerSqr(const BuiltinCallExpr &expr);
     RVal lowerAbs(const BuiltinCallExpr &expr);
     RVal lowerFloor(const BuiltinCallExpr &expr);
@@ -353,6 +360,13 @@ class Lowerer
     bool needRtMid3{false};
     bool needRtInstr2{false};
     bool needRtInstr3{false};
+    bool needRtLtrim{false};
+    bool needRtRtrim{false};
+    bool needRtTrim{false};
+    bool needRtUcase{false};
+    bool needRtLcase{false};
+    bool needRtChr{false};
+    bool needRtAsc{false};
 
     enum class RuntimeFn
     {
