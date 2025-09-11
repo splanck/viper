@@ -140,13 +140,39 @@ Value IRBuilder::emitConstStr(const std::string &globalName, il::support::Source
 
 void IRBuilder::emitCall(const std::string &callee,
                          const std::vector<Value> &args,
+                         const std::optional<Value> &dst,
                          il::support::SourceLoc loc)
 {
     Instr instr;
     instr.op = Opcode::Call;
-    instr.type = Type(Type::Kind::Void);
+
+    Type ret(Type::Kind::Void);
+    for (const auto &fn : mod.functions)
+        if (fn.name == callee)
+        {
+            ret = fn.retType;
+            break;
+        }
+    if (ret.kind == Type::Kind::Void)
+        for (const auto &ex : mod.externs)
+            if (ex.name == callee)
+            {
+                ret = ex.retType;
+                break;
+            }
+    instr.type = ret;
     instr.callee = callee;
     instr.operands = args;
+    if (dst)
+    {
+        instr.result = dst->id;
+        if (dst->id >= nextTemp)
+        {
+            nextTemp = dst->id + 1;
+            if (curFunc->valueNames.size() <= dst->id)
+                curFunc->valueNames.resize(dst->id + 1);
+        }
+    }
     instr.loc = loc;
     append(std::move(instr));
 }
