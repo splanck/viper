@@ -8,16 +8,17 @@
 
 namespace il::frontends::basic
 {
-// Generate a unique temporary name using the "%t" prefix. Each invocation
-// increments `tempCounter`, ensuring sequential numbering for temporaries.
+/// Generates a temporary identifier using the "%t" prefix followed by an
+/// incrementing numeric suffix. Each call advances `tempCounter`, ensuring
+/// sequential and unique names for temporaries.
 std::string NameMangler::nextTemp()
 {
     return "%t" + std::to_string(tempCounter++);
 }
 
-// Produce a block label from the given `hint`. The `blockCounters` map tracks
-// how many times each hint has been requested: the first use returns the hint
-// unchanged, while subsequent uses append an incrementing numeric suffix.
+/// Produces a block label from the provided `hint`. The first request for a
+/// particular hint yields the hint unchanged; subsequent requests append an
+/// incrementing number. This mutates `blockCounters` to track usage counts.
 std::string NameMangler::block(const std::string &hint)
 {
     auto &count = blockCounters[hint];
