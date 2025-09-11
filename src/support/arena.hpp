@@ -24,7 +24,8 @@ class Arena
     /// @brief Allocate @p size bytes with alignment @p align.
     /// @param size Number of bytes to allocate.
     /// @param align Alignment requirement.
-    /// @return Pointer to allocated memory within the arena.
+    /// @return Pointer to allocated memory or nullptr on failure.
+    /// @notes Fails if @p align is zero, not a power of two, or capacity exceeded.
     void *allocate(size_t size, size_t align);
 
     /// @brief Reset arena, making all allocations available again.
