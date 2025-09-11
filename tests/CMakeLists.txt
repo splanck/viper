@@ -609,6 +609,10 @@ add_test(NAME basic_to_il_return_nest COMMAND ${CMAKE_COMMAND}
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/basic/goldens/ReturnNest.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 
+# BASIC string intrinsic tests
+add_test(NAME basic_strings COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_strings.sh)
+set_tests_properties(basic_strings PROPERTIES LABELS BasicStrings)
+
 file(READ ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/proc_registration_ok.err EXPECT_PROC_REG)
 string(STRIP "${EXPECT_PROC_REG}" EXPECT_PROC_REG)
 add_test(NAME basic_semantics_proc_registration COMMAND ${CMAKE_COMMAND}
