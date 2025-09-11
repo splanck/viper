@@ -17,11 +17,22 @@ DiagnosticEmitter::DiagnosticEmitter(il::support::DiagnosticEngine &de,
 {
 }
 
+/// @brief Register source text for a file id.
+/// @param fileId Identifier from SourceManager.
+/// @param source Full contents of the source file.
+/// @effects Stores @p source for later diagnostic printing.
 void DiagnosticEmitter::addSource(uint32_t fileId, std::string source)
 {
     sources_[fileId] = std::move(source);
 }
 
+/// @brief Emit diagnostic with BASIC error code and caret range.
+/// @param sev Severity level.
+/// @param code BASIC error code (e.g., B1001).
+/// @param loc Start location of the diagnostic.
+/// @param length Number of characters to underline (0 -> 1 caret).
+/// @param message Human-readable explanation.
+/// @effects Reports to diagnostic engine and records entry for later printing.
 void DiagnosticEmitter::emit(il::support::Severity sev,
                              std::string code,
                              il::support::SourceLoc loc,
@@ -32,6 +43,11 @@ void DiagnosticEmitter::emit(il::support::Severity sev,
     entries_.push_back({sev, std::move(code), std::move(message), loc, length});
 }
 
+/// @brief Emit standardized "expected vs got" parse diagnostic.
+/// @param got Actual token encountered.
+/// @param expect Expected token kind.
+/// @param loc Source location of the unexpected token.
+/// @effects Constructs message and forwards to emit with error code B0001.
 void DiagnosticEmitter::emitExpected(TokenKind got, TokenKind expect, il::support::SourceLoc loc)
 {
     std::string msg =
