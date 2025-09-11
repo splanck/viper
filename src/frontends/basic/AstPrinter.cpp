@@ -12,6 +12,9 @@
 namespace il::frontends::basic
 {
 
+/// @brief Write a line of text to the underlying stream with current indentation.
+/// @param text Line content to emit.
+/// @note Appends a newline character and resets column position.
 void AstPrinter::Printer::line(std::string_view text)
 {
     for (int i = 0; i < indent; ++i)
@@ -19,12 +22,17 @@ void AstPrinter::Printer::line(std::string_view text)
     os << text << '\n';
 }
 
+/// @brief Increase indentation level and return RAII guard.
+/// @return Indent object whose destruction restores previous indentation.
 AstPrinter::Printer::Indent AstPrinter::Printer::push()
 {
     ++indent;
     return Indent{*this};
 }
 
+/// @brief Serialize an entire BASIC program to a printable string.
+/// @param prog Program whose procedures and main body are dumped.
+/// @returns Concatenated text representation of @p prog.
 std::string AstPrinter::dump(const Program &prog)
 {
     std::ostringstream os;
@@ -48,8 +56,14 @@ std::string AstPrinter::dump(const Program &prog)
     return os.str();
 }
 
+/// @brief Recursively print a statement node and its children.
+/// @param stmt Statement to dump.
+/// @param p Printer receiving the textual form.
+/// @details Dispatches on the runtime type of @p stmt to emit the
+/// corresponding s-expression-like representation.
 void AstPrinter::dump(const Stmt &stmt, Printer &p)
 {
+    // Dispatch on concrete statement type via dynamic_cast chain.
     if (auto *lst = dynamic_cast<const StmtList *>(&stmt))
     {
         p.os << "(SEQ";
@@ -63,6 +77,7 @@ void AstPrinter::dump(const Stmt &stmt, Printer &p)
     else if (auto *pr = dynamic_cast<const PrintStmt *>(&stmt))
     {
         p.os << "(PRINT";
+        // Each print item may be an expression or formatting token.
         for (const auto &it : pr->items)
         {
             p.os << ' ';
@@ -107,6 +122,7 @@ void AstPrinter::dump(const Stmt &stmt, Printer &p)
         dump(*i->cond, p);
         p.os << " THEN ";
         dump(*i->then_branch, p);
+        // Emit any ELSEIF branches in order of appearance.
         for (const auto &e : i->elseifs)
         {
             p.os << " ELSEIF ";
@@ -114,6 +130,7 @@ void AstPrinter::dump(const Stmt &stmt, Printer &p)
             p.os << " THEN ";
             dump(*e.then_branch, p);
         }
+        // Optional final ELSE branch.
         if (i->else_branch)
         {
             p.os << " ELSE ";
@@ -127,6 +144,7 @@ void AstPrinter::dump(const Stmt &stmt, Printer &p)
         dump(*w->cond, p);
         p.os << " {";
         bool first = true;
+        // Serialize loop body with embedded source line numbers.
         for (auto &s : w->body)
         {
             if (!first)
@@ -143,6 +161,7 @@ void AstPrinter::dump(const Stmt &stmt, Printer &p)
         dump(*f->start, p);
         p.os << " TO ";
         dump(*f->end, p);
+        // STEP clause is optional.
         if (f->step)
         {
             p.os << " STEP ";
@@ -150,6 +169,7 @@ void AstPrinter::dump(const Stmt &stmt, Printer &p)
         }
         p.os << " {";
         bool first = true;
+        // Body statements carry line numbers to mirror source.
         for (auto &s : f->body)
         {
             if (!first)
@@ -183,6 +203,7 @@ void AstPrinter::dump(const Stmt &stmt, Printer &p)
         static constexpr std::array<const char *, 3> types = {"I64", "F64", "STR"};
         p.os << "(FUNCTION " << f->name << " RET " << types[static_cast<size_t>(f->ret)] << " (";
         bool first = true;
+        // Parameters are printed in declaration order.
         for (auto &pa : f->params)
         {
             if (!first)
@@ -194,6 +215,7 @@ void AstPrinter::dump(const Stmt &stmt, Printer &p)
         }
         p.os << ") {";
         bool firstStmt = true;
+        // Function body statements with line numbers.
         for (auto &s : f->body)
         {
             if (!firstStmt)
@@ -208,6 +230,7 @@ void AstPrinter::dump(const Stmt &stmt, Printer &p)
     {
         p.os << "(SUB " << sb->name << " (";
         bool first = true;
+        // Serialize parameter list similar to functions.
         for (auto &pa : sb->params)
         {
             if (!first)
@@ -219,6 +242,7 @@ void AstPrinter::dump(const Stmt &stmt, Printer &p)
         }
         p.os << ") {";
         bool firstStmt = true;
+        // Dump body statements with their line numbers.
         for (auto &s : sb->body)
         {
             if (!firstStmt)
@@ -239,8 +263,14 @@ void AstPrinter::dump(const Stmt &stmt, Printer &p)
     }
 }
 
+/// @brief Print an expression node to the printer.
+/// @param expr Expression to dump.
+/// @param p Printer receiving output.
+/// @details Handles literals, variables, operators, and calls by
+/// inspecting the dynamic expression type.
 void AstPrinter::dump(const Expr &expr, Printer &p)
 {
+    // Dispatch on concrete expression type.
     if (auto *i = dynamic_cast<const IntExpr *>(&expr))
     {
         p.os << i->value;
@@ -263,6 +293,7 @@ void AstPrinter::dump(const Expr &expr, Printer &p)
     {
         static constexpr std::array<const char *, 14> ops = {
             "+", "-", "*", "/", "\\", "MOD", "=", "<>", "<", "<=", ">", ">=", "AND", "OR"};
+        // Binary expressions print operator then operands.
         p.os << '(' << ops[static_cast<size_t>(b->op)] << ' ';
         dump(*b->lhs, p);
         p.os << ' ';
@@ -281,6 +312,7 @@ void AstPrinter::dump(const Expr &expr, Printer &p)
             "LEN",    "MID$",   "LEFT$", "RIGHT$", "STR$",   "VAL",  "INT", "SQR",
             "ABS",    "FLOOR",  "CEIL",  "SIN",    "COS",    "POW",  "RND", "INSTR",
             "LTRIM$", "RTRIM$", "TRIM$", "UCASE$", "LCASE$", "CHR$", "ASC"};
+        // Map builtin enum to name then dump arguments.
         p.os << '(' << names[static_cast<size_t>(c->builtin)];
         for (auto &a : c->args)
         {
@@ -291,6 +323,7 @@ void AstPrinter::dump(const Expr &expr, Printer &p)
     }
     else if (auto *c = dynamic_cast<const CallExpr *>(&expr))
     {
+        // User-defined call with callee name and arguments.
         p.os << '(' << c->callee;
         for (auto &a : c->args)
         {
