@@ -38,6 +38,8 @@ void rt_trap(const char *msg)
 
 void *rt_alloc(int64_t bytes)
 {
+    if (bytes < 0)
+        return rt_trap("negative allocation"), NULL;
     void *p = malloc((size_t)bytes);
     if (!p)
         rt_trap("out of memory");
