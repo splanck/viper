@@ -76,12 +76,38 @@ void rt_print_f64(double v)
 
 rt_string rt_input_line(void)
 {
-    char buf[1024];
-    if (!fgets(buf, sizeof(buf), stdin))
-        return NULL;
-    size_t len = strlen(buf);
-    if (len && buf[len - 1] == '\n')
-        buf[--len] = '\0';
+    size_t cap = 1024;
+    size_t len = 0;
+    char *buf = (char *)rt_alloc(cap);
+    for (;;)
+    {
+        int ch = fgetc(stdin);
+        if (ch == EOF)
+        {
+            if (len == 0)
+            {
+                free(buf);
+                return NULL;
+            }
+            break;
+        }
+        if (ch == '\n')
+            break;
+        if (len + 1 >= cap)
+        {
+            size_t new_cap = cap * 2;
+            char *nbuf = (char *)realloc(buf, new_cap);
+            if (!nbuf)
+            {
+                free(buf);
+                rt_trap("out of memory");
+            }
+            buf = nbuf;
+            cap = new_cap;
+        }
+        buf[len++] = (char)ch;
+    }
+    buf[len] = '\0';
     rt_string s = (rt_string)rt_alloc(sizeof(*s));
     s->refcnt = 1;
     s->size = (int64_t)len;
@@ -89,6 +115,7 @@ rt_string rt_input_line(void)
     char *data = (char *)rt_alloc(len + 1);
     memcpy(data, buf, len + 1);
     s->data = data;
+    free(buf);
     return s;
 }
 
