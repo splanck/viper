@@ -10,8 +10,12 @@
 
 namespace il::support
 {
-
 /// @brief Simple bump allocator for fast allocations.
+///
+/// Uses a contiguous internal buffer and a bump-pointer strategy to satisfy
+/// allocation requests. Each call to allocate() advances the current position
+/// in the buffer by the requested size and alignment. Individual allocations
+/// cannot be freed; invoke reset() to make the entire buffer reusable.
 /// @invariant Allocations are not individually freed; use reset() to reuse.
 /// @ownership Owns its internal buffer.
 class Arena
@@ -32,7 +36,9 @@ class Arena
     void reset();
 
   private:
+    /// Backing storage for all allocations; owned by the arena.
     std::vector<std::byte> buffer_;
+    /// Current offset within buffer_ for the next allocation.
     size_t offset_ = 0;
 };
 } // namespace il::support
