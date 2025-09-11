@@ -11,6 +11,9 @@
 namespace il::support
 {
 
+/// @brief Register a new file path and assign it a unique identifier.
+/// @param path Filesystem path to canonicalize and store.
+/// @return Identifier (>0) representing the stored path.
 uint32_t SourceManager::addFile(std::string path)
 {
     std::filesystem::path p(std::move(path));
@@ -18,6 +21,9 @@ uint32_t SourceManager::addFile(std::string path)
     return static_cast<uint32_t>(files_.size());
 }
 
+/// @brief Retrieve the canonical path associated with @p file_id.
+/// @param file_id Identifier previously returned by addFile().
+/// @return Stored path, or empty string view if @p file_id is invalid.
 std::string_view SourceManager::getPath(uint32_t file_id) const
 {
     if (file_id == 0 || file_id > files_.size())
