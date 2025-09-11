@@ -22,6 +22,10 @@ namespace il::io
 namespace
 {
 
+/// @brief Strip leading and trailing whitespace from a string.
+/// @param s Input string that may contain surrounding spaces.
+/// @return Substring with external whitespace removed.
+/// @note Used throughout parsing to normalize tokens before inspection.
 std::string trim(const std::string &s)
 {
     size_t b = 0;
@@ -33,6 +37,12 @@ std::string trim(const std::string &s)
     return s.substr(b, e - b);
 }
 
+/// @brief Parse a textual type specifier.
+/// @param t Lowercase token such as "i64" or "ptr".
+/// @param ok Optional flag set true on success and false on unknown types.
+/// @return Matching Type or a default-constructed Type on failure.
+/// @details On error, @p ok is set to false and callers can treat the returned
+/// value as an invalid type indicator.
 Type parseType(const std::string &t, bool *ok = nullptr)
 {
     if (t == "i64")
@@ -76,6 +86,11 @@ Type parseType(const std::string &t, bool *ok = nullptr)
     return Type(); // error indicator
 }
 
+/// @brief Fetch the next token from a stream.
+/// @param ss Stream containing whitespace and comma separated tokens.
+/// @return Token with any trailing comma removed.
+/// @note Used for parsing instruction operand lists where commas delimit
+/// individual operands.
 std::string readToken(std::istringstream &ss)
 {
     std::string t;
@@ -109,6 +124,14 @@ struct ParserState
     explicit ParserState(Module &mod) : m(mod) {}
 };
 
+/// @brief Convert a token into a typed IL value.
+/// @param tok Token representing a value (temporary, literal, etc.).
+/// @param st Current parser state for symbol lookup and diagnostics.
+/// @param err Stream receiving diagnostic messages on failure.
+/// @return Parsed Value or a placeholder when parsing fails.
+/// @details Supports temps prefixed with '%', globals with '@', string,
+/// integer and floating literals. Invalid tokens set ParserState::hasError
+/// and emit an error with the current line number.
 Value parseValue(const std::string &tok, ParserState &st, std::ostream &err)
 {
     if (tok.empty())
@@ -184,6 +207,11 @@ Value parseValue(const std::string &tok, ParserState &st, std::ostream &err)
 using InstrHandler =
     std::function<bool(const std::string &, Instr &, ParserState &, std::ostream &)>;
 
+/// @brief Build a handler for binary arithmetic or logical instructions.
+/// @param op Opcode to assign to the instruction.
+/// @param ty Result type produced by the operation.
+/// @return Callable that parses two operand tokens and populates an Instr.
+/// @note Operand parsing delegates to parseValue(), which reports errors.
 InstrHandler makeBinaryHandler(Opcode op, Type ty)
 {
     return [op, ty](const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
@@ -201,6 +229,10 @@ InstrHandler makeBinaryHandler(Opcode op, Type ty)
     };
 }
 
+/// @brief Build a handler for unary operations.
+/// @param op Opcode to assign.
+/// @param ty Result type for the instruction.
+/// @return Callable that parses a single operand using parseValue().
 InstrHandler makeUnaryHandler(Opcode op, Type ty)
 {
     return [op, ty](const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
@@ -215,6 +247,9 @@ InstrHandler makeUnaryHandler(Opcode op, Type ty)
     };
 }
 
+/// @brief Build a comparison instruction handler.
+/// @param op Comparison opcode.
+/// @return Binary handler preconfigured to produce an i1 result.
 InstrHandler makeCmpHandler(Opcode op)
 {
     return makeBinaryHandler(op, Type(Type::Kind::I1));
@@ -284,6 +319,12 @@ static const std::unordered_map<std::string, InstrHandler> kInstrHandlers = {
     {"ret", parseRetInstr},
     {"trap", parseTrapInstr}};
 
+/// @brief Parse the "alloca" instruction.
+/// @param rest Remaining text after the opcode, expecting an optional size operand.
+/// @param in Instruction to populate.
+/// @param st Parser state for diagnostics.
+/// @param err Error stream updated on malformed size tokens.
+/// @return True on successful parse.
 bool parseAllocaInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
 {
     std::istringstream ss(rest);
@@ -295,6 +336,7 @@ bool parseAllocaInstr(const std::string &rest, Instr &in, ParserState &st, std::
     return true;
 }
 
+/// @brief Parse the "gep" instruction in the form "base, offset".
 bool parseGEPInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
 {
     std::istringstream ss(rest);
@@ -307,6 +349,7 @@ bool parseGEPInstr(const std::string &rest, Instr &in, ParserState &st, std::ost
     return true;
 }
 
+/// @brief Parse a "load" instruction of the form "<type> <ptr>".
 bool parseLoadInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
 {
     std::istringstream ss(rest);
@@ -318,6 +361,7 @@ bool parseLoadInstr(const std::string &rest, Instr &in, ParserState &st, std::os
     return true;
 }
 
+/// @brief Parse a "store" instruction of the form "<type> <ptr> <val>".
 bool parseStoreInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
 {
     std::istringstream ss(rest);
@@ -331,6 +375,7 @@ bool parseStoreInstr(const std::string &rest, Instr &in, ParserState &st, std::o
     return true;
 }
 
+/// @brief Parse the "addr_of" instruction expecting a global symbol.
 bool parseAddrOfInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
 {
     std::istringstream ss(rest);
@@ -342,6 +387,7 @@ bool parseAddrOfInstr(const std::string &rest, Instr &in, ParserState &st, std::
     return true;
 }
 
+/// @brief Parse the "const_str" instruction containing a quoted string literal.
 bool parseConstStrInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
 {
     std::istringstream ss(rest);
@@ -353,6 +399,7 @@ bool parseConstStrInstr(const std::string &rest, Instr &in, ParserState &st, std
     return true;
 }
 
+/// @brief Parse the "const_null" instruction which yields a null pointer.
 bool parseConstNullInstr(const std::string &rest, Instr &in, ParserState &, std::ostream &)
 {
     (void)rest;
@@ -361,6 +408,8 @@ bool parseConstNullInstr(const std::string &rest, Instr &in, ParserState &, std:
     return true;
 }
 
+/// @brief Parse a "call" instruction of the form "@name(arg1, arg2)".
+/// @details Emits an error when the call syntax is malformed.
 bool parseCallInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
 {
     in.op = Opcode::Call;
@@ -386,6 +435,9 @@ bool parseCallInstr(const std::string &rest, Instr &in, ParserState &st, std::os
     return true;
 }
 
+/// @brief Parse an unconditional branch instruction.
+/// @details Accepts either "label" or "label(arg1, arg2)" forms and validates
+/// argument counts against the target block's parameters.
 bool parseBrInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
 {
     in.op = Opcode::Br;
@@ -436,6 +488,8 @@ bool parseBrInstr(const std::string &rest, Instr &in, ParserState &st, std::ostr
     return true;
 }
 
+/// @brief Parse a conditional branch of the form
+/// "<cond>, label %a(...), label %b(...)".
 bool parseCBrInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
 {
     in.op = Opcode::CBr;
@@ -521,6 +575,7 @@ bool parseCBrInstr(const std::string &rest, Instr &in, ParserState &st, std::ost
     return true;
 }
 
+/// @brief Parse a "ret" instruction with an optional return value.
 bool parseRetInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
 {
     in.op = Opcode::Ret;
@@ -531,6 +586,7 @@ bool parseRetInstr(const std::string &rest, Instr &in, ParserState &st, std::ost
     return true;
 }
 
+/// @brief Parse the "trap" instruction which halts execution.
 bool parseTrapInstr(const std::string &, Instr &in, ParserState &, std::ostream &)
 {
     in.op = Opcode::Trap;
@@ -538,6 +594,11 @@ bool parseTrapInstr(const std::string &, Instr &in, ParserState &, std::ostream 
     return true;
 }
 
+/// @brief Parse a single instruction line after removing result assignment.
+/// @param line Full instruction text.
+/// @param st Current parser state for context and diagnostics.
+/// @param err Stream receiving error messages when opcode handlers fail.
+/// @return True if parsing succeeded and the instruction was appended.
 bool parseInstruction(const std::string &line, ParserState &st, std::ostream &err)
 {
     Instr in;
@@ -690,6 +751,12 @@ bool parseBlockHeader(const std::string &header, ParserState &st, std::ostream &
     return true;
 }
 
+/// @brief Parse a function body after its header has been read.
+/// @param is Input stream positioned after the function header.
+/// @param header Previously read function header line.
+/// @param st Parser state to populate.
+/// @param err Diagnostic output stream.
+/// @return True when the function and all contained blocks are parsed.
 bool parseFunction(std::istream &is, std::string &header, ParserState &st, std::ostream &err)
 {
     if (!parseFunctionHeader(header, st, err))
@@ -733,6 +800,12 @@ bool parseFunction(std::istream &is, std::string &header, ParserState &st, std::
     return true;
 }
 
+/// @brief Parse top-level module declarations (il, extern, global, func).
+/// @param is Input stream for additional lines when encountering a function.
+/// @param line Current line to interpret.
+/// @param st Parser state updated with module metadata.
+/// @param err Output stream for error messages.
+/// @return True if the line was successfully processed.
 bool parseModuleHeader(std::istream &is, std::string &line, ParserState &st, std::ostream &err)
 {
     if (line.rfind("il", 0) == 0)
@@ -787,6 +860,11 @@ bool parseModuleHeader(std::istream &is, std::string &line, ParserState &st, std
 
 } // namespace
 
+/// @brief Entry point for parsing a textual IL module.
+/// @param is Input stream containing IL text.
+/// @param m Module to populate.
+/// @param err Stream for error diagnostics.
+/// @return True if no fatal parsing errors were encountered.
 bool Parser::parse(std::istream &is, Module &m, std::ostream &err)
 {
     ParserState st{m};
