@@ -17,10 +17,14 @@ using Block = BasicBlock;
 
 namespace viper::analysis
 {
+/// @brief Dominator tree for a function.
+/// Stores immediate dominator relationships and tree children for each block.
 struct DomTree
 {
-    std::unordered_map<il::core::Block *, il::core::Block *> idom;
-    std::unordered_map<il::core::Block *, std::vector<il::core::Block *>> children;
+    std::unordered_map<il::core::Block *, il::core::Block *>
+        idom; ///< Maps each block to its immediate dominator
+    std::unordered_map<il::core::Block *, std::vector<il::core::Block *>>
+        children; ///< Maps each block to the blocks it immediately dominates
 
     /// @brief Return true if block @p A dominates block @p B.
     /// @param A Potential dominator.
