@@ -13,6 +13,10 @@ Arena::Arena(size_t size) : buffer_(size) {}
 
 void *Arena::allocate(size_t size, size_t align)
 {
+    // Reject zero or non power-of-two alignments.
+    if (align == 0 || (align & (align - 1)) != 0)
+        return nullptr;
+
     size_t current = offset_;
     size_t aligned = (current + align - 1) & ~(align - 1);
     if (aligned + size > buffer_.size())
