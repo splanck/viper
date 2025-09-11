@@ -18,6 +18,10 @@ namespace il::frontends::basic
 
 namespace detail
 {
+/// @brief Interpret expression @p e as a numeric literal.
+/// @param e Expression to inspect.
+/// @return Numeric wrapper if @p e is an IntExpr or FloatExpr; std::nullopt otherwise.
+/// @invariant Does not evaluate non-literal expressions.
 std::optional<Numeric> asNumeric(const Expr &e)
 {
     if (auto *i = dynamic_cast<const IntExpr *>(&e))
@@ -27,6 +31,11 @@ std::optional<Numeric> asNumeric(const Expr &e)
     return std::nullopt;
 }
 
+/// @brief Promote @p a to floating-point if either operand is float.
+/// @param a First numeric operand.
+/// @param b Second numeric operand.
+/// @return @p a converted to float when necessary; otherwise @p a unchanged.
+/// @invariant Integer value @p a.i remains intact after promotion.
 Numeric promote(const Numeric &a, const Numeric &b)
 {
     if (a.isFloat || b.isFloat)
@@ -34,6 +43,12 @@ Numeric promote(const Numeric &a, const Numeric &b)
     return a;
 }
 
+/// @brief Fold binary operation on two string literals.
+/// @param l Left string operand.
+/// @param op Operator token to apply.
+/// @param r Right string operand.
+/// @return New literal expression or nullptr if operation is unsupported.
+/// @invariant Only concatenation and equality comparisons are folded.
 ExprPtr foldStringBinary(const StringExpr &l, TokenKind op, const StringExpr &r)
 {
     switch (op)
@@ -58,6 +73,12 @@ ExprPtr foldStringBinary(const StringExpr &l, TokenKind op, const StringExpr &r)
 }
 } // namespace detail
 
+/// @brief Fold numeric binary expression using callback @p op.
+/// @param l Left operand expression.
+/// @param r Right operand expression.
+/// @param op Callback operating on promoted numerics and returning optional result.
+/// @return Folded literal or nullptr if operands aren't numeric or @p op fails.
+/// @invariant Preserves 64-bit wrap-around semantics for integers.
 template <typename F> ExprPtr detail::foldNumericBinary(const Expr &l, const Expr &r, F op)
 {
     auto ln = asNumeric(l);
@@ -85,21 +106,41 @@ namespace
 
 using detail::Numeric;
 
+/// @brief Add @p a and @p b with 64-bit wrap-around semantics.
+/// @param a Left operand.
+/// @param b Right operand.
+/// @return Sum modulo 2^64.
+/// @invariant Uses unsigned addition to emulate BASIC overflow behavior.
 static long long wrapAdd(long long a, long long b)
 {
     return static_cast<long long>(static_cast<uint64_t>(a) + static_cast<uint64_t>(b));
 }
 
+/// @brief Subtract @p b from @p a with 64-bit wrap-around semantics.
+/// @param a Left operand.
+/// @param b Right operand.
+/// @return Difference modulo 2^64.
+/// @invariant Uses unsigned subtraction to emulate BASIC overflow behavior.
 static long long wrapSub(long long a, long long b)
 {
     return static_cast<long long>(static_cast<uint64_t>(a) - static_cast<uint64_t>(b));
 }
 
+/// @brief Multiply @p a and @p b with 64-bit wrap-around semantics.
+/// @param a Left operand.
+/// @param b Right operand.
+/// @return Product modulo 2^64.
+/// @invariant Uses unsigned multiplication to avoid overflow traps.
 static long long wrapMul(long long a, long long b)
 {
     return static_cast<long long>(static_cast<uint64_t>(a) * static_cast<uint64_t>(b));
 }
 
+/// @brief Check whether expression @p e is a string literal.
+/// @param e Expression to inspect.
+/// @param s Output string populated when @p e is a StringExpr.
+/// @return True if @p e is a string literal.
+/// @invariant @p s is assigned only when the function returns true.
 static bool isStr(const Expr *e, std::string &s)
 {
     if (auto *st = dynamic_cast<const StringExpr *>(e))
@@ -110,8 +151,14 @@ static bool isStr(const Expr *e, std::string &s)
     return false;
 }
 
+/// @brief Forward declaration for recursive expression folding.
 static void foldExpr(ExprPtr &e);
 
+/// @brief Replace expression @p e with an integer literal.
+/// @param e Expression pointer to replace.
+/// @param v Integer value to insert.
+/// @param loc Source location for the new literal.
+/// @invariant Ownership of @p e transfers to the newly created IntExpr.
 static void replaceWithInt(ExprPtr &e, long long v, support::SourceLoc loc)
 {
     auto ni = std::make_unique<IntExpr>();
@@ -120,6 +167,11 @@ static void replaceWithInt(ExprPtr &e, long long v, support::SourceLoc loc)
     e = std::move(ni);
 }
 
+/// @brief Replace expression @p e with a string literal.
+/// @param e Expression pointer to replace.
+/// @param s String value to insert.
+/// @param loc Source location for the new literal.
+/// @invariant Ownership of @p e transfers to the newly created StringExpr.
 static void replaceWithStr(ExprPtr &e, std::string s, support::SourceLoc loc)
 {
     auto ns = std::make_unique<StringExpr>();
@@ -128,6 +180,10 @@ static void replaceWithStr(ExprPtr &e, std::string s, support::SourceLoc loc)
     e = std::move(ns);
 }
 
+/// @brief Attempt to fold built-in call expression @p c.
+/// @param e Expression pointer to replace on success.
+/// @param c Builtin call expression to evaluate.
+/// @invariant Only pure builtins with constant arguments are folded.
 static void foldCall(ExprPtr &e, BuiltinCallExpr *c)
 {
     for (auto &a : c->args)
@@ -206,6 +262,10 @@ static void foldCall(ExprPtr &e, BuiltinCallExpr *c)
     }
 }
 
+/// @brief Fold unary expression @p u when its operand is constant.
+/// @param e Expression pointer to replace.
+/// @param u Unary expression to evaluate.
+/// @invariant Only logical NOT on integer literals is supported.
 static void foldUnary(ExprPtr &e, UnaryExpr *u)
 {
     foldExpr(u->expr);
@@ -214,6 +274,10 @@ static void foldUnary(ExprPtr &e, UnaryExpr *u)
         replaceWithInt(e, n->i == 0 ? 1 : 0, u->loc);
 }
 
+/// @brief Map binary operation enum to corresponding token.
+/// @param op Binary operation.
+/// @return Equivalent token kind.
+/// @invariant Covers all BinaryExpr::Op variants.
 static TokenKind toToken(BinaryExpr::Op op)
 {
     switch (op)
@@ -250,6 +314,11 @@ static TokenKind toToken(BinaryExpr::Op op)
     return TokenKind::EndOfFile;
 }
 
+/// @brief Fold addition of two numeric literals.
+/// @param l Left operand.
+/// @param r Right operand.
+/// @return Folded literal or nullptr on mismatch.
+/// @invariant Uses wrapAdd for 64-bit semantics.
 static ExprPtr foldAdd(const Expr &l, const Expr &r)
 {
     return detail::foldNumericBinary(
@@ -267,6 +336,11 @@ static ExprPtr foldAdd(const Expr &l, const Expr &r)
         });
 }
 
+/// @brief Fold subtraction of two numeric literals.
+/// @param l Left operand.
+/// @param r Right operand.
+/// @return Folded literal or nullptr on mismatch.
+/// @invariant Uses wrapSub for 64-bit semantics.
 static ExprPtr foldSub(const Expr &l, const Expr &r)
 {
     return detail::foldNumericBinary(
@@ -284,6 +358,11 @@ static ExprPtr foldSub(const Expr &l, const Expr &r)
         });
 }
 
+/// @brief Fold multiplication of two numeric literals.
+/// @param l Left operand.
+/// @param r Right operand.
+/// @return Folded literal or nullptr on mismatch.
+/// @invariant Uses wrapMul for 64-bit semantics.
 static ExprPtr foldMul(const Expr &l, const Expr &r)
 {
     return detail::foldNumericBinary(
@@ -301,6 +380,11 @@ static ExprPtr foldMul(const Expr &l, const Expr &r)
         });
 }
 
+/// @brief Fold division of two numeric literals.
+/// @param l Left operand.
+/// @param r Right operand.
+/// @return Folded literal or nullptr on mismatch.
+/// @invariant Returns nullptr on divide-by-zero.
 static ExprPtr foldDiv(const Expr &l, const Expr &r)
 {
     return detail::foldNumericBinary(
@@ -317,6 +401,11 @@ static ExprPtr foldDiv(const Expr &l, const Expr &r)
         });
 }
 
+/// @brief Fold integer division of two numeric literals.
+/// @param l Left operand.
+/// @param r Right operand.
+/// @return Folded literal or nullptr on mismatch.
+/// @invariant Fails when either operand is float or divisor is zero.
 static ExprPtr foldIDiv(const Expr &l, const Expr &r)
 {
     return detail::foldNumericBinary(
@@ -331,6 +420,11 @@ static ExprPtr foldIDiv(const Expr &l, const Expr &r)
         });
 }
 
+/// @brief Fold modulus of two numeric literals.
+/// @param l Left operand.
+/// @param r Right operand.
+/// @return Folded literal or nullptr on mismatch.
+/// @invariant Fails when operands are floats or divisor is zero.
 static ExprPtr foldMod(const Expr &l, const Expr &r)
 {
     return detail::foldNumericBinary(
@@ -345,6 +439,11 @@ static ExprPtr foldMod(const Expr &l, const Expr &r)
         });
 }
 
+/// @brief Fold numeric equality comparison.
+/// @param l Left operand.
+/// @param r Right operand.
+/// @return Integer literal 1 or 0, or nullptr on mismatch.
+/// @invariant Operands are promoted before comparison.
 static ExprPtr foldEq(const Expr &l, const Expr &r)
 {
     return detail::foldNumericBinary(
@@ -357,6 +456,11 @@ static ExprPtr foldEq(const Expr &l, const Expr &r)
         });
 }
 
+/// @brief Fold numeric inequality comparison.
+/// @param l Left operand.
+/// @param r Right operand.
+/// @return Integer literal 1 or 0, or nullptr on mismatch.
+/// @invariant Operands are promoted before comparison.
 static ExprPtr foldNe(const Expr &l, const Expr &r)
 {
     return detail::foldNumericBinary(
@@ -369,6 +473,11 @@ static ExprPtr foldNe(const Expr &l, const Expr &r)
         });
 }
 
+/// @brief Fold numeric less-than comparison.
+/// @param l Left operand.
+/// @param r Right operand.
+/// @return Integer literal 1 or 0, or nullptr on mismatch.
+/// @invariant Operands are promoted before comparison.
 static ExprPtr foldLt(const Expr &l, const Expr &r)
 {
     return detail::foldNumericBinary(
@@ -381,6 +490,11 @@ static ExprPtr foldLt(const Expr &l, const Expr &r)
         });
 }
 
+/// @brief Fold numeric less-than-or-equal comparison.
+/// @param l Left operand.
+/// @param r Right operand.
+/// @return Integer literal 1 or 0, or nullptr on mismatch.
+/// @invariant Operands are promoted before comparison.
 static ExprPtr foldLe(const Expr &l, const Expr &r)
 {
     return detail::foldNumericBinary(
@@ -393,6 +507,11 @@ static ExprPtr foldLe(const Expr &l, const Expr &r)
         });
 }
 
+/// @brief Fold numeric greater-than comparison.
+/// @param l Left operand.
+/// @param r Right operand.
+/// @return Integer literal 1 or 0, or nullptr on mismatch.
+/// @invariant Operands are promoted before comparison.
 static ExprPtr foldGt(const Expr &l, const Expr &r)
 {
     return detail::foldNumericBinary(
@@ -405,6 +524,11 @@ static ExprPtr foldGt(const Expr &l, const Expr &r)
         });
 }
 
+/// @brief Fold numeric greater-than-or-equal comparison.
+/// @param l Left operand.
+/// @param r Right operand.
+/// @return Integer literal 1 or 0, or nullptr on mismatch.
+/// @invariant Operands are promoted before comparison.
 static ExprPtr foldGe(const Expr &l, const Expr &r)
 {
     return detail::foldNumericBinary(
@@ -417,6 +541,11 @@ static ExprPtr foldGe(const Expr &l, const Expr &r)
         });
 }
 
+/// @brief Fold logical AND of two numeric literals.
+/// @param l Left operand.
+/// @param r Right operand.
+/// @return Integer literal 1 or 0, or nullptr on mismatch.
+/// @invariant Returns null when either operand is float.
 static ExprPtr foldAnd(const Expr &l, const Expr &r)
 {
     return detail::foldNumericBinary(
@@ -431,6 +560,11 @@ static ExprPtr foldAnd(const Expr &l, const Expr &r)
         });
 }
 
+/// @brief Fold logical OR of two numeric literals.
+/// @param l Left operand.
+/// @param r Right operand.
+/// @return Integer literal 1 or 0, or nullptr on mismatch.
+/// @invariant Returns null when either operand is float.
 static ExprPtr foldOr(const Expr &l, const Expr &r)
 {
     return detail::foldNumericBinary(
@@ -445,6 +579,12 @@ static ExprPtr foldOr(const Expr &l, const Expr &r)
         });
 }
 
+/// @brief Dispatch to numeric folding routine based on operator.
+/// @param tk Operator token.
+/// @param l Left operand.
+/// @param r Right operand.
+/// @return Folded expression or nullptr if unsupported.
+/// @invariant Only constant numeric operands are considered.
 static ExprPtr foldNumeric(TokenKind tk, const Expr &l, const Expr &r)
 {
     switch (tk)
@@ -482,6 +622,10 @@ static ExprPtr foldNumeric(TokenKind tk, const Expr &l, const Expr &r)
     }
 }
 
+/// @brief Fold binary expression @p b when both operands are constant.
+/// @param e Expression pointer to replace.
+/// @param b Binary expression to evaluate.
+/// @invariant Attempts numeric folding first, then string operations.
 static void foldBinary(ExprPtr &e, BinaryExpr *b)
 {
     foldExpr(b->lhs);
@@ -508,6 +652,9 @@ static void foldBinary(ExprPtr &e, BinaryExpr *b)
     }
 }
 
+/// @brief Recursively fold constants within expression @p e.
+/// @param e Expression pointer to process.
+/// @invariant Replaces @p e with literal nodes when folding succeeds.
 static void foldExpr(ExprPtr &e)
 {
     if (!e)
@@ -530,6 +677,9 @@ static void foldExpr(ExprPtr &e)
     }
 }
 
+/// @brief Recursively fold constants within statement @p s.
+/// @param s Statement pointer to process.
+/// @invariant Traverses nested AST nodes without altering control flow.
 static void foldStmt(StmtPtr &s)
 {
     if (!s)
