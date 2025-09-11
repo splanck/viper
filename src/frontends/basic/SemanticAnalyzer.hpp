@@ -29,7 +29,7 @@ struct ProcSignature
         Sub
     } kind{Kind::Function};
 
-    Type retType{Type::I64}; ///< Return type for FUNCTION; ignored for SUB.
+    std::optional<Type> retType; ///< Return type for FUNCTION; nullopt for SUB.
 
     /// @brief Parameter type descriptor.
     struct Param

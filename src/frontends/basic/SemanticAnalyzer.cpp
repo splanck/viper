@@ -194,7 +194,7 @@ void SemanticAnalyzer::registerProc(const SubDecl &s)
     }
     ProcSignature sig;
     sig.kind = ProcSignature::Kind::Sub;
-    sig.retType = ::il::frontends::basic::Type::I64;
+    sig.retType = std::nullopt;
     std::unordered_set<std::string> paramNames;
     for (const auto &p : s.params)
     {
@@ -1241,11 +1241,11 @@ std::vector<SemanticAnalyzer::Type> SemanticAnalyzer::checkCallArgs(const CallEx
 SemanticAnalyzer::Type SemanticAnalyzer::inferCallType([[maybe_unused]] const CallExpr &c,
                                                        const ProcSignature *sig)
 {
-    if (!sig)
+    if (!sig || !sig->retType)
         return Type::Unknown;
-    if (sig->retType == ::il::frontends::basic::Type::F64)
+    if (*sig->retType == ::il::frontends::basic::Type::F64)
         return Type::Float;
-    if (sig->retType == ::il::frontends::basic::Type::Str)
+    if (*sig->retType == ::il::frontends::basic::Type::Str)
         return Type::String;
     return Type::Int;
 }
