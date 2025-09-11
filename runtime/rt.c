@@ -53,8 +53,8 @@ rt_string rt_const_cstr(const char *c)
     rt_string s = (rt_string)rt_alloc(sizeof(*s));
     s->refcnt = 1;
     s->size = (int64_t)strlen(c);
-    s->capacity = s->size;
-    s->data = (char *)c;
+    s->capacity = 0;
+    s->data = c;
     return s;
 }
 
@@ -86,8 +86,9 @@ rt_string rt_input_line(void)
     s->refcnt = 1;
     s->size = (int64_t)len;
     s->capacity = s->size;
-    s->data = (char *)rt_alloc(len + 1);
-    memcpy(s->data, buf, len + 1);
+    char *data = (char *)rt_alloc(len + 1);
+    memcpy(data, buf, len + 1);
+    s->data = data;
     return s;
 }
 
@@ -104,12 +105,13 @@ rt_string rt_concat(rt_string a, rt_string b)
     s->refcnt = 1;
     s->size = asz + bsz;
     s->capacity = s->size;
-    s->data = (char *)rt_alloc(s->size + 1);
+    char *buf = (char *)rt_alloc(s->size + 1);
     if (a && a->data)
-        memcpy(s->data, a->data, asz);
+        memcpy(buf, a->data, asz);
     if (b && b->data)
-        memcpy(s->data + asz, b->data, bsz);
-    s->data[s->size] = '\0';
+        memcpy(buf + asz, b->data, bsz);
+    buf[s->size] = '\0';
+    s->data = buf;
     return s;
 }
 
@@ -137,9 +139,10 @@ rt_string rt_substr(rt_string s, int64_t start, int64_t len)
     r->refcnt = 1;
     r->size = len;
     r->capacity = len;
-    r->data = (char *)rt_alloc(len + 1);
-    memcpy(r->data, s->data + start, len);
-    r->data[len] = '\0';
+    char *data = (char *)rt_alloc(len + 1);
+    memcpy(data, s->data + start, len);
+    data[len] = '\0';
+    r->data = data;
     return r;
 }
 
@@ -318,15 +321,16 @@ rt_string rt_ucase(rt_string s)
     r->refcnt = 1;
     r->size = s->size;
     r->capacity = r->size;
-    r->data = (char *)rt_alloc(r->size + 1);
+    char *data = (char *)rt_alloc(r->size + 1);
     for (int64_t i = 0; i < r->size; ++i)
     {
         unsigned char c = (unsigned char)s->data[i];
         if (c >= 'a' && c <= 'z')
             c = (unsigned char)(c - 'a' + 'A');
-        r->data[i] = (char)c;
+        data[i] = (char)c;
     }
-    r->data[r->size] = '\0';
+    data[r->size] = '\0';
+    r->data = data;
     return r;
 }
 
@@ -338,15 +342,16 @@ rt_string rt_lcase(rt_string s)
     r->refcnt = 1;
     r->size = s->size;
     r->capacity = r->size;
-    r->data = (char *)rt_alloc(r->size + 1);
+    char *data = (char *)rt_alloc(r->size + 1);
     for (int64_t i = 0; i < r->size; ++i)
     {
         unsigned char c = (unsigned char)s->data[i];
         if (c >= 'A' && c <= 'Z')
             c = (unsigned char)(c - 'A' + 'a');
-        r->data[i] = (char)c;
+        data[i] = (char)c;
     }
-    r->data[r->size] = '\0';
+    data[r->size] = '\0';
+    r->data = data;
     return r;
 }
 
@@ -362,9 +367,10 @@ rt_string rt_chr(int64_t code)
     s->refcnt = 1;
     s->size = 1;
     s->capacity = 1;
-    s->data = (char *)rt_alloc(2);
-    s->data[0] = (char)(unsigned char)code;
-    s->data[1] = '\0';
+    char *data = (char *)rt_alloc(2);
+    data[0] = (char)(unsigned char)code;
+    data[1] = '\0';
+    s->data = data;
     return s;
 }
 
@@ -426,8 +432,9 @@ rt_string rt_int_to_str(int64_t v)
     s->refcnt = 1;
     s->size = n;
     s->capacity = n;
-    s->data = (char *)rt_alloc(n + 1);
-    memcpy(s->data, buf, (size_t)n + 1);
+    char *data = (char *)rt_alloc(n + 1);
+    memcpy(data, buf, (size_t)n + 1);
+    s->data = data;
     return s;
 }
 
@@ -441,8 +448,9 @@ rt_string rt_f64_to_str(double v)
     s->refcnt = 1;
     s->size = n;
     s->capacity = n;
-    s->data = (char *)rt_alloc(n + 1);
-    memcpy(s->data, buf, (size_t)n + 1);
+    char *data = (char *)rt_alloc(n + 1);
+    memcpy(data, buf, (size_t)n + 1);
+    s->data = data;
     return s;
 }
 
