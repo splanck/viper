@@ -205,7 +205,16 @@ std::optional<Slot> VM::handleDebugBreak(
 
 VM::ExecResult VM::handleAlloca(Frame &fr, const Instr &in)
 {
-    size_t sz = (size_t)eval(fr, in.operands[0]).i64;
+    int64_t bytes = eval(fr, in.operands[0]).i64;
+    if (bytes < 0)
+    {
+        RuntimeBridge::trap("negative allocation", in.loc, fr.func->name, "");
+        ExecResult r{};
+        r.value.i64 = 0; // unreachable
+        r.returned = true;
+        return r;
+    }
+    size_t sz = static_cast<size_t>(bytes);
     size_t addr = fr.sp;
     assert(addr + sz <= fr.stack.size());
     std::memset(fr.stack.data() + addr, 0, sz);
