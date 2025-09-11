@@ -25,11 +25,25 @@ const il::core::Module *gModule = nullptr;
 namespace viper::analysis
 {
 
+/// @brief Set the module used for subsequent CFG queries.
+///
+/// Stores a pointer to @p M so that later traversals can resolve block
+/// labels to concrete blocks when computing edges.
+/// @param M Module providing function and block context for queries.
 void setModule(const il::core::Module &M)
 {
     gModule = &M;
 }
 
+/// @brief Gather successor blocks of @p B.
+///
+/// Examines the terminator instruction of @p B and returns the blocks
+/// targeted by branch or conditional branch operations.
+/// @param B Block whose outgoing edges are requested.
+/// @return List of successor blocks. The list is empty if the current
+/// module is unset, @p B lacks a branch terminator, or the targets cannot
+/// be resolved.
+/// @invariant setModule() has been invoked prior to calling.
 std::vector<il::core::Block *> successors(const il::core::Block &B)
 {
     std::vector<il::core::Block *> out;
@@ -71,6 +85,14 @@ std::vector<il::core::Block *> successors(const il::core::Block &B)
     return out;
 }
 
+/// @brief Gather predecessor blocks of @p B within function @p F.
+///
+/// Scans every block in @p F for branch or conditional branch terminators
+/// that reference @p B by label.
+/// @param F Function containing the blocks to scan.
+/// @param B Target block whose incoming edges are requested.
+/// @return List of predecessor blocks; empty if none are found.
+/// @note Blocks with non-branch terminators are ignored.
 std::vector<il::core::Block *> predecessors(const il::core::Function &F, const il::core::Block &B)
 {
     std::vector<il::core::Block *> out;
@@ -93,6 +115,16 @@ std::vector<il::core::Block *> predecessors(const il::core::Function &F, const i
     return out;
 }
 
+/// @brief Compute a depth-first post-order traversal of @p F.
+///
+/// Performs an iterative DFS starting from the entry block and records
+/// each block after all its successors have been visited. Only blocks
+/// reachable from the entry block are included.
+/// @param F Function whose blocks are traversed.
+/// @return Blocks in post-order; empty if @p F has no blocks.
+/// @invariant setModule() has been called so successor edges can be
+/// resolved.
+/// @note Unreachable blocks are omitted from the result.
 std::vector<il::core::Block *> postOrder(il::core::Function &F)
 {
     std::vector<il::core::Block *> out;
@@ -135,6 +167,13 @@ std::vector<il::core::Block *> postOrder(il::core::Function &F)
     return out;
 }
 
+/// @brief Compute reverse post-order (RPO) traversal of @p F.
+///
+/// Generates the post-order sequence and then reverses it so that the
+/// entry block appears first. Only blocks reachable from the entry block
+/// are present.
+/// @param F Function whose blocks are traversed.
+/// @return Blocks in reverse post-order; empty if @p F has no blocks.
 std::vector<il::core::Block *> reversePostOrder(il::core::Function &F)
 {
     auto po = postOrder(F);
@@ -142,6 +181,16 @@ std::vector<il::core::Block *> reversePostOrder(il::core::Function &F)
     return po;
 }
 
+/// @brief Compute a topological ordering of blocks in @p F.
+///
+/// Uses Kahn's algorithm to order blocks such that all edges go from
+/// earlier to later blocks. If the graph contains a cycle, an empty
+/// vector is returned.
+/// @param F Function whose blocks are ordered.
+/// @return Blocks in topological order or an empty list if @p F is empty
+/// or cyclic.
+/// @invariant setModule() has been invoked so successor edges can be
+/// inspected.
 std::vector<il::core::Block *> topoOrder(il::core::Function &F)
 {
     std::vector<il::core::Block *> out;
@@ -178,6 +227,14 @@ std::vector<il::core::Block *> topoOrder(il::core::Function &F)
     return out;
 }
 
+/// @brief Determine whether the CFG of @p F contains a cycle.
+///
+/// Delegates to topoOrder() and compares the number of blocks returned
+/// against the total blocks in @p F.
+/// @param F Function whose CFG is inspected.
+/// @return `true` if @p F has no cycles or no blocks; otherwise `false`.
+/// @invariant setModule() has been invoked so successor edges can be
+/// resolved.
 bool isAcyclic(il::core::Function &F)
 {
     if (F.blocks.empty())
