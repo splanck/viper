@@ -306,6 +306,19 @@ add_test(NAME il_verify_invalid_bad_load_store
           -DEXPECT=pointer\ type\ mismatch
           -P ${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/check_invalid.cmake)
 
+add_test(NAME il_verify_invalid_wrong_extern_sig
+  COMMAND ${CMAKE_COMMAND}
+          -DIL_VERIFY=${IL_VERIFY}
+          -DFILE=${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/wrong_extern_sig.il
+          -DEXPECT=extern\ @rt_print_str\ signature\ mismatch
+          -P ${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/check_invalid.cmake)
+add_test(NAME il_verify_invalid_wrong_extern_call
+  COMMAND ${CMAKE_COMMAND}
+          -DIL_VERIFY=${IL_VERIFY}
+          -DFILE=${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/wrong_extern_call.il
+          -DEXPECT=call\ arg\ type\ mismatch
+          -P ${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/check_invalid.cmake)
+
 add_test(NAME il_verify_invalid_wrong_block_arg_arity
   COMMAND ${CMAKE_COMMAND}
           -DIL_VERIFY=${IL_VERIFY}
