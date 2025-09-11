@@ -17,7 +17,7 @@ extern "C"
         int64_t refcnt;
         int64_t size;
         int64_t capacity;
-        char *data;
+        const char *data;
     } *rt_string;
 
     /// @brief Abort execution with message @p msg.
@@ -188,7 +188,7 @@ extern "C"
 
     /// @brief Wrap constant C string @p str as rt_string without copying.
     /// @param str Null-terminated constant string.
-    /// @return Non-owning rt_string view.
+    /// @return Non-owning, read-only rt_string view; capacity is 0.
     rt_string rt_const_cstr(const char *str);
 
 #ifdef __cplusplus
