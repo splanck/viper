@@ -1,8 +1,7 @@
 // File: tests/unit/test_il_parse_negative.cpp
-// Purpose: Ensure IL parser rejects malformed block params and branch arguments.
-// Key invariants: Parser returns false for invalid input.
-// Ownership/Lifetime: Test owns all modules and buffers locally.
-// Links: docs/il-spec.md
+// Purpose: Ensure IL parser rejects malformed constructs, including block params, branch arguments,
+// and numeric literals. Key invariants: Parser returns false for invalid input. Ownership/Lifetime:
+// Test owns all modules and buffers locally. Links: docs/il-spec.md
 
 #include "il/io/Parser.hpp"
 #include <cassert>
@@ -14,7 +13,9 @@ int main()
     const char *files[] = {BAD_DIR "/mismatched_paren.il",
                            BAD_DIR "/bad_arg_count.il",
                            BAD_DIR "/unknown_param_type.il",
-                           BAD_DIR "/bad_i32.il"};
+                           BAD_DIR "/bad_i32.il",
+                           BAD_DIR "/bad_int_literal.il",
+                           BAD_DIR "/bad_float_literal.il"};
     for (const char *path : files)
     {
         std::ifstream in(path);
