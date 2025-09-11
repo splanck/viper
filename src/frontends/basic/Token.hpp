@@ -10,14 +10,23 @@
 
 namespace il::frontends::basic
 {
-
+/// @brief All token kinds recognized by the BASIC lexer.
+/// @details Kinds are organized into markers, literals, identifiers,
+/// keywords, operators, and punctuation to guide later parsing stages.
 enum class TokenKind
 {
-    EndOfFile,
-    EndOfLine,
-    Number,
-    String,
-    Identifier,
+    // Markers ---------------------------------------------------------------
+    EndOfFile, ///< Reached end of the source buffer.
+    EndOfLine, ///< End of a line.
+
+    // Literals --------------------------------------------------------------
+    Number, ///< Numeric literal.
+    String, ///< String literal.
+
+    // Identifiers -----------------------------------------------------------
+    Identifier, ///< User-defined identifier.
+
+    // Keywords --------------------------------------------------------------
     KeywordPrint,
     KeywordLet,
     KeywordIf,
@@ -50,28 +59,42 @@ enum class TokenKind
     KeywordFunction,
     KeywordSub,
     KeywordReturn,
-    Plus,
-    Minus,
-    Star,
-    Slash,
-    Backslash,
-    Equal,
-    NotEqual,
-    Less,
-    LessEqual,
-    Greater,
-    GreaterEqual,
-    LParen,
-    RParen,
-    Comma,
-    Semicolon,
-    Colon,
+
+    // Operators -------------------------------------------------------------
+    Plus,         ///< '+'.
+    Minus,        ///< '-'.
+    Star,         ///< '*'.
+    Slash,        ///< '/'.
+    Backslash,    ///< '\\'.
+    Equal,        ///< '='.
+    NotEqual,     ///< '<>'.
+    Less,         ///< '<'.
+    LessEqual,    ///< '<='.
+    Greater,      ///< '>'.
+    GreaterEqual, ///< '>='.
+
+    // Punctuation -----------------------------------------------------------
+    LParen,    ///< '('.
+    RParen,    ///< ')'.
+    Comma,     ///< ','.
+    Semicolon, ///< ';'.
+    Colon,     ///< ':'.
 };
 
+/// @brief A lexical token produced by the BASIC lexer.
+/// @details Tokens are value types that own their lexeme and track the
+/// starting source location.
 struct Token
 {
+    /// @brief Classification of this token.
     TokenKind kind;
+
+    /// @brief Exact character sequence for this token.
+    /// @ownership Owned by this token.
     std::string lexeme;
+
+    /// @brief Source location where the token begins.
+    /// @ownership Borrowed from the source manager.
     il::support::SourceLoc loc;
 };
 
