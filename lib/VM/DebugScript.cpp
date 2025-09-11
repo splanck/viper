@@ -11,7 +11,11 @@
 
 namespace il::vm
 {
-
+/// @brief Construct script by loading actions from a file.
+///
+/// Lines with "continue" enqueue a Continue action; lines with
+/// "step" or "step N" enqueue a Step action with the given instruction count.
+/// Unknown or malformed lines emit a [DEBUG] message and are ignored.
 DebugScript::DebugScript(const std::string &path)
 {
     std::ifstream f(path);
@@ -49,11 +53,20 @@ DebugScript::DebugScript(const std::string &path)
     }
 }
 
+/// @brief Queue a step action for @p count instructions.
+///
+/// This adds a Step action to be consumed by the debugger, allowing it to
+/// advance execution a fixed number of instructions before pausing again.
 void DebugScript::addStep(uint64_t count)
 {
     actions.push({DebugActionKind::Step, count});
 }
 
+/// @brief Retrieve the next queued action.
+///
+/// If no actions remain, a Continue action is returned to resume normal
+/// execution. Otherwise, the next action is removed from the queue and
+/// returned to the caller.
 DebugAction DebugScript::nextAction()
 {
     if (actions.empty())
@@ -63,6 +76,9 @@ DebugAction DebugScript::nextAction()
     return act;
 }
 
+/// @brief Determine whether all actions have been consumed.
+///
+/// @return True if no actions remain in the queue, false otherwise.
 bool DebugScript::empty() const
 {
     return actions.empty();
