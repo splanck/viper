@@ -11,6 +11,14 @@
 #include <sstream>
 #include <string>
 
+/// @brief CLI entry for verifying IL modules.
+/// Usage:
+///   il-verify <file.il>
+///   il-verify --version
+/// @param argc Number of CLI arguments.
+/// @param argv Argument vector.
+/// @return 0 on successful verification or when displaying the version;
+///         1 on invalid usage, I/O, parse, or verification errors.
 int main(int argc, char **argv)
 {
     if (argc == 2 && std::string(argv[1]) == "--version")
