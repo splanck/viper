@@ -19,11 +19,25 @@ namespace il::verify
 namespace
 {
 
+/// @brief Returns true if the opcode terminates a basic block.
+///
+/// Used by the verifier to ensure each block ends with a control-transfer.
+/// If a block ends with an opcode for which this predicate returns false,
+/// the caller emits a diagnostic indicating a missing terminator. This helper
+/// itself performs no error reporting.
 bool isTerminator(Opcode op)
 {
     return op == Opcode::Br || op == Opcode::CBr || op == Opcode::Ret;
 }
 
+/// @brief Computes the static type of a value for verification.
+/// @param v Value being queried.
+/// @param temps Mapping of temporary ids to their inferred types.
+/// @param missing Optional flag set when `v` references an undefined temporary.
+/// @return Inferred type or void when unknown.
+///
+/// The verifier relies on this to validate operand types. When `missing` is set,
+/// callers report an undefined value error.
 Type valueType(const Value &v,
                const std::unordered_map<unsigned, Type> &temps,
                bool *missing = nullptr)
@@ -52,6 +66,12 @@ Type valueType(const Value &v,
     return Type(Type::Kind::Void);
 }
 
+/// @brief Returns the byte width of a primitive type.
+/// @param k Type kind whose size is requested.
+/// @return Size in bytes or 0 for unsupported kinds.
+///
+/// Used by the verifier when checking memory operations and pointer arithmetic.
+/// A return value of 0 denotes an unknown size, after which callers emit an error.
 size_t typeSize(Type::Kind k)
 {
     switch (k)
@@ -69,6 +89,12 @@ size_t typeSize(Type::Kind k)
     return 0;
 }
 
+/// @brief Creates a one-line textual representation of an instruction.
+/// @param in Instruction to render.
+/// @return String used in diagnostics.
+///
+/// The verifier embeds this snippet in error messages to identify the offending instruction.
+/// The function itself never emits errors.
 std::string snippet(const Instr &in)
 {
     std::ostringstream os;
