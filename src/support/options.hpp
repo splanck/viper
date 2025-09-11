@@ -10,13 +10,19 @@
 namespace il::support
 {
 
-/// @brief Global options controlling compiler behavior.
+/// @brief Holds global command-line settings that influence compiler behavior.
+/// These options control tracing, verification, and target architecture.
 /// @invariant Flags are independent booleans.
 /// @ownership Value type.
 struct Options
 {
+    /// @brief Enable verbose tracing of compilation steps.
     bool trace = false;
+
+    /// @brief Run the IL verifier before execution or code generation.
     bool verify = true;
+
+    /// @brief Target architecture triple for code generation.
     std::string target = "x86_64";
 };
 } // namespace il::support
