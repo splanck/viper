@@ -654,6 +654,14 @@ add_test(NAME basic_semantics_missing_return COMMAND ${CMAKE_COMMAND}
   "-DEXPECT=${EXPECT_MISSING_RET}"
   -P ${CMAKE_CURRENT_SOURCE_DIR}/golden/basic_errors/check_error.cmake)
 
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/sub_in_expr.err EXPECT_SUB_IN_EXPR)
+string(STRIP "${EXPECT_SUB_IN_EXPR}" EXPECT_SUB_IN_EXPR)
+add_test(NAME basic_semantics_sub_in_expr COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/sub_in_expr.bas
+  "-DEXPECT=${EXPECT_SUB_IN_EXPR}"
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/golden/basic_errors/check_error.cmake)
+
 add_test(NAME basic_semantics_funcs_then_code COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
   -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/FuncsThenCode.ok.bas
