@@ -14,17 +14,19 @@ namespace il::frontends::basic
 // Token buffer navigation
 // -----------------------------------------------------------------------------
 
-// Check whether the next buffered token matches the expected kind. This relies
-// on `peek` to populate the buffer but does not consume any tokens, leaving
-// `tokens_` untouched.
+/// @brief Check if the next buffered token matches the expected kind.
+/// @param k Token kind to test against the next token.
+/// @return True when the buffered token is of kind @p k; false otherwise.
+/// @note Uses peek to populate the buffer without consuming tokens.
 bool Parser::at(TokenKind k) const
 {
     return peek().kind == k;
 }
 
-// Provide lookahead into the token stream. The buffer is extended by pulling
-// tokens from the lexer until position `n` is available. No tokens are removed;
-// only appends to `tokens_` occur.
+/// @brief Provide lookahead into the token stream without consuming tokens.
+/// @param n Lookahead distance, where 0 refers to the current token.
+/// @return Reference to the token at position @p n.
+/// @note Extends the buffer by reading from the lexer as needed.
 const Token &Parser::peek(int n) const
 {
     while (tokens_.size() <= static_cast<size_t>(n))
@@ -34,9 +36,9 @@ const Token &Parser::peek(int n) const
     return tokens_[n];
 }
 
-// Remove and return the current token. The token is first fetched via `peek`
-// to ensure it exists, then erased from the front of `tokens_`, advancing the
-// buffer by one.
+/// @brief Remove and return the current token.
+/// @return The token currently at the front of the buffer.
+/// @note Fetches the token via peek before erasing it to advance the buffer.
 Token Parser::consume()
 {
     Token t = peek();
