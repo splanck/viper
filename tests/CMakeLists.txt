@@ -141,6 +141,10 @@ add_executable(test_rt_string_ranges runtime/RTStringRangeTests.cpp)
 target_link_libraries(test_rt_string_ranges PRIVATE rt)
 add_test(NAME test_rt_string_ranges COMMAND test_rt_string_ranges)
 
+add_executable(test_rt_alloc runtime/RTAllocTests.cpp)
+target_link_libraries(test_rt_alloc PRIVATE rt)
+add_test(NAME test_rt_alloc COMMAND test_rt_alloc)
+
 add_executable(float_out e2e/support/FloatOut.cpp)
 
 add_test(NAME vm_strings_example COMMAND ${CMAKE_COMMAND}
