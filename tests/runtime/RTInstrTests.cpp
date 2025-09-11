@@ -14,11 +14,15 @@ int main()
 
     rt_string s3 = rt_const_cstr("ABABAB");
     rt_string s4 = rt_const_cstr("AB");
-    assert(rt_instr3(3, s3, s4) == 5);
+    assert(rt_instr3(3, s3, s4) == 3);
 
     rt_string s5 = rt_const_cstr("ABC");
     rt_string s6 = rt_const_cstr("X");
     assert(rt_instr2(s5, s6) == 0);
+
+    rt_string s7 = rt_const_cstr("abc");
+    rt_string s8 = rt_const_cstr("a");
+    assert(rt_instr3(1, s7, s8) == 1);
 
     return 0;
 }

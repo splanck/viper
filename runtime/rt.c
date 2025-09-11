@@ -274,7 +274,7 @@ int64_t rt_instr3(int64_t start, rt_string hay, rt_string needle)
         start = len + 1;
     if (needle->size == 0)
         return start;
-    return rt_find(hay, start, needle);
+    return rt_find(hay, start - 1, needle);
 }
 
 rt_string rt_ltrim(rt_string s)
