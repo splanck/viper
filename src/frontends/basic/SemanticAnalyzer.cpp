@@ -10,6 +10,7 @@
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include <algorithm>
 #include <limits>
+#include <sstream>
 #include <typeindex>
 #include <vector>
 
@@ -44,6 +45,63 @@ static size_t levenshtein(const std::string &a, const std::string &b)
     }
     return prev[n];
 }
+
+/// @brief Convert builtin enum to BASIC name.
+static const char *builtinName(BuiltinCallExpr::Builtin b)
+{
+    using B = BuiltinCallExpr::Builtin;
+    switch (b)
+    {
+        case B::Len:
+            return "LEN";
+        case B::Mid:
+            return "MID$";
+        case B::Left:
+            return "LEFT$";
+        case B::Right:
+            return "RIGHT$";
+        case B::Str:
+            return "STR$";
+        case B::Val:
+            return "VAL";
+        case B::Int:
+            return "INT";
+        case B::Sqr:
+            return "SQR";
+        case B::Abs:
+            return "ABS";
+        case B::Floor:
+            return "FLOOR";
+        case B::Ceil:
+            return "CEIL";
+        case B::Sin:
+            return "SIN";
+        case B::Cos:
+            return "COS";
+        case B::Pow:
+            return "POW";
+        case B::Rnd:
+            return "RND";
+        case B::Instr:
+            return "INSTR";
+        case B::Ltrim:
+            return "LTRIM$";
+        case B::Rtrim:
+            return "RTRIM$";
+        case B::Trim:
+            return "TRIM$";
+        case B::Ucase:
+            return "UCASE$";
+        case B::Lcase:
+            return "LCASE$";
+        case B::Chr:
+            return "CHR$";
+        case B::Asc:
+            return "ASC";
+    }
+    return "?";
+}
+
 } // namespace
 
 void SemanticAnalyzer::pushScope()
@@ -837,13 +895,6 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeBuiltinCall(const BuiltinCallExp
     return Type::Unknown;
 }
 
-void SemanticAnalyzer::argTypeMismatch(const BuiltinCallExpr &c, size_t idx)
-{
-    il::support::SourceLoc loc = (idx < c.args.size() && c.args[idx]) ? c.args[idx]->loc : c.loc;
-    std::string msg = "argument type mismatch";
-    de.emit(il::support::Severity::Error, "B2001", loc, 1, std::move(msg));
-}
-
 bool SemanticAnalyzer::checkArgCount(const BuiltinCallExpr &c,
                                      const std::vector<Type> &args,
                                      size_t min,
@@ -851,7 +902,14 @@ bool SemanticAnalyzer::checkArgCount(const BuiltinCallExpr &c,
 {
     if (args.size() < min || args.size() > max)
     {
-        argTypeMismatch(c, 0);
+        std::ostringstream oss;
+        oss << builtinName(c.builtin) << ": expected ";
+        if (min == max)
+            oss << min << " arg" << (min == 1 ? "" : "s");
+        else
+            oss << min << '-' << max << " args";
+        oss << " (got " << args.size() << ')';
+        de.emit(il::support::Severity::Error, "B2001", c.loc, 1, oss.str());
         return false;
     }
     return true;
@@ -867,7 +925,26 @@ bool SemanticAnalyzer::checkArgType(const BuiltinCallExpr &c,
     for (Type t : allowed)
         if (t == argTy)
             return true;
-    argTypeMismatch(c, idx);
+    il::support::SourceLoc loc = (idx < c.args.size() && c.args[idx]) ? c.args[idx]->loc : c.loc;
+    bool wantString = false;
+    bool wantNumber = false;
+    for (Type t : allowed)
+    {
+        if (t == Type::String)
+            wantString = true;
+        if (t == Type::Int || t == Type::Float)
+            wantNumber = true;
+    }
+    const char *need = wantString ? (wantNumber ? "value" : "string") : "number";
+    const char *got = "unknown";
+    if (argTy == Type::String)
+        got = "string";
+    else if (argTy == Type::Int || argTy == Type::Float)
+        got = "number";
+    std::ostringstream oss;
+    oss << builtinName(c.builtin) << ": arg " << (idx + 1) << " must be " << need << " (got " << got
+        << ')';
+    de.emit(il::support::Severity::Error, "B2001", loc, 1, oss.str());
     return false;
 }
 
@@ -1036,7 +1113,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeAbs(const BuiltinCallExpr &c,
             return Type::Float;
         if (args[0] == Type::Int || args[0] == Type::Unknown)
             return Type::Int;
-        argTypeMismatch(c, 0);
+        checkArgType(c, 0, args[0], {Type::Int, Type::Float});
     }
     return Type::Int;
 }

@@ -197,8 +197,6 @@ class SemanticAnalyzer
     /// @brief Analyze POW builtin.
     Type analyzePow(const BuiltinCallExpr &c, const std::vector<Type> &args);
 
-    /// @brief Emit argument type mismatch diagnostic for argument @p idx.
-    void argTypeMismatch(const BuiltinCallExpr &c, size_t idx);
     /// @brief Check argument count is within [@p min,@p max].
     bool checkArgCount(const BuiltinCallExpr &c,
                        const std::vector<Type> &args,

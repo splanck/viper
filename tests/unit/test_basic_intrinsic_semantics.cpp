@@ -1,6 +1,6 @@
 // File: tests/unit/test_basic_intrinsic_semantics.cpp
-// Purpose: Ensure semantic analyzer checks string intrinsic argument types.
-// Key invariants: Invalid argument types produce diagnostics; float widths allowed.
+// Purpose: Ensure semantic analyzer reports descriptive intrinsic diagnostics.
+// Key invariants: Invalid calls produce specific messages; float widths allowed.
 // Ownership/Lifetime: Test owns all objects locally.
 // Links: docs/class-catalog.md
 
@@ -9,6 +9,7 @@
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "support/source_manager.hpp"
 #include <cassert>
+#include <sstream>
 #include <string>
 
 using namespace il::frontends::basic;
@@ -28,7 +29,29 @@ int main()
         em.addSource(fid, src);
         SemanticAnalyzer sema(em);
         sema.analyze(*prog);
-        assert(em.errorCount() == 1);
+        std::ostringstream oss;
+        em.printAll(oss);
+        std::string out = oss.str();
+        bool ok = out.find("LEFT$: arg 1 must be string") != std::string::npos;
+        assert(ok);
+    }
+    // Wrong arity: missing required length argument.
+    {
+        std::string src = "10 PRINT LEFT$(\"HI\")\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("arity.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        DiagnosticEngine de;
+        DiagnosticEmitter em(de, sm);
+        em.addSource(fid, src);
+        SemanticAnalyzer sema(em);
+        sema.analyze(*prog);
+        std::ostringstream oss;
+        em.printAll(oss);
+        std::string out = oss.str();
+        bool ok = out.find("LEFT$: expected 2 args") != std::string::npos;
+        assert(ok);
     }
     // Well-typed: float width coerces to integer.
     {
