@@ -10,13 +10,20 @@
 
 namespace il::frontends::basic
 {
-
+/// @brief Construct a parser for the given source.
+/// @param src Full BASIC source to parse.
+/// @param file_id Identifier for diagnostics.
+/// @param emitter Destination for emitted diagnostics.
+/// @note Initializes the token buffer with the first token for lookahead.
 Parser::Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *emitter)
     : lexer_(src, file_id), emitter_(emitter)
 {
     tokens_.push_back(lexer_.next());
 }
 
+/// @brief Parse the entire BASIC program.
+/// @return Root program node with separated procedure and main sections.
+/// @note Assumes all procedures appear before the first main statement.
 std::unique_ptr<Program> Parser::parseProgram()
 {
     auto prog = std::make_unique<Program>();
@@ -77,6 +84,9 @@ std::unique_ptr<Program> Parser::parseProgram()
     return prog;
 }
 
+/// @brief Parse a single statement based on the current token.
+/// @param line Line number associated with the statement.
+/// @return Parsed statement node or EndStmt for unknown tokens.
 StmtPtr Parser::parseStatement(int line)
 {
     if (at(TokenKind::KeywordPrint))
@@ -112,6 +122,9 @@ StmtPtr Parser::parseStatement(int line)
     return stmt;
 }
 
+/// @brief Parse a PRINT statement.
+/// @return PrintStmt containing expressions and separators in order.
+/// @note Stops parsing at end-of-line, colon, or when a new statement keyword is encountered.
 StmtPtr Parser::parsePrint()
 {
     auto loc = peek().loc;
@@ -141,6 +154,9 @@ StmtPtr Parser::parsePrint()
     return stmt;
 }
 
+/// @brief Parse a LET assignment statement.
+/// @return LetStmt with target and assigned expression.
+/// @note Expects an '=' between target and expression.
 StmtPtr Parser::parseLet()
 {
     auto loc = peek().loc;
@@ -155,6 +171,10 @@ StmtPtr Parser::parseLet()
     return stmt;
 }
 
+/// @brief Parse an IF/THEN[/ELSEIF/ELSE] statement.
+/// @param line Line number propagated to nested statements.
+/// @return IfStmt with condition and branch nodes.
+/// @note THEN branch shares the same line number as the IF keyword.
 StmtPtr Parser::parseIf(int line)
 {
     auto loc = peek().loc;
@@ -213,6 +233,9 @@ StmtPtr Parser::parseIf(int line)
     return stmt;
 }
 
+/// @brief Parse a WHILE loop terminated by WEND.
+/// @return WhileStmt with condition and body statements.
+/// @note Consumes statements until a matching WEND token.
 StmtPtr Parser::parseWhile()
 {
     auto loc = peek().loc;
@@ -253,6 +276,9 @@ StmtPtr Parser::parseWhile()
     return stmt;
 }
 
+/// @brief Parse a FOR loop terminated by NEXT.
+/// @return ForStmt describing loop variable, bounds, and body.
+/// @note Optional STEP expression is supported.
 StmtPtr Parser::parseFor()
 {
     auto loc = peek().loc;
@@ -309,6 +335,8 @@ StmtPtr Parser::parseFor()
     return stmt;
 }
 
+/// @brief Parse a NEXT statement advancing a FOR loop.
+/// @return NextStmt referencing an optional loop variable.
 StmtPtr Parser::parseNext()
 {
     auto loc = peek().loc;
@@ -325,6 +353,8 @@ StmtPtr Parser::parseNext()
     return stmt;
 }
 
+/// @brief Parse a GOTO statement targeting a numeric line.
+/// @return GotoStmt with destination line number.
 StmtPtr Parser::parseGoto()
 {
     auto loc = peek().loc;
@@ -337,6 +367,8 @@ StmtPtr Parser::parseGoto()
     return stmt;
 }
 
+/// @brief Parse an END statement.
+/// @return EndStmt marking program or procedure termination.
 StmtPtr Parser::parseEnd()
 {
     auto loc = peek().loc;
@@ -346,6 +378,9 @@ StmtPtr Parser::parseEnd()
     return stmt;
 }
 
+/// @brief Parse an INPUT statement.
+/// @return InputStmt with optional prompt and variable target.
+/// @note Parses a leading string literal prompt followed by a comma if present.
 StmtPtr Parser::parseInput()
 {
     auto loc = peek().loc;
@@ -369,6 +404,9 @@ StmtPtr Parser::parseInput()
     return stmt;
 }
 
+/// @brief Parse a DIM declaration for an array.
+/// @return DimStmt containing array name and size expression.
+/// @note Registers the array name in the parser's array set.
 StmtPtr Parser::parseDim()
 {
     auto loc = peek().loc;
@@ -386,6 +424,8 @@ StmtPtr Parser::parseDim()
     return stmt;
 }
 
+/// @brief Parse a RANDOMIZE statement setting the PRNG seed.
+/// @return RandomizeStmt with the seed expression.
 StmtPtr Parser::parseRandomize()
 {
     auto loc = peek().loc;
@@ -396,6 +436,9 @@ StmtPtr Parser::parseRandomize()
     return stmt;
 }
 
+/// @brief Derive a BASIC type from an identifier suffix.
+/// @param name Identifier to inspect.
+/// @return Corresponding BASIC type; defaults to I64.
 Type Parser::typeFromSuffix(std::string_view name)
 {
     if (!name.empty())
@@ -409,6 +452,9 @@ Type Parser::typeFromSuffix(std::string_view name)
     return Type::I64;
 }
 
+/// @brief Parse a parenthesized parameter list.
+/// @return Vector of parameters, possibly empty if no list is present.
+/// @note Parameters may carry type suffixes or array markers.
 std::vector<Param> Parser::parseParamList()
 {
     std::vector<Param> params;
@@ -445,6 +491,8 @@ std::vector<Param> Parser::parseParamList()
     return params;
 }
 
+/// @brief Parse the header of a FUNCTION declaration.
+/// @return FunctionDecl populated with name, return type, and parameters.
 std::unique_ptr<FunctionDecl> Parser::parseFunctionHeader()
 {
     auto loc = peek().loc;
@@ -458,6 +506,9 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionHeader()
     return fn;
 }
 
+/// @brief Parse statements comprising a function body.
+/// @param fn FunctionDecl to populate with body statements.
+/// @note Consumes tokens until reaching END FUNCTION.
 void Parser::parseFunctionBody(FunctionDecl *fn)
 {
     if (at(TokenKind::EndOfLine))
@@ -492,6 +543,8 @@ void Parser::parseFunctionBody(FunctionDecl *fn)
     }
 }
 
+/// @brief Parse a full FUNCTION declaration.
+/// @return FunctionDecl statement node including body.
 StmtPtr Parser::parseFunction()
 {
     auto fn = parseFunctionHeader();
@@ -499,6 +552,8 @@ StmtPtr Parser::parseFunction()
     return fn;
 }
 
+/// @brief Parse a full SUB procedure declaration.
+/// @return SubDecl statement node including body.
 StmtPtr Parser::parseSub()
 {
     auto loc = peek().loc;
@@ -539,6 +594,8 @@ StmtPtr Parser::parseSub()
     return sub;
 }
 
+/// @brief Parse a RETURN statement.
+/// @return ReturnStmt with optional return value expression.
 StmtPtr Parser::parseReturn()
 {
     auto loc = peek().loc;
