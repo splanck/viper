@@ -13,28 +13,34 @@ namespace il::frontends::basic::intrinsics
 namespace
 {
 // Common parameter descriptors.
+/// Signature: (string)
 constexpr Param strParam[] = {{Type::String, false}};
+/// Signature: (int)
 constexpr Param intParam[] = {{Type::Int, false}};
+/// Signature: (numeric)
 constexpr Param numParam[] = {{Type::Numeric, false}};
 
+/// Signature: (string, int)
 constexpr Param leftRightParams[] = {
     {Type::String, false},
     {Type::Int, false},
 };
 
+/// Signature: (string, int, [int])
 constexpr Param midParams[] = {
     {Type::String, false},
     {Type::Int, false},
     {Type::Int, true},
 };
 
+/// Signature: ([int], string, string)
 constexpr Param instrParams[] = {
     {Type::Int, true},
     {Type::String, false},
     {Type::String, false},
 };
 
-// Intrinsic registry table.
+/// Registry mapping intrinsic names to return types and parameter signatures.
 constexpr Intrinsic table[] = {
     {"LEFT$", Type::String, leftRightParams, std::size(leftRightParams)},
     {"RIGHT$", Type::String, leftRightParams, std::size(leftRightParams)},
