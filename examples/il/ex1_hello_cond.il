@@ -6,7 +6,7 @@ global const str @.L0 = "HELLO"
 global const str @.L1 = "READY"
 global const str @.L2 = "\n"
 
-func @main() -> i32 {
+func @main() -> i64 {
 entry:
   %x_slot = alloca 8
   %y_slot = alloca 8
