@@ -10,12 +10,21 @@
 
 namespace il::frontends::basic
 {
+// -----------------------------------------------------------------------------
+// Token buffer navigation
+// -----------------------------------------------------------------------------
 
+// Check whether the next buffered token matches the expected kind. This relies
+// on `peek` to populate the buffer but does not consume any tokens, leaving
+// `tokens_` untouched.
 bool Parser::at(TokenKind k) const
 {
     return peek().kind == k;
 }
 
+// Provide lookahead into the token stream. The buffer is extended by pulling
+// tokens from the lexer until position `n` is available. No tokens are removed;
+// only appends to `tokens_` occur.
 const Token &Parser::peek(int n) const
 {
     while (tokens_.size() <= static_cast<size_t>(n))
@@ -25,6 +34,9 @@ const Token &Parser::peek(int n) const
     return tokens_[n];
 }
 
+// Remove and return the current token. The token is first fetched via `peek`
+// to ensure it exists, then erased from the front of `tokens_`, advancing the
+// buffer by one.
 Token Parser::consume()
 {
     Token t = peek();
@@ -32,6 +44,10 @@ Token Parser::consume()
     return t;
 }
 
+// Expect the next token to be of kind `k`. On success the token is consumed and
+// returned. On mismatch a diagnostic is emitted, `syncToStmtBoundary` is invoked
+// to discard tokens up to a statement boundary, and the offending token is
+// returned for context.
 Token Parser::expect(TokenKind k)
 {
     if (!at(k))
@@ -52,6 +68,9 @@ Token Parser::expect(TokenKind k)
     return consume();
 }
 
+// Error-recovery helper: consume tokens until a statement boundary token is
+// reached (end-of-line, colon, or end-of-file). This side effect discards any
+// unexpected tokens so parsing can resume at a stable location.
 void Parser::syncToStmtBoundary()
 {
     while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine) && !at(TokenKind::Colon))
