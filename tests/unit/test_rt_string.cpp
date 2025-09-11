@@ -52,5 +52,13 @@ int main()
     rt_string bc = rt_const_cstr("BC");
     assert(rt_str_eq(mid_part, bc));
 
+    rt_string full_left = rt_left(abcde, 5);
+    assert(full_left == abcde);
+    rt_string full_right = rt_right(abcde, 5);
+    assert(full_right == abcde);
+    rt_string empty_left = rt_left(abcde, 0);
+    rt_string empty_mid = rt_mid3(abcde, 2, 0);
+    assert(empty_left == empty_mid);
+
     return 0;
 }

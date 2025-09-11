@@ -11,6 +11,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+static rt_string rt_empty_string(void)
+{
+    static struct rt_string_impl empty = {INT64_MAX, 0, 0, ""};
+    return &empty;
+}
+
 void rt_abort(const char *msg)
 {
     if (msg)
@@ -117,13 +123,20 @@ rt_string rt_substr(rt_string s, int64_t start, int64_t len)
         start = s->size;
     if (start + len > s->size)
         len = s->size - start;
+    if (len == 0)
+        return rt_empty_string();
+    if (start == 0 && len == s->size)
+    {
+        s->refcnt++;
+        return s;
+    }
+    // O(len) time, one allocation and copy of len bytes.
     rt_string r = (rt_string)rt_alloc(sizeof(*r));
     r->refcnt = 1;
     r->size = len;
     r->capacity = len;
     r->data = (char *)rt_alloc(len + 1);
-    if (len > 0)
-        memcpy(r->data, s->data + start, len);
+    memcpy(r->data, s->data + start, len);
     r->data[len] = '\0';
     return r;
 }
@@ -138,8 +151,14 @@ rt_string rt_left(rt_string s, int64_t n)
         snprintf(buf, sizeof(buf), "LEFT$: len must be >= 0 (got %lld)", (long long)n);
         rt_trap(buf);
     }
-    if (n > s->size)
-        n = s->size;
+    if (n == 0)
+        return rt_empty_string();
+    if (n >= s->size)
+    {
+        s->refcnt++;
+        return s;
+    }
+    // O(n) copy via rt_substr.
     return rt_substr(s, 0, n);
 }
 
@@ -154,9 +173,15 @@ rt_string rt_right(rt_string s, int64_t n)
         rt_trap(buf);
     }
     int64_t len = s->size;
-    if (n > len)
-        n = len;
+    if (n == 0)
+        return rt_empty_string();
+    if (n >= len)
+    {
+        s->refcnt++;
+        return s;
+    }
     int64_t start = len - n;
+    // O(n) copy via rt_substr.
     return rt_substr(s, start, n);
 }
 
@@ -171,9 +196,15 @@ rt_string rt_mid2(rt_string s, int64_t start)
         rt_trap(buf);
     }
     int64_t len = s->size;
-    if (start > len)
-        start = len;
+    if (start <= 0)
+    {
+        s->refcnt++;
+        return s;
+    }
+    if (start >= len)
+        return rt_empty_string();
     int64_t n = len - start;
+    // O(n) copy via rt_substr.
     return rt_substr(s, start, n);
 }
 
@@ -194,10 +225,16 @@ rt_string rt_mid3(rt_string s, int64_t start, int64_t len)
         rt_trap(buf);
     }
     int64_t slen = s->size;
-    if (start > slen)
-        start = slen;
+    if (len == 0 || start >= slen)
+        return rt_empty_string();
+    if (start == 0 && len >= slen)
+    {
+        s->refcnt++;
+        return s;
+    }
     if (len > slen - start)
         len = slen - start;
+    // O(len) copy via rt_substr.
     return rt_substr(s, start, len);
 }
 
