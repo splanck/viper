@@ -32,6 +32,14 @@ struct AllocaInfo
     bool singleBlock{true};
 };
 
+/// Replace all uses of a temporary within a function.
+///
+/// Scans every instruction operand and branch argument in `F` and swaps
+/// occurrences of temporary `id` with the provided value `v`.
+/// @param F Function whose instructions are rewritten.
+/// @param id Temporary identifier to replace.
+/// @param v Replacement value.
+/// @sideeffect Mutates operands and branch arguments in place.
 static void replaceAllUses(Function &F, unsigned id, const Value &v)
 {
     for (auto &B : F.blocks)
@@ -47,6 +55,13 @@ static void replaceAllUses(Function &F, unsigned id, const Value &v)
         }
 }
 
+/// Compute the next unused temporary identifier in a function.
+///
+/// Iterates across parameters, block params, instruction results, operands,
+/// and branch arguments to determine the maximum used temp id and returns the
+/// next available value.
+/// @param F Function to inspect.
+/// @return First unused temporary id.
 static unsigned nextTempId(Function &F)
 {
     unsigned next = 0;
@@ -92,6 +107,12 @@ using AllocaMap = std::unordered_map<unsigned, AllocaInfo>;
 using VarMap = std::unordered_map<unsigned, VarState>;
 using BlockMap = std::unordered_map<BasicBlock *, BlockState>;
 
+/// Gather information about alloca instructions within a function.
+///
+/// Performs two passes: the first collects allocas and the second records
+/// their usage patterns (stores, loads, address escapes) and block locality.
+/// @param F Function to analyze.
+/// @return Map from temp ids to their `AllocaInfo` metadata.
 static AllocaMap collectAllocas(Function &F)
 {
     AllocaMap infos;
@@ -130,6 +151,16 @@ static AllocaMap collectAllocas(Function &F)
     return infos;
 }
 
+/// Ensure that block `B` has a parameter representing variable `varId`.
+///
+/// If absent, a new block parameter is appended and registered in `blocks`.
+/// @param B Block receiving the parameter.
+/// @param varId Identifier of the promoted variable.
+/// @param vars State map for variables.
+/// @param blocks Per-block state including parameter indices.
+/// @param nextId Counter used to generate unique temp ids.
+/// @return Index of the block parameter.
+/// @sideeffect May append to `B->params` and update `blocks`.
 static unsigned ensureParam(
     BasicBlock *B, unsigned varId, VarMap &vars, BlockMap &blocks, unsigned &nextId)
 {
@@ -147,6 +178,18 @@ static unsigned ensureParam(
     return idx;
 }
 
+/// Add an incoming value for a block parameter from a predecessor edge.
+///
+/// Extends the terminator of `Pred` with argument `val` targeting block `B`
+/// for variable `varId`.
+/// @param B Destination block that owns the parameter.
+/// @param varId Variable identifier for the promoted alloca.
+/// @param Pred Predecessor block supplying the value.
+/// @param val Value to pass along the edge.
+/// @param vars Variable state table.
+/// @param blocks Block state table used to lookup parameter indices.
+/// @param nextId Counter used when new parameters must be created.
+/// @sideeffect Mutates branch arguments in `Pred` and may add block params.
 static void addIncoming(BasicBlock *B,
                         unsigned varId,
                         BasicBlock *Pred,
@@ -169,9 +212,23 @@ static void addIncoming(BasicBlock *B,
     args[pIdx] = val;
 }
 
+/// Forward declaration for recursive SSA renaming.
 static Value renameUses(
     Function &F, BasicBlock *B, unsigned varId, VarMap &vars, BlockMap &blocks, unsigned &nextId);
 
+/// Resolve a variable's value at the start of block `B` by reading from its
+/// predecessors.
+///
+/// Creates block parameters and populates branch arguments as needed. If `B`
+/// has no predecessors, synthesizes a zero value of the variable's type.
+/// @param F Function containing the CFG.
+/// @param B Block whose incoming value is requested.
+/// @param varId Variable identifier.
+/// @param vars Variable state table.
+/// @param blocks Block state table.
+/// @param nextId Counter for generating temp ids.
+/// @return SSA value representing the variable at block entry.
+/// @sideeffect May mutate CFG by adding params and arguments.
 static Value readFromPreds(
     Function &F, BasicBlock *B, unsigned varId, VarMap &vars, BlockMap &blocks, unsigned &nextId)
 {
@@ -191,6 +248,19 @@ static Value readFromPreds(
     return paramVal;
 }
 
+/// Determine the SSA value of `varId` within block `B`.
+///
+/// Looks for an existing definition in `vars`. If the block is not sealed, an
+/// incomplete phi (block parameter) is created and recorded. Once sealed,
+/// values from predecessors are merged via `readFromPreds`.
+/// @param F Function being rewritten.
+/// @param B Current block.
+/// @param varId Variable identifier.
+/// @param vars Variable state table.
+/// @param blocks Block state table indicating seal status.
+/// @param nextId Counter for generating temp ids.
+/// @return SSA value for the variable within `B`.
+/// @sideeffect May add block parameters and update definition maps.
 static Value renameUses(
     Function &F, BasicBlock *B, unsigned varId, VarMap &vars, BlockMap &blocks, unsigned &nextId)
 {
@@ -211,6 +281,16 @@ static Value renameUses(
     return v;
 }
 
+/// Seal a block once all of its predecessors have been processed.
+///
+/// Completes any incomplete phis by reading values from predecessors and
+/// records them as definitions. The block is then marked as sealed.
+/// @param F Function containing the block.
+/// @param B Block to seal.
+/// @param vars Variable state table.
+/// @param blocks Block state table.
+/// @param nextId Counter for generating temp ids.
+/// @sideeffect May mutate CFG with additional parameters and arguments.
 static void sealBlocks(Function &F, BasicBlock *B, VarMap &vars, BlockMap &blocks, unsigned &nextId)
 {
     BlockState &BS = blocks[B];
@@ -226,6 +306,15 @@ static void sealBlocks(Function &F, BasicBlock *B, VarMap &vars, BlockMap &block
     BS.sealed = true;
 }
 
+/// Promote eligible allocas within a function to SSA registers.
+///
+/// Executes the seal-and-rename algorithm, deleting loads, stores, and the
+/// allocas themselves. Updates optional statistics counters for promoted
+/// variables and removed instructions.
+/// @param F Function to optimize.
+/// @param infos Metadata about allocas gathered by `collectAllocas`.
+/// @param stats Optional statistics accumulator.
+/// @sideeffect Mutates blocks and instructions in `F` and updates `stats`.
 static void promoteVariables(Function &F, const AllocaMap &infos, Mem2RegStats *stats)
 {
     VarMap vars;
@@ -320,6 +409,15 @@ static void promoteVariables(Function &F, const AllocaMap &infos, Mem2RegStats *
 
 } // namespace
 
+/// Run memory-to-register promotion across all functions in a module.
+///
+/// Each function is analyzed for promotable allocas, which are then converted
+/// to SSA form. Aggregated statistics are reported through `stats` when
+/// provided.
+/// @param M Module to transform.
+/// @param stats Optional statistics collector receiving totals for promoted
+///              variables and removed loads/stores.
+/// @sideeffect Mutates functions within the module.
 void mem2reg(Module &M, Mem2RegStats *stats)
 {
     analysis::setModule(M);
