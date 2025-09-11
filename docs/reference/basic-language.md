@@ -430,3 +430,56 @@ Output
 42.5
 -7
 ```
+
+## Common Tasks
+
+### Extract file extension
+
+**Example** ([`examples/basic/strings/ext.bas`](../../examples/basic/strings/ext.bas))
+```basic
+10 LET F$ = "report.txt"
+20 LET P = INSTR(F$, ".")
+30 PRINT RIGHT$(F$, LEN(F$) - P)
+```
+Output
+```
+txt
+```
+
+### Trim input
+
+**Example** ([`examples/basic/strings/trim_input.bas`](../../examples/basic/strings/trim_input.bas))
+```basic
+10 LET RAW$ = "  spaced  "
+20 PRINT ":"; TRIM$(RAW$); ":"
+```
+Output
+```
+:spaced:
+```
+
+### Normalize case
+
+**Example** ([`examples/basic/strings/normalize.bas`](../../examples/basic/strings/normalize.bas))
+```basic
+10 LET S$ = "MiXeD"
+20 PRINT UCASE$(S$)
+30 PRINT LCASE$(S$)
+```
+Output
+```
+MIXED
+mixed
+```
+
+### Build a CSV line
+
+**Example** ([`examples/basic/strings/csv.bas`](../../examples/basic/strings/csv.bas))
+```basic
+10 PRINT STR$(1) + "," + STR$(2.5)
+```
+Output
+```
+1,2.5
+```
+
