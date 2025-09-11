@@ -14,6 +14,14 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
+/// @brief Tool entry point that dumps BASIC source tokens for golden tests.
+///
+/// Expects a single command-line argument naming a BASIC source file. When
+/// the file can be opened, each token is printed on its own line using the
+/// format `<line>:<column> <token-kind> [<lexeme>]`, where the lexeme is
+/// included for numbers, strings, and identifiers. If the file is missing or
+/// unreadable, an error message is emitted and the process exits with a non-zero
+/// status.
 int main(int argc, char **argv)
 {
     if (argc != 2)
