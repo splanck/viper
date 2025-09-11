@@ -286,6 +286,11 @@ add_test(NAME ilc_mem2reg_stats COMMAND ${CMAKE_COMMAND}
   -DIL_FILE=${CMAKE_SOURCE_DIR}/tests/golden/il_opt/mem2reg_simple.in.il
   -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_mem2reg_stats.cmake)
 
+add_test(NAME ilc_mem2reg_stats_multi COMMAND ${CMAKE_COMMAND}
+  -DILC=$<TARGET_FILE:ilc>
+  -DIL_FILE=${CMAKE_SOURCE_DIR}/tests/golden/il_opt/mem2reg_multi.in.il
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_mem2reg_stats_multi.cmake)
+
 set(IL_VERIFY ${CMAKE_BINARY_DIR}/src/tools/il-verify/il-verify)
 add_test(NAME il_verify_invalid_bad_types
   COMMAND ${CMAKE_COMMAND}
