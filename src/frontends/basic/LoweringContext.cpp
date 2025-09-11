@@ -12,11 +12,17 @@
 namespace il::frontends::basic
 {
 
+/// Construct a lowering context for a BASIC function.
+/// @param builder IR builder used to create blocks and instructions.
+/// @param func Function that will receive lowered IR.
 LoweringContext::LoweringContext(build::IRBuilder &builder, core::Function &func)
     : builder(builder), function(func)
 {
 }
 
+/// Return stack slot name for BASIC variable @p name, creating one if needed.
+/// @param name BASIC variable identifier.
+/// @returns Unique slot label for the variable.
 std::string LoweringContext::getOrCreateSlot(const std::string &name)
 {
     auto it = varSlots.find(name);
@@ -27,6 +33,9 @@ std::string LoweringContext::getOrCreateSlot(const std::string &name)
     return slot;
 }
 
+/// Retrieve or create an IR block for BASIC line number @p line.
+/// @param line Line number in the source program.
+/// @returns Pointer to the corresponding basic block.
 core::BasicBlock *LoweringContext::getOrCreateBlock(int line)
 {
     auto it = blocks.find(line);
