@@ -11,12 +11,29 @@
 namespace viper::analysis
 {
 
+/// @brief Return the immediate dominator for a block.
+///
+/// Queries the dominator tree for the unique immediate dominator of
+/// the provided block.
+/// @param B Block whose immediate dominator is sought.
+/// @return Immediate dominator of @p B or `nullptr` if @p B is the entry block.
+/// @invariant The dominator tree has been previously computed for the
+/// containing function.
 il::core::Block *DomTree::immediateDominator(il::core::Block *B) const
 {
     auto it = idom.find(B);
     return it == idom.end() ? nullptr : it->second;
 }
 
+/// @brief Check whether one block dominates another.
+///
+/// Walks up the dominator tree from the candidate dominated block to see
+/// if the potential dominator is encountered.
+/// @param A Potential dominator.
+/// @param B Block being tested for domination.
+/// @return `true` if @p A dominates @p B, otherwise `false`.
+/// @invariant Both blocks belong to the same function and the dominator tree
+/// is fully built.
 bool DomTree::dominates(il::core::Block *A, il::core::Block *B) const
 {
     if (!A || !B)
@@ -35,6 +52,14 @@ bool DomTree::dominates(il::core::Block *A, il::core::Block *B) const
     return false;
 }
 
+/// @brief Construct the dominator tree for a function.
+///
+/// Implements the Cooper–Harvey–Kennedy algorithm to derive immediate
+/// dominators for every block in the function.
+/// @param F Function whose dominator relationships are computed.
+/// @return A fully populated dominator tree with parent and child links.
+/// @invariant The function must have a valid control-flow graph with a
+/// single entry block.
 DomTree computeDominatorTree(il::core::Function &F)
 {
     DomTree DT;
@@ -70,6 +95,9 @@ DomTree computeDominatorTree(il::core::Function &F)
             if (!newIdom)
                 continue;
 
+            // Intersect two dominance paths by advancing along the dominator
+            // chain using block visit indexes until the nearest common
+            // ancestor is located.
             auto intersect = [&](il::core::Block *b1, il::core::Block *b2)
             {
                 while (b1 != b2)
