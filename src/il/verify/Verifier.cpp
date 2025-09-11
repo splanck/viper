@@ -21,7 +21,7 @@ namespace
 
 bool isTerminator(Opcode op)
 {
-    return op == Opcode::Br || op == Opcode::CBr || op == Opcode::Ret;
+    return op == Opcode::Br || op == Opcode::CBr || op == Opcode::Ret || op == Opcode::Trap;
 }
 
 Type valueType(const Value &v, const std::unordered_map<unsigned, Type> &temps)

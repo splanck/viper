@@ -41,6 +41,10 @@ target_link_libraries(test_il_roundtrip PRIVATE il_core il_io il_verify support)
 target_compile_definitions(test_il_roundtrip PRIVATE EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/examples" ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/tests/il/roundtrip")
 add_test(NAME test_il_roundtrip COMMAND test_il_roundtrip)
 
+add_executable(test_il_trap_terminator unit/test_il_trap_terminator.cpp)
+target_link_libraries(test_il_trap_terminator PRIVATE il_core il_verify support)
+add_test(NAME test_il_trap_terminator COMMAND test_il_trap_terminator)
+
 add_executable(test_il_parse_negative unit/test_il_parse_negative.cpp)
 target_link_libraries(test_il_parse_negative PRIVATE il_core il_io support)
 target_compile_definitions(test_il_parse_negative PRIVATE BAD_DIR="${CMAKE_SOURCE_DIR}/tests/il/parse")
