@@ -84,8 +84,10 @@ class IRBuilder
     /// @brief Emit call to function @p callee with arguments @p args.
     /// @param callee Name of function to call.
     /// @param args Argument values.
+    /// @param dst Optional destination value to store result.
     void emitCall(const std::string &callee,
                   const std::vector<Value> &args,
+                  const std::optional<Value> &dst,
                   il::support::SourceLoc loc);
 
     /// @brief Emit return from current function.

@@ -22,7 +22,7 @@ int main()
     auto &bb = b.addBlock(fn, "entry");
     b.setInsertPoint(bb);
     Value s = b.emitConstStr("g", {1, 1, 1});
-    b.emitCall("rt_to_int", {s}, {1, 1, 1});
+    b.emitCall("rt_to_int", {s}, std::optional<Value>{}, {1, 1, 1});
     b.emitRet(std::optional<Value>{}, {1, 1, 1});
 
     int fds[2];
