@@ -372,6 +372,13 @@ add_test(NAME il_verify_invalid_param_use_before_entry
           -DEXPECT=use\ before\ def
           -P ${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/check_invalid.cmake)
 
+add_test(NAME il_verify_invalid_unknown_temp
+  COMMAND ${CMAKE_COMMAND}
+          -DIL_VERIFY=${IL_VERIFY}
+          -DFILE=${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/unknown_temp.il
+          -DEXPECT=unknown\ temp
+          -P ${CMAKE_SOURCE_DIR}/tests/golden/invalid_il/check_invalid.cmake)
+
 add_executable(test_basic_lexer unit/test_basic_lexer.cpp)
 target_link_libraries(test_basic_lexer PRIVATE fe_basic support)
 add_test(NAME test_basic_lexer COMMAND test_basic_lexer)
