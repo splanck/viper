@@ -9,7 +9,9 @@
 
 namespace il::frontends::basic
 {
-
+/// @brief Determine the binding power for an operator token during Pratt parsing.
+/// @param k Token kind to inspect.
+/// @return Numeric precedence; higher values bind more tightly, 0 for non-operators.
 int Parser::precedence(TokenKind k)
 {
     switch (k)
@@ -40,12 +42,18 @@ int Parser::precedence(TokenKind k)
     }
 }
 
+/// @brief Parse an expression starting at the current token using Pratt parsing.
+/// @param min_prec Minimum precedence required to continue parsing infix operators.
+/// @return Parsed expression subtree.
 ExprPtr Parser::parseExpression(int min_prec)
 {
     auto left = parseUnaryExpression();
     return parseInfixRhs(std::move(left), min_prec);
 }
 
+/// @brief Parse a unary expression or delegate to primary parsing when no prefix operator is
+/// present.
+/// @return Expression node representing the parsed unary or primary expression.
 ExprPtr Parser::parseUnaryExpression()
 {
     if (at(TokenKind::KeywordNot))
@@ -62,6 +70,10 @@ ExprPtr Parser::parseUnaryExpression()
     return parsePrimary();
 }
 
+/// @brief Parse the right-hand side of an infix expression chain.
+/// @param left Expression already parsed as the left operand.
+/// @param min_prec Minimum precedence required for an operator to bind.
+/// @return Combined expression tree including any parsed infix operations.
 ExprPtr Parser::parseInfixRhs(ExprPtr left, int min_prec)
 {
     while (true)
