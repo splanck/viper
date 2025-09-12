@@ -5,5 +5,4 @@ entry:
   br L3
 L3:
   trap
-  ret 0
 }
