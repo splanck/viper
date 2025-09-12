@@ -3,6 +3,7 @@
 #include "support/string_interner.hpp"
 #include <cassert>
 #include <cstdint>
+#include <limits>
 #include <sstream>
 
 int main()
@@ -32,5 +33,8 @@ int main()
     assert(reinterpret_cast<uintptr_t>(p2) % alignof(double) == 0);
     assert(arena.allocate(1, 0) == nullptr);
     assert(arena.allocate(1, 3) == nullptr);
+    arena.reset();
+    arena.allocate(32, 1);
+    assert(arena.allocate(std::numeric_limits<size_t>::max() - 15, 1) == nullptr);
     return 0;
 }
