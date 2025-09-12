@@ -13,8 +13,10 @@
 namespace il::frontends::basic
 {
 
+/// @brief Base class for all BASIC expressions.
 struct Expr
 {
+    /// Source location of the expression in the source file.
     il::support::SourceLoc loc;
     virtual ~Expr() = default;
 };
@@ -31,47 +33,60 @@ enum class Type
     Str,
 };
 
+/// @brief Signed integer literal expression.
 struct IntExpr : Expr
 {
+    /// Literal numeric value parsed from the source.
     int value;
 };
 
+/// @brief Floating-point literal expression.
 struct FloatExpr : Expr
 {
+    /// Literal double-precision value parsed from the source.
     double value;
 };
 
+/// @brief String literal expression.
 struct StringExpr : Expr
 {
+    /// Owned UTF-8 string contents without surrounding quotes.
     std::string value;
 };
 
+/// @brief Reference to a scalar variable.
 struct VarExpr : Expr
 {
+    /// Variable name including optional type suffix.
     std::string name;
 };
 
 /// @brief Array element access A(i).
 struct ArrayExpr : Expr
 {
-    std::string name; ///< Array variable name.
-    ExprPtr index;    ///< Index expression (0-based).
+    /// Name of the array variable being indexed.
+    std::string name;
+    /// Zero-based index expression; owned and non-null.
+    ExprPtr index;
 };
 
 /// @brief Unary expression (e.g., NOT).
 struct UnaryExpr : Expr
 {
-    /// @brief Unary operators supported.
+    /// Unary operator applied to @ref expr.
     enum class Op
     {
         Not
     } op;
-    /// @brief Operand expression.
+
+    /// Operand expression; owned and non-null.
     ExprPtr expr;
 };
 
+/// @brief Binary expression combining two operands.
 struct BinaryExpr : Expr
 {
+    /// Binary operator applied to @ref lhs and @ref rhs.
     enum class Op
     {
         Add,
@@ -89,12 +104,18 @@ struct BinaryExpr : Expr
         And,
         Or,
     } op;
+
+    /// Left-hand operand expression; owned and non-null.
     ExprPtr lhs;
+
+    /// Right-hand operand expression; owned and non-null.
     ExprPtr rhs;
 };
 
+/// @brief Call to a BASIC builtin function.
 struct BuiltinCallExpr : Expr
 {
+    /// Which builtin function to invoke.
     enum class Builtin
     {
         Len,
@@ -121,31 +142,44 @@ struct BuiltinCallExpr : Expr
         Chr,
         Asc
     } builtin;
+
+    /// Argument expressions passed to the builtin; owned.
     std::vector<ExprPtr> args;
 };
 
 /// @brief Call to user-defined FUNCTION or SUB.
 struct CallExpr : Expr
 {
-    Identifier callee;          ///< Procedure name.
-    std::vector<ExprPtr> args;  ///< Ordered arguments.
-    il::support::SourceLoc loc; ///< Call site location.
+    /// Procedure name to invoke.
+    Identifier callee;
+
+    /// Ordered argument expressions; owned.
+    std::vector<ExprPtr> args;
+
+    /// Source location of the call operator.
+    il::support::SourceLoc loc;
 };
 
+/// @brief Base class for all BASIC statements.
 struct Stmt
 {
+    /// BASIC line number associated with this statement.
     int line = 0;
+
+    /// Source location of the first token in the statement.
     il::support::SourceLoc loc;
+
     virtual ~Stmt() = default;
 };
 
 using StmtPtr = std::unique_ptr<Stmt>;
-using ProcDecl = StmtPtr; ///< Either FunctionDecl or SubDecl.
+/// Either FunctionDecl or SubDecl.
+using ProcDecl = StmtPtr;
 
 /// @brief Item within a PRINT statement.
 struct PrintItem
 {
-    /// @brief Kind of item to output.
+    /// Kind of item to output.
     enum class Kind
     {
         Expr,      ///< Expression to print.
@@ -153,7 +187,7 @@ struct PrintItem
         Semicolon, ///< Insert nothing.
     } kind = Kind::Expr;
 
-    /// @brief Expression value when @ref kind == Expr.
+    /// Expression value when @ref kind == Kind::Expr; owned.
     ExprPtr expr;
 };
 
@@ -162,28 +196,35 @@ struct PrintItem
 /// @invariant items.size() > 0
 struct PrintStmt : Stmt
 {
-    std::vector<PrintItem> items; ///< Items printed in order; unless the last item is
-                                  ///< a semicolon, a newline is appended.
+    /// Items printed in order; unless the last item is a semicolon, a newline is appended.
+    std::vector<PrintItem> items;
 };
 
 /// @brief Assignment statement to variable or array element.
 struct LetStmt : Stmt
 {
-    ExprPtr target; ///< Variable or ArrayExpr on the left-hand side.
-    ExprPtr expr;   ///< Value expression to store.
+    /// Variable or ArrayExpr on the left-hand side; owned.
+    ExprPtr target;
+
+    /// Value expression to store; owned and non-null.
+    ExprPtr expr;
 };
 
 /// @brief DIM statement allocating array storage.
 struct DimStmt : Stmt
 {
-    std::string name; ///< Array name.
-    ExprPtr size;     ///< Element count expression.
+    /// Array name being declared.
+    std::string name;
+
+    /// Number of elements to allocate; owned expression, non-null.
+    ExprPtr size;
 };
 
 /// @brief RANDOMIZE statement seeding the pseudo-random generator.
 struct RandomizeStmt : Stmt
 {
-    ExprPtr seed; ///< Numeric seed expression, truncated to i64.
+    /// Numeric seed expression, truncated to i64; owned and non-null.
+    ExprPtr seed;
 };
 
 /// @brief IF statement with optional ELSEIF chain and ELSE branch.
@@ -192,43 +233,70 @@ struct IfStmt : Stmt
     /// @brief ELSEIF arm.
     struct ElseIf
     {
-        ExprPtr cond;        ///< Condition expression.
-        StmtPtr then_branch; ///< Executed when condition is true.
+        /// Condition expression controlling this arm; owned and non-null.
+        ExprPtr cond;
+
+        /// Executed when @ref cond evaluates to true; owned and non-null.
+        StmtPtr then_branch;
     };
 
-    ExprPtr cond;                ///< Initial IF condition.
-    StmtPtr then_branch;         ///< THEN branch when @ref cond is true.
-    std::vector<ElseIf> elseifs; ///< Zero or more ELSEIF arms evaluated in order.
-    StmtPtr else_branch;         ///< Optional trailing ELSE branch (may be null).
+    /// Initial IF condition; owned and non-null.
+    ExprPtr cond;
+
+    /// THEN branch when @ref cond is true; owned and non-null.
+    StmtPtr then_branch;
+
+    /// Zero or more ELSEIF arms evaluated in order.
+    std::vector<ElseIf> elseifs;
+
+    /// Optional trailing ELSE branch (may be null) executed when no condition matched.
+    StmtPtr else_branch;
 };
 
+/// @brief WHILE ... WEND loop statement.
 struct WhileStmt : Stmt
 {
+    /// Loop continuation condition; owned and non-null.
     ExprPtr cond;
+
+    /// Body statements executed while @ref cond is true.
     std::vector<StmtPtr> body;
 };
 
 /// @brief FOR ... NEXT loop statement.
 struct ForStmt : Stmt
 {
-    std::string var;           ///< Loop variable name.
-    ExprPtr start;             ///< Initial value.
-    ExprPtr end;               ///< Loop end value.
-    ExprPtr step;              ///< Optional step expression; null means 1.
-    std::vector<StmtPtr> body; ///< Body statements executed each iteration.
+    /// Loop variable name controlling the iteration.
+    std::string var;
+
+    /// Initial value assigned to @ref var; owned and non-null.
+    ExprPtr start;
+
+    /// Loop end value; owned and non-null.
+    ExprPtr end;
+
+    /// Optional step expression; null means 1.
+    ExprPtr step;
+
+    /// Body statements executed each iteration.
+    std::vector<StmtPtr> body;
 };
 
 /// @brief NEXT statement closing a FOR.
 struct NextStmt : Stmt
 {
-    std::string var; ///< Loop variable after NEXT.
+    /// Loop variable after NEXT.
+    std::string var;
 };
 
+/// @brief GOTO statement transferring control to a line number.
 struct GotoStmt : Stmt
 {
+    /// Target line number to jump to.
     int target;
 };
 
+/// @brief END statement terminating program execution.
 struct EndStmt : Stmt
 {
 };
@@ -237,55 +305,86 @@ struct EndStmt : Stmt
 /// displaying a string literal prompt.
 struct InputStmt : Stmt
 {
-    ExprPtr prompt;  ///< Optional prompt string literal (nullptr if absent).
-    std::string var; ///< Target variable name (may end with '$').
+    /// Optional prompt string literal (nullptr if absent).
+    ExprPtr prompt;
+
+    /// Target variable name (may end with '$').
+    std::string var;
 };
 
 /// @brief RETURN statement optionally yielding a value.
 struct ReturnStmt : Stmt
 {
-    ExprPtr value; ///< Null when no expression is provided.
+    /// Expression whose value is returned; null when no expression is provided.
+    ExprPtr value;
 };
 
 /// @brief Parameter in FUNCTION or SUB declaration.
 struct Param
 {
-    Identifier name;       ///< Parameter name including optional suffix.
-    Type type = Type::I64; ///< Resolved type from suffix.
-    bool is_array = false; ///< True if parameter declared with ().
+    /// Parameter name including optional suffix.
+    Identifier name;
+
+    /// Resolved type from suffix.
+    Type type = Type::I64;
+
+    /// True if parameter declared with ().
+    bool is_array = false;
+
+    /// Source location of the parameter name.
     il::support::SourceLoc loc;
 };
 
 /// @brief FUNCTION declaration with optional parameters and return type.
 struct FunctionDecl : Stmt
 {
-    Identifier name;               ///< Function name including suffix.
-    Type ret = Type::I64;          ///< Return type derived from name suffix.
-    std::vector<Param> params;     ///< Ordered parameter list.
-    std::vector<StmtPtr> body;     ///< Function body statements.
-    il::support::SourceLoc endLoc; ///< Location of trailing END FUNCTION keyword.
+    /// Function name including suffix.
+    Identifier name;
+
+    /// Return type derived from name suffix.
+    Type ret = Type::I64;
+
+    /// Ordered parameter list.
+    std::vector<Param> params;
+
+    /// Function body statements.
+    std::vector<StmtPtr> body;
+
+    /// Location of trailing END FUNCTION keyword.
+    il::support::SourceLoc endLoc;
 };
 
 /// @brief SUB declaration representing a void procedure.
 struct SubDecl : Stmt
 {
-    Identifier name;           ///< Subroutine name including suffix.
-    std::vector<Param> params; ///< Ordered parameter list.
-    std::vector<StmtPtr> body; ///< Body statements.
+    /// Subroutine name including suffix.
+    Identifier name;
+
+    /// Ordered parameter list.
+    std::vector<Param> params;
+
+    /// Body statements.
+    std::vector<StmtPtr> body;
 };
 
 /// @brief Sequence of statements executed left-to-right on one BASIC line.
 struct StmtList : Stmt
 {
-    std::vector<StmtPtr> stmts; ///< Ordered statements sharing the same line.
+    /// Ordered statements sharing the same line.
+    std::vector<StmtPtr> stmts;
 };
 
 /// @brief Root node partitioning procedure declarations from main statements.
 struct Program
 {
-    std::vector<ProcDecl> procs; ///< FUNCTION/SUB declarations in order.
-    std::vector<StmtPtr> main;   ///< Top-level statements forming program entry.
-    il::support::SourceLoc loc;  ///< Location of first token in source.
+    /// FUNCTION/SUB declarations in order.
+    std::vector<ProcDecl> procs;
+
+    /// Top-level statements forming program entry.
+    std::vector<StmtPtr> main;
+
+    /// Location of first token in source.
+    il::support::SourceLoc loc;
 };
 
 } // namespace il::frontends::basic
