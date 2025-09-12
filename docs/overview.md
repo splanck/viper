@@ -32,9 +32,9 @@ BASIC source
                                    └───────────────► native codegen (future)
 ```
 
-See also: [BASIC reference](reference/basic-language.md),
+See also: [BASIC reference](basic-reference.md),
 [IL Quickstart](il-quickstart.md), and
-[IL reference](references/il.md).
+[IL reference](il-reference.md).
 
 ## Source layout (where things live)
 
@@ -67,7 +67,7 @@ information. Errors stop compilation before lowering.
 30 END
 ```
 
-For language details see the [BASIC reference](reference/basic-language.md).
+For language details see the [BASIC reference](basic-reference.md).
 
 ## IL (Intermediate Language)
 
@@ -94,7 +94,7 @@ entry:
 }
 ```
 
-More syntax and semantics are covered in the [IL reference](references/il.md).
+More syntax and semantics are covered in the [IL reference](il-reference.md).
 
 ## Pass pipeline
 
@@ -197,6 +197,6 @@ and updating consumers.
 
 ## References
 
-- [BASIC reference](reference/basic-language.md)
-- [IL reference](references/il.md)
+- [BASIC reference](basic-reference.md)
+- [IL reference](il-reference.md)
 
