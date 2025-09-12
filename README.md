@@ -112,5 +112,5 @@ build/src/tools/ilc/ilc -run examples/il/ex1_hello_cond.il
 
 ## References
 
-- [BASIC Reference](docs/references/basic.md)
-- [IL Reference](docs/references/il.md)
+- [BASIC Reference](docs/basic-reference.md)
+- [IL Reference](docs/il-reference.md)
