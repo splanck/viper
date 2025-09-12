@@ -19,8 +19,16 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
+// Purpose: lowerer.
+// Parameters: bool boundsChecks.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::Lowerer(bool boundsChecks) : boundsChecks(boundsChecks) {}
 
+// Purpose: lower program.
+// Parameters: const Program &prog.
+// Returns: Module.
+// Side effects: may modify lowering state or emit IL.
 Module Lowerer::lowerProgram(const Program &prog)
 {
     // Procs first, then a synthetic @main for top-level statements.
@@ -67,11 +75,19 @@ Module Lowerer::lowerProgram(const Program &prog)
     return m;
 }
 
+// Purpose: lower.
+// Parameters: const Program &prog.
+// Returns: Module.
+// Side effects: may modify lowering state or emit IL.
 Module Lowerer::lower(const Program &prog)
 {
     return lowerProgram(prog);
 }
 
+// Purpose: declare required runtime.
+// Parameters: build::IRBuilder &b.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
 {
     using Type = il::core::Type;
@@ -176,17 +192,29 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
             "rt_str_eq", Type(Type::Kind::I1), {Type(Type::Kind::Str), Type(Type::Kind::Str)});
 }
 
+// Purpose: track runtime.
+// Parameters: RuntimeFn fn.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::trackRuntime(RuntimeFn fn)
 {
     if (runtimeSet.insert(fn).second)
         runtimeOrder.push_back(fn);
 }
 
+// Purpose: scan unary expr.
+// Parameters: const UnaryExpr &u.
+// Returns: Lowerer::ExprType.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::ExprType Lowerer::scanUnaryExpr(const UnaryExpr &u)
 {
     return scanExpr(*u.expr);
 }
 
+// Purpose: scan binary expr.
+// Parameters: const BinaryExpr &b.
+// Returns: Lowerer::ExprType.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::ExprType Lowerer::scanBinaryExpr(const BinaryExpr &b)
 {
     ExprType lt = scanExpr(*b.lhs);
@@ -207,12 +235,20 @@ Lowerer::ExprType Lowerer::scanBinaryExpr(const BinaryExpr &b)
     return ExprType::I64;
 }
 
+// Purpose: scan array expr.
+// Parameters: const ArrayExpr &arr.
+// Returns: Lowerer::ExprType.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::ExprType Lowerer::scanArrayExpr(const ArrayExpr &arr)
 {
     scanExpr(*arr.index);
     return ExprType::I64;
 }
 
+// Purpose: scan builtin call expr.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::ExprType.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::ExprType Lowerer::scanBuiltinCallExpr(const BuiltinCallExpr &c)
 {
     switch (c.builtin)
@@ -355,6 +391,10 @@ Lowerer::ExprType Lowerer::scanBuiltinCallExpr(const BuiltinCallExpr &c)
     }
 }
 
+// Purpose: scan expr.
+// Parameters: const Expr &e.
+// Returns: Lowerer::ExprType.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::ExprType Lowerer::scanExpr(const Expr &e)
 {
     if (dynamic_cast<const IntExpr *>(&e))
@@ -389,6 +429,10 @@ Lowerer::ExprType Lowerer::scanExpr(const Expr &e)
     return ExprType::I64;
 }
 
+// Purpose: scan stmt.
+// Parameters: const Stmt &s.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::scanStmt(const Stmt &s)
 {
     if (auto *l = dynamic_cast<const LetStmt *>(&s))
@@ -477,6 +521,10 @@ void Lowerer::scanStmt(const Stmt &s)
     }
 }
 
+// Purpose: scan program.
+// Parameters: const Program &prog.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::scanProgram(const Program &prog)
 {
     for (const auto &s : prog.procs)
@@ -485,6 +533,10 @@ void Lowerer::scanProgram(const Program &prog)
         scanStmt(*s);
 }
 
+// Purpose: emit program.
+// Parameters: const Program &prog.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::emitProgram(const Program &prog)
 {
     build::IRBuilder &b = *builder;
@@ -573,6 +625,10 @@ void Lowerer::emitProgram(const Program &prog)
     emitRet(Value::constInt(0));
 }
 
+// Purpose: collect vars.
+// Parameters: const std::vector<const Stmt *> &stmts.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
 {
     std::function<void(const Expr &)> ex = [&](const Expr &e)
@@ -671,6 +727,10 @@ void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
 }
 
 /// @brief Lower FUNCTION body into an IL function.
+// Purpose: lower function decl.
+// Parameters: const FunctionDecl &decl.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
 {
     resetLoweringState();
@@ -780,6 +840,10 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
 }
 
 /// @brief Lower SUB body into an IL function.
+// Purpose: lower sub decl.
+// Parameters: const SubDecl &decl.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::lowerSubDecl(const SubDecl &decl)
 {
     resetLoweringState();
@@ -891,6 +955,10 @@ void Lowerer::lowerSubDecl(const SubDecl &decl)
     blockNamer.reset();
 }
 
+// Purpose: reset lowering state.
+// Parameters: none.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::resetLoweringState()
 {
     vars.clear();
@@ -901,6 +969,10 @@ void Lowerer::resetLoweringState()
     boundsCheckId = 0;
 }
 
+// Purpose: lower function body.
+// Parameters: const FunctionDecl &decl, const std::function<Value(.
+// Returns: bool.
+// Side effects: may modify lowering state or emit IL.
 bool Lowerer::lowerFunctionBody(const FunctionDecl &decl, const std::function<Value()> &defaultRet)
 {
     Function &f = *func;
@@ -931,6 +1003,10 @@ bool Lowerer::lowerFunctionBody(const FunctionDecl &decl, const std::function<Va
     return true;
 }
 
+// Purpose: finalize function.
+// Parameters: const std::function<Value(.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::finalizeFunction(const std::function<Value()> &defaultRet)
 {
     cur = &func->blocks[fnExit];
@@ -941,6 +1017,10 @@ void Lowerer::finalizeFunction(const std::function<Value()> &defaultRet)
 
 /// @brief Allocate stack slots for parameters and store incoming values. Array
 /// parameters keep their pointer/handle without copying.
+// Purpose: materialize params.
+// Parameters: const std::vector<Param> &params.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::materializeParams(const std::vector<Param> &params)
 {
     for (size_t i = 0; i < params.size(); ++i)
@@ -956,6 +1036,10 @@ void Lowerer::materializeParams(const std::vector<Param> &params)
     }
 }
 
+// Purpose: collect vars.
+// Parameters: const Program &prog.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::collectVars(const Program &prog)
 {
     std::vector<const Stmt *> ptrs;
@@ -966,6 +1050,10 @@ void Lowerer::collectVars(const Program &prog)
     collectVars(ptrs);
 }
 
+// Purpose: lower stmt.
+// Parameters: const Stmt &stmt.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::lowerStmt(const Stmt &stmt)
 {
     curLoc = stmt.loc;
@@ -1015,6 +1103,10 @@ void Lowerer::lowerStmt(const Stmt &stmt)
     }
 }
 
+// Purpose: lower var expr.
+// Parameters: const VarExpr &v.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v)
 {
     curLoc = v.loc;
@@ -1031,6 +1123,10 @@ Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v)
     return {val, ty};
 }
 
+// Purpose: lower unary expr.
+// Parameters: const UnaryExpr &u.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
 {
     RVal val = lowerExpr(*u.expr);
@@ -1044,6 +1140,10 @@ Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
     return {res, Type(Type::Kind::I1)};
 }
 
+// Purpose: lower logical binary.
+// Parameters: const BinaryExpr &b.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
 {
     RVal lhs = lowerExpr(*b.lhs);
@@ -1104,6 +1204,10 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
     return {res, Type(Type::Kind::I1)};
 }
 
+// Purpose: lower div or mod.
+// Parameters: const BinaryExpr &b.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerDivOrMod(const BinaryExpr &b)
 {
     RVal lhs = lowerExpr(*b.lhs);
@@ -1125,6 +1229,10 @@ Lowerer::RVal Lowerer::lowerDivOrMod(const BinaryExpr &b)
     return {res, Type(Type::Kind::I64)};
 }
 
+// Purpose: lower string binary.
+// Parameters: const BinaryExpr &b, RVal lhs, RVal rhs.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerStringBinary(const BinaryExpr &b, RVal lhs, RVal rhs)
 {
     curLoc = b.loc;
@@ -1144,6 +1252,10 @@ Lowerer::RVal Lowerer::lowerStringBinary(const BinaryExpr &b, RVal lhs, RVal rhs
     return {eq, Type(Type::Kind::I1)};
 }
 
+// Purpose: lower numeric binary.
+// Parameters: const BinaryExpr &b, RVal lhs, RVal rhs.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerNumericBinary(const BinaryExpr &b, RVal lhs, RVal rhs)
 {
     curLoc = b.loc;
@@ -1205,6 +1317,10 @@ Lowerer::RVal Lowerer::lowerNumericBinary(const BinaryExpr &b, RVal lhs, RVal rh
     return {res, ty};
 }
 
+// Purpose: lower binary expr.
+// Parameters: const BinaryExpr &b.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerBinaryExpr(const BinaryExpr &b)
 {
     if (b.op == BinaryExpr::Op::And || b.op == BinaryExpr::Op::Or)
@@ -1220,12 +1336,20 @@ Lowerer::RVal Lowerer::lowerBinaryExpr(const BinaryExpr &b)
     return lowerNumericBinary(b, lhs, rhs);
 }
 
+// Purpose: lower arg.
+// Parameters: const BuiltinCallExpr &c, size_t idx.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerArg(const BuiltinCallExpr &c, size_t idx)
 {
     assert(idx < c.args.size() && c.args[idx]);
     return lowerExpr(*c.args[idx]);
 }
 
+// Purpose: ensure i64.
+// Parameters: RVal v, il::support::SourceLoc loc.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::ensureI64(RVal v, il::support::SourceLoc loc)
 {
     if (v.type.kind == Type::Kind::I1)
@@ -1243,6 +1367,10 @@ Lowerer::RVal Lowerer::ensureI64(RVal v, il::support::SourceLoc loc)
     return v;
 }
 
+// Purpose: ensure f64.
+// Parameters: RVal v, il::support::SourceLoc loc.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::ensureF64(RVal v, il::support::SourceLoc loc)
 {
     if (v.type.kind == Type::Kind::F64)
@@ -1257,6 +1385,10 @@ Lowerer::RVal Lowerer::ensureF64(RVal v, il::support::SourceLoc loc)
     return v;
 }
 
+// Purpose: lower rnd.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerRnd(const BuiltinCallExpr &c)
 {
     curLoc = c.loc;
@@ -1264,6 +1396,10 @@ Lowerer::RVal Lowerer::lowerRnd(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::F64)};
 }
 
+// Purpose: lower len.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerLen(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -1272,6 +1408,10 @@ Lowerer::RVal Lowerer::lowerLen(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::I64)};
 }
 
+// Purpose: lower mid.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerMid(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -1290,6 +1430,10 @@ Lowerer::RVal Lowerer::lowerMid(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::Str)};
 }
 
+// Purpose: lower left.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerLeft(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -1300,6 +1444,10 @@ Lowerer::RVal Lowerer::lowerLeft(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::Str)};
 }
 
+// Purpose: lower right.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerRight(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -1310,6 +1458,10 @@ Lowerer::RVal Lowerer::lowerRight(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::Str)};
 }
 
+// Purpose: lower str.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerStr(const BuiltinCallExpr &c)
 {
     RVal v = lowerArg(c, 0);
@@ -1326,6 +1478,10 @@ Lowerer::RVal Lowerer::lowerStr(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::Str)};
 }
 
+// Purpose: lower val.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerVal(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -1334,6 +1490,10 @@ Lowerer::RVal Lowerer::lowerVal(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::I64)};
 }
 
+// Purpose: lower int.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerInt(const BuiltinCallExpr &c)
 {
     RVal f = ensureF64(lowerArg(c, 0), c.loc);
@@ -1342,6 +1502,10 @@ Lowerer::RVal Lowerer::lowerInt(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::I64)};
 }
 
+// Purpose: lower instr.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerInstr(const BuiltinCallExpr &c)
 {
     curLoc = c.loc;
@@ -1364,6 +1528,10 @@ Lowerer::RVal Lowerer::lowerInstr(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::I64)};
 }
 
+// Purpose: lower ltrim.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerLtrim(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -1373,6 +1541,10 @@ Lowerer::RVal Lowerer::lowerLtrim(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::Str)};
 }
 
+// Purpose: lower rtrim.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerRtrim(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -1382,6 +1554,10 @@ Lowerer::RVal Lowerer::lowerRtrim(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::Str)};
 }
 
+// Purpose: lower trim.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerTrim(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -1391,6 +1567,10 @@ Lowerer::RVal Lowerer::lowerTrim(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::Str)};
 }
 
+// Purpose: lower ucase.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerUcase(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -1400,6 +1580,10 @@ Lowerer::RVal Lowerer::lowerUcase(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::Str)};
 }
 
+// Purpose: lower lcase.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerLcase(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -1409,6 +1593,10 @@ Lowerer::RVal Lowerer::lowerLcase(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::Str)};
 }
 
+// Purpose: lower chr.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerChr(const BuiltinCallExpr &c)
 {
     RVal code = ensureI64(lowerArg(c, 0), c.loc);
@@ -1418,6 +1606,10 @@ Lowerer::RVal Lowerer::lowerChr(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::Str)};
 }
 
+// Purpose: lower asc.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerAsc(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -1427,6 +1619,10 @@ Lowerer::RVal Lowerer::lowerAsc(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::I64)};
 }
 
+// Purpose: lower sqr.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerSqr(const BuiltinCallExpr &c)
 {
     RVal v = ensureF64(lowerArg(c, 0), c.loc);
@@ -1435,6 +1631,10 @@ Lowerer::RVal Lowerer::lowerSqr(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::F64)};
 }
 
+// Purpose: lower abs.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerAbs(const BuiltinCallExpr &c)
 {
     RVal v = lowerArg(c, 0);
@@ -1451,6 +1651,10 @@ Lowerer::RVal Lowerer::lowerAbs(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::I64)};
 }
 
+// Purpose: lower floor.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerFloor(const BuiltinCallExpr &c)
 {
     RVal v = ensureF64(lowerArg(c, 0), c.loc);
@@ -1459,6 +1663,10 @@ Lowerer::RVal Lowerer::lowerFloor(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::F64)};
 }
 
+// Purpose: lower ceil.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerCeil(const BuiltinCallExpr &c)
 {
     RVal v = ensureF64(lowerArg(c, 0), c.loc);
@@ -1467,6 +1675,10 @@ Lowerer::RVal Lowerer::lowerCeil(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::F64)};
 }
 
+// Purpose: lower sin.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerSin(const BuiltinCallExpr &c)
 {
     RVal v = ensureF64(lowerArg(c, 0), c.loc);
@@ -1475,6 +1687,10 @@ Lowerer::RVal Lowerer::lowerSin(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::F64)};
 }
 
+// Purpose: lower cos.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerCos(const BuiltinCallExpr &c)
 {
     RVal v = ensureF64(lowerArg(c, 0), c.loc);
@@ -1483,6 +1699,10 @@ Lowerer::RVal Lowerer::lowerCos(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::F64)};
 }
 
+// Purpose: lower pow.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerPow(const BuiltinCallExpr &c)
 {
     RVal a = ensureF64(lowerArg(c, 0), c.loc);
@@ -1492,6 +1712,10 @@ Lowerer::RVal Lowerer::lowerPow(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::F64)};
 }
 
+// Purpose: lower builtin call.
+// Parameters: const BuiltinCallExpr &c.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
 {
     using B = BuiltinCallExpr::Builtin;
@@ -1547,6 +1771,10 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
     return {Value::constInt(0), Type(Type::Kind::I64)};
 }
 
+// Purpose: lower expr.
+// Parameters: const Expr &expr.
+// Returns: Lowerer::RVal.
+// Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
 {
     curLoc = expr.loc;
@@ -1639,6 +1867,10 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
     return {Value::constInt(0), Type(Type::Kind::I64)};
 }
 
+// Purpose: lower let.
+// Parameters: const LetStmt &stmt.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::lowerLet(const LetStmt &stmt)
 {
     RVal v = lowerExpr(*stmt.expr);
@@ -1686,6 +1918,10 @@ void Lowerer::lowerLet(const LetStmt &stmt)
     }
 }
 
+// Purpose: lower print.
+// Parameters: const PrintStmt &stmt.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::lowerPrint(const PrintStmt &stmt)
 {
     for (const auto &it : stmt.items)
@@ -1734,6 +1970,11 @@ void Lowerer::lowerPrint(const PrintStmt &stmt)
     }
 }
 
+// Purpose: emit if blocks.
+// Parameters: size_t conds.
+// Returns: Lowerer::IfBlocks.
+// Side effects: may modify lowering state or emit IL. Relies on deterministic block naming via
+// BlockNamer.
 Lowerer::IfBlocks Lowerer::emitIfBlocks(size_t conds)
 {
     size_t curIdx = cur - &func->blocks[0];
@@ -1768,6 +2009,10 @@ Lowerer::IfBlocks Lowerer::emitIfBlocks(size_t conds)
     return {std::move(testIdx), std::move(thenIdx), elseBlk, exitBlk};
 }
 
+// Purpose: lower if condition.
+// Parameters: const Expr &cond, BasicBlock *testBlk, BasicBlock *thenBlk, BasicBlock *falseBlk,
+// il::support::SourceLoc loc. Returns: void. Side effects: may modify lowering state or emit IL.
+// Relies on deterministic block naming via BlockNamer.
 void Lowerer::lowerIfCondition(const Expr &cond,
                                BasicBlock *testBlk,
                                BasicBlock *thenBlk,
@@ -1785,6 +2030,10 @@ void Lowerer::lowerIfCondition(const Expr &cond,
     emitCBr(c.value, thenBlk, falseBlk);
 }
 
+// Purpose: lower if branch.
+// Parameters: const Stmt *stmt, BasicBlock *thenBlk, BasicBlock *exitBlk, il::support::SourceLoc
+// loc. Returns: bool. Side effects: may modify lowering state or emit IL. Relies on deterministic
+// block naming via BlockNamer.
 bool Lowerer::lowerIfBranch(const Stmt *stmt,
                             BasicBlock *thenBlk,
                             BasicBlock *exitBlk,
@@ -1802,6 +2051,11 @@ bool Lowerer::lowerIfBranch(const Stmt *stmt,
     return false;
 }
 
+// Purpose: lower if.
+// Parameters: const IfStmt &stmt.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL. Relies on deterministic block naming via
+// BlockNamer.
 void Lowerer::lowerIf(const IfStmt &stmt)
 {
     size_t conds = 1 + stmt.elseifs.size();
@@ -1844,6 +2098,11 @@ void Lowerer::lowerIf(const IfStmt &stmt)
     cur = blocks.exitBlk;
 }
 
+// Purpose: lower while.
+// Parameters: const WhileStmt &stmt.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL. Relies on deterministic block naming via
+// BlockNamer.
 void Lowerer::lowerWhile(const WhileStmt &stmt)
 {
     // Adding blocks may reallocate the function's block list; capture index and
@@ -1894,6 +2153,11 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
     cur->terminated = term;
 }
 
+// Purpose: setup for blocks.
+// Parameters: bool varStep.
+// Returns: Lowerer::ForBlocks.
+// Side effects: may modify lowering state or emit IL. Relies on deterministic block naming via
+// BlockNamer.
 Lowerer::ForBlocks Lowerer::setupForBlocks(bool varStep)
 {
     size_t curIdx = cur - &func->blocks[0];
@@ -1932,6 +2196,11 @@ Lowerer::ForBlocks Lowerer::setupForBlocks(bool varStep)
     return fb;
 }
 
+// Purpose: lower for const step.
+// Parameters: const ForStmt &stmt, Value slot, RVal end, RVal step, long stepConst.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL. Relies on deterministic block naming via
+// BlockNamer.
 void Lowerer::lowerForConstStep(
     const ForStmt &stmt, Value slot, RVal end, RVal step, long stepConst)
 {
@@ -1968,6 +2237,11 @@ void Lowerer::lowerForConstStep(
     cur->terminated = term;
 }
 
+// Purpose: lower for var step.
+// Parameters: const ForStmt &stmt, Value slot, RVal end, RVal step.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL. Relies on deterministic block naming via
+// BlockNamer.
 void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal step)
 {
     curLoc = stmt.loc;
@@ -2012,6 +2286,11 @@ void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal st
     cur->terminated = term;
 }
 
+// Purpose: lower for.
+// Parameters: const ForStmt &stmt.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL. Relies on deterministic block naming via
+// BlockNamer.
 void Lowerer::lowerFor(const ForStmt &stmt)
 {
     RVal start = lowerExpr(*stmt.start);
@@ -2036,8 +2315,17 @@ void Lowerer::lowerFor(const ForStmt &stmt)
         lowerForVarStep(stmt, slot, end, step);
 }
 
+// Purpose: lower next.
+// Parameters: const NextStmt &.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::lowerNext(const NextStmt &) {}
 
+// Purpose: lower goto.
+// Parameters: const GotoStmt &stmt.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL. Relies on deterministic block naming via
+// BlockNamer.
 void Lowerer::lowerGoto(const GotoStmt &stmt)
 {
     auto it = lineBlocks.find(stmt.target);
@@ -2048,12 +2336,20 @@ void Lowerer::lowerGoto(const GotoStmt &stmt)
     }
 }
 
+// Purpose: lower end.
+// Parameters: const EndStmt &stmt.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::lowerEnd(const EndStmt &stmt)
 {
     curLoc = stmt.loc;
     emitBr(&func->blocks[fnExit]);
 }
 
+// Purpose: lower input.
+// Parameters: const InputStmt &stmt.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::lowerInput(const InputStmt &stmt)
 {
     curLoc = stmt.loc;
@@ -2080,6 +2376,10 @@ void Lowerer::lowerInput(const InputStmt &stmt)
     }
 }
 
+// Purpose: lower dim.
+// Parameters: const DimStmt &stmt.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::lowerDim(const DimStmt &stmt)
 {
     RVal sz = lowerExpr(*stmt.size);
@@ -2097,6 +2397,10 @@ void Lowerer::lowerDim(const DimStmt &stmt)
     }
 }
 
+// Purpose: lower randomize.
+// Parameters: const RandomizeStmt &stmt.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::lowerRandomize(const RandomizeStmt &stmt)
 {
     RVal s = lowerExpr(*stmt.seed);
@@ -2113,6 +2417,10 @@ void Lowerer::lowerRandomize(const RandomizeStmt &stmt)
     emitCall("rt_randomize_i64", {seed});
 }
 
+// Purpose: lower array addr.
+// Parameters: const ArrayExpr &expr.
+// Returns: Value.
+// Side effects: may modify lowering state or emit IL.
 Value Lowerer::lowerArrayAddr(const ArrayExpr &expr)
 {
     auto it = varSlots.find(expr.name);
@@ -2159,6 +2467,10 @@ Value Lowerer::lowerArrayAddr(const ArrayExpr &expr)
     return ptr;
 }
 
+// Purpose: emit alloca.
+// Parameters: int bytes.
+// Returns: Value.
+// Side effects: may modify lowering state or emit IL.
 Value Lowerer::emitAlloca(int bytes)
 {
     unsigned id = nextTempId();
@@ -2172,6 +2484,10 @@ Value Lowerer::emitAlloca(int bytes)
     return Value::temp(id);
 }
 
+// Purpose: emit load.
+// Parameters: Type ty, Value addr.
+// Returns: Value.
+// Side effects: may modify lowering state or emit IL.
 Value Lowerer::emitLoad(Type ty, Value addr)
 {
     unsigned id = nextTempId();
@@ -2185,6 +2501,10 @@ Value Lowerer::emitLoad(Type ty, Value addr)
     return Value::temp(id);
 }
 
+// Purpose: emit store.
+// Parameters: Type ty, Value addr, Value val.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::emitStore(Type ty, Value addr, Value val)
 {
     Instr in;
@@ -2195,6 +2515,10 @@ void Lowerer::emitStore(Type ty, Value addr, Value val)
     cur->instructions.push_back(in);
 }
 
+// Purpose: emit for step.
+// Parameters: Value slot, Value step.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::emitForStep(Value slot, Value step)
 {
     Value load = emitLoad(Type(Type::Kind::I64), slot);
@@ -2202,6 +2526,10 @@ void Lowerer::emitForStep(Value slot, Value step)
     emitStore(Type(Type::Kind::I64), slot, add);
 }
 
+// Purpose: emit binary.
+// Parameters: Opcode op, Type ty, Value lhs, Value rhs.
+// Returns: Value.
+// Side effects: may modify lowering state or emit IL.
 Value Lowerer::emitBinary(Opcode op, Type ty, Value lhs, Value rhs)
 {
     unsigned id = nextTempId();
@@ -2215,6 +2543,10 @@ Value Lowerer::emitBinary(Opcode op, Type ty, Value lhs, Value rhs)
     return Value::temp(id);
 }
 
+// Purpose: emit unary.
+// Parameters: Opcode op, Type ty, Value val.
+// Returns: Value.
+// Side effects: may modify lowering state or emit IL.
 Value Lowerer::emitUnary(Opcode op, Type ty, Value val)
 {
     unsigned id = nextTempId();
@@ -2228,6 +2560,11 @@ Value Lowerer::emitUnary(Opcode op, Type ty, Value val)
     return Value::temp(id);
 }
 
+// Purpose: emit br.
+// Parameters: BasicBlock *target.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL. Relies on deterministic block naming via
+// BlockNamer.
 void Lowerer::emitBr(BasicBlock *target)
 {
     Instr in;
@@ -2239,6 +2576,11 @@ void Lowerer::emitBr(BasicBlock *target)
     cur->terminated = true;
 }
 
+// Purpose: emit cbr.
+// Parameters: Value cond, BasicBlock *t, BasicBlock *f.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL. Relies on deterministic block naming via
+// BlockNamer.
 void Lowerer::emitCBr(Value cond, BasicBlock *t, BasicBlock *f)
 {
     Instr in;
@@ -2252,6 +2594,10 @@ void Lowerer::emitCBr(Value cond, BasicBlock *t, BasicBlock *f)
     cur->terminated = true;
 }
 
+// Purpose: emit call.
+// Parameters: const std::string &callee, const std::vector<Value> &args.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::emitCall(const std::string &callee, const std::vector<Value> &args)
 {
     Instr in;
@@ -2263,6 +2609,10 @@ void Lowerer::emitCall(const std::string &callee, const std::vector<Value> &args
     cur->instructions.push_back(in);
 }
 
+// Purpose: emit call ret.
+// Parameters: Type ty, const std::string &callee, const std::vector<Value> &args.
+// Returns: Value.
+// Side effects: may modify lowering state or emit IL.
 Value Lowerer::emitCallRet(Type ty, const std::string &callee, const std::vector<Value> &args)
 {
     unsigned id = nextTempId();
@@ -2277,6 +2627,10 @@ Value Lowerer::emitCallRet(Type ty, const std::string &callee, const std::vector
     return Value::temp(id);
 }
 
+// Purpose: emit const str.
+// Parameters: const std::string &globalName.
+// Returns: Value.
+// Side effects: may modify lowering state or emit IL.
 Value Lowerer::emitConstStr(const std::string &globalName)
 {
     unsigned id = nextTempId();
@@ -2290,6 +2644,10 @@ Value Lowerer::emitConstStr(const std::string &globalName)
     return Value::temp(id);
 }
 
+// Purpose: emit ret.
+// Parameters: Value v.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::emitRet(Value v)
 {
     Instr in;
@@ -2301,6 +2659,10 @@ void Lowerer::emitRet(Value v)
     cur->terminated = true;
 }
 
+// Purpose: emit ret void.
+// Parameters: none.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::emitRetVoid()
 {
     Instr in;
@@ -2311,6 +2673,10 @@ void Lowerer::emitRetVoid()
     cur->terminated = true;
 }
 
+// Purpose: emit trap.
+// Parameters: none.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
 void Lowerer::emitTrap()
 {
     Instr in;
@@ -2321,6 +2687,10 @@ void Lowerer::emitTrap()
     cur->terminated = true;
 }
 
+// Purpose: get string label.
+// Parameters: const std::string &s.
+// Returns: std::string.
+// Side effects: may modify lowering state or emit IL.
 std::string Lowerer::getStringLabel(const std::string &s)
 {
     auto it = strings.find(s);
@@ -2332,6 +2702,10 @@ std::string Lowerer::getStringLabel(const std::string &s)
     return name;
 }
 
+// Purpose: next temp id.
+// Parameters: none.
+// Returns: unsigned.
+// Side effects: may modify lowering state or emit IL.
 unsigned Lowerer::nextTempId()
 {
     std::string name = mangler.nextTemp();
