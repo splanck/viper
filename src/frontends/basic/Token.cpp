@@ -8,7 +8,17 @@
 
 namespace il::frontends::basic
 {
-
+/**
+ * @brief Maps a token kind to its canonical string representation.
+ *
+ * Each enumerator in TokenKind is handled explicitly. Unrecognized values
+ * fall back to a "?" marker. Because the switch has no default case, adding
+ * a new TokenKind triggers a compiler warning, providing a completeness
+ * guarantee.
+ *
+ * @param k Token kind to convert.
+ * @return Null-terminated string naming @p k, or "?" if no mapping exists.
+ */
 const char *tokenKindToString(TokenKind k)
 {
     switch (k)
