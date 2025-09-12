@@ -593,6 +593,14 @@ VM::ExecResult VM::handleConstStr(Frame &fr, const Instr &in)
     return {};
 }
 
+VM::ExecResult VM::handleConstNull(Frame &fr, const Instr &in)
+{
+    Slot res{};
+    res.ptr = nullptr;
+    storeResult(fr, in, res);
+    return {};
+}
+
 /// Invoke a function or runtime bridge call.
 ///
 /// @param fr Frame providing argument operands.
@@ -797,6 +805,9 @@ VM::ExecResult VM::executeOpcode(Frame &fr,
         t[static_cast<size_t>(Opcode::ConstStr)] =
             [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
         { return vm.handleConstStr(fr, in); };
+        t[static_cast<size_t>(Opcode::ConstNull)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleConstNull(fr, in); };
         t[static_cast<size_t>(Opcode::Call)] =
             [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&b, size_t &)
         { return vm.handleCall(fr, in, b); };
