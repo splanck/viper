@@ -308,6 +308,9 @@ class VM
     /// @brief Handle return opcode.
     ExecResult handleRet(Frame &fr, const il::core::Instr &in);
 
+    /// @brief Handle address-of global string opcode.
+    ExecResult handleAddrOf(Frame &fr, const il::core::Instr &in);
+
     /// @brief Handle const string opcode.
     ExecResult handleConstStr(Frame &fr, const il::core::Instr &in);
 
