@@ -282,6 +282,13 @@ std::optional<Slot> VM::handleDebugBreak(
 /// @returns ExecResult with no control-flow effects; result slot holds pointer.
 VM::ExecResult VM::handleAlloca(Frame &fr, const Instr &in)
 {
+    if (in.operands.size() < 1)
+    {
+        RuntimeBridge::trap("missing allocation size", in.loc, fr.func->name, "");
+        ExecResult r{};
+        r.returned = true;
+        return r;
+    }
     int64_t bytes = eval(fr, in.operands[0]).i64;
     if (bytes < 0)
     {

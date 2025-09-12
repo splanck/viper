@@ -15,7 +15,8 @@ int main()
                            BAD_DIR "/unknown_param_type.il",
                            BAD_DIR "/bad_i32.il",
                            BAD_DIR "/bad_int_literal.il",
-                           BAD_DIR "/bad_float_literal.il"};
+                           BAD_DIR "/bad_float_literal.il",
+                           BAD_DIR "/alloca_missing_size.il"};
     for (const char *path : files)
     {
         std::ifstream in(path);
