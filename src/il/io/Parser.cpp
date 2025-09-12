@@ -922,14 +922,35 @@ bool parseModuleHeader(std::istream &is, std::string &line, ParserState &st, std
         std::vector<Type> params;
         std::stringstream pss(paramsStr);
         std::string p;
+        bool typesOk = true;
         while (std::getline(pss, p, ','))
         {
             p = trim(p);
-            if (!p.empty())
-                params.push_back(parseType(p));
+            if (p.empty())
+                continue;
+            bool ok = true;
+            Type ty = parseType(p, &ok);
+            if (!ok)
+            {
+                err << "line " << st.lineNo << ": unknown type '" << p << "'\n";
+                st.hasError = true;
+                typesOk = false;
+            }
+            else
+                params.push_back(ty);
         }
         std::string retStr = trim(line.substr(arr + 2));
-        st.m.externs.push_back({name, parseType(retStr), params});
+        bool retOk = true;
+        Type retTy = parseType(retStr, &retOk);
+        if (!retOk)
+        {
+            err << "line " << st.lineNo << ": unknown type '" << retStr << "'\n";
+            st.hasError = true;
+            typesOk = false;
+        }
+        if (!typesOk)
+            return false;
+        st.m.externs.push_back({name, retTy, params});
         return true;
     }
     if (line.rfind("global", 0) == 0)
