@@ -311,6 +311,9 @@ class VM
     /// @brief Handle const string opcode.
     ExecResult handleConstStr(Frame &fr, const il::core::Instr &in);
 
+    /// @brief Handle const null opcode.
+    ExecResult handleConstNull(Frame &fr, const il::core::Instr &in);
+
     /// @brief Handle call opcode.
     ExecResult handleCall(Frame &fr, const il::core::Instr &in, const il::core::BasicBlock *bb);
 
