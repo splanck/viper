@@ -172,3 +172,11 @@ add_test(NAME il_opt_mem2reg_multi COMMAND ${CMAKE_COMMAND}
   -DPASSES=mem2reg
   -P ${CMAKE_CURRENT_SOURCE_DIR}/il_opt/check_opt.cmake)
 
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/quickstart.stdout EXPECT_QUICKSTART)
+string(STRIP "${EXPECT_QUICKSTART}" EXPECT_QUICKSTART)
+add_test(NAME il_quickstart_example COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DIL_FILE=${CMAKE_CURRENT_SOURCE_DIR}/quickstart.il
+  "-DEXPECT=${EXPECT_QUICKSTART}"
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/check_run_output.cmake)
+
