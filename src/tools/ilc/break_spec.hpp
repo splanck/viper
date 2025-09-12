@@ -14,8 +14,14 @@ namespace ilc
 
 /// @brief Determine whether a --break argument refers to a source line.
 ///
-/// A token is treated as a source specification when it matches "<file>:<line>"
-/// and the file portion contains a path separator or a dot.
+/// A source break specification is written as `<file>:<line>` where the left
+/// side resembles a path (contains `/`, `\\`, or `.`) and the right side is a
+/// decimal line number.
+/// @param spec Single token supplied to the `--break` flag.
+/// @returns `true` when the token matches the source break format; `false`
+/// otherwise.
+/// @note This check is purely syntactic and does not verify file existence or
+/// line bounds.
 inline bool isSrcBreakSpec(const std::string &spec)
 {
     /// Position of the colon separating file and line.
