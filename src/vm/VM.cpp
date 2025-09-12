@@ -580,6 +580,21 @@ VM::ExecResult VM::handleRet(Frame &fr, const Instr &in)
     return r;
 }
 
+/// Load the address of a global string into the destination register.
+///
+/// @param fr Frame receiving the pointer slot.
+/// @param in Instruction referencing a global symbol by name.
+/// @sideeffects Writes the runtime string pointer to the result register.
+/// @returns ExecResult with no control-flow changes.
+VM::ExecResult VM::handleAddrOf(Frame &fr, const Instr &in)
+{
+    Slot tmp = eval(fr, in.operands[0]);
+    Slot res{};
+    res.ptr = tmp.str;
+    storeResult(fr, in, res);
+    return {};
+}
+
 /// Load a constant string from the global table.
 ///
 /// @param fr Frame receiving the string slot.
@@ -794,6 +809,9 @@ VM::ExecResult VM::executeOpcode(Frame &fr,
         t[static_cast<size_t>(Opcode::Ret)] =
             [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
         { return vm.handleRet(fr, in); };
+        t[static_cast<size_t>(Opcode::AddrOf)] =
+            [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
+        { return vm.handleAddrOf(fr, in); };
         t[static_cast<size_t>(Opcode::ConstStr)] =
             [](VM &vm, Frame &fr, const Instr &in, const BlockMap &, const BasicBlock *&, size_t &)
         { return vm.handleConstStr(fr, in); };
