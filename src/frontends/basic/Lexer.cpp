@@ -1,7 +1,10 @@
 // File: src/frontends/basic/Lexer.cpp
-// Purpose: Implements lexer for the BASIC frontend with support for line comments.
-// Key invariants: None.
-// Ownership/Lifetime: Lexer views input managed externally.
+// Purpose: Implements lexical analysis for BASIC source with line-aware scanning
+//          and comment skipping.
+// Key invariants: pos_ indexes into src_; line_ and column_ reflect the current
+//                 character position.
+// Ownership/Lifetime: Lexer borrows the source buffer; caller retains
+//                     ownership.
 // Links: docs/class-catalog.md
 
 #include "frontends/basic/Lexer.hpp"
@@ -11,10 +14,16 @@
 namespace il::frontends::basic
 {
 
+/// @brief Construct a lexer over the given source buffer.
+/// @param src BASIC program text to scan; must remain valid for the lexer
+///             lifetime.
+/// @param file_id Identifier used when emitting diagnostic locations.
+/// @details Initializes position tracking to the beginning of @p src.
 Lexer::Lexer(std::string_view src, uint32_t file_id) : src_(src), file_id_(file_id) {}
 
 /// @brief Peek at the current character without consuming it.
 /// @return The current character, or '\0' if the lexer is at end of input.
+/// @note Does not modify the lexer's state.
 char Lexer::peek() const
 {
     return pos_ < src_.size() ? src_[pos_] : '\0';
@@ -22,8 +31,8 @@ char Lexer::peek() const
 
 /// @brief Consume and return the next character from the source.
 /// @return The consumed character, or '\0' if already at end of input.
-/// @note Updates @p line_ and @p column_ to track position. Column resets to
-///       1 after a newline is consumed.
+/// @details Advances internal position; @p line_ and @p column_ are updated,
+///         resetting column to 1 after a newline.
 char Lexer::get()
 {
     if (pos_ >= src_.size())
@@ -43,14 +52,15 @@ char Lexer::get()
 
 /// @brief Determine whether all input has been consumed.
 /// @return True if @p pos_ is at or beyond the end of the buffer.
+/// @note Has no side effects.
 bool Lexer::eof() const
 {
     return pos_ >= src_.size();
 }
 
 /// @brief Skip spaces, tabs, and carriage returns but stop at newlines.
-/// @note Advances @p pos_, @p line_, and @p column_ for each consumed
-///       character. Newlines are preserved for tokenization.
+/// @details Advances @p pos_, @p line_, and @p column_ for each consumed
+///         character while leaving newlines untouched for tokenization.
 void Lexer::skipWhitespaceExceptNewline()
 {
     while (!eof())
@@ -68,7 +78,9 @@ void Lexer::skipWhitespaceExceptNewline()
 }
 
 /// @brief Skip whitespace and BASIC comments starting with <tt>'</tt> or REM.
-/// @note Newlines terminate a comment and are left for the caller to handle.
+/// @details Consumes characters until a newline or non-comment character is
+///         encountered.
+/// @note Preserves the terminating newline for the caller.
 void Lexer::skipWhitespaceAndComments()
 {
     while (true)
@@ -102,11 +114,11 @@ void Lexer::skipWhitespaceAndComments()
     }
 }
 
-/// @brief Lex a numeric literal including optional fraction, exponent, and
-/// type suffix <tt>#</tt>.
+/// @brief Lex a numeric literal including optional fraction, exponent, and type
+///        suffix <tt>#</tt>.
 /// @return Token of kind Number representing the characters consumed.
-/// @note Advances @p pos_, @p line_, and @p column_ as characters are read but
-///       does not validate numeric format beyond the supported patterns.
+/// @details Advances @p pos_, @p line_, and @p column_ while collecting
+///         characters. Numeric format is minimally validated.
 Token Lexer::lexNumber()
 {
     il::support::SourceLoc loc{file_id_, line_, column_};
@@ -152,8 +164,8 @@ Token Lexer::lexNumber()
 /// @brief Lex an identifier or reserved keyword.
 /// @return Identifier or keyword token; identifiers are uppercased for
 ///         keyword comparison.
-/// @note Consumes alphanumeric characters plus optional trailing '$' or '#'
-///       and advances position counters accordingly.
+/// @details Consumes alphanumeric characters plus optional trailing '$' or '#'
+///         and advances position counters accordingly.
 Token Lexer::lexIdentifierOrKeyword()
 {
     il::support::SourceLoc loc{file_id_, line_, column_};
@@ -232,8 +244,8 @@ Token Lexer::lexIdentifierOrKeyword()
 
 /// @brief Lex a string literal delimited by double quotes.
 /// @return String token containing characters between quotes.
-/// @note The opening quote is consumed. Characters are read until a closing
-///       quote or end of file. No escape sequences are interpreted.
+/// @details Consumes the opening quote and then reads characters until a
+///         closing quote or end of file; no escape sequences are processed.
 Token Lexer::lexString()
 {
     il::support::SourceLoc loc{file_id_, line_, column_};
@@ -248,9 +260,9 @@ Token Lexer::lexString()
 
 /// @brief Retrieve the next token from the input stream.
 /// @return The next token, which may be EndOfLine or EndOfFile.
-/// @note Whitespace and comments are skipped. Line and column counters are
-///       updated as characters are consumed. Newlines yield an EndOfLine token
-///       so higher-level parsers can maintain line structure.
+/// @details Skips whitespace and comments, updating line and column counters as
+///         characters are consumed. Newlines yield an EndOfLine token so
+///         higher-level parsers can maintain line structure.
 Token Lexer::next()
 {
     // Skip leading spaces and tabs but preserve newlines for tokenization.
