@@ -352,8 +352,15 @@ bool parseAllocaInstr(const std::string &rest, Instr &in, ParserState &st, std::
     std::istringstream ss(rest);
     std::string sz = readToken(ss);
     in.op = Opcode::Alloca;
-    if (!sz.empty())
+    if (sz.empty())
+    {
+        err << "line " << st.lineNo << ": missing size for alloca\n";
+        st.hasError = true;
+    }
+    else
+    {
         in.operands.push_back(parseValue(sz, st, err));
+    }
     in.type = Type(Type::Kind::Ptr);
     return true;
 }

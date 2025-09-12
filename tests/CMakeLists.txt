@@ -439,6 +439,10 @@ add_executable(test_vm_alloca_negative unit/test_vm_alloca_negative.cpp)
 target_link_libraries(test_vm_alloca_negative PRIVATE il_build il_vm support)
 add_test(NAME test_vm_alloca_negative COMMAND test_vm_alloca_negative)
 
+add_executable(test_vm_alloca_missing_size unit/test_vm_alloca_missing_size.cpp)
+target_link_libraries(test_vm_alloca_missing_size PRIVATE il_build il_vm support)
+add_test(NAME test_vm_alloca_missing_size COMMAND test_vm_alloca_missing_size)
+
 add_executable(test_vm_unknown_global unit/test_vm_unknown_global.cpp)
 target_link_libraries(test_vm_unknown_global PRIVATE il_build il_vm support)
 add_test(NAME test_vm_unknown_global COMMAND test_vm_unknown_global)
