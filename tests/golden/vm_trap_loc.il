@@ -3,5 +3,4 @@ func @main() -> i64 {
 entry:
   .loc 1 1 1
   trap
-  ret 0
 }
