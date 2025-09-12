@@ -23,7 +23,13 @@ namespace il::vm
 
 namespace
 {
-/// @brief Store opcode result @p val into destination register if present.
+/// Store an opcode result into the destination register when one is provided.
+///
+/// @param fr  Frame whose register file receives the value.
+/// @param in  Instruction describing the destination register.
+/// @param val Slot value to store.
+/// @sideeffects Extends and writes to the frame's register array.
+/// @return Nothing.
 inline void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val)
 {
     if (in.result)
@@ -262,6 +268,12 @@ std::optional<Slot> VM::handleDebugBreak(
         return {};                                                                                 \
     }
 
+/// Allocate a block of zeroed stack memory.
+///
+/// @param fr Frame whose stack is extended.
+/// @param in Instruction providing the size in bytes and optional result.
+/// @sideeffects Advances the stack pointer and writes zero bytes.
+/// @returns ExecResult with no control-flow effects; result slot holds pointer.
 VM::ExecResult VM::handleAlloca(Frame &fr, const Instr &in)
 {
     int64_t bytes = eval(fr, in.operands[0]).i64;
@@ -284,6 +296,12 @@ VM::ExecResult VM::handleAlloca(Frame &fr, const Instr &in)
     return {};
 }
 
+/// Load a typed value from memory.
+///
+/// @param fr Frame supplying the source pointer.
+/// @param in Instruction specifying the pointer operand and result type.
+/// @sideeffects Reads from memory; stores value in destination register.
+/// @returns ExecResult with no control-flow effects.
 VM::ExecResult VM::handleLoad(Frame &fr, const Instr &in)
 {
     void *ptr = eval(fr, in.operands[0]).ptr;
@@ -301,6 +319,14 @@ VM::ExecResult VM::handleLoad(Frame &fr, const Instr &in)
     return {};
 }
 
+/// Store a typed value to memory and emit debug events.
+///
+/// @param fr Frame supplying pointer and value operands.
+/// @param in Instruction describing the store.
+/// @param bb Basic block containing the store, for debug reporting.
+/// @param ip Instruction index within the block for debug reporting.
+/// @sideeffects Writes to memory and may emit debug store callbacks.
+/// @returns ExecResult with no control-flow effects.
 VM::ExecResult VM::handleStore(Frame &fr, const Instr &in, const BasicBlock *bb, size_t ip)
 {
     void *ptr = eval(fr, in.operands[0]).ptr;
@@ -327,16 +353,67 @@ VM::ExecResult VM::handleStore(Frame &fr, const Instr &in, const BasicBlock *bb,
     return {};
 }
 
+/// Handle integer addition.
+/// @param fr Frame providing operands.
+/// @param in Instruction with two integer operands and optional result.
+/// @sideeffects Writes the sum to the destination register.
+/// @returns Empty ExecResult with no control-flow changes.
 DEFINE_BIN_INT_OP(Add, +)
+/// Handle integer subtraction.
+/// @param fr Frame providing operands.
+/// @param in Instruction with two integer operands and optional result.
+/// @sideeffects Writes the difference to the destination register.
+/// @returns Empty ExecResult with no control-flow changes.
 DEFINE_BIN_INT_OP(Sub, -)
+/// Handle integer multiplication.
+/// @param fr Frame providing operands.
+/// @param in Instruction with two integer operands and optional result.
+/// @sideeffects Writes the product to the destination register.
+/// @returns Empty ExecResult with no control-flow changes.
 DEFINE_BIN_INT_OP(Mul, *)
+/// Handle floating-point addition.
+/// @param fr Frame providing operands.
+/// @param in Instruction with two floating operands and optional result.
+/// @sideeffects Writes the sum to the destination register.
+/// @returns Empty ExecResult with no control-flow changes.
 DEFINE_BIN_FLOAT_OP(FAdd, +)
+/// Handle floating-point subtraction.
+/// @param fr Frame providing operands.
+/// @param in Instruction with two floating operands and optional result.
+/// @sideeffects Writes the difference to the destination register.
+/// @returns Empty ExecResult with no control-flow changes.
 DEFINE_BIN_FLOAT_OP(FSub, -)
+/// Handle floating-point multiplication.
+/// @param fr Frame providing operands.
+/// @param in Instruction with two floating operands and optional result.
+/// @sideeffects Writes the product to the destination register.
+/// @returns Empty ExecResult with no control-flow changes.
 DEFINE_BIN_FLOAT_OP(FMul, *)
+/// Handle floating-point division.
+/// @param fr Frame providing operands.
+/// @param in Instruction with two floating operands and optional result.
+/// @sideeffects Writes the quotient to the destination register.
+/// @returns Empty ExecResult with no control-flow changes.
 DEFINE_BIN_FLOAT_OP(FDiv, /)
+/// Handle integer bitwise XOR.
+/// @param fr Frame providing operands.
+/// @param in Instruction with two integer operands and optional result.
+/// @sideeffects Writes the xor result to the destination register.
+/// @returns Empty ExecResult with no control-flow changes.
 DEFINE_BIN_INT_OP(Xor, ^)
+/// Handle integer left shift.
+/// @param fr Frame providing operands.
+/// @param in Instruction with two integer operands and optional result.
+/// @sideeffects Writes the shifted value to the destination register.
+/// @returns Empty ExecResult with no control-flow changes.
 DEFINE_BIN_INT_OP(Shl, <<)
 
+/// Compute pointer address using getelementptr-style offsetting.
+///
+/// @param fr Frame providing base pointer and offset operands.
+/// @param in Instruction describing operands and result.
+/// @sideeffects None besides writing the result register.
+/// @returns ExecResult with no control-flow effects.
 VM::ExecResult VM::handleGEP(Frame &fr, const Instr &in)
 {
     Slot base = eval(fr, in.operands[0]);
@@ -347,19 +424,88 @@ VM::ExecResult VM::handleGEP(Frame &fr, const Instr &in)
     return {};
 }
 
+/// Compare two integers for equality.
+/// @param fr Frame providing operands.
+/// @param in Instruction with two integer operands and result destination.
+/// @sideeffects Writes comparison result (1 or 0) to destination register.
+/// @returns Empty ExecResult with no control-flow changes.
 DEFINE_INT_CMP(ICmpEq, ==)
+/// Compare two integers for inequality.
+/// @param fr Frame providing operands.
+/// @param in Instruction with two integer operands and result destination.
+/// @sideeffects Writes comparison result to destination register.
+/// @returns Empty ExecResult with no control-flow changes.
 DEFINE_INT_CMP(ICmpNe, !=)
+/// Compare if first integer greater than second.
+/// @param fr Frame providing operands.
+/// @param in Instruction with two integer operands and result destination.
+/// @sideeffects Writes comparison result to destination register.
+/// @returns Empty ExecResult with no control-flow changes.
 DEFINE_INT_CMP(SCmpGT, >)
+/// Compare if first integer less than second.
+/// @param fr Frame providing operands.
+/// @param in Instruction with two integer operands and result destination.
+/// @sideeffects Writes comparison result to destination register.
+/// @returns Empty ExecResult with no control-flow changes.
 DEFINE_INT_CMP(SCmpLT, <)
+/// Compare if first integer less than or equal to second.
+/// @param fr Frame providing operands.
+/// @param in Instruction with two integer operands and result destination.
+/// @sideeffects Writes comparison result to destination register.
+/// @returns Empty ExecResult with no control-flow changes.
 DEFINE_INT_CMP(SCmpLE, <=)
+/// Compare if first integer greater than or equal to second.
+/// @param fr Frame providing operands.
+/// @param in Instruction with two integer operands and result destination.
+/// @sideeffects Writes comparison result to destination register.
+/// @returns Empty ExecResult with no control-flow changes.
 DEFINE_INT_CMP(SCmpGE, >=)
+/// Compare two floating-point numbers for equality.
+/// @param fr Frame providing operands.
+/// @param in Instruction with two floating operands and result destination.
+/// @sideeffects Writes comparison result to destination register.
+/// @returns Empty ExecResult with no control-flow changes.
 DEFINE_FLOAT_CMP(FCmpEQ, ==)
+/// Compare two floating-point numbers for inequality.
+/// @param fr Frame providing operands.
+/// @param in Instruction with two floating operands and result destination.
+/// @sideeffects Writes comparison result to destination register.
+/// @returns Empty ExecResult with no control-flow changes.
 DEFINE_FLOAT_CMP(FCmpNE, !=)
+/// Compare if first floating operand greater than second.
+/// @param fr Frame providing operands.
+/// @param in Instruction with two floating operands and result destination.
+/// @sideeffects Writes comparison result to destination register.
+/// @returns Empty ExecResult with no control-flow changes.
 DEFINE_FLOAT_CMP(FCmpGT, >)
+/// Compare if first floating operand less than second.
+/// @param fr Frame providing operands.
+/// @param in Instruction with two floating operands and result destination.
+/// @sideeffects Writes comparison result to destination register.
+/// @returns Empty ExecResult with no control-flow changes.
 DEFINE_FLOAT_CMP(FCmpLT, <)
+/// Compare if first floating operand less than or equal to second.
+/// @param fr Frame providing operands.
+/// @param in Instruction with two floating operands and result destination.
+/// @sideeffects Writes comparison result to destination register.
+/// @returns Empty ExecResult with no control-flow changes.
 DEFINE_FLOAT_CMP(FCmpLE, <=)
+/// Compare if first floating operand greater than or equal to second.
+/// @param fr Frame providing operands.
+/// @param in Instruction with two floating operands and result destination.
+/// @sideeffects Writes comparison result to destination register.
+/// @returns Empty ExecResult with no control-flow changes.
 DEFINE_FLOAT_CMP(FCmpGE, >=)
 
+/// Unconditionally branch to another basic block, transferring arguments.
+///
+/// @param fr   Current frame for parameter evaluation.
+/// @param in   Branch instruction containing target label and arguments.
+/// @param blocks Block lookup table for resolving targets.
+/// @param bb   [in,out] Updated to destination block.
+/// @param ip   [in,out] Reset to zero for new block.
+/// @sideeffects Updates frame parameter map and alters control flow.
+/// @returns ExecResult indicating a jump was taken.
 VM::ExecResult VM::handleBr(
     Frame &fr, const Instr &in, const BlockMap &blocks, const BasicBlock *&bb, size_t &ip)
 {
@@ -377,6 +523,15 @@ VM::ExecResult VM::handleBr(
     return r;
 }
 
+/// Conditionally branch based on a boolean slot value.
+///
+/// @param fr   Current frame for evaluating condition and arguments.
+/// @param in   Branch instruction with two targets and optional arguments.
+/// @param blocks Block lookup table for resolving targets.
+/// @param bb   [in,out] Updated to chosen destination block.
+/// @param ip   [in,out] Reset to zero for new block.
+/// @sideeffects Updates frame parameter map and alters control flow.
+/// @returns ExecResult indicating a jump was taken.
 VM::ExecResult VM::handleCBr(
     Frame &fr, const Instr &in, const BlockMap &blocks, const BasicBlock *&bb, size_t &ip)
 {
@@ -396,6 +551,12 @@ VM::ExecResult VM::handleCBr(
     return r;
 }
 
+/// Return from the current function.
+///
+/// @param fr Frame providing optional return operand.
+/// @param in Ret instruction with optional value operand.
+/// @sideeffects Ends execution of the current function.
+/// @returns ExecResult marked as returned with value slot.
 VM::ExecResult VM::handleRet(Frame &fr, const Instr &in)
 {
     ExecResult r{};
@@ -406,6 +567,12 @@ VM::ExecResult VM::handleRet(Frame &fr, const Instr &in)
     return r;
 }
 
+/// Load a constant string from the global table.
+///
+/// @param fr Frame receiving the string slot.
+/// @param in Instruction referencing a global string name.
+/// @sideeffects Writes the string pointer to the destination register.
+/// @returns ExecResult with no control-flow changes.
 VM::ExecResult VM::handleConstStr(Frame &fr, const Instr &in)
 {
     Slot res{};
@@ -414,6 +581,13 @@ VM::ExecResult VM::handleConstStr(Frame &fr, const Instr &in)
     return {};
 }
 
+/// Invoke a function or runtime bridge call.
+///
+/// @param fr Frame providing argument operands.
+/// @param in Call instruction naming the callee and operands.
+/// @param bb Basic block containing the call for runtime diagnostics.
+/// @sideeffects May invoke other functions or runtime bridges; writes result register.
+/// @returns ExecResult with no control-flow effects aside from call.
 VM::ExecResult VM::handleCall(Frame &fr, const Instr &in, const BasicBlock *bb)
 {
     std::vector<Slot> callArgs;
@@ -429,6 +603,12 @@ VM::ExecResult VM::handleCall(Frame &fr, const Instr &in, const BasicBlock *bb)
     return {};
 }
 
+/// Convert a signed integer slot to floating point.
+///
+/// @param fr Frame providing the source integer operand.
+/// @param in Conversion instruction describing destination type.
+/// @sideeffects Writes converted value to destination register.
+/// @returns ExecResult with no control-flow changes.
 VM::ExecResult VM::handleSitofp(Frame &fr, const Instr &in)
 {
     Slot v = eval(fr, in.operands[0]);
@@ -438,6 +618,12 @@ VM::ExecResult VM::handleSitofp(Frame &fr, const Instr &in)
     return {};
 }
 
+/// Convert a floating-point slot to signed integer.
+///
+/// @param fr Frame providing the source floating operand.
+/// @param in Conversion instruction describing destination type.
+/// @sideeffects Writes converted value to destination register.
+/// @returns ExecResult with no control-flow changes.
 VM::ExecResult VM::handleFptosi(Frame &fr, const Instr &in)
 {
     Slot v = eval(fr, in.operands[0]);
@@ -447,6 +633,12 @@ VM::ExecResult VM::handleFptosi(Frame &fr, const Instr &in)
     return {};
 }
 
+/// Truncate or zero-extend an integer to 1 bit.
+///
+/// @param fr Frame providing the source integer operand.
+/// @param in Conversion instruction specifying source value.
+/// @sideeffects Writes masked result to destination register.
+/// @returns ExecResult with no control-flow changes.
 VM::ExecResult VM::handleTruncOrZext1(Frame &fr, const Instr &in)
 {
     Slot v = eval(fr, in.operands[0]);
@@ -455,6 +647,13 @@ VM::ExecResult VM::handleTruncOrZext1(Frame &fr, const Instr &in)
     return {};
 }
 
+/// Signal an unrecoverable trap to the runtime bridge.
+///
+/// @param fr Frame active at the trap site.
+/// @param in Trap instruction containing source location.
+/// @param bb Basic block containing the trap for diagnostics.
+/// @sideeffects Emits a trap via the runtime bridge and terminates execution.
+/// @returns ExecResult marked as returned (unreachable).
 VM::ExecResult VM::handleTrap(Frame &fr, const Instr &in, const BasicBlock *bb)
 {
     RuntimeBridge::trap("trap", in.loc, fr.func->name, bb->label);
