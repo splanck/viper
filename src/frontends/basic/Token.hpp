@@ -16,6 +16,7 @@ namespace il::frontends::basic
 enum class TokenKind
 {
     // Markers ---------------------------------------------------------------
+    Unknown,   ///< Unrecognized or invalid token.
     EndOfFile, ///< Reached end of the source buffer.
     EndOfLine, ///< End of a line.
 

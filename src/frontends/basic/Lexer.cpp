@@ -336,7 +336,7 @@ Token Lexer::next()
         case ':':
             return {TokenKind::Colon, ":", loc};
     }
-    return {TokenKind::EndOfFile, "", loc};
+    return {TokenKind::Unknown, std::string(1, c), loc};
 }
 
 } // namespace il::frontends::basic

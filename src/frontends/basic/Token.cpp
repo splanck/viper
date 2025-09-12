@@ -23,6 +23,8 @@ const char *tokenKindToString(TokenKind k)
 {
     switch (k)
     {
+        case TokenKind::Unknown:
+            return "?";
         case TokenKind::EndOfFile:
             return "eof";
         case TokenKind::EndOfLine:
