@@ -16,10 +16,25 @@ namespace il::core
 /// @brief Sequence of instructions terminated by a control-flow instruction.
 struct BasicBlock
 {
+    /// Human-readable identifier for the block within its function.
+    ///
+    /// @invariant Non-empty and unique in the parent function.
     std::string label;
-    std::vector<Param> params;       ///< Block parameters
-    std::vector<Instr> instructions; ///< Instruction list
-    bool terminated = false;         ///< True if block has terminator
+
+    /// Parameters representing incoming SSA values.
+    ///
+    /// @invariant Count and types match each predecessor edge.
+    std::vector<Param> params;
+
+    /// Ordered list of IL instructions belonging to this block.
+    ///
+    /// @invariant If @c terminated is true, the last instruction must be a terminator.
+    std::vector<Instr> instructions;
+
+    /// Indicates whether the block ends with a control-flow instruction.
+    ///
+    /// @invariant Reflects whether the last instruction is a terminator.
+    bool terminated = false;
 };
 
 } // namespace il::core
