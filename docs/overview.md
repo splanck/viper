@@ -10,6 +10,8 @@ front ends (e.g., BASIC) → intermediate language (IL) → optimization passes 
 execution on the VM interpreter → (future) native code generation. It is a map
 to the system; deep dives live in linked pages.
 
+If you're new to the IL, start with the [IL Quickstart](il-quickstart.md).
+
 ## High-level pipeline
 
 The core stages and artifacts:
@@ -30,7 +32,8 @@ BASIC source
                                    └───────────────► native codegen (future)
 ```
 
-See also: [BASIC reference](reference/basic-language.md) and
+See also: [BASIC reference](reference/basic-language.md),
+[IL Quickstart](il-quickstart.md), and
 [IL reference](references/il.md).
 
 ## Source layout (where things live)
