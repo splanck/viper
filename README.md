@@ -112,5 +112,14 @@ build/src/tools/ilc/ilc -run examples/il/ex1_hello_cond.il
 
 ## References
 
+- **IL Quickstart**: [docs/il-quickstart.md](docs/il-quickstart.md)
 - [BASIC Reference](docs/basic-reference.md)
 - [IL Reference](docs/il-reference.md)
+
+## Contributing
+
+We’re glad you’re interested in Viper! This project is evolving and we’re experimenting rapidly. You’re welcome to explore the code, file issues, and propose small fixes or documentation improvements. However, we’re **not currently seeking external contributors** or large feature PRs.
+
+## License
+
+This project is licensed under the **MIT License**. See [LICENSE](LICENSE) for details.
