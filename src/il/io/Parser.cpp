@@ -684,6 +684,12 @@ bool parseInstruction(const std::string &line, ParserState &st, std::ostream &er
     if (work[0] == '%')
     {
         size_t eq = work.find('=');
+        if (eq == std::string::npos)
+        {
+            err << "line " << st.lineNo << ": missing '='\n";
+            st.hasError = true;
+            return false;
+        }
         std::string res = trim(work.substr(1, eq - 1));
         auto [it, inserted] = st.tempIds.emplace(res, st.nextTemp);
         if (inserted)
@@ -930,6 +936,12 @@ bool parseModuleHeader(std::istream &is, std::string &line, ParserState &st, std
     {
         size_t at = line.find('@');
         size_t eq = line.find('=', at);
+        if (eq == std::string::npos)
+        {
+            err << "line " << st.lineNo << ": missing '='\n";
+            st.hasError = true;
+            return false;
+        }
         size_t q1 = line.find('"', eq);
         size_t q2 = line.rfind('"');
         std::string name = trim(line.substr(at + 1, eq - at - 1));
