@@ -27,7 +27,7 @@ namespace
 /// itself performs no error reporting.
 bool isTerminator(Opcode op)
 {
-    return op == Opcode::Br || op == Opcode::CBr || op == Opcode::Ret;
+    return op == Opcode::Br || op == Opcode::CBr || op == Opcode::Ret || op == Opcode::Trap;
 }
 
 /// @brief Computes the static type of a value for verification.
