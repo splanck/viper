@@ -26,21 +26,43 @@ class DebugScript;
 /// @invariant Only one member is valid based on value type.
 union Slot
 {
-    int64_t i64;   ///< Signed integer value
-    double f64;    ///< Floating-point value
-    void *ptr;     ///< Generic pointer
-    rt_string str; ///< Runtime string handle
+    /// @brief Signed integer value.
+    int64_t i64;
+
+    /// @brief Floating-point value.
+    double f64;
+
+    /// @brief Generic pointer.
+    void *ptr;
+
+    /// @brief Runtime string handle.
+    rt_string str;
 };
 
 /// @brief Call frame storing registers and operand stack.
 /// @invariant Stack pointer @c sp never exceeds @c stack size.
 struct Frame
 {
-    const il::core::Function *func;            ///< Executing function
-    std::vector<Slot> regs;                    ///< Register file
-    std::array<uint8_t, 1024> stack;           ///< Operand stack storage
-    size_t sp = 0;                             ///< Stack pointer in bytes
-    std::unordered_map<unsigned, Slot> params; ///< Pending block parameter values
+    /// @brief Executing function.
+    /// @ownership Non-owning; function resides in the module.
+    /// @invariant Never null for a valid frame.
+    const il::core::Function *func;
+
+    /// @brief Register file for SSA values.
+    /// @ownership Owned by the frame; sized to the function's register count.
+    std::vector<Slot> regs;
+
+    /// @brief Operand stack storage.
+    /// @ownership Owned by the frame; fixed capacity of 1024 bytes.
+    std::array<uint8_t, 1024> stack;
+
+    /// @brief Stack pointer in bytes.
+    /// @invariant Never exceeds @c stack.size().
+    size_t sp = 0;
+
+    /// @brief Pending block parameter values.
+    /// @ownership Owned by the frame; entries cleared when parameters applied.
+    std::unordered_map<unsigned, Slot> params;
 };
 
 /// @brief Simple interpreter for the IL.
@@ -62,15 +84,39 @@ class VM
     int64_t run();
 
   private:
-    const il::core::Module &mod; ///< Module to execute
-    TraceSink tracer;            ///< Trace output sink
-    DebugCtrl debug;             ///< Breakpoint controller
-    DebugScript *script;         ///< Optional debug command script
-    uint64_t maxSteps;           ///< Step limit; 0 means unlimited
-    uint64_t instrCount = 0;     ///< Executed instruction count
-    uint64_t stepBudget = 0;     ///< Remaining instructions to step before pausing
-    std::unordered_map<std::string, const il::core::Function *> fnMap; ///< Name lookup
-    std::unordered_map<std::string, rt_string> strMap;                 ///< String pool
+    /// @brief Module to execute.
+    /// @ownership Non-owning reference; module must outlive the VM.
+    const il::core::Module &mod;
+
+    /// @brief Trace output sink.
+    /// @ownership Owned by the VM.
+    TraceSink tracer;
+
+    /// @brief Breakpoint controller.
+    /// @ownership Owned by the VM.
+    DebugCtrl debug;
+
+    /// @brief Optional debug command script.
+    /// @ownership Non-owning pointer; may be @c nullptr.
+    DebugScript *script;
+
+    /// @brief Step limit; @c 0 means unlimited.
+    uint64_t maxSteps;
+
+    /// @brief Executed instruction count.
+    /// @invariant Monotonically increases during execution.
+    uint64_t instrCount = 0;
+
+    /// @brief Remaining instructions to step before pausing.
+    uint64_t stepBudget = 0;
+
+    /// @brief Function name lookup table.
+    /// @ownership Owned by the VM; values reference functions in @c mod.
+    std::unordered_map<std::string, const il::core::Function *> fnMap;
+
+    /// @brief Interned runtime strings.
+    /// @ownership Owned by the VM; manages @c rt_string handles.
+    std::unordered_map<std::string, rt_string> strMap;
 
     /// @brief Execute function @p fn with optional arguments.
     /// @param fn Function to execute.
@@ -87,9 +133,14 @@ class VM
     /// @brief Result of executing one opcode.
     struct ExecResult
     {
-        bool jumped = false;   ///< Whether control transferred to another block.
-        bool returned = false; ///< Whether execution returned from the function.
-        Slot value{};          ///< Return value if @c returned is true.
+        /// @brief Whether control transferred to another block.
+        bool jumped = false;
+
+        /// @brief Whether execution returned from the function.
+        bool returned = false;
+
+        /// @brief Return value when @c returned is true.
+        Slot value{};
     };
 
     /// @brief Initialize a frame for @p fn with arguments.
