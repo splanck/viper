@@ -11,13 +11,16 @@ using namespace il::frontends::basic;
 
 int main()
 {
+    assert(std::string(tokenKindToString(TokenKind::Unknown)) == "?");
     {
         std::string input = std::string("1") + static_cast<char>(0x80);
         Lexer lex(input, 0);
         Token t1 = lex.next();
         assert(t1.kind == TokenKind::Number);
         Token t2 = lex.next();
-        assert(t2.kind == TokenKind::EndOfFile);
+        assert(t2.kind == TokenKind::Unknown);
+        assert(t2.lexeme == std::string(1, static_cast<char>(0x80)));
+        assert(lex.next().kind == TokenKind::EndOfFile);
     }
     {
         std::string input = std::string("A") + static_cast<char>(0x80);
@@ -25,13 +28,17 @@ int main()
         Token t1 = lex.next();
         assert(t1.kind == TokenKind::Identifier);
         Token t2 = lex.next();
-        assert(t2.kind == TokenKind::EndOfFile);
+        assert(t2.kind == TokenKind::Unknown);
+        assert(t2.lexeme == std::string(1, static_cast<char>(0x80)));
+        assert(lex.next().kind == TokenKind::EndOfFile);
     }
     {
         std::string input(1, static_cast<char>(0x80));
         Lexer lex(input, 0);
         Token t = lex.next();
-        assert(t.kind == TokenKind::EndOfFile);
+        assert(t.kind == TokenKind::Unknown);
+        assert(t.lexeme == std::string(1, static_cast<char>(0x80)));
+        assert(lex.next().kind == TokenKind::EndOfFile);
     }
     {
         std::string input = std::string("REM") + static_cast<char>(0x80) + "\n1";
