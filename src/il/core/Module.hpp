@@ -17,9 +17,25 @@ namespace il::core
 /// @brief IL module aggregating externs, globals, and functions.
 struct Module
 {
-    std::string version = "0.1.2"; ///< Parsed module version
+    /// @brief Module format version string.
+    ///
+    /// Defaults to "0.1.2" for newly constructed modules and may be
+    /// overwritten by parsers when reading serialized IL.
+    std::string version = "0.1.2";
+
+    /// @brief Declared external functions available to the module.
+    ///
+    /// Starts empty and is populated as extern declarations are processed.
     std::vector<Extern> externs;
+
+    /// @brief Global variable declarations.
+    ///
+    /// Initialized empty; parsers append entries for each global encountered.
     std::vector<Global> globals;
+
+    /// @brief Function definitions contained in the module.
+    ///
+    /// Begins empty and receives entries as functions are defined or parsed.
     std::vector<Function> functions;
 };
 
