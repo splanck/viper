@@ -6,6 +6,8 @@
 #include "rt.hpp"
 #include <cassert>
 #include <cmath>
+#include <cstdio>
+#include <limits>
 #include <string>
 
 int main()
@@ -26,5 +28,12 @@ int main()
         double r = rt_val(t);
         assert(std::fabs(r - v) < 1e-9 * std::fmax(1.0, std::fabs(v)));
     }
+
+    // Verify formatting of large long double values doesn't over-read buffers.
+    long double big = std::numeric_limits<long double>::max();
+    char tmp[64];
+    int len = std::snprintf(tmp, sizeof(tmp), "%g", static_cast<double>(big));
+    rt_string sbig = rt_str(static_cast<double>(big));
+    assert(std::string(sbig->data, (size_t)sbig->size) == std::string(tmp, (size_t)len));
     return 0;
 }
