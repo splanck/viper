@@ -300,7 +300,7 @@ class Lowerer
     void lowerIf(const IfStmt &stmt);
     void lowerWhile(const WhileStmt &stmt);
     void lowerFor(const ForStmt &stmt);
-    void lowerForConstStep(const ForStmt &stmt, Value slot, RVal end, RVal step, long stepConst);
+    void lowerForConstStep(const ForStmt &stmt, Value slot, RVal end, RVal step, int64_t stepConst);
     void lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal step);
     ForBlocks setupForBlocks(bool varStep);
     void emitForStep(Value slot, Value step);

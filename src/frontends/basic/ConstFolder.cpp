@@ -97,7 +97,7 @@ template <typename F> ExprPtr detail::foldNumericBinary(const Expr &l, const Exp
         return out;
     }
     auto out = std::make_unique<IntExpr>();
-    out->value = static_cast<int>(res->i);
+    out->value = res->i;
     return out;
 }
 
@@ -163,7 +163,7 @@ static void replaceWithInt(ExprPtr &e, long long v, support::SourceLoc loc)
 {
     auto ni = std::make_unique<IntExpr>();
     ni->loc = loc;
-    ni->value = static_cast<int>(v);
+    ni->value = v;
     e = std::move(ni);
 }
 
