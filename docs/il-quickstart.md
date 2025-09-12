@@ -8,7 +8,26 @@ last-verified: 2025-09-12
 Welcome! This guide is for developers coming from languages like C#, Java, TypeScript, or Python who want a hands-on tour of Viper's intermediate language (IL). No prior compiler experience is required.
 
 ## What is the IL?
-Viper IL is the "thin waist" between high-level front ends and the virtual machine (VM). Front ends emit IL, and back ends like the VM execute it deterministically. Keeping the IL small and explicit makes it easy to inspect and test.
+Viper IL is the "thin waist" between high-level front ends and the virtual machine (VM). Front ends emit IL, and back ends like the VM execute it deterministically. Keeping the IL small and explicit makes it easy to inspect and test. IL acts as a stable contract: front ends can evolve independently while the VM only needs to understand the IL version printed at the top of the file. Because IL is textual and minimal, you can open any module in a regular editor, reason about every step, and run it in a reproducible way.
+
+Why bother with a separate IL at all? Directly interpreting a high-level language couples the VM to that language's semantics. An IL gives Viper a neutral core that multiple front ends can target (BASIC today, others tomorrow) while sharing a single runtime. It also provides a convenient place for verification passes and optimisations before execution.
+
+## Program structure
+
+An IL module is plain text. Its top‑level layout is:
+
+1. **Version line** – `il 0.1.2` pins the expected IL grammar.
+2. **Extern declarations** – `extern @name(signature) -> ret` describes functions provided by the runtime or other modules.
+3. **Global constants** – `global const str @.msg = "hi"` defines immutable data.
+4. **Functions** – `func @main() -> i64 { ... }` contains basic blocks and instructions.
+
+Inside a function:
+
+* Each basic block starts with a label like `entry:`. There is no fall‑through; control transfers with a terminator such as `ret`, `br`, or `cbr`.
+* Instructions assign results to SSA registers (`%v0`, `%tmp1`). A register is defined once and used many times.
+* Comments begin with `#` and run to the end of the line.
+
+These pieces mirror what a compiler would normally keep in its internal IR and make it explicit for learning and debugging.
 
 ## Your first IL program
 Create a file `first.il` with the contents:
@@ -36,7 +55,18 @@ Expected output:
 4
 ```
 
-**What just happened?** `rt_print_i64` is an extern that prints an integer. Every function ends with a `ret` giving the program's exit code.
+**Line by line**
+
+- `# Print the number 4 and exit.` – comments start with `#` and are ignored by the VM.
+- `il 0.1.2` – required version header.
+- `extern @rt_print_i64(i64) -> void` – declare a runtime function taking an `i64` and returning `void`.
+- `func @main() -> i64 {` – define the `@main` function that returns an `i64` exit code.
+- `entry:` – the initial basic block label.
+- `call @rt_print_i64(4)` – invoke the extern with the literal `4`.
+- `ret 0` – terminate the function and supply the process exit status.
+- `}` – close the function body.
+
+**What just happened?** `rt_print_i64` is supplied by the runtime and prints its argument. Every function ends with a terminator such as `ret` giving the program's exit code.
 
 **Gotcha:** Every module must start with a version line (`il 0.1.2`).
 
@@ -55,6 +85,14 @@ entry:
   ret 0
 }
 ```
+
+**Line by line**
+
+- `%p = alloca 8` – allocate eight bytes of stack memory and bind its address to `%p` (type `ptr`).
+- `store i64, %p, 10` – store the 64‑bit constant `10` into the memory pointed to by `%p`.
+- `%v0 = load i64, %p` – load an `i64` from `%p` into `%v0`.
+- `call @rt_print_i64(%v0)` – pass the loaded value to the runtime print routine.
+- `ret 0` – return from `main` with exit code 0.
 
 **What just happened?** `alloca` creates a stack slot, `store` writes to it, and `load` reads from it.
 
@@ -79,6 +117,16 @@ entry:
 }
 ```
 
+**Line by line**
+
+- `func @add(i64 %a, i64 %b) -> i64` – declare a function with two `i64` parameters and an `i64` return type.
+- `%sum = add %a, %b` – add the two parameters and bind the sum.
+- `ret %sum` – return the computed sum.
+- `func @main() -> i64 { ... }` – define the entry point.
+- `%v0 = call @add(2, 3)` – call `@add` with literal arguments; result stored in `%v0`.
+- `call @rt_print_i64(%v0)` – print the returned value.
+- `ret 0` – exit with status 0.
+
 **What just happened?** `call` pushes arguments and receives a result. Each function has one entry block.
 
 **Gotcha:** Arguments are immutable; use `alloca` + `store` if you need a mutable local.
@@ -96,6 +144,13 @@ entry:
   ret 0
 }
 ```
+
+**Line by line**
+
+- `%v0 = add 2, 2` – compute the constant expression `2 + 2`.
+- `%v1 = scmp_gt %v0, 3` – signed compare‑greater; result is `1` because 4 > 3.
+- `call @rt_print_i64(%v1)` – zero‑extend the `i1` result and print it.
+- `ret 0` – terminate `main` with success.
 
 **What just happened?** `scmp_gt` compares signed integers and yields an `i1` (0 or 1).
 
@@ -128,6 +183,14 @@ done:
    └──────▶ else ┘
 ```
 
+**Line by line**
+
+- `%flag = scmp_gt 5, 3` – compare constants; `%flag` holds `1`.
+- `cbr %flag, then, else` – branch to `then` when `%flag` is non‑zero, otherwise `else`.
+- `then:` / `else:` – block labels.
+- `br done` – unconditionally jump to the block `done`.
+- `ret 0` – final terminator of the `done` block.
+
 **What just happened?** Labels (`then`, `else`, `done`) mark basic blocks. `br` is an unconditional jump.
 
 **Gotcha:** There is no fall-through; every block must end with a terminator.
@@ -147,6 +210,14 @@ entry:
 }
 ```
 
+**Line by line**
+
+- `extern @rt_print_str(str) -> void` – declare the runtime string printer.
+- `global const str @.msg = "hello"` – create an immutable global string named `@.msg`.
+- `%s = const_str @.msg` – get a pointer to the string constant.
+- `call @rt_print_str(%s)` – pass that pointer to the runtime for printing.
+- `ret 0` – exit normally.
+
 **What just happened?** `const_str` loads the address of a global string constant.
 
 **Gotcha:** Strings are reference-counted; do not `alloca` them manually.
@@ -163,6 +234,12 @@ entry:
 ```
 
 Running the above produces a non-zero exit and prints the message.
+
+**Line by line**
+
+- `trap "boom"` – raise a runtime trap with the message `boom`.
+
+`trap` aborts execution immediately with a non‑zero status; no `ret` is needed.
 
 **Gotcha:** After a `trap` the VM stops; no `ret` is required.
 
@@ -186,6 +263,12 @@ entry:
   ret 0
 }
 ```
+
+**Line by line**
+
+- `%t0 = add 2, 2` – compute the arithmetic expression from the BASIC code.
+- `call @rt_print_i64(%t0)` – print the result.
+- `ret 0` – exit with success.
 
 **What just happened?** The front end evaluated the expression, emitted an `add`, and called the print routine.
 
