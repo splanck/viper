@@ -204,6 +204,14 @@ Slot RuntimeBridge::call(const std::string &name,
     return res;
 }
 
+/// @brief Report a trap originating from the C runtime.
+/// @details Invoked by `vm_trap` when a runtime builtin signals a fatal
+/// condition. Formats the message with optional function, block, and source
+/// location before forwarding it to `rt_abort`.
+/// @param msg   Description of the trap condition.
+/// @param loc   Source location of the trapping instruction, if available.
+/// @param fn    Fully qualified function name containing the call.
+/// @param block Label of the basic block with the trapping call.
 void RuntimeBridge::trap(const std::string &msg,
                          const SourceLoc &loc,
                          const std::string &fn,
