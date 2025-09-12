@@ -112,8 +112,14 @@ Slot VM::eval(Frame &fr, const Value &v)
             s.str = rt_const_cstr(v.str.c_str());
             return s;
         case Value::Kind::GlobalAddr:
-            s.str = strMap[v.str];
+        {
+            auto it = strMap.find(v.str);
+            if (it == strMap.end())
+                RuntimeBridge::trap("unknown global", {}, fr.func->name, "");
+            else
+                s.str = it->second;
             return s;
+        }
         case Value::Kind::NullPtr:
             s.ptr = nullptr;
             return s;
@@ -575,8 +581,7 @@ VM::ExecResult VM::handleRet(Frame &fr, const Instr &in)
 /// @returns ExecResult with no control-flow changes.
 VM::ExecResult VM::handleConstStr(Frame &fr, const Instr &in)
 {
-    Slot res{};
-    res.str = strMap[in.operands[0].str];
+    Slot res = eval(fr, in.operands[0]);
     storeResult(fr, in, res);
     return {};
 }
