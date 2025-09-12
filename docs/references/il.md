@@ -6,6 +6,8 @@ Purpose: Reference for Viper IL v0.1.2.
 
 # IL Reference (v0.1.2)
 
+> Start here: [IL Quickstart](../il-quickstart.md) for a hands-on introduction.
+
 ## Overview
 Viper IL is the project’s "thin waist" intermediate language designed to sit between diverse front ends and back ends. Its goals are:
 
