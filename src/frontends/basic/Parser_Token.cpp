@@ -46,10 +46,17 @@ Token Parser::consume()
     return t;
 }
 
-// Expect the next token to be of kind `k`. On success the token is consumed and
-// returned. On mismatch a diagnostic is emitted, `syncToStmtBoundary` is invoked
-// to discard tokens up to a statement boundary, and the offending token is
-// returned for context.
+/**
+ * Consume the next token when its kind matches the expected value.
+ *
+ * If the current token does not have kind @p k, a diagnostic is emitted (or an
+ * error message is printed when no emitter is available).  Tokens are then
+ * discarded until the next statement boundary so that parsing can resume
+ * in a stable state.  In this error case the offending token is returned.
+ *
+ * @param k Expected token kind.
+ * @return The matched token on success; otherwise the offending token.
+ */
 Token Parser::expect(TokenKind k)
 {
     if (!at(k))
@@ -70,9 +77,13 @@ Token Parser::expect(TokenKind k)
     return consume();
 }
 
-// Error-recovery helper: consume tokens until a statement boundary token is
-// reached (end-of-line, colon, or end-of-file). This side effect discards any
-// unexpected tokens so parsing can resume at a stable location.
+/**
+ * Discard buffered tokens until a statement boundary is found.
+ *
+ * Used during error recovery, this helper consumes tokens until an end-of-line,
+ * colon, or end-of-file is encountered.  It does not emit diagnostics itself
+ * but allows parsing to resume at the next stable location.
+ */
 void Parser::syncToStmtBoundary()
 {
     while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine) && !at(TokenKind::Colon))
