@@ -74,4 +74,4 @@ NOT ONE
 
 Verify IL: for .il files, use ./build/src/tools/il-verify/il-verify path/to/file.il.
 Paths: if your build tree differs, adjust the ./build/src/tools/... paths accordingly.
-Docs: BASIC reference → references/basic.md, IL spec → references/il.md.
+Docs: BASIC reference → basic-reference.md, IL spec → il-reference.md.

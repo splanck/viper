@@ -200,7 +200,7 @@ entry:
 - Prefer deterministic behaviour; avoid relying on undefined order.
 
 ## Next steps
-- Read the full [IL reference](references/il.md) for all instructions.
+- Read the full [IL reference](il-reference.md) for all instructions.
 - Explore the `examples/` and `tests/golden/` directories for more programs.
 - Try adding your own IL file and running it with `ilc`.
 
