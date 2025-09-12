@@ -8,6 +8,14 @@
 #include "il/io/Serializer.hpp"
 #include <iostream>
 
+/// @brief Emit IL for a sample program.
+///
+/// Accepts no command-line arguments. Builds an in-memory module defining an
+/// extern `rt_print_str` and a global string constant, then serializes the
+/// module to standard output.
+///
+/// @return 0 on success.
+/// @note Side effect: writes serialized IL text to stdout.
 int main()
 {
     il::core::Module m;
