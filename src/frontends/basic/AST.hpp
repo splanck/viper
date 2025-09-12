@@ -6,6 +6,7 @@
 #pragma once
 
 #include "support/source_manager.hpp"
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -36,8 +37,8 @@ enum class Type
 /// @brief Signed integer literal expression.
 struct IntExpr : Expr
 {
-    /// Literal numeric value parsed from the source.
-    int value;
+    /// Literal 64-bit numeric value parsed from the source.
+    int64_t value;
 };
 
 /// @brief Floating-point literal expression.

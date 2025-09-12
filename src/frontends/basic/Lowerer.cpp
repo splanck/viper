@@ -2197,12 +2197,12 @@ Lowerer::ForBlocks Lowerer::setupForBlocks(bool varStep)
 }
 
 // Purpose: lower for const step.
-// Parameters: const ForStmt &stmt, Value slot, RVal end, RVal step, long stepConst.
+// Parameters: const ForStmt &stmt, Value slot, RVal end, RVal step, int64_t stepConst.
 // Returns: void.
 // Side effects: may modify lowering state or emit IL. Relies on deterministic block naming via
 // BlockNamer.
 void Lowerer::lowerForConstStep(
-    const ForStmt &stmt, Value slot, RVal end, RVal step, long stepConst)
+    const ForStmt &stmt, Value slot, RVal end, RVal step, int64_t stepConst)
 {
     ForBlocks fb = setupForBlocks(false);
     curLoc = stmt.loc;
@@ -2303,7 +2303,7 @@ void Lowerer::lowerFor(const ForStmt &stmt)
     emitStore(Type(Type::Kind::I64), slot, start.value);
 
     bool constStep = !stmt.step || dynamic_cast<const IntExpr *>(stmt.step.get());
-    long stepConst = 1;
+    int64_t stepConst = 1;
     if (constStep && stmt.step)
     {
         if (auto *ie = dynamic_cast<const IntExpr *>(stmt.step.get()))

@@ -153,7 +153,7 @@ ExprPtr Parser::parseNumber()
         consume();
         return e;
     }
-    int v = std::atoi(lex.c_str());
+    int64_t v = std::strtoll(lex.c_str(), nullptr, 10);
     auto e = std::make_unique<IntExpr>();
     e->loc = loc;
     e->value = v;
