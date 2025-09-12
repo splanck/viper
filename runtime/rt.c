@@ -522,7 +522,8 @@ int64_t rt_instr2(rt_string hay, rt_string needle)
  *   needle - Needle string to locate.
  *
  * Returns: 1-based index of the first occurrence at or after start, or 0 if
- * not found. An empty needle returns start clamped to [1, len+1].
+ * not found. An empty needle returns the clamped start + 1 (yielding a result
+ * in [1, len + 1]).
  *
  * Side effects: None.
  */
@@ -531,16 +532,14 @@ int64_t rt_instr3(int64_t start, rt_string hay, rt_string needle)
     if (!hay || !needle)
         return 0;
     int64_t len = hay->size;
-    if (start < 1)
-        start = 1;
-    if (start > len + 1)
-        start = len + 1;
+    start -= 1;
+    if (start < 0)
+        start = 0;
+    if (start > len)
+        start = len;
     if (needle->size == 0)
-        return start;
-    int64_t start0 = start - 1;
-    if (start0 < 0)
-        start0 = 0;
-    return rt_find(hay, start0, needle);
+        return start + 1;
+    return rt_find(hay, start, needle);
 }
 
 /**
