@@ -18,6 +18,14 @@ using namespace il::core;
 namespace
 {
 
+/// @brief Emit a single extern declaration.
+/// @param e Describes the imported function and its signature; not owned.
+/// @param os Stream that receives the textual representation; not owned.
+/// @format Prints `extern @<name>(<params>) -> <ret>\n` with parameters
+///         separated by commas. Types are rendered using `Type::toString()`
+///         in their canonical form.
+/// @assumptions Parameter and return types are valid per the IL spec.
+///              The function does not take ownership of `e` or `os`.
 void printExtern(const Extern &e, std::ostream &os)
 {
     os << "extern @" << e.name << "(";
@@ -30,6 +38,17 @@ void printExtern(const Extern &e, std::ostream &os)
     os << ") -> " << e.retType.toString() << "\n";
 }
 
+/// @brief Emit a single instruction.
+/// @param in Instruction to serialize; operands and labels must satisfy
+///           opcode-specific invariants.
+/// @param os Stream that receives text output; not owned.
+/// @format Begins with optional `.loc` metadata, then prints result, opcode,
+///         and operands according to `Opcode`. Branches emit labels and
+///         associated arguments. Values and types use `toString()` helpers.
+/// @assumptions `in`'s operand and label vectors are sized appropriately for
+///              its opcode (e.g., `Call` has `callee` and operands, `Br`
+///              provides at most one label, `CBr` provides two). The function
+///              assumes `os` remains valid for the duration of the call.
 void printInstr(const Instr &in, std::ostream &os)
 {
     if (in.loc.isValid())
