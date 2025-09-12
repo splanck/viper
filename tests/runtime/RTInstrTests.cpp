@@ -14,7 +14,8 @@ int main()
 
     rt_string s3 = rt_const_cstr("ABABAB");
     rt_string s4 = rt_const_cstr("AB");
-    assert(rt_instr3(3, s3, s4) == 5);
+    assert(rt_instr3(3, s3, s4) == 3);
+    assert(rt_instr3(1, s3, s4) == 1);
 
     rt_string s5 = rt_const_cstr("ABC");
     rt_string s6 = rt_const_cstr("X");
