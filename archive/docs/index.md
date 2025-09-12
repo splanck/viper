@@ -9,8 +9,8 @@ Purpose: Landing page for Viper documentation.
 Choose your path:
 
 - **Getting Started** → [getting-started.md](getting-started.md)
-- **BASIC Reference** → [references/basic.md](references/basic.md)
-- **IL Spec (v0.1.2)** → [references/il.md](references/il.md)
+- **BASIC Reference** → [basic-reference.md](basic-reference.md)
+- **IL Spec (v0.1.2)** → [il-reference.md](il-reference.md)
 - **Lowering (BASIC → IL)** → [references/lowering.md](references/lowering.md)
 - **Tutorials** → [tutorials/basic.md](tutorials/basic.md), [tutorials/il.md](tutorials/il.md)
 - **Architecture (contributors)** → [dev/architecture.md](dev/architecture.md)

@@ -1,12 +1,12 @@
 <!--
 SPDX-License-Identifier: MIT
-File: docs/references/il.md
+File: docs/il-reference.md
 Purpose: Reference for Viper IL v0.1.2.
 -->
 
 # IL Reference (v0.1.2)
 
-> Start here: [IL Quickstart](../il-quickstart.md) for a hands-on introduction.
+> Start here: [IL Quickstart](il-quickstart.md) for a hands-on introduction.
 
 ## Overview
 Viper IL is the project’s "thin waist" intermediate language designed to sit between diverse front ends and back ends. Its goals are:
@@ -15,7 +15,7 @@ Viper IL is the project’s "thin waist" intermediate language designed to sit b
 * **Explicit control flow** – each basic block ends with exactly one terminator; no fallthrough.
 * **Static types** – a minimal set of primitive types (`i1`, `i64`, `f64`, `ptr`, `str`, `void`).
 
-Execution is organized as functions consisting of labelled basic blocks.  Modules may execute either under the IL virtual machine interpreter or after lowering to native code through a C runtime.  Front ends such as BASIC first lower into IL patterns described in [BASIC lowering](../references/lowering.md).
+Execution is organized as functions consisting of labelled basic blocks.  Modules may execute either under the IL virtual machine interpreter or after lowering to native code through a C runtime.  Front ends such as BASIC first lower into IL patterns described in [BASIC lowering](../archive/docs/references/lowering.md).
 
 ## Module & Function Syntax
 An IL module is a set of declarations and function definitions.  It starts with a version line:
