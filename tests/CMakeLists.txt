@@ -447,6 +447,10 @@ add_executable(test_vm_unknown_global unit/test_vm_unknown_global.cpp)
 target_link_libraries(test_vm_unknown_global PRIVATE il_build il_vm support)
 add_test(NAME test_vm_unknown_global COMMAND test_vm_unknown_global)
 
+add_executable(test_vm_addr_of unit/test_vm_addr_of.cpp)
+target_link_libraries(test_vm_addr_of PRIVATE il_io il_vm support)
+add_test(NAME test_vm_addr_of COMMAND test_vm_addr_of)
+
 add_executable(test_vm_normalize_path unit/test_vm_normalize_path.cpp)
 target_link_libraries(test_vm_normalize_path PRIVATE VMTrace)
 add_test(NAME test_vm_normalize_path COMMAND test_vm_normalize_path)
