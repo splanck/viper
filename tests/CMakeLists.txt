@@ -54,6 +54,10 @@ add_executable(test_il_comments unit/test_il_comments.cpp)
 target_link_libraries(test_il_comments PRIVATE il_core il_io support)
 add_test(NAME test_il_comments COMMAND test_il_comments)
 
+add_executable(test_il_parse_missing_eq unit/test_il_parse_missing_eq.cpp)
+target_link_libraries(test_il_parse_missing_eq PRIVATE il_core il_io support)
+add_test(NAME test_il_parse_missing_eq COMMAND test_il_parse_missing_eq)
+
 add_executable(test_basic_lexer_high_bit unit/test_basic_lexer_high_bit.cpp)
 target_link_libraries(test_basic_lexer_high_bit PRIVATE fe_basic support)
 add_test(NAME test_basic_lexer_high_bit COMMAND test_basic_lexer_high_bit)
