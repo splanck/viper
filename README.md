@@ -116,6 +116,7 @@ build/src/tools/ilc/ilc -run examples/il/ex1_hello_cond.il
 - [BASIC Reference](docs/basic-reference.md)
 - [IL Reference](docs/il-reference.md)
 - [ViperTUI](tui/): experimental terminal UI library
+- [ViperTUI Architecture](docs/tui-architecture.md)
 
 ## Contributing
 
