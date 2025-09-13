@@ -27,6 +27,8 @@ add_library(tui STATIC
   src/widgets/status_bar.cpp
   src/widgets/search_bar.cpp
   src/widgets/command_palette.cpp
+  src/widgets/list_view.cpp
+  src/widgets/tree_view.cpp
   src/syntax/rules.cpp
   src/text/text_buffer.cpp
   src/text/search.cpp
