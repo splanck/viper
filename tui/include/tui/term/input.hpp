@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -18,7 +19,36 @@ struct KeyEvent
         Esc,
         Tab,
         Backspace,
+        Up,
+        Down,
+        Left,
+        Right,
+        Home,
+        End,
+        PageUp,
+        PageDown,
+        Insert,
+        Delete,
+        F1,
+        F2,
+        F3,
+        F4,
+        F5,
+        F6,
+        F7,
+        F8,
+        F9,
+        F10,
+        F11,
+        F12,
         Unknown
+    };
+
+    enum Mods : unsigned
+    {
+        Shift = 1,
+        Alt = 2,
+        Ctrl = 4
     };
 
     uint32_t codepoint{0};
@@ -42,7 +72,20 @@ class InputDecoder
 
   private:
     void emit(uint32_t cp);
+    void handle_csi(char final, std::string_view params);
+    void handle_ss3(char final, std::string_view params);
+    static unsigned decode_mod(int value);
 
+    enum class State
+    {
+        Utf8,
+        Esc,
+        CSI,
+        SS3
+    };
+
+    State state_{State::Utf8};
+    std::string seq_{};
     uint32_t cp_{0};
     unsigned expected_{0};
     std::vector<KeyEvent> events_{};
