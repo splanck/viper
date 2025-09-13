@@ -24,6 +24,11 @@ ui::FocusManager &App::focus()
     return focus_;
 }
 
+void App::setKeymap(input::Keymap *km)
+{
+    keymap_ = km;
+}
+
 void App::tick()
 {
     for (const auto &ev : events_)
@@ -40,9 +45,17 @@ void App::tick()
             }
             continue;
         }
-        if (auto *w = focus_.current())
+        bool handled = false;
+        if (keymap_)
         {
-            w->onEvent(ev);
+            handled = keymap_->handle(focus_.current(), ev.key);
+        }
+        if (!handled)
+        {
+            if (auto *w = focus_.current())
+            {
+                w->onEvent(ev);
+            }
         }
     }
     events_.clear();
