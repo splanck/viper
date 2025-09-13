@@ -5,6 +5,8 @@
 #pragma once
 
 #include <cstddef>
+#include <utility>
+#include <vector>
 
 #include "tui/render/screen.hpp"
 #include "tui/style/theme.hpp"
@@ -50,6 +52,12 @@ class TextView : public ui::Widget
         return cursor_col_;
     }
 
+    /// @brief Set byte ranges to highlight.
+    void setHighlights(std::vector<std::pair<std::size_t, std::size_t>> ranges);
+
+    /// @brief Move cursor to byte offset.
+    void moveCursorToOffset(std::size_t off);
+
   private:
     text::TextBuffer &buf_;
     const style::Theme &theme_;
@@ -63,6 +71,8 @@ class TextView : public ui::Widget
     std::size_t sel_start_{0};
     std::size_t sel_end_{0};
     std::size_t cursor_offset_{0};
+
+    std::vector<std::pair<std::size_t, std::size_t>> highlights_{};
 
     // helpers
     static std::pair<char32_t, std::size_t> decodeChar(const std::string &s, std::size_t off);
