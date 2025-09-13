@@ -6,6 +6,7 @@
 
 #include "tui/render/renderer.hpp"
 #include "tui/ui/container.hpp"
+#include "tui/ui/focus.hpp"
 #include "tui/ui/widget.hpp"
 
 #include <memory>
@@ -30,6 +31,9 @@ class App
     /// @brief Process pending events and render one frame.
     void tick();
 
+    /// @brief Access the focus manager.
+    [[nodiscard]] ui::FocusManager &focus();
+
   private:
     std::unique_ptr<ui::Widget> root_{};
     render::ScreenBuffer screen_{};
@@ -37,6 +41,7 @@ class App
     std::vector<ui::Event> events_{};
     int rows_{0};
     int cols_{0};
+    ui::FocusManager focus_{};
 };
 
 } // namespace viper::tui
