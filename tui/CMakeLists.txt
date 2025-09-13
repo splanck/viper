@@ -11,6 +11,7 @@ add_library(tui STATIC
   src/term/term_io.cpp
   src/term/session.cpp
   src/term/input.cpp
+  src/input/keymap.cpp
   src/util/unicode.cpp
   src/render/screen.cpp
   src/render/renderer.cpp
@@ -23,6 +24,7 @@ add_library(tui STATIC
   src/widgets/splitter.cpp
   src/widgets/status_bar.cpp
   src/widgets/search_bar.cpp
+  src/widgets/command_palette.cpp
   src/syntax/rules.cpp
   src/text/text_buffer.cpp
   src/text/search.cpp

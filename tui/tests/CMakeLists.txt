@@ -62,6 +62,10 @@ add_executable(tui_test_search test_search.cpp)
 target_link_libraries(tui_test_search PRIVATE tui)
 add_test(NAME tui_test_search COMMAND tui_test_search)
 
+add_executable(tui_test_keymap_palette test_keymap_palette.cpp)
+target_link_libraries(tui_test_keymap_palette PRIVATE tui)
+add_test(NAME tui_test_keymap_palette COMMAND tui_test_keymap_palette)
+
 add_executable(tui_test_syntax test_syntax.cpp)
 target_link_libraries(tui_test_syntax PRIVATE tui)
 target_compile_definitions(tui_test_syntax PRIVATE SYNTAX_JSON="${CMAKE_CURRENT_SOURCE_DIR}/../resources/syntax/json.json")
