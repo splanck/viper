@@ -34,6 +34,7 @@ add_library(tui STATIC
   src/text/search.cpp
   src/views/text_view.cpp
   src/app.cpp
+  src/config/config.cpp
 )
 
 target_include_directories(tui PUBLIC include)
