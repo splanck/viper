@@ -115,6 +115,37 @@ void TextView::setCursor(std::size_t row, std::size_t col, bool shift, bool upda
         sel_start_ = sel_end_ = cursor_offset_;
 }
 
+void TextView::setHighlights(std::vector<std::pair<std::size_t, std::size_t>> ranges)
+{
+    highlights_ = std::move(ranges);
+}
+
+void TextView::moveCursorToOffset(std::size_t off)
+{
+    std::string text = buf_.str();
+    std::size_t row = 0;
+    std::size_t col = 0;
+    std::size_t pos = 0;
+    while (pos < off && pos < text.size())
+    {
+        if (text[pos] == '\n')
+        {
+            ++row;
+            col = 0;
+            ++pos;
+            continue;
+        }
+        auto [cp, len] = decodeChar(text, pos);
+        col += static_cast<std::size_t>(char_width(cp));
+        pos += len;
+    }
+    setCursor(row, col, false, true);
+    if (cursor_row_ < top_row_)
+        top_row_ = cursor_row_;
+    if (cursor_row_ >= top_row_ + static_cast<std::size_t>(rect_.h))
+        top_row_ = cursor_row_ - static_cast<std::size_t>(rect_.h) + 1;
+}
+
 void TextView::paint(render::ScreenBuffer &sb)
 {
     const auto &normal = theme_.style(style::Role::Normal);
@@ -154,10 +185,19 @@ void TextView::paint(render::ScreenBuffer &sb)
             std::size_t global = lineStart + byte;
             bool selected = sel_start_ != sel_end_ && global >= std::min(sel_start_, sel_end_) &&
                             global < std::max(sel_start_, sel_end_);
+            bool highlighted = false;
+            for (const auto &h : highlights_)
+            {
+                if (global >= h.first && global < h.first + h.second)
+                {
+                    highlighted = true;
+                    break;
+                }
+            }
             auto &cell = sb.at(rect_.y + row, rect_.x + static_cast<int>(gutter + col));
             cell.ch = cp;
             cell.width = static_cast<uint8_t>(w);
-            cell.style = selected ? sel : normal;
+            cell.style = selected ? sel : (highlighted ? accent : normal);
             byte += len;
             col += w;
         }
