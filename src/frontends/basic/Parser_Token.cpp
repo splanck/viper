@@ -29,6 +29,8 @@ bool Parser::at(TokenKind k) const
 /// @note Extends the buffer by reading from the lexer as needed.
 const Token &Parser::peek(int n) const
 {
+    if (n < 0)
+        n = 0;
     while (tokens_.size() <= static_cast<size_t>(n))
     {
         tokens_.push_back(lexer_.next());
