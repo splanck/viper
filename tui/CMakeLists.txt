@@ -17,6 +17,9 @@ add_library(tui STATIC
   src/ui/widget.cpp
   src/ui/container.cpp
   src/ui/focus.cpp
+  src/style/theme.cpp
+  src/widgets/label.cpp
+  src/widgets/button.cpp
   src/app.cpp
 )
 
