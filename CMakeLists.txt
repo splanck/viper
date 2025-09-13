@@ -63,6 +63,7 @@ add_custom_target(format
 option(IL_ENABLE_X64_ASM_SYNTAX_CHECK "Check generated x86_64 asm syntax" ON)
 option(IL_ENABLE_X64_ASM_ASSEMBLE_LINK "Assemble+link x86_64 asm" ON)
 option(IL_ENABLE_X64_NATIVE_RUN "Run x86_64 binaries" ON)
+option(BUILD_TUI "Build ViperTUI subproject" ON)
 
 if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
   set(IL_ENABLE_X64_NATIVE_RUN OFF CACHE BOOL "" FORCE)
@@ -107,6 +108,9 @@ add_subdirectory(lib/Analysis)
 add_subdirectory(lib/IL)
 add_subdirectory(lib/Passes)
 add_subdirectory(lib/VM)
+if(BUILD_TUI)
+  add_subdirectory(tui)
+endif()
 add_subdirectory(tests)
 
 add_custom_target(distclean
