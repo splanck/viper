@@ -1,0 +1,4 @@
+[
+  {"regex": "\\\"[^\"\\\\]*\\\"", "style": {"fg": "#00ff00"}},
+  {"regex": "\\b(true|false|null)\\b", "style": {"fg": "#0000ff", "bold": true}}
+]
