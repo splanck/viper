@@ -10,6 +10,10 @@ add_executable(tui_test_term_io test_term_io.cpp)
 target_link_libraries(tui_test_term_io PRIVATE tui)
 add_test(NAME tui_test_term_io COMMAND tui_test_term_io)
 
+add_executable(tui_test_clipboard test_clipboard.cpp)
+target_link_libraries(tui_test_clipboard PRIVATE tui)
+add_test(NAME tui_test_clipboard COMMAND tui_test_clipboard)
+
 add_executable(tui_test_session test_session.cpp)
 target_link_libraries(tui_test_session PRIVATE tui)
 add_test(NAME tui_test_session COMMAND tui_test_session)
