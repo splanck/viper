@@ -435,6 +435,14 @@ add_executable(test_vm_rt_trap_loc unit/test_vm_rt_trap_loc.cpp)
 target_link_libraries(test_vm_rt_trap_loc PRIVATE il_build il_vm support)
 add_test(NAME test_vm_rt_trap_loc COMMAND test_vm_rt_trap_loc)
 
+add_executable(test_vm_rt_missing_arg unit/test_vm_rt_missing_arg.cpp)
+target_link_libraries(test_vm_rt_missing_arg PRIVATE il_build il_vm support)
+add_test(NAME test_vm_rt_missing_arg COMMAND test_vm_rt_missing_arg)
+
+add_executable(test_vm_rt_concat_missing_args unit/test_vm_rt_concat_missing_args.cpp)
+target_link_libraries(test_vm_rt_concat_missing_args PRIVATE il_build il_vm support)
+add_test(NAME test_vm_rt_concat_missing_args COMMAND test_vm_rt_concat_missing_args)
+
 add_executable(test_vm_alloca_negative unit/test_vm_alloca_negative.cpp)
 target_link_libraries(test_vm_alloca_negative PRIVATE il_build il_vm support)
 add_test(NAME test_vm_alloca_negative COMMAND test_vm_alloca_negative)
