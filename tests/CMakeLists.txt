@@ -173,6 +173,10 @@ add_executable(test_rt_input_line runtime/RTInputLineTests.cpp)
 target_link_libraries(test_rt_input_line PRIVATE rt)
 add_test(NAME test_rt_input_line COMMAND test_rt_input_line)
 
+add_executable(test_rt_input_line_fail runtime/RTInputLineFailTests.cpp)
+target_link_libraries(test_rt_input_line_fail PRIVATE rt)
+add_test(NAME test_rt_input_line_fail COMMAND test_rt_input_line_fail)
+
 add_executable(float_out e2e/support/FloatOut.cpp)
 
 add_test(NAME vm_strings_example COMMAND ${CMAKE_COMMAND}
