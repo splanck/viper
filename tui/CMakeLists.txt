@@ -14,6 +14,9 @@ add_library(tui STATIC
   src/util/unicode.cpp
   src/render/screen.cpp
   src/render/renderer.cpp
+  src/ui/widget.cpp
+  src/ui/container.cpp
+  src/app.cpp
 )
 
 target_include_directories(tui PUBLIC include)
