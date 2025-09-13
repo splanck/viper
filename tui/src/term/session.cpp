@@ -1,38 +1,65 @@
-// tui/src/term/session.cpp
-// @brief Implements TerminalSession RAII.
-// @invariant Restores terminal state on destruction when active.
-// @ownership Owns saved termios state when active.
-
 #include "tui/term/session.hpp"
 #include "tui/term/term_io.hpp"
 
-#include <cstdlib>
-
-#if defined(__unix__) || defined(__APPLE__)
-#include <unistd.h>
-#endif
-
-namespace viper::tui::term
+namespace tui
 {
-#if defined(__unix__) || defined(__APPLE__)
+
+static inline bool env_no_tty()
+{
+    const char *v = std::getenv("VIPERTUI_NO_TTY");
+    return v && *v == '1';
+}
+
 TerminalSession::TerminalSession()
 {
-    if (std::getenv("VIPERTUI_NO_TTY") != nullptr)
+    if (env_no_tty())
     {
+        active_ = false;
         return;
     }
 
+#if VIPERTUI_POSIX
+    if (!isatty(STDIN_FILENO))
+    {
+        active_ = false;
+        return;
+    }
     if (tcgetattr(STDIN_FILENO, &orig_) != 0)
     {
+        active_ = false;
         return;
     }
-
     termios raw = orig_;
-    cfmakeraw(&raw);
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+    raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+    raw.c_oflag &= ~(OPOST);
+    raw.c_cflag |= (CS8);
+    raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+    raw.c_cc[VMIN] = 1;
+    raw.c_cc[VTIME] = 0;
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) != 0)
+    {
+        active_ = false;
+        return;
+    }
+#endif
 
-    RealTermIO io;
-    io.write("\x1b[?1049h\x1b[?2004h\x1b[?25l");
+#if defined(_WIN32)
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut && hOut != INVALID_HANDLE_VALUE)
+    {
+        GetConsoleMode(hOut, &orig_out_mode_);
+        DWORD mode = orig_out_mode_;
+        mode |= 0x0004 /* ENABLE_VIRTUAL_TERMINAL_PROCESSING */;
+#ifndef DISABLE_NEWLINE_AUTO_RETURN
+#define DISABLE_NEWLINE_AUTO_RETURN 0x0008
+#endif
+        mode |= DISABLE_NEWLINE_AUTO_RETURN;
+        SetConsoleMode(hOut, mode);
+    }
+#endif
+
+    term::RealTermIO io;
+    io.write("\x1b[?1049h\x1b[?2004h\x1b[?25l"); // alt screen, bracketed paste on, cursor hide
     io.flush();
     active_ = true;
 }
@@ -40,18 +67,22 @@ TerminalSession::TerminalSession()
 TerminalSession::~TerminalSession()
 {
     if (!active_)
-    {
         return;
-    }
 
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_);
-
-    RealTermIO io;
-    io.write("\x1b[?1049l\x1b[?2004l\x1b[?25h");
+    term::RealTermIO io;
+    io.write("\x1b[?1049l\x1b[?2004l\x1b[?25h"); // leave alt screen, disable paste, show cursor
     io.flush();
-}
-#else
-TerminalSession::TerminalSession() = default;
-TerminalSession::~TerminalSession() = default;
+
+#if VIPERTUI_POSIX
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_);
 #endif
-} // namespace viper::tui::term
+#if defined(_WIN32)
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut && hOut != INVALID_HANDLE_VALUE)
+    {
+        SetConsoleMode(hOut, orig_out_mode_);
+    }
+#endif
+}
+
+} // namespace tui
