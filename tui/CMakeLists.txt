@@ -39,5 +39,7 @@ add_library(tui STATIC
 
 target_include_directories(tui PUBLIC include)
 
+add_subdirectory(apps)
+
 enable_testing()
 add_subdirectory(tests)
