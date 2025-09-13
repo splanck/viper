@@ -23,7 +23,24 @@ void App::tick()
 {
     for (const auto &ev : events_)
     {
-        if (root_)
+        if (ev.key.key == ui::Key::Tab)
+        {
+            if (ev.key.shift)
+            {
+                focus_.prev();
+            }
+            else
+            {
+                focus_.next();
+            }
+            continue;
+        }
+        bool consumed = false;
+        if (auto *f = focus_.focused())
+        {
+            consumed = f->onEvent(ev);
+        }
+        if (!consumed && root_)
         {
             root_->onEvent(ev);
         }
