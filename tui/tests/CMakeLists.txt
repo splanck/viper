@@ -82,3 +82,8 @@ add_test(NAME tui_test_syntax COMMAND tui_test_syntax)
 add_executable(tui_test_list_tree test_list_tree.cpp)
 target_link_libraries(tui_test_list_tree PRIVATE tui)
 add_test(NAME tui_test_list_tree COMMAND tui_test_list_tree)
+
+add_executable(tui_test_config test_config.cpp)
+target_link_libraries(tui_test_config PRIVATE tui)
+target_compile_definitions(tui_test_config PRIVATE CONFIG_INI="${CMAKE_CURRENT_SOURCE_DIR}/data/config.ini")
+add_test(NAME tui_test_config COMMAND tui_test_config)
