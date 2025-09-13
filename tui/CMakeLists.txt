@@ -22,7 +22,9 @@ add_library(tui STATIC
   src/widgets/button.cpp
   src/widgets/splitter.cpp
   src/widgets/status_bar.cpp
+  src/widgets/search_bar.cpp
   src/text/text_buffer.cpp
+  src/text/search.cpp
   src/views/text_view.cpp
   src/app.cpp
 )
