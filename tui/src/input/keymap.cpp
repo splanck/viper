@@ -1,0 +1,75 @@
+// tui/src/input/keymap.cpp
+// @brief Keymap implementation dispatching commands from key chords.
+// @invariant Widget bindings override global mappings.
+// @ownership Keymap owns command callbacks; widget pointers are non-owning.
+
+#include "tui/input/keymap.hpp"
+
+namespace viper::tui::input
+{
+
+void Keymap::registerCommand(CommandId id, std::string name, std::function<void()> action)
+{
+    index_[id] = commands_.size();
+    commands_.push_back(Command{std::move(id), std::move(name), std::move(action)});
+}
+
+void Keymap::bindGlobal(const KeyChord &kc, const CommandId &id)
+{
+    global_[kc] = id;
+}
+
+void Keymap::bindWidget(ui::Widget *w, const KeyChord &kc, const CommandId &id)
+{
+    widget_[w][kc] = id;
+}
+
+bool Keymap::execute(const CommandId &id) const
+{
+    auto it = index_.find(id);
+    if (it != index_.end())
+    {
+        const auto &cmd = commands_[it->second];
+        if (cmd.action)
+        {
+            cmd.action();
+            return true;
+        }
+    }
+    return false;
+}
+
+const Command *Keymap::find(const CommandId &id) const
+{
+    auto it = index_.find(id);
+    if (it != index_.end())
+    {
+        return &commands_[it->second];
+    }
+    return nullptr;
+}
+
+bool Keymap::handle(ui::Widget *w, const term::KeyEvent &key) const
+{
+    KeyChord kc{key.code, key.mods, key.codepoint};
+    if (w)
+    {
+        auto wit = widget_.find(w);
+        if (wit != widget_.end())
+        {
+            auto cit = wit->second.find(kc);
+            if (cit != wit->second.end())
+            {
+                return execute(cit->second);
+            }
+        }
+    }
+    auto git = global_.find(kc);
+    if (git != global_.end())
+    {
+        return execute(git->second);
+    }
+    return false;
+}
+
+} // namespace viper::tui::input
