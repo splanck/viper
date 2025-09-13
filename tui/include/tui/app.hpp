@@ -4,6 +4,7 @@
 // @ownership App owns root widget and screen buffer, borrows TermIO via Renderer.
 #pragma once
 
+#include "tui/input/keymap.hpp"
 #include "tui/render/renderer.hpp"
 #include "tui/ui/container.hpp"
 #include "tui/ui/focus.hpp"
@@ -34,6 +35,9 @@ class App
     /// @brief Access the focus manager.
     [[nodiscard]] ui::FocusManager &focus();
 
+    /// @brief Set global keymap for command dispatch.
+    void setKeymap(input::Keymap *km);
+
   private:
     std::unique_ptr<ui::Widget> root_{};
     render::ScreenBuffer screen_{};
@@ -42,6 +46,7 @@ class App
     int rows_{0};
     int cols_{0};
     ui::FocusManager focus_{};
+    input::Keymap *keymap_{nullptr};
 };
 
 } // namespace viper::tui
