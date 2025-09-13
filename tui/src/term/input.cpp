@@ -39,7 +39,7 @@ void InputDecoder::emit(uint32_t cp)
             }
             break;
     }
-    events_.push_back(ev);
+    key_events_.push_back(ev);
 }
 
 static std::vector<int> parse_params(std::string_view params)
@@ -77,8 +77,61 @@ unsigned InputDecoder::decode_mod(int value)
     return static_cast<unsigned>(value - 1);
 }
 
-void InputDecoder::handle_csi(char final, std::string_view params)
+void InputDecoder::handle_sgr_mouse(char final, std::string_view params)
 {
+    auto nums = parse_params(params);
+    if (nums.size() < 3)
+    {
+        return;
+    }
+    int b = nums[0];
+    MouseEvent ev{};
+    ev.x = nums[1] - 1;
+    ev.y = nums[2] - 1;
+    if (b & 4)
+    {
+        ev.mods |= KeyEvent::Shift;
+    }
+    if (b & 8)
+    {
+        ev.mods |= KeyEvent::Alt;
+    }
+    if (b & 16)
+    {
+        ev.mods |= KeyEvent::Ctrl;
+    }
+
+    if ((b >= 64 && b <= 65) || (b >= 96 && b <= 97))
+    {
+        ev.type = MouseEvent::Type::Wheel;
+        ev.buttons = (b & 1) ? 2u : 1u;
+    }
+    else if (final == 'm')
+    {
+        ev.type = MouseEvent::Type::Up;
+        ev.buttons = 1u << (b & 3);
+    }
+    else if (b & 32)
+    {
+        ev.type = MouseEvent::Type::Move;
+        ev.buttons = 1u << (b & 3);
+    }
+    else
+    {
+        ev.type = MouseEvent::Type::Down;
+        ev.buttons = 1u << (b & 3);
+    }
+    mouse_events_.push_back(ev);
+}
+
+InputDecoder::State InputDecoder::handle_csi(char final, std::string_view params)
+{
+    if ((final == 'M' || final == 'm') && !params.empty() && params.front() == '<')
+    {
+        handle_sgr_mouse(final, params.substr(1));
+        return State::Utf8;
+    }
+
     auto nums = parse_params(params);
     unsigned mods = 0;
     if (final == '~')
@@ -87,9 +140,17 @@ void InputDecoder::handle_csi(char final, std::string_view params)
         {
             mods = decode_mod(nums[1]);
         }
+        if (!nums.empty())
+        {
+            if (nums[0] == 200)
+            {
+                paste_buf_.clear();
+                return State::Paste;
+            }
+        }
         if (nums.empty())
         {
-            return;
+            return State::Utf8;
         }
         KeyEvent ev{};
         ev.mods = mods;
@@ -150,10 +211,10 @@ void InputDecoder::handle_csi(char final, std::string_view params)
                 ev.code = KeyEvent::Code::F12;
                 break;
             default:
-                return;
+                return State::Utf8;
         }
-        events_.push_back(ev);
-        return;
+        key_events_.push_back(ev);
+        return State::Utf8;
     }
 
     if (nums.size() >= 2)
@@ -184,9 +245,10 @@ void InputDecoder::handle_csi(char final, std::string_view params)
             ev.code = KeyEvent::Code::End;
             break;
         default:
-            return;
+            return State::Utf8;
     }
-    events_.push_back(ev);
+    key_events_.push_back(ev);
+    return State::Utf8;
 }
 
 void InputDecoder::handle_ss3(char final, std::string_view params)
@@ -235,7 +297,7 @@ void InputDecoder::handle_ss3(char final, std::string_view params)
         default:
             return;
     }
-    events_.push_back(ev);
+    key_events_.push_back(ev);
 }
 
 void InputDecoder::feed(std::string_view bytes)
@@ -273,7 +335,7 @@ void InputDecoder::feed(std::string_view bytes)
                     }
                     else
                     {
-                        events_.push_back(KeyEvent{});
+                        key_events_.push_back(KeyEvent{});
                     }
                 }
                 else if ((b & 0xC0) == 0x80)
@@ -287,7 +349,7 @@ void InputDecoder::feed(std::string_view bytes)
                 }
                 else
                 {
-                    events_.push_back(KeyEvent{});
+                    key_events_.push_back(KeyEvent{});
                     cp_ = 0;
                     expected_ = 0;
                     --i;
@@ -314,8 +376,7 @@ void InputDecoder::feed(std::string_view bytes)
             case State::CSI:
                 if (b >= 0x40 && b <= 0x7E)
                 {
-                    handle_csi(static_cast<char>(b), seq_);
-                    state_ = State::Utf8;
+                    state_ = handle_csi(static_cast<char>(b), seq_);
                     seq_.clear();
                 }
                 else
@@ -335,14 +396,76 @@ void InputDecoder::feed(std::string_view bytes)
                     seq_.push_back(static_cast<char>(b));
                 }
                 break;
+            case State::Paste:
+                if (b == 0x1b)
+                {
+                    state_ = State::PasteEsc;
+                }
+                else
+                {
+                    paste_buf_.push_back(static_cast<char>(b));
+                }
+                break;
+            case State::PasteEsc:
+                if (b == '[')
+                {
+                    state_ = State::PasteCSI;
+                    seq_.clear();
+                }
+                else
+                {
+                    paste_buf_.push_back('\x1b');
+                    paste_buf_.push_back(static_cast<char>(b));
+                    state_ = State::Paste;
+                }
+                break;
+            case State::PasteCSI:
+                if (b >= 0x40 && b <= 0x7E)
+                {
+                    if (b == '~' && seq_ == "201")
+                    {
+                        PasteEvent ev{};
+                        ev.text = std::move(paste_buf_);
+                        paste_events_.push_back(std::move(ev));
+                        paste_buf_.clear();
+                        state_ = State::Utf8;
+                    }
+                    else
+                    {
+                        paste_buf_.append("\x1b[");
+                        paste_buf_.append(seq_);
+                        paste_buf_.push_back(static_cast<char>(b));
+                        state_ = State::Paste;
+                    }
+                    seq_.clear();
+                }
+                else
+                {
+                    seq_.push_back(static_cast<char>(b));
+                }
+                break;
         }
     }
 }
 
 std::vector<KeyEvent> InputDecoder::drain()
 {
-    auto out = std::move(events_);
-    events_.clear();
+    auto out = std::move(key_events_);
+    key_events_.clear();
+    return out;
+}
+
+std::vector<MouseEvent> InputDecoder::drain_mouse()
+{
+    auto out = std::move(mouse_events_);
+    mouse_events_.clear();
+    return out;
+}
+
+std::vector<PasteEvent> InputDecoder::drain_paste()
+{
+    auto out = std::move(paste_events_);
+    paste_events_.clear();
     return out;
 }
 
