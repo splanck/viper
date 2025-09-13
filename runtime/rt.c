@@ -211,6 +211,7 @@ rt_string rt_input_line(void)
             {
                 free(buf);
                 rt_trap("out of memory");
+                return NULL;
             }
             buf = nbuf;
             cap = new_cap;
