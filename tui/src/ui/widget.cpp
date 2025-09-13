@@ -19,4 +19,9 @@ bool Widget::onEvent(const Event &)
     return false;
 }
 
+bool Widget::wantsFocus() const
+{
+    return false;
+}
+
 } // namespace viper::tui::ui

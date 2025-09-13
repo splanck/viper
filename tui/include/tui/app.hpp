@@ -6,6 +6,7 @@
 
 #include "tui/render/renderer.hpp"
 #include "tui/ui/container.hpp"
+#include "tui/ui/focus.hpp"
 #include "tui/ui/widget.hpp"
 
 #include <memory>
@@ -30,11 +31,18 @@ class App
     /// @brief Process pending events and render one frame.
     void tick();
 
+    /// @brief Access focus manager for widget registration.
+    [[nodiscard]] ui::FocusManager &focus()
+    {
+        return focus_;
+    }
+
   private:
     std::unique_ptr<ui::Widget> root_{};
     render::ScreenBuffer screen_{};
     render::Renderer renderer_;
     std::vector<ui::Event> events_{};
+    ui::FocusManager focus_{};
     int rows_{0};
     int cols_{0};
 };

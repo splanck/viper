@@ -16,6 +16,7 @@ add_library(tui STATIC
   src/render/renderer.cpp
   src/ui/widget.cpp
   src/ui/container.cpp
+  src/ui/focus.cpp
   src/app.cpp
 )
 

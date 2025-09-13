@@ -16,8 +16,24 @@ struct Rect
     int h{0};
 };
 
+/// @brief Keys supported by the event system.
+enum class Key
+{
+    Enter,
+    Tab
+};
+
+/// @brief Keyboard event with key code and optional shift modifier.
+struct KeyEvent
+{
+    Key key{Key::Enter};
+    bool shift{false};
+};
+
+/// @brief Input event wrapper (currently only keyboard events).
 struct Event
 {
+    KeyEvent key{};
 };
 
 /// @brief Abstract base for all widgets.
@@ -35,6 +51,9 @@ class Widget
     /// @brief Handle an input event.
     /// @return True if the event was consumed.
     virtual bool onEvent(const Event &ev);
+
+    /// @brief Whether this widget can receive focus.
+    [[nodiscard]] virtual bool wantsFocus() const;
 
     /// @brief Retrieve widget rectangle.
     [[nodiscard]] Rect rect() const
