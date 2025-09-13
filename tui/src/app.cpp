@@ -19,13 +19,30 @@ void App::pushEvent(const ui::Event &ev)
     events_.push_back(ev);
 }
 
+ui::FocusManager &App::focus()
+{
+    return focus_;
+}
+
 void App::tick()
 {
     for (const auto &ev : events_)
     {
-        if (root_)
+        if (ev.key.code == term::KeyEvent::Code::Tab)
         {
-            root_->onEvent(ev);
+            if (ev.key.mods & term::KeyEvent::Shift)
+            {
+                (void)focus_.prev();
+            }
+            else
+            {
+                (void)focus_.next();
+            }
+            continue;
+        }
+        if (auto *w = focus_.current())
+        {
+            w->onEvent(ev);
         }
     }
     events_.clear();

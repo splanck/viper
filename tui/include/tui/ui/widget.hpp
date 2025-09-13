@@ -5,6 +5,7 @@
 #pragma once
 
 #include "tui/render/screen.hpp"
+#include "tui/term/input.hpp"
 
 namespace viper::tui::ui
 {
@@ -18,6 +19,7 @@ struct Rect
 
 struct Event
 {
+    term::KeyEvent key{};
 };
 
 /// @brief Abstract base for all widgets.
@@ -35,6 +37,12 @@ class Widget
     /// @brief Handle an input event.
     /// @return True if the event was consumed.
     virtual bool onEvent(const Event &ev);
+
+    /// @brief Whether this widget can receive focus.
+    [[nodiscard]] virtual bool wantsFocus() const
+    {
+        return false;
+    }
 
     /// @brief Retrieve widget rectangle.
     [[nodiscard]] Rect rect() const
