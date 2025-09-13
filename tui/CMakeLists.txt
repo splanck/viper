@@ -20,6 +20,8 @@ add_library(tui STATIC
   src/style/theme.cpp
   src/widgets/label.cpp
   src/widgets/button.cpp
+  src/widgets/splitter.cpp
+  src/widgets/status_bar.cpp
   src/app.cpp
 )
 
