@@ -47,14 +47,11 @@ TerminalSession::TerminalSession()
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     if (hOut && hOut != INVALID_HANDLE_VALUE)
     {
-        GetConsoleMode(hOut, &orig_out_mode_);
-        DWORD mode = orig_out_mode_;
-        mode |= 0x0004 /* ENABLE_VIRTUAL_TERMINAL_PROCESSING */;
-#ifndef DISABLE_NEWLINE_AUTO_RETURN
-#define DISABLE_NEWLINE_AUTO_RETURN 0x0008
-#endif
-        mode |= DISABLE_NEWLINE_AUTO_RETURN;
-        SetConsoleMode(hOut, mode);
+        if (GetConsoleMode(hOut, &orig_out_mode_))
+        {
+            DWORD mode = orig_out_mode_ | ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+            SetConsoleMode(hOut, mode);
+        }
     }
 #endif
 
