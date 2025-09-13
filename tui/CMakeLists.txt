@@ -11,6 +11,7 @@ add_library(tui STATIC
   src/term/term_io.cpp
   src/term/session.cpp
   src/term/input.cpp
+  src/util/unicode.cpp
   src/render/screen.cpp
   src/render/renderer.cpp
 )
