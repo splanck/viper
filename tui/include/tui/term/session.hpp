@@ -1,15 +1,21 @@
-// tui/include/tui/term/session.hpp
-// @brief RAII for terminal mode management.
-// @invariant Restores terminal state on destruction when active.
-// @ownership Owns saved termios state when active.
 #pragma once
+#include <cstdlib>
 
 #if defined(__unix__) || defined(__APPLE__)
+#define VIPERTUI_POSIX 1
 #include <termios.h>
+#include <unistd.h>
+#else
+#define VIPERTUI_POSIX 0
 #endif
 
-namespace viper::tui::term
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
+namespace tui
 {
+
 class TerminalSession
 {
   public:
@@ -19,10 +25,19 @@ class TerminalSession
     TerminalSession(const TerminalSession &) = delete;
     TerminalSession &operator=(const TerminalSession &) = delete;
 
+    bool active() const
+    {
+        return active_;
+    }
+
   private:
-#if defined(__unix__) || defined(__APPLE__)
-    termios orig_{};
     bool active_{false};
+#if VIPERTUI_POSIX
+    termios orig_{};
+#endif
+#if defined(_WIN32)
+    DWORD orig_out_mode_{0};
 #endif
 };
-} // namespace viper::tui::term
+
+} // namespace tui
