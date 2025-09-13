@@ -14,6 +14,11 @@
 #include "tui/ui/widget.hpp"
 #include "tui/util/unicode.hpp"
 
+namespace viper::tui::syntax
+{
+class SyntaxRuleSet;
+}
+
 namespace viper::tui::views
 {
 
@@ -58,10 +63,14 @@ class TextView : public ui::Widget
     /// @brief Move cursor to byte offset.
     void moveCursorToOffset(std::size_t off);
 
+    /// @brief Attach a syntax rule set for highlighting.
+    void setSyntax(syntax::SyntaxRuleSet *syntax);
+
   private:
     text::TextBuffer &buf_;
     const style::Theme &theme_;
     bool show_line_numbers_{};
+    syntax::SyntaxRuleSet *syntax_{nullptr};
 
     std::size_t cursor_row_{0};
     std::size_t cursor_col_{0};

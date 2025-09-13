@@ -4,6 +4,7 @@
 // @ownership TextView borrows TextBuffer and Theme.
 
 #include "tui/views/text_view.hpp"
+#include "tui/syntax/rules.hpp"
 
 #include <algorithm>
 #include <string>
@@ -146,6 +147,11 @@ void TextView::moveCursorToOffset(std::size_t off)
         top_row_ = cursor_row_ - static_cast<std::size_t>(rect_.h) + 1;
 }
 
+void TextView::setSyntax(syntax::SyntaxRuleSet *syntax)
+{
+    syntax_ = syntax;
+}
+
 void TextView::paint(render::ScreenBuffer &sb)
 {
     const auto &normal = theme_.style(style::Role::Normal);
@@ -158,6 +164,9 @@ void TextView::paint(render::ScreenBuffer &sb)
         std::size_t lineNo = top_row_ + static_cast<std::size_t>(row);
         std::string line = buf_.getLine(lineNo);
         std::size_t lineStart = offsetFromRowCol(lineNo, 0);
+        const std::vector<syntax::Span> *spansPtr = nullptr;
+        if (syntax_)
+            spansPtr = &syntax_->spans(lineNo, line);
 
         if (show_line_numbers_)
         {
@@ -197,7 +206,19 @@ void TextView::paint(render::ScreenBuffer &sb)
             auto &cell = sb.at(rect_.y + row, rect_.x + static_cast<int>(gutter + col));
             cell.ch = cp;
             cell.width = static_cast<uint8_t>(w);
-            cell.style = selected ? sel : (highlighted ? accent : normal);
+            render::Style syn = normal;
+            if (spansPtr)
+            {
+                for (const auto &sp : *spansPtr)
+                {
+                    if (byte >= sp.start && byte < sp.start + sp.length)
+                    {
+                        syn = sp.style;
+                        break;
+                    }
+                }
+            }
+            cell.style = selected ? sel : (highlighted ? accent : syn);
             byte += len;
             col += w;
         }
