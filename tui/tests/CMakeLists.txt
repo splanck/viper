@@ -53,3 +53,7 @@ add_test(NAME tui_test_split_status COMMAND tui_test_split_status)
 add_executable(tui_test_text_buffer test_text_buffer.cpp)
 target_link_libraries(tui_test_text_buffer PRIVATE tui)
 add_test(NAME tui_test_text_buffer COMMAND tui_test_text_buffer)
+
+add_executable(tui_test_text_view test_text_view.cpp)
+target_link_libraries(tui_test_text_view PRIVATE tui)
+add_test(NAME tui_test_text_view COMMAND tui_test_text_view)
