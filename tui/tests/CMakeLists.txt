@@ -13,3 +13,7 @@ add_test(NAME tui_test_term_io COMMAND tui_test_term_io)
 add_executable(tui_test_session test_session.cpp)
 target_link_libraries(tui_test_session PRIVATE tui)
 add_test(NAME tui_test_session COMMAND tui_test_session)
+
+add_executable(tui_test_input_utf8 test_input_utf8.cpp)
+target_link_libraries(tui_test_input_utf8 PRIVATE tui)
+add_test(NAME tui_test_input_utf8 COMMAND tui_test_input_utf8)
