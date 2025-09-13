@@ -91,3 +91,7 @@ add_test(NAME tui_test_config COMMAND tui_test_config)
 add_executable(tui_test_demo_headless test_demo_headless.cpp)
 target_link_libraries(tui_test_demo_headless PRIVATE tui)
 add_test(NAME tui_test_demo_headless COMMAND tui_test_demo_headless)
+
+add_executable(tui_test_win_vt test_win_vt.cpp)
+target_link_libraries(tui_test_win_vt PRIVATE tui)
+add_test(NAME tui_test_win_vt COMMAND tui_test_win_vt)
