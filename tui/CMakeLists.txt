@@ -12,6 +12,7 @@ add_library(tui STATIC
   src/term/session.cpp
   src/term/input.cpp
   src/render/screen.cpp
+  src/render/renderer.cpp
 )
 
 target_include_directories(tui PUBLIC include)

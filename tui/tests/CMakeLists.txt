@@ -25,3 +25,7 @@ add_test(NAME tui_test_input_csi COMMAND tui_test_input_csi)
 add_executable(tui_test_screen_diff test_screen_diff.cpp)
 target_link_libraries(tui_test_screen_diff PRIVATE tui)
 add_test(NAME tui_test_screen_diff COMMAND tui_test_screen_diff)
+
+add_executable(tui_test_renderer_minimal test_renderer_minimal.cpp)
+target_link_libraries(tui_test_renderer_minimal PRIVATE tui)
+add_test(NAME tui_test_renderer_minimal COMMAND tui_test_renderer_minimal)
