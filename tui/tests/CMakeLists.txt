@@ -21,3 +21,7 @@ add_test(NAME tui_test_input_utf8 COMMAND tui_test_input_utf8)
 add_executable(tui_test_input_csi test_input_csi.cpp)
 target_link_libraries(tui_test_input_csi PRIVATE tui)
 add_test(NAME tui_test_input_csi COMMAND tui_test_input_csi)
+
+add_executable(tui_test_screen_diff test_screen_diff.cpp)
+target_link_libraries(tui_test_screen_diff PRIVATE tui)
+add_test(NAME tui_test_screen_diff COMMAND tui_test_screen_diff)
