@@ -427,6 +427,10 @@ add_executable(test_basic_intrinsics unit/test_basic_intrinsics.cpp)
 target_link_libraries(test_basic_intrinsics PRIVATE fe_basic support)
 add_test(NAME test_basic_intrinsics COMMAND test_basic_intrinsics)
 
+add_executable(test_basic_parser_peek unit/test_basic_parser_peek.cpp)
+target_link_libraries(test_basic_parser_peek PRIVATE fe_basic support)
+add_test(NAME test_basic_parser_peek COMMAND test_basic_parser_peek)
+
 add_executable(test_vm_trap_loc unit/test_vm_trap_loc.cpp)
 target_link_libraries(test_vm_trap_loc PRIVATE il_build il_vm support)
 add_test(NAME test_vm_trap_loc COMMAND test_vm_trap_loc)
