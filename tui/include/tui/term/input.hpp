@@ -56,6 +56,28 @@ struct KeyEvent
     unsigned mods{0};
 };
 
+struct MouseEvent
+{
+    enum class Type
+    {
+        Down,
+        Up,
+        Move,
+        Wheel
+    };
+
+    Type type{Type::Move};
+    int x{0};
+    int y{0};
+    unsigned buttons{0};
+    unsigned mods{0};
+};
+
+struct PasteEvent
+{
+    std::string text{};
+};
+
 /// @brief Incremental UTF-8 decoder producing key events.
 /// @invariant Handles partial sequences across feed() calls.
 /// @ownership Stores decoded events internally.
@@ -69,26 +91,35 @@ class InputDecoder
     /// @brief Retrieve decoded events.
     /// @return Collected key events; internal queue is cleared.
     [[nodiscard]] std::vector<KeyEvent> drain();
+    [[nodiscard]] std::vector<MouseEvent> drain_mouse();
+    [[nodiscard]] std::vector<PasteEvent> drain_paste();
 
   private:
-    void emit(uint32_t cp);
-    void handle_csi(char final, std::string_view params);
-    void handle_ss3(char final, std::string_view params);
-    static unsigned decode_mod(int value);
-
     enum class State
     {
         Utf8,
         Esc,
         CSI,
-        SS3
+        SS3,
+        Paste,
+        PasteEsc,
+        PasteCSI
     };
+
+    void emit(uint32_t cp);
+    State handle_csi(char final, std::string_view params);
+    void handle_ss3(char final, std::string_view params);
+    void handle_sgr_mouse(char final, std::string_view params);
+    static unsigned decode_mod(int value);
 
     State state_{State::Utf8};
     std::string seq_{};
     uint32_t cp_{0};
     unsigned expected_{0};
-    std::vector<KeyEvent> events_{};
+    std::vector<KeyEvent> key_events_{};
+    std::vector<MouseEvent> mouse_events_{};
+    std::vector<PasteEvent> paste_events_{};
+    std::string paste_buf_{};
 };
 
 } // namespace viper::tui::term
