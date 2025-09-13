@@ -1,0 +1,46 @@
+// tui/tests/test_input_utf8.cpp
+// @brief Tests UTF-8 input decoding and special key handling.
+// @invariant Decoder maintains state across feeds.
+// @ownership InputDecoder owns its event queue only.
+
+#include "tui/term/input.hpp"
+
+#include <cassert>
+
+using viper::tui::term::InputDecoder;
+using viper::tui::term::KeyEvent;
+
+int main()
+{
+    InputDecoder d;
+
+    d.feed("A");
+    auto ev = d.drain();
+    assert(ev.size() == 1);
+    assert(ev[0].codepoint == 'A');
+    assert(ev[0].code == KeyEvent::Code::Unknown);
+
+    d.feed("\xC3\xA9");
+    ev = d.drain();
+    assert(ev.size() == 1);
+    assert(ev[0].codepoint == 0x00E9);
+
+    d.feed("\xE4\xBD");
+    ev = d.drain();
+    assert(ev.empty());
+    d.feed("\xA0");
+    ev = d.drain();
+    assert(ev.size() == 1);
+    assert(ev[0].codepoint == 0x4F60);
+
+    d.feed("\n\t\x1b\x7f\r");
+    ev = d.drain();
+    assert(ev.size() == 5);
+    assert(ev[0].code == KeyEvent::Code::Enter);
+    assert(ev[1].code == KeyEvent::Code::Tab);
+    assert(ev[2].code == KeyEvent::Code::Esc);
+    assert(ev[3].code == KeyEvent::Code::Backspace);
+    assert(ev[4].code == KeyEvent::Code::Enter);
+
+    return 0;
+}
