@@ -1,5 +1,11 @@
+// File: tests/unit/test_rt_string.cpp
+// Purpose: Verify runtime string helpers including substring operations clamp inputs.
+// Key invariants: Substring operations clamp start/length and avoid overflow.
+// Ownership: Uses runtime library.
+// Links: docs/class-catalog.md
 #include "rt.hpp"
 #include <cassert>
+#include <limits>
 
 int main()
 {
@@ -28,6 +34,13 @@ int main()
     assert(rt_str_eq(clamp2, hell));
     rt_string clamp3 = rt_substr(hw, 2, -5);
     assert(rt_len(clamp3) == 0);
+
+    int64_t huge = std::numeric_limits<int64_t>::max();
+    rt_string biglen = rt_substr(hw, 2, huge);
+    rt_string lloworld = rt_const_cstr("lloworld");
+    assert(rt_str_eq(biglen, lloworld));
+    rt_string bigstart = rt_substr(hw, huge, huge);
+    assert(rt_len(bigstart) == 0);
 
     assert(!rt_str_eq(hello, world));
 
