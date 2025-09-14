@@ -5,6 +5,8 @@
 // Links: docs/runtime-abi.md
 
 #include "rt_math.h"
+#include "rt.hpp"
+#include <limits.h>
 #include <math.h>
 
 // Ensure functions are visible with C linkage when included in C++ builds
@@ -104,11 +106,12 @@ extern "C"
      * Computes the absolute value of a signed 64-bit integer.
      *
      * @param v Input value.
-     * @return Absolute value of @p v. If @p v is `LLONG_MIN`, the result is
-     * implementation-defined due to two's-complement overflow.
+     * @return Absolute value of @p v. Traps if @p v is `LLONG_MIN`.
      */
     long long rt_abs_i64(long long v)
     {
+        if (v == LLONG_MIN)
+            return rt_trap("rt_abs_i64: overflow"), 0;
         return v < 0 ? -v : v;
     }
 
