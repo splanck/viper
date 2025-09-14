@@ -26,6 +26,11 @@ class HSplitter : public ui::Widget
     /// @brief Paint both child widgets.
     void paint(render::ScreenBuffer &sb) override;
 
+    /// @brief Handle keyboard events for adjusting split ratio.
+    bool onEvent(const viper::tui::term::KeyEvent &ev);
+
+    bool onEvent(const ui::Event &ev) override;
+
   private:
     std::unique_ptr<ui::Widget> left_{};
     std::unique_ptr<ui::Widget> right_{};
@@ -47,6 +52,11 @@ class VSplitter : public ui::Widget
 
     /// @brief Paint both child widgets.
     void paint(render::ScreenBuffer &sb) override;
+
+    /// @brief Handle keyboard events for adjusting split ratio.
+    bool onEvent(const viper::tui::term::KeyEvent &ev);
+
+    bool onEvent(const ui::Event &ev) override;
 
   private:
     std::unique_ptr<ui::Widget> top_{};
