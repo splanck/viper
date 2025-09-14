@@ -539,14 +539,12 @@ int64_t rt_instr3(int64_t start, rt_string hay, rt_string needle)
     if (!hay || !needle)
         return 0;
     int64_t len = hay->size;
-    start -= 1;
-    if (start < 0)
-        start = 0;
-    if (start > len)
-        start = len;
+    int64_t pos = start <= 1 ? 0 : start - 1;
+    if (pos > len)
+        pos = len;
     if (needle->size == 0)
-        return start + 1;
-    return rt_find(hay, start, needle);
+        return pos + 1;
+    return rt_find(hay, pos, needle);
 }
 
 /**
