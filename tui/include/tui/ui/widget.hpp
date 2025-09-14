@@ -44,6 +44,10 @@ class Widget
         return false;
     }
 
+    /// @brief Notifies widget when it gains or loses input focus.
+    /// Default implementation is a no-op.
+    virtual void onFocusChanged(bool /*focused*/) {}
+
     /// @brief Retrieve widget rectangle.
     [[nodiscard]] Rect rect() const
     {
