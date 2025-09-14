@@ -303,8 +303,9 @@ rt_string rt_substr(rt_string s, int64_t start, int64_t len)
         len = 0;
     if (start > s->size)
         start = s->size;
-    if (start + len > s->size)
-        len = s->size - start;
+    int64_t avail = s->size - start;
+    if (len > avail)
+        len = avail;
     if (len == 0)
         return rt_empty_string();
     if (start == 0 && len == s->size)
