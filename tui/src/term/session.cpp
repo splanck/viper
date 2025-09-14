@@ -10,6 +10,14 @@ static inline bool env_no_tty()
     return v && *v == '1';
 }
 
+static inline bool env_true(const char *name)
+{
+    const char *v = std::getenv(name);
+    if (!v)
+        return false;
+    return (*v == '1') || (*v == 'y') || (*v == 'Y') || (*v == 't') || (*v == 'T');
+}
+
 TerminalSession::TerminalSession()
 {
     if (env_no_tty())
@@ -58,6 +66,14 @@ TerminalSession::TerminalSession()
     term::RealTermIO io;
     io.write("\x1b[?1049h\x1b[?2004h\x1b[?25l"); // alt screen, bracketed paste on, cursor hide
     io.flush();
+
+    if (!env_no_tty() && env_true("VIPERTUI_MOUSE"))
+    {
+        ::tui::term::RealTermIO io;
+        io.write("\x1b[?1000h\x1b[?1002h\x1b[?1006h"); // enable mouse + SGR
+        io.flush();
+    }
+
     active_ = true;
 }
 
@@ -65,6 +81,13 @@ TerminalSession::~TerminalSession()
 {
     if (!active_)
         return;
+
+    if (!env_no_tty() && env_true("VIPERTUI_MOUSE"))
+    {
+        ::tui::term::RealTermIO io;
+        io.write("\x1b[?1006l\x1b[?1002l\x1b[?1000l"); // disable SGR + motion + mouse
+        io.flush();
+    }
 
     term::RealTermIO io;
     io.write("\x1b[?1049l\x1b[?2004l\x1b[?25h"); // leave alt screen, disable paste, show cursor
