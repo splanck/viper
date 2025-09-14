@@ -924,6 +924,12 @@ bool parseModuleHeader(std::istream &is, std::string &line, ParserState &st, std
         size_t lp = line.find('(', at);
         size_t rp = line.find(')', lp);
         size_t arr = line.find("->", rp);
+        if (arr == std::string::npos)
+        {
+            err << "line " << st.lineNo << ": missing '->'\n";
+            st.hasError = true;
+            return false;
+        }
         std::string name = line.substr(at + 1, lp - at - 1);
         std::string paramsStr = line.substr(lp + 1, rp - lp - 1);
         std::vector<Type> params;
