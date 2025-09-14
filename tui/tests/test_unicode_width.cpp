@@ -25,5 +25,23 @@ int main()
     assert(char_width(s[0]) == 1);
     assert(char_width(s[1]) == 0);
 
+    s = decode_utf8("\xC0\xAF"); // overlong '/'
+    assert(s.size() == 2);
+    assert(s[0] == 0xFFFD && s[1] == 0xFFFD);
+
+    s = decode_utf8("\xED\xA0\x80"); // surrogate U+D800
+    assert(s.size() == 3);
+    for (auto ch : s)
+    {
+        assert(ch == 0xFFFD);
+    }
+
+    s = decode_utf8("\xF4\x90\x80\x80"); // > U+10FFFF
+    assert(s.size() == 4);
+    for (auto ch : s)
+    {
+        assert(ch == 0xFFFD);
+    }
+
     return 0;
 }

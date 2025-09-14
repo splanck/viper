@@ -100,6 +100,14 @@ std::u32string decode_utf8(std::string_view in)
             ++i;
             continue;
         }
+        bool overlong =
+            (len == 2 && cp < 0x80) || (len == 3 && cp < 0x800) || (len == 4 && cp < 0x10000);
+        if (overlong || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF))
+        {
+            out.push_back(0xFFFD);
+            ++i;
+            continue;
+        }
         out.push_back(cp);
         i += len;
     }
