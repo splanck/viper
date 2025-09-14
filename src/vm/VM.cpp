@@ -145,7 +145,11 @@ Frame VM::setupFrame(const Function &fn,
 {
     Frame fr;
     fr.func = &fn;
-    fr.regs.resize(64);
+    // Pre-size register file to the function's SSA value count. This mirrors
+    // the number of temporaries and parameters required by @p fn and avoids
+    // incremental growth during execution.
+    fr.regs.resize(fn.valueNames.size());
+    assert(fr.regs.size() == fn.valueNames.size());
     for (const auto &b : fn.blocks)
         blocks[b.label] = &b;
     bb = fn.blocks.empty() ? nullptr : &fn.blocks.front();
