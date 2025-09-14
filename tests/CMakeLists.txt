@@ -133,6 +133,10 @@ add_executable(test_rt_conv unit/test_rt_conv.cpp)
 target_link_libraries(test_rt_conv PRIVATE rt)
 add_test(NAME test_rt_conv COMMAND test_rt_conv)
 
+add_executable(test_rt_int_to_str_big unit/test_rt_int_to_str_big.cpp)
+target_link_libraries(test_rt_int_to_str_big PRIVATE rt)
+add_test(NAME test_rt_int_to_str_big COMMAND test_rt_int_to_str_big)
+
 add_executable(test_rt_val_str runtime/RTValStrTests.cpp)
 target_link_libraries(test_rt_val_str PRIVATE rt)
 add_test(NAME test_rt_val_str COMMAND test_rt_val_str)
