@@ -50,6 +50,10 @@ add_executable(tui_test_focus test_focus.cpp)
 target_link_libraries(tui_test_focus PRIVATE tui)
 add_test(NAME tui_test_focus COMMAND tui_test_focus)
 
+add_executable(tui_test_focus_hooks test_focus_hooks.cpp)
+target_link_libraries(tui_test_focus_hooks PRIVATE tui)
+add_test(NAME tui_test_focus_hooks COMMAND tui_test_focus_hooks)
+
 add_executable(tui_test_widgets_basic test_widgets_basic.cpp)
 target_link_libraries(tui_test_widgets_basic PRIVATE tui)
 add_test(NAME tui_test_widgets_basic COMMAND tui_test_widgets_basic)
