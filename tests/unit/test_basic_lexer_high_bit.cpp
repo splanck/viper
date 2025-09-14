@@ -41,6 +41,14 @@ int main()
         assert(lex.next().kind == TokenKind::EndOfFile);
     }
     {
+        std::string input(1, static_cast<char>(0xFF));
+        Lexer lex(input, 0);
+        Token t = lex.next();
+        assert(t.kind == TokenKind::Unknown);
+        assert(t.lexeme == std::string(1, static_cast<char>(0xFF)));
+        assert(lex.next().kind == TokenKind::EndOfFile);
+    }
+    {
         std::string input = std::string("REM") + static_cast<char>(0x80) + "\n1";
         Lexer lex(input, 0);
         Token t1 = lex.next();
