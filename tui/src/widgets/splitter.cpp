@@ -84,3 +84,75 @@ void VSplitter::paint(render::ScreenBuffer &sb)
 }
 
 } // namespace viper::tui::widgets
+
+namespace viper::tui::widgets
+{
+
+static inline float clamp_ratio(float r)
+{
+    if (r < 0.05F)
+        return 0.05F;
+    if (r > 0.95F)
+        return 0.95F;
+    return r;
+}
+
+bool HSplitter::onEvent(const viper::tui::term::KeyEvent &ev)
+{
+    using viper::tui::term::KeyEvent;
+    if ((ev.mods & KeyEvent::Ctrl) == 0)
+        return false;
+
+    bool changed = false;
+    if (ev.code == KeyEvent::Code::Left)
+    {
+        ratio_ = clamp_ratio(ratio_ - 0.05F);
+        changed = true;
+    }
+    if (ev.code == KeyEvent::Code::Right)
+    {
+        ratio_ = clamp_ratio(ratio_ + 0.05F);
+        changed = true;
+    }
+    if (!changed)
+        return false;
+
+    layout(rect_);
+    return true;
+}
+
+bool VSplitter::onEvent(const viper::tui::term::KeyEvent &ev)
+{
+    using viper::tui::term::KeyEvent;
+    if ((ev.mods & KeyEvent::Ctrl) == 0)
+        return false;
+
+    bool changed = false;
+    if (ev.code == KeyEvent::Code::Up)
+    {
+        ratio_ = clamp_ratio(ratio_ - 0.05F);
+        changed = true;
+    }
+    if (ev.code == KeyEvent::Code::Down)
+    {
+        ratio_ = clamp_ratio(ratio_ + 0.05F);
+        changed = true;
+    }
+    if (!changed)
+        return false;
+
+    layout(rect_);
+    return true;
+}
+
+bool HSplitter::onEvent(const ui::Event &ev)
+{
+    return onEvent(ev.key);
+}
+
+bool VSplitter::onEvent(const ui::Event &ev)
+{
+    return onEvent(ev.key);
+}
+
+} // namespace viper::tui::widgets

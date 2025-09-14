@@ -103,3 +103,7 @@ add_test(NAME tui_test_demo_headless COMMAND tui_test_demo_headless)
 add_executable(tui_test_win_vt test_win_vt.cpp)
 target_link_libraries(tui_test_win_vt PRIVATE tui)
 add_test(NAME tui_test_win_vt COMMAND tui_test_win_vt)
+
+add_executable(tui_test_splitter_keyboard test_splitter_keyboard.cpp)
+target_link_libraries(tui_test_splitter_keyboard PRIVATE tui)
+add_test(NAME tui_test_splitter_keyboard COMMAND tui_test_splitter_keyboard)
