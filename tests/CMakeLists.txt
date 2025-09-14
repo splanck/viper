@@ -467,6 +467,10 @@ add_executable(test_vm_unknown_global unit/test_vm_unknown_global.cpp)
 target_link_libraries(test_vm_unknown_global PRIVATE il_build il_vm support)
 add_test(NAME test_vm_unknown_global COMMAND test_vm_unknown_global)
 
+add_executable(test_vm_many_temps unit/test_vm_many_temps.cpp)
+target_link_libraries(test_vm_many_temps PRIVATE il_vm support)
+add_test(NAME test_vm_many_temps COMMAND test_vm_many_temps)
+
 add_executable(test_vm_addr_of unit/test_vm_addr_of.cpp)
 target_link_libraries(test_vm_addr_of PRIVATE il_io il_vm support)
 add_test(NAME test_vm_addr_of COMMAND test_vm_addr_of)
