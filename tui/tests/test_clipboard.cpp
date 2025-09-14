@@ -46,10 +46,12 @@ int main()
     ok = mock.copy("test");
     assert(ok);
     assert(mock.last() == "\x1b]52;c;dGVzdA==\x07");
+    assert(mock.paste() == "test");
 
     set_disable();
     ok = mock.copy("again");
     assert(!ok);
     assert(mock.last().empty());
+    assert(mock.paste().empty());
     return 0;
 }
