@@ -5,6 +5,7 @@
 // Links: docs/class-catalog.md
 #pragma once
 
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -19,18 +20,17 @@ template <typename T> class Result
   public:
     /// @brief Creates a successful result containing a value.
     /// @param value Value to store; ownership is transferred to the Result.
-    /// @details Sets @c has_value_ to true and leaves @c error_ empty. After
-    /// this constructor, @c value() may be called and @c error() must not be
-    /// used.
-    Result(T value) : has_value_(true), value_(std::move(value)) {}
+    /// @details Engages @c value_ with @p value and leaves @c error_ empty.
+    /// After this constructor, @c value() may be called and @c error() must not
+    /// be used.
+    Result(T value) : value_(std::move(value)) {}
 
     /// @brief Creates an error result with a message.
     /// @param error Error description to store; ownership is transferred to the
     /// Result.
-    /// @details Sets @c has_value_ to false and initializes @c error_. After
-    /// this constructor, @c error() may be called and @c value() must not be
-    /// used.
-    Result(std::string error) : has_value_(false), error_(std::move(error)) {}
+    /// @details Disengages @c value_ and initializes @c error_. After this
+    /// constructor, @c error() may be called and @c value() must not be used.
+    Result(std::string error) : error_(std::move(error)) {}
 
     /// @brief Indicates whether the Result currently holds a value.
     /// @return True if a value is present; false if an error was stored.
@@ -38,7 +38,7 @@ template <typename T> class Result
     /// valid.
     bool isOk() const
     {
-        return has_value_;
+        return value_.has_value();
     }
 
     /// @brief Provides mutable access to the contained value.
@@ -46,7 +46,7 @@ template <typename T> class Result
     /// @pre @c isOk() must return true.
     T &value()
     {
-        return value_;
+        return *value_;
     }
 
     /// @brief Provides read-only access to the contained value.
@@ -54,7 +54,7 @@ template <typename T> class Result
     /// @pre @c isOk() must return true.
     const T &value() const
     {
-        return value_;
+        return *value_;
     }
 
     /// @brief Retrieves the stored error message.
@@ -66,12 +66,9 @@ template <typename T> class Result
     }
 
   private:
-    /// Tracks whether the Result currently holds a value.
-    bool has_value_;
-    /// Storage for the value when @c has_value_ is true; otherwise ignored.
-    T value_{};
-    /// Storage for the error message when @c has_value_ is false; otherwise
-    /// empty.
+    /// Storage for the value when present; otherwise empty.
+    std::optional<T> value_;
+    /// Storage for the error message when no value is present; otherwise empty.
     std::string error_;
 };
 } // namespace il::support
