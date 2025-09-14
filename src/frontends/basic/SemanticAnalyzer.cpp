@@ -819,7 +819,13 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeDivMod(const BinaryExpr &b, Type
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeComparison(const BinaryExpr &b, Type lt, Type rt)
 {
     auto isNum = [](Type t) { return t == Type::Int || t == Type::Float || t == Type::Unknown; };
-    if (!isNum(lt) || !isNum(rt))
+    auto isStr = [](Type t) { return t == Type::String || t == Type::Unknown; };
+
+    const bool numeric_ok = isNum(lt) && isNum(rt);
+    const bool string_ok =
+        isStr(lt) && isStr(rt) && (b.op == BinaryExpr::Op::Eq || b.op == BinaryExpr::Op::Ne);
+
+    if (!numeric_ok && !string_ok)
     {
         std::string msg = "operand type mismatch";
         de.emit(il::support::Severity::Error, "B2001", b.loc, 1, std::move(msg));
