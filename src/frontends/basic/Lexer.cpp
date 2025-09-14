@@ -285,7 +285,7 @@ Token Lexer::next()
         (c == '.' && pos_ + 1 < src_.size() &&
          std::isdigit(static_cast<unsigned char>(src_[pos_ + 1]))))
         return lexNumber();
-    if (std::isalpha(c))
+    if (std::isalpha(static_cast<unsigned char>(c)))
         return lexIdentifierOrKeyword();
     if (c == '"')
         return lexString();
