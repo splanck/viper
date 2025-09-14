@@ -798,13 +798,33 @@ rt_string rt_int_to_str(int64_t v)
     int n = snprintf(buf, sizeof(buf), "%lld", (long long)v);
     if (n < 0)
         rt_trap("rt_int_to_str: format");
+
+    const char *src = buf;
+    char *tmp = NULL;
+    if (n >= (int)sizeof(buf))
+    {
+        tmp = (char *)malloc((size_t)n + 1);
+        if (!tmp)
+            rt_trap("rt_int_to_str: alloc");
+        int n2 = snprintf(tmp, (size_t)n + 1, "%lld", (long long)v);
+        if (n2 < 0 || n2 > n)
+        {
+            free(tmp);
+            rt_trap("rt_int_to_str: format");
+        }
+        src = tmp;
+    }
+
     rt_string s = (rt_string)rt_alloc(sizeof(*s));
     s->refcnt = 1;
     s->size = n;
     s->capacity = n;
-    char *data = (char *)rt_alloc(n + 1);
-    memcpy(data, buf, (size_t)n + 1);
+    char *data = (char *)rt_alloc((size_t)n + 1);
+    memcpy(data, src, (size_t)n + 1);
     s->data = data;
+
+    if (tmp)
+        free(tmp);
     return s;
 }
 
