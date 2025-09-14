@@ -18,7 +18,7 @@ class FocusManager
     /// @brief Register a widget if it wants focus.
     void registerWidget(Widget *w);
 
-    /// @brief Remove a widget from the focus ring.
+    /// @brief Unregister a widget (safe to call during destruction).
     void unregisterWidget(Widget *w);
 
     /// @brief Advance to the next focusable widget.
