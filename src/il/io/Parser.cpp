@@ -739,6 +739,12 @@ bool parseFunctionHeader(const std::string &header, ParserState &st, std::ostrea
     size_t rp = header.find(')', lp);
     size_t arr = header.find("->", rp);
     size_t lb = header.find('{', arr);
+    if (arr == std::string::npos || lb == std::string::npos)
+    {
+        err << "line " << st.lineNo << ": malformed function header\n";
+        st.hasError = true;
+        return false;
+    }
     std::string name = header.substr(at + 1, lp - at - 1);
     std::string paramsStr = header.substr(lp + 1, rp - lp - 1);
     std::vector<Param> params;
@@ -773,7 +779,6 @@ bool parseFunctionHeader(const std::string &header, ParserState &st, std::ostrea
         st.curFn->valueNames[param.id] = param.name;
     st.blockParamCount.clear();
     st.pendingBrs.clear();
-    (void)err; // err currently unused
     return true;
 }
 
