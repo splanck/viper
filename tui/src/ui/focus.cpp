@@ -25,45 +25,71 @@ void FocusManager::registerWidget(Widget *w)
 
 void FocusManager::unregisterWidget(Widget *w)
 {
+    if (!w)
+        return;
     auto it = std::find(ring_.begin(), ring_.end(), w);
     if (it == ring_.end())
-    {
         return;
-    }
-    std::size_t removed = static_cast<std::size_t>(std::distance(ring_.begin(), it));
+
+    std::size_t pos = static_cast<std::size_t>(it - ring_.begin());
+    bool wasCurrent = (!ring_.empty() && pos == index_);
     ring_.erase(it);
+
     if (ring_.empty())
     {
         index_ = 0;
+        if (wasCurrent)
+        {
+            w->onFocusChanged(false);
+        }
+        return;
     }
-    else if (index_ >= ring_.size())
+
+    if (pos < index_ || index_ >= ring_.size())
+        index_ = index_ ? (index_ - 1) : 0;
+
+    if (wasCurrent)
     {
-        index_ = 0;
-    }
-    else if (index_ > removed)
-    {
-        --index_;
+        w->onFocusChanged(false);
+        if (Widget *now = ring_[index_])
+        {
+            now->onFocusChanged(true);
+        }
     }
 }
 
 Widget *FocusManager::next()
 {
     if (ring_.empty())
-    {
         return nullptr;
-    }
+    Widget *old = ring_[index_];
     index_ = (index_ + 1) % ring_.size();
-    return ring_[index_];
+    Widget *now = ring_[index_];
+    if (now != old)
+    {
+        if (old)
+            old->onFocusChanged(false);
+        if (now)
+            now->onFocusChanged(true);
+    }
+    return now;
 }
 
 Widget *FocusManager::prev()
 {
     if (ring_.empty())
-    {
         return nullptr;
-    }
+    Widget *old = ring_[index_];
     index_ = (index_ + ring_.size() - 1) % ring_.size();
-    return ring_[index_];
+    Widget *now = ring_[index_];
+    if (now != old)
+    {
+        if (old)
+            old->onFocusChanged(false);
+        if (now)
+            now->onFocusChanged(true);
+    }
+    return now;
 }
 
 Widget *FocusManager::current() const
