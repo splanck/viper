@@ -42,6 +42,10 @@ add_executable(tui_test_app_layout test_app_layout.cpp)
 target_link_libraries(tui_test_app_layout PRIVATE tui)
 add_test(NAME tui_test_app_layout COMMAND tui_test_app_layout)
 
+add_executable(tui_test_app_resize test_app_resize.cpp)
+target_link_libraries(tui_test_app_resize PRIVATE tui)
+add_test(NAME tui_test_app_resize COMMAND tui_test_app_resize)
+
 add_executable(tui_test_focus test_focus.cpp)
 target_link_libraries(tui_test_focus PRIVATE tui)
 add_test(NAME tui_test_focus COMMAND tui_test_focus)

@@ -38,6 +38,11 @@ class App
     /// @brief Set global keymap for command dispatch.
     void setKeymap(input::Keymap *km);
 
+    /// @brief Resize the app's screen and request re-layout on next tick.
+    /// @param rows New number of rows (height).
+    /// @param cols New number of columns (width).
+    void resize(int rows, int cols);
+
   private:
     std::unique_ptr<ui::Widget> root_{};
     render::ScreenBuffer screen_{};

@@ -70,4 +70,11 @@ void App::tick()
     screen_.snapshotPrev();
 }
 
+void App::resize(int rows, int cols)
+{
+    rows_ = rows;
+    cols_ = cols;
+    screen_.resize(rows_, cols_);
+}
+
 } // namespace viper::tui
