@@ -96,6 +96,11 @@ void *rt_alloc(int64_t bytes)
 {
     if (bytes < 0)
         return rt_trap("negative allocation"), NULL;
+    if ((uint64_t)bytes > SIZE_MAX)
+    {
+        rt_trap("allocation too large");
+        return NULL;
+    }
     void *p = malloc((size_t)bytes);
     if (!p)
         rt_trap("out of memory");
