@@ -726,6 +726,11 @@ add_test(NAME basic_semantics_funcs_then_code COMMAND ${CMAKE_COMMAND}
   -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/FuncsThenCode.ok.bas
   -P ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/check_ok.cmake)
 
+add_test(NAME basic_semantics_string_eq_ne COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/string_eq_ne.ok.bas
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/check_ok.cmake)
+
 add_subdirectory(golden)
 
 set(CODEGEN_E2E ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_codegen.cmake)
