@@ -419,6 +419,10 @@ add_executable(test_basic_semantic unit/test_basic_semantic.cpp)
 target_link_libraries(test_basic_semantic PRIVATE fe_basic support)
 add_test(NAME test_basic_semantic COMMAND test_basic_semantic)
 
+add_executable(test_basic_semantic_components unit/test_basic_semantic_components.cpp)
+target_link_libraries(test_basic_semantic_components PRIVATE fe_basic support)
+add_test(NAME test_basic_semantic_components COMMAND test_basic_semantic_components)
+
 add_executable(test_basic_intrinsic_semantics unit/test_basic_intrinsic_semantics.cpp)
 target_link_libraries(test_basic_intrinsic_semantics PRIVATE fe_basic support)
 add_test(NAME test_basic_intrinsic_semantics COMMAND test_basic_intrinsic_semantics)

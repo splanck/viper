@@ -56,124 +56,6 @@ static const char *builtinName(BuiltinCallExpr::Builtin b)
 
 } // namespace
 
-void SemanticAnalyzer::pushScope()
-{
-    // enter lexical scope
-    scopeStack_.emplace_back();
-}
-
-void SemanticAnalyzer::popScope()
-{
-    // exit lexical scope
-    if (!scopeStack_.empty())
-        scopeStack_.pop_back();
-}
-
-SemanticAnalyzer::ScopedScope::ScopedScope(SemanticAnalyzer &sa) : sa_(sa)
-{
-    sa.pushScope();
-}
-
-SemanticAnalyzer::ScopedScope::~ScopedScope()
-{
-    sa_.popScope();
-}
-
-std::optional<std::string> SemanticAnalyzer::resolve(const std::string &name) const
-{
-    for (auto it = scopeStack_.rbegin(); it != scopeStack_.rend(); ++it)
-    {
-        auto f = it->find(name);
-        if (f != it->end())
-            return f->second;
-    }
-    return std::nullopt;
-}
-
-void SemanticAnalyzer::registerProc(const FunctionDecl &f)
-{
-    if (procs_.count(f.name))
-    {
-        std::string msg = "duplicate procedure '" + f.name + "'";
-        de.emit(il::support::Severity::Error,
-                "B1004",
-                f.loc,
-                static_cast<uint32_t>(f.name.size()),
-                std::move(msg));
-        return;
-    }
-    ProcSignature sig;
-    sig.kind = ProcSignature::Kind::Function;
-    sig.retType = f.ret;
-    std::unordered_set<std::string> paramNames;
-    for (const auto &p : f.params)
-    {
-        if (!paramNames.insert(p.name).second)
-        {
-            std::string msg = "duplicate parameter '" + p.name + "'";
-            de.emit(il::support::Severity::Error,
-                    "B1005",
-                    p.loc,
-                    static_cast<uint32_t>(p.name.size()),
-                    std::move(msg));
-        }
-        if (p.is_array && p.type != ::il::frontends::basic::Type::I64 &&
-            p.type != ::il::frontends::basic::Type::Str)
-        {
-            std::string msg = "array parameter must be i64 or str";
-            de.emit(il::support::Severity::Error,
-                    "B2004",
-                    p.loc,
-                    static_cast<uint32_t>(p.name.size()),
-                    std::move(msg));
-        }
-        sig.params.push_back({p.type, p.is_array});
-    }
-    procs_.emplace(f.name, std::move(sig));
-}
-
-void SemanticAnalyzer::registerProc(const SubDecl &s)
-{
-    if (procs_.count(s.name))
-    {
-        std::string msg = "duplicate procedure '" + s.name + "'";
-        de.emit(il::support::Severity::Error,
-                "B1004",
-                s.loc,
-                static_cast<uint32_t>(s.name.size()),
-                std::move(msg));
-        return;
-    }
-    ProcSignature sig;
-    sig.kind = ProcSignature::Kind::Sub;
-    sig.retType = std::nullopt;
-    std::unordered_set<std::string> paramNames;
-    for (const auto &p : s.params)
-    {
-        if (!paramNames.insert(p.name).second)
-        {
-            std::string msg = "duplicate parameter '" + p.name + "'";
-            de.emit(il::support::Severity::Error,
-                    "B1005",
-                    p.loc,
-                    static_cast<uint32_t>(p.name.size()),
-                    std::move(msg));
-        }
-        if (p.is_array && p.type != ::il::frontends::basic::Type::I64 &&
-            p.type != ::il::frontends::basic::Type::Str)
-        {
-            std::string msg = "array parameter must be i64 or str";
-            de.emit(il::support::Severity::Error,
-                    "B2004",
-                    p.loc,
-                    static_cast<uint32_t>(p.name.size()),
-                    std::move(msg));
-        }
-        sig.params.push_back({p.type, p.is_array});
-    }
-    procs_.emplace(s.name, std::move(sig));
-}
-
 void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
 {
     auto symSave = symbols_;
@@ -182,10 +64,10 @@ void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
     auto labelSave = labels_;
     auto labelRefSave = labelRefs_;
     auto forSave = forStack_;
-    pushScope();
+    scopes_.pushScope();
     for (const auto &p : f.params)
     {
-        scopeStack_.back()[p.name] = p.name;
+        scopes_.bind(p.name, p.name);
         symbols_.insert(p.name);
         SemanticAnalyzer::Type vt = SemanticAnalyzer::Type::Int;
         if (p.type == ::il::frontends::basic::Type::Str)
@@ -200,7 +82,7 @@ void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
         if (st)
             visitStmt(*st);
     bool allPathsReturn = mustReturn(f.body);
-    popScope();
+    scopes_.popScope();
     symbols_ = std::move(symSave);
     varTypes_ = std::move(typeSave);
     arrays_ = std::move(arrSave);
@@ -226,10 +108,10 @@ void SemanticAnalyzer::analyzeProc(const SubDecl &s)
     auto labelSave = labels_;
     auto labelRefSave = labelRefs_;
     auto forSave = forStack_;
-    pushScope();
+    scopes_.pushScope();
     for (const auto &p : s.params)
     {
-        scopeStack_.back()[p.name] = p.name;
+        scopes_.bind(p.name, p.name);
         symbols_.insert(p.name);
         SemanticAnalyzer::Type vt = SemanticAnalyzer::Type::Int;
         if (p.type == ::il::frontends::basic::Type::Str)
@@ -243,7 +125,7 @@ void SemanticAnalyzer::analyzeProc(const SubDecl &s)
     for (const auto &st : s.body)
         if (st)
             visitStmt(*st);
-    popScope();
+    scopes_.popScope();
     symbols_ = std::move(symSave);
     varTypes_ = std::move(typeSave);
     arrays_ = std::move(arrSave);
@@ -298,17 +180,16 @@ void SemanticAnalyzer::analyze(const Program &prog)
     forStack_.clear();
     varTypes_.clear();
     arrays_.clear();
-    procs_.clear();
-    scopeStack_.clear();
-    nextLocalId_ = 0;
+    procReg_.clear();
+    scopes_.reset();
 
     for (const auto &p : prog.procs)
         if (p)
         {
             if (auto *f = dynamic_cast<FunctionDecl *>(p.get()))
-                registerProc(*f);
+                procReg_.registerProc(*f);
             else if (auto *s = dynamic_cast<SubDecl *>(p.get()))
-                registerProc(*s);
+                procReg_.registerProc(*s);
         }
     for (const auto &p : prog.procs)
         if (p)
@@ -342,7 +223,7 @@ void SemanticAnalyzer::analyzePrint(const PrintStmt &p)
 
 void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
 {
-    if (auto mapped = resolve(v.name))
+    if (auto mapped = scopes_.resolve(v.name))
         v.name = *mapped;
     symbols_.insert(v.name);
     Type varTy = Type::Int;
@@ -372,7 +253,7 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
 
 void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
 {
-    if (auto mapped = resolve(a.name))
+    if (auto mapped = scopes_.resolve(a.name))
         a.name = *mapped;
     if (!arrays_.count(a.name))
     {
@@ -439,7 +320,7 @@ void SemanticAnalyzer::analyzeIf(const IfStmt &i)
         visitExpr(*i.cond);
     if (i.then_branch)
     {
-        ScopedScope scope(*this);
+        ScopeTracker::ScopedScope scope(scopes_);
         visitStmt(*i.then_branch);
     }
     for (const auto &e : i.elseifs)
@@ -448,13 +329,13 @@ void SemanticAnalyzer::analyzeIf(const IfStmt &i)
             visitExpr(*e.cond);
         if (e.then_branch)
         {
-            ScopedScope scope(*this);
+            ScopeTracker::ScopedScope scope(scopes_);
             visitStmt(*e.then_branch);
         }
     }
     if (i.else_branch)
     {
-        ScopedScope scope(*this);
+        ScopeTracker::ScopedScope scope(scopes_);
         visitStmt(*i.else_branch);
     }
 }
@@ -463,7 +344,7 @@ void SemanticAnalyzer::analyzeWhile(const WhileStmt &w)
 {
     if (w.cond)
         visitExpr(*w.cond);
-    ScopedScope scope(*this);
+    ScopeTracker::ScopedScope scope(scopes_);
     for (const auto &bs : w.body)
         if (bs)
             visitStmt(*bs);
@@ -472,7 +353,7 @@ void SemanticAnalyzer::analyzeWhile(const WhileStmt &w)
 void SemanticAnalyzer::analyzeFor(const ForStmt &f)
 {
     auto *fc = const_cast<ForStmt *>(&f);
-    if (auto mapped = resolve(fc->var))
+    if (auto mapped = scopes_.resolve(fc->var))
         fc->var = *mapped;
     symbols_.insert(fc->var);
     if (f.start)
@@ -483,7 +364,7 @@ void SemanticAnalyzer::analyzeFor(const ForStmt &f)
         visitExpr(*f.step);
     forStack_.push_back(fc->var);
     {
-        ScopedScope scope(*this);
+        ScopeTracker::ScopedScope scope(scopes_);
         for (const auto &bs : f.body)
             if (bs)
                 visitStmt(*bs);
@@ -543,7 +424,7 @@ void SemanticAnalyzer::analyzeInput(const InputStmt &inp)
     if (inp.prompt)
         visitExpr(*inp.prompt);
     auto *ic = const_cast<InputStmt *>(&inp);
-    if (auto mapped = resolve(ic->var))
+    if (auto mapped = scopes_.resolve(ic->var))
         ic->var = *mapped;
     symbols_.insert(ic->var);
     if (!ic->var.empty() && ic->var.back() == '$')
@@ -573,10 +454,9 @@ void SemanticAnalyzer::analyzeDim(const DimStmt &d)
             de.emit(il::support::Severity::Error, "B2003", dc->loc, 1, std::move(msg));
         }
     }
-    if (!scopeStack_.empty())
+    if (scopes_.hasScope())
     {
-        auto &cur = scopeStack_.back();
-        if (cur.count(dc->name))
+        if (scopes_.isDeclaredInCurrentScope(dc->name))
         {
             std::string msg = "duplicate local '" + dc->name + "'";
             de.emit(il::support::Severity::Error,
@@ -587,8 +467,7 @@ void SemanticAnalyzer::analyzeDim(const DimStmt &d)
         }
         else
         {
-            std::string unique = dc->name + "_" + std::to_string(nextLocalId_++);
-            cur[dc->name] = unique;
+            std::string unique = scopes_.declareLocal(dc->name);
             dc->name = unique;
             symbols_.insert(unique);
         }
@@ -621,7 +500,7 @@ void SemanticAnalyzer::visitStmt(const Stmt &s)
 
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeVar(VarExpr &v)
 {
-    if (auto mapped = resolve(v.name))
+    if (auto mapped = scopes_.resolve(v.name))
         v.name = *mapped;
     if (!symbols_.count(v.name))
     {
@@ -1074,8 +953,8 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzePow(const BuiltinCallExpr &c,
 
 const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c)
 {
-    auto it = procs_.find(c.callee);
-    if (it == procs_.end())
+    const ProcSignature *sig = procReg_.lookup(c.callee);
+    if (!sig)
     {
         std::string msg = "unknown procedure '" + c.callee + "'";
         de.emit(il::support::Severity::Error,
@@ -1085,8 +964,7 @@ const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c)
                 std::move(msg));
         return nullptr;
     }
-    const ProcSignature &sig = it->second;
-    if (sig.kind == ProcSignature::Kind::Sub)
+    if (sig->kind == ProcSignature::Kind::Sub)
     {
         std::string msg = "subroutine '" + c.callee + "' used in expression";
         de.emit(il::support::Severity::Error,
@@ -1096,7 +974,7 @@ const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c)
                 std::move(msg));
         return nullptr;
     }
-    return &sig;
+    return sig;
 }
 
 std::vector<SemanticAnalyzer::Type> SemanticAnalyzer::checkCallArgs(const CallExpr &c,
@@ -1170,7 +1048,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeCall(const CallExpr &c)
 
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
 {
-    if (auto mapped = resolve(a.name))
+    if (auto mapped = scopes_.resolve(a.name))
         a.name = *mapped;
     if (!arrays_.count(a.name))
     {
