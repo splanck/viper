@@ -6,6 +6,7 @@
 // Links: docs/class-catalog.md
 
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/BuiltinRegistry.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -1177,56 +1178,9 @@ Lowerer::RVal Lowerer::lowerPow(const BuiltinCallExpr &c)
 // Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
 {
-    using B = BuiltinCallExpr::Builtin;
-    switch (c.builtin)
-    {
-        case B::Len:
-            return lowerLen(c);
-        case B::Mid:
-            return lowerMid(c);
-        case B::Left:
-            return lowerLeft(c);
-        case B::Right:
-            return lowerRight(c);
-        case B::Str:
-            return lowerStr(c);
-        case B::Val:
-            return lowerVal(c);
-        case B::Int:
-            return lowerInt(c);
-        case B::Instr:
-            return lowerInstr(c);
-        case B::Ltrim:
-            return lowerLtrim(c);
-        case B::Rtrim:
-            return lowerRtrim(c);
-        case B::Trim:
-            return lowerTrim(c);
-        case B::Ucase:
-            return lowerUcase(c);
-        case B::Lcase:
-            return lowerLcase(c);
-        case B::Chr:
-            return lowerChr(c);
-        case B::Asc:
-            return lowerAsc(c);
-        case B::Sqr:
-            return lowerSqr(c);
-        case B::Abs:
-            return lowerAbs(c);
-        case B::Floor:
-            return lowerFloor(c);
-        case B::Ceil:
-            return lowerCeil(c);
-        case B::Sin:
-            return lowerSin(c);
-        case B::Cos:
-            return lowerCos(c);
-        case B::Pow:
-            return lowerPow(c);
-        case B::Rnd:
-            return lowerRnd(c);
-    }
+    const auto &info = getBuiltinInfo(c.builtin);
+    if (info.lower)
+        return (this->*(info.lower))(c);
     return {Value::constInt(0), Type(Type::Kind::I64)};
 }
 

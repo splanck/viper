@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
 // Links: docs/class-catalog.md
 
+#include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Lowerer.hpp"
 
 namespace il::frontends::basic
@@ -58,144 +59,210 @@ Lowerer::ExprType Lowerer::scanArrayExpr(const ArrayExpr &arr)
 // Side effects: may modify lowering state or emit IL.
 Lowerer::ExprType Lowerer::scanBuiltinCallExpr(const BuiltinCallExpr &c)
 {
-    switch (c.builtin)
-    {
-        case BuiltinCallExpr::Builtin::Rnd:
-            trackRuntime(RuntimeFn::Rnd);
-            return ExprType::F64;
-        case BuiltinCallExpr::Builtin::Val:
-            needRtToInt = true;
-            if (c.args[0])
-                scanExpr(*c.args[0]);
-            return ExprType::I64;
-        case BuiltinCallExpr::Builtin::Str:
-            needRtIntToStr = true;
-            needRtF64ToStr = true;
-            if (c.args[0])
-                scanExpr(*c.args[0]);
-            return ExprType::Str;
-        case BuiltinCallExpr::Builtin::Len:
-            if (c.args[0])
-                scanExpr(*c.args[0]);
-            return ExprType::I64;
-        case BuiltinCallExpr::Builtin::Left:
-            needRtLeft = true;
-            for (auto &a : c.args)
-                if (a)
-                    scanExpr(*a);
-            return ExprType::Str;
-        case BuiltinCallExpr::Builtin::Right:
-            needRtRight = true;
-            for (auto &a : c.args)
-                if (a)
-                    scanExpr(*a);
-            return ExprType::Str;
-        case BuiltinCallExpr::Builtin::Mid:
-            if (c.args.size() >= 3 && c.args[2])
-                needRtMid3 = true;
-            else
-                needRtMid2 = true;
-            for (auto &a : c.args)
-                if (a)
-                    scanExpr(*a);
-            return ExprType::Str;
-        case BuiltinCallExpr::Builtin::Instr:
-            if (c.args.size() >= 3 && c.args[0])
-                needRtInstr3 = true;
-            else
-                needRtInstr2 = true;
-            for (auto &a : c.args)
-                if (a)
-                    scanExpr(*a);
-            return ExprType::I64;
-        case BuiltinCallExpr::Builtin::Ltrim:
-            needRtLtrim = true;
-            if (c.args[0])
-                scanExpr(*c.args[0]);
-            return ExprType::Str;
-        case BuiltinCallExpr::Builtin::Rtrim:
-            needRtRtrim = true;
-            if (c.args[0])
-                scanExpr(*c.args[0]);
-            return ExprType::Str;
-        case BuiltinCallExpr::Builtin::Trim:
-            needRtTrim = true;
-            if (c.args[0])
-                scanExpr(*c.args[0]);
-            return ExprType::Str;
-        case BuiltinCallExpr::Builtin::Ucase:
-            needRtUcase = true;
-            if (c.args[0])
-                scanExpr(*c.args[0]);
-            return ExprType::Str;
-        case BuiltinCallExpr::Builtin::Lcase:
-            needRtLcase = true;
-            if (c.args[0])
-                scanExpr(*c.args[0]);
-            return ExprType::Str;
-        case BuiltinCallExpr::Builtin::Chr:
-            needRtChr = true;
-            if (c.args[0])
-                scanExpr(*c.args[0]);
-            return ExprType::Str;
-        case BuiltinCallExpr::Builtin::Asc:
-            needRtAsc = true;
-            if (c.args[0])
-                scanExpr(*c.args[0]);
-            return ExprType::I64;
-        case BuiltinCallExpr::Builtin::Sqr:
-            if (c.args[0])
-                scanExpr(*c.args[0]);
-            trackRuntime(RuntimeFn::Sqrt);
-            return ExprType::F64;
-        case BuiltinCallExpr::Builtin::Abs:
-        {
-            ExprType ty = ExprType::I64;
-            if (c.args[0])
-                ty = scanExpr(*c.args[0]);
-            if (ty == ExprType::F64)
-                trackRuntime(RuntimeFn::AbsF64);
-            else
-                trackRuntime(RuntimeFn::AbsI64);
-            return ty;
-        }
-        case BuiltinCallExpr::Builtin::Floor:
-            if (c.args[0])
-                scanExpr(*c.args[0]);
-            trackRuntime(RuntimeFn::Floor);
-            return ExprType::F64;
-        case BuiltinCallExpr::Builtin::Ceil:
-            if (c.args[0])
-                scanExpr(*c.args[0]);
-            trackRuntime(RuntimeFn::Ceil);
-            return ExprType::F64;
-        case BuiltinCallExpr::Builtin::Sin:
-            if (c.args[0])
-                scanExpr(*c.args[0]);
-            trackRuntime(RuntimeFn::Sin);
-            return ExprType::F64;
-        case BuiltinCallExpr::Builtin::Cos:
-            if (c.args[0])
-                scanExpr(*c.args[0]);
-            trackRuntime(RuntimeFn::Cos);
-            return ExprType::F64;
-        case BuiltinCallExpr::Builtin::Pow:
-            if (c.args[0])
-                scanExpr(*c.args[0]);
-            if (c.args[1])
-                scanExpr(*c.args[1]);
-            trackRuntime(RuntimeFn::Pow);
-            return ExprType::F64;
-        case BuiltinCallExpr::Builtin::Int:
-            if (c.args[0])
-                scanExpr(*c.args[0]);
-            return ExprType::I64;
-        default:
-            for (auto &a : c.args)
-                if (a)
-                    scanExpr(*a);
-            return ExprType::I64;
-    }
+    const auto &info = getBuiltinInfo(c.builtin);
+    if (info.scan)
+        return (this->*(info.scan))(c);
+    for (auto &a : c.args)
+        if (a)
+            scanExpr(*a);
+    return ExprType::I64;
+}
+
+Lowerer::ExprType Lowerer::scanLen(const BuiltinCallExpr &c)
+{
+    if (c.args[0])
+        scanExpr(*c.args[0]);
+    return ExprType::I64;
+}
+
+Lowerer::ExprType Lowerer::scanMid(const BuiltinCallExpr &c)
+{
+    if (c.args.size() >= 3 && c.args[2])
+        needRtMid3 = true;
+    else
+        needRtMid2 = true;
+    for (auto &a : c.args)
+        if (a)
+            scanExpr(*a);
+    return ExprType::Str;
+}
+
+Lowerer::ExprType Lowerer::scanLeft(const BuiltinCallExpr &c)
+{
+    needRtLeft = true;
+    for (auto &a : c.args)
+        if (a)
+            scanExpr(*a);
+    return ExprType::Str;
+}
+
+Lowerer::ExprType Lowerer::scanRight(const BuiltinCallExpr &c)
+{
+    needRtRight = true;
+    for (auto &a : c.args)
+        if (a)
+            scanExpr(*a);
+    return ExprType::Str;
+}
+
+Lowerer::ExprType Lowerer::scanStr(const BuiltinCallExpr &c)
+{
+    needRtIntToStr = true;
+    needRtF64ToStr = true;
+    if (c.args[0])
+        scanExpr(*c.args[0]);
+    return ExprType::Str;
+}
+
+Lowerer::ExprType Lowerer::scanVal(const BuiltinCallExpr &c)
+{
+    needRtToInt = true;
+    if (c.args[0])
+        scanExpr(*c.args[0]);
+    return ExprType::I64;
+}
+
+Lowerer::ExprType Lowerer::scanInt(const BuiltinCallExpr &c)
+{
+    if (c.args[0])
+        scanExpr(*c.args[0]);
+    return ExprType::I64;
+}
+
+Lowerer::ExprType Lowerer::scanSqr(const BuiltinCallExpr &c)
+{
+    if (c.args[0])
+        scanExpr(*c.args[0]);
+    trackRuntime(RuntimeFn::Sqrt);
+    return ExprType::F64;
+}
+
+Lowerer::ExprType Lowerer::scanAbs(const BuiltinCallExpr &c)
+{
+    ExprType ty = ExprType::I64;
+    if (c.args[0])
+        ty = scanExpr(*c.args[0]);
+    if (ty == ExprType::F64)
+        trackRuntime(RuntimeFn::AbsF64);
+    else
+        trackRuntime(RuntimeFn::AbsI64);
+    return ty;
+}
+
+Lowerer::ExprType Lowerer::scanFloor(const BuiltinCallExpr &c)
+{
+    if (c.args[0])
+        scanExpr(*c.args[0]);
+    trackRuntime(RuntimeFn::Floor);
+    return ExprType::F64;
+}
+
+Lowerer::ExprType Lowerer::scanCeil(const BuiltinCallExpr &c)
+{
+    if (c.args[0])
+        scanExpr(*c.args[0]);
+    trackRuntime(RuntimeFn::Ceil);
+    return ExprType::F64;
+}
+
+Lowerer::ExprType Lowerer::scanSin(const BuiltinCallExpr &c)
+{
+    if (c.args[0])
+        scanExpr(*c.args[0]);
+    trackRuntime(RuntimeFn::Sin);
+    return ExprType::F64;
+}
+
+Lowerer::ExprType Lowerer::scanCos(const BuiltinCallExpr &c)
+{
+    if (c.args[0])
+        scanExpr(*c.args[0]);
+    trackRuntime(RuntimeFn::Cos);
+    return ExprType::F64;
+}
+
+Lowerer::ExprType Lowerer::scanPow(const BuiltinCallExpr &c)
+{
+    if (c.args[0])
+        scanExpr(*c.args[0]);
+    if (c.args[1])
+        scanExpr(*c.args[1]);
+    trackRuntime(RuntimeFn::Pow);
+    return ExprType::F64;
+}
+
+Lowerer::ExprType Lowerer::scanRnd(const BuiltinCallExpr &)
+{
+    trackRuntime(RuntimeFn::Rnd);
+    return ExprType::F64;
+}
+
+Lowerer::ExprType Lowerer::scanInstr(const BuiltinCallExpr &c)
+{
+    if (c.args.size() >= 3 && c.args[0])
+        needRtInstr3 = true;
+    else
+        needRtInstr2 = true;
+    for (auto &a : c.args)
+        if (a)
+            scanExpr(*a);
+    return ExprType::I64;
+}
+
+Lowerer::ExprType Lowerer::scanLtrim(const BuiltinCallExpr &c)
+{
+    needRtLtrim = true;
+    if (c.args[0])
+        scanExpr(*c.args[0]);
+    return ExprType::Str;
+}
+
+Lowerer::ExprType Lowerer::scanRtrim(const BuiltinCallExpr &c)
+{
+    needRtRtrim = true;
+    if (c.args[0])
+        scanExpr(*c.args[0]);
+    return ExprType::Str;
+}
+
+Lowerer::ExprType Lowerer::scanTrim(const BuiltinCallExpr &c)
+{
+    needRtTrim = true;
+    if (c.args[0])
+        scanExpr(*c.args[0]);
+    return ExprType::Str;
+}
+
+Lowerer::ExprType Lowerer::scanUcase(const BuiltinCallExpr &c)
+{
+    needRtUcase = true;
+    if (c.args[0])
+        scanExpr(*c.args[0]);
+    return ExprType::Str;
+}
+
+Lowerer::ExprType Lowerer::scanLcase(const BuiltinCallExpr &c)
+{
+    needRtLcase = true;
+    if (c.args[0])
+        scanExpr(*c.args[0]);
+    return ExprType::Str;
+}
+
+Lowerer::ExprType Lowerer::scanChr(const BuiltinCallExpr &c)
+{
+    needRtChr = true;
+    if (c.args[0])
+        scanExpr(*c.args[0]);
+    return ExprType::Str;
+}
+
+Lowerer::ExprType Lowerer::scanAsc(const BuiltinCallExpr &c)
+{
+    needRtAsc = true;
+    if (c.args[0])
+        scanExpr(*c.args[0]);
+    return ExprType::I64;
 }
 
 // Purpose: scan expr.

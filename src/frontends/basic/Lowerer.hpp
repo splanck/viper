@@ -46,12 +46,14 @@ class Lowerer
     using Type = il::core::Type;
     using Opcode = il::core::Opcode;
 
+  public:
     struct RVal
     {
         Value value;
         Type type;
     };
 
+  private:
     /// @brief Layout of blocks emitted for an IF/ELSEIF chain.
     struct IfBlocks
     {
@@ -249,6 +251,7 @@ class Lowerer
     /// @return Resulting value and type.
     RVal lowerBuiltinCall(const BuiltinCallExpr &expr);
 
+  public:
     // Built-in helpers
     RVal lowerLen(const BuiltinCallExpr &expr);
     RVal lowerMid(const BuiltinCallExpr &expr);
@@ -274,6 +277,7 @@ class Lowerer
     RVal lowerPow(const BuiltinCallExpr &expr);
     RVal lowerRnd(const BuiltinCallExpr &expr);
 
+  private:
     // Shared argument helpers
     RVal lowerArg(const BuiltinCallExpr &c, size_t idx);
     RVal ensureI64(RVal v, il::support::SourceLoc loc);
@@ -395,6 +399,7 @@ class Lowerer
 
     void trackRuntime(RuntimeFn fn);
 
+  public:
     enum class ExprType
     {
         I64,
@@ -402,11 +407,40 @@ class Lowerer
         Str,
         Bool,
     };
+
+  private:
     ExprType scanExpr(const Expr &e);
     ExprType scanUnaryExpr(const UnaryExpr &u);
     ExprType scanBinaryExpr(const BinaryExpr &b);
     ExprType scanArrayExpr(const ArrayExpr &arr);
+
+  public:
     ExprType scanBuiltinCallExpr(const BuiltinCallExpr &c);
+    ExprType scanLen(const BuiltinCallExpr &c);
+    ExprType scanMid(const BuiltinCallExpr &c);
+    ExprType scanLeft(const BuiltinCallExpr &c);
+    ExprType scanRight(const BuiltinCallExpr &c);
+    ExprType scanStr(const BuiltinCallExpr &c);
+    ExprType scanVal(const BuiltinCallExpr &c);
+    ExprType scanInt(const BuiltinCallExpr &c);
+    ExprType scanSqr(const BuiltinCallExpr &c);
+    ExprType scanAbs(const BuiltinCallExpr &c);
+    ExprType scanFloor(const BuiltinCallExpr &c);
+    ExprType scanCeil(const BuiltinCallExpr &c);
+    ExprType scanSin(const BuiltinCallExpr &c);
+    ExprType scanCos(const BuiltinCallExpr &c);
+    ExprType scanPow(const BuiltinCallExpr &c);
+    ExprType scanRnd(const BuiltinCallExpr &c);
+    ExprType scanInstr(const BuiltinCallExpr &c);
+    ExprType scanLtrim(const BuiltinCallExpr &c);
+    ExprType scanRtrim(const BuiltinCallExpr &c);
+    ExprType scanTrim(const BuiltinCallExpr &c);
+    ExprType scanUcase(const BuiltinCallExpr &c);
+    ExprType scanLcase(const BuiltinCallExpr &c);
+    ExprType scanChr(const BuiltinCallExpr &c);
+    ExprType scanAsc(const BuiltinCallExpr &c);
+
+  private:
     void scanStmt(const Stmt &s);
     /// @brief Analyze @p prog for runtime usage prior to emission.
     void scanProgram(const Program &prog);
