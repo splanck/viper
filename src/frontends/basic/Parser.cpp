@@ -19,6 +19,22 @@ Parser::Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *emitte
     : lexer_(src, file_id), emitter_(emitter)
 {
     tokens_.push_back(lexer_.next());
+    stmtHandlers_ = {
+        {TokenKind::KeywordPrint, {&Parser::parsePrint, nullptr}},
+        {TokenKind::KeywordLet, {&Parser::parseLet, nullptr}},
+        {TokenKind::KeywordIf, {nullptr, &Parser::parseIf}},
+        {TokenKind::KeywordWhile, {&Parser::parseWhile, nullptr}},
+        {TokenKind::KeywordFor, {&Parser::parseFor, nullptr}},
+        {TokenKind::KeywordNext, {&Parser::parseNext, nullptr}},
+        {TokenKind::KeywordGoto, {&Parser::parseGoto, nullptr}},
+        {TokenKind::KeywordEnd, {&Parser::parseEnd, nullptr}},
+        {TokenKind::KeywordInput, {&Parser::parseInput, nullptr}},
+        {TokenKind::KeywordDim, {&Parser::parseDim, nullptr}},
+        {TokenKind::KeywordRandomize, {&Parser::parseRandomize, nullptr}},
+        {TokenKind::KeywordFunction, {&Parser::parseFunction, nullptr}},
+        {TokenKind::KeywordSub, {&Parser::parseSub, nullptr}},
+        {TokenKind::KeywordReturn, {&Parser::parseReturn, nullptr}},
+    };
 }
 
 /// @brief Parse the entire BASIC program.
