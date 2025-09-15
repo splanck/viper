@@ -43,7 +43,8 @@ int main()
 
     // Button paint and onClick
     bool clicked = false;
-    Button btn("Go", [&] { clicked = true; }, theme);
+    Button btn(
+        "Go", [&] { clicked = true; }, theme);
     btn.layout({0, 0, 4, 3});
     sb.resize(3, 4);
     sb.clear(theme.style(Role::Normal));
