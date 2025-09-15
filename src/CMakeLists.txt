@@ -66,6 +66,8 @@ add_library(fe_basic STATIC
   frontends/basic/LowerScan.cpp
   frontends/basic/LowerEmit.cpp
   frontends/basic/SemanticAnalyzer.cpp
+  frontends/basic/semantic/SymbolCollector.cpp
+  frontends/basic/semantic/TypeChecker.cpp
   frontends/basic/ConstFolder.cpp
   frontends/basic/Intrinsics.cpp
   frontends/basic/DiagnosticEmitter.cpp)
