@@ -14,6 +14,8 @@
 #include <typeindex>
 #include <vector>
 
+#include "frontends/basic/BuiltinRegistry.hpp"
+
 namespace il::frontends::basic
 {
 
@@ -49,57 +51,7 @@ static size_t levenshtein(const std::string &a, const std::string &b)
 /// @brief Convert builtin enum to BASIC name.
 static const char *builtinName(BuiltinCallExpr::Builtin b)
 {
-    using B = BuiltinCallExpr::Builtin;
-    switch (b)
-    {
-        case B::Len:
-            return "LEN";
-        case B::Mid:
-            return "MID$";
-        case B::Left:
-            return "LEFT$";
-        case B::Right:
-            return "RIGHT$";
-        case B::Str:
-            return "STR$";
-        case B::Val:
-            return "VAL";
-        case B::Int:
-            return "INT";
-        case B::Sqr:
-            return "SQR";
-        case B::Abs:
-            return "ABS";
-        case B::Floor:
-            return "FLOOR";
-        case B::Ceil:
-            return "CEIL";
-        case B::Sin:
-            return "SIN";
-        case B::Cos:
-            return "COS";
-        case B::Pow:
-            return "POW";
-        case B::Rnd:
-            return "RND";
-        case B::Instr:
-            return "INSTR";
-        case B::Ltrim:
-            return "LTRIM$";
-        case B::Rtrim:
-            return "RTRIM$";
-        case B::Trim:
-            return "TRIM$";
-        case B::Ucase:
-            return "UCASE$";
-        case B::Lcase:
-            return "LCASE$";
-        case B::Chr:
-            return "CHR$";
-        case B::Asc:
-            return "ASC";
-    }
-    return "?";
+    return getBuiltinInfo(b).name;
 }
 
 } // namespace
@@ -848,56 +800,9 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeBuiltinCall(const BuiltinCallExp
     std::vector<Type> argTys;
     for (auto &a : c.args)
         argTys.push_back(a ? visitExpr(*a) : Type::Unknown);
-    using B = BuiltinCallExpr::Builtin;
-    switch (c.builtin)
-    {
-        case B::Len:
-            return analyzeLen(c, argTys);
-        case B::Mid:
-            return analyzeMid(c, argTys);
-        case B::Left:
-            return analyzeLeft(c, argTys);
-        case B::Right:
-            return analyzeRight(c, argTys);
-        case B::Str:
-            return analyzeStr(c, argTys);
-        case B::Val:
-            return analyzeVal(c, argTys);
-        case B::Int:
-            return analyzeInt(c, argTys);
-        case B::Sqr:
-            return analyzeSqr(c, argTys);
-        case B::Abs:
-            return analyzeAbs(c, argTys);
-        case B::Floor:
-            return analyzeFloor(c, argTys);
-        case B::Ceil:
-            return analyzeCeil(c, argTys);
-        case B::Sin:
-            return analyzeSin(c, argTys);
-        case B::Cos:
-            return analyzeCos(c, argTys);
-        case B::Pow:
-            return analyzePow(c, argTys);
-        case B::Rnd:
-            return analyzeRnd(c, argTys);
-        case B::Instr:
-            return analyzeInstr(c, argTys);
-        case B::Ltrim:
-            return analyzeLtrim(c, argTys);
-        case B::Rtrim:
-            return analyzeRtrim(c, argTys);
-        case B::Trim:
-            return analyzeTrim(c, argTys);
-        case B::Ucase:
-            return analyzeUcase(c, argTys);
-        case B::Lcase:
-            return analyzeLcase(c, argTys);
-        case B::Chr:
-            return analyzeChr(c, argTys);
-        case B::Asc:
-            return analyzeAsc(c, argTys);
-    }
+    const auto &info = getBuiltinInfo(c.builtin);
+    if (info.analyze)
+        return (this->*(info.analyze))(c, argTys);
     return Type::Unknown;
 }
 

@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Expressions owned by caller via std::unique_ptr.
 // Links: docs/class-catalog.md
 
+#include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Parser.hpp"
 #include <cstdlib>
 
@@ -248,43 +249,8 @@ ExprPtr Parser::parseArrayOrVar()
     consume();
     if (at(TokenKind::LParen))
     {
-        BuiltinCallExpr::Builtin builtin = BuiltinCallExpr::Builtin::Len;
-        bool is_builtin = true;
-        if (name == "LEN")
-            builtin = BuiltinCallExpr::Builtin::Len;
-        else if (name == "MID$")
-            builtin = BuiltinCallExpr::Builtin::Mid;
-        else if (name == "LEFT$")
-            builtin = BuiltinCallExpr::Builtin::Left;
-        else if (name == "RIGHT$")
-            builtin = BuiltinCallExpr::Builtin::Right;
-        else if (name == "STR$")
-            builtin = BuiltinCallExpr::Builtin::Str;
-        else if (name == "VAL")
-            builtin = BuiltinCallExpr::Builtin::Val;
-        else if (name == "INT")
-            builtin = BuiltinCallExpr::Builtin::Int;
-        else if (name == "INSTR")
-            builtin = BuiltinCallExpr::Builtin::Instr;
-        else if (name == "LTRIM$")
-            builtin = BuiltinCallExpr::Builtin::Ltrim;
-        else if (name == "RTRIM$")
-            builtin = BuiltinCallExpr::Builtin::Rtrim;
-        else if (name == "TRIM$")
-            builtin = BuiltinCallExpr::Builtin::Trim;
-        else if (name == "UCASE$")
-            builtin = BuiltinCallExpr::Builtin::Ucase;
-        else if (name == "LCASE$")
-            builtin = BuiltinCallExpr::Builtin::Lcase;
-        else if (name == "CHR$")
-            builtin = BuiltinCallExpr::Builtin::Chr;
-        else if (name == "ASC")
-            builtin = BuiltinCallExpr::Builtin::Asc;
-        else
-            is_builtin = false;
-
-        if (is_builtin)
-            return parseBuiltinCall(builtin, loc);
+        if (auto b = lookupBuiltin(name))
+            return parseBuiltinCall(*b, loc);
 
         if (arrays_.count(name))
             return parseArrayRef(name, loc);
@@ -321,42 +287,14 @@ ExprPtr Parser::parsePrimary()
         return parseNumber();
     if (at(TokenKind::String))
         return parseString();
-    if (at(TokenKind::KeywordSqr) || at(TokenKind::KeywordAbs) || at(TokenKind::KeywordFloor) ||
-        at(TokenKind::KeywordCeil) || at(TokenKind::KeywordSin) || at(TokenKind::KeywordCos) ||
-        at(TokenKind::KeywordPow) || at(TokenKind::KeywordRnd))
+    if (!at(TokenKind::Identifier))
     {
-        TokenKind tk = peek().kind;
-        auto loc = peek().loc;
-        consume();
-        BuiltinCallExpr::Builtin builtin;
-        switch (tk)
+        if (auto b = lookupBuiltin(peek().lexeme))
         {
-            case TokenKind::KeywordSqr:
-                builtin = BuiltinCallExpr::Builtin::Sqr;
-                break;
-            case TokenKind::KeywordAbs:
-                builtin = BuiltinCallExpr::Builtin::Abs;
-                break;
-            case TokenKind::KeywordFloor:
-                builtin = BuiltinCallExpr::Builtin::Floor;
-                break;
-            case TokenKind::KeywordCeil:
-                builtin = BuiltinCallExpr::Builtin::Ceil;
-                break;
-            case TokenKind::KeywordSin:
-                builtin = BuiltinCallExpr::Builtin::Sin;
-                break;
-            case TokenKind::KeywordCos:
-                builtin = BuiltinCallExpr::Builtin::Cos;
-                break;
-            case TokenKind::KeywordPow:
-                builtin = BuiltinCallExpr::Builtin::Pow;
-                break;
-            default:
-                builtin = BuiltinCallExpr::Builtin::Rnd;
-                break;
+            auto loc = peek().loc;
+            consume();
+            return parseBuiltinCall(*b, loc);
         }
-        return parseBuiltinCall(builtin, loc);
     }
     if (at(TokenKind::Identifier))
         return parseArrayOrVar();
