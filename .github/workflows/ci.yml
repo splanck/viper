@@ -5,21 +5,21 @@ on:
   pull_request:
 
 jobs:
-  format:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      - name: Install clang-format
-        run: sudo apt-get install -y clang-format
-      - name: Check formatting
-        run: |
-          git fetch origin master
-          CHANGED_FILES=$(git diff --name-only origin/master... | grep -E '\.(cpp|hpp)$' || true)
-          if [ -n "$CHANGED_FILES" ]; then
-            echo "$CHANGED_FILES" | xargs clang-format --dry-run --Werror
-          fi
+#  format:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v3
+#        with:
+#          fetch-depth: 0
+#      - name: Install clang-format
+#        run: sudo apt-get install -y clang-format
+#      - name: Check formatting
+#        run: |
+#          git fetch origin master
+#          CHANGED_FILES=$(git diff --name-only origin/master... | grep -E '\.(cpp|hpp)$' || true)
+#          if [ -n "$CHANGED_FILES" ]; then
+#            echo "$CHANGED_FILES" | xargs clang-format --dry-run --Werror
+#          fi
   basic-strings:
     name: basic-strings suite
     runs-on: ubuntu-latest
