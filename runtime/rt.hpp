@@ -1,5 +1,5 @@
 // File: runtime/rt.hpp
-// Purpose: Declares C runtime utilities for strings and I/O.
+// Purpose: Declares C runtime utilities for memory, strings, and I/O.
 // Key invariants: Reference counts remain non-negative.
 // Ownership/Lifetime: Caller manages returned strings.
 // Links: docs/class-catalog.md
@@ -12,13 +12,8 @@ extern "C"
 {
 #endif
 
-    typedef struct rt_string_impl
-    {
-        int64_t refcnt;
-        int64_t size;
-        int64_t capacity;
-        const char *data;
-    } *rt_string;
+    struct rt_string_impl;
+    typedef struct rt_string_impl *rt_string;
 
     /// @brief Abort execution with message @p msg.
     /// @param msg Null-terminated message string.

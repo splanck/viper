@@ -2,7 +2,7 @@
 // Purpose: Ensure rt_input_line handles lines longer than the initial buffer and EOF-terminated
 // lines. Key invariants: rt_input_line returns full line content for >1023 chars, with or without
 // trailing newline. Ownership: Uses runtime library. Links: docs/runtime-abi.md
-#include "rt.hpp"
+#include "rt_internal.h"
 #include <cassert>
 #include <cstring>
 #include <string>
