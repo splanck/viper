@@ -13,6 +13,8 @@
 namespace il::verify
 {
 
+class TypeInference;
+
 /// @brief Verifies structural and type rules for a module.
 class Verifier
 {
@@ -90,8 +92,7 @@ class Verifier
         const std::unordered_map<std::string, const il::core::BasicBlock *> &blockMap,
         const std::unordered_map<std::string, const il::core::Extern *> &externs,
         const std::unordered_map<std::string, const il::core::Function *> &funcs,
-        std::unordered_map<unsigned, il::core::Type> &temps,
-        std::unordered_set<unsigned> &defined,
+        TypeInference &types,
         std::ostream &err);
 };
 
