@@ -66,6 +66,18 @@ add_executable(test_il_verify_trap unit/test_il_verify_trap.cpp)
 target_link_libraries(test_il_verify_trap PRIVATE il_core il_verify support)
 add_test(NAME test_il_verify_trap COMMAND test_il_verify_trap)
 
+add_executable(test_il_type_inference unit/test_il_type_inference.cpp)
+target_link_libraries(test_il_type_inference PRIVATE il_core il_verify support)
+add_test(NAME test_il_type_inference COMMAND test_il_type_inference)
+
+add_executable(test_il_instruction_checker unit/test_il_instruction_checker.cpp)
+target_link_libraries(test_il_instruction_checker PRIVATE il_core il_verify support)
+add_test(NAME test_il_instruction_checker COMMAND test_il_instruction_checker)
+
+add_executable(test_il_control_flow_checker unit/test_il_control_flow_checker.cpp)
+target_link_libraries(test_il_control_flow_checker PRIVATE il_core il_verify support)
+add_test(NAME test_il_control_flow_checker COMMAND test_il_control_flow_checker)
+
 add_executable(test_basic_lexer_high_bit unit/test_basic_lexer_high_bit.cpp)
 target_link_libraries(test_basic_lexer_high_bit PRIVATE fe_basic support)
 add_test(NAME test_basic_lexer_high_bit COMMAND test_basic_lexer_high_bit)
