@@ -120,6 +120,7 @@ class SemanticAnalyzer
     /// @brief Report error for LET with a non-assignable left-hand side.
     void analyzeConstExpr(const LetStmt &s);
 
+  public:
     /// @brief Inferred BASIC value type.
     enum class Type
     {
@@ -129,6 +130,7 @@ class SemanticAnalyzer
         Unknown
     };
 
+  private:
     /// @brief Validate variable references in @p e and recurse into subtrees.
     /// @param e Expression node to analyze.
     /// @return Inferred type of the expression.
@@ -150,6 +152,8 @@ class SemanticAnalyzer
     Type analyzeLogical(const BinaryExpr &b, Type lt, Type rt);
     /// @brief Analyze built-in function call.
     Type analyzeBuiltinCall(const BuiltinCallExpr &c);
+
+  public:
     /// @brief Analyze RND builtin.
     Type analyzeRnd(const BuiltinCallExpr &c, const std::vector<Type> &args);
     /// @brief Analyze LEN builtin.
@@ -197,6 +201,7 @@ class SemanticAnalyzer
     /// @brief Analyze POW builtin.
     Type analyzePow(const BuiltinCallExpr &c, const std::vector<Type> &args);
 
+  private:
     /// @brief Check argument count is within [@p min,@p max].
     bool checkArgCount(const BuiltinCallExpr &c,
                        const std::vector<Type> &args,
