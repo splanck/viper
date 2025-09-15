@@ -147,86 +147,15 @@ void peephole(Module &m)
                     continue;
                 Value repl{};
                 bool match = false;
-                switch (in.op)
+                for (const auto &r : kRules)
                 {
-                    case Opcode::Add:
-                        if (isConstEq(in.operands[0], 0))
-                        {
-                            repl = in.operands[1];
-                            match = true;
-                        }
-                        else if (isConstEq(in.operands[1], 0))
-                        {
-                            repl = in.operands[0];
-                            match = true;
-                        }
+                    if (in.op == r.match.op &&
+                        isConstEq(in.operands[r.match.constIdx], r.match.value))
+                    {
+                        repl = in.operands[r.repl.operandIdx];
+                        match = true;
                         break;
-                    case Opcode::Sub:
-                        if (isConstEq(in.operands[1], 0))
-                        {
-                            repl = in.operands[0];
-                            match = true;
-                        }
-                        break;
-                    case Opcode::Mul:
-                        if (isConstEq(in.operands[0], 1))
-                        {
-                            repl = in.operands[1];
-                            match = true;
-                        }
-                        else if (isConstEq(in.operands[1], 1))
-                        {
-                            repl = in.operands[0];
-                            match = true;
-                        }
-                        break;
-                    case Opcode::And:
-                        if (isConstEq(in.operands[0], -1))
-                        {
-                            repl = in.operands[1];
-                            match = true;
-                        }
-                        else if (isConstEq(in.operands[1], -1))
-                        {
-                            repl = in.operands[0];
-                            match = true;
-                        }
-                        break;
-                    case Opcode::Or:
-                        if (isConstEq(in.operands[0], 0))
-                        {
-                            repl = in.operands[1];
-                            match = true;
-                        }
-                        else if (isConstEq(in.operands[1], 0))
-                        {
-                            repl = in.operands[0];
-                            match = true;
-                        }
-                        break;
-                    case Opcode::Xor:
-                        if (isConstEq(in.operands[0], 0))
-                        {
-                            repl = in.operands[1];
-                            match = true;
-                        }
-                        else if (isConstEq(in.operands[1], 0))
-                        {
-                            repl = in.operands[0];
-                            match = true;
-                        }
-                        break;
-                    case Opcode::Shl:
-                    case Opcode::LShr:
-                    case Opcode::AShr:
-                        if (isConstEq(in.operands[1], 0))
-                        {
-                            repl = in.operands[0];
-                            match = true;
-                        }
-                        break;
-                    default:
-                        break;
+                    }
                 }
                 if (match)
                 {
