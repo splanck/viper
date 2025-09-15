@@ -4,7 +4,7 @@
 //                 output longer than the initial stack buffer.
 // Ownership: Uses runtime library.
 // Links: docs/class-catalog.md
-#include "rt.hpp"
+#include "rt_internal.h"
 #include <cassert>
 #include <cstdarg>
 #include <cstdio>
