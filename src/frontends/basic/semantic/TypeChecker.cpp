@@ -657,8 +657,7 @@ void TypeChecker::visitStmt(const Stmt &s)
         {typeid(GotoStmt), &dispatchHelper<GotoStmt, &TypeChecker::analyzeGoto>},
         {typeid(NextStmt), &dispatchHelper<NextStmt, &TypeChecker::analyzeNext>},
         {typeid(EndStmt), &dispatchHelper<EndStmt, &TypeChecker::analyzeEnd>},
-        {typeid(RandomizeStmt),
-         &dispatchHelper<RandomizeStmt, &TypeChecker::analyzeRandomize>},
+        {typeid(RandomizeStmt), &dispatchHelper<RandomizeStmt, &TypeChecker::analyzeRandomize>},
         {typeid(InputStmt), &dispatchHelper<InputStmt, &TypeChecker::analyzeInput>},
         {typeid(DimStmt), &dispatchHelper<DimStmt, &TypeChecker::analyzeDim>},
     };
@@ -902,9 +901,9 @@ TypeChecker::Type TypeChecker::analyzeBuiltinCall(const BuiltinCallExpr &c)
 }
 
 bool TypeChecker::checkArgCount(const BuiltinCallExpr &c,
-                                     const std::vector<Type> &args,
-                                     size_t min,
-                                     size_t max)
+                                const std::vector<Type> &args,
+                                size_t min,
+                                size_t max)
 {
     if (args.size() < min || args.size() > max)
     {
@@ -922,9 +921,9 @@ bool TypeChecker::checkArgCount(const BuiltinCallExpr &c,
 }
 
 bool TypeChecker::checkArgType(const BuiltinCallExpr &c,
-                                    size_t idx,
-                                    Type argTy,
-                                    std::initializer_list<Type> allowed)
+                               size_t idx,
+                               Type argTy,
+                               std::initializer_list<Type> allowed)
 {
     if (argTy == Type::Unknown)
         return true;
@@ -954,23 +953,20 @@ bool TypeChecker::checkArgType(const BuiltinCallExpr &c,
     return false;
 }
 
-TypeChecker::Type TypeChecker::analyzeRnd(const BuiltinCallExpr &c,
-                                                    const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzeRnd(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     checkArgCount(c, args, 0, 0);
     return Type::Float;
 }
 
-TypeChecker::Type TypeChecker::analyzeLen(const BuiltinCallExpr &c,
-                                                    const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzeLen(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 1, 1))
         checkArgType(c, 0, args[0], {Type::String});
     return Type::Int;
 }
 
-TypeChecker::Type TypeChecker::analyzeMid(const BuiltinCallExpr &c,
-                                                    const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzeMid(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 2, 3))
     {
@@ -982,8 +978,7 @@ TypeChecker::Type TypeChecker::analyzeMid(const BuiltinCallExpr &c,
     return Type::String;
 }
 
-TypeChecker::Type TypeChecker::analyzeLeft(const BuiltinCallExpr &c,
-                                                     const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzeLeft(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 2, 2))
     {
@@ -993,8 +988,7 @@ TypeChecker::Type TypeChecker::analyzeLeft(const BuiltinCallExpr &c,
     return Type::String;
 }
 
-TypeChecker::Type TypeChecker::analyzeRight(const BuiltinCallExpr &c,
-                                                      const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzeRight(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 2, 2))
     {
@@ -1004,32 +998,28 @@ TypeChecker::Type TypeChecker::analyzeRight(const BuiltinCallExpr &c,
     return Type::String;
 }
 
-TypeChecker::Type TypeChecker::analyzeStr(const BuiltinCallExpr &c,
-                                                    const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzeStr(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 1, 1))
         checkArgType(c, 0, args[0], {Type::Int, Type::Float});
     return Type::String;
 }
 
-TypeChecker::Type TypeChecker::analyzeVal(const BuiltinCallExpr &c,
-                                                    const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzeVal(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 1, 1))
         checkArgType(c, 0, args[0], {Type::String});
     return Type::Int;
 }
 
-TypeChecker::Type TypeChecker::analyzeInt(const BuiltinCallExpr &c,
-                                                    const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzeInt(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 1, 1))
         checkArgType(c, 0, args[0], {Type::Float});
     return Type::Int;
 }
 
-TypeChecker::Type TypeChecker::analyzeInstr(const BuiltinCallExpr &c,
-                                                      const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzeInstr(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 2, 3))
     {
@@ -1046,72 +1036,63 @@ TypeChecker::Type TypeChecker::analyzeInstr(const BuiltinCallExpr &c,
     return Type::Int;
 }
 
-TypeChecker::Type TypeChecker::analyzeLtrim(const BuiltinCallExpr &c,
-                                                      const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzeLtrim(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 1, 1))
         checkArgType(c, 0, args[0], {Type::String});
     return Type::String;
 }
 
-TypeChecker::Type TypeChecker::analyzeRtrim(const BuiltinCallExpr &c,
-                                                      const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzeRtrim(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 1, 1))
         checkArgType(c, 0, args[0], {Type::String});
     return Type::String;
 }
 
-TypeChecker::Type TypeChecker::analyzeTrim(const BuiltinCallExpr &c,
-                                                     const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzeTrim(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 1, 1))
         checkArgType(c, 0, args[0], {Type::String});
     return Type::String;
 }
 
-TypeChecker::Type TypeChecker::analyzeUcase(const BuiltinCallExpr &c,
-                                                      const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzeUcase(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 1, 1))
         checkArgType(c, 0, args[0], {Type::String});
     return Type::String;
 }
 
-TypeChecker::Type TypeChecker::analyzeLcase(const BuiltinCallExpr &c,
-                                                      const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzeLcase(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 1, 1))
         checkArgType(c, 0, args[0], {Type::String});
     return Type::String;
 }
 
-TypeChecker::Type TypeChecker::analyzeChr(const BuiltinCallExpr &c,
-                                                    const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzeChr(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 1, 1))
         checkArgType(c, 0, args[0], {Type::Int, Type::Float});
     return Type::String;
 }
 
-TypeChecker::Type TypeChecker::analyzeAsc(const BuiltinCallExpr &c,
-                                                    const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzeAsc(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 1, 1))
         checkArgType(c, 0, args[0], {Type::String});
     return Type::Int;
 }
 
-TypeChecker::Type TypeChecker::analyzeSqr(const BuiltinCallExpr &c,
-                                                    const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzeSqr(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 1, 1))
         checkArgType(c, 0, args[0], {Type::Int, Type::Float});
     return Type::Float;
 }
 
-TypeChecker::Type TypeChecker::analyzeAbs(const BuiltinCallExpr &c,
-                                                    const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzeAbs(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 1, 1) && !args.empty())
     {
@@ -1124,40 +1105,35 @@ TypeChecker::Type TypeChecker::analyzeAbs(const BuiltinCallExpr &c,
     return Type::Int;
 }
 
-TypeChecker::Type TypeChecker::analyzeFloor(const BuiltinCallExpr &c,
-                                                      const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzeFloor(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 1, 1))
         checkArgType(c, 0, args[0], {Type::Int, Type::Float});
     return Type::Float;
 }
 
-TypeChecker::Type TypeChecker::analyzeCeil(const BuiltinCallExpr &c,
-                                                     const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzeCeil(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 1, 1))
         checkArgType(c, 0, args[0], {Type::Int, Type::Float});
     return Type::Float;
 }
 
-TypeChecker::Type TypeChecker::analyzeSin(const BuiltinCallExpr &c,
-                                                    const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzeSin(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 1, 1))
         checkArgType(c, 0, args[0], {Type::Int, Type::Float});
     return Type::Float;
 }
 
-TypeChecker::Type TypeChecker::analyzeCos(const BuiltinCallExpr &c,
-                                                    const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzeCos(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 1, 1))
         checkArgType(c, 0, args[0], {Type::Int, Type::Float});
     return Type::Float;
 }
 
-TypeChecker::Type TypeChecker::analyzePow(const BuiltinCallExpr &c,
-                                                    const std::vector<Type> &args)
+TypeChecker::Type TypeChecker::analyzePow(const BuiltinCallExpr &c, const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 2, 2))
     {
@@ -1195,7 +1171,7 @@ const ProcSignature *TypeChecker::resolveCallee(const CallExpr &c)
 }
 
 std::vector<TypeChecker::Type> TypeChecker::checkCallArgs(const CallExpr &c,
-                                                                    const ProcSignature *sig)
+                                                          const ProcSignature *sig)
 {
     std::vector<Type> argTys;
     for (auto &a : c.args)
@@ -1245,7 +1221,7 @@ std::vector<TypeChecker::Type> TypeChecker::checkCallArgs(const CallExpr &c,
 }
 
 TypeChecker::Type TypeChecker::inferCallType([[maybe_unused]] const CallExpr &c,
-                                                       const ProcSignature *sig)
+                                             const ProcSignature *sig)
 {
     if (!sig || !sig->retType)
         return Type::Unknown;
