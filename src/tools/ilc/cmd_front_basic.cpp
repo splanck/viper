@@ -12,7 +12,7 @@
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "il/io/Serializer.hpp"
-#include "il/verify/Verifier.hpp"
+#include "il/verify/ModuleVerifier.hpp"
 #include "support/source_manager.hpp"
 #include "vm/VM.hpp"
 #include <cstdint>
@@ -138,7 +138,8 @@ int cmdFrontBasic(int argc, char **argv)
         io::Serializer::write(m, std::cout);
         return 0;
     }
-    if (!verify::Verifier::verify(m, std::cerr))
+    verify::ModuleVerifier mv;
+    if (!mv.verify(m, std::cerr))
         return 1;
     if (!stdinPath.empty())
     {

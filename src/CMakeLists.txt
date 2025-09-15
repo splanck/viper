@@ -20,7 +20,10 @@ add_library(il_io STATIC il/io/Serializer.cpp il/io/Parser.cpp)
 target_link_libraries(il_io PUBLIC il_core)
 target_include_directories(il_io PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-add_library(il_verify STATIC il/verify/Verifier.cpp)
+add_library(il_verify STATIC
+  il/verify/BlockVerifier.cpp
+  il/verify/FunctionVerifier.cpp
+  il/verify/ModuleVerifier.cpp)
 target_link_libraries(il_verify PUBLIC il_core)
 target_include_directories(il_verify PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

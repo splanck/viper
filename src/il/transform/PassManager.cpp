@@ -5,7 +5,7 @@
 // Links: docs/class-catalog.md
 
 #include "il/transform/PassManager.hpp"
-#include "il/verify/Verifier.hpp"
+#include "il/verify/ModuleVerifier.hpp"
 #include <cassert>
 #include <sstream>
 
@@ -30,7 +30,8 @@ void PassManager::run(Module &m, const std::vector<std::string> &names) const
         it->second(m);
 #ifndef NDEBUG
         std::ostringstream os;
-        assert(Verifier::verify(m, os) && "IL verification failed after pass");
+        ModuleVerifier mv;
+        assert(mv.verify(m, os) && "IL verification failed after pass");
 #endif
     }
 }

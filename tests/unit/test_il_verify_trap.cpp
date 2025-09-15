@@ -9,7 +9,7 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
-#include "il/verify/Verifier.hpp"
+#include "il/verify/ModuleVerifier.hpp"
 #include <cassert>
 #include <sstream>
 
@@ -34,7 +34,8 @@ int main()
     m.functions.push_back(fn);
 
     std::ostringstream err;
-    bool ok = il::verify::Verifier::verify(m, err);
+    il::verify::ModuleVerifier mv;
+    bool ok = mv.verify(m, err);
     assert(ok);
     assert(err.str().empty());
 

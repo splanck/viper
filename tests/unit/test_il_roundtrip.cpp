@@ -1,6 +1,5 @@
 #include "il/io/Parser.hpp"
 #include "il/io/Serializer.hpp"
-#include "il/verify/Verifier.hpp"
 #include <cassert>
 #include <fstream>
 #include <sstream>

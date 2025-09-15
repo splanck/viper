@@ -5,7 +5,7 @@
 // Links: docs/class-catalog.md
 
 #include "il/io/Parser.hpp"
-#include "il/verify/Verifier.hpp"
+#include "il/verify/ModuleVerifier.hpp"
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -41,7 +41,8 @@ int main(int argc, char **argv)
     if (!il::io::Parser::parse(in, m, std::cerr))
         return 1;
     std::ostringstream diag;
-    if (!il::verify::Verifier::verify(m, diag))
+    il::verify::ModuleVerifier mv;
+    if (!mv.verify(m, diag))
     {
         std::cerr << diag.str();
         return 1;

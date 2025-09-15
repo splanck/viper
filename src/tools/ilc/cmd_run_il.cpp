@@ -10,7 +10,7 @@
 #include "break_spec.hpp"
 #include "cli.hpp"
 #include "il/io/Parser.hpp"
-#include "il/verify/Verifier.hpp"
+#include "il/verify/ModuleVerifier.hpp"
 #include "support/source_manager.hpp"
 #include "vm/VM.hpp"
 #include <algorithm>
@@ -148,7 +148,8 @@ int cmdRunIL(int argc, char **argv)
     core::Module m;
     if (!io::Parser::parse(ifs, m, std::cerr))
         return 1;
-    if (!verify::Verifier::verify(m, std::cerr))
+    verify::ModuleVerifier mv;
+    if (!mv.verify(m, std::cerr))
         return 1;
     if (!stdinPath.empty())
     {
