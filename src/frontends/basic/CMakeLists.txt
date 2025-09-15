@@ -11,6 +11,8 @@ add_library(fe_basic STATIC
   LoweringContext.cpp
   BuiltinRegistry.cpp
   Lowerer.cpp
+  LowerExpr.cpp
+  LowerStmt.cpp
   LowerRuntime.cpp
   LowerScan.cpp
   LowerEmit.cpp
