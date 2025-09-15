@@ -51,28 +51,7 @@ add_executable(il-dis tools/il-dis/main.cpp)
 set_target_properties(il-dis PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/il-dis)
 target_link_libraries(il-dis PRIVATE support il_core il_build il_io)
 
-add_library(fe_basic STATIC
-  frontends/basic/Token.cpp
-  frontends/basic/Lexer.cpp
-  frontends/basic/AST.cpp
-  frontends/basic/AstPrinter.cpp
-  frontends/basic/Parser.cpp
-  frontends/basic/Parser_Stmt.cpp
-  frontends/basic/Parser_Expr.cpp
-  frontends/basic/Parser_Token.cpp
-  frontends/basic/NameMangler.cpp
-  frontends/basic/LoweringContext.cpp
-  frontends/basic/BuiltinRegistry.cpp
-  frontends/basic/Lowerer.cpp
-  frontends/basic/LowerRuntime.cpp
-  frontends/basic/LowerScan.cpp
-  frontends/basic/LowerEmit.cpp
-  frontends/basic/SemanticAnalyzer.cpp
-  frontends/basic/ConstFolder.cpp
-  frontends/basic/Intrinsics.cpp
-  frontends/basic/DiagnosticEmitter.cpp)
-target_link_libraries(fe_basic PUBLIC support il_build il_core)
-target_include_directories(fe_basic PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+add_subdirectory(frontends/basic)
 
 add_executable(basic-ast-dump tools/basic-ast-dump/main.cpp)
 set_target_properties(basic-ast-dump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/basic-ast-dump)
