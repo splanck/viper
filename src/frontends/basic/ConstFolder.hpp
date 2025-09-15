@@ -16,7 +16,7 @@ namespace il::frontends::basic
 /// \param prog Program to transform in place.
 void foldConstants(Program &prog);
 
-namespace detail
+namespace detail::numeric
 {
 /// @brief Numeric literal wrapper used during folding.
 struct Numeric
@@ -35,9 +35,12 @@ Numeric promote(const Numeric &a, const Numeric &b);
 /// @brief Fold numeric binary operation using callback @p op.
 /// @return Folded expression or nullptr on mismatch.
 template <typename F> ExprPtr foldNumericBinary(const Expr &l, const Expr &r, F op);
+} // namespace detail::numeric
 
+namespace detail::strings
+{
 /// @brief Fold string binary operation (e.g., concatenation).
-ExprPtr foldStringBinary(const StringExpr &l, TokenKind op, const StringExpr &r);
-} // namespace detail
+ExprPtr foldBinary(const StringExpr &l, TokenKind op, const StringExpr &r);
+} // namespace detail::strings
 
 } // namespace il::frontends::basic

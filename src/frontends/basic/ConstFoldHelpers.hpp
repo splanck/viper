@@ -9,7 +9,7 @@
 #include <optional>
 #include <utility>
 
-namespace il::frontends::basic::detail
+namespace il::frontends::basic::detail::numeric
 {
 /// @brief Apply arithmetic operation on two literals with promotion.
 /// @param l Left operand expression.
@@ -61,15 +61,20 @@ ExprPtr foldCompare(
         });
 }
 
+} // namespace il::frontends::basic::detail::numeric
+
 /// @brief Apply binary string operation using callback @p op.
 /// @param l Left string operand.
 /// @param r Right string operand.
 /// @param op Callback operating on string values and returning ExprPtr.
 /// @return Folded literal produced by @p op.
 /// @invariant Caller ensures @p op models BASIC semantics.
+namespace il::frontends::basic::detail::strings
+{
+
 template <typename Op> ExprPtr foldString(const StringExpr &l, const StringExpr &r, Op op)
 {
     return op(l.value, r.value);
 }
 
-} // namespace il::frontends::basic::detail
+} // namespace il::frontends::basic::detail::strings

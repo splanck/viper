@@ -19,17 +19,101 @@ namespace il::frontends::basic
 
 namespace detail
 {
+/// @brief Visitor interface used to categorize expression literals for folding.
+struct ExprVisitor
+{
+    virtual ~ExprVisitor() = default;
+
+    virtual void visit(const Expr &) {}
+    virtual void visit(const IntExpr &) {}
+    virtual void visit(const FloatExpr &) {}
+    virtual void visit(const StringExpr &) {}
+    virtual void visit(const VarExpr &) {}
+    virtual void visit(const ArrayExpr &) {}
+    virtual void visit(const UnaryExpr &) {}
+    virtual void visit(const BinaryExpr &) {}
+    virtual void visit(const BuiltinCallExpr &) {}
+    virtual void visit(const CallExpr &) {}
+};
+
+/// @brief Dispatch helper routing expressions to @p visitor.
+static void dispatchExpr(const Expr &expr, ExprVisitor &visitor)
+{
+    if (auto *node = dynamic_cast<const IntExpr *>(&expr))
+    {
+        visitor.visit(*node);
+        return;
+    }
+    if (auto *node = dynamic_cast<const FloatExpr *>(&expr))
+    {
+        visitor.visit(*node);
+        return;
+    }
+    if (auto *node = dynamic_cast<const StringExpr *>(&expr))
+    {
+        visitor.visit(*node);
+        return;
+    }
+    if (auto *node = dynamic_cast<const VarExpr *>(&expr))
+    {
+        visitor.visit(*node);
+        return;
+    }
+    if (auto *node = dynamic_cast<const ArrayExpr *>(&expr))
+    {
+        visitor.visit(*node);
+        return;
+    }
+    if (auto *node = dynamic_cast<const UnaryExpr *>(&expr))
+    {
+        visitor.visit(*node);
+        return;
+    }
+    if (auto *node = dynamic_cast<const BinaryExpr *>(&expr))
+    {
+        visitor.visit(*node);
+        return;
+    }
+    if (auto *node = dynamic_cast<const BuiltinCallExpr *>(&expr))
+    {
+        visitor.visit(*node);
+        return;
+    }
+    if (auto *node = dynamic_cast<const CallExpr *>(&expr))
+    {
+        visitor.visit(*node);
+        return;
+    }
+    visitor.visit(expr);
+}
+
+namespace numeric
+{
 /// @brief Interpret expression @p e as a numeric literal.
 /// @param e Expression to inspect.
 /// @return Numeric wrapper if @p e is an IntExpr or FloatExpr; std::nullopt otherwise.
 /// @invariant Does not evaluate non-literal expressions.
 std::optional<Numeric> asNumeric(const Expr &e)
 {
-    if (auto *i = dynamic_cast<const IntExpr *>(&e))
-        return Numeric{false, static_cast<double>(i->value), static_cast<long long>(i->value)};
-    if (auto *f = dynamic_cast<const FloatExpr *>(&e))
-        return Numeric{true, f->value, static_cast<long long>(f->value)};
-    return std::nullopt;
+    struct NumericVisitor final : ExprVisitor
+    {
+        std::optional<Numeric> numeric;
+
+        void visit(const IntExpr &expr) override
+        {
+            numeric = Numeric{false,
+                              static_cast<double>(expr.value),
+                              static_cast<long long>(expr.value)};
+        }
+
+        void visit(const FloatExpr &expr) override
+        {
+            numeric = Numeric{true, expr.value, static_cast<long long>(expr.value)};
+        }
+    } visitor;
+
+    dispatchExpr(e, visitor);
+    return visitor.numeric;
 }
 
 /// @brief Promote @p a to floating-point if either operand is float.
@@ -44,13 +128,45 @@ Numeric promote(const Numeric &a, const Numeric &b)
     return a;
 }
 
+/// @brief Fold numeric binary expression using callback @p op.
+/// @param l Left operand expression.
+/// @param r Right operand expression.
+/// @param op Callback operating on promoted numerics and returning optional result.
+/// @return Folded literal or nullptr if operands aren't numeric or @p op fails.
+/// @invariant Preserves 64-bit wrap-around semantics for integers.
+template <typename F> ExprPtr foldNumericBinary(const Expr &l, const Expr &r, F op)
+{
+    auto ln = asNumeric(l);
+    auto rn = asNumeric(r);
+    if (!ln || !rn)
+        return nullptr;
+    Numeric a = promote(*ln, *rn);
+    Numeric b = promote(*rn, *ln);
+    auto res = op(a, b);
+    if (!res)
+        return nullptr;
+    if (res->isFloat)
+    {
+        auto out = std::make_unique<FloatExpr>();
+        out->value = res->f;
+        return out;
+    }
+    auto out = std::make_unique<IntExpr>();
+    out->value = res->i;
+    return out;
+}
+
+} // namespace numeric
+
+namespace strings
+{
 /// @brief Fold binary operation on two string literals.
 /// @param l Left string operand.
 /// @param op Operator token to apply.
 /// @param r Right string operand.
 /// @return New literal expression or nullptr if operation is unsupported.
 /// @invariant Only concatenation and equality comparisons are folded.
-ExprPtr foldStringBinary(const StringExpr &l, TokenKind op, const StringExpr &r)
+ExprPtr foldBinary(const StringExpr &l, TokenKind op, const StringExpr &r)
 {
     using OpFn = ExprPtr (*)(const std::string &, const std::string &);
     static const std::pair<TokenKind, OpFn> table[] = {
@@ -83,40 +199,15 @@ ExprPtr foldStringBinary(const StringExpr &l, TokenKind op, const StringExpr &r)
                               { return fn(la, rb); });
     return nullptr;
 }
-} // namespace detail
 
-/// @brief Fold numeric binary expression using callback @p op.
-/// @param l Left operand expression.
-/// @param r Right operand expression.
-/// @param op Callback operating on promoted numerics and returning optional result.
-/// @return Folded literal or nullptr if operands aren't numeric or @p op fails.
-/// @invariant Preserves 64-bit wrap-around semantics for integers.
-template <typename F> ExprPtr detail::foldNumericBinary(const Expr &l, const Expr &r, F op)
-{
-    auto ln = asNumeric(l);
-    auto rn = asNumeric(r);
-    if (!ln || !rn)
-        return nullptr;
-    Numeric a = promote(*ln, *rn);
-    Numeric b = promote(*rn, *ln);
-    auto res = op(a, b);
-    if (!res)
-        return nullptr;
-    if (res->isFloat)
-    {
-        auto out = std::make_unique<FloatExpr>();
-        out->value = res->f;
-        return out;
-    }
-    auto out = std::make_unique<IntExpr>();
-    out->value = res->i;
-    return out;
-}
+} // namespace strings
+
+} // namespace detail
 
 namespace
 {
 
-using detail::Numeric;
+using detail::numeric::Numeric;
 
 /// @brief Add @p a and @p b with 64-bit wrap-around semantics.
 /// @param a Left operand.
@@ -148,19 +239,20 @@ static long long wrapMul(long long a, long long b)
     return static_cast<long long>(static_cast<uint64_t>(a) * static_cast<uint64_t>(b));
 }
 
-/// @brief Check whether expression @p e is a string literal.
-/// @param e Expression to inspect.
-/// @param s Output string populated when @p e is a StringExpr.
-/// @return True if @p e is a string literal.
-/// @invariant @p s is assigned only when the function returns true.
-static bool isStr(const Expr *e, std::string &s)
+/// @brief Return string literal backing expression @p expr when present.
+/// @param expr Expression to inspect.
+/// @return Pointer to StringExpr when @p expr is a literal; nullptr otherwise.
+static const StringExpr *asStringLiteral(const Expr &expr)
 {
-    if (auto *st = dynamic_cast<const StringExpr *>(e))
+    struct StringVisitor final : detail::ExprVisitor
     {
-        s = st->value;
-        return true;
-    }
-    return false;
+        const StringExpr *literal = nullptr;
+
+        void visit(const StringExpr &s) override { literal = &s; }
+    } visitor;
+
+    detail::dispatchExpr(expr, visitor);
+    return visitor.literal;
 }
 
 /// @brief Forward declaration for recursive expression folding.
@@ -202,19 +294,20 @@ static void foldCall(ExprPtr &e, BuiltinCallExpr *c)
         foldExpr(a);
     if (c->builtin == BuiltinCallExpr::Builtin::Len)
     {
-        std::string s;
-        if (c->args.size() == 1 && isStr(c->args[0].get(), s))
-            replaceWithInt(e, static_cast<long long>(s.size()), c->loc);
+        if (c->args.size() == 1)
+        {
+            if (const auto *str = asStringLiteral(*c->args[0]))
+                replaceWithInt(e, static_cast<long long>(str->value.size()), c->loc);
+        }
     }
     else if (c->builtin == BuiltinCallExpr::Builtin::Mid)
     {
         if (c->args.size() == 3)
         {
-            std::string s;
-            if (isStr(c->args[0].get(), s))
+            if (const auto *str = asStringLiteral(*c->args[0]))
             {
-                auto nStart = detail::asNumeric(*c->args[1]);
-                auto nLen = detail::asNumeric(*c->args[2]);
+                auto nStart = detail::numeric::asNumeric(*c->args[1]);
+                auto nLen = detail::numeric::asNumeric(*c->args[2]);
                 if (nStart && nLen && !nStart->isFloat && !nLen->isFloat)
                 {
                     long long start = nStart->i;
@@ -224,34 +317,40 @@ static void foldCall(ExprPtr &e, BuiltinCallExpr *c)
                     if (len < 0)
                         len = 0;
                     size_t pos = static_cast<size_t>(start - 1);
-                    replaceWithStr(e, s.substr(pos, static_cast<size_t>(len)), c->loc);
+                    replaceWithStr(
+                        e,
+                        str->value.substr(pos, static_cast<size_t>(len)),
+                        c->loc);
                 }
             }
         }
     }
     else if (c->builtin == BuiltinCallExpr::Builtin::Val)
     {
-        std::string s;
-        if (c->args.size() == 1 && isStr(c->args[0].get(), s))
+        if (c->args.size() == 1)
         {
-            const char *p = s.c_str();
-            while (*p && isspace((unsigned char)*p))
-                ++p;
-            const char *q = p + strlen(p);
-            while (q > p && isspace((unsigned char)q[-1]))
-                --q;
-            std::string trimmed(p, q - p);
-            char *endp = nullptr;
-            long long v = strtoll(trimmed.c_str(), &endp, 10);
-            if (endp && *endp == '\0')
-                replaceWithInt(e, v, c->loc);
+            if (const auto *str = asStringLiteral(*c->args[0]))
+            {
+                std::string s = str->value;
+                const char *p = s.c_str();
+                while (*p && isspace((unsigned char)*p))
+                    ++p;
+                const char *q = p + strlen(p);
+                while (q > p && isspace((unsigned char)q[-1]))
+                    --q;
+                std::string trimmed(p, q - p);
+                char *endp = nullptr;
+                long long v = strtoll(trimmed.c_str(), &endp, 10);
+                if (endp && *endp == '\0')
+                    replaceWithInt(e, v, c->loc);
+            }
         }
     }
     else if (c->builtin == BuiltinCallExpr::Builtin::Int)
     {
         if (c->args.size() == 1)
         {
-            auto n = detail::asNumeric(*c->args[0]);
+            auto n = detail::numeric::asNumeric(*c->args[0]);
             if (n && n->isFloat)
                 replaceWithInt(e, static_cast<long long>(n->f), c->loc);
         }
@@ -260,7 +359,7 @@ static void foldCall(ExprPtr &e, BuiltinCallExpr *c)
     {
         if (c->args.size() == 1)
         {
-            auto n = detail::asNumeric(*c->args[0]);
+            auto n = detail::numeric::asNumeric(*c->args[0]);
             if (n)
             {
                 char buf[32];
@@ -281,7 +380,7 @@ static void foldCall(ExprPtr &e, BuiltinCallExpr *c)
 static void foldUnary(ExprPtr &e, UnaryExpr *u)
 {
     foldExpr(u->expr);
-    auto n = detail::asNumeric(*u->expr);
+    auto n = detail::numeric::asNumeric(*u->expr);
     if (n && !n->isFloat && u->op == UnaryExpr::Op::Not)
         replaceWithInt(e, n->i == 0 ? 1 : 0, u->loc);
 }
@@ -333,7 +432,7 @@ static TokenKind toToken(BinaryExpr::Op op)
 /// @invariant Uses wrapAdd for 64-bit semantics.
 static ExprPtr foldAdd(const Expr &l, const Expr &r)
 {
-    return detail::foldArithmetic(
+    return detail::numeric::foldArithmetic(
         l,
         r,
         [](double a, double b) { return a + b; },
@@ -347,7 +446,7 @@ static ExprPtr foldAdd(const Expr &l, const Expr &r)
 /// @invariant Uses wrapSub for 64-bit semantics.
 static ExprPtr foldSub(const Expr &l, const Expr &r)
 {
-    return detail::foldArithmetic(
+    return detail::numeric::foldArithmetic(
         l,
         r,
         [](double a, double b) { return a - b; },
@@ -361,7 +460,7 @@ static ExprPtr foldSub(const Expr &l, const Expr &r)
 /// @invariant Uses wrapMul for 64-bit semantics.
 static ExprPtr foldMul(const Expr &l, const Expr &r)
 {
-    return detail::foldArithmetic(
+    return detail::numeric::foldArithmetic(
         l,
         r,
         [](double a, double b) { return a * b; },
@@ -375,7 +474,7 @@ static ExprPtr foldMul(const Expr &l, const Expr &r)
 /// @invariant Returns nullptr on divide-by-zero.
 static ExprPtr foldDiv(const Expr &l, const Expr &r)
 {
-    return detail::foldNumericBinary(
+    return detail::numeric::foldNumericBinary(
         l,
         r,
         [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
@@ -396,7 +495,7 @@ static ExprPtr foldDiv(const Expr &l, const Expr &r)
 /// @invariant Fails when either operand is float or divisor is zero.
 static ExprPtr foldIDiv(const Expr &l, const Expr &r)
 {
-    return detail::foldNumericBinary(
+    return detail::numeric::foldNumericBinary(
         l,
         r,
         [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
@@ -415,7 +514,7 @@ static ExprPtr foldIDiv(const Expr &l, const Expr &r)
 /// @invariant Fails when operands are floats or divisor is zero.
 static ExprPtr foldMod(const Expr &l, const Expr &r)
 {
-    return detail::foldNumericBinary(
+    return detail::numeric::foldNumericBinary(
         l,
         r,
         [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
@@ -434,7 +533,7 @@ static ExprPtr foldMod(const Expr &l, const Expr &r)
 /// @invariant Operands are promoted before comparison.
 static ExprPtr foldEq(const Expr &l, const Expr &r)
 {
-    return detail::foldCompare(
+    return detail::numeric::foldCompare(
         l,
         r,
         [](double a, double b) { return a == b; },
@@ -448,7 +547,7 @@ static ExprPtr foldEq(const Expr &l, const Expr &r)
 /// @invariant Operands are promoted before comparison.
 static ExprPtr foldNe(const Expr &l, const Expr &r)
 {
-    return detail::foldCompare(
+    return detail::numeric::foldCompare(
         l,
         r,
         [](double a, double b) { return a != b; },
@@ -462,7 +561,7 @@ static ExprPtr foldNe(const Expr &l, const Expr &r)
 /// @invariant Operands are promoted before comparison.
 static ExprPtr foldLt(const Expr &l, const Expr &r)
 {
-    return detail::foldCompare(
+    return detail::numeric::foldCompare(
         l,
         r,
         [](double a, double b) { return a < b; },
@@ -476,7 +575,7 @@ static ExprPtr foldLt(const Expr &l, const Expr &r)
 /// @invariant Operands are promoted before comparison.
 static ExprPtr foldLe(const Expr &l, const Expr &r)
 {
-    return detail::foldCompare(
+    return detail::numeric::foldCompare(
         l,
         r,
         [](double a, double b) { return a <= b; },
@@ -490,7 +589,7 @@ static ExprPtr foldLe(const Expr &l, const Expr &r)
 /// @invariant Operands are promoted before comparison.
 static ExprPtr foldGt(const Expr &l, const Expr &r)
 {
-    return detail::foldCompare(
+    return detail::numeric::foldCompare(
         l,
         r,
         [](double a, double b) { return a > b; },
@@ -504,7 +603,7 @@ static ExprPtr foldGt(const Expr &l, const Expr &r)
 /// @invariant Operands are promoted before comparison.
 static ExprPtr foldGe(const Expr &l, const Expr &r)
 {
-    return detail::foldCompare(
+    return detail::numeric::foldCompare(
         l,
         r,
         [](double a, double b) { return a >= b; },
@@ -518,7 +617,7 @@ static ExprPtr foldGe(const Expr &l, const Expr &r)
 /// @invariant Returns null when either operand is float.
 static ExprPtr foldAnd(const Expr &l, const Expr &r)
 {
-    return detail::foldCompare(
+    return detail::numeric::foldCompare(
         l,
         r,
         [](double, double) { return false; },
@@ -533,7 +632,7 @@ static ExprPtr foldAnd(const Expr &l, const Expr &r)
 /// @invariant Returns null when either operand is float.
 static ExprPtr foldOr(const Expr &l, const Expr &r)
 {
-    return detail::foldCompare(
+    return detail::numeric::foldCompare(
         l,
         r,
         [](double, double) { return false; },
@@ -601,11 +700,11 @@ static void foldBinary(ExprPtr &e, BinaryExpr *b)
         return;
     }
 
-    if (auto *ls = dynamic_cast<StringExpr *>(b->lhs.get()))
+    if (const auto *ls = asStringLiteral(*b->lhs))
     {
-        if (auto *rs = dynamic_cast<StringExpr *>(b->rhs.get()))
+        if (const auto *rs = asStringLiteral(*b->rhs))
         {
-            if (auto res = detail::foldStringBinary(*ls, tk, *rs))
+            if (auto res = detail::strings::foldBinary(*ls, tk, *rs))
             {
                 res->loc = b->loc;
                 e = std::move(res);
@@ -621,22 +720,35 @@ static void foldExpr(ExprPtr &e)
 {
     if (!e)
         return;
-    if (auto *u = dynamic_cast<UnaryExpr *>(e.get()))
+    struct FoldingVisitor final : detail::ExprVisitor
     {
-        foldUnary(e, u);
-    }
-    else if (auto *b = dynamic_cast<BinaryExpr *>(e.get()))
-    {
-        foldBinary(e, b);
-    }
-    else if (auto *c = dynamic_cast<BuiltinCallExpr *>(e.get()))
-    {
-        foldCall(e, c);
-    }
-    else if (auto *a = dynamic_cast<ArrayExpr *>(e.get()))
-    {
-        foldExpr(a->index);
-    }
+        explicit FoldingVisitor(ExprPtr &slot) : expr(slot) {}
+
+        void visit(const UnaryExpr &u) override
+        {
+            foldUnary(expr, const_cast<UnaryExpr *>(&u));
+        }
+
+        void visit(const BinaryExpr &b) override
+        {
+            foldBinary(expr, const_cast<BinaryExpr *>(&b));
+        }
+
+        void visit(const BuiltinCallExpr &c) override
+        {
+            foldCall(expr, const_cast<BuiltinCallExpr *>(&c));
+        }
+
+        void visit(const ArrayExpr &a) override
+        {
+            auto &array = const_cast<ArrayExpr &>(a);
+            foldExpr(array.index);
+        }
+
+        ExprPtr &expr;
+    } visitor(e);
+
+    detail::dispatchExpr(*e, visitor);
 }
 
 /// @brief Recursively fold constants within statement @p s.
