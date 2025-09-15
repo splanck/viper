@@ -39,6 +39,22 @@ inline void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val)
         fr.regs[*in.result] = val;
     }
 }
+
+template <auto Member, typename Operation>
+inline Slot applyBinaryArithmetic(const Slot &lhs, const Slot &rhs, Operation &&op)
+{
+    Slot result{};
+    result.*Member = std::forward<Operation>(op)(lhs.*Member, rhs.*Member);
+    return result;
+}
+
+template <auto Member, typename Comparator>
+inline Slot applyBinaryComparison(const Slot &lhs, const Slot &rhs, Comparator &&cmp)
+{
+    Slot result{};
+    result.i64 = std::forward<Comparator>(cmp)(lhs.*Member, rhs.*Member) ? 1 : 0;
+    return result;
+}
 } // namespace
 
 /// Construct a VM instance bound to a specific IL @p Module.
@@ -234,50 +250,6 @@ std::optional<Slot> VM::handleDebugBreak(
 // Opcode handlers
 //===----------------------------------------------------------------------===//
 
-#define DEFINE_BIN_INT_OP(NAME, OP)                                                                \
-    VM::ExecResult VM::handle##NAME(Frame &fr, const Instr &in)                                    \
-    {                                                                                              \
-        Slot a = eval(fr, in.operands[0]);                                                         \
-        Slot b = eval(fr, in.operands[1]);                                                         \
-        Slot res{};                                                                                \
-        res.i64 = a.i64 OP b.i64;                                                                  \
-        storeResult(fr, in, res);                                                                  \
-        return {};                                                                                 \
-    }
-
-#define DEFINE_BIN_FLOAT_OP(NAME, OP)                                                              \
-    VM::ExecResult VM::handle##NAME(Frame &fr, const Instr &in)                                    \
-    {                                                                                              \
-        Slot a = eval(fr, in.operands[0]);                                                         \
-        Slot b = eval(fr, in.operands[1]);                                                         \
-        Slot res{};                                                                                \
-        res.f64 = a.f64 OP b.f64;                                                                  \
-        storeResult(fr, in, res);                                                                  \
-        return {};                                                                                 \
-    }
-
-#define DEFINE_INT_CMP(NAME, CMP)                                                                  \
-    VM::ExecResult VM::handle##NAME(Frame &fr, const Instr &in)                                    \
-    {                                                                                              \
-        Slot a = eval(fr, in.operands[0]);                                                         \
-        Slot b = eval(fr, in.operands[1]);                                                         \
-        Slot res{};                                                                                \
-        res.i64 = (a.i64 CMP b.i64) ? 1 : 0;                                                       \
-        storeResult(fr, in, res);                                                                  \
-        return {};                                                                                 \
-    }
-
-#define DEFINE_FLOAT_CMP(NAME, CMP)                                                                \
-    VM::ExecResult VM::handle##NAME(Frame &fr, const Instr &in)                                    \
-    {                                                                                              \
-        Slot a = eval(fr, in.operands[0]);                                                         \
-        Slot b = eval(fr, in.operands[1]);                                                         \
-        Slot res{};                                                                                \
-        res.i64 = (a.f64 CMP b.f64) ? 1 : 0;                                                       \
-        storeResult(fr, in, res);                                                                  \
-        return {};                                                                                 \
-    }
-
 /// Allocate a block of zeroed stack memory.
 ///
 /// @param fr Frame whose stack is extended.
@@ -375,55 +347,127 @@ VM::ExecResult VM::handleStore(Frame &fr, const Instr &in, const BasicBlock *bb,
 /// @param in Instruction with two integer operands and optional result.
 /// @sideeffects Writes the sum to the destination register.
 /// @returns Empty ExecResult with no control-flow changes.
-DEFINE_BIN_INT_OP(Add, +)
+VM::ExecResult VM::handleAdd(Frame &fr, const Instr &in)
+{
+    Slot lhs = eval(fr, in.operands[0]);
+    Slot rhs = eval(fr, in.operands[1]);
+    Slot res = applyBinaryArithmetic<&Slot::i64>(lhs, rhs, [](int64_t a, int64_t b) { return a + b; });
+    storeResult(fr, in, res);
+    return {};
+}
+
 /// Handle integer subtraction.
 /// @param fr Frame providing operands.
 /// @param in Instruction with two integer operands and optional result.
 /// @sideeffects Writes the difference to the destination register.
 /// @returns Empty ExecResult with no control-flow changes.
-DEFINE_BIN_INT_OP(Sub, -)
+VM::ExecResult VM::handleSub(Frame &fr, const Instr &in)
+{
+    Slot lhs = eval(fr, in.operands[0]);
+    Slot rhs = eval(fr, in.operands[1]);
+    Slot res = applyBinaryArithmetic<&Slot::i64>(lhs, rhs, [](int64_t a, int64_t b) { return a - b; });
+    storeResult(fr, in, res);
+    return {};
+}
+
 /// Handle integer multiplication.
 /// @param fr Frame providing operands.
 /// @param in Instruction with two integer operands and optional result.
 /// @sideeffects Writes the product to the destination register.
 /// @returns Empty ExecResult with no control-flow changes.
-DEFINE_BIN_INT_OP(Mul, *)
+VM::ExecResult VM::handleMul(Frame &fr, const Instr &in)
+{
+    Slot lhs = eval(fr, in.operands[0]);
+    Slot rhs = eval(fr, in.operands[1]);
+    Slot res =
+        applyBinaryArithmetic<&Slot::i64>(lhs, rhs, [](int64_t a, int64_t b) { return a * b; });
+    storeResult(fr, in, res);
+    return {};
+}
+
 /// Handle floating-point addition.
 /// @param fr Frame providing operands.
 /// @param in Instruction with two floating operands and optional result.
 /// @sideeffects Writes the sum to the destination register.
 /// @returns Empty ExecResult with no control-flow changes.
-DEFINE_BIN_FLOAT_OP(FAdd, +)
+VM::ExecResult VM::handleFAdd(Frame &fr, const Instr &in)
+{
+    Slot lhs = eval(fr, in.operands[0]);
+    Slot rhs = eval(fr, in.operands[1]);
+    Slot res = applyBinaryArithmetic<&Slot::f64>(lhs, rhs, [](double a, double b) { return a + b; });
+    storeResult(fr, in, res);
+    return {};
+}
+
 /// Handle floating-point subtraction.
 /// @param fr Frame providing operands.
 /// @param in Instruction with two floating operands and optional result.
 /// @sideeffects Writes the difference to the destination register.
 /// @returns Empty ExecResult with no control-flow changes.
-DEFINE_BIN_FLOAT_OP(FSub, -)
+VM::ExecResult VM::handleFSub(Frame &fr, const Instr &in)
+{
+    Slot lhs = eval(fr, in.operands[0]);
+    Slot rhs = eval(fr, in.operands[1]);
+    Slot res = applyBinaryArithmetic<&Slot::f64>(lhs, rhs, [](double a, double b) { return a - b; });
+    storeResult(fr, in, res);
+    return {};
+}
+
 /// Handle floating-point multiplication.
 /// @param fr Frame providing operands.
 /// @param in Instruction with two floating operands and optional result.
 /// @sideeffects Writes the product to the destination register.
 /// @returns Empty ExecResult with no control-flow changes.
-DEFINE_BIN_FLOAT_OP(FMul, *)
+VM::ExecResult VM::handleFMul(Frame &fr, const Instr &in)
+{
+    Slot lhs = eval(fr, in.operands[0]);
+    Slot rhs = eval(fr, in.operands[1]);
+    Slot res = applyBinaryArithmetic<&Slot::f64>(lhs, rhs, [](double a, double b) { return a * b; });
+    storeResult(fr, in, res);
+    return {};
+}
+
 /// Handle floating-point division.
 /// @param fr Frame providing operands.
 /// @param in Instruction with two floating operands and optional result.
 /// @sideeffects Writes the quotient to the destination register.
 /// @returns Empty ExecResult with no control-flow changes.
-DEFINE_BIN_FLOAT_OP(FDiv, /)
+VM::ExecResult VM::handleFDiv(Frame &fr, const Instr &in)
+{
+    Slot lhs = eval(fr, in.operands[0]);
+    Slot rhs = eval(fr, in.operands[1]);
+    Slot res = applyBinaryArithmetic<&Slot::f64>(lhs, rhs, [](double a, double b) { return a / b; });
+    storeResult(fr, in, res);
+    return {};
+}
+
 /// Handle integer bitwise XOR.
 /// @param fr Frame providing operands.
 /// @param in Instruction with two integer operands and optional result.
 /// @sideeffects Writes the xor result to the destination register.
 /// @returns Empty ExecResult with no control-flow changes.
-DEFINE_BIN_INT_OP(Xor, ^)
+VM::ExecResult VM::handleXor(Frame &fr, const Instr &in)
+{
+    Slot lhs = eval(fr, in.operands[0]);
+    Slot rhs = eval(fr, in.operands[1]);
+    Slot res = applyBinaryArithmetic<&Slot::i64>(lhs, rhs, [](int64_t a, int64_t b) { return a ^ b; });
+    storeResult(fr, in, res);
+    return {};
+}
+
 /// Handle integer left shift.
 /// @param fr Frame providing operands.
 /// @param in Instruction with two integer operands and optional result.
 /// @sideeffects Writes the shifted value to the destination register.
 /// @returns Empty ExecResult with no control-flow changes.
-DEFINE_BIN_INT_OP(Shl, <<)
+VM::ExecResult VM::handleShl(Frame &fr, const Instr &in)
+{
+    Slot lhs = eval(fr, in.operands[0]);
+    Slot rhs = eval(fr, in.operands[1]);
+    Slot res = applyBinaryArithmetic<&Slot::i64>(lhs, rhs, [](int64_t a, int64_t b) { return a << b; });
+    storeResult(fr, in, res);
+    return {};
+}
 
 /// Compute pointer address using getelementptr-style offsetting.
 ///
@@ -446,73 +490,168 @@ VM::ExecResult VM::handleGEP(Frame &fr, const Instr &in)
 /// @param in Instruction with two integer operands and result destination.
 /// @sideeffects Writes comparison result (1 or 0) to destination register.
 /// @returns Empty ExecResult with no control-flow changes.
-DEFINE_INT_CMP(ICmpEq, ==)
+VM::ExecResult VM::handleICmpEq(Frame &fr, const Instr &in)
+{
+    Slot lhs = eval(fr, in.operands[0]);
+    Slot rhs = eval(fr, in.operands[1]);
+    Slot res = applyBinaryComparison<&Slot::i64>(lhs, rhs, [](int64_t a, int64_t b) { return a == b; });
+    storeResult(fr, in, res);
+    return {};
+}
+
 /// Compare two integers for inequality.
 /// @param fr Frame providing operands.
 /// @param in Instruction with two integer operands and result destination.
 /// @sideeffects Writes comparison result to destination register.
 /// @returns Empty ExecResult with no control-flow changes.
-DEFINE_INT_CMP(ICmpNe, !=)
+VM::ExecResult VM::handleICmpNe(Frame &fr, const Instr &in)
+{
+    Slot lhs = eval(fr, in.operands[0]);
+    Slot rhs = eval(fr, in.operands[1]);
+    Slot res = applyBinaryComparison<&Slot::i64>(lhs, rhs, [](int64_t a, int64_t b) { return a != b; });
+    storeResult(fr, in, res);
+    return {};
+}
+
 /// Compare if first integer greater than second.
 /// @param fr Frame providing operands.
 /// @param in Instruction with two integer operands and result destination.
 /// @sideeffects Writes comparison result to destination register.
 /// @returns Empty ExecResult with no control-flow changes.
-DEFINE_INT_CMP(SCmpGT, >)
+VM::ExecResult VM::handleSCmpGT(Frame &fr, const Instr &in)
+{
+    Slot lhs = eval(fr, in.operands[0]);
+    Slot rhs = eval(fr, in.operands[1]);
+    Slot res = applyBinaryComparison<&Slot::i64>(lhs, rhs, [](int64_t a, int64_t b) { return a > b; });
+    storeResult(fr, in, res);
+    return {};
+}
+
 /// Compare if first integer less than second.
 /// @param fr Frame providing operands.
 /// @param in Instruction with two integer operands and result destination.
 /// @sideeffects Writes comparison result to destination register.
 /// @returns Empty ExecResult with no control-flow changes.
-DEFINE_INT_CMP(SCmpLT, <)
+VM::ExecResult VM::handleSCmpLT(Frame &fr, const Instr &in)
+{
+    Slot lhs = eval(fr, in.operands[0]);
+    Slot rhs = eval(fr, in.operands[1]);
+    Slot res = applyBinaryComparison<&Slot::i64>(lhs, rhs, [](int64_t a, int64_t b) { return a < b; });
+    storeResult(fr, in, res);
+    return {};
+}
+
 /// Compare if first integer less than or equal to second.
 /// @param fr Frame providing operands.
 /// @param in Instruction with two integer operands and result destination.
 /// @sideeffects Writes comparison result to destination register.
 /// @returns Empty ExecResult with no control-flow changes.
-DEFINE_INT_CMP(SCmpLE, <=)
+VM::ExecResult VM::handleSCmpLE(Frame &fr, const Instr &in)
+{
+    Slot lhs = eval(fr, in.operands[0]);
+    Slot rhs = eval(fr, in.operands[1]);
+    Slot res = applyBinaryComparison<&Slot::i64>(lhs, rhs, [](int64_t a, int64_t b) { return a <= b; });
+    storeResult(fr, in, res);
+    return {};
+}
+
 /// Compare if first integer greater than or equal to second.
 /// @param fr Frame providing operands.
 /// @param in Instruction with two integer operands and result destination.
 /// @sideeffects Writes comparison result to destination register.
 /// @returns Empty ExecResult with no control-flow changes.
-DEFINE_INT_CMP(SCmpGE, >=)
+VM::ExecResult VM::handleSCmpGE(Frame &fr, const Instr &in)
+{
+    Slot lhs = eval(fr, in.operands[0]);
+    Slot rhs = eval(fr, in.operands[1]);
+    Slot res = applyBinaryComparison<&Slot::i64>(lhs, rhs, [](int64_t a, int64_t b) { return a >= b; });
+    storeResult(fr, in, res);
+    return {};
+}
+
 /// Compare two floating-point numbers for equality.
 /// @param fr Frame providing operands.
 /// @param in Instruction with two floating operands and result destination.
 /// @sideeffects Writes comparison result to destination register.
 /// @returns Empty ExecResult with no control-flow changes.
-DEFINE_FLOAT_CMP(FCmpEQ, ==)
+VM::ExecResult VM::handleFCmpEQ(Frame &fr, const Instr &in)
+{
+    Slot lhs = eval(fr, in.operands[0]);
+    Slot rhs = eval(fr, in.operands[1]);
+    Slot res = applyBinaryComparison<&Slot::f64>(lhs, rhs, [](double a, double b) { return a == b; });
+    storeResult(fr, in, res);
+    return {};
+}
+
 /// Compare two floating-point numbers for inequality.
 /// @param fr Frame providing operands.
 /// @param in Instruction with two floating operands and result destination.
 /// @sideeffects Writes comparison result to destination register.
 /// @returns Empty ExecResult with no control-flow changes.
-DEFINE_FLOAT_CMP(FCmpNE, !=)
+VM::ExecResult VM::handleFCmpNE(Frame &fr, const Instr &in)
+{
+    Slot lhs = eval(fr, in.operands[0]);
+    Slot rhs = eval(fr, in.operands[1]);
+    Slot res = applyBinaryComparison<&Slot::f64>(lhs, rhs, [](double a, double b) { return a != b; });
+    storeResult(fr, in, res);
+    return {};
+}
+
 /// Compare if first floating operand greater than second.
 /// @param fr Frame providing operands.
 /// @param in Instruction with two floating operands and result destination.
 /// @sideeffects Writes comparison result to destination register.
 /// @returns Empty ExecResult with no control-flow changes.
-DEFINE_FLOAT_CMP(FCmpGT, >)
+VM::ExecResult VM::handleFCmpGT(Frame &fr, const Instr &in)
+{
+    Slot lhs = eval(fr, in.operands[0]);
+    Slot rhs = eval(fr, in.operands[1]);
+    Slot res = applyBinaryComparison<&Slot::f64>(lhs, rhs, [](double a, double b) { return a > b; });
+    storeResult(fr, in, res);
+    return {};
+}
+
 /// Compare if first floating operand less than second.
 /// @param fr Frame providing operands.
 /// @param in Instruction with two floating operands and result destination.
 /// @sideeffects Writes comparison result to destination register.
 /// @returns Empty ExecResult with no control-flow changes.
-DEFINE_FLOAT_CMP(FCmpLT, <)
+VM::ExecResult VM::handleFCmpLT(Frame &fr, const Instr &in)
+{
+    Slot lhs = eval(fr, in.operands[0]);
+    Slot rhs = eval(fr, in.operands[1]);
+    Slot res = applyBinaryComparison<&Slot::f64>(lhs, rhs, [](double a, double b) { return a < b; });
+    storeResult(fr, in, res);
+    return {};
+}
+
 /// Compare if first floating operand less than or equal to second.
 /// @param fr Frame providing operands.
 /// @param in Instruction with two floating operands and result destination.
 /// @sideeffects Writes comparison result to destination register.
 /// @returns Empty ExecResult with no control-flow changes.
-DEFINE_FLOAT_CMP(FCmpLE, <=)
+VM::ExecResult VM::handleFCmpLE(Frame &fr, const Instr &in)
+{
+    Slot lhs = eval(fr, in.operands[0]);
+    Slot rhs = eval(fr, in.operands[1]);
+    Slot res = applyBinaryComparison<&Slot::f64>(lhs, rhs, [](double a, double b) { return a <= b; });
+    storeResult(fr, in, res);
+    return {};
+}
+
 /// Compare if first floating operand greater than or equal to second.
 /// @param fr Frame providing operands.
 /// @param in Instruction with two floating operands and result destination.
 /// @sideeffects Writes comparison result to destination register.
 /// @returns Empty ExecResult with no control-flow changes.
-DEFINE_FLOAT_CMP(FCmpGE, >=)
+VM::ExecResult VM::handleFCmpGE(Frame &fr, const Instr &in)
+{
+    Slot lhs = eval(fr, in.operands[0]);
+    Slot rhs = eval(fr, in.operands[1]);
+    Slot res = applyBinaryComparison<&Slot::f64>(lhs, rhs, [](double a, double b) { return a >= b; });
+    storeResult(fr, in, res);
+    return {};
+}
 
 /// Unconditionally branch to another basic block, transferring arguments.
 ///
