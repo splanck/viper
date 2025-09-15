@@ -62,6 +62,9 @@ add_library(fe_basic STATIC
   frontends/basic/NameMangler.cpp
   frontends/basic/LoweringContext.cpp
   frontends/basic/Lowerer.cpp
+  frontends/basic/LowerRuntime.cpp
+  frontends/basic/LowerScan.cpp
+  frontends/basic/LowerEmit.cpp
   frontends/basic/SemanticAnalyzer.cpp
   frontends/basic/ConstFolder.cpp
   frontends/basic/Intrinsics.cpp
