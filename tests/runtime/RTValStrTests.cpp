@@ -3,7 +3,7 @@
 // Key invariants: Parsing stops at non-numeric; round-trip within tolerance.
 // Ownership: Uses runtime library.
 // Links: docs/class-catalog.md
-#include "rt.hpp"
+#include "rt_internal.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
