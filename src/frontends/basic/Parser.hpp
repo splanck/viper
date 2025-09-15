@@ -12,6 +12,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -36,6 +37,15 @@ class Parser
     mutable std::vector<Token> tokens_;      ///< Lookahead token buffer.
     DiagnosticEmitter *emitter_ = nullptr;   ///< Diagnostic sink; not owned.
     std::unordered_set<std::string> arrays_; ///< Names of arrays declared via DIM.
+
+    /// @brief Mapping entry for statement parsers.
+    struct StmtHandler
+    {
+        StmtPtr (Parser::*no_arg)() = nullptr;       ///< Handler without line parameter.
+        StmtPtr (Parser::*with_line)(int) = nullptr; ///< Handler requiring line number.
+    };
+
+    std::unordered_map<TokenKind, StmtHandler> stmtHandlers_; ///< Token to parser mapping.
 
 #include "frontends/basic/Parser_Token.hpp"
 
