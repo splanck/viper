@@ -5,10 +5,11 @@
 // Links: docs/il-spec.md
 
 #include "il/io/Parser.hpp"
+#include "il/io/ParserUtil.hpp"
+#include "il/io/TypeParser.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/Value.hpp"
 #include "support/source_manager.hpp"
-#include <cctype>
 #include <functional>
 #include <sstream>
 #include <unordered_map>
@@ -21,84 +22,6 @@ namespace il::io
 
 namespace
 {
-
-/// @brief Strip leading and trailing whitespace from a string.
-/// @param s Input string that may contain surrounding spaces.
-/// @return Substring with external whitespace removed.
-/// @note Used throughout parsing to normalize tokens before inspection.
-std::string trim(const std::string &s)
-{
-    size_t b = 0;
-    while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b])))
-        ++b;
-    size_t e = s.size();
-    while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1])))
-        --e;
-    return s.substr(b, e - b);
-}
-
-/// @brief Parse a textual type specifier.
-/// @param t Lowercase token such as "i64" or "ptr".
-/// @param ok Optional flag set true on success and false on unknown types.
-/// @return Matching Type or a default-constructed Type on failure.
-/// @details On error, @p ok is set to false and callers can treat the returned
-/// value as an invalid type indicator.
-Type parseType(const std::string &t, bool *ok = nullptr)
-{
-    if (t == "i64")
-    {
-        if (ok)
-            *ok = true;
-        return Type(Type::Kind::I64);
-    }
-    if (t == "i1")
-    {
-        if (ok)
-            *ok = true;
-        return Type(Type::Kind::I1);
-    }
-    if (t == "f64")
-    {
-        if (ok)
-            *ok = true;
-        return Type(Type::Kind::F64);
-    }
-    if (t == "ptr")
-    {
-        if (ok)
-            *ok = true;
-        return Type(Type::Kind::Ptr);
-    }
-    if (t == "str")
-    {
-        if (ok)
-            *ok = true;
-        return Type(Type::Kind::Str);
-    }
-    if (t == "void")
-    {
-        if (ok)
-            *ok = true;
-        return Type(Type::Kind::Void);
-    }
-    if (ok)
-        *ok = false;
-    return Type(); // error indicator
-}
-
-/// @brief Fetch the next token from a stream.
-/// @param ss Stream containing whitespace and comma separated tokens.
-/// @return Token with any trailing comma removed.
-/// @note Used for parsing instruction operand lists where commas delimit
-/// individual operands.
-std::string readToken(std::istringstream &ss)
-{
-    std::string t;
-    ss >> t;
-    if (!t.empty() && t.back() == ',')
-        t.pop_back();
-    return t;
-}
 
 struct ParserState
 {
@@ -195,35 +118,19 @@ Value parseValue(const std::string &tok, ParserState &st, std::ostream &err)
     if (tok.find('.') != std::string::npos || tok.find('e') != std::string::npos ||
         tok.find('E') != std::string::npos)
     {
-        try
-        {
-            size_t idx = 0;
-            double val = std::stod(tok, &idx);
-            if (idx != tok.size())
-                throw std::invalid_argument("trailing characters");
-            return Value::constFloat(val);
-        }
-        catch (const std::exception &)
-        {
-            st.hasError = true;
-            err << "Line " << st.lineNo << ": invalid floating literal '" << tok << "'\n";
-            return Value::constFloat(0.0);
-        }
-    }
-    try
-    {
-        size_t idx = 0;
-        long long val = std::stoll(tok, &idx);
-        if (idx != tok.size())
-            throw std::invalid_argument("trailing characters");
-        return Value::constInt(val);
-    }
-    catch (const std::exception &)
-    {
+        double value = 0.0;
+        if (parseFloatLiteral(tok, value))
+            return Value::constFloat(value);
         st.hasError = true;
-        err << "Line " << st.lineNo << ": invalid integer literal '" << tok << "'\n";
-        return Value::constInt(0);
+        err << "Line " << st.lineNo << ": invalid floating literal '" << tok << "'\n";
+        return Value::constFloat(0.0);
     }
+    long long intValue = 0;
+    if (parseIntegerLiteral(tok, intValue))
+        return Value::constInt(intValue);
+    st.hasError = true;
+    err << "Line " << st.lineNo << ": invalid integer literal '" << tok << "'\n";
+    return Value::constInt(0);
 }
 
 using InstrHandler =
