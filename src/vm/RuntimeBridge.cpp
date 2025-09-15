@@ -49,82 +49,115 @@ const std::unordered_map<std::string, RuntimeEntry> &runtimeDispatchTable()
         {"rt_print_f64",
          {1, [](const std::vector<Slot> &args, Slot & /*result*/) { rt_print_f64(args[0].f64); }}},
         {"rt_len",
-         {1, [](const std::vector<Slot> &args, Slot &result) { result.i64 = rt_len(args[0].str); }}},
+         {1,
+          [](const std::vector<Slot> &args, Slot &result) { result.i64 = rt_len(args[0].str); }}},
         {"rt_concat",
-         {2, [](const std::vector<Slot> &args, Slot &result)
+         {2,
+          [](const std::vector<Slot> &args, Slot &result)
           { result.str = rt_concat(args[0].str, args[1].str); }}},
         {"rt_substr",
-         {3, [](const std::vector<Slot> &args, Slot &result)
+         {3,
+          [](const std::vector<Slot> &args, Slot &result)
           { result.str = rt_substr(args[0].str, args[1].i64, args[2].i64); }}},
         {"rt_str_eq",
-         {2, [](const std::vector<Slot> &args, Slot &result)
+         {2,
+          [](const std::vector<Slot> &args, Slot &result)
           { result.i64 = rt_str_eq(args[0].str, args[1].str); }}},
         {"rt_input_line",
-         {0, [](const std::vector<Slot> & /*args*/, Slot &result) { result.str = rt_input_line(); }}},
+         {0,
+          [](const std::vector<Slot> & /*args*/, Slot &result) { result.str = rt_input_line(); }}},
         {"rt_to_int",
-         {1, [](const std::vector<Slot> &args, Slot &result) { result.i64 = rt_to_int(args[0].str); }}},
+         {1,
+          [](const std::vector<Slot> &args, Slot &result)
+          { result.i64 = rt_to_int(args[0].str); }}},
         {"rt_int_to_str",
-         {1, [](const std::vector<Slot> &args, Slot &result)
+         {1,
+          [](const std::vector<Slot> &args, Slot &result)
           { result.str = rt_int_to_str(args[0].i64); }}},
         {"rt_f64_to_str",
-         {1, [](const std::vector<Slot> &args, Slot &result)
+         {1,
+          [](const std::vector<Slot> &args, Slot &result)
           { result.str = rt_f64_to_str(args[0].f64); }}},
         {"rt_alloc",
-         {1, [](const std::vector<Slot> &args, Slot &result) { result.ptr = rt_alloc(args[0].i64); }}},
+         {1,
+          [](const std::vector<Slot> &args, Slot &result) { result.ptr = rt_alloc(args[0].i64); }}},
         {"rt_left",
-         {2, [](const std::vector<Slot> &args, Slot &result)
+         {2,
+          [](const std::vector<Slot> &args, Slot &result)
           { result.str = rt_left(args[0].str, args[1].i64); }}},
         {"rt_right",
-         {2, [](const std::vector<Slot> &args, Slot &result)
+         {2,
+          [](const std::vector<Slot> &args, Slot &result)
           { result.str = rt_right(args[0].str, args[1].i64); }}},
         {"rt_mid2",
-         {2, [](const std::vector<Slot> &args, Slot &result)
+         {2,
+          [](const std::vector<Slot> &args, Slot &result)
           { result.str = rt_mid2(args[0].str, args[1].i64); }}},
         {"rt_mid3",
-         {3, [](const std::vector<Slot> &args, Slot &result)
+         {3,
+          [](const std::vector<Slot> &args, Slot &result)
           { result.str = rt_mid3(args[0].str, args[1].i64, args[2].i64); }}},
         {"rt_instr2",
-         {2, [](const std::vector<Slot> &args, Slot &result)
+         {2,
+          [](const std::vector<Slot> &args, Slot &result)
           { result.i64 = rt_instr2(args[0].str, args[1].str); }}},
         {"rt_instr3",
-         {3, [](const std::vector<Slot> &args, Slot &result)
+         {3,
+          [](const std::vector<Slot> &args, Slot &result)
           { result.i64 = rt_instr3(args[0].i64, args[1].str, args[2].str); }}},
         {"rt_ltrim",
-         {1, [](const std::vector<Slot> &args, Slot &result) { result.str = rt_ltrim(args[0].str); }}},
+         {1,
+          [](const std::vector<Slot> &args, Slot &result) { result.str = rt_ltrim(args[0].str); }}},
         {"rt_rtrim",
-         {1, [](const std::vector<Slot> &args, Slot &result) { result.str = rt_rtrim(args[0].str); }}},
+         {1,
+          [](const std::vector<Slot> &args, Slot &result) { result.str = rt_rtrim(args[0].str); }}},
         {"rt_trim",
-         {1, [](const std::vector<Slot> &args, Slot &result) { result.str = rt_trim(args[0].str); }}},
+         {1,
+          [](const std::vector<Slot> &args, Slot &result) { result.str = rt_trim(args[0].str); }}},
         {"rt_ucase",
-         {1, [](const std::vector<Slot> &args, Slot &result) { result.str = rt_ucase(args[0].str); }}},
+         {1,
+          [](const std::vector<Slot> &args, Slot &result) { result.str = rt_ucase(args[0].str); }}},
         {"rt_lcase",
-         {1, [](const std::vector<Slot> &args, Slot &result) { result.str = rt_lcase(args[0].str); }}},
+         {1,
+          [](const std::vector<Slot> &args, Slot &result) { result.str = rt_lcase(args[0].str); }}},
         {"rt_chr",
-         {1, [](const std::vector<Slot> &args, Slot &result) { result.str = rt_chr(args[0].i64); }}},
+         {1,
+          [](const std::vector<Slot> &args, Slot &result) { result.str = rt_chr(args[0].i64); }}},
         {"rt_asc",
-         {1, [](const std::vector<Slot> &args, Slot &result) { result.i64 = rt_asc(args[0].str); }}},
+         {1,
+          [](const std::vector<Slot> &args, Slot &result) { result.i64 = rt_asc(args[0].str); }}},
         {"rt_sqrt",
-         {1, [](const std::vector<Slot> &args, Slot &result) { result.f64 = rt_sqrt(args[0].f64); }}},
+         {1,
+          [](const std::vector<Slot> &args, Slot &result) { result.f64 = rt_sqrt(args[0].f64); }}},
         {"rt_floor",
-         {1, [](const std::vector<Slot> &args, Slot &result) { result.f64 = rt_floor(args[0].f64); }}},
+         {1,
+          [](const std::vector<Slot> &args, Slot &result) { result.f64 = rt_floor(args[0].f64); }}},
         {"rt_ceil",
-         {1, [](const std::vector<Slot> &args, Slot &result) { result.f64 = rt_ceil(args[0].f64); }}},
+         {1,
+          [](const std::vector<Slot> &args, Slot &result) { result.f64 = rt_ceil(args[0].f64); }}},
         {"rt_sin",
-         {1, [](const std::vector<Slot> &args, Slot &result) { result.f64 = rt_sin(args[0].f64); }}},
+         {1,
+          [](const std::vector<Slot> &args, Slot &result) { result.f64 = rt_sin(args[0].f64); }}},
         {"rt_cos",
-         {1, [](const std::vector<Slot> &args, Slot &result) { result.f64 = rt_cos(args[0].f64); }}},
+         {1,
+          [](const std::vector<Slot> &args, Slot &result) { result.f64 = rt_cos(args[0].f64); }}},
         {"rt_pow",
-         {2, [](const std::vector<Slot> &args, Slot &result)
+         {2,
+          [](const std::vector<Slot> &args, Slot &result)
           { result.f64 = rt_pow(args[0].f64, args[1].f64); }}},
         {"rt_abs_i64",
-         {1, [](const std::vector<Slot> &args, Slot &result) { result.i64 = rt_abs_i64(args[0].i64); }}},
+         {1,
+          [](const std::vector<Slot> &args, Slot &result)
+          { result.i64 = rt_abs_i64(args[0].i64); }}},
         {"rt_abs_f64",
-         {1, [](const std::vector<Slot> &args, Slot &result) { result.f64 = rt_abs_f64(args[0].f64); }}},
+         {1,
+          [](const std::vector<Slot> &args, Slot &result)
+          { result.f64 = rt_abs_f64(args[0].f64); }}},
         {"rt_randomize_i64",
-         {1, [](const std::vector<Slot> &args, Slot & /*result*/) { rt_randomize_i64(args[0].i64); }}},
+         {1,
+          [](const std::vector<Slot> &args, Slot & /*result*/) { rt_randomize_i64(args[0].i64); }}},
         {"rt_rnd",
-         {0, [](const std::vector<Slot> & /*args*/, Slot &result) { result.f64 = rt_rnd(); }}}
-    };
+         {0, [](const std::vector<Slot> & /*args*/, Slot &result) { result.f64 = rt_rnd(); }}}};
     return table;
 }
 } // namespace
