@@ -18,7 +18,11 @@ target_include_directories(il_build PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_subdirectory(il/io)
 
-add_library(il_verify STATIC il/verify/Verifier.cpp)
+add_library(il_verify STATIC
+  il/verify/Verifier.cpp
+  il/verify/InstructionChecker.cpp
+  il/verify/ControlFlowChecker.cpp
+  il/verify/TypeInference.cpp)
 target_link_libraries(il_verify PUBLIC il_core)
 target_include_directories(il_verify PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
