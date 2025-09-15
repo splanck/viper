@@ -16,7 +16,11 @@ add_library(il_build STATIC il/build/IRBuilder.cpp)
 target_link_libraries(il_build PUBLIC il_core support)
 target_include_directories(il_build PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-add_library(il_io STATIC il/io/Serializer.cpp il/io/Parser.cpp)
+add_library(il_io STATIC
+  il/io/Serializer.cpp
+  il/io/Parser.cpp
+  il/io/Lexer.cpp
+  il/io/detail/InstructionHandlers.cpp)
 target_link_libraries(il_io PUBLIC il_core)
 target_include_directories(il_io PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
