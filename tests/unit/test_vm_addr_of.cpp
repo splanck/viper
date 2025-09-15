@@ -5,7 +5,7 @@
 // Links: docs/il-reference.md
 
 #include "il/io/Parser.hpp"
-#include "rt.hpp"
+#include "rt_internal.h"
 #include "vm/VM.hpp"
 #include <cassert>
 #include <sstream>

@@ -1,124 +1,22 @@
-// File: runtime/rt.c
-// Purpose: Implements BASIC runtime helpers for strings and I/O.
-// Key invariants: Strings use reference counts; print functions do not append newlines.
-// Ownership/Lifetime: Caller manages returned strings.
+// File: runtime/rt_string.c
+// Purpose: Implements string manipulation utilities for the BASIC runtime.
+// Key invariants: Strings use reference counts; operations trap on invalid inputs.
+// Ownership/Lifetime: Caller manages returned strings and reference counts.
 // Links: docs/class-catalog.md
 
-#include "rt.hpp"
+#include "rt_internal.h"
 #include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/**
- * Purpose: Provide a canonical empty runtime string to callers.
- *
- * Parameters: none.
- *
- * Returns: Pointer to a shared empty string instance. The refcount is set to
- * INT64_MAX so the singleton is never freed.
- *
- * Side effects: Initializes a static string on first invocation but performs
- * no dynamic allocation thereafter.
- */
 static rt_string rt_empty_string(void)
 {
-    // Singleton empty string with effectively infinite refcount to prevent
-    // deallocation.
     static struct rt_string_impl empty = {INT64_MAX, 0, 0, ""};
     return &empty;
 }
 
-/**
- * Purpose: Terminate the program immediately due to a fatal runtime error.
- *
- * Parameters:
- *   msg - Optional message describing the reason for the abort.
- *
- * Returns: Never returns.
- *
- * Side effects: Writes an error message to stderr and exits with status 1.
- */
-void rt_abort(const char *msg)
-{
-    if (msg)
-        fprintf(stderr, "runtime trap: %s\n", msg);
-    else
-        fprintf(stderr, "runtime trap\n");
-    exit(1);
-}
-
-/**
- * Purpose: Trap handler used by the VM layer. Can be overridden by hosts.
- *
- * Parameters:
- *   msg - Optional message describing the trap condition.
- *
- * Returns: Never returns.
- *
- * Side effects: Delegates to rt_abort by default. Marked weak so embedders may
- * supply their own implementation.
- */
-__attribute__((weak)) void vm_trap(const char *msg)
-{
-    rt_abort(msg);
-}
-
-/**
- * Purpose: Entry point for raising runtime traps from helper routines.
- *
- * Parameters:
- *   msg - Message describing the trap condition.
- *
- * Returns: Never returns.
- *
- * Side effects: Forwards the message to the VM trap handler.
- */
-void rt_trap(const char *msg)
-{
-    vm_trap(msg);
-}
-
-/**
- * Purpose: Allocate a block of memory for runtime usage.
- *
- * Parameters:
- *   bytes - Number of bytes to allocate. Must be non-negative.
- *
- * Returns: Pointer to the allocated memory on success; does not return on
- * allocation failure or negative size.
- *
- * Side effects: May terminate the program via rt_trap on invalid inputs or
- * allocation failures.
- */
-void *rt_alloc(int64_t bytes)
-{
-    if (bytes < 0)
-        return rt_trap("negative allocation"), NULL;
-    if ((uint64_t)bytes > SIZE_MAX)
-    {
-        rt_trap("allocation too large");
-        return NULL;
-    }
-    void *p = malloc((size_t)bytes);
-    if (!p)
-        rt_trap("out of memory");
-    return p;
-}
-
-/**
- * Purpose: Wrap a constant C string in the runtime string structure without
- * copying its contents.
- *
- * Parameters:
- *   c - NUL-terminated C string to wrap. Must outlive the returned object.
- *
- * Returns: Runtime string referencing the existing character data, or NULL if
- * c is NULL.
- *
- * Side effects: Allocates a runtime string header but not the underlying data.
- */
 rt_string rt_const_cstr(const char *c)
 {
     if (!c)
@@ -131,120 +29,6 @@ rt_string rt_const_cstr(const char *c)
     return s;
 }
 
-/**
- * Purpose: Write a runtime string to standard output without a trailing
- * newline.
- *
- * Parameters:
- *   s - String to print; NULL strings are ignored.
- *
- * Returns: void.
- *
- * Side effects: Writes to stdout.
- */
-void rt_print_str(rt_string s)
-{
-    if (s && s->data)
-        fwrite(s->data, 1, (size_t)s->size, stdout);
-}
-
-/**
- * Purpose: Print a 64-bit integer in decimal form to stdout.
- *
- * Parameters:
- *   v - Value to print.
- *
- * Returns: void.
- *
- * Side effects: Writes to stdout.
- */
-void rt_print_i64(int64_t v)
-{
-    printf("%lld", (long long)v);
-}
-
-/**
- * Purpose: Print a double-precision floating-point number to stdout.
- *
- * Parameters:
- *   v - Value to print.
- *
- * Returns: void.
- *
- * Side effects: Writes to stdout.
- */
-void rt_print_f64(double v)
-{
-    printf("%g", v);
-}
-
-/**
- * Purpose: Read a single line of input from stdin into a runtime string.
- *
- * Parameters: none.
- *
- * Returns: Newly allocated runtime string containing the line without the
- * trailing newline. Returns NULL on EOF before any characters are read.
- *
- * Side effects: Reads from stdin and performs heap allocations. May terminate
- * via rt_trap on allocation failures.
- */
-rt_string rt_input_line(void)
-{
-    size_t cap = 1024;
-    size_t len = 0;
-    char *buf = (char *)rt_alloc(cap);
-    for (;;)
-    {
-        int ch = fgetc(stdin);
-        if (ch == EOF)
-        {
-            if (len == 0)
-            {
-                free(buf);
-                return NULL;
-            }
-            break;
-        }
-        if (ch == '\n')
-            break;
-        if (len + 1 >= cap)
-        {
-            size_t new_cap = cap * 2;
-            char *nbuf = (char *)realloc(buf, new_cap);
-            if (!nbuf)
-            {
-                free(buf);
-                rt_trap("out of memory");
-                return NULL;
-            }
-            buf = nbuf;
-            cap = new_cap;
-        }
-        buf[len++] = (char)ch;
-    }
-    buf[len] = '\0';
-    rt_string s = (rt_string)rt_alloc(sizeof(*s));
-    s->refcnt = 1;
-    s->size = (int64_t)len;
-    s->capacity = s->size;
-    char *data = (char *)rt_alloc(len + 1);
-    memcpy(data, buf, len + 1);
-    s->data = data;
-    free(buf);
-    return s;
-}
-
-/**
- * Purpose: Return the length of a runtime string.
- *
- * Parameters:
- *   s - Runtime string; may be NULL.
- *
- * Returns: Number of characters in the string, or 0 if s is NULL.
- *
- * Side effects: None.
- */
 int64_t rt_len(rt_string s)
 {
     return s ? s->size : 0;

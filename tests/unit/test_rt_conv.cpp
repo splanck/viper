@@ -3,7 +3,7 @@
 // Key invariants: Returned strings match decimal formatting used by PRINT.
 // Ownership: Uses runtime library.
 // Links: docs/class-catalog.md
-#include "rt.hpp"
+#include "rt_internal.h"
 #include <cassert>
 #include <string>
 
