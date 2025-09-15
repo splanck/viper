@@ -15,34 +15,13 @@ namespace il::frontends::basic
 /// @return Parsed statement node or EndStmt for unknown tokens.
 StmtPtr Parser::parseStatement(int line)
 {
-    if (at(TokenKind::KeywordPrint))
-        return parsePrint();
-    if (at(TokenKind::KeywordLet))
-        return parseLet();
-    if (at(TokenKind::KeywordIf))
-        return parseIf(line);
-    if (at(TokenKind::KeywordWhile))
-        return parseWhile();
-    if (at(TokenKind::KeywordFor))
-        return parseFor();
-    if (at(TokenKind::KeywordNext))
-        return parseNext();
-    if (at(TokenKind::KeywordGoto))
-        return parseGoto();
-    if (at(TokenKind::KeywordEnd))
-        return parseEnd();
-    if (at(TokenKind::KeywordInput))
-        return parseInput();
-    if (at(TokenKind::KeywordDim))
-        return parseDim();
-    if (at(TokenKind::KeywordRandomize))
-        return parseRandomize();
-    if (at(TokenKind::KeywordFunction))
-        return parseFunction();
-    if (at(TokenKind::KeywordSub))
-        return parseSub();
-    if (at(TokenKind::KeywordReturn))
-        return parseReturn();
+    auto it = stmtHandlers_.find(peek().kind);
+    if (it != stmtHandlers_.end())
+    {
+        if (it->second.no_arg)
+            return (this->*(it->second.no_arg))();
+        return (this->*(it->second.with_line))(line);
+    }
     auto stmt = std::make_unique<EndStmt>();
     stmt->loc = peek().loc;
     return stmt;
