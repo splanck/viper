@@ -39,6 +39,15 @@ extern "C"
     /// @return Newly allocated string without trailing newline.
     rt_string rt_input_line(void);
 
+    /// @brief Increment reference count of @p s.
+    /// @param s String to reference; null allowed.
+    /// @return Input string pointer.
+    rt_string rt_string_ref(rt_string s);
+
+    /// @brief Decrement reference count of @p s and free on zero.
+    /// @param s String to release; null allowed.
+    void rt_string_unref(rt_string s);
+
     /// @brief Get length of string @p s in bytes.
     /// @param s String to measure.
     /// @return Number of bytes excluding terminator.

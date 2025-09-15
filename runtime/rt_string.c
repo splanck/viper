@@ -17,6 +17,44 @@ static rt_string rt_empty_string(void)
     return &empty;
 }
 
+/**
+ * Purpose: Increment reference count of runtime string.
+ *
+ * Parameters:
+ *   s - String to reference; may be NULL.
+ *
+ * Returns: Input string pointer @p s.
+ *
+ * Side effects: Increments @p s->refcnt unless @p s is NULL or the shared
+ * empty string.
+ */
+rt_string rt_string_ref(rt_string s)
+{
+    if (s && s->refcnt != INT64_MAX)
+        s->refcnt++;
+    return s;
+}
+
+/**
+ * Purpose: Decrement reference count and free when reaching zero.
+ *
+ * Parameters:
+ *   s - String to release; may be NULL.
+ *
+ * Side effects: Frees string data and struct when the count drops to zero.
+ */
+void rt_string_unref(rt_string s)
+{
+    if (!s || s->refcnt == INT64_MAX)
+        return;
+    if (--s->refcnt == 0)
+    {
+        if (s->capacity > 0 && s->data)
+            free((void *)s->data);
+        free(s);
+    }
+}
+
 rt_string rt_const_cstr(const char *c)
 {
     if (!c)
@@ -94,8 +132,7 @@ rt_string rt_substr(rt_string s, int64_t start, int64_t len)
         return rt_empty_string();
     if (start == 0 && len == s->size)
     {
-        s->refcnt++;
-        return s;
+        return rt_string_ref(s);
     }
     // O(len) time, one allocation and copy of len bytes.
     rt_string r = (rt_string)rt_alloc(sizeof(*r));
@@ -135,8 +172,7 @@ rt_string rt_left(rt_string s, int64_t n)
         return rt_empty_string();
     if (n >= s->size)
     {
-        s->refcnt++;
-        return s;
+        return rt_string_ref(s);
     }
     // O(n) copy via rt_substr.
     return rt_substr(s, 0, n);
@@ -169,8 +205,7 @@ rt_string rt_right(rt_string s, int64_t n)
         return rt_empty_string();
     if (n >= len)
     {
-        s->refcnt++;
-        return s;
+        return rt_string_ref(s);
     }
     int64_t start = len - n;
     // O(n) copy via rt_substr.
@@ -201,8 +236,7 @@ rt_string rt_mid2(rt_string s, int64_t start)
     int64_t len = s->size;
     if (start <= 0)
     {
-        s->refcnt++;
-        return s;
+        return rt_string_ref(s);
     }
     if (start >= len)
         return rt_empty_string();
@@ -246,8 +280,7 @@ rt_string rt_mid3(rt_string s, int64_t start, int64_t len)
         return rt_empty_string();
     if (start == 0 && len >= slen)
     {
-        s->refcnt++;
-        return s;
+        return rt_string_ref(s);
     }
     if (len > slen - start)
         len = slen - start;
