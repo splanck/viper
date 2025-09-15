@@ -62,5 +62,44 @@ int main()
         assert(oss.str().find("B2001") != std::string::npos);
     }
 
+    // numeric comparison
+    {
+        std::string src = "10 LET X = 5 > 2\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("test.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        foldConstants(*prog);
+        auto *let = dynamic_cast<LetStmt *>(prog->main[0].get());
+        auto *ie = dynamic_cast<IntExpr *>(let->expr.get());
+        assert(ie && ie->value == 1);
+    }
+
+    // string comparison
+    {
+        std::string src = "10 PRINT \"foo\" = \"bar\"\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("test.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        foldConstants(*prog);
+        auto *pr = dynamic_cast<PrintStmt *>(prog->main[0].get());
+        auto *ie = dynamic_cast<IntExpr *>(pr->items[0].expr.get());
+        assert(ie && ie->value == 0);
+    }
+
+    // logical OR
+    {
+        std::string src = "10 LET X = 0 OR 1\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("test.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        foldConstants(*prog);
+        auto *let = dynamic_cast<LetStmt *>(prog->main[0].get());
+        auto *ie = dynamic_cast<IntExpr *>(let->expr.get());
+        assert(ie && ie->value == 1);
+    }
+
     return 0;
 }
