@@ -6,6 +6,11 @@
 #pragma once
 
 #include "il/core/Module.hpp"
+#include "il/io/FunctionParser.hpp"
+#include "il/io/InstrParser.hpp"
+#include "il/io/ModuleParser.hpp"
+#include "il/io/ParserState.hpp"
+
 #include <istream>
 #include <ostream>
 
