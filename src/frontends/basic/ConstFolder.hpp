@@ -70,7 +70,7 @@ ExprPtr foldStringConcat(const StringExpr &l, const StringExpr &r);
 ExprPtr foldStringEq(const StringExpr &l, const StringExpr &r);
 ExprPtr foldStringNe(const StringExpr &l, const StringExpr &r);
 
-inline constexpr std::array<BinaryFoldEntry, 14> kBinaryFoldTable = {{
+inline constexpr std::array<BinaryFoldEntry, 16> kBinaryFoldTable = {{
     {BinaryExpr::Op::Add, &foldNumericAdd, &foldStringConcat},
     {BinaryExpr::Op::Sub, &foldNumericSub, nullptr},
     {BinaryExpr::Op::Mul, &foldNumericMul, nullptr},
@@ -83,8 +83,10 @@ inline constexpr std::array<BinaryFoldEntry, 14> kBinaryFoldTable = {{
     {BinaryExpr::Op::Le, &foldNumericLe, nullptr},
     {BinaryExpr::Op::Gt, &foldNumericGt, nullptr},
     {BinaryExpr::Op::Ge, &foldNumericGe, nullptr},
-    {BinaryExpr::Op::And, &foldNumericAnd, nullptr},
-    {BinaryExpr::Op::Or, &foldNumericOr, nullptr},
+    {BinaryExpr::Op::LogicalAndShort, &foldNumericAnd, nullptr},
+    {BinaryExpr::Op::LogicalOrShort, &foldNumericOr, nullptr},
+    {BinaryExpr::Op::LogicalAnd, &foldNumericAnd, nullptr},
+    {BinaryExpr::Op::LogicalOr, &foldNumericOr, nullptr},
 }};
 
 inline const BinaryFoldEntry *findBinaryFold(BinaryExpr::Op op)

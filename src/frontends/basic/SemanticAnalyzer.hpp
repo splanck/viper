@@ -104,6 +104,7 @@ class SemanticAnalyzer
         Int,
         Float,
         String,
+        Bool,
         Unknown
     };
 

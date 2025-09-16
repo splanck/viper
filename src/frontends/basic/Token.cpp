@@ -67,6 +67,8 @@ const char *tokenKindToString(TokenKind k)
             return "INPUT";
         case TokenKind::KeywordDim:
             return "DIM";
+        case TokenKind::KeywordAs:
+            return "AS";
         case TokenKind::KeywordRandomize:
             return "RANDOMIZE";
         case TokenKind::KeywordAnd:

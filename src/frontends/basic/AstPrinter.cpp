@@ -12,6 +12,27 @@
 namespace il::frontends::basic
 {
 
+namespace
+{
+
+const char *typeToString(Type ty)
+{
+    switch (ty)
+    {
+        case Type::I64:
+            return "I64";
+        case Type::F64:
+            return "F64";
+        case Type::Str:
+            return "STR";
+        case Type::Bool:
+            return "BOOL";
+    }
+    return "I64";
+}
+
+} // namespace
+
 /// @brief Write a line of text to the underlying stream with current indentation.
 /// @param text Line content to emit.
 /// @note Appends a newline character and resets column position.
@@ -106,8 +127,21 @@ void AstPrinter::dump(const Stmt &stmt, Printer &p)
     }
     else if (auto *d = dynamic_cast<const DimStmt *>(&stmt))
     {
-        p.os << "(DIM " << d->name << ' ';
-        dump(*d->size, p);
+        p.os << "(DIM " << d->name;
+        if (d->isArray)
+        {
+            if (d->size)
+            {
+                p.os << ' ';
+                dump(*d->size, p);
+            }
+            if (d->type != Type::I64)
+                p.os << " AS " << typeToString(d->type);
+        }
+        else
+        {
+            p.os << " AS " << typeToString(d->type);
+        }
         p.os << ')';
     }
     else if (auto *r = dynamic_cast<const RandomizeStmt *>(&stmt))
@@ -200,8 +234,7 @@ void AstPrinter::dump(const Stmt &stmt, Printer &p)
     }
     else if (auto *f = dynamic_cast<const FunctionDecl *>(&stmt))
     {
-        static constexpr std::array<const char *, 3> types = {"I64", "F64", "STR"};
-        p.os << "(FUNCTION " << f->name << " RET " << types[static_cast<size_t>(f->ret)] << " (";
+        p.os << "(FUNCTION " << f->name << " RET " << typeToString(f->ret) << " (";
         bool first = true;
         // Parameters are printed in declaration order.
         for (auto &pa : f->params)
@@ -291,14 +324,33 @@ void AstPrinter::dump(const Expr &expr, Printer &p)
     }
     else if (auto *b = dynamic_cast<const BinaryExpr *>(&expr))
     {
-        static constexpr std::array<const char *, 14> ops = {
-            "+", "-", "*", "/", "\\", "MOD", "=", "<>", "<", "<=", ">", ">=", "AND", "OR"};
+        static constexpr std::array<const char *, 16> ops = {
+            "+",
+            "-",
+            "*",
+            "/",
+            "\\",
+            "MOD",
+            "=",
+            "<>",
+            "<",
+            "<=",
+            ">",
+            ">=",
+            "ANDALSO",
+            "ORELSE",
+            "AND",
+            "OR"};
         // Binary expressions print operator then operands.
         p.os << '(' << ops[static_cast<size_t>(b->op)] << ' ';
         dump(*b->lhs, p);
         p.os << ' ';
         dump(*b->rhs, p);
         p.os << ')';
+    }
+    else if (auto *b = dynamic_cast<const BoolExpr *>(&expr))
+    {
+        p.os << (b->value ? "TRUE" : "FALSE");
     }
     else if (auto *u = dynamic_cast<const UnaryExpr *>(&expr))
     {

@@ -48,6 +48,22 @@ static size_t levenshtein(const std::string &a, const std::string &b)
     return prev[n];
 }
 
+static SemanticAnalyzer::Type astToSemanticType(::il::frontends::basic::Type ty)
+{
+    switch (ty)
+    {
+        case ::il::frontends::basic::Type::I64:
+            return SemanticAnalyzer::Type::Int;
+        case ::il::frontends::basic::Type::F64:
+            return SemanticAnalyzer::Type::Float;
+        case ::il::frontends::basic::Type::Str:
+            return SemanticAnalyzer::Type::String;
+        case ::il::frontends::basic::Type::Bool:
+            return SemanticAnalyzer::Type::Bool;
+    }
+    return SemanticAnalyzer::Type::Int;
+}
+
 /// @brief Convert builtin enum to BASIC name.
 static const char *builtinName(BuiltinCallExpr::Builtin b)
 {
@@ -227,7 +243,12 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
         v.name = *mapped;
     symbols_.insert(v.name);
     Type varTy = Type::Int;
-    if (!v.name.empty())
+    auto itType = varTypes_.find(v.name);
+    if (itType != varTypes_.end())
+    {
+        varTy = itType->second;
+    }
+    else if (!v.name.empty())
     {
         if (v.name.back() == '$')
             varTy = Type::String;
@@ -247,8 +268,14 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
             std::string msg = "operand type mismatch";
             de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
         }
+        else if (varTy == Type::Bool && exprTy != Type::Unknown && exprTy != Type::Bool)
+        {
+            std::string msg = "operand type mismatch";
+            de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+        }
     }
-    varTypes_[v.name] = varTy;
+    if (itType == varTypes_.end())
+        varTypes_[v.name] = varTy;
 }
 
 void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
@@ -438,20 +465,26 @@ void SemanticAnalyzer::analyzeInput(const InputStmt &inp)
 void SemanticAnalyzer::analyzeDim(const DimStmt &d)
 {
     auto *dc = const_cast<DimStmt *>(&d);
-    auto ty = visitExpr(*dc->size);
-    if (ty != Type::Unknown && ty != Type::Int)
-    {
-        std::string msg = "size type mismatch";
-        de.emit(il::support::Severity::Error, "B2001", dc->loc, 1, std::move(msg));
-    }
     long long sz = -1;
-    if (auto *ci = dynamic_cast<const IntExpr *>(dc->size.get()))
+    if (dc->isArray)
     {
-        sz = ci->value;
-        if (sz <= 0)
+        if (dc->size)
         {
-            std::string msg = "array size must be positive";
-            de.emit(il::support::Severity::Error, "B2003", dc->loc, 1, std::move(msg));
+            auto ty = visitExpr(*dc->size);
+            if (ty != Type::Unknown && ty != Type::Int)
+            {
+                std::string msg = "size type mismatch";
+                de.emit(il::support::Severity::Error, "B2001", dc->loc, 1, std::move(msg));
+            }
+            if (auto *ci = dynamic_cast<const IntExpr *>(dc->size.get()))
+            {
+                sz = ci->value;
+                if (sz <= 0)
+                {
+                    std::string msg = "array size must be positive";
+                    de.emit(il::support::Severity::Error, "B2003", dc->loc, 1, std::move(msg));
+                }
+            }
         }
     }
     if (scopes_.hasScope())
@@ -472,7 +505,18 @@ void SemanticAnalyzer::analyzeDim(const DimStmt &d)
             symbols_.insert(unique);
         }
     }
-    arrays_[dc->name] = sz;
+    else
+    {
+        symbols_.insert(dc->name);
+    }
+    if (dc->isArray)
+    {
+        arrays_[dc->name] = sz;
+    }
+    else
+    {
+        varTypes_[dc->name] = astToSemanticType(dc->type);
+    }
 }
 
 void SemanticAnalyzer::visitStmt(const Stmt &s)
@@ -543,12 +587,13 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeUnary(const UnaryExpr &u)
     Type t = Type::Unknown;
     if (u.expr)
         t = visitExpr(*u.expr);
-    if (u.op == UnaryExpr::Op::Not && t != Type::Unknown && t != Type::Int)
+    if (u.op == UnaryExpr::Op::LogicalNot &&
+        t != Type::Unknown && t != Type::Int && t != Type::Bool)
     {
         std::string msg = "operand type mismatch";
         de.emit(il::support::Severity::Error, "B2001", u.loc, 3, std::move(msg));
     }
-    return Type::Int;
+    return Type::Bool;
 }
 
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeBinary(const BinaryExpr &b)
@@ -576,8 +621,10 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeBinary(const BinaryExpr &b)
         case BinaryExpr::Op::Gt:
         case BinaryExpr::Op::Ge:
             return analyzeComparison(b, lt, rt);
-        case BinaryExpr::Op::And:
-        case BinaryExpr::Op::Or:
+        case BinaryExpr::Op::LogicalAndShort:
+        case BinaryExpr::Op::LogicalOrShort:
+        case BinaryExpr::Op::LogicalAnd:
+        case BinaryExpr::Op::LogicalOr:
             return analyzeLogical(b, lt, rt);
     }
     return Type::Unknown;
@@ -661,17 +708,21 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeComparison(const BinaryExpr &b, 
         std::string msg = "operand type mismatch";
         de.emit(il::support::Severity::Error, "B2001", b.loc, 1, std::move(msg));
     }
-    return Type::Int;
+    return Type::Bool;
 }
 
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeLogical(const BinaryExpr &b, Type lt, Type rt)
 {
-    if ((lt != Type::Unknown && lt != Type::Int) || (rt != Type::Unknown && rt != Type::Int))
+    auto isBoolish = [](Type t)
+    {
+        return t == Type::Unknown || t == Type::Int || t == Type::Bool;
+    };
+    if (!isBoolish(lt) || !isBoolish(rt))
     {
         std::string msg = "operand type mismatch";
         de.emit(il::support::Severity::Error, "B2001", b.loc, 1, std::move(msg));
     }
-    return Type::Int;
+    return Type::Bool;
 }
 
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeBuiltinCall(const BuiltinCallExpr &c)
@@ -1090,6 +1141,8 @@ SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
         return Type::Float;
     if (dynamic_cast<const StringExpr *>(&e))
         return Type::String;
+    if (dynamic_cast<const BoolExpr *>(&e))
+        return Type::Bool;
     if (auto *v = const_cast<VarExpr *>(dynamic_cast<const VarExpr *>(&e)))
         return analyzeVar(*v);
     if (auto *u = dynamic_cast<const UnaryExpr *>(&e))

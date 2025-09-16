@@ -38,6 +38,9 @@ Lowerer::ExprType Lowerer::scanBinaryExpr(const BinaryExpr &b)
             needRtStrEq = true;
         return ExprType::Bool;
     }
+    if (b.op == BinaryExpr::Op::LogicalAndShort || b.op == BinaryExpr::Op::LogicalOrShort ||
+        b.op == BinaryExpr::Op::LogicalAnd || b.op == BinaryExpr::Op::LogicalOr)
+        return ExprType::Bool;
     if (lt == ExprType::F64 || rt == ExprType::F64)
         return ExprType::F64;
     return ExprType::I64;

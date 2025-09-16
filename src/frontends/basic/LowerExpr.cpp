@@ -65,7 +65,7 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
     RVal lhs = lowerExpr(*b.lhs);
     curLoc = b.loc;
     Value addr = emitAlloca(1);
-    if (b.op == BinaryExpr::Op::And)
+    if (b.op == BinaryExpr::Op::LogicalAndShort || b.op == BinaryExpr::Op::LogicalAnd)
     {
         std::string rhsLbl = blockNamer ? blockNamer->generic("and_rhs") : mangler.block("and_rhs");
         std::string falseLbl =
@@ -239,7 +239,8 @@ Lowerer::RVal Lowerer::lowerNumericBinary(const BinaryExpr &b, RVal lhs, RVal rh
 // Side effects: may modify lowering state or emit IL.
 Lowerer::RVal Lowerer::lowerBinaryExpr(const BinaryExpr &b)
 {
-    if (b.op == BinaryExpr::Op::And || b.op == BinaryExpr::Op::Or)
+    if (b.op == BinaryExpr::Op::LogicalAndShort || b.op == BinaryExpr::Op::LogicalOrShort ||
+        b.op == BinaryExpr::Op::LogicalAnd || b.op == BinaryExpr::Op::LogicalOr)
         return lowerLogicalBinary(b);
     if (b.op == BinaryExpr::Op::IDiv || b.op == BinaryExpr::Op::Mod)
         return lowerDivOrMod(b);
@@ -660,6 +661,10 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
         std::string lbl = getStringLabel(s->value);
         Value tmp = emitConstStr(lbl);
         return {tmp, Type(Type::Kind::Str)};
+    }
+    else if (auto *b = dynamic_cast<const BoolExpr *>(&expr))
+    {
+        return {Value::constInt(b->value ? 1 : 0), Type(Type::Kind::I1)};
     }
     else if (auto *v = dynamic_cast<const VarExpr *>(&expr))
     {
