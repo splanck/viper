@@ -35,8 +35,10 @@ int Parser::precedence(TokenKind k)
         case TokenKind::GreaterEqual:
             return 3;
         case TokenKind::KeywordAnd:
+        case TokenKind::KeywordAndAlso:
             return 2;
         case TokenKind::KeywordOr:
+        case TokenKind::KeywordOrElse:
             return 1;
         default:
             return 0;
@@ -64,7 +66,7 @@ ExprPtr Parser::parseUnaryExpression()
         auto operand = parseExpression(precedence(TokenKind::KeywordNot));
         auto u = std::make_unique<UnaryExpr>();
         u->loc = loc;
-        u->op = UnaryExpr::Op::Not;
+        u->op = UnaryExpr::Op::LogicalNot;
         u->expr = std::move(operand);
         return u;
     }
@@ -126,11 +128,17 @@ ExprPtr Parser::parseInfixRhs(ExprPtr left, int min_prec)
             case TokenKind::GreaterEqual:
                 bin->op = BinaryExpr::Op::Ge;
                 break;
+            case TokenKind::KeywordAndAlso:
+                bin->op = BinaryExpr::Op::LogicalAndShort;
+                break;
+            case TokenKind::KeywordOrElse:
+                bin->op = BinaryExpr::Op::LogicalOrShort;
+                break;
             case TokenKind::KeywordAnd:
-                bin->op = BinaryExpr::Op::And;
+                bin->op = BinaryExpr::Op::LogicalAnd;
                 break;
             case TokenKind::KeywordOr:
-                bin->op = BinaryExpr::Op::Or;
+                bin->op = BinaryExpr::Op::LogicalOr;
                 break;
             default:
                 bin->op = BinaryExpr::Op::Add;
@@ -287,6 +295,14 @@ ExprPtr Parser::parsePrimary()
         return parseNumber();
     if (at(TokenKind::String))
         return parseString();
+    if (at(TokenKind::KeywordTrue) || at(TokenKind::KeywordFalse))
+    {
+        auto b = std::make_unique<BoolExpr>();
+        b->loc = peek().loc;
+        b->value = at(TokenKind::KeywordTrue);
+        consume();
+        return b;
+    }
     if (!at(TokenKind::Identifier))
     {
         if (auto b = lookupBuiltin(peek().lexeme))

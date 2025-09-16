@@ -44,6 +44,7 @@ enum class TokenKind
     KeywordEnd,
     KeywordInput,
     KeywordDim,
+    KeywordAs,
     KeywordRandomize,
     KeywordAnd,
     KeywordOr,

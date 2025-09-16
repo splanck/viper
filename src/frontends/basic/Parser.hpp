@@ -128,6 +128,10 @@ class Parser
     /// @return Resolved type.
     Type typeFromSuffix(std::string_view name);
 
+    /// @brief Parse a BASIC type keyword following AS.
+    /// @return Resolved BASIC type, defaults to I64 on mismatch.
+    Type parseTypeKeyword();
+
     /// @brief Parse an expression using precedence climbing.
     /// @param min_prec Minimum precedence to enforce.
     /// @return Parsed expression node.

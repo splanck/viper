@@ -52,7 +52,10 @@ void Lowerer::lowerStmt(const Stmt &stmt)
     else if (auto *in = dynamic_cast<const InputStmt *>(&stmt))
         lowerInput(*in);
     else if (auto *d = dynamic_cast<const DimStmt *>(&stmt))
-        lowerDim(*d);
+    {
+        if (d->isArray)
+            lowerDim(*d);
+    }
     else if (auto *r = dynamic_cast<const RandomizeStmt *>(&stmt))
         lowerRandomize(*r);
     else if (auto *ret = dynamic_cast<const ReturnStmt *>(&stmt))
