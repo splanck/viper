@@ -99,6 +99,16 @@ const char *tokenKindToString(TokenKind k)
             return "SUB";
         case TokenKind::KeywordReturn:
             return "RETURN";
+        case TokenKind::KeywordBoolean:
+            return "BOOLEAN";
+        case TokenKind::KeywordTrue:
+            return "TRUE";
+        case TokenKind::KeywordFalse:
+            return "FALSE";
+        case TokenKind::KeywordAndAlso:
+            return "ANDALSO";
+        case TokenKind::KeywordOrElse:
+            return "ORELSE";
         case TokenKind::Plus:
             return "+";
         case TokenKind::Minus:
