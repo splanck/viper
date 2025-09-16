@@ -548,6 +548,11 @@ add_test(NAME basic_lex_comments COMMAND ${CMAKE_COMMAND}
   -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/lex/Comments.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/basic/lex/Comments.tokens
   -P ${CMAKE_SOURCE_DIR}/tests/basic/lex/check_tokens.cmake)
+add_test(NAME basic_lex_boolean_tokens COMMAND ${CMAKE_COMMAND}
+  -DBASIC_LEX_DUMP=${BASIC_LEX_DUMP}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/lex/test_boolean_tokens.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/basic/lex/test_boolean_tokens.expect
+  -P ${CMAKE_SOURCE_DIR}/tests/basic/lex/check_tokens.cmake)
 
 set(BASIC_ILC $<TARGET_FILE:ilc>)
 add_test(NAME basic_to_il_ex1 COMMAND ${CMAKE_COMMAND}
