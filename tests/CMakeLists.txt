@@ -542,6 +542,12 @@ add_test(NAME basic_ast_intrinsic_calls COMMAND ${CMAKE_COMMAND}
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/basic/parse/IntrinsicCalls.ast
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/check_ast.cmake)
 
+add_test(NAME basic_ast_boolean_exprs COMMAND ${CMAKE_COMMAND}
+  -DBASIC_AST_DUMP=${BASIC_AST_DUMP}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/parse/test_boolean_exprs.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/basic/parse/test_boolean_exprs.ast
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/check_ast.cmake)
+
 set(BASIC_LEX_DUMP $<TARGET_FILE:basic-lex-dump>)
 add_test(NAME basic_lex_comments COMMAND ${CMAKE_COMMAND}
   -DBASIC_LEX_DUMP=${BASIC_LEX_DUMP}

@@ -32,6 +32,7 @@ enum class Type
     I64,
     F64,
     Str,
+    Bool,
 };
 
 /// @brief Signed integer literal expression.
@@ -53,6 +54,13 @@ struct StringExpr : Expr
 {
     /// Owned UTF-8 string contents without surrounding quotes.
     std::string value;
+};
+
+/// @brief Boolean literal expression.
+struct BoolExpr : Expr
+{
+    /// Literal boolean value parsed from the source.
+    bool value = false;
 };
 
 /// @brief Reference to a scalar variable.
@@ -77,7 +85,7 @@ struct UnaryExpr : Expr
     /// Unary operator applied to @ref expr.
     enum class Op
     {
-        Not
+        LogicalNot
     } op;
 
     /// Operand expression; owned and non-null.
@@ -102,8 +110,10 @@ struct BinaryExpr : Expr
         Le,
         Gt,
         Ge,
-        And,
-        Or,
+        LogicalAndShort,
+        LogicalOrShort,
+        LogicalAnd,
+        LogicalOr,
     } op;
 
     /// Left-hand operand expression; owned and non-null.
@@ -217,8 +227,14 @@ struct DimStmt : Stmt
     /// Array name being declared.
     std::string name;
 
-    /// Number of elements to allocate; owned expression, non-null.
+    /// Number of elements to allocate when @ref isArray is true; may be null for scalars.
     ExprPtr size;
+
+    /// Declared BASIC type for this DIM.
+    Type type = Type::I64;
+
+    /// True when DIM declares an array; false for scalar declarations.
+    bool isArray = true;
 };
 
 /// @brief RANDOMIZE statement seeding the pseudo-random generator.

@@ -219,6 +219,8 @@ Token Lexer::lexIdentifierOrKeyword()
         return {TokenKind::KeywordInput, s, loc};
     if (s == "DIM")
         return {TokenKind::KeywordDim, s, loc};
+    if (s == "AS")
+        return {TokenKind::KeywordAs, s, loc};
     if (s == "RANDOMIZE")
         return {TokenKind::KeywordRandomize, s, loc};
     if (s == "ANDALSO")

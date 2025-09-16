@@ -309,23 +309,40 @@ StmtPtr Parser::parseInput()
     return stmt;
 }
 
-/// @brief Parse a DIM declaration for an array.
-/// @return DimStmt containing array name and size expression.
-/// @note Registers the array name in the parser's array set.
+/// @brief Parse a DIM declaration for an array or typed scalar.
+/// @return DimStmt containing declaration metadata.
+/// @note Registers array names in the parser's array set.
 StmtPtr Parser::parseDim()
 {
     auto loc = peek().loc;
     consume(); // DIM
-    std::string name = peek().lexeme;
-    expect(TokenKind::Identifier);
-    expect(TokenKind::LParen);
-    auto sz = parseExpression();
-    expect(TokenKind::RParen);
+    Token nameTok = expect(TokenKind::Identifier);
     auto stmt = std::make_unique<DimStmt>();
     stmt->loc = loc;
-    stmt->name = name;
-    stmt->size = std::move(sz);
-    arrays_.insert(name);
+    stmt->name = nameTok.lexeme;
+    stmt->type = typeFromSuffix(nameTok.lexeme);
+    if (at(TokenKind::LParen))
+    {
+        stmt->isArray = true;
+        consume();
+        stmt->size = parseExpression();
+        expect(TokenKind::RParen);
+        if (at(TokenKind::KeywordAs))
+        {
+            consume();
+            stmt->type = parseTypeKeyword();
+        }
+        arrays_.insert(stmt->name);
+    }
+    else
+    {
+        stmt->isArray = false;
+        if (at(TokenKind::KeywordAs))
+        {
+            consume();
+            stmt->type = parseTypeKeyword();
+        }
+    }
     return stmt;
 }
 
@@ -352,6 +369,27 @@ Type Parser::typeFromSuffix(std::string_view name)
         if (c == '#')
             return Type::F64;
         if (c == '$')
+            return Type::Str;
+    }
+    return Type::I64;
+}
+
+Type Parser::parseTypeKeyword()
+{
+    if (at(TokenKind::KeywordBoolean))
+    {
+        consume();
+        return Type::Bool;
+    }
+    if (at(TokenKind::Identifier))
+    {
+        std::string name = peek().lexeme;
+        consume();
+        if (name == "INTEGER")
+            return Type::I64;
+        if (name == "DOUBLE")
+            return Type::F64;
+        if (name == "STRING")
             return Type::Str;
     }
     return Type::I64;

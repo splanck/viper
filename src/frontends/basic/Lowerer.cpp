@@ -18,6 +18,28 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
+namespace
+{
+
+il::core::Type coreTypeForAstType(::il::frontends::basic::Type ty)
+{
+    using il::core::Type;
+    switch (ty)
+    {
+        case ::il::frontends::basic::Type::I64:
+            return Type(Type::Kind::I64);
+        case ::il::frontends::basic::Type::F64:
+            return Type(Type::Kind::F64);
+        case ::il::frontends::basic::Type::Str:
+            return Type(Type::Kind::Str);
+        case ::il::frontends::basic::Type::Bool:
+            return Type(Type::Kind::I1);
+    }
+    return Type(Type::Kind::I64);
+}
+
+} // namespace
+
 // Purpose: lowerer.
 // Parameters: bool boundsChecks.
 // Returns: void.
@@ -176,8 +198,12 @@ void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
         else if (auto *d = dynamic_cast<const DimStmt *>(&s))
         {
             vars.insert(d->name); // DIM locals become stack slots in entry
-            arrays.insert(d->name);
-            ex(*d->size);
+            if (d->isArray)
+            {
+                arrays.insert(d->name);
+                if (d->size)
+                    ex(*d->size);
+            }
         }
     };
     for (auto &s : stmts)
@@ -193,7 +219,6 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
 {
     resetLoweringState();
 
-    using ASTType = ::il::frontends::basic::Type;
     std::vector<const Stmt *> bodyPtrs;
     for (const auto &s : decl.body)
         bodyPtrs.push_back(s.get());
@@ -205,20 +230,11 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
     {
         paramNames.insert(p.name);
         il::core::Type ty =
-            p.is_array
-                ? il::core::Type(il::core::Type::Kind::Ptr)
-                : (p.type == ASTType::I64
-                       ? il::core::Type(il::core::Type::Kind::I64)
-                       : (p.type == ASTType::F64 ? il::core::Type(il::core::Type::Kind::F64)
-                                                 : il::core::Type(il::core::Type::Kind::Str)));
+            p.is_array ? il::core::Type(il::core::Type::Kind::Ptr) : coreTypeForAstType(p.type);
         params.push_back({p.name, ty});
     }
 
-    il::core::Type retTy =
-        decl.ret == ASTType::I64
-            ? il::core::Type(il::core::Type::Kind::I64)
-            : (decl.ret == ASTType::F64 ? il::core::Type(il::core::Type::Kind::F64)
-                                        : il::core::Type(il::core::Type::Kind::Str));
+    il::core::Type retTy = coreTypeForAstType(decl.ret);
 
     Function &f = builder->startFunction(decl.name, retTy, params);
     func = &f;
@@ -278,12 +294,14 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
     {
         switch (decl.ret)
         {
-            case ASTType::I64:
+            case ::il::frontends::basic::Type::I64:
                 return Value::constInt(0);
-            case ASTType::F64:
+            case ::il::frontends::basic::Type::F64:
                 return Value::constFloat(0.0);
-            case ASTType::Str:
+            case ::il::frontends::basic::Type::Str:
                 return emitConstStr(getStringLabel(""));
+            case ::il::frontends::basic::Type::Bool:
+                return Value::constInt(0);
         }
         return Value::constInt(0);
     };
@@ -306,7 +324,6 @@ void Lowerer::lowerSubDecl(const SubDecl &decl)
 {
     resetLoweringState();
 
-    using ASTType = ::il::frontends::basic::Type;
     std::vector<const Stmt *> bodyPtrs;
     for (const auto &s : decl.body)
         bodyPtrs.push_back(s.get());
@@ -318,12 +335,7 @@ void Lowerer::lowerSubDecl(const SubDecl &decl)
     {
         paramNames.insert(p.name);
         il::core::Type ty =
-            p.is_array
-                ? il::core::Type(il::core::Type::Kind::Ptr)
-                : (p.type == ASTType::I64
-                       ? il::core::Type(il::core::Type::Kind::I64)
-                       : (p.type == ASTType::F64 ? il::core::Type(il::core::Type::Kind::F64)
-                                                 : il::core::Type(il::core::Type::Kind::Str)));
+            p.is_array ? il::core::Type(il::core::Type::Kind::Ptr) : coreTypeForAstType(p.type);
         params.push_back({p.name, ty});
     }
 
