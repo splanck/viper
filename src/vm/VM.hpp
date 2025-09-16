@@ -8,6 +8,7 @@
 #include "VM/Debug.h"
 #include "VM/Trace.h"
 #include "il/core/Module.hpp"
+#include "il/core/Opcode.hpp"
 #include "rt.hpp"
 #include <array>
 #include <cstdint>
@@ -18,6 +19,11 @@
 
 namespace il::vm
 {
+
+namespace detail
+{
+struct OpHandlers; ///< Forward declaration of opcode handler collection
+} // namespace detail
 
 /// @brief Scripted debug actions.
 class DebugScript;
@@ -69,6 +75,24 @@ struct Frame
 class VM
 {
   public:
+    friend struct detail::OpHandlers; ///< Allow opcode handlers to access internals
+
+    /// @brief Result of executing one opcode.
+    struct ExecResult
+    {
+        /// @brief Whether control transferred to another block.
+        bool jumped = false;
+
+        /// @brief Whether execution returned from the function.
+        bool returned = false;
+
+        /// @brief Return value when @c returned is true.
+        Slot value{};
+    };
+
+    /// @brief Block lookup table keyed by label.
+    using BlockMap = std::unordered_map<std::string, const il::core::BasicBlock *>;
+
     /// @brief Create VM for module @p m.
     /// @param m IL module to execute.
     /// @param tc Trace configuration.
@@ -82,6 +106,21 @@ class VM
     /// @brief Execute the module's entry function.
     /// @return Exit code from main function.
     int64_t run();
+
+    /// @brief Function signature for opcode handlers.
+    using OpcodeHandler = ExecResult (*)(VM &,
+                                         Frame &,
+                                         const il::core::Instr &,
+                                         const BlockMap &,
+                                         const il::core::BasicBlock *&,
+                                         size_t &);
+
+    /// @brief Compile-time table type storing handlers per opcode.
+    using OpcodeHandlerTable =
+        std::array<OpcodeHandler, static_cast<size_t>(il::core::Opcode::Trap) + 1>;
+
+    /// @brief Obtain immutable table mapping opcodes to handlers.
+    static const OpcodeHandlerTable &getOpcodeHandlers();
 
   private:
     /// @brief Module to execute.
@@ -130,19 +169,6 @@ class VM
     /// @return Result stored in a Slot.
     Slot eval(Frame &fr, const il::core::Value &v);
 
-    /// @brief Result of executing one opcode.
-    struct ExecResult
-    {
-        /// @brief Whether control transferred to another block.
-        bool jumped = false;
-
-        /// @brief Whether execution returned from the function.
-        bool returned = false;
-
-        /// @brief Return value when @c returned is true.
-        Slot value{};
-    };
-
     /// @brief Initialize a frame for @p fn with arguments.
     /// @param fn Function to execute.
     /// @param args Argument slots for entry block parameters.
@@ -180,9 +206,6 @@ class VM
         const il::core::BasicBlock *&bb,
         size_t &ip);
 
-    using BlockMap =
-        std::unordered_map<std::string, const il::core::BasicBlock *>; ///< Block lookup table
-
     /// @brief Aggregate execution state for a running function.
     struct ExecState
     {
@@ -212,122 +235,6 @@ class VM
     /// @param st Prepared execution state.
     /// @return Return value slot.
     Slot runFunctionLoop(ExecState &st);
-
-    /// @brief Handle alloca opcode.
-    ExecResult handleAlloca(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle load opcode.
-    ExecResult handleLoad(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle store opcode.
-    ExecResult handleStore(Frame &fr,
-                           const il::core::Instr &in,
-                           const il::core::BasicBlock *bb,
-                           size_t ip);
-
-    /// @brief Handle integer addition opcode.
-    ExecResult handleAdd(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle integer subtraction opcode.
-    ExecResult handleSub(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle integer multiplication opcode.
-    ExecResult handleMul(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle floating add opcode.
-    ExecResult handleFAdd(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle floating subtract opcode.
-    ExecResult handleFSub(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle floating multiply opcode.
-    ExecResult handleFMul(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle floating divide opcode.
-    ExecResult handleFDiv(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle bitwise xor opcode.
-    ExecResult handleXor(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle shift-left opcode.
-    ExecResult handleShl(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle pointer arithmetic opcode.
-    ExecResult handleGEP(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle integer equality comparison opcode.
-    ExecResult handleICmpEq(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle integer inequality comparison opcode.
-    ExecResult handleICmpNe(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle signed greater-than comparison opcode.
-    ExecResult handleSCmpGT(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle signed less-than comparison opcode.
-    ExecResult handleSCmpLT(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle signed less-equal comparison opcode.
-    ExecResult handleSCmpLE(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle signed greater-equal comparison opcode.
-    ExecResult handleSCmpGE(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle floating equality comparison opcode.
-    ExecResult handleFCmpEQ(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle floating inequality comparison opcode.
-    ExecResult handleFCmpNE(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle floating greater-than comparison opcode.
-    ExecResult handleFCmpGT(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle floating less-than comparison opcode.
-    ExecResult handleFCmpLT(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle floating less-equal comparison opcode.
-    ExecResult handleFCmpLE(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle floating greater-equal comparison opcode.
-    ExecResult handleFCmpGE(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle unconditional branch opcode.
-    ExecResult handleBr(Frame &fr,
-                        const il::core::Instr &in,
-                        const BlockMap &blocks,
-                        const il::core::BasicBlock *&bb,
-                        size_t &ip);
-
-    /// @brief Handle conditional branch opcode.
-    ExecResult handleCBr(Frame &fr,
-                         const il::core::Instr &in,
-                         const BlockMap &blocks,
-                         const il::core::BasicBlock *&bb,
-                         size_t &ip);
-
-    /// @brief Handle return opcode.
-    ExecResult handleRet(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle address-of global string opcode.
-    ExecResult handleAddrOf(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle const string opcode.
-    ExecResult handleConstStr(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle call opcode.
-    ExecResult handleCall(Frame &fr, const il::core::Instr &in, const il::core::BasicBlock *bb);
-
-    /// @brief Handle integer-to-float cast opcode.
-    ExecResult handleSitofp(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle float-to-integer cast opcode.
-    ExecResult handleFptosi(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle truncation or zero-extension opcode.
-    ExecResult handleTruncOrZext1(Frame &fr, const il::core::Instr &in);
-
-    /// @brief Handle trap opcode.
-    ExecResult handleTrap(Frame &fr, const il::core::Instr &in, const il::core::BasicBlock *bb);
 
   public:
     /// @brief Return executed instruction count.
