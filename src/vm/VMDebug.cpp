@@ -1,0 +1,140 @@
+// File: src/vm/VMDebug.cpp
+// Purpose: Implements debugging helpers for VM breakpoint and step handling.
+// Key invariants: Debug hooks respect configured breakpoints and step limits.
+// Ownership/Lifetime: Operates on VM-owned frames without assuming external lifetime.
+// Links: docs/il-spec.md
+
+#include "vm/VM.hpp"
+#include "VM/DebugScript.h"
+
+#include <filesystem>
+#include <iostream>
+#include <string>
+
+using namespace il::core;
+
+namespace il::vm
+{
+
+/// Manage a potential debug break before or after executing an instruction.
+///
+/// Checks label and source line breakpoints using @c DebugCtrl. When a break is
+/// hit the optional @c DebugScript controls stepping; otherwise a fixed slot is
+/// returned to pause execution. Pending block parameter transfers are also
+/// applied here when entering a new block.
+///
+/// @param fr            Current frame.
+/// @param bb            Current basic block.
+/// @param ip            Instruction index within @p bb.
+/// @param skipBreakOnce Internal flag used to skip a single break when stepping.
+/// @param in            Optional instruction for source line breakpoints.
+/// @return @c std::nullopt to continue or a @c Slot signalling a pause.
+std::optional<Slot> VM::handleDebugBreak(
+    Frame &fr, const BasicBlock &bb, size_t ip, bool &skipBreakOnce, const Instr *in)
+{
+    if (!in)
+    {
+        if (debug.shouldBreak(bb))
+        {
+            std::cerr << "[BREAK] fn=@" << fr.func->name << " blk=" << bb.label
+                      << " reason=label\n";
+            if (!script || script->empty())
+            {
+                Slot s{};
+                s.i64 = 10;
+                return s;
+            }
+            auto act = script->nextAction();
+            if (act.kind == DebugActionKind::Step)
+                stepBudget = act.count;
+            skipBreakOnce = true;
+        }
+        for (const auto &p : bb.params)
+        {
+            auto it = fr.params.find(p.id);
+            if (it != fr.params.end())
+            {
+                if (fr.regs.size() <= p.id)
+                    fr.regs.resize(p.id + 1);
+                fr.regs[p.id] = it->second;
+                debug.onStore(p.name,
+                              p.type.kind,
+                              fr.regs[p.id].i64,
+                              fr.regs[p.id].f64,
+                              fr.func->name,
+                              bb.label,
+                              0);
+            }
+        }
+        fr.params.clear();
+        return std::nullopt;
+    }
+    if (debug.hasSrcLineBPs() && debug.shouldBreakOn(*in))
+    {
+        const auto *sm = debug.getSourceManager();
+        std::string path;
+        if (sm && in->loc.isValid())
+            path = std::filesystem::path(sm->getPath(in->loc.file_id)).filename().string();
+        std::cerr << "[BREAK] src=" << path << ':' << in->loc.line << " fn=@" << fr.func->name
+                  << " blk=" << bb.label << " ip=#" << ip << "\n";
+        Slot s{};
+        s.i64 = 10;
+        return s;
+    }
+    return std::nullopt;
+}
+
+/// Handle debugging-related bookkeeping before or after an instruction executes.
+///
+/// Enforces the global step limit, performs breakpoint checks via
+/// @c handleDebugBreak, and manages the single-step budget. When a pause is
+/// requested, a special slot is returned to signal the interpreter loop.
+///
+/// @param st      Current execution state.
+/// @param in      Instruction being processed, if any.
+/// @param postExec Set to true when invoked after executing @p in.
+/// @return Optional slot causing execution to pause; @c std::nullopt otherwise.
+std::optional<Slot> VM::processDebugControl(ExecState &st, const Instr *in, bool postExec)
+{
+    if (!postExec)
+    {
+        if (maxSteps && instrCount >= maxSteps)
+        {
+            std::cerr << "VM: step limit exceeded (" << maxSteps << "); aborting.\n";
+            Slot s{};
+            s.i64 = 1;
+            return s;
+        }
+        if (st.ip == 0 && stepBudget == 0 && !st.skipBreakOnce)
+            if (auto br = handleDebugBreak(st.fr, *st.bb, st.ip, st.skipBreakOnce, nullptr))
+                return br;
+        st.skipBreakOnce = false;
+        if (in)
+            if (auto br = handleDebugBreak(st.fr, *st.bb, st.ip, st.skipBreakOnce, in))
+                return br;
+        return std::nullopt;
+    }
+    if (stepBudget > 0)
+    {
+        --stepBudget;
+        if (stepBudget == 0)
+        {
+            std::cerr << "[BREAK] fn=@" << st.fr.func->name << " blk=" << st.bb->label
+                      << " reason=step\n";
+            if (!script || script->empty())
+            {
+                Slot s{};
+                s.i64 = 10;
+                return s;
+            }
+            auto act = script->nextAction();
+            if (act.kind == DebugActionKind::Step)
+                stepBudget = act.count;
+            st.skipBreakOnce = true;
+        }
+    }
+    return std::nullopt;
+}
+
+} // namespace il::vm
+
