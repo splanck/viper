@@ -44,44 +44,34 @@ Numeric promote(const Numeric &a, const Numeric &b)
     return a;
 }
 
-/// @brief Fold binary operation on two string literals.
-/// @param l Left string operand.
-/// @param op Operator token to apply.
-/// @param r Right string operand.
-/// @return New literal expression or nullptr if operation is unsupported.
-/// @invariant Only concatenation and equality comparisons are folded.
-ExprPtr foldStringBinary(const StringExpr &l, TokenKind op, const StringExpr &r)
+ExprPtr foldStringConcat(const StringExpr &l, const StringExpr &r)
 {
-    using OpFn = ExprPtr (*)(const std::string &, const std::string &);
-    static const std::pair<TokenKind, OpFn> table[] = {
-        {TokenKind::Plus,
-         +[](const std::string &a, const std::string &b) -> ExprPtr
-         {
-             auto out = std::make_unique<StringExpr>();
-             out->value = a + b;
-             return out;
-         }},
-        {TokenKind::Equal,
-         +[](const std::string &a, const std::string &b) -> ExprPtr
-         {
-             auto out = std::make_unique<IntExpr>();
-             out->value = (a == b) ? 1 : 0;
-             return out;
-         }},
-        {TokenKind::NotEqual,
-         +[](const std::string &a, const std::string &b) -> ExprPtr
-         {
-             auto out = std::make_unique<IntExpr>();
-             out->value = (a != b) ? 1 : 0;
-             return out;
-         }}};
-    for (const auto &ent : table)
-        if (ent.first == op)
-            return foldString(l,
-                              r,
-                              [fn = ent.second](const std::string &la, const std::string &rb)
-                              { return fn(la, rb); });
-    return nullptr;
+    return foldString(l, r, [](const std::string &a, const std::string &b) -> ExprPtr
+                      {
+                          auto out = std::make_unique<StringExpr>();
+                          out->value = a + b;
+                          return out;
+                      });
+}
+
+ExprPtr foldStringEq(const StringExpr &l, const StringExpr &r)
+{
+    return foldString(l, r, [](const std::string &a, const std::string &b) -> ExprPtr
+                      {
+                          auto out = std::make_unique<IntExpr>();
+                          out->value = (a == b) ? 1 : 0;
+                          return out;
+                      });
+}
+
+ExprPtr foldStringNe(const StringExpr &l, const StringExpr &r)
+{
+    return foldString(l, r, [](const std::string &a, const std::string &b) -> ExprPtr
+                      {
+                          auto out = std::make_unique<IntExpr>();
+                          out->value = (a != b) ? 1 : 0;
+                          return out;
+                      });
 }
 } // namespace detail
 
@@ -115,8 +105,6 @@ template <typename F> ExprPtr detail::foldNumericBinary(const Expr &l, const Exp
 
 namespace
 {
-
-using detail::Numeric;
 
 /// @brief Add @p a and @p b with 64-bit wrap-around semantics.
 /// @param a Left operand.
@@ -286,304 +274,6 @@ static void foldUnary(ExprPtr &e, UnaryExpr *u)
         replaceWithInt(e, n->i == 0 ? 1 : 0, u->loc);
 }
 
-/// @brief Map binary operation enum to corresponding token.
-/// @param op Binary operation.
-/// @return Equivalent token kind.
-/// @invariant Covers all BinaryExpr::Op variants.
-static TokenKind toToken(BinaryExpr::Op op)
-{
-    switch (op)
-    {
-        case BinaryExpr::Op::Add:
-            return TokenKind::Plus;
-        case BinaryExpr::Op::Sub:
-            return TokenKind::Minus;
-        case BinaryExpr::Op::Mul:
-            return TokenKind::Star;
-        case BinaryExpr::Op::Div:
-            return TokenKind::Slash;
-        case BinaryExpr::Op::IDiv:
-            return TokenKind::Backslash;
-        case BinaryExpr::Op::Mod:
-            return TokenKind::KeywordMod;
-        case BinaryExpr::Op::Eq:
-            return TokenKind::Equal;
-        case BinaryExpr::Op::Ne:
-            return TokenKind::NotEqual;
-        case BinaryExpr::Op::Lt:
-            return TokenKind::Less;
-        case BinaryExpr::Op::Le:
-            return TokenKind::LessEqual;
-        case BinaryExpr::Op::Gt:
-            return TokenKind::Greater;
-        case BinaryExpr::Op::Ge:
-            return TokenKind::GreaterEqual;
-        case BinaryExpr::Op::And:
-            return TokenKind::KeywordAnd;
-        case BinaryExpr::Op::Or:
-            return TokenKind::KeywordOr;
-    }
-    return TokenKind::EndOfFile;
-}
-
-/// @brief Fold addition of two numeric literals.
-/// @param l Left operand.
-/// @param r Right operand.
-/// @return Folded literal or nullptr on mismatch.
-/// @invariant Uses wrapAdd for 64-bit semantics.
-static ExprPtr foldAdd(const Expr &l, const Expr &r)
-{
-    return detail::foldArithmetic(
-        l,
-        r,
-        [](double a, double b) { return a + b; },
-        [](long long a, long long b) { return wrapAdd(a, b); });
-}
-
-/// @brief Fold subtraction of two numeric literals.
-/// @param l Left operand.
-/// @param r Right operand.
-/// @return Folded literal or nullptr on mismatch.
-/// @invariant Uses wrapSub for 64-bit semantics.
-static ExprPtr foldSub(const Expr &l, const Expr &r)
-{
-    return detail::foldArithmetic(
-        l,
-        r,
-        [](double a, double b) { return a - b; },
-        [](long long a, long long b) { return wrapSub(a, b); });
-}
-
-/// @brief Fold multiplication of two numeric literals.
-/// @param l Left operand.
-/// @param r Right operand.
-/// @return Folded literal or nullptr on mismatch.
-/// @invariant Uses wrapMul for 64-bit semantics.
-static ExprPtr foldMul(const Expr &l, const Expr &r)
-{
-    return detail::foldArithmetic(
-        l,
-        r,
-        [](double a, double b) { return a * b; },
-        [](long long a, long long b) { return wrapMul(a, b); });
-}
-
-/// @brief Fold division of two numeric literals.
-/// @param l Left operand.
-/// @param r Right operand.
-/// @return Folded literal or nullptr on mismatch.
-/// @invariant Returns nullptr on divide-by-zero.
-static ExprPtr foldDiv(const Expr &l, const Expr &r)
-{
-    return detail::foldNumericBinary(
-        l,
-        r,
-        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-        {
-            double rv = b.isFloat ? b.f : static_cast<double>(b.i);
-            if (rv == 0.0)
-                return std::nullopt;
-            double lv = a.isFloat ? a.f : static_cast<double>(a.i);
-            double v = lv / rv;
-            return Numeric{true, v, static_cast<long long>(v)};
-        });
-}
-
-/// @brief Fold integer division of two numeric literals.
-/// @param l Left operand.
-/// @param r Right operand.
-/// @return Folded literal or nullptr on mismatch.
-/// @invariant Fails when either operand is float or divisor is zero.
-static ExprPtr foldIDiv(const Expr &l, const Expr &r)
-{
-    return detail::foldNumericBinary(
-        l,
-        r,
-        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-        {
-            if (a.isFloat || b.isFloat || b.i == 0)
-                return std::nullopt;
-            long long v = a.i / b.i;
-            return Numeric{false, static_cast<double>(v), v};
-        });
-}
-
-/// @brief Fold modulus of two numeric literals.
-/// @param l Left operand.
-/// @param r Right operand.
-/// @return Folded literal or nullptr on mismatch.
-/// @invariant Fails when operands are floats or divisor is zero.
-static ExprPtr foldMod(const Expr &l, const Expr &r)
-{
-    return detail::foldNumericBinary(
-        l,
-        r,
-        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-        {
-            if (a.isFloat || b.isFloat || b.i == 0)
-                return std::nullopt;
-            long long v = a.i % b.i;
-            return Numeric{false, static_cast<double>(v), v};
-        });
-}
-
-/// @brief Fold numeric equality comparison.
-/// @param l Left operand.
-/// @param r Right operand.
-/// @return Integer literal 1 or 0, or nullptr on mismatch.
-/// @invariant Operands are promoted before comparison.
-static ExprPtr foldEq(const Expr &l, const Expr &r)
-{
-    return detail::foldCompare(
-        l,
-        r,
-        [](double a, double b) { return a == b; },
-        [](long long a, long long b) { return a == b; });
-}
-
-/// @brief Fold numeric inequality comparison.
-/// @param l Left operand.
-/// @param r Right operand.
-/// @return Integer literal 1 or 0, or nullptr on mismatch.
-/// @invariant Operands are promoted before comparison.
-static ExprPtr foldNe(const Expr &l, const Expr &r)
-{
-    return detail::foldCompare(
-        l,
-        r,
-        [](double a, double b) { return a != b; },
-        [](long long a, long long b) { return a != b; });
-}
-
-/// @brief Fold numeric less-than comparison.
-/// @param l Left operand.
-/// @param r Right operand.
-/// @return Integer literal 1 or 0, or nullptr on mismatch.
-/// @invariant Operands are promoted before comparison.
-static ExprPtr foldLt(const Expr &l, const Expr &r)
-{
-    return detail::foldCompare(
-        l,
-        r,
-        [](double a, double b) { return a < b; },
-        [](long long a, long long b) { return a < b; });
-}
-
-/// @brief Fold numeric less-than-or-equal comparison.
-/// @param l Left operand.
-/// @param r Right operand.
-/// @return Integer literal 1 or 0, or nullptr on mismatch.
-/// @invariant Operands are promoted before comparison.
-static ExprPtr foldLe(const Expr &l, const Expr &r)
-{
-    return detail::foldCompare(
-        l,
-        r,
-        [](double a, double b) { return a <= b; },
-        [](long long a, long long b) { return a <= b; });
-}
-
-/// @brief Fold numeric greater-than comparison.
-/// @param l Left operand.
-/// @param r Right operand.
-/// @return Integer literal 1 or 0, or nullptr on mismatch.
-/// @invariant Operands are promoted before comparison.
-static ExprPtr foldGt(const Expr &l, const Expr &r)
-{
-    return detail::foldCompare(
-        l,
-        r,
-        [](double a, double b) { return a > b; },
-        [](long long a, long long b) { return a > b; });
-}
-
-/// @brief Fold numeric greater-than-or-equal comparison.
-/// @param l Left operand.
-/// @param r Right operand.
-/// @return Integer literal 1 or 0, or nullptr on mismatch.
-/// @invariant Operands are promoted before comparison.
-static ExprPtr foldGe(const Expr &l, const Expr &r)
-{
-    return detail::foldCompare(
-        l,
-        r,
-        [](double a, double b) { return a >= b; },
-        [](long long a, long long b) { return a >= b; });
-}
-
-/// @brief Fold logical AND of two numeric literals.
-/// @param l Left operand.
-/// @param r Right operand.
-/// @return Integer literal 1 or 0, or nullptr on mismatch.
-/// @invariant Returns null when either operand is float.
-static ExprPtr foldAnd(const Expr &l, const Expr &r)
-{
-    return detail::foldCompare(
-        l,
-        r,
-        [](double, double) { return false; },
-        [](long long a, long long b) { return (a != 0 && b != 0); },
-        false);
-}
-
-/// @brief Fold logical OR of two numeric literals.
-/// @param l Left operand.
-/// @param r Right operand.
-/// @return Integer literal 1 or 0, or nullptr on mismatch.
-/// @invariant Returns null when either operand is float.
-static ExprPtr foldOr(const Expr &l, const Expr &r)
-{
-    return detail::foldCompare(
-        l,
-        r,
-        [](double, double) { return false; },
-        [](long long a, long long b) { return (a != 0 || b != 0); },
-        false);
-}
-
-/// @brief Dispatch to numeric folding routine based on operator.
-/// @param tk Operator token.
-/// @param l Left operand.
-/// @param r Right operand.
-/// @return Folded expression or nullptr if unsupported.
-/// @invariant Only constant numeric operands are considered.
-static ExprPtr foldNumeric(TokenKind tk, const Expr &l, const Expr &r)
-{
-    switch (tk)
-    {
-        case TokenKind::Plus:
-            return foldAdd(l, r);
-        case TokenKind::Minus:
-            return foldSub(l, r);
-        case TokenKind::Star:
-            return foldMul(l, r);
-        case TokenKind::Slash:
-            return foldDiv(l, r);
-        case TokenKind::Backslash:
-            return foldIDiv(l, r);
-        case TokenKind::KeywordMod:
-            return foldMod(l, r);
-        case TokenKind::Equal:
-            return foldEq(l, r);
-        case TokenKind::NotEqual:
-            return foldNe(l, r);
-        case TokenKind::Less:
-            return foldLt(l, r);
-        case TokenKind::LessEqual:
-            return foldLe(l, r);
-        case TokenKind::Greater:
-            return foldGt(l, r);
-        case TokenKind::GreaterEqual:
-            return foldGe(l, r);
-        case TokenKind::KeywordAnd:
-            return foldAnd(l, r);
-        case TokenKind::KeywordOr:
-            return foldOr(l, r);
-        default:
-            return nullptr;
-    }
-}
-
 /// @brief Fold binary expression @p b when both operands are constant.
 /// @param e Expression pointer to replace.
 /// @param b Binary expression to evaluate.
@@ -592,23 +282,30 @@ static void foldBinary(ExprPtr &e, BinaryExpr *b)
 {
     foldExpr(b->lhs);
     foldExpr(b->rhs);
-    TokenKind tk = toToken(b->op);
-
-    if (auto res = foldNumeric(tk, *b->lhs, *b->rhs))
+    if (const auto *entry = detail::findBinaryFold(b->op))
     {
-        res->loc = b->loc;
-        e = std::move(res);
-        return;
-    }
-
-    if (auto *ls = dynamic_cast<StringExpr *>(b->lhs.get()))
-    {
-        if (auto *rs = dynamic_cast<StringExpr *>(b->rhs.get()))
+        if (entry->numeric)
         {
-            if (auto res = detail::foldStringBinary(*ls, tk, *rs))
+            if (auto res = entry->numeric(*b->lhs, *b->rhs))
             {
                 res->loc = b->loc;
                 e = std::move(res);
+                return;
+            }
+        }
+
+        if (entry->string)
+        {
+            if (auto *ls = dynamic_cast<StringExpr *>(b->lhs.get()))
+            {
+                if (auto *rs = dynamic_cast<StringExpr *>(b->rhs.get()))
+                {
+                    if (auto res = entry->string(*ls, *rs))
+                    {
+                        res->loc = b->loc;
+                        e = std::move(res);
+                    }
+                }
             }
         }
     }
@@ -695,6 +392,156 @@ static void foldStmt(StmtPtr &s)
 }
 
 } // namespace
+
+namespace detail
+{
+
+ExprPtr foldNumericAdd(const Expr &l, const Expr &r)
+{
+    return foldArithmetic(
+        l,
+        r,
+        [](double a, double b) { return a + b; },
+        [](long long a, long long b) { return wrapAdd(a, b); });
+}
+
+ExprPtr foldNumericSub(const Expr &l, const Expr &r)
+{
+    return foldArithmetic(
+        l,
+        r,
+        [](double a, double b) { return a - b; },
+        [](long long a, long long b) { return wrapSub(a, b); });
+}
+
+ExprPtr foldNumericMul(const Expr &l, const Expr &r)
+{
+    return foldArithmetic(
+        l,
+        r,
+        [](double a, double b) { return a * b; },
+        [](long long a, long long b) { return wrapMul(a, b); });
+}
+
+ExprPtr foldNumericDiv(const Expr &l, const Expr &r)
+{
+    return foldNumericBinary(
+        l,
+        r,
+        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+        {
+            double rv = b.isFloat ? b.f : static_cast<double>(b.i);
+            if (rv == 0.0)
+                return std::nullopt;
+            double lv = a.isFloat ? a.f : static_cast<double>(a.i);
+            double v = lv / rv;
+            return Numeric{true, v, static_cast<long long>(v)};
+        });
+}
+
+ExprPtr foldNumericIDiv(const Expr &l, const Expr &r)
+{
+    return foldNumericBinary(
+        l,
+        r,
+        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+        {
+            if (a.isFloat || b.isFloat || b.i == 0)
+                return std::nullopt;
+            long long v = a.i / b.i;
+            return Numeric{false, static_cast<double>(v), v};
+        });
+}
+
+ExprPtr foldNumericMod(const Expr &l, const Expr &r)
+{
+    return foldNumericBinary(
+        l,
+        r,
+        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+        {
+            if (a.isFloat || b.isFloat || b.i == 0)
+                return std::nullopt;
+            long long v = a.i % b.i;
+            return Numeric{false, static_cast<double>(v), v};
+        });
+}
+
+ExprPtr foldNumericEq(const Expr &l, const Expr &r)
+{
+    return foldCompare(
+        l,
+        r,
+        [](double a, double b) { return a == b; },
+        [](long long a, long long b) { return a == b; });
+}
+
+ExprPtr foldNumericNe(const Expr &l, const Expr &r)
+{
+    return foldCompare(
+        l,
+        r,
+        [](double a, double b) { return a != b; },
+        [](long long a, long long b) { return a != b; });
+}
+
+ExprPtr foldNumericLt(const Expr &l, const Expr &r)
+{
+    return foldCompare(
+        l,
+        r,
+        [](double a, double b) { return a < b; },
+        [](long long a, long long b) { return a < b; });
+}
+
+ExprPtr foldNumericLe(const Expr &l, const Expr &r)
+{
+    return foldCompare(
+        l,
+        r,
+        [](double a, double b) { return a <= b; },
+        [](long long a, long long b) { return a <= b; });
+}
+
+ExprPtr foldNumericGt(const Expr &l, const Expr &r)
+{
+    return foldCompare(
+        l,
+        r,
+        [](double a, double b) { return a > b; },
+        [](long long a, long long b) { return a > b; });
+}
+
+ExprPtr foldNumericGe(const Expr &l, const Expr &r)
+{
+    return foldCompare(
+        l,
+        r,
+        [](double a, double b) { return a >= b; },
+        [](long long a, long long b) { return a >= b; });
+}
+
+ExprPtr foldNumericAnd(const Expr &l, const Expr &r)
+{
+    return foldCompare(
+        l,
+        r,
+        [](double, double) { return false; },
+        [](long long a, long long b) { return (a != 0 && b != 0); },
+        false);
+}
+
+ExprPtr foldNumericOr(const Expr &l, const Expr &r)
+{
+    return foldCompare(
+        l,
+        r,
+        [](double, double) { return false; },
+        [](long long a, long long b) { return (a != 0 || b != 0); },
+        false);
+}
+
+} // namespace detail
 
 void foldConstants(Program &prog)
 {
