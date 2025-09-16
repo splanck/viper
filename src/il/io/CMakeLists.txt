@@ -1,4 +1,7 @@
 add_library(il_io STATIC
+  FunctionParser.cpp
+  InstrParser.cpp
+  ModuleParser.cpp
   Parser.cpp
   ParserUtil.cpp
   Serializer.cpp
