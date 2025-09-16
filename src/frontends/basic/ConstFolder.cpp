@@ -270,7 +270,7 @@ static void foldUnary(ExprPtr &e, UnaryExpr *u)
 {
     foldExpr(u->expr);
     auto n = detail::asNumeric(*u->expr);
-    if (n && !n->isFloat && u->op == UnaryExpr::Op::Not)
+    if (n && !n->isFloat && u->op == UnaryExpr::Op::LogicalNot)
         replaceWithInt(e, n->i == 0 ? 1 : 0, u->loc);
 }
 
@@ -387,7 +387,8 @@ static void foldStmt(StmtPtr &s)
     }
     else if (auto *d = dynamic_cast<DimStmt *>(s.get()))
     {
-        foldExpr(d->size);
+        if (d->isArray && d->size)
+            foldExpr(d->size);
     }
 }
 

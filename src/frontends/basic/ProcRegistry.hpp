@@ -74,7 +74,7 @@ class ProcRegistry
                         static_cast<uint32_t>(p.name.size()),
                         std::move(msg));
             }
-            if (p.is_array && p.type != Type::I64 && p.type != Type::Str)
+            if (p.is_array && p.type != Type::I64 && p.type != Type::Str && p.type != Type::Bool)
             {
                 std::string msg = "array parameter must be i64 or str";
                 de.emit(il::support::Severity::Error,
@@ -115,7 +115,7 @@ class ProcRegistry
                         static_cast<uint32_t>(p.name.size()),
                         std::move(msg));
             }
-            if (p.is_array && p.type != Type::I64 && p.type != Type::Str)
+            if (p.is_array && p.type != Type::I64 && p.type != Type::Str && p.type != Type::Bool)
             {
                 std::string msg = "array parameter must be i64 or str";
                 de.emit(il::support::Severity::Error,
