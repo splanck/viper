@@ -34,7 +34,12 @@ add_library(il_transform STATIC
 target_link_libraries(il_transform PUBLIC il_core il_verify)
 target_include_directories(il_transform PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-add_library(il_vm STATIC vm/VM.cpp vm/RuntimeBridge.cpp vm/OpHandlers.cpp)
+add_library(il_vm STATIC
+  vm/VM.cpp
+  vm/VMInit.cpp
+  vm/VMDebug.cpp
+  vm/RuntimeBridge.cpp
+  vm/OpHandlers.cpp)
 target_include_directories(il_vm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(il_vm PUBLIC il_core rt support VMTrace)
 
