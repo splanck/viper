@@ -44,6 +44,16 @@ int main()
     assert(temps.at(3).kind == Type::Kind::I64);
     assert(types.isDefined(3));
 
+    Instr cn;
+    cn.result = 5u;
+    cn.op = Opcode::ConstNull;
+
+    ok = verifyInstruction(fn, bb, cn, externs, funcs, types, err);
+    assert(ok);
+    assert(err.str().empty());
+    assert(temps.at(5).kind == Type::Kind::Ptr);
+    assert(types.isDefined(5));
+
     std::unordered_map<unsigned, Type> tempsBad;
     tempsBad[1] = Type(Type::Kind::I64);
     tempsBad[2] = Type(Type::Kind::I64);
