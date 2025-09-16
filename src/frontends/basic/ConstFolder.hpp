@@ -36,8 +36,6 @@ Numeric promote(const Numeric &a, const Numeric &b);
 /// @return Folded expression or nullptr on mismatch.
 template <typename F> ExprPtr foldNumericBinary(const Expr &l, const Expr &r, F op);
 
-/// @brief Fold string binary operation (e.g., concatenation).
-ExprPtr foldStringBinary(const StringExpr &l, TokenKind op, const StringExpr &r);
 } // namespace detail
 
 } // namespace il::frontends::basic

@@ -11,6 +11,35 @@
 
 namespace il::frontends::basic::detail
 {
+/// @brief Visitor applying numeric operations with optional float support.
+/// @tparam ResultPolicy Policy translating raw results into Numeric wrappers.
+/// @tparam AllowFloat When false, folding fails if any operand is float.
+/// @tparam FloatOp Callable executed for floating-point operands.
+/// @tparam IntOp Callable executed for integer operands.
+template <typename ResultPolicy, bool AllowFloat, typename FloatOp, typename IntOp>
+struct NumericVisitor
+{
+    FloatOp floatOp; ///< Operation used when operands are floating point.
+    IntOp intOp;     ///< Operation used when operands are integers.
+
+    /// @brief Execute visitor on promoted operands @p lhs and @p rhs.
+    /// @return Folded numeric value or std::nullopt when folding is unsupported.
+    std::optional<Numeric> operator()(const Numeric &lhs, const Numeric &rhs) const
+    {
+        if (lhs.isFloat || rhs.isFloat)
+        {
+            if constexpr (!AllowFloat)
+            {
+                return std::nullopt;
+            }
+            double lf = lhs.isFloat ? lhs.f : static_cast<double>(lhs.i);
+            double rf = rhs.isFloat ? rhs.f : static_cast<double>(rhs.i);
+            return ResultPolicy::fromFloat(floatOp(lf, rf));
+        }
+        return ResultPolicy::fromInt(intOp(lhs.i, rhs.i));
+    }
+};
+
 /// @brief Apply arithmetic operation on two literals with promotion.
 /// @param l Left operand expression.
 /// @param r Right operand expression.
