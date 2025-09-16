@@ -209,12 +209,22 @@ Token Lexer::lexIdentifierOrKeyword()
         return {TokenKind::KeywordSub, s, loc};
     if (s == "RETURN")
         return {TokenKind::KeywordReturn, s, loc};
+    if (s == "BOOLEAN")
+        return {TokenKind::KeywordBoolean, s, loc};
+    if (s == "TRUE")
+        return {TokenKind::KeywordTrue, s, loc};
+    if (s == "FALSE")
+        return {TokenKind::KeywordFalse, s, loc};
     if (s == "INPUT")
         return {TokenKind::KeywordInput, s, loc};
     if (s == "DIM")
         return {TokenKind::KeywordDim, s, loc};
     if (s == "RANDOMIZE")
         return {TokenKind::KeywordRandomize, s, loc};
+    if (s == "ANDALSO")
+        return {TokenKind::KeywordAndAlso, s, loc};
+    if (s == "ORELSE")
+        return {TokenKind::KeywordOrElse, s, loc};
     if (s == "AND")
         return {TokenKind::KeywordAnd, s, loc};
     if (s == "OR")

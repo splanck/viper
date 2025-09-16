@@ -80,6 +80,13 @@ enum class TokenKind
     Comma,     ///< ','.
     Semicolon, ///< ';'.
     Colon,     ///< ':'.
+
+    // Additional keywords and literals (appended to preserve existing values).
+    KeywordBoolean, ///< 'BOOLEAN'.
+    KeywordTrue,    ///< 'TRUE'.
+    KeywordFalse,   ///< 'FALSE'.
+    KeywordAndAlso, ///< 'ANDALSO'.
+    KeywordOrElse,  ///< 'ORELSE'.
 };
 
 /// @brief A lexical token produced by the BASIC lexer.
