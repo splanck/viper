@@ -462,7 +462,7 @@ void SemanticAnalyzer::analyzeIf(const IfStmt &i)
 void SemanticAnalyzer::analyzeWhile(const WhileStmt &w)
 {
     if (w.cond)
-        visitExpr(*w.cond);
+        checkConditionExpr(*w.cond);
     ScopeTracker::ScopedScope scope(scopes_);
     for (const auto &bs : w.body)
         if (bs)
