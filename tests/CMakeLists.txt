@@ -763,6 +763,22 @@ add_test(NAME basic_semantics_boolean_type_ok COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
   -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/test_boolean_type_ok.bas
   -DDIAG_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/test_boolean_type_ok.diag
+  -DSOURCE_ROOT=${CMAKE_SOURCE_DIR}
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/check_diag.cmake)
+
+add_test(NAME basic_semantics_condition_boolean_ok COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/test_condition_boolean_ok.bas
+  -DDIAG_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/test_condition_boolean_ok.diag
+  -DSOURCE_ROOT=${CMAKE_SOURCE_DIR}
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/check_diag.cmake)
+
+add_test(NAME basic_semantics_condition_nonboolean_errors COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/test_condition_nonboolean_errors.bas
+  -DDIAG_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/test_condition_nonboolean_errors.diag
+  -DEXPECT_STATUS=1
+  -DSOURCE_ROOT=${CMAKE_SOURCE_DIR}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/check_diag.cmake)
 
 add_subdirectory(golden)
