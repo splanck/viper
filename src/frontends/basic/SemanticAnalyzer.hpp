@@ -30,6 +30,9 @@ namespace il::frontends::basic
 class SemanticAnalyzer
 {
   public:
+    /// @brief Diagnostic code for non-boolean conditional expressions.
+    static constexpr std::string_view DiagNonBooleanCondition = "E1001";
+
     /// @brief Diagnostic code for non-boolean logical operands.
     static constexpr std::string_view DiagNonBooleanLogicalOperand = "E1002";
 
