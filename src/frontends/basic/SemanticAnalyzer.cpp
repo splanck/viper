@@ -90,6 +90,8 @@ void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
             vt = SemanticAnalyzer::Type::String;
         else if (p.type == ::il::frontends::basic::Type::F64)
             vt = SemanticAnalyzer::Type::Float;
+        else if (p.type == ::il::frontends::basic::Type::Bool)
+            vt = SemanticAnalyzer::Type::Bool;
         varTypes_[p.name] = vt;
         if (p.is_array)
             arrays_[p.name] = -1;
@@ -134,6 +136,8 @@ void SemanticAnalyzer::analyzeProc(const SubDecl &s)
             vt = SemanticAnalyzer::Type::String;
         else if (p.type == ::il::frontends::basic::Type::F64)
             vt = SemanticAnalyzer::Type::Float;
+        else if (p.type == ::il::frontends::basic::Type::Bool)
+            vt = SemanticAnalyzer::Type::Bool;
         varTypes_[p.name] = vt;
         if (p.is_array)
             arrays_[p.name] = -1;
@@ -1069,6 +1073,8 @@ std::vector<SemanticAnalyzer::Type> SemanticAnalyzer::checkCallArgs(const CallEx
             want = Type::Float;
         else if (expectTy == ::il::frontends::basic::Type::Str)
             want = Type::String;
+        else if (expectTy == ::il::frontends::basic::Type::Bool)
+            want = Type::Bool;
         if (argTy != Type::Unknown && argTy != want)
         {
             std::string msg = "argument type mismatch";
@@ -1087,6 +1093,8 @@ SemanticAnalyzer::Type SemanticAnalyzer::inferCallType([[maybe_unused]] const Ca
         return Type::Float;
     if (*sig->retType == ::il::frontends::basic::Type::Str)
         return Type::String;
+    if (*sig->retType == ::il::frontends::basic::Type::Bool)
+        return Type::Bool;
     return Type::Int;
 }
 
