@@ -781,6 +781,12 @@ add_test(NAME basic_semantics_condition_nonboolean_errors COMMAND ${CMAKE_COMMAN
   -DSOURCE_ROOT=${CMAKE_SOURCE_DIR}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/check_diag.cmake)
 
+add_test(NAME basic_semantics_boolean_constfold COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/test_boolean_constfold.bas
+  -DEXPECT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/test_boolean_constfold.expect
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/check_expect.cmake)
+
 add_subdirectory(golden)
 
 set(CODEGEN_E2E ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_codegen.cmake)
