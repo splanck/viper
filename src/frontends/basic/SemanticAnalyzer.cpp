@@ -70,6 +70,43 @@ static const char *builtinName(BuiltinCallExpr::Builtin b)
     return getBuiltinInfo(b).name;
 }
 
+static const char *semanticTypeName(SemanticAnalyzer::Type type)
+{
+    using Type = SemanticAnalyzer::Type;
+    switch (type)
+    {
+        case Type::Int:
+            return "INT";
+        case Type::Float:
+            return "FLOAT";
+        case Type::String:
+            return "STRING";
+        case Type::Bool:
+            return "BOOLEAN";
+        case Type::Unknown:
+            return "UNKNOWN";
+    }
+    return "UNKNOWN";
+}
+
+static const char *logicalOpName(BinaryExpr::Op op)
+{
+    switch (op)
+    {
+        case BinaryExpr::Op::LogicalAndShort:
+            return "ANDALSO";
+        case BinaryExpr::Op::LogicalOrShort:
+            return "ORELSE";
+        case BinaryExpr::Op::LogicalAnd:
+            return "AND";
+        case BinaryExpr::Op::LogicalOr:
+            return "OR";
+        default:
+            break;
+    }
+    return "<logical>";
+}
+
 } // namespace
 
 void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
@@ -591,13 +628,21 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeUnary(const UnaryExpr &u)
     Type t = Type::Unknown;
     if (u.expr)
         t = visitExpr(*u.expr);
-    if (u.op == UnaryExpr::Op::LogicalNot &&
-        t != Type::Unknown && t != Type::Int && t != Type::Bool)
+    if (u.op == UnaryExpr::Op::LogicalNot)
     {
-        std::string msg = "operand type mismatch";
-        de.emit(il::support::Severity::Error, "B2001", u.loc, 3, std::move(msg));
+        if (t != Type::Unknown && t != Type::Bool)
+        {
+            std::ostringstream oss;
+            oss << "NOT requires a BOOLEAN operand, got " << semanticTypeName(t) << '.';
+            de.emit(il::support::Severity::Error,
+                    std::string(DiagNonBooleanNotOperand),
+                    u.loc,
+                    3,
+                    oss.str());
+        }
+        return Type::Bool;
     }
-    return Type::Bool;
+    return Type::Unknown;
 }
 
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeBinary(const BinaryExpr &b)
@@ -722,14 +767,18 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeComparison(const BinaryExpr &b, 
 
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeLogical(const BinaryExpr &b, Type lt, Type rt)
 {
-    auto isBoolish = [](Type t)
+    auto isBool = [](Type t) { return t == Type::Unknown || t == Type::Bool; };
+    if (!isBool(lt) || !isBool(rt))
     {
-        return t == Type::Unknown || t == Type::Int || t == Type::Bool;
-    };
-    if (!isBoolish(lt) || !isBoolish(rt))
-    {
-        std::string msg = "operand type mismatch";
-        de.emit(il::support::Severity::Error, "B2001", b.loc, 1, std::move(msg));
+        std::ostringstream oss;
+        oss << "Logical operator " << logicalOpName(b.op)
+            << " requires BOOLEAN operands, got " << semanticTypeName(lt) << " and "
+            << semanticTypeName(rt) << '.';
+        de.emit(il::support::Severity::Error,
+                std::string(DiagNonBooleanLogicalOperand),
+                b.loc,
+                1,
+                oss.str());
     }
     return Type::Bool;
 }

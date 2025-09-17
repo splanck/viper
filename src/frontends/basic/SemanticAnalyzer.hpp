@@ -14,6 +14,7 @@
 #include <initializer_list>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -29,6 +30,12 @@ namespace il::frontends::basic
 class SemanticAnalyzer
 {
   public:
+    /// @brief Diagnostic code for non-boolean logical operands.
+    static constexpr std::string_view DiagNonBooleanLogicalOperand = "E1002";
+
+    /// @brief Diagnostic code for non-boolean NOT operand.
+    static constexpr std::string_view DiagNonBooleanNotOperand = "E1003";
+
     /// @brief Create analyzer reporting to @p emitter.
     explicit SemanticAnalyzer(DiagnosticEmitter &emitter) : de(emitter), procReg_(de) {}
 
