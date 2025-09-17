@@ -107,6 +107,31 @@ static const char *logicalOpName(BinaryExpr::Op op)
     return "<logical>";
 }
 
+/// @brief Produce a short textual description of @p expr for diagnostics.
+static std::string conditionExprText(const Expr &expr)
+{
+    if (auto *var = dynamic_cast<const VarExpr *>(&expr))
+        return var->name;
+    if (auto *intExpr = dynamic_cast<const IntExpr *>(&expr))
+        return std::to_string(intExpr->value);
+    if (auto *floatExpr = dynamic_cast<const FloatExpr *>(&expr))
+    {
+        std::ostringstream oss;
+        oss << floatExpr->value;
+        return oss.str();
+    }
+    if (auto *boolExpr = dynamic_cast<const BoolExpr *>(&expr))
+        return boolExpr->value ? "TRUE" : "FALSE";
+    if (auto *strExpr = dynamic_cast<const StringExpr *>(&expr))
+    {
+        std::string text = "\"";
+        text += strExpr->value;
+        text += '"';
+        return text;
+    }
+    return {};
+}
+
 } // namespace
 
 void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
@@ -382,10 +407,36 @@ void SemanticAnalyzer::analyzeLet(const LetStmt &l)
     }
 }
 
+void SemanticAnalyzer::checkConditionExpr(const Expr &expr)
+{
+    Type condTy = visitExpr(expr);
+    if (condTy == Type::Unknown || condTy == Type::Bool)
+        return;
+
+    if (condTy == Type::Int)
+    {
+        if (auto *intExpr = dynamic_cast<const IntExpr *>(&expr))
+        {
+            if (intExpr->value == 0 || intExpr->value == 1)
+                return;
+        }
+    }
+
+    std::string exprText = conditionExprText(expr);
+    if (exprText.empty())
+        exprText = "<expr>";
+
+    de.emitNonBooleanCondition(std::string(DiagNonBooleanCondition),
+                               expr.loc,
+                               1,
+                               semanticTypeName(condTy),
+                               exprText);
+}
+
 void SemanticAnalyzer::analyzeIf(const IfStmt &i)
 {
     if (i.cond)
-        visitExpr(*i.cond);
+        checkConditionExpr(*i.cond);
     if (i.then_branch)
     {
         ScopeTracker::ScopedScope scope(scopes_);
@@ -394,7 +445,7 @@ void SemanticAnalyzer::analyzeIf(const IfStmt &i)
     for (const auto &e : i.elseifs)
     {
         if (e.cond)
-            visitExpr(*e.cond);
+            checkConditionExpr(*e.cond);
         if (e.then_branch)
         {
             ScopeTracker::ScopedScope scope(scopes_);

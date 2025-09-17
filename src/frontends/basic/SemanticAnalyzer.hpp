@@ -124,6 +124,10 @@ class SemanticAnalyzer
     /// @return Inferred type of the expression.
     Type visitExpr(const Expr &e);
 
+    /// @brief Ensure a conditional expression yields a BOOLEAN result.
+    /// @param expr Condition expression to analyze.
+    void checkConditionExpr(const Expr &expr);
+
     /// @brief Analyze variable reference.
     Type analyzeVar(VarExpr &v);
     /// @brief Analyze unary expression.
