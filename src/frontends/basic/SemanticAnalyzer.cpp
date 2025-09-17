@@ -707,11 +707,16 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeComparison(const BinaryExpr &b, 
     const bool string_ok =
         isStr(lt) && isStr(rt) && (b.op == BinaryExpr::Op::Eq || b.op == BinaryExpr::Op::Ne);
 
-    if (!numeric_ok && !string_ok)
+    if (string_ok)
+        return Type::Bool;
+
+    if (!numeric_ok)
     {
         std::string msg = "operand type mismatch";
         de.emit(il::support::Severity::Error, "B2001", b.loc, 1, std::move(msg));
+        return Type::Bool;
     }
+
     return Type::Bool;
 }
 
