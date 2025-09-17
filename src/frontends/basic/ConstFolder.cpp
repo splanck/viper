@@ -269,6 +269,12 @@ static void foldCall(ExprPtr &e, BuiltinCallExpr *c)
 static void foldUnary(ExprPtr &e, UnaryExpr *u)
 {
     foldExpr(u->expr);
+    if (auto *b = dynamic_cast<BoolExpr *>(u->expr.get()))
+    {
+        if (u->op == UnaryExpr::Op::LogicalNot)
+            replaceWithInt(e, b->value ? 0 : 1, u->loc);
+        return;
+    }
     auto n = detail::asNumeric(*u->expr);
     if (n && !n->isFloat && u->op == UnaryExpr::Op::LogicalNot)
         replaceWithInt(e, n->i == 0 ? 1 : 0, u->loc);
@@ -281,7 +287,74 @@ static void foldUnary(ExprPtr &e, UnaryExpr *u)
 static void foldBinary(ExprPtr &e, BinaryExpr *b)
 {
     foldExpr(b->lhs);
+
+    if (b->op == BinaryExpr::Op::LogicalAndShort)
+    {
+        if (auto *lhsBool = dynamic_cast<BoolExpr *>(b->lhs.get()))
+        {
+            if (!lhsBool->value)
+            {
+                replaceWithInt(e, 0, b->loc);
+                return;
+            }
+            ExprPtr rhs = std::move(b->rhs);
+            foldExpr(rhs);
+            if (auto *boolRhs = dynamic_cast<BoolExpr *>(rhs.get()))
+            {
+                replaceWithInt(e, boolRhs->value ? 1 : 0, b->loc);
+            }
+            else
+            {
+                e = std::move(rhs);
+            }
+            return;
+        }
+    }
+    else if (b->op == BinaryExpr::Op::LogicalOrShort)
+    {
+        if (auto *lhsBool = dynamic_cast<BoolExpr *>(b->lhs.get()))
+        {
+            if (lhsBool->value)
+            {
+                replaceWithInt(e, 1, b->loc);
+                return;
+            }
+            ExprPtr rhs = std::move(b->rhs);
+            foldExpr(rhs);
+            if (auto *boolRhs = dynamic_cast<BoolExpr *>(rhs.get()))
+            {
+                replaceWithInt(e, boolRhs->value ? 1 : 0, b->loc);
+            }
+            else
+            {
+                e = std::move(rhs);
+            }
+            return;
+        }
+    }
+
     foldExpr(b->rhs);
+
+    if (auto *lhsBool = dynamic_cast<BoolExpr *>(b->lhs.get()))
+    {
+        if (auto *rhsBool = dynamic_cast<BoolExpr *>(b->rhs.get()))
+        {
+            switch (b->op)
+            {
+                case BinaryExpr::Op::LogicalAnd:
+                case BinaryExpr::Op::LogicalAndShort:
+                    replaceWithInt(e, (lhsBool->value && rhsBool->value) ? 1 : 0, b->loc);
+                    return;
+                case BinaryExpr::Op::LogicalOr:
+                case BinaryExpr::Op::LogicalOrShort:
+                    replaceWithInt(e, (lhsBool->value || rhsBool->value) ? 1 : 0, b->loc);
+                    return;
+                default:
+                    break;
+            }
+        }
+    }
+
     if (const auto *entry = detail::findBinaryFold(b->op))
     {
         if (entry->numeric)
