@@ -1,0 +1,12 @@
+10 DIM A AS INT
+20 DIM B AS FLOAT
+30 DIM OK AS BOOLEAN
+40 LET OK = A < B
+50 LET OK = A <= B
+60 LET OK = A > B
+70 LET OK = A >= B
+80 LET OK = A = B
+90 LET OK = A <> B
+100 LET OK = "X" = "X"
+110 LET OK = "X" <> "Y"
+120 END
