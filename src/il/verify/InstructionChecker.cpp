@@ -226,7 +226,20 @@ public:
                      << ": pointer type mismatch\n";
             ok = false;
         }
-        if (ctx_.types.valueType(instr.operands[1]).kind != instr.type.kind)
+        Type valueTy = ctx_.types.valueType(instr.operands[1]);
+        bool isBoolConst = instr.type.kind == Type::Kind::I1 &&
+                           instr.operands[1].kind == Value::Kind::ConstInt;
+        if (isBoolConst)
+        {
+            long long v = instr.operands[1].i64;
+            if (v != 0 && v != 1)
+            {
+                ctx_.err << ctx_.fn.name << ":" << ctx_.bb.label << ": " << makeSnippet(instr)
+                         << ": boolean store expects 0 or 1\n";
+                ok = false;
+            }
+        }
+        else if (valueTy.kind != instr.type.kind)
         {
             ctx_.err << ctx_.fn.name << ":" << ctx_.bb.label << ": " << makeSnippet(instr)
                      << ": value type mismatch\n";
