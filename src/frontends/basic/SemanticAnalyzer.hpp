@@ -220,6 +220,10 @@ class SemanticAnalyzer
     /// @brief Determine if single statement @p s guarantees a return value.
     bool mustReturn(const Stmt &s) const;
 
+    /// @brief Shared setup/teardown for analyzing procedures.
+    template <typename Proc, typename BodyCallback>
+    void analyzeProcedureCommon(const Proc &proc, BodyCallback &&bodyCheck);
+
     /// @brief Analyze body of FUNCTION @p f.
     void analyzeProc(const FunctionDecl &f);
     /// @brief Analyze body of SUB @p s.
