@@ -10,14 +10,17 @@ global const str @.L0 = "
 func @main() -> i64 {
 entry:
   %t0 = alloca 1
-  store i1, %t0, 0
+  %t1 = trunc1 0
+  store i1, %t0, %t1
   br L10
 L10:
   .loc 1 1 4
   br L20
 L20:
+  .loc 1 2 12
+  %t2 = trunc1 1
   .loc 1 2 4
-  store i1, %t0, 1
+  store i1, %t0, %t2
   .loc 1 2 4
   br L30
 L30:
@@ -25,31 +28,31 @@ L30:
   br if_test_0
 L40:
   .loc 1 4 10
-  %t3 = load i1, %t0
+  %t5 = load i1, %t0
   .loc 1 4 4
-  %t4 = zext1 %t3
+  %t6 = zext1 %t5
   .loc 1 4 4
-  call @rt_print_i64(%t4)
+  call @rt_print_i64(%t6)
   .loc 1 4 4
-  %t5 = const_str @.L0
+  %t7 = const_str @.L0
   .loc 1 4 4
-  call @rt_print_str(%t5)
+  call @rt_print_str(%t7)
   .loc 1 4 4
   br exit
 exit:
   ret 0
 if_test_0:
   .loc 1 3 7
-  %t1 = load i1, %t0
+  %t3 = load i1, %t0
   .loc 1 3 7
-  cbr %t1, if_then_0, if_else
+  cbr %t3, if_then_0, if_else
 if_then_0:
   .loc 1 3 14
   call @rt_print_i64(1)
   .loc 1 3 14
-  %t2 = const_str @.L0
+  %t4 = const_str @.L0
   .loc 1 3 14
-  call @rt_print_str(%t2)
+  call @rt_print_str(%t4)
   .loc 1 3 4
   br if_exit
 if_else:

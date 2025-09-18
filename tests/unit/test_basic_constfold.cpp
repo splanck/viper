@@ -127,5 +127,32 @@ int main()
         assert(ie && ie->value == 1);
     }
 
+    // boolean literals stay BOOLEAN after folding
+    {
+        std::string src =
+            "10 LET A = NOT TRUE\n"
+            "20 LET B = TRUE AND TRUE\n"
+            "30 LET C = FALSE ORELSE TRUE\n"
+            "40 LET D = FALSE ORELSE (1 = 1)\n"
+            "50 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("bool.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        foldConstants(*prog);
+        auto *letA = dynamic_cast<LetStmt *>(prog->main[0].get());
+        auto *boolA = dynamic_cast<BoolExpr *>(letA->expr.get());
+        assert(boolA && boolA->value == false);
+        auto *letB = dynamic_cast<LetStmt *>(prog->main[1].get());
+        auto *boolB = dynamic_cast<BoolExpr *>(letB->expr.get());
+        assert(boolB && boolB->value == true);
+        auto *letC = dynamic_cast<LetStmt *>(prog->main[2].get());
+        auto *boolC = dynamic_cast<BoolExpr *>(letC->expr.get());
+        assert(boolC && boolC->value == true);
+        auto *letD = dynamic_cast<LetStmt *>(prog->main[3].get());
+        auto *intD = dynamic_cast<IntExpr *>(letD->expr.get());
+        assert(intD && intD->value == 1);
+    }
+
     return 0;
 }
