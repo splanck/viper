@@ -52,13 +52,35 @@ Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
 {
     RVal val = lowerExpr(*u.expr);
     curLoc = u.loc;
-    Value b1 = val.value;
+    Value cond = val.value;
     if (val.type.kind != Type::Kind::I1)
-        b1 = emitUnary(Opcode::Trunc1, ilBoolTy(), val.value);
-    Value b64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), b1);
-    Value x = emitBinary(Opcode::Xor, Type(Type::Kind::I64), b64, Value::constInt(1));
-    Value res = emitUnary(Opcode::Trunc1, ilBoolTy(), x);
-    return {res, ilBoolTy()};
+        cond = emitUnary(Opcode::Trunc1, ilBoolTy(), cond);
+
+    BasicBlock *origin = cur;
+    BasicBlock *thenBlk = nullptr;
+    BasicBlock *elseBlk = nullptr;
+    Value slot;
+    Value *prevSlotPtr = boolBranchSlotPtr;
+    boolBranchSlotPtr = &slot;
+    IlValue result = emitBoolFromBranches(
+        [&]() {
+            thenBlk = cur;
+            curLoc = u.loc;
+            emitStore(ilBoolTy(), slot, emitBoolConst(false));
+        },
+        [&]() {
+            elseBlk = cur;
+            curLoc = u.loc;
+            emitStore(ilBoolTy(), slot, emitBoolConst(true));
+        });
+    boolBranchSlotPtr = prevSlotPtr;
+
+    BasicBlock *joinBlk = cur;
+    cur = origin;
+    curLoc = u.loc;
+    emitCBr(cond, thenBlk, elseBlk);
+    cur = joinBlk;
+    return {result, ilBoolTy()};
 }
 
 // Purpose: lower logical binary.
