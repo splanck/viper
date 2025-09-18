@@ -40,9 +40,7 @@ int cmdRunIL(int argc, char **argv)
         return 1;
     }
     std::string ilFile = argv[0];
-    vm::TraceConfig traceCfg{};
-    std::string stdinPath;
-    uint64_t maxSteps = 0;
+    ilc::SharedCliOptions sharedOpts;
     vm::DebugCtrl dbg;
     std::unique_ptr<vm::DebugScript> script;
     il::support::SourceManager sm;
@@ -53,23 +51,7 @@ int cmdRunIL(int argc, char **argv)
     for (int i = 1; i < argc; ++i)
     {
         std::string arg = argv[i];
-        if (arg == "--trace" || arg == "--trace=il")
-        {
-            traceCfg.mode = vm::TraceConfig::IL;
-        }
-        else if (arg == "--trace=src")
-        {
-            traceCfg.mode = vm::TraceConfig::SRC;
-        }
-        else if (arg == "--stdin-from" && i + 1 < argc)
-        {
-            stdinPath = argv[++i];
-        }
-        else if (arg == "--max-steps" && i + 1 < argc)
-        {
-            maxSteps = std::stoull(argv[++i]);
-        }
-        else if (arg == "--break" && i + 1 < argc)
+        if (arg == "--break" && i + 1 < argc)
         {
             std::string spec = argv[++i];
             if (ilc::isSrcBreakSpec(spec))
@@ -108,10 +90,6 @@ int cmdRunIL(int argc, char **argv)
         {
             continueFlag = true;
         }
-        else if (arg == "--bounds-checks")
-        {
-            // Flag accepted for parity with front-end run mode.
-        }
         else if (arg == "--watch" && i + 1 < argc)
         {
             dbg.addWatch(argv[++i]);
@@ -126,8 +104,17 @@ int cmdRunIL(int argc, char **argv)
         }
         else
         {
-            usage();
-            return 1;
+            switch (ilc::parseSharedOption(i, argc, argv, sharedOpts))
+            {
+            case ilc::SharedOptionParseResult::Parsed:
+                continue;
+            case ilc::SharedOptionParseResult::Error:
+                usage();
+                return 1;
+            case ilc::SharedOptionParseResult::NotMatched:
+                usage();
+                return 1;
+            }
         }
     }
     if (continueFlag)
@@ -137,6 +124,7 @@ int cmdRunIL(int argc, char **argv)
         stepFlag = false;
     }
     sm.addFile(ilFile);
+    vm::TraceConfig traceCfg = sharedOpts.trace;
     traceCfg.sm = &sm;
     dbg.setSourceManager(&sm);
     std::ifstream ifs(ilFile);
@@ -150,9 +138,9 @@ int cmdRunIL(int argc, char **argv)
         return 1;
     if (!verify::Verifier::verify(m, std::cerr))
         return 1;
-    if (!stdinPath.empty())
+    if (!sharedOpts.stdinPath.empty())
     {
-        if (!freopen(stdinPath.c_str(), "r", stdin))
+        if (!freopen(sharedOpts.stdinPath.c_str(), "r", stdin))
         {
             std::cerr << "unable to open stdin file\n";
             return 1;
@@ -174,7 +162,7 @@ int cmdRunIL(int argc, char **argv)
         }
         script->addStep(1);
     }
-    vm::VM vm(m, traceCfg, maxSteps, std::move(dbg), script.get());
+    vm::VM vm(m, traceCfg, sharedOpts.maxSteps, std::move(dbg), script.get());
     std::chrono::steady_clock::time_point start;
     if (timeFlag)
         start = std::chrono::steady_clock::now();
