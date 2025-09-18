@@ -41,6 +41,22 @@ RVal lowerUnaryExpr(const UnaryExpr &expr);
 /// @param expr Binary expression node.
 /// @return Resulting value and type.
 RVal lowerBinaryExpr(const BinaryExpr &expr);
+/// @brief Lower a boolean expression using explicit branch bodies.
+/// @param cond Boolean condition selecting THEN branch.
+/// @param loc Source location to attribute to control flow.
+/// @param emitThen Lambda emitting THEN branch body, storing into result slot.
+/// @param emitElse Lambda emitting ELSE branch body, storing into result slot.
+/// @param thenLabelBase Optional label base for THEN block naming.
+/// @param elseLabelBase Optional label base for ELSE block naming.
+/// @param joinLabelBase Optional label base for join block naming.
+/// @return Resulting value and type.
+RVal lowerBoolBranchExpr(Value cond,
+                         il::support::SourceLoc loc,
+                         const std::function<void(Value)> &emitThen,
+                         const std::function<void(Value)> &emitElse,
+                         std::string_view thenLabelBase = {},
+                         std::string_view elseLabelBase = {},
+                         std::string_view joinLabelBase = {});
 /// @brief Lower logical (`AND`/`OR`) expressions with short-circuiting.
 /// @param expr Binary expression node.
 /// @return Resulting value and type.
@@ -133,8 +149,11 @@ void lowerRandomize(const RandomizeStmt &stmt);
 // helpers
 IlType ilBoolTy();
 IlValue emitBoolConst(bool v);
-IlValue emitBoolFromBranches(std::function<void()> emitThen,
-                             std::function<void()> emitElse);
+IlValue emitBoolFromBranches(const std::function<void(Value)> &emitThen,
+                             const std::function<void(Value)> &emitElse,
+                             std::string_view thenLabelBase = "bool_then",
+                             std::string_view elseLabelBase = "bool_else",
+                             std::string_view joinLabelBase = "bool_join");
 Value emitAlloca(int bytes);
 Value emitLoad(Type ty, Value addr);
 void emitStore(Type ty, Value addr, Value val);
