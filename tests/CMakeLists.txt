@@ -840,6 +840,16 @@ add_test(NAME basic_boolean_andalso_short COMMAND ${CMAKE_COMMAND}
   -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/integration/basic_boolean_andalso_short.bas
   -DEXPECT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/integration/basic_boolean_andalso_short.expect
   -P ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/check_expect.cmake)
+add_test(NAME basic_boolean_truth COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/integration/basic_boolean_truth.bas
+  -DEXPECT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/integration/basic_boolean_truth.expect
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/check_expect.cmake)
+add_test(NAME basic_boolean_shortcircuit COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/integration/basic_shortcircuit.bas
+  -DEXPECT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/integration/basic_shortcircuit.expect
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/check_expect.cmake)
 
 add_subdirectory(golden)
 
