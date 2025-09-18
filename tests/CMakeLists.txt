@@ -835,6 +835,12 @@ add_test(NAME basic_semantics_boolean_constfold COMMAND ${CMAKE_COMMAND}
   -DEXPECT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/test_boolean_constfold.expect
   -P ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/check_expect.cmake)
 
+add_test(NAME basic_boolean_andalso_short COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/integration/basic_boolean_andalso_short.bas
+  -DEXPECT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/integration/basic_boolean_andalso_short.expect
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/check_expect.cmake)
+
 add_subdirectory(golden)
 
 set(CODEGEN_E2E ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_codegen.cmake)
