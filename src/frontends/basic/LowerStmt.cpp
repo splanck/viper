@@ -86,7 +86,11 @@ void Lowerer::lowerLet(const LetStmt &stmt)
         assert(it != varSlots.end());
         bool isStr = !var->name.empty() && var->name.back() == '$';
         bool isF64 = !var->name.empty() && var->name.back() == '#';
-        if (!isStr && v.type.kind == Type::Kind::I1)
+        bool isBool = false;
+        auto typeIt = varTypes.find(var->name);
+        if (typeIt != varTypes.end() && typeIt->second == AstType::Bool)
+            isBool = true;
+        if (!isStr && !isF64 && !isBool && v.type.kind == Type::Kind::I1)
         {
             curLoc = stmt.loc;
             Value z = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), v.value);
@@ -99,15 +103,16 @@ void Lowerer::lowerLet(const LetStmt &stmt)
             v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
             v.type = Type(Type::Kind::F64);
         }
-        else if (!isStr && !isF64 && v.type.kind == Type::Kind::F64)
+        else if (!isStr && !isF64 && !isBool && v.type.kind == Type::Kind::F64)
         {
             curLoc = stmt.loc;
             v.value = emitUnary(Opcode::Fptosi, Type(Type::Kind::I64), v.value);
             v.type = Type(Type::Kind::I64);
         }
         curLoc = stmt.loc;
-        Type ty =
-            isStr ? Type(Type::Kind::Str) : (isF64 ? Type(Type::Kind::F64) : Type(Type::Kind::I64));
+        Type ty = isStr ? Type(Type::Kind::Str)
+                         : (isF64 ? Type(Type::Kind::F64)
+                                  : (isBool ? ilBoolTy() : Type(Type::Kind::I64)));
         emitStore(ty, Value::temp(it->second), v.value);
     }
     else if (auto *arr = dynamic_cast<const ArrayExpr *>(stmt.target.get()))

@@ -9,6 +9,7 @@
 #include "il/core/Opcode.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include <array>
+#include <cstdint>
 #include <cassert>
 #include <cstring>
 #include <utility>
@@ -185,6 +186,8 @@ VM::ExecResult OpHandlers::handleLoad(VM &vm,
     Slot res{};
     if (in.type.kind == Type::Kind::I64)
         res.i64 = *reinterpret_cast<int64_t *>(ptr);
+    else if (in.type.kind == Type::Kind::I1)
+        res.i64 = static_cast<int64_t>(*reinterpret_cast<uint8_t *>(ptr) & 1);
     else if (in.type.kind == Type::Kind::F64)
         res.f64 = *reinterpret_cast<double *>(ptr);
     else if (in.type.kind == Type::Kind::Str)
@@ -209,6 +212,8 @@ VM::ExecResult OpHandlers::handleStore(VM &vm,
     Slot val = vm.eval(fr, in.operands[1]);
     if (in.type.kind == Type::Kind::I64)
         *reinterpret_cast<int64_t *>(ptr) = val.i64;
+    else if (in.type.kind == Type::Kind::I1)
+        *reinterpret_cast<uint8_t *>(ptr) = static_cast<uint8_t>(val.i64 != 0);
     else if (in.type.kind == Type::Kind::F64)
         *reinterpret_cast<double *>(ptr) = val.f64;
     else if (in.type.kind == Type::Kind::Str)
