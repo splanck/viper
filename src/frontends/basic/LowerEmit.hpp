@@ -10,15 +10,23 @@ void collectVars(const Program &prog);
 void collectVars(const std::vector<const Stmt *> &stmts);
 void lowerFunctionDecl(const FunctionDecl &decl);
 void lowerSubDecl(const SubDecl &decl);
+/// @brief Configuration shared by FUNCTION and SUB lowering.
+struct ProcedureConfig
+{
+    Type retType{Type(Type::Kind::Void)}; ///< IL return type for the procedure.
+    std::function<void()> postCollect;    ///< Hook after variable discovery.
+    std::function<void()> emitEmptyBody;  ///< Emit return path for empty bodies.
+    std::function<void()> emitFinalReturn;///< Emit return in the synthetic exit block.
+};
+/// @brief Lower shared procedure scaffolding for FUNCTION/SUB declarations.
+void lowerProcedure(const std::string &name,
+                    const std::vector<Param> &params,
+                    const std::vector<StmtPtr> &body,
+                    const ProcedureConfig &config);
 /// @brief Stack-allocate parameters and seed local map.
 void materializeParams(const std::vector<Param> &params);
 /// @brief Reset procedure-level lowering state.
 void resetLoweringState();
-/// @brief Lower function body statements.
-/// @return True if body contained statements, requiring finalization.
-bool lowerFunctionBody(const FunctionDecl &decl, const std::function<Value()> &defaultRet);
-/// @brief Emit final return block after body lowering.
-void finalizeFunction(const std::function<Value()> &defaultRet);
 void lowerStmt(const Stmt &stmt);
 RVal lowerExpr(const Expr &expr);
 /// @brief Lower a variable reference expression.
