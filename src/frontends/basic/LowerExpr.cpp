@@ -92,44 +92,6 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
     RVal lhs = lowerExpr(*b.lhs);
     curLoc = b.loc;
 
-    if (b.op == BinaryExpr::Op::LogicalOr)
-    {
-        if (auto *rhsBool = dynamic_cast<const BoolExpr *>(b.rhs.get()); rhsBool && !rhsBool->value)
-        {
-            Value cond = lhs.value;
-            if (lhs.type.kind != Type::Kind::I1)
-            {
-                curLoc = b.loc;
-                cond = emitUnary(Opcode::Trunc1, ilBoolTy(), cond);
-            }
-
-            BasicBlock *origin = cur;
-            BasicBlock *thenBlk = nullptr;
-            BasicBlock *elseBlk = nullptr;
-            Value slot;
-            Value *prevSlotPtr = boolBranchSlotPtr;
-            boolBranchSlotPtr = &slot;
-            IlValue result = emitBoolFromBranches(
-                [&]() {
-                    thenBlk = cur;
-                    curLoc = b.loc;
-                    emitStore(ilBoolTy(), slot, emitBoolConst(true));
-                },
-                [&]() {
-                    elseBlk = cur;
-                    curLoc = b.loc;
-                    emitStore(ilBoolTy(), slot, emitBoolConst(false));
-                });
-            boolBranchSlotPtr = prevSlotPtr;
-            BasicBlock *joinBlk = cur;
-            cur = origin;
-            curLoc = b.loc;
-            emitCBr(cond, thenBlk, elseBlk);
-            cur = joinBlk;
-            return {result, ilBoolTy()};
-        }
-    }
-
     auto toBool = [&](const RVal &val) {
         Value v = val.value;
         if (val.type.kind != Type::Kind::I1)
@@ -243,35 +205,40 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
         return {result, ilBoolTy()};
     }
 
-    Value addr = emitAlloca(1);
     if (b.op == BinaryExpr::Op::LogicalOr)
     {
-        std::string trueLbl =
-            blockNamer ? blockNamer->generic("or_true") : mangler.block("or_true");
-        std::string rhsLbl = blockNamer ? blockNamer->generic("or_rhs") : mangler.block("or_rhs");
-        std::string doneLbl =
-            blockNamer ? blockNamer->generic("or_done") : mangler.block("or_done");
-        BasicBlock *trueBB = &builder->addBlock(*func, trueLbl);
-        BasicBlock *rhsBB = &builder->addBlock(*func, rhsLbl);
-        BasicBlock *doneBB = &builder->addBlock(*func, doneLbl);
-        curLoc = b.loc;
-        emitCBr(lhs.value, trueBB, rhsBB);
-        cur = trueBB;
-        curLoc = b.loc;
-        emitStore(ilBoolTy(), addr, emitBoolConst(true));
-        curLoc = b.loc;
-        emitBr(doneBB);
-        cur = rhsBB;
+        Value lhsBool = toBool(lhs);
         RVal rhs = lowerExpr(*b.rhs);
+        Value rhsBool = toBool(rhs);
+
+        BasicBlock *origin = cur;
+        BasicBlock *thenBlk = nullptr;
+        BasicBlock *elseBlk = nullptr;
+        Value slot;
+        Value *prevSlotPtr = boolBranchSlotPtr;
+        boolBranchSlotPtr = &slot;
+        IlValue result = emitBoolFromBranches(
+            [&]() {
+                thenBlk = cur;
+                curLoc = b.loc;
+                emitStore(ilBoolTy(), slot, emitBoolConst(true));
+            },
+            [&]() {
+                elseBlk = cur;
+                curLoc = b.loc;
+                emitStore(ilBoolTy(), slot, rhsBool);
+            });
+        boolBranchSlotPtr = prevSlotPtr;
+        BasicBlock *joinBlk = cur;
+        cur = origin;
         curLoc = b.loc;
-        emitStore(ilBoolTy(), addr, rhs.value);
-        curLoc = b.loc;
-        emitBr(doneBB);
-        cur = doneBB;
+        emitCBr(lhsBool, thenBlk, elseBlk);
+        cur = joinBlk;
+        return {result, ilBoolTy()};
     }
-    curLoc = b.loc;
-    Value res = emitLoad(ilBoolTy(), addr);
-    return {res, ilBoolTy()};
+
+    assert(false && "unsupported logical operator");
+    return {emitBoolConst(false), ilBoolTy()};
 }
 
 // Purpose: lower div or mod.
