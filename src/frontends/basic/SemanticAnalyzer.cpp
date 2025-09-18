@@ -138,13 +138,7 @@ static std::string conditionExprText(const Expr &expr)
 template <typename Proc, typename BodyCallback>
 void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc, BodyCallback &&bodyCheck)
 {
-    auto symSave = symbols_;
-    auto typeSave = varTypes_;
-    auto arrSave = arrays_;
-    auto labelSave = labels_;
-    auto labelRefSave = labelRefs_;
-    auto forSave = forStack_;
-    scopes_.pushScope();
+    ProcedureScope procScope(*this);
     for (const auto &p : proc.params)
     {
         scopes_.bind(p.name, p.name);
@@ -158,14 +152,6 @@ void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc, BodyCallback &&b
             visitStmt(*st);
 
     std::forward<BodyCallback>(bodyCheck)(proc);
-
-    scopes_.popScope();
-    symbols_ = std::move(symSave);
-    varTypes_ = std::move(typeSave);
-    arrays_ = std::move(arrSave);
-    labels_ = std::move(labelSave);
-    labelRefs_ = std::move(labelRefSave);
-    forStack_ = std::move(forSave);
 }
 
 void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)

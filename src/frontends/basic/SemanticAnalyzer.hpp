@@ -15,6 +15,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -119,6 +120,45 @@ class SemanticAnalyzer
     };
 
   private:
+    class ProcedureScope
+    {
+      public:
+        explicit ProcedureScope(SemanticAnalyzer &analyzer) noexcept
+            : analyzer_(analyzer),
+              savedSymbols_(analyzer.symbols_),
+              savedVarTypes_(analyzer.varTypes_),
+              savedArrays_(analyzer.arrays_),
+              savedLabels_(analyzer.labels_),
+              savedLabelRefs_(analyzer.labelRefs_),
+              savedForStack_(analyzer.forStack_)
+        {
+            analyzer_.scopes_.pushScope();
+        }
+
+        ProcedureScope(const ProcedureScope &) = delete;
+        ProcedureScope &operator=(const ProcedureScope &) = delete;
+
+        ~ProcedureScope() noexcept
+        {
+            analyzer_.scopes_.popScope();
+            analyzer_.symbols_ = std::move(savedSymbols_);
+            analyzer_.varTypes_ = std::move(savedVarTypes_);
+            analyzer_.arrays_ = std::move(savedArrays_);
+            analyzer_.labels_ = std::move(savedLabels_);
+            analyzer_.labelRefs_ = std::move(savedLabelRefs_);
+            analyzer_.forStack_ = std::move(savedForStack_);
+        }
+
+      private:
+        SemanticAnalyzer &analyzer_;
+        std::unordered_set<std::string> savedSymbols_;
+        std::unordered_map<std::string, Type> savedVarTypes_;
+        std::unordered_map<std::string, long long> savedArrays_;
+        std::unordered_set<int> savedLabels_;
+        std::unordered_set<int> savedLabelRefs_;
+        std::vector<std::string> savedForStack_;
+    };
+
     /// @brief Validate variable references in @p e and recurse into subtrees.
     /// @param e Expression node to analyze.
     /// @return Inferred type of the expression.
