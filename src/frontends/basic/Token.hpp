@@ -88,6 +88,8 @@ enum class TokenKind
     KeywordFalse,   ///< 'FALSE'.
     KeywordAndAlso, ///< 'ANDALSO'.
     KeywordOrElse,  ///< 'ORELSE'.
+
+    Count, ///< Total number of token kinds (sentinel, not a real token).
 };
 
 /// @brief A lexical token produced by the BASIC lexer.
