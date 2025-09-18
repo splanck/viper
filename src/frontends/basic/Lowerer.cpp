@@ -301,7 +301,7 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
             case ::il::frontends::basic::Type::Str:
                 return emitConstStr(getStringLabel(""));
             case ::il::frontends::basic::Type::Bool:
-                return Value::constInt(0);
+                return emitBoolConst(false);
         }
         return Value::constInt(0);
     };

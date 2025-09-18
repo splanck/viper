@@ -45,6 +45,8 @@ class Lowerer
     using Value = il::core::Value;
     using Type = il::core::Type;
     using Opcode = il::core::Opcode;
+    using IlValue = Value;
+    using IlType = Type;
 
   public:
     struct RVal
