@@ -1,3 +1,4 @@
+#include "il/core/Module.hpp"
 #include "il/io/Parser.hpp"
 #include "il/io/Serializer.hpp"
 #include "il/verify/Verifier.hpp"

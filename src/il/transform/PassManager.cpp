@@ -5,6 +5,7 @@
 // Links: docs/class-catalog.md
 
 #include "il/transform/PassManager.hpp"
+#include "il/core/Module.hpp"
 #include "il/verify/Verifier.hpp"
 #include <cassert>
 #include <sstream>

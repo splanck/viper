@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Test constructs modules and streams locally.
 // Links: docs/il-spec.md
 
+#include "il/core/Module.hpp"
 #include "il/io/Parser.hpp"
 #include <cassert>
 #include <sstream>

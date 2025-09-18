@@ -7,6 +7,7 @@
 #include "il/transform/Peephole.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
+#include "il/core/Module.hpp"
 
 using namespace il::core;
 

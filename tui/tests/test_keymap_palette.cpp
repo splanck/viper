@@ -7,6 +7,7 @@
 #include "tui/render/renderer.hpp"
 #include "tui/render/screen.hpp"
 #include "tui/style/theme.hpp"
+#include "tui/term/key_event.hpp"
 #include "tui/term/term_io.hpp"
 #include "tui/widgets/command_palette.hpp"
 #include "tui/widgets/label.hpp"

@@ -4,6 +4,7 @@
 // Ownership: Test constructs IL module and executes VM.
 // Links: docs/il-reference.md
 
+#include "il/core/Module.hpp"
 #include "il/io/Parser.hpp"
 #include "rt_internal.h"
 #include "vm/VM.hpp"

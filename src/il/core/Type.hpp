@@ -37,31 +37,6 @@ struct Type
 /// @brief Convert kind @p k to its mnemonic string.
 /// @param k Kind to convert.
 /// @return Lowercase mnemonic defined in the spec.
-inline std::string kindToString(Type::Kind k)
-{
-    switch (k)
-    {
-        case Type::Kind::Void:
-            return "void";
-        case Type::Kind::I1:
-            return "i1";
-        case Type::Kind::I64:
-            return "i64";
-        case Type::Kind::F64:
-            return "f64";
-        case Type::Kind::Ptr:
-            return "ptr";
-        case Type::Kind::Str:
-            return "str";
-    }
-    return "";
-}
-
-/// @brief Stringify this type.
-/// @return Lowercase mnemonic of the kind.
-inline std::string Type::toString() const
-{
-    return kindToString(kind);
-}
+std::string kindToString(Type::Kind k);
 
 } // namespace il::core

@@ -5,7 +5,8 @@
 // Links: docs/il-spec.md
 #pragma once
 
-#include "il/core/Module.hpp"
+#include "il/core/Type.hpp"
+#include "il/core/fwd.hpp"
 #include <ostream>
 #include <unordered_map>
 #include <unordered_set>

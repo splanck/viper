@@ -5,6 +5,9 @@
 // Links: docs/class-catalog.md
 
 #include "il/transform/DCE.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Instr.hpp"
+#include "il/core/Module.hpp"
 #include <unordered_map>
 #include <unordered_set>
 

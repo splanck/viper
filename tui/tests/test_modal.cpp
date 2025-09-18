@@ -4,6 +4,7 @@
 // @ownership Test owns widgets, modal host, app, and TermIO.
 
 #include "tui/app.hpp"
+#include "tui/term/key_event.hpp"
 #include "tui/term/term_io.hpp"
 #include "tui/ui/modal.hpp"
 

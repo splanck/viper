@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Test owns modules and buffers locally.
 // Links: docs/il-spec.md
 
+#include "il/core/Module.hpp"
 #include "il/io/Parser.hpp"
 #include <cassert>
 #include <sstream>

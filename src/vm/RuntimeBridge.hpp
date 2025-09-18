@@ -6,7 +6,7 @@
 #pragma once
 
 #include "rt.hpp"
-#include "support/source_manager.hpp"
+#include "support/source_loc.hpp"
 #include <string>
 #include <vector>
 

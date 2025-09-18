@@ -8,7 +8,7 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
-#include "support/source_manager.hpp"
+#include "support/source_loc.hpp"
 #include <optional>
 #include <string>
 #include <vector>

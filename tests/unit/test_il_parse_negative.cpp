@@ -3,6 +3,7 @@
 // and numeric literals. Key invariants: Parser returns false for invalid input. Ownership/Lifetime:
 // Test owns all modules and buffers locally. Links: docs/il-spec.md
 
+#include "il/core/Module.hpp"
 #include "il/io/Parser.hpp"
 #include <cassert>
 #include <fstream>

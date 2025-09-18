@@ -4,6 +4,7 @@
 // Ownership: Test parses in-memory IL text and executes the VM in-process.
 // Links: docs/il-spec.md
 
+#include "il/core/Module.hpp"
 #include "il/io/Parser.hpp"
 #include "vm/VM.hpp"
 #include <cassert>

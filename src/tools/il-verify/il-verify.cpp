@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Tool owns parsed module.
 // Links: docs/class-catalog.md
 
+#include "il/core/Module.hpp"
 #include "il/io/Parser.hpp"
 #include "il/verify/Verifier.hpp"
 #include <fstream>

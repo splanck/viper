@@ -7,8 +7,8 @@
 
 #include "VM/Debug.h"
 #include "VM/Trace.h"
-#include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/core/fwd.hpp"
 #include "rt.hpp"
 #include <array>
 #include <cstdint>

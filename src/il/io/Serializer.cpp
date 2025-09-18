@@ -5,6 +5,7 @@
 // Links: docs/il-spec.md
 
 #include "il/io/Serializer.hpp"
+#include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/Value.hpp"
 #include <algorithm>

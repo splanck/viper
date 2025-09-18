@@ -5,7 +5,8 @@
 // Links: docs/class-catalog.md
 #pragma once
 
-#include <cstdint>
+#include "support/source_loc.hpp"
+
 #include <string>
 #include <string_view>
 #include <vector>
@@ -15,26 +16,6 @@
 /// @ownership Owns stored file path strings.
 namespace il::support
 {
-
-/// Represents an absolute position within a source file as tracked by
-/// SourceManager. A zero file_id denotes an invalid location.
-struct SourceLoc
-{
-    /// Identifier assigned by SourceManager; 0 indicates an invalid location.
-    uint32_t file_id = 0;
-
-    /// 1-based line number within the file; 0 if the line is unknown.
-    uint32_t line = 0;
-
-    /// 1-based column number within the line; 0 if the column is unknown.
-    uint32_t column = 0;
-
-    /// @brief Whether this location refers to a real file.
-    bool isValid() const
-    {
-        return file_id != 0;
-    }
-};
 
 /// Maintains the mapping between numeric file identifiers and their
 /// corresponding filesystem paths. Clients can register files and look up

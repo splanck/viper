@@ -9,7 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "tui/term/input.hpp"
+#include "tui/term/key_event.hpp"
 #include "tui/ui/widget.hpp"
 
 namespace viper::tui::input

@@ -6,6 +6,8 @@
 
 #include "vm/VM.hpp"
 
+#include "il/core/Module.hpp"
+
 #include <cassert>
 #include <utility>
 

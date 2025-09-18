@@ -9,6 +9,8 @@
 #include "VM/Trace.h"
 #include "break_spec.hpp"
 #include "cli.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Module.hpp"
 #include "il/io/Parser.hpp"
 #include "il/verify/Verifier.hpp"
 #include "support/source_manager.hpp"

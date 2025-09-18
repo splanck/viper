@@ -4,7 +4,7 @@
 // @ownership Test owns widgets, app, and TermIO.
 
 #include "tui/app.hpp"
-#include "tui/term/input.hpp"
+#include "tui/term/key_event.hpp"
 #include "tui/term/term_io.hpp"
 #include "tui/ui/container.hpp"
 

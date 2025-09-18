@@ -5,6 +5,7 @@
 
 #include "tui/render/screen.hpp"
 #include "tui/style/theme.hpp"
+#include "tui/term/key_event.hpp"
 #include "tui/text/search.hpp"
 #include "tui/text/text_buffer.hpp"
 #include "tui/views/text_view.hpp"

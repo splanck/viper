@@ -6,6 +6,8 @@
 
 #include "il/io/FunctionParser.hpp"
 
+#include "il/core/Function.hpp"
+#include "il/core/Module.hpp"
 #include "il/io/InstrParser.hpp"
 #include "il/io/ParserUtil.hpp"
 #include "il/io/TypeParser.hpp"

@@ -5,6 +5,13 @@
 // Links: docs/il-spec.md
 
 #include "il/verify/Verifier.hpp"
+
+#include "il/core/BasicBlock.hpp"
+#include "il/core/Extern.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Global.hpp"
+#include "il/core/Instr.hpp"
+#include "il/core/Module.hpp"
 #include "il/verify/ControlFlowChecker.hpp"
 #include "il/verify/InstructionChecker.hpp"
 #include "il/verify/TypeInference.hpp"

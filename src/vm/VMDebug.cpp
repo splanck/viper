@@ -7,6 +7,11 @@
 #include "vm/VM.hpp"
 #include "VM/DebugScript.h"
 
+#include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Instr.hpp"
+#include "support/source_manager.hpp"
+
 #include <filesystem>
 #include <iostream>
 #include <string>
