@@ -80,10 +80,7 @@ int cmdFrontBasic(int argc, char **argv)
     bool emitIl = false;
     bool run = false;
     std::string file;
-    std::string stdinPath;
-    uint64_t maxSteps = 0;
-    bool boundsChecks = false;
-    vm::TraceConfig traceCfg{};
+    ilc::SharedCliOptions sharedOpts;
     SourceManager sm;
     for (int i = 0; i < argc; ++i)
     {
@@ -98,30 +95,19 @@ int cmdFrontBasic(int argc, char **argv)
             run = true;
             file = argv[++i];
         }
-        else if (arg == "--trace" || arg == "--trace=il")
-        {
-            traceCfg.mode = vm::TraceConfig::IL;
-        }
-        else if (arg == "--trace=src")
-        {
-            traceCfg.mode = vm::TraceConfig::SRC;
-        }
-        else if (arg == "--stdin-from" && i + 1 < argc)
-        {
-            stdinPath = argv[++i];
-        }
-        else if (arg == "--max-steps" && i + 1 < argc)
-        {
-            maxSteps = std::stoull(argv[++i]);
-        }
-        else if (arg == "--bounds-checks")
-        {
-            boundsChecks = true;
-        }
         else
         {
-            usage();
-            return 1;
+            switch (ilc::parseSharedOption(i, argc, argv, sharedOpts))
+            {
+            case ilc::SharedOptionParseResult::Parsed:
+                continue;
+            case ilc::SharedOptionParseResult::Error:
+                usage();
+                return 1;
+            case ilc::SharedOptionParseResult::NotMatched:
+                usage();
+                return 1;
+            }
         }
     }
     if ((emitIl == run) || file.empty())
@@ -130,7 +116,7 @@ int cmdFrontBasic(int argc, char **argv)
         return 1;
     }
     bool hadErrors = false;
-    core::Module m = compileBasicToIL(file, boundsChecks, hadErrors, sm);
+    core::Module m = compileBasicToIL(file, sharedOpts.boundsChecks, hadErrors, sm);
     if (hadErrors)
         return 1;
     if (emitIl)
@@ -140,15 +126,16 @@ int cmdFrontBasic(int argc, char **argv)
     }
     if (!verify::Verifier::verify(m, std::cerr))
         return 1;
-    if (!stdinPath.empty())
+    if (!sharedOpts.stdinPath.empty())
     {
-        if (!freopen(stdinPath.c_str(), "r", stdin))
+        if (!freopen(sharedOpts.stdinPath.c_str(), "r", stdin))
         {
             std::cerr << "unable to open stdin file\n";
             return 1;
         }
     }
+    vm::TraceConfig traceCfg = sharedOpts.trace;
     traceCfg.sm = &sm;
-    vm::VM vm(m, traceCfg, maxSteps);
+    vm::VM vm(m, traceCfg, sharedOpts.maxSteps);
     return static_cast<int>(vm.run());
 }
