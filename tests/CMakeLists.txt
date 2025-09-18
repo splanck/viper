@@ -639,6 +639,12 @@ add_test(NAME basic_to_il_boolean_literals COMMAND ${CMAKE_COMMAND}
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/il/boolean_literals.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 
+add_test(NAME basic_to_il_boolean_dim_and_assign COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/src/boolean_dim_and_assign.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/il/boolean_dim_and_assign.il
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
+
 add_test(NAME basic_to_il_conversions COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
   -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/conversions.bas

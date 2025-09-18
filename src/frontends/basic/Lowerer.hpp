@@ -47,6 +47,7 @@ class Lowerer
     using Opcode = il::core::Opcode;
     using IlValue = Value;
     using IlType = Type;
+    using AstType = ::il::frontends::basic::Type;
 
   public:
     struct RVal
@@ -212,6 +213,7 @@ class Lowerer
     std::unordered_map<int, size_t> lineBlocks;
     std::unordered_map<std::string, unsigned> varSlots;
     std::unordered_map<std::string, unsigned> arrayLenSlots;
+    std::unordered_map<std::string, AstType> varTypes;
     std::unordered_map<std::string, std::string> strings;
     std::unordered_set<std::string> vars;
     std::unordered_set<std::string> arrays;
