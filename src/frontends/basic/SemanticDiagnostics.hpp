@@ -19,7 +19,7 @@ class SemanticDiagnostics
 
     /// @brief Message template for non-boolean conditions.
     static constexpr std::string_view NonBooleanConditionMessage =
-        "Expected BOOLEAN condition, got {type}. Consider '{expr} <> 0'.";
+        "Expected BOOLEAN condition, got {type}. Suggestion: use {expr} <> 0.";
 
     void emit(il::support::Severity sev,
               std::string code,

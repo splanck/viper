@@ -829,6 +829,22 @@ add_test(NAME basic_semantics_condition_nonboolean_errors COMMAND ${CMAKE_COMMAN
   -DSOURCE_ROOT=${CMAKE_SOURCE_DIR}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/check_diag.cmake)
 
+add_test(NAME basic_negatives_if_int_condition COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic/negatives/test_if_int_condition.bas
+  -DDIAG_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic/negatives/test_if_int_condition.diag
+  -DEXPECT_STATUS=1
+  -DSOURCE_ROOT=${CMAKE_SOURCE_DIR}
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/check_diag.cmake)
+
+add_test(NAME basic_negatives_while_float_condition COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic/negatives/test_while_float_condition.bas
+  -DDIAG_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic/negatives/test_while_float_condition.diag
+  -DEXPECT_STATUS=1
+  -DSOURCE_ROOT=${CMAKE_SOURCE_DIR}
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/check_diag.cmake)
+
 add_test(NAME basic_semantics_boolean_constfold COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
   -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/test_boolean_constfold.bas
