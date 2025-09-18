@@ -42,10 +42,12 @@ L40:
   .loc 1 4 12
   %t7 = alloca 1
 L50:
+  .loc 1 5 20
+  %t11 = load i1, %t0
+  .loc 1 5 20
+  %t12 = alloca 1
   .loc 1 5 16
-  %t11 = alloca 1
-  .loc 1 5 16
-  cbr 0, and_rhs, and_false
+  cbr 0, bool_then, bool_else
 exit:
   ret 0
 or_true:
@@ -67,21 +69,19 @@ or_done:
   call @rt_print_str(%t10)
   .loc 1 4 4
   br L50
-and_rhs:
-  .loc 1 5 20
-  %t12 = load i1, %t0
+bool_then:
   .loc 1 5 16
-  store i1, %t11, %t12
+  store i1, %t12, %t11
   .loc 1 5 16
-  br and_done
-and_false:
+  br bool_join
+bool_else:
   .loc 1 5 16
-  store i1, %t11, 0
+  store i1, %t12, 0
   .loc 1 5 16
-  br and_done
-and_done:
+  br bool_join
+bool_join:
   .loc 1 5 16
-  %t13 = load i1, %t11
+  %t13 = load i1, %t12
   .loc 1 5 4
   %t14 = zext1 %t13
   .loc 1 5 4
