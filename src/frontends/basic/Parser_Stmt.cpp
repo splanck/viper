@@ -15,12 +15,15 @@ namespace il::frontends::basic
 /// @return Parsed statement node or EndStmt for unknown tokens.
 StmtPtr Parser::parseStatement(int line)
 {
-    auto it = stmtHandlers_.find(peek().kind);
-    if (it != stmtHandlers_.end())
+    const auto kind = peek().kind;
+    const auto index = static_cast<std::size_t>(kind);
+    if (index < stmtHandlers_.size())
     {
-        if (it->second.no_arg)
-            return (this->*(it->second.no_arg))();
-        return (this->*(it->second.with_line))(line);
+        const auto &handler = stmtHandlers_[index];
+        if (handler.no_arg)
+            return (this->*(handler.no_arg))();
+        if (handler.with_line)
+            return (this->*(handler.with_line))(line);
     }
     auto stmt = std::make_unique<EndStmt>();
     stmt->loc = peek().loc;
