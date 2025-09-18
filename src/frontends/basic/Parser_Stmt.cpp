@@ -449,25 +449,26 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionHeader()
     return fn;
 }
 
-/// @brief Parse statements comprising a function body.
-/// @param fn FunctionDecl to populate with body statements.
-/// @note Consumes tokens until reaching END FUNCTION.
-void Parser::parseFunctionBody(FunctionDecl *fn)
+/// @brief Shared helper that parses procedure bodies terminated by END.
+/// @param endKind Keyword expected after END to close the body.
+/// @param body Destination vector for parsed statements.
+/// @return Location of the END keyword token.
+il::support::SourceLoc Parser::parseProcedureBody(TokenKind endKind, std::vector<StmtPtr> &body)
 {
     if (at(TokenKind::EndOfLine))
         consume();
     else if (at(TokenKind::Colon))
         consume();
+    il::support::SourceLoc endLoc{};
     while (true)
     {
         while (at(TokenKind::EndOfLine))
             consume();
-        if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordFunction)
+        if (at(TokenKind::KeywordEnd) && peek(1).kind == endKind)
         {
-            auto endLoc = peek().loc;
-            consume(); // END
-            consume(); // FUNCTION
-            fn->endLoc = endLoc;
+            endLoc = peek().loc;
+            consume();
+            consume();
             break;
         }
         int innerLine = 0;
@@ -478,12 +479,21 @@ void Parser::parseFunctionBody(FunctionDecl *fn)
         }
         auto stmt = parseStatement(innerLine);
         stmt->line = innerLine;
-        fn->body.push_back(std::move(stmt));
+        body.push_back(std::move(stmt));
         if (at(TokenKind::Colon))
             consume();
         else if (at(TokenKind::EndOfLine))
             consume();
     }
+    return endLoc;
+}
+
+/// @brief Parse statements comprising a function body.
+/// @param fn FunctionDecl to populate with body statements.
+/// @note Consumes tokens until reaching END FUNCTION.
+void Parser::parseFunctionBody(FunctionDecl *fn)
+{
+    fn->endLoc = parseProcedureBody(TokenKind::KeywordFunction, fn->body);
 }
 
 /// @brief Parse a full FUNCTION declaration.
@@ -506,34 +516,7 @@ StmtPtr Parser::parseSub()
     sub->loc = loc;
     sub->name = nameTok.lexeme;
     sub->params = parseParamList();
-    if (at(TokenKind::EndOfLine))
-        consume();
-    else if (at(TokenKind::Colon))
-        consume();
-    while (true)
-    {
-        while (at(TokenKind::EndOfLine))
-            consume();
-        if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordSub)
-        {
-            consume();
-            consume();
-            break;
-        }
-        int innerLine = 0;
-        if (at(TokenKind::Number))
-        {
-            innerLine = std::atoi(peek().lexeme.c_str());
-            consume();
-        }
-        auto stmt = parseStatement(innerLine);
-        stmt->line = innerLine;
-        sub->body.push_back(std::move(stmt));
-        if (at(TokenKind::Colon))
-            consume();
-        else if (at(TokenKind::EndOfLine))
-            consume();
-    }
+    parseProcedureBody(TokenKind::KeywordSub, sub->body);
     return sub;
 }
 
