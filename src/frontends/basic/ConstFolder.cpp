@@ -167,6 +167,19 @@ static void replaceWithInt(ExprPtr &e, long long v, support::SourceLoc loc)
     e = std::move(ni);
 }
 
+/// @brief Replace expression @p e with a boolean literal.
+/// @param e Expression pointer to replace.
+/// @param v Boolean value to insert.
+/// @param loc Source location for the new literal.
+/// @invariant Ownership of @p e transfers to the newly created BoolExpr.
+static void replaceWithBool(ExprPtr &e, bool v, support::SourceLoc loc)
+{
+    auto nb = std::make_unique<BoolExpr>();
+    nb->loc = loc;
+    nb->value = v;
+    e = std::move(nb);
+}
+
 /// @brief Replace expression @p e with a string literal.
 /// @param e Expression pointer to replace.
 /// @param s String value to insert.
@@ -272,7 +285,7 @@ static void foldUnary(ExprPtr &e, UnaryExpr *u)
     if (auto *b = dynamic_cast<BoolExpr *>(u->expr.get()))
     {
         if (u->op == UnaryExpr::Op::LogicalNot)
-            replaceWithInt(e, b->value ? 0 : 1, u->loc);
+            replaceWithBool(e, !b->value, u->loc);
         return;
     }
     auto n = detail::asNumeric(*u->expr);
@@ -294,14 +307,14 @@ static void foldBinary(ExprPtr &e, BinaryExpr *b)
         {
             if (!lhsBool->value)
             {
-                replaceWithInt(e, 0, b->loc);
+                replaceWithBool(e, false, b->loc);
                 return;
             }
             ExprPtr rhs = std::move(b->rhs);
             foldExpr(rhs);
             if (auto *boolRhs = dynamic_cast<BoolExpr *>(rhs.get()))
             {
-                replaceWithInt(e, boolRhs->value ? 1 : 0, b->loc);
+                replaceWithBool(e, boolRhs->value, b->loc);
             }
             else
             {
@@ -316,14 +329,14 @@ static void foldBinary(ExprPtr &e, BinaryExpr *b)
         {
             if (lhsBool->value)
             {
-                replaceWithInt(e, 1, b->loc);
+                replaceWithBool(e, true, b->loc);
                 return;
             }
             ExprPtr rhs = std::move(b->rhs);
             foldExpr(rhs);
             if (auto *boolRhs = dynamic_cast<BoolExpr *>(rhs.get()))
             {
-                replaceWithInt(e, boolRhs->value ? 1 : 0, b->loc);
+                replaceWithBool(e, boolRhs->value, b->loc);
             }
             else
             {
@@ -343,11 +356,11 @@ static void foldBinary(ExprPtr &e, BinaryExpr *b)
             {
                 case BinaryExpr::Op::LogicalAnd:
                 case BinaryExpr::Op::LogicalAndShort:
-                    replaceWithInt(e, (lhsBool->value && rhsBool->value) ? 1 : 0, b->loc);
+                    replaceWithBool(e, lhsBool->value && rhsBool->value, b->loc);
                     return;
                 case BinaryExpr::Op::LogicalOr:
                 case BinaryExpr::Op::LogicalOrShort:
-                    replaceWithInt(e, (lhsBool->value || rhsBool->value) ? 1 : 0, b->loc);
+                    replaceWithBool(e, lhsBool->value || rhsBool->value, b->loc);
                     return;
                 default:
                     break;
