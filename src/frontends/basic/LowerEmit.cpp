@@ -107,6 +107,24 @@ void Lowerer::emitProgram(const Program &prog)
     emitRet(Value::constInt(0));
 }
 
+// Purpose: retrieve IL boolean type.
+// Parameters: none.
+// Returns: IlType representing i1.
+// Side effects: none.
+Lowerer::IlType Lowerer::ilBoolTy()
+{
+    return Type(Type::Kind::I1);
+}
+
+// Purpose: emit a boolean constant.
+// Parameters: bool v.
+// Returns: IlValue for IL i1 constant (0 or 1).
+// Side effects: none.
+Lowerer::IlValue Lowerer::emitBoolConst(bool v)
+{
+    return Value::constInt(v ? 1 : 0);
+}
+
 // Purpose: lower array addr.
 // Parameters: const ArrayExpr &expr.
 // Returns: Value.
@@ -124,12 +142,12 @@ Value Lowerer::lowerArrayAddr(const ArrayExpr &expr)
         auto lenIt = arrayLenSlots.find(expr.name);
         assert(lenIt != arrayLenSlots.end());
         Value len = emitLoad(Type(Type::Kind::I64), Value::temp(lenIt->second));
-        Value neg = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), idx.value, Value::constInt(0));
-        Value ge = emitBinary(Opcode::SCmpGE, Type(Type::Kind::I1), idx.value, len);
+        Value neg = emitBinary(Opcode::SCmpLT, ilBoolTy(), idx.value, Value::constInt(0));
+        Value ge = emitBinary(Opcode::SCmpGE, ilBoolTy(), idx.value, len);
         Value neg64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), neg);
         Value ge64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), ge);
         Value or64 = emitBinary(Opcode::Or, Type(Type::Kind::I64), neg64, ge64);
-        Value cond = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), or64);
+        Value cond = emitUnary(Opcode::Trunc1, ilBoolTy(), or64);
         size_t curIdx = static_cast<size_t>(cur - &func->blocks[0]);
         size_t okIdx = func->blocks.size();
         std::string okLbl = blockNamer ? blockNamer->tag("bc_ok" + std::to_string(boundsCheckId))
