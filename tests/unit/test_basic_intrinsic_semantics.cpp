@@ -67,5 +67,55 @@ int main()
         sema.analyze(*prog);
         assert(em.errorCount() == 0);
     }
+    // Numeric intrinsic rejects string arguments.
+    {
+        std::string src = "10 PRINT ABS(\"foo\")\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("abs.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        DiagnosticEngine de;
+        DiagnosticEmitter em(de, sm);
+        em.addSource(fid, src);
+        SemanticAnalyzer sema(em);
+        sema.analyze(*prog);
+        std::ostringstream oss;
+        em.printAll(oss);
+        std::string out = oss.str();
+        bool ok = out.find("ABS: arg 1 must be number") != std::string::npos;
+        assert(ok);
+    }
+    // Optional INSTR start index must be numeric when present.
+    {
+        std::string src = "10 PRINT INSTR(\"ABCD\",\"B\",\"C\")\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("instr_bad.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        DiagnosticEngine de;
+        DiagnosticEmitter em(de, sm);
+        em.addSource(fid, src);
+        SemanticAnalyzer sema(em);
+        sema.analyze(*prog);
+        std::ostringstream oss;
+        em.printAll(oss);
+        std::string out = oss.str();
+        bool ok = out.find("INSTR: arg 1 must be number") != std::string::npos;
+        assert(ok);
+    }
+    // INSTR accepts numeric start argument when provided.
+    {
+        std::string src = "10 PRINT INSTR(2,\"ABCD\",\"C\")\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("instr_ok.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        DiagnosticEngine de;
+        DiagnosticEmitter em(de, sm);
+        em.addSource(fid, src);
+        SemanticAnalyzer sema(em);
+        sema.analyze(*prog);
+        assert(em.errorCount() == 0);
+    }
     return 0;
 }
