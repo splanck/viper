@@ -13,6 +13,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -220,8 +221,6 @@ class Lowerer
     il::support::SourceLoc curLoc{}; ///< current source location for emitted IR
     bool boundsChecks{false};
     unsigned boundsCheckId{0};
-
-    Value *boolBranchSlotPtr{nullptr};
 
     // runtime requirement tracking
     bool needInputLine{false};

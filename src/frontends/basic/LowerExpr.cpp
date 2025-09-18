@@ -11,6 +11,8 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include <cassert>
+#include <functional>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -44,6 +46,50 @@ Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v)
     return {val, ty};
 }
 
+// Purpose: lower boolean expression via helper branches.
+// Parameters: Value cond, il::support::SourceLoc loc, branch emitters, optional label bases.
+// Returns: Lowerer::RVal.
+// Side effects: emits branch structure and final load from result slot.
+Lowerer::RVal Lowerer::lowerBoolBranchExpr(Value cond,
+                                           il::support::SourceLoc loc,
+                                           const std::function<void(Value)> &emitThen,
+                                           const std::function<void(Value)> &emitElse,
+                                           std::string_view thenLabelBase,
+                                           std::string_view elseLabelBase,
+                                           std::string_view joinLabelBase)
+{
+    BasicBlock *origin = cur;
+    BasicBlock *thenBlk = nullptr;
+    BasicBlock *elseBlk = nullptr;
+
+    std::string_view thenBase = thenLabelBase.empty() ? std::string_view("bool_then") : thenLabelBase;
+    std::string_view elseBase = elseLabelBase.empty() ? std::string_view("bool_else") : elseLabelBase;
+    std::string_view joinBase = joinLabelBase.empty() ? std::string_view("bool_join") : joinLabelBase;
+
+    IlValue result = emitBoolFromBranches(
+        [&](Value slot) {
+            thenBlk = cur;
+            emitThen(slot);
+        },
+        [&](Value slot) {
+            elseBlk = cur;
+            emitElse(slot);
+        },
+        thenBase,
+        elseBase,
+        joinBase);
+
+    assert(thenBlk && elseBlk);
+
+    BasicBlock *joinBlk = cur;
+
+    cur = origin;
+    curLoc = loc;
+    emitCBr(cond, thenBlk, elseBlk);
+    cur = joinBlk;
+    return {result, ilBoolTy()};
+}
+
 // Purpose: lower unary expr.
 // Parameters: const UnaryExpr &u.
 // Returns: Lowerer::RVal.
@@ -55,32 +101,17 @@ Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
     Value cond = val.value;
     if (val.type.kind != Type::Kind::I1)
         cond = emitUnary(Opcode::Trunc1, ilBoolTy(), cond);
-
-    BasicBlock *origin = cur;
-    BasicBlock *thenBlk = nullptr;
-    BasicBlock *elseBlk = nullptr;
-    Value slot;
-    Value *prevSlotPtr = boolBranchSlotPtr;
-    boolBranchSlotPtr = &slot;
-    IlValue result = emitBoolFromBranches(
-        [&]() {
-            thenBlk = cur;
+    return lowerBoolBranchExpr(
+        cond,
+        u.loc,
+        [&](Value slot) {
             curLoc = u.loc;
             emitStore(ilBoolTy(), slot, emitBoolConst(false));
         },
-        [&]() {
-            elseBlk = cur;
+        [&](Value slot) {
             curLoc = u.loc;
             emitStore(ilBoolTy(), slot, emitBoolConst(true));
         });
-    boolBranchSlotPtr = prevSlotPtr;
-
-    BasicBlock *joinBlk = cur;
-    cur = origin;
-    curLoc = u.loc;
-    emitCBr(cond, thenBlk, elseBlk);
-    cur = joinBlk;
-    return {result, ilBoolTy()};
 }
 
 // Purpose: lower logical binary.
@@ -104,73 +135,44 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
 
     if (b.op == BinaryExpr::Op::LogicalAndShort)
     {
-        Value addr = emitAlloca(1);
         Value cond = toBool(lhs);
-        std::string thenLbl =
-            blockNamer ? blockNamer->generic("and_rhs") : mangler.block("and_rhs");
-        std::string elseLbl =
-            blockNamer ? blockNamer->generic("and_false") : mangler.block("and_false");
-        std::string doneLbl =
-            blockNamer ? blockNamer->generic("and_done") : mangler.block("and_done");
-        BasicBlock *thenBB = &builder->addBlock(*func, thenLbl);
-        BasicBlock *elseBB = &builder->addBlock(*func, elseLbl);
-        BasicBlock *doneBB = &builder->addBlock(*func, doneLbl);
-        curLoc = b.loc;
-        emitCBr(cond, thenBB, elseBB);
-
-        cur = thenBB;
-        RVal rhs = lowerExpr(*b.rhs);
-        Value rhsBool = toBool(rhs);
-        curLoc = b.loc;
-        emitStore(ilBoolTy(), addr, rhsBool);
-        curLoc = b.loc;
-        emitBr(doneBB);
-
-        cur = elseBB;
-        curLoc = b.loc;
-        emitStore(ilBoolTy(), addr, emitBoolConst(false));
-        curLoc = b.loc;
-        emitBr(doneBB);
-
-        cur = doneBB;
-        curLoc = b.loc;
-        Value res = emitLoad(ilBoolTy(), addr);
-        return {res, ilBoolTy()};
+        return lowerBoolBranchExpr(
+            cond,
+            b.loc,
+            [&](Value slot) {
+                RVal rhs = lowerExpr(*b.rhs);
+                Value rhsBool = toBool(rhs);
+                curLoc = b.loc;
+                emitStore(ilBoolTy(), slot, rhsBool);
+            },
+            [&](Value slot) {
+                curLoc = b.loc;
+                emitStore(ilBoolTy(), slot, emitBoolConst(false));
+            },
+            "and_rhs",
+            "and_false",
+            "and_done");
     }
 
     if (b.op == BinaryExpr::Op::LogicalOrShort)
     {
-        Value addr = emitAlloca(1);
         Value cond = toBool(lhs);
-        std::string trueLbl =
-            blockNamer ? blockNamer->generic("or_true") : mangler.block("or_true");
-        std::string rhsLbl = blockNamer ? blockNamer->generic("or_rhs") : mangler.block("or_rhs");
-        std::string doneLbl =
-            blockNamer ? blockNamer->generic("or_done") : mangler.block("or_done");
-        BasicBlock *trueBB = &builder->addBlock(*func, trueLbl);
-        BasicBlock *rhsBB = &builder->addBlock(*func, rhsLbl);
-        BasicBlock *doneBB = &builder->addBlock(*func, doneLbl);
-        curLoc = b.loc;
-        emitCBr(cond, trueBB, rhsBB);
-
-        cur = trueBB;
-        curLoc = b.loc;
-        emitStore(ilBoolTy(), addr, emitBoolConst(true));
-        curLoc = b.loc;
-        emitBr(doneBB);
-
-        cur = rhsBB;
-        RVal rhs = lowerExpr(*b.rhs);
-        Value rhsBool = toBool(rhs);
-        curLoc = b.loc;
-        emitStore(ilBoolTy(), addr, rhsBool);
-        curLoc = b.loc;
-        emitBr(doneBB);
-
-        cur = doneBB;
-        curLoc = b.loc;
-        Value res = emitLoad(ilBoolTy(), addr);
-        return {res, ilBoolTy()};
+        return lowerBoolBranchExpr(
+            cond,
+            b.loc,
+            [&](Value slot) {
+                curLoc = b.loc;
+                emitStore(ilBoolTy(), slot, emitBoolConst(true));
+            },
+            [&](Value slot) {
+                RVal rhs = lowerExpr(*b.rhs);
+                Value rhsBool = toBool(rhs);
+                curLoc = b.loc;
+                emitStore(ilBoolTy(), slot, rhsBool);
+            },
+            "or_true",
+            "or_rhs",
+            "or_done");
     }
 
     if (b.op == BinaryExpr::Op::LogicalAnd)
@@ -178,31 +180,17 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
         Value lhsBool = toBool(lhs);
         RVal rhs = lowerExpr(*b.rhs);
         Value rhsBool = toBool(rhs);
-
-        BasicBlock *origin = cur;
-        BasicBlock *thenBlk = nullptr;
-        BasicBlock *elseBlk = nullptr;
-        Value slot;
-        Value *prevSlotPtr = boolBranchSlotPtr;
-        boolBranchSlotPtr = &slot;
-        IlValue result = emitBoolFromBranches(
-            [&]() {
-                thenBlk = cur;
+        return lowerBoolBranchExpr(
+            lhsBool,
+            b.loc,
+            [&](Value slot) {
                 curLoc = b.loc;
                 emitStore(ilBoolTy(), slot, rhsBool);
             },
-            [&]() {
-                elseBlk = cur;
+            [&](Value slot) {
                 curLoc = b.loc;
                 emitStore(ilBoolTy(), slot, emitBoolConst(false));
             });
-        boolBranchSlotPtr = prevSlotPtr;
-        BasicBlock *joinBlk = cur;
-        cur = origin;
-        curLoc = b.loc;
-        emitCBr(lhsBool, thenBlk, elseBlk);
-        cur = joinBlk;
-        return {result, ilBoolTy()};
     }
 
     if (b.op == BinaryExpr::Op::LogicalOr)
@@ -210,31 +198,17 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
         Value lhsBool = toBool(lhs);
         RVal rhs = lowerExpr(*b.rhs);
         Value rhsBool = toBool(rhs);
-
-        BasicBlock *origin = cur;
-        BasicBlock *thenBlk = nullptr;
-        BasicBlock *elseBlk = nullptr;
-        Value slot;
-        Value *prevSlotPtr = boolBranchSlotPtr;
-        boolBranchSlotPtr = &slot;
-        IlValue result = emitBoolFromBranches(
-            [&]() {
-                thenBlk = cur;
+        return lowerBoolBranchExpr(
+            lhsBool,
+            b.loc,
+            [&](Value slot) {
                 curLoc = b.loc;
                 emitStore(ilBoolTy(), slot, emitBoolConst(true));
             },
-            [&]() {
-                elseBlk = cur;
+            [&](Value slot) {
                 curLoc = b.loc;
                 emitStore(ilBoolTy(), slot, rhsBool);
             });
-        boolBranchSlotPtr = prevSlotPtr;
-        BasicBlock *joinBlk = cur;
-        cur = origin;
-        curLoc = b.loc;
-        emitCBr(lhsBool, thenBlk, elseBlk);
-        cur = joinBlk;
-        return {result, ilBoolTy()};
     }
 
     assert(false && "unsupported logical operator");
