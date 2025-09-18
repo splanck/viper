@@ -12,6 +12,10 @@ add_library(il_core STATIC
 )
 target_include_directories(il_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
+add_library(il_runtime STATIC il/runtime/RuntimeSignatures.cpp)
+target_link_libraries(il_runtime PUBLIC il_core)
+target_include_directories(il_runtime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
 add_library(il_build STATIC il/build/IRBuilder.cpp)
 target_link_libraries(il_build PUBLIC il_core support)
 target_include_directories(il_build PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -23,7 +27,7 @@ add_library(il_verify STATIC
   il/verify/InstructionChecker.cpp
   il/verify/ControlFlowChecker.cpp
   il/verify/TypeInference.cpp)
-target_link_libraries(il_verify PUBLIC il_core)
+target_link_libraries(il_verify PUBLIC il_core il_runtime)
 target_include_directories(il_verify PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_library(il_transform STATIC
