@@ -1,0 +1,15 @@
+FUNCTION TouchAnd()
+10 PRINT "touch"
+20 RETURN -1
+END FUNCTION
+
+FUNCTION TouchOr()
+30 PRINT "touch"
+40 RETURN -1
+END FUNCTION
+
+50 IF FALSE ANDALSO (TouchAnd() <> 0) THEN PRINT "bad"
+60 PRINT "false-andalso"
+70 IF TRUE ORELSE (TouchOr() <> 0) THEN PRINT "true-orelse"
+80 PRINT "done"
+90 END
