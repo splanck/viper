@@ -138,31 +138,34 @@ Lowerer::IlValue Lowerer::emitBoolConst(bool v)
     return emitUnary(Opcode::Trunc1, ilBoolTy(), Value::constInt(v ? 1 : 0));
 }
 
-Lowerer::IlValue Lowerer::emitBoolFromBranches(std::function<void()> emitThen,
-                                               std::function<void()> emitElse)
+Lowerer::IlValue Lowerer::emitBoolFromBranches(const std::function<void(Value)> &emitThen,
+                                               const std::function<void(Value)> &emitElse,
+                                               std::string_view thenLabelBase,
+                                               std::string_view elseLabelBase,
+                                               std::string_view joinLabelBase)
 {
     Value slot = emitAlloca(1);
-    if (boolBranchSlotPtr)
-        *boolBranchSlotPtr = slot;
 
-    std::string thenLbl = blockNamer ? blockNamer->generic("bool_then")
-                                     : mangler.block("bool_then");
-    std::string elseLbl = blockNamer ? blockNamer->generic("bool_else")
-                                     : mangler.block("bool_else");
-    std::string joinLbl = blockNamer ? blockNamer->generic("bool_join")
-                                     : mangler.block("bool_join");
+    auto labelFor = [&](std::string_view base) {
+        std::string hint(base);
+        return blockNamer ? blockNamer->generic(hint) : mangler.block(hint);
+    };
+
+    std::string thenLbl = labelFor(thenLabelBase);
+    std::string elseLbl = labelFor(elseLabelBase);
+    std::string joinLbl = labelFor(joinLabelBase);
 
     BasicBlock *thenBlk = &builder->addBlock(*func, thenLbl);
     BasicBlock *elseBlk = &builder->addBlock(*func, elseLbl);
     BasicBlock *joinBlk = &builder->addBlock(*func, joinLbl);
 
     cur = thenBlk;
-    emitThen();
+    emitThen(slot);
     if (!cur->terminated)
         emitBr(joinBlk);
 
     cur = elseBlk;
-    emitElse();
+    emitElse(slot);
     if (!cur->terminated)
         emitBr(joinBlk);
 
