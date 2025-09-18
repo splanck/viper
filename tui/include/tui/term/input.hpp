@@ -4,80 +4,14 @@
 // @ownership Does not own input buffers; owns internal event queue.
 #pragma once
 
-#include <cstdint>
+#include "tui/term/key_event.hpp"
+
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace viper::tui::term
 {
-struct KeyEvent
-{
-    enum class Code
-    {
-        Enter,
-        Esc,
-        Tab,
-        Backspace,
-        Up,
-        Down,
-        Left,
-        Right,
-        Home,
-        End,
-        PageUp,
-        PageDown,
-        Insert,
-        Delete,
-        F1,
-        F2,
-        F3,
-        F4,
-        F5,
-        F6,
-        F7,
-        F8,
-        F9,
-        F10,
-        F11,
-        F12,
-        Unknown
-    };
-
-    enum Mods : unsigned
-    {
-        Shift = 1,
-        Alt = 2,
-        Ctrl = 4
-    };
-
-    uint32_t codepoint{0};
-    Code code{Code::Unknown};
-    unsigned mods{0};
-};
-
-struct MouseEvent
-{
-    enum class Type
-    {
-        Down,
-        Up,
-        Move,
-        Wheel
-    };
-
-    Type type{Type::Move};
-    int x{0};
-    int y{0};
-    unsigned buttons{0};
-    unsigned mods{0};
-};
-
-struct PasteEvent
-{
-    std::string text{};
-};
-
 /// @brief Incremental UTF-8 decoder producing key events.
 /// @invariant Handles partial sequences across feed() calls.
 /// @ownership Stores decoded events internally.

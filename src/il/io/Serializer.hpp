@@ -5,7 +5,7 @@
 // Links: docs/il-spec.md
 #pragma once
 
-#include "il/core/Module.hpp"
+#include "il/core/fwd.hpp"
 #include <ostream>
 #include <string>
 

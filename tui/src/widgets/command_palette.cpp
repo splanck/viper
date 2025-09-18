@@ -4,6 +4,7 @@
 // @ownership CommandPalette borrows Keymap and Theme.
 
 #include "tui/widgets/command_palette.hpp"
+#include "tui/render/screen.hpp"
 
 namespace viper::tui::widgets
 {

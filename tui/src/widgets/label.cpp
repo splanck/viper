@@ -4,6 +4,7 @@
 // @ownership Label borrows Theme reference.
 
 #include "tui/widgets/label.hpp"
+#include "tui/render/screen.hpp"
 
 namespace viper::tui::widgets
 {

@@ -4,6 +4,7 @@
 // @ownership ListView borrows Theme; items owned by caller.
 
 #include "tui/widgets/list_view.hpp"
+#include "tui/render/screen.hpp"
 
 #include <algorithm>
 

@@ -4,6 +4,7 @@
 // @ownership StatusBar borrows Theme for styling.
 
 #include "tui/widgets/status_bar.hpp"
+#include "tui/render/screen.hpp"
 
 #include <algorithm>
 

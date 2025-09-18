@@ -5,6 +5,10 @@
 // Links: docs/il-spec.md
 
 #include "vm/VM.hpp"
+#include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Global.hpp"
+#include "il/core/Module.hpp"
 
 #include <cassert>
 #include <utility>

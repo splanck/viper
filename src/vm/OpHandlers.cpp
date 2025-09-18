@@ -6,8 +6,12 @@
 
 #include "vm/OpHandlers.hpp"
 
+#include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/OpcodeInfo.hpp"
+#include "il/core/Value.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include <cstdint>
 #include <cassert>

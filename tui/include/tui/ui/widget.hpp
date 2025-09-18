@@ -4,8 +4,12 @@
 // @ownership Derived classes own their state; Widget stores layout rect.
 #pragma once
 
-#include "tui/render/screen.hpp"
-#include "tui/term/input.hpp"
+#include "tui/ui/event.hpp"
+
+namespace viper::tui::render
+{
+class ScreenBuffer;
+}
 
 namespace viper::tui::ui
 {
@@ -15,11 +19,6 @@ struct Rect
     int y{0};
     int w{0};
     int h{0};
-};
-
-struct Event
-{
-    term::KeyEvent key{};
 };
 
 /// @brief Abstract base for all widgets.
