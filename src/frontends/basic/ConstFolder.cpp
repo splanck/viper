@@ -111,7 +111,7 @@ namespace
 /// @param b Right operand.
 /// @return Sum modulo 2^64.
 /// @invariant Uses unsigned addition to emulate BASIC overflow behavior.
-static long long wrapAdd(long long a, long long b)
+long long wrapAdd(long long a, long long b)
 {
     return static_cast<long long>(static_cast<uint64_t>(a) + static_cast<uint64_t>(b));
 }
@@ -121,7 +121,7 @@ static long long wrapAdd(long long a, long long b)
 /// @param b Right operand.
 /// @return Difference modulo 2^64.
 /// @invariant Uses unsigned subtraction to emulate BASIC overflow behavior.
-static long long wrapSub(long long a, long long b)
+long long wrapSub(long long a, long long b)
 {
     return static_cast<long long>(static_cast<uint64_t>(a) - static_cast<uint64_t>(b));
 }
@@ -131,7 +131,7 @@ static long long wrapSub(long long a, long long b)
 /// @param b Right operand.
 /// @return Product modulo 2^64.
 /// @invariant Uses unsigned multiplication to avoid overflow traps.
-static long long wrapMul(long long a, long long b)
+long long wrapMul(long long a, long long b)
 {
     return static_cast<long long>(static_cast<uint64_t>(a) * static_cast<uint64_t>(b));
 }
@@ -141,9 +141,9 @@ static long long wrapMul(long long a, long long b)
 /// @param s Output string populated when @p e is a StringExpr.
 /// @return True if @p e is a string literal.
 /// @invariant @p s is assigned only when the function returns true.
-static bool isStr(const Expr *e, std::string &s)
+bool isStringLiteral(const Expr &e, std::string &s)
 {
-    if (auto *st = dynamic_cast<const StringExpr *>(e))
+    if (auto *st = dynamic_cast<const StringExpr *>(&e))
     {
         s = st->value;
         return true;
@@ -151,332 +151,375 @@ static bool isStr(const Expr *e, std::string &s)
     return false;
 }
 
-/// @brief Forward declaration for recursive expression folding.
-static void foldExpr(ExprPtr &e);
-
-/// @brief Replace expression @p e with an integer literal.
-/// @param e Expression pointer to replace.
-/// @param v Integer value to insert.
-/// @param loc Source location for the new literal.
-/// @invariant Ownership of @p e transfers to the newly created IntExpr.
-static void replaceWithInt(ExprPtr &e, long long v, support::SourceLoc loc)
+class ConstFolderPass : public ExprVisitor, public StmtVisitor
 {
-    auto ni = std::make_unique<IntExpr>();
-    ni->loc = loc;
-    ni->value = v;
-    e = std::move(ni);
-}
-
-/// @brief Replace expression @p e with a boolean literal.
-/// @param e Expression pointer to replace.
-/// @param v Boolean value to insert.
-/// @param loc Source location for the new literal.
-/// @invariant Ownership of @p e transfers to the newly created BoolExpr.
-static void replaceWithBool(ExprPtr &e, bool v, support::SourceLoc loc)
-{
-    auto nb = std::make_unique<BoolExpr>();
-    nb->loc = loc;
-    nb->value = v;
-    e = std::move(nb);
-}
-
-/// @brief Replace expression @p e with a string literal.
-/// @param e Expression pointer to replace.
-/// @param s String value to insert.
-/// @param loc Source location for the new literal.
-/// @invariant Ownership of @p e transfers to the newly created StringExpr.
-static void replaceWithStr(ExprPtr &e, std::string s, support::SourceLoc loc)
-{
-    auto ns = std::make_unique<StringExpr>();
-    ns->loc = loc;
-    ns->value = std::move(s);
-    e = std::move(ns);
-}
-
-/// @brief Attempt to fold built-in call expression @p c.
-/// @param e Expression pointer to replace on success.
-/// @param c Builtin call expression to evaluate.
-/// @invariant Only pure builtins with constant arguments are folded.
-static void foldCall(ExprPtr &e, BuiltinCallExpr *c)
-{
-    for (auto &a : c->args)
-        foldExpr(a);
-    if (c->builtin == BuiltinCallExpr::Builtin::Len)
+public:
+    void run(Program &prog)
     {
-        std::string s;
-        if (c->args.size() == 1 && isStr(c->args[0].get(), s))
-            replaceWithInt(e, static_cast<long long>(s.size()), c->loc);
+        for (auto &decl : prog.procs)
+            foldStmt(decl);
+        for (auto &stmt : prog.main)
+            foldStmt(stmt);
     }
-    else if (c->builtin == BuiltinCallExpr::Builtin::Mid)
+
+private:
+    void foldExpr(ExprPtr &expr)
     {
-        if (c->args.size() == 3)
+        if (!expr)
+            return;
+        ExprPtr *prev = currentExpr_;
+        currentExpr_ = &expr;
+        expr->accept(*this);
+        currentExpr_ = prev;
+    }
+
+    void foldStmt(StmtPtr &stmt)
+    {
+        if (!stmt)
+            return;
+        StmtPtr *prev = currentStmt_;
+        currentStmt_ = &stmt;
+        stmt->accept(*this);
+        currentStmt_ = prev;
+    }
+
+    ExprPtr &exprSlot()
+    {
+        return *currentExpr_;
+    }
+
+    void replaceWithInt(long long v, il::support::SourceLoc loc)
+    {
+        auto ni = std::make_unique<IntExpr>();
+        ni->loc = loc;
+        ni->value = v;
+        exprSlot() = std::move(ni);
+    }
+
+    void replaceWithBool(bool v, il::support::SourceLoc loc)
+    {
+        auto nb = std::make_unique<BoolExpr>();
+        nb->loc = loc;
+        nb->value = v;
+        exprSlot() = std::move(nb);
+    }
+
+    void replaceWithStr(std::string s, il::support::SourceLoc loc)
+    {
+        auto ns = std::make_unique<StringExpr>();
+        ns->loc = loc;
+        ns->value = std::move(s);
+        exprSlot() = std::move(ns);
+    }
+
+    void replaceWithExpr(ExprPtr replacement)
+    {
+        exprSlot() = std::move(replacement);
+    }
+
+    // ExprVisitor overrides -------------------------------------------------
+    void visit(const IntExpr &) override {}
+    void visit(const FloatExpr &) override {}
+    void visit(const StringExpr &) override {}
+    void visit(const BoolExpr &) override {}
+    void visit(const VarExpr &) override {}
+
+    void visit(const ArrayExpr &expr) override
+    {
+        auto &node = const_cast<ArrayExpr &>(expr);
+        foldExpr(node.index);
+    }
+
+    void visit(const UnaryExpr &expr) override
+    {
+        auto &node = const_cast<UnaryExpr &>(expr);
+        foldExpr(node.expr);
+
+        if (auto *b = dynamic_cast<BoolExpr *>(node.expr.get()))
         {
-            std::string s;
-            if (isStr(c->args[0].get(), s))
+            if (node.op == UnaryExpr::Op::LogicalNot)
+                replaceWithBool(!b->value, node.loc);
+            return;
+        }
+
+        auto numeric = detail::asNumeric(*node.expr);
+        if (numeric && !numeric->isFloat && node.op == UnaryExpr::Op::LogicalNot)
+            replaceWithInt(numeric->i == 0 ? 1 : 0, node.loc);
+    }
+
+    void visit(const BinaryExpr &expr) override
+    {
+        auto &node = const_cast<BinaryExpr &>(expr);
+        foldExpr(node.lhs);
+
+        if (node.op == BinaryExpr::Op::LogicalAndShort)
+        {
+            if (auto *lhsBool = dynamic_cast<BoolExpr *>(node.lhs.get()))
             {
-                auto nStart = detail::asNumeric(*c->args[1]);
-                auto nLen = detail::asNumeric(*c->args[2]);
-                if (nStart && nLen && !nStart->isFloat && !nLen->isFloat)
+                if (!lhsBool->value)
                 {
-                    long long start = nStart->i;
-                    long long len = nLen->i;
-                    if (start < 1)
-                        start = 1;
-                    if (len < 0)
-                        len = 0;
-                    size_t pos = static_cast<size_t>(start - 1);
-                    replaceWithStr(e, s.substr(pos, static_cast<size_t>(len)), c->loc);
+                    replaceWithBool(false, node.loc);
+                    return;
+                }
+
+                ExprPtr rhs = std::move(node.rhs);
+                foldExpr(rhs);
+                if (auto *rhsBool = dynamic_cast<BoolExpr *>(rhs.get()))
+                {
+                    replaceWithBool(rhsBool->value, node.loc);
+                }
+                else
+                {
+                    replaceWithExpr(std::move(rhs));
+                }
+                return;
+            }
+        }
+        else if (node.op == BinaryExpr::Op::LogicalOrShort)
+        {
+            if (auto *lhsBool = dynamic_cast<BoolExpr *>(node.lhs.get()))
+            {
+                if (lhsBool->value)
+                {
+                    replaceWithBool(true, node.loc);
+                    return;
+                }
+
+                ExprPtr rhs = std::move(node.rhs);
+                foldExpr(rhs);
+                if (auto *rhsBool = dynamic_cast<BoolExpr *>(rhs.get()))
+                {
+                    replaceWithBool(rhsBool->value, node.loc);
+                }
+                else
+                {
+                    replaceWithExpr(std::move(rhs));
+                }
+                return;
+            }
+        }
+
+        foldExpr(node.rhs);
+
+        if (auto *lhsBool = dynamic_cast<BoolExpr *>(node.lhs.get()))
+        {
+            if (auto *rhsBool = dynamic_cast<BoolExpr *>(node.rhs.get()))
+            {
+                switch (node.op)
+                {
+                    case BinaryExpr::Op::LogicalAnd:
+                    case BinaryExpr::Op::LogicalAndShort:
+                        replaceWithBool(lhsBool->value && rhsBool->value, node.loc);
+                        return;
+                    case BinaryExpr::Op::LogicalOr:
+                    case BinaryExpr::Op::LogicalOrShort:
+                        replaceWithBool(lhsBool->value || rhsBool->value, node.loc);
+                        return;
+                    default:
+                        break;
                 }
             }
         }
-    }
-    else if (c->builtin == BuiltinCallExpr::Builtin::Val)
-    {
-        std::string s;
-        if (c->args.size() == 1 && isStr(c->args[0].get(), s))
-        {
-            const char *p = s.c_str();
-            while (*p && isspace((unsigned char)*p))
-                ++p;
-            const char *q = p + strlen(p);
-            while (q > p && isspace((unsigned char)q[-1]))
-                --q;
-            std::string trimmed(p, q - p);
-            char *endp = nullptr;
-            long long v = strtoll(trimmed.c_str(), &endp, 10);
-            if (endp && *endp == '\0')
-                replaceWithInt(e, v, c->loc);
-        }
-    }
-    else if (c->builtin == BuiltinCallExpr::Builtin::Int)
-    {
-        if (c->args.size() == 1)
-        {
-            auto n = detail::asNumeric(*c->args[0]);
-            if (n && n->isFloat)
-                replaceWithInt(e, static_cast<long long>(n->f), c->loc);
-        }
-    }
-    else if (c->builtin == BuiltinCallExpr::Builtin::Str)
-    {
-        if (c->args.size() == 1)
-        {
-            auto n = detail::asNumeric(*c->args[0]);
-            if (n)
-            {
-                char buf[32];
-                if (n->isFloat)
-                    snprintf(buf, sizeof(buf), "%g", n->f);
-                else
-                    snprintf(buf, sizeof(buf), "%lld", n->i);
-                replaceWithStr(e, buf, c->loc);
-            }
-        }
-    }
-}
 
-/// @brief Fold unary expression @p u when its operand is constant.
-/// @param e Expression pointer to replace.
-/// @param u Unary expression to evaluate.
-/// @invariant Only logical NOT on integer literals is supported.
-static void foldUnary(ExprPtr &e, UnaryExpr *u)
-{
-    foldExpr(u->expr);
-    if (auto *b = dynamic_cast<BoolExpr *>(u->expr.get()))
-    {
-        if (u->op == UnaryExpr::Op::LogicalNot)
-            replaceWithBool(e, !b->value, u->loc);
-        return;
-    }
-    auto n = detail::asNumeric(*u->expr);
-    if (n && !n->isFloat && u->op == UnaryExpr::Op::LogicalNot)
-        replaceWithInt(e, n->i == 0 ? 1 : 0, u->loc);
-}
-
-/// @brief Fold binary expression @p b when both operands are constant.
-/// @param e Expression pointer to replace.
-/// @param b Binary expression to evaluate.
-/// @invariant Attempts numeric folding first, then string operations.
-static void foldBinary(ExprPtr &e, BinaryExpr *b)
-{
-    foldExpr(b->lhs);
-
-    if (b->op == BinaryExpr::Op::LogicalAndShort)
-    {
-        if (auto *lhsBool = dynamic_cast<BoolExpr *>(b->lhs.get()))
+        if (const auto *entry = detail::findBinaryFold(node.op))
         {
-            if (!lhsBool->value)
+            if (entry->numeric)
             {
-                replaceWithBool(e, false, b->loc);
-                return;
-            }
-            ExprPtr rhs = std::move(b->rhs);
-            foldExpr(rhs);
-            if (auto *boolRhs = dynamic_cast<BoolExpr *>(rhs.get()))
-            {
-                replaceWithBool(e, boolRhs->value, b->loc);
-            }
-            else
-            {
-                e = std::move(rhs);
-            }
-            return;
-        }
-    }
-    else if (b->op == BinaryExpr::Op::LogicalOrShort)
-    {
-        if (auto *lhsBool = dynamic_cast<BoolExpr *>(b->lhs.get()))
-        {
-            if (lhsBool->value)
-            {
-                replaceWithBool(e, true, b->loc);
-                return;
-            }
-            ExprPtr rhs = std::move(b->rhs);
-            foldExpr(rhs);
-            if (auto *boolRhs = dynamic_cast<BoolExpr *>(rhs.get()))
-            {
-                replaceWithBool(e, boolRhs->value, b->loc);
-            }
-            else
-            {
-                e = std::move(rhs);
-            }
-            return;
-        }
-    }
-
-    foldExpr(b->rhs);
-
-    if (auto *lhsBool = dynamic_cast<BoolExpr *>(b->lhs.get()))
-    {
-        if (auto *rhsBool = dynamic_cast<BoolExpr *>(b->rhs.get()))
-        {
-            switch (b->op)
-            {
-                case BinaryExpr::Op::LogicalAnd:
-                case BinaryExpr::Op::LogicalAndShort:
-                    replaceWithBool(e, lhsBool->value && rhsBool->value, b->loc);
-                    return;
-                case BinaryExpr::Op::LogicalOr:
-                case BinaryExpr::Op::LogicalOrShort:
-                    replaceWithBool(e, lhsBool->value || rhsBool->value, b->loc);
-                    return;
-                default:
-                    break;
-            }
-        }
-    }
-
-    if (const auto *entry = detail::findBinaryFold(b->op))
-    {
-        if (entry->numeric)
-        {
-            if (auto res = entry->numeric(*b->lhs, *b->rhs))
-            {
-                res->loc = b->loc;
-                e = std::move(res);
-                return;
-            }
-        }
-
-        if (entry->string)
-        {
-            if (auto *ls = dynamic_cast<StringExpr *>(b->lhs.get()))
-            {
-                if (auto *rs = dynamic_cast<StringExpr *>(b->rhs.get()))
+                if (auto res = entry->numeric(*node.lhs, *node.rhs))
                 {
-                    if (auto res = entry->string(*ls, *rs))
+                    res->loc = node.loc;
+                    replaceWithExpr(std::move(res));
+                    return;
+                }
+            }
+
+            if (entry->string)
+            {
+                if (auto *ls = dynamic_cast<StringExpr *>(node.lhs.get()))
+                {
+                    if (auto *rs = dynamic_cast<StringExpr *>(node.rhs.get()))
                     {
-                        res->loc = b->loc;
-                        e = std::move(res);
+                        if (auto res = entry->string(*ls, *rs))
+                        {
+                            res->loc = node.loc;
+                            replaceWithExpr(std::move(res));
+                        }
                     }
                 }
             }
         }
     }
-}
 
-/// @brief Recursively fold constants within expression @p e.
-/// @param e Expression pointer to process.
-/// @invariant Replaces @p e with literal nodes when folding succeeds.
-static void foldExpr(ExprPtr &e)
-{
-    if (!e)
-        return;
-    if (auto *u = dynamic_cast<UnaryExpr *>(e.get()))
+    void visit(const BuiltinCallExpr &expr) override
     {
-        foldUnary(e, u);
-    }
-    else if (auto *b = dynamic_cast<BinaryExpr *>(e.get()))
-    {
-        foldBinary(e, b);
-    }
-    else if (auto *c = dynamic_cast<BuiltinCallExpr *>(e.get()))
-    {
-        foldCall(e, c);
-    }
-    else if (auto *a = dynamic_cast<ArrayExpr *>(e.get()))
-    {
-        foldExpr(a->index);
-    }
-}
+        auto &node = const_cast<BuiltinCallExpr &>(expr);
+        for (auto &arg : node.args)
+            foldExpr(arg);
 
-/// @brief Recursively fold constants within statement @p s.
-/// @param s Statement pointer to process.
-/// @invariant Traverses nested AST nodes without altering control flow.
-static void foldStmt(StmtPtr &s)
-{
-    if (!s)
-        return;
-    if (auto *lst = dynamic_cast<StmtList *>(s.get()))
-    {
-        for (auto &st : lst->stmts)
-            foldStmt(st);
-    }
-    else if (auto *p = dynamic_cast<PrintStmt *>(s.get()))
-    {
-        for (auto &it : p->items)
-            if (it.kind == PrintItem::Kind::Expr)
-                foldExpr(it.expr);
-    }
-    else if (auto *l = dynamic_cast<LetStmt *>(s.get()))
-    {
-        foldExpr(l->target);
-        foldExpr(l->expr);
-    }
-    else if (auto *i = dynamic_cast<IfStmt *>(s.get()))
-    {
-        foldExpr(i->cond);
-        foldStmt(i->then_branch);
-        for (auto &e : i->elseifs)
+        switch (node.builtin)
         {
-            foldExpr(e.cond);
-            foldStmt(e.then_branch);
+            case BuiltinCallExpr::Builtin::Len:
+            {
+                std::string s;
+                if (node.args.size() == 1 && node.args[0] && isStringLiteral(*node.args[0], s))
+                    replaceWithInt(static_cast<long long>(s.size()), node.loc);
+                break;
+            }
+            case BuiltinCallExpr::Builtin::Mid:
+            {
+                if (node.args.size() == 3)
+                {
+                    std::string s;
+                    if (node.args[0] && isStringLiteral(*node.args[0], s))
+                    {
+                        auto nStart = detail::asNumeric(*node.args[1]);
+                        auto nLen = detail::asNumeric(*node.args[2]);
+                        if (nStart && nLen && !nStart->isFloat && !nLen->isFloat)
+                        {
+                            long long start = nStart->i;
+                            long long len = nLen->i;
+                            if (start < 1)
+                                start = 1;
+                            if (len < 0)
+                                len = 0;
+                            size_t pos = static_cast<size_t>(start - 1);
+                            replaceWithStr(s.substr(pos, static_cast<size_t>(len)), node.loc);
+                        }
+                    }
+                }
+                break;
+            }
+            case BuiltinCallExpr::Builtin::Val:
+            {
+                std::string s;
+                if (node.args.size() == 1 && node.args[0] && isStringLiteral(*node.args[0], s))
+                {
+                    const char *p = s.c_str();
+                    while (*p && isspace((unsigned char)*p))
+                        ++p;
+                    const char *q = p + strlen(p);
+                    while (q > p && isspace((unsigned char)q[-1]))
+                        --q;
+                    std::string trimmed(p, q - p);
+                    char *endp = nullptr;
+                    long long v = strtoll(trimmed.c_str(), &endp, 10);
+                    if (endp && *endp == '\0')
+                        replaceWithInt(v, node.loc);
+                }
+                break;
+            }
+            case BuiltinCallExpr::Builtin::Int:
+            {
+                if (node.args.size() == 1)
+                {
+                    auto n = detail::asNumeric(*node.args[0]);
+                    if (n && n->isFloat)
+                        replaceWithInt(static_cast<long long>(n->f), node.loc);
+                }
+                break;
+            }
+            case BuiltinCallExpr::Builtin::Str:
+            {
+                if (node.args.size() == 1)
+                {
+                    auto n = detail::asNumeric(*node.args[0]);
+                    if (n)
+                    {
+                        char buf[32];
+                        if (n->isFloat)
+                            snprintf(buf, sizeof(buf), "%g", n->f);
+                        else
+                            snprintf(buf, sizeof(buf), "%lld", n->i);
+                        replaceWithStr(buf, node.loc);
+                    }
+                }
+                break;
+            }
+            default:
+                break;
         }
-        foldStmt(i->else_branch);
     }
-    else if (auto *w = dynamic_cast<WhileStmt *>(s.get()))
+
+    void visit(const CallExpr &) override {}
+
+    // StmtVisitor overrides -------------------------------------------------
+    void visit(const PrintStmt &stmt) override
     {
-        foldExpr(w->cond);
-        for (auto &b : w->body)
-            foldStmt(b);
+        auto &node = const_cast<PrintStmt &>(stmt);
+        for (auto &item : node.items)
+        {
+            if (item.kind == PrintItem::Kind::Expr)
+                foldExpr(item.expr);
+        }
     }
-    else if (auto *f = dynamic_cast<ForStmt *>(s.get()))
+
+    void visit(const LetStmt &stmt) override
     {
-        foldExpr(f->start);
-        foldExpr(f->end);
-        if (f->step)
-            foldExpr(f->step);
-        for (auto &b : f->body)
-            foldStmt(b);
+        auto &node = const_cast<LetStmt &>(stmt);
+        foldExpr(node.target);
+        foldExpr(node.expr);
     }
-    else if (auto *d = dynamic_cast<DimStmt *>(s.get()))
+
+    void visit(const DimStmt &stmt) override
     {
-        if (d->isArray && d->size)
-            foldExpr(d->size);
+        auto &node = const_cast<DimStmt &>(stmt);
+        if (node.isArray && node.size)
+            foldExpr(node.size);
     }
-}
+
+    void visit(const RandomizeStmt &) override {}
+
+    void visit(const IfStmt &stmt) override
+    {
+        auto &node = const_cast<IfStmt &>(stmt);
+        foldExpr(node.cond);
+        foldStmt(node.then_branch);
+        for (auto &elseif : node.elseifs)
+        {
+            foldExpr(elseif.cond);
+            foldStmt(elseif.then_branch);
+        }
+        foldStmt(node.else_branch);
+    }
+
+    void visit(const WhileStmt &stmt) override
+    {
+        auto &node = const_cast<WhileStmt &>(stmt);
+        foldExpr(node.cond);
+        for (auto &bodyStmt : node.body)
+            foldStmt(bodyStmt);
+    }
+
+    void visit(const ForStmt &stmt) override
+    {
+        auto &node = const_cast<ForStmt &>(stmt);
+        foldExpr(node.start);
+        foldExpr(node.end);
+        if (node.step)
+            foldExpr(node.step);
+        for (auto &bodyStmt : node.body)
+            foldStmt(bodyStmt);
+    }
+
+    void visit(const NextStmt &) override {}
+    void visit(const GotoStmt &) override {}
+    void visit(const EndStmt &) override {}
+    void visit(const InputStmt &) override {}
+    void visit(const ReturnStmt &) override {}
+
+    void visit(const FunctionDecl &) override {}
+    void visit(const SubDecl &) override {}
+
+    void visit(const StmtList &stmt) override
+    {
+        auto &node = const_cast<StmtList &>(stmt);
+        for (auto &child : node.stmts)
+            foldStmt(child);
+    }
+
+    ExprPtr *currentExpr_ = nullptr;
+    StmtPtr *currentStmt_ = nullptr;
+};
 
 } // namespace
 
@@ -632,10 +675,8 @@ ExprPtr foldNumericOr(const Expr &l, const Expr &r)
 
 void foldConstants(Program &prog)
 {
-    for (auto &s : prog.procs)
-        foldStmt(s);
-    for (auto &s : prog.main)
-        foldStmt(s);
+    ConstFolderPass pass;
+    pass.run(prog);
 }
 
 } // namespace il::frontends::basic
