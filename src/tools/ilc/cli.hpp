@@ -6,6 +6,88 @@
 
 #pragma once
 
+#include "VM/Trace.h"
+#include <cstdint>
+#include <string>
+
+namespace ilc
+{
+
+/// @brief Shared configuration for ilc subcommands that execute IL.
+struct SharedCliOptions
+{
+    /// @brief Trace settings requested via --trace flags.
+    il::vm::TraceConfig trace{};
+
+    /// @brief Optional replacement for standard input.
+    std::string stdinPath{};
+
+    /// @brief Maximum number of interpreter steps (0 means unlimited).
+    std::uint64_t maxSteps = 0;
+
+    /// @brief Whether bounds checks should be enabled during lowering.
+    bool boundsChecks = false;
+};
+
+/// @brief Result of attempting to parse a shared CLI option.
+enum class SharedOptionParseResult
+{
+    NotMatched, ///< Argument does not correspond to a shared option.
+    Parsed,     ///< Argument consumed and reflected in the configuration.
+    Error       ///< Argument looked like a shared option but was malformed.
+};
+
+/// @brief Parse an ilc option common to multiple subcommands.
+///
+/// @param index Index of the current argument; advanced when parameters are consumed.
+/// @param argc Total number of arguments available.
+/// @param argv Argument vector.
+/// @param opts Accumulator receiving parsed option values.
+/// @return Parsing outcome describing whether the argument was handled.
+inline SharedOptionParseResult parseSharedOption(int &index,
+                                                 int argc,
+                                                 char **argv,
+                                                 SharedCliOptions &opts)
+{
+    const std::string arg = argv[index];
+    if (arg == "--trace" || arg == "--trace=il")
+    {
+        opts.trace.mode = il::vm::TraceConfig::IL;
+        return SharedOptionParseResult::Parsed;
+    }
+    if (arg == "--trace=src")
+    {
+        opts.trace.mode = il::vm::TraceConfig::SRC;
+        return SharedOptionParseResult::Parsed;
+    }
+    if (arg == "--stdin-from")
+    {
+        if (index + 1 >= argc)
+        {
+            return SharedOptionParseResult::Error;
+        }
+        opts.stdinPath = argv[++index];
+        return SharedOptionParseResult::Parsed;
+    }
+    if (arg == "--max-steps")
+    {
+        if (index + 1 >= argc)
+        {
+            return SharedOptionParseResult::Error;
+        }
+        opts.maxSteps = std::stoull(argv[++index]);
+        return SharedOptionParseResult::Parsed;
+    }
+    if (arg == "--bounds-checks")
+    {
+        opts.boundsChecks = true;
+        return SharedOptionParseResult::Parsed;
+    }
+    return SharedOptionParseResult::NotMatched;
+}
+
+} // namespace ilc
+
 /// @brief Handle `ilc front basic` subcommands.
 ///
 /// Invoked when the command line begins with `ilc front basic`. After the
