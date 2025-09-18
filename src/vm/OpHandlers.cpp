@@ -32,6 +32,56 @@ inline void storeResult(Frame &fr, const Instr &in, const Slot &val)
     }
 }
 
+struct HandlerDescriptor
+{
+    Opcode opcode;
+    VM::OpcodeHandler handler;
+};
+
+#define VM_SIMPLE_HANDLERS(OP)                                                                     \
+    OP(Alloca)                                                                                     \
+    OP(Load)                                                                                       \
+    OP(Store)                                                                                      \
+    OP(GEP)                                                                                        \
+    OP(Br)                                                                                         \
+    OP(CBr)                                                                                        \
+    OP(Ret)                                                                                        \
+    OP(AddrOf)                                                                                     \
+    OP(ConstStr)                                                                                   \
+    OP(Call)                                                                                       \
+    OP(Sitofp)                                                                                     \
+    OP(Fptosi)                                                                                     \
+    OP(Trap)
+
+#define VM_BIN_INT_OPS(OP)                                                                         \
+    OP(Add, +)                                                                                     \
+    OP(Sub, -)                                                                                     \
+    OP(Mul, *)                                                                                     \
+    OP(Xor, ^)                                                                                     \
+    OP(Shl, <<)
+
+#define VM_BIN_FLOAT_OPS(OP)                                                                       \
+    OP(FAdd, +)                                                                                    \
+    OP(FSub, -)                                                                                    \
+    OP(FMul, *)                                                                                    \
+    OP(FDiv, /)
+
+#define VM_INT_CMP_OPS(OP)                                                                         \
+    OP(ICmpEq, ==)                                                                                 \
+    OP(ICmpNe, !=)                                                                                 \
+    OP(SCmpGT, >)                                                                                  \
+    OP(SCmpLT, <)                                                                                  \
+    OP(SCmpLE, <=)                                                                                 \
+    OP(SCmpGE, >=)
+
+#define VM_FLOAT_CMP_OPS(OP)                                                                       \
+    OP(FCmpEQ, ==)                                                                                 \
+    OP(FCmpNE, !=)                                                                                 \
+    OP(FCmpGT, >)                                                                                  \
+    OP(FCmpLT, <)                                                                                  \
+    OP(FCmpLE, <=)                                                                                 \
+    OP(FCmpGE, >=)
+
 #define DEFINE_BIN_INT_OP(NAME, OP)                                                                \
     VM::ExecResult OpHandlers::handle##NAME(VM &vm,                                                \
                                             Frame &fr,                                             \
@@ -233,15 +283,8 @@ VM::ExecResult OpHandlers::handleStore(VM &vm,
     return {};
 }
 
-DEFINE_BIN_INT_OP(Add, +)
-DEFINE_BIN_INT_OP(Sub, -)
-DEFINE_BIN_INT_OP(Mul, *)
-DEFINE_BIN_FLOAT_OP(FAdd, +)
-DEFINE_BIN_FLOAT_OP(FSub, -)
-DEFINE_BIN_FLOAT_OP(FMul, *)
-DEFINE_BIN_FLOAT_OP(FDiv, /)
-DEFINE_BIN_INT_OP(Xor, ^)
-DEFINE_BIN_INT_OP(Shl, <<)
+VM_BIN_INT_OPS(DEFINE_BIN_INT_OP)
+VM_BIN_FLOAT_OPS(DEFINE_BIN_FLOAT_OP)
 
 /// Compute pointer address using getelementptr-style offsetting.
 VM::ExecResult OpHandlers::handleGEP(VM &vm,
@@ -262,18 +305,8 @@ VM::ExecResult OpHandlers::handleGEP(VM &vm,
     return {};
 }
 
-DEFINE_INT_CMP(ICmpEq, ==)
-DEFINE_INT_CMP(ICmpNe, !=)
-DEFINE_INT_CMP(SCmpGT, >)
-DEFINE_INT_CMP(SCmpLT, <)
-DEFINE_INT_CMP(SCmpLE, <=)
-DEFINE_INT_CMP(SCmpGE, >=)
-DEFINE_FLOAT_CMP(FCmpEQ, ==)
-DEFINE_FLOAT_CMP(FCmpNE, !=)
-DEFINE_FLOAT_CMP(FCmpGT, >)
-DEFINE_FLOAT_CMP(FCmpLT, <)
-DEFINE_FLOAT_CMP(FCmpLE, <=)
-DEFINE_FLOAT_CMP(FCmpGE, >=)
+VM_INT_CMP_OPS(DEFINE_INT_CMP)
+VM_FLOAT_CMP_OPS(DEFINE_FLOAT_CMP)
 
 /// Unconditionally branch to another basic block, transferring arguments.
 VM::ExecResult OpHandlers::handleBr(VM &vm,
@@ -459,48 +492,38 @@ const VM::OpcodeHandlerTable &VM::getOpcodeHandlers()
 
 namespace il::vm::detail
 {
+namespace
+{
+#define HANDLER_DESC(NAME, ...) HandlerDescriptor{Opcode::NAME, &OpHandlers::handle##NAME},
+
+constexpr auto kHandlerDescriptors = std::to_array<HandlerDescriptor>({
+    VM_SIMPLE_HANDLERS(HANDLER_DESC)
+    VM_BIN_INT_OPS(HANDLER_DESC)
+    VM_BIN_FLOAT_OPS(HANDLER_DESC)
+    VM_INT_CMP_OPS(HANDLER_DESC)
+    VM_FLOAT_CMP_OPS(HANDLER_DESC)
+    HandlerDescriptor{Opcode::Trunc1, &OpHandlers::handleTruncOrZext1},
+    HandlerDescriptor{Opcode::Zext1, &OpHandlers::handleTruncOrZext1},
+});
+
+#undef HANDLER_DESC
+#undef VM_SIMPLE_HANDLERS
+#undef VM_BIN_INT_OPS
+#undef VM_BIN_FLOAT_OPS
+#undef VM_INT_CMP_OPS
+#undef VM_FLOAT_CMP_OPS
+} // namespace
+
 /// Access the lazily initialised opcode handler table.
 const VM::OpcodeHandlerTable &getOpcodeHandlers()
 {
     static const VM::OpcodeHandlerTable table = []
     {
         VM::OpcodeHandlerTable t{};
-        t[static_cast<size_t>(Opcode::Alloca)] = &OpHandlers::handleAlloca;
-        t[static_cast<size_t>(Opcode::Load)] = &OpHandlers::handleLoad;
-        t[static_cast<size_t>(Opcode::Store)] = &OpHandlers::handleStore;
-        t[static_cast<size_t>(Opcode::Add)] = &OpHandlers::handleAdd;
-        t[static_cast<size_t>(Opcode::Sub)] = &OpHandlers::handleSub;
-        t[static_cast<size_t>(Opcode::Mul)] = &OpHandlers::handleMul;
-        t[static_cast<size_t>(Opcode::FAdd)] = &OpHandlers::handleFAdd;
-        t[static_cast<size_t>(Opcode::FSub)] = &OpHandlers::handleFSub;
-        t[static_cast<size_t>(Opcode::FMul)] = &OpHandlers::handleFMul;
-        t[static_cast<size_t>(Opcode::FDiv)] = &OpHandlers::handleFDiv;
-        t[static_cast<size_t>(Opcode::Xor)] = &OpHandlers::handleXor;
-        t[static_cast<size_t>(Opcode::Shl)] = &OpHandlers::handleShl;
-        t[static_cast<size_t>(Opcode::GEP)] = &OpHandlers::handleGEP;
-        t[static_cast<size_t>(Opcode::ICmpEq)] = &OpHandlers::handleICmpEq;
-        t[static_cast<size_t>(Opcode::ICmpNe)] = &OpHandlers::handleICmpNe;
-        t[static_cast<size_t>(Opcode::SCmpGT)] = &OpHandlers::handleSCmpGT;
-        t[static_cast<size_t>(Opcode::SCmpLT)] = &OpHandlers::handleSCmpLT;
-        t[static_cast<size_t>(Opcode::SCmpLE)] = &OpHandlers::handleSCmpLE;
-        t[static_cast<size_t>(Opcode::SCmpGE)] = &OpHandlers::handleSCmpGE;
-        t[static_cast<size_t>(Opcode::FCmpEQ)] = &OpHandlers::handleFCmpEQ;
-        t[static_cast<size_t>(Opcode::FCmpNE)] = &OpHandlers::handleFCmpNE;
-        t[static_cast<size_t>(Opcode::FCmpGT)] = &OpHandlers::handleFCmpGT;
-        t[static_cast<size_t>(Opcode::FCmpLT)] = &OpHandlers::handleFCmpLT;
-        t[static_cast<size_t>(Opcode::FCmpLE)] = &OpHandlers::handleFCmpLE;
-        t[static_cast<size_t>(Opcode::FCmpGE)] = &OpHandlers::handleFCmpGE;
-        t[static_cast<size_t>(Opcode::Br)] = &OpHandlers::handleBr;
-        t[static_cast<size_t>(Opcode::CBr)] = &OpHandlers::handleCBr;
-        t[static_cast<size_t>(Opcode::Ret)] = &OpHandlers::handleRet;
-        t[static_cast<size_t>(Opcode::AddrOf)] = &OpHandlers::handleAddrOf;
-        t[static_cast<size_t>(Opcode::ConstStr)] = &OpHandlers::handleConstStr;
-        t[static_cast<size_t>(Opcode::Call)] = &OpHandlers::handleCall;
-        t[static_cast<size_t>(Opcode::Sitofp)] = &OpHandlers::handleSitofp;
-        t[static_cast<size_t>(Opcode::Fptosi)] = &OpHandlers::handleFptosi;
-        t[static_cast<size_t>(Opcode::Trunc1)] = &OpHandlers::handleTruncOrZext1;
-        t[static_cast<size_t>(Opcode::Zext1)] = &OpHandlers::handleTruncOrZext1;
-        t[static_cast<size_t>(Opcode::Trap)] = &OpHandlers::handleTrap;
+        for (const auto &entry : kHandlerDescriptors)
+        {
+            t[static_cast<size_t>(entry.opcode)] = entry.handler;
+        }
         return t;
     }();
     return table;
