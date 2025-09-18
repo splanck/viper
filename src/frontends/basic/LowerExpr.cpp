@@ -49,11 +49,11 @@ Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
     curLoc = u.loc;
     Value b1 = val.value;
     if (val.type.kind != Type::Kind::I1)
-        b1 = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), val.value);
+        b1 = emitUnary(Opcode::Trunc1, ilBoolTy(), val.value);
     Value b64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), b1);
     Value x = emitBinary(Opcode::Xor, Type(Type::Kind::I64), b64, Value::constInt(1));
-    Value res = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), x);
-    return {res, Type(Type::Kind::I1)};
+    Value res = emitUnary(Opcode::Trunc1, ilBoolTy(), x);
+    return {res, ilBoolTy()};
 }
 
 // Purpose: lower logical binary.
@@ -80,12 +80,12 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
         cur = rhsBB;
         RVal rhs = lowerExpr(*b.rhs);
         curLoc = b.loc;
-        emitStore(Type(Type::Kind::I1), addr, rhs.value);
+        emitStore(ilBoolTy(), addr, rhs.value);
         curLoc = b.loc;
         emitBr(doneBB);
         cur = falseBB;
         curLoc = b.loc;
-        emitStore(Type(Type::Kind::I1), addr, Value::constInt(0));
+        emitStore(ilBoolTy(), addr, emitBoolConst(false));
         curLoc = b.loc;
         emitBr(doneBB);
         cur = doneBB;
@@ -104,20 +104,20 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
         emitCBr(lhs.value, trueBB, rhsBB);
         cur = trueBB;
         curLoc = b.loc;
-        emitStore(Type(Type::Kind::I1), addr, Value::constInt(1));
+        emitStore(ilBoolTy(), addr, emitBoolConst(true));
         curLoc = b.loc;
         emitBr(doneBB);
         cur = rhsBB;
         RVal rhs = lowerExpr(*b.rhs);
         curLoc = b.loc;
-        emitStore(Type(Type::Kind::I1), addr, rhs.value);
+        emitStore(ilBoolTy(), addr, rhs.value);
         curLoc = b.loc;
         emitBr(doneBB);
         cur = doneBB;
     }
     curLoc = b.loc;
-    Value res = emitLoad(Type(Type::Kind::I1), addr);
-    return {res, Type(Type::Kind::I1)};
+    Value res = emitLoad(ilBoolTy(), addr);
+    return {res, ilBoolTy()};
 }
 
 // Purpose: lower div or mod.
@@ -129,7 +129,7 @@ Lowerer::RVal Lowerer::lowerDivOrMod(const BinaryExpr &b)
     RVal lhs = lowerExpr(*b.lhs);
     RVal rhs = lowerExpr(*b.rhs);
     curLoc = b.loc;
-    Value cond = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), rhs.value, Value::constInt(0));
+    Value cond = emitBinary(Opcode::ICmpEq, ilBoolTy(), rhs.value, Value::constInt(0));
     std::string trapLbl = blockNamer ? blockNamer->generic("div0") : mangler.block("div0");
     std::string okLbl = blockNamer ? blockNamer->generic("divok") : mangler.block("divok");
     BasicBlock *trapBB = &builder->addBlock(*func, trapLbl);
@@ -157,15 +157,15 @@ Lowerer::RVal Lowerer::lowerStringBinary(const BinaryExpr &b, RVal lhs, RVal rhs
         Value res = emitCallRet(Type(Type::Kind::Str), "rt_concat", {lhs.value, rhs.value});
         return {res, Type(Type::Kind::Str)};
     }
-    Value eq = emitCallRet(Type(Type::Kind::I1), "rt_str_eq", {lhs.value, rhs.value});
+    Value eq = emitCallRet(ilBoolTy(), "rt_str_eq", {lhs.value, rhs.value});
     if (b.op == BinaryExpr::Op::Ne)
     {
         Value z = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), eq);
         Value x = emitBinary(Opcode::Xor, Type(Type::Kind::I64), z, Value::constInt(1));
-        Value res = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), x);
-        return {res, Type(Type::Kind::I1)};
+        Value res = emitUnary(Opcode::Trunc1, ilBoolTy(), x);
+        return {res, ilBoolTy()};
     }
-    return {eq, Type(Type::Kind::I1)};
+    return {eq, ilBoolTy()};
 }
 
 // Purpose: lower numeric binary.
@@ -204,27 +204,27 @@ Lowerer::RVal Lowerer::lowerNumericBinary(const BinaryExpr &b, RVal lhs, RVal rh
             break;
         case BinaryExpr::Op::Eq:
             op = isFloat ? Opcode::FCmpEQ : Opcode::ICmpEq;
-            ty = Type(Type::Kind::I1);
+            ty = ilBoolTy();
             break;
         case BinaryExpr::Op::Ne:
             op = isFloat ? Opcode::FCmpNE : Opcode::ICmpNe;
-            ty = Type(Type::Kind::I1);
+            ty = ilBoolTy();
             break;
         case BinaryExpr::Op::Lt:
             op = isFloat ? Opcode::FCmpLT : Opcode::SCmpLT;
-            ty = Type(Type::Kind::I1);
+            ty = ilBoolTy();
             break;
         case BinaryExpr::Op::Le:
             op = isFloat ? Opcode::FCmpLE : Opcode::SCmpLE;
-            ty = Type(Type::Kind::I1);
+            ty = ilBoolTy();
             break;
         case BinaryExpr::Op::Gt:
             op = isFloat ? Opcode::FCmpGT : Opcode::SCmpGT;
-            ty = Type(Type::Kind::I1);
+            ty = ilBoolTy();
             break;
         case BinaryExpr::Op::Ge:
             op = isFloat ? Opcode::FCmpGE : Opcode::SCmpGE;
-            ty = Type(Type::Kind::I1);
+            ty = ilBoolTy();
             break;
         default:
             break; // other ops handled elsewhere
@@ -664,7 +664,7 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
     }
     else if (auto *b = dynamic_cast<const BoolExpr *>(&expr))
     {
-        return {Value::constInt(b->value ? 1 : 0), Type(Type::Kind::I1)};
+        return {emitBoolConst(b->value), ilBoolTy()};
     }
     else if (auto *v = dynamic_cast<const VarExpr *>(&expr))
     {

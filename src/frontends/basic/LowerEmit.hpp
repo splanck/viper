@@ -123,6 +123,8 @@ void lowerDim(const DimStmt &stmt);
 void lowerRandomize(const RandomizeStmt &stmt);
 
 // helpers
+IlType ilBoolTy();
+IlValue emitBoolConst(bool v);
 Value emitAlloca(int bytes);
 Value emitLoad(Type ty, Value addr);
 void emitStore(Type ty, Value addr, Value val);
