@@ -155,3 +155,67 @@ Once emitted, the current block is considered closed and no further statements
 from the same BASIC block are lowered. This prevents generating dead
 instructions after a `RETURN` and ensures each block has exactly one
 terminator.
+
+## Boolean expressions
+
+Relational operators (`=`, `<>`, `<`, `>`, and friends) emit `i1` values that
+can feed `cbr` directly. When a boolean expression produces a value that must be
+reused, the front end materializes it in a temporary stack slot sized for an
+`i1` and fills that slot by branching.
+
+### `NOT`
+
+`NOT expr` flips the operand and stores the inverted constant into the `i1`
+slot:
+
+```il
+  %cond = ...            ; operand lowered earlier, yields i1
+  %not_slot = alloca 1   ; temporary for the result (i1)
+  cbr %cond, label not_true_0, label not_false_0
+not_true_0:
+  store i1, %not_slot, 0
+  br label not_join_0
+not_false_0:
+  store i1, %not_slot, 1
+  br label not_join_0
+not_join_0:
+  %result = load i1, %not_slot
+```
+
+### `ANDALSO`
+
+`A ANDALSO B` only evaluates `B` when `A` is true. The slot defaults to `FALSE`
+and updates with `B`'s value when the right-hand side is visited:
+
+```il
+  %lhs = ...               ; first operand (i1)
+  %and_slot = alloca 1
+  store i1, %and_slot, 0
+  cbr %lhs, label and_rhs_0, label and_join_0
+and_rhs_0:
+  %rhs = ...               ; second operand lowered here
+  store i1, %and_slot, %rhs
+  br label and_join_0
+and_join_0:
+  %result = load i1, %and_slot
+```
+
+### `ORELSE`
+
+`A ORELSE B` skips `B` when `A` is true. The `TRUE` branch writes `1` and the
+`FALSE` branch lowers `B` and stores that value:
+
+```il
+  %lhs = ...               ; first operand (i1)
+  %or_slot = alloca 1
+  cbr %lhs, label or_true_0, label or_rhs_0
+or_true_0:
+  store i1, %or_slot, 1
+  br label or_join_0
+or_rhs_0:
+  %rhs = ...               ; second operand lowered here
+  store i1, %or_slot, %rhs
+  br label or_join_0
+or_join_0:
+  %result = load i1, %or_slot
+```
