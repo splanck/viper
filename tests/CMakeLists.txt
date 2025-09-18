@@ -455,6 +455,10 @@ add_executable(test_basic_parse_array_var unit/test_basic_parse_array_var.cpp)
 target_link_libraries(test_basic_parse_array_var PRIVATE fe_basic support)
 add_test(NAME test_basic_parse_array_var COMMAND test_basic_parse_array_var)
 
+add_executable(test_basic_parse_loops unit/test_basic_parse_loops.cpp)
+target_link_libraries(test_basic_parse_loops PRIVATE fe_basic support)
+add_test(NAME test_basic_parse_loops COMMAND test_basic_parse_loops)
+
 add_executable(test_basic_intrinsics unit/test_basic_intrinsics.cpp)
 target_link_libraries(test_basic_intrinsics PRIVATE fe_basic support)
 add_test(NAME test_basic_intrinsics COMMAND test_basic_intrinsics)

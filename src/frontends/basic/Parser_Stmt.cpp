@@ -138,21 +138,20 @@ StmtPtr Parser::parseIf(int line)
     return stmt;
 }
 
-/// @brief Parse a WHILE loop terminated by WEND.
-/// @return WhileStmt with condition and body statements.
-/// @note Consumes statements until a matching WEND token.
-StmtPtr Parser::parseWhile()
+/// @brief Parse the statements within a loop until @p terminator is encountered.
+/// @param terminator Token that terminates the loop body.
+/// @param lineOut Optional pointer receiving the line label that preceded the terminator.
+/// @param dst Destination vector collecting parsed body statements.
+void Parser::parseLoopBody(TokenKind terminator, int *lineOut, std::vector<StmtPtr> &dst)
 {
-    auto loc = peek().loc;
-    consume(); // WHILE
-    auto cond = parseExpression();
+    if (lineOut)
+        *lineOut = 0;
+
     if (at(TokenKind::EndOfLine))
         consume();
     else if (at(TokenKind::Colon))
         consume();
-    auto stmt = std::make_unique<WhileStmt>();
-    stmt->loc = loc;
-    stmt->cond = std::move(cond);
+
     while (true)
     {
         while (at(TokenKind::EndOfLine))
@@ -165,19 +164,37 @@ StmtPtr Parser::parseWhile()
             innerLine = std::atoi(peek().lexeme.c_str());
             consume();
         }
-        if (at(TokenKind::KeywordWend))
+        if (at(terminator))
         {
+            if (lineOut)
+                *lineOut = innerLine;
             consume();
+            if (terminator == TokenKind::KeywordNext && at(TokenKind::Identifier))
+                consume();
             break;
         }
         auto bodyStmt = parseStatement(innerLine);
         bodyStmt->line = innerLine;
-        stmt->body.push_back(std::move(bodyStmt));
+        dst.push_back(std::move(bodyStmt));
         if (at(TokenKind::Colon))
             consume();
         else if (at(TokenKind::EndOfLine))
             consume();
     }
+}
+
+/// @brief Parse a WHILE loop terminated by WEND.
+/// @return WhileStmt with condition and body statements.
+/// @note Consumes statements until a matching WEND token.
+StmtPtr Parser::parseWhile()
+{
+    auto loc = peek().loc;
+    consume(); // WHILE
+    auto cond = parseExpression();
+    auto stmt = std::make_unique<WhileStmt>();
+    stmt->loc = loc;
+    stmt->cond = std::move(cond);
+    parseLoopBody(TokenKind::KeywordWend, nullptr, stmt->body);
     return stmt;
 }
 
@@ -200,43 +217,13 @@ StmtPtr Parser::parseFor()
         consume();
         step = parseExpression();
     }
-    if (at(TokenKind::EndOfLine))
-        consume();
-    else if (at(TokenKind::Colon))
-        consume();
     auto stmt = std::make_unique<ForStmt>();
     stmt->loc = loc;
     stmt->var = var;
     stmt->start = std::move(start);
     stmt->end = std::move(end);
     stmt->step = std::move(step);
-    while (true)
-    {
-        while (at(TokenKind::EndOfLine))
-            consume();
-        if (at(TokenKind::EndOfFile))
-            break;
-        int innerLine = 0;
-        if (at(TokenKind::Number))
-        {
-            innerLine = std::atoi(peek().lexeme.c_str());
-            consume();
-        }
-        if (at(TokenKind::KeywordNext))
-        {
-            consume();
-            if (at(TokenKind::Identifier))
-                consume();
-            break;
-        }
-        auto bodyStmt = parseStatement(innerLine);
-        bodyStmt->line = innerLine;
-        stmt->body.push_back(std::move(bodyStmt));
-        if (at(TokenKind::Colon))
-            consume();
-        else if (at(TokenKind::EndOfLine))
-            consume();
-    }
+    parseLoopBody(TokenKind::KeywordNext, nullptr, stmt->body);
     return stmt;
 }
 
