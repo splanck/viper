@@ -212,67 +212,69 @@ void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
         st(*s);
 }
 
-/// @brief Lower FUNCTION body into an IL function.
-// Purpose: lower function decl.
-// Parameters: const FunctionDecl &decl.
-// Returns: void.
-// Side effects: may modify lowering state or emit IL.
-void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
+void Lowerer::lowerProcedure(const std::string &name,
+                             const std::vector<Param> &params,
+                             const std::vector<StmtPtr> &body,
+                             const ProcedureConfig &config)
 {
     resetLoweringState();
 
     std::vector<const Stmt *> bodyPtrs;
-    for (const auto &s : decl.body)
-        bodyPtrs.push_back(s.get());
+    bodyPtrs.reserve(body.size());
+    for (const auto &stmt : body)
+        bodyPtrs.push_back(stmt.get());
     collectVars(bodyPtrs);
-    varTypes[decl.name] = decl.ret;
+
+    if (config.postCollect)
+        config.postCollect();
 
     std::unordered_set<std::string> paramNames;
-    std::vector<il::core::Param> params;
-    for (const auto &p : decl.params)
+    std::vector<il::core::Param> irParams;
+    irParams.reserve(params.size());
+    for (const auto &p : params)
     {
         paramNames.insert(p.name);
-        il::core::Type ty =
-            p.is_array ? il::core::Type(il::core::Type::Kind::Ptr) : coreTypeForAstType(p.type);
-        params.push_back({p.name, ty});
+        Type ty = p.is_array ? Type(Type::Kind::Ptr) : coreTypeForAstType(p.type);
+        irParams.push_back({p.name, ty});
     }
 
-    il::core::Type retTy = coreTypeForAstType(decl.ret);
+    assert(config.emitEmptyBody && "Missing empty body return handler");
+    assert(config.emitFinalReturn && "Missing final return handler");
+    if (!config.emitEmptyBody || !config.emitFinalReturn)
+        return;
 
-    Function &f = builder->startFunction(decl.name, retTy, params);
+    Function &f = builder->startFunction(name, config.retType, irParams);
     func = &f;
 
-    blockNamer = std::make_unique<BlockNamer>(decl.name);
+    blockNamer = std::make_unique<BlockNamer>(name);
 
     builder->addBlock(f, blockNamer->entry());
 
-    for (size_t i = 0; i < decl.params.size(); ++i)
+    for (size_t i = 0; i < params.size(); ++i)
         mangler.nextTemp();
 
     std::vector<int> lines;
-    lines.reserve(decl.body.size());
-    for (const auto &stmt : decl.body)
+    lines.reserve(body.size());
+    for (const auto &stmt : body)
     {
         if (blockNamer)
             builder->addBlock(f, blockNamer->line(stmt->line));
         else
-            builder->addBlock(f, mangler.block("L" + std::to_string(stmt->line) + "_" + decl.name));
+            builder->addBlock(f, mangler.block("L" + std::to_string(stmt->line) + "_" + name));
         lines.push_back(stmt->line);
     }
     fnExit = f.blocks.size();
     if (blockNamer)
         builder->addBlock(f, blockNamer->ret());
     else
-        builder->addBlock(f, mangler.block("ret_" + decl.name));
+        builder->addBlock(f, mangler.block("ret_" + name));
 
     for (size_t i = 0; i < lines.size(); ++i)
         lineBlocks[lines[i]] = i + 1;
 
-    BasicBlock *entry = &f.blocks.front();
-    cur = entry;
-    materializeParams(decl.params);
+    cur = &f.blocks.front();
+    materializeParams(params);
 
-    // allocate slots for locals (including DIM declarations) in entry
     for (const auto &v : vars)
     {
         if (paramNames.count(v))
@@ -305,6 +307,43 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
         }
     }
 
+    if (body.empty())
+    {
+        curLoc = {};
+        config.emitEmptyBody();
+        blockNamer.reset();
+        return;
+    }
+
+    curLoc = {};
+    emitBr(&f.blocks[lineBlocks[body.front()->line]]);
+
+    for (size_t i = 0; i < body.size(); ++i)
+    {
+        cur = &f.blocks[lineBlocks[body[i]->line]];
+        lowerStmt(*body[i]);
+        if (cur->terminated)
+            break;
+        BasicBlock *next = (i + 1 < body.size())
+                               ? &f.blocks[lineBlocks[body[i + 1]->line]]
+                               : &f.blocks[fnExit];
+        emitBr(next);
+    }
+
+    cur = &f.blocks[fnExit];
+    curLoc = {};
+    config.emitFinalReturn();
+
+    blockNamer.reset();
+}
+
+/// @brief Lower FUNCTION body into an IL function.
+// Purpose: lower function decl.
+// Parameters: const FunctionDecl &decl.
+// Returns: void.
+// Side effects: may modify lowering state or emit IL.
+void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
+{
     auto defaultRet = [&]()
     {
         switch (decl.ret)
@@ -321,13 +360,13 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
         return Value::constInt(0);
     };
 
-    if (!lowerFunctionBody(decl, defaultRet))
-    {
-        blockNamer.reset();
-        return;
-    }
+    ProcedureConfig config;
+    config.retType = coreTypeForAstType(decl.ret);
+    config.postCollect = [&]() { varTypes[decl.name] = decl.ret; };
+    config.emitEmptyBody = [&]() { emitRet(defaultRet()); };
+    config.emitFinalReturn = [&]() { emitRet(defaultRet()); };
 
-    finalizeFunction(defaultRet);
+    lowerProcedure(decl.name, decl.params, decl.body, config);
 }
 
 /// @brief Lower SUB body into an IL function.
@@ -337,119 +376,12 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
 // Side effects: may modify lowering state or emit IL.
 void Lowerer::lowerSubDecl(const SubDecl &decl)
 {
-    resetLoweringState();
+    ProcedureConfig config;
+    config.retType = Type(Type::Kind::Void);
+    config.emitEmptyBody = [&]() { emitRetVoid(); };
+    config.emitFinalReturn = [&]() { emitRetVoid(); };
 
-    std::vector<const Stmt *> bodyPtrs;
-    for (const auto &s : decl.body)
-        bodyPtrs.push_back(s.get());
-    collectVars(bodyPtrs);
-
-    std::unordered_set<std::string> paramNames;
-    std::vector<il::core::Param> params;
-    for (const auto &p : decl.params)
-    {
-        paramNames.insert(p.name);
-        il::core::Type ty =
-            p.is_array ? il::core::Type(il::core::Type::Kind::Ptr) : coreTypeForAstType(p.type);
-        params.push_back({p.name, ty});
-    }
-
-    Function &f =
-        builder->startFunction(decl.name, il::core::Type(il::core::Type::Kind::Void), params);
-    func = &f;
-
-    blockNamer = std::make_unique<BlockNamer>(decl.name);
-
-    builder->addBlock(f, blockNamer->entry());
-
-    for (size_t i = 0; i < decl.params.size(); ++i)
-        mangler.nextTemp();
-
-    std::vector<int> lines;
-    lines.reserve(decl.body.size());
-    for (const auto &stmt : decl.body)
-    {
-        if (blockNamer)
-            builder->addBlock(f, blockNamer->line(stmt->line));
-        else
-            builder->addBlock(f, mangler.block("L" + std::to_string(stmt->line) + "_" + decl.name));
-        lines.push_back(stmt->line);
-    }
-    fnExit = f.blocks.size();
-    if (blockNamer)
-        builder->addBlock(f, blockNamer->ret());
-    else
-        builder->addBlock(f, mangler.block("ret_" + decl.name));
-
-    for (size_t i = 0; i < lines.size(); ++i)
-        lineBlocks[lines[i]] = i + 1;
-
-    BasicBlock *entry = &f.blocks.front();
-    cur = entry;
-    materializeParams(decl.params);
-
-    // allocate slots for locals (including DIM declarations) in entry
-    for (const auto &v : vars)
-    {
-        if (paramNames.count(v))
-            continue;
-        curLoc = {};
-        if (arrays.count(v))
-        {
-            Value slot = emitAlloca(8);
-            varSlots[v] = slot.id;
-            continue;
-        }
-        bool isBoolVar = false;
-        auto itType = varTypes.find(v);
-        if (itType != varTypes.end() && itType->second == AstType::Bool)
-            isBoolVar = true;
-        Value slot = emitAlloca(isBoolVar ? 1 : 8);
-        varSlots[v] = slot.id;
-        if (isBoolVar)
-            emitStore(ilBoolTy(), slot, emitBoolConst(false));
-    }
-    if (boundsChecks)
-    {
-        for (const auto &a : arrays)
-        {
-            if (paramNames.count(a))
-                continue;
-            curLoc = {};
-            Value slot = emitAlloca(8);
-            arrayLenSlots[a] = slot.id;
-        }
-    }
-
-    if (!decl.body.empty())
-    {
-        curLoc = {};
-        emitBr(&f.blocks[lineBlocks[decl.body.front()->line]]);
-    }
-    else
-    {
-        curLoc = {};
-        emitRetVoid();
-        return;
-    }
-
-    for (size_t i = 0; i < decl.body.size(); ++i)
-    {
-        cur = &f.blocks[lineBlocks[decl.body[i]->line]];
-        lowerStmt(*decl.body[i]);
-        if (cur->terminated)
-            break;
-        BasicBlock *next = (i + 1 < decl.body.size())
-                               ? &f.blocks[lineBlocks[decl.body[i + 1]->line]]
-                               : &f.blocks[fnExit];
-        emitBr(next);
-    }
-
-    cur = &f.blocks[fnExit];
-    curLoc = {};
-    emitRetVoid();
-
-    blockNamer.reset();
+    lowerProcedure(decl.name, decl.params, decl.body, config);
 }
 
 // Purpose: reset lowering state.
@@ -465,52 +397,6 @@ void Lowerer::resetLoweringState()
     varTypes.clear();
     lineBlocks.clear();
     boundsCheckId = 0;
-}
-
-// Purpose: lower function body.
-// Parameters: const FunctionDecl &decl, const std::function<Value(.
-// Returns: bool.
-// Side effects: may modify lowering state or emit IL.
-bool Lowerer::lowerFunctionBody(const FunctionDecl &decl, const std::function<Value()> &defaultRet)
-{
-    Function &f = *func;
-    if (!decl.body.empty())
-    {
-        curLoc = {};
-        emitBr(&f.blocks[lineBlocks[decl.body.front()->line]]);
-    }
-    else
-    {
-        curLoc = {};
-        emitRet(defaultRet());
-        return false;
-    }
-
-    for (size_t i = 0; i < decl.body.size(); ++i)
-    {
-        cur = &f.blocks[lineBlocks[decl.body[i]->line]];
-        lowerStmt(*decl.body[i]);
-        if (cur->terminated)
-            break;
-        BasicBlock *next = (i + 1 < decl.body.size())
-                               ? &f.blocks[lineBlocks[decl.body[i + 1]->line]]
-                               : &f.blocks[fnExit];
-        emitBr(next);
-    }
-
-    return true;
-}
-
-// Purpose: finalize function.
-// Parameters: const std::function<Value(.
-// Returns: void.
-// Side effects: may modify lowering state or emit IL.
-void Lowerer::finalizeFunction(const std::function<Value()> &defaultRet)
-{
-    cur = &func->blocks[fnExit];
-    curLoc = {};
-    emitRet(defaultRet());
-    blockNamer.reset();
 }
 
 /// @brief Allocate stack slots for parameters and store incoming values. Array
