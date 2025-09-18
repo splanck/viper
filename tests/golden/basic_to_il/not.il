@@ -10,7 +10,8 @@ global const str @.L0 = "
 func @main() -> i64 {
 entry:
   %t0 = alloca 1
-  store i1, %t0, 0
+  %t1 = trunc1 0
+  store i1, %t0, %t1
   br L10
 L10:
   .loc 1 1 4
@@ -20,11 +21,11 @@ L20:
   br if_test_0
 L30:
   .loc 1 3 16
-  %t5 = load i1, %t0
+  %t8 = load i1, %t0
   .loc 1 3 12
-  %t6 = alloca 1
+  %t9 = alloca 1
   .loc 1 3 12
-  cbr %t5, bool_then1, bool_else1
+  cbr %t8, bool_then1, bool_else1
 L40:
   .loc 1 4 4
   br if_test_01
@@ -32,18 +33,18 @@ exit:
   ret 0
 if_test_0:
   .loc 1 2 11
-  %t1 = load i1, %t0
+  %t2 = load i1, %t0
   .loc 1 2 7
-  %t2 = alloca 1
+  %t3 = alloca 1
   .loc 1 2 7
-  cbr %t1, bool_then, bool_else
+  cbr %t2, bool_then, bool_else
 if_then_0:
   .loc 1 2 18
   call @rt_print_i64(1)
   .loc 1 2 18
-  %t4 = const_str @.L0
+  %t7 = const_str @.L0
   .loc 1 2 18
-  call @rt_print_str(%t4)
+  call @rt_print_str(%t7)
   .loc 1 2 4
   br if_exit
 if_else:
@@ -54,50 +55,58 @@ if_exit:
   br L30
 bool_then:
   .loc 1 2 7
-  store i1, %t2, 0
+  %t4 = trunc1 0
+  .loc 1 2 7
+  store i1, %t3, %t4
   .loc 1 2 7
   br bool_join
 bool_else:
   .loc 1 2 7
-  store i1, %t2, 1
+  %t5 = trunc1 1
+  .loc 1 2 7
+  store i1, %t3, %t5
   .loc 1 2 7
   br bool_join
 bool_join:
   .loc 1 2 7
-  %t3 = load i1, %t2
+  %t6 = load i1, %t3
   .loc 1 2 7
-  cbr %t3, if_then_0, if_else
+  cbr %t6, if_then_0, if_else
 bool_then1:
   .loc 1 3 12
-  store i1, %t6, 0
+  %t10 = trunc1 0
+  .loc 1 3 12
+  store i1, %t9, %t10
   .loc 1 3 12
   br bool_join1
 bool_else1:
   .loc 1 3 12
-  store i1, %t6, 1
+  %t11 = trunc1 1
+  .loc 1 3 12
+  store i1, %t9, %t11
   .loc 1 3 12
   br bool_join1
 bool_join1:
   .loc 1 3 12
-  %t7 = load i1, %t6
+  %t12 = load i1, %t9
   .loc 1 3 4
-  store i1, %t0, %t7
+  store i1, %t0, %t12
   .loc 1 3 4
   br L40
 if_test_01:
   .loc 1 4 11
-  %t8 = load i1, %t0
+  %t13 = load i1, %t0
   .loc 1 4 7
-  %t9 = alloca 1
+  %t14 = alloca 1
   .loc 1 4 7
-  cbr %t8, bool_then2, bool_else2
+  cbr %t13, bool_then2, bool_else2
 if_then_01:
   .loc 1 4 18
   call @rt_print_i64(0)
   .loc 1 4 18
-  %t11 = const_str @.L0
+  %t18 = const_str @.L0
   .loc 1 4 18
-  call @rt_print_str(%t11)
+  call @rt_print_str(%t18)
   .loc 1 4 4
   br if_exit1
 if_else1:
@@ -108,17 +117,21 @@ if_exit1:
   br exit
 bool_then2:
   .loc 1 4 7
-  store i1, %t9, 0
+  %t15 = trunc1 0
+  .loc 1 4 7
+  store i1, %t14, %t15
   .loc 1 4 7
   br bool_join2
 bool_else2:
   .loc 1 4 7
-  store i1, %t9, 1
+  %t16 = trunc1 1
+  .loc 1 4 7
+  store i1, %t14, %t16
   .loc 1 4 7
   br bool_join2
 bool_join2:
   .loc 1 4 7
-  %t10 = load i1, %t9
+  %t17 = load i1, %t14
   .loc 1 4 7
-  cbr %t10, if_then_01, if_else1
+  cbr %t17, if_then_01, if_else1
 }

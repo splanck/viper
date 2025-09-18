@@ -135,7 +135,7 @@ Lowerer::IlType Lowerer::ilBoolTy()
 // Side effects: none.
 Lowerer::IlValue Lowerer::emitBoolConst(bool v)
 {
-    return Value::constInt(v ? 1 : 0);
+    return emitUnary(Opcode::Trunc1, ilBoolTy(), Value::constInt(v ? 1 : 0));
 }
 
 Lowerer::IlValue Lowerer::emitBoolFromBranches(std::function<void()> emitThen,

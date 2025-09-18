@@ -26,7 +26,7 @@ const char *typeToString(Type ty)
         case Type::Str:
             return "STR";
         case Type::Bool:
-            return "BOOL";
+            return "BOOLEAN";
     }
     return "I64";
 }
