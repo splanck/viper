@@ -7,8 +7,8 @@
 #include "vm/OpHandlers.hpp"
 
 #include "il/core/Opcode.hpp"
+#include "il/core/OpcodeInfo.hpp"
 #include "vm/RuntimeBridge.hpp"
-#include <array>
 #include <cstdint>
 #include <cassert>
 #include <cstring>
@@ -31,27 +31,6 @@ inline void storeResult(Frame &fr, const Instr &in, const Slot &val)
         fr.regs[*in.result] = val;
     }
 }
-
-struct HandlerDescriptor
-{
-    Opcode opcode;
-    VM::OpcodeHandler handler;
-};
-
-#define VM_SIMPLE_HANDLERS(OP)                                                                     \
-    OP(Alloca)                                                                                     \
-    OP(Load)                                                                                       \
-    OP(Store)                                                                                      \
-    OP(GEP)                                                                                        \
-    OP(Br)                                                                                         \
-    OP(CBr)                                                                                        \
-    OP(Ret)                                                                                        \
-    OP(AddrOf)                                                                                     \
-    OP(ConstStr)                                                                                   \
-    OP(Call)                                                                                       \
-    OP(Sitofp)                                                                                     \
-    OP(Fptosi)                                                                                     \
-    OP(Trap)
 
 #define VM_BIN_INT_OPS(OP)                                                                         \
     OP(Add, +)                                                                                     \
@@ -308,6 +287,15 @@ VM::ExecResult OpHandlers::handleGEP(VM &vm,
 VM_INT_CMP_OPS(DEFINE_INT_CMP)
 VM_FLOAT_CMP_OPS(DEFINE_FLOAT_CMP)
 
+#undef DEFINE_FLOAT_CMP
+#undef DEFINE_INT_CMP
+#undef DEFINE_BIN_FLOAT_OP
+#undef DEFINE_BIN_INT_OP
+#undef VM_FLOAT_CMP_OPS
+#undef VM_INT_CMP_OPS
+#undef VM_BIN_FLOAT_OPS
+#undef VM_BIN_INT_OPS
+
 /// Unconditionally branch to another basic block, transferring arguments.
 VM::ExecResult OpHandlers::handleBr(VM &vm,
                                     Frame &fr,
@@ -492,37 +480,124 @@ const VM::OpcodeHandlerTable &VM::getOpcodeHandlers()
 
 namespace il::vm::detail
 {
-namespace
-{
-#define HANDLER_DESC(NAME, ...) HandlerDescriptor{Opcode::NAME, &OpHandlers::handle##NAME},
-
-constexpr auto kHandlerDescriptors = std::to_array<HandlerDescriptor>({
-    VM_SIMPLE_HANDLERS(HANDLER_DESC)
-    VM_BIN_INT_OPS(HANDLER_DESC)
-    VM_BIN_FLOAT_OPS(HANDLER_DESC)
-    VM_INT_CMP_OPS(HANDLER_DESC)
-    VM_FLOAT_CMP_OPS(HANDLER_DESC)
-    HandlerDescriptor{Opcode::Trunc1, &OpHandlers::handleTruncOrZext1},
-    HandlerDescriptor{Opcode::Zext1, &OpHandlers::handleTruncOrZext1},
-});
-
-#undef HANDLER_DESC
-#undef VM_SIMPLE_HANDLERS
-#undef VM_BIN_INT_OPS
-#undef VM_BIN_FLOAT_OPS
-#undef VM_INT_CMP_OPS
-#undef VM_FLOAT_CMP_OPS
-} // namespace
-
 /// Access the lazily initialised opcode handler table.
 const VM::OpcodeHandlerTable &getOpcodeHandlers()
 {
     static const VM::OpcodeHandlerTable table = []
     {
         VM::OpcodeHandlerTable t{};
-        for (const auto &entry : kHandlerDescriptors)
+        for (size_t idx = 0; idx < kOpcodeTable.size(); ++idx)
         {
-            t[static_cast<size_t>(entry.opcode)] = entry.handler;
+            switch (kOpcodeTable[idx].vmDispatch)
+            {
+                case VMDispatch::None:
+                    break;
+                case VMDispatch::Alloca:
+                    t[idx] = &OpHandlers::handleAlloca;
+                    break;
+                case VMDispatch::Load:
+                    t[idx] = &OpHandlers::handleLoad;
+                    break;
+                case VMDispatch::Store:
+                    t[idx] = &OpHandlers::handleStore;
+                    break;
+                case VMDispatch::GEP:
+                    t[idx] = &OpHandlers::handleGEP;
+                    break;
+                case VMDispatch::Add:
+                    t[idx] = &OpHandlers::handleAdd;
+                    break;
+                case VMDispatch::Sub:
+                    t[idx] = &OpHandlers::handleSub;
+                    break;
+                case VMDispatch::Mul:
+                    t[idx] = &OpHandlers::handleMul;
+                    break;
+                case VMDispatch::Xor:
+                    t[idx] = &OpHandlers::handleXor;
+                    break;
+                case VMDispatch::Shl:
+                    t[idx] = &OpHandlers::handleShl;
+                    break;
+                case VMDispatch::FAdd:
+                    t[idx] = &OpHandlers::handleFAdd;
+                    break;
+                case VMDispatch::FSub:
+                    t[idx] = &OpHandlers::handleFSub;
+                    break;
+                case VMDispatch::FMul:
+                    t[idx] = &OpHandlers::handleFMul;
+                    break;
+                case VMDispatch::FDiv:
+                    t[idx] = &OpHandlers::handleFDiv;
+                    break;
+                case VMDispatch::ICmpEq:
+                    t[idx] = &OpHandlers::handleICmpEq;
+                    break;
+                case VMDispatch::ICmpNe:
+                    t[idx] = &OpHandlers::handleICmpNe;
+                    break;
+                case VMDispatch::SCmpGT:
+                    t[idx] = &OpHandlers::handleSCmpGT;
+                    break;
+                case VMDispatch::SCmpLT:
+                    t[idx] = &OpHandlers::handleSCmpLT;
+                    break;
+                case VMDispatch::SCmpLE:
+                    t[idx] = &OpHandlers::handleSCmpLE;
+                    break;
+                case VMDispatch::SCmpGE:
+                    t[idx] = &OpHandlers::handleSCmpGE;
+                    break;
+                case VMDispatch::FCmpEQ:
+                    t[idx] = &OpHandlers::handleFCmpEQ;
+                    break;
+                case VMDispatch::FCmpNE:
+                    t[idx] = &OpHandlers::handleFCmpNE;
+                    break;
+                case VMDispatch::FCmpGT:
+                    t[idx] = &OpHandlers::handleFCmpGT;
+                    break;
+                case VMDispatch::FCmpLT:
+                    t[idx] = &OpHandlers::handleFCmpLT;
+                    break;
+                case VMDispatch::FCmpLE:
+                    t[idx] = &OpHandlers::handleFCmpLE;
+                    break;
+                case VMDispatch::FCmpGE:
+                    t[idx] = &OpHandlers::handleFCmpGE;
+                    break;
+                case VMDispatch::Br:
+                    t[idx] = &OpHandlers::handleBr;
+                    break;
+                case VMDispatch::CBr:
+                    t[idx] = &OpHandlers::handleCBr;
+                    break;
+                case VMDispatch::Ret:
+                    t[idx] = &OpHandlers::handleRet;
+                    break;
+                case VMDispatch::AddrOf:
+                    t[idx] = &OpHandlers::handleAddrOf;
+                    break;
+                case VMDispatch::ConstStr:
+                    t[idx] = &OpHandlers::handleConstStr;
+                    break;
+                case VMDispatch::Call:
+                    t[idx] = &OpHandlers::handleCall;
+                    break;
+                case VMDispatch::Sitofp:
+                    t[idx] = &OpHandlers::handleSitofp;
+                    break;
+                case VMDispatch::Fptosi:
+                    t[idx] = &OpHandlers::handleFptosi;
+                    break;
+                case VMDispatch::TruncOrZext1:
+                    t[idx] = &OpHandlers::handleTruncOrZext1;
+                    break;
+                case VMDispatch::Trap:
+                    t[idx] = &OpHandlers::handleTrap;
+                    break;
+            }
         }
         return t;
     }();

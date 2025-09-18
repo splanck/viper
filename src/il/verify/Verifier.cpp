@@ -202,6 +202,8 @@ bool Verifier::verifyInstr(const Function &fn,
                            TypeInference &types,
                            std::ostream &err)
 {
+    if (!verifyOpcodeSignature(fn, bb, in, err))
+        return false;
     switch (in.op)
     {
         case Opcode::Br:
