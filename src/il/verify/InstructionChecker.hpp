@@ -33,4 +33,15 @@ bool verifyInstruction(const il::core::Function &fn,
                        TypeInference &types,
                        std::ostream &err);
 
+/// @brief Validate opcode-independent structural properties of @p instr.
+/// @param fn Function used for diagnostic context.
+/// @param bb Basic block containing the instruction.
+/// @param instr Instruction to verify.
+/// @param err Stream receiving diagnostics on failure.
+/// @return True if the instruction matches the metadata signature.
+bool verifyOpcodeSignature(const il::core::Function &fn,
+                           const il::core::BasicBlock &bb,
+                           const il::core::Instr &instr,
+                           std::ostream &err);
+
 } // namespace il::verify
