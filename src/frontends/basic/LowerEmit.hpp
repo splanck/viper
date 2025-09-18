@@ -125,6 +125,8 @@ void lowerRandomize(const RandomizeStmt &stmt);
 // helpers
 IlType ilBoolTy();
 IlValue emitBoolConst(bool v);
+IlValue emitBoolFromBranches(std::function<void()> emitThen,
+                             std::function<void()> emitElse);
 Value emitAlloca(int bytes);
 Value emitLoad(Type ty, Value addr);
 void emitStore(Type ty, Value addr, Value val);

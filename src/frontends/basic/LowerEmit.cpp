@@ -138,6 +138,38 @@ Lowerer::IlValue Lowerer::emitBoolConst(bool v)
     return Value::constInt(v ? 1 : 0);
 }
 
+Lowerer::IlValue Lowerer::emitBoolFromBranches(std::function<void()> emitThen,
+                                               std::function<void()> emitElse)
+{
+    Value slot = emitAlloca(1);
+    if (boolBranchSlotPtr)
+        *boolBranchSlotPtr = slot;
+
+    std::string thenLbl = blockNamer ? blockNamer->generic("bool_then")
+                                     : mangler.block("bool_then");
+    std::string elseLbl = blockNamer ? blockNamer->generic("bool_else")
+                                     : mangler.block("bool_else");
+    std::string joinLbl = blockNamer ? blockNamer->generic("bool_join")
+                                     : mangler.block("bool_join");
+
+    BasicBlock *thenBlk = &builder->addBlock(*func, thenLbl);
+    BasicBlock *elseBlk = &builder->addBlock(*func, elseLbl);
+    BasicBlock *joinBlk = &builder->addBlock(*func, joinLbl);
+
+    cur = thenBlk;
+    emitThen();
+    if (!cur->terminated)
+        emitBr(joinBlk);
+
+    cur = elseBlk;
+    emitElse();
+    if (!cur->terminated)
+        emitBr(joinBlk);
+
+    cur = joinBlk;
+    return emitLoad(ilBoolTy(), slot);
+}
+
 // Purpose: lower array addr.
 // Parameters: const ArrayExpr &expr.
 // Returns: Value.
