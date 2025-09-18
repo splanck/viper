@@ -1,6 +1,7 @@
 add_subdirectory(support)
 
 add_library(il_core STATIC
+  il/core/OpcodeInfo.cpp
   il/core/Type.cpp
   il/core/Value.cpp
   il/core/Instr.cpp

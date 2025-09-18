@@ -9,6 +9,7 @@
 #include "il/io/ParserUtil.hpp"
 #include "il/io/TypeParser.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
 
 #include <cctype>
@@ -28,6 +29,7 @@ using il::core::Instr;
 using il::core::Opcode;
 using il::core::Type;
 using il::core::Value;
+using il::core::ResultArity;
 
 Value parseValue(const std::string &tok, ParserState &st, std::ostream &err)
 {
@@ -87,6 +89,96 @@ Value parseValue(const std::string &tok, ParserState &st, std::ostream &err)
 
 using InstrHandler =
     std::function<bool(const std::string &, Instr &, ParserState &, std::ostream &)>;
+
+bool validateShape(const Instr &in, ParserState &st, std::ostream &err)
+{
+    const auto &info = il::core::getOpcodeInfo(in.op);
+    bool ok = true;
+
+    const size_t operandCount = in.operands.size();
+    const bool variadic = il::core::isVariadicOperandCount(info.numOperandsMax);
+    if (operandCount < info.numOperandsMin || (!variadic && operandCount > info.numOperandsMax))
+    {
+        err << "line " << st.lineNo << ": " << info.name << " expects ";
+        if (info.numOperandsMin == info.numOperandsMax)
+        {
+            err << static_cast<unsigned>(info.numOperandsMin) << " operand";
+            if (info.numOperandsMin != 1)
+                err << 's';
+        }
+        else if (variadic)
+        {
+            err << "at least " << static_cast<unsigned>(info.numOperandsMin) << " operand";
+            if (info.numOperandsMin != 1)
+                err << 's';
+        }
+        else
+        {
+            err << "between " << static_cast<unsigned>(info.numOperandsMin) << " and "
+                << static_cast<unsigned>(info.numOperandsMax) << " operands";
+        }
+        err << "\n";
+        st.hasError = true;
+        ok = false;
+    }
+
+    const bool hasResult = in.result.has_value();
+    switch (info.resultArity)
+    {
+        case ResultArity::None:
+            if (hasResult)
+            {
+                err << "line " << st.lineNo << ": " << info.name << " does not produce a result\n";
+                st.hasError = true;
+                ok = false;
+            }
+            break;
+        case ResultArity::One:
+            if (!hasResult)
+            {
+                err << "line " << st.lineNo << ": " << info.name << " requires a result\n";
+                st.hasError = true;
+                ok = false;
+            }
+            break;
+        case ResultArity::Optional:
+            break;
+    }
+
+    if (in.labels.size() != info.numSuccessors)
+    {
+        err << "line " << st.lineNo << ": " << info.name << " expects "
+            << static_cast<unsigned>(info.numSuccessors) << " label";
+        if (info.numSuccessors != 1)
+            err << 's';
+        err << "\n";
+        st.hasError = true;
+        ok = false;
+    }
+
+    if (in.brArgs.size() > info.numSuccessors)
+    {
+        err << "line " << st.lineNo << ": " << info.name << " expects at most "
+            << static_cast<unsigned>(info.numSuccessors) << " branch argument list";
+        if (info.numSuccessors != 1)
+            err << 's';
+        err << "\n";
+        st.hasError = true;
+        ok = false;
+    }
+    else if (!in.brArgs.empty() && in.brArgs.size() != info.numSuccessors)
+    {
+        err << "line " << st.lineNo << ": " << info.name << " expects "
+            << static_cast<unsigned>(info.numSuccessors) << " branch argument list";
+        if (info.numSuccessors != 1)
+            err << 's';
+        err << ", or none" << "\n";
+        st.hasError = true;
+        ok = false;
+    }
+
+    return ok;
+}
 
 InstrHandler makeBinaryHandler(Opcode op, Type ty)
 {
@@ -477,6 +569,8 @@ bool parseInstruction(const std::string &line, ParserState &st, std::ostream &er
         return false;
     }
     if (!it->second(rest, in, st, err))
+        return false;
+    if (!validateShape(in, st, err))
         return false;
     st.curBB->instructions.push_back(std::move(in));
     return true;

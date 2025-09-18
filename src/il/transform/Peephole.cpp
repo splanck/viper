@@ -70,6 +70,8 @@ void peephole(Module &m)
                         in.op = Opcode::Br;
                         in.labels = {in.labels[0]};
                         in.operands.clear();
+                        if (in.brArgs.size() > 1)
+                            in.brArgs.resize(1);
                         continue;
                     }
                     long long v;
@@ -133,7 +135,23 @@ void peephole(Module &m)
                     if (known)
                     {
                         in.op = Opcode::Br;
-                        in.labels = {v ? in.labels[0] : in.labels[1]};
+                        const bool takeTrue = (v != 0);
+                        in.labels = {takeTrue ? in.labels[0] : in.labels[1]};
+                        if (!in.brArgs.empty())
+                        {
+                            if (takeTrue)
+                            {
+                                in.brArgs = std::vector<std::vector<Value>>{in.brArgs.front()};
+                            }
+                            else if (in.brArgs.size() > 1)
+                            {
+                                in.brArgs = std::vector<std::vector<Value>>{in.brArgs[1]};
+                            }
+                            else
+                            {
+                                in.brArgs.clear();
+                            }
+                        }
                         in.operands.clear();
                         if (defIdx != static_cast<size_t>(-1) && uses == 1)
                         {
