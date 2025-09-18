@@ -176,6 +176,41 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
         return {res, ilBoolTy()};
     }
 
+    if (b.op == BinaryExpr::Op::LogicalOrShort)
+    {
+        Value addr = emitAlloca(1);
+        Value cond = toBool(lhs);
+        std::string trueLbl =
+            blockNamer ? blockNamer->generic("or_true") : mangler.block("or_true");
+        std::string rhsLbl = blockNamer ? blockNamer->generic("or_rhs") : mangler.block("or_rhs");
+        std::string doneLbl =
+            blockNamer ? blockNamer->generic("or_done") : mangler.block("or_done");
+        BasicBlock *trueBB = &builder->addBlock(*func, trueLbl);
+        BasicBlock *rhsBB = &builder->addBlock(*func, rhsLbl);
+        BasicBlock *doneBB = &builder->addBlock(*func, doneLbl);
+        curLoc = b.loc;
+        emitCBr(cond, trueBB, rhsBB);
+
+        cur = trueBB;
+        curLoc = b.loc;
+        emitStore(ilBoolTy(), addr, emitBoolConst(true));
+        curLoc = b.loc;
+        emitBr(doneBB);
+
+        cur = rhsBB;
+        RVal rhs = lowerExpr(*b.rhs);
+        Value rhsBool = toBool(rhs);
+        curLoc = b.loc;
+        emitStore(ilBoolTy(), addr, rhsBool);
+        curLoc = b.loc;
+        emitBr(doneBB);
+
+        cur = doneBB;
+        curLoc = b.loc;
+        Value res = emitLoad(ilBoolTy(), addr);
+        return {res, ilBoolTy()};
+    }
+
     Value addr = emitAlloca(1);
     if (b.op == BinaryExpr::Op::LogicalAnd)
     {
