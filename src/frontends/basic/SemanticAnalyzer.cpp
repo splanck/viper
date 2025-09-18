@@ -13,6 +13,7 @@
 #include <sstream>
 #include <typeindex>
 #include <vector>
+#include <utility>
 
 #include "frontends/basic/BuiltinRegistry.hpp"
 
@@ -134,7 +135,8 @@ static std::string conditionExprText(const Expr &expr)
 
 } // namespace
 
-void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
+template <typename Proc, typename BodyCallback>
+void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc, BodyCallback &&bodyCheck)
 {
     auto symSave = symbols_;
     auto typeSave = varTypes_;
@@ -143,25 +145,20 @@ void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
     auto labelRefSave = labelRefs_;
     auto forSave = forStack_;
     scopes_.pushScope();
-    for (const auto &p : f.params)
+    for (const auto &p : proc.params)
     {
         scopes_.bind(p.name, p.name);
         symbols_.insert(p.name);
-        SemanticAnalyzer::Type vt = SemanticAnalyzer::Type::Int;
-        if (p.type == ::il::frontends::basic::Type::Str)
-            vt = SemanticAnalyzer::Type::String;
-        else if (p.type == ::il::frontends::basic::Type::F64)
-            vt = SemanticAnalyzer::Type::Float;
-        else if (p.type == ::il::frontends::basic::Type::Bool)
-            vt = SemanticAnalyzer::Type::Bool;
-        varTypes_[p.name] = vt;
+        varTypes_[p.name] = astToSemanticType(p.type);
         if (p.is_array)
             arrays_[p.name] = -1;
     }
-    for (const auto &st : f.body)
+    for (const auto &st : proc.body)
         if (st)
             visitStmt(*st);
-    bool allPathsReturn = mustReturn(f.body);
+
+    std::forward<BodyCallback>(bodyCheck)(proc);
+
     scopes_.popScope();
     symbols_ = std::move(symSave);
     varTypes_ = std::move(typeSave);
@@ -169,51 +166,26 @@ void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
     labels_ = std::move(labelSave);
     labelRefs_ = std::move(labelRefSave);
     forStack_ = std::move(forSave);
-    if (!allPathsReturn)
-    {
-        std::string msg = "missing return in FUNCTION " + f.name;
+}
+
+void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
+{
+    analyzeProcedureCommon(f, [this](const FunctionDecl &func) {
+        if (mustReturn(func.body))
+            return;
+
+        std::string msg = "missing return in FUNCTION " + func.name;
         de.emit(il::support::Severity::Error,
                 "B1007",
-                f.endLoc.isValid() ? f.endLoc : f.loc,
+                func.endLoc.isValid() ? func.endLoc : func.loc,
                 3,
                 std::move(msg));
-    }
+    });
 }
 
 void SemanticAnalyzer::analyzeProc(const SubDecl &s)
 {
-    auto symSave = symbols_;
-    auto typeSave = varTypes_;
-    auto arrSave = arrays_;
-    auto labelSave = labels_;
-    auto labelRefSave = labelRefs_;
-    auto forSave = forStack_;
-    scopes_.pushScope();
-    for (const auto &p : s.params)
-    {
-        scopes_.bind(p.name, p.name);
-        symbols_.insert(p.name);
-        SemanticAnalyzer::Type vt = SemanticAnalyzer::Type::Int;
-        if (p.type == ::il::frontends::basic::Type::Str)
-            vt = SemanticAnalyzer::Type::String;
-        else if (p.type == ::il::frontends::basic::Type::F64)
-            vt = SemanticAnalyzer::Type::Float;
-        else if (p.type == ::il::frontends::basic::Type::Bool)
-            vt = SemanticAnalyzer::Type::Bool;
-        varTypes_[p.name] = vt;
-        if (p.is_array)
-            arrays_[p.name] = -1;
-    }
-    for (const auto &st : s.body)
-        if (st)
-            visitStmt(*st);
-    scopes_.popScope();
-    symbols_ = std::move(symSave);
-    varTypes_ = std::move(typeSave);
-    arrays_ = std::move(arrSave);
-    labels_ = std::move(labelSave);
-    labelRefs_ = std::move(labelRefSave);
-    forStack_ = std::move(forSave);
+    analyzeProcedureCommon(s, [](const SubDecl &) {});
 }
 
 /// @brief Check whether a sequence of statements guarantees a return value.
