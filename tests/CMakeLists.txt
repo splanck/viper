@@ -657,6 +657,12 @@ add_test(NAME basic_to_il_boolean_not COMMAND ${CMAKE_COMMAND}
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/il/boolean_not.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 
+add_test(NAME basic_to_il_boolean_andalso COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/src/boolean_andalso.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/il/boolean_andalso.il
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
+
 add_test(NAME basic_to_il_conversions COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
   -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/conversions.bas
