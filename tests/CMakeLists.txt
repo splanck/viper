@@ -36,6 +36,10 @@ add_executable(test_irbuilder_call_ret unit/test_irbuilder_call_ret.cpp)
 target_link_libraries(test_irbuilder_call_ret PRIVATE il_core il_build support)
 add_test(NAME test_irbuilder_call_ret COMMAND test_irbuilder_call_ret)
 
+add_executable(test_irbuilder_call_unknown unit/test_irbuilder_call_unknown.cpp)
+target_link_libraries(test_irbuilder_call_unknown PRIVATE il_core il_build support)
+add_test(NAME test_irbuilder_call_unknown COMMAND test_irbuilder_call_unknown)
+
 add_executable(test_il_roundtrip unit/test_il_roundtrip.cpp)
 target_link_libraries(test_il_roundtrip PRIVATE il_core il_io il_verify support)
 target_compile_definitions(test_il_roundtrip PRIVATE EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/examples" ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/tests/il/roundtrip")
