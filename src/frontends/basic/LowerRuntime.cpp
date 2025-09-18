@@ -5,11 +5,25 @@
 // Links: docs/class-catalog.md
 
 #include "frontends/basic/Lowerer.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
+#include <cassert>
+#include <string>
+#include <string_view>
 
 using namespace il::core;
 
 namespace il::frontends::basic
 {
+
+namespace
+{
+void declareRuntimeExtern(build::IRBuilder &b, std::string_view name)
+{
+    const auto *sig = il::runtime::findRuntimeSignature(name);
+    assert(sig && "runtime signature missing from registry");
+    b.addExtern(std::string(name), sig->retType, sig->paramTypes);
+}
+} // namespace
 
 // Purpose: declare required runtime.
 // Parameters: build::IRBuilder &b.
@@ -17,106 +31,91 @@ namespace il::frontends::basic
 // Side effects: may modify lowering state or emit IL.
 void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
 {
-    using Type = il::core::Type;
-    b.addExtern("rt_print_str", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
-    b.addExtern("rt_print_i64", Type(Type::Kind::Void), {Type(Type::Kind::I64)});
-    b.addExtern("rt_print_f64", Type(Type::Kind::Void), {Type(Type::Kind::F64)});
-    b.addExtern("rt_len", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
-    b.addExtern("rt_substr",
-                Type(Type::Kind::Str),
-                {Type(Type::Kind::Str), Type(Type::Kind::I64), Type(Type::Kind::I64)});
+    declareRuntimeExtern(b, "rt_print_str");
+    declareRuntimeExtern(b, "rt_print_i64");
+    declareRuntimeExtern(b, "rt_print_f64");
+    declareRuntimeExtern(b, "rt_len");
+    declareRuntimeExtern(b, "rt_substr");
     if (needRtConcat)
-        b.addExtern(
-            "rt_concat", Type(Type::Kind::Str), {Type(Type::Kind::Str), Type(Type::Kind::Str)});
+        declareRuntimeExtern(b, "rt_concat");
     if (boundsChecks)
-        b.addExtern("rt_trap", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
+        declareRuntimeExtern(b, "rt_trap");
     if (needInputLine)
-        b.addExtern("rt_input_line", Type(Type::Kind::Str), {});
+        declareRuntimeExtern(b, "rt_input_line");
     if (needRtToInt)
-        b.addExtern("rt_to_int", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
+        declareRuntimeExtern(b, "rt_to_int");
     if (needRtIntToStr)
-        b.addExtern("rt_int_to_str", Type(Type::Kind::Str), {Type(Type::Kind::I64)});
+        declareRuntimeExtern(b, "rt_int_to_str");
     if (needRtF64ToStr)
-        b.addExtern("rt_f64_to_str", Type(Type::Kind::Str), {Type(Type::Kind::F64)});
+        declareRuntimeExtern(b, "rt_f64_to_str");
     if (needAlloc)
-        b.addExtern("rt_alloc", Type(Type::Kind::Ptr), {Type(Type::Kind::I64)});
+        declareRuntimeExtern(b, "rt_alloc");
     if (needRtLeft)
-        b.addExtern(
-            "rt_left", Type(Type::Kind::Str), {Type(Type::Kind::Str), Type(Type::Kind::I64)});
+        declareRuntimeExtern(b, "rt_left");
     if (needRtRight)
-        b.addExtern(
-            "rt_right", Type(Type::Kind::Str), {Type(Type::Kind::Str), Type(Type::Kind::I64)});
+        declareRuntimeExtern(b, "rt_right");
     if (needRtMid2)
-        b.addExtern(
-            "rt_mid2", Type(Type::Kind::Str), {Type(Type::Kind::Str), Type(Type::Kind::I64)});
+        declareRuntimeExtern(b, "rt_mid2");
     if (needRtMid3)
-        b.addExtern("rt_mid3",
-                    Type(Type::Kind::Str),
-                    {Type(Type::Kind::Str), Type(Type::Kind::I64), Type(Type::Kind::I64)});
+        declareRuntimeExtern(b, "rt_mid3");
     if (needRtInstr2)
-        b.addExtern(
-            "rt_instr2", Type(Type::Kind::I64), {Type(Type::Kind::Str), Type(Type::Kind::Str)});
+        declareRuntimeExtern(b, "rt_instr2");
     if (needRtInstr3)
-        b.addExtern("rt_instr3",
-                    Type(Type::Kind::I64),
-                    {Type(Type::Kind::I64), Type(Type::Kind::Str), Type(Type::Kind::Str)});
+        declareRuntimeExtern(b, "rt_instr3");
     if (needRtLtrim)
-        b.addExtern("rt_ltrim", Type(Type::Kind::Str), {Type(Type::Kind::Str)});
+        declareRuntimeExtern(b, "rt_ltrim");
     if (needRtRtrim)
-        b.addExtern("rt_rtrim", Type(Type::Kind::Str), {Type(Type::Kind::Str)});
+        declareRuntimeExtern(b, "rt_rtrim");
     if (needRtTrim)
-        b.addExtern("rt_trim", Type(Type::Kind::Str), {Type(Type::Kind::Str)});
+        declareRuntimeExtern(b, "rt_trim");
     if (needRtUcase)
-        b.addExtern("rt_ucase", Type(Type::Kind::Str), {Type(Type::Kind::Str)});
+        declareRuntimeExtern(b, "rt_ucase");
     if (needRtLcase)
-        b.addExtern("rt_lcase", Type(Type::Kind::Str), {Type(Type::Kind::Str)});
+        declareRuntimeExtern(b, "rt_lcase");
     if (needRtChr)
-        b.addExtern("rt_chr", Type(Type::Kind::Str), {Type(Type::Kind::I64)});
+        declareRuntimeExtern(b, "rt_chr");
     if (needRtAsc)
-        b.addExtern("rt_asc", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
+        declareRuntimeExtern(b, "rt_asc");
 
     for (RuntimeFn fn : runtimeOrder)
     {
         switch (fn)
         {
             case RuntimeFn::Sqrt:
-                b.addExtern("rt_sqrt", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+                declareRuntimeExtern(b, "rt_sqrt");
                 break;
             case RuntimeFn::AbsI64:
-                b.addExtern("rt_abs_i64", Type(Type::Kind::I64), {Type(Type::Kind::I64)});
+                declareRuntimeExtern(b, "rt_abs_i64");
                 break;
             case RuntimeFn::AbsF64:
-                b.addExtern("rt_abs_f64", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+                declareRuntimeExtern(b, "rt_abs_f64");
                 break;
             case RuntimeFn::Floor:
-                b.addExtern("rt_floor", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+                declareRuntimeExtern(b, "rt_floor");
                 break;
             case RuntimeFn::Ceil:
-                b.addExtern("rt_ceil", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+                declareRuntimeExtern(b, "rt_ceil");
                 break;
             case RuntimeFn::Sin:
-                b.addExtern("rt_sin", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+                declareRuntimeExtern(b, "rt_sin");
                 break;
             case RuntimeFn::Cos:
-                b.addExtern("rt_cos", Type(Type::Kind::F64), {Type(Type::Kind::F64)});
+                declareRuntimeExtern(b, "rt_cos");
                 break;
             case RuntimeFn::Pow:
-                b.addExtern("rt_pow",
-                            Type(Type::Kind::F64),
-                            {Type(Type::Kind::F64), Type(Type::Kind::F64)});
+                declareRuntimeExtern(b, "rt_pow");
                 break;
             case RuntimeFn::RandomizeI64:
-                b.addExtern("rt_randomize_i64", Type(Type::Kind::Void), {Type(Type::Kind::I64)});
+                declareRuntimeExtern(b, "rt_randomize_i64");
                 break;
             case RuntimeFn::Rnd:
-                b.addExtern("rt_rnd", Type(Type::Kind::F64), {});
+                declareRuntimeExtern(b, "rt_rnd");
                 break;
         }
     }
 
     if (needRtStrEq)
-        b.addExtern(
-            "rt_str_eq", Type(Type::Kind::I1), {Type(Type::Kind::Str), Type(Type::Kind::Str)});
+        declareRuntimeExtern(b, "rt_str_eq");
 }
 
 // Purpose: track runtime.
