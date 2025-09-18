@@ -835,6 +835,18 @@ add_test(NAME basic_semantics_boolean_constfold COMMAND ${CMAKE_COMMAND}
   -DEXPECT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/test_boolean_constfold.expect
   -P ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/check_expect.cmake)
 
+add_test(NAME basic_boolean_truth COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/integration/basic_boolean_truth.bas
+  -DEXPECT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/integration/basic_boolean_truth.expect
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/check_expect.cmake)
+
+add_test(NAME basic_boolean_shortcircuit COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/integration/basic_shortcircuit.bas
+  -DEXPECT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/integration/basic_shortcircuit.expect
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/basic/semantics/check_expect.cmake)
+
 add_test(NAME basic_boolean_andalso_short COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
   -DBAS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/integration/basic_boolean_andalso_short.bas
