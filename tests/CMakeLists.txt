@@ -491,6 +491,10 @@ add_executable(test_vm_addr_of unit/test_vm_addr_of.cpp)
 target_link_libraries(test_vm_addr_of PRIVATE il_io il_vm support)
 add_test(NAME test_vm_addr_of COMMAND test_vm_addr_of)
 
+add_executable(test_vm_opcode_dispatch unit/test_vm_opcode_dispatch.cpp)
+target_link_libraries(test_vm_opcode_dispatch PRIVATE il_io il_vm support)
+add_test(NAME test_vm_opcode_dispatch COMMAND test_vm_opcode_dispatch)
+
 add_executable(test_vm_normalize_path unit/test_vm_normalize_path.cpp)
 target_link_libraries(test_vm_normalize_path PRIVATE VMTrace)
 add_test(NAME test_vm_normalize_path COMMAND test_vm_normalize_path)
