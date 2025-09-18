@@ -67,6 +67,12 @@ class Parser
     /// @return IF statement node.
     StmtPtr parseIf(int line);
 
+    /// @brief Parse the body of a loop terminated by @p terminator.
+    /// @param terminator Token that ends the loop (e.g., WEND or NEXT).
+    /// @param lineOut Optional pointer receiving the terminator's line number.
+    /// @param dst Destination vector populated with parsed statements.
+    void parseLoopBody(TokenKind terminator, int *lineOut, std::vector<StmtPtr> &dst);
+
     /// @brief Parse a WHILE loop.
     /// @return WHILE statement node.
     StmtPtr parseWhile();
