@@ -221,6 +221,8 @@ class Lowerer
     bool boundsChecks{false};
     unsigned boundsCheckId{0};
 
+    Value *boolBranchSlotPtr{nullptr};
+
     // runtime requirement tracking
     bool needInputLine{false};
     bool needRtToInt{false};

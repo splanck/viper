@@ -69,6 +69,45 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
 {
     RVal lhs = lowerExpr(*b.lhs);
     curLoc = b.loc;
+
+    if (b.op == BinaryExpr::Op::LogicalOr)
+    {
+        if (auto *rhsBool = dynamic_cast<const BoolExpr *>(b.rhs.get()); rhsBool && !rhsBool->value)
+        {
+            Value cond = lhs.value;
+            if (lhs.type.kind != Type::Kind::I1)
+            {
+                curLoc = b.loc;
+                cond = emitUnary(Opcode::Trunc1, ilBoolTy(), cond);
+            }
+
+            BasicBlock *origin = cur;
+            BasicBlock *thenBlk = nullptr;
+            BasicBlock *elseBlk = nullptr;
+            Value slot;
+            Value *prevSlotPtr = boolBranchSlotPtr;
+            boolBranchSlotPtr = &slot;
+            IlValue result = emitBoolFromBranches(
+                [&]() {
+                    thenBlk = cur;
+                    curLoc = b.loc;
+                    emitStore(ilBoolTy(), slot, emitBoolConst(true));
+                },
+                [&]() {
+                    elseBlk = cur;
+                    curLoc = b.loc;
+                    emitStore(ilBoolTy(), slot, emitBoolConst(false));
+                });
+            boolBranchSlotPtr = prevSlotPtr;
+            BasicBlock *joinBlk = cur;
+            cur = origin;
+            curLoc = b.loc;
+            emitCBr(cond, thenBlk, elseBlk);
+            cur = joinBlk;
+            return {result, ilBoolTy()};
+        }
+    }
+
     Value addr = emitAlloca(1);
     if (b.op == BinaryExpr::Op::LogicalAndShort || b.op == BinaryExpr::Op::LogicalAnd)
     {
