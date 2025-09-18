@@ -59,12 +59,7 @@ Module Lowerer::lowerProgram(const Program &prog)
     builder = &b;
 
     mangler = NameMangler();
-    lineBlocks.clear();
-    varSlots.clear();
-    arrayLenSlots.clear();
-    varTypes.clear();
-    strings.clear();
-    arrays.clear();
+    ctx.beginProgram(b);
     boundsCheckId = 0;
 
     needInputLine = false;
@@ -116,7 +111,7 @@ void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
     {
         if (auto *v = dynamic_cast<const VarExpr *>(&e))
         {
-            vars.insert(v->name);
+            ctx.registerVariable(v->name);
         }
         else if (auto *u = dynamic_cast<const UnaryExpr *>(&e))
         {
@@ -139,8 +134,7 @@ void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
         }
         else if (auto *a = dynamic_cast<const ArrayExpr *>(&e))
         {
-            vars.insert(a->name);
-            arrays.insert(a->name);
+            ctx.markArray(a->name);
             ex(*a->index);
         }
     };
@@ -184,7 +178,7 @@ void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
         }
         else if (auto *f = dynamic_cast<const ForStmt *>(&s))
         {
-            vars.insert(f->var);
+            ctx.registerVariable(f->var);
             ex(*f->start);
             ex(*f->end);
             if (f->step)
@@ -194,15 +188,15 @@ void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
         }
         else if (auto *inp = dynamic_cast<const InputStmt *>(&s))
         {
-            vars.insert(inp->var);
+            ctx.registerVariable(inp->var);
         }
         else if (auto *d = dynamic_cast<const DimStmt *>(&s))
         {
-            vars.insert(d->name); // DIM locals become stack slots in entry
-            varTypes[d->name] = d->type;
+            ctx.registerVariable(d->name); // DIM locals become stack slots in entry
+            ctx.recordVarType(d->name, d->type);
             if (d->isArray)
             {
-                arrays.insert(d->name);
+                ctx.markArray(d->name);
                 if (d->size)
                     ex(*d->size);
             }
@@ -245,6 +239,7 @@ void Lowerer::lowerProcedure(const std::string &name,
 
     Function &f = builder->startFunction(name, config.retType, irParams);
     func = &f;
+    ctx.bindFunction(f);
 
     blockNamer = std::make_unique<BlockNamer>(name);
 
@@ -253,15 +248,13 @@ void Lowerer::lowerProcedure(const std::string &name,
     for (size_t i = 0; i < params.size(); ++i)
         mangler.nextTemp();
 
-    std::vector<int> lines;
-    lines.reserve(body.size());
     for (const auto &stmt : body)
     {
         if (blockNamer)
             builder->addBlock(f, blockNamer->line(stmt->line));
         else
             builder->addBlock(f, mangler.block("L" + std::to_string(stmt->line) + "_" + name));
-        lines.push_back(stmt->line);
+        ctx.registerLineBlock(stmt->line, f.blocks.size() - 1);
     }
     fnExit = f.blocks.size();
     if (blockNamer)
@@ -269,41 +262,37 @@ void Lowerer::lowerProcedure(const std::string &name,
     else
         builder->addBlock(f, mangler.block("ret_" + name));
 
-    for (size_t i = 0; i < lines.size(); ++i)
-        lineBlocks[lines[i]] = i + 1;
-
     cur = &f.blocks.front();
     materializeParams(params);
 
-    for (const auto &v : vars)
+    for (const auto &v : ctx.variables())
     {
         if (paramNames.count(v))
             continue;
         curLoc = {};
-        if (arrays.count(v))
+        if (ctx.arrays().count(v))
         {
             Value slot = emitAlloca(8);
-            varSlots[v] = slot.id;
+            ctx.recordVarSlot(v, slot.id);
             continue;
         }
         bool isBoolVar = false;
-        auto itType = varTypes.find(v);
-        if (itType != varTypes.end() && itType->second == AstType::Bool)
+        if (auto ty = ctx.lookupVarType(v); ty && *ty == AstType::Bool)
             isBoolVar = true;
         Value slot = emitAlloca(isBoolVar ? 1 : 8);
-        varSlots[v] = slot.id;
+        ctx.recordVarSlot(v, slot.id);
         if (isBoolVar)
             emitStore(ilBoolTy(), slot, emitBoolConst(false));
     }
     if (boundsChecks)
     {
-        for (const auto &a : arrays)
+        for (const auto &a : ctx.arrays())
         {
             if (paramNames.count(a))
                 continue;
             curLoc = {};
             Value slot = emitAlloca(8);
-            arrayLenSlots[a] = slot.id;
+            ctx.recordArrayLengthSlot(a, slot.id);
         }
     }
 
@@ -316,17 +305,21 @@ void Lowerer::lowerProcedure(const std::string &name,
     }
 
     curLoc = {};
-    emitBr(&f.blocks[lineBlocks[body.front()->line]]);
+    BasicBlock *first = ctx.lookupLineBlock(body.front()->line);
+    assert(first && "missing block for first statement");
+    emitBr(first);
 
     for (size_t i = 0; i < body.size(); ++i)
     {
-        cur = &f.blocks[lineBlocks[body[i]->line]];
+        cur = ctx.lookupLineBlock(body[i]->line);
+        assert(cur && "missing block for statement");
         lowerStmt(*body[i]);
         if (cur->terminated)
             break;
         BasicBlock *next = (i + 1 < body.size())
-                               ? &f.blocks[lineBlocks[body[i + 1]->line]]
+                               ? ctx.lookupLineBlock(body[i + 1]->line)
                                : &f.blocks[fnExit];
+        assert(next && "missing successor block");
         emitBr(next);
     }
 
@@ -362,7 +355,7 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
 
     ProcedureConfig config;
     config.retType = coreTypeForAstType(decl.ret);
-    config.postCollect = [&]() { varTypes[decl.name] = decl.ret; };
+    config.postCollect = [&]() { ctx.recordVarType(decl.name, decl.ret); };
     config.emitEmptyBody = [&]() { emitRet(defaultRet()); };
     config.emitFinalReturn = [&]() { emitRet(defaultRet()); };
 
@@ -390,12 +383,7 @@ void Lowerer::lowerSubDecl(const SubDecl &decl)
 // Side effects: may modify lowering state or emit IL.
 void Lowerer::resetLoweringState()
 {
-    vars.clear();
-    arrays.clear();
-    varSlots.clear();
-    arrayLenSlots.clear();
-    varTypes.clear();
-    lineBlocks.clear();
+    ctx.beginProcedure();
     boundsCheckId = 0;
 }
 
@@ -412,13 +400,13 @@ void Lowerer::materializeParams(const std::vector<Param> &params)
         const auto &p = params[i];
         bool isBoolParam = !p.is_array && p.type == AstType::Bool;
         Value slot = emitAlloca(isBoolParam ? 1 : 8);
-        varSlots[p.name] = slot.id;
-        varTypes[p.name] = p.type;
+        ctx.recordVarSlot(p.name, slot.id);
+        ctx.recordVarType(p.name, p.type);
         il::core::Type ty = func->params[i].type;
         Value incoming = Value::temp(func->params[i].id);
         emitStore(ty, slot, incoming);
         if (p.is_array)
-            arrays.insert(p.name);
+            ctx.markArray(p.name);
     }
 }
 

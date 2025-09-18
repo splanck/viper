@@ -7,6 +7,7 @@
 #pragma once
 
 #include "frontends/basic/AST.hpp"
+#include "frontends/basic/LoweringContext.hpp"
 #include "frontends/basic/NameMangler.hpp"
 #include "il/build/IRBuilder.hpp"
 #include "il/core/Module.hpp"
@@ -211,13 +212,7 @@ class Lowerer
     BasicBlock *cur{nullptr};
     size_t fnExit{0};
     NameMangler mangler;
-    std::unordered_map<int, size_t> lineBlocks;
-    std::unordered_map<std::string, unsigned> varSlots;
-    std::unordered_map<std::string, unsigned> arrayLenSlots;
-    std::unordered_map<std::string, AstType> varTypes;
-    std::unordered_map<std::string, std::string> strings;
-    std::unordered_set<std::string> vars;
-    std::unordered_set<std::string> arrays;
+    LoweringContext ctx;
     il::support::SourceLoc curLoc{}; ///< current source location for emitted IR
     bool boundsChecks{false};
     unsigned boundsCheckId{0};

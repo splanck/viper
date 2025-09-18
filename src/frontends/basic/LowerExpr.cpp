@@ -28,15 +28,14 @@ namespace il::frontends::basic
 Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v)
 {
     curLoc = v.loc;
-    auto it = varSlots.find(v.name);
-    assert(it != varSlots.end());
-    Value ptr = Value::temp(it->second);
-    bool isArray = arrays.count(v.name);
+    auto slotId = ctx.lookupVarSlot(v.name);
+    assert(slotId && "variable slot missing");
+    Value ptr = Value::temp(*slotId);
+    bool isArray = ctx.arrays().count(v.name);
     bool isStr = !v.name.empty() && v.name.back() == '$';
     bool isF64 = !v.name.empty() && v.name.back() == '#';
     bool isBoolVar = false;
-    auto typeIt = varTypes.find(v.name);
-    if (typeIt != varTypes.end() && typeIt->second == AstType::Bool)
+    if (auto ty = ctx.lookupVarType(v.name); ty && *ty == AstType::Bool)
         isBoolVar = true;
     Type ty = isArray ? Type(Type::Kind::Ptr)
                       : (isStr ? Type(Type::Kind::Str)

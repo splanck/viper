@@ -8,53 +8,124 @@
 #include "il/build/IRBuilder.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
+#include <cassert>
 
 namespace il::frontends::basic
 {
 
-/// Construct a lowering context for a BASIC function.
-/// @param builder IR builder used to create blocks and instructions.
-/// @param func Function that will receive lowered IR.
-LoweringContext::LoweringContext(build::IRBuilder &builder, core::Function &func)
-    : builder(builder), function(func)
+void LoweringContext::beginProgram(build::IRBuilder &b)
 {
+    builder = &b;
+    strings.clear();
+    nextStringId = 0;
+    beginProcedure();
 }
 
-/// Return stack slot name for BASIC variable @p name, creating one if needed.
-/// @param name BASIC variable identifier.
-/// @returns Unique slot label for the variable.
-std::string LoweringContext::getOrCreateSlot(const std::string &name)
+void LoweringContext::beginProcedure()
+{
+    function = nullptr;
+    varNames.clear();
+    arrayNames.clear();
+    varTypes.clear();
+    varSlots.clear();
+    arrayLenSlots.clear();
+    lineBlocks.clear();
+}
+
+void LoweringContext::bindFunction(core::Function &fn)
+{
+    function = &fn;
+}
+
+void LoweringContext::registerVariable(const std::string &name)
+{
+    varNames.insert(name);
+}
+
+void LoweringContext::markArray(const std::string &name)
+{
+    arrayNames.insert(name);
+    registerVariable(name);
+}
+
+void LoweringContext::recordVarType(const std::string &name, Type type)
+{
+    varTypes[name] = type;
+}
+
+std::optional<Type> LoweringContext::lookupVarType(const std::string &name) const
+{
+    auto it = varTypes.find(name);
+    if (it == varTypes.end())
+        return std::nullopt;
+    return it->second;
+}
+
+void LoweringContext::recordVarSlot(const std::string &name, unsigned slot)
+{
+    varSlots[name] = slot;
+}
+
+std::optional<unsigned> LoweringContext::lookupVarSlot(const std::string &name) const
 {
     auto it = varSlots.find(name);
-    if (it != varSlots.end())
-        return it->second;
-    std::string slot = "%" + name + "_slot";
-    varSlots[name] = slot;
-    return slot;
+    if (it == varSlots.end())
+        return std::nullopt;
+    return it->second;
 }
 
-/// Retrieve or create an IR block for BASIC line number @p line.
-/// @param line Line number in the source program.
-/// @returns Pointer to the corresponding basic block.
-core::BasicBlock *LoweringContext::getOrCreateBlock(int line)
+void LoweringContext::recordArrayLengthSlot(const std::string &name, unsigned slot)
 {
-    auto it = blocks.find(line);
-    if (it != blocks.end())
-        return it->second;
-    std::string label = mangler.block("L" + std::to_string(line));
-    core::BasicBlock &bb = builder.addBlock(function, label);
-    blocks[line] = &bb;
-    return &bb;
+    arrayLenSlots[name] = slot;
 }
 
-std::string LoweringContext::getOrAddString(const std::string &value)
+std::optional<unsigned> LoweringContext::lookupArrayLengthSlot(const std::string &name) const
+{
+    auto it = arrayLenSlots.find(name);
+    if (it == arrayLenSlots.end())
+        return std::nullopt;
+    return it->second;
+}
+
+void LoweringContext::registerLineBlock(int line, std::size_t blockIndex)
+{
+    lineBlocks[line] = blockIndex;
+}
+
+core::BasicBlock *LoweringContext::lookupLineBlock(int line) const
+{
+    auto it = lineBlocks.find(line);
+    if (it == lineBlocks.end())
+        return nullptr;
+    assert(function && "function must be bound before looking up blocks");
+    if (!function)
+        return nullptr;
+    auto idx = it->second;
+    if (idx >= function->blocks.size())
+        return nullptr;
+    return &function->blocks[idx];
+}
+
+std::string LoweringContext::internString(const std::string &value)
 {
     auto it = strings.find(value);
     if (it != strings.end())
         return it->second;
     std::string name = ".L" + std::to_string(nextStringId++);
+    assert(builder && "builder must be set before interning strings");
+    builder->addGlobalStr(name, value);
     strings[value] = name;
     return name;
+}
+
+const std::unordered_set<std::string> &LoweringContext::variables() const
+{
+    return varNames;
+}
+
+const std::unordered_set<std::string> &LoweringContext::arrays() const
+{
+    return arrayNames;
 }
 
 } // namespace il::frontends::basic

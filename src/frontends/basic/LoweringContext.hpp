@@ -5,9 +5,12 @@
 // Links: docs/class-catalog.md
 #pragma once
 
-#include "frontends/basic/NameMangler.hpp"
+#include "frontends/basic/AST.hpp"
+#include <cstddef>
+#include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace il
 {
@@ -33,48 +36,66 @@ namespace il::frontends::basic
 class LoweringContext
 {
   public:
-    /// @brief Create a context to lower into @p builder and populate @p func.
-    /// @ownership References are non-owning; caller must keep builder and
-    /// function alive for the lifetime of this context.
-    /// @notes Initializes name mangling and lookup tables used during lowering.
-    LoweringContext(build::IRBuilder &builder, core::Function &func);
+    /// @brief Reset state for lowering a new program and bind @p builder.
+    /// @ownership Builder is referenced but not owned.
+    void beginProgram(build::IRBuilder &builder);
 
-    /// @brief Get or create stack slot name for BASIC variable @p name.
-    std::string getOrCreateSlot(const std::string &name);
+    /// @brief Clear per-procedure state prior to discovering locals/blocks.
+    void beginProcedure();
 
-    /// @brief Get or create a block for the given BASIC line number.
-    core::BasicBlock *getOrCreateBlock(int line);
+    /// @brief Bind the function currently being lowered.
+    /// @ownership Function is referenced but not owned.
+    void bindFunction(core::Function &function);
 
-    /// @brief Get deterministic name for string literal @p value.
-    std::string getOrAddString(const std::string &value);
+    /// @brief Track that BASIC variable @p name exists in current procedure.
+    void registerVariable(const std::string &name);
+
+    /// @brief Mark BASIC array @p name for pointer/length storage.
+    void markArray(const std::string &name);
+
+    /// @brief Record the BASIC type associated with @p name.
+    void recordVarType(const std::string &name, Type type);
+
+    /// @brief Lookup previously recorded BASIC type for @p name.
+    std::optional<Type> lookupVarType(const std::string &name) const;
+
+    /// @brief Remember stack slot id @p slot for BASIC variable @p name.
+    void recordVarSlot(const std::string &name, unsigned slot);
+
+    /// @brief Lookup stack slot id previously recorded for @p name.
+    std::optional<unsigned> lookupVarSlot(const std::string &name) const;
+
+    /// @brief Remember array length slot id @p slot for BASIC array @p name.
+    void recordArrayLengthSlot(const std::string &name, unsigned slot);
+
+    /// @brief Lookup array length slot id for BASIC array @p name.
+    std::optional<unsigned> lookupArrayLengthSlot(const std::string &name) const;
+
+    /// @brief Map BASIC line number @p line to emitted IL block @p block.
+    void registerLineBlock(int line, std::size_t blockIndex);
+
+    /// @brief Retrieve block associated with BASIC line @p line if present.
+    core::BasicBlock *lookupLineBlock(int line) const;
+
+    /// @brief Deduplicate string literal @p value and ensure global emission.
+    std::string internString(const std::string &value);
+
+    /// @brief Access discovered scalar/array identifiers for current procedure.
+    const std::unordered_set<std::string> &variables() const;
+    const std::unordered_set<std::string> &arrays() const;
 
   private:
-    /// IR builder used to emit instructions and blocks. Non-owning reference.
-    build::IRBuilder &builder;
+    build::IRBuilder *builder{nullptr}; ///< Builder producing module IR.
+    core::Function *function{nullptr};  ///< Function currently being lowered.
 
-    /// Function currently being lowered. Non-owning reference to caller-owned
-    /// function; builder appends new blocks and instructions to it.
-    core::Function &function;
-
-    /// Generates deterministic symbol names for variables and strings. Owned by
-    /// the context and lives for its entire duration.
-    NameMangler mangler;
-
-    /// Mapping from BASIC variable names to their stack slot identifiers. Owns
-    /// the strings it stores but not the variables they represent.
-    std::unordered_map<std::string, std::string> varSlots;
-
-    /// BASIC line number to IL basic block mapping. Pointers refer to blocks
-    /// owned by @ref function.
-    std::unordered_map<int, core::BasicBlock *> blocks;
-
-    /// Deduplicated string literals mapped to generated symbol names. Owns
-    /// copies of the literal values.
-    std::unordered_map<std::string, std::string> strings;
-
-    /// Monotonic counter used to create unique names for string literals.
-    /// Lifetime tied to this context instance.
-    unsigned nextStringId{0};
+    std::unordered_set<std::string> varNames; ///< All variables seen.
+    std::unordered_set<std::string> arrayNames; ///< Array identifiers.
+    std::unordered_map<std::string, Type> varTypes; ///< BASIC types per var.
+    std::unordered_map<std::string, unsigned> varSlots; ///< Stack slot ids.
+    std::unordered_map<std::string, unsigned> arrayLenSlots; ///< Array lengths.
+    std::unordered_map<int, std::size_t> lineBlocks; ///< Line to block index.
+    std::unordered_map<std::string, std::string> strings; ///< Literal cache.
+    unsigned nextStringId{0}; ///< Counter for string globals.
 };
 
 } // namespace il::frontends::basic

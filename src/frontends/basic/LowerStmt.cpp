@@ -82,13 +82,12 @@ void Lowerer::lowerLet(const LetStmt &stmt)
     RVal v = lowerExpr(*stmt.expr);
     if (auto *var = dynamic_cast<const VarExpr *>(stmt.target.get()))
     {
-        auto it = varSlots.find(var->name);
-        assert(it != varSlots.end());
+        auto slotId = ctx.lookupVarSlot(var->name);
+        assert(slotId && "variable slot missing");
         bool isStr = !var->name.empty() && var->name.back() == '$';
         bool isF64 = !var->name.empty() && var->name.back() == '#';
         bool isBool = false;
-        auto typeIt = varTypes.find(var->name);
-        if (typeIt != varTypes.end() && typeIt->second == AstType::Bool)
+        if (auto ty = ctx.lookupVarType(var->name); ty && *ty == AstType::Bool)
             isBool = true;
         if (!isStr && !isF64 && !isBool && v.type.kind == Type::Kind::I1)
         {
@@ -113,7 +112,7 @@ void Lowerer::lowerLet(const LetStmt &stmt)
         Type ty = isStr ? Type(Type::Kind::Str)
                          : (isF64 ? Type(Type::Kind::F64)
                                   : (isBool ? ilBoolTy() : Type(Type::Kind::I64)));
-        emitStore(ty, Value::temp(it->second), v.value);
+        emitStore(ty, Value::temp(*slotId), v.value);
     }
     else if (auto *arr = dynamic_cast<const ArrayExpr *>(stmt.target.get()))
     {
@@ -507,9 +506,9 @@ void Lowerer::lowerFor(const ForStmt &stmt)
     RVal start = lowerExpr(*stmt.start);
     RVal end = lowerExpr(*stmt.end);
     RVal step = stmt.step ? lowerExpr(*stmt.step) : RVal{Value::constInt(1), Type(Type::Kind::I64)};
-    auto it = varSlots.find(stmt.var);
-    assert(it != varSlots.end());
-    Value slot = Value::temp(it->second);
+    auto slotId = ctx.lookupVarSlot(stmt.var);
+    assert(slotId && "FOR variable slot missing");
+    Value slot = Value::temp(*slotId);
     curLoc = stmt.loc;
     emitStore(Type(Type::Kind::I64), slot, start.value);
 
@@ -539,11 +538,10 @@ void Lowerer::lowerNext(const NextStmt &) {}
 // BlockNamer.
 void Lowerer::lowerGoto(const GotoStmt &stmt)
 {
-    auto it = lineBlocks.find(stmt.target);
-    if (it != lineBlocks.end())
+    if (BasicBlock *target = ctx.lookupLineBlock(stmt.target))
     {
         curLoc = stmt.loc;
-        emitBr(&func->blocks[it->second]);
+        emitBr(target);
     }
 }
 
@@ -575,7 +573,9 @@ void Lowerer::lowerInput(const InputStmt &stmt)
     }
     Value s = emitCallRet(Type(Type::Kind::Str), "rt_input_line", {});
     bool isStr = !stmt.var.empty() && stmt.var.back() == '$';
-    Value target = Value::temp(varSlots[stmt.var]);
+    auto slotId = ctx.lookupVarSlot(stmt.var);
+    assert(slotId && "input target slot missing");
+    Value target = Value::temp(*slotId);
     if (isStr)
     {
         emitStore(Type(Type::Kind::Str), target, s);
@@ -597,14 +597,13 @@ void Lowerer::lowerDim(const DimStmt &stmt)
     curLoc = stmt.loc;
     Value bytes = emitBinary(Opcode::Mul, Type(Type::Kind::I64), sz.value, Value::constInt(8));
     Value base = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {bytes});
-    auto it = varSlots.find(stmt.name);
-    assert(it != varSlots.end());
-    emitStore(Type(Type::Kind::Ptr), Value::temp(it->second), base);
+    auto slotId = ctx.lookupVarSlot(stmt.name);
+    assert(slotId && "DIM target slot missing");
+    emitStore(Type(Type::Kind::Ptr), Value::temp(*slotId), base);
     if (boundsChecks)
     {
-        auto lenIt = arrayLenSlots.find(stmt.name);
-        if (lenIt != arrayLenSlots.end())
-            emitStore(Type(Type::Kind::I64), Value::temp(lenIt->second), sz.value);
+        if (auto lenSlot = ctx.lookupArrayLengthSlot(stmt.name))
+            emitStore(Type(Type::Kind::I64), Value::temp(*lenSlot), sz.value);
     }
 }
 

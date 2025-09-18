@@ -34,65 +34,58 @@ void Lowerer::emitProgram(const Program &prog)
     for (const auto &s : prog.main)
         mainStmts.push_back(s.get());
 
-    lineBlocks.clear();
+    ctx.beginProcedure();
 
     Function &f = b.startFunction("main", Type(Type::Kind::I64), {});
     func = &f;
+    ctx.bindFunction(f);
 
     b.addBlock(f, "entry");
 
-    std::vector<int> lines;
-    lines.reserve(mainStmts.size());
     for (const auto *stmt : mainStmts)
     {
         b.addBlock(f, mangler.block("L" + std::to_string(stmt->line)));
-        lines.push_back(stmt->line);
+        ctx.registerLineBlock(stmt->line, f.blocks.size() - 1);
     }
     fnExit = f.blocks.size();
     b.addBlock(f, mangler.block("exit"));
 
-    for (size_t i = 0; i < lines.size(); ++i)
-        lineBlocks[lines[i]] = i + 1;
-
-    vars.clear();
-    arrays.clear();
-    varTypes.clear();
     collectVars(mainStmts);
 
     // allocate slots in entry
-    BasicBlock *entry = &f.blocks.front();
-    cur = entry;
-    for (const auto &v : vars)
+    cur = &f.blocks.front();
+    for (const auto &v : ctx.variables())
     {
         curLoc = {};
-        if (arrays.count(v))
+        if (ctx.arrays().count(v))
         {
             Value slot = emitAlloca(8);
-            varSlots[v] = slot.id; // Value::temp id
+            ctx.recordVarSlot(v, slot.id);
             continue;
         }
         bool isBoolVar = false;
-        auto itType = varTypes.find(v);
-        if (itType != varTypes.end() && itType->second == AstType::Bool)
+        if (auto ty = ctx.lookupVarType(v); ty && *ty == AstType::Bool)
             isBoolVar = true;
         Value slot = emitAlloca(isBoolVar ? 1 : 8);
-        varSlots[v] = slot.id; // Value::temp id
+        ctx.recordVarSlot(v, slot.id);
         if (isBoolVar)
             emitStore(ilBoolTy(), slot, emitBoolConst(false));
     }
     if (boundsChecks)
     {
-        for (const auto &a : arrays)
+        for (const auto &a : ctx.arrays())
         {
             curLoc = {};
             Value slot = emitAlloca(8);
-            arrayLenSlots[a] = slot.id;
+            ctx.recordArrayLengthSlot(a, slot.id);
         }
     }
     if (!mainStmts.empty())
     {
         curLoc = {};
-        emitBr(&f.blocks[lineBlocks[mainStmts.front()->line]]);
+        BasicBlock *first = ctx.lookupLineBlock(mainStmts.front()->line);
+        assert(first && "missing entry block for main statement");
+        emitBr(first);
     }
     else
     {
@@ -103,13 +96,15 @@ void Lowerer::emitProgram(const Program &prog)
     // lower statements sequentially
     for (size_t i = 0; i < mainStmts.size(); ++i)
     {
-        cur = &f.blocks[lineBlocks[mainStmts[i]->line]];
+        cur = ctx.lookupLineBlock(mainStmts[i]->line);
+        assert(cur && "missing block for main statement");
         lowerStmt(*mainStmts[i]);
         if (!cur->terminated)
         {
             BasicBlock *next = (i + 1 < mainStmts.size())
-                                   ? &f.blocks[lineBlocks[mainStmts[i + 1]->line]]
+                                   ? ctx.lookupLineBlock(mainStmts[i + 1]->line)
                                    : &f.blocks[fnExit];
+            assert(next && "missing successor block for main statement");
             curLoc = mainStmts[i]->loc;
             emitBr(next);
         }
@@ -179,17 +174,17 @@ Lowerer::IlValue Lowerer::emitBoolFromBranches(const std::function<void(Value)> 
 // Side effects: may modify lowering state or emit IL.
 Value Lowerer::lowerArrayAddr(const ArrayExpr &expr)
 {
-    auto it = varSlots.find(expr.name);
-    assert(it != varSlots.end());
-    Value slot = Value::temp(it->second);
+    auto slotId = ctx.lookupVarSlot(expr.name);
+    assert(slotId && "array base slot missing");
+    Value slot = Value::temp(*slotId);
     Value base = emitLoad(Type(Type::Kind::Ptr), slot);
     RVal idx = lowerExpr(*expr.index);
     curLoc = expr.loc;
     if (boundsChecks)
     {
-        auto lenIt = arrayLenSlots.find(expr.name);
-        assert(lenIt != arrayLenSlots.end());
-        Value len = emitLoad(Type(Type::Kind::I64), Value::temp(lenIt->second));
+        auto lenSlot = ctx.lookupArrayLengthSlot(expr.name);
+        assert(lenSlot && "array length slot missing");
+        Value len = emitLoad(Type(Type::Kind::I64), Value::temp(*lenSlot));
         Value neg = emitBinary(Opcode::SCmpLT, ilBoolTy(), idx.value, Value::constInt(0));
         Value ge = emitBinary(Opcode::SCmpGE, ilBoolTy(), idx.value, len);
         Value neg64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), neg);
@@ -449,13 +444,7 @@ void Lowerer::emitTrap()
 // Side effects: may modify lowering state or emit IL.
 std::string Lowerer::getStringLabel(const std::string &s)
 {
-    auto it = strings.find(s);
-    if (it != strings.end())
-        return it->second;
-    std::string name = ".L" + std::to_string(strings.size());
-    builder->addGlobalStr(name, s);
-    strings[s] = name;
-    return name;
+    return ctx.internString(s);
 }
 
 // Purpose: next temp id.
