@@ -6,11 +6,13 @@
 
 #include "il/verify/InstructionChecker.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/core/OpcodeInfo.hpp"
 #include "il/verify/Rule.hpp"
 
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 
@@ -18,6 +20,90 @@ using namespace il::core;
 
 namespace il::verify
 {
+
+bool verifyOpcodeSignature(const Function &fn,
+                           const BasicBlock &bb,
+                           const Instr &instr,
+                           std::ostream &err)
+{
+    const auto &info = getOpcodeInfo(instr.op);
+    bool ok = true;
+    auto emit = [&](const std::string &msg)
+    {
+        err << fn.name << ":" << bb.label << ": " << makeSnippet(instr) << ": " << msg << "\n";
+        ok = false;
+    };
+
+    const bool hasResult = instr.result.has_value();
+    switch (info.resultArity)
+    {
+        case ResultArity::None:
+            if (hasResult)
+                emit("unexpected result");
+            break;
+        case ResultArity::One:
+            if (!hasResult)
+                emit("missing result");
+            break;
+        case ResultArity::Optional:
+            break;
+    }
+
+    const size_t operandCount = instr.operands.size();
+    const bool variadic = isVariadicOperandCount(info.numOperandsMax);
+    if (operandCount < info.numOperandsMin || (!variadic && operandCount > info.numOperandsMax))
+    {
+        std::ostringstream ss;
+        if (info.numOperandsMin == info.numOperandsMax)
+        {
+            ss << "expected " << static_cast<unsigned>(info.numOperandsMin) << " operand";
+            if (info.numOperandsMin != 1)
+                ss << 's';
+        }
+        else if (variadic)
+        {
+            ss << "expected at least " << static_cast<unsigned>(info.numOperandsMin) << " operand";
+            if (info.numOperandsMin != 1)
+                ss << 's';
+        }
+        else
+        {
+            ss << "expected between " << static_cast<unsigned>(info.numOperandsMin) << " and "
+               << static_cast<unsigned>(info.numOperandsMax) << " operands";
+        }
+        emit(ss.str());
+    }
+
+    if (instr.labels.size() != info.numSuccessors)
+    {
+        std::ostringstream ss;
+        ss << "expected " << static_cast<unsigned>(info.numSuccessors) << " successor";
+        if (info.numSuccessors != 1)
+            ss << 's';
+        emit(ss.str());
+    }
+
+    if (instr.brArgs.size() > info.numSuccessors)
+    {
+        std::ostringstream ss;
+        ss << "expected at most " << static_cast<unsigned>(info.numSuccessors)
+           << " branch argument bundle";
+        if (info.numSuccessors != 1)
+            ss << 's';
+        emit(ss.str());
+    }
+    else if (!instr.brArgs.empty() && instr.brArgs.size() != info.numSuccessors)
+    {
+        std::ostringstream ss;
+        ss << "expected " << static_cast<unsigned>(info.numSuccessors) << " branch argument bundle";
+        if (info.numSuccessors != 1)
+            ss << 's';
+        ss << ", or none";
+        emit(ss.str());
+    }
+
+    return ok;
+}
 
 namespace
 {
@@ -31,17 +117,6 @@ struct Context
     TypeInference &types;
     std::ostream &err;
 };
-
-bool expectOperandCount(const Context &ctx, const Instr &instr, size_t expected)
-{
-    if (instr.operands.size() != expected)
-    {
-        ctx.err << ctx.fn.name << ":" << ctx.bb.label << ": " << makeSnippet(instr) << ": expected "
-                << expected << " operand" << (expected == 1 ? "" : "s") << "\n";
-        return false;
-    }
-    return true;
-}
 
 bool expectAllOperandType(const Context &ctx, const Instr &instr, Type::Kind kind)
 {
@@ -63,7 +138,7 @@ public:
 
     bool check(const Instr &instr) override
     {
-        bool ok = expectOperandCount(ctx_, instr, 1);
+        bool ok = true;
         if (instr.operands.size() < 1)
             return false;
         if (ctx_.types.valueType(instr.operands[0]).kind != Type::Kind::I64)
@@ -105,7 +180,7 @@ public:
 
     bool check(const Instr &instr) override
     {
-        bool ok = expectOperandCount(ctx_, instr, 2);
+        bool ok = true;
         if (instr.operands.size() < 2)
             return false;
         ok &= expectAllOperandType(ctx_, instr, operandKind_);
@@ -129,7 +204,7 @@ public:
 
     bool check(const Instr &instr) override
     {
-        bool ok = expectOperandCount(ctx_, instr, 1);
+        bool ok = true;
         if (instr.operands.size() < 1)
             return false;
         if (ctx_.types.valueType(instr.operands[0]).kind != operandKind_)
@@ -155,7 +230,7 @@ public:
 
     bool check(const Instr &instr) override
     {
-        bool ok = expectOperandCount(ctx_, instr, 2);
+        bool ok = true;
         if (instr.operands.size() < 2)
             return false;
         if (ctx_.types.valueType(instr.operands[0]).kind != Type::Kind::Ptr ||
@@ -180,7 +255,7 @@ public:
 
     bool check(const Instr &instr) override
     {
-        bool ok = expectOperandCount(ctx_, instr, 1);
+        bool ok = true;
         if (instr.operands.size() < 1)
             return false;
         if (instr.type.kind == Type::Kind::Void)
@@ -211,7 +286,7 @@ public:
 
     bool check(const Instr &instr) override
     {
-        bool ok = expectOperandCount(ctx_, instr, 2);
+        bool ok = true;
         if (instr.operands.size() < 2)
             return false;
         if (instr.type.kind == Type::Kind::Void)
