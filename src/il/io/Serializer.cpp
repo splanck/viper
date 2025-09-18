@@ -5,6 +5,12 @@
 // Links: docs/il-spec.md
 
 #include "il/io/Serializer.hpp"
+#include "il/core/BasicBlock.hpp"
+#include "il/core/Extern.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Global.hpp"
+#include "il/core/Instr.hpp"
+#include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/Value.hpp"
 #include <algorithm>

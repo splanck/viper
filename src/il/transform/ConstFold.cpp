@@ -5,7 +5,10 @@
 // Links: docs/class-catalog.md
 
 #include "il/transform/ConstFold.hpp"
+#include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
+#include "il/core/Module.hpp"
+#include "il/core/Value.hpp"
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>

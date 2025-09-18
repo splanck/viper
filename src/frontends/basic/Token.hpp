@@ -5,7 +5,7 @@
 // Links: docs/class-catalog.md
 #pragma once
 
-#include "support/source_manager.hpp"
+#include "support/source_location.hpp"
 #include <string>
 
 namespace il::frontends::basic

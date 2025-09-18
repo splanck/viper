@@ -1,5 +1,6 @@
 #include "support/arena.hpp"
 #include "support/diagnostics.hpp"
+#include "support/source_manager.hpp"
 #include "support/string_interner.hpp"
 #include <cassert>
 #include <cstdint>

@@ -4,6 +4,7 @@
 // @ownership SearchBar borrows TextBuffer, TextView, and Theme.
 
 #include "tui/widgets/search_bar.hpp"
+#include "tui/render/screen.hpp"
 
 namespace viper::tui::widgets
 {

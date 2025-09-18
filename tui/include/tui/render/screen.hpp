@@ -17,15 +17,8 @@ struct RGBA
     uint8_t a{255};
 };
 
-inline bool operator==(const RGBA &a, const RGBA &b)
-{
-    return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
-}
-
-inline bool operator!=(const RGBA &a, const RGBA &b)
-{
-    return !(a == b);
-}
+bool operator==(const RGBA &a, const RGBA &b);
+bool operator!=(const RGBA &a, const RGBA &b);
 
 /// @brief Attribute flags for styled cells.
 enum Attr : uint16_t
@@ -49,15 +42,8 @@ struct Style
     uint16_t attrs{0};
 };
 
-inline bool operator==(const Style &a, const Style &b)
-{
-    return a.fg == b.fg && a.bg == b.bg && a.attrs == b.attrs;
-}
-
-inline bool operator!=(const Style &a, const Style &b)
-{
-    return !(a == b);
-}
+bool operator==(const Style &a, const Style &b);
+bool operator!=(const Style &a, const Style &b);
 
 /// @brief Single character cell with style and width.
 struct Cell
@@ -67,15 +53,8 @@ struct Cell
     uint8_t width{1};
 };
 
-inline bool operator==(const Cell &a, const Cell &b)
-{
-    return a.ch == b.ch && a.width == b.width && a.style == b.style;
-}
-
-inline bool operator!=(const Cell &a, const Cell &b)
-{
-    return !(a == b);
-}
+bool operator==(const Cell &a, const Cell &b);
+bool operator!=(const Cell &a, const Cell &b);
 
 /// @brief 2D grid of styled cells with diff computation.
 class ScreenBuffer

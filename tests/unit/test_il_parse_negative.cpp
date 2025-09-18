@@ -4,6 +4,7 @@
 // Test owns all modules and buffers locally. Links: docs/il-spec.md
 
 #include "il/io/Parser.hpp"
+#include "il/core/Module.hpp"
 #include <cassert>
 #include <fstream>
 #include <sstream>

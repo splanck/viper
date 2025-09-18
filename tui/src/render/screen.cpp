@@ -10,6 +10,36 @@
 namespace viper::tui::render
 {
 
+bool operator==(const RGBA &a, const RGBA &b)
+{
+    return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+}
+
+bool operator!=(const RGBA &a, const RGBA &b)
+{
+    return !(a == b);
+}
+
+bool operator==(const Style &a, const Style &b)
+{
+    return a.fg == b.fg && a.bg == b.bg && a.attrs == b.attrs;
+}
+
+bool operator!=(const Style &a, const Style &b)
+{
+    return !(a == b);
+}
+
+bool operator==(const Cell &a, const Cell &b)
+{
+    return a.ch == b.ch && a.width == b.width && a.style == b.style;
+}
+
+bool operator!=(const Cell &a, const Cell &b)
+{
+    return !(a == b);
+}
+
 void ScreenBuffer::resize(int rows, int cols)
 {
     rows_ = rows;

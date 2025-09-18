@@ -5,8 +5,8 @@
 // Links: docs/il-spec.md
 #pragma once
 
-#include "il/core/Module.hpp"
-#include "support/source_manager.hpp"
+#include "il/core/fwd.hpp"
+#include "support/source_location.hpp"
 
 #include <string>
 #include <unordered_map>

@@ -5,6 +5,9 @@
 // Links: docs/il-spec.md
 
 #include "il/io/ModuleParser.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Global.hpp"
+#include "il/core/Module.hpp"
 
 #include "il/io/FunctionParser.hpp"
 #include "il/io/ParserUtil.hpp"
