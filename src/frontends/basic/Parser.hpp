@@ -9,10 +9,10 @@
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lexer.hpp"
+#include <array>
 #include <memory>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -45,7 +45,7 @@ class Parser
         StmtPtr (Parser::*with_line)(int) = nullptr; ///< Handler requiring line number.
     };
 
-    std::unordered_map<TokenKind, StmtHandler> stmtHandlers_; ///< Token to parser mapping.
+    std::array<StmtHandler, static_cast<std::size_t>(TokenKind::Count)> stmtHandlers_{}; ///< Token to parser mapping.
 
 #include "frontends/basic/Parser_Token.hpp"
 
