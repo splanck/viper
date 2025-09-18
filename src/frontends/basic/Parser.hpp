@@ -111,6 +111,12 @@ class Parser
     /// @param fn Function declaration to populate.
     void parseFunctionBody(FunctionDecl *fn);
 
+    /// @brief Parse a sequence of statements for a procedure-like declaration.
+    /// @param endKind Token that must follow END to terminate the body.
+    /// @param body Destination vector receiving parsed statements.
+    /// @return Location of the END keyword; invalid if the keyword is absent.
+    il::support::SourceLoc parseProcedureBody(TokenKind endKind, std::vector<StmtPtr> &body);
+
     /// @brief Parse a SUB definition including body.
     /// @return SUB statement node.
     StmtPtr parseSub();
