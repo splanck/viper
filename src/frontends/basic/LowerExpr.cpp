@@ -130,8 +130,54 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
         }
     }
 
+    auto toBool = [&](const RVal &val) {
+        Value v = val.value;
+        if (val.type.kind != Type::Kind::I1)
+        {
+            curLoc = b.loc;
+            v = emitUnary(Opcode::Trunc1, ilBoolTy(), v);
+        }
+        return v;
+    };
+
+    if (b.op == BinaryExpr::Op::LogicalAndShort)
+    {
+        Value addr = emitAlloca(1);
+        Value cond = toBool(lhs);
+        std::string thenLbl =
+            blockNamer ? blockNamer->generic("and_rhs") : mangler.block("and_rhs");
+        std::string elseLbl =
+            blockNamer ? blockNamer->generic("and_false") : mangler.block("and_false");
+        std::string doneLbl =
+            blockNamer ? blockNamer->generic("and_done") : mangler.block("and_done");
+        BasicBlock *thenBB = &builder->addBlock(*func, thenLbl);
+        BasicBlock *elseBB = &builder->addBlock(*func, elseLbl);
+        BasicBlock *doneBB = &builder->addBlock(*func, doneLbl);
+        curLoc = b.loc;
+        emitCBr(cond, thenBB, elseBB);
+
+        cur = thenBB;
+        RVal rhs = lowerExpr(*b.rhs);
+        Value rhsBool = toBool(rhs);
+        curLoc = b.loc;
+        emitStore(ilBoolTy(), addr, rhsBool);
+        curLoc = b.loc;
+        emitBr(doneBB);
+
+        cur = elseBB;
+        curLoc = b.loc;
+        emitStore(ilBoolTy(), addr, emitBoolConst(false));
+        curLoc = b.loc;
+        emitBr(doneBB);
+
+        cur = doneBB;
+        curLoc = b.loc;
+        Value res = emitLoad(ilBoolTy(), addr);
+        return {res, ilBoolTy()};
+    }
+
     Value addr = emitAlloca(1);
-    if (b.op == BinaryExpr::Op::LogicalAndShort || b.op == BinaryExpr::Op::LogicalAnd)
+    if (b.op == BinaryExpr::Op::LogicalAnd)
     {
         std::string rhsLbl = blockNamer ? blockNamer->generic("and_rhs") : mangler.block("and_rhs");
         std::string falseLbl =
