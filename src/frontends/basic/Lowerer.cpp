@@ -62,6 +62,7 @@ Module Lowerer::lowerProgram(const Program &prog)
     lineBlocks.clear();
     varSlots.clear();
     arrayLenSlots.clear();
+    varTypes.clear();
     strings.clear();
     arrays.clear();
     boundsCheckId = 0;
@@ -198,6 +199,7 @@ void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
         else if (auto *d = dynamic_cast<const DimStmt *>(&s))
         {
             vars.insert(d->name); // DIM locals become stack slots in entry
+            varTypes[d->name] = d->type;
             if (d->isArray)
             {
                 arrays.insert(d->name);
@@ -223,6 +225,7 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
     for (const auto &s : decl.body)
         bodyPtrs.push_back(s.get());
     collectVars(bodyPtrs);
+    varTypes[decl.name] = decl.ret;
 
     std::unordered_set<std::string> paramNames;
     std::vector<il::core::Param> params;
@@ -275,8 +278,20 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
         if (paramNames.count(v))
             continue;
         curLoc = {};
-        Value slot = emitAlloca(8);
+        if (arrays.count(v))
+        {
+            Value slot = emitAlloca(8);
+            varSlots[v] = slot.id;
+            continue;
+        }
+        bool isBoolVar = false;
+        auto itType = varTypes.find(v);
+        if (itType != varTypes.end() && itType->second == AstType::Bool)
+            isBoolVar = true;
+        Value slot = emitAlloca(isBoolVar ? 1 : 8);
         varSlots[v] = slot.id;
+        if (isBoolVar)
+            emitStore(ilBoolTy(), slot, emitBoolConst(false));
     }
     if (boundsChecks)
     {
@@ -379,8 +394,20 @@ void Lowerer::lowerSubDecl(const SubDecl &decl)
         if (paramNames.count(v))
             continue;
         curLoc = {};
-        Value slot = emitAlloca(8);
+        if (arrays.count(v))
+        {
+            Value slot = emitAlloca(8);
+            varSlots[v] = slot.id;
+            continue;
+        }
+        bool isBoolVar = false;
+        auto itType = varTypes.find(v);
+        if (itType != varTypes.end() && itType->second == AstType::Bool)
+            isBoolVar = true;
+        Value slot = emitAlloca(isBoolVar ? 1 : 8);
         varSlots[v] = slot.id;
+        if (isBoolVar)
+            emitStore(ilBoolTy(), slot, emitBoolConst(false));
     }
     if (boundsChecks)
     {
@@ -435,6 +462,7 @@ void Lowerer::resetLoweringState()
     arrays.clear();
     varSlots.clear();
     arrayLenSlots.clear();
+    varTypes.clear();
     lineBlocks.clear();
     boundsCheckId = 0;
 }
@@ -496,8 +524,10 @@ void Lowerer::materializeParams(const std::vector<Param> &params)
     for (size_t i = 0; i < params.size(); ++i)
     {
         const auto &p = params[i];
-        Value slot = emitAlloca(8);
+        bool isBoolParam = !p.is_array && p.type == AstType::Bool;
+        Value slot = emitAlloca(isBoolParam ? 1 : 8);
         varSlots[p.name] = slot.id;
+        varTypes[p.name] = p.type;
         il::core::Type ty = func->params[i].type;
         Value incoming = Value::temp(func->params[i].id);
         emitStore(ty, slot, incoming);
