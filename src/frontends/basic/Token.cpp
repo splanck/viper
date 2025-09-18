@@ -143,6 +143,8 @@ const char *tokenKindToString(TokenKind k)
             return ";";
         case TokenKind::Colon:
             return ":";
+        case TokenKind::Count:
+            break;
     }
     return "?";
 }
