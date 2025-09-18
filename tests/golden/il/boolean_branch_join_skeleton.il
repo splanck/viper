@@ -23,7 +23,7 @@ L20:
 L30:
   .loc 1 3 10
   %t1 = load i1, %t0
-  .loc 1 3 12
+  .loc 1 3 15
   %t2 = alloca 1
   .loc 1 3 12
   cbr %t1, bool_then, bool_else
