@@ -1,0 +1,4 @@
+WHILE 3.14
+  PRINT 1
+WEND
+END
