@@ -42,6 +42,30 @@ Declares a procedure with no return value. Parameter rules match those of
 [procedure definitions](lowering.md#procedure-definitions) and
 [procedure calls](lowering.md#procedure-calls).
 
+## BOOLEAN
+
+`BOOLEAN` values carry logical truth. The literals `TRUE` and `FALSE` (case
+insensitive) produce the canonical `BOOLEAN` constants and may be used anywhere
+an expression is expected.
+
+Boolean operators follow the precedence table below (higher rows bind more
+tightly):
+
+| Precedence | Operators         | Notes |
+|------------|-------------------|-------|
+| 1          | `NOT`              | Unary logical negation. |
+| 2          | `ANDALSO`, `AND`   | `ANDALSO` short-circuits; `AND` evaluates both operands. |
+| 3          | `ORELSE`, `OR`     | `ORELSE` short-circuits; `OR` evaluates both operands. |
+
+`ANDALSO` evaluates its right-hand operand only when the left-hand operand is
+`TRUE`. `ORELSE` evaluates its right-hand operand only when the left-hand
+operand is `FALSE`. The non-short-circuiting forms (`AND`, `OR`) always evaluate
+both operands.
+
+Conditions in `IF`, `WHILE`, and `UNTIL` statements must be `BOOLEAN`
+expressions. Numeric values do not implicitly convert to `BOOLEAN`; use
+comparisons (for example `X <> 0`) to derive explicit conditions.
+
 ## RETURN
 
 Transfers control out of the current `FUNCTION` or `SUB`. In a `FUNCTION`,
