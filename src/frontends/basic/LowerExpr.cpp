@@ -211,33 +211,40 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
         return {res, ilBoolTy()};
     }
 
-    Value addr = emitAlloca(1);
     if (b.op == BinaryExpr::Op::LogicalAnd)
     {
-        std::string rhsLbl = blockNamer ? blockNamer->generic("and_rhs") : mangler.block("and_rhs");
-        std::string falseLbl =
-            blockNamer ? blockNamer->generic("and_false") : mangler.block("and_false");
-        std::string doneLbl =
-            blockNamer ? blockNamer->generic("and_done") : mangler.block("and_done");
-        BasicBlock *rhsBB = &builder->addBlock(*func, rhsLbl);
-        BasicBlock *falseBB = &builder->addBlock(*func, falseLbl);
-        BasicBlock *doneBB = &builder->addBlock(*func, doneLbl);
-        curLoc = b.loc;
-        emitCBr(lhs.value, rhsBB, falseBB);
-        cur = rhsBB;
+        Value lhsBool = toBool(lhs);
         RVal rhs = lowerExpr(*b.rhs);
+        Value rhsBool = toBool(rhs);
+
+        BasicBlock *origin = cur;
+        BasicBlock *thenBlk = nullptr;
+        BasicBlock *elseBlk = nullptr;
+        Value slot;
+        Value *prevSlotPtr = boolBranchSlotPtr;
+        boolBranchSlotPtr = &slot;
+        IlValue result = emitBoolFromBranches(
+            [&]() {
+                thenBlk = cur;
+                curLoc = b.loc;
+                emitStore(ilBoolTy(), slot, rhsBool);
+            },
+            [&]() {
+                elseBlk = cur;
+                curLoc = b.loc;
+                emitStore(ilBoolTy(), slot, emitBoolConst(false));
+            });
+        boolBranchSlotPtr = prevSlotPtr;
+        BasicBlock *joinBlk = cur;
+        cur = origin;
         curLoc = b.loc;
-        emitStore(ilBoolTy(), addr, rhs.value);
-        curLoc = b.loc;
-        emitBr(doneBB);
-        cur = falseBB;
-        curLoc = b.loc;
-        emitStore(ilBoolTy(), addr, emitBoolConst(false));
-        curLoc = b.loc;
-        emitBr(doneBB);
-        cur = doneBB;
+        emitCBr(lhsBool, thenBlk, elseBlk);
+        cur = joinBlk;
+        return {result, ilBoolTy()};
     }
-    else
+
+    Value addr = emitAlloca(1);
+    if (b.op == BinaryExpr::Op::LogicalOr)
     {
         std::string trueLbl =
             blockNamer ? blockNamer->generic("or_true") : mangler.block("or_true");
