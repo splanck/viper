@@ -170,7 +170,9 @@ bool Verifier::verifyFunction(const Function &fn,
         err << fn.name << ": function has no blocks\n";
         return false;
     }
-    if (fn.blocks.front().label != "entry")
+    const std::string &firstLabel = fn.blocks.front().label;
+    const bool isEntry = firstLabel == "entry" || firstLabel.rfind("entry_", 0) == 0;
+    if (!isEntry)
     {
         err << fn.name << ": first block must be entry\n";
         ok = false;
