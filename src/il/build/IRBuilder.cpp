@@ -6,15 +6,23 @@
 
 #include "il/build/IRBuilder.hpp"
 #include <cassert>
+#include <stdexcept>
 
 namespace il::build
 {
 
-IRBuilder::IRBuilder(Module &m) : mod(m) {}
+IRBuilder::IRBuilder(Module &m) : mod(m)
+{
+    for (const auto &fn : mod.functions)
+        calleeReturnTypes[fn.name] = fn.retType;
+    for (const auto &ex : mod.externs)
+        calleeReturnTypes[ex.name] = ex.retType;
+}
 
 Extern &IRBuilder::addExtern(const std::string &name, Type ret, const std::vector<Type> &params)
 {
     mod.externs.push_back({name, ret, params});
+    calleeReturnTypes[name] = ret;
     return mod.externs.back();
 }
 
@@ -29,6 +37,7 @@ Function &IRBuilder::startFunction(const std::string &name,
                                    const std::vector<Param> &params)
 {
     mod.functions.push_back({name, ret, {}, {}, {}});
+    calleeReturnTypes[name] = ret;
     curFunc = &mod.functions.back();
     curBlock = nullptr;
     nextTemp = 0;
@@ -145,22 +154,10 @@ void IRBuilder::emitCall(const std::string &callee,
 {
     Instr instr;
     instr.op = Opcode::Call;
-
-    Type ret(Type::Kind::Void);
-    for (const auto &fn : mod.functions)
-        if (fn.name == callee)
-        {
-            ret = fn.retType;
-            break;
-        }
-    if (ret.kind == Type::Kind::Void)
-        for (const auto &ex : mod.externs)
-            if (ex.name == callee)
-            {
-                ret = ex.retType;
-                break;
-            }
-    instr.type = ret;
+    const auto it = calleeReturnTypes.find(callee);
+    if (it == calleeReturnTypes.end())
+        throw std::logic_error("emitCall: unknown callee '" + callee + "'");
+    instr.type = it->second;
     instr.callee = callee;
     instr.operands = args;
     if (dst)

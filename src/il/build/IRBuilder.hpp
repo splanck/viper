@@ -12,6 +12,7 @@
 #include "il/core/Value.hpp"
 #include "support/source_manager.hpp"
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 namespace il::build
@@ -99,6 +100,8 @@ class IRBuilder
     Function *curFunc{nullptr};    ///< Current function
     BasicBlock *curBlock{nullptr}; ///< Current insertion block
     unsigned nextTemp{0};          ///< Next temporary id
+    std::unordered_map<std::string, Type>
+        calleeReturnTypes; ///< Cached return types keyed by callee name
 
     /// @brief Append instruction @p instr to current block.
     /// @param instr Instruction to append.
