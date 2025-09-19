@@ -1,7 +1,6 @@
-#include "il/io/Parser.hpp"
+#include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"
 #include "il/io/Serializer.hpp"
-#include "il/verify/Verifier.hpp"
 #include <cassert>
 #include <fstream>
 #include <sstream>
@@ -23,15 +22,13 @@ int main()
         buf << in.rdbuf();
         buf.seekg(0);
         il::core::Module m1;
-        std::ostringstream err1;
-        bool ok = il::io::Parser::parse(buf, m1, err1);
-        assert(ok && err1.str().empty());
+        auto parse1 = il::api::v2::parse_text_expected(buf, m1);
+        assert(parse1);
         std::string s1 = il::io::Serializer::toString(m1);
         std::istringstream in2(s1);
         il::core::Module m2;
-        std::ostringstream err2;
-        ok = il::io::Parser::parse(in2, m2, err2);
-        assert(ok && err2.str().empty());
+        auto parse2 = il::api::v2::parse_text_expected(in2, m2);
+        assert(parse2);
         std::string s2 = il::io::Serializer::toString(m2);
         if (!s1.empty() && s1.back() == '\n')
             s1.pop_back();

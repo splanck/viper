@@ -15,7 +15,6 @@
 #include "il/core/Value.hpp"
 #include "il/core/Module.hpp"
 #include "il/verify/Verifier.hpp"
-#include <sstream>
 #include <utility>
 
 using namespace il::core;
@@ -473,8 +472,8 @@ void PassManager::run(core::Module &module, const Pipeline &pipeline) const
 #ifndef NDEBUG
         if (verifyBetweenPasses_)
         {
-            std::ostringstream os;
-            assert(il::verify::Verifier::verify(module, os) && "IL verification failed after pass");
+            auto verified = il::verify::Verifier::verify(module);
+            assert(verified && "IL verification failed after pass");
         }
 #endif
     }
