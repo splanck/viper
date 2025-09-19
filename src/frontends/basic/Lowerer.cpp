@@ -1,6 +1,8 @@
 // File: src/frontends/basic/Lowerer.cpp
+// License: MIT License. See LICENSE in the project root for full license
+//          information.
 // Purpose: Lowers BASIC AST to IL with control-flow helpers and centralized
-// runtime declarations.
+//          runtime declarations.
 // Key invariants: Block names inside procedures are deterministic via BlockNamer.
 // Ownership/Lifetime: Uses contexts managed externally.
 // Links: docs/class-catalog.md
@@ -21,6 +23,12 @@ namespace il::frontends::basic
 namespace
 {
 
+/// @brief Translate a BASIC AST scalar type into the IL core representation.
+/// @param ty BASIC semantic type sourced from the front-end AST.
+/// @return Corresponding IL type used for stack slots and temporaries.
+/// @note BOOL lowers to the IL `i1` type while string scalars lower to the
+///       canonical string handle type. Unrecognized enumerators fall back to
+///       I64, although the parser should prevent that from happening.
 il::core::Type coreTypeForAstType(::il::frontends::basic::Type ty)
 {
     using il::core::Type;
@@ -40,16 +48,23 @@ il::core::Type coreTypeForAstType(::il::frontends::basic::Type ty)
 
 } // namespace
 
-// Purpose: lowerer.
-// Parameters: bool boundsChecks.
-// Returns: void.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Construct a lowering context.
+/// @param boundsChecks When true, enable allocation of auxiliary slots used to
+///        emit runtime array bounds checks during lowering.
+/// @note The constructor merely stores configuration; transient lowering state
+///       is reset each time a program or procedure is processed.
 Lowerer::Lowerer(bool boundsChecks) : boundsChecks(boundsChecks) {}
 
-// Purpose: lower program.
-// Parameters: const Program &prog.
-// Returns: Module.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower a full BASIC program into an IL module.
+/// @param prog Parsed program containing procedures and top-level statements.
+/// @return Newly constructed module with all runtime declarations and lowered
+///         procedures.
+/// @details The method resets every per-run cache (name mangler, variable
+///          tracking, runtime requirements) and performs a three stage pipeline:
+///          (1) scan to identify runtime helpers, (2) declare those helpers in
+///          the module, and (3) emit procedure bodies plus a synthetic @main.
+///          `mod`, `builder`, and numerous tracking maps are updated in-place
+///          while the temporary `Module m` owns the resulting IR.
 Module Lowerer::lowerProgram(const Program &prog)
 {
     // Procs first, then a synthetic @main for top-level statements.
@@ -97,19 +112,21 @@ Module Lowerer::lowerProgram(const Program &prog)
     return m;
 }
 
-// Purpose: lower.
-// Parameters: const Program &prog.
-// Returns: Module.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Backward-compatible alias for @ref lowerProgram.
+/// @param prog Program lowered into a fresh module instance.
+/// @return Result from delegating to @ref lowerProgram.
 Module Lowerer::lower(const Program &prog)
 {
     return lowerProgram(prog);
 }
 
-// Purpose: collect vars.
-// Parameters: const std::vector<const Stmt *> &stmts.
-// Returns: void.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Discover variable usage within a statement list.
+/// @param stmts Statements whose expressions are analyzed.
+/// @details Populates `vars`, `arrays`, and `varTypes` so subsequent lowering can
+///          materialize storage for every name. Array metadata is captured so
+///          bounds slots can be emitted when enabled. The traversal preserves
+///          existing set entries, allowing incremental accumulation across
+///          different program regions.
 void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
 {
     std::function<void(const Expr &)> ex = [&](const Expr &e)
@@ -212,6 +229,20 @@ void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
         st(*s);
 }
 
+/// @brief Lower a single BASIC procedure using the provided configuration.
+/// @param name Symbol name used for both mangling and emitted function labels.
+/// @param params Formal parameters describing incoming values.
+/// @param body Statements comprising the procedure body.
+/// @param config Callbacks and metadata controlling return emission and
+///        post-collection bookkeeping.
+/// @details Clears any state from prior procedures, collects variable
+///          references from @p body, and then constructs the IL function
+///          skeleton: entry block, per-line blocks, and exit block. Parameter
+///          and local stack slots are materialized before walking statements.
+///          The helper drives `lowerStmt` for each statement and finally invokes
+///          the configured return generator. Numerous members (`func`, `cur`,
+///          `lineBlocks`, `varSlots`, `arrays`, `blockNamer`) are mutated to
+///          reflect the active procedure.
 void Lowerer::lowerProcedure(const std::string &name,
                              const std::vector<Param> &params,
                              const std::vector<StmtPtr> &body,
@@ -337,11 +368,12 @@ void Lowerer::lowerProcedure(const std::string &name,
     blockNamer.reset();
 }
 
-/// @brief Lower FUNCTION body into an IL function.
-// Purpose: lower function decl.
-// Parameters: const FunctionDecl &decl.
-// Returns: void.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower a FUNCTION declaration into an IL function definition.
+/// @param decl BASIC FUNCTION metadata and body.
+/// @details Configures a @ref ProcedureConfig that materializes default return
+///          values when the body falls through. The function result type is
+///          cached in `varTypes` so the caller may bind its slot when invoking
+///          the function.
 void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
 {
     auto defaultRet = [&]()
@@ -369,11 +401,10 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
     lowerProcedure(decl.name, decl.params, decl.body, config);
 }
 
-/// @brief Lower SUB body into an IL function.
-// Purpose: lower sub decl.
-// Parameters: const SubDecl &decl.
-// Returns: void.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower a SUB declaration into an IL procedure.
+/// @param decl BASIC SUB metadata and body.
+/// @details SUBs have no return value; the configured lowering emits void
+///          returns for empty bodies and at the exit block.
 void Lowerer::lowerSubDecl(const SubDecl &decl)
 {
     ProcedureConfig config;
@@ -384,10 +415,10 @@ void Lowerer::lowerSubDecl(const SubDecl &decl)
     lowerProcedure(decl.name, decl.params, decl.body, config);
 }
 
-// Purpose: reset lowering state.
-// Parameters: none.
-// Returns: void.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Clear per-procedure lowering caches.
+/// @details Invoked before lowering each procedure to drop variable maps, array
+///          bookkeeping, and line-to-block mappings. The bounds-check counter is
+///          reset so diagnostics and helper labels remain deterministic.
 void Lowerer::resetLoweringState()
 {
     vars.clear();
@@ -399,12 +430,13 @@ void Lowerer::resetLoweringState()
     boundsCheckId = 0;
 }
 
-/// @brief Allocate stack slots for parameters and store incoming values. Array
-/// parameters keep their pointer/handle without copying.
-// Purpose: materialize params.
-// Parameters: const std::vector<Param> &params.
-// Returns: void.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Allocate stack storage for incoming parameters and record their types.
+/// @param params BASIC formal parameters for the current procedure.
+/// @details Emits an alloca per parameter and stores the incoming SSA value into
+///          the slot. Array parameters are remembered in `arrays` to avoid
+///          copying the referenced buffer, while boolean parameters request a
+///          single-byte allocation. Side effects update `varSlots`, `varTypes`,
+///          and potentially `arrays`.
 void Lowerer::materializeParams(const std::vector<Param> &params)
 {
     for (size_t i = 0; i < params.size(); ++i)
@@ -422,10 +454,11 @@ void Lowerer::materializeParams(const std::vector<Param> &params)
     }
 }
 
-// Purpose: collect vars.
-// Parameters: const Program &prog.
-// Returns: void.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Collect variable usage for every procedure and the main body.
+/// @param prog Program whose statements are scanned.
+/// @details Aggregates pointers to all statements and forwards to the granular
+///          collector so that `vars` and `arrays` contain every referenced name
+///          before lowering begins.
 void Lowerer::collectVars(const Program &prog)
 {
     std::vector<const Stmt *> ptrs;
