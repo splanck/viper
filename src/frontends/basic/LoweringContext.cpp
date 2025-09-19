@@ -2,6 +2,7 @@
 // Purpose: Implements state used during BASIC-to-IL lowering.
 // Key invariants: None.
 // Ownership/Lifetime: Context references module owned externally.
+// License: MIT (see LICENSE).
 // Links: docs/class-catalog.md
 
 #include "frontends/basic/LoweringContext.hpp"
@@ -47,6 +48,13 @@ core::BasicBlock *LoweringContext::getOrCreateBlock(int line)
     return &bb;
 }
 
+/// Intern the BASIC string literal @p value and return its IR symbol.
+/// Maintains a mapping from literal text to generated identifiers, reusing
+/// existing entries without consuming new IDs. When a string is first seen it
+/// receives a label derived from an incrementing counter to keep identifiers
+/// stable across the module.
+/// @param value BASIC string literal to intern.
+/// @returns Stable label bound to the string literal.
 std::string LoweringContext::getOrAddString(const std::string &value)
 {
     auto it = strings.find(value);
