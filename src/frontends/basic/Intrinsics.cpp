@@ -1,4 +1,5 @@
 // File: src/frontends/basic/Intrinsics.cpp
+// License: MIT License. See LICENSE in the project root for full license information.
 // Purpose: Define registry of BASIC intrinsic functions.
 // Key invariants: Table contents remain sorted by declaration order.
 // Ownership/Lifetime: Intrinsic descriptors are static.
@@ -41,6 +42,9 @@ constexpr Param instrParams[] = {
 };
 
 /// Registry mapping intrinsic names to return types and parameter signatures.
+//
+// NOTE: Maintain the order used in docs and user-facing dumps; @ref dumpNames
+// relies on this sequence to keep output stable without sorting at runtime.
 constexpr Intrinsic table[] = {
     {"LEFT$", Type::String, leftRightParams, std::size(leftRightParams)},
     {"RIGHT$", Type::String, leftRightParams, std::size(leftRightParams)},
@@ -59,6 +63,14 @@ constexpr Intrinsic table[] = {
 };
 } // namespace
 
+/// @brief Perform a linear lookup against the intrinsic registry.
+///
+/// The registry is small (currently a handful of entries), so a linear search
+/// is sufficient and avoids the complexity of building auxiliary indices.
+///
+/// @param name BASIC intrinsic name such as "LEFT$".
+/// @return Pointer to the matching descriptor, or nullptr if @p name is
+///         unsupported.
 const Intrinsic *lookup(std::string_view name)
 {
     for (const auto &intr : table)
@@ -67,6 +79,13 @@ const Intrinsic *lookup(std::string_view name)
     return nullptr;
 }
 
+/// @brief Emit all intrinsic names separated by a single space.
+///
+/// Names are written in @ref table order, which matches declaration order and
+/// keeps user-facing listings deterministic. The implementation avoids
+/// trailing whitespace by only inserting separators between entries.
+///
+/// @param os Output stream receiving the formatted list.
 void dumpNames(std::ostream &os)
 {
     for (std::size_t i = 0; i < std::size(table); ++i)
