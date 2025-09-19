@@ -4,12 +4,10 @@
 // Ownership/Lifetime: Tool owns parsed module.
 // Links: docs/class-catalog.md
 
-#include "il/io/Parser.hpp"
+#include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"
-#include "il/verify/Verifier.hpp"
 #include <fstream>
 #include <iostream>
-#include <sstream>
 #include <string>
 
 /// @brief CLI entry for verifying IL modules.
@@ -39,12 +37,16 @@ int main(int argc, char **argv)
         return 1;
     }
     il::core::Module m;
-    if (!il::io::Parser::parse(in, m, std::cerr))
-        return 1;
-    std::ostringstream diag;
-    if (!il::verify::Verifier::verify(m, diag))
+    auto pe = il::api::v2::parse_text_expected(in, m);
+    if (!pe)
     {
-        std::cerr << diag.str();
+        il::support::printDiag(pe.error(), std::cerr);
+        return 1;
+    }
+    auto ve = il::api::v2::verify_module_expected(m);
+    if (!ve)
+    {
+        il::support::printDiag(ve.error(), std::cerr);
         return 1;
     }
     std::cout << "OK\n";
