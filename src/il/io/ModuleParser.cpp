@@ -13,15 +13,108 @@
 #include "il/io/ParserUtil.hpp"
 #include "il/io/TypeParser.hpp"
 
+#include "support/diag_expected.hpp"
+
 #include <sstream>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 namespace il::io::detail
 {
 
-using il::core::Type;
+namespace
+{
 
-bool parseModuleHeader(std::istream &is, std::string &line, ParserState &st, std::ostream &err)
+using il::core::Type;
+using il::support::Expected;
+using il::support::makeError;
+
+std::string stripCapturedDiagMessage(std::string text)
+{
+    while (!text.empty() && (text.back() == '\n' || text.back() == '\r'))
+        text.pop_back();
+    constexpr std::string_view kPrefix = "error: ";
+    if (text.rfind(kPrefix, 0) == 0)
+        text.erase(0, kPrefix.size());
+    return text;
+}
+
+Expected<void> parseExtern_E(const std::string &line, ParserState &st)
+{
+    size_t at = line.find('@');
+    size_t lp = line.find('(', at);
+    size_t rp = line.find(')', lp);
+    size_t arr = line.find("->", rp);
+    if (arr == std::string::npos)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing '->'";
+        return Expected<void>{makeError({}, oss.str())};
+    }
+    std::string name = line.substr(at + 1, lp - at - 1);
+    std::string paramsStr = line.substr(lp + 1, rp - lp - 1);
+    std::vector<Type> params;
+    std::stringstream pss(paramsStr);
+    std::string p;
+    while (std::getline(pss, p, ','))
+    {
+        p = trim(p);
+        if (p.empty())
+            continue;
+        bool ok = true;
+        Type ty = parseType(p, &ok);
+        if (!ok)
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": unknown type '" << p << "'";
+            return Expected<void>{makeError({}, oss.str())};
+        }
+        params.push_back(ty);
+    }
+    std::string retStr = trim(line.substr(arr + 2));
+    bool retOk = true;
+    Type retTy = parseType(retStr, &retOk);
+    if (!retOk)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": unknown type '" << retStr << "'";
+        return Expected<void>{makeError({}, oss.str())};
+    }
+    st.m.externs.push_back({name, retTy, params});
+    return {};
+}
+
+Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
+{
+    size_t at = line.find('@');
+    size_t eq = line.find('=', at);
+    if (eq == std::string::npos)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing '='";
+        return Expected<void>{makeError({}, oss.str())};
+    }
+    size_t q1 = line.find('"', eq);
+    size_t q2 = line.rfind('"');
+    std::string name = trim(line.substr(at + 1, eq - at - 1));
+    std::string init = line.substr(q1 + 1, q2 - q1 - 1);
+    st.m.globals.push_back({name, Type(Type::Kind::Str), init});
+    return {};
+}
+
+Expected<void> parseFunctionShim_E(std::istream &is, std::string &header, ParserState &st)
+{
+    std::ostringstream capture;
+    if (parseFunction(is, header, st, capture))
+        return {};
+    auto message = stripCapturedDiagMessage(capture.str());
+    return Expected<void>{makeError(st.curLoc, std::move(message))};
+}
+
+} // namespace
+
+Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserState &st)
 {
     if (line.rfind("il", 0) == 0)
     {
@@ -33,77 +126,29 @@ bool parseModuleHeader(std::istream &is, std::string &line, ParserState &st, std
             st.m.version = ver;
         else
             st.m.version = "0.1.2";
-        return true;
+        return {};
     }
     if (line.rfind("extern", 0) == 0)
-    {
-        size_t at = line.find('@');
-        size_t lp = line.find('(', at);
-        size_t rp = line.find(')', lp);
-        size_t arr = line.find("->", rp);
-        if (arr == std::string::npos)
-        {
-            err << "line " << st.lineNo << ": missing '->'\n";
-            st.hasError = true;
-            return false;
-        }
-        std::string name = line.substr(at + 1, lp - at - 1);
-        std::string paramsStr = line.substr(lp + 1, rp - lp - 1);
-        std::vector<Type> params;
-        std::stringstream pss(paramsStr);
-        std::string p;
-        bool typesOk = true;
-        while (std::getline(pss, p, ','))
-        {
-            p = trim(p);
-            if (p.empty())
-                continue;
-            bool ok = true;
-            Type ty = parseType(p, &ok);
-            if (!ok)
-            {
-                err << "line " << st.lineNo << ": unknown type '" << p << "'\n";
-                st.hasError = true;
-                typesOk = false;
-            }
-            else
-                params.push_back(ty);
-        }
-        std::string retStr = trim(line.substr(arr + 2));
-        bool retOk = true;
-        Type retTy = parseType(retStr, &retOk);
-        if (!retOk)
-        {
-            err << "line " << st.lineNo << ": unknown type '" << retStr << "'\n";
-            st.hasError = true;
-            typesOk = false;
-        }
-        if (!typesOk)
-            return false;
-        st.m.externs.push_back({name, retTy, params});
-        return true;
-    }
+        return parseExtern_E(line, st);
     if (line.rfind("global", 0) == 0)
-    {
-        size_t at = line.find('@');
-        size_t eq = line.find('=', at);
-        if (eq == std::string::npos)
-        {
-            err << "line " << st.lineNo << ": missing '='\n";
-            st.hasError = true;
-            return false;
-        }
-        size_t q1 = line.find('"', eq);
-        size_t q2 = line.rfind('"');
-        std::string name = trim(line.substr(at + 1, eq - at - 1));
-        std::string init = line.substr(q1 + 1, q2 - q1 - 1);
-        st.m.globals.push_back({name, Type(Type::Kind::Str), init});
-        return true;
-    }
+        return parseGlobal_E(line, st);
     if (line.rfind("func", 0) == 0)
-        return parseFunction(is, line, st, err);
-    err << "line " << st.lineNo << ": unexpected line: " << line << "\n";
-    return false;
+        return parseFunctionShim_E(is, line, st);
+    std::ostringstream oss;
+    oss << "line " << st.lineNo << ": unexpected line: " << line;
+    return Expected<void>{makeError({}, oss.str())};
+}
+
+bool parseModuleHeader(std::istream &is, std::string &line, ParserState &st, std::ostream &err)
+{
+    auto result = parseModuleHeader_E(is, line, st);
+    if (!result)
+    {
+        il::support::printDiag(result.error(), err);
+        st.hasError = true;
+        return false;
+    }
+    return true;
 }
 
 } // namespace il::io::detail

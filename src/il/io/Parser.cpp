@@ -9,8 +9,15 @@
 
 #include "il/io/ModuleParser.hpp"
 #include "il/io/ParserUtil.hpp"
+#include "support/diag_expected.hpp"
 
 #include <string>
+
+namespace il::io::detail
+{
+il::support::Expected<void> parseModuleHeader_E(std::istream &is, std::string &line,
+                                                ParserState &st);
+}
 
 namespace il::io
 {
@@ -25,8 +32,13 @@ bool Parser::parse(std::istream &is, il::core::Module &m, std::ostream &err)
         line = trim(line);
         if (line.empty() || line.rfind("//", 0) == 0)
             continue;
-        if (!detail::parseModuleHeader(is, line, st, err))
+        auto result = detail::parseModuleHeader_E(is, line, st);
+        if (!result)
+        {
+            il::support::printDiag(result.error(), err);
+            st.hasError = true;
             return false;
+        }
     }
     return !st.hasError;
 }
