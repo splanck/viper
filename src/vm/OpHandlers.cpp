@@ -2,7 +2,7 @@
 // Purpose: Build the VM opcode dispatch table from declarative opcode metadata.
 // Key invariants: Table entries align with il/core/Opcode.def definitions.
 // Ownership/Lifetime: Dispatch table is lazily initialised and shared across VMs.
-// License: MIT
+// License: MIT (see LICENSE file in the project root for terms).
 // Links: docs/il-spec.md
 
 #include "vm/OpHandlers.hpp"
@@ -16,9 +16,10 @@ namespace il::vm
 {
 /// @brief Exposes the lazily materialised opcode → handler mapping shared across
 /// all VM instances.
-/// @details The table is populated from the declarative opcode metadata and
-/// leaves entries nullptr for opcodes that are not expected to be dispatched at
-/// runtime so that the interpreter can detect unsupported instructions.
+/// @details Delegates to detail::getOpcodeHandlers(), which consults the
+/// declarative metadata emitted from Opcode.def so each il::core::Opcode
+/// enumerator reuses the dispatch handler recorded alongside its definition.
+/// Entries are cached after first construction to avoid recomputing the table.
 const VM::OpcodeHandlerTable &VM::getOpcodeHandlers()
 {
     return detail::getOpcodeHandlers();
@@ -29,11 +30,12 @@ namespace il::vm::detail
 {
 namespace
 {
-/// @brief Maps VM dispatch categories to concrete opcode handler functions.
-/// @details Every dispatch enumeration value that the interpreter can emit is
-/// associated with a handler implementation; values that do not have an
-/// implementation, including VMDispatch::None, resolve to nullptr so
-/// unsupported opcodes remain unbound in the dispatch table.
+/// @brief Maps opcode metadata dispatch categories to concrete handler
+/// functions.
+/// @details The dispatch field selected in Opcode.def determines which handler
+/// is returned for a given opcode; metadata entries that specify no dispatch or
+/// an unsupported category resolve to nullptr so unsupported instructions remain
+/// unbound in the table.
 VM::OpcodeHandler handlerForDispatch(VMDispatch dispatch)
 {
     switch (dispatch)
@@ -117,10 +119,11 @@ VM::OpcodeHandler handlerForDispatch(VMDispatch dispatch)
 
 /// @brief Builds and caches the opcode dispatch table from the declarative IL
 /// opcode list.
-/// @details A static lambda initialises the table exactly once by asking
-/// handlerForDispatch for each opcode's dispatch category. Opcodes with no
-/// supported handler remain nullptr, allowing downstream validation to trap
-/// unsupported instructions cleanly.
+/// @details A function-local static initialises the table exactly once by
+/// iterating the IL_OPCODE definitions in Opcode.def, which must stay aligned
+/// with the il::core::Opcode enumerators. Each metadata entry contributes its
+/// recorded dispatch category, and handlerForDispatch translates that category
+/// to the handler pointer stored in the lazily initialised table.
 const VM::OpcodeHandlerTable &getOpcodeHandlers()
 {
     static const VM::OpcodeHandlerTable table = []
