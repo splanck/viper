@@ -51,23 +51,89 @@ struct BinaryFoldEntry
     BinaryStringFn string;   ///< String evaluator (nullptr when unsupported).
 };
 
+/// @brief Fold numeric addition for literal operands.
+/// @details Uses foldArithmetic with lambdas for floating addition and wrapAdd for
+/// integers.
 ExprPtr foldNumericAdd(const Expr &l, const Expr &r);
+
+/// @brief Fold numeric subtraction for literal operands.
+/// @details Uses foldArithmetic with lambdas for floating subtraction and wrapSub for
+/// integers.
 ExprPtr foldNumericSub(const Expr &l, const Expr &r);
+
+/// @brief Fold numeric multiplication for literal operands.
+/// @details Uses foldArithmetic with lambdas for floating multiplication and wrapMul for
+/// integers.
 ExprPtr foldNumericMul(const Expr &l, const Expr &r);
+
+/// @brief Fold numeric division for literal operands.
+/// @details Uses foldNumericBinary with a lambda that rejects division by zero and
+/// promotes floats.
 ExprPtr foldNumericDiv(const Expr &l, const Expr &r);
+
+/// @brief Fold integer division for literal operands.
+/// @details Uses foldNumericBinary with a lambda that rejects floats and zero
+/// divisors.
 ExprPtr foldNumericIDiv(const Expr &l, const Expr &r);
+
+/// @brief Fold integer modulus for literal operands.
+/// @details Uses foldNumericBinary with a lambda that rejects floats and zero
+/// divisors.
 ExprPtr foldNumericMod(const Expr &l, const Expr &r);
+
+/// @brief Fold numeric equality comparison for literal operands.
+/// @details Uses foldCompare with lambdas for floating and integer equality
+/// checks.
 ExprPtr foldNumericEq(const Expr &l, const Expr &r);
+
+/// @brief Fold numeric inequality comparison for literal operands.
+/// @details Uses foldCompare with lambdas for floating and integer inequality
+/// checks.
 ExprPtr foldNumericNe(const Expr &l, const Expr &r);
+
+/// @brief Fold numeric less-than comparison for literal operands.
+/// @details Uses foldCompare with lambdas that implement floating and integer
+/// ordering.
 ExprPtr foldNumericLt(const Expr &l, const Expr &r);
+
+/// @brief Fold numeric less-or-equal comparison for literal operands.
+/// @details Uses foldCompare with lambdas that implement floating and integer
+/// ordering.
 ExprPtr foldNumericLe(const Expr &l, const Expr &r);
+
+/// @brief Fold numeric greater-than comparison for literal operands.
+/// @details Uses foldCompare with lambdas that implement floating and integer
+/// ordering.
 ExprPtr foldNumericGt(const Expr &l, const Expr &r);
+
+/// @brief Fold numeric greater-or-equal comparison for literal operands.
+/// @details Uses foldCompare with lambdas that implement floating and integer
+/// ordering.
 ExprPtr foldNumericGe(const Expr &l, const Expr &r);
+
+/// @brief Fold numeric logical AND for literal operands.
+/// @details Uses foldCompare with a lambda pair that enforces integer-only
+/// truthiness.
 ExprPtr foldNumericAnd(const Expr &l, const Expr &r);
+
+/// @brief Fold numeric logical OR for literal operands.
+/// @details Uses foldCompare with a lambda pair that enforces integer-only
+/// truthiness.
 ExprPtr foldNumericOr(const Expr &l, const Expr &r);
 
+/// @brief Fold string concatenation for literal operands.
+/// @details Uses foldString with a lambda that builds a concatenated
+/// StringExpr.
 ExprPtr foldStringConcat(const StringExpr &l, const StringExpr &r);
+
+/// @brief Fold string equality comparison for literal operands.
+/// @details Uses foldString with a lambda that returns an IntExpr representing
+/// equality.
 ExprPtr foldStringEq(const StringExpr &l, const StringExpr &r);
+
+/// @brief Fold string inequality comparison for literal operands.
+/// @details Uses foldString with a lambda that returns an IntExpr representing
+/// inequality.
 ExprPtr foldStringNe(const StringExpr &l, const StringExpr &r);
 
 inline constexpr std::array<BinaryFoldEntry, 16> kBinaryFoldTable = {{
@@ -89,6 +155,8 @@ inline constexpr std::array<BinaryFoldEntry, 16> kBinaryFoldTable = {{
     {BinaryExpr::Op::LogicalOr, &foldNumericOr, nullptr},
 }};
 
+/// @brief Look up folding handlers for a BASIC binary operator.
+/// @return Pointer to the table entry or nullptr when the operator is unsupported.
 inline const BinaryFoldEntry *findBinaryFold(BinaryExpr::Op op)
 {
     for (const auto &entry : kBinaryFoldTable)
