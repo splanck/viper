@@ -1,4 +1,5 @@
 // File: src/tools/basic-lex-dump/main.cpp
+// License: MIT License. See LICENSE in the project root for full details.
 // Purpose: Command-line tool to dump BASIC tokens for golden tests.
 // Key invariants: None.
 // Ownership/Lifetime: Tool owns loaded source.
@@ -16,12 +17,13 @@ using namespace il::support;
 
 /// @brief Tool entry point that dumps BASIC source tokens for golden tests.
 ///
-/// Expects a single command-line argument naming a BASIC source file. When
-/// the file can be opened, each token is printed on its own line using the
-/// format `<line>:<column> <token-kind> [<lexeme>]`, where the lexeme is
-/// included for numbers, strings, and identifiers. If the file is missing or
-/// unreadable, an error message is emitted and the process exits with a non-zero
-/// status.
+/// Accepts a single command-line argument naming a BASIC source file. The
+/// execution flow validates the argument count, loads the requested file into
+/// memory, lexes tokens using the BASIC lexer, and prints each token on its own
+/// line using the format `<line>:<column> <token-kind> [<lexeme>]`, where the
+/// lexeme is included for numbers, strings, and identifiers. If the file is
+/// missing or unreadable, an error message is emitted and the process exits with
+/// a non-zero status.
 int main(int argc, char **argv)
 {
     if (argc != 2)
