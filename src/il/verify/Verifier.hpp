@@ -9,6 +9,13 @@
 #include <string>
 #include <unordered_map>
 
+#include "support/diag_expected.hpp"
+
+namespace il::support
+{
+using ::Expected;
+}
+
 namespace il::core
 {
 struct Extern;
@@ -34,6 +41,11 @@ class Verifier
     /// @param err Stream receiving diagnostic messages.
     /// @return True if verification succeeds; false otherwise.
     static bool verify(const il::core::Module &m, std::ostream &err);
+
+    /// @brief Verify module @p m without emitting diagnostics to streams.
+    /// @param m Module to verify.
+    /// @return Empty on success, diagnostic on failure.
+    static il::support::Expected<void> verify(const il::core::Module &m);
 
   private:
     /// @brief Validate extern declarations for uniqueness and known signatures.
