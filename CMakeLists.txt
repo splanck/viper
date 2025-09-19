@@ -119,3 +119,9 @@ add_custom_target(distclean
   COMMAND "${CMAKE_COMMAND}" -P "${CMAKE_SOURCE_DIR}/cmake/DistClean.cmake"
   COMMENT "Scrub CMake-generated files in this build tree"
 )
+
+# Silence benign duplicate-library warnings on macOS
+option(VIPER_SUPPRESS_DUPLIB_WARN "Suppress ld64 duplicate library warnings" ON)
+if(APPLE AND VIPER_SUPPRESS_DUPLIB_WARN)
+  add_link_options(-Wl,-no_warn_duplicate_libraries)
+endif()
