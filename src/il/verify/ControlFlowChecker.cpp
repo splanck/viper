@@ -10,12 +10,279 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Param.hpp"
+#include "support/diag_expected.hpp"
+
+#include <functional>
+#include <sstream>
+#include <string>
+#include <string_view>
 #include <unordered_set>
 
 using namespace il::core;
 
 namespace il::verify
 {
+using il::support::Diag;
+using il::support::Expected;
+using il::support::Severity;
+using il::support::makeError;
+
+using VerifyInstrFnExpected = std::function<Expected<void>(const Function &fn,
+                                                           const BasicBlock &bb,
+                                                           const Instr &instr,
+                                                           const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                                                           const std::unordered_map<std::string, const Extern *> &externs,
+                                                           const std::unordered_map<std::string, const Function *> &funcs,
+                                                           TypeInference &types,
+                                                           std::vector<Diag> &warnings)>;
+
+namespace
+{
+std::string formatBlockDiag(const Function &fn,
+                            const BasicBlock &bb,
+                            std::string_view message)
+{
+    std::ostringstream oss;
+    oss << fn.name << ":" << bb.label;
+    if (!message.empty())
+        oss << ": " << message;
+    return oss.str();
+}
+
+std::string formatInstrDiag(const Function &fn,
+                            const BasicBlock &bb,
+                            const Instr &instr,
+                            std::string_view message)
+{
+    std::ostringstream oss;
+    oss << fn.name << ":" << bb.label << ": " << makeSnippet(instr);
+    if (!message.empty())
+        oss << ": " << message;
+    return oss.str();
+}
+
+Expected<void> validateBlockParams_E(const Function &fn,
+                                      const BasicBlock &bb,
+                                      TypeInference &types,
+                                      std::vector<unsigned> &paramIds)
+{
+    std::unordered_set<std::string> paramNames;
+    for (const auto &param : bb.params)
+    {
+        if (!paramNames.insert(param.name).second)
+            return Expected<void>{makeError({}, formatBlockDiag(fn, bb, "duplicate param %" + param.name))};
+
+        if (param.type.kind == Type::Kind::Void)
+            return Expected<void>{makeError({}, formatBlockDiag(fn, bb, "param %" + param.name + " has void type"))};
+
+        types.addTemp(param.id, param.type);
+        paramIds.push_back(param.id);
+    }
+    return {};
+}
+
+Expected<void> ensureOperandsDefined_E(const Function &fn,
+                                        const BasicBlock &bb,
+                                        const Instr &instr,
+                                        TypeInference &types)
+{
+    for (const auto &op : instr.operands)
+    {
+        if (op.kind != Value::Kind::Temp)
+            continue;
+
+        bool missing = false;
+        types.valueType(op, &missing);
+        bool undefined = !types.isDefined(op.id);
+
+        if (missing || undefined)
+        {
+            std::string id = std::to_string(op.id);
+            if (missing && undefined)
+            {
+                std::string message = "unknown temp %" + id + "; use before def of %" + id;
+                return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, message))};
+            }
+            if (missing)
+                return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "unknown temp %" + id))};
+            return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "use before def of %" + id))};
+        }
+    }
+    return {};
+}
+
+Expected<void> iterateBlockInstructions_E(const Function &fn,
+                                           const BasicBlock &bb,
+                                           const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                                           const std::unordered_map<std::string, const Extern *> &externs,
+                                           const std::unordered_map<std::string, const Function *> &funcs,
+                                           TypeInference &types,
+                                           const VerifyInstrFnExpected &verifyInstrFn,
+                                           std::vector<Diag> &warnings)
+{
+    for (const auto &instr : bb.instructions)
+    {
+        if (auto result = ensureOperandsDefined_E(fn, bb, instr, types); !result)
+            return result;
+
+        if (auto result = verifyInstrFn(fn, bb, instr, blockMap, externs, funcs, types, warnings); !result)
+            return result;
+
+        if (isTerminator(instr.op))
+            break;
+    }
+    return {};
+}
+
+Expected<void> checkBlockTerminators_E(const Function &fn, const BasicBlock &bb)
+{
+    if (bb.instructions.empty())
+        return Expected<void>{makeError({}, formatBlockDiag(fn, bb, "empty block"))};
+
+    bool seenTerm = false;
+    for (const auto &instr : bb.instructions)
+    {
+        if (isTerminator(instr.op))
+        {
+            if (seenTerm)
+                return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "multiple terminators"))};
+            seenTerm = true;
+            continue;
+        }
+        if (seenTerm)
+            return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "instruction after terminator"))};
+    }
+
+    if (!isTerminator(bb.instructions.back().op))
+        return Expected<void>{makeError({}, formatBlockDiag(fn, bb, "missing terminator"))};
+
+    return {};
+}
+
+Expected<void> verifyBranchArgs(const Function &fn,
+                                const BasicBlock &bb,
+                                const Instr &instr,
+                                const BasicBlock &target,
+                                const std::vector<Value> *args,
+                                std::string_view label,
+                                TypeInference &types)
+{
+    size_t argCount = args ? args->size() : 0;
+    if (argCount != target.params.size())
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "branch arg count mismatch for label " + std::string(label)))};
+
+    for (size_t i = 0; i < argCount; ++i)
+    {
+        if (types.valueType((*args)[i]).kind != target.params[i].type.kind)
+            return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "arg type mismatch for label " + std::string(label)))};
+    }
+    return {};
+}
+
+Expected<void> verifyBr_E(const Function &fn,
+                           const BasicBlock &bb,
+                           const Instr &instr,
+                           const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                           TypeInference &types)
+{
+    bool argsOk = instr.operands.empty() && instr.labels.size() == 1;
+    if (!argsOk)
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "branch mismatch"))};
+
+    if (auto it = blockMap.find(instr.labels[0]); it != blockMap.end())
+    {
+        const BasicBlock &target = *it->second;
+        const std::vector<Value> *argsVec = !instr.brArgs.empty() ? &instr.brArgs[0] : nullptr;
+        if (auto result = verifyBranchArgs(fn, bb, instr, target, argsVec, instr.labels[0], types); !result)
+            return result;
+    }
+
+    return {};
+}
+
+Expected<void> verifyCBr_E(const Function &fn,
+                            const BasicBlock &bb,
+                            const Instr &instr,
+                            const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                            TypeInference &types)
+{
+    bool condOk = instr.operands.size() == 1 && instr.labels.size() == 2 &&
+                   types.valueType(instr.operands[0]).kind == Type::Kind::I1;
+    if (!condOk)
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "conditional branch mismatch"))};
+
+    for (size_t t = 0; t < 2; ++t)
+    {
+        auto it = blockMap.find(instr.labels[t]);
+        if (it == blockMap.end())
+            continue;
+        const BasicBlock &target = *it->second;
+        const std::vector<Value> *argsVec = instr.brArgs.size() > t ? &instr.brArgs[t] : nullptr;
+        if (auto result = verifyBranchArgs(fn, bb, instr, target, argsVec, instr.labels[t], types); !result)
+            return result;
+    }
+
+    return {};
+}
+
+Expected<void> verifyRet_E(const Function &fn,
+                            const BasicBlock &bb,
+                            const Instr &instr,
+                            TypeInference &types)
+{
+    if (fn.retType.kind == Type::Kind::Void)
+    {
+        if (!instr.operands.empty())
+            return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "ret void with value"))};
+    }
+    else
+    {
+        if (instr.operands.size() != 1 || types.valueType(instr.operands[0]).kind != fn.retType.kind)
+            return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "ret value type mismatch"))};
+    }
+    return {};
+}
+
+struct ParsedCapture
+{
+    std::vector<std::string> warnings;
+    std::vector<std::string> errors;
+};
+
+ParsedCapture parseCapturedLines(const std::string &text)
+{
+    ParsedCapture parsed;
+    std::istringstream iss(text);
+    std::string line;
+    while (std::getline(iss, line))
+    {
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+        if (line.empty())
+            continue;
+        if (line.rfind("warning: ", 0) == 0)
+            parsed.warnings.push_back(line.substr(9));
+        else if (line.rfind("error: ", 0) == 0)
+            parsed.errors.push_back(line.substr(7));
+        else
+            parsed.errors.push_back(line);
+    }
+    return parsed;
+}
+
+std::string joinMessages(const std::vector<std::string> &messages)
+{
+    std::ostringstream oss;
+    for (size_t i = 0; i < messages.size(); ++i)
+    {
+        if (i != 0)
+            oss << '\n';
+        oss << messages[i];
+    }
+    return oss.str();
+}
+
+} // namespace
 
 bool isTerminator(Opcode op)
 {
@@ -28,24 +295,12 @@ bool validateBlockParams(const Function &fn,
                          std::vector<unsigned> &paramIds,
                          std::ostream &err)
 {
-    bool ok = true;
-    std::unordered_set<std::string> paramNames;
-    for (const auto &param : bb.params)
+    if (auto result = validateBlockParams_E(fn, bb, types, paramIds); !result)
     {
-        if (!paramNames.insert(param.name).second)
-        {
-            err << fn.name << ":" << bb.label << ": duplicate param %" << param.name << "\n";
-            ok = false;
-        }
-        if (param.type.kind == Type::Kind::Void)
-        {
-            err << fn.name << ":" << bb.label << ": param %" << param.name << " has void type\n";
-            ok = false;
-        }
-        types.addTemp(param.id, param.type);
-        paramIds.push_back(param.id);
+        il::support::printDiag(result.error(), err);
+        return false;
     }
-    return ok;
+    return true;
 }
 
 bool iterateBlockInstructions(VerifyInstrFn verifyInstrFn,
@@ -57,54 +312,50 @@ bool iterateBlockInstructions(VerifyInstrFn verifyInstrFn,
                               TypeInference &types,
                               std::ostream &err)
 {
-    bool ok = true;
-    for (const auto &instr : bb.instructions)
+    std::vector<Diag> warnings;
+    VerifyInstrFnExpected shim = [&](const Function &fnRef, const BasicBlock &bbRef, const Instr &instrRef,
+                                     const std::unordered_map<std::string, const BasicBlock *> &blockMapRef,
+                                     const std::unordered_map<std::string, const Extern *> &externsRef,
+                                     const std::unordered_map<std::string, const Function *> &funcsRef,
+                                     TypeInference &typesRef,
+                                     std::vector<Diag> &warningSink) -> Expected<void>
     {
-        ok &= types.ensureOperandsDefined(fn, bb, instr, err);
-        ok &= verifyInstrFn(fn, bb, instr, blockMap, externs, funcs, types, err);
-        if (isTerminator(instr.op))
-            break;
+        std::ostringstream capture;
+        bool ok = verifyInstrFn(fnRef, bbRef, instrRef, blockMapRef, externsRef, funcsRef, typesRef, capture);
+        ParsedCapture parsed = parseCapturedLines(capture.str());
+        for (const auto &msg : parsed.warnings)
+            warningSink.push_back(Diag{Severity::Warning, msg, instrRef.loc});
+        if (!ok)
+        {
+            std::string message = joinMessages(parsed.errors);
+            if (message.empty())
+                message = formatInstrDiag(fnRef, bbRef, instrRef, "verification failed");
+            return Expected<void>{makeError(instrRef.loc, message)};
+        }
+        return {};
+    };
+
+    if (auto result = iterateBlockInstructions_E(fn, bb, blockMap, externs, funcs, types, shim, warnings); !result)
+    {
+        for (const auto &warning : warnings)
+            il::support::printDiag(warning, err);
+        il::support::printDiag(result.error(), err);
+        return false;
     }
-    return ok;
+
+    for (const auto &warning : warnings)
+        il::support::printDiag(warning, err);
+    return true;
 }
 
 bool checkBlockTerminators(const Function &fn, const BasicBlock &bb, std::ostream &err)
 {
-    if (bb.instructions.empty())
+    if (auto result = checkBlockTerminators_E(fn, bb); !result)
     {
-        err << fn.name << ":" << bb.label << ": empty block\n";
+        il::support::printDiag(result.error(), err);
         return false;
     }
-
-    bool ok = true;
-    bool seenTerm = false;
-    for (const auto &instr : bb.instructions)
-    {
-        if (isTerminator(instr.op))
-        {
-            if (seenTerm)
-            {
-                err << fn.name << ":" << bb.label << ": " << makeSnippet(instr) << ": multiple terminators\n";
-                ok = false;
-                break;
-            }
-            seenTerm = true;
-        }
-        else if (seenTerm)
-        {
-            err << fn.name << ":" << bb.label << ": " << makeSnippet(instr) << ": instruction after terminator\n";
-            ok = false;
-            break;
-        }
-    }
-
-    if (ok && !isTerminator(bb.instructions.back().op))
-    {
-        err << fn.name << ":" << bb.label << ": missing terminator\n";
-        ok = false;
-    }
-
-    return ok;
+    return true;
 }
 
 bool verifyBr(const Function &fn,
@@ -114,38 +365,12 @@ bool verifyBr(const Function &fn,
               TypeInference &types,
               std::ostream &err)
 {
-    bool ok = true;
-    bool argsOk = instr.operands.empty() && instr.labels.size() == 1;
-    if (!argsOk)
+    if (auto result = verifyBr_E(fn, bb, instr, blockMap, types); !result)
     {
-        err << fn.name << ":" << bb.label << ": " << makeSnippet(instr) << ": branch mismatch\n";
+        il::support::printDiag(result.error(), err);
         return false;
     }
-    auto itB = blockMap.find(instr.labels[0]);
-    if (itB != blockMap.end())
-    {
-        const BasicBlock &target = *itB->second;
-        const std::vector<Value> *argsVec = instr.brArgs.size() > 0 ? &instr.brArgs[0] : nullptr;
-        size_t argCount = argsVec ? argsVec->size() : 0;
-        if (argCount != target.params.size())
-        {
-            err << fn.name << ":" << bb.label << ": " << makeSnippet(instr)
-                << ": branch arg count mismatch for label " << instr.labels[0] << "\n";
-            ok = false;
-        }
-        else
-        {
-            for (size_t i = 0; i < argCount; ++i)
-                if (types.valueType((*argsVec)[i]).kind != target.params[i].type.kind)
-                {
-                    err << fn.name << ":" << bb.label << ": " << makeSnippet(instr)
-                        << ": arg type mismatch for label " << instr.labels[0] << "\n";
-                    ok = false;
-                    break;
-                }
-        }
-    }
-    return ok;
+    return true;
 }
 
 bool verifyCBr(const Function &fn,
@@ -155,41 +380,12 @@ bool verifyCBr(const Function &fn,
                TypeInference &types,
                std::ostream &err)
 {
-    bool ok = true;
-    bool condOk = instr.operands.size() == 1 && instr.labels.size() == 2 &&
-                  types.valueType(instr.operands[0]).kind == Type::Kind::I1;
-    if (!condOk)
+    if (auto result = verifyCBr_E(fn, bb, instr, blockMap, types); !result)
     {
-        err << fn.name << ":" << bb.label << ": " << makeSnippet(instr) << ": conditional branch mismatch\n";
+        il::support::printDiag(result.error(), err);
         return false;
     }
-    for (size_t t = 0; t < 2; ++t)
-    {
-        auto itB = blockMap.find(instr.labels[t]);
-        if (itB == blockMap.end())
-            continue;
-        const BasicBlock &target = *itB->second;
-        const std::vector<Value> *argsVec = instr.brArgs.size() > t ? &instr.brArgs[t] : nullptr;
-        size_t argCount = argsVec ? argsVec->size() : 0;
-        if (argCount != target.params.size())
-        {
-            err << fn.name << ":" << bb.label << ": " << makeSnippet(instr)
-                << ": branch arg count mismatch for label " << instr.labels[t] << "\n";
-            ok = false;
-        }
-        else
-        {
-            for (size_t i = 0; i < argCount; ++i)
-                if (types.valueType((*argsVec)[i]).kind != target.params[i].type.kind)
-                {
-                    err << fn.name << ":" << bb.label << ": " << makeSnippet(instr)
-                        << ": arg type mismatch for label " << instr.labels[t] << "\n";
-                    ok = false;
-                    break;
-                }
-        }
-    }
-    return ok;
+    return true;
 }
 
 bool verifyRet(const Function &fn,
@@ -198,24 +394,63 @@ bool verifyRet(const Function &fn,
                TypeInference &types,
                std::ostream &err)
 {
-    bool ok = true;
-    if (fn.retType.kind == Type::Kind::Void)
+    if (auto result = verifyRet_E(fn, bb, instr, types); !result)
     {
-        if (!instr.operands.empty())
-        {
-            err << fn.name << ":" << bb.label << ": " << makeSnippet(instr) << ": ret void with value\n";
-            ok = false;
-        }
+        il::support::printDiag(result.error(), err);
+        return false;
     }
-    else
-    {
-        if (instr.operands.size() != 1 || types.valueType(instr.operands[0]).kind != fn.retType.kind)
-        {
-            err << fn.name << ":" << bb.label << ": " << makeSnippet(instr) << ": ret value type mismatch\n";
-            ok = false;
-        }
-    }
-    return ok;
+    return true;
+}
+
+Expected<void> validateBlockParams_expected(const Function &fn,
+                                             const BasicBlock &bb,
+                                             TypeInference &types,
+                                             std::vector<unsigned> &paramIds)
+{
+    return validateBlockParams_E(fn, bb, types, paramIds);
+}
+
+Expected<void> iterateBlockInstructions_expected(const Function &fn,
+                                                  const BasicBlock &bb,
+                                                  const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                                                  const std::unordered_map<std::string, const Extern *> &externs,
+                                                  const std::unordered_map<std::string, const Function *> &funcs,
+                                                  TypeInference &types,
+                                                  const VerifyInstrFnExpected &verifyInstrFn,
+                                                  std::vector<Diag> &warnings)
+{
+    return iterateBlockInstructions_E(fn, bb, blockMap, externs, funcs, types, verifyInstrFn, warnings);
+}
+
+Expected<void> checkBlockTerminators_expected(const Function &fn, const BasicBlock &bb)
+{
+    return checkBlockTerminators_E(fn, bb);
+}
+
+Expected<void> verifyBr_expected(const Function &fn,
+                                 const BasicBlock &bb,
+                                 const Instr &instr,
+                                 const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                                 TypeInference &types)
+{
+    return verifyBr_E(fn, bb, instr, blockMap, types);
+}
+
+Expected<void> verifyCBr_expected(const Function &fn,
+                                  const BasicBlock &bb,
+                                  const Instr &instr,
+                                  const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                                  TypeInference &types)
+{
+    return verifyCBr_E(fn, bb, instr, blockMap, types);
+}
+
+Expected<void> verifyRet_expected(const Function &fn,
+                                  const BasicBlock &bb,
+                                  const Instr &instr,
+                                  TypeInference &types)
+{
+    return verifyRet_E(fn, bb, instr, types);
 }
 
 } // namespace il::verify
