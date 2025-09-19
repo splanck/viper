@@ -1,4 +1,6 @@
 // File: src/frontends/basic/SemanticAnalyzer.cpp
+// License: MIT License. See LICENSE in the project root for full license
+//          information.
 // Purpose: Implements BASIC semantic analyzer that collects symbols and labels,
 //          validates variable usage, and performs two-pass procedure
 //          registration.
@@ -22,13 +24,25 @@ namespace il::frontends::basic
 
 namespace
 {
+/// @brief Invoke a member handler for a concrete statement type.
+/// @tparam T Statement subclass expected by the handler.
+/// @tparam Fn Member function pointer that processes @p T.
+/// @param sa Analyzer performing the dispatch.
+/// @param s Statement instance supplied by the visitor.
+/// @note Dispatching itself has no diagnostics; the target member issues them.
 template <typename T, void (SemanticAnalyzer::*Fn)(const T &)>
 void dispatchHelper(SemanticAnalyzer *sa, const Stmt &s)
 {
     (sa->*Fn)(static_cast<const T &>(s));
 }
 
-/// @brief Compute Levenshtein distance between strings @p a and @p b.
+/// @brief Compute the Levenshtein edit distance between two strings.
+/// @param a Candidate identifier from user input.
+/// @param b Known symbol to compare against.
+/// @return Minimum number of edits to transform @p a into @p b.
+/// @details Implements the dynamic-programming algorithm with rolling buffers
+///          to keep memory usage linear in the shorter dimension.
+/// @note Used when suggesting likely symbol names in diagnostics.
 static size_t levenshtein(const std::string &a, const std::string &b)
 {
     const size_t m = a.size();
@@ -49,6 +63,9 @@ static size_t levenshtein(const std::string &a, const std::string &b)
     return prev[n];
 }
 
+/// @brief Convert an AST-level BASIC type to the analyzer's internal enum.
+/// @param ty AST type recorded on declarations.
+/// @return Semantic analyzer representation of @p ty.
 static SemanticAnalyzer::Type astToSemanticType(::il::frontends::basic::Type ty)
 {
     switch (ty)
@@ -66,11 +83,16 @@ static SemanticAnalyzer::Type astToSemanticType(::il::frontends::basic::Type ty)
 }
 
 /// @brief Convert builtin enum to BASIC name.
+/// @param b Builtin enumerator to describe.
+/// @return BASIC keyword spelling for @p b.
 static const char *builtinName(BuiltinCallExpr::Builtin b)
 {
     return getBuiltinInfo(b).name;
 }
 
+/// @brief Produce a human-readable name for a semantic type.
+/// @param type Inferred BASIC type to describe.
+/// @return Canonical uppercase BASIC type label.
 static const char *semanticTypeName(SemanticAnalyzer::Type type)
 {
     using Type = SemanticAnalyzer::Type;
@@ -90,6 +112,9 @@ static const char *semanticTypeName(SemanticAnalyzer::Type type)
     return "UNKNOWN";
 }
 
+/// @brief Translate a logical operator into its BASIC keyword spelling.
+/// @param op Logical binary operator.
+/// @return Keyword string used in diagnostics.
 static const char *logicalOpName(BinaryExpr::Op op)
 {
     switch (op)
@@ -109,6 +134,9 @@ static const char *logicalOpName(BinaryExpr::Op op)
 }
 
 /// @brief Produce a short textual description of @p expr for diagnostics.
+/// @param expr Expression appearing within a conditional context.
+/// @return Human-readable description used to clarify diagnostics.
+/// @note Prefers literal renderings and variable names to keep messages concise.
 static std::string conditionExprText(const Expr &expr)
 {
     if (auto *var = dynamic_cast<const VarExpr *>(&expr))
@@ -135,6 +163,14 @@ static std::string conditionExprText(const Expr &expr)
 
 } // namespace
 
+/// @brief Analyze a procedure declaration shared logic between functions/subs.
+/// @tparam Proc Procedure AST type (FunctionDecl or SubDecl).
+/// @tparam BodyCallback Callable invoked after traversing the body.
+/// @param proc Procedure to analyze.
+/// @param bodyCheck Callback responsible for return-specific diagnostics.
+/// @note Binds parameters into a fresh scope, visits the body to infer symbol
+///       usage, and allows @p bodyCheck to emit diagnostics such as missing
+///       returns.
 template <typename Proc, typename BodyCallback>
 void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc, BodyCallback &&bodyCheck)
 {
@@ -154,6 +190,10 @@ void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc, BodyCallback &&b
     std::forward<BodyCallback>(bodyCheck)(proc);
 }
 
+/// @brief Analyze a BASIC FUNCTION declaration.
+/// @param f Function AST node providing signature and body.
+/// @note Emits diagnostics when a function body lacks a guaranteed RETURN or
+///       when nested statements report issues via visit callbacks.
 void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
 {
     analyzeProcedureCommon(f, [this](const FunctionDecl &func) {
@@ -169,12 +209,18 @@ void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
     });
 }
 
+/// @brief Analyze a BASIC SUB declaration.
+/// @param s Subroutine AST node.
+/// @note Traverses the body to populate scopes and forward diagnostics from
+///       statement analysis.
 void SemanticAnalyzer::analyzeProc(const SubDecl &s)
 {
     analyzeProcedureCommon(s, [](const SubDecl &) {});
 }
 
 /// @brief Check whether a sequence of statements guarantees a return value.
+/// @param stmts Statements belonging to a procedure body.
+/// @return True when the tail of @p stmts returns on all paths.
 ///
 /// The analysis is structural and conservative:
 /// - `RETURN` with an expression returns true.
@@ -182,6 +228,7 @@ void SemanticAnalyzer::analyzeProc(const SubDecl &s)
 /// - `WHILE` and `FOR` are treated as potentially non-terminating and thus do
 ///   not guarantee a return, regardless of their bodies.
 /// - For a list of statements, only the last statement is considered.
+/// @note Pure analysis helper that does not emit diagnostics.
 bool SemanticAnalyzer::mustReturn(const std::vector<StmtPtr> &stmts) const
 {
     if (stmts.empty())
@@ -190,6 +237,9 @@ bool SemanticAnalyzer::mustReturn(const std::vector<StmtPtr> &stmts) const
 }
 
 /// @brief Determine whether a single statement returns a value on all paths.
+/// @param s Statement to inspect.
+/// @return True if @p s guarantees a return value.
+/// @note Recurses into structured statements without emitting diagnostics.
 bool SemanticAnalyzer::mustReturn(const Stmt &s) const
 {
     if (auto *lst = dynamic_cast<const StmtList *>(&s))
@@ -212,6 +262,11 @@ bool SemanticAnalyzer::mustReturn(const Stmt &s) const
     return false;
 }
 
+/// @brief Analyze an entire BASIC program.
+/// @param prog Program node containing procedures and main statements.
+/// @note Clears previous state, registers procedures, and visits each
+///       statement so nested handlers can emit diagnostics for symbol issues,
+///       flow errors, and type mismatches.
 void SemanticAnalyzer::analyze(const Program &prog)
 {
     symbols_.clear();
@@ -247,6 +302,10 @@ void SemanticAnalyzer::analyze(const Program &prog)
             visitStmt(*stmt);
 }
 
+/// @brief Analyze each statement in a statement list.
+/// @param lst Statement list container.
+/// @note Delegates to visitStmt so diagnostics originate from specific
+///       statement handlers.
 void SemanticAnalyzer::analyzeStmtList(const StmtList &lst)
 {
     for (const auto &st : lst.stmts)
@@ -254,6 +313,10 @@ void SemanticAnalyzer::analyzeStmtList(const StmtList &lst)
             visitStmt(*st);
 }
 
+/// @brief Validate expressions contained in a PRINT statement.
+/// @param p PRINT statement AST node.
+/// @note Emits diagnostics indirectly through expression visitors when
+///       encountering invalid operands.
 void SemanticAnalyzer::analyzePrint(const PrintStmt &p)
 {
     for (const auto &it : p.items)
@@ -261,6 +324,12 @@ void SemanticAnalyzer::analyzePrint(const PrintStmt &p)
             visitExpr(*it.expr);
 }
 
+/// @brief Validate an assignment to a scalar variable.
+/// @param v Variable expression being assigned to.
+/// @param l LET statement providing the assignment context.
+/// @note Resolves scoped bindings, infers variable type, and emits operand
+///       mismatch diagnostics (B2001) when the assigned expression is
+///       incompatible.
 void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
 {
     if (auto mapped = scopes_.resolve(v.name))
@@ -302,6 +371,12 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
         varTypes_[v.name] = varTy;
 }
 
+/// @brief Validate an assignment to an array element.
+/// @param a Array element target.
+/// @param l LET statement providing assigned expression.
+/// @note Confirms the array exists, validates index type and bounds, and emits
+///       diagnostics such as unknown arrays (B1001), type mismatches (B2001),
+///       and bounds warnings (B3001).
 void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
 {
     if (auto mapped = scopes_.resolve(a.name))
@@ -337,6 +412,10 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
     }
 }
 
+/// @brief Report an error for LET targets that are not assignable.
+/// @param l LET statement with an invalid left-hand side.
+/// @note Always emits diagnostic B2007 after visiting both sides to surface
+///       additional issues in nested expressions.
 void SemanticAnalyzer::analyzeConstExpr(const LetStmt &l)
 {
     if (l.target)
@@ -347,6 +426,10 @@ void SemanticAnalyzer::analyzeConstExpr(const LetStmt &l)
     de.emit(il::support::Severity::Error, "B2007", l.loc, 1, std::move(msg));
 }
 
+/// @brief Analyze a LET assignment statement.
+/// @param l LET statement AST node.
+/// @note Dispatches to scalar/array helpers which may emit diagnostics for
+///       unknown variables, type mismatches, or invalid targets.
 void SemanticAnalyzer::analyzeLet(const LetStmt &l)
 {
     if (!l.target)
@@ -365,6 +448,10 @@ void SemanticAnalyzer::analyzeLet(const LetStmt &l)
     }
 }
 
+/// @brief Ensure an expression used in a condition is boolean-compatible.
+/// @param expr Expression appearing in control-flow predicate.
+/// @note Emits diagnostic DiagNonBooleanCondition when the expression cannot
+///       be interpreted as a boolean value.
 void SemanticAnalyzer::checkConditionExpr(const Expr &expr)
 {
     Type condTy = visitExpr(expr);
@@ -391,6 +478,10 @@ void SemanticAnalyzer::checkConditionExpr(const Expr &expr)
                                exprText);
 }
 
+/// @brief Analyze an IF/ELSEIF/ELSE statement chain.
+/// @param i IF statement AST node.
+/// @note Validates conditions, manages block scopes for branches, and relays
+///       diagnostics from contained statements.
 void SemanticAnalyzer::analyzeIf(const IfStmt &i)
 {
     if (i.cond)
@@ -417,6 +508,10 @@ void SemanticAnalyzer::analyzeIf(const IfStmt &i)
     }
 }
 
+/// @brief Analyze a WHILE loop.
+/// @param w WHILE statement AST node.
+/// @note Checks the loop condition for boolean compatibility and visits the
+///       loop body within a scoped environment, propagating diagnostics.
 void SemanticAnalyzer::analyzeWhile(const WhileStmt &w)
 {
     if (w.cond)
@@ -427,6 +522,11 @@ void SemanticAnalyzer::analyzeWhile(const WhileStmt &w)
             visitStmt(*bs);
 }
 
+/// @brief Analyze a FOR loop.
+/// @param f FOR statement AST node.
+/// @note Binds the loop variable, visits range expressions, tracks active loops
+///       for NEXT validation, and surfaces diagnostics from expression and body
+///       analysis.
 void SemanticAnalyzer::analyzeFor(const ForStmt &f)
 {
     auto *fc = const_cast<ForStmt *>(&f);
@@ -449,6 +549,10 @@ void SemanticAnalyzer::analyzeFor(const ForStmt &f)
     forStack_.pop_back();
 }
 
+/// @brief Analyze a GOTO statement.
+/// @param g GOTO statement AST node.
+/// @note Records referenced labels and emits diagnostic B1003 when the target
+///       line is unknown.
 void SemanticAnalyzer::analyzeGoto(const GotoStmt &g)
 {
     labelRefs_.insert(g.target);
@@ -459,6 +563,10 @@ void SemanticAnalyzer::analyzeGoto(const GotoStmt &g)
     }
 }
 
+/// @brief Analyze a NEXT statement.
+/// @param n NEXT statement AST node.
+/// @note Validates correspondence with the active FOR stack, emitting
+///       diagnostic B1002 when mismatched.
 void SemanticAnalyzer::analyzeNext(const NextStmt &n)
 {
     if (forStack_.empty() || (!n.var.empty() && n.var != forStack_.back()))
@@ -478,11 +586,17 @@ void SemanticAnalyzer::analyzeNext(const NextStmt &n)
     }
 }
 
+/// @brief Analyze an END statement.
+/// @note END has no semantic checks; provided for completeness.
 void SemanticAnalyzer::analyzeEnd(const EndStmt &)
 {
     // nothing
 }
 
+/// @brief Analyze a RANDOMIZE statement.
+/// @param r RANDOMIZE statement AST node.
+/// @note Validates optional seed expression type, emitting diagnostic B2001 on
+///       mismatch.
 void SemanticAnalyzer::analyzeRandomize(const RandomizeStmt &r)
 {
     if (r.seed)
@@ -496,6 +610,10 @@ void SemanticAnalyzer::analyzeRandomize(const RandomizeStmt &r)
     }
 }
 
+/// @brief Analyze an INPUT statement.
+/// @param inp INPUT statement AST node.
+/// @note Validates optional prompt expression, binds the input variable in the
+///       current scope, and records inferred type for later use.
 void SemanticAnalyzer::analyzeInput(const InputStmt &inp)
 {
     if (inp.prompt)
@@ -512,6 +630,10 @@ void SemanticAnalyzer::analyzeInput(const InputStmt &inp)
         varTypes_[ic->var] = Type::Int;
 }
 
+/// @brief Analyze a DIM declaration statement.
+/// @param d DIM statement AST node.
+/// @note Checks array bounds and sizes, enforces local uniqueness, and emits
+///       diagnostics including B2001, B2003, and B1006 for invalid declarations.
 void SemanticAnalyzer::analyzeDim(const DimStmt &d)
 {
     auto *dc = const_cast<DimStmt *>(&d);
@@ -569,6 +691,10 @@ void SemanticAnalyzer::analyzeDim(const DimStmt &d)
     }
 }
 
+/// @brief Dispatch a statement node to the appropriate analyzer.
+/// @param s Statement to visit.
+/// @note Uses a type-indexed dispatch table; diagnostics are emitted by the
+///       specific handler invoked.
 void SemanticAnalyzer::visitStmt(const Stmt &s)
 {
     using Handler = void (*)(SemanticAnalyzer *, const Stmt &);
@@ -592,6 +718,11 @@ void SemanticAnalyzer::visitStmt(const Stmt &s)
         it->second(this, s);
 }
 
+/// @brief Analyze a variable reference expression.
+/// @param v Variable expression to resolve.
+/// @return Inferred BASIC type for @p v.
+/// @note Resolves scoped aliases, records symbols, and emits B1001 with
+///       Levenshtein suggestions when the variable is unknown.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeVar(VarExpr &v)
 {
     if (auto mapped = scopes_.resolve(v.name))
@@ -632,6 +763,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeVar(VarExpr &v)
     return Type::Int;
 }
 
+/// @brief Analyze a unary expression.
+/// @param u Unary expression AST node.
+/// @return Inferred BASIC type of the expression.
+/// @note Emits diagnostic DiagNonBooleanNotOperand when a logical NOT operand
+///       is not boolean-compatible.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeUnary(const UnaryExpr &u)
 {
     Type t = Type::Unknown;
@@ -654,6 +790,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeUnary(const UnaryExpr &u)
     return Type::Unknown;
 }
 
+/// @brief Analyze a binary expression and infer its type.
+/// @param b Binary expression AST node.
+/// @return Type resulting from applying @p b's operator to its operands.
+/// @note Delegates to specialized helpers that emit diagnostics for type
+///       mismatches, divide-by-zero, and logical misuse.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeBinary(const BinaryExpr &b)
 {
     Type lt = Type::Unknown;
@@ -688,6 +829,12 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeBinary(const BinaryExpr &b)
     return Type::Unknown;
 }
 
+/// @brief Analyze arithmetic operators (+, -, *).
+/// @param b Binary expression metadata (location/operator).
+/// @param lt Inferred type of the left operand.
+/// @param rt Inferred type of the right operand.
+/// @return Resulting BASIC type after numeric promotion.
+/// @note Emits diagnostic B2001 when either operand is not numeric.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeArithmetic(const BinaryExpr &b, Type lt, Type rt)
 {
     auto isNum = [](Type t) { return t == Type::Int || t == Type::Float || t == Type::Unknown; };
@@ -699,6 +846,13 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeArithmetic(const BinaryExpr &b, 
     return (lt == Type::Float || rt == Type::Float) ? Type::Float : Type::Int;
 }
 
+/// @brief Analyze division and modulo operators.
+/// @param b Binary expression metadata (location/operator).
+/// @param lt Type of left operand.
+/// @param rt Type of right operand.
+/// @return Resulting BASIC type (integer or float).
+/// @note Emits B2001 for type mismatches and B2002 for literal divide-by-zero
+///       cases detected at analysis time.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeDivMod(const BinaryExpr &b, Type lt, Type rt)
 {
     auto isNum = [](Type t) { return t == Type::Int || t == Type::Float || t == Type::Unknown; };
@@ -752,6 +906,13 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeDivMod(const BinaryExpr &b, Type
     return Type::Unknown;
 }
 
+/// @brief Analyze comparison operators.
+/// @param b Binary expression metadata (location/operator).
+/// @param lt Type of left operand.
+/// @param rt Type of right operand.
+/// @return Boolean result type regardless of operand types.
+/// @note Emits diagnostic B2001 when operands are incompatible (e.g., mixing
+///       strings with ordering comparisons).
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeComparison(const BinaryExpr &b, Type lt, Type rt)
 {
     auto isNum = [](Type t) { return t == Type::Int || t == Type::Float || t == Type::Unknown; };
@@ -774,6 +935,13 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeComparison(const BinaryExpr &b, 
     return Type::Bool;
 }
 
+/// @brief Analyze logical operators (AND/OR/short-circuit variants).
+/// @param b Binary expression metadata (location/operator).
+/// @param lt Type of left operand.
+/// @param rt Type of right operand.
+/// @return Boolean type for logical expressions.
+/// @note Emits diagnostic DiagNonBooleanLogicalOperand when operands are not
+///       boolean-compatible.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeLogical(const BinaryExpr &b, Type lt, Type rt)
 {
     auto isBool = [](Type t) { return t == Type::Unknown || t == Type::Bool; };
@@ -792,6 +960,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeLogical(const BinaryExpr &b, Typ
     return Type::Bool;
 }
 
+/// @brief Analyze a builtin function call expression.
+/// @param c Builtin call AST node.
+/// @return Inferred BASIC type based on builtin semantics.
+/// @note Visits argument expressions, then delegates to builtin-specific
+///       analyzers which emit diagnostics for incorrect usage.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeBuiltinCall(const BuiltinCallExpr &c)
 {
     std::vector<Type> argTys;
@@ -803,6 +976,13 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeBuiltinCall(const BuiltinCallExp
     return Type::Unknown;
 }
 
+/// @brief Validate builtin argument count against an expected range.
+/// @param c Builtin call being checked.
+/// @param args Types of evaluated arguments.
+/// @param min Minimum allowed argument count.
+/// @param max Maximum allowed argument count.
+/// @return True when the call satisfies the arity constraint.
+/// @note Emits diagnostic B2001 describing the mismatch when violated.
 bool SemanticAnalyzer::checkArgCount(const BuiltinCallExpr &c,
                                      const std::vector<Type> &args,
                                      size_t min,
@@ -823,6 +1003,13 @@ bool SemanticAnalyzer::checkArgCount(const BuiltinCallExpr &c,
     return true;
 }
 
+/// @brief Validate a single builtin argument type against allowed options.
+/// @param c Builtin call containing the argument.
+/// @param idx Zero-based argument index.
+/// @param argTy Inferred type for the argument.
+/// @param allowed Set of permissible types.
+/// @return True when @p argTy is among @p allowed or unknown.
+/// @note Emits diagnostic B2001 describing the expected kind when violated.
 bool SemanticAnalyzer::checkArgType(const BuiltinCallExpr &c,
                                     size_t idx,
                                     Type argTy,
@@ -856,6 +1043,11 @@ bool SemanticAnalyzer::checkArgType(const BuiltinCallExpr &c,
     return false;
 }
 
+/// @brief Analyze the RND builtin.
+/// @param c RND call expression.
+/// @param args Argument types provided to RND.
+/// @return Always returns Type::Float.
+/// @note Relies on checkArgCount to emit B2001 if arguments are present.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeRnd(const BuiltinCallExpr &c,
                                                     const std::vector<Type> &args)
 {
@@ -863,6 +1055,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeRnd(const BuiltinCallExpr &c,
     return Type::Float;
 }
 
+/// @brief Analyze the LEN builtin.
+/// @param c LEN call expression.
+/// @param args Argument types supplied to LEN.
+/// @return String length as Type::Int.
+/// @note Emits B2001 through helpers when argument count or type is invalid.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeLen(const BuiltinCallExpr &c,
                                                     const std::vector<Type> &args)
 {
@@ -871,6 +1068,12 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeLen(const BuiltinCallExpr &c,
     return Type::Int;
 }
 
+/// @brief Analyze the MID$ builtin.
+/// @param c MID call expression.
+/// @param args Argument types supplied to MID.
+/// @return Resulting substring type (Type::String).
+/// @note Validates string argument followed by numeric offsets, emitting B2001
+///       on misuse.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeMid(const BuiltinCallExpr &c,
                                                     const std::vector<Type> &args)
 {
@@ -884,6 +1087,12 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeMid(const BuiltinCallExpr &c,
     return Type::String;
 }
 
+/// @brief Analyze the LEFT$ builtin.
+/// @param c LEFT call expression.
+/// @param args Argument types supplied to LEFT.
+/// @return Result string type (Type::String).
+/// @note Ensures a string source and numeric length, reporting B2001 when
+///       violated.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeLeft(const BuiltinCallExpr &c,
                                                      const std::vector<Type> &args)
 {
@@ -895,6 +1104,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeLeft(const BuiltinCallExpr &c,
     return Type::String;
 }
 
+/// @brief Analyze the RIGHT$ builtin.
+/// @param c RIGHT call expression.
+/// @param args Argument types supplied to RIGHT.
+/// @return Result string type (Type::String).
+/// @note Requires string input and numeric count; emits B2001 via helpers.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeRight(const BuiltinCallExpr &c,
                                                       const std::vector<Type> &args)
 {
@@ -906,6 +1120,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeRight(const BuiltinCallExpr &c,
     return Type::String;
 }
 
+/// @brief Analyze the STR$ builtin.
+/// @param c STR call expression.
+/// @param args Argument types supplied to STR.
+/// @return Result string type (Type::String).
+/// @note Requires numeric argument, reporting B2001 via helper checks.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeStr(const BuiltinCallExpr &c,
                                                     const std::vector<Type> &args)
 {
@@ -914,6 +1133,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeStr(const BuiltinCallExpr &c,
     return Type::String;
 }
 
+/// @brief Analyze the VAL builtin.
+/// @param c VAL call expression.
+/// @param args Argument types supplied to VAL.
+/// @return Numeric result type (Type::Int).
+/// @note Requires a string argument; reports B2001 when violated.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeVal(const BuiltinCallExpr &c,
                                                     const std::vector<Type> &args)
 {
@@ -922,6 +1146,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeVal(const BuiltinCallExpr &c,
     return Type::Int;
 }
 
+/// @brief Analyze the INT builtin.
+/// @param c INT call expression.
+/// @param args Argument types supplied to INT.
+/// @return Truncated integer result type (Type::Int).
+/// @note Requires a float argument, reporting B2001 for other types.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeInt(const BuiltinCallExpr &c,
                                                     const std::vector<Type> &args)
 {
@@ -930,6 +1159,12 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeInt(const BuiltinCallExpr &c,
     return Type::Int;
 }
 
+/// @brief Analyze the INSTR builtin.
+/// @param c INSTR call expression.
+/// @param args Argument types supplied to INSTR.
+/// @return Integer search result (Type::Int).
+/// @note Validates optional starting index and string operands, emitting B2001
+///       on mismatch.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeInstr(const BuiltinCallExpr &c,
                                                       const std::vector<Type> &args)
 {
@@ -948,6 +1183,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeInstr(const BuiltinCallExpr &c,
     return Type::Int;
 }
 
+/// @brief Analyze the LTRIM$ builtin.
+/// @param c LTRIM call expression.
+/// @param args Argument types supplied to LTRIM.
+/// @return Trimmed string type (Type::String).
+/// @note Ensures a single string argument, emitting B2001 otherwise.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeLtrim(const BuiltinCallExpr &c,
                                                       const std::vector<Type> &args)
 {
@@ -956,6 +1196,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeLtrim(const BuiltinCallExpr &c,
     return Type::String;
 }
 
+/// @brief Analyze the RTRIM$ builtin.
+/// @param c RTRIM call expression.
+/// @param args Argument types supplied to RTRIM.
+/// @return Trimmed string type (Type::String).
+/// @note Ensures a single string argument, emitting B2001 otherwise.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeRtrim(const BuiltinCallExpr &c,
                                                       const std::vector<Type> &args)
 {
@@ -964,6 +1209,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeRtrim(const BuiltinCallExpr &c,
     return Type::String;
 }
 
+/// @brief Analyze the TRIM$ builtin.
+/// @param c TRIM call expression.
+/// @param args Argument types supplied to TRIM.
+/// @return Trimmed string type (Type::String).
+/// @note Ensures a single string argument, emitting B2001 otherwise.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeTrim(const BuiltinCallExpr &c,
                                                      const std::vector<Type> &args)
 {
@@ -972,6 +1222,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeTrim(const BuiltinCallExpr &c,
     return Type::String;
 }
 
+/// @brief Analyze the UCASE$ builtin.
+/// @param c UCASE call expression.
+/// @param args Argument types supplied to UCASE.
+/// @return Upper-cased string (Type::String).
+/// @note Requires one string argument; emits B2001 on mismatch.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeUcase(const BuiltinCallExpr &c,
                                                       const std::vector<Type> &args)
 {
@@ -980,6 +1235,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeUcase(const BuiltinCallExpr &c,
     return Type::String;
 }
 
+/// @brief Analyze the LCASE$ builtin.
+/// @param c LCASE call expression.
+/// @param args Argument types supplied to LCASE.
+/// @return Lower-cased string (Type::String).
+/// @note Requires one string argument; emits B2001 on mismatch.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeLcase(const BuiltinCallExpr &c,
                                                       const std::vector<Type> &args)
 {
@@ -988,6 +1248,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeLcase(const BuiltinCallExpr &c,
     return Type::String;
 }
 
+/// @brief Analyze the CHR$ builtin.
+/// @param c CHR call expression.
+/// @param args Argument types supplied to CHR.
+/// @return Single-character string result (Type::String).
+/// @note Requires numeric argument; emits B2001 via helper checks.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeChr(const BuiltinCallExpr &c,
                                                     const std::vector<Type> &args)
 {
@@ -996,6 +1261,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeChr(const BuiltinCallExpr &c,
     return Type::String;
 }
 
+/// @brief Analyze the ASC builtin.
+/// @param c ASC call expression.
+/// @param args Argument types supplied to ASC.
+/// @return Character code result (Type::Int).
+/// @note Requires string argument; emits B2001 for other types.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeAsc(const BuiltinCallExpr &c,
                                                     const std::vector<Type> &args)
 {
@@ -1004,6 +1274,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeAsc(const BuiltinCallExpr &c,
     return Type::Int;
 }
 
+/// @brief Analyze the SQR builtin.
+/// @param c SQR call expression.
+/// @param args Argument types supplied to SQR.
+/// @return Floating result type (Type::Float).
+/// @note Requires numeric argument; emits B2001 otherwise.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeSqr(const BuiltinCallExpr &c,
                                                     const std::vector<Type> &args)
 {
@@ -1012,6 +1287,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeSqr(const BuiltinCallExpr &c,
     return Type::Float;
 }
 
+/// @brief Analyze the ABS builtin.
+/// @param c ABS call expression.
+/// @param args Argument types supplied to ABS.
+/// @return Numeric result mirroring argument precision.
+/// @note Emits B2001 when the argument is not numeric.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeAbs(const BuiltinCallExpr &c,
                                                     const std::vector<Type> &args)
 {
@@ -1026,6 +1306,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeAbs(const BuiltinCallExpr &c,
     return Type::Int;
 }
 
+/// @brief Analyze the FLOOR builtin.
+/// @param c FLOOR call expression.
+/// @param args Argument types supplied to FLOOR.
+/// @return Floating result type (Type::Float).
+/// @note Requires numeric argument; emits B2001 otherwise.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeFloor(const BuiltinCallExpr &c,
                                                       const std::vector<Type> &args)
 {
@@ -1034,6 +1319,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeFloor(const BuiltinCallExpr &c,
     return Type::Float;
 }
 
+/// @brief Analyze the CEIL builtin.
+/// @param c CEIL call expression.
+/// @param args Argument types supplied to CEIL.
+/// @return Floating result type (Type::Float).
+/// @note Requires numeric argument; emits B2001 otherwise.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeCeil(const BuiltinCallExpr &c,
                                                      const std::vector<Type> &args)
 {
@@ -1042,6 +1332,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeCeil(const BuiltinCallExpr &c,
     return Type::Float;
 }
 
+/// @brief Analyze the SIN builtin.
+/// @param c SIN call expression.
+/// @param args Argument types supplied to SIN.
+/// @return Floating result type (Type::Float).
+/// @note Requires numeric argument; emits B2001 otherwise.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeSin(const BuiltinCallExpr &c,
                                                     const std::vector<Type> &args)
 {
@@ -1050,6 +1345,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeSin(const BuiltinCallExpr &c,
     return Type::Float;
 }
 
+/// @brief Analyze the COS builtin.
+/// @param c COS call expression.
+/// @param args Argument types supplied to COS.
+/// @return Floating result type (Type::Float).
+/// @note Requires numeric argument; emits B2001 otherwise.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeCos(const BuiltinCallExpr &c,
                                                     const std::vector<Type> &args)
 {
@@ -1058,6 +1358,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeCos(const BuiltinCallExpr &c,
     return Type::Float;
 }
 
+/// @brief Analyze the POW builtin.
+/// @param c POW call expression.
+/// @param args Argument types supplied to POW.
+/// @return Floating result type (Type::Float).
+/// @note Requires two numeric arguments; emits B2001 otherwise.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzePow(const BuiltinCallExpr &c,
                                                     const std::vector<Type> &args)
 {
@@ -1069,6 +1374,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzePow(const BuiltinCallExpr &c,
     return Type::Float;
 }
 
+/// @brief Resolve a user-defined call to a registered procedure.
+/// @param c Call expression being analyzed.
+/// @return Procedure signature when found, otherwise nullptr.
+/// @note Emits B1006 for unknown procedures and B2005 when a SUB is used in an
+///       expression context.
 const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c)
 {
     const ProcSignature *sig = procReg_.lookup(c.callee);
@@ -1095,6 +1405,12 @@ const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c)
     return sig;
 }
 
+/// @brief Validate argument types against a procedure signature.
+/// @param c Call expression providing arguments.
+/// @param sig Signature describing expected parameter types (may be null).
+/// @return Vector of inferred argument types.
+/// @note Emits diagnostics for wrong arity (B2005), missing array references
+///       (B2006), and general type mismatches (B2001).
 std::vector<SemanticAnalyzer::Type> SemanticAnalyzer::checkCallArgs(const CallExpr &c,
                                                                     const ProcSignature *sig)
 {
@@ -1147,6 +1463,11 @@ std::vector<SemanticAnalyzer::Type> SemanticAnalyzer::checkCallArgs(const CallEx
     return argTys;
 }
 
+/// @brief Infer the return type of a call from its signature.
+/// @param c Call expression (unused when signature is known).
+/// @param sig Signature describing the callee.
+/// @return Semantic type corresponding to the signature's return type.
+/// @note Does not emit diagnostics; callers handle unknown signatures.
 SemanticAnalyzer::Type SemanticAnalyzer::inferCallType([[maybe_unused]] const CallExpr &c,
                                                        const ProcSignature *sig)
 {
@@ -1161,6 +1482,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::inferCallType([[maybe_unused]] const Ca
     return Type::Int;
 }
 
+/// @brief Analyze a call to a user-defined function.
+/// @param c Call expression AST node.
+/// @return Inferred result type of the call.
+/// @note Combines callee resolution, argument validation, and return type
+///       inference; diagnostics are produced by helper routines.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeCall(const CallExpr &c)
 {
     const ProcSignature *sig = resolveCallee(c);
@@ -1168,6 +1494,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeCall(const CallExpr &c)
     return inferCallType(c, sig);
 }
 
+/// @brief Analyze an array element expression.
+/// @param a Array expression to validate.
+/// @return Resulting element type (Type::Int by default).
+/// @note Emits diagnostics for unknown arrays (B1001), non-integer indices
+///       (B2001), and static bounds warnings (B3001).
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
 {
     if (auto mapped = scopes_.resolve(a.name))
@@ -1204,6 +1535,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
     return Type::Int;
 }
 
+/// @brief Dispatch expression analysis based on runtime type.
+/// @param e Expression AST node.
+/// @return Inferred BASIC type for the expression.
+/// @note Forwards diagnostics through specific analyzers; returns Type::Unknown
+///       when a node type is not recognized.
 SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
 {
     if (dynamic_cast<const IntExpr *>(&e))
