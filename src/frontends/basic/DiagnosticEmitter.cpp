@@ -1,4 +1,5 @@
 // File: src/frontends/basic/DiagnosticEmitter.cpp
+// License: MIT License. See LICENSE in the project root for full license information.
 // Purpose: Implements BASIC diagnostic formatting with codes and carets.
 // Key invariants: Diagnostics printed in emission order.
 // Ownership/Lifetime: Holds copies of source text; borrows engine and manager.
