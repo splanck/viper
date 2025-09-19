@@ -1,5 +1,6 @@
 // File: src/tools/ilc/cmd_run_il.cpp
 // Purpose: Implements execution of IL programs.
+// License: MIT (see LICENSE).
 // Key invariants: None.
 // Ownership/Lifetime: Tool owns loaded modules.
 // Links: docs/class-catalog.md
@@ -28,6 +29,13 @@ using namespace il;
 
 /**
  * @brief Run an IL program from file.
+ *
+ * Execution proceeds through the following phases:
+ * 1. Process debugging-related CLI flags alongside shared `ilc` options.
+ * 2. Read the requested IL file into a module via the expected API.
+ * 3. Verify the parsed module and surface diagnostics on failure.
+ * 4. Configure the VM with stdin redirection, trace controls, and debugger setup.
+ * 5. Execute the program and report optional instruction counts and timing metrics.
  *
  * @param argc Number of subcommand arguments (excluding `-run`).
  * @param argv Argument list starting with the IL file path.
