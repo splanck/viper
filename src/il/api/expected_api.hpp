@@ -6,7 +6,6 @@
 #pragma once
 
 #include <istream>
-#include <sstream>
 
 #include "support/diag_expected.hpp"
 
@@ -22,12 +21,7 @@ namespace il::api::v2
 /// @return Empty Expected on success; diagnostic payload on parse failure.
 inline il::support::Expected<void> parse_text_expected(std::istream &is, il::core::Module &m)
 {
-    std::ostringstream err;
-    if (il::io::Parser::parse(is, m, err))
-    {
-        return {};
-    }
-    return il::support::Expected<void>{il::support::makeError({}, err.str())};
+    return il::io::Parser::parse(is, m);
 }
 
 /// @brief Verify a module while capturing diagnostics in an Expected result.
@@ -35,12 +29,7 @@ inline il::support::Expected<void> parse_text_expected(std::istream &is, il::cor
 /// @return Empty Expected on success; diagnostic payload on verification failure.
 inline il::support::Expected<void> verify_module_expected(const il::core::Module &m)
 {
-    std::ostringstream err;
-    if (il::verify::Verifier::verify(m, err))
-    {
-        return {};
-    }
-    return il::support::Expected<void>{il::support::makeError({}, err.str())};
+    return il::verify::Verifier::verify(m);
 }
 
 } // namespace il::api::v2
