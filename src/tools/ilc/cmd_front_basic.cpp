@@ -1,4 +1,5 @@
 // File: src/tools/ilc/cmd_front_basic.cpp
+// License: MIT License (see LICENSE).
 // Purpose: BASIC front-end driver for ilc.
 // Key invariants: None.
 // Ownership/Lifetime: Tool owns loaded modules.
@@ -28,6 +29,10 @@ using namespace il::support;
 
 /**
  * @brief Compile a BASIC source file to IL.
+ *
+ * @details The compilation pipeline reads the source from disk, parses it into
+ * an AST, folds constants, performs semantic analysis with diagnostics, and
+ * finally lowers the validated program into IL.
  *
  * @param path Path to the BASIC source.
  * @param boundsChecks Enable bounds checks during lowering.
@@ -70,6 +75,10 @@ static core::Module compileBasicToIL(const std::string &path,
 
 /**
  * @brief Handle BASIC front-end subcommands.
+ *
+ * @details Parses ilc shared options alongside BASIC-specific flags, then
+ * compiles the requested input, optionally emits IL, verifies the module, and
+ * runs it in the VM when requested.
  *
  * @param argc Number of subcommand arguments (excluding `front basic`).
  * @param argv Argument list.
