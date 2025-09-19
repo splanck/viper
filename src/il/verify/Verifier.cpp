@@ -7,7 +7,14 @@
 #include "il/verify/Verifier.hpp"
 
 #include <cstddef>
+#include <functional>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Extern.hpp"
@@ -18,69 +25,104 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/Param.hpp"
 #include "il/core/Type.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 #include "il/verify/ControlFlowChecker.hpp"
 #include "il/verify/InstructionChecker.hpp"
 #include "il/verify/TypeInference.hpp"
-#include "il/runtime/RuntimeSignatures.hpp"
-#include <unordered_map>
-#include <unordered_set>
-#include <vector>
+#include "support/diag_expected.hpp"
 
 using namespace il::core;
 
 namespace il::verify
 {
 
-bool Verifier::verify(const Module &m, std::ostream &err)
+using VerifyInstrFnExpected = std::function<il::support::Expected<void>(
+    const Function &,
+    const BasicBlock &,
+    const Instr &,
+    const std::unordered_map<std::string, const BasicBlock *> &,
+    const std::unordered_map<std::string, const Extern *> &,
+    const std::unordered_map<std::string, const Function *> &,
+    TypeInference &,
+    std::vector<il::support::Diag> &)>;
+
+il::support::Expected<void> verifyOpcodeSignature_expected(const Function &fn,
+                                                            const BasicBlock &bb,
+                                                            const Instr &instr);
+il::support::Expected<void> verifyInstruction_expected(
+    const Function &fn,
+    const BasicBlock &bb,
+    const Instr &instr,
+    const std::unordered_map<std::string, const Extern *> &externs,
+    const std::unordered_map<std::string, const Function *> &funcs,
+    TypeInference &types,
+    std::vector<il::support::Diag> &warnings);
+il::support::Expected<void> validateBlockParams_expected(const Function &fn,
+                                                         const BasicBlock &bb,
+                                                         TypeInference &types,
+                                                         std::vector<unsigned> &paramIds);
+il::support::Expected<void> iterateBlockInstructions_expected(
+    const Function &fn,
+    const BasicBlock &bb,
+    const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+    const std::unordered_map<std::string, const Extern *> &externs,
+    const std::unordered_map<std::string, const Function *> &funcs,
+    TypeInference &types,
+    const VerifyInstrFnExpected &verifyInstrFn,
+    std::vector<il::support::Diag> &warnings);
+il::support::Expected<void> checkBlockTerminators_expected(const Function &fn,
+                                                           const BasicBlock &bb);
+il::support::Expected<void> verifyBr_expected(const Function &fn,
+                                             const BasicBlock &bb,
+                                             const Instr &instr,
+                                             const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                                             TypeInference &types);
+il::support::Expected<void> verifyCBr_expected(const Function &fn,
+                                              const BasicBlock &bb,
+                                              const Instr &instr,
+                                              const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                                              TypeInference &types);
+il::support::Expected<void> verifyRet_expected(const Function &fn,
+                                              const BasicBlock &bb,
+                                              const Instr &instr,
+                                              TypeInference &types);
+
+namespace
 {
-    std::unordered_map<std::string, const Extern *> externs;
-    std::unordered_map<std::string, const Global *> globals;
-    std::unordered_map<std::string, const Function *> funcs;
-    bool ok = true;
+using il::support::Diag;
+using il::support::Expected;
+using il::support::makeError;
 
-    ok &= verifyExterns(m, err, externs);
-    ok &= verifyGlobals(m, err, globals);
-
-    for (const auto &f : m.functions)
-    {
-        if (!funcs.emplace(f.name, &f).second)
-        {
-            err << "duplicate function @" << f.name << "\n";
-            ok = false;
-        }
-        ok &= verifyFunction(f, externs, funcs, err);
-    }
-
-    return ok;
+std::string formatFunctionDiag(const Function &fn, std::string_view message)
+{
+    std::ostringstream oss;
+    oss << fn.name;
+    if (!message.empty())
+        oss << ": " << message;
+    return oss.str();
 }
 
-bool Verifier::verifyExterns(const Module &m,
-                             std::ostream &err,
-                             std::unordered_map<std::string, const Extern *> &externs)
+Expected<void> verifyExterns_E(const Module &m,
+                               std::unordered_map<std::string, const Extern *> &externs)
 {
-    bool ok = true;
     for (const auto &e : m.externs)
     {
-        auto [it, ins] = externs.emplace(e.name, &e);
-        if (!ins)
+        auto [it, inserted] = externs.emplace(e.name, &e);
+        if (!inserted)
         {
             const Extern *prev = it->second;
-            bool sigOk =
-                prev->retType.kind == e.retType.kind && prev->params.size() == e.params.size();
+            bool sigOk = prev->retType.kind == e.retType.kind && prev->params.size() == e.params.size();
             if (sigOk)
                 for (size_t i = 0; i < e.params.size(); ++i)
                     if (prev->params[i].kind != e.params[i].kind)
                         sigOk = false;
-            err << "duplicate extern @" << e.name;
+            std::string message = "duplicate extern @" + e.name;
             if (!sigOk)
-                err << " with mismatched signature";
-            err << "\n";
-            ok = false;
-            continue;
+                message += " with mismatched signature";
+            return Expected<void>{makeError({}, message)};
         }
 
-        const auto *sig = il::runtime::findRuntimeSignature(e.name);
-        if (sig)
+        if (const auto *sig = il::runtime::findRuntimeSignature(e.name))
         {
             bool sigOk = e.retType.kind == sig->retType.kind && e.params.size() == sig->paramTypes.size();
             if (sigOk)
@@ -88,52 +130,104 @@ bool Verifier::verifyExterns(const Module &m,
                     if (e.params[i].kind != sig->paramTypes[i].kind)
                         sigOk = false;
             if (!sigOk)
-            {
-                err << "extern @" << e.name << " signature mismatch\n";
-                ok = false;
-            }
+                return Expected<void>{makeError({}, "extern @" + e.name + " signature mismatch")};
         }
     }
-    return ok;
+    return {};
 }
 
-bool Verifier::verifyGlobals(const Module &m,
-                             std::ostream &err,
-                             std::unordered_map<std::string, const Global *> &globals)
+Expected<void> verifyGlobals_E(const Module &m,
+                               std::unordered_map<std::string, const Global *> &globals)
 {
-    bool ok = true;
     for (const auto &g : m.globals)
     {
         if (!globals.emplace(g.name, &g).second)
-        {
-            err << "duplicate global @" << g.name << "\n";
-            ok = false;
-        }
+            return Expected<void>{makeError({}, "duplicate global @" + g.name)};
     }
-    return ok;
+    return {};
 }
 
-bool Verifier::verifyFunction(const Function &fn,
+Expected<void> verifyInstr_E(const Function &fn,
+                             const BasicBlock &bb,
+                             const Instr &instr,
+                             const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                             const std::unordered_map<std::string, const Extern *> &externs,
+                             const std::unordered_map<std::string, const Function *> &funcs,
+                             TypeInference &types,
+                             std::vector<Diag> &warnings)
+{
+    if (auto result = verifyOpcodeSignature_expected(fn, bb, instr); !result)
+        return result;
+
+    switch (instr.op)
+    {
+        case Opcode::Br:
+            return verifyBr_expected(fn, bb, instr, blockMap, types);
+        case Opcode::CBr:
+            return verifyCBr_expected(fn, bb, instr, blockMap, types);
+        case Opcode::Ret:
+            return verifyRet_expected(fn, bb, instr, types);
+        default:
+            return verifyInstruction_expected(fn, bb, instr, externs, funcs, types, warnings);
+    }
+}
+
+Expected<void> verifyBlock_E(const Function &fn,
+                              const BasicBlock &bb,
+                              const std::unordered_map<std::string, const BasicBlock *> &blockMap,
                               const std::unordered_map<std::string, const Extern *> &externs,
                               const std::unordered_map<std::string, const Function *> &funcs,
-                              std::ostream &err)
+                              std::unordered_map<unsigned, Type> &temps,
+                              std::vector<Diag> &warnings)
 {
-    bool ok = true;
-    if (fn.blocks.empty())
+    std::unordered_set<unsigned> defined;
+    for (const auto &kv : temps)
+        defined.insert(kv.first);
+
+    TypeInference types(temps, defined);
+
+    std::vector<unsigned> paramIds;
+    if (auto result = validateBlockParams_expected(fn, bb, types, paramIds); !result)
+        return result;
+
+    VerifyInstrFnExpected verifyInstrFn = [&](const Function &fnRef, const BasicBlock &bbRef, const Instr &instrRef,
+                                              const std::unordered_map<std::string, const BasicBlock *> &blockMapRef,
+                                              const std::unordered_map<std::string, const Extern *> &externsRef,
+                                              const std::unordered_map<std::string, const Function *> &funcsRef,
+                                              TypeInference &typesRef,
+                                              std::vector<Diag> &warningSink) -> Expected<void>
     {
-        err << fn.name << ": function has no blocks\n";
-        return false;
-    }
+        return verifyInstr_E(fnRef, bbRef, instrRef, blockMapRef, externsRef, funcsRef, typesRef, warningSink);
+    };
+
+    if (auto result = iterateBlockInstructions_expected(
+            fn, bb, blockMap, externs, funcs, types, verifyInstrFn, warnings);
+        !result)
+        return result;
+
+    if (auto result = checkBlockTerminators_expected(fn, bb); !result)
+        return result;
+
+    for (unsigned id : paramIds)
+        types.removeTemp(id);
+
+    return {};
+}
+
+Expected<void> verifyFunction_E(const Function &fn,
+                                const std::unordered_map<std::string, const Extern *> &externs,
+                                const std::unordered_map<std::string, const Function *> &funcs,
+                                std::vector<Diag> &warnings)
+{
+    if (fn.blocks.empty())
+        return Expected<void>{makeError({}, formatFunctionDiag(fn, "function has no blocks"))};
+
     const std::string &firstLabel = fn.blocks.front().label;
     const bool isEntry = firstLabel == "entry" || firstLabel.rfind("entry_", 0) == 0;
     if (!isEntry)
-    {
-        err << fn.name << ": first block must be entry\n";
-        ok = false;
-    }
+        return Expected<void>{makeError({}, formatFunctionDiag(fn, "first block must be entry"))};
 
-    auto itExt = externs.find(fn.name);
-    if (itExt != externs.end())
+    if (auto itExt = externs.find(fn.name); itExt != externs.end())
     {
         const Extern *e = itExt->second;
         bool sigOk = e->retType.kind == fn.retType.kind && e->params.size() == fn.params.size();
@@ -142,10 +236,7 @@ bool Verifier::verifyFunction(const Function &fn,
                 if (e->params[i].kind != fn.params[i].type.kind)
                     sigOk = false;
         if (!sigOk)
-        {
-            err << "function @" << fn.name << " signature mismatch with extern\n";
-            ok = false;
-        }
+            return Expected<void>{makeError({}, "function @" + fn.name + " signature mismatch with extern")};
     }
 
     std::unordered_set<std::string> labels;
@@ -153,10 +244,7 @@ bool Verifier::verifyFunction(const Function &fn,
     for (const auto &bb : fn.blocks)
     {
         if (!labels.insert(bb.label).second)
-        {
-            err << fn.name << ": duplicate label " << bb.label << "\n";
-            ok = false;
-        }
+            return Expected<void>{makeError({}, formatFunctionDiag(fn, "duplicate label " + bb.label))};
         blockMap[bb.label] = &bb;
     }
 
@@ -165,18 +253,99 @@ bool Verifier::verifyFunction(const Function &fn,
         temps[p.id] = p.type;
 
     for (const auto &bb : fn.blocks)
-        ok &= verifyBlock(fn, bb, blockMap, externs, funcs, temps, err);
+        if (auto result = verifyBlock_E(fn, bb, blockMap, externs, funcs, temps, warnings); !result)
+            return result;
 
     for (const auto &bb : fn.blocks)
-        for (const auto &in : bb.instructions)
-            for (const auto &lbl : in.labels)
-                if (!labels.count(lbl))
-                {
-                    err << fn.name << ": unknown label " << lbl << "\n";
-                    ok = false;
-                }
+        for (const auto &instr : bb.instructions)
+            for (const auto &label : instr.labels)
+                if (!labels.count(label))
+                    return Expected<void>{makeError({}, formatFunctionDiag(fn, "unknown label " + label))};
 
-    return ok;
+    return {};
+}
+
+Expected<void> verifyModule_E(const Module &m, std::vector<Diag> &warnings)
+{
+    std::unordered_map<std::string, const Extern *> externs;
+    std::unordered_map<std::string, const Global *> globals;
+    std::unordered_map<std::string, const Function *> funcs;
+
+    if (auto result = verifyExterns_E(m, externs); !result)
+        return result;
+    if (auto result = verifyGlobals_E(m, globals); !result)
+        return result;
+
+    for (const auto &fn : m.functions)
+    {
+        if (!funcs.emplace(fn.name, &fn).second)
+            return Expected<void>{makeError({}, "duplicate function @" + fn.name)};
+
+        if (auto result = verifyFunction_E(fn, externs, funcs, warnings); !result)
+            return result;
+    }
+
+    return {};
+}
+
+} // namespace
+
+bool Verifier::verify(const Module &m, std::ostream &err)
+{
+    std::vector<Diag> warnings;
+    if (auto result = verifyModule_E(m, warnings); !result)
+    {
+        for (const auto &warning : warnings)
+            il::support::printDiag(warning, err);
+        il::support::printDiag(result.error(), err);
+        return false;
+    }
+
+    for (const auto &warning : warnings)
+        il::support::printDiag(warning, err);
+    return true;
+}
+
+bool Verifier::verifyExterns(const Module &m,
+                             std::ostream &err,
+                             std::unordered_map<std::string, const Extern *> &externs)
+{
+    if (auto result = verifyExterns_E(m, externs); !result)
+    {
+        il::support::printDiag(result.error(), err);
+        return false;
+    }
+    return true;
+}
+
+bool Verifier::verifyGlobals(const Module &m,
+                             std::ostream &err,
+                             std::unordered_map<std::string, const Global *> &globals)
+{
+    if (auto result = verifyGlobals_E(m, globals); !result)
+    {
+        il::support::printDiag(result.error(), err);
+        return false;
+    }
+    return true;
+}
+
+bool Verifier::verifyFunction(const Function &fn,
+                              const std::unordered_map<std::string, const Extern *> &externs,
+                              const std::unordered_map<std::string, const Function *> &funcs,
+                              std::ostream &err)
+{
+    std::vector<Diag> warnings;
+    if (auto result = verifyFunction_E(fn, externs, funcs, warnings); !result)
+    {
+        for (const auto &warning : warnings)
+            il::support::printDiag(warning, err);
+        il::support::printDiag(result.error(), err);
+        return false;
+    }
+    for (const auto &warning : warnings)
+        il::support::printDiag(warning, err);
+    return true;
 }
 
 bool Verifier::verifyBlock(const Function &fn,
@@ -187,23 +356,17 @@ bool Verifier::verifyBlock(const Function &fn,
                            std::unordered_map<unsigned, Type> &temps,
                            std::ostream &err)
 {
-    bool ok = true;
-    std::unordered_set<unsigned> defined;
-    for (const auto &kv : temps)
-        defined.insert(kv.first);
-
-    TypeInference types(temps, defined);
-    std::vector<unsigned> paramIds;
-    ok &= validateBlockParams(fn, bb, types, paramIds, err);
-    auto verifyInstrFn = &Verifier::verifyInstr;
-    ok &= iterateBlockInstructions(
-        verifyInstrFn, fn, bb, blockMap, externs, funcs, types, err);
-    ok &= checkBlockTerminators(fn, bb, err);
-
-    for (unsigned id : paramIds)
-        types.removeTemp(id);
-
-    return ok;
+    std::vector<Diag> warnings;
+    if (auto result = verifyBlock_E(fn, bb, blockMap, externs, funcs, temps, warnings); !result)
+    {
+        for (const auto &warning : warnings)
+            il::support::printDiag(warning, err);
+        il::support::printDiag(result.error(), err);
+        return false;
+    }
+    for (const auto &warning : warnings)
+        il::support::printDiag(warning, err);
+    return true;
 }
 
 bool Verifier::verifyInstr(const Function &fn,
@@ -215,19 +378,17 @@ bool Verifier::verifyInstr(const Function &fn,
                            TypeInference &types,
                            std::ostream &err)
 {
-    if (!verifyOpcodeSignature(fn, bb, in, err))
-        return false;
-    switch (in.op)
+    std::vector<Diag> warnings;
+    if (auto result = verifyInstr_E(fn, bb, in, blockMap, externs, funcs, types, warnings); !result)
     {
-        case Opcode::Br:
-            return verifyBr(fn, bb, in, blockMap, types, err);
-        case Opcode::CBr:
-            return verifyCBr(fn, bb, in, blockMap, types, err);
-        case Opcode::Ret:
-            return verifyRet(fn, bb, in, types, err);
-        default:
-            return verifyInstruction(fn, bb, in, externs, funcs, types, err);
+        for (const auto &warning : warnings)
+            il::support::printDiag(warning, err);
+        il::support::printDiag(result.error(), err);
+        return false;
     }
+    for (const auto &warning : warnings)
+        il::support::printDiag(warning, err);
+    return true;
 }
 
 } // namespace il::verify
