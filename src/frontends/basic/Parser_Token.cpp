@@ -3,6 +3,7 @@
 // Key invariants: Buffer always holds current token.
 // Ownership/Lifetime: Parser owns lexer and token buffer.
 // Links: docs/class-catalog.md
+// License: MIT
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"
@@ -46,17 +47,10 @@ Token Parser::consume()
     return t;
 }
 
-/**
- * Consume the next token when its kind matches the expected value.
- *
- * If the current token does not have kind @p k, a diagnostic is emitted (or an
- * error message is printed when no emitter is available).  Tokens are then
- * discarded until the next statement boundary so that parsing can resume
- * in a stable state.  In this error case the offending token is returned.
- *
- * @param k Expected token kind.
- * @return The matched token on success; otherwise the offending token.
- */
+/// @brief Consume the next token when it matches the expected kind.
+/// @param k Expected token kind.
+/// @return Matched token on success; otherwise the offending token.
+/// @note Emits diagnostics and syncs to a statement boundary on mismatch.
 Token Parser::expect(TokenKind k)
 {
     if (!at(k))
@@ -77,13 +71,8 @@ Token Parser::expect(TokenKind k)
     return consume();
 }
 
-/**
- * Discard buffered tokens until a statement boundary is found.
- *
- * Used during error recovery, this helper consumes tokens until an end-of-line,
- * colon, or end-of-file is encountered.  It does not emit diagnostics itself
- * but allows parsing to resume at the next stable location.
- */
+/// @brief Discard buffered tokens until reaching a statement boundary.
+/// @note Used for error recovery to resume parsing at a stable location.
 void Parser::syncToStmtBoundary()
 {
     while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine) && !at(TokenKind::Colon))
