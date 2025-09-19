@@ -15,59 +15,14 @@ namespace il::core
 /// @see docs/il-spec.md §3 for opcode descriptions.
 enum class Opcode
 {
-    Add,
-    Sub,
-    Mul,
-    SDiv,
-    UDiv,
-    SRem,
-    URem,
-    And,
-    Or,
-    Xor,
-    Shl,
-    LShr,
-    AShr,
-    FAdd,
-    FSub,
-    FMul,
-    FDiv,
-    ICmpEq,
-    ICmpNe,
-    SCmpLT,
-    SCmpLE,
-    SCmpGT,
-    SCmpGE,
-    UCmpLT,
-    UCmpLE,
-    UCmpGT,
-    UCmpGE,
-    FCmpEQ,
-    FCmpNE,
-    FCmpLT,
-    FCmpLE,
-    FCmpGT,
-    FCmpGE,
-    Sitofp,
-    Fptosi,
-    Zext1,
-    Trunc1,
-    Alloca,
-    GEP,
-    Load,
-    Store,
-    AddrOf,
-    ConstStr,
-    ConstNull,
-    Call,
-    Br,
-    CBr,
-    Ret,
-    Trap
+#define IL_OPCODE(NAME, ...) NAME,
+#include "il/core/Opcode.def"
+#undef IL_OPCODE
+    Count
 };
 
 /// @brief Total number of opcodes defined by the IL.
-constexpr size_t kNumOpcodes = static_cast<size_t>(Opcode::Trap) + 1;
+constexpr size_t kNumOpcodes = static_cast<size_t>(Opcode::Count);
 
 /// @brief Convert opcode @p op to its mnemonic string.
 /// @param op Opcode to stringify.
