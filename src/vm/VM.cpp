@@ -1,4 +1,5 @@
 // File: src/vm/VM.cpp
+// License: MIT License. See LICENSE in the project root for full license information.
 // Purpose: Implements stack-based virtual machine for IL.
 // Key invariants: None.
 // Ownership/Lifetime: VM references module owned externally.
@@ -24,6 +25,9 @@ namespace il::vm
 /// executed via @c execFunction. Any tracing or debugging configured on the VM
 /// applies to the entire run.
 ///
+/// Workflow: look up @c main in @c fnMap, assert it exists, then call
+/// @c execFunction with an empty argument list and forward its return value.
+///
 /// @returns Signed 64-bit exit code produced by the program's @c main function.
 int64_t VM::run()
 {
@@ -38,6 +42,10 @@ int64_t VM::run()
 /// constant operands into the appropriate slot representation. Global addresses
 /// and constant strings are resolved through the VM's string pool, which bridges
 /// to the runtime's string handling.
+///
+/// Workflow: dispatch on the value kind, pull temporaries from @p fr.regs,
+/// translate constants into the matching slot field, resolve globals via
+/// @c strMap, and return the populated slot (or default slot if absent).
 ///
 /// @param fr Active call frame supplying registers and pending parameters.
 /// @param v  IL value to evaluate.
@@ -83,6 +91,10 @@ Slot VM::eval(Frame &fr, const Value &v)
 /// perform the operation. Handlers such as @c handleCall and @c handleTrap
 /// communicate with the runtime bridge for foreign function calls or traps.
 ///
+/// Workflow: index into the opcode handler table, validate the presence of a
+/// handler, and invoke it to mutate @p fr, adjust control-flow bookkeeping, and
+/// produce an execution result summarising the effects.
+///
 /// @param fr     Current frame.
 /// @param in     Instruction to execute.
 /// @param blocks Mapping of block labels used for branch resolution.
@@ -111,6 +123,11 @@ VM::ExecResult VM::executeOpcode(Frame &fr,
 /// dispatches opcodes via @c executeOpcode, and checks debug controls before and
 /// after each step. The loop exits when a return is executed or a debug pause is
 /// requested.
+///
+/// Workflow: while instructions remain, consult debug controls pre-step, trace
+/// and count the instruction, execute it via @c executeOpcode, react to the
+/// resulting control-flow signal (return/jump/advance), and finally re-check
+/// debug controls before continuing.
 ///
 /// @param st Mutable execution state containing frame and control flow info.
 /// @return Return value of the function or special slot from debug control.
@@ -143,6 +160,9 @@ Slot VM::runFunctionLoop(ExecState &st)
 /// Prepares an execution state, then runs the interpreter loop. The callee's
 /// execution participates fully in tracing, debugging, and runtime bridge
 /// interactions triggered through individual instructions.
+///
+/// Workflow: create an execution state via @c prepareExecution, pass it to
+/// @c runFunctionLoop, and propagate the returned slot to the caller.
 ///
 /// @param fn   Function to execute.
 /// @param args Argument slots passed to the entry block parameters.
