@@ -4,7 +4,7 @@
 // Ownership/Lifetime: Test constructs modules and buffers locally.
 // Links: docs/il-spec.md
 
-#include "il/io/Parser.hpp"
+#include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"
 #include <cassert>
 #include <sstream>
@@ -19,10 +19,14 @@ entry:
 )";
     std::istringstream in(src);
     il::core::Module m;
-    std::ostringstream err;
-    bool ok = il::io::Parser::parse(in, m, err);
-    assert(!ok);
-    std::string msg = err.str();
+    std::ostringstream diag;
+    auto pe = il::api::v2::parse_text_expected(in, m);
+    if (!pe)
+    {
+        il::support::printDiag(pe.error(), diag);
+    }
+    assert(!pe);
+    std::string msg = diag.str();
     assert(msg.find("missing '='") != std::string::npos);
     return 0;
 }
