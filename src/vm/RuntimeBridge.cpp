@@ -1,5 +1,6 @@
 // File: src/vm/RuntimeBridge.cpp
 // Purpose: Bridges VM to C runtime functions.
+// License: MIT License
 // Key invariants: None.
 // Ownership/Lifetime: Bridge does not own VM or runtime resources.
 // Links: docs/il-spec.md
@@ -39,6 +40,10 @@ struct RuntimeEntry
 };
 
 /// @brief Populate the runtime dispatch table.
+/// @details Initializes the static map that pairs symbol names emitted by the
+/// IL with thin adapters that invoke the corresponding C runtime entrypoints.
+/// The table is built on first use and reused for every VM call site to avoid
+/// repeatedly wiring handlers.
 const std::unordered_map<std::string, RuntimeEntry> &runtimeDispatchTable()
 {
     static const std::unordered_map<std::string, RuntimeEntry> table = {
@@ -163,9 +168,11 @@ const std::unordered_map<std::string, RuntimeEntry> &runtimeDispatchTable()
 } // namespace
 
 /// @brief Entry point invoked from the C runtime when a trap occurs.
-/// @details Uses the globals recorded by `RuntimeBridge::call` to route the
-/// message through `RuntimeBridge::trap`, preserving the source location
-/// and function context for diagnostics.
+/// @details Serves as the external hook that the C runtime calls when
+/// `rt_abort`-style routines detect a fatal condition. The VM stores call-site
+/// context in globals via `RuntimeBridge::call`; this hook relays the trap
+/// through `RuntimeBridge::trap` so diagnostics carry function, block, and
+/// source information.
 extern "C" void vm_trap(const char *msg)
 {
     il::vm::RuntimeBridge::trap(msg ? msg : "trap", curLoc, curFn, curBlock);
@@ -175,10 +182,10 @@ namespace il::vm
 {
 
 /// @brief Dispatch a VM runtime call to the corresponding C implementation.
-/// @details The VM passes the symbolic runtime `name` along with any
-/// arguments. The bridge records the current function and source location
-/// before selecting the matching C function, enabling any nested trap to
-/// report meaningful diagnostics.
+/// @details Establishes the trap bookkeeping for the duration of the call,
+/// validates the arity against the lazily initialized dispatch table, and then
+/// executes the bound C adapter. Any trap that fires while the callee runs is
+/// able to surface precise context through the globals populated here.
 Slot RuntimeBridge::call(const std::string &name,
                          const std::vector<Slot> &args,
                          const SourceLoc &loc,
