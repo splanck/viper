@@ -7,6 +7,7 @@
 #include "il/verify/Verifier.hpp"
 
 #include <cstddef>
+#include <sstream>
 #include <utility>
 
 #include "il/core/BasicBlock.hpp"
@@ -30,6 +31,14 @@ using namespace il::core;
 
 namespace il::verify
 {
+
+il::support::Expected<void> Verifier::verify(const Module &m)
+{
+    std::ostringstream err;
+    if (Verifier::verify(m, err))
+        return {};
+    return std::unexpected(makeError({}, err.str()));
+}
 
 bool Verifier::verify(const Module &m, std::ostream &err)
 {
