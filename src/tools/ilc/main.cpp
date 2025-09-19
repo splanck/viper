@@ -2,6 +2,7 @@
 // Purpose: Dispatcher for ilc subcommands.
 // Key invariants: None.
 // Ownership/Lifetime: Tool owns loaded modules.
+// License: MIT.
 // Links: docs/class-catalog.md
 
 #include "cli.hpp"
@@ -14,7 +15,10 @@
 ///          along with their expected arguments. This function serves as a
 ///          reference when no or invalid arguments are provided and mirrors the
 ///          capabilities of the associated handlers `cmdRunIL`, `cmdFrontBasic`,
-///          and `cmdILOpt`.
+///          and `cmdILOpt`. Step-by-step summary:
+///          1. Print the tool banner and each usage synopsis line.
+///          2. Emit BASIC-specific guidance.
+///          3. Append the intrinsic name list provided by the BASIC frontend.
 void usage()
 {
     std::cerr
@@ -41,9 +45,12 @@ void usage()
 /// @return Exit status of the selected subcommand or `1` on error.
 /// @details The first argument determines which handler processes the request:
 ///          `cmdRunIL` executes `.il` programs, `cmdILOpt` performs optimization
-///          passes, and `cmdFrontBasic` drives the BASIC front end. Overall
-///          flow: validate the argument count, parse the subcommand, dispatch to
-///          the matching handler, and show usage on failure.
+///          passes, and `cmdFrontBasic` drives the BASIC front end. Step-by-step
+///          summary:
+///          1. Verify that at least one subcommand argument is provided.
+///          2. Parse the subcommand token to determine the execution mode.
+///          3. Dispatch to the matching handler with the remaining arguments.
+///          4. Fall back to displaying usage when no match exists.
 int main(int argc, char **argv)
 {
     if (argc < 2)
