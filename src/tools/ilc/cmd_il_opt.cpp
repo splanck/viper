@@ -75,14 +75,6 @@ int cmdILOpt(int argc, char **argv)
             return 1;
         }
     }
-    if (!passesExplicit)
-    {
-        passList = {"mem2reg", "constfold", "peephole", "dce"};
-    }
-    if (noMem2Reg)
-    {
-        passList.erase(std::remove(passList.begin(), passList.end(), "mem2reg"), passList.end());
-    }
     if (outFile.empty())
     {
         usage();
@@ -98,21 +90,50 @@ int cmdILOpt(int argc, char **argv)
     if (!io::Parser::parse(ifs, m, std::cerr))
         return 1;
     transform::PassManager pm;
-    pm.addPass("constfold", transform::constFold);
-    pm.addPass("peephole", transform::peephole);
-    pm.addPass("dce", transform::dce);
-    pm.addPass("mem2reg",
-               [mem2regStats](core::Module &mod)
-               {
-                   viper::passes::Mem2RegStats st;
-                   viper::passes::mem2reg(mod, mem2regStats ? &st : nullptr);
-                   if (mem2regStats)
-                   {
-                       std::cout << "mem2reg: promoted " << st.promotedVars << ", removed loads "
-                                 << st.removedLoads << ", removed stores " << st.removedStores
-                                 << "\n";
-                   }
-               });
+    pm.registerModulePass(
+        "constfold",
+        [](core::Module &mod, transform::AnalysisManager &)
+        {
+            transform::constFold(mod);
+            return transform::PreservedAnalyses::none();
+        });
+    pm.registerModulePass(
+        "peephole",
+        [](core::Module &mod, transform::AnalysisManager &)
+        {
+            transform::peephole(mod);
+            return transform::PreservedAnalyses::none();
+        });
+    pm.registerModulePass(
+        "dce",
+        [](core::Module &mod, transform::AnalysisManager &)
+        {
+            transform::dce(mod);
+            return transform::PreservedAnalyses::none();
+        });
+    pm.registerModulePass(
+        "mem2reg",
+        [mem2regStats](core::Module &mod, transform::AnalysisManager &)
+        {
+            viper::passes::Mem2RegStats st;
+            viper::passes::mem2reg(mod, mem2regStats ? &st : nullptr);
+            if (mem2regStats)
+            {
+                std::cout << "mem2reg: promoted " << st.promotedVars << ", removed loads " << st.removedLoads
+                          << ", removed stores " << st.removedStores << "\n";
+            }
+            return transform::PreservedAnalyses::none();
+        });
+    pm.registerPipeline("default", {"mem2reg", "constfold", "peephole", "dce"});
+    if (!passesExplicit)
+    {
+        if (const auto *pipeline = pm.getPipeline("default"))
+            passList = *pipeline;
+    }
+    if (noMem2Reg)
+    {
+        passList.erase(std::remove(passList.begin(), passList.end(), "mem2reg"), passList.end());
+    }
     pm.run(m, passList);
     std::ofstream ofs(outFile);
     if (!ofs)
