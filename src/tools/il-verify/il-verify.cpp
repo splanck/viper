@@ -2,6 +2,7 @@
 // Purpose: Command-line tool verifying IL modules.
 // Key invariants: None.
 // Ownership/Lifetime: Tool owns parsed module.
+// License: MIT License. See LICENSE for details.
 // Links: docs/class-catalog.md
 
 #include "il/api/expected_api.hpp"
@@ -16,6 +17,8 @@
 ///   il-verify --version
 /// @param argc Number of CLI arguments.
 /// @param argv Argument vector.
+/// Internally handles argument validation, opens the input file, parses the
+/// module, verifies it, and reports any diagnostics to stderr.
 /// @return 0 on successful verification or when displaying the version;
 ///         1 on invalid usage, I/O, parse, or verification errors.
 int main(int argc, char **argv)
