@@ -290,20 +290,24 @@ Expected<void> verifyModule_E(const Module &m, std::vector<Diag> &warnings)
 
 } // namespace
 
-bool Verifier::verify(const Module &m, std::ostream &err)
+il::support::Expected<void> Verifier::verify(const Module &m)
 {
     std::vector<Diag> warnings;
     if (auto result = verifyModule_E(m, warnings); !result)
     {
+        if (warnings.empty())
+            return result;
+
+        std::ostringstream oss;
         for (const auto &warning : warnings)
-            il::support::printDiag(warning, err);
-        il::support::printDiag(result.error(), err);
-        return false;
+            il::support::printDiag(warning, oss);
+        il::support::printDiag(result.error(), oss);
+        auto diag = result.error();
+        diag.message = oss.str();
+        return il::support::Expected<void>{std::move(diag)};
     }
 
-    for (const auto &warning : warnings)
-        il::support::printDiag(warning, err);
-    return true;
+    return {};
 }
 
 bool Verifier::verifyExterns(const Module &m,

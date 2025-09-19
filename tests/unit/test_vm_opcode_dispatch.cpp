@@ -4,7 +4,7 @@
 // Ownership: Test parses in-memory IL text and executes the VM in-process.
 // Links: docs/il-spec.md
 
-#include "il/io/Parser.hpp"
+#include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"
 #include "vm/VM.hpp"
 #include <cassert>
@@ -74,9 +74,8 @@ merge(%val: i64, %flag: i64):
 
     il::core::Module m;
     std::istringstream is(il);
-    std::ostringstream err;
-    bool ok = il::io::Parser::parse(is, m, err);
-    assert(ok && err.str().empty());
+    auto parse = il::api::v2::parse_text_expected(is, m);
+    assert(parse);
 
     il::vm::VM vm(m);
     int64_t rv = vm.run();
