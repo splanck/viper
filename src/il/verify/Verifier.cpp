@@ -2,6 +2,7 @@
 // Purpose: Implements IL verifier checking module correctness.
 // Key invariants: None.
 // Ownership/Lifetime: Verifier does not own modules.
+// License: MIT (see LICENSE).
 // Links: docs/il-spec.md
 
 #include "il/verify/Verifier.hpp"
@@ -46,9 +47,19 @@ using VerifyInstrFnExpected = std::function<il::support::Expected<void>(
     TypeInference &,
     std::vector<il::support::Diag> &)>;
 
+/// @brief Ensures an instruction's opcode signature matches the declared
+///        parameter and result types.
+///
+/// When signatures differ, the returned diagnostic describes the mismatch and
+/// includes the owning function and block context for clarity.
 il::support::Expected<void> verifyOpcodeSignature_expected(const Function &fn,
                                                             const BasicBlock &bb,
                                                             const Instr &instr);
+/// @brief Performs full instruction verification for non-control-flow opcodes.
+///
+/// The helper consults extern and function signature tables as well as the
+/// in-flight type inference state. Structural issues are reported via the
+/// returned diagnostic while recoverable problems are appended to @p warnings.
 il::support::Expected<void> verifyInstruction_expected(
     const Function &fn,
     const BasicBlock &bb,
@@ -57,10 +68,20 @@ il::support::Expected<void> verifyInstruction_expected(
     const std::unordered_map<std::string, const Function *> &funcs,
     TypeInference &types,
     std::vector<il::support::Diag> &warnings);
+/// @brief Validates that block parameters align with predecessor arguments.
+///
+/// Populates @p paramIds with temporary identifiers introduced for block
+/// parameters so they can later be cleared from the type state. Returns a
+/// diagnostic describing the first mismatch encountered.
 il::support::Expected<void> validateBlockParams_expected(const Function &fn,
                                                          const BasicBlock &bb,
                                                          TypeInference &types,
                                                          std::vector<unsigned> &paramIds);
+/// @brief Walks a block's instructions invoking @p verifyInstrFn for each.
+///
+/// The helper feeds every instruction to the provided verifier while
+/// preserving diagnostic warnings collected in @p warnings. It aborts early on
+/// the first verification error and returns that diagnostic.
 il::support::Expected<void> iterateBlockInstructions_expected(
     const Function &fn,
     const BasicBlock &bb,
@@ -70,18 +91,35 @@ il::support::Expected<void> iterateBlockInstructions_expected(
     TypeInference &types,
     const VerifyInstrFnExpected &verifyInstrFn,
     std::vector<il::support::Diag> &warnings);
+/// @brief Ensures a block ends with a valid terminator for its control-flow
+///        structure.
+///
+/// Returns a diagnostic if the final opcode does not satisfy terminator
+/// requirements, helping pinpoint malformed control-flow shapes.
 il::support::Expected<void> checkBlockTerminators_expected(const Function &fn,
                                                            const BasicBlock &bb);
+/// @brief Verifies `br` instructions reference known blocks and argument types.
+///
+/// Uses @p blockMap to resolve the destination label and validates types with
+/// the current inference state, reporting errors via diagnostics.
 il::support::Expected<void> verifyBr_expected(const Function &fn,
                                              const BasicBlock &bb,
                                              const Instr &instr,
                                              const std::unordered_map<std::string, const BasicBlock *> &blockMap,
                                              TypeInference &types);
+/// @brief Verifies `cbr` instructions for correct labels and operand types.
+///
+/// Ensures both conditional successors exist in @p blockMap and that the
+/// tracked types align. Mismatches surface through the returned diagnostic.
 il::support::Expected<void> verifyCBr_expected(const Function &fn,
                                               const BasicBlock &bb,
                                               const Instr &instr,
                                               const std::unordered_map<std::string, const BasicBlock *> &blockMap,
                                               TypeInference &types);
+/// @brief Confirms `ret` instructions match the function signature.
+///
+/// Validates that the returned value count and types agree with @p fn, using
+/// @p types to resolve temporaries. Errors propagate as diagnostics.
 il::support::Expected<void> verifyRet_expected(const Function &fn,
                                               const BasicBlock &bb,
                                               const Instr &instr,
@@ -93,6 +131,10 @@ using il::support::Diag;
 using il::support::Expected;
 using il::support::makeError;
 
+/// @brief Formats a diagnostic message prefix scoped to a function.
+///
+/// Prepends @p fn's name to @p message, allowing diagnostics emitted by the
+/// verifier helpers to clearly identify the function context.
 std::string formatFunctionDiag(const Function &fn, std::string_view message)
 {
     std::ostringstream oss;
@@ -102,6 +144,11 @@ std::string formatFunctionDiag(const Function &fn, std::string_view message)
     return oss.str();
 }
 
+/// @brief Validates extern declarations for uniqueness and runtime agreement.
+///
+/// Builds @p externs as a lookup table for later stages, emitting diagnostics
+/// when duplicate names appear or when runtime signatures disagree with the
+/// declared extern signature.
 Expected<void> verifyExterns_E(const Module &m,
                                std::unordered_map<std::string, const Extern *> &externs)
 {
@@ -136,6 +183,10 @@ Expected<void> verifyExterns_E(const Module &m,
     return {};
 }
 
+/// @brief Ensures global variable declarations are unique within the module.
+///
+/// Populates @p globals for downstream verification and reports a diagnostic on
+/// the first duplicate encountered.
 Expected<void> verifyGlobals_E(const Module &m,
                                std::unordered_map<std::string, const Global *> &globals)
 {
@@ -147,6 +198,11 @@ Expected<void> verifyGlobals_E(const Module &m,
     return {};
 }
 
+/// @brief Dispatches instruction verification, handling control-flow opcodes.
+///
+/// Routes branch and return opcodes to specialized helpers while delegating all
+/// other instructions to InstructionChecker. Diagnostics are returned when an
+/// error occurs; warnings accumulate in @p warnings.
 Expected<void> verifyInstr_E(const Function &fn,
                              const BasicBlock &bb,
                              const Instr &instr,
@@ -172,6 +228,12 @@ Expected<void> verifyInstr_E(const Function &fn,
     }
 }
 
+/// @brief Verifies a single basic block and maintains temporary type state.
+///
+/// Establishes the block's parameter temporaries, iterates instructions through
+/// @p verifyInstrFn, and validates terminator structure. Warnings gathered
+/// during instruction checks are appended to @p warnings, while fatal issues are
+/// surfaced via the returned diagnostic.
 Expected<void> verifyBlock_E(const Function &fn,
                               const BasicBlock &bb,
                               const std::unordered_map<std::string, const BasicBlock *> &blockMap,
@@ -214,6 +276,11 @@ Expected<void> verifyBlock_E(const Function &fn,
     return {};
 }
 
+/// @brief Validates a function's structure, signatures, and block graph.
+///
+/// Checks entry block naming, signature compatibility with externs, unique
+/// labels, instruction correctness, and branch targets. Collects non-fatal
+/// diagnostics in @p warnings and returns the first fatal error diagnostic.
 Expected<void> verifyFunction_E(const Function &fn,
                                 const std::unordered_map<std::string, const Extern *> &externs,
                                 const std::unordered_map<std::string, const Function *> &funcs,
@@ -265,6 +332,11 @@ Expected<void> verifyFunction_E(const Function &fn,
     return {};
 }
 
+/// @brief Runs module-level verification building extern/global/function maps.
+///
+/// Aggregates symbol tables used by downstream checks and iterates every
+/// function, preserving accumulated warnings in @p warnings. Fatal violations
+/// are returned as diagnostics.
 Expected<void> verifyModule_E(const Module &m, std::vector<Diag> &warnings)
 {
     std::unordered_map<std::string, const Extern *> externs;
@@ -290,6 +362,11 @@ Expected<void> verifyModule_E(const Module &m, std::vector<Diag> &warnings)
 
 } // namespace
 
+/// @brief Entry point that verifies an entire module and aggregates diagnostics.
+///
+/// Collects warnings emitted during verification and appends them to the final
+/// error message when a fatal diagnostic is returned, preserving context for
+/// callers using the Expected-based API.
 il::support::Expected<void> Verifier::verify(const Module &m)
 {
     std::vector<Diag> warnings;
@@ -310,6 +387,10 @@ il::support::Expected<void> Verifier::verify(const Module &m)
     return {};
 }
 
+/// @brief Verifies extern declarations and prints failures to @p err.
+///
+/// Builds @p externs for reuse by callers; returns false after emitting the
+/// associated diagnostic stream when duplicates or signature mismatches occur.
 bool Verifier::verifyExterns(const Module &m,
                              std::ostream &err,
                              std::unordered_map<std::string, const Extern *> &externs)
@@ -322,6 +403,10 @@ bool Verifier::verifyExterns(const Module &m,
     return true;
 }
 
+/// @brief Verifies global declarations and writes diagnostics to @p err.
+///
+/// Populates @p globals for caller reuse and reports duplicate declarations via
+/// the diagnostic stream before returning false.
 bool Verifier::verifyGlobals(const Module &m,
                              std::ostream &err,
                              std::unordered_map<std::string, const Global *> &globals)
@@ -334,6 +419,10 @@ bool Verifier::verifyGlobals(const Module &m,
     return true;
 }
 
+/// @brief Verifies a function using pre-built extern and function maps.
+///
+/// Propagates warnings to @p err prior to any fatal diagnostic, ensuring callers
+/// see the full context for soft and hard verification findings.
 bool Verifier::verifyFunction(const Function &fn,
                               const std::unordered_map<std::string, const Extern *> &externs,
                               const std::unordered_map<std::string, const Function *> &funcs,
@@ -352,6 +441,10 @@ bool Verifier::verifyFunction(const Function &fn,
     return true;
 }
 
+/// @brief Verifies a single block with shared symbol tables and temp types.
+///
+/// Emits collected warnings to @p err even when verification succeeds so callers
+/// can surface non-fatal issues encountered during instruction analysis.
 bool Verifier::verifyBlock(const Function &fn,
                            const BasicBlock &bb,
                            const std::unordered_map<std::string, const BasicBlock *> &blockMap,
@@ -373,6 +466,11 @@ bool Verifier::verifyBlock(const Function &fn,
     return true;
 }
 
+/// @brief Verifies an instruction in the context of its block and type state.
+///
+/// Prints all accumulated warnings to @p err before returning the fatal error,
+/// ensuring diagnostic ordering matches the Expected-returning helper used by
+/// the modular verification pipeline.
 bool Verifier::verifyInstr(const Function &fn,
                            const BasicBlock &bb,
                            const Instr &in,
