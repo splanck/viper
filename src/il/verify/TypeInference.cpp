@@ -10,7 +10,9 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/Value.hpp"
+#include "support/diag_expected.hpp"
 #include <sstream>
+#include <string_view>
 
 using namespace il::core;
 
@@ -28,6 +30,18 @@ std::string formatOperands(const Instr &instr)
     for (size_t i = 0; i < instr.labels.size(); ++i)
         os << " label " << instr.labels[i];
     return os.str();
+}
+
+std::string formatInstrDiag(const Function &fn,
+                            const BasicBlock &bb,
+                            const Instr &instr,
+                            std::string_view message)
+{
+    std::ostringstream oss;
+    oss << fn.name << ":" << bb.label << ": " << makeSnippet(instr);
+    if (!message.empty())
+        oss << ": " << message;
+    return oss.str();
 }
 
 } // namespace
@@ -99,12 +113,10 @@ void TypeInference::recordResult(const Instr &instr, Type type)
     }
 }
 
-bool TypeInference::ensureOperandsDefined(const Function &fn,
-                                          const BasicBlock &bb,
-                                          const Instr &instr,
-                                          std::ostream &err) const
+il::support::Expected<void> TypeInference::ensureOperandsDefined_E(const Function &fn,
+                                                                   const BasicBlock &bb,
+                                                                   const Instr &instr) const
 {
-    bool ok = true;
     for (const auto &op : instr.operands)
     {
         if (op.kind != Value::Kind::Temp)
@@ -112,20 +124,39 @@ bool TypeInference::ensureOperandsDefined(const Function &fn,
 
         bool missing = false;
         valueType(op, &missing);
+        const bool undefined = !isDefined(op.id);
+
+        if (!missing && !undefined)
+            continue;
+
+        std::string id = std::to_string(op.id);
+        if (missing && undefined)
+        {
+            return il::support::Expected<void>{il::support::makeError(
+                instr.loc,
+                formatInstrDiag(fn, bb, instr,
+                                "unknown temp %" + id + "; use before def of %" + id))};
+        }
         if (missing)
-        {
-            err << fn.name << ":" << bb.label << ": " << makeSnippet(instr) << ": unknown temp %" << op.id
-                << "\n";
-            ok = false;
-        }
-        if (!defined_.count(op.id))
-        {
-            err << fn.name << ":" << bb.label << ": " << makeSnippet(instr)
-                << ": use before def of %" << op.id << "\n";
-            ok = false;
-        }
+            return il::support::Expected<void>{il::support::makeError(
+                instr.loc, formatInstrDiag(fn, bb, instr, "unknown temp %" + id))};
+        return il::support::Expected<void>{il::support::makeError(
+            instr.loc, formatInstrDiag(fn, bb, instr, "use before def of %" + id))};
     }
-    return ok;
+    return {};
+}
+
+bool TypeInference::ensureOperandsDefined(const Function &fn,
+                                          const BasicBlock &bb,
+                                          const Instr &instr,
+                                          std::ostream &err) const
+{
+    if (auto result = ensureOperandsDefined_E(fn, bb, instr); !result)
+    {
+        il::support::printDiag(result.error(), err);
+        return false;
+    }
+    return true;
 }
 
 void TypeInference::addTemp(unsigned id, Type type)
