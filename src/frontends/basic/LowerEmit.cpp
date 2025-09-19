@@ -1,4 +1,5 @@
 // File: src/frontends/basic/LowerEmit.cpp
+// License: MIT License. See LICENSE in the project root for full license information.
 // Purpose: Implements IR emission helpers and program emission for BASIC lowering.
 // Key invariants: Block labels are deterministic via BlockNamer or mangler.
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
@@ -15,10 +16,15 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
-// Purpose: emit program.
-// Parameters: const Program &prog.
-// Returns: void.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Emit the IR entry point for a BASIC program.
+/// @param prog Parsed program containing the main statements and nested declarations.
+/// @details The shared IR @c builder creates the @c main function, adds explicit entry and
+/// exit blocks, and establishes deterministic line blocks so @c lineBlocks maps statement line
+/// numbers to block indices. The entry block becomes @c cur to ensure stack allocations for
+/// scalars, arrays, and bookkeeping temporaries are emitted before control flow jumps to the
+/// first numbered statement. Control flow either branches from the entry block to the first
+/// numbered block or returns immediately when the program body is empty, and each lowered line
+/// emits an explicit branch to the subsequent block or the synthetic exit recorded in @c fnExit.
 void Lowerer::emitProgram(const Program &prog)
 {
     build::IRBuilder &b = *builder;
@@ -120,24 +126,38 @@ void Lowerer::emitProgram(const Program &prog)
     emitRet(Value::constInt(0));
 }
 
-// Purpose: retrieve IL boolean type.
-// Parameters: none.
-// Returns: IlType representing i1.
-// Side effects: none.
+/// @brief Return the canonical IL boolean type used by the BASIC front end.
+/// @return A 1-bit integral type produced once per call.
 Lowerer::IlType Lowerer::ilBoolTy()
 {
     return Type(Type::Kind::I1);
 }
 
-// Purpose: emit a boolean constant.
-// Parameters: bool v.
-// Returns: IlValue for IL i1 constant (0 or 1).
-// Side effects: none.
+/// @brief Materialise an IL boolean constant in the current block.
+/// @param v Host boolean that should appear in the IL stream.
+/// @return Temporary representing the truncated constant.
+/// @details Values are produced by truncating a 64-bit literal through @ref emitUnary while
+/// respecting the current block referenced by @c cur.
 Lowerer::IlValue Lowerer::emitBoolConst(bool v)
 {
     return emitUnary(Opcode::Trunc1, ilBoolTy(), Value::constInt(v ? 1 : 0));
 }
 
+/// @brief Build a boolean by merging results from synthetic then/else blocks.
+/// @param emitThen Callback that stores the truthy value to the provided slot within the
+/// then block.
+/// @param emitElse Callback that stores the falsy value to the provided slot within the
+/// else block.
+/// @param thenLabelBase Hint for naming the then block.
+/// @param elseLabelBase Hint for naming the else block.
+/// @param joinLabelBase Hint for naming the join block.
+/// @return A temporary containing the loaded boolean once control reaches the join block.
+/// @details A 1-byte stack slot is reserved via @ref emitAlloca while @c cur references the
+/// predecessor block. New blocks are requested from @c builder and are named using
+/// @c blockNamer when available (otherwise falling back to @c mangler). Each branch callback is
+/// executed after @c cur is rebound to the corresponding block, and non-terminating callbacks
+/// fall through by emitting a branch to the join block. Finally, @c cur is positioned on the
+/// join block and the stored predicate is reloaded.
 Lowerer::IlValue Lowerer::emitBoolFromBranches(const std::function<void(Value)> &emitThen,
                                                const std::function<void(Value)> &emitElse,
                                                std::string_view thenLabelBase,
@@ -173,10 +193,13 @@ Lowerer::IlValue Lowerer::emitBoolFromBranches(const std::function<void(Value)> 
     return emitLoad(ilBoolTy(), slot);
 }
 
-// Purpose: lower array addr.
-// Parameters: const ArrayExpr &expr.
-// Returns: Value.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the address of a BASIC array element, inserting bounds checks if enabled.
+/// @param expr Array access expression referencing a declared BASIC array.
+/// @return Address pointing at the computed element.
+/// @details The base pointer is recovered from @c varSlots and arithmetic is emitted in the
+/// current block identified by @c cur. When bounds checking is active, additional ok/fail blocks
+/// are created through @c builder and named with @c blockNamer (falling back to @c mangler) so the
+/// failing path can trap via the runtime helper before control resumes at the success block.
 Value Lowerer::lowerArrayAddr(const ArrayExpr &expr)
 {
     auto it = varSlots.find(expr.name);
@@ -223,10 +246,11 @@ Value Lowerer::lowerArrayAddr(const ArrayExpr &expr)
     return ptr;
 }
 
-// Purpose: emit alloca.
-// Parameters: int bytes.
-// Returns: Value.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Allocate stack storage within the current block.
+/// @param bytes Size of the stack slot in bytes.
+/// @return Temporary pointing to the allocated slot.
+/// @details Appends an @c alloca instruction to @c cur using @ref nextTempId to keep temporary
+/// identifiers in sync with the @c builder's notion of value numbering.
 Value Lowerer::emitAlloca(int bytes)
 {
     unsigned id = nextTempId();
@@ -240,10 +264,12 @@ Value Lowerer::emitAlloca(int bytes)
     return Value::temp(id);
 }
 
-// Purpose: emit load.
-// Parameters: Type ty, Value addr.
-// Returns: Value.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Load a value from memory in the current block.
+/// @param ty Result type of the load.
+/// @param addr Address to load from.
+/// @return Temporary holding the loaded value.
+/// @details Inserts a @c load instruction into @c cur. The caller is responsible for ensuring the
+/// pointer was created via this lowerer and thus agrees with the @c builder's layout.
 Value Lowerer::emitLoad(Type ty, Value addr)
 {
     unsigned id = nextTempId();
@@ -257,10 +283,12 @@ Value Lowerer::emitLoad(Type ty, Value addr)
     return Value::temp(id);
 }
 
-// Purpose: emit store.
-// Parameters: Type ty, Value addr, Value val.
-// Returns: void.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Store a value to memory in the current block.
+/// @param ty Element type recorded on the store.
+/// @param addr Address receiving the value.
+/// @param val Value to be written.
+/// @details Appends a @c store instruction to @c cur without affecting termination state so the
+/// caller may continue emitting instructions in the same block.
 void Lowerer::emitStore(Type ty, Value addr, Value val)
 {
     Instr in;
@@ -271,10 +299,11 @@ void Lowerer::emitStore(Type ty, Value addr, Value val)
     cur->instructions.push_back(in);
 }
 
-// Purpose: emit for step.
-// Parameters: Value slot, Value step.
-// Returns: void.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Advance a FOR-loop induction variable by a step amount.
+/// @param slot Stack slot containing the induction variable.
+/// @param step Value representing the step.
+/// @details Uses @ref emitLoad, @ref emitBinary, and @ref emitStore while @c cur references the
+/// loop body block, keeping the mutation localized to the current control-flow context.
 void Lowerer::emitForStep(Value slot, Value step)
 {
     Value load = emitLoad(Type(Type::Kind::I64), slot);
@@ -282,10 +311,14 @@ void Lowerer::emitForStep(Value slot, Value step)
     emitStore(Type(Type::Kind::I64), slot, add);
 }
 
-// Purpose: emit binary.
-// Parameters: Opcode op, Type ty, Value lhs, Value rhs.
-// Returns: Value.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Emit a binary instruction in the current block.
+/// @param op Opcode to insert.
+/// @param ty Result type.
+/// @param lhs Left operand.
+/// @param rhs Right operand.
+/// @return Temporary containing the result of the instruction.
+/// @details The instruction is appended to @c cur and consumes the next available temporary id via
+/// @ref nextTempId so the surrounding builder state remains coherent.
 Value Lowerer::emitBinary(Opcode op, Type ty, Value lhs, Value rhs)
 {
     unsigned id = nextTempId();
@@ -299,10 +332,13 @@ Value Lowerer::emitBinary(Opcode op, Type ty, Value lhs, Value rhs)
     return Value::temp(id);
 }
 
-// Purpose: emit unary.
-// Parameters: Opcode op, Type ty, Value val.
-// Returns: Value.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Emit a unary instruction in the current block.
+/// @param op Opcode to insert.
+/// @param ty Result type.
+/// @param val Operand value.
+/// @return Temporary containing the result of the instruction.
+/// @details Behaviour mirrors @ref emitBinary but records a single operand, again appending the
+/// instruction to the block referenced by @c cur.
 Value Lowerer::emitUnary(Opcode op, Type ty, Value val)
 {
     unsigned id = nextTempId();
@@ -316,11 +352,11 @@ Value Lowerer::emitUnary(Opcode op, Type ty, Value val)
     return Value::temp(id);
 }
 
-// Purpose: emit br.
-// Parameters: BasicBlock *target.
-// Returns: void.
-// Side effects: may modify lowering state or emit IL. Relies on deterministic block naming via
-// BlockNamer.
+/// @brief Emit an unconditional branch to the target block.
+/// @param target Destination block that must already exist in the enclosing function.
+/// @details Appends a terminator to the block referenced by @c cur and marks it as such. The
+/// branch records the label previously minted by @c builder (or via @c blockNamer) ensuring
+/// deterministic control-flow stitching.
 void Lowerer::emitBr(BasicBlock *target)
 {
     Instr in;
@@ -332,11 +368,12 @@ void Lowerer::emitBr(BasicBlock *target)
     cur->terminated = true;
 }
 
-// Purpose: emit cbr.
-// Parameters: Value cond, BasicBlock *t, BasicBlock *f.
-// Returns: void.
-// Side effects: may modify lowering state or emit IL. Relies on deterministic block naming via
-// BlockNamer.
+/// @brief Emit a conditional branch in the current block.
+/// @param cond Predicate controlling which successor is taken.
+/// @param t Block to execute when @p cond is true.
+/// @param f Block to execute when @p cond is false.
+/// @details Encodes successor labels supplied by @c blockNamer/@c builder, appends the
+/// instruction to @c cur, and marks the block as terminated.
 void Lowerer::emitCBr(Value cond, BasicBlock *t, BasicBlock *f)
 {
     Instr in;
@@ -350,10 +387,11 @@ void Lowerer::emitCBr(Value cond, BasicBlock *t, BasicBlock *f)
     cur->terminated = true;
 }
 
-// Purpose: emit call.
-// Parameters: const std::string &callee, const std::vector<Value> &args.
-// Returns: void.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Emit a call with no returned value.
+/// @param callee Symbolic callee name.
+/// @param args Operand list passed to the call.
+/// @details Appends a void call to @c cur while preserving the builder's notion of call
+/// side-effects.
 void Lowerer::emitCall(const std::string &callee, const std::vector<Value> &args)
 {
     Instr in;
@@ -365,10 +403,12 @@ void Lowerer::emitCall(const std::string &callee, const std::vector<Value> &args
     cur->instructions.push_back(in);
 }
 
-// Purpose: emit call ret.
-// Parameters: Type ty, const std::string &callee, const std::vector<Value> &args.
-// Returns: Value.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Emit a call returning a value.
+/// @param ty Result type recorded for the call.
+/// @param callee Symbolic callee name.
+/// @param args Operand list passed to the call.
+/// @return Temporary receiving the call result.
+/// @details Reserves a new temporary via @ref nextTempId and appends a call instruction to @c cur.
 Value Lowerer::emitCallRet(Type ty, const std::string &callee, const std::vector<Value> &args)
 {
     unsigned id = nextTempId();
@@ -383,10 +423,11 @@ Value Lowerer::emitCallRet(Type ty, const std::string &callee, const std::vector
     return Value::temp(id);
 }
 
-// Purpose: emit const str.
-// Parameters: const std::string &globalName.
-// Returns: Value.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Load the address of a string literal global.
+/// @param globalName Label assigned to the string literal.
+/// @return Temporary referring to the string address.
+/// @details Adds a @c conststr instruction to @c cur. The literal must have been registered with
+/// @ref getStringLabel so the @c builder has emitted the backing global.
 Value Lowerer::emitConstStr(const std::string &globalName)
 {
     unsigned id = nextTempId();
@@ -400,10 +441,10 @@ Value Lowerer::emitConstStr(const std::string &globalName)
     return Value::temp(id);
 }
 
-// Purpose: emit ret.
-// Parameters: Value v.
-// Returns: void.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Emit a return carrying a value.
+/// @param v Value to return to the caller.
+/// @details Appends a @c ret instruction to @c cur, records the operand, and marks the block as
+/// terminated so no further instructions are added accidentally.
 void Lowerer::emitRet(Value v)
 {
     Instr in;
@@ -415,10 +456,8 @@ void Lowerer::emitRet(Value v)
     cur->terminated = true;
 }
 
-// Purpose: emit ret void.
-// Parameters: none.
-// Returns: void.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Emit a void return terminator in the current block.
+/// @details Mirrors @ref emitRet but without an operand; @c cur becomes terminated afterwards.
 void Lowerer::emitRetVoid()
 {
     Instr in;
@@ -429,10 +468,9 @@ void Lowerer::emitRetVoid()
     cur->terminated = true;
 }
 
-// Purpose: emit trap.
-// Parameters: none.
-// Returns: void.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Emit a trap terminator in the current block.
+/// @details Used by bounds checks and runtime helpers. After insertion @c cur is marked
+/// terminated, preventing further instructions from being appended.
 void Lowerer::emitTrap()
 {
     Instr in;
@@ -443,10 +481,11 @@ void Lowerer::emitTrap()
     cur->terminated = true;
 }
 
-// Purpose: get string label.
-// Parameters: const std::string &s.
-// Returns: std::string.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Retrieve or create the global label for a string literal.
+/// @param s Literal contents.
+/// @return Stable label used to refer to the literal.
+/// @details Caches previously generated labels in @c strings and requests @c builder to emit the
+/// global if the literal is first seen.
 std::string Lowerer::getStringLabel(const std::string &s)
 {
     auto it = strings.find(s);
@@ -458,10 +497,10 @@ std::string Lowerer::getStringLabel(const std::string &s)
     return name;
 }
 
-// Purpose: next temp id.
-// Parameters: none.
-// Returns: unsigned.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Acquire the next temporary identifier compatible with the IR builder naming scheme.
+/// @return Unsigned identifier stripped from the mangled temporary name.
+/// @details Uses @c mangler::nextTemp so helper emissions stay in lockstep with the builder's
+/// expectation of temporary numbering.
 unsigned Lowerer::nextTempId()
 {
     std::string name = mangler.nextTemp();
