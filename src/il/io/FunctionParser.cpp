@@ -1,5 +1,6 @@
 // File: src/il/io/FunctionParser.cpp
-// Purpose: Implements helpers for parsing IL function definitions.
+// Purpose: Implements helpers for parsing IL function definitions (MIT License; see
+//          LICENSE).
 // Key invariants: ParserState maintains current function and block context.
 // Ownership/Lifetime: Populates functions directly within the supplied module.
 // Links: docs/il-spec.md
@@ -32,6 +33,15 @@ namespace
 using il::support::Expected;
 using il::support::makeError;
 
+/// @brief Normalises diagnostics captured from instruction parsing.
+///
+/// The instruction parser reports errors prefixed with "error: " and terminated by
+/// trailing newlines. This helper strips that prefix and trailing newline/carriage
+/// returns so that downstream diagnostics emitted through @ref
+/// il::support::printDiag are consistent across call sites.
+///
+/// @param text Raw diagnostic text captured from a stream buffer.
+/// @return The diagnostic message without redundant prefix/terminators.
 std::string stripCapturedDiagMessage(std::string text)
 {
     while (!text.empty() && (text.back() == '\n' || text.back() == '\r'))
@@ -42,6 +52,15 @@ std::string stripCapturedDiagMessage(std::string text)
     return text;
 }
 
+/// @brief Parses a single IL instruction line and forwards diagnostics.
+///
+/// @param line Text of one instruction, in the same format emitted by the IL
+/// serializer (including optional `%temp =` leading assignments).
+/// @param st Parser state mutated for each decoded instruction; the helper
+/// forwards to parseInstruction(), which may extend temporary mappings, update
+/// pending branch bookkeeping, and capture diagnostic locations.
+/// @return Empty on success; otherwise, a diagnostic normalised via
+/// stripCapturedDiagMessage().
 Expected<void> parseInstructionShim_E(const std::string &line, ParserState &st)
 {
     std::ostringstream capture;
@@ -51,6 +70,22 @@ Expected<void> parseInstructionShim_E(const std::string &line, ParserState &st)
     return Expected<void>{makeError(st.curLoc, std::move(message))};
 }
 
+/// @brief Parses a function header and initialises the parser state for a new
+/// function.
+///
+/// The expected format matches the IL textual form, e.g.
+/// `func @name(i32 %arg0, ptr %arg1) -> i1 {`. Parameter identifiers must be
+/// prefixed with `%`, which is stripped when recording names; the parser assumes
+/// this convention for mapping temporaries. On success, the supplied @p st is
+/// updated with a new function appended to the current module, the argument
+/// temporaries seeded (including `st.tempIds` and `st.nextTemp`), and block state
+/// cleared. Errors report malformed headers or unknown types and reference the
+/// current line number stored in the parser state.
+///
+/// @param header Canonical IL function header text.
+/// @param st Parser state receiving the new function and reset block context.
+/// @return Empty on success; otherwise, an error diagnostic describing the malformed
+/// header.
 Expected<void> parseFunctionHeader_E(const std::string &header, ParserState &st)
 {
     size_t at = header.find('@');
@@ -101,6 +136,23 @@ Expected<void> parseFunctionHeader_E(const std::string &header, ParserState &st)
     return {};
 }
 
+/// @brief Parses a basic-block header and opens a new block in the current
+/// function.
+///
+/// The header should contain a label optionally followed by parameter
+/// declarations, e.g. `bb0(%x: ptr, %y: i32)`. Parameters follow the `%name :
+/// type` syntax; `%` prefixes are assumed (and removed) when populating block
+/// temporaries. Successful parses append a new block, populate
+/// `ParserState::tempIds`, extend `valueNames`, and increment `st.nextTemp` for
+/// each parameter. Failures arise from mismatched parentheses, missing types, or
+/// other malformed parameter definitions, and they report using the state's line
+/// counter.
+///
+/// @param header Text of the block label (without the trailing colon).
+/// @param st Parser state mutated with the newly opened block and updated
+/// temporary mappings.
+/// @return Empty on success; otherwise, a diagnostic capturing the malformed
+/// header information.
 Expected<void> parseBlockHeader_E(const std::string &header, ParserState &st)
 {
     size_t lp = header.find('(');
@@ -172,6 +224,19 @@ Expected<void> parseBlockHeader_E(const std::string &header, ParserState &st)
     return {};
 }
 
+/// @brief Parses an entire function body following an already-read header.
+///
+/// The stream @p is should provide the body lines after the function header and
+/// opening brace. The parser recognises block labels terminated by `:`, `.loc`
+/// directives, blank/comment lines, and individual instruction lines formatted as
+/// by the serializer. It mutates @p st to track the active function, block,
+/// source locations, and pending branch resolution. Errors return diagnostics for
+/// malformed blocks, instructions outside blocks, or instruction parsing failures.
+///
+/// @param is Input stream positioned on the first body line after the header.
+/// @param header Original header string already consumed from the stream.
+/// @param st Parser state receiving the fully parsed function definition.
+/// @return Empty on success; otherwise, a diagnostic describing the parsing issue.
 Expected<void> parseFunction_E(std::istream &is, std::string &header, ParserState &st)
 {
     auto headerResult = parseFunctionHeader_E(header, st);
@@ -221,6 +286,10 @@ Expected<void> parseFunction_E(std::istream &is, std::string &header, ParserStat
 
 } // namespace
 
+/// @brief Public wrapper for parsing function headers that prints diagnostics.
+///
+/// Wraps parseFunctionHeader_E() and emits any captured diagnostic to @p err via
+/// il::support::printDiag. The parser state is mutated identically to the helper.
 bool parseFunctionHeader(const std::string &header, ParserState &st, std::ostream &err)
 {
     auto result = parseFunctionHeader_E(header, st);
@@ -232,6 +301,11 @@ bool parseFunctionHeader(const std::string &header, ParserState &st, std::ostrea
     return true;
 }
 
+/// @brief Public wrapper for parsing block headers that prints diagnostics.
+///
+/// Forwards to parseBlockHeader_E() and prints any resulting diagnostic via
+/// il::support::printDiag. The parser state is mutated with a new block when
+/// parsing succeeds.
 bool parseBlockHeader(const std::string &header, ParserState &st, std::ostream &err)
 {
     auto result = parseBlockHeader_E(header, st);
@@ -243,6 +317,10 @@ bool parseBlockHeader(const std::string &header, ParserState &st, std::ostream &
     return true;
 }
 
+/// @brief Public wrapper for parsing complete functions that prints diagnostics.
+///
+/// Delegates to parseFunction_E() and prints any diagnostic produced. On success,
+/// @p st is updated to include the fully parsed function appended to the module.
 bool parseFunction(std::istream &is, std::string &header, ParserState &st, std::ostream &err)
 {
     auto result = parseFunction_E(is, header, st);
