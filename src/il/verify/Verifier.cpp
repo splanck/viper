@@ -7,6 +7,7 @@
 #include "il/verify/Verifier.hpp"
 
 #include <cstddef>
+#include <sstream>
 #include <utility>
 
 #include "il/core/BasicBlock.hpp"
@@ -52,6 +53,16 @@ bool Verifier::verify(const Module &m, std::ostream &err)
     }
 
     return ok;
+}
+
+il::support::Expected<void> Verifier::verify(const Module &m)
+{
+    std::ostringstream err;
+    if (verify(m, err))
+    {
+        return {};
+    }
+    return std::unexpected(makeError(il::support::SourceLoc{}, err.str()));
 }
 
 bool Verifier::verifyExterns(const Module &m,

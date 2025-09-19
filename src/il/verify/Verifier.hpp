@@ -5,9 +5,16 @@
 // Links: docs/il-spec.md
 #pragma once
 
+#include "support/diag_expected.hpp"
+
 #include <ostream>
 #include <string>
 #include <unordered_map>
+
+namespace il::support
+{
+using ::Expected;
+}
 
 namespace il::core
 {
@@ -34,6 +41,11 @@ class Verifier
     /// @param err Stream receiving diagnostic messages.
     /// @return True if verification succeeds; false otherwise.
     static bool verify(const il::core::Module &m, std::ostream &err);
+
+    /// @brief Verify module producing structured diagnostics.
+    /// @param m Module to verify.
+    /// @return Empty expected on success; diagnostic encapsulating failure otherwise.
+    static il::support::Expected<void> verify(const il::core::Module &m);
 
   private:
     /// @brief Validate extern declarations for uniqueness and known signatures.
