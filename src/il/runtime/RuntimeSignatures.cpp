@@ -1,4 +1,5 @@
 // File: src/il/runtime/RuntimeSignatures.cpp
+// License: MIT License. See LICENSE in the project root for full license information.
 // Purpose: Defines the shared runtime signature registry for IL producers and consumers.
 // Key invariants: Registry contents reflect the runtime C ABI signatures.
 // Ownership/Lifetime: Uses static storage duration; entries are immutable after construction.
@@ -14,6 +15,10 @@ namespace
 using Kind = il::core::Type::Kind;
 using SignatureMap = std::unordered_map<std::string_view, RuntimeSignature>;
 
+/// @brief Construct a runtime signature from the provided type kinds.
+/// @param ret Kind of the return type exposed by the runtime helper.
+/// @param params Parameter kinds in the order expected by the runtime ABI.
+/// @return Fully materialized signature with concrete il::core::Type entries.
 RuntimeSignature makeSignature(Kind ret, std::initializer_list<Kind> params)
 {
     RuntimeSignature sig;
@@ -24,6 +29,10 @@ RuntimeSignature makeSignature(Kind ret, std::initializer_list<Kind> params)
     return sig;
 }
 
+/// @brief Populate the runtime signature registry with known helper declarations.
+/// @note Keep this table synchronized with the exported helpers in runtime/rt.hpp and
+///       corresponding C sources so IL producers/consumers stay ABI-compatible.
+/// @return Mapping from runtime symbol names to their IL signatures.
 SignatureMap buildRegistry()
 {
     SignatureMap map;
@@ -79,12 +88,17 @@ SignatureMap buildRegistry()
 
 } // namespace
 
+/// @brief Access the lazily constructed runtime signature registry.
+/// @return Immutable mapping shared across IL components.
 const std::unordered_map<std::string_view, RuntimeSignature> &runtimeSignatures()
 {
     static const SignatureMap table = buildRegistry();
     return table;
 }
 
+/// @brief Look up a runtime helper signature by symbol name.
+/// @param name Runtime helper identifier, e.g., "rt_print_str".
+/// @return Pointer to the signature if registered; nullptr otherwise.
 const RuntimeSignature *findRuntimeSignature(std::string_view name)
 {
     const auto &table = runtimeSignatures();
