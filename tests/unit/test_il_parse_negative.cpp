@@ -3,7 +3,7 @@
 // and numeric literals. Key invariants: Parser returns false for invalid input. Ownership/Lifetime:
 // Test owns all modules and buffers locally. Links: docs/il-spec.md
 
-#include "il/io/Parser.hpp"
+#include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"
 #include <cassert>
 #include <fstream>
@@ -25,9 +25,8 @@ int main()
         buf << in.rdbuf();
         buf.seekg(0);
         il::core::Module m;
-        std::ostringstream err;
-        bool ok = il::io::Parser::parse(buf, m, err);
-        assert(!ok);
+        auto parse = il::api::v2::parse_text_expected(buf, m);
+        assert(!parse);
     }
     return 0;
 }

@@ -22,7 +22,7 @@ il::support::Expected<void> parseModuleHeader_E(std::istream &is, std::string &l
 namespace il::io
 {
 
-bool Parser::parse(std::istream &is, il::core::Module &m, std::ostream &err)
+il::support::Expected<void> Parser::parse(std::istream &is, il::core::Module &m)
 {
     detail::ParserState st{m};
     std::string line;
@@ -32,15 +32,10 @@ bool Parser::parse(std::istream &is, il::core::Module &m, std::ostream &err)
         line = trim(line);
         if (line.empty() || line.rfind("//", 0) == 0)
             continue;
-        auto result = detail::parseModuleHeader_E(is, line, st);
-        if (!result)
-        {
-            il::support::printDiag(result.error(), err);
-            st.hasError = true;
-            return false;
-        }
+        if (auto result = detail::parseModuleHeader_E(is, line, st); !result)
+            return result;
     }
-    return !st.hasError;
+    return {};
 }
 
 } // namespace il::io

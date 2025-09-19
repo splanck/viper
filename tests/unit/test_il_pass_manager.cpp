@@ -4,8 +4,8 @@
 // Ownership: Test constructs a module in-memory and runs passes locally.
 // Links: docs/class-catalog.md
 
+#include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"
-#include "il/io/Parser.hpp"
 #include "il/transform/PassManager.hpp"
 #include <cassert>
 #include <sstream>
@@ -27,9 +27,8 @@ int main()
 {
     core::Module module;
     std::istringstream input(kProgram);
-    std::ostringstream errs;
-    bool parsed = io::Parser::parse(input, module, errs);
-    assert(parsed && errs.str().empty());
+    auto parsed = il::api::v2::parse_text_expected(input, module);
+    assert(parsed);
 
     transform::PassManager pm;
 
