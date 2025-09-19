@@ -116,8 +116,7 @@ class VM
                                          size_t &);
 
     /// @brief Compile-time table type storing handlers per opcode.
-    using OpcodeHandlerTable =
-        std::array<OpcodeHandler, static_cast<size_t>(il::core::Opcode::Trap) + 1>;
+    using OpcodeHandlerTable = std::array<OpcodeHandler, il::core::kNumOpcodes>;
 
     /// @brief Obtain immutable table mapping opcodes to handlers.
     static const OpcodeHandlerTable &getOpcodeHandlers();
