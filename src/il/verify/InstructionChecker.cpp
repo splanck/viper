@@ -11,43 +11,63 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/OpcodeInfo.hpp"
-#include "il/verify/Rule.hpp"
+#include "il/verify/TypeInference.hpp"
+#include "support/diag_expected.hpp"
 
-#include <algorithm>
-#include <functional>
-#include <memory>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+#include <vector>
 
 using namespace il::core;
 
 namespace il::verify
 {
+namespace
+{
+using il::support::Diag;
+using il::support::Expected;
+using il::support::Severity;
+using il::support::makeError;
 
-bool verifyOpcodeSignature(const Function &fn,
-                           const BasicBlock &bb,
-                           const Instr &instr,
-                           std::ostream &err)
+std::string formatInstrDiag(const Function &fn,
+                            const BasicBlock &bb,
+                            const Instr &instr,
+                            std::string_view message)
+{
+    std::ostringstream oss;
+    oss << fn.name << ":" << bb.label << ": " << makeSnippet(instr);
+    if (!message.empty())
+        oss << ": " << message;
+    return oss.str();
+}
+
+void emitWarning(const Function &fn,
+                 const BasicBlock &bb,
+                 const Instr &instr,
+                 std::string_view message,
+                 std::vector<Diag> &warnings)
+{
+    warnings.push_back(Diag{Severity::Warning, formatInstrDiag(fn, bb, instr, message), instr.loc});
+}
+
+Expected<void> verifyOpcodeSignature_E(const Function &fn,
+                                        const BasicBlock &bb,
+                                        const Instr &instr)
 {
     const auto &info = getOpcodeInfo(instr.op);
-    bool ok = true;
-    auto emit = [&](const std::string &msg)
-    {
-        err << fn.name << ":" << bb.label << ": " << makeSnippet(instr) << ": " << msg << "\n";
-        ok = false;
-    };
 
     const bool hasResult = instr.result.has_value();
     switch (info.resultArity)
     {
         case ResultArity::None:
             if (hasResult)
-                emit("unexpected result");
+                return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "unexpected result"))};
             break;
         case ResultArity::One:
             if (!hasResult)
-                emit("missing result");
+                return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "missing result"))};
             break;
         case ResultArity::Optional:
             break;
@@ -75,7 +95,7 @@ bool verifyOpcodeSignature(const Function &fn,
             ss << "expected between " << static_cast<unsigned>(info.numOperandsMin) << " and "
                << static_cast<unsigned>(info.numOperandsMax) << " operands";
         }
-        emit(ss.str());
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, ss.str()))};
     }
 
     if (instr.labels.size() != info.numSuccessors)
@@ -84,7 +104,7 @@ bool verifyOpcodeSignature(const Function &fn,
         ss << "expected " << static_cast<unsigned>(info.numSuccessors) << " successor";
         if (info.numSuccessors != 1)
             ss << 's';
-        emit(ss.str());
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, ss.str()))};
     }
 
     if (instr.brArgs.size() > info.numSuccessors)
@@ -94,440 +114,327 @@ bool verifyOpcodeSignature(const Function &fn,
            << " branch argument bundle";
         if (info.numSuccessors != 1)
             ss << 's';
-        emit(ss.str());
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, ss.str()))};
     }
-    else if (!instr.brArgs.empty() && instr.brArgs.size() != info.numSuccessors)
+    if (!instr.brArgs.empty() && instr.brArgs.size() != info.numSuccessors)
     {
         std::ostringstream ss;
         ss << "expected " << static_cast<unsigned>(info.numSuccessors) << " branch argument bundle";
         if (info.numSuccessors != 1)
             ss << 's';
         ss << ", or none";
-        emit(ss.str());
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, ss.str()))};
     }
 
-    return ok;
+    return {};
 }
 
-namespace
+Expected<void> expectAllOperandType(const Function &fn,
+                                    const BasicBlock &bb,
+                                    const Instr &instr,
+                                    TypeInference &types,
+                                    Type::Kind kind)
 {
-
-struct Context
-{
-    const Function &fn;
-    const BasicBlock &bb;
-    const std::unordered_map<std::string, const Extern *> &externs;
-    const std::unordered_map<std::string, const Function *> &funcs;
-    TypeInference &types;
-    std::ostream &err;
-};
-
-bool expectAllOperandType(const Context &ctx, const Instr &instr, Type::Kind kind)
-{
-    bool ok = true;
     for (const auto &op : instr.operands)
-        if (ctx.types.valueType(op).kind != kind)
+    {
+        if (types.valueType(op).kind != kind)
         {
-            ctx.err << ctx.fn.name << ":" << ctx.bb.label << ": " << makeSnippet(instr)
-                    << ": operand type mismatch\n";
-            ok = false;
+            return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "operand type mismatch"))};
         }
-    return ok;
+    }
+    return {};
 }
 
-class AllocaRule final : public Rule
+Expected<void> checkAlloca_E(const Function &fn,
+                             const BasicBlock &bb,
+                             const Instr &instr,
+                             TypeInference &types,
+                             std::vector<Diag> &warnings)
 {
-public:
-    explicit AllocaRule(const Context &ctx) : ctx_(ctx) {}
+    if (instr.operands.empty())
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "missing size operand"))};
 
-    bool check(const Instr &instr) override
+    if (types.valueType(instr.operands[0]).kind != Type::Kind::I64)
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "size must be i64"))};
+
+    if (instr.operands[0].kind == Value::Kind::ConstInt)
     {
-        bool ok = true;
-        if (instr.operands.size() < 1)
-            return false;
-        if (ctx_.types.valueType(instr.operands[0]).kind != Type::Kind::I64)
-        {
-            ctx_.err << ctx_.fn.name << ":" << ctx_.bb.label << ": " << makeSnippet(instr)
-                     << ": size must be i64\n";
-            ok = false;
-        }
-        if (instr.operands[0].kind == Value::Kind::ConstInt)
-        {
-            long long sz = instr.operands[0].i64;
-            if (sz < 0)
-            {
-                ctx_.err << ctx_.fn.name << ":" << ctx_.bb.label << ": " << makeSnippet(instr)
-                         << ": negative alloca size\n";
-                ok = false;
-            }
-            else if (sz > (1LL << 20))
-            {
-                ctx_.err << ctx_.fn.name << ":" << ctx_.bb.label << ": " << makeSnippet(instr)
-                         << ": warning: huge alloca\n";
-            }
-        }
-        ctx_.types.recordResult(instr, Type(Type::Kind::Ptr));
-        return ok;
+        long long sz = instr.operands[0].i64;
+        if (sz < 0)
+            return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "negative alloca size"))};
+        if (sz > (1LL << 20))
+            emitWarning(fn, bb, instr, "huge alloca", warnings);
     }
 
-private:
-    Context ctx_;
-};
-
-class BinaryRule final : public Rule
-{
-public:
-    BinaryRule(const Context &ctx, Type::Kind operandKind, Type resultType)
-        : ctx_(ctx), operandKind_(operandKind), resultType_(resultType)
-    {
-    }
-
-    bool check(const Instr &instr) override
-    {
-        bool ok = true;
-        if (instr.operands.size() < 2)
-            return false;
-        ok &= expectAllOperandType(ctx_, instr, operandKind_);
-        ctx_.types.recordResult(instr, resultType_);
-        return ok;
-    }
-
-private:
-    Context ctx_;
-    Type::Kind operandKind_;
-    Type resultType_;
-};
-
-class UnaryRule final : public Rule
-{
-public:
-    UnaryRule(const Context &ctx, Type::Kind operandKind, Type resultType)
-        : ctx_(ctx), operandKind_(operandKind), resultType_(resultType)
-    {
-    }
-
-    bool check(const Instr &instr) override
-    {
-        bool ok = true;
-        if (instr.operands.size() < 1)
-            return false;
-        if (ctx_.types.valueType(instr.operands[0]).kind != operandKind_)
-        {
-            ctx_.err << ctx_.fn.name << ":" << ctx_.bb.label << ": " << makeSnippet(instr)
-                     << ": operand type mismatch\n";
-            ok = false;
-        }
-        ctx_.types.recordResult(instr, resultType_);
-        return ok;
-    }
-
-private:
-    Context ctx_;
-    Type::Kind operandKind_;
-    Type resultType_;
-};
-
-class GEPRule final : public Rule
-{
-public:
-    explicit GEPRule(const Context &ctx) : ctx_(ctx) {}
-
-    bool check(const Instr &instr) override
-    {
-        bool ok = true;
-        if (instr.operands.size() < 2)
-            return false;
-        if (ctx_.types.valueType(instr.operands[0]).kind != Type::Kind::Ptr ||
-            ctx_.types.valueType(instr.operands[1]).kind != Type::Kind::I64)
-        {
-            ctx_.err << ctx_.fn.name << ":" << ctx_.bb.label << ": " << makeSnippet(instr)
-                     << ": operand type mismatch\n";
-            ok = false;
-        }
-        ctx_.types.recordResult(instr, Type(Type::Kind::Ptr));
-        return ok;
-    }
-
-private:
-    Context ctx_;
-};
-
-class LoadRule final : public Rule
-{
-public:
-    explicit LoadRule(const Context &ctx) : ctx_(ctx) {}
-
-    bool check(const Instr &instr) override
-    {
-        bool ok = true;
-        if (instr.operands.size() < 1)
-            return false;
-        if (instr.type.kind == Type::Kind::Void)
-        {
-            ctx_.err << ctx_.fn.name << ":" << ctx_.bb.label << ": " << makeSnippet(instr)
-                     << ": void load type\n";
-            ok = false;
-        }
-        if (ctx_.types.valueType(instr.operands[0]).kind != Type::Kind::Ptr)
-        {
-            ctx_.err << ctx_.fn.name << ":" << ctx_.bb.label << ": " << makeSnippet(instr)
-                     << ": pointer type mismatch\n";
-            ok = false;
-        }
-        [[maybe_unused]] size_t sz = TypeInference::typeSize(instr.type.kind);
-        ctx_.types.recordResult(instr, instr.type);
-        return ok;
-    }
-
-private:
-    Context ctx_;
-};
-
-class StoreRule final : public Rule
-{
-public:
-    explicit StoreRule(const Context &ctx) : ctx_(ctx) {}
-
-    bool check(const Instr &instr) override
-    {
-        bool ok = true;
-        if (instr.operands.size() < 2)
-            return false;
-        if (instr.type.kind == Type::Kind::Void)
-        {
-            ctx_.err << ctx_.fn.name << ":" << ctx_.bb.label << ": " << makeSnippet(instr)
-                     << ": void store type\n";
-            ok = false;
-        }
-        if (ctx_.types.valueType(instr.operands[0]).kind != Type::Kind::Ptr)
-        {
-            ctx_.err << ctx_.fn.name << ":" << ctx_.bb.label << ": " << makeSnippet(instr)
-                     << ": pointer type mismatch\n";
-            ok = false;
-        }
-        Type valueTy = ctx_.types.valueType(instr.operands[1]);
-        bool isBoolConst = instr.type.kind == Type::Kind::I1 &&
-                           instr.operands[1].kind == Value::Kind::ConstInt;
-        if (isBoolConst)
-        {
-            long long v = instr.operands[1].i64;
-            if (v != 0 && v != 1)
-            {
-                ctx_.err << ctx_.fn.name << ":" << ctx_.bb.label << ": " << makeSnippet(instr)
-                         << ": boolean store expects 0 or 1\n";
-                ok = false;
-            }
-        }
-        else if (valueTy.kind != instr.type.kind)
-        {
-            ctx_.err << ctx_.fn.name << ":" << ctx_.bb.label << ": " << makeSnippet(instr)
-                     << ": value type mismatch\n";
-            ok = false;
-        }
-        [[maybe_unused]] size_t sz = TypeInference::typeSize(instr.type.kind);
-        return ok;
-    }
-
-private:
-    Context ctx_;
-};
-
-class AddrOfRule final : public Rule
-{
-public:
-    explicit AddrOfRule(const Context &ctx) : ctx_(ctx) {}
-
-    bool check(const Instr &instr) override
-    {
-        bool ok = true;
-        if (instr.operands.size() != 1 || instr.operands[0].kind != Value::Kind::GlobalAddr)
-        {
-            ctx_.err << ctx_.fn.name << ":" << ctx_.bb.label << ": " << makeSnippet(instr)
-                     << ": operand must be global\n";
-            ok = false;
-        }
-        ctx_.types.recordResult(instr, Type(Type::Kind::Ptr));
-        return ok;
-    }
-
-private:
-    Context ctx_;
-};
-
-class ConstStrRule final : public Rule
-{
-public:
-    explicit ConstStrRule(const Context &ctx) : ctx_(ctx) {}
-
-    bool check(const Instr &instr) override
-    {
-        bool ok = true;
-        if (instr.operands.size() != 1 || instr.operands[0].kind != Value::Kind::GlobalAddr)
-        {
-            ctx_.err << ctx_.fn.name << ":" << ctx_.bb.label << ": " << makeSnippet(instr)
-                     << ": unknown string global\n";
-            ok = false;
-        }
-        ctx_.types.recordResult(instr, Type(Type::Kind::Str));
-        return ok;
-    }
-
-private:
-    Context ctx_;
-};
-
-class ConstNullRule final : public Rule
-{
-public:
-    explicit ConstNullRule(const Context &ctx) : ctx_(ctx) {}
-
-    bool check(const Instr &instr) override
-    {
-        ctx_.types.recordResult(instr, Type(Type::Kind::Ptr));
-        return true;
-    }
-
-private:
-    Context ctx_;
-};
-
-class CallRule final : public Rule
-{
-public:
-    explicit CallRule(const Context &ctx) : ctx_(ctx) {}
-
-    bool check(const Instr &instr) override
-    {
-        bool ok = true;
-        const Extern *sig = nullptr;
-        const Function *fnSig = nullptr;
-        auto itE = ctx_.externs.find(instr.callee);
-        if (itE != ctx_.externs.end())
-            sig = itE->second;
-        else
-        {
-            auto itF = ctx_.funcs.find(instr.callee);
-            if (itF != ctx_.funcs.end())
-                fnSig = itF->second;
-        }
-        if (!sig && !fnSig)
-        {
-            ctx_.err << ctx_.fn.name << ":" << ctx_.bb.label << ": " << makeSnippet(instr)
-                     << ": unknown callee @" << instr.callee << "\n";
-            return false;
-        }
-        size_t paramCount = sig ? sig->params.size() : fnSig->params.size();
-        if (instr.operands.size() != paramCount)
-        {
-            ctx_.err << ctx_.fn.name << ":" << ctx_.bb.label << ": " << makeSnippet(instr)
-                     << ": call arg count mismatch\n";
-            ok = false;
-        }
-        size_t checked = std::min(instr.operands.size(), paramCount);
-        for (size_t i = 0; i < checked; ++i)
-        {
-            Type expected = sig ? sig->params[i] : fnSig->params[i].type;
-            if (ctx_.types.valueType(instr.operands[i]).kind != expected.kind)
-            {
-                ctx_.err << ctx_.fn.name << ":" << ctx_.bb.label << ": " << makeSnippet(instr)
-                         << ": call arg type mismatch\n";
-                ok = false;
-            }
-        }
-        if (instr.result)
-        {
-            Type ret = sig ? sig->retType : fnSig->retType;
-            ctx_.types.recordResult(instr, ret);
-        }
-        return ok;
-    }
-
-private:
-    Context ctx_;
-};
-
-class DefaultRule final : public Rule
-{
-public:
-    explicit DefaultRule(const Context &ctx) : ctx_(ctx) {}
-
-    bool check(const Instr &instr) override
-    {
-        ctx_.types.recordResult(instr, instr.type);
-        return true;
-    }
-
-private:
-    Context ctx_;
-};
-
-using RuleFactory = std::function<std::unique_ptr<Rule>(const Context &)>;
-
-RuleFactory makeBinaryRule(Type::Kind operandKind, Type resultType)
-{
-    return [operandKind, resultType](const Context &ctx)
-    { return std::make_unique<BinaryRule>(ctx, operandKind, resultType); };
+    types.recordResult(instr, Type(Type::Kind::Ptr));
+    return {};
 }
 
-RuleFactory makeUnaryRule(Type::Kind operandKind, Type resultType)
+Expected<void> checkBinary_E(const Function &fn,
+                             const BasicBlock &bb,
+                             const Instr &instr,
+                             TypeInference &types,
+                             Type::Kind operandKind,
+                             Type resultType)
 {
-    return [operandKind, resultType](const Context &ctx)
-    { return std::make_unique<UnaryRule>(ctx, operandKind, resultType); };
+    if (instr.operands.size() < 2)
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "invalid operand count"))};
+
+    if (auto result = expectAllOperandType(fn, bb, instr, types, operandKind); !result)
+        return result;
+
+    types.recordResult(instr, resultType);
+    return {};
 }
 
-const std::unordered_map<Opcode, RuleFactory> &ruleTable()
+Expected<void> checkUnary_E(const Function &fn,
+                            const BasicBlock &bb,
+                            const Instr &instr,
+                            TypeInference &types,
+                            Type::Kind operandKind,
+                            Type resultType)
 {
-    static const std::unordered_map<Opcode, RuleFactory> table = {
-        {Opcode::Alloca, [](const Context &ctx) { return std::make_unique<AllocaRule>(ctx); }},
-        {Opcode::Add, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I64))},
-        {Opcode::Sub, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I64))},
-        {Opcode::Mul, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I64))},
-        {Opcode::SDiv, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I64))},
-        {Opcode::UDiv, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I64))},
-        {Opcode::SRem, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I64))},
-        {Opcode::URem, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I64))},
-        {Opcode::And, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I64))},
-        {Opcode::Or, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I64))},
-        {Opcode::Xor, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I64))},
-        {Opcode::Shl, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I64))},
-        {Opcode::LShr, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I64))},
-        {Opcode::AShr, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I64))},
-        {Opcode::FAdd, makeBinaryRule(Type::Kind::F64, Type(Type::Kind::F64))},
-        {Opcode::FSub, makeBinaryRule(Type::Kind::F64, Type(Type::Kind::F64))},
-        {Opcode::FMul, makeBinaryRule(Type::Kind::F64, Type(Type::Kind::F64))},
-        {Opcode::FDiv, makeBinaryRule(Type::Kind::F64, Type(Type::Kind::F64))},
-        {Opcode::ICmpEq, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I1))},
-        {Opcode::ICmpNe, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I1))},
-        {Opcode::SCmpLT, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I1))},
-        {Opcode::SCmpLE, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I1))},
-        {Opcode::SCmpGT, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I1))},
-        {Opcode::SCmpGE, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I1))},
-        {Opcode::UCmpLT, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I1))},
-        {Opcode::UCmpLE, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I1))},
-        {Opcode::UCmpGT, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I1))},
-        {Opcode::UCmpGE, makeBinaryRule(Type::Kind::I64, Type(Type::Kind::I1))},
-        {Opcode::FCmpEQ, makeBinaryRule(Type::Kind::F64, Type(Type::Kind::I1))},
-        {Opcode::FCmpNE, makeBinaryRule(Type::Kind::F64, Type(Type::Kind::I1))},
-        {Opcode::FCmpLT, makeBinaryRule(Type::Kind::F64, Type(Type::Kind::I1))},
-        {Opcode::FCmpLE, makeBinaryRule(Type::Kind::F64, Type(Type::Kind::I1))},
-        {Opcode::FCmpGT, makeBinaryRule(Type::Kind::F64, Type(Type::Kind::I1))},
-        {Opcode::FCmpGE, makeBinaryRule(Type::Kind::F64, Type(Type::Kind::I1))},
-        {Opcode::Sitofp, makeUnaryRule(Type::Kind::I64, Type(Type::Kind::F64))},
-        {Opcode::Fptosi, makeUnaryRule(Type::Kind::F64, Type(Type::Kind::I64))},
-        {Opcode::Zext1, makeUnaryRule(Type::Kind::I1, Type(Type::Kind::I64))},
-        {Opcode::Trunc1, makeUnaryRule(Type::Kind::I64, Type(Type::Kind::I1))},
-        {Opcode::GEP, [](const Context &ctx) { return std::make_unique<GEPRule>(ctx); }},
-        {Opcode::Load, [](const Context &ctx) { return std::make_unique<LoadRule>(ctx); }},
-        {Opcode::Store, [](const Context &ctx) { return std::make_unique<StoreRule>(ctx); }},
-        {Opcode::AddrOf, [](const Context &ctx) { return std::make_unique<AddrOfRule>(ctx); }},
-        {Opcode::ConstStr, [](const Context &ctx) { return std::make_unique<ConstStrRule>(ctx); }},
-        {Opcode::ConstNull, [](const Context &ctx) { return std::make_unique<ConstNullRule>(ctx); }},
-        {Opcode::Call, [](const Context &ctx) { return std::make_unique<CallRule>(ctx); }},
-    };
-    return table;
+    if (instr.operands.empty())
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "invalid operand count"))};
+
+    if (types.valueType(instr.operands[0]).kind != operandKind)
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "operand type mismatch"))};
+
+    types.recordResult(instr, resultType);
+    return {};
+}
+
+Expected<void> checkGEP_E(const Function &fn,
+                          const BasicBlock &bb,
+                          const Instr &instr,
+                          TypeInference &types)
+{
+    if (instr.operands.size() < 2)
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "invalid operand count"))};
+
+    if (types.valueType(instr.operands[0]).kind != Type::Kind::Ptr ||
+        types.valueType(instr.operands[1]).kind != Type::Kind::I64)
+    {
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "operand type mismatch"))};
+    }
+
+    types.recordResult(instr, Type(Type::Kind::Ptr));
+    return {};
+}
+
+Expected<void> checkLoad_E(const Function &fn,
+                           const BasicBlock &bb,
+                           const Instr &instr,
+                           TypeInference &types)
+{
+    if (instr.operands.empty())
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "invalid operand count"))};
+
+    if (instr.type.kind == Type::Kind::Void)
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "void load type"))};
+
+    if (types.valueType(instr.operands[0]).kind != Type::Kind::Ptr)
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "pointer type mismatch"))};
+
+    [[maybe_unused]] size_t sz = TypeInference::typeSize(instr.type.kind);
+    types.recordResult(instr, instr.type);
+    return {};
+}
+
+Expected<void> checkStore_E(const Function &fn,
+                            const BasicBlock &bb,
+                            const Instr &instr,
+                            TypeInference &types)
+{
+    if (instr.operands.size() < 2)
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "invalid operand count"))};
+
+    if (instr.type.kind == Type::Kind::Void)
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "void store type"))};
+
+    if (types.valueType(instr.operands[0]).kind != Type::Kind::Ptr)
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "pointer type mismatch"))};
+
+    Type valueTy = types.valueType(instr.operands[1]);
+    bool isBoolConst = instr.type.kind == Type::Kind::I1 && instr.operands[1].kind == Value::Kind::ConstInt;
+    if (isBoolConst)
+    {
+        long long v = instr.operands[1].i64;
+        if (v != 0 && v != 1)
+            return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "boolean store expects 0 or 1"))};
+    }
+    else if (valueTy.kind != instr.type.kind)
+    {
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "value type mismatch"))};
+    }
+
+    [[maybe_unused]] size_t sz = TypeInference::typeSize(instr.type.kind);
+    return {};
+}
+
+Expected<void> checkAddrOf_E(const Function &fn,
+                             const BasicBlock &bb,
+                             const Instr &instr,
+                             TypeInference &types)
+{
+    if (instr.operands.size() != 1 || instr.operands[0].kind != Value::Kind::GlobalAddr)
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "operand must be global"))};
+
+    types.recordResult(instr, Type(Type::Kind::Ptr));
+    return {};
+}
+
+Expected<void> checkConstStr_E(const Function &fn,
+                               const BasicBlock &bb,
+                               const Instr &instr,
+                               TypeInference &types)
+{
+    if (instr.operands.size() != 1 || instr.operands[0].kind != Value::Kind::GlobalAddr)
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "unknown string global"))};
+
+    types.recordResult(instr, Type(Type::Kind::Str));
+    return {};
+}
+
+Expected<void> checkConstNull_E(const Instr &instr, TypeInference &types)
+{
+    types.recordResult(instr, Type(Type::Kind::Ptr));
+    return {};
+}
+
+Expected<void> checkCall_E(const Function &fn,
+                           const BasicBlock &bb,
+                           const Instr &instr,
+                           const std::unordered_map<std::string, const Extern *> &externs,
+                           const std::unordered_map<std::string, const Function *> &funcs,
+                           TypeInference &types)
+{
+    const Extern *sig = nullptr;
+    const Function *fnSig = nullptr;
+    if (auto it = externs.find(instr.callee); it != externs.end())
+        sig = it->second;
+    else if (auto itF = funcs.find(instr.callee); itF != funcs.end())
+        fnSig = itF->second;
+
+    if (!sig && !fnSig)
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "unknown callee @" + instr.callee))};
+
+    size_t paramCount = sig ? sig->params.size() : fnSig->params.size();
+    if (instr.operands.size() != paramCount)
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "call arg count mismatch"))};
+
+    for (size_t i = 0; i < paramCount; ++i)
+    {
+        Type expected = sig ? sig->params[i] : fnSig->params[i].type;
+        if (types.valueType(instr.operands[i]).kind != expected.kind)
+            return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "call arg type mismatch"))};
+    }
+
+    if (instr.result)
+    {
+        Type ret = sig ? sig->retType : fnSig->retType;
+        types.recordResult(instr, ret);
+    }
+
+    return {};
+}
+
+Expected<void> checkDefault_E(const Instr &instr, TypeInference &types)
+{
+    types.recordResult(instr, instr.type);
+    return {};
+}
+
+Expected<void> verifyInstruction_E(const Function &fn,
+                                    const BasicBlock &bb,
+                                    const Instr &instr,
+                                    const std::unordered_map<std::string, const Extern *> &externs,
+                                    const std::unordered_map<std::string, const Function *> &funcs,
+                                    TypeInference &types,
+                                    std::vector<Diag> &warnings)
+{
+    switch (instr.op)
+    {
+        case Opcode::Alloca:
+            return checkAlloca_E(fn, bb, instr, types, warnings);
+        case Opcode::Add:
+        case Opcode::Sub:
+        case Opcode::Mul:
+        case Opcode::SDiv:
+        case Opcode::UDiv:
+        case Opcode::SRem:
+        case Opcode::URem:
+        case Opcode::And:
+        case Opcode::Or:
+        case Opcode::Xor:
+        case Opcode::Shl:
+        case Opcode::LShr:
+        case Opcode::AShr:
+            return checkBinary_E(fn, bb, instr, types, Type::Kind::I64, Type(Type::Kind::I64));
+        case Opcode::FAdd:
+        case Opcode::FSub:
+        case Opcode::FMul:
+        case Opcode::FDiv:
+            return checkBinary_E(fn, bb, instr, types, Type::Kind::F64, Type(Type::Kind::F64));
+        case Opcode::ICmpEq:
+        case Opcode::ICmpNe:
+        case Opcode::SCmpLT:
+        case Opcode::SCmpLE:
+        case Opcode::SCmpGT:
+        case Opcode::SCmpGE:
+        case Opcode::UCmpLT:
+        case Opcode::UCmpLE:
+        case Opcode::UCmpGT:
+        case Opcode::UCmpGE:
+            return checkBinary_E(fn, bb, instr, types, Type::Kind::I64, Type(Type::Kind::I1));
+        case Opcode::FCmpEQ:
+        case Opcode::FCmpNE:
+        case Opcode::FCmpLT:
+        case Opcode::FCmpLE:
+        case Opcode::FCmpGT:
+        case Opcode::FCmpGE:
+            return checkBinary_E(fn, bb, instr, types, Type::Kind::F64, Type(Type::Kind::I1));
+        case Opcode::Sitofp:
+            return checkUnary_E(fn, bb, instr, types, Type::Kind::I64, Type(Type::Kind::F64));
+        case Opcode::Fptosi:
+            return checkUnary_E(fn, bb, instr, types, Type::Kind::F64, Type(Type::Kind::I64));
+        case Opcode::Zext1:
+            return checkUnary_E(fn, bb, instr, types, Type::Kind::I1, Type(Type::Kind::I64));
+        case Opcode::Trunc1:
+            return checkUnary_E(fn, bb, instr, types, Type::Kind::I64, Type(Type::Kind::I1));
+        case Opcode::GEP:
+            return checkGEP_E(fn, bb, instr, types);
+        case Opcode::Load:
+            return checkLoad_E(fn, bb, instr, types);
+        case Opcode::Store:
+            return checkStore_E(fn, bb, instr, types);
+        case Opcode::AddrOf:
+            return checkAddrOf_E(fn, bb, instr, types);
+        case Opcode::ConstStr:
+            return checkConstStr_E(fn, bb, instr, types);
+        case Opcode::ConstNull:
+            return checkConstNull_E(instr, types);
+        case Opcode::Call:
+            return checkCall_E(fn, bb, instr, externs, funcs, types);
+        default:
+            return checkDefault_E(instr, types);
+    }
 }
 
 } // namespace
+
+bool verifyOpcodeSignature(const Function &fn,
+                           const BasicBlock &bb,
+                           const Instr &instr,
+                           std::ostream &err)
+{
+    if (auto result = verifyOpcodeSignature_E(fn, bb, instr); !result)
+    {
+        il::support::printDiag(result.error(), err);
+        return false;
+    }
+    return true;
+}
 
 bool verifyInstruction(const Function &fn,
                        const BasicBlock &bb,
@@ -537,16 +444,36 @@ bool verifyInstruction(const Function &fn,
                        TypeInference &types,
                        std::ostream &err)
 {
-    Context ctx{fn, bb, externs, funcs, types, err};
-    const auto &table = ruleTable();
-    auto it = table.find(instr.op);
-    if (it == table.end())
+    std::vector<Diag> warnings;
+    if (auto result = verifyInstruction_E(fn, bb, instr, externs, funcs, types, warnings); !result)
     {
-        DefaultRule rule(ctx);
-        return rule.check(instr);
+        for (const auto &warning : warnings)
+            il::support::printDiag(warning, err);
+        il::support::printDiag(result.error(), err);
+        return false;
     }
-    std::unique_ptr<Rule> rule = it->second(ctx);
-    return rule->check(instr);
+
+    for (const auto &warning : warnings)
+        il::support::printDiag(warning, err);
+    return true;
+}
+
+Expected<void> verifyOpcodeSignature_expected(const Function &fn,
+                                               const BasicBlock &bb,
+                                               const Instr &instr)
+{
+    return verifyOpcodeSignature_E(fn, bb, instr);
+}
+
+Expected<void> verifyInstruction_expected(const Function &fn,
+                                           const BasicBlock &bb,
+                                           const Instr &instr,
+                                           const std::unordered_map<std::string, const Extern *> &externs,
+                                           const std::unordered_map<std::string, const Function *> &funcs,
+                                           TypeInference &types,
+                                           std::vector<Diag> &warnings)
+{
+    return verifyInstruction_E(fn, bb, instr, externs, funcs, types, warnings);
 }
 
 } // namespace il::verify
