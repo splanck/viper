@@ -1,4 +1,5 @@
 // File: src/frontends/basic/LowerExpr.cpp
+// License: MIT License. See LICENSE in the project root for full license information.
 // Purpose: Implements expression lowering helpers for the BASIC front end.
 // Key invariants: Expression lowering preserves operand types, injecting
 //                 conversions to match IL expectations and runtime helpers.
@@ -21,10 +22,17 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
-// Purpose: lower var expr.
-// Parameters: const VarExpr &v.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower a BASIC variable reference into an IL value.
+/// @param v Variable expression that names the slot to read from.
+/// @return Materialized value and type pair for the requested variable.
+/// @details
+/// - Control flow: Executes entirely within the current basic block without
+///   branching or block creation.
+/// - Emitted IL: Issues a load from the stack slot recorded in
+///   @ref varSlots, selecting pointer, string, floating, or boolean types as
+///   required.
+/// - Side effects: Updates @ref curLoc so diagnostics and subsequent
+///   instructions are tagged with @p v's source location.
 Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v)
 {
     curLoc = v.loc;
@@ -46,10 +54,24 @@ Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v)
     return {val, ty};
 }
 
-// Purpose: lower boolean expression via helper branches.
-// Parameters: Value cond, il::support::SourceLoc loc, branch emitters, optional label bases.
-// Returns: Lowerer::RVal.
-// Side effects: emits branch structure and final load from result slot.
+/// @brief Materialize a boolean result using custom then/else emitters.
+/// @param cond Lowered condition controlling the branch.
+/// @param loc Source location associated with the boolean expression.
+/// @param emitThen Callback that stores the "true" value into the supplied slot.
+/// @param emitElse Callback that stores the "false" value into the supplied slot.
+/// @param thenLabelBase Optional label stem used when naming the then block.
+/// @param elseLabelBase Optional label stem used when naming the else block.
+/// @param joinLabelBase Optional label stem used when naming the join block.
+/// @return Boolean result paired with its IL type.
+/// @details
+/// - Control flow: Saves the originating block, requests a structured branch
+///   from @ref emitBoolFromBranches, and then wires up the conditional branch
+///   from @p cond back at the origin before resuming in the join block.
+/// - Emitted IL: Allocates a temporary boolean slot, lets @p emitThen and
+///   @p emitElse populate it via @ref emitStore, and finally emits a
+///   conditional branch via @ref emitCBr.
+/// - Side effects: Mutates @ref cur and @ref curLoc while stitching together
+///   the control-flow graph and asserts both closures emitted their blocks.
 Lowerer::RVal Lowerer::lowerBoolBranchExpr(Value cond,
                                            il::support::SourceLoc loc,
                                            const std::function<void(Value)> &emitThen,
@@ -90,10 +112,18 @@ Lowerer::RVal Lowerer::lowerBoolBranchExpr(Value cond,
     return {result, ilBoolTy()};
 }
 
-// Purpose: lower unary expr.
-// Parameters: const UnaryExpr &u.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower a unary BASIC expression, currently handling logical NOT.
+/// @param u Unary AST node to translate.
+/// @return Boolean result produced by evaluating @p u.
+/// @details
+/// - Control flow: Evaluates the operand within the current block and then
+///   reuses @ref lowerBoolBranchExpr to create then/else continuations that
+///   store the negated boolean result.
+/// - Emitted IL: Optionally truncates the operand to `i1` via
+///   @ref emitUnary and emits stores of `false`/`true` constants produced by
+///   @ref emitBoolConst.
+/// - Side effects: Updates @ref curLoc so generated instructions are annotated
+///   with the operand's location.
 Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
 {
     RVal val = lowerExpr(*u.expr);
@@ -114,10 +144,20 @@ Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
         });
 }
 
-// Purpose: lower logical binary.
-// Parameters: const BinaryExpr &b.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower BASIC logical binary expressions, including short-circuiting.
+/// @param b Binary expression describing AND/OR semantics.
+/// @return Boolean value that reflects @p b's evaluation.
+/// @details
+/// - Control flow: For short-circuit variants the routine uses
+///   @ref lowerBoolBranchExpr to fork evaluation, only lowering the right-hand
+///   operand in the taken branch; non-short-circuit forms evaluate both sides
+///   eagerly and still funnel results through the helper to ensure a material
+///   slot exists.
+/// - Emitted IL: Converts operands to `i1` when required, emits stores of
+///   boolean constants, and relies on @ref lowerBoolBranchExpr to emit the
+///   conditional branch wiring.
+/// - Side effects: Updates @ref curLoc for each emitted instruction and may
+///   recursively call @ref lowerExpr on child expressions.
 Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
 {
     RVal lhs = lowerExpr(*b.lhs);
@@ -215,10 +255,17 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
     return {emitBoolConst(false), ilBoolTy()};
 }
 
-// Purpose: lower div or mod.
-// Parameters: const BinaryExpr &b.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower integer division and modulo with divide-by-zero trapping.
+/// @param b Binary expression describing the operation.
+/// @return Resulting integer value alongside its IL type.
+/// @details
+/// - Control flow: Introduces explicit trap and success blocks, branching on
+///   a zero-divisor check before emitting the selected arithmetic instruction.
+/// - Emitted IL: Generates an `icmp eq` against zero, a `cbr` that targets the
+///   trap and ok blocks, a call to @ref emitTrap, and finally either `sdiv` or
+///   `srem`.
+/// - Side effects: Updates @ref cur while creating additional blocks and
+///   records @ref curLoc for diagnostic accuracy.
 Lowerer::RVal Lowerer::lowerDivOrMod(const BinaryExpr &b)
 {
     RVal lhs = lowerExpr(*b.lhs);
@@ -240,10 +287,18 @@ Lowerer::RVal Lowerer::lowerDivOrMod(const BinaryExpr &b)
     return {res, Type(Type::Kind::I64)};
 }
 
-// Purpose: lower string binary.
-// Parameters: const BinaryExpr &b, RVal lhs, RVal rhs.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower string binary operations, mapping to runtime helpers.
+/// @param b Binary expression describing a string operator.
+/// @param lhs Left-hand operand already lowered to IL.
+/// @param rhs Right-hand operand already lowered to IL.
+/// @return Lowered value with either string or boolean type.
+/// @details
+/// - Control flow: Runs linearly within the current block with no new
+///   branches.
+/// - Emitted IL: Invokes runtime routines such as `rt_concat` and
+///   `rt_str_eq`, including boolean negation when handling inequality.
+/// - Side effects: Updates @ref curLoc prior to the call so string helper
+///   diagnostics report the proper source span.
 Lowerer::RVal Lowerer::lowerStringBinary(const BinaryExpr &b, RVal lhs, RVal rhs)
 {
     curLoc = b.loc;
@@ -263,10 +318,19 @@ Lowerer::RVal Lowerer::lowerStringBinary(const BinaryExpr &b, RVal lhs, RVal rhs
     return {eq, ilBoolTy()};
 }
 
-// Purpose: lower numeric binary.
-// Parameters: const BinaryExpr &b, RVal lhs, RVal rhs.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower numeric binary expressions, promoting operands as needed.
+/// @param b Arithmetic or comparison expression to translate.
+/// @param lhs Lowered left-hand operand.
+/// @param rhs Lowered right-hand operand.
+/// @return Result of the operation with either numeric or boolean type.
+/// @details
+/// - Control flow: Executes in a straight line without creating additional
+///   blocks.
+/// - Emitted IL: Inserts integer-to-float conversions when operand types
+///   differ and chooses among arithmetic or comparison opcodes before issuing
+///   a single binary instruction.
+/// - Side effects: Updates @ref curLoc and mutates the temporary
+///   @ref Lowerer::RVal structures to reflect promotions.
 Lowerer::RVal Lowerer::lowerNumericBinary(const BinaryExpr &b, RVal lhs, RVal rhs)
 {
     curLoc = b.loc;
@@ -328,10 +392,16 @@ Lowerer::RVal Lowerer::lowerNumericBinary(const BinaryExpr &b, RVal lhs, RVal rh
     return {res, ty};
 }
 
-// Purpose: lower binary expr.
-// Parameters: const BinaryExpr &b.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Dispatch lowering for all BASIC binary expressions.
+/// @param b Binary AST node to translate.
+/// @return Lowered value alongside its IL type.
+/// @details
+/// - Control flow: Delegates to specialized helpers for logical and numeric
+///   categories, letting those routines introduce any necessary branching.
+/// - Emitted IL: Depends on the dispatched helper, ranging from control-flow
+///   merges to arithmetic instructions and runtime calls.
+/// - Side effects: May trigger recursive @ref lowerExpr invocations for both
+///   operands and updates @ref curLoc through the delegated helpers.
 Lowerer::RVal Lowerer::lowerBinaryExpr(const BinaryExpr &b)
 {
     if (b.op == BinaryExpr::Op::LogicalAndShort || b.op == BinaryExpr::Op::LogicalOrShort ||
@@ -348,20 +418,32 @@ Lowerer::RVal Lowerer::lowerBinaryExpr(const BinaryExpr &b)
     return lowerNumericBinary(b, lhs, rhs);
 }
 
-// Purpose: lower arg.
-// Parameters: const BuiltinCallExpr &c, size_t idx.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower a single builtin argument expression.
+/// @param c Builtin invocation currently being lowered.
+/// @param idx Index of the argument to translate.
+/// @return Lowered argument value and its IL type.
+/// @details
+/// - Control flow: Executes inline in the current block and simply forwards to
+///   @ref lowerExpr.
+/// - Emitted IL: Whatever @ref lowerExpr produces for the argument subtree.
+/// - Side effects: Validates argument presence via @ref assert and propagates
+///   any state changes performed by @ref lowerExpr.
 Lowerer::RVal Lowerer::lowerArg(const BuiltinCallExpr &c, size_t idx)
 {
     assert(idx < c.args.size() && c.args[idx]);
     return lowerExpr(*c.args[idx]);
 }
 
-// Purpose: ensure i64.
-// Parameters: RVal v, il::support::SourceLoc loc.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Ensure a value is represented as a 64-bit integer.
+/// @param v Value/type pair to normalize.
+/// @param loc Source location used for emitted conversions.
+/// @return Updated value guaranteed to have `i64` type.
+/// @details
+/// - Control flow: Executes linearly without creating new blocks.
+/// - Emitted IL: Uses @ref emitUnary to sign-extend booleans via `zext` and
+///   convert floating-point inputs with `fptosi`.
+/// - Side effects: Updates @ref curLoc before emitting conversions and mutates
+///   the provided @ref Lowerer::RVal in place.
 Lowerer::RVal Lowerer::ensureI64(RVal v, il::support::SourceLoc loc)
 {
     if (v.type.kind == Type::Kind::I1)
@@ -379,10 +461,17 @@ Lowerer::RVal Lowerer::ensureI64(RVal v, il::support::SourceLoc loc)
     return v;
 }
 
-// Purpose: ensure f64.
-// Parameters: RVal v, il::support::SourceLoc loc.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Ensure a value is represented as a 64-bit floating-point number.
+/// @param v Value/type pair to normalize.
+/// @param loc Source location used for emitted conversions.
+/// @return Updated value guaranteed to have `f64` type.
+/// @details
+/// - Control flow: Executes sequentially, delegating to @ref ensureI64 when a
+///   narrowing or widening conversion is required.
+/// - Emitted IL: Emits @ref emitUnary instructions for integer-to-float
+///   promotion via `sitofp`.
+/// - Side effects: Updates @ref curLoc prior to generating conversions and
+///   mutates the provided @ref Lowerer::RVal in place.
 Lowerer::RVal Lowerer::ensureF64(RVal v, il::support::SourceLoc loc)
 {
     if (v.type.kind == Type::Kind::F64)
@@ -397,10 +486,15 @@ Lowerer::RVal Lowerer::ensureF64(RVal v, il::support::SourceLoc loc)
     return v;
 }
 
-// Purpose: lower rnd.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the RND builtin.
+/// @param c Builtin call expression representing `RND`.
+/// @return Floating-point result produced by the runtime helper.
+/// @details
+/// - Control flow: Straight-line emission within the current block.
+/// - Emitted IL: Generates a call returning `f64` to the `rt_rnd` runtime
+///   function.
+/// - Side effects: Updates @ref curLoc so the runtime call inherits the
+///   builtin's source location.
 Lowerer::RVal Lowerer::lowerRnd(const BuiltinCallExpr &c)
 {
     curLoc = c.loc;
@@ -408,10 +502,13 @@ Lowerer::RVal Lowerer::lowerRnd(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::F64)};
 }
 
-// Purpose: lower len.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the LEN builtin.
+/// @param c Builtin call expression representing `LEN`.
+/// @return Integer length of the supplied string.
+/// @details
+/// - Control flow: Straight-line within the current block.
+/// - Emitted IL: Issues a call to `rt_len` returning an `i64` result.
+/// - Side effects: Updates @ref curLoc before emitting the runtime call.
 Lowerer::RVal Lowerer::lowerLen(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -420,10 +517,16 @@ Lowerer::RVal Lowerer::lowerLen(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::I64)};
 }
 
-// Purpose: lower mid.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the MID$ builtin with optional length argument.
+/// @param c Builtin call expression representing `MID$`.
+/// @return String slice materialized by runtime helpers.
+/// @details
+/// - Control flow: Straight-line emission while optionally branching on the
+///   presence of the third argument at compile time.
+/// - Emitted IL: Computes zero-based offsets, then calls either `rt_mid2` or
+///   `rt_mid3`, marking which runtime entry points are required.
+/// - Side effects: Updates @ref curLoc and toggles @ref needRtMid2 or
+///   @ref needRtMid3 feature flags for later runtime linkage.
 Lowerer::RVal Lowerer::lowerMid(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -442,10 +545,14 @@ Lowerer::RVal Lowerer::lowerMid(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::Str)};
 }
 
-// Purpose: lower left.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the LEFT$ builtin.
+/// @param c Builtin call expression representing `LEFT$`.
+/// @return String value returned from the runtime helper.
+/// @details
+/// - Control flow: Linear within the current block.
+/// - Emitted IL: Ensures the length argument is an `i64` and calls
+///   `rt_left`, tracking that the runtime stub is required.
+/// - Side effects: Updates @ref curLoc and sets @ref needRtLeft.
 Lowerer::RVal Lowerer::lowerLeft(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -456,10 +563,13 @@ Lowerer::RVal Lowerer::lowerLeft(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::Str)};
 }
 
-// Purpose: lower right.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the RIGHT$ builtin.
+/// @param c Builtin call expression representing `RIGHT$`.
+/// @return String slice produced by the runtime helper.
+/// @details
+/// - Control flow: Remains in the current block without branching.
+/// - Emitted IL: Converts the count argument to `i64` and calls `rt_right`.
+/// - Side effects: Updates @ref curLoc and sets @ref needRtRight.
 Lowerer::RVal Lowerer::lowerRight(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -470,10 +580,15 @@ Lowerer::RVal Lowerer::lowerRight(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::Str)};
 }
 
-// Purpose: lower str.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the STR$ builtin converting numbers to strings.
+/// @param c Builtin call expression representing `STR$`.
+/// @return String value returned by the runtime conversion helper.
+/// @details
+/// - Control flow: Straight-line emission that normalizes the operand type.
+/// - Emitted IL: Delegates to @ref ensureF64 or @ref ensureI64 before calling
+///   the appropriate runtime converter.
+/// - Side effects: Updates @ref curLoc and mutates the operand's
+///   @ref Lowerer::RVal to reflect any type promotion performed.
 Lowerer::RVal Lowerer::lowerStr(const BuiltinCallExpr &c)
 {
     RVal v = lowerArg(c, 0);
@@ -490,10 +605,13 @@ Lowerer::RVal Lowerer::lowerStr(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::Str)};
 }
 
-// Purpose: lower val.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the VAL builtin converting strings to integers.
+/// @param c Builtin call expression representing `VAL`.
+/// @return Integer value parsed by the runtime.
+/// @details
+/// - Control flow: Straight-line emission using the current block.
+/// - Emitted IL: Calls `rt_to_int` returning an `i64` result.
+/// - Side effects: Updates @ref curLoc before invoking the runtime routine.
 Lowerer::RVal Lowerer::lowerVal(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -502,10 +620,13 @@ Lowerer::RVal Lowerer::lowerVal(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::I64)};
 }
 
-// Purpose: lower int.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the INT builtin performing truncation toward zero.
+/// @param c Builtin call expression representing `INT`.
+/// @return Integer value after truncating the operand.
+/// @details
+/// - Control flow: Linear within the current block.
+/// - Emitted IL: Ensures the operand is `f64` and converts via `fptosi`.
+/// - Side effects: Updates @ref curLoc for the emitted conversion.
 Lowerer::RVal Lowerer::lowerInt(const BuiltinCallExpr &c)
 {
     RVal f = ensureF64(lowerArg(c, 0), c.loc);
@@ -514,10 +635,16 @@ Lowerer::RVal Lowerer::lowerInt(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::I64)};
 }
 
-// Purpose: lower instr.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the INSTR builtin for substring search.
+/// @param c Builtin call expression representing `INSTR`.
+/// @return Integer index result provided by the runtime.
+/// @details
+/// - Control flow: Linear emission that chooses between the two-argument and
+///   three-argument runtime entry points based on AST structure.
+/// - Emitted IL: Adjusts user-facing 1-based indices, then calls either
+///   `rt_instr2` or `rt_instr3` and records which helper is needed.
+/// - Side effects: Updates @ref curLoc and toggles @ref needRtInstr2 or
+///   @ref needRtInstr3 flags.
 Lowerer::RVal Lowerer::lowerInstr(const BuiltinCallExpr &c)
 {
     curLoc = c.loc;
@@ -540,10 +667,13 @@ Lowerer::RVal Lowerer::lowerInstr(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::I64)};
 }
 
-// Purpose: lower ltrim.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the LTRIM$ builtin.
+/// @param c Builtin call expression representing `LTRIM$`.
+/// @return Trimmed string value from the runtime helper.
+/// @details
+/// - Control flow: Straight-line within the current block.
+/// - Emitted IL: Calls `rt_ltrim` with the lowered string argument.
+/// - Side effects: Updates @ref curLoc and sets @ref needRtLtrim.
 Lowerer::RVal Lowerer::lowerLtrim(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -553,10 +683,13 @@ Lowerer::RVal Lowerer::lowerLtrim(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::Str)};
 }
 
-// Purpose: lower rtrim.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the RTRIM$ builtin.
+/// @param c Builtin call expression representing `RTRIM$`.
+/// @return Trimmed string value from the runtime helper.
+/// @details
+/// - Control flow: Linear within the current block.
+/// - Emitted IL: Calls `rt_rtrim` with the lowered string argument.
+/// - Side effects: Updates @ref curLoc and sets @ref needRtRtrim.
 Lowerer::RVal Lowerer::lowerRtrim(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -566,10 +699,13 @@ Lowerer::RVal Lowerer::lowerRtrim(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::Str)};
 }
 
-// Purpose: lower trim.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the TRIM$ builtin.
+/// @param c Builtin call expression representing `TRIM$`.
+/// @return Trimmed string value from the runtime helper.
+/// @details
+/// - Control flow: Linear within the current block.
+/// - Emitted IL: Calls `rt_trim` with the lowered string argument.
+/// - Side effects: Updates @ref curLoc and sets @ref needRtTrim.
 Lowerer::RVal Lowerer::lowerTrim(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -579,10 +715,13 @@ Lowerer::RVal Lowerer::lowerTrim(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::Str)};
 }
 
-// Purpose: lower ucase.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the UCASE$ builtin.
+/// @param c Builtin call expression representing `UCASE$`.
+/// @return Upper-cased string produced by the runtime helper.
+/// @details
+/// - Control flow: Straight-line within the current block.
+/// - Emitted IL: Calls `rt_ucase` with the lowered string argument.
+/// - Side effects: Updates @ref curLoc and sets @ref needRtUcase.
 Lowerer::RVal Lowerer::lowerUcase(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -592,10 +731,13 @@ Lowerer::RVal Lowerer::lowerUcase(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::Str)};
 }
 
-// Purpose: lower lcase.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the LCASE$ builtin.
+/// @param c Builtin call expression representing `LCASE$`.
+/// @return Lower-cased string produced by the runtime helper.
+/// @details
+/// - Control flow: Straight-line within the current block.
+/// - Emitted IL: Calls `rt_lcase` with the lowered string argument.
+/// - Side effects: Updates @ref curLoc and sets @ref needRtLcase.
 Lowerer::RVal Lowerer::lowerLcase(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -605,10 +747,13 @@ Lowerer::RVal Lowerer::lowerLcase(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::Str)};
 }
 
-// Purpose: lower chr.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the CHR$ builtin.
+/// @param c Builtin call expression representing `CHR$`.
+/// @return Single-character string produced by the runtime helper.
+/// @details
+/// - Control flow: Linear within the current block.
+/// - Emitted IL: Converts the code point to `i64` and calls `rt_chr`.
+/// - Side effects: Updates @ref curLoc and sets @ref needRtChr.
 Lowerer::RVal Lowerer::lowerChr(const BuiltinCallExpr &c)
 {
     RVal code = ensureI64(lowerArg(c, 0), c.loc);
@@ -618,10 +763,13 @@ Lowerer::RVal Lowerer::lowerChr(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::Str)};
 }
 
-// Purpose: lower asc.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the ASC builtin.
+/// @param c Builtin call expression representing `ASC`.
+/// @return Integer code point extracted by the runtime helper.
+/// @details
+/// - Control flow: Straight-line within the current block.
+/// - Emitted IL: Calls `rt_asc` with the lowered string argument.
+/// - Side effects: Updates @ref curLoc and sets @ref needRtAsc.
 Lowerer::RVal Lowerer::lowerAsc(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -631,10 +779,13 @@ Lowerer::RVal Lowerer::lowerAsc(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::I64)};
 }
 
-// Purpose: lower sqr.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the SQR builtin (square root).
+/// @param c Builtin call expression representing `SQR`.
+/// @return Floating-point result produced by the runtime helper.
+/// @details
+/// - Control flow: Linear within the current block.
+/// - Emitted IL: Normalizes the operand to `f64` and calls `rt_sqrt`.
+/// - Side effects: Updates @ref curLoc prior to the runtime call.
 Lowerer::RVal Lowerer::lowerSqr(const BuiltinCallExpr &c)
 {
     RVal v = ensureF64(lowerArg(c, 0), c.loc);
@@ -643,10 +794,15 @@ Lowerer::RVal Lowerer::lowerSqr(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::F64)};
 }
 
-// Purpose: lower abs.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the ABS builtin.
+/// @param c Builtin call expression representing `ABS`.
+/// @return Absolute value result with the matching numeric type.
+/// @details
+/// - Control flow: Straight-line within the current block.
+/// - Emitted IL: Chooses between `rt_abs_f64` and `rt_abs_i64` after ensuring
+///   the operand has the appropriate type.
+/// - Side effects: Updates @ref curLoc and mutates the operand
+///   @ref Lowerer::RVal when conversions are performed.
 Lowerer::RVal Lowerer::lowerAbs(const BuiltinCallExpr &c)
 {
     RVal v = lowerArg(c, 0);
@@ -663,10 +819,13 @@ Lowerer::RVal Lowerer::lowerAbs(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::I64)};
 }
 
-// Purpose: lower floor.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the FLOOR builtin.
+/// @param c Builtin call expression representing `FLOOR`.
+/// @return Floating-point result from the runtime helper.
+/// @details
+/// - Control flow: Linear within the current block.
+/// - Emitted IL: Ensures the operand is `f64` and calls `rt_floor`.
+/// - Side effects: Updates @ref curLoc prior to emitting the call.
 Lowerer::RVal Lowerer::lowerFloor(const BuiltinCallExpr &c)
 {
     RVal v = ensureF64(lowerArg(c, 0), c.loc);
@@ -675,10 +834,13 @@ Lowerer::RVal Lowerer::lowerFloor(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::F64)};
 }
 
-// Purpose: lower ceil.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the CEIL builtin.
+/// @param c Builtin call expression representing `CEIL`.
+/// @return Floating-point result from the runtime helper.
+/// @details
+/// - Control flow: Linear within the current block.
+/// - Emitted IL: Ensures the operand is `f64` and calls `rt_ceil`.
+/// - Side effects: Updates @ref curLoc prior to emitting the call.
 Lowerer::RVal Lowerer::lowerCeil(const BuiltinCallExpr &c)
 {
     RVal v = ensureF64(lowerArg(c, 0), c.loc);
@@ -687,10 +849,13 @@ Lowerer::RVal Lowerer::lowerCeil(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::F64)};
 }
 
-// Purpose: lower sin.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the SIN builtin.
+/// @param c Builtin call expression representing `SIN`.
+/// @return Floating-point result from the runtime helper.
+/// @details
+/// - Control flow: Linear within the current block.
+/// - Emitted IL: Ensures the operand is `f64` and calls `rt_sin`.
+/// - Side effects: Updates @ref curLoc prior to emitting the call.
 Lowerer::RVal Lowerer::lowerSin(const BuiltinCallExpr &c)
 {
     RVal v = ensureF64(lowerArg(c, 0), c.loc);
@@ -699,10 +864,13 @@ Lowerer::RVal Lowerer::lowerSin(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::F64)};
 }
 
-// Purpose: lower cos.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the COS builtin.
+/// @param c Builtin call expression representing `COS`.
+/// @return Floating-point result from the runtime helper.
+/// @details
+/// - Control flow: Linear within the current block.
+/// - Emitted IL: Ensures the operand is `f64` and calls `rt_cos`.
+/// - Side effects: Updates @ref curLoc prior to emitting the call.
 Lowerer::RVal Lowerer::lowerCos(const BuiltinCallExpr &c)
 {
     RVal v = ensureF64(lowerArg(c, 0), c.loc);
@@ -711,10 +879,13 @@ Lowerer::RVal Lowerer::lowerCos(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::F64)};
 }
 
-// Purpose: lower pow.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Lower the POW builtin.
+/// @param c Builtin call expression representing `POW`.
+/// @return Floating-point result from the runtime helper.
+/// @details
+/// - Control flow: Linear within the current block.
+/// - Emitted IL: Ensures both operands are `f64` and calls `rt_pow`.
+/// - Side effects: Updates @ref curLoc prior to emitting the call.
 Lowerer::RVal Lowerer::lowerPow(const BuiltinCallExpr &c)
 {
     RVal a = ensureF64(lowerArg(c, 0), c.loc);
@@ -724,10 +895,14 @@ Lowerer::RVal Lowerer::lowerPow(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::F64)};
 }
 
-// Purpose: lower builtin call.
-// Parameters: const BuiltinCallExpr &c.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Dispatch lowering for builtin call expressions.
+/// @param c Builtin call AST node.
+/// @return Lowered value and type produced by the builtin implementation.
+/// @details
+/// - Control flow: Delegates to the registered lowering member function when
+///   available, otherwise falls back to an integer zero constant.
+/// - Emitted IL: Dependent on the selected builtin handler.
+/// - Side effects: None beyond those performed by the dispatched helper.
 Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
 {
     const auto &info = getBuiltinInfo(c.builtin);
@@ -736,10 +911,16 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
     return {Value::constInt(0), Type(Type::Kind::I64)};
 }
 
-// Purpose: lower expr.
-// Parameters: const Expr &expr.
-// Returns: Lowerer::RVal.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Entry point for lowering BASIC expressions to IL.
+/// @param expr Expression subtree to translate.
+/// @return Lowered value accompanied by its IL type.
+/// @details
+/// - Control flow: Performs type-directed dispatch, with individual cases
+///   optionally creating additional blocks through specialized helpers.
+/// - Emitted IL: Encompasses constant materialization, runtime calls, and
+///   instruction emission delegated to helper routines.
+/// - Side effects: Updates @ref curLoc, may mutate runtime requirement flags,
+///   and recursively lowers nested expressions.
 Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
 {
     curLoc = expr.loc;
