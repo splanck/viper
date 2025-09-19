@@ -145,7 +145,6 @@ bool parseModuleHeader(std::istream &is, std::string &line, ParserState &st, std
     if (!result)
     {
         il::support::printDiag(result.error(), err);
-        st.hasError = true;
         return false;
     }
     return true;

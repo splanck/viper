@@ -1,6 +1,6 @@
 // File: tests/unit/test_il_parse_malformed_func_header.cpp
 // Purpose: Ensure parser rejects function headers missing delimiters.
-// Key invariants: Parser sets hasError and returns false for malformed headers.
+// Key invariants: Parser reports malformed headers through Expected diagnostics.
 // Ownership/Lifetime: Test constructs modules and streams locally.
 // Links: docs/il-spec.md
 

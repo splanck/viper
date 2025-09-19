@@ -42,9 +42,6 @@ struct ParserState
     /// @brief Expected parameter count for each basic block label.
     std::unordered_map<std::string, size_t> blockParamCount;
 
-    /// @brief Flag indicating whether a parsing error has been recorded.
-    bool hasError = false;
-
     /// @brief Record of forward branches awaiting resolution.
     struct PendingBr
     {
