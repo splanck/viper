@@ -1,4 +1,5 @@
 // File: src/frontends/basic/Parser_Expr.cpp
+// License: MIT License. See LICENSE in the project root for full license information.
 // Purpose: Expression parsing for BASIC (Pratt parser).
 // Key invariants: Respects operator precedence for correct AST construction.
 // Ownership/Lifetime: Expressions owned by caller via std::unique_ptr.
@@ -46,6 +47,10 @@ int Parser::precedence(TokenKind k)
 }
 
 /// @brief Parse an expression starting at the current token using Pratt parsing.
+/// @details Implements the BASIC expression production by first parsing a unary operand and then
+/// consuming infix operators in order of decreasing precedence. Diagnostics are emitted by helper
+/// routines (for example, when sub-expressions are missing) while this function orchestrates the
+/// climb.
 /// @param min_prec Minimum precedence required to continue parsing infix operators.
 /// @return Parsed expression subtree.
 ExprPtr Parser::parseExpression(int min_prec)
@@ -56,6 +61,10 @@ ExprPtr Parser::parseExpression(int min_prec)
 
 /// @brief Parse a unary expression or delegate to primary parsing when no prefix operator is
 /// present.
+/// @details Recognizes the grammar `unary := NOT unary | primary`. The helper consumes the NOT
+/// keyword when present and recurses with the prefix precedence; otherwise it defers to
+/// parsePrimary(). Any diagnostics originate from parseExpression or parsePrimary when required
+/// operands are absent.
 /// @return Expression node representing the parsed unary or primary expression.
 ExprPtr Parser::parseUnaryExpression()
 {
@@ -74,6 +83,10 @@ ExprPtr Parser::parseUnaryExpression()
 }
 
 /// @brief Parse the right-hand side of an infix expression chain.
+/// @details Continues the Pratt parsing loop by consuming as many infix operators as bind tighter
+/// than @p min_prec. Each operator pulls in a right-hand operand via parseExpression with a higher
+/// minimum precedence, ensuring correct associativity. Missing operands propagate whatever result
+/// parseExpression produces (typically a recovery literal).
 /// @param left Expression already parsed as the left operand.
 /// @param min_prec Minimum precedence required for an operator to bind.
 /// @return Combined expression tree including any parsed infix operations.
@@ -150,6 +163,13 @@ ExprPtr Parser::parseInfixRhs(ExprPtr left, int min_prec)
     return left;
 }
 
+/// @brief Parse a numeric literal expression from the current token.
+/// @details Consumes a token classified as TokenKind::Number and constructs the corresponding BASIC
+/// literal node. Presence of a decimal point, exponent, or type-marker suffix determines whether
+/// a FloatExpr or IntExpr is emitted. The lexer guarantees the lexeme conforms to the numeric
+/// grammar, so no diagnostics are produced here; the standard library conversion falls back to
+/// zero on malformed values, matching BASIC's permissive semantics.
+/// @return Newly allocated numeric literal expression.
 ExprPtr Parser::parseNumber()
 {
     auto loc = peek().loc;
@@ -170,6 +190,11 @@ ExprPtr Parser::parseNumber()
     return e;
 }
 
+/// @brief Parse a string literal expression from the current token.
+/// @details Implements the BASIC production `string-literal := "..."` by consuming the current
+/// TokenKind::String token. The lexer already handles escape sequences and diagnostics, so this
+/// helper simply copies the lexeme and advances.
+/// @return Newly allocated string literal expression.
 ExprPtr Parser::parseString()
 {
     auto e = std::make_unique<StringExpr>();
@@ -179,6 +204,14 @@ ExprPtr Parser::parseString()
     return e;
 }
 
+/// @brief Parse a call to a BASIC builtin function.
+/// @details Implements `builtin-call := BUILTIN '(' [expr {',' expr}] ')'` where the argument
+/// structure depends on @p builtin. Parentheses and separators are enforced via expect(), which
+/// reports diagnostics when tokens are missing but still attempts recovery so parsing can
+/// continue.
+/// @param builtin Enumerated builtin resolved by lookupBuiltin().
+/// @param loc Source location of the builtin identifier.
+/// @return Newly allocated builtin call expression with parsed arguments.
 ExprPtr Parser::parseBuiltinCall(BuiltinCallExpr::Builtin builtin, il::support::SourceLoc loc)
 {
     expect(TokenKind::LParen);
@@ -230,6 +263,12 @@ ExprPtr Parser::parseBuiltinCall(BuiltinCallExpr::Builtin builtin, il::support::
     return call;
 }
 
+/// @brief Construct an AST node for a scalar variable reference.
+/// @details Called after the identifier token has been consumed from the stream. No diagnostics are
+/// emitted here; name resolution is deferred to later semantic stages.
+/// @param name Identifier captured from the token stream.
+/// @param loc Source location of the identifier.
+/// @return Variable reference expression.
 ExprPtr Parser::parseVariableRef(std::string name, il::support::SourceLoc loc)
 {
     auto v = std::make_unique<VarExpr>();
@@ -238,6 +277,13 @@ ExprPtr Parser::parseVariableRef(std::string name, il::support::SourceLoc loc)
     return v;
 }
 
+/// @brief Parse an array element reference of the form `name(expr)`.
+/// @details After consuming the identifier, this helper expects an opening parenthesis, parses a
+/// single index expression, and requires a closing parenthesis. The expect() calls emit diagnostics
+/// on mismatched tokens but still advance so the parser can continue.
+/// @param name Array identifier.
+/// @param loc Source location of the identifier.
+/// @return Array reference expression with the parsed index.
 ExprPtr Parser::parseArrayRef(std::string name, il::support::SourceLoc loc)
 {
     expect(TokenKind::LParen);
@@ -250,6 +296,14 @@ ExprPtr Parser::parseArrayRef(std::string name, il::support::SourceLoc loc)
     return arr;
 }
 
+/// @brief Parse either an array reference, builtin call, user-defined call, or simple variable.
+/// @details Implements the lookahead logic for the grammar fragment `identifier-suffix := '(' ...
+/// ')' | ε`. If the identifier corresponds to a builtin function, control is delegated to
+/// parseBuiltinCall(). Known arrays produce ArrayExpr nodes, while remaining identifiers with
+/// parentheses become CallExpr invocations. When no parentheses are present, a VarExpr is emitted.
+/// Errors encountered by expect() while parsing argument lists are reported before the helper
+/// returns.
+/// @return Expression node representing the chosen form.
 ExprPtr Parser::parseArrayOrVar()
 {
     std::string name = peek().lexeme;
@@ -289,6 +343,13 @@ ExprPtr Parser::parseArrayOrVar()
     return parseVariableRef(name, loc);
 }
 
+/// @brief Parse a BASIC primary expression.
+/// @details Covers literals, boolean keywords, builtin invocations, identifier references, and
+/// parenthesized expressions per `primary := number | string | boolean | builtin-call |
+/// identifier | '(' expression ')'`. When no valid production applies, the parser returns a zero
+/// literal as error recovery; any diagnostics should already have been issued by the routines that
+/// attempted to parse the unexpected token.
+/// @return Parsed primary expression node, never null.
 ExprPtr Parser::parsePrimary()
 {
     if (at(TokenKind::Number))
