@@ -2,6 +2,7 @@
 // Purpose: Implements statement-level parsing routines for the BASIC parser.
 // Key invariants: Relies on token buffer for lookahead.
 // Ownership/Lifetime: Parser owns tokens produced by lexer.
+// License: MIT; see LICENSE for details.
 // Links: docs/class-catalog.md
 
 #include "frontends/basic/Parser.hpp"
@@ -364,6 +365,12 @@ Type Parser::typeFromSuffix(std::string_view name)
     return Type::I64;
 }
 
+/// @brief Parse a type keyword following an AS clause.
+/// @return BASIC type corresponding to the recognized keyword; defaults to Type::I64.
+/// @details Supported keywords: BOOLEAN, INTEGER, DOUBLE, STRING. BOOLEAN is consumed directly
+/// by keyword, while the others are matched as identifiers. If no supported keyword is present or
+/// an unknown identifier is encountered, the token is treated as INTEGER semantics and Type::I64 is
+/// returned without emitting diagnostics, leaving callers to rely on default typing rules.
 Type Parser::parseTypeKeyword()
 {
     if (at(TokenKind::KeywordBoolean))
@@ -387,7 +394,10 @@ Type Parser::parseTypeKeyword()
 
 /// @brief Parse a parenthesized parameter list.
 /// @return Vector of parameters, possibly empty if no list is present.
-/// @note Parameters may carry type suffixes or array markers.
+/// @details Accepts comma-separated identifiers with optional trailing "()" to mark arrays and type
+/// suffix characters to infer BASIC types. When no opening parenthesis is found the function
+/// returns immediately without consuming tokens. Token mismatches are diagnosed via expect(),
+/// allowing the caller to surface parser errors consistently.
 std::vector<Param> Parser::parseParamList()
 {
     std::vector<Param> params;
