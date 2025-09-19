@@ -2,6 +2,7 @@
 // Purpose: Implements the façade parser entry point for textual IL.
 // Key invariants: Delegates work to module/function/instruction helpers.
 // Ownership/Lifetime: Operates on external module references without owning them.
+// License: MIT (see LICENSE).
 // Links: docs/il-spec.md
 
 #include "il/io/Parser.hpp"
@@ -22,6 +23,15 @@ il::support::Expected<void> parseModuleHeader_E(std::istream &is, std::string &l
 namespace il::io
 {
 
+/**
+ * @brief Parse a textual IL module from a stream.
+ * @details Constructs a ParserState for the target module and iterates over
+ * each input line until EOF. Every iteration bumps the tracked line number,
+ * trims leading/trailing whitespace, skips empty lines or lines beginning with
+ * "//", and otherwise delegates to detail::parseModuleHeader_E. Any error
+ * produced by parseModuleHeader_E is surfaced directly to the caller without
+ * further handling.
+ */
 il::support::Expected<void> Parser::parse(std::istream &is, il::core::Module &m)
 {
     detail::ParserState st{m};
