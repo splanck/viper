@@ -5,9 +5,16 @@
 // Links: docs/il-spec.md
 #pragma once
 
+#include "support/diag_expected.hpp"
+
 #include <ostream>
 #include <string>
 #include <unordered_map>
+
+namespace il::support
+{
+using ::Expected;
+}
 
 namespace il::core
 {
@@ -29,6 +36,11 @@ class TypeInference;
 class Verifier
 {
   public:
+    /// @brief Verify module @p m returning structured diagnostics.
+    /// @param m Module to verify.
+    /// @return Empty on success, diagnostic on failure.
+    static il::support::Expected<void> verify(const il::core::Module &m);
+
     /// @brief Verify module @p m against the IL specification.
     /// @param m Module to verify.
     /// @param err Stream receiving diagnostic messages.

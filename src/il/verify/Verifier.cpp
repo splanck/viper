@@ -22,6 +22,7 @@
 #include "il/verify/InstructionChecker.hpp"
 #include "il/verify/TypeInference.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
+#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -30,6 +31,16 @@ using namespace il::core;
 
 namespace il::verify
 {
+
+il::support::Expected<void> Verifier::verify(const Module &m)
+{
+    std::ostringstream err;
+    if (verify(m, err))
+    {
+        return {};
+    }
+    return std::unexpected(makeError({}, err.str()));
+}
 
 bool Verifier::verify(const Module &m, std::ostream &err)
 {

@@ -11,9 +11,20 @@
 #include "il/io/ParserUtil.hpp"
 
 #include <string>
+#include <sstream>
 
 namespace il::io
 {
+
+il::support::Expected<void> Parser::parse(std::istream &is, il::core::Module &m)
+{
+    std::ostringstream err;
+    if (parse(is, m, err))
+    {
+        return {};
+    }
+    return std::unexpected(makeError({}, err.str()));
+}
 
 bool Parser::parse(std::istream &is, il::core::Module &m, std::ostream &err)
 {
