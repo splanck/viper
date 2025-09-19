@@ -1,4 +1,5 @@
 // File: src/il/io/Serializer.cpp
+// License: MIT License. See LICENSE in the project root for full license information.
 // Purpose: Implements serializer for IL modules to text.
 // Key invariants: Output is deterministic in canonical mode.
 // Ownership/Lifetime: Serializer does not own modules.
@@ -164,6 +165,14 @@ void printInstr(const Instr &in, std::ostream &os)
 
 } // namespace
 
+/// @brief Serialize an IL module into a textual stream.
+/// @param m Module to serialize; not owned.
+/// @param os Stream that receives output; not owned.
+/// @param mode Controls whether externs are emitted canonically or in definition order.
+/// Workflow: print the IL version header, emit externs (sorting them when canonical),
+/// then globals and functions by walking their basic blocks and delegating instruction
+/// formatting to @c printInstr.
+/// @returns Nothing; the serialized form is written directly to @p os.
 void Serializer::write(const Module &m, std::ostream &os, Mode mode)
 {
     os << "il " << m.version << "\n";
@@ -218,6 +227,12 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode)
     }
 }
 
+/// @brief Materialize a module's textual IL into an owned string.
+/// @param m Module to serialize; not owned.
+/// @param mode Printing strategy forwarded to @c write.
+/// Workflow: accumulate output in an @c ostringstream by delegating to @c write
+/// with the requested @p mode and return the resulting buffer.
+/// @returns Canonical or declared-order IL text depending on @p mode.
 std::string Serializer::toString(const Module &m, Mode mode)
 {
     std::ostringstream oss;
