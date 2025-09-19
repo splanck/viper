@@ -1,3 +1,4 @@
+// MIT License. See LICENSE in the project root for full license information.
 // File: src/il/verify/TypeInference.cpp
 // Purpose: Implements IL verifier type inference and operand validation helpers.
 // Key invariants: Maintains consistency between temporary maps and defined sets.
@@ -22,6 +23,11 @@ namespace il::verify
 namespace
 {
 
+/// @brief Format the operand sequence for inclusion in diagnostics.
+/// @details Serialises value operands and successor labels so that
+///          @ref makeSnippet and operand error messages mirror IL syntax.
+/// @param instr Instruction whose operands are formatted.
+/// @return Space-prefixed operand string used by error builders.
 std::string formatOperands(const Instr &instr)
 {
     std::ostringstream os;
@@ -32,6 +38,15 @@ std::string formatOperands(const Instr &instr)
     return os.str();
 }
 
+/// @brief Build a fully qualified diagnostic line for operand issues.
+/// @details Combines function, block, formatted instruction snippet, and
+///          message text so that operand errors can report both the location
+///          and whether the issue was an unknown temporary or a use-before-def.
+/// @param fn Function containing @p instr.
+/// @param bb Basic block containing @p instr.
+/// @param instr Instruction triggering the diagnostic.
+/// @param message Specific error detail to append.
+/// @return Formatted diagnostic string used in Expected payloads.
 std::string formatInstrDiag(const Function &fn,
                             const BasicBlock &bb,
                             const Instr &instr,
@@ -46,6 +61,12 @@ std::string formatInstrDiag(const Function &fn,
 
 } // namespace
 
+/// @brief Compose a verifier snippet for operand diagnostics.
+/// @details Includes the destination temporary (if any) together with opcode
+///          and operands formatted via @ref formatOperands so diagnostics can
+///          echo the failing instruction.
+/// @param instr Instruction whose snippet is generated.
+/// @return Single-line textual representation of @p instr.
 std::string makeSnippet(const Instr &instr)
 {
     std::ostringstream os;
