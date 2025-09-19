@@ -227,7 +227,6 @@ bool parseFunctionHeader(const std::string &header, ParserState &st, std::ostrea
     if (!result)
     {
         il::support::printDiag(result.error(), err);
-        st.hasError = true;
         return false;
     }
     return true;
@@ -239,7 +238,6 @@ bool parseBlockHeader(const std::string &header, ParserState &st, std::ostream &
     if (!result)
     {
         il::support::printDiag(result.error(), err);
-        st.hasError = true;
         return false;
     }
     return true;
@@ -251,7 +249,6 @@ bool parseFunction(std::istream &is, std::string &header, ParserState &st, std::
     if (!result)
     {
         il::support::printDiag(result.error(), err);
-        st.hasError = true;
         return false;
     }
     return true;
