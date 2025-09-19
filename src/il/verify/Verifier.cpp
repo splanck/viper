@@ -1,4 +1,5 @@
 // File: src/il/verify/Verifier.cpp
+// License: MIT License. See LICENSE in the project root for full license information.
 // Purpose: Implements IL verifier checking module correctness.
 // Key invariants: None.
 // Ownership/Lifetime: Verifier does not own modules.
@@ -93,6 +94,10 @@ using il::support::Diag;
 using il::support::Expected;
 using il::support::makeError;
 
+/// @brief Compose a human-readable diagnostic summary for a function-level error.
+/// @param fn Function whose name prefixes the diagnostic string.
+/// @param message Additional message text appended after the function name when provided.
+/// @return Combined diagnostic string of the form "function: message" for reporting failures.
 std::string formatFunctionDiag(const Function &fn, std::string_view message)
 {
     std::ostringstream oss;
@@ -102,6 +107,10 @@ std::string formatFunctionDiag(const Function &fn, std::string_view message)
     return oss.str();
 }
 
+/// @brief Validate extern declarations for duplicate definitions and runtime signature matches.
+/// @param m Module containing the extern declarations to inspect.
+/// @param externs Map populated with extern pointers keyed by name when validation succeeds.
+/// @return Success when all externs are unique and well-typed; otherwise an error diagnostic. No warnings are emitted.
 Expected<void> verifyExterns_E(const Module &m,
                                std::unordered_map<std::string, const Extern *> &externs)
 {
@@ -136,6 +145,10 @@ Expected<void> verifyExterns_E(const Module &m,
     return {};
 }
 
+/// @brief Ensure global variable declarations are unique within the module namespace.
+/// @param m Module providing the global declarations under validation.
+/// @param globals Map populated with discovered globals when validation succeeds.
+/// @return Success when all globals are unique; otherwise an error diagnostic. No warnings are emitted.
 Expected<void> verifyGlobals_E(const Module &m,
                                std::unordered_map<std::string, const Global *> &globals)
 {
@@ -147,6 +160,16 @@ Expected<void> verifyGlobals_E(const Module &m,
     return {};
 }
 
+/// @brief Validate a single instruction, delegating to opcode-specific and control-flow checkers as needed.
+/// @param fn Function containing the instruction.
+/// @param bb Basic block providing context for @p instr.
+/// @param instr Instruction under validation.
+/// @param blockMap Lookup table of blocks for resolving branch targets.
+/// @param externs Map of extern signatures for call validation.
+/// @param funcs Map of function signatures for call validation.
+/// @param types Type inference state tracking temporary definitions.
+/// @param warnings Collection receiving non-fatal warning diagnostics discovered during validation.
+/// @return Success or an error diagnostic describing the first fatal validation failure.
 Expected<void> verifyInstr_E(const Function &fn,
                              const BasicBlock &bb,
                              const Instr &instr,
@@ -172,6 +195,15 @@ Expected<void> verifyInstr_E(const Function &fn,
     }
 }
 
+/// @brief Validate a basic block's parameters, instruction list, and terminator structure.
+/// @param fn Function enclosing @p bb.
+/// @param bb Basic block being verified.
+/// @param blockMap Lookup table for branch target resolution.
+/// @param externs Known extern signatures for call validation.
+/// @param funcs Known function signatures for call validation.
+/// @param temps Map of temporaries updated with inferred types as the block executes.
+/// @param warnings Collection receiving non-fatal warning diagnostics emitted during validation.
+/// @return Success when the block is well-formed; otherwise an error diagnostic describing the issue.
 Expected<void> verifyBlock_E(const Function &fn,
                               const BasicBlock &bb,
                               const std::unordered_map<std::string, const BasicBlock *> &blockMap,
@@ -214,6 +246,12 @@ Expected<void> verifyBlock_E(const Function &fn,
     return {};
 }
 
+/// @brief Check a function for a valid entry block, unique labels, and well-formed body.
+/// @param fn Function to validate.
+/// @param externs Map of extern signatures for signature compatibility checks.
+/// @param funcs Map of functions for intra-module call validation.
+/// @param warnings Collection receiving non-fatal warning diagnostics emitted during block verification.
+/// @return Success when the function passes all checks; otherwise an error diagnostic describing the failure.
 Expected<void> verifyFunction_E(const Function &fn,
                                 const std::unordered_map<std::string, const Extern *> &externs,
                                 const std::unordered_map<std::string, const Function *> &funcs,
@@ -265,6 +303,10 @@ Expected<void> verifyFunction_E(const Function &fn,
     return {};
 }
 
+/// @brief Verify module-level declarations and functions for uniqueness and structural integrity.
+/// @param m Module whose externs, globals, and functions are being verified.
+/// @param warnings Collection receiving non-fatal warning diagnostics surfaced from function verification.
+/// @return Success when the module is well-formed; otherwise an error diagnostic describing the first failure encountered.
 Expected<void> verifyModule_E(const Module &m, std::vector<Diag> &warnings)
 {
     std::unordered_map<std::string, const Extern *> externs;
@@ -290,6 +332,9 @@ Expected<void> verifyModule_E(const Module &m, std::vector<Diag> &warnings)
 
 } // namespace
 
+/// @brief Verify a module and aggregate warning diagnostics into the returned error message if validation fails.
+/// @param m Module to verify.
+/// @return Success when the module is valid; otherwise an error diagnostic containing warnings followed by the failure detail.
 il::support::Expected<void> Verifier::verify(const Module &m)
 {
     std::vector<Diag> warnings;
@@ -310,6 +355,11 @@ il::support::Expected<void> Verifier::verify(const Module &m)
     return {};
 }
 
+/// @brief Check extern declarations and stream diagnostics for failures.
+/// @param m Module providing extern definitions.
+/// @param err Stream receiving diagnostic output when validation fails.
+/// @param externs Map populated with verified externs for downstream checks.
+/// @return True on success; false when errors are reported to @p err.
 bool Verifier::verifyExterns(const Module &m,
                              std::ostream &err,
                              std::unordered_map<std::string, const Extern *> &externs)
@@ -322,6 +372,11 @@ bool Verifier::verifyExterns(const Module &m,
     return true;
 }
 
+/// @brief Check global declarations and stream diagnostics for failures.
+/// @param m Module containing global definitions.
+/// @param err Stream receiving diagnostic output when validation fails.
+/// @param globals Map populated with verified globals for downstream checks.
+/// @return True on success; false when errors are reported to @p err.
 bool Verifier::verifyGlobals(const Module &m,
                              std::ostream &err,
                              std::unordered_map<std::string, const Global *> &globals)
@@ -334,6 +389,12 @@ bool Verifier::verifyGlobals(const Module &m,
     return true;
 }
 
+/// @brief Validate an individual function and emit warnings and errors to the provided stream.
+/// @param fn Function to verify.
+/// @param externs Map of extern signatures used to validate calls.
+/// @param funcs Map of functions used to validate calls.
+/// @param err Stream receiving warning and error diagnostics.
+/// @return True on success; false when diagnostics are emitted to @p err.
 bool Verifier::verifyFunction(const Function &fn,
                               const std::unordered_map<std::string, const Extern *> &externs,
                               const std::unordered_map<std::string, const Function *> &funcs,
@@ -352,6 +413,15 @@ bool Verifier::verifyFunction(const Function &fn,
     return true;
 }
 
+/// @brief Validate a basic block and emit collected diagnostics to the provided stream.
+/// @param fn Function enclosing the block.
+/// @param bb Block under verification.
+/// @param blockMap Map resolving branch targets.
+/// @param externs Map of extern signatures for call validation.
+/// @param funcs Map of functions for call validation.
+/// @param temps Map of temporaries updated with inferred types across blocks.
+/// @param err Stream receiving warning and error diagnostics.
+/// @return True on success; false when diagnostics are emitted to @p err.
 bool Verifier::verifyBlock(const Function &fn,
                            const BasicBlock &bb,
                            const std::unordered_map<std::string, const BasicBlock *> &blockMap,
@@ -373,6 +443,16 @@ bool Verifier::verifyBlock(const Function &fn,
     return true;
 }
 
+/// @brief Validate a single instruction and stream any diagnostics encountered.
+/// @param fn Function containing the instruction.
+/// @param bb Basic block containing the instruction.
+/// @param in Instruction to verify.
+/// @param blockMap Map resolving branch targets.
+/// @param externs Map of extern signatures for call validation.
+/// @param funcs Map of functions for call validation.
+/// @param types Type inference context shared across the block.
+/// @param err Stream receiving warning and error diagnostics.
+/// @return True on success; false when diagnostics are emitted to @p err.
 bool Verifier::verifyInstr(const Function &fn,
                            const BasicBlock &bb,
                            const Instr &in,
