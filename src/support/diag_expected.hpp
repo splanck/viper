@@ -1,54 +1,131 @@
 // File: src/support/diag_expected.hpp
-// Purpose: Provides diagnostic aliases and helpers built on std::expected.
-// Key invariants: Diagnostics encapsulate a single severity, message, and location.
-// Ownership/Lifetime: Aliases do not own data; diagnostics own their message buffers.
+// Purpose: Provides diagnostic helpers and a lightweight Expected container for CLI tools.
+// Key invariants: Diagnostics encapsulate a single severity, message, and location; Expected holds either a value or diagnostic.
+// Ownership/Lifetime: Expected owns success payloads or diagnostics; diagnostics own their message buffers.
 // Links: docs/class-catalog.md
 #pragma once
 
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
 
-#include <expected>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
 
-using Diag = il::support::Diagnostic;
-
-template <class T> using Expected = std::expected<T, Diag>;
-
 namespace il::support
 {
-using ::Diag;
+using Diag = Diagnostic;
 
-template <class T> using Expected = ::Expected<T>;
-} // namespace il::support
+/// @brief Expected-style container pairing a value with a diagnostic on error.
+/// @tparam T Stored value type when the operation succeeds.
+/// @note Mirrors a subset of std::expected for tool-only usage until the
+///       standard type becomes universally available on our toolchain.
+template <class T> class Expected
+{
+  public:
+    /// @brief Construct a successful result containing @p value.
+    /// @param value Value produced by a successful computation.
+    Expected(T value) : value_(std::move(value)) {}
 
-namespace il::support::detail
+    /// @brief Construct an error result holding diagnostic @p diag.
+    /// @param diag Diagnostic to return to the caller.
+    Expected(Diag diag) : error_(std::move(diag)) {}
+
+    /// @brief Check whether a value is present.
+    /// @return True when the Expected stores a value.
+    [[nodiscard]] bool hasValue() const
+    {
+        return value_.has_value();
+    }
+
+    /// @brief Allow use in boolean contexts to test success.
+    explicit operator bool() const
+    {
+        return hasValue();
+    }
+
+    /// @brief Access the stored value; requires hasValue().
+    T &value()
+    {
+        return *value_;
+    }
+
+    /// @brief Access the stored value; requires hasValue().
+    const T &value() const
+    {
+        return *value_;
+    }
+
+    /// @brief Access the diagnostic describing the failure.
+    const Diag &error() const &
+    {
+        return *error_;
+    }
+
+  private:
+    std::optional<T> value_;
+    std::optional<Diag> error_;
+};
+
+/// @brief Expected specialization for void success type.
+template <> class Expected<void>
+{
+  public:
+    /// @brief Construct a successful result with no payload.
+    Expected() = default;
+
+    /// @brief Construct an error result holding diagnostic @p diag.
+    /// @param diag Diagnostic describing the failure.
+    Expected(Diag diag) : error_(std::move(diag)) {}
+
+    /// @brief Check whether the Expected represents success.
+    [[nodiscard]] bool hasValue() const
+    {
+        return !error_.has_value();
+    }
+
+    /// @brief Allow use in boolean contexts to test success.
+    explicit operator bool() const
+    {
+        return hasValue();
+    }
+
+    /// @brief Access the diagnostic describing the failure.
+    const Diag &error() const &
+    {
+        return *error_;
+    }
+
+  private:
+    std::optional<Diag> error_;
+};
+
+namespace detail
 {
 /// @brief Convert diagnostic severity to lowercase string.
-inline const char *diagSeverityToString(il::support::Severity severity)
+inline const char *diagSeverityToString(Severity severity)
 {
     switch (severity)
     {
-        case il::support::Severity::Note:
+        case Severity::Note:
             return "note";
-        case il::support::Severity::Warning:
+        case Severity::Warning:
             return "warning";
-        case il::support::Severity::Error:
+        case Severity::Error:
             return "error";
     }
     return "";
 }
-} // namespace il::support::detail
+} // namespace detail
 
 /// @brief Create an error diagnostic with location and message.
 /// @param loc Optional source location associated with the diagnostic.
 /// @param msg Human-readable diagnostic message.
 /// @return Diagnostic marked as an error severity.
-inline Diag makeError(il::support::SourceLoc loc, std::string msg)
+inline Diag makeError(SourceLoc loc, std::string msg)
 {
-    return Diag{il::support::Severity::Error, std::move(msg), loc};
+    return Diag{Severity::Error, std::move(msg), loc};
 }
 
 /// @brief Print a single diagnostic to the provided stream.
@@ -57,13 +134,14 @@ inline Diag makeError(il::support::SourceLoc loc, std::string msg)
 /// @param sm Optional source manager to resolve file paths.
 /// @note Follows DiagnosticEngine::printAll formatting for consistency.
 inline void printDiag(const Diag &diag, std::ostream &os,
-                      const il::support::SourceManager *sm = nullptr)
+                      const SourceManager *sm = nullptr)
 {
     if (diag.loc.isValid() && sm)
     {
         auto path = sm->getPath(diag.loc.file_id);
         os << path << ":" << diag.loc.line << ":" << diag.loc.column << ": ";
     }
-    os << il::support::detail::diagSeverityToString(diag.severity) << ": " << diag.message
+    os << detail::diagSeverityToString(diag.severity) << ": " << diag.message
        << '\n';
 }
+} // namespace il::support

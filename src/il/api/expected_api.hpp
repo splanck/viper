@@ -27,7 +27,7 @@ inline il::support::Expected<void> parse_text_expected(std::istream &is, il::cor
     {
         return {};
     }
-    return std::unexpected(makeError({}, err.str()));
+    return il::support::Expected<void>{il::support::makeError({}, err.str())};
 }
 
 /// @brief Verify a module while capturing diagnostics in an Expected result.
@@ -40,7 +40,7 @@ inline il::support::Expected<void> verify_module_expected(const il::core::Module
     {
         return {};
     }
-    return std::unexpected(makeError({}, err.str()));
+    return il::support::Expected<void>{il::support::makeError({}, err.str())};
 }
 
 } // namespace il::api::v2
