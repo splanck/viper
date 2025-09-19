@@ -4,6 +4,7 @@
 // @ownership Splitters own child widgets and delegate painting.
 
 #include "tui/widgets/splitter.hpp"
+#include "tui/render/screen.hpp"
 
 #include <algorithm>
 

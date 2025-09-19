@@ -4,6 +4,7 @@
 // @ownership Container owns child widgets and delegates painting.
 
 #include "tui/ui/container.hpp"
+#include "tui/render/screen.hpp"
 
 namespace viper::tui::ui
 {

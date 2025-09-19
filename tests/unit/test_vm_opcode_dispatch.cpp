@@ -5,6 +5,7 @@
 // Links: docs/il-spec.md
 
 #include "il/io/Parser.hpp"
+#include "il/core/Module.hpp"
 #include "vm/VM.hpp"
 #include <cassert>
 #include <sstream>

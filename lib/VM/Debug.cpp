@@ -6,7 +6,9 @@
 // breakpoint set, and source line list.
 // Links: docs/dev/vm.md
 #include "VM/Debug.h"
+#include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
+#include "support/source_location.hpp"
 #include "support/source_manager.hpp"
 #include <iostream>
 

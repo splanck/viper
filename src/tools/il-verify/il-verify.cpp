@@ -5,6 +5,7 @@
 // Links: docs/class-catalog.md
 
 #include "il/io/Parser.hpp"
+#include "il/core/Module.hpp"
 #include "il/verify/Verifier.hpp"
 #include <fstream>
 #include <iostream>

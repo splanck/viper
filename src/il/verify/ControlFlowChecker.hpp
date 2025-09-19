@@ -5,14 +5,17 @@
 // Links: docs/il-spec.md
 #pragma once
 
-#include "il/core/BasicBlock.hpp"
-#include "il/core/Extern.hpp"
-#include "il/core/Function.hpp"
-#include "il/core/Instr.hpp"
+#include "il/core/Opcode.hpp"
+#include "il/core/fwd.hpp"
 #include "il/verify/TypeInference.hpp"
 #include <ostream>
 #include <unordered_map>
 #include <vector>
+
+namespace il::core
+{
+struct Extern;
+}
 
 namespace il::verify
 {

@@ -5,6 +5,10 @@
 // Links: docs/il-spec.md
 
 #include "il/verify/InstructionChecker.hpp"
+#include "il/core/BasicBlock.hpp"
+#include "il/core/Extern.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/OpcodeInfo.hpp"
 #include "il/verify/Rule.hpp"

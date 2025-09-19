@@ -5,9 +5,9 @@
 // Links: docs/il-spec.md
 #pragma once
 
-#include "il/core/BasicBlock.hpp"
-#include "il/core/Function.hpp"
-#include "il/core/Instr.hpp"
+#include "il/core/Type.hpp"
+#include "il/core/Value.hpp"
+#include "il/core/fwd.hpp"
 #include <ostream>
 #include <string>
 #include <unordered_map>

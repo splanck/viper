@@ -5,7 +5,7 @@
 // Links: docs/class-catalog.md
 #pragma once
 
-#include "il/core/Module.hpp"
+#include "il/core/fwd.hpp"
 
 namespace il::transform
 {

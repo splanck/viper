@@ -8,7 +8,6 @@
 // Links: docs/dev/vm.md
 #pragma once
 
-#include "il/core/BasicBlock.hpp"
 #include "il/core/Type.hpp"
 #include "support/string_interner.hpp"
 #include "support/symbol.hpp"
@@ -21,6 +20,7 @@
 
 namespace il::core
 {
+struct BasicBlock;
 struct Instr;
 } // namespace il::core
 

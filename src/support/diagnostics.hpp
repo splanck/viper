@@ -5,7 +5,7 @@
 // Links: docs/class-catalog.md
 #pragma once
 
-#include "source_manager.hpp"
+#include "source_location.hpp"
 #include <ostream>
 #include <string>
 #include <vector>
@@ -15,6 +15,8 @@
 /// @ownership Owns stored diagnostic messages.
 namespace il::support
 {
+
+class SourceManager;
 
 /// @brief Severity levels for diagnostics.
 enum class Severity

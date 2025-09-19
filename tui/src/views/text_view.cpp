@@ -4,6 +4,7 @@
 // @ownership TextView borrows TextBuffer and Theme.
 
 #include "tui/views/text_view.hpp"
+#include "tui/render/screen.hpp"
 #include "tui/syntax/rules.hpp"
 
 #include <algorithm>

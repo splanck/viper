@@ -5,6 +5,9 @@
 // Links: docs/il-spec.md
 
 #include "il/verify/TypeInference.hpp"
+#include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/Value.hpp"
 #include <sstream>

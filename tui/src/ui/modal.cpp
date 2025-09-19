@@ -4,6 +4,7 @@
 // @ownership ModalHost owns root and modals; Popup borrows dismiss callback.
 
 #include "tui/ui/modal.hpp"
+#include "tui/render/screen.hpp"
 
 #include <algorithm>
 
