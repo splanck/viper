@@ -6,7 +6,7 @@
 
 #include "Passes/Mem2Reg.h"
 #include "cli.hpp"
-#include "il/io/Parser.hpp"
+#include "il/api/expected_api.hpp"
 #include "il/io/Serializer.hpp"
 #include "il/transform/ConstFold.hpp"
 #include "il/transform/DCE.hpp"
@@ -87,8 +87,12 @@ int cmdILOpt(int argc, char **argv)
         return 1;
     }
     core::Module m;
-    if (!io::Parser::parse(ifs, m, std::cerr))
+    auto pe = il::api::v2::parse_text_expected(ifs, m);
+    if (!pe)
+    {
+        il::support::printDiag(pe.error(), std::cerr);
         return 1;
+    }
     transform::PassManager pm;
     pm.registerModulePass(
         "constfold",

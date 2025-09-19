@@ -4,12 +4,12 @@
 // Ownership/Lifetime: Constructs module locally for verification.
 // Links: docs/il-spec.md
 
+#include "il/api/expected_api.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
-#include "il/verify/Verifier.hpp"
 #include <cassert>
 #include <sstream>
 
@@ -33,10 +33,14 @@ int main()
     fn.blocks.push_back(bb);
     m.functions.push_back(fn);
 
-    std::ostringstream err;
-    bool ok = il::verify::Verifier::verify(m, err);
-    assert(ok);
-    assert(err.str().empty());
+    std::ostringstream diag;
+    auto ve = il::api::v2::verify_module_expected(m);
+    if (!ve)
+    {
+        il::support::printDiag(ve.error(), diag);
+    }
+    assert(ve);
+    assert(diag.str().empty());
 
     return 0;
 }
