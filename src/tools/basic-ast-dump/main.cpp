@@ -2,6 +2,7 @@
 // Purpose: Command-line tool to dump BASIC AST.
 // Key invariants: None.
 // Ownership/Lifetime: Tool owns loaded source.
+// License: MIT License. See LICENSE in the project root for full license information.
 // Links: docs/class-catalog.md
 
 #include "frontends/basic/AstPrinter.hpp"
@@ -18,8 +19,10 @@ using namespace il::support;
  * @brief Entry point for the BASIC AST dump tool.
  *
  * Expects a single argument: the path to a BASIC source file. The
- * program reads the file, parses it into an AST, and prints the result
- * to standard output.
+ * program parses and validates the command-line argument,
+ * reads the source file into memory, registers it with the source
+ * manager, invokes the BASIC parser to build the AST, and finally
+ * prints the AST using the printer to standard output.
  *
  * @return 0 on success.
  * @return 1 if the argument count is incorrect or the file cannot be
