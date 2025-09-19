@@ -2,6 +2,7 @@
 // Purpose: Implements helpers that validate non-control IL instructions.
 // Key invariants: Relies on TypeInference to keep operand types consistent.
 // Ownership/Lifetime: Functions operate on caller-provided structures.
+// License: MIT (see LICENSE).
 // Links: docs/il-spec.md
 
 #include "il/verify/InstructionChecker.hpp"
@@ -31,6 +32,12 @@ using il::support::Expected;
 using il::support::Severity;
 using il::support::makeError;
 
+/// @brief Format a canonical diagnostic string for an instruction.
+/// @param fn Function that owns the instruction.
+/// @param bb Basic block containing the instruction.
+/// @param instr Instruction that triggered the diagnostic.
+/// @param message Additional detail appended to the diagnostic message.
+/// @return Fully formatted verifier diagnostic payload.
 std::string formatInstrDiag(const Function &fn,
                             const BasicBlock &bb,
                             const Instr &instr,
@@ -43,6 +50,12 @@ std::string formatInstrDiag(const Function &fn,
     return oss.str();
 }
 
+/// @brief Append a warning diagnostic associated with @p instr.
+/// @param fn Function supplying context for the diagnostic message.
+/// @param bb Basic block containing the instruction.
+/// @param instr Instruction that prompted the warning.
+/// @param message Human-readable warning text.
+/// @param warnings Collection receiving deferred warning diagnostics.
 void emitWarning(const Function &fn,
                  const BasicBlock &bb,
                  const Instr &instr,
@@ -52,6 +65,12 @@ void emitWarning(const Function &fn,
     warnings.push_back(Diag{Severity::Warning, formatInstrDiag(fn, bb, instr, message), instr.loc});
 }
 
+/// @brief Validate operand/result arity constraints against opcode metadata.
+/// @param fn Function supplying diagnostic context.
+/// @param bb Basic block containing the instruction.
+/// @param instr Instruction whose signature is being checked.
+/// @return Empty on success; otherwise an error diagnostic describing the
+///         structural mismatch.
 Expected<void> verifyOpcodeSignature_E(const Function &fn,
                                         const BasicBlock &bb,
                                         const Instr &instr)
@@ -129,6 +148,15 @@ Expected<void> verifyOpcodeSignature_E(const Function &fn,
     return {};
 }
 
+/// @brief Require all operands of @p instr to resolve to the requested type
+///        kind.
+/// @param fn Function supplying diagnostic context.
+/// @param bb Basic block containing the instruction.
+/// @param instr Instruction whose operands are being validated.
+/// @param types Type inference engine that answers operand queries.
+/// @param kind Expected operand kind.
+/// @return Empty on success; otherwise an error diagnostic when a mismatch is
+///         observed.
 Expected<void> expectAllOperandType(const Function &fn,
                                     const BasicBlock &bb,
                                     const Instr &instr,
@@ -145,6 +173,14 @@ Expected<void> expectAllOperandType(const Function &fn,
     return {};
 }
 
+/// @brief Validate allocator instructions for operand and result correctness.
+/// @param fn Function supplying diagnostic context.
+/// @param bb Basic block containing the instruction.
+/// @param instr Alloca instruction being verified.
+/// @param types Type inference engine for operand/result metadata.
+/// @param warnings Warning sink for questionable but allowed patterns.
+/// @return Empty on success; otherwise an error diagnostic describing the
+///         violated constraint.
 Expected<void> checkAlloca_E(const Function &fn,
                              const BasicBlock &bb,
                              const Instr &instr,
@@ -170,6 +206,15 @@ Expected<void> checkAlloca_E(const Function &fn,
     return {};
 }
 
+/// @brief Verify binary arithmetic and comparison instructions.
+/// @param fn Function supplying diagnostic context.
+/// @param bb Basic block containing the instruction.
+/// @param instr Instruction whose operands and result are validated.
+/// @param types Type inference engine that answers operand queries.
+/// @param operandKind Expected kind shared by both operands.
+/// @param resultType Result type recorded when validation succeeds.
+/// @return Empty on success; otherwise an error diagnostic describing arity or
+///         type mismatches.
 Expected<void> checkBinary_E(const Function &fn,
                              const BasicBlock &bb,
                              const Instr &instr,
@@ -187,6 +232,15 @@ Expected<void> checkBinary_E(const Function &fn,
     return {};
 }
 
+/// @brief Verify unary conversions and casts.
+/// @param fn Function supplying diagnostic context.
+/// @param bb Basic block containing the instruction.
+/// @param instr Instruction whose single operand is validated.
+/// @param types Type inference engine that answers operand queries.
+/// @param operandKind Required operand kind.
+/// @param resultType Result type recorded when validation succeeds.
+/// @return Empty on success; otherwise an error diagnostic describing arity or
+///         type mismatches.
 Expected<void> checkUnary_E(const Function &fn,
                             const BasicBlock &bb,
                             const Instr &instr,
@@ -204,6 +258,13 @@ Expected<void> checkUnary_E(const Function &fn,
     return {};
 }
 
+/// @brief Validate pointer arithmetic instructions (GEP).
+/// @param fn Function supplying diagnostic context.
+/// @param bb Basic block containing the instruction.
+/// @param instr GEP instruction under validation.
+/// @param types Type inference engine used for operand queries.
+/// @return Empty on success; otherwise an error diagnostic describing missing
+///         operands or pointer/index type mismatches.
 Expected<void> checkGEP_E(const Function &fn,
                           const BasicBlock &bb,
                           const Instr &instr,
@@ -222,6 +283,13 @@ Expected<void> checkGEP_E(const Function &fn,
     return {};
 }
 
+/// @brief Validate load instructions for pointer and result type correctness.
+/// @param fn Function supplying diagnostic context.
+/// @param bb Basic block containing the instruction.
+/// @param instr Load instruction being verified.
+/// @param types Type inference engine for operand queries.
+/// @return Empty on success; otherwise an error diagnostic describing arity,
+///         pointer, or result type violations.
 Expected<void> checkLoad_E(const Function &fn,
                            const BasicBlock &bb,
                            const Instr &instr,
@@ -241,6 +309,13 @@ Expected<void> checkLoad_E(const Function &fn,
     return {};
 }
 
+/// @brief Validate store instructions for pointer operand and value typing.
+/// @param fn Function supplying diagnostic context.
+/// @param bb Basic block containing the instruction.
+/// @param instr Store instruction being verified.
+/// @param types Type inference engine for operand queries.
+/// @return Empty on success; otherwise an error diagnostic describing arity,
+///         pointer, or stored value violations.
 Expected<void> checkStore_E(const Function &fn,
                             const BasicBlock &bb,
                             const Instr &instr,
@@ -272,6 +347,13 @@ Expected<void> checkStore_E(const Function &fn,
     return {};
 }
 
+/// @brief Validate AddrOf instructions address globals and produce pointers.
+/// @param fn Function supplying diagnostic context.
+/// @param bb Basic block containing the instruction.
+/// @param instr AddrOf instruction being verified.
+/// @param types Type inference engine for result recording.
+/// @return Empty on success; otherwise an error diagnostic when the operand is
+///         not a global address.
 Expected<void> checkAddrOf_E(const Function &fn,
                              const BasicBlock &bb,
                              const Instr &instr,
@@ -284,6 +366,13 @@ Expected<void> checkAddrOf_E(const Function &fn,
     return {};
 }
 
+/// @brief Validate ConstStr instructions reference known string globals.
+/// @param fn Function supplying diagnostic context.
+/// @param bb Basic block containing the instruction.
+/// @param instr ConstStr instruction being verified.
+/// @param types Type inference engine for result recording.
+/// @return Empty on success; otherwise an error diagnostic when the operand is
+///         not a string global.
 Expected<void> checkConstStr_E(const Function &fn,
                                const BasicBlock &bb,
                                const Instr &instr,
@@ -296,12 +385,25 @@ Expected<void> checkConstStr_E(const Function &fn,
     return {};
 }
 
+/// @brief Record the result type for ConstNull instructions.
+/// @param instr ConstNull instruction being validated.
+/// @param types Type inference engine for result recording.
+/// @return Always empty because ConstNull has no failure modes.
 Expected<void> checkConstNull_E(const Instr &instr, TypeInference &types)
 {
     types.recordResult(instr, Type(Type::Kind::Ptr));
     return {};
 }
 
+/// @brief Validate direct calls against extern or function signatures.
+/// @param fn Function supplying diagnostic context.
+/// @param bb Basic block containing the instruction.
+/// @param instr Call instruction being verified.
+/// @param externs Table of known extern declarations.
+/// @param funcs Table of known function definitions.
+/// @param types Type inference engine for operand queries and result recording.
+/// @return Empty on success; otherwise an error diagnostic describing missing
+///         callees, arity mismatches, or argument type violations.
 Expected<void> checkCall_E(const Function &fn,
                            const BasicBlock &bb,
                            const Instr &instr,
@@ -339,12 +441,26 @@ Expected<void> checkCall_E(const Function &fn,
     return {};
 }
 
+/// @brief Default validator that records the declared result type.
+/// @param instr Instruction being validated.
+/// @param types Type inference engine for result recording.
+/// @return Always empty because structural checks handle failures.
 Expected<void> checkDefault_E(const Instr &instr, TypeInference &types)
 {
     types.recordResult(instr, instr.type);
     return {};
 }
 
+/// @brief Dispatch opcode-specific validation for non-control instructions.
+/// @param fn Function supplying diagnostic context.
+/// @param bb Basic block containing the instruction.
+/// @param instr Instruction being verified.
+/// @param externs Table of known extern declarations.
+/// @param funcs Table of known function definitions.
+/// @param types Type inference engine for operand queries and result recording.
+/// @param warnings Accumulates warning diagnostics emitted during validation.
+/// @return Empty on success; otherwise an error diagnostic describing the
+///         violated rule.
 Expected<void> verifyInstruction_E(const Function &fn,
                                     const BasicBlock &bb,
                                     const Instr &instr,
