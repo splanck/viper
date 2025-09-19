@@ -1,5 +1,5 @@
 // File: src/il/io/InstrParser.cpp
-// Purpose: Implements parsing of IL instruction statements.
+// Purpose: Implements parsing of IL instruction statements (MIT License; see LICENSE).
 // Key invariants: ParserState must reference a current function and basic block.
 // Ownership/Lifetime: Instructions are appended to the ParserState's active block.
 // Links: docs/il-spec.md
@@ -39,6 +39,15 @@ using il::support::Expected;
 using il::support::makeError;
 using il::support::printDiag;
 
+/// @brief Parses a textual operand token into an IL value.
+///
+/// Supports temporaries, globals, string constants, and immediates. An empty
+/// token yields a zero integer, matching textual defaults for optional
+/// operands.
+///
+/// @param tok Token extracted from the instruction body.
+/// @param st Parser state providing temporary mappings and diagnostic context.
+/// @return Parsed value or an error anchored to @p st.curLoc.
 Expected<Value> parseValue_E(const std::string &tok, ParserState &st)
 {
     if (tok.empty())
@@ -100,6 +109,11 @@ Expected<Value> parseValue_E(const std::string &tok, ParserState &st)
     return Expected<Value>{makeError(st.curLoc, oss.str())};
 }
 
+/// @brief Parses a textual type token and validates it against the IL type set.
+///
+/// @param tok Canonical type spelling, as emitted by the serializer.
+/// @param st Parser state used for diagnostic line numbering.
+/// @return Parsed type or an error describing the unknown spelling.
 Expected<Type> parseType_E(const std::string &tok, ParserState &st)
 {
     bool ok = false;
@@ -113,8 +127,18 @@ Expected<Type> parseType_E(const std::string &tok, ParserState &st)
     return ty;
 }
 
+/// @brief Function object signature for per-opcode instruction parsers.
 using InstrHandler = std::function<Expected<void>(const std::string &, Instr &, ParserState &)>;
 
+/// @brief Ensures an instruction matches the arity described by its opcode.
+///
+/// Checks operand counts, result presence, successor labels, and branch argument
+/// lists against the static opcode metadata. Diagnostics cite the parser state
+/// line number and instruction source location.
+///
+/// @param in Fully populated instruction candidate.
+/// @param st Parser state providing location and line information.
+/// @return Empty on success; otherwise, a structured diagnostic.
 Expected<void> validateShape_E(const Instr &in, ParserState &st)
 {
     const auto &info = il::core::getOpcodeInfo(in.op);
@@ -201,6 +225,16 @@ Expected<void> validateShape_E(const Instr &in, ParserState &st)
     return {};
 }
 
+/// @brief Verifies branch argument counts match basic-block parameters.
+///
+/// Known blocks must agree with the provided arity; unknown blocks are queued in
+/// ParserState::pendingBrs for later validation once seen.
+///
+/// @param in Instruction issuing the branch.
+/// @param st Parser state tracking block signatures and pending branches.
+/// @param label Target block label being referenced.
+/// @param argCount Number of arguments supplied in the branch.
+/// @return Empty on success; otherwise, a diagnostic referencing @p in.loc.
 Expected<void> checkBlockArgCount(const Instr &in, ParserState &st, const std::string &label,
                                    size_t argCount)
 {
@@ -221,6 +255,12 @@ Expected<void> checkBlockArgCount(const Instr &in, ParserState &st, const std::s
     return {};
 }
 
+/// @brief Builds a parser for two-operand instructions with a fixed result type.
+///
+/// @param op Opcode applied to the parsed operands.
+/// @param ty Result type recorded on the instruction.
+/// @return Handler that parses two value tokens and attaches them to the
+/// instruction.
 InstrHandler makeBinaryHandler(Opcode op, Type ty)
 {
     return [op, ty](const std::string &rest, Instr &in, ParserState &st) -> Expected<void>
@@ -248,6 +288,11 @@ InstrHandler makeBinaryHandler(Opcode op, Type ty)
     };
 }
 
+/// @brief Builds a parser for single-operand instructions with a fixed result type.
+///
+/// @param op Opcode applied to the parsed operand.
+/// @param ty Result type recorded on the instruction.
+/// @return Handler that parses one value token and attaches it to the instruction.
 InstrHandler makeUnaryHandler(Opcode op, Type ty)
 {
     return [op, ty](const std::string &rest, Instr &in, ParserState &st) -> Expected<void>
@@ -267,11 +312,22 @@ InstrHandler makeUnaryHandler(Opcode op, Type ty)
     };
 }
 
+/// @brief Convenience helper for building boolean comparison handlers.
+///
+/// @param op Comparison opcode requiring two operands and returning i1.
+/// @return Binary handler specialised with an i1 result type.
 InstrHandler makeCmpHandler(Opcode op)
 {
     return makeBinaryHandler(op, Type(Type::Kind::I1));
 }
 
+/// @brief Parses an `alloca` instruction body.
+///
+/// @param rest Remaining text after the opcode keyword.
+/// @param in Instruction object to populate.
+/// @param st Parser state for operand parsing and diagnostics.
+/// @return Empty on success; otherwise, a diagnostic when the size is missing or
+/// invalid.
 Expected<void> parseAllocaInstr(const std::string &rest, Instr &in, ParserState &st)
 {
     std::istringstream ss(rest);
@@ -291,6 +347,12 @@ Expected<void> parseAllocaInstr(const std::string &rest, Instr &in, ParserState 
     return {};
 }
 
+/// @brief Parses a `gep` instruction body.
+///
+/// @param rest Remaining text after the opcode keyword.
+/// @param in Instruction object to populate.
+/// @param st Parser state for operand parsing and diagnostics.
+/// @return Empty on success; otherwise, a diagnostic for malformed operands.
 Expected<void> parseGEPInstr(const std::string &rest, Instr &in, ParserState &st)
 {
     std::istringstream ss(rest);
@@ -315,6 +377,14 @@ Expected<void> parseGEPInstr(const std::string &rest, Instr &in, ParserState &st
     return {};
 }
 
+/// @brief Parses a `load` instruction body.
+///
+/// @param rest Remaining text after the opcode keyword, starting with the
+/// result type.
+/// @param in Instruction object to populate.
+/// @param st Parser state for operand parsing and diagnostics.
+/// @return Empty on success; otherwise, a diagnostic for unknown types or
+/// malformed operands.
 Expected<void> parseLoadInstr(const std::string &rest, Instr &in, ParserState &st)
 {
     std::istringstream ss(rest);
@@ -335,6 +405,13 @@ Expected<void> parseLoadInstr(const std::string &rest, Instr &in, ParserState &s
     return {};
 }
 
+/// @brief Parses a `store` instruction body.
+///
+/// @param rest Remaining text after the opcode keyword, starting with the
+/// value type.
+/// @param in Instruction object to populate.
+/// @param st Parser state for operand parsing and diagnostics.
+/// @return Empty on success; otherwise, a diagnostic for malformed operands.
 Expected<void> parseStoreInstr(const std::string &rest, Instr &in, ParserState &st)
 {
     std::istringstream ss(rest);
@@ -363,6 +440,12 @@ Expected<void> parseStoreInstr(const std::string &rest, Instr &in, ParserState &
     return {};
 }
 
+/// @brief Parses an `addr_of` instruction body.
+///
+/// @param rest Remaining text after the opcode keyword.
+/// @param in Instruction object to populate.
+/// @param st Parser state for operand parsing and diagnostics.
+/// @return Empty on success; otherwise, a diagnostic for malformed operands.
 Expected<void> parseAddrOfInstr(const std::string &rest, Instr &in, ParserState &st)
 {
     std::istringstream ss(rest);
@@ -379,6 +462,12 @@ Expected<void> parseAddrOfInstr(const std::string &rest, Instr &in, ParserState 
     return {};
 }
 
+/// @brief Parses a `const_str` instruction body.
+///
+/// @param rest Remaining text after the opcode keyword.
+/// @param in Instruction object to populate.
+/// @param st Parser state for operand parsing and diagnostics.
+/// @return Empty on success; otherwise, a diagnostic for malformed operands.
 Expected<void> parseConstStrInstr(const std::string &rest, Instr &in, ParserState &st)
 {
     std::istringstream ss(rest);
@@ -395,13 +484,31 @@ Expected<void> parseConstStrInstr(const std::string &rest, Instr &in, ParserStat
     return {};
 }
 
-Expected<void> parseConstNullInstr(const std::string &, Instr &in, ParserState &)
+/// @brief Parses a `const_null` instruction body.
+///
+/// This instruction has no operands; the parser simply stamps the opcode and
+/// result type.
+///
+/// @param rest Remaining text after the opcode keyword (unused).
+/// @param in Instruction object to populate.
+/// @param st Parser state (unused).
+/// @return Always succeeds.
+Expected<void> parseConstNullInstr([[maybe_unused]] const std::string &rest, Instr &in,
+                                   [[maybe_unused]] ParserState &st)
 {
     in.op = Opcode::ConstNull;
     in.type = Type(Type::Kind::Ptr);
     return {};
 }
 
+/// @brief Parses a `call` instruction body.
+///
+/// @param rest Remaining text after the opcode keyword, including callee name
+/// and parenthesised operands.
+/// @param in Instruction object to populate.
+/// @param st Parser state for operand parsing and diagnostics.
+/// @return Empty on success; otherwise, a diagnostic for malformed call syntax
+/// or operands.
 Expected<void> parseCallInstr(const std::string &rest, Instr &in, ParserState &st)
 {
     in.op = Opcode::Call;
@@ -432,6 +539,14 @@ Expected<void> parseCallInstr(const std::string &rest, Instr &in, ParserState &s
     return {};
 }
 
+/// @brief Parses an unconditional `br` instruction body.
+///
+/// @param rest Remaining text after the opcode keyword, optionally including a
+/// branch argument tuple.
+/// @param in Instruction object to populate.
+/// @param st Parser state for operand parsing and diagnostics.
+/// @return Empty on success; otherwise, a diagnostic for malformed labels or
+/// operands.
 Expected<void> parseBrInstr(const std::string &rest, Instr &in, ParserState &st)
 {
     in.op = Opcode::Br;
@@ -478,6 +593,15 @@ Expected<void> parseBrInstr(const std::string &rest, Instr &in, ParserState &st)
     return {};
 }
 
+/// @brief Parses one branch target (label plus optional arguments).
+///
+/// @param part Textual fragment describing the target, e.g. `label %bb(args)`.
+/// @param in Instruction issuing the branch, used for diagnostics.
+/// @param st Parser state for operand parsing and diagnostics.
+/// @param lbl Output parameter receiving the parsed label.
+/// @param args Output vector receiving parsed argument values.
+/// @return Empty on success; otherwise, a diagnostic for malformed syntax or
+/// operands.
 Expected<void> parseBranchTarget(const std::string &part, Instr &in, ParserState &st, std::string &lbl,
                                  std::vector<Value> &args)
 {
@@ -514,6 +638,14 @@ Expected<void> parseBranchTarget(const std::string &part, Instr &in, ParserState
     return {};
 }
 
+/// @brief Parses a conditional `cbr` instruction body.
+///
+/// @param rest Remaining text after the opcode keyword, including condition and
+/// two branch targets.
+/// @param in Instruction object to populate.
+/// @param st Parser state for operand parsing and diagnostics.
+/// @return Empty on success; otherwise, a diagnostic for malformed syntax or
+/// inconsistent branch arguments.
 Expected<void> parseCBrInstr(const std::string &rest, Instr &in, ParserState &st)
 {
     in.op = Opcode::CBr;
@@ -559,6 +691,13 @@ Expected<void> parseCBrInstr(const std::string &rest, Instr &in, ParserState &st
     return {};
 }
 
+/// @brief Parses a `ret` instruction body.
+///
+/// @param rest Remaining text after the opcode keyword, optionally containing a
+/// return value.
+/// @param in Instruction object to populate.
+/// @param st Parser state for operand parsing and diagnostics.
+/// @return Empty on success; otherwise, a diagnostic for malformed operands.
 Expected<void> parseRetInstr(const std::string &rest, Instr &in, ParserState &st)
 {
     in.op = Opcode::Ret;
@@ -574,13 +713,23 @@ Expected<void> parseRetInstr(const std::string &rest, Instr &in, ParserState &st
     return {};
 }
 
-Expected<void> parseTrapInstr(const std::string &, Instr &in, ParserState &)
+/// @brief Parses a `trap` instruction body.
+///
+/// The instruction carries no operands and always returns void.
+///
+/// @param rest Remaining text after the opcode keyword (unused).
+/// @param in Instruction object to populate.
+/// @param st Parser state (unused).
+/// @return Always succeeds.
+Expected<void> parseTrapInstr([[maybe_unused]] const std::string &rest, Instr &in,
+                              [[maybe_unused]] ParserState &st)
 {
     in.op = Opcode::Trap;
     in.type = Type(Type::Kind::Void);
     return {};
 }
 
+/// @brief Lookup table mapping opcode mnemonics to parsing callbacks.
 const std::unordered_map<std::string, InstrHandler> kInstrHandlers = {
     {"add", makeBinaryHandler(Opcode::Add, Type(Type::Kind::I64))},
     {"sub", makeBinaryHandler(Opcode::Sub, Type(Type::Kind::I64))},
@@ -632,6 +781,12 @@ const std::unordered_map<std::string, InstrHandler> kInstrHandlers = {
     {"ret", parseRetInstr},
     {"trap", parseTrapInstr}};
 
+/// @brief Parses a complete instruction line, including optional result binding.
+///
+/// @param line Textual instruction as emitted by the serializer.
+/// @param st Parser state mutated to record temporaries and append instructions.
+/// @return Empty on success; otherwise, a diagnostic for malformed syntax,
+/// operands, or shape violations.
 Expected<void> parseInstruction_E(const std::string &line, ParserState &st)
 {
     Instr in;
@@ -683,6 +838,12 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st)
 
 } // namespace
 
+/// @brief Public wrapper for parsing instructions that prints diagnostics.
+///
+/// @param line Textual instruction to parse.
+/// @param st Parser state mutated with the decoded instruction.
+/// @param err Stream receiving formatted diagnostics when parsing fails.
+/// @return True on success; false if a diagnostic was emitted.
 bool parseInstruction(const std::string &line, ParserState &st, std::ostream &err)
 {
     auto r = parseInstruction_E(line, st);
