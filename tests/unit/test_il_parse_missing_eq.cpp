@@ -1,6 +1,6 @@
 // File: tests/unit/test_il_parse_missing_eq.cpp
 // Purpose: Ensure IL parser reports error when result assignment lacks '='.
-// Key invariants: Parser sets hasError and returns false for malformed instruction.
+// Key invariants: Parser reports malformed instructions through Expected diagnostics.
 // Ownership/Lifetime: Test constructs modules and buffers locally.
 // Links: docs/il-spec.md
 

@@ -689,7 +689,6 @@ bool parseInstruction(const std::string &line, ParserState &st, std::ostream &er
     if (!r)
     {
         printDiag(r.error(), err);
-        st.hasError = true;
         return false;
     }
     return true;

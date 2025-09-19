@@ -81,36 +81,6 @@ Expected<void> validateBlockParams_E(const Function &fn,
     return {};
 }
 
-Expected<void> ensureOperandsDefined_E(const Function &fn,
-                                        const BasicBlock &bb,
-                                        const Instr &instr,
-                                        TypeInference &types)
-{
-    for (const auto &op : instr.operands)
-    {
-        if (op.kind != Value::Kind::Temp)
-            continue;
-
-        bool missing = false;
-        types.valueType(op, &missing);
-        bool undefined = !types.isDefined(op.id);
-
-        if (missing || undefined)
-        {
-            std::string id = std::to_string(op.id);
-            if (missing && undefined)
-            {
-                std::string message = "unknown temp %" + id + "; use before def of %" + id;
-                return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, message))};
-            }
-            if (missing)
-                return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "unknown temp %" + id))};
-            return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "use before def of %" + id))};
-        }
-    }
-    return {};
-}
-
 Expected<void> iterateBlockInstructions_E(const Function &fn,
                                            const BasicBlock &bb,
                                            const std::unordered_map<std::string, const BasicBlock *> &blockMap,
@@ -122,7 +92,7 @@ Expected<void> iterateBlockInstructions_E(const Function &fn,
 {
     for (const auto &instr : bb.instructions)
     {
-        if (auto result = ensureOperandsDefined_E(fn, bb, instr, types); !result)
+        if (auto result = types.ensureOperandsDefined_E(fn, bb, instr); !result)
             return result;
 
         if (auto result = verifyInstrFn(fn, bb, instr, blockMap, externs, funcs, types, warnings); !result)
