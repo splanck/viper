@@ -5,20 +5,51 @@
 // Ownership: Uses runtime library.
 // Links: docs/class-catalog.md
 #include "rt_internal.h"
+#include <cstdio>
 #include <cassert>
 #include <cstdarg>
-#include <cstdio>
 #include <cstring>
 #include <string>
 
 extern "C" int snprintf(char *str, size_t size, const char *fmt, ...)
 {
+    static bool reentered = false;
     va_list ap;
     va_start(ap, fmt);
     long long v = va_arg(ap, long long);
     va_end(ap);
+
+    if (reentered)
+    {
+        const std::string digits = std::to_string(v);
+        std::string formatted(40, '0');
+        if (v < 0)
+        {
+            formatted[0] = '-';
+            const size_t digit_count = digits.size() - 1;
+            std::memcpy(&formatted[formatted.size() - digit_count], digits.data() + 1, digit_count);
+        }
+        else
+        {
+            const size_t digit_count = digits.size();
+            std::memcpy(&formatted[formatted.size() - digit_count], digits.data(), digit_count);
+        }
+
+        const int n = static_cast<int>(formatted.size());
+        if (str && size > 0)
+        {
+            const size_t copy = (n < static_cast<int>(size)) ? static_cast<size_t>(n) : size - 1;
+            std::memcpy(str, formatted.data(), copy);
+            str[copy] = '\0';
+        }
+        return n;
+    }
+
+    reentered = true;
     char buf[128];
-    int n = std::sprintf(buf, "%040lld", v); // 40 digits
+    int n = std::snprintf(buf, sizeof(buf), "%040lld", v); // 40 digits
+    assert(n > 0 && static_cast<size_t>(n) < sizeof(buf));
+    reentered = false;
     if (str && size > 0)
     {
         size_t copy = (n < (int)size) ? (size_t)n : size - 1;
