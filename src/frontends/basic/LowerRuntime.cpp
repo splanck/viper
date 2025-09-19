@@ -1,4 +1,6 @@
 // File: src/frontends/basic/LowerRuntime.cpp
+// License: MIT License. See LICENSE in the project root for full license
+//          information.
 // Purpose: Implements runtime tracking and declaration utilities for BASIC lowering.
 // Key invariants: Runtime declarations are emitted once in deterministic order.
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
@@ -17,6 +19,16 @@ namespace il::frontends::basic
 
 namespace
 {
+/// @brief Declare a runtime extern using the canonical signature database.
+/// @details Consults il::runtime::RuntimeSignatures via findRuntimeSignature to
+///          obtain the return and parameter types associated with @p name, then
+///          records the extern on the provided IR builder.
+/// @param b IR builder that will receive the extern declaration.
+/// @param name Runtime registry key that identifies the helper to declare.
+/// @pre The runtime signature registry contains an entry for @p name; missing
+///      signatures trigger the assertion guarding the lookup.
+/// @note This helper mutates the builder but does not touch runtimeOrder or
+///       runtimeSet tracking.
 void declareRuntimeExtern(build::IRBuilder &b, std::string_view name)
 {
     const auto *sig = il::runtime::findRuntimeSignature(name);
@@ -25,10 +37,18 @@ void declareRuntimeExtern(build::IRBuilder &b, std::string_view name)
 }
 } // namespace
 
-// Purpose: declare required runtime.
-// Parameters: build::IRBuilder &b.
-// Returns: void.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Declare every runtime helper required by the current lowering run.
+/// @details Emits baseline helpers unconditionally and consults lowering
+///          toggles such as needRtConcat, boundsChecks, and similar feature
+///          flags to decide which additional helpers are necessary. Runtime
+///          math helpers requested dynamically are iterated in the order
+///          recorded by trackRuntime so declaration emission remains
+///          deterministic. Each declaration delegates to declareRuntimeExtern,
+///          which looks up the canonical signature via RuntimeSignatures.
+/// @param b IR builder used to register extern declarations.
+/// @note Assumes runtimeOrder has been populated through trackRuntime calls;
+///       missing signatures are enforced by the assertion in
+///       declareRuntimeExtern.
 void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
 {
     declareRuntimeExtern(b, "rt_print_str");
@@ -118,10 +138,14 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         declareRuntimeExtern(b, "rt_str_eq");
 }
 
-// Purpose: track runtime.
-// Parameters: RuntimeFn fn.
-// Returns: void.
-// Side effects: may modify lowering state or emit IL.
+/// @brief Record that a runtime helper is needed for the current program.
+/// @details Inserts @p fn into runtimeSet, using it as a visited filter, and
+///          appends @p fn to runtimeOrder the first time it appears. This
+///          preserves deterministic declaration order when
+///          declareRequiredRuntime later walks runtimeOrder.
+/// @param fn Identifier for the runtime helper that lowering just requested.
+/// @post runtimeSet always contains @p fn; runtimeOrder grows only when @p fn
+///       was not previously tracked.
 void Lowerer::trackRuntime(RuntimeFn fn)
 {
     if (runtimeSet.insert(fn).second)
