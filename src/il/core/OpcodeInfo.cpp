@@ -2,6 +2,7 @@
 // Purpose: Defines metadata describing IL opcode signatures and behaviours.
 // Key invariants: Table entries stay in sync with the Opcode enumeration order.
 // Ownership/Lifetime: Static storage duration, read-only access via kOpcodeTable.
+// License: MIT
 // Links: docs/il-spec.md
 
 #include "il/core/OpcodeInfo.hpp"
@@ -13,6 +14,7 @@ namespace il::core
 
 namespace
 {
+/// Builds the operand category array for an opcode, defaulting unspecified entries to None.
 constexpr std::array<TypeCategory, kMaxOperandCategories> makeOperands(TypeCategory a,
                                                                         TypeCategory b = TypeCategory::None,
                                                                         TypeCategory c = TypeCategory::None)
@@ -34,6 +36,15 @@ const std::array<OpcodeInfo, kNumOpcodes> kOpcodeTable = {
 
 static_assert(kOpcodeTable.size() == kNumOpcodes, "Opcode table must match enum count");
 
+/**
+ * @brief Returns the mnemonic associated with the provided opcode.
+ *
+ * Performs a direct lookup into the opcode metadata table and treats any opcode whose
+ * numerical value falls outside the table bounds as invalid.
+ *
+ * @param op Opcode enumeration value to translate into a mnemonic string.
+ * @returns The mnemonic string if the opcode is within range; otherwise an empty string.
+ */
 std::string toString(Opcode op)
 {
     const size_t idx = static_cast<size_t>(op);
