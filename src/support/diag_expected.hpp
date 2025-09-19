@@ -17,6 +17,13 @@ using Diag = il::support::Diagnostic;
 
 template <class T> using Expected = std::expected<T, Diag>;
 
+namespace il::support
+{
+using ::Diag;
+
+template <class T> using Expected = ::Expected<T>;
+} // namespace il::support
+
 namespace il::support::detail
 {
 /// @brief Convert diagnostic severity to lowercase string.
