@@ -40,13 +40,13 @@ int main(int argc, char **argv)
     auto pe = il::api::v2::parse_text_expected(in, m);
     if (!pe)
     {
-        printDiag(pe.error(), std::cerr);
+        il::support::printDiag(pe.error(), std::cerr);
         return 1;
     }
     auto ve = il::api::v2::verify_module_expected(m);
     if (!ve)
     {
-        printDiag(ve.error(), std::cerr);
+        il::support::printDiag(ve.error(), std::cerr);
         return 1;
     }
     std::cout << "OK\n";
