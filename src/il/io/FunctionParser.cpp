@@ -13,9 +13,12 @@
 #include "il/io/InstrParser.hpp"
 #include "il/io/ParserUtil.hpp"
 #include "il/io/TypeParser.hpp"
+#include "support/diag_expected.hpp"
 
 #include <cstdint>
 #include <sstream>
+#include <string_view>
+#include <utility>
 
 namespace il::io::detail
 {
@@ -23,7 +26,32 @@ namespace il::io::detail
 using il::core::Param;
 using il::core::Type;
 
-bool parseFunctionHeader(const std::string &header, ParserState &st, std::ostream &err)
+namespace
+{
+
+using il::support::Expected;
+using il::support::makeError;
+
+std::string stripCapturedDiagMessage(std::string text)
+{
+    while (!text.empty() && (text.back() == '\n' || text.back() == '\r'))
+        text.pop_back();
+    constexpr std::string_view kPrefix = "error: ";
+    if (text.rfind(kPrefix, 0) == 0)
+        text.erase(0, kPrefix.size());
+    return text;
+}
+
+Expected<void> parseInstructionShim_E(const std::string &line, ParserState &st)
+{
+    std::ostringstream capture;
+    if (parseInstruction(line, st, capture))
+        return {};
+    auto message = stripCapturedDiagMessage(capture.str());
+    return Expected<void>{makeError(st.curLoc, std::move(message))};
+}
+
+Expected<void> parseFunctionHeader_E(const std::string &header, ParserState &st)
 {
     size_t at = header.find('@');
     size_t lp = header.find('(', at);
@@ -32,9 +60,9 @@ bool parseFunctionHeader(const std::string &header, ParserState &st, std::ostrea
     size_t lb = header.find('{', arr);
     if (arr == std::string::npos || lb == std::string::npos)
     {
-        err << "line " << st.lineNo << ": malformed function header\n";
-        st.hasError = true;
-        return false;
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": malformed function header";
+        return Expected<void>{makeError({}, oss.str())};
     }
     std::string name = header.substr(at + 1, lp - at - 1);
     std::string paramsStr = header.substr(lp + 1, rp - lp - 1);
@@ -70,10 +98,10 @@ bool parseFunctionHeader(const std::string &header, ParserState &st, std::ostrea
         st.curFn->valueNames[param.id] = param.name;
     st.blockParamCount.clear();
     st.pendingBrs.clear();
-    return true;
+    return {};
 }
 
-bool parseBlockHeader(const std::string &header, ParserState &st, std::ostream &err)
+Expected<void> parseBlockHeader_E(const std::string &header, ParserState &st)
 {
     size_t lp = header.find('(');
     std::vector<Param> bparams;
@@ -83,8 +111,9 @@ bool parseBlockHeader(const std::string &header, ParserState &st, std::ostream &
         size_t rp = header.find(')', lp);
         if (rp == std::string::npos)
         {
-            err << "line " << st.lineNo << ": mismatched ')\n";
-            return false;
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": mismatched ')'";
+            return Expected<void>{makeError({}, oss.str())};
         }
         label = trim(header.substr(0, lp));
         std::string paramsStr = header.substr(lp + 1, rp - lp - 1);
@@ -98,8 +127,9 @@ bool parseBlockHeader(const std::string &header, ParserState &st, std::ostream &
             size_t col = q.find(':');
             if (col == std::string::npos)
             {
-                err << "line " << st.lineNo << ": bad param\n";
-                return false;
+                std::ostringstream oss;
+                oss << "line " << st.lineNo << ": bad param";
+                return Expected<void>{makeError({}, oss.str())};
             }
             std::string nm = trim(q.substr(0, col));
             if (!nm.empty() && nm[0] == '%')
@@ -109,8 +139,9 @@ bool parseBlockHeader(const std::string &header, ParserState &st, std::ostream &
             Type ty = parseType(tyStr, &ok);
             if (!ok || ty.kind == Type::Kind::Void)
             {
-                err << "line " << st.lineNo << ": unknown param type\n";
-                return false;
+                std::ostringstream oss;
+                oss << "line " << st.lineNo << ": unknown param type";
+                return Expected<void>{makeError({}, oss.str())};
             }
             bparams.push_back({nm, ty, st.nextTemp});
             st.tempIds[nm] = st.nextTemp;
@@ -129,21 +160,23 @@ bool parseBlockHeader(const std::string &header, ParserState &st, std::ostream &
         {
             if (it->args != bparams.size())
             {
-                err << "line " << it->line << ": bad arg count\n";
-                return false;
+                std::ostringstream oss;
+                oss << "line " << it->line << ": bad arg count";
+                return Expected<void>{makeError({}, oss.str())};
             }
             it = st.pendingBrs.erase(it);
         }
         else
             ++it;
     }
-    return true;
+    return {};
 }
 
-bool parseFunction(std::istream &is, std::string &header, ParserState &st, std::ostream &err)
+Expected<void> parseFunction_E(std::istream &is, std::string &header, ParserState &st)
 {
-    if (!parseFunctionHeader(header, st, err))
-        return false;
+    auto headerResult = parseFunctionHeader_E(header, st);
+    if (!headerResult)
+        return headerResult;
 
     std::string line;
     while (std::getline(is, line))
@@ -156,18 +189,20 @@ bool parseFunction(std::istream &is, std::string &header, ParserState &st, std::
         {
             st.curFn = nullptr;
             st.curBB = nullptr;
-            return true;
+            return {};
         }
         if (line.back() == ':')
         {
-            if (!parseBlockHeader(line.substr(0, line.size() - 1), st, err))
-                return false;
+            auto blockResult = parseBlockHeader_E(line.substr(0, line.size() - 1), st);
+            if (!blockResult)
+                return blockResult;
             continue;
         }
         if (!st.curBB)
         {
-            err << "line " << st.lineNo << ": instruction outside block\n";
-            return false;
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": instruction outside block";
+            return Expected<void>{makeError({}, oss.str())};
         }
         if (line.rfind(".loc", 0) == 0)
         {
@@ -177,8 +212,47 @@ bool parseFunction(std::istream &is, std::string &header, ParserState &st, std::
             st.curLoc = {fid, ln, col};
             continue;
         }
-        if (!parseInstruction(line, st, err))
-            return false;
+        auto instr = parseInstructionShim_E(line, st);
+        if (!instr)
+            return instr;
+    }
+    return {};
+}
+
+} // namespace
+
+bool parseFunctionHeader(const std::string &header, ParserState &st, std::ostream &err)
+{
+    auto result = parseFunctionHeader_E(header, st);
+    if (!result)
+    {
+        il::support::printDiag(result.error(), err);
+        st.hasError = true;
+        return false;
+    }
+    return true;
+}
+
+bool parseBlockHeader(const std::string &header, ParserState &st, std::ostream &err)
+{
+    auto result = parseBlockHeader_E(header, st);
+    if (!result)
+    {
+        il::support::printDiag(result.error(), err);
+        st.hasError = true;
+        return false;
+    }
+    return true;
+}
+
+bool parseFunction(std::istream &is, std::string &header, ParserState &st, std::ostream &err)
+{
+    auto result = parseFunction_E(is, header, st);
+    if (!result)
+    {
+        il::support::printDiag(result.error(), err);
+        st.hasError = true;
+        return false;
     }
     return true;
 }
