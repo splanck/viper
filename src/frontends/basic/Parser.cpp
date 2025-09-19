@@ -3,6 +3,7 @@
 //          delegating statement parsing to Parser_Stmt.cpp.
 // Key invariants: Relies on token buffer for lookahead.
 // Ownership/Lifetime: Parser owns tokens produced by lexer.
+// License: MIT (see LICENSE).
 // Links: docs/class-catalog.md
 
 #include "frontends/basic/Parser.hpp"
