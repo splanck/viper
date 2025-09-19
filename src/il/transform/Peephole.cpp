@@ -2,6 +2,7 @@
 // Purpose: Implements local IL peephole optimizations.
 // Key invariants: Transformations preserve program semantics.
 // Ownership/Lifetime: Operates in place on the module.
+// License: MIT (see LICENSE for details).
 // Links: docs/class-catalog.md
 
 #include "il/transform/Peephole.hpp"
@@ -18,6 +19,15 @@ namespace il::transform
 namespace
 {
 
+/// \brief Test whether a value is an integer constant and expose its payload.
+///
+/// The peephole rules only reason about literal integers. This helper centralises
+/// the check and extraction so pattern matching can simply compare the numeric
+/// payload in subsequent rules.
+///
+/// @param v      Candidate value operand.
+/// @param out    Populated with the constant when the check succeeds.
+/// @returns True when @p v is a @c ConstInt.
 static bool isConstInt(const Value &v, long long &out)
 {
     if (v.kind == Value::Kind::ConstInt)
@@ -28,12 +38,32 @@ static bool isConstInt(const Value &v, long long &out)
     return false;
 }
 
+/// \brief Determine whether an operand equals a specific integer literal.
+///
+/// This funnels all "compare against constant" logic through the same
+/// implementation so the rule table only needs to record literal values instead
+/// of bespoke predicates.
+///
+/// @param v       Operand to classify.
+/// @param target  Required constant value.
+/// @returns True when the operand is an integer constant identical to
+///          @p target.
 static bool isConstEq(const Value &v, long long target)
 {
     long long c;
     return isConstInt(v, c) && c == target;
 }
 
+/// \brief Count how many times a temporary identifier is referenced in @p f.
+///
+/// Some simplifications (e.g., eliminating a branch condition definition) are
+/// only legal when the defining instruction has a single use. This routine
+/// performs that conservative use-counting by scanning every operand in the
+/// function.
+///
+/// @param f   Function being optimised.
+/// @param id  Temporary identifier to count.
+/// @returns Number of uses observed for the identifier.
 static size_t countUses(const Function &f, unsigned id)
 {
     size_t uses = 0;
@@ -45,6 +75,16 @@ static size_t countUses(const Function &f, unsigned id)
     return uses;
 }
 
+/// \brief Substitute every use of a temporary with a replacement value.
+///
+/// Arithmetic identity rules forward an existing operand in place of the
+/// computed result. Once a rule matches, this helper rewrites all uses before
+/// the defining instruction is removed, preserving SSA-style data flow without
+/// altering block structure.
+///
+/// @param f   Function whose operands should be updated.
+/// @param id  Temporary identifier to replace.
+/// @param v   Replacement value propagated to all uses.
 static void replaceAll(Function &f, unsigned id, const Value &v)
 {
     for (auto &b : f.blocks)
@@ -56,6 +96,22 @@ static void replaceAll(Function &f, unsigned id, const Value &v)
 
 } // namespace
 
+/// \brief Apply local simplifications to all functions in a module.
+///
+/// The pass performs two kinds of optimisation:
+///  - Apply algebraic identity rules from @c kRules, forwarding constant-folded
+///    operands and erasing the now-dead producer instruction.
+///  - Simplify conditional branches whose predicate collapses to a known boolean
+///    value, rewriting them into unconditional jumps.
+///
+/// When a branch is rewritten, the routine also prunes the untaken successor's
+/// block parameters by trimming @c brArgs so the surviving edge keeps its
+/// argument arity in sync with the callee block. Additionally, a branch-condition
+/// definition is erased when the predicate was produced in the same block and
+/// had a single use, ensuring we do not leave dead instructions behind. The
+/// implementation intentionally limits itself to integer comparisons with
+/// literal operands and does not chase values across blocks or through
+/// non-literal arithmetic.
 void peephole(Module &m)
 {
     for (auto &f : m.functions)
