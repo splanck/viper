@@ -3,6 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Tool owns loaded modules.
 // Links: docs/class-catalog.md
+// License: MIT.
 
 #include "Passes/Mem2Reg.h"
 #include "cli.hpp"
@@ -22,6 +23,15 @@ using namespace il;
 
 /**
  * @brief Optimize an IL module using selected passes.
+ * @details Treats the first argument as the input IL path and parses the
+ *          remaining options to configure optimization. The `-o <file>` flag
+ *          specifies the mandatory output file, `--passes a,b,c` selects an
+ *          explicit comma-separated pipeline, `--no-mem2reg` filters the
+ *          default pipeline, and `--mem2reg-stats` prints statistics when
+ *          promotion runs. After parsing, the function loads the module from
+ *          disk, registers the supported passes with a PassManager, executes
+ *          the requested sequence, and serializes the canonical IL to the
+ *          requested output path.
  *
  * @param argc Number of subcommand arguments (excluding `il-opt`).
  * @param argv Argument list starting with the input IL file.
