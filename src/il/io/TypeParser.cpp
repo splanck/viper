@@ -2,6 +2,7 @@
 // Purpose: Implements parsing for IL textual type specifiers.
 // Key invariants: Supported types mirror docs/il-spec.md definitions.
 // Ownership/Lifetime: Stateless utilities returning value objects.
+// License: MIT (see LICENSE for details).
 // Links: docs/il-spec.md
 
 #include "il/io/TypeParser.hpp"
@@ -9,6 +10,12 @@
 namespace il::io
 {
 
+/// @brief Resolve a primitive IL type token to a concrete Type value.
+/// @param token Lowercase identifier naming a supported primitive type (e.g., "i64").
+/// @param ok Optional pointer that receives true when parsing succeeds and false on failure.
+/// @return Matching il::core::Type on success or default constructed when the token is unsupported.
+/// @note When @p ok is null the caller is opting out of explicit success signalling; failure is
+///       observable via the returned default-constructed Type.
 il::core::Type parseType(const std::string &token, bool *ok)
 {
     auto makeType = [ok](il::core::Type::Kind kind) {
