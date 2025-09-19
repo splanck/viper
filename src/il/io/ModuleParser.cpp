@@ -2,6 +2,7 @@
 // Purpose: Implements parsing of module-level IL directives.
 // Key invariants: ParserState remains at module scope when invoked.
 // Ownership/Lifetime: Directly mutates the module referenced by ParserState.
+// License: MIT (see LICENSE for details).
 // Links: docs/il-spec.md
 
 #include "il/io/ModuleParser.hpp"
@@ -40,6 +41,14 @@ std::string stripCapturedDiagMessage(std::string text)
     return text;
 }
 
+/// Parses an extern declaration in the form `extern @name(param, ...) -> type`.
+///
+/// Whitespace around parameter tokens and the return type is normalized via
+/// `trim`, and each type token is resolved with `parseType`, so failures are
+/// reported when an unknown type name is encountered. When the syntax omits the
+/// required `->` arrow the function returns an error diagnostic describing the
+/// missing token. On success, the fully parsed signature is appended to
+/// `ParserState::m.externs`.
 Expected<void> parseExtern_E(const std::string &line, ParserState &st)
 {
     size_t at = line.find('@');
@@ -85,6 +94,13 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st)
     return {};
 }
 
+/// Parses a global string binding written as `global @name = "literal"`.
+///
+/// The helper validates that an assignment operator is present, trims the name
+/// token to ignore incidental whitespace, and copies the quoted payload
+/// verbatim. When the `=` delimiter is missing an error diagnostic is emitted;
+/// otherwise the routine creates a UTF-8 string global and appends it to
+/// `ParserState::m.globals`.
 Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
 {
     size_t at = line.find('@');
@@ -103,6 +119,13 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
     return {};
 }
 
+/// Invokes `parseFunction` for a function definition beginning with `func`.
+///
+/// The shim bridges between the `Expected`-returning helpers in this module and
+/// the legacy diagnostic stream interface exposed by `parseFunction`. It
+/// captures any emitted diagnostics, trims trailing newlines for readability,
+/// and rewraps them as an error `Expected`. On success the delegated parser
+/// mutates the supplied `ParserState` with the parsed function.
 Expected<void> parseFunctionShim_E(std::istream &is, std::string &header, ParserState &st)
 {
     std::ostringstream capture;
@@ -114,6 +137,15 @@ Expected<void> parseFunctionShim_E(std::istream &is, std::string &header, Parser
 
 } // namespace
 
+/// Dispatches module-header directives such as `il`, `extern`, `global`, and
+/// `func`.
+///
+/// An initial `il` line optionally supplies a version number; when omitted the
+/// module defaults to version `0.1.2`. Extern directives are parsed via
+/// `parseExtern_E`, thereby leveraging `trim` and `parseType` to normalize type
+/// tokens, while globals and functions forward to their respective helpers. Any
+/// unrecognized directive results in an error diagnostic that cites the current
+/// line number; otherwise the appropriate portion of `ParserState` is updated.
 Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserState &st)
 {
     if (line.rfind("il", 0) == 0)
