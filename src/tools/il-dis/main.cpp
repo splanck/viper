@@ -1,5 +1,6 @@
 // File: src/tools/il-dis/main.cpp
 // Purpose: Example tool emitting IL for a simple program.
+// License: MIT License (see LICENSE).
 // Key invariants: None.
 // Ownership/Lifetime: Tool owns constructed module.
 // Links: docs/class-catalog.md
@@ -10,9 +11,14 @@
 
 /// @brief Emit IL for a sample program.
 ///
-/// Accepts no command-line arguments. Builds an in-memory module defining an
-/// extern `rt_print_str` and a global string constant, then serializes the
-/// module to standard output.
+/// Accepts no command-line arguments. Constructs an in-memory module using the
+/// following steps:
+/// 1. Creates an IRBuilder bound to a fresh module instance.
+/// 2. Adds the extern `rt_print_str` and a global string literal used by the
+///    program.
+/// 3. Emits the `main` function, its entry block, and the call/return
+///    instructions needed to print and exit.
+/// 4. Serializes the populated module to standard output.
 ///
 /// @return 0 on success.
 /// @note Side effect: writes serialized IL text to stdout.
