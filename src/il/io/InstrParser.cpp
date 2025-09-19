@@ -15,6 +15,7 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
+#include "support/diag_expected.hpp"
 
 #include <cctype>
 #include <exception>
@@ -31,11 +32,14 @@ namespace
 
 using il::core::Instr;
 using il::core::Opcode;
+using il::core::ResultArity;
 using il::core::Type;
 using il::core::Value;
-using il::core::ResultArity;
+using il::support::Expected;
+using il::support::makeError;
+using il::support::printDiag;
 
-Value parseValue(const std::string &tok, ParserState &st, std::ostream &err)
+Expected<Value> parseValue_E(const std::string &tok, ParserState &st)
 {
     if (tok.empty())
         return Value::constInt(0);
@@ -49,19 +53,24 @@ Value parseValue(const std::string &tok, ParserState &st, std::ostream &err)
         {
             bool digits = true;
             for (size_t i = 1; i < name.size(); ++i)
+            {
                 if (!std::isdigit(static_cast<unsigned char>(name[i])))
+                {
                     digits = false;
+                    break;
+                }
+            }
             if (digits)
             {
                 try
                 {
-                    return Value::temp(std::stoul(name.substr(1)));
+                    return Value::temp(static_cast<unsigned>(std::stoul(name.substr(1))));
                 }
                 catch (const std::exception &)
                 {
-                    st.hasError = true;
-                    err << "Line " << st.lineNo << ": invalid temp id '" << tok << "'\n";
-                    return Value::temp(0);
+                    std::ostringstream oss;
+                    oss << "Line " << st.lineNo << ": invalid temp id '" << tok << "'";
+                    return Expected<Value>{makeError(st.curLoc, oss.str())};
                 }
             }
         }
@@ -79,51 +88,60 @@ Value parseValue(const std::string &tok, ParserState &st, std::ostream &err)
         double value = 0.0;
         if (parseFloatLiteral(tok, value))
             return Value::constFloat(value);
-        st.hasError = true;
-        err << "Line " << st.lineNo << ": invalid floating literal '" << tok << "'\n";
-        return Value::constFloat(0.0);
+        std::ostringstream oss;
+        oss << "Line " << st.lineNo << ": invalid floating literal '" << tok << "'";
+        return Expected<Value>{makeError(st.curLoc, oss.str())};
     }
     long long intValue = 0;
     if (parseIntegerLiteral(tok, intValue))
         return Value::constInt(intValue);
-    st.hasError = true;
-    err << "Line " << st.lineNo << ": invalid integer literal '" << tok << "'\n";
-    return Value::constInt(0);
+    std::ostringstream oss;
+    oss << "Line " << st.lineNo << ": invalid integer literal '" << tok << "'";
+    return Expected<Value>{makeError(st.curLoc, oss.str())};
 }
 
-using InstrHandler =
-    std::function<bool(const std::string &, Instr &, ParserState &, std::ostream &)>;
+Expected<Type> parseType_E(const std::string &tok, ParserState &st)
+{
+    bool ok = false;
+    Type ty = parseType(tok, &ok);
+    if (!ok)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": unknown type '" << tok << "'";
+        return Expected<Type>{makeError(st.curLoc, oss.str())};
+    }
+    return ty;
+}
 
-bool validateShape(const Instr &in, ParserState &st, std::ostream &err)
+using InstrHandler = std::function<Expected<void>(const std::string &, Instr &, ParserState &)>;
+
+Expected<void> validateShape_E(const Instr &in, ParserState &st)
 {
     const auto &info = il::core::getOpcodeInfo(in.op);
-    bool ok = true;
-
     const size_t operandCount = in.operands.size();
     const bool variadic = il::core::isVariadicOperandCount(info.numOperandsMax);
     if (operandCount < info.numOperandsMin || (!variadic && operandCount > info.numOperandsMax))
     {
-        err << "line " << st.lineNo << ": " << info.name << " expects ";
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": " << info.name << " expects ";
         if (info.numOperandsMin == info.numOperandsMax)
         {
-            err << static_cast<unsigned>(info.numOperandsMin) << " operand";
+            oss << static_cast<unsigned>(info.numOperandsMin) << " operand";
             if (info.numOperandsMin != 1)
-                err << 's';
+                oss << 's';
         }
         else if (variadic)
         {
-            err << "at least " << static_cast<unsigned>(info.numOperandsMin) << " operand";
+            oss << "at least " << static_cast<unsigned>(info.numOperandsMin) << " operand";
             if (info.numOperandsMin != 1)
-                err << 's';
+                oss << 's';
         }
         else
         {
-            err << "between " << static_cast<unsigned>(info.numOperandsMin) << " and "
+            oss << "between " << static_cast<unsigned>(info.numOperandsMin) << " and "
                 << static_cast<unsigned>(info.numOperandsMax) << " operands";
         }
-        err << "\n";
-        st.hasError = true;
-        ok = false;
+        return Expected<void>{makeError(in.loc, oss.str())};
     }
 
     const bool hasResult = in.result.has_value();
@@ -132,17 +150,17 @@ bool validateShape(const Instr &in, ParserState &st, std::ostream &err)
         case ResultArity::None:
             if (hasResult)
             {
-                err << "line " << st.lineNo << ": " << info.name << " does not produce a result\n";
-                st.hasError = true;
-                ok = false;
+                std::ostringstream oss;
+                oss << "line " << st.lineNo << ": " << info.name << " does not produce a result";
+                return Expected<void>{makeError(in.loc, oss.str())};
             }
             break;
         case ResultArity::One:
             if (!hasResult)
             {
-                err << "line " << st.lineNo << ": " << info.name << " requires a result\n";
-                st.hasError = true;
-                ok = false;
+                std::ostringstream oss;
+                oss << "line " << st.lineNo << ": " << info.name << " requires a result";
+                return Expected<void>{makeError(in.loc, oss.str())};
             }
             break;
         case ResultArity::Optional:
@@ -151,67 +169,101 @@ bool validateShape(const Instr &in, ParserState &st, std::ostream &err)
 
     if (in.labels.size() != info.numSuccessors)
     {
-        err << "line " << st.lineNo << ": " << info.name << " expects "
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": " << info.name << " expects "
             << static_cast<unsigned>(info.numSuccessors) << " label";
         if (info.numSuccessors != 1)
-            err << 's';
-        err << "\n";
-        st.hasError = true;
-        ok = false;
+            oss << 's';
+        return Expected<void>{makeError(in.loc, oss.str())};
     }
 
     if (in.brArgs.size() > info.numSuccessors)
     {
-        err << "line " << st.lineNo << ": " << info.name << " expects at most "
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": " << info.name << " expects at most "
             << static_cast<unsigned>(info.numSuccessors) << " branch argument list";
         if (info.numSuccessors != 1)
-            err << 's';
-        err << "\n";
-        st.hasError = true;
-        ok = false;
-    }
-    else if (!in.brArgs.empty() && in.brArgs.size() != info.numSuccessors)
-    {
-        err << "line " << st.lineNo << ": " << info.name << " expects "
-            << static_cast<unsigned>(info.numSuccessors) << " branch argument list";
-        if (info.numSuccessors != 1)
-            err << 's';
-        err << ", or none" << "\n";
-        st.hasError = true;
-        ok = false;
+            oss << 's';
+        return Expected<void>{makeError(in.loc, oss.str())};
     }
 
-    return ok;
+    if (!in.brArgs.empty() && in.brArgs.size() != info.numSuccessors)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": " << info.name << " expects "
+            << static_cast<unsigned>(info.numSuccessors) << " branch argument list";
+        if (info.numSuccessors != 1)
+            oss << 's';
+        oss << ", or none";
+        return Expected<void>{makeError(in.loc, oss.str())};
+    }
+
+    return {};
+}
+
+Expected<void> checkBlockArgCount(const Instr &in, ParserState &st, const std::string &label,
+                                   size_t argCount)
+{
+    auto it = st.blockParamCount.find(label);
+    if (it != st.blockParamCount.end())
+    {
+        if (it->second != argCount)
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": bad arg count";
+            return Expected<void>{makeError(in.loc, oss.str())};
+        }
+    }
+    else
+    {
+        st.pendingBrs.push_back({label, argCount, st.lineNo});
+    }
+    return {};
 }
 
 InstrHandler makeBinaryHandler(Opcode op, Type ty)
 {
-    return [op, ty](const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
+    return [op, ty](const std::string &rest, Instr &in, ParserState &st) -> Expected<void>
     {
         std::istringstream ss(rest);
         std::string a = readToken(ss);
         std::string b = readToken(ss);
         in.op = op;
         if (!a.empty())
-            in.operands.push_back(parseValue(a, st, err));
+        {
+            auto lhs = parseValue_E(a, st);
+            if (!lhs)
+                return Expected<void>{lhs.error()};
+            in.operands.push_back(std::move(lhs.value()));
+        }
         if (!b.empty())
-            in.operands.push_back(parseValue(b, st, err));
+        {
+            auto rhs = parseValue_E(b, st);
+            if (!rhs)
+                return Expected<void>{rhs.error()};
+            in.operands.push_back(std::move(rhs.value()));
+        }
         in.type = ty;
-        return true;
+        return {};
     };
 }
 
 InstrHandler makeUnaryHandler(Opcode op, Type ty)
 {
-    return [op, ty](const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
+    return [op, ty](const std::string &rest, Instr &in, ParserState &st) -> Expected<void>
     {
         std::istringstream ss(rest);
         std::string a = readToken(ss);
         in.op = op;
         if (!a.empty())
-            in.operands.push_back(parseValue(a, st, err));
+        {
+            auto operand = parseValue_E(a, st);
+            if (!operand)
+                return Expected<void>{operand.error()};
+            in.operands.push_back(std::move(operand.value()));
+        }
         in.type = ty;
-        return true;
+        return {};
     };
 }
 
@@ -220,91 +272,137 @@ InstrHandler makeCmpHandler(Opcode op)
     return makeBinaryHandler(op, Type(Type::Kind::I1));
 }
 
-bool parseAllocaInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
+Expected<void> parseAllocaInstr(const std::string &rest, Instr &in, ParserState &st)
 {
     std::istringstream ss(rest);
     std::string sz = readToken(ss);
     in.op = Opcode::Alloca;
     if (sz.empty())
     {
-        err << "line " << st.lineNo << ": missing size for alloca\n";
-        st.hasError = true;
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing size for alloca";
+        return Expected<void>{makeError(in.loc, oss.str())};
     }
-    else
-    {
-        in.operands.push_back(parseValue(sz, st, err));
-    }
+    auto sizeValue = parseValue_E(sz, st);
+    if (!sizeValue)
+        return Expected<void>{sizeValue.error()};
+    in.operands.push_back(std::move(sizeValue.value()));
     in.type = Type(Type::Kind::Ptr);
-    return true;
+    return {};
 }
 
-bool parseGEPInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
+Expected<void> parseGEPInstr(const std::string &rest, Instr &in, ParserState &st)
 {
     std::istringstream ss(rest);
     std::string base = readToken(ss);
     std::string off = readToken(ss);
     in.op = Opcode::GEP;
-    in.operands.push_back(parseValue(base, st, err));
-    in.operands.push_back(parseValue(off, st, err));
+    if (!base.empty())
+    {
+        auto baseVal = parseValue_E(base, st);
+        if (!baseVal)
+            return Expected<void>{baseVal.error()};
+        in.operands.push_back(std::move(baseVal.value()));
+    }
+    if (!off.empty())
+    {
+        auto offVal = parseValue_E(off, st);
+        if (!offVal)
+            return Expected<void>{offVal.error()};
+        in.operands.push_back(std::move(offVal.value()));
+    }
     in.type = Type(Type::Kind::Ptr);
-    return true;
+    return {};
 }
 
-bool parseLoadInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
+Expected<void> parseLoadInstr(const std::string &rest, Instr &in, ParserState &st)
 {
     std::istringstream ss(rest);
     std::string ty = readToken(ss);
     std::string ptr = readToken(ss);
     in.op = Opcode::Load;
-    in.type = parseType(ty);
-    in.operands.push_back(parseValue(ptr, st, err));
-    return true;
+    auto parsedType = parseType_E(ty, st);
+    if (!parsedType)
+        return Expected<void>{parsedType.error()};
+    in.type = parsedType.value();
+    if (!ptr.empty())
+    {
+        auto ptrVal = parseValue_E(ptr, st);
+        if (!ptrVal)
+            return Expected<void>{ptrVal.error()};
+        in.operands.push_back(std::move(ptrVal.value()));
+    }
+    return {};
 }
 
-bool parseStoreInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
+Expected<void> parseStoreInstr(const std::string &rest, Instr &in, ParserState &st)
 {
     std::istringstream ss(rest);
     std::string ty = readToken(ss);
     std::string ptr = readToken(ss);
     std::string val = readToken(ss);
     in.op = Opcode::Store;
-    in.type = parseType(ty);
-    in.operands.push_back(parseValue(ptr, st, err));
-    in.operands.push_back(parseValue(val, st, err));
-    return true;
+    auto parsedType = parseType_E(ty, st);
+    if (!parsedType)
+        return Expected<void>{parsedType.error()};
+    in.type = parsedType.value();
+    if (!ptr.empty())
+    {
+        auto ptrVal = parseValue_E(ptr, st);
+        if (!ptrVal)
+            return Expected<void>{ptrVal.error()};
+        in.operands.push_back(std::move(ptrVal.value()));
+    }
+    if (!val.empty())
+    {
+        auto valueVal = parseValue_E(val, st);
+        if (!valueVal)
+            return Expected<void>{valueVal.error()};
+        in.operands.push_back(std::move(valueVal.value()));
+    }
+    return {};
 }
 
-bool parseAddrOfInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
+Expected<void> parseAddrOfInstr(const std::string &rest, Instr &in, ParserState &st)
 {
     std::istringstream ss(rest);
     std::string g = readToken(ss);
     in.op = Opcode::AddrOf;
     if (!g.empty())
-        in.operands.push_back(parseValue(g, st, err));
+    {
+        auto globalVal = parseValue_E(g, st);
+        if (!globalVal)
+            return Expected<void>{globalVal.error()};
+        in.operands.push_back(std::move(globalVal.value()));
+    }
     in.type = Type(Type::Kind::Ptr);
-    return true;
+    return {};
 }
 
-bool parseConstStrInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
+Expected<void> parseConstStrInstr(const std::string &rest, Instr &in, ParserState &st)
 {
     std::istringstream ss(rest);
     std::string g = readToken(ss);
     in.op = Opcode::ConstStr;
     if (!g.empty())
-        in.operands.push_back(parseValue(g, st, err));
+    {
+        auto strVal = parseValue_E(g, st);
+        if (!strVal)
+            return Expected<void>{strVal.error()};
+        in.operands.push_back(std::move(strVal.value()));
+    }
     in.type = Type(Type::Kind::Str);
-    return true;
+    return {};
 }
 
-bool parseConstNullInstr(const std::string &rest, Instr &in, ParserState &, std::ostream &)
+Expected<void> parseConstNullInstr(const std::string &, Instr &in, ParserState &)
 {
-    (void)rest;
     in.op = Opcode::ConstNull;
     in.type = Type(Type::Kind::Ptr);
-    return true;
+    return {};
 }
 
-bool parseCallInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
+Expected<void> parseCallInstr(const std::string &rest, Instr &in, ParserState &st)
 {
     in.op = Opcode::Call;
     size_t at = rest.find('@');
@@ -312,8 +410,9 @@ bool parseCallInstr(const std::string &rest, Instr &in, ParserState &st, std::os
     size_t rp = rest.find(')', lp);
     if (at == std::string::npos || lp == std::string::npos || rp == std::string::npos)
     {
-        err << "line " << st.lineNo << ": malformed call\n";
-        return false;
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": malformed call";
+        return Expected<void>{makeError(in.loc, oss.str())};
     }
     in.callee = rest.substr(at + 1, lp - at - 1);
     std::string args = rest.substr(lp + 1, rp - lp - 1);
@@ -322,14 +421,18 @@ bool parseCallInstr(const std::string &rest, Instr &in, ParserState &st, std::os
     while (std::getline(as, a, ','))
     {
         a = trim(a);
-        if (!a.empty())
-            in.operands.push_back(parseValue(a, st, err));
+        if (a.empty())
+            continue;
+        auto argVal = parseValue_E(a, st);
+        if (!argVal)
+            return Expected<void>{argVal.error()};
+        in.operands.push_back(std::move(argVal.value()));
     }
     in.type = Type(Type::Kind::Void);
-    return true;
+    return {};
 }
 
-bool parseBrInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
+Expected<void> parseBrInstr(const std::string &rest, Instr &in, ParserState &st)
 {
     in.op = Opcode::Br;
     std::string t = rest;
@@ -340,15 +443,16 @@ bool parseBrInstr(const std::string &rest, Instr &in, ParserState &st, std::ostr
     std::string lbl;
     if (lp == std::string::npos)
     {
-        lbl = t;
+        lbl = trim(t);
     }
     else
     {
         size_t rp = t.find(')', lp);
         if (rp == std::string::npos)
         {
-            err << "line " << st.lineNo << ": mismatched ')\n";
-            return false;
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": mismatched ')";
+            return Expected<void>{makeError(in.loc, oss.str())};
         }
         lbl = trim(t.substr(0, lp));
         std::string argsStr = t.substr(lp + 1, rp - lp - 1);
@@ -357,29 +461,60 @@ bool parseBrInstr(const std::string &rest, Instr &in, ParserState &st, std::ostr
         while (std::getline(as, a, ','))
         {
             a = trim(a);
-            if (!a.empty())
-                args.push_back(parseValue(a, st, err));
+            if (a.empty())
+                continue;
+            auto argVal = parseValue_E(a, st);
+            if (!argVal)
+                return Expected<void>{argVal.error()};
+            args.push_back(std::move(argVal.value()));
         }
     }
     in.labels.push_back(lbl);
     in.brArgs.push_back(args);
-    size_t argCount = args.size();
-    auto it = st.blockParamCount.find(lbl);
-    if (it != st.blockParamCount.end())
-    {
-        if (it->second != argCount)
-        {
-            err << "line " << st.lineNo << ": bad arg count\n";
-            return false;
-        }
-    }
-    else
-        st.pendingBrs.push_back({lbl, argCount, st.lineNo});
+    auto countCheck = checkBlockArgCount(in, st, lbl, args.size());
+    if (!countCheck)
+        return countCheck;
     in.type = Type(Type::Kind::Void);
-    return true;
+    return {};
 }
 
-bool parseCBrInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
+Expected<void> parseBranchTarget(const std::string &part, Instr &in, ParserState &st, std::string &lbl,
+                                 std::vector<Value> &args)
+{
+    std::string t = part;
+    if (t.rfind("label ", 0) == 0)
+        t = trim(t.substr(6));
+    size_t lp = t.find('(');
+    if (lp == std::string::npos)
+    {
+        lbl = trim(t);
+        return {};
+    }
+    size_t rp = t.find(')', lp);
+    if (rp == std::string::npos)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": mismatched ')";
+        return Expected<void>{makeError(in.loc, oss.str())};
+    }
+    lbl = trim(t.substr(0, lp));
+    std::string argsStr = t.substr(lp + 1, rp - lp - 1);
+    std::stringstream as(argsStr);
+    std::string a;
+    while (std::getline(as, a, ','))
+    {
+        a = trim(a);
+        if (a.empty())
+            continue;
+        auto val = parseValue_E(a, st);
+        if (!val)
+            return Expected<void>{val.error()};
+        args.push_back(std::move(val.value()));
+    }
+    return {};
+}
+
+Expected<void> parseCBrInstr(const std::string &rest, Instr &in, ParserState &st)
 {
     in.op = Opcode::CBr;
     std::istringstream ss(rest);
@@ -390,95 +525,60 @@ bool parseCBrInstr(const std::string &rest, Instr &in, ParserState &st, std::ost
     size_t comma = rem.find(',');
     if (comma == std::string::npos)
     {
-        err << "line " << st.lineNo << ": malformed cbr\n";
-        return false;
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": malformed cbr";
+        return Expected<void>{makeError(in.loc, oss.str())};
     }
     std::string first = trim(rem.substr(0, comma));
     std::string second = trim(rem.substr(comma + 1));
-    auto parseTarget =
-        [&](const std::string &part, std::string &lbl, std::vector<Value> &args) -> bool
-    {
-        std::string t = part;
-        if (t.rfind("label ", 0) == 0)
-            t = trim(t.substr(6));
-        size_t lp = t.find('(');
-        if (lp == std::string::npos)
-        {
-            lbl = trim(t);
-        }
-        else
-        {
-            size_t rp = t.find(')', lp);
-            if (rp == std::string::npos)
-                return false;
-            lbl = trim(t.substr(0, lp));
-            std::string argsStr = t.substr(lp + 1, rp - lp - 1);
-            std::stringstream as(argsStr);
-            std::string a;
-            while (std::getline(as, a, ','))
-            {
-                a = trim(a);
-                if (!a.empty())
-                    args.push_back(parseValue(a, st, err));
-            }
-        }
-        return true;
-    };
-    std::vector<Value> a1, a2;
-    std::string l1, l2;
-    if (!parseTarget(first, l1, a1) || !parseTarget(second, l2, a2))
-    {
-        err << "line " << st.lineNo << ": mismatched ')\n";
-        return false;
-    }
-    in.operands.push_back(parseValue(c, st, err));
+    std::vector<Value> a1;
+    std::vector<Value> a2;
+    std::string l1;
+    std::string l2;
+    auto t1 = parseBranchTarget(first, in, st, l1, a1);
+    if (!t1)
+        return t1;
+    auto t2 = parseBranchTarget(second, in, st, l2, a2);
+    if (!t2)
+        return t2;
+    auto cond = parseValue_E(c, st);
+    if (!cond)
+        return Expected<void>{cond.error()};
+    in.operands.push_back(std::move(cond.value()));
     in.labels.push_back(l1);
     in.labels.push_back(l2);
     in.brArgs.push_back(a1);
     in.brArgs.push_back(a2);
-    size_t n1 = a1.size();
-    auto it1 = st.blockParamCount.find(l1);
-    if (it1 != st.blockParamCount.end())
-    {
-        if (it1->second != n1)
-        {
-            err << "line " << st.lineNo << ": bad arg count\n";
-            return false;
-        }
-    }
-    else
-        st.pendingBrs.push_back({l1, n1, st.lineNo});
-    size_t n2 = a2.size();
-    auto it2 = st.blockParamCount.find(l2);
-    if (it2 != st.blockParamCount.end())
-    {
-        if (it2->second != n2)
-        {
-            err << "line " << st.lineNo << ": bad arg count\n";
-            return false;
-        }
-    }
-    else
-        st.pendingBrs.push_back({l2, n2, st.lineNo});
+    auto check1 = checkBlockArgCount(in, st, l1, a1.size());
+    if (!check1)
+        return check1;
+    auto check2 = checkBlockArgCount(in, st, l2, a2.size());
+    if (!check2)
+        return check2;
     in.type = Type(Type::Kind::Void);
-    return true;
+    return {};
 }
 
-bool parseRetInstr(const std::string &rest, Instr &in, ParserState &st, std::ostream &err)
+Expected<void> parseRetInstr(const std::string &rest, Instr &in, ParserState &st)
 {
     in.op = Opcode::Ret;
     std::string v = trim(rest);
     if (!v.empty())
-        in.operands.push_back(parseValue(v, st, err));
+    {
+        auto val = parseValue_E(v, st);
+        if (!val)
+            return Expected<void>{val.error()};
+        in.operands.push_back(std::move(val.value()));
+    }
     in.type = Type(Type::Kind::Void);
-    return true;
+    return {};
 }
 
-bool parseTrapInstr(const std::string &, Instr &in, ParserState &, std::ostream &)
+Expected<void> parseTrapInstr(const std::string &, Instr &in, ParserState &)
 {
     in.op = Opcode::Trap;
     in.type = Type(Type::Kind::Void);
-    return true;
+    return {};
 }
 
 const std::unordered_map<std::string, InstrHandler> kInstrHandlers = {
@@ -532,21 +632,19 @@ const std::unordered_map<std::string, InstrHandler> kInstrHandlers = {
     {"ret", parseRetInstr},
     {"trap", parseTrapInstr}};
 
-} // namespace
-
-bool parseInstruction(const std::string &line, ParserState &st, std::ostream &err)
+Expected<void> parseInstruction_E(const std::string &line, ParserState &st)
 {
     Instr in;
     in.loc = st.curLoc;
     std::string work = line;
-    if (work[0] == '%')
+    if (!work.empty() && work[0] == '%')
     {
         size_t eq = work.find('=');
         if (eq == std::string::npos)
         {
-            err << "line " << st.lineNo << ": missing '='\n";
-            st.hasError = true;
-            return false;
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": missing '='";
+            return Expected<void>{makeError(in.loc, oss.str())};
         }
         std::string res = trim(work.substr(1, eq - 1));
         auto [it, inserted] = st.tempIds.emplace(res, st.nextTemp);
@@ -569,14 +667,31 @@ bool parseInstruction(const std::string &line, ParserState &st, std::ostream &er
     auto it = kInstrHandlers.find(op);
     if (it == kInstrHandlers.end())
     {
-        err << "line " << st.lineNo << ": unknown opcode " << op << "\n";
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": unknown opcode " << op;
+        return Expected<void>{makeError(in.loc, oss.str())};
+    }
+    auto parsed = it->second(rest, in, st);
+    if (!parsed)
+        return parsed;
+    auto shape = validateShape_E(in, st);
+    if (!shape)
+        return shape;
+    st.curBB->instructions.push_back(std::move(in));
+    return {};
+}
+
+} // namespace
+
+bool parseInstruction(const std::string &line, ParserState &st, std::ostream &err)
+{
+    auto r = parseInstruction_E(line, st);
+    if (!r)
+    {
+        printDiag(r.error(), err);
+        st.hasError = true;
         return false;
     }
-    if (!it->second(rest, in, st, err))
-        return false;
-    if (!validateShape(in, st, err))
-        return false;
-    st.curBB->instructions.push_back(std::move(in));
     return true;
 }
 
