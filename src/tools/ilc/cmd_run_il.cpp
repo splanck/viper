@@ -9,10 +9,9 @@
 #include "VM/Trace.h"
 #include "break_spec.hpp"
 #include "cli.hpp"
-#include "il/io/Parser.hpp"
+#include "il/api/expected_api.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Module.hpp"
-#include "il/verify/Verifier.hpp"
 #include "support/source_manager.hpp"
 #include "vm/VM.hpp"
 #include <algorithm>
@@ -136,10 +135,18 @@ int cmdRunIL(int argc, char **argv)
         return 1;
     }
     core::Module m;
-    if (!io::Parser::parse(ifs, m, std::cerr))
+    auto pe = il::api::v2::parse_text_expected(ifs, m);
+    if (!pe)
+    {
+        il::support::printDiag(pe.error(), std::cerr);
         return 1;
-    if (!verify::Verifier::verify(m, std::cerr))
+    }
+    auto ve = il::api::v2::verify_module_expected(m);
+    if (!ve)
+    {
+        il::support::printDiag(ve.error(), std::cerr);
         return 1;
+    }
     if (!sharedOpts.stdinPath.empty())
     {
         if (!freopen(sharedOpts.stdinPath.c_str(), "r", stdin))
