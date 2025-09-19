@@ -36,7 +36,7 @@ add_library(il_transform STATIC
   il/transform/Peephole.cpp
   il/transform/ConstFold.cpp
   il/transform/DCE.cpp)
-target_link_libraries(il_transform PUBLIC il_core il_verify)
+target_link_libraries(il_transform PUBLIC il_core il_verify Analysis)
 target_include_directories(il_transform PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_library(il_vm STATIC
@@ -44,7 +44,11 @@ add_library(il_vm STATIC
   vm/VMInit.cpp
   vm/VMDebug.cpp
   vm/RuntimeBridge.cpp
-  vm/OpHandlers.cpp)
+  vm/OpHandlers.cpp
+  vm/mem_ops.cpp
+  vm/int_ops.cpp
+  vm/fp_ops.cpp
+  vm/control_flow.cpp)
 target_include_directories(il_vm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(il_vm PUBLIC il_core rt support VMTrace)
 
