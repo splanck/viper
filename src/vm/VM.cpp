@@ -5,8 +5,11 @@
 // Links: docs/il-spec.md
 
 #include "vm/VM.hpp"
+#include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
+#include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/core/Value.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include <cassert>
 

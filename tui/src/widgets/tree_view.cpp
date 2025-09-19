@@ -4,6 +4,7 @@
 // @ownership TreeView owns nodes and borrows Theme.
 
 #include "tui/widgets/tree_view.hpp"
+#include "tui/render/screen.hpp"
 
 #include <algorithm>
 

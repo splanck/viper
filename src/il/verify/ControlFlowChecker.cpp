@@ -5,6 +5,11 @@
 // Links: docs/il-spec.md
 
 #include "il/verify/ControlFlowChecker.hpp"
+#include "il/core/BasicBlock.hpp"
+#include "il/core/Extern.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Instr.hpp"
+#include "il/core/Param.hpp"
 #include <unordered_set>
 
 using namespace il::core;

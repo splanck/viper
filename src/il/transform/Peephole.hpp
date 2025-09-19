@@ -7,7 +7,8 @@
 
 #include <array>
 
-#include "il/core/Module.hpp"
+#include "il/core/Opcode.hpp"
+#include "il/core/fwd.hpp"
 
 namespace il::transform
 {

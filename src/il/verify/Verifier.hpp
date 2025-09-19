@@ -5,10 +5,20 @@
 // Links: docs/il-spec.md
 #pragma once
 
-#include "il/core/Module.hpp"
 #include <ostream>
+#include <string>
 #include <unordered_map>
-#include <unordered_set>
+
+namespace il::core
+{
+struct Extern;
+struct Global;
+struct Module;
+struct Function;
+struct BasicBlock;
+struct Instr;
+struct Type;
+}
 
 namespace il::verify
 {

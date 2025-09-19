@@ -5,6 +5,7 @@
 // Links: docs/class-catalog.md
 
 #include "frontends/basic/Lexer.hpp"
+#include "support/source_manager.hpp"
 #include <cassert>
 #include <string>
 #include <vector>

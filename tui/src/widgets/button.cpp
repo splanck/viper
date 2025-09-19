@@ -4,6 +4,7 @@
 // @ownership Button borrows Theme and callback.
 
 #include "tui/widgets/button.hpp"
+#include "tui/render/screen.hpp"
 
 namespace viper::tui::widgets
 {

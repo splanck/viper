@@ -5,6 +5,10 @@
 // Links: docs/il-spec.md
 
 #include "il/io/FunctionParser.hpp"
+#include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Module.hpp"
+#include "il/core/Param.hpp"
 
 #include "il/io/InstrParser.hpp"
 #include "il/io/ParserUtil.hpp"

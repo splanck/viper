@@ -5,6 +5,7 @@
 // Links: docs/class-catalog.md
 
 #include "diagnostics.hpp"
+#include "source_manager.hpp"
 
 namespace il::support
 {

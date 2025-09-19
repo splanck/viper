@@ -10,7 +10,7 @@
 #include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/Value.hpp"
-#include "support/source_manager.hpp"
+#include "support/source_location.hpp"
 #include <optional>
 #include <unordered_map>
 #include <vector>
