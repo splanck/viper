@@ -6,7 +6,6 @@
 #pragma once
 
 #include <string>
-#include <utility>
 
 namespace il::core
 {
@@ -39,54 +38,36 @@ struct Value
     /// @param t Identifier of the temporary.
     /// @return Value with kind Kind::Temp and id set to t.
     /// @invariant result.kind == Kind::Temp.
-    static Value temp(unsigned t)
-    {
-        return Value{Kind::Temp, 0, 0.0, t, ""};
-    }
+    static Value temp(unsigned t);
 
     /// @brief Construct an integer constant value.
     /// @param v Signed integer literal.
     /// @return Value with kind Kind::ConstInt and i64 set to v.
     /// @invariant result.kind == Kind::ConstInt.
-    static Value constInt(long long v)
-    {
-        return Value{Kind::ConstInt, v, 0.0, 0, ""};
-    }
+    static Value constInt(long long v);
 
     /// @brief Construct a floating-point constant value.
     /// @param v IEEE-754 double literal.
     /// @return Value with kind Kind::ConstFloat and f64 set to v.
     /// @invariant result.kind == Kind::ConstFloat.
-    static Value constFloat(double v)
-    {
-        return Value{Kind::ConstFloat, 0, v, 0, ""};
-    }
+    static Value constFloat(double v);
 
     /// @brief Construct a string constant value.
     /// @param s String literal; moved into the value.
     /// @return Value with kind Kind::ConstStr and str set to @p s.
     /// @invariant result.kind == Kind::ConstStr.
-    static Value constStr(std::string s)
-    {
-        return Value{Kind::ConstStr, 0, 0.0, 0, std::move(s)};
-    }
+    static Value constStr(std::string s);
 
     /// @brief Construct a global address value.
     /// @param s Name of the global symbol; moved into the value.
     /// @return Value with kind Kind::GlobalAddr and str set to @p s.
     /// @invariant result.kind == Kind::GlobalAddr.
-    static Value global(std::string s)
-    {
-        return Value{Kind::GlobalAddr, 0, 0.0, 0, std::move(s)};
-    }
+    static Value global(std::string s);
 
     /// @brief Construct a null pointer value.
     /// @return Value with kind Kind::NullPtr.
     /// @invariant result.kind == Kind::NullPtr.
-    static Value null()
-    {
-        return Value{Kind::NullPtr, 0, 0.0, 0, ""};
-    }
+    static Value null();
 };
 
 std::string toString(const Value &v);
