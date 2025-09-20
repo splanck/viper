@@ -9,9 +9,10 @@
 
 #include "support/diag_expected.hpp"
 
-#include "il/io/Parser.hpp"
-#include "il/verify/Verifier.hpp"
-#include "il/core/Module.hpp"
+namespace il::core
+{
+class Module;
+} // namespace il::core
 
 namespace il::api::v2
 {
