@@ -7,9 +7,31 @@
 #include "frontends/basic/SemanticDiagnostics.hpp"
 
 #include <string>
+#include <utility>
 
 namespace il::frontends::basic
 {
+
+SemanticDiagnostics::SemanticDiagnostics(DiagnosticEmitter &emitter) : emitter_(emitter) {}
+
+void SemanticDiagnostics::emit(il::support::Severity sev,
+                               std::string code,
+                               il::support::SourceLoc loc,
+                               uint32_t length,
+                               std::string message)
+{
+    emitter_.emit(sev, std::move(code), loc, length, std::move(message));
+}
+
+size_t SemanticDiagnostics::errorCount() const
+{
+    return emitter_.errorCount();
+}
+
+size_t SemanticDiagnostics::warningCount() const
+{
+    return emitter_.warningCount();
+}
 
 std::string SemanticDiagnostics::formatNonBooleanCondition(std::string_view typeName,
                                                            std::string_view exprText)
@@ -39,6 +61,11 @@ void SemanticDiagnostics::emitNonBooleanCondition(std::string code,
          loc,
          length,
          formatNonBooleanCondition(typeName, exprText));
+}
+
+DiagnosticEmitter &SemanticDiagnostics::emitter()
+{
+    return emitter_;
 }
 
 } // namespace il::frontends::basic
