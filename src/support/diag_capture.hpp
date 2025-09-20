@@ -22,17 +22,11 @@ struct DiagCapture
     /// @brief Forward a diagnostic to an output stream using standard formatting.
     /// @param out Stream receiving the formatted diagnostic.
     /// @param diag Diagnostic to print.
-    void printTo(std::ostream &out, const Diag &diag)
-    {
-        printDiag(diag, out);
-    }
+    void printTo(std::ostream &out, const Diag &diag);
 
     /// @brief Convert the captured text into an error diagnostic without a location.
     /// @return Diagnostic containing the captured message.
-    [[nodiscard]] Diag toDiag() const
-    {
-        return makeError({}, ss.str());
-    }
+    [[nodiscard]] Diag toDiag() const;
 };
 
 /// @brief Adapt a legacy bool plus ostream diagnostic API to Expected<void>.
