@@ -74,6 +74,16 @@ ExprPtr foldStringNe(const StringExpr &l, const StringExpr &r)
                           return out;
                       });
 }
+
+const BinaryFoldEntry *findBinaryFold(BinaryExpr::Op op)
+{
+    for (const auto &entry : kBinaryFoldTable)
+    {
+        if (entry.op == op)
+            return &entry;
+    }
+    return nullptr;
+}
 } // namespace detail
 
 /// @brief Fold numeric binary expression using callback @p op.
