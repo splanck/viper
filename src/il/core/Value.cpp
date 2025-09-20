@@ -9,9 +9,40 @@
 #include <iomanip>
 #include <limits>
 #include <sstream>
+#include <utility>
 
 namespace il::core
 {
+
+Value Value::temp(unsigned t)
+{
+    return Value{Kind::Temp, 0, 0.0, t, ""};
+}
+
+Value Value::constInt(long long v)
+{
+    return Value{Kind::ConstInt, v, 0.0, 0, ""};
+}
+
+Value Value::constFloat(double v)
+{
+    return Value{Kind::ConstFloat, 0, v, 0, ""};
+}
+
+Value Value::constStr(std::string s)
+{
+    return Value{Kind::ConstStr, 0, 0.0, 0, std::move(s)};
+}
+
+Value Value::global(std::string s)
+{
+    return Value{Kind::GlobalAddr, 0, 0.0, 0, std::move(s)};
+}
+
+Value Value::null()
+{
+    return Value{Kind::NullPtr, 0, 0.0, 0, ""};
+}
 
 std::string toString(const Value &v)
 {
