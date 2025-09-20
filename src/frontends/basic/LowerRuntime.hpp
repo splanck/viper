@@ -27,5 +27,7 @@ struct RuntimeFnHash
 std::vector<RuntimeFn> runtimeOrder;
 std::unordered_set<RuntimeFn, RuntimeFnHash> runtimeSet;
 
+void requestHelper(RuntimeHelper helper);
+bool isHelperNeeded(RuntimeHelper helper) const;
 void trackRuntime(RuntimeFn fn);
 void declareRequiredRuntime(build::IRBuilder &b);
