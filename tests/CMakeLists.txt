@@ -41,41 +41,41 @@ target_link_libraries(test_irbuilder_call_unknown PRIVATE il_core il_build suppo
 add_test(NAME test_irbuilder_call_unknown COMMAND test_irbuilder_call_unknown)
 
 add_executable(test_il_roundtrip unit/test_il_roundtrip.cpp)
-target_link_libraries(test_il_roundtrip PRIVATE il_core il_io il_verify support)
+target_link_libraries(test_il_roundtrip PRIVATE il_core il_io il_verify il_api)
 target_compile_definitions(test_il_roundtrip PRIVATE EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/examples" ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/tests/il/roundtrip")
 add_test(NAME test_il_roundtrip COMMAND test_il_roundtrip)
 
 add_executable(test_il_parse_negative unit/test_il_parse_negative.cpp)
-target_link_libraries(test_il_parse_negative PRIVATE il_core il_io support)
+target_link_libraries(test_il_parse_negative PRIVATE il_core il_io il_api)
 target_compile_definitions(test_il_parse_negative PRIVATE BAD_DIR="${CMAKE_SOURCE_DIR}/tests/il/parse")
 add_test(NAME test_il_parse_negative COMMAND test_il_parse_negative)
 
 add_executable(test_il_parse_comment unit/test_il_parse_comment.cpp)
-target_link_libraries(test_il_parse_comment PRIVATE il_core il_io support)
+target_link_libraries(test_il_parse_comment PRIVATE il_core il_io il_api)
 add_test(NAME test_il_parse_comment COMMAND test_il_parse_comment)
 
 add_executable(test_il_comments unit/test_il_comments.cpp)
-target_link_libraries(test_il_comments PRIVATE il_core il_io support)
+target_link_libraries(test_il_comments PRIVATE il_core il_io il_api)
 add_test(NAME test_il_comments COMMAND test_il_comments)
 
 add_executable(test_il_parse_missing_eq unit/test_il_parse_missing_eq.cpp)
-target_link_libraries(test_il_parse_missing_eq PRIVATE il_core il_io support)
+target_link_libraries(test_il_parse_missing_eq PRIVATE il_core il_io il_api)
 add_test(NAME test_il_parse_missing_eq COMMAND test_il_parse_missing_eq)
 
 add_executable(test_il_parse_first_error unit/test_il_parse_first_error.cpp)
-target_link_libraries(test_il_parse_first_error PRIVATE il_core il_io support)
+target_link_libraries(test_il_parse_first_error PRIVATE il_core il_io il_api)
 add_test(NAME test_il_parse_first_error COMMAND test_il_parse_first_error)
 
 add_executable(test_il_parse_invalid_type unit/test_il_parse_invalid_type.cpp)
-target_link_libraries(test_il_parse_invalid_type PRIVATE il_core il_io support)
+target_link_libraries(test_il_parse_invalid_type PRIVATE il_core il_io il_api)
 add_test(NAME test_il_parse_invalid_type COMMAND test_il_parse_invalid_type)
 
 add_executable(test_expected_api_build unit/test_expected_api_build.cpp)
-target_link_libraries(test_expected_api_build PRIVATE il_core il_io support)
+target_link_libraries(test_expected_api_build PRIVATE il_core il_io il_api)
 add_test(NAME test_expected_api_build COMMAND test_expected_api_build)
 
 add_executable(test_il_verify_trap unit/test_il_verify_trap.cpp)
-target_link_libraries(test_il_verify_trap PRIVATE il_core il_verify support)
+target_link_libraries(test_il_verify_trap PRIVATE il_core il_verify il_api)
 add_test(NAME test_il_verify_trap COMMAND test_il_verify_trap)
 
 add_executable(test_il_type_inference unit/test_il_type_inference.cpp)
@@ -505,15 +505,15 @@ target_link_libraries(test_vm_many_temps PRIVATE il_vm support)
 add_test(NAME test_vm_many_temps COMMAND test_vm_many_temps)
 
 add_executable(test_vm_addr_of unit/test_vm_addr_of.cpp)
-target_link_libraries(test_vm_addr_of PRIVATE il_io il_vm support)
+target_link_libraries(test_vm_addr_of PRIVATE il_io il_vm il_api)
 add_test(NAME test_vm_addr_of COMMAND test_vm_addr_of)
 
 add_executable(test_vm_opcode_dispatch unit/test_vm_opcode_dispatch.cpp)
-target_link_libraries(test_vm_opcode_dispatch PRIVATE il_io il_vm support)
+target_link_libraries(test_vm_opcode_dispatch PRIVATE il_io il_vm il_api)
 add_test(NAME test_vm_opcode_dispatch COMMAND test_vm_opcode_dispatch)
 
 add_executable(test_il_pass_manager unit/test_il_pass_manager.cpp)
-target_link_libraries(test_il_pass_manager PRIVATE il_io il_transform support)
+target_link_libraries(test_il_pass_manager PRIVATE il_io il_transform il_api)
 add_test(NAME test_il_pass_manager COMMAND test_il_pass_manager)
 
 add_executable(test_vm_normalize_path unit/test_vm_normalize_path.cpp)
