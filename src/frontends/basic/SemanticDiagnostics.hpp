@@ -69,33 +69,3 @@ class SemanticDiagnostics
 };
 
 } // namespace il::frontends::basic
-
-inline std::string
-il::frontends::basic::SemanticDiagnostics::formatNonBooleanCondition(std::string_view typeName,
-                                                                     std::string_view exprText)
-{
-    std::string message(NonBooleanConditionMessage);
-    const auto replace = [](std::string &subject,
-                            std::string_view placeholder,
-                            std::string_view value) {
-        if (auto pos = subject.find(placeholder); pos != std::string::npos)
-            subject.replace(pos, placeholder.size(), value);
-    };
-    replace(message, "{type}", typeName);
-    replace(message, "{expr}", exprText);
-    return message;
-}
-
-inline void il::frontends::basic::SemanticDiagnostics::emitNonBooleanCondition(
-    std::string code,
-    il::support::SourceLoc loc,
-    uint32_t length,
-    std::string_view typeName,
-    std::string_view exprText)
-{
-    emit(il::support::Severity::Error,
-         std::move(code),
-         loc,
-         length,
-         formatNonBooleanCondition(typeName, exprText));
-}

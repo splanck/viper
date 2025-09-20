@@ -20,6 +20,7 @@ add_library(fe_basic STATIC
   ConstFolder.cpp
   Intrinsics.cpp
   DiagnosticEmitter.cpp
+  SemanticDiagnostics.cpp
 )
 
 target_link_libraries(fe_basic PUBLIC support il_build il_core il_runtime)
