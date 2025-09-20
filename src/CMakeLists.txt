@@ -45,6 +45,7 @@ add_library(il_vm STATIC
   vm/VMDebug.cpp
   vm/RuntimeBridge.cpp
   vm/OpHandlers.cpp
+  vm/OpHandlerUtils.cpp
   vm/mem_ops.cpp
   vm/int_ops.cpp
   vm/fp_ops.cpp
