@@ -13,6 +13,7 @@
 #include "il/core/Instr.hpp"
 #include <cassert>
 #include <functional>
+#include <utility>
 #include <vector>
 
 using namespace il::core;
@@ -47,6 +48,115 @@ il::core::Type coreTypeForAstType(::il::frontends::basic::Type ty)
 }
 
 } // namespace
+
+Lowerer::BlockNamer::BlockNamer(std::string p) : proc(std::move(p)) {}
+
+std::string Lowerer::BlockNamer::entry() const
+{
+    return "entry_" + proc;
+}
+
+std::string Lowerer::BlockNamer::ret() const
+{
+    return "ret_" + proc;
+}
+
+std::string Lowerer::BlockNamer::line(int line) const
+{
+    return "L" + std::to_string(line) + "_" + proc;
+}
+
+unsigned Lowerer::BlockNamer::nextIf()
+{
+    return ifCounter++;
+}
+
+std::string Lowerer::BlockNamer::ifTest(unsigned id) const
+{
+    return "if_test_" + std::to_string(id) + "_" + proc;
+}
+
+std::string Lowerer::BlockNamer::ifThen(unsigned id) const
+{
+    return "if_then_" + std::to_string(id) + "_" + proc;
+}
+
+std::string Lowerer::BlockNamer::ifElse(unsigned id) const
+{
+    return "if_else_" + std::to_string(id) + "_" + proc;
+}
+
+std::string Lowerer::BlockNamer::ifEnd(unsigned id) const
+{
+    return "if_end_" + std::to_string(id) + "_" + proc;
+}
+
+unsigned Lowerer::BlockNamer::nextWhile()
+{
+    return loopCounter++;
+}
+
+std::string Lowerer::BlockNamer::whileHead(unsigned id) const
+{
+    return "while_head_" + std::to_string(id) + "_" + proc;
+}
+
+std::string Lowerer::BlockNamer::whileBody(unsigned id) const
+{
+    return "while_body_" + std::to_string(id) + "_" + proc;
+}
+
+std::string Lowerer::BlockNamer::whileEnd(unsigned id) const
+{
+    return "while_end_" + std::to_string(id) + "_" + proc;
+}
+
+unsigned Lowerer::BlockNamer::nextFor()
+{
+    return loopCounter++;
+}
+
+unsigned Lowerer::BlockNamer::nextCall()
+{
+    return loopCounter++;
+}
+
+std::string Lowerer::BlockNamer::forHead(unsigned id) const
+{
+    return "for_head_" + std::to_string(id) + "_" + proc;
+}
+
+std::string Lowerer::BlockNamer::forBody(unsigned id) const
+{
+    return "for_body_" + std::to_string(id) + "_" + proc;
+}
+
+std::string Lowerer::BlockNamer::forInc(unsigned id) const
+{
+    return "for_inc_" + std::to_string(id) + "_" + proc;
+}
+
+std::string Lowerer::BlockNamer::forEnd(unsigned id) const
+{
+    return "for_end_" + std::to_string(id) + "_" + proc;
+}
+
+std::string Lowerer::BlockNamer::callCont(unsigned id) const
+{
+    return "call_cont_" + std::to_string(id) + "_" + proc;
+}
+
+std::string Lowerer::BlockNamer::generic(const std::string &hint)
+{
+    auto &n = genericCounters[hint];
+    std::string label = hint + "_" + std::to_string(n++) + "_" + proc;
+    return label;
+}
+
+std::string Lowerer::BlockNamer::tag(const std::string &base) const
+{
+    return base + "_" + proc;
+}
 
 /// @brief Construct a lowering context.
 /// @param boundsChecks When true, enable allocation of auxiliary slots used to
