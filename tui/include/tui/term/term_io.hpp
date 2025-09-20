@@ -23,22 +23,13 @@ class RealTermIO : public TermIO
 class StringTermIO : public TermIO
 {
   public:
-    void write(std::string_view s) override
-    {
-        buf_.append(s.data(), s.size());
-    }
+    void write(std::string_view s) override;
 
-    void flush() override {}
+    void flush() override;
 
-    const std::string &buffer() const
-    {
-        return buf_;
-    }
+    const std::string &buffer() const;
 
-    void clear()
-    {
-        buf_.clear();
-    }
+    void clear();
 
   private:
     std::string buf_;

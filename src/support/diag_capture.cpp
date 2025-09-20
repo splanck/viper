@@ -18,4 +18,14 @@ Diag DiagCapture::toDiag() const
 {
     return makeError({}, ss.str());
 }
+
+/// @brief Convert the legacy call result into an Expected<void> diagnostic outcome.
+Expected<void> capture_to_expected_impl(bool ok, DiagCapture &capture)
+{
+    if (ok)
+    {
+        return Expected<void>{};
+    }
+    return Expected<void>{capture.toDiag()};
+}
 } // namespace il::support

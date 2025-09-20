@@ -77,25 +77,16 @@ template <> class Expected<void>
 
     /// @brief Construct an error result holding diagnostic @p diag.
     /// @param diag Diagnostic describing the failure.
-    Expected(Diag diag) : error_(std::move(diag)) {}
+    Expected(Diag diag);
 
     /// @brief Check whether the Expected represents success.
-    [[nodiscard]] bool hasValue() const
-    {
-        return !error_.has_value();
-    }
+    [[nodiscard]] bool hasValue() const;
 
     /// @brief Allow use in boolean contexts to test success.
-    explicit operator bool() const
-    {
-        return hasValue();
-    }
+    explicit operator bool() const;
 
     /// @brief Access the diagnostic describing the failure.
-    const Diag &error() const &
-    {
-        return *error_;
-    }
+    const Diag &error() const &;
 
   private:
     std::optional<Diag> error_;

@@ -15,6 +15,12 @@ SearchBar::SearchBar(text::TextBuffer &buf, views::TextView &view, const style::
 {
 }
 
+/// @brief Return the number of matches currently highlighted within the buffer.
+std::size_t SearchBar::matchCount() const
+{
+    return matches_.size();
+}
+
 void SearchBar::setRegex(bool regex)
 {
     regex_ = regex;

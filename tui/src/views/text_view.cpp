@@ -45,6 +45,24 @@ TextView::TextView(text::TextBuffer &buf, const style::Theme &theme, bool showLi
 {
 }
 
+/// @brief Text views capture focus to process editing input.
+bool TextView::wantsFocus() const
+{
+    return true;
+}
+
+/// @brief Retrieve the current cursor row (0-based line index).
+std::size_t TextView::cursorRow() const
+{
+    return cursor_row_;
+}
+
+/// @brief Retrieve the current cursor column in display cells.
+std::size_t TextView::cursorCol() const
+{
+    return cursor_col_;
+}
+
 std::pair<char32_t, std::size_t> TextView::decodeChar(const std::string &s, std::size_t off)
 {
     return ::viper::tui::views::decodeChar(s, off);

@@ -44,10 +44,7 @@ class TextBuffer
     [[nodiscard]] std::string str() const;
 
     /// @brief Total byte length.
-    [[nodiscard]] size_t size() const
-    {
-        return size_;
-    }
+    [[nodiscard]] size_t size() const;
 
   private:
     enum class BufferKind
