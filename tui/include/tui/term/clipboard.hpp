@@ -36,15 +36,9 @@ class MockClipboard : public Clipboard
     bool copy(std::string_view text) override;
     std::string paste() override;
 
-    const std::string &last() const
-    {
-        return last_;
-    }
+    const std::string &last() const;
 
-    void clear()
-    {
-        last_.clear();
-    }
+    void clear();
 
   private:
     std::string last_{};
