@@ -105,15 +105,9 @@ extern const std::array<OpcodeInfo, kNumOpcodes> kOpcodeTable;
 /// @brief Access metadata for a specific opcode.
 /// @param op Opcode to query.
 /// @return Reference to the metadata entry for @p op.
-inline const OpcodeInfo &getOpcodeInfo(Opcode op)
-{
-    return kOpcodeTable[static_cast<size_t>(op)];
-}
+const OpcodeInfo &getOpcodeInfo(Opcode op);
 
 /// @brief Determine whether @p value denotes a variadic operand upper bound.
-inline bool isVariadicOperandCount(uint8_t value)
-{
-    return value == kVariadicOperandCount;
-}
+bool isVariadicOperandCount(uint8_t value);
 
 } // namespace il::core
