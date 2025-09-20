@@ -19,71 +19,29 @@ class ScopeTracker
     class ScopedScope
     {
       public:
-        explicit ScopedScope(ScopeTracker &st) : st_(st)
-        {
-            st_.pushScope();
-        }
+        explicit ScopedScope(ScopeTracker &st);
 
-        ~ScopedScope()
-        {
-            st_.popScope();
-        }
+        ~ScopedScope();
 
       private:
         ScopeTracker &st_;
     };
 
-    void reset()
-    {
-        stack_.clear();
-        nextId_ = 0;
-    }
+    void reset();
 
-    void pushScope()
-    {
-        stack_.emplace_back();
-    }
+    void pushScope();
 
-    void popScope()
-    {
-        if (!stack_.empty())
-            stack_.pop_back();
-    }
+    void popScope();
 
-    void bind(const std::string &name, const std::string &mapped)
-    {
-        if (!stack_.empty())
-            stack_.back()[name] = mapped;
-    }
+    void bind(const std::string &name, const std::string &mapped);
 
-    bool isDeclaredInCurrentScope(const std::string &name) const
-    {
-        return !stack_.empty() && stack_.back().count(name);
-    }
+    bool isDeclaredInCurrentScope(const std::string &name) const;
 
-    std::string declareLocal(const std::string &name)
-    {
-        std::string unique = name + "_" + std::to_string(nextId_++);
-        if (!stack_.empty())
-            stack_.back()[name] = unique;
-        return unique;
-    }
+    std::string declareLocal(const std::string &name);
 
-    std::optional<std::string> resolve(const std::string &name) const
-    {
-        for (auto it = stack_.rbegin(); it != stack_.rend(); ++it)
-        {
-            auto found = it->find(name);
-            if (found != it->end())
-                return found->second;
-        }
-        return std::nullopt;
-    }
+    std::optional<std::string> resolve(const std::string &name) const;
 
-    bool hasScope() const
-    {
-        return !stack_.empty();
-    }
+    bool hasScope() const;
 
   private:
     std::vector<std::unordered_map<std::string, std::string>> stack_;
