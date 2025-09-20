@@ -28,6 +28,13 @@
 namespace il::vm
 {
 
+/// @brief Determine whether tracing output should be emitted.
+/// @return True when the trace mode is not TraceConfig::Off.
+bool TraceConfig::enabled() const
+{
+    return mode != Off;
+}
+
 namespace
 {
 /// @brief Temporarily force the C locale for numeric formatting.

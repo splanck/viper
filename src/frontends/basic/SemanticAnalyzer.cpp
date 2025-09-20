@@ -22,6 +22,67 @@
 namespace il::frontends::basic
 {
 
+/// @brief Construct a semantic analyzer that reports diagnostics to @p emitter.
+/// @param emitter Diagnostic sink receiving emitted messages.
+SemanticAnalyzer::SemanticAnalyzer(DiagnosticEmitter &emitter)
+    : de(emitter), procReg_(de)
+{
+}
+
+/// @brief Access the set of symbols defined across the analyzed program.
+/// @return Reference to the symbol table accumulated during analysis.
+const std::unordered_set<std::string> &SemanticAnalyzer::symbols() const
+{
+    return symbols_;
+}
+
+/// @brief Access the set of line labels declared in the program.
+/// @return Reference to the collection of known labels.
+const std::unordered_set<int> &SemanticAnalyzer::labels() const
+{
+    return labels_;
+}
+
+/// @brief Access the set of labels referenced by control-flow statements.
+/// @return Reference to the recorded label references.
+const std::unordered_set<int> &SemanticAnalyzer::labelRefs() const
+{
+    return labelRefs_;
+}
+
+/// @brief Access the registered procedures discovered during analysis.
+/// @return Procedure table managed by the registry.
+const ProcTable &SemanticAnalyzer::procs() const
+{
+    return procReg_.procs();
+}
+
+/// @brief Enter a new procedure scope and snapshot analyzer state.
+/// @param analyzer Analyzer whose state is saved and restored by the guard.
+SemanticAnalyzer::ProcedureScope::ProcedureScope(SemanticAnalyzer &analyzer) noexcept
+    : analyzer_(analyzer),
+      savedSymbols_(analyzer.symbols_),
+      savedVarTypes_(analyzer.varTypes_),
+      savedArrays_(analyzer.arrays_),
+      savedLabels_(analyzer.labels_),
+      savedLabelRefs_(analyzer.labelRefs_),
+      savedForStack_(analyzer.forStack_)
+{
+    analyzer_.scopes_.pushScope();
+}
+
+/// @brief Restore analyzer state captured at construction and pop the scope.
+SemanticAnalyzer::ProcedureScope::~ProcedureScope() noexcept
+{
+    analyzer_.scopes_.popScope();
+    analyzer_.symbols_ = std::move(savedSymbols_);
+    analyzer_.varTypes_ = std::move(savedVarTypes_);
+    analyzer_.arrays_ = std::move(savedArrays_);
+    analyzer_.labels_ = std::move(savedLabels_);
+    analyzer_.labelRefs_ = std::move(savedLabelRefs_);
+    analyzer_.forStack_ = std::move(savedForStack_);
+}
+
 namespace
 {
 /// @brief Invoke a member handler for a concrete statement type.
