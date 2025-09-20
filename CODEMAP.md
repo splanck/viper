@@ -17,6 +17,14 @@ Paths to notable documentation and tests.
 
   Declares the BASIC front-end abstract syntax tree covering all expression and statement variants emitted by the parser. Nodes record `SourceLoc` metadata, expose owned children via `std::unique_ptr`, and implement `accept` hooks so visitors can traverse without type introspection. Enumerations such as the builtin type tags and binary operator list capture language semantics for later passes. Dependencies include `support/source_location.hpp` alongside standard containers `<memory>`, `<string>`, and `<vector>`.
 
+- **src/frontends/basic/BuiltinRegistry.cpp**
+
+  Implements the BASIC builtin registry that maps canonical names to semantic and lowering callbacks shared across the front end. It materializes a dense table aligned with the `BuiltinCallExpr::Builtin` enum and a lookup map so passes can discover handlers without ad-hoc string switches. Lookup helpers return analyzer visitors, lowering functions, and scan hooks, letting semantic analysis enforce arity while lowering reuses shared emitters. Dependencies include `frontends/basic/BuiltinRegistry.hpp`, `frontends/basic/Lowerer.hpp`, `frontends/basic/SemanticAnalyzer.hpp`, and the standard `<array>` and `<unordered_map>` containers.
+
+- **src/frontends/basic/BuiltinRegistry.hpp**
+
+  Declares the data structures and lookup helpers that describe BASIC builtins to the rest of the front end. The `BuiltinInfo` struct captures each name, argument bounds, and member function pointers for semantic analysis, lowering, and pre-scan so callers dispatch without duplicating knowledge. Free functions expose both enum-indexed metadata and name-to-enum translation so parsing, analysis, and lowering operate off a single registry. Dependencies span the BASIC AST along with `frontends/basic/Lowerer.hpp`, `frontends/basic/SemanticAnalyzer.hpp`, and standard `<optional>`, `<string_view>`, `<vector>`, and `<cstddef>` headers.
+
 - **src/frontends/basic/ConstFolder.cpp**
 
   Implements compile-time folding for BASIC AST expressions using table-driven dispatch across arithmetic, comparison, and string operators. The folder walks expression subtrees, promotes numeric literals to the appropriate width, and replaces nodes with canonical `IntExpr`, `FloatExpr`, or `StringExpr` instances when evaluation succeeds. It preserves 64-bit wrap-around semantics and mutates AST nodes in place so later lowering phases see simplified trees. Dependencies include `ConstFolder.hpp`, `ConstFoldHelpers.hpp`, the expression class hierarchy, and standard utilities like `<optional>` for representing fold results.
@@ -157,6 +165,14 @@ Paths to notable documentation and tests.
   Provides constructors and formatting helpers for IL SSA values including temporaries, numeric literals, globals, and null pointers. The `toString` routine canonicalizes floating-point output by trimming trailing zeroes and ensuring deterministic formatting for the serializer, while helpers like `constInt` and `global` package values with the right tag. These utilities are widely used when building IR, pretty-printing modules, and interpreting values in the VM. The file depends on `il/core/Value.hpp` and the C++ standard library (`<sstream>`, `<iomanip>`, `<limits>`, `<utility>`) for string conversion.
 
 ## IL I/O
+- **src/il/io/ModuleParser.cpp**
+
+  Implements the module-level IL parser responsible for directives like `il`, `extern`, `global`, and `func`. Helpers normalize tokens, parse type lists via `parseType`, capture diagnostics from the function parser, and repackage failures as `Expected` errors tied to the current line. Extern and global directives mutate the active `ParserState` in place, while function headers dispatch into the dedicated function parser and version directives update module metadata. Dependencies include `il/io/ModuleParser.hpp`, IL core containers, subordinate parsers (`FunctionParser`, `ParserUtil`, `TypeParser`), `support/diag_expected.hpp`, and standard `<sstream>`, `<string_view>`, `<utility>`, and `<vector>` utilities.
+
+- **src/il/io/ModuleParser.hpp**
+
+  Declares the `parseModuleHeader` helper that advances the IL reader through top-level directives. Callers provide an input stream, the current line buffer, and the shared `ParserState` so externs, globals, and functions are appended directly to the module. Errors are streamed to an `std::ostream`, mirroring the rest of the parsing layer while keeping this interface minimal. Dependencies are limited to `il/io/ParserState.hpp` alongside `<istream>`, `<ostream>`, and `<string>`.
+
 - **src/il/io/Parser.cpp**
 
   Implements the façade for parsing textual IL modules from an input stream. It seeds a `ParserState`, normalizes each line while skipping comments or blanks, and then hands structural decisions to the detail `parseModuleHeader_E` helper. Errors from that helper propagate unchanged so callers receive consistent diagnostics with precise line numbers. Dependencies include `Parser.hpp`, `ModuleParser.hpp`, `ParserUtil.hpp`, the parser-state helpers, IL core `Module` definitions, and the diagnostics `Expected` wrapper.
@@ -179,6 +195,14 @@ Paths to notable documentation and tests.
   Describes the metadata schema for runtime helper signatures shared across the toolchain. It defines the `RuntimeSignature` struct capturing return and parameter types using IL type objects and documents how parameter order mirrors the C ABI. Accessor functions expose the registry map and an optional lookup helper so consumers can fetch signatures lazily without copying data. Dependencies include `il/core/Type.hpp`, `<string_view>`, `<vector>`, and `<unordered_map>`.
 
 ## IL Transform
+- **src/il/transform/DCE.cpp**
+
+  Houses the trivial dead-code elimination pass that prunes unused temporaries, redundant memory instructions, and stale block parameters. It tallies SSA uses across instructions, erases loads, stores, and allocas whose results never feed later consumers, and mirrors a lightweight liveness sweep. A final walk drops unused block parameters and rewrites branch argument lists to keep control flow well-formed. The implementation leans on `il/transform/DCE.hpp`, IL core structures (`Module`, `Function`, `Instr`, `Value`), and standard `<unordered_map>` and `<unordered_set>` containers.
+
+- **src/il/transform/DCE.hpp**
+
+  Declares the front door for the dead-code elimination pass invoked by the optimizer. It exposes a single `dce` function that mutates an `il::core::Module` in place so driver code can simplify programs before deeper analyses. Dependencies are restricted to the IL forward declarations in `il/core/fwd.hpp`.
+
 - **src/il/transform/Mem2Reg.cpp**
 
   Implements the sealed mem2reg algorithm that promotes stack slots introduced by `alloca` into SSA block parameters. The pass gathers allocation metadata, tracks reaching definitions per block, and patches branch arguments to thread promoted values through the CFG. It also maintains statistics about eliminated loads/stores and rewrites instructions in place so later passes see SSA form without detours through memory. Dependencies include `il/transform/Mem2Reg.hpp`, `il/analysis/CFG.hpp`, IL core types (`Function`, `BasicBlock`, `Instr`, `Value`, `Type`), and standard containers such as `<unordered_map>`, `<unordered_set>`, `<queue>`, `<optional>`, `<algorithm>`, and `<functional>`.
@@ -192,6 +216,14 @@ Paths to notable documentation and tests.
   Hosts the modular pass manager that sequences module/function passes, wraps callbacks, and tracks analysis preservation across runs. It synthesizes CFG and liveness information to support passes, instantiates adapters that expose pass identifiers, and invalidates cached analyses when a pass does not declare them preserved. The implementation also provides helper factories for module/function pass lambdas and utilities to mark entire analysis sets as kept or dropped. Key dependencies span the pass manager headers, IL analysis utilities (`CFG`, `Dominators`, liveness builders), IL core containers, the verifier, and standard unordered containers.
 
 ## IL Verification
+- **src/il/verify/TypeInference.cpp**
+
+  Provides the verifier's type-inference engine for IL, backing operand validation and diagnostic rendering. Construction ties the helper to caller-owned maps and sets so it can track temporary types, mark definitions, and uphold the invariant that every defined id has an associated type. Utility methods render single-line instruction snippets, compute primitive widths, ensure operands are defined, and surface failures as either streamed diagnostics or `Expected` errors. The implementation includes `il/verify/TypeInference.hpp`, draws on IL core instruction and value metadata, and uses `support/diag_expected.hpp` plus `<sstream>` and `<string_view>` to produce rich error text.
+
+- **src/il/verify/TypeInference.hpp**
+
+  Defines the `TypeInference` helper interface that the verifier uses to reason about IL operand types. It offers queries for value types and byte widths along with mutation hooks to record or drop temporaries as control flow progresses. Both streaming and `Expected`-returning verification APIs share the same backing state, giving callers flexibility without duplicating logic. Dependencies span IL core headers for types, values, and forward declarations together with `<unordered_map>`, `<unordered_set>`, `<ostream>`, and `<string>` from the standard library.
+
 - **src/il/verify/Verifier.cpp**
 
   Validates whole modules by checking extern/global uniqueness, building block maps, and dispatching per-instruction structural and typing checks. It orchestrates control-flow validation, opcode contract enforcement, and type inference while collecting both hard errors and advisory diagnostics. Runtime signatures from the bridge are cross-checked against declared externs, and helper functions iterate each block to ensure terminators and branch arguments are well-formed. The verifier depends on `Verifier.hpp`, IL core data structures, the runtime signature catalog, analysis helpers (`TypeInference`, `ControlFlowChecker`, `InstructionChecker`), and the diagnostics framework (`support/diag_expected`).
@@ -246,6 +278,10 @@ Paths to notable documentation and tests.
 
   Provides the integer arithmetic, bitwise, shift, and comparison handlers executed by the VM. Shared helpers evaluate operands once and encode the arithmetic or predicate rule, guaranteeing two’s complement wrap-around semantics align with the IL reference. Comparison results are normalized to IL booleans and stored via `ops::storeResult`, preserving invariants expected by later opcodes. Dependencies include `vm/OpHandlers.hpp`, `vm/OpHandlerUtils.hpp`, and IL instruction definitions.
 
+- **src/vm/mem_ops.cpp**
+
+  Implements the VM opcode handlers for memory-centric IL instructions such as `alloca`, `load`, `store`, `gep`, and constant-string helpers. Each routine evaluates operands through the VM, enforces stack bounds or null checks, and mirrors type-directed load/store semantics so runtime behaviour matches the IL specification. Store handlers also funnel writes through the debug controller, and pointer math reuses shared slot helpers to keep execution deterministic. Dependencies cover `vm/OpHandlers.hpp`, `vm/OpHandlerUtils.hpp`, `vm/RuntimeBridge.hpp`, IL core instruction/type definitions, and standard `<cassert>` and `<cstring>` facilities.
+
 - **src/vm/OpHandlerUtils.cpp**
 
   Provides shared helper routines used by opcode implementations to manipulate VM state. The `storeResult` utility grows the register vector as needed before writing an instruction's destination slot, ensuring the interpreter never reads uninitialized registers. Keeping the logic centralized prevents handlers from duplicating resize and assignment code and maintains invariant checks in one location. Dependencies include `vm/OpHandlerUtils.hpp` and IL instruction definitions from `il/core/Instr.hpp`.
@@ -261,6 +297,10 @@ Paths to notable documentation and tests.
 - **src/vm/RuntimeBridge.cpp**
 
   Provides the dynamic bridge that allows the VM to invoke C runtime helpers while preserving precise trap diagnostics. On first use it materializes a dispatch table mapping runtime symbol names to thin adapters that unpack `Slot` arguments, call the underlying C functions, and marshal results back into VM slots. Before each call it records the current `SourceLoc`, function, and block names so the exported `vm_trap` hook can report accurate context if the callee aborts. The implementation relies on `RuntimeBridge.hpp`, the VM's `Slot` type, generated runtime headers such as `rt_math.h` and `rt_random.h`, and standard library utilities like `<unordered_map>` and `<sstream>`.
+
+- **src/vm/RuntimeBridge.hpp**
+
+  Declares the static `RuntimeBridge` adapters that let the VM invoke the C runtime and surface traps. The `call` helper marshals evaluated slot arguments into the runtime ABI while threading source locations, function names, and block labels for diagnostics. A companion `trap` entry centralizes error reporting so runtime failures share consistent messaging paths. Dependencies include `rt.hpp`, `support/source_location.hpp`, the forward-declared VM `Slot` union, and standard `<string>` and `<vector>` containers.
 
 - **src/vm/Trace.cpp**
 
