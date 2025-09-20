@@ -173,4 +173,11 @@ Slot VM::execFunction(const Function &fn, const std::vector<Slot> &args)
     return runFunctionLoop(st);
 }
 
+/// @brief Return the number of instructions executed by the VM instance.
+/// @return Cumulative instruction count since construction or last reset.
+uint64_t VM::getInstrCount() const
+{
+    return instrCount;
+}
+
 } // namespace il::vm

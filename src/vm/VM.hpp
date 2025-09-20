@@ -237,10 +237,7 @@ class VM
 
   public:
     /// @brief Return executed instruction count.
-    uint64_t getInstrCount() const
-    {
-        return instrCount;
-    }
+    uint64_t getInstrCount() const;
 };
 
 } // namespace il::vm

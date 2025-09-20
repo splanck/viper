@@ -35,10 +35,7 @@ struct TraceConfig
 
     /// @brief Check whether tracing is enabled.
     /// @return True if mode is not Off.
-    bool enabled() const
-    {
-        return mode != Off;
-    }
+    bool enabled() const;
 };
 
 /// @brief Sink that formats and emits trace lines.

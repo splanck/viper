@@ -18,30 +18,17 @@ struct Symbol
 {
     uint32_t id = 0;
 
-    friend bool operator==(Symbol a, Symbol b) noexcept
-    {
-        return a.id == b.id;
-    }
-
-    friend bool operator!=(Symbol a, Symbol b) noexcept
-    {
-        return a.id != b.id;
-    }
-
-    explicit operator bool() const noexcept
-    {
-        return id != 0;
-    }
+    [[nodiscard]] explicit operator bool() const noexcept;
 };
+
+bool operator==(Symbol a, Symbol b) noexcept;
+bool operator!=(Symbol a, Symbol b) noexcept;
 } // namespace il::support
 
 namespace std
 {
 template <> struct hash<il::support::Symbol>
 {
-    size_t operator()(il::support::Symbol s) const noexcept
-    {
-        return s.id;
-    }
+    size_t operator()(il::support::Symbol s) const noexcept;
 };
 } // namespace std

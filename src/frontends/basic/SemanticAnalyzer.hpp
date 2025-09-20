@@ -41,35 +41,23 @@ class SemanticAnalyzer
     static constexpr std::string_view DiagNonBooleanNotOperand = "E1003";
 
     /// @brief Create analyzer reporting to @p emitter.
-    explicit SemanticAnalyzer(DiagnosticEmitter &emitter) : de(emitter), procReg_(de) {}
+    explicit SemanticAnalyzer(DiagnosticEmitter &emitter);
 
     /// @brief Analyze @p prog collecting symbols and labels.
     /// @param prog Program AST to walk.
     void analyze(const Program &prog);
 
     /// @brief Collected variable names defined in the program.
-    const std::unordered_set<std::string> &symbols() const
-    {
-        return symbols_;
-    }
+    const std::unordered_set<std::string> &symbols() const;
 
     /// @brief Line numbers present in the program.
-    const std::unordered_set<int> &labels() const
-    {
-        return labels_;
-    }
+    const std::unordered_set<int> &labels() const;
 
     /// @brief GOTO targets referenced in the program.
-    const std::unordered_set<int> &labelRefs() const
-    {
-        return labelRefs_;
-    }
+    const std::unordered_set<int> &labelRefs() const;
 
     /// @brief Registered procedures and their signatures.
-    const ProcTable &procs() const
-    {
-        return procReg_.procs();
-    }
+    const ProcTable &procs() const;
 
   private:
     /// @brief Record symbols and labels from a statement.
@@ -123,31 +111,12 @@ class SemanticAnalyzer
     class ProcedureScope
     {
       public:
-        explicit ProcedureScope(SemanticAnalyzer &analyzer) noexcept
-            : analyzer_(analyzer),
-              savedSymbols_(analyzer.symbols_),
-              savedVarTypes_(analyzer.varTypes_),
-              savedArrays_(analyzer.arrays_),
-              savedLabels_(analyzer.labels_),
-              savedLabelRefs_(analyzer.labelRefs_),
-              savedForStack_(analyzer.forStack_)
-        {
-            analyzer_.scopes_.pushScope();
-        }
+        explicit ProcedureScope(SemanticAnalyzer &analyzer) noexcept;
 
         ProcedureScope(const ProcedureScope &) = delete;
         ProcedureScope &operator=(const ProcedureScope &) = delete;
 
-        ~ProcedureScope() noexcept
-        {
-            analyzer_.scopes_.popScope();
-            analyzer_.symbols_ = std::move(savedSymbols_);
-            analyzer_.varTypes_ = std::move(savedVarTypes_);
-            analyzer_.arrays_ = std::move(savedArrays_);
-            analyzer_.labels_ = std::move(savedLabels_);
-            analyzer_.labelRefs_ = std::move(savedLabelRefs_);
-            analyzer_.forStack_ = std::move(savedForStack_);
-        }
+        ~ProcedureScope() noexcept;
 
       private:
         SemanticAnalyzer &analyzer_;

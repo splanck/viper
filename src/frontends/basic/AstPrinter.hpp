@@ -47,10 +47,7 @@ class AstPrinter
             Printer &p;
 
             /// @brief Restore previous indentation level when destroyed.
-            ~Indent()
-            {
-                --p.indent;
-            }
+            ~Indent();
         };
 
         /// @brief Increase indentation for the next scope.
