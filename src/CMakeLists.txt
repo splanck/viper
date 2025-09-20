@@ -55,7 +55,13 @@ target_link_libraries(il_vm PUBLIC il_core rt support VMTrace)
 add_library(il_codegen_x86_64 STATIC codegen/x86_64/placeholder.cpp)
 set_target_properties(il_codegen_x86_64 PROPERTIES LINKER_LANGUAGE CXX)
 
-add_executable(ilc tools/ilc/main.cpp tools/ilc/cmd_run_il.cpp tools/ilc/cmd_front_basic.cpp tools/ilc/cmd_il_opt.cpp tools/ilc/break_spec.cpp)
+add_executable(ilc
+  tools/ilc/main.cpp
+  tools/ilc/cmd_run_il.cpp
+  tools/ilc/cmd_front_basic.cpp
+  tools/ilc/cmd_il_opt.cpp
+  tools/ilc/cli.cpp
+  tools/ilc/break_spec.cpp)
 set_target_properties(ilc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/ilc)
 target_link_libraries(ilc PRIVATE il_core il_io il_vm il_verify il_transform fe_basic support Passes)
 

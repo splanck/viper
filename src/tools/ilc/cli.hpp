@@ -44,47 +44,10 @@ enum class SharedOptionParseResult
 /// @param argv Argument vector.
 /// @param opts Accumulator receiving parsed option values.
 /// @return Parsing outcome describing whether the argument was handled.
-inline SharedOptionParseResult parseSharedOption(int &index,
-                                                 int argc,
-                                                 char **argv,
-                                                 SharedCliOptions &opts)
-{
-    const std::string arg = argv[index];
-    if (arg == "--trace" || arg == "--trace=il")
-    {
-        opts.trace.mode = il::vm::TraceConfig::IL;
-        return SharedOptionParseResult::Parsed;
-    }
-    if (arg == "--trace=src")
-    {
-        opts.trace.mode = il::vm::TraceConfig::SRC;
-        return SharedOptionParseResult::Parsed;
-    }
-    if (arg == "--stdin-from")
-    {
-        if (index + 1 >= argc)
-        {
-            return SharedOptionParseResult::Error;
-        }
-        opts.stdinPath = argv[++index];
-        return SharedOptionParseResult::Parsed;
-    }
-    if (arg == "--max-steps")
-    {
-        if (index + 1 >= argc)
-        {
-            return SharedOptionParseResult::Error;
-        }
-        opts.maxSteps = std::stoull(argv[++index]);
-        return SharedOptionParseResult::Parsed;
-    }
-    if (arg == "--bounds-checks")
-    {
-        opts.boundsChecks = true;
-        return SharedOptionParseResult::Parsed;
-    }
-    return SharedOptionParseResult::NotMatched;
-}
+SharedOptionParseResult parseSharedOption(int &index,
+                                         int argc,
+                                         char **argv,
+                                         SharedCliOptions &opts);
 
 } // namespace ilc
 
