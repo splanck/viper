@@ -157,15 +157,7 @@ inline constexpr std::array<BinaryFoldEntry, 16> kBinaryFoldTable = {{
 
 /// @brief Look up folding handlers for a BASIC binary operator.
 /// @return Pointer to the table entry or nullptr when the operator is unsupported.
-inline const BinaryFoldEntry *findBinaryFold(BinaryExpr::Op op)
-{
-    for (const auto &entry : kBinaryFoldTable)
-    {
-        if (entry.op == op)
-            return &entry;
-    }
-    return nullptr;
-}
+const BinaryFoldEntry *findBinaryFold(BinaryExpr::Op op);
 } // namespace detail
 
 } // namespace il::frontends::basic
