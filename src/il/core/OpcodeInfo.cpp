@@ -36,6 +36,16 @@ const std::array<OpcodeInfo, kNumOpcodes> kOpcodeTable = {
 
 static_assert(kOpcodeTable.size() == kNumOpcodes, "Opcode table must match enum count");
 
+const OpcodeInfo &getOpcodeInfo(Opcode op)
+{
+    return kOpcodeTable[static_cast<size_t>(op)];
+}
+
+bool isVariadicOperandCount(uint8_t value)
+{
+    return value == kVariadicOperandCount;
+}
+
 /**
  * @brief Returns the mnemonic associated with the provided opcode.
  *
