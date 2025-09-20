@@ -47,8 +47,8 @@ void declareRuntimeExtern(build::IRBuilder &b, std::string_view name)
 
 /// @brief Declare every runtime helper required by the current lowering run.
 /// @details Emits baseline helpers unconditionally and consults lowering
-///          toggles such as needRtConcat, boundsChecks, and similar feature
-///          flags to decide which additional helpers are necessary. Runtime
+///          toggles recorded through requestHelper/isHelperNeeded along with
+///          boundsChecks to decide which additional helpers are necessary. Runtime
 ///          math helpers requested dynamically are iterated in the order
 ///          recorded by trackRuntime so declaration emission remains
 ///          deterministic. Each declaration delegates to declareRuntimeExtern,
@@ -57,6 +57,16 @@ void declareRuntimeExtern(build::IRBuilder &b, std::string_view name)
 /// @note Assumes runtimeOrder has been populated through trackRuntime calls;
 ///       missing signatures are enforced by the assertion in
 ///       declareRuntimeExtern.
+void Lowerer::requestHelper(RuntimeHelper helper)
+{
+    runtimeHelpers.set(static_cast<size_t>(helper));
+}
+
+bool Lowerer::isHelperNeeded(RuntimeHelper helper) const
+{
+    return runtimeHelpers.test(static_cast<size_t>(helper));
+}
+
 void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
 {
     declareRuntimeExtern(b, "rt_print_str");
@@ -64,45 +74,45 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
     declareRuntimeExtern(b, "rt_print_f64");
     declareRuntimeExtern(b, "rt_len");
     declareRuntimeExtern(b, "rt_substr");
-    if (needRtConcat)
+    if (isHelperNeeded(RuntimeHelper::Concat))
         declareRuntimeExtern(b, "rt_concat");
     if (boundsChecks)
         declareRuntimeExtern(b, "rt_trap");
-    if (needInputLine)
+    if (isHelperNeeded(RuntimeHelper::InputLine))
         declareRuntimeExtern(b, "rt_input_line");
-    if (needRtToInt)
+    if (isHelperNeeded(RuntimeHelper::ToInt))
         declareRuntimeExtern(b, "rt_to_int");
-    if (needRtIntToStr)
+    if (isHelperNeeded(RuntimeHelper::IntToStr))
         declareRuntimeExtern(b, "rt_int_to_str");
-    if (needRtF64ToStr)
+    if (isHelperNeeded(RuntimeHelper::F64ToStr))
         declareRuntimeExtern(b, "rt_f64_to_str");
-    if (needAlloc)
+    if (isHelperNeeded(RuntimeHelper::Alloc))
         declareRuntimeExtern(b, "rt_alloc");
-    if (needRtLeft)
+    if (isHelperNeeded(RuntimeHelper::Left))
         declareRuntimeExtern(b, "rt_left");
-    if (needRtRight)
+    if (isHelperNeeded(RuntimeHelper::Right))
         declareRuntimeExtern(b, "rt_right");
-    if (needRtMid2)
+    if (isHelperNeeded(RuntimeHelper::Mid2))
         declareRuntimeExtern(b, "rt_mid2");
-    if (needRtMid3)
+    if (isHelperNeeded(RuntimeHelper::Mid3))
         declareRuntimeExtern(b, "rt_mid3");
-    if (needRtInstr2)
+    if (isHelperNeeded(RuntimeHelper::Instr2))
         declareRuntimeExtern(b, "rt_instr2");
-    if (needRtInstr3)
+    if (isHelperNeeded(RuntimeHelper::Instr3))
         declareRuntimeExtern(b, "rt_instr3");
-    if (needRtLtrim)
+    if (isHelperNeeded(RuntimeHelper::Ltrim))
         declareRuntimeExtern(b, "rt_ltrim");
-    if (needRtRtrim)
+    if (isHelperNeeded(RuntimeHelper::Rtrim))
         declareRuntimeExtern(b, "rt_rtrim");
-    if (needRtTrim)
+    if (isHelperNeeded(RuntimeHelper::Trim))
         declareRuntimeExtern(b, "rt_trim");
-    if (needRtUcase)
+    if (isHelperNeeded(RuntimeHelper::Ucase))
         declareRuntimeExtern(b, "rt_ucase");
-    if (needRtLcase)
+    if (isHelperNeeded(RuntimeHelper::Lcase))
         declareRuntimeExtern(b, "rt_lcase");
-    if (needRtChr)
+    if (isHelperNeeded(RuntimeHelper::Chr))
         declareRuntimeExtern(b, "rt_chr");
-    if (needRtAsc)
+    if (isHelperNeeded(RuntimeHelper::Asc))
         declareRuntimeExtern(b, "rt_asc");
 
     for (RuntimeFn fn : runtimeOrder)
@@ -142,7 +152,7 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         }
     }
 
-    if (needRtStrEq)
+    if (isHelperNeeded(RuntimeHelper::StrEq))
         declareRuntimeExtern(b, "rt_str_eq");
 }
 
