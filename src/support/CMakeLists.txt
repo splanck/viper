@@ -4,6 +4,7 @@ add_library(support STATIC
   diagnostics.cpp
   arena.cpp
   diag_expected.cpp
+  diag_capture.cpp
 )
 
 target_include_directories(support PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
