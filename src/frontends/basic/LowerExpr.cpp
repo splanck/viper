@@ -525,8 +525,8 @@ Lowerer::RVal Lowerer::lowerLen(const BuiltinCallExpr &c)
 ///   presence of the third argument at compile time.
 /// - Emitted IL: Computes zero-based offsets, then calls either `rt_mid2` or
 ///   `rt_mid3`, marking which runtime entry points are required.
-/// - Side effects: Updates @ref curLoc and toggles @ref needRtMid2 or
-///   @ref needRtMid3 feature flags for later runtime linkage.
+/// - Side effects: Updates @ref curLoc and records the runtime helper variant
+///   needed for later linkage.
 Lowerer::RVal Lowerer::lowerMid(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
@@ -537,11 +537,11 @@ Lowerer::RVal Lowerer::lowerMid(const BuiltinCallExpr &c)
     {
         RVal n = ensureI64(lowerArg(c, 2), c.loc);
         Value res = emitCallRet(Type(Type::Kind::Str), "rt_mid3", {s.value, start0, n.value});
-        needRtMid3 = true;
+        requestHelper(RuntimeHelper::Mid3);
         return {res, Type(Type::Kind::Str)};
     }
     Value res = emitCallRet(Type(Type::Kind::Str), "rt_mid2", {s.value, start0});
-    needRtMid2 = true;
+    requestHelper(RuntimeHelper::Mid2);
     return {res, Type(Type::Kind::Str)};
 }
 
@@ -552,14 +552,14 @@ Lowerer::RVal Lowerer::lowerMid(const BuiltinCallExpr &c)
 /// - Control flow: Linear within the current block.
 /// - Emitted IL: Ensures the length argument is an `i64` and calls
 ///   `rt_left`, tracking that the runtime stub is required.
-/// - Side effects: Updates @ref curLoc and sets @ref needRtLeft.
+/// - Side effects: Updates @ref curLoc and records the LEFT$ runtime helper requirement.
 Lowerer::RVal Lowerer::lowerLeft(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
     RVal n = ensureI64(lowerArg(c, 1), c.loc);
     curLoc = c.loc;
     Value res = emitCallRet(Type(Type::Kind::Str), "rt_left", {s.value, n.value});
-    needRtLeft = true;
+    requestHelper(RuntimeHelper::Left);
     return {res, Type(Type::Kind::Str)};
 }
 
@@ -569,14 +569,14 @@ Lowerer::RVal Lowerer::lowerLeft(const BuiltinCallExpr &c)
 /// @details
 /// - Control flow: Remains in the current block without branching.
 /// - Emitted IL: Converts the count argument to `i64` and calls `rt_right`.
-/// - Side effects: Updates @ref curLoc and sets @ref needRtRight.
+/// - Side effects: Updates @ref curLoc and records the RIGHT$ runtime helper requirement.
 Lowerer::RVal Lowerer::lowerRight(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
     RVal n = ensureI64(lowerArg(c, 1), c.loc);
     curLoc = c.loc;
     Value res = emitCallRet(Type(Type::Kind::Str), "rt_right", {s.value, n.value});
-    needRtRight = true;
+    requestHelper(RuntimeHelper::Right);
     return {res, Type(Type::Kind::Str)};
 }
 
@@ -643,8 +643,8 @@ Lowerer::RVal Lowerer::lowerInt(const BuiltinCallExpr &c)
 ///   three-argument runtime entry points based on AST structure.
 /// - Emitted IL: Adjusts user-facing 1-based indices, then calls either
 ///   `rt_instr2` or `rt_instr3` and records which helper is needed.
-/// - Side effects: Updates @ref curLoc and toggles @ref needRtInstr2 or
-///   @ref needRtInstr3 flags.
+/// - Side effects: Updates @ref curLoc and records which INSTR helper variant
+///   is required for linkage.
 Lowerer::RVal Lowerer::lowerInstr(const BuiltinCallExpr &c)
 {
     curLoc = c.loc;
@@ -657,13 +657,13 @@ Lowerer::RVal Lowerer::lowerInstr(const BuiltinCallExpr &c)
         RVal needle = lowerArg(c, 2);
         Value res =
             emitCallRet(Type(Type::Kind::I64), "rt_instr3", {start0, hay.value, needle.value});
-        needRtInstr3 = true;
+        requestHelper(RuntimeHelper::Instr3);
         return {res, Type(Type::Kind::I64)};
     }
     RVal hay = lowerArg(c, 0);
     RVal needle = lowerArg(c, 1);
     Value res = emitCallRet(Type(Type::Kind::I64), "rt_instr2", {hay.value, needle.value});
-    needRtInstr2 = true;
+    requestHelper(RuntimeHelper::Instr2);
     return {res, Type(Type::Kind::I64)};
 }
 
@@ -673,13 +673,13 @@ Lowerer::RVal Lowerer::lowerInstr(const BuiltinCallExpr &c)
 /// @details
 /// - Control flow: Straight-line within the current block.
 /// - Emitted IL: Calls `rt_ltrim` with the lowered string argument.
-/// - Side effects: Updates @ref curLoc and sets @ref needRtLtrim.
+/// - Side effects: Updates @ref curLoc and records the LTRIM$ runtime helper requirement.
 Lowerer::RVal Lowerer::lowerLtrim(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
     curLoc = c.loc;
     Value res = emitCallRet(Type(Type::Kind::Str), "rt_ltrim", {s.value});
-    needRtLtrim = true;
+    requestHelper(RuntimeHelper::Ltrim);
     return {res, Type(Type::Kind::Str)};
 }
 
@@ -689,13 +689,13 @@ Lowerer::RVal Lowerer::lowerLtrim(const BuiltinCallExpr &c)
 /// @details
 /// - Control flow: Linear within the current block.
 /// - Emitted IL: Calls `rt_rtrim` with the lowered string argument.
-/// - Side effects: Updates @ref curLoc and sets @ref needRtRtrim.
+/// - Side effects: Updates @ref curLoc and records the RTRIM$ runtime helper requirement.
 Lowerer::RVal Lowerer::lowerRtrim(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
     curLoc = c.loc;
     Value res = emitCallRet(Type(Type::Kind::Str), "rt_rtrim", {s.value});
-    needRtRtrim = true;
+    requestHelper(RuntimeHelper::Rtrim);
     return {res, Type(Type::Kind::Str)};
 }
 
@@ -705,13 +705,13 @@ Lowerer::RVal Lowerer::lowerRtrim(const BuiltinCallExpr &c)
 /// @details
 /// - Control flow: Linear within the current block.
 /// - Emitted IL: Calls `rt_trim` with the lowered string argument.
-/// - Side effects: Updates @ref curLoc and sets @ref needRtTrim.
+/// - Side effects: Updates @ref curLoc and records the TRIM$ runtime helper requirement.
 Lowerer::RVal Lowerer::lowerTrim(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
     curLoc = c.loc;
     Value res = emitCallRet(Type(Type::Kind::Str), "rt_trim", {s.value});
-    needRtTrim = true;
+    requestHelper(RuntimeHelper::Trim);
     return {res, Type(Type::Kind::Str)};
 }
 
@@ -721,13 +721,13 @@ Lowerer::RVal Lowerer::lowerTrim(const BuiltinCallExpr &c)
 /// @details
 /// - Control flow: Straight-line within the current block.
 /// - Emitted IL: Calls `rt_ucase` with the lowered string argument.
-/// - Side effects: Updates @ref curLoc and sets @ref needRtUcase.
+/// - Side effects: Updates @ref curLoc and records the UCASE$ runtime helper requirement.
 Lowerer::RVal Lowerer::lowerUcase(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
     curLoc = c.loc;
     Value res = emitCallRet(Type(Type::Kind::Str), "rt_ucase", {s.value});
-    needRtUcase = true;
+    requestHelper(RuntimeHelper::Ucase);
     return {res, Type(Type::Kind::Str)};
 }
 
@@ -737,13 +737,13 @@ Lowerer::RVal Lowerer::lowerUcase(const BuiltinCallExpr &c)
 /// @details
 /// - Control flow: Straight-line within the current block.
 /// - Emitted IL: Calls `rt_lcase` with the lowered string argument.
-/// - Side effects: Updates @ref curLoc and sets @ref needRtLcase.
+/// - Side effects: Updates @ref curLoc and records the LCASE$ runtime helper requirement.
 Lowerer::RVal Lowerer::lowerLcase(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
     curLoc = c.loc;
     Value res = emitCallRet(Type(Type::Kind::Str), "rt_lcase", {s.value});
-    needRtLcase = true;
+    requestHelper(RuntimeHelper::Lcase);
     return {res, Type(Type::Kind::Str)};
 }
 
@@ -753,13 +753,13 @@ Lowerer::RVal Lowerer::lowerLcase(const BuiltinCallExpr &c)
 /// @details
 /// - Control flow: Linear within the current block.
 /// - Emitted IL: Converts the code point to `i64` and calls `rt_chr`.
-/// - Side effects: Updates @ref curLoc and sets @ref needRtChr.
+/// - Side effects: Updates @ref curLoc and records the CHR$ runtime helper requirement.
 Lowerer::RVal Lowerer::lowerChr(const BuiltinCallExpr &c)
 {
     RVal code = ensureI64(lowerArg(c, 0), c.loc);
     curLoc = c.loc;
     Value res = emitCallRet(Type(Type::Kind::Str), "rt_chr", {code.value});
-    needRtChr = true;
+    requestHelper(RuntimeHelper::Chr);
     return {res, Type(Type::Kind::Str)};
 }
 
@@ -769,13 +769,13 @@ Lowerer::RVal Lowerer::lowerChr(const BuiltinCallExpr &c)
 /// @details
 /// - Control flow: Straight-line within the current block.
 /// - Emitted IL: Calls `rt_asc` with the lowered string argument.
-/// - Side effects: Updates @ref curLoc and sets @ref needRtAsc.
+/// - Side effects: Updates @ref curLoc and records the ASC runtime helper requirement.
 Lowerer::RVal Lowerer::lowerAsc(const BuiltinCallExpr &c)
 {
     RVal s = lowerArg(c, 0);
     curLoc = c.loc;
     Value res = emitCallRet(Type(Type::Kind::I64), "rt_asc", {s.value});
-    needRtAsc = true;
+    requestHelper(RuntimeHelper::Asc);
     return {res, Type(Type::Kind::I64)};
 }
 
