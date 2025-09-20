@@ -27,7 +27,7 @@ struct Type
 
     /// @brief Construct a type of kind @p k.
     /// @param k Desired kind.
-    constexpr explicit Type(Kind k = Kind::Void) : kind(k) {}
+    explicit Type(Kind k = Kind::Void);
 
     /// @brief Convert type to string representation.
     /// @return Lowercase type mnemonic.

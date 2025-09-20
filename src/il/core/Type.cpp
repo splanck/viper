@@ -9,6 +9,11 @@
 namespace il::core
 {
 
+/// @brief Construct a Type wrapper from the provided kind enumerator.
+Type::Type(Kind k) : kind(k)
+{
+}
+
 std::string kindToString(Type::Kind k)
 {
     switch (k)

@@ -32,10 +32,7 @@ class SearchBar : public ui::Widget
     void setRegex(bool regex);
 
     /// @brief Number of current matches.
-    [[nodiscard]] std::size_t matchCount() const
-    {
-        return matches_.size();
-    }
+    [[nodiscard]] std::size_t matchCount() const;
 
   private:
     text::TextBuffer &buf_;

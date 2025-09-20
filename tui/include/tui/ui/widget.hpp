@@ -38,20 +38,14 @@ class Widget
     virtual bool onEvent(const Event &ev);
 
     /// @brief Whether this widget can receive focus.
-    [[nodiscard]] virtual bool wantsFocus() const
-    {
-        return false;
-    }
+    [[nodiscard]] virtual bool wantsFocus() const;
 
     /// @brief Notifies widget when it gains or loses input focus.
     /// Default implementation is a no-op.
-    virtual void onFocusChanged(bool /*focused*/) {}
+    virtual void onFocusChanged(bool focused);
 
     /// @brief Retrieve widget rectangle.
-    [[nodiscard]] Rect rect() const
-    {
-        return rect_;
-    }
+    [[nodiscard]] Rect rect() const;
 
   protected:
     Rect rect_{};

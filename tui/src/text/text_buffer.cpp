@@ -37,6 +37,12 @@ void TextBuffer::load(std::string text)
     redo_stack_.clear();
 }
 
+/// @brief Report the current number of bytes stored in the buffer.
+std::size_t TextBuffer::size() const
+{
+    return size_;
+}
+
 void TextBuffer::beginTxn()
 {
     in_txn_ = true;

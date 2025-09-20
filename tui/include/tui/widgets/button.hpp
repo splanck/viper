@@ -33,10 +33,7 @@ class Button : public ui::Widget
     bool onEvent(const ui::Event &ev) override;
 
     /// @brief Buttons want focus to receive input.
-    [[nodiscard]] bool wantsFocus() const override
-    {
-        return true;
-    }
+    [[nodiscard]] bool wantsFocus() const override;
 
   private:
     std::string text_{};

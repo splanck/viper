@@ -11,10 +11,29 @@
 namespace viper::tui::widgets
 {
 
+/// @brief Construct a tree node with the provided label string.
+TreeNode::TreeNode(std::string lbl) : label(std::move(lbl))
+{
+}
+
+/// @brief Append a child node and wire its parent pointer.
+TreeNode *TreeNode::add(std::unique_ptr<TreeNode> child)
+{
+    child->parent = this;
+    children.push_back(std::move(child));
+    return children.back().get();
+}
+
 TreeView::TreeView(std::vector<std::unique_ptr<TreeNode>> roots, const style::Theme &theme)
     : roots_(std::move(roots)), theme_(theme)
 {
     rebuild();
+}
+
+/// @brief Tree views require focus to drive expansion and navigation via keyboard.
+bool TreeView::wantsFocus() const
+{
+    return true;
 }
 
 void TreeView::paint(render::ScreenBuffer &sb)
