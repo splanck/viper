@@ -9,6 +9,14 @@ Paths to notable documentation and tests.
 - docs/il-reference.md — full IL reference
 
 ## Front End (BASIC)
+- **src/frontends/basic/AST.cpp**
+
+  Defines the visitor `accept` overrides for every BASIC expression and statement node so passes can leverage double-dispatch instead of manual `switch` ladders. Each override simply forwards `*this` to the supplied `ExprVisitor` or `StmtVisitor`, preserving the tree's ownership model while letting the visitor decide behaviour. Keeping the logic centralized in one translation unit gives future extensions a stable home for additional helper code or instrumentation. Dependencies are limited to `frontends/basic/AST.hpp`, which declares the node types and visitor interfaces.
+
+- **src/frontends/basic/AST.hpp**
+
+  Declares the BASIC front-end abstract syntax tree covering all expression and statement variants emitted by the parser. Nodes record `SourceLoc` metadata, expose owned children via `std::unique_ptr`, and implement `accept` hooks so visitors can traverse without type introspection. Enumerations such as the builtin type tags and binary operator list capture language semantics for later passes. Dependencies include `support/source_location.hpp` alongside standard containers `<memory>`, `<string>`, and `<vector>`.
+
 - **src/frontends/basic/ConstFolder.cpp**
 
   Implements compile-time folding for BASIC AST expressions using table-driven dispatch across arithmetic, comparison, and string operators. The folder walks expression subtrees, promotes numeric literals to the appropriate width, and replaces nodes with canonical `IntExpr`, `FloatExpr`, or `StringExpr` instances when evaluation succeeds. It preserves 64-bit wrap-around semantics and mutates AST nodes in place so later lowering phases see simplified trees. Dependencies include `ConstFolder.hpp`, `ConstFoldHelpers.hpp`, the expression class hierarchy, and standard utilities like `<optional>` for representing fold results.
@@ -25,6 +33,10 @@ Paths to notable documentation and tests.
 
   Declares the private and public helpers `Lowerer` uses to emit IL for BASIC constructs ranging from builtins to control-flow statements. The header documents entry points for collecting variables, lowering expressions, and wiring loops or IF/ELSE chains while exposing a catalog of builtin handlers (`lowerLen`, `lowerMid`, and others). Its API ensures callers maintain consistent stack slot mappings and boolean lowering semantics by routing through shared helpers such as `lowerBoolBranchExpr`. Dependencies span the BASIC AST model, IL opcode/type definitions, and support utilities like `il::support::SourceLoc`, with implementations provided in `LowerEmit.cpp`.
 
+- **src/frontends/basic/LowerExpr.cpp**
+
+  Houses the expression-lowering portion of `Lowerer`, mapping BASIC AST nodes into IL SSA values. Helpers like `lowerVarExpr`, `lowerLogicalBinary`, and `lowerNumericBinary` reuse shared utilities for block management, type promotion, short-circuit control flow, and divide-by-zero trapping so emitted IL stays canonical. String operators route through runtime helpers, boolean expressions synthesize temporary blocks, and all visitors keep `curLoc` updated for diagnostics. Dependencies include `frontends/basic/Lowerer.hpp`, `frontends/basic/BuiltinRegistry.hpp`, IL core types (`BasicBlock`, `Function`, `Instr`), and `<functional>`/`<vector>` for callback plumbing.
+
 - **src/frontends/basic/Lowerer.cpp**
 
   Coordinates the lowering pipeline that turns BASIC programs into IL modules, covering runtime helper declaration, name mangling, and SSA slot assignment. During `lowerProgram` it resets lowering state, builds an `il::build::IRBuilder`, and emits both user procedures and a synthetic `@main` while tracking string literals and array metadata. Helper structures like `BlockNamer` generate deterministic labels for branches, loops, and procedure prologues, and the implementation conditionally inserts bounds-check plumbing when the front end is configured for it. Dependencies span `Lowerer.hpp`, companion lowering helpers (`LowerEmit`, `LowerExpr`, `LowerRuntime`), the AST model, the name mangler, IL core headers, and standard containers and algorithms.
@@ -36,6 +48,14 @@ Paths to notable documentation and tests.
 - **src/frontends/basic/LoweringContext.hpp**
 
   Defines the `LoweringContext` class responsible for memoizing per-procedure state such as slot names, block pointers, and string symbols. It exposes `getOrCreateSlot`, `getOrCreateBlock`, and `getOrAddString` so lowering helpers can allocate locals or jump targets without duplicating bookkeeping. The header captures references to the active `IRBuilder` and `Function`, and owns deterministic naming via `NameMangler` to align diagnostics with emitted IL. Dependencies include `NameMangler.hpp`, forward declarations for `il::build::IRBuilder` and IL core types, plus STL containers for the lookup tables.
+
+- **src/frontends/basic/LowerRuntime.cpp**
+
+  Implements the runtime-helper bookkeeping that lives inside `Lowerer`, ensuring each required BASIC runtime extern is declared once. `requestHelper` toggles bitset flags for string helpers, `trackRuntime` records math functions in deterministic order, and `declareRequiredRuntime` consults the shared signature registry before emitting externs through the IR builder. The routine also respects bounds-check configuration so only necessary traps and allocation helpers are imported. Dependencies include `frontends/basic/Lowerer.hpp`, `il/runtime/RuntimeSignatures.hpp`, and standard headers such as `<string>` and `<unordered_set>` used by the tracking containers.
+
+- **src/frontends/basic/LowerRuntime.hpp**
+
+  Extends `Lowerer` with nested definitions that track runtime helper usage, including the `RuntimeFn` enumeration, a hash functor, and containers that remember which math helpers were requested. It declares member hooks for requesting helpers, querying whether a helper is needed, recording runtime usage, and ultimately declaring the externs when lowering finishes a module. Because the header is included inside the class definition, these members can manipulate the surrounding lowering state without exposing implementation details elsewhere. Dependencies rely on the context provided by `Lowerer.hpp` for `RuntimeHelper` and `build::IRBuilder`, along with standard containers like `<vector>` and `<unordered_set>`.
 
 - **src/frontends/basic/NameMangler.cpp**
 
@@ -84,6 +104,14 @@ Paths to notable documentation and tests.
   Offers a stateful API for constructing modules, functions, and basic blocks while keeping SSA bookkeeping consistent. It caches known callee return types, allocates temporaries, tracks insertion points, and synthesizes terminators like `br`, `cbr`, and `ret` with argument validation. Convenience helpers materialize constants, manage block parameters, and append instructions while enforcing single-terminator invariants per block. The builder relies on `il/build/IRBuilder.hpp`, IL core types (`Module`, `Function`, `BasicBlock`, `Instr`, `Type`, `Value`, `Opcode`), and `il::support::SourceLoc`, plus `<cassert>` and `<stdexcept>` for defensive checks.
 
 ## IL Core
+- **src/il/core/BasicBlock.cpp**
+
+  Provides the dedicated translation unit for `BasicBlock`, keeping the struct’s definition linked even though all behaviour currently lives inline. Maintaining the `.cpp` file gives debuggers and future helper methods a stable location without forcing rebuilds of unrelated headers. Dependencies are limited to `il/core/BasicBlock.hpp`, which declares the block layout.
+
+- **src/il/core/BasicBlock.hpp**
+
+  Defines the `BasicBlock` aggregate that holds a label, parameter list, ordered instruction vector, and a terminator flag for every IL block. The struct documents invariants around unique labels, parameter arity, and terminator tracking so builders, verifiers, and the VM can reason about control flow consistently. Storing instructions and parameters by value keeps the IR layout contiguous for efficient traversal and serialization. Dependencies include `il/core/Instr.hpp`, `il/core/Param.hpp`, and standard `<string>`/`<vector>` containers.
+
 - **src/il/core/Function.cpp**
 
   Serves as the translation unit for out-of-line helpers tied to `il::core::Function`, keeping the door open for richer logic as the IR grows. Even though functionality currently lives in the header, the dedicated source file guarantees a stable linkage point for debugging utilities or template specializations. Maintaining the file also keeps compile units consistent across build modes. Dependencies include `il/core/Function.hpp`.
@@ -92,6 +120,14 @@ Paths to notable documentation and tests.
 
   Models IL function definitions with their signature, parameter list, basic blocks, and SSA value names. Consumers mutate the `blocks` vector as they build or transform functions, while `params` and `retType` expose metadata to verifiers and backends. The struct's simple ownership semantics (value-stored blocks and params) make it easy for the builder, serializer, and VM to traverse the IR without extra indirection. Dependencies include `il/core/BasicBlock.hpp`, `il/core/Param.hpp`, `il/core/Type.hpp`, and standard `<string>`/`<vector>` containers.
 
+- **src/il/core/Instr.cpp**
+
+  Supplies the translation unit for `Instr`, preserving a place for future out-of-line helpers despite the representation being header-only today. The separate object file simplifies linking and debugging when instruction logic evolves. Dependencies consist solely of `il/core/Instr.hpp`.
+
+- **src/il/core/Instr.hpp**
+
+  Declares the `Instr` struct that models IL instructions with optional result ids, explicit type metadata, operand lists, callee names, successor labels, and branch arguments. Keeping results optional lets the same structure represent void terminators and value-producing instructions without extra subclasses. Operands and labels live in `std::vector`s so passes can append or rewrite them while maintaining deterministic ordering, and each instruction retains its `SourceLoc` for diagnostics. Dependencies include `il/core/Opcode.hpp`, `il/core/Type.hpp`, `il/core/Value.hpp`, `support/source_location.hpp`, and standard `<optional>`, `<string>`, and `<vector>` facilities.
+
 - **src/il/core/Module.cpp**
 
   Provides the translation unit for IL modules, currently relying on inline definitions in the header for the aggregate container. Maintaining a dedicated source file keeps a stable location for future utilities such as explicit template instantiations or logging hooks. The empty namespace ensures build systems still emit an object file, which simplifies linking when libraries expect one. Dependencies include `il/core/Module.hpp`.
@@ -99,6 +135,22 @@ Paths to notable documentation and tests.
 - **src/il/core/Module.hpp**
 
   Defines the lightweight `il::core::Module` aggregate that owns externs, globals, and function definitions for a compilation unit. The struct exposes a `version` string and vectors so front ends and parsers can build modules incrementally in deterministic order. Downstream passes and the VM inspect these containers to navigate the IR during analysis and execution. Dependencies include `il/core/Extern.hpp`, `il/core/Function.hpp`, `il/core/Global.hpp`, and the standard library `<string>`/`<vector>` containers.
+
+- **src/il/core/OpcodeInfo.cpp**
+
+  Materializes the opcode metadata table by expanding `Opcode.def` into `kOpcodeTable`, describing each opcode’s operand counts, result expectations, side effects, and VM dispatch category. Helper functions expose `getOpcodeInfo`, `isVariadicOperandCount`, and `toString` so verifiers, serializers, and diagnostics can query canonical opcode data. A static assertion ensures the table stays synchronized with the `Opcode` enumeration. Dependencies include `il/core/OpcodeInfo.hpp` and `<string>` for mnemonic conversion.
+
+- **src/il/core/OpcodeInfo.hpp**
+
+  Declares the metadata schema that annotates IL opcodes with result arity, operand type categories, successor counts, and interpreter dispatch hints. Enumerations such as `TypeCategory` and `VMDispatch` let passes reason about legality without parsing `Opcode.def`, while the `OpcodeInfo` struct captures the per-opcode contract in a compact form. The header also exposes the global `kOpcodeTable` and query helpers so callers can map from an `Opcode` to its metadata in constant time. Dependencies include `il/core/Opcode.hpp`, `<array>`, `<cstdint>`, and `<limits>`.
+
+- **src/il/core/Type.cpp**
+
+  Implements the lightweight `Type` wrapper’s constructor and the helpers that translate kind enumerators into canonical lowercase mnemonics. Centralizing these conversions keeps builders, serializers, and diagnostics aligned on the spec’s spelling. Dependencies include `il/core/Type.hpp`.
+
+- **src/il/core/Type.hpp**
+
+  Defines the `Type` value object that wraps primitive IL type kinds and exposes the `Kind` enumeration consumed throughout the compiler. The struct offers a simple constructor and `toString` interface so code can manipulate types without constructing heavyweight descriptors. Because the type is trivially copyable it can be stored by value in IR containers and diagnostic records. Dependencies include `<string>` for string conversions.
 
 - **src/il/core/Value.cpp**
 
@@ -166,6 +218,10 @@ Paths to notable documentation and tests.
   Maintains canonical source-file identifiers and paths for diagnostics through the `SourceManager`. New files are normalized with `std::filesystem` so relative paths collapse to stable, platform-independent strings before being assigned incrementing IDs. Consumers such as the lexer, diagnostics engine, and tracing facilities call back into the manager to resolve `SourceLoc` instances into filenames. Dependencies include `source_manager.hpp` and the C++ `<filesystem>` library.
 
 ## VM Runtime
+- **src/vm/control_flow.cpp**
+
+  Implements interpreter handlers for branch, call, return, and trap opcodes, centralizing control-flow manipulation inside `OpHandlers`. A shared helper moves execution to successor blocks, seeds block parameters, and flags jumps in the `ExecResult`, while other handlers evaluate call operands and route extern invocations through the `RuntimeBridge`. The logic keeps frame state consistent so the main VM loop can honour returns and traps without manual bookkeeping. Dependencies include `vm/OpHandlers.hpp`, `vm/OpHandlerUtils.hpp`, `vm/RuntimeBridge.hpp`, and IL core definitions for `BasicBlock`, `Function`, `Instr`, and `Value`.
+
 - **src/vm/Debug.cpp**
 
   Implements the VM's debugging controller responsible for breakpoints, watches, and source lookup. It normalizes file paths to compare breakpoints across host platforms, interns block labels for quick lookup, and tracks recently triggered locations to avoid duplicate stops. The controller also emits watch output when observed variables change, integrating with the interpreter loop's store callbacks. Dependencies include `vm/Debug.hpp`, IL core instruction/block definitions, the diagnostics source management helpers, and standard containers and streams from `<vector>`, `<string>`, `<unordered_map>`, and `<iostream>`.
@@ -181,6 +237,14 @@ Paths to notable documentation and tests.
 - **src/vm/DebugScript.hpp**
 
   Declares the `DebugScript` FIFO wrapper used by the VM debugger to provide scripted actions. It defines the `DebugActionKind` enum, the simple `DebugAction` POD, and member functions for loading scripts, enqueuing steps, polling actions, and checking emptiness. The class stores actions in a `std::queue`, making consumption order explicit for the interpreter's debug loop. Dependencies cover standard headers `<cstdint>`, `<queue>`, `<string>`, with behavior implemented in `DebugScript.cpp`.
+
+- **src/vm/fp_ops.cpp**
+
+  Contains the VM’s floating-point arithmetic and comparison handlers, factoring operand evaluation into templated helpers that write back through `ops::storeResult`. Each opcode relies on host IEEE-754 semantics for doubles, ensuring NaNs and infinities propagate while comparisons return canonical 0/1 truth values. The helpers isolate frame mutation so arithmetic handlers remain side-effect free aside from updating the destination slot. Dependencies include `vm/OpHandlers.hpp`, `vm/OpHandlerUtils.hpp`, and IL instruction metadata.
+
+- **src/vm/int_ops.cpp**
+
+  Provides the integer arithmetic, bitwise, shift, and comparison handlers executed by the VM. Shared helpers evaluate operands once and encode the arithmetic or predicate rule, guaranteeing two’s complement wrap-around semantics align with the IL reference. Comparison results are normalized to IL booleans and stored via `ops::storeResult`, preserving invariants expected by later opcodes. Dependencies include `vm/OpHandlers.hpp`, `vm/OpHandlerUtils.hpp`, and IL instruction definitions.
 
 - **src/vm/OpHandlerUtils.cpp**
 
