@@ -15,14 +15,7 @@ namespace ops
 /// @param fr Current execution frame.
 /// @param in Instruction being executed.
 /// @param val Slot to write into the destination register.
-inline void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val)
-{
-    if (!in.result)
-        return;
-    if (fr.regs.size() <= *in.result)
-        fr.regs.resize(*in.result + 1);
-    fr.regs[*in.result] = val;
-}
+void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val);
 } // namespace ops
 } // namespace il::vm::detail
 
