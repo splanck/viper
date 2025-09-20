@@ -166,4 +166,14 @@ std::string MockClipboard::paste()
     return out;
 }
 
+const std::string &MockClipboard::last() const
+{
+    return last_;
+}
+
+void MockClipboard::clear()
+{
+    last_.clear();
+}
+
 } // namespace tui::term
