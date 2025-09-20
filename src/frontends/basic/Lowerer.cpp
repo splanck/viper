@@ -192,26 +192,7 @@ Module Lowerer::lowerProgram(const Program &prog)
     arrays.clear();
     boundsCheckId = 0;
 
-    needInputLine = false;
-    needRtToInt = false;
-    needRtIntToStr = false;
-    needRtF64ToStr = false;
-    needAlloc = false;
-    needRtStrEq = false;
-    needRtConcat = false;
-    needRtLeft = false;
-    needRtRight = false;
-    needRtMid2 = false;
-    needRtMid3 = false;
-    needRtInstr2 = false;
-    needRtInstr3 = false;
-    needRtLtrim = false;
-    needRtRtrim = false;
-    needRtTrim = false;
-    needRtUcase = false;
-    needRtLcase = false;
-    needRtChr = false;
-    needRtAsc = false;
+    runtimeHelpers.reset();
     runtimeOrder.clear();
     runtimeSet.clear();
 

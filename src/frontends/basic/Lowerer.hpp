@@ -10,6 +10,7 @@
 #include "frontends/basic/NameMangler.hpp"
 #include "il/build/IRBuilder.hpp"
 #include "il/core/Module.hpp"
+#include <bitset>
 #include <functional>
 #include <memory>
 #include <string>
@@ -158,26 +159,35 @@ class Lowerer
     unsigned boundsCheckId{0};
 
     // runtime requirement tracking
-    bool needInputLine{false};
-    bool needRtToInt{false};
-    bool needRtIntToStr{false};
-    bool needRtF64ToStr{false};
-    bool needAlloc{false};
-    bool needRtStrEq{false};
-    bool needRtConcat{false};
-    bool needRtLeft{false};
-    bool needRtRight{false};
-    bool needRtMid2{false};
-    bool needRtMid3{false};
-    bool needRtInstr2{false};
-    bool needRtInstr3{false};
-    bool needRtLtrim{false};
-    bool needRtRtrim{false};
-    bool needRtTrim{false};
-    bool needRtUcase{false};
-    bool needRtLcase{false};
-    bool needRtChr{false};
-    bool needRtAsc{false};
+    enum class RuntimeHelper
+    {
+        InputLine,
+        ToInt,
+        IntToStr,
+        F64ToStr,
+        Alloc,
+        StrEq,
+        Concat,
+        Left,
+        Right,
+        Mid2,
+        Mid3,
+        Instr2,
+        Instr3,
+        Ltrim,
+        Rtrim,
+        Trim,
+        Ucase,
+        Lcase,
+        Chr,
+        Asc,
+        Count,
+    };
+
+    static constexpr size_t kRuntimeHelperCount =
+        static_cast<size_t>(RuntimeHelper::Count);
+
+    std::bitset<kRuntimeHelperCount> runtimeHelpers;
 
 #include "frontends/basic/LowerRuntime.hpp"
 #include "frontends/basic/LowerScan.hpp"
