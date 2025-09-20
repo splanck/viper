@@ -6,6 +6,10 @@
 
 #include "il/api/expected_api.hpp"
 
+#include "il/core/Module.hpp"
+#include "il/io/Parser.hpp"
+#include "il/verify/Verifier.hpp"
+
 namespace il::api::v2
 {
 
