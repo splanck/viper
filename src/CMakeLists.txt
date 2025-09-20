@@ -33,8 +33,7 @@ target_include_directories(il_verify PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_library(il_api STATIC il/api/expected_api.cpp)
 target_link_libraries(il_api
-  PUBLIC support
-  PRIVATE il_io il_verify il_core)
+  PUBLIC support il_io il_verify)
 target_include_directories(il_api PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_library(il_transform STATIC
