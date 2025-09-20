@@ -4,7 +4,7 @@
 // Ownership/Lifetime: Builds local modules via IRBuilder.
 // Links: docs/dev/analysis.md
 
-#include "Analysis/CFG.h"
+#include "il/analysis/CFG.hpp"
 #include "il/build/IRBuilder.hpp"
 #include <algorithm>
 #include <cassert>

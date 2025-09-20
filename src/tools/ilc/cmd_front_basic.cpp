@@ -5,7 +5,7 @@
 // Ownership/Lifetime: Tool owns loaded modules.
 // Links: docs/class-catalog.md
 
-#include "VM/Trace.h"
+#include "vm/Trace.hpp"
 #include "cli.hpp"
 #include "frontends/basic/ConstFolder.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"

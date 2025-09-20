@@ -4,7 +4,7 @@
 // basename extracted from normalized path.
 // Ownership: Standalone executable.
 // Links: docs/class-catalog.md
-#include "VM/Debug.h"
+#include "vm/Debug.hpp"
 #include <cassert>
 
 int main()

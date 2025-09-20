@@ -5,8 +5,8 @@
 // Links: docs/il-spec.md
 #pragma once
 
-#include "VM/Debug.h"
-#include "VM/Trace.h"
+#include "vm/Debug.hpp"
+#include "vm/Trace.hpp"
 #include "il/core/fwd.hpp"
 #include "il/core/Opcode.hpp"
 #include "rt.hpp"
