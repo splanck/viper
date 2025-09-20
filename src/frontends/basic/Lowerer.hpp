@@ -79,116 +79,51 @@ class Lowerer
         unsigned loopCounter{0}; ///< WHILE/FOR/call_cont identifiers
         std::unordered_map<std::string, unsigned> genericCounters; ///< other shapes
 
-        explicit BlockNamer(std::string p) : proc(std::move(p)) {}
+        explicit BlockNamer(std::string p);
 
-        std::string entry() const
-        {
-            return "entry_" + proc;
-        }
+        std::string entry() const;
 
-        std::string ret() const
-        {
-            return "ret_" + proc;
-        }
+        std::string ret() const;
 
-        std::string line(int line) const
-        {
-            return "L" + std::to_string(line) + "_" + proc;
-        }
+        std::string line(int line) const;
 
-        unsigned nextIf()
-        {
-            return ifCounter++;
-        }
+        unsigned nextIf();
 
-        std::string ifTest(unsigned id) const
-        {
-            return "if_test_" + std::to_string(id) + "_" + proc;
-        }
+        std::string ifTest(unsigned id) const;
 
-        std::string ifThen(unsigned id) const
-        {
-            return "if_then_" + std::to_string(id) + "_" + proc;
-        }
+        std::string ifThen(unsigned id) const;
 
-        std::string ifElse(unsigned id) const
-        {
-            return "if_else_" + std::to_string(id) + "_" + proc;
-        }
+        std::string ifElse(unsigned id) const;
 
-        std::string ifEnd(unsigned id) const
-        {
-            return "if_end_" + std::to_string(id) + "_" + proc;
-        }
+        std::string ifEnd(unsigned id) const;
 
-        unsigned nextWhile()
-        {
-            return loopCounter++;
-        }
+        unsigned nextWhile();
 
-        std::string whileHead(unsigned id) const
-        {
-            return "while_head_" + std::to_string(id) + "_" + proc;
-        }
+        std::string whileHead(unsigned id) const;
 
-        std::string whileBody(unsigned id) const
-        {
-            return "while_body_" + std::to_string(id) + "_" + proc;
-        }
+        std::string whileBody(unsigned id) const;
 
-        std::string whileEnd(unsigned id) const
-        {
-            return "while_end_" + std::to_string(id) + "_" + proc;
-        }
+        std::string whileEnd(unsigned id) const;
 
-        unsigned nextFor()
-        {
-            return loopCounter++;
-        }
+        unsigned nextFor();
 
         /// @brief Allocate next sequential ID for a call continuation.
-        unsigned nextCall()
-        {
-            return loopCounter++;
-        }
+        unsigned nextCall();
 
-        std::string forHead(unsigned id) const
-        {
-            return "for_head_" + std::to_string(id) + "_" + proc;
-        }
+        std::string forHead(unsigned id) const;
 
-        std::string forBody(unsigned id) const
-        {
-            return "for_body_" + std::to_string(id) + "_" + proc;
-        }
+        std::string forBody(unsigned id) const;
 
-        std::string forInc(unsigned id) const
-        {
-            return "for_inc_" + std::to_string(id) + "_" + proc;
-        }
+        std::string forInc(unsigned id) const;
 
-        std::string forEnd(unsigned id) const
-        {
-            return "for_end_" + std::to_string(id) + "_" + proc;
-        }
+        std::string forEnd(unsigned id) const;
 
         /// @brief Build label for a synthetic call continuation block.
-        std::string callCont(unsigned id) const
-        {
-            return "call_cont_" + std::to_string(id) + "_" + proc;
-        }
+        std::string callCont(unsigned id) const;
 
-        std::string generic(const std::string &hint)
-        {
-            auto &n = genericCounters[hint];
-            std::string label = hint + "_" + std::to_string(n++) + "_" + proc;
-            return label;
-        }
+        std::string generic(const std::string &hint);
 
-        std::string tag(const std::string &base) const
-        {
-            return base + "_" + proc;
-        }
+        std::string tag(const std::string &base) const;
     };
 
     struct ForBlocks
