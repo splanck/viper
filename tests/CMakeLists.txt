@@ -95,7 +95,7 @@ target_link_libraries(test_basic_lexer_high_bit PRIVATE fe_basic support)
 add_test(NAME test_basic_lexer_high_bit COMMAND test_basic_lexer_high_bit)
 
 add_executable(test_il_utils il/UtilsTests.cpp)
-target_link_libraries(test_il_utils PRIVATE IL)
+target_link_libraries(test_il_utils PRIVATE il_utils)
 add_test(NAME test_il_utils COMMAND test_il_utils)
 
 add_executable(test_tools_break_parsing tools/BreakParsingTests.cpp
@@ -117,19 +117,19 @@ add_test(NAME test_vm_summary COMMAND test_vm_summary $<TARGET_FILE:ilc> ${CMAKE
 
 
 add_executable(test_analysis_cfg analysis/CFGTests.cpp)
-target_link_libraries(test_analysis_cfg PRIVATE Analysis il_build)
+target_link_libraries(test_analysis_cfg PRIVATE il_analysis il_build)
 add_test(NAME test_analysis_cfg COMMAND test_analysis_cfg)
 
 add_executable(test_analysis_graph_order analysis/GraphOrderTests.cpp)
-target_link_libraries(test_analysis_graph_order PRIVATE Analysis il_build)
+target_link_libraries(test_analysis_graph_order PRIVATE il_analysis il_build)
 add_test(NAME test_analysis_graph_order COMMAND test_analysis_graph_order)
 
 add_executable(test_analysis_dominators analysis/DominatorsTests.cpp)
-target_link_libraries(test_analysis_dominators PRIVATE Analysis il_build)
+target_link_libraries(test_analysis_dominators PRIVATE il_analysis il_build)
 add_test(NAME test_analysis_dominators COMMAND test_analysis_dominators)
 
 add_executable(test_analysis_acyclic analysis/AcyclicTests.cpp)
-target_link_libraries(test_analysis_acyclic PRIVATE Analysis il_build)
+target_link_libraries(test_analysis_acyclic PRIVATE il_analysis il_build)
 add_test(NAME test_analysis_acyclic COMMAND test_analysis_acyclic)
 
 add_test(NAME il_verify_ex1 COMMAND $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/examples/il/ex1_hello_cond.il)
@@ -517,11 +517,11 @@ target_link_libraries(test_il_pass_manager PRIVATE il_io il_transform il_api)
 add_test(NAME test_il_pass_manager COMMAND test_il_pass_manager)
 
 add_executable(test_vm_normalize_path unit/test_vm_normalize_path.cpp)
-target_link_libraries(test_vm_normalize_path PRIVATE VMTrace)
+target_link_libraries(test_vm_normalize_path PRIVATE il_vm)
 add_test(NAME test_vm_normalize_path COMMAND test_vm_normalize_path)
 
 add_executable(test_path_normalize unit/PathNormalizeTests.cpp)
-target_link_libraries(test_path_normalize PRIVATE VMTrace)
+target_link_libraries(test_path_normalize PRIVATE il_vm)
 add_test(NAME test_path_normalize COMMAND test_path_normalize)
 
 

@@ -43,7 +43,7 @@ children for easy traversal. Complexity is linear in practice and worst-case
 
 ## IL utilities
 
-Helpers in `lib/IL/Utils` provide light-weight queries on basic blocks and
+Helpers in `src/il/utils` provide light-weight queries on basic blocks and
 instructions, such as checking block membership or retrieving a block's
 terminator. They depend only on `il_core`, allowing passes to use them without
 pulling in the Analysis layer.

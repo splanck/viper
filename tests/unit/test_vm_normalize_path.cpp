@@ -3,7 +3,7 @@
 // Key invariants: Backslashes become slashes; './' removed; 'dir/../' collapsed.
 // Ownership: Standalone executable.
 // Links: docs/class-catalog.md
-#include "VM/Debug.h"
+#include "vm/Debug.hpp"
 #include <cassert>
 #include <string>
 

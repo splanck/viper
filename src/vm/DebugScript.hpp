@@ -1,4 +1,4 @@
-// File: lib/VM/DebugScript.h
+// File: src/vm/DebugScript.hpp
 // Purpose: Parse debug command scripts for automated VM break handling.
 // Key invariants: Unknown commands are ignored; actions returned in FIFO order.
 // Ownership/Lifetime: Holds parsed actions only; does not own external resources.

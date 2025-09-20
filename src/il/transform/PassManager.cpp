@@ -15,8 +15,8 @@
 
 #include "il/transform/PassManager.hpp"
 
-#include "Analysis/CFG.h"
-#include "Analysis/Dominators.h"
+#include "il/analysis/CFG.hpp"
+#include "il/analysis/Dominators.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
