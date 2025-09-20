@@ -1,4 +1,4 @@
-// File: lib/VM/Trace.h
+// File: src/vm/Trace.hpp
 // Purpose: Declare tracing configuration and sink for VM instruction steps.
 // Key invariants: Trace output is deterministic and line-oriented.
 // Ownership/Lifetime: Sink holds configuration by value; no dynamic state.

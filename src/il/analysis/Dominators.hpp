@@ -1,4 +1,4 @@
-// File: lib/Analysis/Dominators.h
+// File: src/il/analysis/Dominators.hpp
 // Purpose: Dominator tree computation and queries.
 // Key invariants: Dominator tree is computed eagerly and remains constant; no incremental updates.
 // Ownership/Lifetime: Operates on IL blocks owned by the caller.

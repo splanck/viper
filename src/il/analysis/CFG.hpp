@@ -1,4 +1,4 @@
-// File: lib/Analysis/CFG.h
+// File: src/il/analysis/CFG.hpp
 // Purpose: Minimal control-flow graph utilities for IL blocks and functions.
 // Key invariants: Computes edges on demand without caching.
 // Ownership/Lifetime: Operates on IL structures owned by caller.

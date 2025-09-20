@@ -1,11 +1,11 @@
-// File: lib/VM/Debug.cpp
+// File: src/vm/Debug.cpp
 // Purpose: Implement breakpoint control and path normalization for the VM.
 // Key invariants: Interned labels identify block breakpoints; source line
 // breakpoints match when either the normalized file path and line or the
 // basename and line coincide. Ownership/Lifetime: DebugCtrl owns its interner,
 // breakpoint set, and source line list.
 // Links: docs/dev/vm.md
-#include "VM/Debug.h"
+#include "vm/Debug.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
 #include "support/source_location.hpp"

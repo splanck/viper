@@ -5,9 +5,9 @@
 // Ownership/Lifetime: Tool owns loaded modules.
 // Links: docs/class-catalog.md
 
-#include "VM/Debug.h"
-#include "VM/DebugScript.h"
-#include "VM/Trace.h"
+#include "vm/Debug.hpp"
+#include "vm/DebugScript.hpp"
+#include "vm/Trace.hpp"
 #include "break_spec.hpp"
 #include "cli.hpp"
 #include "il/api/expected_api.hpp"

@@ -1,4 +1,4 @@
-// File: lib/Passes/Mem2Reg.cpp
+// File: src/il/transform/Mem2Reg.cpp
 // Purpose: Implement alloca promotion to SSA using block parameters with the
 // seal-and-rename algorithm (mem2reg v3).
 // Key invariants: Handles i64/f64/i1 allocas whose addresses do not escape,
@@ -7,8 +7,8 @@
 // removing allocas/loads/stores.
 // Links: docs/passes/mem2reg.md
 
-#include "Passes/Mem2Reg.h"
-#include "Analysis/CFG.h"
+#include "il/transform/Mem2Reg.hpp"
+#include "il/analysis/CFG.hpp"
 #include <algorithm>
 #include <functional>
 #include <optional>
