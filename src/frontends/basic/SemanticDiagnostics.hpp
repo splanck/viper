@@ -6,8 +6,8 @@
 #pragma once
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
+#include <string>
 #include <string_view>
-#include <utility>
 
 namespace il::frontends::basic
 {
@@ -15,7 +15,7 @@ namespace il::frontends::basic
 class SemanticDiagnostics
 {
   public:
-    explicit SemanticDiagnostics(DiagnosticEmitter &emitter) : emitter_(emitter) {}
+    explicit SemanticDiagnostics(DiagnosticEmitter &emitter);
 
     /// @brief Message template for non-boolean conditions.
     static constexpr std::string_view NonBooleanConditionMessage =
@@ -25,20 +25,11 @@ class SemanticDiagnostics
               std::string code,
               il::support::SourceLoc loc,
               uint32_t length,
-              std::string message)
-    {
-        emitter_.emit(sev, std::move(code), loc, length, std::move(message));
-    }
+              std::string message);
 
-    size_t errorCount() const
-    {
-        return emitter_.errorCount();
-    }
+    [[nodiscard]] size_t errorCount() const;
 
-    size_t warningCount() const
-    {
-        return emitter_.warningCount();
-    }
+    [[nodiscard]] size_t warningCount() const;
 
     /// @brief Format the NonBooleanCondition diagnostic message.
     /// @param typeName Describes the inferred BASIC type.
@@ -59,10 +50,7 @@ class SemanticDiagnostics
                                  std::string_view typeName,
                                  std::string_view exprText);
 
-    DiagnosticEmitter &emitter()
-    {
-        return emitter_;
-    }
+    [[nodiscard]] DiagnosticEmitter &emitter();
 
   private:
     DiagnosticEmitter &emitter_;
