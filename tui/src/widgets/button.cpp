@@ -77,4 +77,10 @@ bool Button::onEvent(const ui::Event &ev)
     return false;
 }
 
+/// @brief Buttons request focus so they can respond to activation keys.
+bool Button::wantsFocus() const
+{
+    return true;
+}
+
 } // namespace viper::tui::widgets

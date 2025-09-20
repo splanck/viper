@@ -32,10 +32,7 @@ class ModalHost : public Widget
     bool onEvent(const Event &ev) override;
 
     /// @brief Always focusable to intercept events.
-    [[nodiscard]] bool wantsFocus() const override
-    {
-        return true;
-    }
+    [[nodiscard]] bool wantsFocus() const override;
 
     /// @brief Access underlying root widget.
     [[nodiscard]] Widget *root();
@@ -59,10 +56,7 @@ class Popup : public Widget
     void paint(render::ScreenBuffer &sb) override;
     bool onEvent(const Event &ev) override;
 
-    [[nodiscard]] bool wantsFocus() const override
-    {
-        return true;
-    }
+    [[nodiscard]] bool wantsFocus() const override;
 
   private:
     int width_{0};

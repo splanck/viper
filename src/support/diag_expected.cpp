@@ -9,6 +9,29 @@
 
 namespace il::support
 {
+/// @brief Construct an error Expected<void> carrying the provided diagnostic.
+Expected<void>::Expected(Diag diag) : error_(std::move(diag))
+{
+}
+
+/// @brief Report whether the Expected<void> represents a successful outcome.
+bool Expected<void>::hasValue() const
+{
+    return !error_.has_value();
+}
+
+/// @brief Allow Expected<void> to participate in boolean tests for success.
+Expected<void>::operator bool() const
+{
+    return hasValue();
+}
+
+/// @brief Access the diagnostic describing the recorded failure.
+const Diag &Expected<void>::error() const &
+{
+    return *error_;
+}
+
 namespace detail
 {
 const char *diagSeverityToString(Severity severity)

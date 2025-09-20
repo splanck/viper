@@ -24,18 +24,12 @@ struct KeyChord
     unsigned mods{0};
     uint32_t codepoint{0};
 
-    bool operator==(const KeyChord &other) const
-    {
-        return code == other.code && mods == other.mods && codepoint == other.codepoint;
-    }
+    bool operator==(const KeyChord &other) const;
 };
 
 struct KeyChordHash
 {
-    std::size_t operator()(const KeyChord &kc) const
-    {
-        return static_cast<std::size_t>(kc.code) ^ (kc.mods << 8) ^ (kc.codepoint << 16);
-    }
+    std::size_t operator()(const KeyChord &kc) const;
 };
 
 /// @brief Command entry with display name and callback.
@@ -67,10 +61,7 @@ class Keymap
     bool execute(const CommandId &id) const;
 
     /// @brief Access registered commands.
-    [[nodiscard]] const std::vector<Command> &commands() const
-    {
-        return commands_;
-    }
+    [[nodiscard]] const std::vector<Command> &commands() const;
 
     /// @brief Find command by id.
     [[nodiscard]] const Command *find(const CommandId &id) const;

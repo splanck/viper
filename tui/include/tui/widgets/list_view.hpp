@@ -38,10 +38,7 @@ class ListView : public ui::Widget
     bool onEvent(const ui::Event &ev) override;
 
     /// @brief List wants focus for keyboard navigation.
-    [[nodiscard]] bool wantsFocus() const override
-    {
-        return true;
-    }
+    [[nodiscard]] bool wantsFocus() const override;
 
     /// @brief Retrieve selected item indices.
     [[nodiscard]] std::vector<int> selection() const;

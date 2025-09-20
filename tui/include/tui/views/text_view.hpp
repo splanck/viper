@@ -40,22 +40,13 @@ class TextView : public ui::Widget
     bool onEvent(const ui::Event &ev) override;
 
     /// @brief TextView wants focus for editing.
-    [[nodiscard]] bool wantsFocus() const override
-    {
-        return true;
-    }
+    [[nodiscard]] bool wantsFocus() const override;
 
     /// @brief Current cursor row (0-based).
-    [[nodiscard]] std::size_t cursorRow() const
-    {
-        return cursor_row_;
-    }
+    [[nodiscard]] std::size_t cursorRow() const;
 
     /// @brief Current cursor column in display cells (0-based).
-    [[nodiscard]] std::size_t cursorCol() const
-    {
-        return cursor_col_;
-    }
+    [[nodiscard]] std::size_t cursorCol() const;
 
     /// @brief Set byte ranges to highlight.
     void setHighlights(std::vector<std::pair<std::size_t, std::size_t>> ranges);
