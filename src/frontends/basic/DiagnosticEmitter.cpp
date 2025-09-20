@@ -122,4 +122,18 @@ void DiagnosticEmitter::printAll(std::ostream &os) const
     }
 }
 
+/// @brief Retrieve the number of errors emitted so far.
+/// @return Count of error-severity diagnostics from the underlying engine.
+size_t DiagnosticEmitter::errorCount() const
+{
+    return de_.errorCount();
+}
+
+/// @brief Retrieve the number of warnings emitted so far.
+/// @return Count of warning-severity diagnostics from the underlying engine.
+size_t DiagnosticEmitter::warningCount() const
+{
+    return de_.warningCount();
+}
+
 } // namespace il::frontends::basic

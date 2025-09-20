@@ -55,16 +55,10 @@ class DiagnosticEmitter
     void printAll(std::ostream &os) const;
 
     /// @brief Number of errors reported.
-    size_t errorCount() const
-    {
-        return de_.errorCount();
-    }
+    size_t errorCount() const;
 
     /// @brief Number of warnings reported.
-    size_t warningCount() const
-    {
-        return de_.warningCount();
-    }
+    size_t warningCount() const;
 
   private:
     /// @brief Diagnostic record captured for later printing.
