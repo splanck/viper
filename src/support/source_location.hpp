@@ -25,10 +25,7 @@ struct SourceLoc
     uint32_t column = 0;
 
     /// @brief Check whether the location references a valid file entry.
-    [[nodiscard]] bool isValid() const
-    {
-        return file_id != 0;
-    }
+    [[nodiscard]] bool isValid() const;
 };
 
 } // namespace il::support

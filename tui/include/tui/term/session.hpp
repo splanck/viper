@@ -25,10 +25,7 @@ class TerminalSession
     TerminalSession(const TerminalSession &) = delete;
     TerminalSession &operator=(const TerminalSession &) = delete;
 
-    bool active() const
-    {
-        return active_;
-    }
+    bool active() const;
 
   private:
     bool active_{false};

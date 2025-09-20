@@ -54,4 +54,18 @@ void DiagnosticEngine::printAll(std::ostream &os, const SourceManager *sm) const
         os << toString(d.severity) << ": " << d.message << '\n';
     }
 }
+
+/// @brief Retrieve the number of diagnostics reported as errors.
+/// @return Count of error-severity diagnostics recorded so far.
+size_t DiagnosticEngine::errorCount() const
+{
+    return errors_;
+}
+
+/// @brief Retrieve the number of diagnostics reported as warnings.
+/// @return Count of warning-severity diagnostics recorded so far.
+size_t DiagnosticEngine::warningCount() const
+{
+    return warnings_;
+}
 } // namespace il::support

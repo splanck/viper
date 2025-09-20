@@ -17,6 +17,14 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
+/// @brief Hash runtime helper identifiers by their enumerator value.
+/// @param f Runtime helper enumerator to hash.
+/// @return Hash value derived from the underlying enum ordinal.
+size_t Lowerer::RuntimeFnHash::operator()(RuntimeFn f) const
+{
+    return static_cast<size_t>(f);
+}
+
 namespace
 {
 /// @brief Declare a runtime extern using the canonical signature database.

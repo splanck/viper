@@ -105,4 +105,11 @@ TerminalSession::~TerminalSession()
 #endif
 }
 
+/// @brief Indicate whether the terminal session made any active configuration changes.
+/// @return True when the session successfully initialized and remains active.
+bool TerminalSession::active() const
+{
+    return active_;
+}
+
 } // namespace tui

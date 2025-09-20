@@ -57,7 +57,7 @@ struct ParserState
     std::vector<PendingBr> pendingBrs;
 
     /// @brief Construct parser state for the provided module.
-    explicit ParserState(il::core::Module &mod) : m(mod) {}
+    explicit ParserState(il::core::Module &mod);
 };
 
 } // namespace il::io::detail

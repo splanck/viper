@@ -21,10 +21,7 @@ enum class RuntimeFn
 
 struct RuntimeFnHash
 {
-    size_t operator()(RuntimeFn f) const
-    {
-        return static_cast<size_t>(f);
-    }
+    size_t operator()(RuntimeFn f) const;
 };
 
 std::vector<RuntimeFn> runtimeOrder;
