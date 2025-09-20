@@ -4,7 +4,7 @@
 // Ownership/Lifetime: Constructs local IL blocks and instructions.
 // Links: docs/dev/analysis.md
 
-#include "IL/Utils.h"
+#include "il/utils/Utils.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"

@@ -1,4 +1,4 @@
-// File: lib/VM/Debug.h
+// File: src/vm/Debug.hpp
 // Purpose: Declare breakpoint control and path normalization utilities for the VM.
 // Key invariants: Block breakpoints use interned labels. Source line breakpoints
 // match when both the line number and either the normalized path or basename are

@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include "VM/Trace.h"
+#include "vm/Trace.hpp"
 #include <cstdint>
 #include <string>
 

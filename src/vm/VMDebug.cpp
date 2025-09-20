@@ -9,7 +9,7 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "support/source_manager.hpp"
-#include "VM/DebugScript.h"
+#include "vm/DebugScript.hpp"
 
 #include <filesystem>
 #include <iostream>

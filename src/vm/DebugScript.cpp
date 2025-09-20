@@ -1,9 +1,9 @@
-// File: lib/VM/DebugScript.cpp
+// File: src/vm/DebugScript.cpp
 // Purpose: Implement parsing of debug command scripts for the VM.
 // Key invariants: Unknown lines emit [DEBUG] messages and are skipped.
 // Ownership/Lifetime: Reads from filesystem at construction; no further I/O.
 // Links: docs/dev/vm.md
-#include "VM/DebugScript.h"
+#include "vm/DebugScript.hpp"
 
 #include <fstream>
 #include <iostream>

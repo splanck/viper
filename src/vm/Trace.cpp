@@ -1,9 +1,9 @@
-// File: lib/VM/Trace.cpp
+// File: src/vm/Trace.cpp
 // Purpose: Implement deterministic tracing for IL VM steps.
 // Key invariants: Each executed instruction produces at most one flushed line.
 // Ownership/Lifetime: Uses external streams; no resource ownership.
 // Links: docs/dev/vm.md
-#include "VM/Trace.h"
+#include "vm/Trace.hpp"
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

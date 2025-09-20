@@ -1,9 +1,9 @@
-// File: lib/IL/Utils.cpp
+// File: src/il/utils/Utils.cpp
 // Purpose: Implement small IL helper utilities for blocks and instructions.
 // Key invariants: Operates on il_core structures without additional dependencies.
 // Ownership/Lifetime: Non-owning views; caller manages lifetimes.
 // Links: docs/dev/analysis.md
-#include "IL/Utils.h"
+#include "il/utils/Utils.hpp"
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"

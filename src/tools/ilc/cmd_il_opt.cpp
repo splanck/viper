@@ -5,7 +5,7 @@
 // Links: docs/class-catalog.md
 // License: MIT.
 
-#include "Passes/Mem2Reg.h"
+#include "il/transform/Mem2Reg.hpp"
 #include "cli.hpp"
 #include "il/api/expected_api.hpp"
 #include "il/io/Serializer.hpp"

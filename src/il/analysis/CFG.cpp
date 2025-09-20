@@ -1,10 +1,10 @@
-// File: lib/Analysis/CFG.cpp
+// File: src/il/analysis/CFG.cpp
 // Purpose: Implements minimal CFG utilities for IL blocks and functions.
 // Key invariants: Results are computed on demand; no caches or global graphs.
 // Ownership/Lifetime: Uses IL objects owned by the caller.
 // Links: docs/dev/analysis.md
 
-#include "Analysis/CFG.h"
+#include "il/analysis/CFG.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
