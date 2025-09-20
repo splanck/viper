@@ -1,6 +1,8 @@
 add_library(support STATIC
   string_interner.cpp
   source_manager.cpp
+  source_location.cpp
+  symbol.cpp
   diagnostics.cpp
   arena.cpp
   diag_expected.cpp

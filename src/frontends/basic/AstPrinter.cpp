@@ -51,6 +51,12 @@ AstPrinter::Printer::Indent AstPrinter::Printer::push()
     return Indent{*this};
 }
 
+/// @brief Restore the indentation level saved at construction time.
+AstPrinter::Printer::Indent::~Indent()
+{
+    --p.indent;
+}
+
 /// @brief Serialize an entire BASIC program to a printable string.
 /// @param prog Program whose procedures and main body are dumped.
 /// @returns Concatenated text representation of @p prog.

@@ -48,16 +48,10 @@ class DiagnosticEngine
     void printAll(std::ostream &os, const SourceManager *sm = nullptr) const;
 
     /// @brief Number of errors reported.
-    size_t errorCount() const
-    {
-        return errors_;
-    }
+    size_t errorCount() const;
 
     /// @brief Number of warnings reported.
-    size_t warningCount() const
-    {
-        return warnings_;
-    }
+    size_t warningCount() const;
 
   private:
     std::vector<Diagnostic> diags_;
