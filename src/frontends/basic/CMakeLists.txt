@@ -20,6 +20,7 @@ add_library(fe_basic STATIC
   ConstFolder.cpp
   Intrinsics.cpp
   DiagnosticEmitter.cpp
+  ProcRegistry.cpp
   SemanticDiagnostics.cpp
 )
 
