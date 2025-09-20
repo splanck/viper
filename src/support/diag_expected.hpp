@@ -104,44 +104,20 @@ template <> class Expected<void>
 namespace detail
 {
 /// @brief Convert diagnostic severity to lowercase string.
-inline const char *diagSeverityToString(Severity severity)
-{
-    switch (severity)
-    {
-        case Severity::Note:
-            return "note";
-        case Severity::Warning:
-            return "warning";
-        case Severity::Error:
-            return "error";
-    }
-    return "";
-}
+const char *diagSeverityToString(Severity severity);
 } // namespace detail
 
 /// @brief Create an error diagnostic with location and message.
 /// @param loc Optional source location associated with the diagnostic.
 /// @param msg Human-readable diagnostic message.
 /// @return Diagnostic marked as an error severity.
-inline Diag makeError(SourceLoc loc, std::string msg)
-{
-    return Diag{Severity::Error, std::move(msg), loc};
-}
+Diag makeError(SourceLoc loc, std::string msg);
 
 /// @brief Print a single diagnostic to the provided stream.
 /// @param diag Diagnostic to format.
 /// @param os Output stream receiving the text.
 /// @param sm Optional source manager to resolve file paths.
 /// @note Follows DiagnosticEngine::printAll formatting for consistency.
-inline void printDiag(const Diag &diag, std::ostream &os,
-                      const SourceManager *sm = nullptr)
-{
-    if (diag.loc.isValid() && sm)
-    {
-        auto path = sm->getPath(diag.loc.file_id);
-        os << path << ":" << diag.loc.line << ":" << diag.loc.column << ": ";
-    }
-    os << detail::diagSeverityToString(diag.severity) << ": " << diag.message
-       << '\n';
-}
+void printDiag(const Diag &diag, std::ostream &os,
+               const SourceManager *sm = nullptr);
 } // namespace il::support
