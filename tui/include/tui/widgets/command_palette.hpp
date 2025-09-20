@@ -27,10 +27,7 @@ class CommandPalette : public ui::Widget
     bool onEvent(const ui::Event &ev) override;
 
     /// @brief Palette requires focus for typing.
-    [[nodiscard]] bool wantsFocus() const override
-    {
-        return true;
-    }
+    [[nodiscard]] bool wantsFocus() const override;
 
   private:
     input::Keymap &km_;

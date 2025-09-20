@@ -29,6 +29,12 @@ struct DiagCapture
     [[nodiscard]] Diag toDiag() const;
 };
 
+/// @brief Helper bridging legacy bool-returning APIs to Expected<void>.
+/// @param ok Result flag reported by the legacy call.
+/// @param capture Diagnostic capture containing any emitted message.
+/// @return Empty Expected on success; diagnostic payload on failure.
+Expected<void> capture_to_expected_impl(bool ok, DiagCapture &capture);
+
 /// @brief Adapt a legacy bool plus ostream diagnostic API to Expected<void>.
 /// @tparam F Callable type invoked with an std::ostream& to perform the legacy work.
 /// @param legacyCall Callable that returns true on success and writes diagnostics on failure.
@@ -37,11 +43,7 @@ template <class F> inline Expected<void> capture_to_expected(F &&legacyCall)
 {
     DiagCapture capture;
     bool ok = std::forward<F>(legacyCall)(capture.ss);
-    if (ok)
-    {
-        return {};
-    }
-    return Expected<void>{capture.toDiag()};
+    return capture_to_expected_impl(ok, capture);
 }
 
 } // namespace il::support

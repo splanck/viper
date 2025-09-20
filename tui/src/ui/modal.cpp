@@ -17,6 +17,12 @@ Widget *ModalHost::root()
     return root_.get();
 }
 
+/// @brief Modal host requires focus to intercept input ahead of child widgets.
+bool ModalHost::wantsFocus() const
+{
+    return true;
+}
+
 void ModalHost::pushModal(std::unique_ptr<Widget> modal)
 {
     if (auto *p = dynamic_cast<Popup *>(modal.get()))
@@ -84,6 +90,12 @@ bool ModalHost::onEvent(const Event &ev)
 }
 
 Popup::Popup(int w, int h) : width_(w), height_(h) {}
+
+/// @brief Popups accept focus to ensure dismissal keys are delivered.
+bool Popup::wantsFocus() const
+{
+    return true;
+}
 
 void Popup::setOnClose(std::function<void()> cb)
 {

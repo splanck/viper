@@ -81,6 +81,12 @@ bool ListView::onEvent(const ui::Event &ev)
     return true;
 }
 
+/// @brief List views require focus to process navigation keystrokes.
+bool ListView::wantsFocus() const
+{
+    return true;
+}
+
 std::vector<int> ListView::selection() const
 {
     std::vector<int> out;

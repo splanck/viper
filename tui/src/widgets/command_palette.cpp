@@ -16,6 +16,12 @@ CommandPalette::CommandPalette(input::Keymap &km, const style::Theme &theme)
     update();
 }
 
+/// @brief Command palette must hold focus to accept incremental query input.
+bool CommandPalette::wantsFocus() const
+{
+    return true;
+}
+
 void CommandPalette::update()
 {
     results_.clear();

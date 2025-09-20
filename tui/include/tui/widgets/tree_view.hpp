@@ -22,14 +22,9 @@ struct TreeNode
     TreeNode *parent{nullptr};
     bool expanded{false};
 
-    explicit TreeNode(std::string lbl) : label(std::move(lbl)) {}
+    explicit TreeNode(std::string lbl);
 
-    TreeNode *add(std::unique_ptr<TreeNode> child)
-    {
-        child->parent = this;
-        children.push_back(std::move(child));
-        return children.back().get();
-    }
+    TreeNode *add(std::unique_ptr<TreeNode> child);
 };
 
 /// @brief Displays a tree of nodes with expand/collapse controls.
@@ -47,10 +42,7 @@ class TreeView : public ui::Widget
     bool onEvent(const ui::Event &ev) override;
 
     /// @brief Tree view wants focus for keyboard handling.
-    [[nodiscard]] bool wantsFocus() const override
-    {
-        return true;
-    }
+    [[nodiscard]] bool wantsFocus() const override;
 
     /// @brief Current node under cursor.
     [[nodiscard]] TreeNode *current() const;

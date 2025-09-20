@@ -20,6 +20,49 @@ namespace il::frontends::basic
 
 namespace detail
 {
+/// @brief Fold numeric arithmetic with lambda callbacks for float and integer operations.
+template <typename FloatOp, typename IntOp>
+ExprPtr foldArithmetic(const Expr &l, const Expr &r, FloatOp fop, IntOp iop)
+{
+    return foldNumericBinary(
+        l,
+        r,
+        [fop, iop](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+        {
+            if (a.isFloat)
+            {
+                double v = fop(a.f, b.f);
+                return Numeric{true, v, static_cast<long long>(v)};
+            }
+            long long v = iop(a.i, b.i);
+            return Numeric{false, static_cast<double>(v), v};
+        });
+}
+
+/// @brief Fold comparisons by dispatching to float and integer comparator callbacks.
+template <typename FloatCmp, typename IntCmp>
+ExprPtr foldCompare(
+    const Expr &l, const Expr &r, FloatCmp fcmp, IntCmp icmp, bool allowFloat)
+{
+    return foldNumericBinary(
+        l,
+        r,
+        [fcmp, icmp, allowFloat](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+        {
+            if (!allowFloat && (a.isFloat || b.isFloat))
+                return std::nullopt;
+            bool res = a.isFloat ? fcmp(a.f, b.f) : icmp(a.i, b.i);
+            long long v = res ? 1 : 0;
+            return Numeric{false, static_cast<double>(v), v};
+        });
+}
+
+/// @brief Invoke a binary string folding callback using the literal payloads.
+template <typename Op> ExprPtr foldString(const StringExpr &l, const StringExpr &r, Op op)
+{
+    return op(l.value, r.value);
+}
+
 /// @brief Interpret expression @p e as a numeric literal.
 /// @param e Expression to inspect.
 /// @return Numeric wrapper if @p e is an IntExpr or FloatExpr; std::nullopt otherwise.
