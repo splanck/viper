@@ -31,6 +31,12 @@ add_library(il_verify STATIC
 target_link_libraries(il_verify PUBLIC il_core il_runtime)
 target_include_directories(il_verify PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
+add_library(il_api STATIC il/api/expected_api.cpp)
+target_link_libraries(il_api
+  PUBLIC support
+  PRIVATE il_io il_verify il_core)
+target_include_directories(il_api PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
 add_library(il_transform STATIC
   il/transform/PassManager.cpp
   il/transform/Peephole.cpp
@@ -64,11 +70,11 @@ add_executable(ilc
   tools/ilc/cli.cpp
   tools/ilc/break_spec.cpp)
 set_target_properties(ilc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/ilc)
-target_link_libraries(ilc PRIVATE il_core il_io il_vm il_verify il_transform fe_basic support Passes)
+target_link_libraries(ilc PRIVATE il_core il_io il_vm il_verify il_transform fe_basic il_api support Passes)
 
 add_executable(il-verify tools/il-verify/il-verify.cpp)
 set_target_properties(il-verify PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/il-verify)
-target_link_libraries(il-verify PRIVATE support il_core il_build il_io il_vm il_verify)
+target_link_libraries(il-verify PRIVATE support il_core il_build il_io il_vm il_verify il_api)
 
 add_executable(il-dis tools/il-dis/main.cpp)
 set_target_properties(il-dis PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/il-dis)

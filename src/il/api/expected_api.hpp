@@ -19,17 +19,11 @@ namespace il::api::v2
 /// @param is Input stream containing IL text.
 /// @param m Module instance populated on successful parse.
 /// @return Empty Expected on success; diagnostic payload on parse failure.
-inline il::support::Expected<void> parse_text_expected(std::istream &is, il::core::Module &m)
-{
-    return il::io::Parser::parse(is, m);
-}
+il::support::Expected<void> parse_text_expected(std::istream &is, il::core::Module &m);
 
 /// @brief Verify a module while capturing diagnostics in an Expected result.
 /// @param m Module to be verified.
 /// @return Empty Expected on success; diagnostic payload on verification failure.
-inline il::support::Expected<void> verify_module_expected(const il::core::Module &m)
-{
-    return il::verify::Verifier::verify(m);
-}
+il::support::Expected<void> verify_module_expected(const il::core::Module &m);
 
 } // namespace il::api::v2
