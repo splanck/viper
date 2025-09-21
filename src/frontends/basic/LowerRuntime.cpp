@@ -20,7 +20,7 @@ namespace il::frontends::basic
 /// @brief Hash runtime helper identifiers by their enumerator value.
 /// @param f Runtime helper enumerator to hash.
 /// @return Hash value derived from the underlying enum ordinal.
-size_t Lowerer::RuntimeFnHash::operator()(RuntimeFn f) const
+size_t Lowerer::RuntimeFeatureHash::operator()(RuntimeFeature f) const
 {
     return static_cast<size_t>(f);
 }
@@ -28,20 +28,15 @@ size_t Lowerer::RuntimeFnHash::operator()(RuntimeFn f) const
 namespace
 {
 /// @brief Declare a runtime extern using the canonical signature database.
-/// @details Consults il::runtime::RuntimeSignatures via findRuntimeSignature to
-///          obtain the return and parameter types associated with @p name, then
-///          records the extern on the provided IR builder.
+/// @details Consults the runtime descriptor registry so declarations, handler
+///          wiring, and lowering metadata remain synchronized.
 /// @param b IR builder that will receive the extern declaration.
-/// @param name Runtime registry key that identifies the helper to declare.
-/// @pre The runtime signature registry contains an entry for @p name; missing
-///      signatures trigger the assertion guarding the lookup.
+/// @param desc Runtime descriptor describing the helper to declare.
 /// @note This helper mutates the builder but does not touch runtimeOrder or
 ///       runtimeSet tracking.
-void declareRuntimeExtern(build::IRBuilder &b, std::string_view name)
+void declareRuntimeExtern(build::IRBuilder &b, const il::runtime::RuntimeDescriptor &desc)
 {
-    const auto *sig = il::runtime::findRuntimeSignature(name);
-    assert(sig && "runtime signature missing from registry");
-    b.addExtern(std::string(name), sig->retType, sig->paramTypes);
+    b.addExtern(std::string(desc.name), desc.signature.retType, desc.signature.paramTypes);
 }
 } // namespace
 
@@ -57,103 +52,45 @@ void declareRuntimeExtern(build::IRBuilder &b, std::string_view name)
 /// @note Assumes runtimeOrder has been populated through trackRuntime calls;
 ///       missing signatures are enforced by the assertion in
 ///       declareRuntimeExtern.
-void Lowerer::requestHelper(RuntimeHelper helper)
+void Lowerer::requestHelper(RuntimeFeature feature)
 {
-    runtimeHelpers.set(static_cast<size_t>(helper));
+    runtimeFeatures.set(static_cast<size_t>(feature));
 }
 
-bool Lowerer::isHelperNeeded(RuntimeHelper helper) const
+bool Lowerer::isHelperNeeded(RuntimeFeature feature) const
 {
-    return runtimeHelpers.test(static_cast<size_t>(helper));
+    return runtimeFeatures.test(static_cast<size_t>(feature));
 }
 
 void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
 {
-    declareRuntimeExtern(b, "rt_print_str");
-    declareRuntimeExtern(b, "rt_print_i64");
-    declareRuntimeExtern(b, "rt_print_f64");
-    declareRuntimeExtern(b, "rt_len");
-    declareRuntimeExtern(b, "rt_substr");
-    if (isHelperNeeded(RuntimeHelper::Concat))
-        declareRuntimeExtern(b, "rt_concat");
-    if (boundsChecks)
-        declareRuntimeExtern(b, "rt_trap");
-    if (isHelperNeeded(RuntimeHelper::InputLine))
-        declareRuntimeExtern(b, "rt_input_line");
-    if (isHelperNeeded(RuntimeHelper::ToInt))
-        declareRuntimeExtern(b, "rt_to_int");
-    if (isHelperNeeded(RuntimeHelper::IntToStr))
-        declareRuntimeExtern(b, "rt_int_to_str");
-    if (isHelperNeeded(RuntimeHelper::F64ToStr))
-        declareRuntimeExtern(b, "rt_f64_to_str");
-    if (isHelperNeeded(RuntimeHelper::Alloc))
-        declareRuntimeExtern(b, "rt_alloc");
-    if (isHelperNeeded(RuntimeHelper::Left))
-        declareRuntimeExtern(b, "rt_left");
-    if (isHelperNeeded(RuntimeHelper::Right))
-        declareRuntimeExtern(b, "rt_right");
-    if (isHelperNeeded(RuntimeHelper::Mid2))
-        declareRuntimeExtern(b, "rt_mid2");
-    if (isHelperNeeded(RuntimeHelper::Mid3))
-        declareRuntimeExtern(b, "rt_mid3");
-    if (isHelperNeeded(RuntimeHelper::Instr2))
-        declareRuntimeExtern(b, "rt_instr2");
-    if (isHelperNeeded(RuntimeHelper::Instr3))
-        declareRuntimeExtern(b, "rt_instr3");
-    if (isHelperNeeded(RuntimeHelper::Ltrim))
-        declareRuntimeExtern(b, "rt_ltrim");
-    if (isHelperNeeded(RuntimeHelper::Rtrim))
-        declareRuntimeExtern(b, "rt_rtrim");
-    if (isHelperNeeded(RuntimeHelper::Trim))
-        declareRuntimeExtern(b, "rt_trim");
-    if (isHelperNeeded(RuntimeHelper::Ucase))
-        declareRuntimeExtern(b, "rt_ucase");
-    if (isHelperNeeded(RuntimeHelper::Lcase))
-        declareRuntimeExtern(b, "rt_lcase");
-    if (isHelperNeeded(RuntimeHelper::Chr))
-        declareRuntimeExtern(b, "rt_chr");
-    if (isHelperNeeded(RuntimeHelper::Asc))
-        declareRuntimeExtern(b, "rt_asc");
-
-    for (RuntimeFn fn : runtimeOrder)
+    const auto &registry = il::runtime::runtimeRegistry();
+    for (const auto &entry : registry)
     {
-        switch (fn)
+        switch (entry.lowering.kind)
         {
-            case RuntimeFn::Sqrt:
-                declareRuntimeExtern(b, "rt_sqrt");
+            case il::runtime::RuntimeLoweringKind::Always:
+                declareRuntimeExtern(b, entry);
                 break;
-            case RuntimeFn::AbsI64:
-                declareRuntimeExtern(b, "rt_abs_i64");
+            case il::runtime::RuntimeLoweringKind::BoundsChecked:
+                if (boundsChecks)
+                    declareRuntimeExtern(b, entry);
                 break;
-            case RuntimeFn::AbsF64:
-                declareRuntimeExtern(b, "rt_abs_f64");
+            case il::runtime::RuntimeLoweringKind::Feature:
+                if (!entry.lowering.ordered && isHelperNeeded(entry.lowering.feature))
+                    declareRuntimeExtern(b, entry);
                 break;
-            case RuntimeFn::Floor:
-                declareRuntimeExtern(b, "rt_floor");
-                break;
-            case RuntimeFn::Ceil:
-                declareRuntimeExtern(b, "rt_ceil");
-                break;
-            case RuntimeFn::Sin:
-                declareRuntimeExtern(b, "rt_sin");
-                break;
-            case RuntimeFn::Cos:
-                declareRuntimeExtern(b, "rt_cos");
-                break;
-            case RuntimeFn::Pow:
-                declareRuntimeExtern(b, "rt_pow");
-                break;
-            case RuntimeFn::RandomizeI64:
-                declareRuntimeExtern(b, "rt_randomize_i64");
-                break;
-            case RuntimeFn::Rnd:
-                declareRuntimeExtern(b, "rt_rnd");
+            case il::runtime::RuntimeLoweringKind::Manual:
                 break;
         }
     }
 
-    if (isHelperNeeded(RuntimeHelper::StrEq))
-        declareRuntimeExtern(b, "rt_str_eq");
+    for (RuntimeFeature feature : runtimeOrder)
+    {
+        const auto *desc = il::runtime::findRuntimeDescriptor(feature);
+        assert(desc && "requested runtime feature missing from registry");
+        declareRuntimeExtern(b, *desc);
+    }
 }
 
 /// @brief Record that a runtime helper is needed for the current program.
@@ -164,10 +101,11 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
 /// @param fn Identifier for the runtime helper that lowering just requested.
 /// @post runtimeSet always contains @p fn; runtimeOrder grows only when @p fn
 ///       was not previously tracked.
-void Lowerer::trackRuntime(RuntimeFn fn)
+void Lowerer::trackRuntime(RuntimeFeature feature)
 {
-    if (runtimeSet.insert(fn).second)
-        runtimeOrder.push_back(fn);
+    runtimeFeatures.set(static_cast<size_t>(feature));
+    if (runtimeSet.insert(feature).second)
+        runtimeOrder.push_back(feature);
 }
 
 } // namespace il::frontends::basic

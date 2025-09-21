@@ -5,29 +5,15 @@
 // Links: docs/class-catalog.md
 #pragma once
 
-enum class RuntimeFn
+struct RuntimeFeatureHash
 {
-    Sqrt,
-    AbsI64,
-    AbsF64,
-    Floor,
-    Ceil,
-    Sin,
-    Cos,
-    Pow,
-    RandomizeI64,
-    Rnd,
+    size_t operator()(RuntimeFeature f) const;
 };
 
-struct RuntimeFnHash
-{
-    size_t operator()(RuntimeFn f) const;
-};
+std::vector<RuntimeFeature> runtimeOrder;
+std::unordered_set<RuntimeFeature, RuntimeFeatureHash> runtimeSet;
 
-std::vector<RuntimeFn> runtimeOrder;
-std::unordered_set<RuntimeFn, RuntimeFnHash> runtimeSet;
-
-void requestHelper(RuntimeHelper helper);
-bool isHelperNeeded(RuntimeHelper helper) const;
-void trackRuntime(RuntimeFn fn);
+void requestHelper(RuntimeFeature feature);
+bool isHelperNeeded(RuntimeFeature feature) const;
+void trackRuntime(RuntimeFeature feature);
 void declareRequiredRuntime(build::IRBuilder &b);
