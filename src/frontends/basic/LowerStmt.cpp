@@ -18,6 +18,50 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
+/// @brief Visitor that dispatches statement lowering to Lowerer helpers.
+class LowererStmtVisitor final : public StmtVisitor
+{
+  public:
+    explicit LowererStmtVisitor(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
+
+    void visit(const PrintStmt &stmt) override { lowerer_.lowerPrint(stmt); }
+
+    void visit(const LetStmt &stmt) override { lowerer_.lowerLet(stmt); }
+
+    void visit(const DimStmt &stmt) override
+    {
+        if (stmt.isArray)
+            lowerer_.lowerDim(stmt);
+    }
+
+    void visit(const RandomizeStmt &stmt) override { lowerer_.lowerRandomize(stmt); }
+
+    void visit(const IfStmt &stmt) override { lowerer_.lowerIf(stmt); }
+
+    void visit(const WhileStmt &stmt) override { lowerer_.lowerWhile(stmt); }
+
+    void visit(const ForStmt &stmt) override { lowerer_.lowerFor(stmt); }
+
+    void visit(const NextStmt &stmt) override { lowerer_.lowerNext(stmt); }
+
+    void visit(const GotoStmt &stmt) override { lowerer_.lowerGoto(stmt); }
+
+    void visit(const EndStmt &stmt) override { lowerer_.lowerEnd(stmt); }
+
+    void visit(const InputStmt &stmt) override { lowerer_.lowerInput(stmt); }
+
+    void visit(const ReturnStmt &stmt) override { lowerer_.lowerReturn(stmt); }
+
+    void visit(const FunctionDecl &) override {}
+
+    void visit(const SubDecl &) override {}
+
+    void visit(const StmtList &stmt) override { lowerer_.lowerStmtList(stmt); }
+
+  private:
+    Lowerer &lowerer_;
+};
+
 /// @brief Lower a BASIC statement subtree into IL form.
 /// @param stmt AST statement to lower.
 /// @details Dispatches on the dynamic statement type and forwards to the
@@ -30,52 +74,40 @@ namespace il::frontends::basic
 void Lowerer::lowerStmt(const Stmt &stmt)
 {
     curLoc = stmt.loc;
-    if (auto *lst = dynamic_cast<const StmtList *>(&stmt))
+    LowererStmtVisitor visitor(*this);
+    stmt.accept(visitor);
+}
+
+/// @brief Lower each statement within a statement list sequentially.
+/// @param stmt StmtList aggregating multiple statements on one line.
+/// @details Invokes @ref lowerStmt for every child while respecting
+///          terminators emitted by earlier statements.
+void Lowerer::lowerStmtList(const StmtList &stmt)
+{
+    for (const auto &child : stmt.stmts)
     {
-        for (const auto &s : lst->stmts)
-        {
-            if (cur->terminated)
-                break;
-            lowerStmt(*s);
-        }
+        if (!child)
+            continue;
+        if (cur && cur->terminated)
+            break;
+        lowerStmt(*child);
     }
-    else if (auto *p = dynamic_cast<const PrintStmt *>(&stmt))
-        lowerPrint(*p);
-    else if (auto *l = dynamic_cast<const LetStmt *>(&stmt))
-        lowerLet(*l);
-    else if (auto *i = dynamic_cast<const IfStmt *>(&stmt))
-        lowerIf(*i);
-    else if (auto *w = dynamic_cast<const WhileStmt *>(&stmt))
-        lowerWhile(*w);
-    else if (auto *f = dynamic_cast<const ForStmt *>(&stmt))
-        lowerFor(*f);
-    else if (auto *n = dynamic_cast<const NextStmt *>(&stmt))
-        lowerNext(*n);
-    else if (auto *g = dynamic_cast<const GotoStmt *>(&stmt))
-        lowerGoto(*g);
-    else if (auto *e = dynamic_cast<const EndStmt *>(&stmt))
-        lowerEnd(*e);
-    else if (auto *in = dynamic_cast<const InputStmt *>(&stmt))
-        lowerInput(*in);
-    else if (auto *d = dynamic_cast<const DimStmt *>(&stmt))
+}
+
+/// @brief Lower a RETURN statement optionally yielding a value.
+/// @param stmt RETURN statement describing the result expression.
+/// @details Lowers the optional return value and emits the corresponding IL
+///          return terminator, mirroring the legacy dispatch logic.
+void Lowerer::lowerReturn(const ReturnStmt &stmt)
+{
+    if (stmt.value)
     {
-        if (d->isArray)
-            lowerDim(*d);
+        RVal v = lowerExpr(*stmt.value);
+        emitRet(v.value);
     }
-    else if (auto *r = dynamic_cast<const RandomizeStmt *>(&stmt))
-        lowerRandomize(*r);
-    else if (auto *ret = dynamic_cast<const ReturnStmt *>(&stmt))
+    else
     {
-        if (ret->value)
-        {
-            RVal v = lowerExpr(*ret->value);
-            emitRet(v.value);
-        }
-        else
-        {
-            emitRetVoid();
-        }
-        // Block closed after RETURN; callers should skip further statements.
+        emitRetVoid();
     }
 }
 

@@ -13,7 +13,6 @@
 #include <algorithm>
 #include <limits>
 #include <sstream>
-#include <typeindex>
 #include <vector>
 #include <utility>
 
@@ -85,18 +84,6 @@ SemanticAnalyzer::ProcedureScope::~ProcedureScope() noexcept
 
 namespace
 {
-/// @brief Invoke a member handler for a concrete statement type.
-/// @tparam T Statement subclass expected by the handler.
-/// @tparam Fn Member function pointer that processes @p T.
-/// @param sa Analyzer performing the dispatch.
-/// @param s Statement instance supplied by the visitor.
-/// @note Dispatching itself has no diagnostics; the target member issues them.
-template <typename T, void (SemanticAnalyzer::*Fn)(const T &)>
-void dispatchHelper(SemanticAnalyzer *sa, const Stmt &s)
-{
-    (sa->*Fn)(static_cast<const T &>(s));
-}
-
 /// @brief Compute the Levenshtein edit distance between two strings.
 /// @param a Candidate identifier from user input.
 /// @param b Known symbol to compare against.
@@ -194,6 +181,98 @@ static const char *logicalOpName(BinaryExpr::Op op)
     return "<logical>";
 }
 
+} // namespace
+
+/// @brief Expression visitor that forwards to SemanticAnalyzer helpers.
+class SemanticAnalyzerExprVisitor final : public ExprVisitor
+{
+  public:
+    explicit SemanticAnalyzerExprVisitor(SemanticAnalyzer &analyzer) noexcept
+        : analyzer_(analyzer)
+    {
+    }
+
+    void visit(const IntExpr &) override { result_ = SemanticAnalyzer::Type::Int; }
+
+    void visit(const FloatExpr &) override { result_ = SemanticAnalyzer::Type::Float; }
+
+    void visit(const StringExpr &) override { result_ = SemanticAnalyzer::Type::String; }
+
+    void visit(const BoolExpr &) override { result_ = SemanticAnalyzer::Type::Bool; }
+
+    void visit(const VarExpr &expr) override
+    {
+        auto &mutableExpr = const_cast<VarExpr &>(expr);
+        result_ = analyzer_.analyzeVar(mutableExpr);
+    }
+
+    void visit(const ArrayExpr &expr) override
+    {
+        auto &mutableExpr = const_cast<ArrayExpr &>(expr);
+        result_ = analyzer_.analyzeArray(mutableExpr);
+    }
+
+    void visit(const UnaryExpr &expr) override { result_ = analyzer_.analyzeUnary(expr); }
+
+    void visit(const BinaryExpr &expr) override { result_ = analyzer_.analyzeBinary(expr); }
+
+    void visit(const BuiltinCallExpr &expr) override
+    {
+        result_ = analyzer_.analyzeBuiltinCall(expr);
+    }
+
+    void visit(const CallExpr &expr) override { result_ = analyzer_.analyzeCall(expr); }
+
+    [[nodiscard]] SemanticAnalyzer::Type result() const noexcept { return result_; }
+
+  private:
+    SemanticAnalyzer &analyzer_;
+    SemanticAnalyzer::Type result_{SemanticAnalyzer::Type::Unknown};
+};
+
+/// @brief Statement visitor that routes nodes to SemanticAnalyzer handlers.
+class SemanticAnalyzerStmtVisitor final : public StmtVisitor
+{
+  public:
+    explicit SemanticAnalyzerStmtVisitor(SemanticAnalyzer &analyzer) noexcept
+        : analyzer_(analyzer)
+    {
+    }
+
+    void visit(const PrintStmt &stmt) override { analyzer_.analyzePrint(stmt); }
+
+    void visit(const LetStmt &stmt) override { analyzer_.analyzeLet(stmt); }
+
+    void visit(const DimStmt &stmt) override { analyzer_.analyzeDim(stmt); }
+
+    void visit(const RandomizeStmt &stmt) override { analyzer_.analyzeRandomize(stmt); }
+
+    void visit(const IfStmt &stmt) override { analyzer_.analyzeIf(stmt); }
+
+    void visit(const WhileStmt &stmt) override { analyzer_.analyzeWhile(stmt); }
+
+    void visit(const ForStmt &stmt) override { analyzer_.analyzeFor(stmt); }
+
+    void visit(const NextStmt &stmt) override { analyzer_.analyzeNext(stmt); }
+
+    void visit(const GotoStmt &stmt) override { analyzer_.analyzeGoto(stmt); }
+
+    void visit(const EndStmt &stmt) override { analyzer_.analyzeEnd(stmt); }
+
+    void visit(const InputStmt &stmt) override { analyzer_.analyzeInput(stmt); }
+
+    void visit(const ReturnStmt &) override {}
+
+    void visit(const FunctionDecl &) override {}
+
+    void visit(const SubDecl &) override {}
+
+    void visit(const StmtList &stmt) override { analyzer_.analyzeStmtList(stmt); }
+
+  private:
+    SemanticAnalyzer &analyzer_;
+};
+
 /// @brief Produce a short textual description of @p expr for diagnostics.
 /// @param expr Expression appearing within a conditional context.
 /// @return Human-readable description used to clarify diagnostics.
@@ -221,8 +300,6 @@ static std::string conditionExprText(const Expr &expr)
     }
     return {};
 }
-
-} // namespace
 
 /// @brief Analyze a procedure declaration shared logic between functions/subs.
 /// @tparam Proc Procedure AST type (FunctionDecl or SubDecl).
@@ -758,25 +835,8 @@ void SemanticAnalyzer::analyzeDim(const DimStmt &d)
 ///       specific handler invoked.
 void SemanticAnalyzer::visitStmt(const Stmt &s)
 {
-    using Handler = void (*)(SemanticAnalyzer *, const Stmt &);
-    static const std::unordered_map<std::type_index, Handler> table = {
-        {typeid(StmtList), &dispatchHelper<StmtList, &SemanticAnalyzer::analyzeStmtList>},
-        {typeid(PrintStmt), &dispatchHelper<PrintStmt, &SemanticAnalyzer::analyzePrint>},
-        {typeid(LetStmt), &dispatchHelper<LetStmt, &SemanticAnalyzer::analyzeLet>},
-        {typeid(IfStmt), &dispatchHelper<IfStmt, &SemanticAnalyzer::analyzeIf>},
-        {typeid(WhileStmt), &dispatchHelper<WhileStmt, &SemanticAnalyzer::analyzeWhile>},
-        {typeid(ForStmt), &dispatchHelper<ForStmt, &SemanticAnalyzer::analyzeFor>},
-        {typeid(GotoStmt), &dispatchHelper<GotoStmt, &SemanticAnalyzer::analyzeGoto>},
-        {typeid(NextStmt), &dispatchHelper<NextStmt, &SemanticAnalyzer::analyzeNext>},
-        {typeid(EndStmt), &dispatchHelper<EndStmt, &SemanticAnalyzer::analyzeEnd>},
-        {typeid(RandomizeStmt),
-         &dispatchHelper<RandomizeStmt, &SemanticAnalyzer::analyzeRandomize>},
-        {typeid(InputStmt), &dispatchHelper<InputStmt, &SemanticAnalyzer::analyzeInput>},
-        {typeid(DimStmt), &dispatchHelper<DimStmt, &SemanticAnalyzer::analyzeDim>},
-    };
-    auto it = table.find(typeid(s));
-    if (it != table.end())
-        it->second(this, s);
+    SemanticAnalyzerStmtVisitor visitor(*this);
+    s.accept(visitor);
 }
 
 /// @brief Analyze a variable reference expression.
@@ -1603,27 +1663,9 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
 ///       when a node type is not recognized.
 SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
 {
-    if (dynamic_cast<const IntExpr *>(&e))
-        return Type::Int;
-    if (dynamic_cast<const FloatExpr *>(&e))
-        return Type::Float;
-    if (dynamic_cast<const StringExpr *>(&e))
-        return Type::String;
-    if (dynamic_cast<const BoolExpr *>(&e))
-        return Type::Bool;
-    if (auto *v = const_cast<VarExpr *>(dynamic_cast<const VarExpr *>(&e)))
-        return analyzeVar(*v);
-    if (auto *u = dynamic_cast<const UnaryExpr *>(&e))
-        return analyzeUnary(*u);
-    if (auto *b = dynamic_cast<const BinaryExpr *>(&e))
-        return analyzeBinary(*b);
-    if (auto *bc = dynamic_cast<const BuiltinCallExpr *>(&e))
-        return analyzeBuiltinCall(*bc);
-    if (auto *c = dynamic_cast<const CallExpr *>(&e))
-        return analyzeCall(*c);
-    if (auto *a = const_cast<ArrayExpr *>(dynamic_cast<const ArrayExpr *>(&e)))
-        return analyzeArray(*a);
-    return Type::Unknown;
+    SemanticAnalyzerExprVisitor visitor(*this);
+    e.accept(visitor);
+    return visitor.result();
 }
 
 } // namespace il::frontends::basic

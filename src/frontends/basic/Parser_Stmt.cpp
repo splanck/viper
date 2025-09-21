@@ -464,18 +464,18 @@ il::support::SourceLoc Parser::parseProcedureBody(TokenKind endKind, std::vector
     {
         while (at(TokenKind::EndOfLine))
             consume();
+        int innerLine = 0;
+        if (at(TokenKind::Number))
+        {
+            innerLine = std::atoi(peek().lexeme.c_str());
+            consume();
+        }
         if (at(TokenKind::KeywordEnd) && peek(1).kind == endKind)
         {
             endLoc = peek().loc;
             consume();
             consume();
             break;
-        }
-        int innerLine = 0;
-        if (at(TokenKind::Number))
-        {
-            innerLine = std::atoi(peek().lexeme.c_str());
-            consume();
         }
         auto stmt = parseStatement(innerLine);
         stmt->line = innerLine;
