@@ -29,6 +29,14 @@ Paths to notable documentation and tests.
 
   Implements compile-time folding for BASIC AST expressions using table-driven dispatch across arithmetic, comparison, and string operators. The folder walks expression subtrees, promotes numeric literals to the appropriate width, and replaces nodes with canonical `IntExpr`, `FloatExpr`, or `StringExpr` instances when evaluation succeeds. It preserves 64-bit wrap-around semantics and mutates AST nodes in place so later lowering phases see simplified trees. Dependencies include `ConstFolder.hpp`, `ConstFoldHelpers.hpp`, the expression class hierarchy, and standard utilities like `<optional>` for representing fold results.
 
+- **src/frontends/basic/DiagnosticEmitter.cpp**
+
+  Implements the BASIC diagnostic emitter that records error entries while forwarding them immediately to the shared `DiagnosticEngine`. It caches full source buffers keyed by file id so `printAll` can reproduce offending lines with caret markers and severity labels. Helper routines such as `emitExpected` centralize parser error wording while private helpers traverse stored text to extract a single line for display. The unit relies on `frontends/basic/DiagnosticEmitter.hpp` for the interface, which in turn brings in token metadata, `support::DiagnosticEngine`, `support::SourceManager`, and STL formatting helpers alongside `<algorithm>` and `<sstream>`.
+
+- **src/frontends/basic/DiagnosticEmitter.hpp**
+
+  Declares the BASIC `DiagnosticEmitter` class that wraps a `DiagnosticEngine` and `SourceManager` to report diagnostics with project-specific error codes. It defines the `Entry` record storing severity, code, message, location, and span so emissions can later be replayed to a stream. Public hooks let callers register raw source buffers, emit diagnostics with caret lengths, and print counts, while `emitExpected` standardizes parser mismatches. The header depends on the BASIC token definitions plus `support/diagnostics.hpp`, `support/source_manager.hpp`, and standard `<ostream>`, `<unordered_map>`, `<vector>`, and `<string>` facilities.
+
 - **src/frontends/basic/Lexer.cpp**
 
   Performs lexical analysis over BASIC source buffers with character-level tracking of offsets, line numbers, and column positions. The lexer normalizes whitespace, skips REM and apostrophe comments, and classifies keywords by uppercasing identifier sequences before token construction. Specialized scanners handle numeric literals with optional decimal, exponent, and type suffixes while preserving newline tokens for the parser's statement grouping logic. It depends on `Lexer.hpp`, token definitions declared through that header, `il::support::SourceLoc` for provenance, and the C++ standard library's `<cctype>` and `<string>` facilities.
@@ -120,6 +128,14 @@ Paths to notable documentation and tests.
 
   Defines the `BasicBlock` aggregate that holds a label, parameter list, ordered instruction vector, and a terminator flag for every IL block. The struct documents invariants around unique labels, parameter arity, and terminator tracking so builders, verifiers, and the VM can reason about control flow consistently. Storing instructions and parameters by value keeps the IR layout contiguous for efficient traversal and serialization. Dependencies include `il/core/Instr.hpp`, `il/core/Param.hpp`, and standard `<string>`/`<vector>` containers.
 
+- **src/il/core/Extern.cpp**
+
+  Serves as the translation unit for IL extern declarations, keeping the `Extern` aggregate in its own object file even though no out-of-line logic is needed today. Maintaining the source file simplifies future expansions such as formatting helpers or explicit template instantiations without forcing widespread rebuilds. The unit depends solely on `il/core/Extern.hpp`.
+
+- **src/il/core/Extern.hpp**
+
+  Defines the `il::core::Extern` struct that models a module's imported functions. It stores the mangled name, declared return type, and ordered parameter list so verifiers and code generators can validate call sites against the runtime ABI. Documentation in the header captures invariants about unique names and signature alignment, making it clear how modules should populate the collection. Dependencies include `il/core/Type.hpp` together with standard `<string>` and `<vector>` containers.
+
 - **src/il/core/Function.cpp**
 
   Serves as the translation unit for out-of-line helpers tied to `il::core::Function`, keeping the door open for richer logic as the IR grows. Even though functionality currently lives in the header, the dedicated source file guarantees a stable linkage point for debugging utilities or template specializations. Maintaining the file also keeps compile units consistent across build modes. Dependencies include `il/core/Function.hpp`.
@@ -127,6 +143,14 @@ Paths to notable documentation and tests.
 - **src/il/core/Function.hpp**
 
   Models IL function definitions with their signature, parameter list, basic blocks, and SSA value names. Consumers mutate the `blocks` vector as they build or transform functions, while `params` and `retType` expose metadata to verifiers and backends. The struct's simple ownership semantics (value-stored blocks and params) make it easy for the builder, serializer, and VM to traverse the IR without extra indirection. Dependencies include `il/core/BasicBlock.hpp`, `il/core/Param.hpp`, `il/core/Type.hpp`, and standard `<string>`/`<vector>` containers.
+
+- **src/il/core/Global.cpp**
+
+  Provides the standalone compilation unit for IL globals, mirroring the pattern used for other core aggregates. Even though all behaviour currently lives inline, keeping a `.cpp` ensures debuggers and linkers always find a home for potential utility methods. The file only includes `il/core/Global.hpp`.
+
+- **src/il/core/Global.hpp**
+
+  Declares the `il::core::Global` record that describes module-scoped variables and constants. Fields capture the symbol name, IL type, and optional serialized initializer string, allowing the serializer, verifier, and VM to agree on storage layout. Comments document invariants around unique identifiers and initializer type matching so producers stay spec-compliant. It depends on `il/core/Type.hpp` and uses `<string>` for both identifiers and initializers.
 
 - **src/il/core/Instr.cpp**
 
@@ -180,6 +204,14 @@ Paths to notable documentation and tests.
 - **src/il/io/Parser.hpp**
 
   Declares the IL parser entry point that orchestrates module, function, and instruction sub-parsers. The class exposes a single static `parse` routine, signaling that parsing is a stateless operation layered over a supplied module instance. Its includes reveal the composition of specialized parsers and parser-state bookkeeping while documenting the diagnostic channel used for reporting errors. Dependencies include IL core forward declarations, the function/instruction/module parser headers, `ParserState.hpp`, and the `il::support::Expected` utility.
+
+- **src/il/io/ParserState.cpp**
+
+  Implements the lightweight constructor for the shared IL parser state, wiring the mutable context to the module being populated. Having the definition in a `.cpp` avoids inlining across translation units that include the header. The only dependency is `il/io/ParserState.hpp`.
+
+- **src/il/io/ParserState.hpp**
+
+  Declares `il::io::detail::ParserState`, the mutable context threaded through module, function, and instruction parsers. It keeps references to the current module, function, and basic block along with SSA bookkeeping structures like `tempIds`, `nextTemp`, and unresolved branch metadata. The nested `PendingBr` struct and `blockParamCount` map let parsers defer validation until all labels are seen while `curLoc` tracks active `.loc` directives for diagnostics. Dependencies cover `il/core/fwd.hpp`, `support/source_location.hpp`, and standard `<string>`, `<unordered_map>`, and `<vector>` utilities.
 
 - **src/il/io/Serializer.cpp**
 
@@ -249,6 +281,14 @@ Paths to notable documentation and tests.
 
   Maintains canonical source-file identifiers and paths for diagnostics through the `SourceManager`. New files are normalized with `std::filesystem` so relative paths collapse to stable, platform-independent strings before being assigned incrementing IDs. Consumers such as the lexer, diagnostics engine, and tracing facilities call back into the manager to resolve `SourceLoc` instances into filenames. Dependencies include `source_manager.hpp` and the C++ `<filesystem>` library.
 
+- **src/support/string_interner.cpp**
+
+  Provides the implementation of the `StringInterner`, giving the BASIC front end and VM a shared symbol table. `intern` consults an unordered map before copying new strings into the storage vector, guaranteeing each interned value receives a stable non-zero `Symbol`. The `lookup` helper validates ids and returns the original view or an empty result when the caller passes the reserved sentinel. It relies on `support/string_interner.hpp`, which supplies the container members and the `Symbol` wrapper.
+
+- **src/support/string_interner.hpp**
+
+  Declares the `StringInterner` class and accompanying `Symbol` abstraction used wherever the toolchain needs canonicalized identifiers. The interface exposes `intern` to deduplicate strings and `lookup` to retrieve the original text, making it easy for diagnostics, debuggers, and registries to share keys. Internally the class stores an unordered map from text to `Symbol` alongside a vector of owned strings so views remain valid for the interner's lifetime. Dependencies include `support/symbol.hpp` plus standard `<string>`, `<string_view>`, `<unordered_map>`, and `<vector>` containers.
+
 ## VM Runtime
 - **src/vm/control_flow.cpp**
 
@@ -294,6 +334,10 @@ Paths to notable documentation and tests.
 
   Builds the opcode-dispatch table by translating metadata emitted from `il/core/Opcode.def` into concrete handler function pointers. Each opcode’s declared VM dispatch kind maps to a corresponding method on `OpHandlers`, allowing the VM to remain declarative and auto-updated when new opcodes are added. The table is materialized lazily and cached for reuse across VM instances to avoid recomputation. It depends on `vm/OpHandlers.hpp`, opcode metadata headers (`Opcode.hpp`, `OpcodeInfo.hpp`), and the generated definitions in `Opcode.def`.
 
+- **src/vm/OpHandlers.hpp**
+
+  Advertises the `il::vm::detail::OpHandlers` struct whose static methods implement each IL opcode the interpreter supports. Every handler receives the active `VM`, frame, decoded instruction, and block map so it can evaluate operands, mutate registers, branch, or trigger runtime calls, with shared plumbing factored into `OpHandlerUtils`. The header also exposes `getOpcodeHandlers`, the accessor that returns the lazily built dispatch table consumed by the main interpreter loop. It depends on `vm/VM.hpp` for `Frame`, `ExecResult`, and block metadata, which in turn pull in IL instruction types and the runtime bridge contracts.
+
 - **src/vm/RuntimeBridge.cpp**
 
   Provides the dynamic bridge that allows the VM to invoke C runtime helpers while preserving precise trap diagnostics. On first use it materializes a dispatch table mapping runtime symbol names to thin adapters that unpack `Slot` arguments, call the underlying C functions, and marshal results back into VM slots. Before each call it records the current `SourceLoc`, function, and block names so the exported `vm_trap` hook can report accurate context if the callee aborts. The implementation relies on `RuntimeBridge.hpp`, the VM's `Slot` type, generated runtime headers such as `rt_math.h` and `rt_random.h`, and standard library utilities like `<unordered_map>` and `<sstream>`.
@@ -317,6 +361,10 @@ Paths to notable documentation and tests.
 - **src/vm/VM.hpp**
 
   Defines the VM's public interface, including the slot union, execution frame container, and the interpreter class itself. The header documents how `VM` wires together tracing, debugging, and opcode dispatch, exposing the `ExecResult` structure and handler table typedefs that drive the interpreter loop. It also details constructor knobs like step limits and debug scripts so embedding tools understand lifecycle expectations. Nested data members describe ownership semantics for modules, runtime strings, and per-function lookup tables. Dependencies include the VM debug and trace headers, IL opcode/type forward declarations, the runtime `rt.hpp` bridge, and standard containers such as `<vector>`, `<array>`, and `<unordered_map>`.
+
+- **src/vm/VMDebug.cpp**
+
+  Implements the debugging hooks that sit inside `VM::handleDebugBreak` and `VM::processDebugControl`. The code coordinates label and source line breakpoints through `DebugCtrl`, honours scripted stepping via `DebugScript`, and enforces global step limits before handing control back to the interpreter loop. When a break fires it logs contextual information, syncs pending block parameters into registers, and returns sentinel slots that pause execution. Dependencies include `vm/VM.hpp`, IL core block/function/instruction headers, the shared `support::SourceManager`, `vm/DebugScript.hpp`, and the standard `<filesystem>`, `<iostream>`, and `<string>` libraries.
 
 - **src/vm/VMInit.cpp**
 
