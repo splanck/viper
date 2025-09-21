@@ -448,6 +448,10 @@ add_executable(test_basic_semantic unit/test_basic_semantic.cpp)
 target_link_libraries(test_basic_semantic PRIVATE fe_basic support)
 add_test(NAME test_basic_semantic COMMAND test_basic_semantic)
 
+add_executable(test_basic_lowerer_collect unit/test_basic_lowerer_collect.cpp)
+target_link_libraries(test_basic_lowerer_collect PRIVATE fe_basic support)
+add_test(NAME test_basic_lowerer_collect COMMAND test_basic_lowerer_collect)
+
 add_executable(test_basic_semantic_components unit/test_basic_semantic_components.cpp)
 target_link_libraries(test_basic_semantic_components PRIVATE fe_basic support)
 add_test(NAME test_basic_semantic_components COMMAND test_basic_semantic_components)
