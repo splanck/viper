@@ -192,7 +192,7 @@ Module Lowerer::lowerProgram(const Program &prog)
     arrays.clear();
     boundsCheckId = 0;
 
-    runtimeHelpers.reset();
+    runtimeFeatures.reset();
     runtimeOrder.clear();
     runtimeSet.clear();
 

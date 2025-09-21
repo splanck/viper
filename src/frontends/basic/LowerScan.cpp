@@ -33,13 +33,13 @@ Lowerer::ExprType Lowerer::scanBinaryExpr(const BinaryExpr &b)
     ExprType rt = scanExpr(*b.rhs);
     if (b.op == BinaryExpr::Op::Add && lt == ExprType::Str && rt == ExprType::Str)
     {
-        requestHelper(RuntimeHelper::Concat);
+        requestHelper(RuntimeFeature::Concat);
         return ExprType::Str;
     }
     if (b.op == BinaryExpr::Op::Eq || b.op == BinaryExpr::Op::Ne)
     {
         if (lt == ExprType::Str || rt == ExprType::Str)
-            requestHelper(RuntimeHelper::StrEq);
+            requestHelper(RuntimeFeature::StrEq);
         return ExprType::Bool;
     }
     if (b.op == BinaryExpr::Op::LogicalAndShort || b.op == BinaryExpr::Op::LogicalOrShort ||
@@ -100,9 +100,9 @@ Lowerer::ExprType Lowerer::scanLen(const BuiltinCallExpr &c)
 Lowerer::ExprType Lowerer::scanMid(const BuiltinCallExpr &c)
 {
     if (c.args.size() >= 3 && c.args[2])
-        requestHelper(RuntimeHelper::Mid3);
+        requestHelper(RuntimeFeature::Mid3);
     else
-        requestHelper(RuntimeHelper::Mid2);
+        requestHelper(RuntimeFeature::Mid2);
     for (auto &a : c.args)
         if (a)
             scanExpr(*a);
@@ -116,7 +116,7 @@ Lowerer::ExprType Lowerer::scanMid(const BuiltinCallExpr &c)
 /// nested expressions contribute their requirements.
 Lowerer::ExprType Lowerer::scanLeft(const BuiltinCallExpr &c)
 {
-    requestHelper(RuntimeHelper::Left);
+    requestHelper(RuntimeFeature::Left);
     for (auto &a : c.args)
         if (a)
             scanExpr(*a);
@@ -130,7 +130,7 @@ Lowerer::ExprType Lowerer::scanLeft(const BuiltinCallExpr &c)
 /// nested expressions contribute their requirements.
 Lowerer::ExprType Lowerer::scanRight(const BuiltinCallExpr &c)
 {
-    requestHelper(RuntimeHelper::Right);
+    requestHelper(RuntimeFeature::Right);
     for (auto &a : c.args)
         if (a)
             scanExpr(*a);
@@ -144,8 +144,8 @@ Lowerer::ExprType Lowerer::scanRight(const BuiltinCallExpr &c)
 /// and scans the argument expression when present.
 Lowerer::ExprType Lowerer::scanStr(const BuiltinCallExpr &c)
 {
-    requestHelper(RuntimeHelper::IntToStr);
-    requestHelper(RuntimeHelper::F64ToStr);
+    requestHelper(RuntimeFeature::IntToStr);
+    requestHelper(RuntimeFeature::F64ToStr);
     if (c.args[0])
         scanExpr(*c.args[0]);
     return ExprType::Str;
@@ -158,7 +158,7 @@ Lowerer::ExprType Lowerer::scanStr(const BuiltinCallExpr &c)
 /// provided to capture nested requirements.
 Lowerer::ExprType Lowerer::scanVal(const BuiltinCallExpr &c)
 {
-    requestHelper(RuntimeHelper::ToInt);
+    requestHelper(RuntimeFeature::ToInt);
     if (c.args[0])
         scanExpr(*c.args[0]);
     return ExprType::I64;
@@ -185,7 +185,7 @@ Lowerer::ExprType Lowerer::scanSqr(const BuiltinCallExpr &c)
 {
     if (c.args[0])
         scanExpr(*c.args[0]);
-    trackRuntime(RuntimeFn::Sqrt);
+    trackRuntime(RuntimeFeature::Sqrt);
     return ExprType::F64;
 }
 
@@ -200,9 +200,9 @@ Lowerer::ExprType Lowerer::scanAbs(const BuiltinCallExpr &c)
     if (c.args[0])
         ty = scanExpr(*c.args[0]);
     if (ty == ExprType::F64)
-        trackRuntime(RuntimeFn::AbsF64);
+        trackRuntime(RuntimeFeature::AbsF64);
     else
-        trackRuntime(RuntimeFn::AbsI64);
+        trackRuntime(RuntimeFeature::AbsI64);
     return ty;
 }
 
@@ -214,7 +214,7 @@ Lowerer::ExprType Lowerer::scanFloor(const BuiltinCallExpr &c)
 {
     if (c.args[0])
         scanExpr(*c.args[0]);
-    trackRuntime(RuntimeFn::Floor);
+    trackRuntime(RuntimeFeature::Floor);
     return ExprType::F64;
 }
 
@@ -226,7 +226,7 @@ Lowerer::ExprType Lowerer::scanCeil(const BuiltinCallExpr &c)
 {
     if (c.args[0])
         scanExpr(*c.args[0]);
-    trackRuntime(RuntimeFn::Ceil);
+    trackRuntime(RuntimeFeature::Ceil);
     return ExprType::F64;
 }
 
@@ -238,7 +238,7 @@ Lowerer::ExprType Lowerer::scanSin(const BuiltinCallExpr &c)
 {
     if (c.args[0])
         scanExpr(*c.args[0]);
-    trackRuntime(RuntimeFn::Sin);
+    trackRuntime(RuntimeFeature::Sin);
     return ExprType::F64;
 }
 
@@ -250,7 +250,7 @@ Lowerer::ExprType Lowerer::scanCos(const BuiltinCallExpr &c)
 {
     if (c.args[0])
         scanExpr(*c.args[0]);
-    trackRuntime(RuntimeFn::Cos);
+    trackRuntime(RuntimeFeature::Cos);
     return ExprType::F64;
 }
 
@@ -265,7 +265,7 @@ Lowerer::ExprType Lowerer::scanPow(const BuiltinCallExpr &c)
         scanExpr(*c.args[0]);
     if (c.args[1])
         scanExpr(*c.args[1]);
-    trackRuntime(RuntimeFn::Pow);
+    trackRuntime(RuntimeFeature::Pow);
     return ExprType::F64;
 }
 
@@ -274,7 +274,7 @@ Lowerer::ExprType Lowerer::scanPow(const BuiltinCallExpr &c)
 /// @details RND has no child expressions; it simply marks the runtime random helper.
 Lowerer::ExprType Lowerer::scanRnd(const BuiltinCallExpr &)
 {
-    trackRuntime(RuntimeFn::Rnd);
+    trackRuntime(RuntimeFeature::Rnd);
     return ExprType::F64;
 }
 
@@ -287,9 +287,9 @@ Lowerer::ExprType Lowerer::scanRnd(const BuiltinCallExpr &)
 Lowerer::ExprType Lowerer::scanInstr(const BuiltinCallExpr &c)
 {
     if (c.args.size() >= 3 && c.args[0])
-        requestHelper(RuntimeHelper::Instr3);
+        requestHelper(RuntimeFeature::Instr3);
     else
-        requestHelper(RuntimeHelper::Instr2);
+        requestHelper(RuntimeFeature::Instr2);
     for (auto &a : c.args)
         if (a)
             scanExpr(*a);
@@ -302,7 +302,7 @@ Lowerer::ExprType Lowerer::scanInstr(const BuiltinCallExpr &c)
 /// @details Enables the left-trim runtime helper and scans the operand when present.
 Lowerer::ExprType Lowerer::scanLtrim(const BuiltinCallExpr &c)
 {
-    requestHelper(RuntimeHelper::Ltrim);
+    requestHelper(RuntimeFeature::Ltrim);
     if (c.args[0])
         scanExpr(*c.args[0]);
     return ExprType::Str;
@@ -314,7 +314,7 @@ Lowerer::ExprType Lowerer::scanLtrim(const BuiltinCallExpr &c)
 /// @details Enables the right-trim runtime helper and scans the operand when present.
 Lowerer::ExprType Lowerer::scanRtrim(const BuiltinCallExpr &c)
 {
-    requestHelper(RuntimeHelper::Rtrim);
+    requestHelper(RuntimeFeature::Rtrim);
     if (c.args[0])
         scanExpr(*c.args[0]);
     return ExprType::Str;
@@ -326,7 +326,7 @@ Lowerer::ExprType Lowerer::scanRtrim(const BuiltinCallExpr &c)
 /// @details Enables the full-trim runtime helper and scans the operand when present.
 Lowerer::ExprType Lowerer::scanTrim(const BuiltinCallExpr &c)
 {
-    requestHelper(RuntimeHelper::Trim);
+    requestHelper(RuntimeFeature::Trim);
     if (c.args[0])
         scanExpr(*c.args[0]);
     return ExprType::Str;
@@ -338,7 +338,7 @@ Lowerer::ExprType Lowerer::scanTrim(const BuiltinCallExpr &c)
 /// @details Enables the uppercase runtime helper and scans the operand when present.
 Lowerer::ExprType Lowerer::scanUcase(const BuiltinCallExpr &c)
 {
-    requestHelper(RuntimeHelper::Ucase);
+    requestHelper(RuntimeFeature::Ucase);
     if (c.args[0])
         scanExpr(*c.args[0]);
     return ExprType::Str;
@@ -350,7 +350,7 @@ Lowerer::ExprType Lowerer::scanUcase(const BuiltinCallExpr &c)
 /// @details Enables the lowercase runtime helper and scans the operand when present.
 Lowerer::ExprType Lowerer::scanLcase(const BuiltinCallExpr &c)
 {
-    requestHelper(RuntimeHelper::Lcase);
+    requestHelper(RuntimeFeature::Lcase);
     if (c.args[0])
         scanExpr(*c.args[0]);
     return ExprType::Str;
@@ -362,7 +362,7 @@ Lowerer::ExprType Lowerer::scanLcase(const BuiltinCallExpr &c)
 /// @details Enables the character runtime helper and scans the operand when present.
 Lowerer::ExprType Lowerer::scanChr(const BuiltinCallExpr &c)
 {
-    requestHelper(RuntimeHelper::Chr);
+    requestHelper(RuntimeFeature::Chr);
     if (c.args[0])
         scanExpr(*c.args[0]);
     return ExprType::Str;
@@ -374,7 +374,7 @@ Lowerer::ExprType Lowerer::scanChr(const BuiltinCallExpr &c)
 /// @details Enables the ASCII runtime helper and scans the operand when present.
 Lowerer::ExprType Lowerer::scanAsc(const BuiltinCallExpr &c)
 {
-    requestHelper(RuntimeHelper::Asc);
+    requestHelper(RuntimeFeature::Asc);
     if (c.args[0])
         scanExpr(*c.args[0]);
     return ExprType::I64;
@@ -472,21 +472,21 @@ void Lowerer::scanStmt(const Stmt &s)
     }
     else if (auto *inp = dynamic_cast<const InputStmt *>(&s))
     {
-        requestHelper(RuntimeHelper::InputLine);
+        requestHelper(RuntimeFeature::InputLine);
         if (inp->prompt)
             scanExpr(*inp->prompt);
         if (inp->var.empty() || inp->var.back() != '$')
-            requestHelper(RuntimeHelper::ToInt);
+            requestHelper(RuntimeFeature::ToInt);
     }
     else if (auto *d = dynamic_cast<const DimStmt *>(&s))
     {
-        requestHelper(RuntimeHelper::Alloc);
+        requestHelper(RuntimeFeature::Alloc);
         if (d->size)
             scanExpr(*d->size);
     }
     else if (auto *r = dynamic_cast<const RandomizeStmt *>(&s))
     {
-        trackRuntime(RuntimeFn::RandomizeI64);
+        trackRuntime(RuntimeFeature::RandomizeI64);
         if (r->seed)
             scanExpr(*r->seed);
     }
