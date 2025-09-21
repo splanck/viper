@@ -14,7 +14,7 @@ add_library(il_core STATIC
 target_include_directories(il_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_library(il_runtime STATIC il/runtime/RuntimeSignatures.cpp)
-target_link_libraries(il_runtime PUBLIC il_core)
+target_link_libraries(il_runtime PUBLIC il_core rt)
 target_include_directories(il_runtime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_library(il_build STATIC il/build/IRBuilder.cpp)
@@ -70,7 +70,7 @@ add_library(il_vm STATIC
   vm/fp_ops.cpp
   vm/control_flow.cpp)
 target_include_directories(il_vm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(il_vm PUBLIC il_core rt support)
+target_link_libraries(il_vm PUBLIC il_core il_runtime rt support)
 
 add_library(il_codegen_x86_64 STATIC codegen/x86_64/placeholder.cpp)
 set_target_properties(il_codegen_x86_64 PROPERTIES LINKER_LANGUAGE CXX)

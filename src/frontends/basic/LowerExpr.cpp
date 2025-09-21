@@ -537,11 +537,11 @@ Lowerer::RVal Lowerer::lowerMid(const BuiltinCallExpr &c)
     {
         RVal n = ensureI64(lowerArg(c, 2), c.loc);
         Value res = emitCallRet(Type(Type::Kind::Str), "rt_mid3", {s.value, start0, n.value});
-        requestHelper(RuntimeHelper::Mid3);
+        requestHelper(RuntimeFeature::Mid3);
         return {res, Type(Type::Kind::Str)};
     }
     Value res = emitCallRet(Type(Type::Kind::Str), "rt_mid2", {s.value, start0});
-    requestHelper(RuntimeHelper::Mid2);
+    requestHelper(RuntimeFeature::Mid2);
     return {res, Type(Type::Kind::Str)};
 }
 
@@ -559,7 +559,7 @@ Lowerer::RVal Lowerer::lowerLeft(const BuiltinCallExpr &c)
     RVal n = ensureI64(lowerArg(c, 1), c.loc);
     curLoc = c.loc;
     Value res = emitCallRet(Type(Type::Kind::Str), "rt_left", {s.value, n.value});
-    requestHelper(RuntimeHelper::Left);
+    requestHelper(RuntimeFeature::Left);
     return {res, Type(Type::Kind::Str)};
 }
 
@@ -576,7 +576,7 @@ Lowerer::RVal Lowerer::lowerRight(const BuiltinCallExpr &c)
     RVal n = ensureI64(lowerArg(c, 1), c.loc);
     curLoc = c.loc;
     Value res = emitCallRet(Type(Type::Kind::Str), "rt_right", {s.value, n.value});
-    requestHelper(RuntimeHelper::Right);
+    requestHelper(RuntimeFeature::Right);
     return {res, Type(Type::Kind::Str)};
 }
 
@@ -657,13 +657,13 @@ Lowerer::RVal Lowerer::lowerInstr(const BuiltinCallExpr &c)
         RVal needle = lowerArg(c, 2);
         Value res =
             emitCallRet(Type(Type::Kind::I64), "rt_instr3", {start0, hay.value, needle.value});
-        requestHelper(RuntimeHelper::Instr3);
+        requestHelper(RuntimeFeature::Instr3);
         return {res, Type(Type::Kind::I64)};
     }
     RVal hay = lowerArg(c, 0);
     RVal needle = lowerArg(c, 1);
     Value res = emitCallRet(Type(Type::Kind::I64), "rt_instr2", {hay.value, needle.value});
-    requestHelper(RuntimeHelper::Instr2);
+    requestHelper(RuntimeFeature::Instr2);
     return {res, Type(Type::Kind::I64)};
 }
 
@@ -679,7 +679,7 @@ Lowerer::RVal Lowerer::lowerLtrim(const BuiltinCallExpr &c)
     RVal s = lowerArg(c, 0);
     curLoc = c.loc;
     Value res = emitCallRet(Type(Type::Kind::Str), "rt_ltrim", {s.value});
-    requestHelper(RuntimeHelper::Ltrim);
+    requestHelper(RuntimeFeature::Ltrim);
     return {res, Type(Type::Kind::Str)};
 }
 
@@ -695,7 +695,7 @@ Lowerer::RVal Lowerer::lowerRtrim(const BuiltinCallExpr &c)
     RVal s = lowerArg(c, 0);
     curLoc = c.loc;
     Value res = emitCallRet(Type(Type::Kind::Str), "rt_rtrim", {s.value});
-    requestHelper(RuntimeHelper::Rtrim);
+    requestHelper(RuntimeFeature::Rtrim);
     return {res, Type(Type::Kind::Str)};
 }
 
@@ -711,7 +711,7 @@ Lowerer::RVal Lowerer::lowerTrim(const BuiltinCallExpr &c)
     RVal s = lowerArg(c, 0);
     curLoc = c.loc;
     Value res = emitCallRet(Type(Type::Kind::Str), "rt_trim", {s.value});
-    requestHelper(RuntimeHelper::Trim);
+    requestHelper(RuntimeFeature::Trim);
     return {res, Type(Type::Kind::Str)};
 }
 
@@ -727,7 +727,7 @@ Lowerer::RVal Lowerer::lowerUcase(const BuiltinCallExpr &c)
     RVal s = lowerArg(c, 0);
     curLoc = c.loc;
     Value res = emitCallRet(Type(Type::Kind::Str), "rt_ucase", {s.value});
-    requestHelper(RuntimeHelper::Ucase);
+    requestHelper(RuntimeFeature::Ucase);
     return {res, Type(Type::Kind::Str)};
 }
 
@@ -743,7 +743,7 @@ Lowerer::RVal Lowerer::lowerLcase(const BuiltinCallExpr &c)
     RVal s = lowerArg(c, 0);
     curLoc = c.loc;
     Value res = emitCallRet(Type(Type::Kind::Str), "rt_lcase", {s.value});
-    requestHelper(RuntimeHelper::Lcase);
+    requestHelper(RuntimeFeature::Lcase);
     return {res, Type(Type::Kind::Str)};
 }
 
@@ -759,7 +759,7 @@ Lowerer::RVal Lowerer::lowerChr(const BuiltinCallExpr &c)
     RVal code = ensureI64(lowerArg(c, 0), c.loc);
     curLoc = c.loc;
     Value res = emitCallRet(Type(Type::Kind::Str), "rt_chr", {code.value});
-    requestHelper(RuntimeHelper::Chr);
+    requestHelper(RuntimeFeature::Chr);
     return {res, Type(Type::Kind::Str)};
 }
 
@@ -775,7 +775,7 @@ Lowerer::RVal Lowerer::lowerAsc(const BuiltinCallExpr &c)
     RVal s = lowerArg(c, 0);
     curLoc = c.loc;
     Value res = emitCallRet(Type(Type::Kind::I64), "rt_asc", {s.value});
-    requestHelper(RuntimeHelper::Asc);
+    requestHelper(RuntimeFeature::Asc);
     return {res, Type(Type::Kind::I64)};
 }
 

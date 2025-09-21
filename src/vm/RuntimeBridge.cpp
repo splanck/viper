@@ -6,18 +6,17 @@
 // Links: docs/il-spec.md
 
 #include "vm/RuntimeBridge.hpp"
-#include "rt_math.h"
-#include "rt_random.h"
+#include "il/runtime/RuntimeSignatures.hpp"
 #include "vm/VM.hpp"
 #include <cassert>
 #include <sstream>
-#include <unordered_map>
 
 using il::support::SourceLoc;
 
 namespace
 {
 using il::vm::Slot;
+using il::core::Type;
 
 /// @brief Global scratch space for recording the current source location.
 /// @details Runtime calls may trigger traps inside the C runtime. The VM
@@ -29,142 +28,6 @@ std::string curFn;
 /// @brief Label of the current basic block within the function.
 std::string curBlock;
 
-/// @brief Runtime dispatch table entry describing a builtin.
-struct RuntimeEntry
-{
-    /// @brief Required argument count for the builtin.
-    size_t argCount;
-
-    /// @brief Callback that performs the runtime invocation.
-    void (*handler)(const std::vector<Slot> &args, Slot &result);
-};
-
-/// @brief Populate the runtime dispatch table.
-/// @details Initializes the static map that pairs symbol names emitted by the
-/// IL with thin adapters that invoke the corresponding C runtime entrypoints.
-/// The table is built on first use and reused for every VM call site to avoid
-/// repeatedly wiring handlers.
-const std::unordered_map<std::string, RuntimeEntry> &runtimeDispatchTable()
-{
-    static const std::unordered_map<std::string, RuntimeEntry> table = {
-        {"rt_print_str",
-         {1, [](const std::vector<Slot> &args, Slot & /*result*/) { rt_print_str(args[0].str); }}},
-        {"rt_print_i64",
-         {1, [](const std::vector<Slot> &args, Slot & /*result*/) { rt_print_i64(args[0].i64); }}},
-        {"rt_print_f64",
-         {1, [](const std::vector<Slot> &args, Slot & /*result*/) { rt_print_f64(args[0].f64); }}},
-        {"rt_len",
-         {1,
-          [](const std::vector<Slot> &args, Slot &result) { result.i64 = rt_len(args[0].str); }}},
-        {"rt_concat",
-         {2,
-          [](const std::vector<Slot> &args, Slot &result)
-          { result.str = rt_concat(args[0].str, args[1].str); }}},
-        {"rt_substr",
-         {3,
-          [](const std::vector<Slot> &args, Slot &result)
-          { result.str = rt_substr(args[0].str, args[1].i64, args[2].i64); }}},
-        {"rt_str_eq",
-         {2,
-          [](const std::vector<Slot> &args, Slot &result)
-          { result.i64 = rt_str_eq(args[0].str, args[1].str); }}},
-        {"rt_input_line",
-         {0,
-          [](const std::vector<Slot> & /*args*/, Slot &result) { result.str = rt_input_line(); }}},
-        {"rt_to_int",
-         {1,
-          [](const std::vector<Slot> &args, Slot &result)
-          { result.i64 = rt_to_int(args[0].str); }}},
-        {"rt_int_to_str",
-         {1,
-          [](const std::vector<Slot> &args, Slot &result)
-          { result.str = rt_int_to_str(args[0].i64); }}},
-        {"rt_f64_to_str",
-         {1,
-          [](const std::vector<Slot> &args, Slot &result)
-          { result.str = rt_f64_to_str(args[0].f64); }}},
-        {"rt_alloc",
-         {1,
-          [](const std::vector<Slot> &args, Slot &result) { result.ptr = rt_alloc(args[0].i64); }}},
-        {"rt_left",
-         {2,
-          [](const std::vector<Slot> &args, Slot &result)
-          { result.str = rt_left(args[0].str, args[1].i64); }}},
-        {"rt_right",
-         {2,
-          [](const std::vector<Slot> &args, Slot &result)
-          { result.str = rt_right(args[0].str, args[1].i64); }}},
-        {"rt_mid2",
-         {2,
-          [](const std::vector<Slot> &args, Slot &result)
-          { result.str = rt_mid2(args[0].str, args[1].i64); }}},
-        {"rt_mid3",
-         {3,
-          [](const std::vector<Slot> &args, Slot &result)
-          { result.str = rt_mid3(args[0].str, args[1].i64, args[2].i64); }}},
-        {"rt_instr2",
-         {2,
-          [](const std::vector<Slot> &args, Slot &result)
-          { result.i64 = rt_instr2(args[0].str, args[1].str); }}},
-        {"rt_instr3",
-         {3,
-          [](const std::vector<Slot> &args, Slot &result)
-          { result.i64 = rt_instr3(args[0].i64, args[1].str, args[2].str); }}},
-        {"rt_ltrim",
-         {1,
-          [](const std::vector<Slot> &args, Slot &result) { result.str = rt_ltrim(args[0].str); }}},
-        {"rt_rtrim",
-         {1,
-          [](const std::vector<Slot> &args, Slot &result) { result.str = rt_rtrim(args[0].str); }}},
-        {"rt_trim",
-         {1,
-          [](const std::vector<Slot> &args, Slot &result) { result.str = rt_trim(args[0].str); }}},
-        {"rt_ucase",
-         {1,
-          [](const std::vector<Slot> &args, Slot &result) { result.str = rt_ucase(args[0].str); }}},
-        {"rt_lcase",
-         {1,
-          [](const std::vector<Slot> &args, Slot &result) { result.str = rt_lcase(args[0].str); }}},
-        {"rt_chr",
-         {1,
-          [](const std::vector<Slot> &args, Slot &result) { result.str = rt_chr(args[0].i64); }}},
-        {"rt_asc",
-         {1,
-          [](const std::vector<Slot> &args, Slot &result) { result.i64 = rt_asc(args[0].str); }}},
-        {"rt_sqrt",
-         {1,
-          [](const std::vector<Slot> &args, Slot &result) { result.f64 = rt_sqrt(args[0].f64); }}},
-        {"rt_floor",
-         {1,
-          [](const std::vector<Slot> &args, Slot &result) { result.f64 = rt_floor(args[0].f64); }}},
-        {"rt_ceil",
-         {1,
-          [](const std::vector<Slot> &args, Slot &result) { result.f64 = rt_ceil(args[0].f64); }}},
-        {"rt_sin",
-         {1,
-          [](const std::vector<Slot> &args, Slot &result) { result.f64 = rt_sin(args[0].f64); }}},
-        {"rt_cos",
-         {1,
-          [](const std::vector<Slot> &args, Slot &result) { result.f64 = rt_cos(args[0].f64); }}},
-        {"rt_pow",
-         {2,
-          [](const std::vector<Slot> &args, Slot &result)
-          { result.f64 = rt_pow(args[0].f64, args[1].f64); }}},
-        {"rt_abs_i64",
-         {1,
-          [](const std::vector<Slot> &args, Slot &result)
-          { result.i64 = rt_abs_i64(args[0].i64); }}},
-        {"rt_abs_f64",
-         {1,
-          [](const std::vector<Slot> &args, Slot &result)
-          { result.f64 = rt_abs_f64(args[0].f64); }}},
-        {"rt_randomize_i64",
-         {1,
-          [](const std::vector<Slot> &args, Slot & /*result*/) { rt_randomize_i64(args[0].i64); }}},
-        {"rt_rnd",
-         {0, [](const std::vector<Slot> & /*args*/, Slot &result) { result.f64 = rt_rnd(); }}}};
-    return table;
-}
 } // namespace
 
 /// @brief Entry point invoked from the C runtime when a trap occurs.
@@ -208,15 +71,88 @@ Slot RuntimeBridge::call(const std::string &name,
         }
         return true;
     };
-    const auto &dispatch = runtimeDispatchTable();
-    const auto it = dispatch.find(name);
-    if (it == dispatch.end())
+    const auto *desc = il::runtime::findRuntimeDescriptor(name);
+    if (!desc)
     {
         assert(false && "unknown runtime call");
     }
-    else if (checkArgs(it->second.argCount))
+    else if (checkArgs(desc->signature.paramTypes.size()))
     {
-        it->second.handler(args, res);
+        const auto &sig = desc->signature;
+        std::vector<void *> rawArgs(sig.paramTypes.size());
+        for (size_t i = 0; i < sig.paramTypes.size(); ++i)
+        {
+            auto kind = sig.paramTypes[i].kind;
+            Slot &slot = const_cast<Slot &>(args[i]);
+            switch (kind)
+            {
+                case Type::Kind::I64:
+                case Type::Kind::I1:
+                    rawArgs[i] = static_cast<void *>(&slot.i64);
+                    break;
+                case Type::Kind::F64:
+                    rawArgs[i] = static_cast<void *>(&slot.f64);
+                    break;
+                case Type::Kind::Ptr:
+                    rawArgs[i] = static_cast<void *>(&slot.ptr);
+                    break;
+                case Type::Kind::Str:
+                    rawArgs[i] = static_cast<void *>(&slot.str);
+                    break;
+                default:
+                    assert(false && "unsupported runtime argument kind");
+            }
+        }
+
+        void *resultPtr = nullptr;
+        int64_t i64Result = 0;
+        double f64Result = 0.0;
+        rt_string strResult = nullptr;
+        void *ptrResult = nullptr;
+
+        switch (sig.retType.kind)
+        {
+            case Type::Kind::Void:
+                break;
+            case Type::Kind::I1:
+            case Type::Kind::I64:
+                resultPtr = &i64Result;
+                break;
+            case Type::Kind::F64:
+                resultPtr = &f64Result;
+                break;
+            case Type::Kind::Str:
+                resultPtr = &strResult;
+                break;
+            case Type::Kind::Ptr:
+                resultPtr = &ptrResult;
+                break;
+            default:
+                assert(false && "unsupported runtime return kind");
+        }
+
+        desc->handler(rawArgs.empty() ? nullptr : rawArgs.data(), resultPtr);
+
+        switch (sig.retType.kind)
+        {
+            case Type::Kind::Void:
+                break;
+            case Type::Kind::I1:
+            case Type::Kind::I64:
+                res.i64 = i64Result;
+                break;
+            case Type::Kind::F64:
+                res.f64 = f64Result;
+                break;
+            case Type::Kind::Str:
+                res.str = strResult;
+                break;
+            case Type::Kind::Ptr:
+                res.ptr = ptrResult;
+                break;
+            default:
+                break;
+        }
     }
     curLoc = {};
     curFn.clear();
