@@ -47,13 +47,37 @@ il::core::Type coreTypeForAstType(::il::frontends::basic::Type ty)
     return Type(Type::Kind::I64);
 }
 
+/// @brief Infer the BASIC AST type for an identifier by inspecting its suffix.
+/// @param name Identifier to analyze.
+/// @return BASIC type derived from the suffix; defaults to integer for
+///         suffix-free names.
+::il::frontends::basic::Type astTypeFromName(std::string_view name)
+{
+    using AstType = ::il::frontends::basic::Type;
+    if (!name.empty())
+    {
+        switch (name.back())
+        {
+            case '$':
+                return AstType::Str;
+            case '#':
+                return AstType::F64;
+            default:
+                break;
+        }
+    }
+    return AstType::I64;
+}
+
 /// @brief Expression visitor accumulating referenced variable and array names.
 class VarCollectExprVisitor final : public ExprVisitor
 {
   public:
-    VarCollectExprVisitor(std::unordered_set<std::string> &vars,
-                          std::unordered_set<std::string> &arrays)
-        : vars_(vars), arrays_(arrays)
+    VarCollectExprVisitor(
+        std::unordered_set<std::string> &vars,
+        std::unordered_set<std::string> &arrays,
+        std::unordered_map<std::string, ::il::frontends::basic::Type> &varTypes)
+        : vars_(vars), arrays_(arrays), varTypes_(varTypes)
     {
     }
 
@@ -68,12 +92,14 @@ class VarCollectExprVisitor final : public ExprVisitor
     void visit(const VarExpr &expr) override
     {
         vars_.insert(expr.name);
+        recordImplicitType(expr.name);
     }
 
     void visit(const ArrayExpr &expr) override
     {
         vars_.insert(expr.name);
         arrays_.insert(expr.name);
+        recordImplicitType(expr.name);
         if (expr.index)
             expr.index->accept(*this);
     }
@@ -107,8 +133,18 @@ class VarCollectExprVisitor final : public ExprVisitor
     }
 
   private:
+    void recordImplicitType(const std::string &name)
+    {
+        if (name.empty())
+            return;
+        if (varTypes_.find(name) != varTypes_.end())
+            return;
+        varTypes_[name] = astTypeFromName(name);
+    }
+
     std::unordered_set<std::string> &vars_;
     std::unordered_set<std::string> &arrays_;
+    std::unordered_map<std::string, ::il::frontends::basic::Type> &varTypes_;
 };
 
 /// @brief Statement visitor walking child expressions/statements to collect names.
@@ -185,7 +221,11 @@ class VarCollectStmtVisitor final : public StmtVisitor
     void visit(const ForStmt &stmt) override
     {
         if (!stmt.var.empty())
+        {
             vars_.insert(stmt.var);
+            if (varTypes_.find(stmt.var) == varTypes_.end())
+                varTypes_[stmt.var] = astTypeFromName(stmt.var);
+        }
         if (stmt.start)
             stmt.start->accept(exprVisitor_);
         if (stmt.end)
@@ -212,7 +252,11 @@ class VarCollectStmtVisitor final : public StmtVisitor
         if (stmt.prompt)
             stmt.prompt->accept(exprVisitor_);
         if (!stmt.var.empty())
+        {
             vars_.insert(stmt.var);
+            if (varTypes_.find(stmt.var) == varTypes_.end())
+                varTypes_[stmt.var] = astTypeFromName(stmt.var);
+        }
     }
 
     void visit(const ReturnStmt &stmt) override
@@ -247,6 +291,15 @@ class VarCollectStmtVisitor final : public StmtVisitor
     std::unordered_set<std::string> &vars_;
     std::unordered_set<std::string> &arrays_;
     std::unordered_map<std::string, ::il::frontends::basic::Type> &varTypes_;
+
+    void recordImplicitType(const std::string &name)
+    {
+        if (name.empty())
+            return;
+        if (varTypes_.find(name) != varTypes_.end())
+            return;
+        varTypes_[name] = astTypeFromName(name);
+    }
 };
 
 } // namespace
@@ -360,6 +413,19 @@ std::string Lowerer::BlockNamer::tag(const std::string &base) const
     return base + "_" + proc;
 }
 
+Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
+{
+    SlotType info;
+    std::string key(name);
+    using AstType = ::il::frontends::basic::Type;
+    auto it = varTypes.find(key);
+    AstType astTy = (it != varTypes.end()) ? it->second : astTypeFromName(name);
+    info.isArray = arrays.find(key) != arrays.end();
+    info.isBoolean = !info.isArray && astTy == AstType::Bool;
+    info.type = info.isArray ? Type(Type::Kind::Ptr) : coreTypeForAstType(astTy);
+    return info;
+}
+
 /// @brief Construct a lowering context.
 /// @param boundsChecks When true, enable allocation of auxiliary slots used to
 ///        emit runtime array bounds checks during lowering.
@@ -422,7 +488,7 @@ Module Lowerer::lower(const Program &prog)
 ///          different program regions.
 void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
 {
-    VarCollectExprVisitor exprVisitor(vars, arrays);
+    VarCollectExprVisitor exprVisitor(vars, arrays, varTypes);
     VarCollectStmtVisitor stmtVisitor(exprVisitor, vars, arrays, varTypes);
     for (const auto *stmt : stmts)
         if (stmt)
@@ -511,19 +577,16 @@ void Lowerer::lowerProcedure(const std::string &name,
         if (paramNames.count(v))
             continue;
         curLoc = {};
-        if (arrays.count(v))
+        SlotType slotInfo = getSlotType(v);
+        if (slotInfo.isArray)
         {
             Value slot = emitAlloca(8);
             varSlots[v] = slot.id;
             continue;
         }
-        bool isBoolVar = false;
-        auto itType = varTypes.find(v);
-        if (itType != varTypes.end() && itType->second == AstType::Bool)
-            isBoolVar = true;
-        Value slot = emitAlloca(isBoolVar ? 1 : 8);
+        Value slot = emitAlloca(slotInfo.isBoolean ? 1 : 8);
         varSlots[v] = slot.id;
-        if (isBoolVar)
+        if (slotInfo.isBoolean)
             emitStore(ilBoolTy(), slot, emitBoolConst(false));
     }
     if (boundsChecks)

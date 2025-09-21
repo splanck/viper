@@ -171,17 +171,8 @@ Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v)
     auto it = varSlots.find(v.name);
     assert(it != varSlots.end());
     Value ptr = Value::temp(it->second);
-    bool isArray = arrays.count(v.name);
-    bool isStr = !v.name.empty() && v.name.back() == '$';
-    bool isF64 = !v.name.empty() && v.name.back() == '#';
-    bool isBoolVar = false;
-    auto typeIt = varTypes.find(v.name);
-    if (typeIt != varTypes.end() && typeIt->second == AstType::Bool)
-        isBoolVar = true;
-    Type ty = isArray ? Type(Type::Kind::Ptr)
-                      : (isStr ? Type(Type::Kind::Str)
-                               : (isF64 ? Type(Type::Kind::F64)
-                                        : (isBoolVar ? ilBoolTy() : Type(Type::Kind::I64))));
+    SlotType info = getSlotType(v.name);
+    Type ty = info.type;
     Value val = emitLoad(ty, ptr);
     return {val, ty};
 }

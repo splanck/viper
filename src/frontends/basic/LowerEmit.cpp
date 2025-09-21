@@ -71,19 +71,16 @@ void Lowerer::emitProgram(const Program &prog)
     for (const auto &v : vars)
     {
         curLoc = {};
-        if (arrays.count(v))
+        SlotType slotInfo = getSlotType(v);
+        if (slotInfo.isArray)
         {
             Value slot = emitAlloca(8);
             varSlots[v] = slot.id; // Value::temp id
             continue;
         }
-        bool isBoolVar = false;
-        auto itType = varTypes.find(v);
-        if (itType != varTypes.end() && itType->second == AstType::Bool)
-            isBoolVar = true;
-        Value slot = emitAlloca(isBoolVar ? 1 : 8);
+        Value slot = emitAlloca(slotInfo.isBoolean ? 1 : 8);
         varSlots[v] = slot.id; // Value::temp id
-        if (isBoolVar)
+        if (slotInfo.isBoolean)
             emitStore(ilBoolTy(), slot, emitBoolConst(false));
     }
     if (boundsChecks)

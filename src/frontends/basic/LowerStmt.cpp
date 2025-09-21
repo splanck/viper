@@ -126,12 +126,11 @@ void Lowerer::lowerLet(const LetStmt &stmt)
     {
         auto it = varSlots.find(var->name);
         assert(it != varSlots.end());
-        bool isStr = !var->name.empty() && var->name.back() == '$';
-        bool isF64 = !var->name.empty() && var->name.back() == '#';
-        bool isBool = false;
-        auto typeIt = varTypes.find(var->name);
-        if (typeIt != varTypes.end() && typeIt->second == AstType::Bool)
-            isBool = true;
+        SlotType slotInfo = getSlotType(var->name);
+        Type targetTy = slotInfo.type;
+        bool isStr = targetTy.kind == Type::Kind::Str;
+        bool isF64 = targetTy.kind == Type::Kind::F64;
+        bool isBool = slotInfo.isBoolean;
         if (!isStr && !isF64 && !isBool && v.type.kind == Type::Kind::I1)
         {
             curLoc = stmt.loc;
@@ -152,10 +151,7 @@ void Lowerer::lowerLet(const LetStmt &stmt)
             v.type = Type(Type::Kind::I64);
         }
         curLoc = stmt.loc;
-        Type ty = isStr ? Type(Type::Kind::Str)
-                         : (isF64 ? Type(Type::Kind::F64)
-                                  : (isBool ? ilBoolTy() : Type(Type::Kind::I64)));
-        emitStore(ty, Value::temp(it->second), v.value);
+        emitStore(targetTy, Value::temp(it->second), v.value);
     }
     else if (auto *arr = dynamic_cast<const ArrayExpr *>(stmt.target.get()))
     {
@@ -668,16 +664,29 @@ void Lowerer::lowerInput(const InputStmt &stmt)
         }
     }
     Value s = emitCallRet(Type(Type::Kind::Str), "rt_input_line", {});
-    bool isStr = !stmt.var.empty() && stmt.var.back() == '$';
+    SlotType slotInfo = getSlotType(stmt.var);
     Value target = Value::temp(varSlots[stmt.var]);
-    if (isStr)
+    if (slotInfo.type.kind == Type::Kind::Str)
     {
         emitStore(Type(Type::Kind::Str), target, s);
     }
     else
     {
         Value n = emitCallRet(Type(Type::Kind::I64), "rt_to_int", {s});
-        emitStore(Type(Type::Kind::I64), target, n);
+        if (slotInfo.isBoolean)
+        {
+            Value b = emitUnary(Opcode::Trunc1, ilBoolTy(), n);
+            emitStore(ilBoolTy(), target, b);
+        }
+        else if (slotInfo.type.kind == Type::Kind::F64)
+        {
+            Value f = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), n);
+            emitStore(Type(Type::Kind::F64), target, f);
+        }
+        else
+        {
+            emitStore(Type(Type::Kind::I64), target, n);
+        }
     }
 }
 
