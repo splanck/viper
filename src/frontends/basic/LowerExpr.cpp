@@ -22,6 +22,138 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
+/// @brief Expression visitor that lowers nodes via Lowerer helpers.
+class LowererExprVisitor final : public ExprVisitor
+{
+  public:
+    explicit LowererExprVisitor(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
+
+    void visit(const IntExpr &expr) override
+    {
+        lowerer_.curLoc = expr.loc;
+        result_ = Lowerer::RVal{Value::constInt(expr.value),
+                                il::core::Type(il::core::Type::Kind::I64)};
+    }
+
+    void visit(const FloatExpr &expr) override
+    {
+        lowerer_.curLoc = expr.loc;
+        result_ = Lowerer::RVal{Value::constFloat(expr.value),
+                                il::core::Type(il::core::Type::Kind::F64)};
+    }
+
+    void visit(const StringExpr &expr) override
+    {
+        lowerer_.curLoc = expr.loc;
+        std::string lbl = lowerer_.getStringLabel(expr.value);
+        Value tmp = lowerer_.emitConstStr(lbl);
+        result_ = Lowerer::RVal{tmp, il::core::Type(il::core::Type::Kind::Str)};
+    }
+
+    void visit(const BoolExpr &expr) override
+    {
+        lowerer_.curLoc = expr.loc;
+        result_ = Lowerer::RVal{lowerer_.emitBoolConst(expr.value), lowerer_.ilBoolTy()};
+    }
+
+    void visit(const VarExpr &expr) override { result_ = lowerer_.lowerVarExpr(expr); }
+
+    void visit(const ArrayExpr &expr) override
+    {
+        Value ptr = lowerer_.lowerArrayAddr(expr);
+        lowerer_.curLoc = expr.loc;
+        Value val = lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::I64), ptr);
+        result_ = Lowerer::RVal{val, il::core::Type(il::core::Type::Kind::I64)};
+    }
+
+    void visit(const UnaryExpr &expr) override { result_ = lowerer_.lowerUnaryExpr(expr); }
+
+    void visit(const BinaryExpr &expr) override { result_ = lowerer_.lowerBinaryExpr(expr); }
+
+    void visit(const BuiltinCallExpr &expr) override
+    {
+        result_ = lowerer_.lowerBuiltinCall(expr);
+    }
+
+    void visit(const CallExpr &expr) override
+    {
+        const Function *callee = nullptr;
+        if (lowerer_.mod)
+        {
+            for (const auto &f : lowerer_.mod->functions)
+                if (f.name == expr.callee)
+                {
+                    callee = &f;
+                    break;
+                }
+        }
+        std::vector<Value> args;
+        args.reserve(expr.args.size());
+        for (size_t i = 0; i < expr.args.size(); ++i)
+        {
+            Lowerer::RVal arg = lowerer_.lowerExpr(*expr.args[i]);
+            if (callee && i < callee->params.size())
+            {
+                il::core::Type paramTy = callee->params[i].type;
+                if (paramTy.kind == il::core::Type::Kind::F64 &&
+                    arg.type.kind == il::core::Type::Kind::I64)
+                {
+                    lowerer_.curLoc = expr.loc;
+                    arg.value =
+                        lowerer_.emitUnary(Opcode::Sitofp,
+                                           il::core::Type(il::core::Type::Kind::F64),
+                                           arg.value);
+                    arg.type = il::core::Type(il::core::Type::Kind::F64);
+                }
+                else if (paramTy.kind == il::core::Type::Kind::F64 &&
+                         arg.type.kind == il::core::Type::Kind::I1)
+                {
+                    lowerer_.curLoc = expr.loc;
+                    arg.value =
+                        lowerer_.emitUnary(Opcode::Zext1,
+                                           il::core::Type(il::core::Type::Kind::I64),
+                                           arg.value);
+                    arg.value =
+                        lowerer_.emitUnary(Opcode::Sitofp,
+                                           il::core::Type(il::core::Type::Kind::F64),
+                                           arg.value);
+                    arg.type = il::core::Type(il::core::Type::Kind::F64);
+                }
+                else if (paramTy.kind == il::core::Type::Kind::I64 &&
+                         arg.type.kind == il::core::Type::Kind::I1)
+                {
+                    lowerer_.curLoc = expr.loc;
+                    arg.value =
+                        lowerer_.emitUnary(Opcode::Zext1,
+                                           il::core::Type(il::core::Type::Kind::I64),
+                                           arg.value);
+                    arg.type = il::core::Type(il::core::Type::Kind::I64);
+                }
+            }
+            args.push_back(arg.value);
+        }
+        lowerer_.curLoc = expr.loc;
+        if (callee && callee->retType.kind != il::core::Type::Kind::Void)
+        {
+            Value res = lowerer_.emitCallRet(callee->retType, expr.callee, args);
+            result_ = Lowerer::RVal{res, callee->retType};
+        }
+        else
+        {
+            lowerer_.emitCall(expr.callee, args);
+            result_ = Lowerer::RVal{Value::constInt(0),
+                                    il::core::Type(il::core::Type::Kind::I64)};
+        }
+    }
+
+    [[nodiscard]] Lowerer::RVal result() const noexcept { return result_; }
+
+  private:
+    Lowerer &lowerer_;
+    Lowerer::RVal result_{Value::constInt(0),
+                          il::core::Type(il::core::Type::Kind::I64)};
+};
+
 /// @brief Lower a BASIC variable reference into an IL value.
 /// @param v Variable expression that names the slot to read from.
 /// @return Materialized value and type pair for the requested variable.
@@ -924,96 +1056,9 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
 Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
 {
     curLoc = expr.loc;
-    if (auto *i = dynamic_cast<const IntExpr *>(&expr))
-    {
-        return {Value::constInt(i->value), Type(Type::Kind::I64)};
-    }
-    else if (auto *f = dynamic_cast<const FloatExpr *>(&expr))
-    {
-        return {Value::constFloat(f->value), Type(Type::Kind::F64)};
-    }
-    else if (auto *s = dynamic_cast<const StringExpr *>(&expr))
-    {
-        std::string lbl = getStringLabel(s->value);
-        Value tmp = emitConstStr(lbl);
-        return {tmp, Type(Type::Kind::Str)};
-    }
-    else if (auto *b = dynamic_cast<const BoolExpr *>(&expr))
-    {
-        return {emitBoolConst(b->value), ilBoolTy()};
-    }
-    else if (auto *v = dynamic_cast<const VarExpr *>(&expr))
-    {
-        return lowerVarExpr(*v);
-    }
-    else if (auto *u = dynamic_cast<const UnaryExpr *>(&expr))
-    {
-        return lowerUnaryExpr(*u);
-    }
-    else if (auto *b = dynamic_cast<const BinaryExpr *>(&expr))
-    {
-        return lowerBinaryExpr(*b);
-    }
-    else if (auto *c = dynamic_cast<const BuiltinCallExpr *>(&expr))
-    {
-        return lowerBuiltinCall(*c);
-    }
-    else if (auto *c = dynamic_cast<const CallExpr *>(&expr))
-    {
-        const Function *callee = nullptr;
-        for (const auto &f : mod->functions)
-            if (f.name == c->callee)
-            {
-                callee = &f;
-                break;
-            }
-        std::vector<Value> args;
-        for (size_t i = 0; i < c->args.size(); ++i)
-        {
-            RVal a = lowerExpr(*c->args[i]);
-            if (callee && i < callee->params.size())
-            {
-                Type paramTy = callee->params[i].type;
-                if (paramTy.kind == Type::Kind::F64 && a.type.kind == Type::Kind::I64)
-                {
-                    curLoc = expr.loc;
-                    a.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), a.value);
-                    a.type = Type(Type::Kind::F64);
-                }
-                else if (paramTy.kind == Type::Kind::F64 && a.type.kind == Type::Kind::I1)
-                {
-                    curLoc = expr.loc;
-                    a.value = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), a.value);
-                    a.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), a.value);
-                    a.type = Type(Type::Kind::F64);
-                }
-                else if (paramTy.kind == Type::Kind::I64 && a.type.kind == Type::Kind::I1)
-                {
-                    curLoc = expr.loc;
-                    a.value = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), a.value);
-                    a.type = Type(Type::Kind::I64);
-                }
-            }
-            args.push_back(a.value);
-        }
-        curLoc = expr.loc;
-        if (callee && callee->retType.kind != Type::Kind::Void)
-        {
-            Value res = emitCallRet(callee->retType, c->callee, args);
-            return {res, callee->retType};
-        }
-        emitCall(c->callee, args);
-        return {Value::constInt(0), Type(Type::Kind::I64)};
-    }
-    else if (auto *a = dynamic_cast<const ArrayExpr *>(&expr))
-    {
-        Value ptr = lowerArrayAddr(*a);
-        curLoc = expr.loc;
-        Value val = emitLoad(Type(Type::Kind::I64), ptr);
-        return {val, Type(Type::Kind::I64)};
-    }
-    curLoc = expr.loc;
-    return {Value::constInt(0), Type(Type::Kind::I64)};
+    LowererExprVisitor visitor(*this);
+    expr.accept(visitor);
+    return visitor.result();
 }
 
 } // namespace il::frontends::basic
