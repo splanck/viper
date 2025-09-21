@@ -10,6 +10,7 @@
 #include "frontends/basic/NameMangler.hpp"
 #include "il/build/IRBuilder.hpp"
 #include "il/core/Module.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 #include <bitset>
 #include <functional>
 #include <memory>
@@ -159,35 +160,12 @@ class Lowerer
     unsigned boundsCheckId{0};
 
     // runtime requirement tracking
-    enum class RuntimeHelper
-    {
-        InputLine,
-        ToInt,
-        IntToStr,
-        F64ToStr,
-        Alloc,
-        StrEq,
-        Concat,
-        Left,
-        Right,
-        Mid2,
-        Mid3,
-        Instr2,
-        Instr3,
-        Ltrim,
-        Rtrim,
-        Trim,
-        Ucase,
-        Lcase,
-        Chr,
-        Asc,
-        Count,
-    };
+    using RuntimeFeature = il::runtime::RuntimeFeature;
 
-    static constexpr size_t kRuntimeHelperCount =
-        static_cast<size_t>(RuntimeHelper::Count);
+    static constexpr size_t kRuntimeFeatureCount =
+        static_cast<size_t>(RuntimeFeature::Count);
 
-    std::bitset<kRuntimeHelperCount> runtimeHelpers;
+    std::bitset<kRuntimeFeatureCount> runtimeFeatures;
 
 #include "frontends/basic/LowerRuntime.hpp"
 #include "frontends/basic/LowerScan.hpp"

@@ -82,6 +82,10 @@ add_executable(test_il_type_inference unit/test_il_type_inference.cpp)
 target_link_libraries(test_il_type_inference PRIVATE il_core il_verify support)
 add_test(NAME test_il_type_inference COMMAND test_il_type_inference)
 
+add_executable(test_runtime_registry unit/test_runtime_registry.cpp)
+target_link_libraries(test_runtime_registry PRIVATE il_runtime)
+add_test(NAME test_runtime_registry COMMAND test_runtime_registry)
+
 add_executable(test_il_instruction_checker unit/test_il_instruction_checker.cpp)
 target_link_libraries(test_il_instruction_checker PRIVATE il_core il_verify support)
 add_test(NAME test_il_instruction_checker COMMAND test_il_instruction_checker)
