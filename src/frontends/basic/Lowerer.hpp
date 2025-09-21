@@ -14,6 +14,7 @@
 #include <bitset>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -23,13 +24,10 @@
 namespace il::frontends::basic
 {
 
-class LowererExprVisitor;
-class LowererStmtVisitor;
-
 /// @brief Lowers BASIC AST into IL Module.
 /// @invariant Generates deterministic block names per procedure using BlockNamer.
 /// @ownership Owns produced Module; uses IRBuilder for structure emission.
-class Lowerer
+class Lowerer : public ExprVisitor, public StmtVisitor
 {
   public:
     /// @brief Construct a lowerer.
@@ -45,9 +43,6 @@ class Lowerer
     il::core::Module lower(const Program &prog);
 
   private:
-    friend class LowererExprVisitor;
-    friend class LowererStmtVisitor;
-
     using Module = il::core::Module;
     using Function = il::core::Function;
     using BasicBlock = il::core::BasicBlock;
@@ -64,6 +59,49 @@ class Lowerer
         Value value;
         Type type;
     };
+
+  private:
+    enum class ExprVisitMode
+    {
+        Value,
+        Address,
+    };
+
+    struct LValue
+    {
+        Value address;
+        Type type;
+        bool isArray{false};
+    };
+
+    // ExprVisitor interface
+    void visit(const IntExpr &expr) override;
+    void visit(const FloatExpr &expr) override;
+    void visit(const StringExpr &expr) override;
+    void visit(const BoolExpr &expr) override;
+    void visit(const VarExpr &expr) override;
+    void visit(const ArrayExpr &expr) override;
+    void visit(const UnaryExpr &expr) override;
+    void visit(const BinaryExpr &expr) override;
+    void visit(const BuiltinCallExpr &expr) override;
+    void visit(const CallExpr &expr) override;
+
+    // StmtVisitor interface
+    void visit(const PrintStmt &stmt) override;
+    void visit(const LetStmt &stmt) override;
+    void visit(const DimStmt &stmt) override;
+    void visit(const RandomizeStmt &stmt) override;
+    void visit(const IfStmt &stmt) override;
+    void visit(const WhileStmt &stmt) override;
+    void visit(const ForStmt &stmt) override;
+    void visit(const NextStmt &stmt) override;
+    void visit(const GotoStmt &stmt) override;
+    void visit(const EndStmt &stmt) override;
+    void visit(const InputStmt &stmt) override;
+    void visit(const ReturnStmt &stmt) override;
+    void visit(const FunctionDecl &stmt) override;
+    void visit(const SubDecl &stmt) override;
+    void visit(const StmtList &stmt) override;
 
   private:
     /// @brief Layout of blocks emitted for an IF/ELSEIF chain.
@@ -162,6 +200,10 @@ class Lowerer
     std::unordered_set<std::string> vars;
     std::unordered_set<std::string> arrays;
     il::support::SourceLoc curLoc{}; ///< current source location for emitted IR
+    ExprVisitMode exprMode{ExprVisitMode::Value};
+    RVal exprResult{Value::constInt(0), Type(Type::Kind::I64)};
+    LValue lvalueResult{Value::constInt(0), Type(Type::Kind::I64)};
+    std::optional<il::support::SourceLoc> pendingLValueLoc;
     bool boundsChecks{false};
     unsigned boundsCheckId{0};
 

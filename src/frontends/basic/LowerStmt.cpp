@@ -18,50 +18,6 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
-/// @brief Visitor that dispatches statement lowering to Lowerer helpers.
-class LowererStmtVisitor final : public StmtVisitor
-{
-  public:
-    explicit LowererStmtVisitor(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
-
-    void visit(const PrintStmt &stmt) override { lowerer_.lowerPrint(stmt); }
-
-    void visit(const LetStmt &stmt) override { lowerer_.lowerLet(stmt); }
-
-    void visit(const DimStmt &stmt) override
-    {
-        if (stmt.isArray)
-            lowerer_.lowerDim(stmt);
-    }
-
-    void visit(const RandomizeStmt &stmt) override { lowerer_.lowerRandomize(stmt); }
-
-    void visit(const IfStmt &stmt) override { lowerer_.lowerIf(stmt); }
-
-    void visit(const WhileStmt &stmt) override { lowerer_.lowerWhile(stmt); }
-
-    void visit(const ForStmt &stmt) override { lowerer_.lowerFor(stmt); }
-
-    void visit(const NextStmt &stmt) override { lowerer_.lowerNext(stmt); }
-
-    void visit(const GotoStmt &stmt) override { lowerer_.lowerGoto(stmt); }
-
-    void visit(const EndStmt &stmt) override { lowerer_.lowerEnd(stmt); }
-
-    void visit(const InputStmt &stmt) override { lowerer_.lowerInput(stmt); }
-
-    void visit(const ReturnStmt &stmt) override { lowerer_.lowerReturn(stmt); }
-
-    void visit(const FunctionDecl &) override {}
-
-    void visit(const SubDecl &) override {}
-
-    void visit(const StmtList &stmt) override { lowerer_.lowerStmtList(stmt); }
-
-  private:
-    Lowerer &lowerer_;
-};
-
 /// @brief Lower a BASIC statement subtree into IL form.
 /// @param stmt AST statement to lower.
 /// @details Dispatches on the dynamic statement type and forwards to the
@@ -74,15 +30,14 @@ class LowererStmtVisitor final : public StmtVisitor
 void Lowerer::lowerStmt(const Stmt &stmt)
 {
     curLoc = stmt.loc;
-    LowererStmtVisitor visitor(*this);
-    stmt.accept(visitor);
+    stmt.accept(*this);
 }
 
 /// @brief Lower each statement within a statement list sequentially.
 /// @param stmt StmtList aggregating multiple statements on one line.
 /// @details Invokes @ref lowerStmt for every child while respecting
 ///          terminators emitted by earlier statements.
-void Lowerer::lowerStmtList(const StmtList &stmt)
+void Lowerer::visit(const StmtList &stmt)
 {
     for (const auto &child : stmt.stmts)
     {
@@ -98,7 +53,7 @@ void Lowerer::lowerStmtList(const StmtList &stmt)
 /// @param stmt RETURN statement describing the result expression.
 /// @details Lowers the optional return value and emits the corresponding IL
 ///          return terminator, mirroring the legacy dispatch logic.
-void Lowerer::lowerReturn(const ReturnStmt &stmt)
+void Lowerer::visit(const ReturnStmt &stmt)
 {
     if (stmt.value)
     {
@@ -119,56 +74,48 @@ void Lowerer::lowerReturn(const ReturnStmt &stmt)
 ///          @ref cur unchanged but stamps each emitted instruction with
 ///          @ref curLoc so downstream diagnostics and runtime traps report the
 ///          correct location.
-void Lowerer::lowerLet(const LetStmt &stmt)
+void Lowerer::visit(const LetStmt &stmt)
 {
     RVal v = lowerExpr(*stmt.expr);
-    if (auto *var = dynamic_cast<const VarExpr *>(stmt.target.get()))
-    {
-        auto it = varSlots.find(var->name);
-        assert(it != varSlots.end());
-        bool isStr = !var->name.empty() && var->name.back() == '$';
-        bool isF64 = !var->name.empty() && var->name.back() == '#';
-        bool isBool = false;
-        auto typeIt = varTypes.find(var->name);
-        if (typeIt != varTypes.end() && typeIt->second == AstType::Bool)
-            isBool = true;
-        if (!isStr && !isF64 && !isBool && v.type.kind == Type::Kind::I1)
-        {
-            curLoc = stmt.loc;
-            Value z = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), v.value);
-            v.value = z;
-            v.type = Type(Type::Kind::I64);
-        }
-        if (isF64 && v.type.kind == Type::Kind::I64)
-        {
-            curLoc = stmt.loc;
-            v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
-            v.type = Type(Type::Kind::F64);
-        }
-        else if (!isStr && !isF64 && !isBool && v.type.kind == Type::Kind::F64)
-        {
-            curLoc = stmt.loc;
-            v.value = emitUnary(Opcode::Fptosi, Type(Type::Kind::I64), v.value);
-            v.type = Type(Type::Kind::I64);
-        }
-        curLoc = stmt.loc;
-        Type ty = isStr ? Type(Type::Kind::Str)
-                         : (isF64 ? Type(Type::Kind::F64)
-                                  : (isBool ? ilBoolTy() : Type(Type::Kind::I64)));
-        emitStore(ty, Value::temp(it->second), v.value);
-    }
-    else if (auto *arr = dynamic_cast<const ArrayExpr *>(stmt.target.get()))
+    curLoc = stmt.expr ? stmt.expr->loc : stmt.loc;
+    LValue target = lowerLValue(*stmt.target);
+    if (target.isArray)
     {
         if (v.type.kind == Type::Kind::I1)
         {
             curLoc = stmt.loc;
-            Value z = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), v.value);
-            v.value = z;
+            v.value = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), v.value);
+            v.type = Type(Type::Kind::I64);
         }
-        Value ptr = lowerArrayAddr(*arr);
         curLoc = stmt.loc;
-        emitStore(Type(Type::Kind::I64), ptr, v.value);
+        emitStore(Type(Type::Kind::I64), target.address, v.value);
+        return;
     }
+
+    bool isStr = target.type.kind == Type::Kind::Str;
+    bool isF64 = target.type.kind == Type::Kind::F64;
+    bool isBool = target.type.kind == Type::Kind::I1;
+    bool isPtr = target.type.kind == Type::Kind::Ptr;
+    if (!isStr && !isF64 && !isBool && !isPtr && v.type.kind == Type::Kind::I1)
+    {
+        curLoc = stmt.loc;
+        v.value = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), v.value);
+        v.type = Type(Type::Kind::I64);
+    }
+    if (isF64 && v.type.kind == Type::Kind::I64)
+    {
+        curLoc = stmt.loc;
+        v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
+        v.type = Type(Type::Kind::F64);
+    }
+    else if (!isStr && !isF64 && !isBool && !isPtr && v.type.kind == Type::Kind::F64)
+    {
+        curLoc = stmt.loc;
+        v.value = emitUnary(Opcode::Fptosi, Type(Type::Kind::I64), v.value);
+        v.type = Type(Type::Kind::I64);
+    }
+    curLoc = stmt.loc;
+    emitStore(target.type, target.address, v.value);
 }
 
 /// @brief Lower a PRINT statement into runtime calls.
@@ -180,7 +127,7 @@ void Lowerer::lowerLet(const LetStmt &stmt)
 ///          suppresses the newline emission. The procedure does not mutate
 ///          @ref cur but refreshes @ref curLoc for every runtime call to
 ///          propagate accurate diagnostic locations.
-void Lowerer::lowerPrint(const PrintStmt &stmt)
+void Lowerer::visit(const PrintStmt &stmt)
 {
     for (const auto &it : stmt.items)
     {
@@ -333,7 +280,7 @@ bool Lowerer::lowerIfBranch(const Stmt *stmt,
 ///          routine mutates @ref cur as it walks through the generated blocks
 ///          and keeps @ref curLoc aligned with the IF source span for emitted
 ///          diagnostics.
-void Lowerer::lowerIf(const IfStmt &stmt)
+void Lowerer::visit(const IfStmt &stmt)
 {
     size_t conds = 1 + stmt.elseifs.size();
     IfBlocks blocks = emitIfBlocks(conds);
@@ -383,7 +330,7 @@ void Lowerer::lowerIf(const IfStmt &stmt)
 ///          terminate, jumps back to the head to re-evaluate the condition. The
 ///          method mutates @ref cur as it traverses head, body, and done blocks
 ///          and refreshes @ref curLoc for diagnostics tied to loop locations.
-void Lowerer::lowerWhile(const WhileStmt &stmt)
+void Lowerer::visit(const WhileStmt &stmt)
 {
     // Adding blocks may reallocate the function's block list; capture index and
     // reacquire pointers to guarantee stability.
@@ -588,7 +535,7 @@ void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal st
 ///          or variable-step lowering path. The helper updates @ref curLoc for
 ///          each emitted instruction and leaves @ref cur at the block chosen by
 ///          the delegated lowering routine.
-void Lowerer::lowerFor(const ForStmt &stmt)
+void Lowerer::visit(const ForStmt &stmt)
 {
     RVal start = lowerExpr(*stmt.start);
     RVal end = lowerExpr(*stmt.end);
@@ -599,12 +546,39 @@ void Lowerer::lowerFor(const ForStmt &stmt)
     curLoc = stmt.loc;
     emitStore(Type(Type::Kind::I64), slot, start.value);
 
-    bool constStep = !stmt.step || dynamic_cast<const IntExpr *>(stmt.step.get());
+    bool constStep = !stmt.step;
     int64_t stepConst = 1;
-    if (constStep && stmt.step)
+    if (stmt.step)
     {
-        if (auto *ie = dynamic_cast<const IntExpr *>(stmt.step.get()))
-            stepConst = ie->value;
+        struct IntLiteralVisitor : ExprVisitor
+        {
+            bool isInt{false};
+            int64_t value{0};
+            void visit(const IntExpr &expr) override
+            {
+                isInt = true;
+                value = expr.value;
+            }
+            void visit(const FloatExpr &) override { isInt = false; }
+            void visit(const StringExpr &) override { isInt = false; }
+            void visit(const BoolExpr &) override { isInt = false; }
+            void visit(const VarExpr &) override { isInt = false; }
+            void visit(const ArrayExpr &) override { isInt = false; }
+            void visit(const UnaryExpr &) override { isInt = false; }
+            void visit(const BinaryExpr &) override { isInt = false; }
+            void visit(const BuiltinCallExpr &) override { isInt = false; }
+            void visit(const CallExpr &) override { isInt = false; }
+        } detector;
+        stmt.step->accept(detector);
+        if (detector.isInt)
+        {
+            constStep = true;
+            stepConst = detector.value;
+        }
+        else
+        {
+            constStep = false;
+        }
     }
     if (constStep)
         lowerForConstStep(stmt, slot, end, step, stepConst);
@@ -616,7 +590,7 @@ void Lowerer::lowerFor(const ForStmt &stmt)
 /// @param next NEXT statement (ignored).
 /// @details The lowering pipeline already encodes loop back-edges inside FOR
 ///          lowering, so NEXT does not emit IL and leaves @ref cur untouched.
-void Lowerer::lowerNext(const NextStmt &next)
+void Lowerer::visit(const NextStmt &next)
 {
     (void)next;
 }
@@ -627,7 +601,7 @@ void Lowerer::lowerNext(const NextStmt &next)
 ///          discovery and emits an unconditional branch. @ref curLoc is set so
 ///          diagnostics reference the jump site, and the resulting branch marks
 ///          the current block as terminated.
-void Lowerer::lowerGoto(const GotoStmt &stmt)
+void Lowerer::visit(const GotoStmt &stmt)
 {
     auto it = lineBlocks.find(stmt.target);
     if (it != lineBlocks.end())
@@ -642,7 +616,7 @@ void Lowerer::lowerGoto(const GotoStmt &stmt)
 /// @details Emits a branch to the function exit block recorded in @ref fnExit.
 ///          The branch uses @ref curLoc for diagnostics and leaves the current
 ///          block terminated.
-void Lowerer::lowerEnd(const EndStmt &stmt)
+void Lowerer::visit(const EndStmt &stmt)
 {
     curLoc = stmt.loc;
     emitBr(&func->blocks[fnExit]);
@@ -655,16 +629,16 @@ void Lowerer::lowerEnd(const EndStmt &stmt)
 ///          convert the string with @c rt_to_int before storing. The routine
 ///          does not mutate @ref cur but refreshes @ref curLoc prior to each
 ///          runtime interaction for diagnostics.
-void Lowerer::lowerInput(const InputStmt &stmt)
+void Lowerer::visit(const InputStmt &stmt)
 {
     curLoc = stmt.loc;
     if (stmt.prompt)
     {
-        if (auto *se = dynamic_cast<const StringExpr *>(stmt.prompt.get()))
+        RVal prompt = lowerExpr(*stmt.prompt);
+        if (prompt.type.kind == Type::Kind::Str)
         {
-            std::string lbl = getStringLabel(se->value);
-            Value v = emitConstStr(lbl);
-            emitCall("rt_print_str", {v});
+            curLoc = stmt.loc;
+            emitCall("rt_print_str", {prompt.value});
         }
     }
     Value s = emitCallRet(Type(Type::Kind::Str), "rt_input_line", {});
@@ -689,8 +663,10 @@ void Lowerer::lowerInput(const InputStmt &stmt)
 ///          length so runtime bounds checks can read it. Instructions are tagged
 ///          with @ref curLoc for diagnostics; @ref cur itself remains
 ///          unchanged.
-void Lowerer::lowerDim(const DimStmt &stmt)
+void Lowerer::visit(const DimStmt &stmt)
 {
+    if (!stmt.isArray)
+        return;
     RVal sz = lowerExpr(*stmt.size);
     curLoc = stmt.loc;
     Value bytes = emitBinary(Opcode::Mul, Type(Type::Kind::I64), sz.value, Value::constInt(8));
@@ -712,7 +688,7 @@ void Lowerer::lowerDim(const DimStmt &stmt)
 ///          invokes the runtime @c rt_randomize_i64 helper. @ref curLoc is
 ///          updated to associate diagnostics with the statement while leaving
 ///          @ref cur unchanged.
-void Lowerer::lowerRandomize(const RandomizeStmt &stmt)
+void Lowerer::visit(const RandomizeStmt &stmt)
 {
     RVal s = lowerExpr(*stmt.seed);
     Value seed = s.value;
@@ -726,6 +702,14 @@ void Lowerer::lowerRandomize(const RandomizeStmt &stmt)
     }
     curLoc = stmt.loc;
     emitCall("rt_randomize_i64", {seed});
+}
+
+void Lowerer::visit(const FunctionDecl &)
+{
+}
+
+void Lowerer::visit(const SubDecl &)
+{
 }
 
 } // namespace il::frontends::basic

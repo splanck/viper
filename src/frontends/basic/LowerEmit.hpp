@@ -29,18 +29,7 @@ void materializeParams(const std::vector<Param> &params);
 void resetLoweringState();
 void lowerStmt(const Stmt &stmt);
 RVal lowerExpr(const Expr &expr);
-/// @brief Lower a variable reference expression.
-/// @param expr Variable expression node.
-/// @return Loaded value and its type.
-RVal lowerVarExpr(const VarExpr &expr);
-/// @brief Lower a unary expression (e.g. NOT).
-/// @param expr Unary expression node.
-/// @return Resulting value and type.
-RVal lowerUnaryExpr(const UnaryExpr &expr);
-/// @brief Lower a binary expression.
-/// @param expr Binary expression node.
-/// @return Resulting value and type.
-RVal lowerBinaryExpr(const BinaryExpr &expr);
+LValue lowerLValue(const Expr &expr);
 /// @brief Lower a boolean expression using explicit branch bodies.
 /// @param cond Boolean condition selecting THEN branch.
 /// @param loc Source location to attribute to control flow.
@@ -77,11 +66,6 @@ RVal lowerStringBinary(const BinaryExpr &expr, RVal lhs, RVal rhs);
 /// @param rhs Pre-lowered right-hand side.
 /// @return Resulting value and type.
 RVal lowerNumericBinary(const BinaryExpr &expr, RVal lhs, RVal rhs);
-/// @brief Lower a built-in call expression.
-/// @param expr Built-in call expression node.
-/// @return Resulting value and type.
-RVal lowerBuiltinCall(const BuiltinCallExpr &expr);
-
 public:
 // Built-in helpers
 RVal lowerLen(const BuiltinCallExpr &expr);
@@ -114,10 +98,6 @@ RVal lowerArg(const BuiltinCallExpr &c, size_t idx);
 RVal ensureI64(RVal v, il::support::SourceLoc loc);
 RVal ensureF64(RVal v, il::support::SourceLoc loc);
 
-void lowerLet(const LetStmt &stmt);
-void lowerPrint(const PrintStmt &stmt);
-void lowerStmtList(const StmtList &stmt);
-void lowerReturn(const ReturnStmt &stmt);
 /// @brief Emit blocks for an IF/ELSEIF chain.
 /// @param conds Number of conditions (IF + ELSEIFs).
 /// @return Indices for test/then blocks and ELSE/exit blocks.
@@ -134,19 +114,10 @@ bool lowerIfBranch(const Stmt *stmt,
                    BasicBlock *thenBlk,
                    BasicBlock *exitBlk,
                    il::support::SourceLoc loc);
-void lowerIf(const IfStmt &stmt);
-void lowerWhile(const WhileStmt &stmt);
-void lowerFor(const ForStmt &stmt);
 void lowerForConstStep(const ForStmt &stmt, Value slot, RVal end, RVal step, int64_t stepConst);
 void lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal step);
 ForBlocks setupForBlocks(bool varStep);
 void emitForStep(Value slot, Value step);
-void lowerNext(const NextStmt &stmt);
-void lowerGoto(const GotoStmt &stmt);
-void lowerEnd(const EndStmt &stmt);
-void lowerInput(const InputStmt &stmt);
-void lowerDim(const DimStmt &stmt);
-void lowerRandomize(const RandomizeStmt &stmt);
 
 // helpers
 IlType ilBoolTy();

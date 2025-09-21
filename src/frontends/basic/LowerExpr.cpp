@@ -22,168 +22,190 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
-/// @brief Expression visitor that lowers nodes via Lowerer helpers.
-class LowererExprVisitor final : public ExprVisitor
+void Lowerer::visit(const IntExpr &expr)
 {
-  public:
-    explicit LowererExprVisitor(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
+    assert(exprMode == ExprVisitMode::Value && "int literal cannot form an lvalue");
+    curLoc = expr.loc;
+    exprResult = {Value::constInt(expr.value), Type(Type::Kind::I64)};
+}
 
-    void visit(const IntExpr &expr) override
-    {
-        lowerer_.curLoc = expr.loc;
-        result_ = Lowerer::RVal{Value::constInt(expr.value),
-                                il::core::Type(il::core::Type::Kind::I64)};
-    }
-
-    void visit(const FloatExpr &expr) override
-    {
-        lowerer_.curLoc = expr.loc;
-        result_ = Lowerer::RVal{Value::constFloat(expr.value),
-                                il::core::Type(il::core::Type::Kind::F64)};
-    }
-
-    void visit(const StringExpr &expr) override
-    {
-        lowerer_.curLoc = expr.loc;
-        std::string lbl = lowerer_.getStringLabel(expr.value);
-        Value tmp = lowerer_.emitConstStr(lbl);
-        result_ = Lowerer::RVal{tmp, il::core::Type(il::core::Type::Kind::Str)};
-    }
-
-    void visit(const BoolExpr &expr) override
-    {
-        lowerer_.curLoc = expr.loc;
-        result_ = Lowerer::RVal{lowerer_.emitBoolConst(expr.value), lowerer_.ilBoolTy()};
-    }
-
-    void visit(const VarExpr &expr) override { result_ = lowerer_.lowerVarExpr(expr); }
-
-    void visit(const ArrayExpr &expr) override
-    {
-        Value ptr = lowerer_.lowerArrayAddr(expr);
-        lowerer_.curLoc = expr.loc;
-        Value val = lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::I64), ptr);
-        result_ = Lowerer::RVal{val, il::core::Type(il::core::Type::Kind::I64)};
-    }
-
-    void visit(const UnaryExpr &expr) override { result_ = lowerer_.lowerUnaryExpr(expr); }
-
-    void visit(const BinaryExpr &expr) override { result_ = lowerer_.lowerBinaryExpr(expr); }
-
-    void visit(const BuiltinCallExpr &expr) override
-    {
-        result_ = lowerer_.lowerBuiltinCall(expr);
-    }
-
-    void visit(const CallExpr &expr) override
-    {
-        const Function *callee = nullptr;
-        if (lowerer_.mod)
-        {
-            for (const auto &f : lowerer_.mod->functions)
-                if (f.name == expr.callee)
-                {
-                    callee = &f;
-                    break;
-                }
-        }
-        std::vector<Value> args;
-        args.reserve(expr.args.size());
-        for (size_t i = 0; i < expr.args.size(); ++i)
-        {
-            Lowerer::RVal arg = lowerer_.lowerExpr(*expr.args[i]);
-            if (callee && i < callee->params.size())
-            {
-                il::core::Type paramTy = callee->params[i].type;
-                if (paramTy.kind == il::core::Type::Kind::F64 &&
-                    arg.type.kind == il::core::Type::Kind::I64)
-                {
-                    lowerer_.curLoc = expr.loc;
-                    arg.value =
-                        lowerer_.emitUnary(Opcode::Sitofp,
-                                           il::core::Type(il::core::Type::Kind::F64),
-                                           arg.value);
-                    arg.type = il::core::Type(il::core::Type::Kind::F64);
-                }
-                else if (paramTy.kind == il::core::Type::Kind::F64 &&
-                         arg.type.kind == il::core::Type::Kind::I1)
-                {
-                    lowerer_.curLoc = expr.loc;
-                    arg.value =
-                        lowerer_.emitUnary(Opcode::Zext1,
-                                           il::core::Type(il::core::Type::Kind::I64),
-                                           arg.value);
-                    arg.value =
-                        lowerer_.emitUnary(Opcode::Sitofp,
-                                           il::core::Type(il::core::Type::Kind::F64),
-                                           arg.value);
-                    arg.type = il::core::Type(il::core::Type::Kind::F64);
-                }
-                else if (paramTy.kind == il::core::Type::Kind::I64 &&
-                         arg.type.kind == il::core::Type::Kind::I1)
-                {
-                    lowerer_.curLoc = expr.loc;
-                    arg.value =
-                        lowerer_.emitUnary(Opcode::Zext1,
-                                           il::core::Type(il::core::Type::Kind::I64),
-                                           arg.value);
-                    arg.type = il::core::Type(il::core::Type::Kind::I64);
-                }
-            }
-            args.push_back(arg.value);
-        }
-        lowerer_.curLoc = expr.loc;
-        if (callee && callee->retType.kind != il::core::Type::Kind::Void)
-        {
-            Value res = lowerer_.emitCallRet(callee->retType, expr.callee, args);
-            result_ = Lowerer::RVal{res, callee->retType};
-        }
-        else
-        {
-            lowerer_.emitCall(expr.callee, args);
-            result_ = Lowerer::RVal{Value::constInt(0),
-                                    il::core::Type(il::core::Type::Kind::I64)};
-        }
-    }
-
-    [[nodiscard]] Lowerer::RVal result() const noexcept { return result_; }
-
-  private:
-    Lowerer &lowerer_;
-    Lowerer::RVal result_{Value::constInt(0),
-                          il::core::Type(il::core::Type::Kind::I64)};
-};
-
-/// @brief Lower a BASIC variable reference into an IL value.
-/// @param v Variable expression that names the slot to read from.
-/// @return Materialized value and type pair for the requested variable.
-/// @details
-/// - Control flow: Executes entirely within the current basic block without
-///   branching or block creation.
-/// - Emitted IL: Issues a load from the stack slot recorded in
-///   @ref varSlots, selecting pointer, string, floating, or boolean types as
-///   required.
-/// - Side effects: Updates @ref curLoc so diagnostics and subsequent
-///   instructions are tagged with @p v's source location.
-Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v)
+void Lowerer::visit(const FloatExpr &expr)
 {
-    curLoc = v.loc;
-    auto it = varSlots.find(v.name);
+    assert(exprMode == ExprVisitMode::Value && "float literal cannot form an lvalue");
+    curLoc = expr.loc;
+    exprResult = {Value::constFloat(expr.value), Type(Type::Kind::F64)};
+}
+
+void Lowerer::visit(const StringExpr &expr)
+{
+    assert(exprMode == ExprVisitMode::Value && "string literal cannot form an lvalue");
+    curLoc = expr.loc;
+    std::string lbl = getStringLabel(expr.value);
+    Value tmp = emitConstStr(lbl);
+    exprResult = {tmp, Type(Type::Kind::Str)};
+}
+
+void Lowerer::visit(const BoolExpr &expr)
+{
+    assert(exprMode == ExprVisitMode::Value && "boolean literal cannot form an lvalue");
+    curLoc = expr.loc;
+    exprResult = {emitBoolConst(expr.value), ilBoolTy()};
+}
+
+void Lowerer::visit(const VarExpr &expr)
+{
+    curLoc = expr.loc;
+    auto it = varSlots.find(expr.name);
     assert(it != varSlots.end());
     Value ptr = Value::temp(it->second);
-    bool isArray = arrays.count(v.name);
-    bool isStr = !v.name.empty() && v.name.back() == '$';
-    bool isF64 = !v.name.empty() && v.name.back() == '#';
+    bool isArrayVar = arrays.count(expr.name);
+    bool isStr = !expr.name.empty() && expr.name.back() == '$';
+    bool isF64 = !expr.name.empty() && expr.name.back() == '#';
     bool isBoolVar = false;
-    auto typeIt = varTypes.find(v.name);
+    auto typeIt = varTypes.find(expr.name);
     if (typeIt != varTypes.end() && typeIt->second == AstType::Bool)
         isBoolVar = true;
-    Type ty = isArray ? Type(Type::Kind::Ptr)
-                      : (isStr ? Type(Type::Kind::Str)
-                               : (isF64 ? Type(Type::Kind::F64)
-                                        : (isBoolVar ? ilBoolTy() : Type(Type::Kind::I64))));
+    Type ty = isArrayVar ? Type(Type::Kind::Ptr)
+                         : (isStr ? Type(Type::Kind::Str)
+                                  : (isF64 ? Type(Type::Kind::F64)
+                                           : (isBoolVar ? ilBoolTy() : Type(Type::Kind::I64))));
+    if (exprMode == ExprVisitMode::Address)
+    {
+        lvalueResult = {ptr, ty, false};
+        return;
+    }
     Value val = emitLoad(ty, ptr);
-    return {val, ty};
+    exprResult = {val, ty};
+}
+
+void Lowerer::visit(const ArrayExpr &expr)
+{
+    if (exprMode == ExprVisitMode::Address)
+    {
+        if (pendingLValueLoc)
+            curLoc = *pendingLValueLoc;
+        Value ptr = lowerArrayAddr(expr);
+        lvalueResult = {ptr, Type(Type::Kind::I64), true};
+        return;
+    }
+    Value ptr = lowerArrayAddr(expr);
+    curLoc = expr.loc;
+    Value val = emitLoad(Type(Type::Kind::I64), ptr);
+    exprResult = {val, Type(Type::Kind::I64)};
+}
+
+void Lowerer::visit(const UnaryExpr &expr)
+{
+    assert(exprMode == ExprVisitMode::Value && "unary expression cannot form an lvalue");
+    RVal val = lowerExpr(*expr.expr);
+    curLoc = expr.loc;
+    Value cond = val.value;
+    if (val.type.kind != Type::Kind::I1)
+        cond = emitUnary(Opcode::Trunc1, ilBoolTy(), cond);
+    exprResult = lowerBoolBranchExpr(
+        cond,
+        expr.loc,
+        [&](Value slot) {
+            curLoc = expr.loc;
+            emitStore(ilBoolTy(), slot, emitBoolConst(false));
+        },
+        [&](Value slot) {
+            curLoc = expr.loc;
+            emitStore(ilBoolTy(), slot, emitBoolConst(true));
+        });
+}
+
+void Lowerer::visit(const BinaryExpr &expr)
+{
+    assert(exprMode == ExprVisitMode::Value && "binary expression cannot form an lvalue");
+    if (expr.op == BinaryExpr::Op::LogicalAndShort || expr.op == BinaryExpr::Op::LogicalOrShort ||
+        expr.op == BinaryExpr::Op::LogicalAnd || expr.op == BinaryExpr::Op::LogicalOr)
+    {
+        exprResult = lowerLogicalBinary(expr);
+        return;
+    }
+    if (expr.op == BinaryExpr::Op::IDiv || expr.op == BinaryExpr::Op::Mod)
+    {
+        exprResult = lowerDivOrMod(expr);
+        return;
+    }
+
+    RVal lhs = lowerExpr(*expr.lhs);
+    RVal rhs = lowerExpr(*expr.rhs);
+    if ((expr.op == BinaryExpr::Op::Add || expr.op == BinaryExpr::Op::Eq ||
+         expr.op == BinaryExpr::Op::Ne) &&
+        lhs.type.kind == Type::Kind::Str && rhs.type.kind == Type::Kind::Str)
+    {
+        exprResult = lowerStringBinary(expr, lhs, rhs);
+        return;
+    }
+    exprResult = lowerNumericBinary(expr, lhs, rhs);
+}
+
+void Lowerer::visit(const BuiltinCallExpr &expr)
+{
+    assert(exprMode == ExprVisitMode::Value && "builtin call cannot form an lvalue");
+    const auto &info = getBuiltinInfo(expr.builtin);
+    if (info.lower)
+        exprResult = (this->*(info.lower))(expr);
+    else
+        exprResult = {Value::constInt(0), Type(Type::Kind::I64)};
+}
+
+void Lowerer::visit(const CallExpr &expr)
+{
+    assert(exprMode == ExprVisitMode::Value && "call expression cannot form an lvalue");
+    const Function *callee = nullptr;
+    if (mod)
+    {
+        for (const auto &f : mod->functions)
+            if (f.name == expr.callee)
+            {
+                callee = &f;
+                break;
+            }
+    }
+    std::vector<Value> args;
+    args.reserve(expr.args.size());
+    for (size_t i = 0; i < expr.args.size(); ++i)
+    {
+        RVal arg = lowerExpr(*expr.args[i]);
+        if (callee && i < callee->params.size())
+        {
+            Type paramTy = callee->params[i].type;
+            if (paramTy.kind == Type::Kind::F64 && arg.type.kind == Type::Kind::I64)
+            {
+                curLoc = expr.loc;
+                arg.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), arg.value);
+                arg.type = Type(Type::Kind::F64);
+            }
+            else if (paramTy.kind == Type::Kind::F64 && arg.type.kind == Type::Kind::I1)
+            {
+                curLoc = expr.loc;
+                arg.value = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), arg.value);
+                arg.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), arg.value);
+                arg.type = Type(Type::Kind::F64);
+            }
+            else if (paramTy.kind == Type::Kind::I64 && arg.type.kind == Type::Kind::I1)
+            {
+                curLoc = expr.loc;
+                arg.value = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), arg.value);
+                arg.type = Type(Type::Kind::I64);
+            }
+        }
+        args.push_back(arg.value);
+    }
+    curLoc = expr.loc;
+    if (callee && callee->retType.kind != Type::Kind::Void)
+    {
+        Value res = emitCallRet(callee->retType, expr.callee, args);
+        exprResult = {res, callee->retType};
+    }
+    else
+    {
+        emitCall(expr.callee, args);
+        exprResult = {Value::constInt(0), Type(Type::Kind::I64)};
+    }
 }
 
 /// @brief Materialize a boolean result using custom then/else emitters.
@@ -242,38 +264,6 @@ Lowerer::RVal Lowerer::lowerBoolBranchExpr(Value cond,
     emitCBr(cond, thenBlk, elseBlk);
     cur = joinBlk;
     return {result, ilBoolTy()};
-}
-
-/// @brief Lower a unary BASIC expression, currently handling logical NOT.
-/// @param u Unary AST node to translate.
-/// @return Boolean result produced by evaluating @p u.
-/// @details
-/// - Control flow: Evaluates the operand within the current block and then
-///   reuses @ref lowerBoolBranchExpr to create then/else continuations that
-///   store the negated boolean result.
-/// - Emitted IL: Optionally truncates the operand to `i1` via
-///   @ref emitUnary and emits stores of `false`/`true` constants produced by
-///   @ref emitBoolConst.
-/// - Side effects: Updates @ref curLoc so generated instructions are annotated
-///   with the operand's location.
-Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
-{
-    RVal val = lowerExpr(*u.expr);
-    curLoc = u.loc;
-    Value cond = val.value;
-    if (val.type.kind != Type::Kind::I1)
-        cond = emitUnary(Opcode::Trunc1, ilBoolTy(), cond);
-    return lowerBoolBranchExpr(
-        cond,
-        u.loc,
-        [&](Value slot) {
-            curLoc = u.loc;
-            emitStore(ilBoolTy(), slot, emitBoolConst(false));
-        },
-        [&](Value slot) {
-            curLoc = u.loc;
-            emitStore(ilBoolTy(), slot, emitBoolConst(true));
-        });
 }
 
 /// @brief Lower BASIC logical binary expressions, including short-circuiting.
@@ -522,32 +512,6 @@ Lowerer::RVal Lowerer::lowerNumericBinary(const BinaryExpr &b, RVal lhs, RVal rh
     }
     Value res = emitBinary(op, ty, lhs.value, rhs.value);
     return {res, ty};
-}
-
-/// @brief Dispatch lowering for all BASIC binary expressions.
-/// @param b Binary AST node to translate.
-/// @return Lowered value alongside its IL type.
-/// @details
-/// - Control flow: Delegates to specialized helpers for logical and numeric
-///   categories, letting those routines introduce any necessary branching.
-/// - Emitted IL: Depends on the dispatched helper, ranging from control-flow
-///   merges to arithmetic instructions and runtime calls.
-/// - Side effects: May trigger recursive @ref lowerExpr invocations for both
-///   operands and updates @ref curLoc through the delegated helpers.
-Lowerer::RVal Lowerer::lowerBinaryExpr(const BinaryExpr &b)
-{
-    if (b.op == BinaryExpr::Op::LogicalAndShort || b.op == BinaryExpr::Op::LogicalOrShort ||
-        b.op == BinaryExpr::Op::LogicalAnd || b.op == BinaryExpr::Op::LogicalOr)
-        return lowerLogicalBinary(b);
-    if (b.op == BinaryExpr::Op::IDiv || b.op == BinaryExpr::Op::Mod)
-        return lowerDivOrMod(b);
-
-    RVal lhs = lowerExpr(*b.lhs);
-    RVal rhs = lowerExpr(*b.rhs);
-    if ((b.op == BinaryExpr::Op::Add || b.op == BinaryExpr::Op::Eq || b.op == BinaryExpr::Op::Ne) &&
-        lhs.type.kind == Type::Kind::Str && rhs.type.kind == Type::Kind::Str)
-        return lowerStringBinary(b, lhs, rhs);
-    return lowerNumericBinary(b, lhs, rhs);
 }
 
 /// @brief Lower a single builtin argument expression.
@@ -1027,22 +991,6 @@ Lowerer::RVal Lowerer::lowerPow(const BuiltinCallExpr &c)
     return {res, Type(Type::Kind::F64)};
 }
 
-/// @brief Dispatch lowering for builtin call expressions.
-/// @param c Builtin call AST node.
-/// @return Lowered value and type produced by the builtin implementation.
-/// @details
-/// - Control flow: Delegates to the registered lowering member function when
-///   available, otherwise falls back to an integer zero constant.
-/// - Emitted IL: Dependent on the selected builtin handler.
-/// - Side effects: None beyond those performed by the dispatched helper.
-Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
-{
-    const auto &info = getBuiltinInfo(c.builtin);
-    if (info.lower)
-        return (this->*(info.lower))(c);
-    return {Value::constInt(0), Type(Type::Kind::I64)};
-}
-
 /// @brief Entry point for lowering BASIC expressions to IL.
 /// @param expr Expression subtree to translate.
 /// @return Lowered value accompanied by its IL type.
@@ -1055,10 +1003,40 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
 ///   and recursively lowers nested expressions.
 Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
 {
+    auto prevMode = exprMode;
+    auto prevExpr = exprResult;
+    auto prevLValue = lvalueResult;
+    exprMode = ExprVisitMode::Value;
     curLoc = expr.loc;
-    LowererExprVisitor visitor(*this);
-    expr.accept(visitor);
-    return visitor.result();
+    expr.accept(*this);
+    RVal result = exprResult;
+    exprMode = prevMode;
+    exprResult = prevExpr;
+    lvalueResult = prevLValue;
+    return result;
+}
+
+/// @brief Lower an expression in lvalue context, producing its storage address.
+/// @param expr Expression expected to describe an assignment target.
+/// @return Address/type pair describing the destination slot.
+/// @details Restores the prior visitor state after evaluating @p expr so nested
+///          lowering continues unaffected.
+Lowerer::LValue Lowerer::lowerLValue(const Expr &expr)
+{
+    auto prevMode = exprMode;
+    auto prevExpr = exprResult;
+    auto prevLValue = lvalueResult;
+    auto prevPending = pendingLValueLoc;
+    exprMode = ExprVisitMode::Address;
+    pendingLValueLoc = curLoc;
+    curLoc = expr.loc;
+    expr.accept(*this);
+    LValue result = lvalueResult;
+    exprMode = prevMode;
+    exprResult = prevExpr;
+    lvalueResult = prevLValue;
+    pendingLValueLoc = prevPending;
+    return result;
 }
 
 } // namespace il::frontends::basic
