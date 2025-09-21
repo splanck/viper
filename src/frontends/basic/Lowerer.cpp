@@ -47,6 +47,208 @@ il::core::Type coreTypeForAstType(::il::frontends::basic::Type ty)
     return Type(Type::Kind::I64);
 }
 
+/// @brief Expression visitor accumulating referenced variable and array names.
+class VarCollectExprVisitor final : public ExprVisitor
+{
+  public:
+    VarCollectExprVisitor(std::unordered_set<std::string> &vars,
+                          std::unordered_set<std::string> &arrays)
+        : vars_(vars), arrays_(arrays)
+    {
+    }
+
+    void visit(const IntExpr &) override {}
+
+    void visit(const FloatExpr &) override {}
+
+    void visit(const StringExpr &) override {}
+
+    void visit(const BoolExpr &) override {}
+
+    void visit(const VarExpr &expr) override
+    {
+        vars_.insert(expr.name);
+    }
+
+    void visit(const ArrayExpr &expr) override
+    {
+        vars_.insert(expr.name);
+        arrays_.insert(expr.name);
+        if (expr.index)
+            expr.index->accept(*this);
+    }
+
+    void visit(const UnaryExpr &expr) override
+    {
+        if (expr.expr)
+            expr.expr->accept(*this);
+    }
+
+    void visit(const BinaryExpr &expr) override
+    {
+        if (expr.lhs)
+            expr.lhs->accept(*this);
+        if (expr.rhs)
+            expr.rhs->accept(*this);
+    }
+
+    void visit(const BuiltinCallExpr &expr) override
+    {
+        for (const auto &arg : expr.args)
+            if (arg)
+                arg->accept(*this);
+    }
+
+    void visit(const CallExpr &expr) override
+    {
+        for (const auto &arg : expr.args)
+            if (arg)
+                arg->accept(*this);
+    }
+
+  private:
+    std::unordered_set<std::string> &vars_;
+    std::unordered_set<std::string> &arrays_;
+};
+
+/// @brief Statement visitor walking child expressions/statements to collect names.
+class VarCollectStmtVisitor final : public StmtVisitor
+{
+  public:
+    VarCollectStmtVisitor(VarCollectExprVisitor &exprVisitor,
+                          std::unordered_set<std::string> &vars,
+                          std::unordered_set<std::string> &arrays,
+                          std::unordered_map<std::string, ::il::frontends::basic::Type> &varTypes)
+        : exprVisitor_(exprVisitor), vars_(vars), arrays_(arrays), varTypes_(varTypes)
+    {
+    }
+
+    void visit(const PrintStmt &stmt) override
+    {
+        for (const auto &item : stmt.items)
+            if (item.kind == PrintItem::Kind::Expr && item.expr)
+                item.expr->accept(exprVisitor_);
+    }
+
+    void visit(const LetStmt &stmt) override
+    {
+        if (stmt.target)
+            stmt.target->accept(exprVisitor_);
+        if (stmt.expr)
+            stmt.expr->accept(exprVisitor_);
+    }
+
+    void visit(const DimStmt &stmt) override
+    {
+        vars_.insert(stmt.name);
+        varTypes_[stmt.name] = stmt.type;
+        if (stmt.isArray)
+        {
+            arrays_.insert(stmt.name);
+            if (stmt.size)
+                stmt.size->accept(exprVisitor_);
+        }
+    }
+
+    void visit(const RandomizeStmt &stmt) override
+    {
+        if (stmt.seed)
+            stmt.seed->accept(exprVisitor_);
+    }
+
+    void visit(const IfStmt &stmt) override
+    {
+        if (stmt.cond)
+            stmt.cond->accept(exprVisitor_);
+        if (stmt.then_branch)
+            stmt.then_branch->accept(*this);
+        for (const auto &elseif : stmt.elseifs)
+        {
+            if (elseif.cond)
+                elseif.cond->accept(exprVisitor_);
+            if (elseif.then_branch)
+                elseif.then_branch->accept(*this);
+        }
+        if (stmt.else_branch)
+            stmt.else_branch->accept(*this);
+    }
+
+    void visit(const WhileStmt &stmt) override
+    {
+        if (stmt.cond)
+            stmt.cond->accept(exprVisitor_);
+        for (const auto &sub : stmt.body)
+            if (sub)
+                sub->accept(*this);
+    }
+
+    void visit(const ForStmt &stmt) override
+    {
+        if (!stmt.var.empty())
+            vars_.insert(stmt.var);
+        if (stmt.start)
+            stmt.start->accept(exprVisitor_);
+        if (stmt.end)
+            stmt.end->accept(exprVisitor_);
+        if (stmt.step)
+            stmt.step->accept(exprVisitor_);
+        for (const auto &sub : stmt.body)
+            if (sub)
+                sub->accept(*this);
+    }
+
+    void visit(const NextStmt &stmt) override
+    {
+        if (!stmt.var.empty())
+            vars_.insert(stmt.var);
+    }
+
+    void visit(const GotoStmt &) override {}
+
+    void visit(const EndStmt &) override {}
+
+    void visit(const InputStmt &stmt) override
+    {
+        if (stmt.prompt)
+            stmt.prompt->accept(exprVisitor_);
+        if (!stmt.var.empty())
+            vars_.insert(stmt.var);
+    }
+
+    void visit(const ReturnStmt &stmt) override
+    {
+        if (stmt.value)
+            stmt.value->accept(exprVisitor_);
+    }
+
+    void visit(const FunctionDecl &stmt) override
+    {
+        for (const auto &bodyStmt : stmt.body)
+            if (bodyStmt)
+                bodyStmt->accept(*this);
+    }
+
+    void visit(const SubDecl &stmt) override
+    {
+        for (const auto &bodyStmt : stmt.body)
+            if (bodyStmt)
+                bodyStmt->accept(*this);
+    }
+
+    void visit(const StmtList &stmt) override
+    {
+        for (const auto &sub : stmt.stmts)
+            if (sub)
+                sub->accept(*this);
+    }
+
+  private:
+    VarCollectExprVisitor &exprVisitor_;
+    std::unordered_set<std::string> &vars_;
+    std::unordered_set<std::string> &arrays_;
+    std::unordered_map<std::string, ::il::frontends::basic::Type> &varTypes_;
+};
+
 } // namespace
 
 Lowerer::BlockNamer::BlockNamer(std::string p) : proc(std::move(p)) {}
@@ -220,104 +422,11 @@ Module Lowerer::lower(const Program &prog)
 ///          different program regions.
 void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
 {
-    std::function<void(const Expr &)> ex = [&](const Expr &e)
-    {
-        if (auto *v = dynamic_cast<const VarExpr *>(&e))
-        {
-            vars.insert(v->name);
-        }
-        else if (auto *u = dynamic_cast<const UnaryExpr *>(&e))
-        {
-            ex(*u->expr);
-        }
-        else if (auto *b = dynamic_cast<const BinaryExpr *>(&e))
-        {
-            ex(*b->lhs);
-            ex(*b->rhs);
-        }
-        else if (auto *c = dynamic_cast<const BuiltinCallExpr *>(&e))
-        {
-            for (auto &a : c->args)
-                ex(*a);
-        }
-        else if (auto *c = dynamic_cast<const CallExpr *>(&e))
-        {
-            for (auto &a : c->args)
-                ex(*a);
-        }
-        else if (auto *a = dynamic_cast<const ArrayExpr *>(&e))
-        {
-            vars.insert(a->name);
-            arrays.insert(a->name);
-            ex(*a->index);
-        }
-    };
-    std::function<void(const Stmt &)> st = [&](const Stmt &s)
-    {
-        if (auto *lst = dynamic_cast<const StmtList *>(&s))
-        {
-            for (const auto &sub : lst->stmts)
-                st(*sub);
-        }
-        else if (auto *p = dynamic_cast<const PrintStmt *>(&s))
-        {
-            for (const auto &it : p->items)
-                if (it.kind == PrintItem::Kind::Expr)
-                    ex(*it.expr);
-        }
-        else if (auto *l = dynamic_cast<const LetStmt *>(&s))
-        {
-            ex(*l->target);
-            ex(*l->expr);
-        }
-        else if (auto *i = dynamic_cast<const IfStmt *>(&s))
-        {
-            ex(*i->cond);
-            if (i->then_branch)
-                st(*i->then_branch);
-            for (const auto &e : i->elseifs)
-            {
-                ex(*e.cond);
-                if (e.then_branch)
-                    st(*e.then_branch);
-            }
-            if (i->else_branch)
-                st(*i->else_branch);
-        }
-        else if (auto *w = dynamic_cast<const WhileStmt *>(&s))
-        {
-            ex(*w->cond);
-            for (auto &bs : w->body)
-                st(*bs);
-        }
-        else if (auto *f = dynamic_cast<const ForStmt *>(&s))
-        {
-            vars.insert(f->var);
-            ex(*f->start);
-            ex(*f->end);
-            if (f->step)
-                ex(*f->step);
-            for (auto &bs : f->body)
-                st(*bs);
-        }
-        else if (auto *inp = dynamic_cast<const InputStmt *>(&s))
-        {
-            vars.insert(inp->var);
-        }
-        else if (auto *d = dynamic_cast<const DimStmt *>(&s))
-        {
-            vars.insert(d->name); // DIM locals become stack slots in entry
-            varTypes[d->name] = d->type;
-            if (d->isArray)
-            {
-                arrays.insert(d->name);
-                if (d->size)
-                    ex(*d->size);
-            }
-        }
-    };
-    for (auto &s : stmts)
-        st(*s);
+    VarCollectExprVisitor exprVisitor(vars, arrays);
+    VarCollectStmtVisitor stmtVisitor(exprVisitor, vars, arrays, varTypes);
+    for (const auto *stmt : stmts)
+        if (stmt)
+            stmt->accept(stmtVisitor);
 }
 
 /// @brief Lower a single BASIC procedure using the provided configuration.
