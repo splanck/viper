@@ -23,6 +23,9 @@
 namespace il::frontends::basic
 {
 
+class LowererExprVisitor;
+class LowererStmtVisitor;
+
 /// @brief Lowers BASIC AST into IL Module.
 /// @invariant Generates deterministic block names per procedure using BlockNamer.
 /// @ownership Owns produced Module; uses IRBuilder for structure emission.
@@ -42,6 +45,9 @@ class Lowerer
     il::core::Module lower(const Program &prog);
 
   private:
+    friend class LowererExprVisitor;
+    friend class LowererStmtVisitor;
+
     using Module = il::core::Module;
     using Function = il::core::Function;
     using BasicBlock = il::core::BasicBlock;

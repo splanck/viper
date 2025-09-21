@@ -116,6 +116,8 @@ RVal ensureF64(RVal v, il::support::SourceLoc loc);
 
 void lowerLet(const LetStmt &stmt);
 void lowerPrint(const PrintStmt &stmt);
+void lowerStmtList(const StmtList &stmt);
+void lowerReturn(const ReturnStmt &stmt);
 /// @brief Emit blocks for an IF/ELSEIF chain.
 /// @param conds Number of conditions (IF + ELSEIFs).
 /// @return Indices for test/then blocks and ELSE/exit blocks.
