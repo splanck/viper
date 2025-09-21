@@ -66,6 +66,14 @@ class Lowerer
     };
 
   private:
+    struct SlotType
+    {
+        Type type{Type(Type::Kind::I64)};
+        bool isArray{false};
+        bool isBoolean{false};
+    };
+
+  private:
     /// @brief Layout of blocks emitted for an IF/ELSEIF chain.
     struct IfBlocks
     {
@@ -175,6 +183,8 @@ class Lowerer
 
 #include "frontends/basic/LowerRuntime.hpp"
 #include "frontends/basic/LowerScan.hpp"
+
+    SlotType getSlotType(std::string_view name) const;
 };
 
 } // namespace il::frontends::basic
