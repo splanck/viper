@@ -23,6 +23,9 @@
 namespace il::frontends::basic
 {
 
+class SemanticAnalyzerExprVisitor;
+class SemanticAnalyzerStmtVisitor;
+
 /// @brief Traverses BASIC AST to collect symbols and labels, validate variable
 ///        references, and verify FOR/NEXT nesting.
 /// @invariant Symbol table only contains definitions; unknown uses report
@@ -60,6 +63,9 @@ class SemanticAnalyzer
     const ProcTable &procs() const;
 
   private:
+    friend class SemanticAnalyzerExprVisitor;
+    friend class SemanticAnalyzerStmtVisitor;
+
     /// @brief Record symbols and labels from a statement.
     /// @param s Statement node to analyze.
     void visitStmt(const Stmt &s);
