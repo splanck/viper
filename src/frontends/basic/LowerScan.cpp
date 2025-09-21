@@ -7,9 +7,46 @@
 
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include <string_view>
 
 namespace il::frontends::basic
 {
+
+namespace
+{
+
+Lowerer::ExprType exprTypeFromAstType(::il::frontends::basic::Type ty)
+{
+    using AstType = ::il::frontends::basic::Type;
+    switch (ty)
+    {
+        case AstType::Str:
+            return Lowerer::ExprType::Str;
+        case AstType::F64:
+            return Lowerer::ExprType::F64;
+        case AstType::Bool:
+            return Lowerer::ExprType::Bool;
+        case AstType::I64:
+        default:
+            return Lowerer::ExprType::I64;
+    }
+}
+
+::il::frontends::basic::Type inferAstTypeFromName(std::string_view name)
+{
+    using AstType = ::il::frontends::basic::Type;
+    if (!name.empty())
+    {
+        char suffix = name.back();
+        if (suffix == '$')
+            return AstType::Str;
+        if (suffix == '#')
+            return AstType::F64;
+    }
+    return AstType::I64;
+}
+
+} // namespace
 
 /// @brief Scans a unary expression and propagates operand requirements.
 /// @param u BASIC unary expression to inspect.
@@ -396,11 +433,10 @@ Lowerer::ExprType Lowerer::scanExpr(const Expr &e)
         return ExprType::Str;
     if (auto *v = dynamic_cast<const VarExpr *>(&e))
     {
-        if (!v->name.empty() && v->name.back() == '$')
-            return ExprType::Str;
-        if (!v->name.empty() && v->name.back() == '#')
-            return ExprType::F64;
-        return ExprType::I64;
+        auto it = varTypes.find(v->name);
+        if (it != varTypes.end())
+            return exprTypeFromAstType(it->second);
+        return exprTypeFromAstType(inferAstTypeFromName(v->name));
     }
     if (auto *u = dynamic_cast<const UnaryExpr *>(&e))
         return scanUnaryExpr(*u);
@@ -430,8 +466,17 @@ void Lowerer::scanStmt(const Stmt &s)
     {
         if (l->expr)
             scanExpr(*l->expr);
-        if (auto *arr = dynamic_cast<const ArrayExpr *>(l->target.get()))
+        if (auto *var = dynamic_cast<const VarExpr *>(l->target.get()))
+        {
+            if (!var->name.empty() && varTypes.find(var->name) == varTypes.end())
+                varTypes[var->name] = inferAstTypeFromName(var->name);
+        }
+        else if (auto *arr = dynamic_cast<const ArrayExpr *>(l->target.get()))
+        {
+            if (!arr->name.empty() && varTypes.find(arr->name) == varTypes.end())
+                varTypes[arr->name] = inferAstTypeFromName(arr->name);
             scanExpr(*arr->index);
+        }
     }
     else if (auto *p = dynamic_cast<const PrintStmt *>(&s))
     {
@@ -463,6 +508,8 @@ void Lowerer::scanStmt(const Stmt &s)
     }
     else if (auto *f = dynamic_cast<const ForStmt *>(&s))
     {
+        if (!f->var.empty() && varTypes.find(f->var) == varTypes.end())
+            varTypes[f->var] = inferAstTypeFromName(f->var);
         scanExpr(*f->start);
         scanExpr(*f->end);
         if (f->step)
@@ -477,10 +524,16 @@ void Lowerer::scanStmt(const Stmt &s)
             scanExpr(*inp->prompt);
         if (inp->var.empty() || inp->var.back() != '$')
             requestHelper(RuntimeFeature::ToInt);
+        if (!inp->var.empty() && varTypes.find(inp->var) == varTypes.end())
+            varTypes[inp->var] = inferAstTypeFromName(inp->var);
     }
     else if (auto *d = dynamic_cast<const DimStmt *>(&s))
     {
         requestHelper(RuntimeFeature::Alloc);
+        if (!d->name.empty())
+            varTypes[d->name] = d->type;
+        if (d->isArray)
+            arrays.insert(d->name);
         if (d->size)
             scanExpr(*d->size);
     }

@@ -801,6 +801,11 @@ add_test(NAME basic_to_il_labels_proc_loops COMMAND ${CMAKE_COMMAND}
   -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/goldens/labels_proc_loops.bas
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/basic/goldens/labels_proc_loops.il
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
+add_test(NAME basic_to_il_suffix_free_vars COMMAND ${CMAKE_COMMAND}
+  -DILC=${BASIC_ILC}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/goldens/SuffixFreeVars.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/basic/goldens/SuffixFreeVars.il
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il/check_il.cmake)
 
 add_test(NAME basic_to_il_lower_program_with_proc COMMAND ${CMAKE_COMMAND}
   -DILC=${BASIC_ILC}
