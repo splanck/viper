@@ -24,6 +24,10 @@ namespace il::vm
 namespace detail
 {
 struct OpHandlers; ///< Forward declaration of opcode handler collection
+namespace ops
+{
+struct OperandDispatcher; ///< Forward declaration of operand evaluation helper
+} // namespace ops
 } // namespace detail
 
 /// @brief Scripted debug actions.
@@ -77,6 +81,7 @@ class VM
 {
   public:
     friend struct detail::OpHandlers; ///< Allow opcode handlers to access internals
+    friend struct detail::ops::OperandDispatcher; ///< Allow shared helpers to evaluate operands
 
     /// @brief Result of executing one opcode.
     struct ExecResult
