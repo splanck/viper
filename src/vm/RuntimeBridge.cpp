@@ -268,7 +268,7 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
     if (!desc)
     {
         std::ostringstream os;
-        os << "unknown runtime helper '" << name << "'";
+        os << "attempted to call unknown runtime helper '" << name << '\'';
         RuntimeBridge::trap(os.str(), loc, fn, block);
         return res;
     }
