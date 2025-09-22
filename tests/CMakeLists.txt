@@ -524,6 +524,10 @@ add_executable(test_vm_rt_missing_arg unit/test_vm_rt_missing_arg.cpp)
 target_link_libraries(test_vm_rt_missing_arg PRIVATE il_build il_vm support)
 add_test(NAME test_vm_rt_missing_arg COMMAND test_vm_rt_missing_arg)
 
+add_executable(test_vm_rt_extra_arg unit/test_vm_rt_extra_arg.cpp)
+target_link_libraries(test_vm_rt_extra_arg PRIVATE il_build il_vm support)
+add_test(NAME test_vm_rt_extra_arg COMMAND test_vm_rt_extra_arg)
+
 add_executable(test_vm_rt_concat_missing_args unit/test_vm_rt_concat_missing_args.cpp)
 target_link_libraries(test_vm_rt_concat_missing_args PRIVATE il_build il_vm support)
 add_test(NAME test_vm_rt_concat_missing_args COMMAND test_vm_rt_concat_missing_args)
