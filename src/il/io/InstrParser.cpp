@@ -19,7 +19,6 @@
 
 #include <cctype>
 #include <exception>
-#include <functional>
 #include <sstream>
 #include <unordered_map>
 #include <utility>
@@ -32,9 +31,13 @@ namespace
 
 using il::core::Instr;
 using il::core::Opcode;
+using il::core::OpcodeInfo;
+using il::core::OperandParseKind;
 using il::core::ResultArity;
 using il::core::Type;
+using il::core::TypeCategory;
 using il::core::Value;
+using il::core::kNumOpcodes;
 using il::support::Expected;
 using il::support::makeError;
 using il::support::printDiag;
@@ -126,9 +129,6 @@ Expected<Type> parseType_E(const std::string &tok, ParserState &st)
     }
     return ty;
 }
-
-/// @brief Function object signature for per-opcode instruction parsers.
-using InstrHandler = std::function<Expected<void>(const std::string &, Instr &, ParserState &)>;
 
 /// @brief Ensures an instruction matches the arity described by its opcode.
 ///
@@ -255,273 +255,66 @@ Expected<void> checkBlockArgCount(const Instr &in, ParserState &st, const std::s
     return {};
 }
 
-/// @brief Builds a parser for two-operand instructions with a fixed result type.
-///
-/// @param op Opcode applied to the parsed operands.
-/// @param ty Result type recorded on the instruction.
-/// @return Handler that parses two value tokens and attaches them to the
-/// instruction.
-InstrHandler makeBinaryHandler(Opcode op, Type ty)
+/// @brief Lazily build a lookup from opcode mnemonics to Opcode enumerators.
+const std::unordered_map<std::string, Opcode> &mnemonicTable()
 {
-    return [op, ty](const std::string &rest, Instr &in, ParserState &st) -> Expected<void>
+    static const std::unordered_map<std::string, Opcode> table = []
     {
-        std::istringstream ss(rest);
-        std::string a = readToken(ss);
-        std::string b = readToken(ss);
-        in.op = op;
-        if (!a.empty())
+        std::unordered_map<std::string, Opcode> map;
+        map.reserve(kNumOpcodes);
+        for (size_t idx = 0; idx < kNumOpcodes; ++idx)
         {
-            auto lhs = parseValue_E(a, st);
-            if (!lhs)
-                return Expected<void>{lhs.error()};
-            in.operands.push_back(std::move(lhs.value()));
+            const auto op = static_cast<Opcode>(idx);
+            map.emplace(getOpcodeInfo(op).name, op);
         }
-        if (!b.empty())
-        {
-            auto rhs = parseValue_E(b, st);
-            if (!rhs)
-                return Expected<void>{rhs.error()};
-            in.operands.push_back(std::move(rhs.value()));
-        }
-        in.type = ty;
-        return {};
-    };
+        return map;
+    }();
+    return table;
 }
 
-/// @brief Builds a parser for single-operand instructions with a fixed result type.
-///
-/// @param op Opcode applied to the parsed operand.
-/// @param ty Result type recorded on the instruction.
-/// @return Handler that parses one value token and attaches it to the instruction.
-InstrHandler makeUnaryHandler(Opcode op, Type ty)
+/// @brief Stamp the instruction's result type based on opcode metadata.
+void applyDefaultType(const OpcodeInfo &info, Instr &in)
 {
-    return [op, ty](const std::string &rest, Instr &in, ParserState &st) -> Expected<void>
+    using Kind = Type::Kind;
+    switch (info.resultType)
     {
-        std::istringstream ss(rest);
-        std::string a = readToken(ss);
-        in.op = op;
-        if (!a.empty())
-        {
-            auto operand = parseValue_E(a, st);
-            if (!operand)
-                return Expected<void>{operand.error()};
-            in.operands.push_back(std::move(operand.value()));
-        }
-        in.type = ty;
-        return {};
-    };
-}
-
-/// @brief Convenience helper for building boolean comparison handlers.
-///
-/// @param op Comparison opcode requiring two operands and returning i1.
-/// @return Binary handler specialised with an i1 result type.
-InstrHandler makeCmpHandler(Opcode op)
-{
-    return makeBinaryHandler(op, Type(Type::Kind::I1));
-}
-
-/// @brief Parses an `alloca` instruction body.
-///
-/// @param rest Remaining text after the opcode keyword.
-/// @param in Instruction object to populate.
-/// @param st Parser state for operand parsing and diagnostics.
-/// @return Empty on success; otherwise, a diagnostic when the size is missing or
-/// invalid.
-Expected<void> parseAllocaInstr(const std::string &rest, Instr &in, ParserState &st)
-{
-    std::istringstream ss(rest);
-    std::string sz = readToken(ss);
-    in.op = Opcode::Alloca;
-    if (sz.empty())
-    {
-        std::ostringstream oss;
-        oss << "line " << st.lineNo << ": missing size for alloca";
-        return Expected<void>{makeError(in.loc, oss.str())};
+        case TypeCategory::I1:
+            in.type = Type(Kind::I1);
+            break;
+        case TypeCategory::I64:
+            in.type = Type(Kind::I64);
+            break;
+        case TypeCategory::F64:
+            in.type = Type(Kind::F64);
+            break;
+        case TypeCategory::Ptr:
+            in.type = Type(Kind::Ptr);
+            break;
+        case TypeCategory::Str:
+            in.type = Type(Kind::Str);
+            break;
+        case TypeCategory::Void:
+            in.type = Type(Kind::Void);
+            break;
+        default:
+            in.type = Type(Kind::Void);
+            break;
     }
-    auto sizeValue = parseValue_E(sz, st);
-    if (!sizeValue)
-        return Expected<void>{sizeValue.error()};
-    in.operands.push_back(std::move(sizeValue.value()));
-    in.type = Type(Type::Kind::Ptr);
-    return {};
 }
 
-/// @brief Parses a `gep` instruction body.
-///
-/// @param rest Remaining text after the opcode keyword.
-/// @param in Instruction object to populate.
-/// @param st Parser state for operand parsing and diagnostics.
-/// @return Empty on success; otherwise, a diagnostic for malformed operands.
-Expected<void> parseGEPInstr(const std::string &rest, Instr &in, ParserState &st)
+/// @brief Parse the call operand syntax `<callee>(args...)`.
+Expected<void> parseCallBody(const std::string &rest, Instr &in, ParserState &st)
 {
-    std::istringstream ss(rest);
-    std::string base = readToken(ss);
-    std::string off = readToken(ss);
-    in.op = Opcode::GEP;
-    if (!base.empty())
-    {
-        auto baseVal = parseValue_E(base, st);
-        if (!baseVal)
-            return Expected<void>{baseVal.error()};
-        in.operands.push_back(std::move(baseVal.value()));
-    }
-    if (!off.empty())
-    {
-        auto offVal = parseValue_E(off, st);
-        if (!offVal)
-            return Expected<void>{offVal.error()};
-        in.operands.push_back(std::move(offVal.value()));
-    }
-    in.type = Type(Type::Kind::Ptr);
-    return {};
-}
-
-/// @brief Parses a `load` instruction body.
-///
-/// @param rest Remaining text after the opcode keyword, starting with the
-/// result type.
-/// @param in Instruction object to populate.
-/// @param st Parser state for operand parsing and diagnostics.
-/// @return Empty on success; otherwise, a diagnostic for unknown types or
-/// malformed operands.
-Expected<void> parseLoadInstr(const std::string &rest, Instr &in, ParserState &st)
-{
-    std::istringstream ss(rest);
-    std::string ty = readToken(ss);
-    std::string ptr = readToken(ss);
-    in.op = Opcode::Load;
-    auto parsedType = parseType_E(ty, st);
-    if (!parsedType)
-        return Expected<void>{parsedType.error()};
-    in.type = parsedType.value();
-    if (!ptr.empty())
-    {
-        auto ptrVal = parseValue_E(ptr, st);
-        if (!ptrVal)
-            return Expected<void>{ptrVal.error()};
-        in.operands.push_back(std::move(ptrVal.value()));
-    }
-    return {};
-}
-
-/// @brief Parses a `store` instruction body.
-///
-/// @param rest Remaining text after the opcode keyword, starting with the
-/// value type.
-/// @param in Instruction object to populate.
-/// @param st Parser state for operand parsing and diagnostics.
-/// @return Empty on success; otherwise, a diagnostic for malformed operands.
-Expected<void> parseStoreInstr(const std::string &rest, Instr &in, ParserState &st)
-{
-    std::istringstream ss(rest);
-    std::string ty = readToken(ss);
-    std::string ptr = readToken(ss);
-    std::string val = readToken(ss);
-    in.op = Opcode::Store;
-    auto parsedType = parseType_E(ty, st);
-    if (!parsedType)
-        return Expected<void>{parsedType.error()};
-    in.type = parsedType.value();
-    if (!ptr.empty())
-    {
-        auto ptrVal = parseValue_E(ptr, st);
-        if (!ptrVal)
-            return Expected<void>{ptrVal.error()};
-        in.operands.push_back(std::move(ptrVal.value()));
-    }
-    if (!val.empty())
-    {
-        auto valueVal = parseValue_E(val, st);
-        if (!valueVal)
-            return Expected<void>{valueVal.error()};
-        in.operands.push_back(std::move(valueVal.value()));
-    }
-    return {};
-}
-
-/// @brief Parses an `addr_of` instruction body.
-///
-/// @param rest Remaining text after the opcode keyword.
-/// @param in Instruction object to populate.
-/// @param st Parser state for operand parsing and diagnostics.
-/// @return Empty on success; otherwise, a diagnostic for malformed operands.
-Expected<void> parseAddrOfInstr(const std::string &rest, Instr &in, ParserState &st)
-{
-    std::istringstream ss(rest);
-    std::string g = readToken(ss);
-    in.op = Opcode::AddrOf;
-    if (!g.empty())
-    {
-        auto globalVal = parseValue_E(g, st);
-        if (!globalVal)
-            return Expected<void>{globalVal.error()};
-        in.operands.push_back(std::move(globalVal.value()));
-    }
-    in.type = Type(Type::Kind::Ptr);
-    return {};
-}
-
-/// @brief Parses a `const_str` instruction body.
-///
-/// @param rest Remaining text after the opcode keyword.
-/// @param in Instruction object to populate.
-/// @param st Parser state for operand parsing and diagnostics.
-/// @return Empty on success; otherwise, a diagnostic for malformed operands.
-Expected<void> parseConstStrInstr(const std::string &rest, Instr &in, ParserState &st)
-{
-    std::istringstream ss(rest);
-    std::string g = readToken(ss);
-    in.op = Opcode::ConstStr;
-    if (!g.empty())
-    {
-        auto strVal = parseValue_E(g, st);
-        if (!strVal)
-            return Expected<void>{strVal.error()};
-        in.operands.push_back(std::move(strVal.value()));
-    }
-    in.type = Type(Type::Kind::Str);
-    return {};
-}
-
-/// @brief Parses a `const_null` instruction body.
-///
-/// This instruction has no operands; the parser simply stamps the opcode and
-/// result type.
-///
-/// @param rest Remaining text after the opcode keyword (unused).
-/// @param in Instruction object to populate.
-/// @param st Parser state (unused).
-/// @return Always succeeds.
-Expected<void> parseConstNullInstr([[maybe_unused]] const std::string &rest, Instr &in,
-                                   [[maybe_unused]] ParserState &st)
-{
-    in.op = Opcode::ConstNull;
-    in.type = Type(Type::Kind::Ptr);
-    return {};
-}
-
-/// @brief Parses a `call` instruction body.
-///
-/// @param rest Remaining text after the opcode keyword, including callee name
-/// and parenthesised operands.
-/// @param in Instruction object to populate.
-/// @param st Parser state for operand parsing and diagnostics.
-/// @return Empty on success; otherwise, a diagnostic for malformed call syntax
-/// or operands.
-Expected<void> parseCallInstr(const std::string &rest, Instr &in, ParserState &st)
-{
-    in.op = Opcode::Call;
-    size_t at = rest.find('@');
-    size_t lp = rest.find('(', at);
-    size_t rp = rest.find(')', lp);
+    const size_t at = rest.find('@');
+    const size_t lp = rest.find('(', at);
+    const size_t rp = rest.find(')', lp);
     if (at == std::string::npos || lp == std::string::npos || rp == std::string::npos)
     {
         std::ostringstream oss;
         oss << "line " << st.lineNo << ": malformed call";
         return Expected<void>{makeError(in.loc, oss.str())};
     }
-    in.callee = rest.substr(at + 1, lp - at - 1);
+    in.callee = trim(rest.substr(at + 1, lp - at - 1));
     std::string args = rest.substr(lp + 1, rp - lp - 1);
     std::stringstream as(args);
     std::string a;
@@ -539,98 +332,36 @@ Expected<void> parseCallInstr(const std::string &rest, Instr &in, ParserState &s
     return {};
 }
 
-/// @brief Parses an unconditional `br` instruction body.
-///
-/// @param rest Remaining text after the opcode keyword, optionally including a
-/// branch argument tuple.
-/// @param in Instruction object to populate.
-/// @param st Parser state for operand parsing and diagnostics.
-/// @return Empty on success; otherwise, a diagnostic for malformed labels or
-/// operands.
-Expected<void> parseBrInstr(const std::string &rest, Instr &in, ParserState &st)
-{
-    in.op = Opcode::Br;
-    std::string t = rest;
-    if (t.rfind("label ", 0) == 0)
-        t = trim(t.substr(6));
-    size_t lp = t.find('(');
-    std::vector<Value> args;
-    std::string lbl;
-    if (lp == std::string::npos)
-    {
-        lbl = trim(t);
-    }
-    else
-    {
-        size_t rp = t.find(')', lp);
-        if (rp == std::string::npos)
-        {
-            std::ostringstream oss;
-            oss << "line " << st.lineNo << ": mismatched ')";
-            return Expected<void>{makeError(in.loc, oss.str())};
-        }
-        lbl = trim(t.substr(0, lp));
-        std::string argsStr = t.substr(lp + 1, rp - lp - 1);
-        std::stringstream as(argsStr);
-        std::string a;
-        while (std::getline(as, a, ','))
-        {
-            a = trim(a);
-            if (a.empty())
-                continue;
-            auto argVal = parseValue_E(a, st);
-            if (!argVal)
-                return Expected<void>{argVal.error()};
-            args.push_back(std::move(argVal.value()));
-        }
-    }
-    in.labels.push_back(lbl);
-    in.brArgs.push_back(args);
-    auto countCheck = checkBlockArgCount(in, st, lbl, args.size());
-    if (!countCheck)
-        return countCheck;
-    in.type = Type(Type::Kind::Void);
-    return {};
-}
-
-/// @brief Parses one branch target (label plus optional arguments).
-///
-/// @param part Textual fragment describing the target, e.g. `label %bb(args)`.
-/// @param in Instruction issuing the branch, used for diagnostics.
-/// @param st Parser state for operand parsing and diagnostics.
-/// @param lbl Output parameter receiving the parsed label.
-/// @param args Output vector receiving parsed argument values.
-/// @return Empty on success; otherwise, a diagnostic for malformed syntax or
-/// operands.
+/// @brief Parse a branch target `<label>(args...)` fragment.
 Expected<void> parseBranchTarget(const std::string &part, Instr &in, ParserState &st, std::string &lbl,
                                  std::vector<Value> &args)
 {
-    std::string t = part;
-    if (t.rfind("label ", 0) == 0)
-        t = trim(t.substr(6));
-    size_t lp = t.find('(');
+    std::string text = part;
+    if (text.rfind("label ", 0) == 0)
+        text = trim(text.substr(6));
+    const size_t lp = text.find('(');
     if (lp == std::string::npos)
     {
-        lbl = trim(t);
+        lbl = trim(text);
         return {};
     }
-    size_t rp = t.find(')', lp);
+    const size_t rp = text.find(')', lp);
     if (rp == std::string::npos)
     {
         std::ostringstream oss;
         oss << "line " << st.lineNo << ": mismatched ')";
         return Expected<void>{makeError(in.loc, oss.str())};
     }
-    lbl = trim(t.substr(0, lp));
-    std::string argsStr = t.substr(lp + 1, rp - lp - 1);
+    lbl = trim(text.substr(0, lp));
+    std::string argsStr = text.substr(lp + 1, rp - lp - 1);
     std::stringstream as(argsStr);
-    std::string a;
-    while (std::getline(as, a, ','))
+    std::string token;
+    while (std::getline(as, token, ','))
     {
-        a = trim(a);
-        if (a.empty())
+        token = trim(token);
+        if (token.empty())
             continue;
-        auto val = parseValue_E(a, st);
+        auto val = parseValue_E(token, st);
         if (!val)
             return Expected<void>{val.error()};
         args.push_back(std::move(val.value()));
@@ -638,148 +369,163 @@ Expected<void> parseBranchTarget(const std::string &part, Instr &in, ParserState
     return {};
 }
 
-/// @brief Parses a conditional `cbr` instruction body.
-///
-/// @param rest Remaining text after the opcode keyword, including condition and
-/// two branch targets.
-/// @param in Instruction object to populate.
-/// @param st Parser state for operand parsing and diagnostics.
-/// @return Empty on success; otherwise, a diagnostic for malformed syntax or
-/// inconsistent branch arguments.
-Expected<void> parseCBrInstr(const std::string &rest, Instr &in, ParserState &st)
+/// @brief Parse the list of branch targets for control-flow opcodes.
+Expected<void> parseBranchTargetsFromString(const std::string &text,
+                                           size_t expectedTargets,
+                                           Instr &in,
+                                           ParserState &st)
 {
-    in.op = Opcode::CBr;
-    std::istringstream ss(rest);
-    std::string c = readToken(ss);
-    std::string rem;
-    std::getline(ss, rem);
-    rem = trim(rem);
-    size_t comma = rem.find(',');
-    if (comma == std::string::npos)
+    std::string remaining = trim(text);
+    const char *mnemonic = getOpcodeInfo(in.op).name;
+    for (size_t idx = 0; idx < expectedTargets; ++idx)
+    {
+        if (remaining.empty())
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": malformed " << mnemonic;
+            return Expected<void>{makeError(in.loc, oss.str())};
+        }
+
+        size_t split = remaining.size();
+        size_t depth = 0;
+        for (size_t pos = 0; pos < remaining.size(); ++pos)
+        {
+            char c = remaining[pos];
+            if (c == '(')
+                ++depth;
+            else if (c == ')')
+            {
+                if (depth == 0)
+                {
+                    std::ostringstream oss;
+                    oss << "line " << st.lineNo << ": mismatched ')";
+                    return Expected<void>{makeError(in.loc, oss.str())};
+                }
+                --depth;
+            }
+            else if (c == ',' && depth == 0)
+            {
+                split = pos;
+                break;
+            }
+        }
+
+        std::string segment = trim(remaining.substr(0, split));
+        if (segment.empty())
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": malformed " << mnemonic;
+            return Expected<void>{makeError(in.loc, oss.str())};
+        }
+
+        std::vector<Value> args;
+        std::string label;
+        auto parsed = parseBranchTarget(segment, in, st, label, args);
+        if (!parsed)
+            return parsed;
+        in.labels.push_back(label);
+        in.brArgs.push_back(args);
+        auto check = checkBlockArgCount(in, st, label, args.size());
+        if (!check)
+            return check;
+
+        if (split < remaining.size())
+            remaining = trim(remaining.substr(split + 1));
+        else
+            remaining.clear();
+    }
+
+    if (!trim(remaining).empty())
     {
         std::ostringstream oss;
-        oss << "line " << st.lineNo << ": malformed cbr";
+        oss << "line " << st.lineNo << ": malformed " << mnemonic;
         return Expected<void>{makeError(in.loc, oss.str())};
     }
-    std::string first = trim(rem.substr(0, comma));
-    std::string second = trim(rem.substr(comma + 1));
-    std::vector<Value> a1;
-    std::vector<Value> a2;
-    std::string l1;
-    std::string l2;
-    auto t1 = parseBranchTarget(first, in, st, l1, a1);
-    if (!t1)
-        return t1;
-    auto t2 = parseBranchTarget(second, in, st, l2, a2);
-    if (!t2)
-        return t2;
-    auto cond = parseValue_E(c, st);
-    if (!cond)
-        return Expected<void>{cond.error()};
-    in.operands.push_back(std::move(cond.value()));
-    in.labels.push_back(l1);
-    in.labels.push_back(l2);
-    in.brArgs.push_back(a1);
-    in.brArgs.push_back(a2);
-    auto check1 = checkBlockArgCount(in, st, l1, a1.size());
-    if (!check1)
-        return check1;
-    auto check2 = checkBlockArgCount(in, st, l2, a2.size());
-    if (!check2)
-        return check2;
+
     in.type = Type(Type::Kind::Void);
     return {};
 }
 
-/// @brief Parses a `ret` instruction body.
-///
-/// @param rest Remaining text after the opcode keyword, optionally containing a
-/// return value.
-/// @param in Instruction object to populate.
-/// @param st Parser state for operand parsing and diagnostics.
-/// @return Empty on success; otherwise, a diagnostic for malformed operands.
-Expected<void> parseRetInstr(const std::string &rest, Instr &in, ParserState &st)
+/// @brief Parse operands based on opcode metadata-driven descriptions.
+Expected<void> parseWithMetadata(Opcode opcode, const std::string &rest, Instr &in, ParserState &st)
 {
-    in.op = Opcode::Ret;
-    std::string v = trim(rest);
-    if (!v.empty())
+    const auto &info = getOpcodeInfo(opcode);
+    in.op = opcode;
+    applyDefaultType(info, in);
+
+    std::istringstream ss(rest);
+    const std::string original = rest;
+
+    for (size_t idx = 0; idx < info.parse.size(); ++idx)
     {
-        auto val = parseValue_E(v, st);
-        if (!val)
-            return Expected<void>{val.error()};
-        in.operands.push_back(std::move(val.value()));
+        const auto &spec = info.parse[idx];
+        switch (spec.kind)
+        {
+            case OperandParseKind::None:
+                break;
+            case OperandParseKind::TypeImmediate:
+            {
+                std::string token = readToken(ss);
+                if (token.empty())
+                {
+                    std::ostringstream oss;
+                    oss << "line " << st.lineNo << ": missing "
+                        << (spec.role ? spec.role : "type") << " for " << info.name;
+                    return Expected<void>{makeError(in.loc, oss.str())};
+                }
+                auto ty = parseType_E(token, st);
+                if (!ty)
+                    return Expected<void>{ty.error()};
+                in.type = ty.value();
+                break;
+            }
+            case OperandParseKind::Value:
+            {
+                std::string token = readToken(ss);
+                if (token.empty())
+                {
+                    if (spec.role)
+                    {
+                        std::ostringstream oss;
+                        oss << "line " << st.lineNo << ": missing " << spec.role << " for " << info.name;
+                        return Expected<void>{makeError(in.loc, oss.str())};
+                    }
+                    break;
+                }
+                auto value = parseValue_E(token, st);
+                if (!value)
+                    return Expected<void>{value.error()};
+                in.operands.push_back(std::move(value.value()));
+                break;
+            }
+            case OperandParseKind::Call:
+            {
+                auto parsed = parseCallBody(original, in, st);
+                if (!parsed)
+                    return parsed;
+                return {};
+            }
+            case OperandParseKind::BranchTarget:
+            {
+                size_t branchCount = 0;
+                for (size_t j = idx; j < info.parse.size(); ++j)
+                {
+                    if (info.parse[j].kind == OperandParseKind::BranchTarget)
+                        ++branchCount;
+                }
+                std::string remainder;
+                std::getline(ss, remainder);
+                remainder = trim(remainder);
+                auto parsed = parseBranchTargetsFromString(remainder, branchCount, in, st);
+                if (!parsed)
+                    return parsed;
+                return {};
+            }
+        }
     }
-    in.type = Type(Type::Kind::Void);
+
     return {};
 }
-
-/// @brief Parses a `trap` instruction body.
-///
-/// The instruction carries no operands and always returns void.
-///
-/// @param rest Remaining text after the opcode keyword (unused).
-/// @param in Instruction object to populate.
-/// @param st Parser state (unused).
-/// @return Always succeeds.
-Expected<void> parseTrapInstr([[maybe_unused]] const std::string &rest, Instr &in,
-                              [[maybe_unused]] ParserState &st)
-{
-    in.op = Opcode::Trap;
-    in.type = Type(Type::Kind::Void);
-    return {};
-}
-
-/// @brief Lookup table mapping opcode mnemonics to parsing callbacks.
-const std::unordered_map<std::string, InstrHandler> kInstrHandlers = {
-    {"add", makeBinaryHandler(Opcode::Add, Type(Type::Kind::I64))},
-    {"sub", makeBinaryHandler(Opcode::Sub, Type(Type::Kind::I64))},
-    {"mul", makeBinaryHandler(Opcode::Mul, Type(Type::Kind::I64))},
-    {"sdiv", makeBinaryHandler(Opcode::SDiv, Type(Type::Kind::I64))},
-    {"udiv", makeBinaryHandler(Opcode::UDiv, Type(Type::Kind::I64))},
-    {"srem", makeBinaryHandler(Opcode::SRem, Type(Type::Kind::I64))},
-    {"urem", makeBinaryHandler(Opcode::URem, Type(Type::Kind::I64))},
-    {"and", makeBinaryHandler(Opcode::And, Type(Type::Kind::I64))},
-    {"or", makeBinaryHandler(Opcode::Or, Type(Type::Kind::I64))},
-    {"xor", makeBinaryHandler(Opcode::Xor, Type(Type::Kind::I64))},
-    {"shl", makeBinaryHandler(Opcode::Shl, Type(Type::Kind::I64))},
-    {"lshr", makeBinaryHandler(Opcode::LShr, Type(Type::Kind::I64))},
-    {"ashr", makeBinaryHandler(Opcode::AShr, Type(Type::Kind::I64))},
-    {"fadd", makeBinaryHandler(Opcode::FAdd, Type(Type::Kind::F64))},
-    {"fsub", makeBinaryHandler(Opcode::FSub, Type(Type::Kind::F64))},
-    {"fmul", makeBinaryHandler(Opcode::FMul, Type(Type::Kind::F64))},
-    {"fdiv", makeBinaryHandler(Opcode::FDiv, Type(Type::Kind::F64))},
-    {"icmp_eq", makeCmpHandler(Opcode::ICmpEq)},
-    {"icmp_ne", makeCmpHandler(Opcode::ICmpNe)},
-    {"scmp_lt", makeCmpHandler(Opcode::SCmpLT)},
-    {"scmp_le", makeCmpHandler(Opcode::SCmpLE)},
-    {"scmp_gt", makeCmpHandler(Opcode::SCmpGT)},
-    {"scmp_ge", makeCmpHandler(Opcode::SCmpGE)},
-    {"ucmp_lt", makeCmpHandler(Opcode::UCmpLT)},
-    {"ucmp_le", makeCmpHandler(Opcode::UCmpLE)},
-    {"ucmp_gt", makeCmpHandler(Opcode::UCmpGT)},
-    {"ucmp_ge", makeCmpHandler(Opcode::UCmpGE)},
-    {"fcmp_lt", makeCmpHandler(Opcode::FCmpLT)},
-    {"fcmp_le", makeCmpHandler(Opcode::FCmpLE)},
-    {"fcmp_gt", makeCmpHandler(Opcode::FCmpGT)},
-    {"fcmp_ge", makeCmpHandler(Opcode::FCmpGE)},
-    {"fcmp_eq", makeCmpHandler(Opcode::FCmpEQ)},
-    {"fcmp_ne", makeCmpHandler(Opcode::FCmpNE)},
-    {"sitofp", makeUnaryHandler(Opcode::Sitofp, Type(Type::Kind::F64))},
-    {"fptosi", makeUnaryHandler(Opcode::Fptosi, Type(Type::Kind::I64))},
-    {"zext1", makeUnaryHandler(Opcode::Zext1, Type(Type::Kind::I64))},
-    {"trunc1", makeUnaryHandler(Opcode::Trunc1, Type(Type::Kind::I1))},
-    {"alloca", parseAllocaInstr},
-    {"gep", parseGEPInstr},
-    {"load", parseLoadInstr},
-    {"store", parseStoreInstr},
-    {"addr_of", parseAddrOfInstr},
-    {"const_str", parseConstStrInstr},
-    {"const_null", parseConstNullInstr},
-    {"call", parseCallInstr},
-    {"br", parseBrInstr},
-    {"cbr", parseCBrInstr},
-    {"ret", parseRetInstr},
-    {"trap", parseTrapInstr}};
 
 /// @brief Parses a complete instruction line, including optional result binding.
 ///
@@ -819,14 +565,15 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st)
     std::string rest;
     std::getline(ss, rest);
     rest = trim(rest);
-    auto it = kInstrHandlers.find(op);
-    if (it == kInstrHandlers.end())
+    const auto &table = mnemonicTable();
+    auto it = table.find(op);
+    if (it == table.end())
     {
         std::ostringstream oss;
         oss << "line " << st.lineNo << ": unknown opcode " << op;
         return Expected<void>{makeError(in.loc, oss.str())};
     }
-    auto parsed = it->second(rest, in, st);
+    auto parsed = parseWithMetadata(it->second, rest, in, st);
     if (!parsed)
         return parsed;
     auto shape = validateShape_E(in, st);
