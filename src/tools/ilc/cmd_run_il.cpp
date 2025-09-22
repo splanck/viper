@@ -17,15 +17,59 @@
 #include "vm/VM.hpp"
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <exception>
 #include <string>
 #include <utility>
 
 using namespace il;
+
+namespace
+{
+
+bool tryParseLineNumber(const std::string &token, int &line)
+{
+    if (token.empty())
+    {
+        return false;
+    }
+    for (char ch : token)
+    {
+        if (!std::isdigit(static_cast<unsigned char>(ch)))
+        {
+            return false;
+        }
+    }
+    try
+    {
+        line = std::stoi(token);
+    }
+    catch (const std::exception &)
+    {
+        return false;
+    }
+    return line > 0;
+}
+
+void reportInvalidLineNumber(const std::string &lineToken,
+                             const std::string &spec,
+                             const char *flag)
+{
+    std::cerr << "invalid line number '" << lineToken << "' for " << flag;
+    if (!spec.empty())
+    {
+        std::cerr << " argument \"" << spec << "\"";
+    }
+    std::cerr << "\n";
+    usage();
+}
+
+} // namespace
 
 /**
  * @brief Run an IL program from file.
@@ -67,7 +111,13 @@ int cmdRunIL(int argc, char **argv)
             {
                 auto pos = spec.rfind(':');
                 std::string file = spec.substr(0, pos);
-                int line = std::stoi(spec.substr(pos + 1));
+                const std::string lineToken = spec.substr(pos + 1);
+                int line = 0;
+                if (!tryParseLineNumber(lineToken, line))
+                {
+                    reportInvalidLineNumber(lineToken, spec, "--break");
+                    return 1;
+                }
                 dbg.addBreakSrcLine(file, line);
             }
             else
@@ -83,8 +133,19 @@ int cmdRunIL(int argc, char **argv)
             if (pos != std::string::npos)
             {
                 std::string file = spec.substr(0, pos);
-                int line = std::stoi(spec.substr(pos + 1));
+                const std::string lineToken = spec.substr(pos + 1);
+                int line = 0;
+                if (!tryParseLineNumber(lineToken, line))
+                {
+                    reportInvalidLineNumber(lineToken, spec, "--break-src");
+                    return 1;
+                }
                 dbg.addBreakSrcLine(file, line);
+            }
+            else
+            {
+                reportInvalidLineNumber("", spec, "--break-src");
+                return 1;
             }
         }
         else if (arg == "--debug-cmds" && i + 1 < argc)
