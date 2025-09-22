@@ -13,7 +13,7 @@
 int main()
 {
     const char *src = R"(il 0.1.2
-func @main() -> i32 {
+func @main() -> i64 {
 entry:
   %0 add 1, 2
   foo %1
