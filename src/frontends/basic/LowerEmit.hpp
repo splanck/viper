@@ -136,6 +136,7 @@ bool lowerIfBranch(const Stmt *stmt,
                    il::support::SourceLoc loc);
 void lowerIf(const IfStmt &stmt);
 void lowerWhile(const WhileStmt &stmt);
+void lowerLoopBody(const std::vector<StmtPtr> &body);
 void lowerFor(const ForStmt &stmt);
 void lowerForConstStep(const ForStmt &stmt, Value slot, RVal end, RVal step, int64_t stepConst);
 void lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal step);

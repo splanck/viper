@@ -371,6 +371,23 @@ void Lowerer::lowerIf(const IfStmt &stmt)
     cur = blocks.exitBlk;
 }
 
+/// @brief Lower statements forming a loop body until a terminator is hit.
+/// @param body Sequence of statements comprising the loop body.
+/// @details Iterates @p body and delegates to @ref lowerStmt while respecting
+///          the current block's termination state. When @ref cur becomes null
+///          or terminated the helper stops lowering additional statements.
+void Lowerer::lowerLoopBody(const std::vector<StmtPtr> &body)
+{
+    for (const auto &stmt : body)
+    {
+        if (!stmt)
+            continue;
+        lowerStmt(*stmt);
+        if (!cur || cur->terminated)
+            break;
+    }
+}
+
 /// @brief Lower a WHILE loop into head/body/done blocks.
 /// @param stmt WHILE statement describing the loop structure.
 /// @details Adds head/body/done blocks, branches into the head, and enforces an
@@ -412,13 +429,8 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
 
     // body
     cur = body;
-    for (auto &s : stmt.body)
-    {
-        lowerStmt(*s);
-        if (cur->terminated)
-            break;
-    }
-    bool term = cur->terminated;
+    lowerLoopBody(stmt.body);
+    bool term = cur && cur->terminated;
     if (!term)
     {
         curLoc = stmt.loc;
@@ -502,13 +514,8 @@ void Lowerer::lowerForConstStep(
     curLoc = stmt.loc;
     emitCBr(cond, &func->blocks[fb.bodyIdx], &func->blocks[fb.doneIdx]);
     cur = &func->blocks[fb.bodyIdx];
-    for (auto &s : stmt.body)
-    {
-        lowerStmt(*s);
-        if (cur->terminated)
-            break;
-    }
-    bool term = cur->terminated;
+    lowerLoopBody(stmt.body);
+    bool term = cur && cur->terminated;
     if (!term)
     {
         curLoc = stmt.loc;
@@ -556,13 +563,8 @@ void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal st
     curLoc = stmt.loc;
     emitCBr(cmpNeg, &func->blocks[fb.bodyIdx], &func->blocks[fb.doneIdx]);
     cur = &func->blocks[fb.bodyIdx];
-    for (auto &s : stmt.body)
-    {
-        lowerStmt(*s);
-        if (cur->terminated)
-            break;
-    }
-    bool term = cur->terminated;
+    lowerLoopBody(stmt.body);
+    bool term = cur && cur->terminated;
     if (!term)
     {
         curLoc = stmt.loc;
