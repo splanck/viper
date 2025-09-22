@@ -24,6 +24,15 @@ An IL module is a set of declarations and function definitions.  It starts with 
 il 0.1.2
 ```
 
+An optional `target "..."` metadata line may follow.  The VM ignores it, but native back ends can use it as advisory information.
+
+```text
+il 0.1.2
+target "x86_64-sysv"
+```
+
+See [examples/il](examples/il/) for complete programs.
+
 Each function has the form:
 
 ```
@@ -69,20 +78,20 @@ entry:
 ```
 
 ## Types
-| Type | Meaning | Notes |
-|------|---------|-------|
-| `void` | no value | function return only |
-| `i1` | boolean | produced by comparisons and `trunc1` |
-| `i64` | 64-bit signed int | wrap on overflow |
-| `f64` | 64-bit IEEE float | NaN/Inf propagate |
-| `ptr` | untyped pointer | byte-addressed |
-| `str` | opaque string handle | managed by runtime |
+| Type | Meaning | Alignment | Notes |
+|------|---------|-----------|-------|
+| `void` | no value | — | function return only |
+| `i1` | boolean | 1 | produced by comparisons and `trunc1` |
+| `i64` | 64-bit signed int | 8 | wrap on overflow |
+| `f64` | 64-bit IEEE float | 8 | NaN/Inf propagate |
+| `ptr` | untyped pointer | 8 | byte-addressed |
+| `str` | opaque string handle | 8 | managed by runtime |
 
 ## Constants & Literals
 Integers use decimal notation (`-?[0-9]+`).  Floats use decimal with optional fraction (`-?[0-9]+(\.[0-9]+)?`) and permit `NaN`, `Inf`, and `-Inf`.  Booleans `true`/`false` sugar to `i1` values `1`/`0`.  Strings appear in quotes with escapes `\"`, `\\`, `\n`, `\t`, `\xNN`.  `const_null` yields a `ptr` null.
 
 ## Basic Blocks
-Functions contain one or more labelled blocks.  A block may declare parameters; each predecessor must supply matching arguments.
+Functions contain one or more labelled blocks.  Labels end in `:` and the first block is `entry`.  A block may declare parameters; each predecessor must supply matching arguments.  Omitting the argument list is shorthand for passing no values (for example, `br next` is the same as `br next()`).
 
 ```text
 il 0.1.2
@@ -117,7 +126,7 @@ cbr %cond, then, else
 Return from the current function.
 
 ### `trap`
-Abort execution with a runtime trap.
+Abort execution with an unconditional runtime trap.
 
 ```text
 fn @oops() -> void {
@@ -140,6 +149,8 @@ Each non-terminator instruction optionally assigns to a `%temp` and produces a r
 | `srem` | `srem x, y` | `i64` (trap on divide-by-zero) |
 | `urem` | `urem x, y` | `i64` (trap on divide-by-zero) |
 
+`sdiv` and `srem` follow C semantics: the quotient is truncated toward zero and the remainder keeps the dividend's sign.  Front ends such as BASIC map `\` to `sdiv` and `MOD` to `srem`.
+
 ```text
 il 0.1.2
 fn @main() -> i64 {
@@ -158,6 +169,8 @@ entry:
 | `shl` | `shl x, y` | `i64` |
 | `lshr`| `lshr x, y`| `i64` |
 | `ashr`| `ashr x, y`| `i64` |
+
+Shift counts are masked modulo 64, matching the behaviour of x86-64 shifts.
 
 ```text
 %r = xor 0b1010, 0b1100
@@ -210,6 +223,8 @@ entry:
 | `const_str` | `const_str @label` | `str` |
 | `const_null`| `const_null` | `ptr` |
 
+`i64`, `f64`, `ptr`, and `str` loads and stores require 8-byte alignment; misaligned or null accesses trap.  Stack allocations created by `alloca` are zero-initialized and live until the function returns.
+
 ```text
 fn @main() -> i64 {
 entry:
@@ -227,6 +242,29 @@ Call a function or extern; verifier checks arity and types.
 call @f(%x, %y)
 ```
 
+## Runtime ABI
+The IL runtime provides helper functions used by front ends and tests:
+
+| Function | Signature | Notes |
+|----------|-----------|-------|
+| `@rt_print_str` | `str -> void` | write string to stdout |
+| `@rt_print_i64` | `i64 -> void` | write integer to stdout |
+| `@rt_print_f64` | `f64 -> void` | write float to stdout |
+| `@rt_input_line` | `-> str` | read line from stdin, newline stripped |
+| `@rt_len` | `str -> i64` | length in bytes |
+| `@rt_concat` | `str × str -> str` | concatenate strings |
+| `@rt_substr` | `str × i64 × i64 -> str` | indices clamp; negative bounds trap |
+| `@rt_to_int` | `str -> i64` | traps on invalid numeric |
+| `@rt_to_float` | `str -> f64` | traps on invalid numeric |
+| `@rt_str_eq` | `str × str -> i1` | string equality |
+| `@rt_alloc` | `i64 -> ptr` | allocate bytes; negative size traps |
+| `@rt_free` | `ptr -> void` | deallocate buffer (optional in v0.1.2) |
+
+Strings are reference-counted by the runtime implementation.  See [runtime/](runtime/) for additional details.
+
+## Memory Model
+IL v0.1.2 is single-threaded.  Pointers are plain addresses with no aliasing rules beyond the type requirements of `load` and `store`.  Memory obtained through `alloca` or the runtime follows the alignment rules above, and invalid accesses (null or misaligned) trap deterministically.
+
 ## Source Locations
 `.loc file line col` annotates instructions with source information.  It has no semantic effect.
 
@@ -241,12 +279,26 @@ call @f(%x, %y)
 * Operand and result types match instruction signatures.
 * Calls match callee arity and types.
 * `load`/`store` use `ptr` operands and non-void element types.
-* Block parameters are unique and all predecessors pass matching arguments.
+* `alloca` sizes are `i64`; constant operands must be non-negative.
+* Temporaries are defined before use within a block (cross-block dominance checks may be deferred).
+* Block parameters have unique names, non-void types, and each predecessor passes matching arguments.
+* `cbr` takes an `i1` condition.
+
+Example diagnostics:
+
+```text
+L(%x: i64, %x: i64):
+              ^ duplicate param %x
+
+br L(1.0)
+       ^ arg type mismatch: expected i64, got f64
+```
 
 ## Text Grammar (EBNF)
 ```ebnf
-module      ::= "il" VERSION decl*
+module      ::= "il" VERSION (target_decl)? decl*
 VERSION     ::= NUMBER "." NUMBER ("." NUMBER)?
+target_decl ::= "target" STRING
 decl        ::= extern | global | func
 extern      ::= "extern" SYMBOL "(" type_list? ")" "->" type
 global      ::= "global" ("const")? type SYMBOL "=" ginit
@@ -283,5 +335,13 @@ literal     ::= INT | FLOAT | STRING | "true" | "false" | "null"
 type        ::= "void" | "i1" | "i64" | "f64" | "ptr" | "str"
 ```
 
+## Calling Convention (SysV x64)
+Native back ends target the System V x86-64 ABI:
+
+* Integer and pointer arguments: `rdi`, `rsi`, `rdx`, `rcx`, `r8`, `r9`.
+* Floating-point arguments: `xmm0`–`xmm7`.
+* Return values: integers/pointers in `rax`, floats in `xmm0`.
+* Call sites maintain 16-byte stack alignment; `i1` arguments are zero-extended to 32 bits.
+
 ## Versioning & Conformance
-Modules must begin with `il 0.1.2`.  A conforming implementation accepts this grammar, obeys the semantics above, and traps on the conditions listed for each instruction.
+Modules must begin with `il 0.1.2`.  A conforming implementation accepts this grammar, obeys the semantics above, and traps on the conditions listed for each instruction.  Implementations are validated against the sample suite under [examples/il](examples/il/).
