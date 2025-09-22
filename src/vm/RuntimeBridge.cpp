@@ -22,6 +22,92 @@ using il::core::Type;
 /// @brief Thread-local pointer to the runtime call context for active trap reporting.
 thread_local RuntimeCallContext *tlsContext = nullptr;
 
+/// @brief Aggregate of temporary storage for marshalled runtime results.
+struct ResultBuffers
+{
+    int64_t i64 = 0;       ///< Storage for integer and boolean results.
+    double f64 = 0.0;      ///< Storage for floating-point results.
+    rt_string str = nullptr; ///< Storage for runtime string results.
+    void *ptr = nullptr;   ///< Storage for pointer results.
+};
+
+/// @brief Translate a VM slot to the pointer expected by the runtime handler.
+/// @param slot Slot containing the argument value.
+/// @param kind IL type kind describing the slot contents.
+/// @return Pointer to the slot member corresponding to @p kind.
+void *slotToArgPointer(Slot &slot, Type::Kind kind)
+{
+    switch (kind)
+    {
+        case Type::Kind::I1:
+        case Type::Kind::I64:
+            return static_cast<void *>(&slot.i64);
+        case Type::Kind::F64:
+            return static_cast<void *>(&slot.f64);
+        case Type::Kind::Ptr:
+            return static_cast<void *>(&slot.ptr);
+        case Type::Kind::Str:
+            return static_cast<void *>(&slot.str);
+        default:
+            assert(false && "unsupported runtime argument kind");
+            return nullptr;
+    }
+}
+
+/// @brief Obtain the buffer address to receive a runtime result of @p kind.
+/// @param kind Type kind of the runtime return value.
+/// @param buffers Temporary storage for return values.
+/// @return Pointer handed to the runtime handler for writing the result.
+void *resultBufferFor(Type::Kind kind, ResultBuffers &buffers)
+{
+    switch (kind)
+    {
+        case Type::Kind::Void:
+            return nullptr;
+        case Type::Kind::I1:
+        case Type::Kind::I64:
+            return static_cast<void *>(&buffers.i64);
+        case Type::Kind::F64:
+            return static_cast<void *>(&buffers.f64);
+        case Type::Kind::Str:
+            return static_cast<void *>(&buffers.str);
+        case Type::Kind::Ptr:
+            return static_cast<void *>(&buffers.ptr);
+        default:
+            assert(false && "unsupported runtime return kind");
+            return nullptr;
+    }
+}
+
+/// @brief Store the marshalled runtime result back into VM slot @p slot.
+/// @param slot Destination VM slot.
+/// @param kind Type kind describing the expected slot member.
+/// @param buffers Temporary storage containing the runtime result.
+void assignResult(Slot &slot, Type::Kind kind, const ResultBuffers &buffers)
+{
+    switch (kind)
+    {
+        case Type::Kind::Void:
+            break;
+        case Type::Kind::I1:
+        case Type::Kind::I64:
+            slot.i64 = buffers.i64;
+            break;
+        case Type::Kind::F64:
+            slot.f64 = buffers.f64;
+            break;
+        case Type::Kind::Str:
+            slot.str = buffers.str;
+            break;
+        case Type::Kind::Ptr:
+            slot.ptr = buffers.ptr;
+            break;
+        default:
+            assert(false && "unsupported runtime return kind");
+            break;
+    }
+}
+
 struct ContextGuard
 {
     RuntimeCallContext *previous;
@@ -111,75 +197,15 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
         {
             auto kind = sig.paramTypes[i].kind;
             Slot &slot = const_cast<Slot &>(args[i]);
-            switch (kind)
-            {
-                case Type::Kind::I64:
-                case Type::Kind::I1:
-                    rawArgs[i] = static_cast<void *>(&slot.i64);
-                    break;
-                case Type::Kind::F64:
-                    rawArgs[i] = static_cast<void *>(&slot.f64);
-                    break;
-                case Type::Kind::Ptr:
-                    rawArgs[i] = static_cast<void *>(&slot.ptr);
-                    break;
-                case Type::Kind::Str:
-                    rawArgs[i] = static_cast<void *>(&slot.str);
-                    break;
-                default:
-                    assert(false && "unsupported runtime argument kind");
-            }
+            rawArgs[i] = slotToArgPointer(slot, kind);
         }
 
-        void *resultPtr = nullptr;
-        int64_t i64Result = 0;
-        double f64Result = 0.0;
-        rt_string strResult = nullptr;
-        void *ptrResult = nullptr;
-
-        switch (sig.retType.kind)
-        {
-            case Type::Kind::Void:
-                break;
-            case Type::Kind::I1:
-            case Type::Kind::I64:
-                resultPtr = &i64Result;
-                break;
-            case Type::Kind::F64:
-                resultPtr = &f64Result;
-                break;
-            case Type::Kind::Str:
-                resultPtr = &strResult;
-                break;
-            case Type::Kind::Ptr:
-                resultPtr = &ptrResult;
-                break;
-            default:
-                assert(false && "unsupported runtime return kind");
-        }
+        ResultBuffers buffers;
+        void *resultPtr = resultBufferFor(sig.retType.kind, buffers);
 
         desc->handler(rawArgs.empty() ? nullptr : rawArgs.data(), resultPtr);
 
-        switch (sig.retType.kind)
-        {
-            case Type::Kind::Void:
-                break;
-            case Type::Kind::I1:
-            case Type::Kind::I64:
-                res.i64 = i64Result;
-                break;
-            case Type::Kind::F64:
-                res.f64 = f64Result;
-                break;
-            case Type::Kind::Str:
-                res.str = strResult;
-                break;
-            case Type::Kind::Ptr:
-                res.ptr = ptrResult;
-                break;
-            default:
-                break;
-        }
+        assignResult(res, sig.retType.kind, buffers);
     }
     return res;
 }
