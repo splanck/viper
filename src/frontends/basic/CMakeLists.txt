@@ -17,6 +17,10 @@ add_library(fe_basic STATIC
   LowerScan.cpp
   LowerEmit.cpp
   SemanticAnalyzer.cpp
+  SemanticAnalyzer.Procs.cpp
+  SemanticAnalyzer.Stmts.cpp
+  SemanticAnalyzer.Exprs.cpp
+  SemanticAnalyzer.Builtins.cpp
   ScopeTracker.cpp
   ConstFolder.cpp
   Intrinsics.cpp
