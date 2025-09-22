@@ -17,6 +17,10 @@ Paths to notable documentation and tests.
 
   Declares the BASIC front-end abstract syntax tree covering all expression and statement variants emitted by the parser. Nodes record `SourceLoc` metadata, expose owned children via `std::unique_ptr`, and implement `accept` hooks so visitors can traverse without type introspection. Enumerations such as the builtin type tags and binary operator list capture language semantics for later passes. Dependencies include `support/source_location.hpp` alongside standard containers `<memory>`, `<string>`, and `<vector>`.
 
+- **src/frontends/basic/AstPrinter.cpp**
+
+  Renders BASIC ASTs into s-expression-style strings for debugging tools and golden tests. Nested `ExprPrinter` and `StmtPrinter` visitors walk every node type and stream formatted output through the shared `Printer` helper to keep formatting centralized. Formatting logic normalizes numeric output, resolves builtin names, and emits statement punctuation so the textual tree mirrors parser semantics. Dependencies include `frontends/basic/AstPrinter.hpp`, `frontends/basic/BuiltinRegistry.hpp`, and `<array>`/`<sstream>` for lookup tables and temporary buffers.
+
 - **src/frontends/basic/BuiltinRegistry.cpp**
 
   Implements the BASIC builtin registry that maps canonical names to semantic and lowering callbacks shared across the front end. It materializes a dense table aligned with the `BuiltinCallExpr::Builtin` enum and a lookup map so passes can discover handlers without ad-hoc string switches. Lookup helpers return analyzer visitors, lowering functions, and scan hooks, letting semantic analysis enforce arity while lowering reuses shared emitters. Dependencies include `frontends/basic/BuiltinRegistry.hpp`, `frontends/basic/Lowerer.hpp`, `frontends/basic/SemanticAnalyzer.hpp`, and the standard `<array>` and `<unordered_map>` containers.
@@ -81,6 +85,10 @@ Paths to notable documentation and tests.
 
   Extends `Lowerer` with nested definitions that track runtime helper usage, including the `RuntimeFn` enumeration, a hash functor, and containers that remember which math helpers were requested. It declares member hooks for requesting helpers, querying whether a helper is needed, recording runtime usage, and ultimately declaring the externs when lowering finishes a module. Because the header is included inside the class definition, these members can manipulate the surrounding lowering state without exposing implementation details elsewhere. Dependencies rely on the context provided by `Lowerer.hpp` for `RuntimeHelper` and `build::IRBuilder`, along with standard containers like `<vector>` and `<unordered_set>`.
 
+- **src/frontends/basic/LowerScan.cpp**
+
+  Performs the pre-pass that scans BASIC ASTs to infer expression types and runtime helper requirements prior to lowering. The routines walk expressions to propagate operand types, mark when string helpers such as `concat`, `mid`, or `val` are needed, and encode short-circuit rules for boolean operators. Scanning also inspects builtin metadata to delegate specialized handling while leaving numeric cases to default recursion. Dependencies include `frontends/basic/Lowerer.hpp`, `frontends/basic/BuiltinRegistry.hpp`, and `<string_view>` for suffix inference.
+
 - **src/frontends/basic/NameMangler.cpp**
 
   Implements deterministic naming helpers used during BASIC lowering to produce SSA-friendly symbols. `nextTemp` increments an internal counter to yield sequential `%tN` temporaries while `block` ensures label hints are uniqued by appending numeric suffixes. Lowering routines call these helpers when emitting IL so control-flow edges and temporaries remain stable between runs. Dependencies include `frontends/basic/NameMangler.hpp` and the standard library containers declared there.
@@ -92,6 +100,10 @@ Paths to notable documentation and tests.
 - **src/frontends/basic/Parser.cpp**
 
   Coordinates the BASIC parser's top-level loop, priming the token stream, wiring statement handlers, and splitting procedures from main-line statements as it walks the source. It groups colon-separated statements into `StmtList` nodes and records whether the parser has entered the executable portion of the program so procedures stay at the top. Control flow and diagnostics are delegated to specialized handlers such as `parseIf`, `parseWhile`, and `parseFunction`, which are registered at construction time. The implementation depends on the lexer/token infrastructure, the AST node hierarchy (`Program`, `FunctionDecl`, `SubDecl`, `StmtList`), and `DiagnosticEmitter`/`il::support::SourceLoc` to surface parse errors.
+
+- **src/frontends/basic/Parser_Token.cpp**
+
+  Supplies the token-buffer management routines that back the BASIC parser's lookahead. `peek` lazily extends the buffered tokens from the lexer, `consume` pops the current token, and `expect` emits diagnostics before resynchronizing on mismatches. `syncToStmtBoundary` performs panic-mode recovery by scanning until end-of-line, colon, or end-of-file so parsing can resume cleanly. Dependencies include `frontends/basic/Parser.hpp`, `frontends/basic/DiagnosticEmitter.hpp`, and `<cstdio>` for fallback error messages.
 
 - **src/frontends/basic/Parser_Expr.cpp**
 
@@ -125,9 +137,26 @@ Paths to notable documentation and tests.
 
   Implements the statement visitor driving BASIC semantic analysis, covering control-flow validation, scope management, and symbol tracking. `SemanticAnalyzerStmtVisitor` dispatches AST nodes to analyzer methods that resolve identifiers, maintain active FOR/NEXT stacks, and ensure each statement observes typing and flow rules. The pass checks IF/WHILE conditions, validates GOTO targets and DIM declarations, handles INPUT prompts, and coordinates array metadata with procedure scopes before lowering. Dependencies include `frontends/basic/SemanticAnalyzer.Internal.hpp`, which pulls in `ScopeTracker`, `ProcRegistry`, diagnostics utilities, and the broader AST model used during analysis.
 
+- **src/frontends/basic/SemanticAnalyzer.Builtins.cpp**
+
+  Implements builtin call analysis for the BASIC semantic analyzer. Dispatch helpers compute argument types, enforce arity bounds, and issue diagnostics when arguments are missing or of the wrong kind. Each builtin-specific handler records the inferred result type, toggles runtime helper requirements for string operations, and reuses shared messaging helpers for consistent errors. Dependencies come from `frontends/basic/SemanticAnalyzer.Internal.hpp`, `frontends/basic/BuiltinRegistry.hpp`, and `<sstream>` for constructing diagnostics.
+
+- **src/frontends/basic/SemanticAnalyzer.Procs.cpp**
+
+  Provides the procedure-scope machinery for BASIC semantic analysis, covering SUB/FUNCTION registration and body checking. `ProcedureScope` snapshots symbol tables, FOR stacks, labels, and array metadata so they can be restored when a declaration ends. The analyzer binds parameters, records labels, visits statements, and validates missing RETURN diagnostics before leaving each procedure. Dependencies include `frontends/basic/SemanticAnalyzer.Internal.hpp`, `<algorithm>`, and `<utility>` for bookkeeping.
+
 - **src/frontends/basic/SemanticAnalyzer.hpp**
 
   Defines the semantic analyzer interface that walks the BASIC AST to record symbols, labels, and procedure signatures. It exposes diagnostic codes as constants and getters so later passes can inspect the collected scopes, label sets, and procedure registry. RAII helpers such as `ProcedureScope` snapshot symbol state across procedures while nested type-enum utilities describe inference results for expressions and builtin calls. Dependencies include `ProcRegistry`, `ScopeTracker`, `SemanticDiagnostics`, the BASIC AST classes, and standard containers used for symbol tables.
+
+- **src/frontends/basic/SemanticDiagnostics.cpp**
+
+  Provides the implementation of the semantic diagnostics façade that wraps the BASIC `DiagnosticEmitter`. Member functions forward severities, codes, and source ranges to the emitter while helper utilities format the standardized messaging for non-boolean conditions. The class also surfaces error and warning counters so the analyzer can decide when to abort compilation. Dependencies consist of `frontends/basic/SemanticDiagnostics.hpp` along with `<string>` and `<utility>` for assembling diagnostic text.
+
+## Codegen
+- **src/codegen/x86_64/placeholder.cpp**
+
+  Serves as the minimal translation unit anchoring the x86-64 code generation library so the component builds into a linkable object. It defines a stub `placeholder` function that returns zero, preserving the namespace until real emission stages arrive. The file includes nothing and therefore depends solely on the C++ core language, making it an isolated scaffold for future codegen work.
 
 ## IL Analysis
 - **src/il/analysis/CFG.cpp**
@@ -371,6 +400,14 @@ Paths to notable documentation and tests.
 
   Declares the `StringInterner` class and accompanying `Symbol` abstraction used wherever the toolchain needs canonicalized identifiers. The interface exposes `intern` to deduplicate strings and `lookup` to retrieve the original text, making it easy for diagnostics, debuggers, and registries to share keys. Internally the class stores an unordered map from text to `Symbol` alongside a vector of owned strings so views remain valid for the interner's lifetime. Dependencies include `support/symbol.hpp` plus standard `<string>`, `<string_view>`, `<unordered_map>`, and `<vector>` containers.
 
+- **src/support/symbol.cpp**
+
+  Defines comparison and utility operators for the interned `Symbol` identifier type. Equality and inequality simply compare the stored integral id, while the boolean conversion treats zero as the reserved invalid sentinel. A `std::hash` specialization reuses the id so symbols integrate directly with unordered containers. Dependencies are limited to `support/symbol.hpp`, which declares the wrapper and exposes the underlying field.
+
+- **src/support/source_location.cpp**
+
+  Implements the helper that reports whether a `SourceLoc` points at a registered file. The method checks for a nonzero file identifier so diagnostics and tools can ignore default-constructed locations. Dependencies include only `support/source_location.hpp`, which defines the lightweight value type.
+
 ## VM Runtime
 - **src/vm/control_flow.cpp**
 
@@ -452,3 +489,28 @@ Paths to notable documentation and tests.
 
   Handles VM construction and per-function execution state initialization. The constructor captures module references, seeds lookup tables for functions and global strings, and wires tracing plus debugging facilities provided through `TraceConfig` and `DebugCtrl`. Supporting routines `setupFrame` and `prepareExecution` allocate register files, map block labels, and stage entry parameters so the main interpreter loop can run without additional setup. It depends on `VM.hpp`, IL core structures (`Module`, `Function`, `BasicBlock`, `Global`), runtime helpers like `rt_const_cstr`, and standard containers along with `<cassert>`.
 
+
+## Tools
+- **src/tools/ilc/main.cpp**
+
+  Hosts the entry point for the `ilc` multipurpose driver. `usage` prints the supported subcommands and BASIC guidance, and `main` validates arguments before dispatching to `cmdRunIL`, `cmdILOpt`, or `cmdFrontBasic`. It also lists BASIC intrinsics so users know which builtin names are available when invoking the front-end mode. Dependencies include the local `cli.hpp`, `frontends/basic/Intrinsics.hpp`, and standard `<iostream>`/`<string>` facilities.
+
+- **src/tools/ilc/cmd_run_il.cpp**
+
+  Executes serialized IL modules through the VM while honoring debugging and tracing flags from the CLI. The option parser accepts breakpoints, scripted debug command files, stdin redirection, instruction counting, and timing toggles before loading the module via the expected-based API. After verifying the module it configures `TraceConfig` and `DebugCtrl`, constructs the VM, and prints optional summaries when counters are requested. Dependencies span `vm/Debug.hpp`, `vm/DebugScript.hpp`, `vm/Trace.hpp`, `vm/VM.hpp`, shared CLI helpers, IL API headers, and standard `<chrono>`, `<fstream>`, `<memory>`, `<string>`, `<algorithm>`, `<cstdint>`, and `<cstdio>` utilities.
+
+- **src/tools/ilc/cmd_il_opt.cpp**
+
+  Implements the `ilc il-opt` subcommand that runs transformation passes over IL files. It parses output destinations, comma-separated pass lists, and mem2reg toggles before loading the input through `il::api::v2::parse_text_expected`. Pass registrations wire default and user-selected pipelines into the `transform::PassManager`, and the optimized module is serialized in canonical form. Dependencies cover `il/transform` headers (`PassManager`, `Mem2Reg`, `ConstFold`, `Peephole`, `DCE`), the CLI facade, the IL API and serializer, plus `<algorithm>`, `<fstream>`, `<iostream>`, `<string>`, and `<vector>` utilities.
+
+- **src/tools/ilc/cli.cpp**
+
+  Provides helpers for parsing CLI flags shared across all `ilc` subcommands. `parseSharedOption` recognizes trace mode settings, stdin redirection, maximum step limits, and bounds-check toggles while updating a shared options struct. Its return value lets callers know whether a flag was handled or if they should treat it as an error. Dependencies include `cli.hpp`, which defines `SharedCliOptions` and ties into `il::vm::TraceConfig`, along with the standard string utilities included there.
+
+- **src/tools/ilc/cmd_front_basic.cpp**
+
+  Drives the BASIC front-end workflow for `ilc`, supporting both `-emit-il` compilation and `-run` execution. The helper `compileBasicToIL` loads the source, parses it, folds constants, runs semantic analysis with diagnostics, and lowers the program into IL while tracking source files. Command handling reuses `parseSharedOption`, emits IL text when requested, or verifies and runs the module via the VM. Dependencies include BASIC front-end headers (`Parser`, `ConstFolder`, `SemanticAnalyzer`, `Lowerer`, `DiagnosticEmitter`), the IL expected-based API, serializer, VM runtime headers, and standard `<fstream>`, `<sstream>`, `<iostream>`, and `<string>` facilities.
+
+- **src/tools/il-verify/il-verify.cpp**
+
+  Implements the standalone `il-verify` tool that parses and verifies IL modules from disk. The main routine handles `--version`, checks usage, opens the requested file, and routes diagnostics from the expected-based parse and verify helpers. It prints `OK` on success and returns non-zero when I/O, parsing, or verification fails. Dependencies include `il/api/expected_api.hpp`, `il/core/Module.hpp`, and `<fstream>`, `<iostream>`, `<string>` from the standard library.
