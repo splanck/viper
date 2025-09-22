@@ -7,6 +7,7 @@
 
 #include "frontends/basic/AstPrinter.hpp"
 #include "frontends/basic/BuiltinRegistry.hpp"
+#include <array>
 #include <sstream>
 
 namespace il::frontends::basic
@@ -32,6 +33,352 @@ const char *typeToString(Type ty)
 }
 
 } // namespace
+
+struct AstPrinter::ExprPrinter final : ExprVisitor
+{
+    explicit ExprPrinter(Printer &printer) : printer(printer) {}
+
+    void print(const Expr &expr)
+    {
+        expr.accept(*this);
+    }
+
+    template <typename NodeT> void visit([[maybe_unused]] const NodeT &)
+    {
+        static_assert(sizeof(NodeT) == 0, "Unhandled expression node in AstPrinter::ExprPrinter");
+    }
+
+    void visit(const IntExpr &expr) override
+    {
+        printer.os << expr.value;
+    }
+
+    void visit(const FloatExpr &expr) override
+    {
+        std::ostringstream os;
+        os << expr.value;
+        printer.os << os.str();
+    }
+
+    void visit(const StringExpr &expr) override
+    {
+        printer.os << '"' << expr.value << '"';
+    }
+
+    void visit(const BoolExpr &expr) override
+    {
+        printer.os << (expr.value ? "TRUE" : "FALSE");
+    }
+
+    void visit(const VarExpr &expr) override
+    {
+        printer.os << expr.name;
+    }
+
+    void visit(const ArrayExpr &expr) override
+    {
+        printer.os << expr.name << '(';
+        expr.index->accept(*this);
+        printer.os << ')';
+    }
+
+    void visit(const UnaryExpr &expr) override
+    {
+        printer.os << "(NOT ";
+        expr.expr->accept(*this);
+        printer.os << ')';
+    }
+
+    void visit(const BinaryExpr &expr) override
+    {
+        static constexpr std::array<const char *, 16> ops = {"+",
+                                                             "-",
+                                                             "*",
+                                                             "/",
+                                                             "\\",
+                                                             "MOD",
+                                                             "=",
+                                                             "<>",
+                                                             "<",
+                                                             "<=",
+                                                             ">",
+                                                             ">=",
+                                                             "ANDALSO",
+                                                             "ORELSE",
+                                                             "AND",
+                                                             "OR"};
+        printer.os << '(' << ops[static_cast<size_t>(expr.op)] << ' ';
+        expr.lhs->accept(*this);
+        printer.os << ' ';
+        expr.rhs->accept(*this);
+        printer.os << ')';
+    }
+
+    void visit(const BuiltinCallExpr &expr) override
+    {
+        printer.os << '(' << getBuiltinInfo(expr.builtin).name;
+        for (const auto &arg : expr.args)
+        {
+            printer.os << ' ';
+            arg->accept(*this);
+        }
+        printer.os << ')';
+    }
+
+    void visit(const CallExpr &expr) override
+    {
+        printer.os << '(' << expr.callee;
+        for (const auto &arg : expr.args)
+        {
+            printer.os << ' ';
+            arg->accept(*this);
+        }
+        printer.os << ')';
+    }
+
+  private:
+    Printer &printer;
+};
+
+struct AstPrinter::StmtPrinter final : StmtVisitor
+{
+    explicit StmtPrinter(Printer &printer) : printer(printer), exprPrinter(printer) {}
+
+    void print(const Stmt &stmt)
+    {
+        stmt.accept(*this);
+    }
+
+    template <typename NodeT> void visit([[maybe_unused]] const NodeT &)
+    {
+        static_assert(sizeof(NodeT) == 0, "Unhandled statement node in AstPrinter::StmtPrinter");
+    }
+
+    void visit(const PrintStmt &stmt) override
+    {
+        printer.os << "(PRINT";
+        for (const auto &item : stmt.items)
+        {
+            printer.os << ' ';
+            switch (item.kind)
+            {
+                case PrintItem::Kind::Expr:
+                    item.expr->accept(exprPrinter);
+                    break;
+                case PrintItem::Kind::Comma:
+                    printer.os << ',';
+                    break;
+                case PrintItem::Kind::Semicolon:
+                    printer.os << ';';
+                    break;
+            }
+        }
+        printer.os << ')';
+    }
+
+    void visit(const LetStmt &stmt) override
+    {
+        printer.os << "(LET ";
+        stmt.target->accept(exprPrinter);
+        printer.os << ' ';
+        stmt.expr->accept(exprPrinter);
+        printer.os << ')';
+    }
+
+    void visit(const DimStmt &stmt) override
+    {
+        printer.os << "(DIM " << stmt.name;
+        if (stmt.isArray)
+        {
+            if (stmt.size)
+            {
+                printer.os << ' ';
+                stmt.size->accept(exprPrinter);
+            }
+            if (stmt.type != Type::I64)
+                printer.os << " AS " << typeToString(stmt.type);
+        }
+        else
+        {
+            printer.os << " AS " << typeToString(stmt.type);
+        }
+        printer.os << ')';
+    }
+
+    void visit(const RandomizeStmt &stmt) override
+    {
+        printer.os << "(RANDOMIZE ";
+        stmt.seed->accept(exprPrinter);
+        printer.os << ')';
+    }
+
+    void visit(const IfStmt &stmt) override
+    {
+        printer.os << "(IF ";
+        stmt.cond->accept(exprPrinter);
+        printer.os << " THEN ";
+        stmt.then_branch->accept(*this);
+        for (const auto &elseif : stmt.elseifs)
+        {
+            printer.os << " ELSEIF ";
+            elseif.cond->accept(exprPrinter);
+            printer.os << " THEN ";
+            elseif.then_branch->accept(*this);
+        }
+        if (stmt.else_branch)
+        {
+            printer.os << " ELSE ";
+            stmt.else_branch->accept(*this);
+        }
+        printer.os << ')';
+    }
+
+    void visit(const WhileStmt &stmt) override
+    {
+        printer.os << "(WHILE ";
+        stmt.cond->accept(exprPrinter);
+        printer.os << " {";
+        bool first = true;
+        for (const auto &bodyStmt : stmt.body)
+        {
+            if (!first)
+                printer.os << ' ';
+            first = false;
+            printer.os << std::to_string(bodyStmt->line) << ':';
+            bodyStmt->accept(*this);
+        }
+        printer.os << "})";
+    }
+
+    void visit(const ForStmt &stmt) override
+    {
+        printer.os << "(FOR " << stmt.var << " = ";
+        stmt.start->accept(exprPrinter);
+        printer.os << " TO ";
+        stmt.end->accept(exprPrinter);
+        if (stmt.step)
+        {
+            printer.os << " STEP ";
+            stmt.step->accept(exprPrinter);
+        }
+        printer.os << " {";
+        bool first = true;
+        for (const auto &bodyStmt : stmt.body)
+        {
+            if (!first)
+                printer.os << ' ';
+            first = false;
+            printer.os << std::to_string(bodyStmt->line) << ':';
+            bodyStmt->accept(*this);
+        }
+        printer.os << "})";
+    }
+
+    void visit(const NextStmt &stmt) override
+    {
+        printer.os << "(NEXT " << stmt.var << ')';
+    }
+
+    void visit(const GotoStmt &stmt) override
+    {
+        printer.os << "(GOTO " << stmt.target << ')';
+    }
+
+    void visit(const EndStmt &) override
+    {
+        printer.os << "(END)";
+    }
+
+    void visit(const InputStmt &stmt) override
+    {
+        printer.os << "(INPUT";
+        if (stmt.prompt)
+        {
+            printer.os << ' ';
+            stmt.prompt->accept(exprPrinter);
+            printer.os << ',';
+        }
+        printer.os << ' ' << stmt.var << ')';
+    }
+
+    void visit(const ReturnStmt &stmt) override
+    {
+        printer.os << "(RETURN";
+        if (stmt.value)
+        {
+            printer.os << ' ';
+            stmt.value->accept(exprPrinter);
+        }
+        printer.os << ')';
+    }
+
+    void visit(const FunctionDecl &stmt) override
+    {
+        printer.os << "(FUNCTION " << stmt.name << " RET " << typeToString(stmt.ret) << " (";
+        bool firstParam = true;
+        for (const auto &param : stmt.params)
+        {
+            if (!firstParam)
+                printer.os << ' ';
+            firstParam = false;
+            printer.os << param.name;
+            if (param.is_array)
+                printer.os << "()";
+        }
+        printer.os << ") {";
+        bool firstStmt = true;
+        for (const auto &bodyStmt : stmt.body)
+        {
+            if (!firstStmt)
+                printer.os << ' ';
+            firstStmt = false;
+            printer.os << std::to_string(bodyStmt->line) << ':';
+            bodyStmt->accept(*this);
+        }
+        printer.os << "})";
+    }
+
+    void visit(const SubDecl &stmt) override
+    {
+        printer.os << "(SUB " << stmt.name << " (";
+        bool firstParam = true;
+        for (const auto &param : stmt.params)
+        {
+            if (!firstParam)
+                printer.os << ' ';
+            firstParam = false;
+            printer.os << param.name;
+            if (param.is_array)
+                printer.os << "()";
+        }
+        printer.os << ") {";
+        bool firstStmt = true;
+        for (const auto &bodyStmt : stmt.body)
+        {
+            if (!firstStmt)
+                printer.os << ' ';
+            firstStmt = false;
+            printer.os << std::to_string(bodyStmt->line) << ':';
+            bodyStmt->accept(*this);
+        }
+        printer.os << "})";
+    }
+
+    void visit(const StmtList &stmt) override
+    {
+        printer.os << "(SEQ";
+        for (const auto &subStmt : stmt.stmts)
+        {
+            printer.os << ' ';
+            subStmt->accept(*this);
+        }
+        printer.os << ')';
+    }
+
+  private:
+    Printer &printer;
+    ExprPrinter exprPrinter;
+};
 
 /// @brief Write a line of text to the underlying stream with current indentation.
 /// @param text Line content to emit.
@@ -86,316 +433,19 @@ std::string AstPrinter::dump(const Program &prog)
 /// @brief Recursively print a statement node and its children.
 /// @param stmt Statement to dump.
 /// @param p Printer receiving the textual form.
-/// @details Dispatches on the runtime type of @p stmt to emit the
-/// corresponding s-expression-like representation.
 void AstPrinter::dump(const Stmt &stmt, Printer &p)
 {
-    // Dispatch on concrete statement type via dynamic_cast chain.
-    if (auto *lst = dynamic_cast<const StmtList *>(&stmt))
-    {
-        p.os << "(SEQ";
-        for (auto &s : lst->stmts)
-        {
-            p.os << ' ';
-            dump(*s, p);
-        }
-        p.os << ')';
-    }
-    else if (auto *pr = dynamic_cast<const PrintStmt *>(&stmt))
-    {
-        p.os << "(PRINT";
-        // Each print item may be an expression or formatting token.
-        for (const auto &it : pr->items)
-        {
-            p.os << ' ';
-            switch (it.kind)
-            {
-                case PrintItem::Kind::Expr:
-                    dump(*it.expr, p);
-                    break;
-                case PrintItem::Kind::Comma:
-                    p.os << ',';
-                    break;
-                case PrintItem::Kind::Semicolon:
-                    p.os << ';';
-                    break;
-            }
-        }
-        p.os << ')';
-    }
-    else if (auto *l = dynamic_cast<const LetStmt *>(&stmt))
-    {
-        p.os << "(LET ";
-        dump(*l->target, p);
-        p.os << ' ';
-        dump(*l->expr, p);
-        p.os << ')';
-    }
-    else if (auto *d = dynamic_cast<const DimStmt *>(&stmt))
-    {
-        p.os << "(DIM " << d->name;
-        if (d->isArray)
-        {
-            if (d->size)
-            {
-                p.os << ' ';
-                dump(*d->size, p);
-            }
-            if (d->type != Type::I64)
-                p.os << " AS " << typeToString(d->type);
-        }
-        else
-        {
-            p.os << " AS " << typeToString(d->type);
-        }
-        p.os << ')';
-    }
-    else if (auto *r = dynamic_cast<const RandomizeStmt *>(&stmt))
-    {
-        p.os << "(RANDOMIZE ";
-        dump(*r->seed, p);
-        p.os << ')';
-    }
-    else if (auto *i = dynamic_cast<const IfStmt *>(&stmt))
-    {
-        p.os << "(IF ";
-        dump(*i->cond, p);
-        p.os << " THEN ";
-        dump(*i->then_branch, p);
-        // Emit any ELSEIF branches in order of appearance.
-        for (const auto &e : i->elseifs)
-        {
-            p.os << " ELSEIF ";
-            dump(*e.cond, p);
-            p.os << " THEN ";
-            dump(*e.then_branch, p);
-        }
-        // Optional final ELSE branch.
-        if (i->else_branch)
-        {
-            p.os << " ELSE ";
-            dump(*i->else_branch, p);
-        }
-        p.os << ')';
-    }
-    else if (auto *w = dynamic_cast<const WhileStmt *>(&stmt))
-    {
-        p.os << "(WHILE ";
-        dump(*w->cond, p);
-        p.os << " {";
-        bool first = true;
-        // Serialize loop body with embedded source line numbers.
-        for (auto &s : w->body)
-        {
-            if (!first)
-                p.os << ' ';
-            first = false;
-            p.os << std::to_string(s->line) << ':';
-            dump(*s, p);
-        }
-        p.os << "})";
-    }
-    else if (auto *f = dynamic_cast<const ForStmt *>(&stmt))
-    {
-        p.os << "(FOR " << f->var << " = ";
-        dump(*f->start, p);
-        p.os << " TO ";
-        dump(*f->end, p);
-        // STEP clause is optional.
-        if (f->step)
-        {
-            p.os << " STEP ";
-            dump(*f->step, p);
-        }
-        p.os << " {";
-        bool first = true;
-        // Body statements carry line numbers to mirror source.
-        for (auto &s : f->body)
-        {
-            if (!first)
-                p.os << ' ';
-            first = false;
-            p.os << std::to_string(s->line) << ':';
-            dump(*s, p);
-        }
-        p.os << "})";
-    }
-    else if (auto *n = dynamic_cast<const NextStmt *>(&stmt))
-    {
-        p.os << "(NEXT " << n->var << ')';
-    }
-    else if (auto *g = dynamic_cast<const GotoStmt *>(&stmt))
-    {
-        p.os << "(GOTO " << g->target << ')';
-    }
-    else if (auto *r = dynamic_cast<const ReturnStmt *>(&stmt))
-    {
-        p.os << "(RETURN";
-        if (r->value)
-        {
-            p.os << ' ';
-            dump(*r->value, p);
-        }
-        p.os << ')';
-    }
-    else if (auto *f = dynamic_cast<const FunctionDecl *>(&stmt))
-    {
-        p.os << "(FUNCTION " << f->name << " RET " << typeToString(f->ret) << " (";
-        bool first = true;
-        // Parameters are printed in declaration order.
-        for (auto &pa : f->params)
-        {
-            if (!first)
-                p.os << ' ';
-            first = false;
-            p.os << pa.name;
-            if (pa.is_array)
-                p.os << "()";
-        }
-        p.os << ") {";
-        bool firstStmt = true;
-        // Function body statements with line numbers.
-        for (auto &s : f->body)
-        {
-            if (!firstStmt)
-                p.os << ' ';
-            firstStmt = false;
-            p.os << std::to_string(s->line) << ':';
-            dump(*s, p);
-        }
-        p.os << "})";
-    }
-    else if (auto *sb = dynamic_cast<const SubDecl *>(&stmt))
-    {
-        p.os << "(SUB " << sb->name << " (";
-        bool first = true;
-        // Serialize parameter list similar to functions.
-        for (auto &pa : sb->params)
-        {
-            if (!first)
-                p.os << ' ';
-            first = false;
-            p.os << pa.name;
-            if (pa.is_array)
-                p.os << "()";
-        }
-        p.os << ") {";
-        bool firstStmt = true;
-        // Dump body statements with their line numbers.
-        for (auto &s : sb->body)
-        {
-            if (!firstStmt)
-                p.os << ' ';
-            firstStmt = false;
-            p.os << std::to_string(s->line) << ':';
-            dump(*s, p);
-        }
-        p.os << "})";
-    }
-    else if (dynamic_cast<const EndStmt *>(&stmt))
-    {
-        p.os << "(END)";
-    }
-    else
-    {
-        p.os << "(?)";
-    }
+    StmtPrinter printer{p};
+    printer.print(stmt);
 }
 
 /// @brief Print an expression node to the printer.
 /// @param expr Expression to dump.
 /// @param p Printer receiving output.
-/// @details Handles literals, variables, operators, and calls by
-/// inspecting the dynamic expression type.
 void AstPrinter::dump(const Expr &expr, Printer &p)
 {
-    // Dispatch on concrete expression type.
-    if (auto *i = dynamic_cast<const IntExpr *>(&expr))
-    {
-        p.os << i->value;
-    }
-    else if (auto *f = dynamic_cast<const FloatExpr *>(&expr))
-    {
-        std::ostringstream os;
-        os << f->value;
-        p.os << os.str();
-    }
-    else if (auto *s = dynamic_cast<const StringExpr *>(&expr))
-    {
-        p.os << '"' << s->value << '"';
-    }
-    else if (auto *v = dynamic_cast<const VarExpr *>(&expr))
-    {
-        p.os << v->name;
-    }
-    else if (auto *b = dynamic_cast<const BinaryExpr *>(&expr))
-    {
-        static constexpr std::array<const char *, 16> ops = {
-            "+",
-            "-",
-            "*",
-            "/",
-            "\\",
-            "MOD",
-            "=",
-            "<>",
-            "<",
-            "<=",
-            ">",
-            ">=",
-            "ANDALSO",
-            "ORELSE",
-            "AND",
-            "OR"};
-        // Binary expressions print operator then operands.
-        p.os << '(' << ops[static_cast<size_t>(b->op)] << ' ';
-        dump(*b->lhs, p);
-        p.os << ' ';
-        dump(*b->rhs, p);
-        p.os << ')';
-    }
-    else if (auto *b = dynamic_cast<const BoolExpr *>(&expr))
-    {
-        p.os << (b->value ? "TRUE" : "FALSE");
-    }
-    else if (auto *u = dynamic_cast<const UnaryExpr *>(&expr))
-    {
-        p.os << "(NOT ";
-        dump(*u->expr, p);
-        p.os << ')';
-    }
-    else if (auto *c = dynamic_cast<const BuiltinCallExpr *>(&expr))
-    {
-        // Map builtin enum to name then dump arguments.
-        p.os << '(' << getBuiltinInfo(c->builtin).name;
-        for (auto &a : c->args)
-        {
-            p.os << ' ';
-            dump(*a, p);
-        }
-        p.os << ')';
-    }
-    else if (auto *c = dynamic_cast<const CallExpr *>(&expr))
-    {
-        // User-defined call with callee name and arguments.
-        p.os << '(' << c->callee;
-        for (auto &a : c->args)
-        {
-            p.os << ' ';
-            dump(*a, p);
-        }
-        p.os << ')';
-    }
-    else if (auto *a = dynamic_cast<const ArrayExpr *>(&expr))
-    {
-        p.os << a->name << '(';
-        dump(*a->index, p);
-        p.os << ')';
-    }
-    else
-    {
-        p.os << '?';
-    }
+    ExprPrinter printer{p};
+    printer.print(expr);
 }
 
 } // namespace il::frontends::basic
