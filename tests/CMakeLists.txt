@@ -93,6 +93,10 @@ add_executable(test_il_verify_trap unit/test_il_verify_trap.cpp)
 target_link_libraries(test_il_verify_trap PRIVATE il_core il_verify il_api)
 add_test(NAME test_il_verify_trap COMMAND test_il_verify_trap)
 
+add_executable(test_il_verify_forward_call unit/test_il_verify_forward_call.cpp)
+target_link_libraries(test_il_verify_forward_call PRIVATE il_core il_verify il_api)
+add_test(NAME test_il_verify_forward_call COMMAND test_il_verify_forward_call)
+
 add_executable(test_il_type_inference unit/test_il_type_inference.cpp)
 target_link_libraries(test_il_type_inference PRIVATE il_core il_verify support)
 add_test(NAME test_il_type_inference COMMAND test_il_type_inference)
