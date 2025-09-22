@@ -55,6 +55,12 @@ class AstPrinter
         Indent push();
     };
 
+    /// @brief Expression visitor producing textual representations.
+    struct ExprPrinter;
+
+    /// @brief Statement visitor producing textual representations.
+    struct StmtPrinter;
+
     /// @brief Dump a statement node to the printer.
     /// @param stmt Statement to serialize.
     /// @param p Printer receiving the output.
