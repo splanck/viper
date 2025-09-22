@@ -115,9 +115,27 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
         std::string ty, nm;
         ps >> ty >> nm;
         if (!ty.empty() && !nm.empty() && nm[0] == '%')
-            params.push_back({nm.substr(1), parseType(ty)});
+        {
+            bool ok = true;
+            Type parsedTy = parseType(ty, &ok);
+            if (!ok || parsedTy.kind == Type::Kind::Void)
+            {
+                std::ostringstream oss;
+                oss << "line " << st.lineNo << ": unknown param type";
+                return Expected<void>{makeError({}, oss.str())};
+            }
+            params.push_back({nm.substr(1), parsedTy});
+        }
     }
     std::string retStr = trim(header.substr(arr + 2, lb - arr - 2));
+    bool retOk = true;
+    Type retTy = parseType(retStr, &retOk);
+    if (!retOk)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": unknown return type";
+        return Expected<void>{makeError({}, oss.str())};
+    }
     st.tempIds.clear();
     unsigned idx = 0;
     for (auto &param : params)
@@ -126,7 +144,7 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
         st.tempIds[param.name] = idx;
         ++idx;
     }
-    st.m.functions.push_back({name, parseType(retStr), params, {}, {}});
+    st.m.functions.push_back({name, retTy, params, {}, {}});
     st.curFn = &st.m.functions.back();
     st.curBB = nullptr;
     st.nextTemp = idx;
