@@ -12,8 +12,8 @@
 int main()
 {
     const char *src = R"(il 0.1.2
-extern @foo(i32)
-func @main() -> i32 {
+extern @foo(i64)
+func @main() -> i64 {
 entry:
   ret 0
 }

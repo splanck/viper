@@ -13,7 +13,7 @@ int main()
 {
     const char *src = R"(il 0.1.2
 // comment before function
-func @main() -> i32 {
+func @main() -> i64 {
 entry:
   ret 0
 }
