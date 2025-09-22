@@ -68,20 +68,20 @@ class SemanticAnalyzer
 
     /// @brief Record symbols and labels from a statement.
     /// @param s Statement node to analyze.
-    void visitStmt(const Stmt &s);
+    void visitStmt(Stmt &s);
 
     /// @brief Analyze statement list @p s.
     void analyzeStmtList(const StmtList &s);
     /// @brief Analyze PRINT statement @p s.
     void analyzePrint(const PrintStmt &s);
     /// @brief Analyze LET statement @p s.
-    void analyzeLet(const LetStmt &s);
+    void analyzeLet(LetStmt &s);
     /// @brief Analyze IF statement @p s.
     void analyzeIf(const IfStmt &s);
     /// @brief Analyze WHILE statement @p s.
     void analyzeWhile(const WhileStmt &s);
     /// @brief Analyze FOR statement @p s.
-    void analyzeFor(const ForStmt &s);
+    void analyzeFor(ForStmt &s);
     /// @brief Analyze GOTO statement @p s.
     void analyzeGoto(const GotoStmt &s);
     /// @brief Analyze NEXT statement @p s.
@@ -91,9 +91,9 @@ class SemanticAnalyzer
     /// @brief Analyze RANDOMIZE statement @p s.
     void analyzeRandomize(const RandomizeStmt &s);
     /// @brief Analyze INPUT statement @p s.
-    void analyzeInput(const InputStmt &s);
+    void analyzeInput(InputStmt &s);
     /// @brief Analyze DIM statement @p s.
-    void analyzeDim(const DimStmt &s);
+    void analyzeDim(DimStmt &s);
 
     /// @brief Analyze assignment to a simple variable in LET.
     void analyzeVarAssignment(VarExpr &v, const LetStmt &s);
@@ -171,11 +171,11 @@ class SemanticAnalyzer
     /// @brief Validate variable references in @p e and recurse into subtrees.
     /// @param e Expression node to analyze.
     /// @return Inferred type of the expression.
-    Type visitExpr(const Expr &e);
+    Type visitExpr(Expr &e);
 
     /// @brief Ensure a conditional expression yields a BOOLEAN result.
     /// @param expr Condition expression to analyze.
-    void checkConditionExpr(const Expr &expr);
+    void checkConditionExpr(Expr &expr);
 
     /// @brief Analyze variable reference.
     Type analyzeVar(VarExpr &v);

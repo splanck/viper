@@ -500,6 +500,10 @@ add_executable(test_basic_constfold unit/test_basic_constfold.cpp)
 target_link_libraries(test_basic_constfold PRIVATE fe_basic support)
 add_test(NAME test_basic_constfold COMMAND test_basic_constfold)
 
+add_executable(test_basic_ast_mutation unit/test_basic_ast_mutation.cpp)
+target_link_libraries(test_basic_ast_mutation PRIVATE fe_basic support)
+add_test(NAME test_basic_ast_mutation COMMAND test_basic_ast_mutation)
+
 add_executable(test_basic_parse_array_var unit/test_basic_parse_array_var.cpp)
 target_link_libraries(test_basic_parse_array_var PRIVATE fe_basic support)
 add_test(NAME test_basic_parse_array_var COMMAND test_basic_parse_array_var)
