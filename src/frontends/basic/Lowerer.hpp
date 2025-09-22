@@ -154,6 +154,30 @@ class Lowerer
 
     std::unique_ptr<BlockNamer> blockNamer;
 
+    struct ProcedureConfig;
+
+    struct ProcedureMetadata
+    {
+        std::vector<const Stmt *> bodyStmts;
+        std::unordered_set<std::string> paramNames;
+        std::vector<il::core::Param> irParams;
+        size_t paramCount{0};
+    };
+
+    ProcedureMetadata collectProcedureMetadata(const std::vector<Param> &params,
+                                               const std::vector<StmtPtr> &body,
+                                               const ProcedureConfig &config);
+
+    void buildProcedureSkeleton(Function &f,
+                                const std::string &name,
+                                const ProcedureMetadata &metadata);
+
+    void allocateLocals(const std::unordered_set<std::string> &paramNames);
+
+    void lowerStatementSequence(const std::vector<const Stmt *> &stmts,
+                                bool stopOnTerminated,
+                                const std::function<void(const Stmt &)> &beforeBranch = {});
+
 #include "frontends/basic/LowerEmit.hpp"
 
     build::IRBuilder *builder{nullptr};
