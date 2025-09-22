@@ -17,7 +17,6 @@
 #include "support/diag_expected.hpp"
 
 #include <sstream>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -30,16 +29,6 @@ namespace
 using il::core::Type;
 using il::support::Expected;
 using il::support::makeError;
-
-std::string stripCapturedDiagMessage(std::string text)
-{
-    while (!text.empty() && (text.back() == '\n' || text.back() == '\r'))
-        text.pop_back();
-    constexpr std::string_view kPrefix = "error: ";
-    if (text.rfind(kPrefix, 0) == 0)
-        text.erase(0, kPrefix.size());
-    return text;
-}
 
 /// Parses an extern declaration in the form `extern @name(param, ...) -> type`.
 ///
@@ -119,22 +108,6 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
     return {};
 }
 
-/// Invokes `parseFunction` for a function definition beginning with `func`.
-///
-/// The shim bridges between the `Expected`-returning helpers in this module and
-/// the legacy diagnostic stream interface exposed by `parseFunction`. It
-/// captures any emitted diagnostics, trims trailing newlines for readability,
-/// and rewraps them as an error `Expected`. On success the delegated parser
-/// mutates the supplied `ParserState` with the parsed function.
-Expected<void> parseFunctionShim_E(std::istream &is, std::string &header, ParserState &st)
-{
-    std::ostringstream capture;
-    if (parseFunction(is, header, st, capture))
-        return {};
-    auto message = stripCapturedDiagMessage(capture.str());
-    return Expected<void>{makeError(st.curLoc, std::move(message))};
-}
-
 } // namespace
 
 /// Dispatches module-header directives such as `il`, `extern`, `global`, and
@@ -165,7 +138,7 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
     if (line.rfind("global", 0) == 0)
         return parseGlobal_E(line, st);
     if (line.rfind("func", 0) == 0)
-        return parseFunctionShim_E(is, line, st);
+        return parseFunction(is, line, st);
     std::ostringstream oss;
     oss << "line " << st.lineNo << ": unexpected line: " << line;
     return Expected<void>{makeError({}, oss.str())};
