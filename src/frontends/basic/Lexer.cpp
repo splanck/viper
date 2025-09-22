@@ -8,11 +8,98 @@
 // Links: docs/class-catalog.md
 
 #include "frontends/basic/Lexer.hpp"
+#include <array>
 #include <cctype>
+#include <cstddef>
 #include <string>
+#include <string_view>
 
 namespace il::frontends::basic
 {
+
+namespace
+{
+struct KeywordEntry
+{
+    std::string_view lexeme;
+    TokenKind kind;
+};
+
+constexpr std::array<KeywordEntry, 38> kKeywordTable{{
+    {"ABS", TokenKind::KeywordAbs},
+    {"AND", TokenKind::KeywordAnd},
+    {"ANDALSO", TokenKind::KeywordAndAlso},
+    {"AS", TokenKind::KeywordAs},
+    {"BOOLEAN", TokenKind::KeywordBoolean},
+    {"CEIL", TokenKind::KeywordCeil},
+    {"COS", TokenKind::KeywordCos},
+    {"DIM", TokenKind::KeywordDim},
+    {"ELSE", TokenKind::KeywordElse},
+    {"ELSEIF", TokenKind::KeywordElseIf},
+    {"END", TokenKind::KeywordEnd},
+    {"FALSE", TokenKind::KeywordFalse},
+    {"FLOOR", TokenKind::KeywordFloor},
+    {"FOR", TokenKind::KeywordFor},
+    {"FUNCTION", TokenKind::KeywordFunction},
+    {"GOTO", TokenKind::KeywordGoto},
+    {"IF", TokenKind::KeywordIf},
+    {"INPUT", TokenKind::KeywordInput},
+    {"LET", TokenKind::KeywordLet},
+    {"MOD", TokenKind::KeywordMod},
+    {"NEXT", TokenKind::KeywordNext},
+    {"NOT", TokenKind::KeywordNot},
+    {"OR", TokenKind::KeywordOr},
+    {"ORELSE", TokenKind::KeywordOrElse},
+    {"POW", TokenKind::KeywordPow},
+    {"PRINT", TokenKind::KeywordPrint},
+    {"RANDOMIZE", TokenKind::KeywordRandomize},
+    {"RETURN", TokenKind::KeywordReturn},
+    {"RND", TokenKind::KeywordRnd},
+    {"SIN", TokenKind::KeywordSin},
+    {"SQR", TokenKind::KeywordSqr},
+    {"STEP", TokenKind::KeywordStep},
+    {"SUB", TokenKind::KeywordSub},
+    {"THEN", TokenKind::KeywordThen},
+    {"TO", TokenKind::KeywordTo},
+    {"TRUE", TokenKind::KeywordTrue},
+    {"WEND", TokenKind::KeywordWend},
+    {"WHILE", TokenKind::KeywordWhile},
+}};
+
+constexpr bool isKeywordTableSorted()
+{
+    for (std::size_t i = 1; i < kKeywordTable.size(); ++i)
+    {
+        if (!(kKeywordTable[i - 1].lexeme < kKeywordTable[i].lexeme))
+            return false;
+    }
+    return true;
+}
+
+static_assert(isKeywordTableSorted(), "Keyword table must be sorted lexicographically");
+
+TokenKind lookupKeyword(std::string_view lexeme)
+{
+    auto first = kKeywordTable.begin();
+    auto last = kKeywordTable.end();
+    while (first < last)
+    {
+        auto mid = first + (last - first) / 2;
+        if (mid->lexeme == lexeme)
+            return mid->kind;
+        if (mid->lexeme < lexeme)
+        {
+            first = mid + 1;
+        }
+        else
+        {
+            last = mid;
+        }
+    }
+    return TokenKind::Identifier;
+}
+
+} // namespace
 
 /// @brief Construct a lexer over the given source buffer.
 /// @param src BASIC program text to scan; must remain valid for the lexer
@@ -174,84 +261,8 @@ Token Lexer::lexIdentifierOrKeyword()
         s.push_back(std::toupper(static_cast<unsigned char>(get())));
     if (peek() == '$' || peek() == '#')
         s.push_back(std::toupper(static_cast<unsigned char>(get())));
-    // keywords
-    if (s == "PRINT")
-        return {TokenKind::KeywordPrint, s, loc};
-    if (s == "LET")
-        return {TokenKind::KeywordLet, s, loc};
-    if (s == "IF")
-        return {TokenKind::KeywordIf, s, loc};
-    if (s == "THEN")
-        return {TokenKind::KeywordThen, s, loc};
-    if (s == "ELSE")
-        return {TokenKind::KeywordElse, s, loc};
-    if (s == "ELSEIF")
-        return {TokenKind::KeywordElseIf, s, loc};
-    if (s == "WHILE")
-        return {TokenKind::KeywordWhile, s, loc};
-    if (s == "WEND")
-        return {TokenKind::KeywordWend, s, loc};
-    if (s == "FOR")
-        return {TokenKind::KeywordFor, s, loc};
-    if (s == "TO")
-        return {TokenKind::KeywordTo, s, loc};
-    if (s == "STEP")
-        return {TokenKind::KeywordStep, s, loc};
-    if (s == "NEXT")
-        return {TokenKind::KeywordNext, s, loc};
-    if (s == "GOTO")
-        return {TokenKind::KeywordGoto, s, loc};
-    if (s == "END")
-        return {TokenKind::KeywordEnd, s, loc};
-    if (s == "FUNCTION")
-        return {TokenKind::KeywordFunction, s, loc};
-    if (s == "SUB")
-        return {TokenKind::KeywordSub, s, loc};
-    if (s == "RETURN")
-        return {TokenKind::KeywordReturn, s, loc};
-    if (s == "BOOLEAN")
-        return {TokenKind::KeywordBoolean, s, loc};
-    if (s == "TRUE")
-        return {TokenKind::KeywordTrue, s, loc};
-    if (s == "FALSE")
-        return {TokenKind::KeywordFalse, s, loc};
-    if (s == "INPUT")
-        return {TokenKind::KeywordInput, s, loc};
-    if (s == "DIM")
-        return {TokenKind::KeywordDim, s, loc};
-    if (s == "AS")
-        return {TokenKind::KeywordAs, s, loc};
-    if (s == "RANDOMIZE")
-        return {TokenKind::KeywordRandomize, s, loc};
-    if (s == "ANDALSO")
-        return {TokenKind::KeywordAndAlso, s, loc};
-    if (s == "ORELSE")
-        return {TokenKind::KeywordOrElse, s, loc};
-    if (s == "AND")
-        return {TokenKind::KeywordAnd, s, loc};
-    if (s == "OR")
-        return {TokenKind::KeywordOr, s, loc};
-    if (s == "NOT")
-        return {TokenKind::KeywordNot, s, loc};
-    if (s == "MOD")
-        return {TokenKind::KeywordMod, s, loc};
-    if (s == "SQR")
-        return {TokenKind::KeywordSqr, s, loc};
-    if (s == "ABS")
-        return {TokenKind::KeywordAbs, s, loc};
-    if (s == "FLOOR")
-        return {TokenKind::KeywordFloor, s, loc};
-    if (s == "CEIL")
-        return {TokenKind::KeywordCeil, s, loc};
-    if (s == "SIN")
-        return {TokenKind::KeywordSin, s, loc};
-    if (s == "COS")
-        return {TokenKind::KeywordCos, s, loc};
-    if (s == "POW")
-        return {TokenKind::KeywordPow, s, loc};
-    if (s == "RND")
-        return {TokenKind::KeywordRnd, s, loc};
-    return {TokenKind::Identifier, s, loc};
+    TokenKind kind = lookupKeyword(s);
+    return {kind, s, loc};
 }
 
 /// @brief Lex a string literal delimited by double quotes.
