@@ -19,6 +19,7 @@
 #include <iostream>
 #include <locale>
 #include <string>
+#include <utility>
 
 #ifdef _WIN32
 #include <fcntl.h>
@@ -99,6 +100,36 @@ TraceSink::TraceSink(TraceConfig cfg) : cfg(cfg)
 #endif
 }
 
+const TraceSink::FileCacheEntry *TraceSink::getOrLoadFile(uint32_t file_id, std::string path_hint)
+{
+    if (!cfg.sm || file_id == 0)
+        return nullptr;
+    auto it = fileCache.find(file_id);
+    if (it != fileCache.end())
+        return &it->second;
+
+    FileCacheEntry entry;
+    if (!path_hint.empty())
+        entry.path = std::move(path_hint);
+    else
+        entry.path = std::string(cfg.sm->getPath(file_id));
+
+    if (entry.path.empty())
+        return nullptr;
+
+    std::ifstream f(entry.path);
+    if (f)
+    {
+        std::string line;
+        while (std::getline(f, line))
+            entry.lines.push_back(line);
+    }
+
+    auto [pos, inserted] = fileCache.emplace(file_id, std::move(entry));
+    (void)inserted;
+    return &pos->second;
+}
+
 void TraceSink::onStep(const il::core::Instr &in, const Frame &fr)
 {
     if (!cfg.enabled())
@@ -153,20 +184,23 @@ void TraceSink::onStep(const il::core::Instr &in, const Frame &fr)
             std::filesystem::path p(path);
             locStr = p.filename().string() + ':' + std::to_string(in.loc.line) + ':' +
                      std::to_string(in.loc.column);
-            std::ifstream f(path);
-            if (f)
+            if (!path.empty())
             {
-                std::string line;
-                for (uint32_t i = 0; i < in.loc.line && std::getline(f, line); ++i)
-                    ;
-                if (!line.empty())
+                const auto *entry = getOrLoadFile(in.loc.file_id, std::move(path));
+                if (entry && in.loc.line > 0 &&
+                    static_cast<size_t>(in.loc.line) <= entry->lines.size())
                 {
-                    if (in.loc.column > 0 && in.loc.column - 1 < line.size())
-                        srcLine = line.substr(in.loc.column - 1);
-                    else
-                        srcLine = line;
-                    while (!srcLine.empty() && (srcLine.back() == '\n' || srcLine.back() == '\r'))
-                        srcLine.pop_back();
+                    const std::string &line = entry->lines[in.loc.line - 1];
+                    if (!line.empty())
+                    {
+                        if (in.loc.column > 0 && in.loc.column - 1 < line.size())
+                            srcLine = line.substr(in.loc.column - 1);
+                        else
+                            srcLine = line;
+                        while (!srcLine.empty() &&
+                               (srcLine.back() == '\n' || srcLine.back() == '\r'))
+                            srcLine.pop_back();
+                    }
                 }
             }
         }

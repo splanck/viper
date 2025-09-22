@@ -5,6 +5,11 @@
 // Links: docs/dev/vm.md
 #pragma once
 
+#include <cstdint>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 namespace il::core
 {
 struct Instr;
@@ -49,7 +54,21 @@ class TraceSink
     void onStep(const il::core::Instr &in, const Frame &fr);
 
   private:
+    /// @brief Cache entry describing a traced source file.
+    struct FileCacheEntry
+    {
+        std::string path;               ///< Canonical file path.
+        std::vector<std::string> lines; ///< File contents split into lines.
+    };
+
+    /// @brief Retrieve cached file for @p file_id, loading it on first access.
+    /// @param file_id Source file identifier.
+    /// @param path_hint Optional canonical path to avoid redundant lookups.
+    /// @return Pointer to cache entry or nullptr if unavailable.
+    const FileCacheEntry *getOrLoadFile(uint32_t file_id, std::string path_hint = {});
+
     TraceConfig cfg; ///< Active configuration
+    std::unordered_map<uint32_t, FileCacheEntry> fileCache; ///< Cached source text.
 };
 
 } // namespace il::vm
