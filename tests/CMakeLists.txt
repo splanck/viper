@@ -536,6 +536,10 @@ add_executable(test_vm_rt_concat_missing_args unit/test_vm_rt_concat_missing_arg
 target_link_libraries(test_vm_rt_concat_missing_args PRIVATE il_build il_vm support)
 add_test(NAME test_vm_rt_concat_missing_args COMMAND test_vm_rt_concat_missing_args)
 
+add_executable(test_vm_rt_unknown_helper unit/test_vm_rt_unknown_helper.cpp)
+target_link_libraries(test_vm_rt_unknown_helper PRIVATE il_build il_vm support)
+add_test(NAME test_vm_rt_unknown_helper COMMAND test_vm_rt_unknown_helper)
+
 add_executable(test_vm_runtime_concurrency unit/test_vm_runtime_concurrency.cpp)
 target_link_libraries(test_vm_runtime_concurrency PRIVATE il_build il_vm support Threads::Threads)
 add_test(NAME test_vm_runtime_concurrency COMMAND test_vm_runtime_concurrency)
