@@ -105,9 +105,25 @@ Paths to notable documentation and tests.
 
   Declares the BASIC parser facade that coordinates token buffering and statement dispatch. It exposes `parseProgram` along with specialized helpers for each statement form, wiring a table of `StmtHandler` entries to member function pointers. Expression parsing utilities, loop body helpers, and DIM bookkeeping are declared here so front-end phases understand how control flow and arrays are surfaced before lowering. Dependencies include the BASIC AST model, lexer, diagnostic emitter, token helper headers, and standard containers such as `<array>`, `<vector>`, and `<unordered_set>`.
 
+- **src/frontends/basic/ProcRegistry.cpp**
+
+  Maintains the semantic registry of BASIC procedures and subs, rejecting duplicate declarations while materializing canonical signatures. `buildSignature` normalizes a descriptor into the `ProcSignature` table, enforcing unique parameter names and the array type limitations mandated by the language. The overloads of `registerProc` emit `B1004`/`B2004` diagnostics through the shared `SemanticDiagnostics` when clients attempt to redeclare procedures or use illegal parameter shapes, yet still record valid entries for later lookup. Dependencies include `frontends/basic/ProcRegistry.hpp` (pulling in the AST descriptors and diagnostics helpers) together with the standard `<unordered_set>` and `<utility>` headers.
+
+- **src/frontends/basic/ScopeTracker.cpp**
+
+  Implements the lexical scope stack the semantic analyzer uses to map BASIC identifiers onto unique SSA-friendly names. `pushScope`/`popScope` manage a vector of hash maps, while the nested `ScopedScope` type provides RAII guards for temporary scopes introduced by conditional and loop statements. `declareLocal` synthesizes deterministic suffixes and records them so `resolve` walks outward through the stack to find the nearest binding when identifiers are referenced later. Dependencies include `frontends/basic/ScopeTracker.hpp`, which defines the tracker and RAII helper, and the `<optional>`, `<string>`, `<unordered_map>`, and `<vector>` facilities used by the scope maps.
+
 - **src/frontends/basic/SemanticAnalyzer.cpp**
 
   Implements symbol, label, and type checking for BASIC programs by visiting the AST after parsing. It snapshots and restores scope state as it enters each procedure, tracks variable declarations, array usage, and procedure signatures, and enforces rules like “FUNCTION must return on every path.” Helper routines compute edit distances for better diagnostics, infer return guarantees, and propagate symbol bindings through nested scopes. The analyzer leans on `ProcRegistry`, `ScopeTracker`, AST statement/expr classes, the builtin registry, and the `DiagnosticEmitter` utilities to register procedures and emit targeted error codes.
+
+- **src/frontends/basic/SemanticAnalyzer.Exprs.cpp**
+
+  Houses the expression visitor for the semantic analyzer, delegating each BASIC expression kind to helpers that resolve symbols, infer result types, and surface diagnostics. `SemanticAnalyzerExprVisitor` forwards to methods such as `analyzeVar`, `analyzeArray`, and `analyzeBinary`, allowing the analyzer to mutate AST nodes with resolved names while tracking type information. The implementation suggests spelling corrections, enforces numeric versus boolean operand contracts, and flags divide-by-zero cases or illegal builtin usage before lowering. Dependencies include `frontends/basic/SemanticAnalyzer.Internal.hpp` (which exposes the analyzer internals, AST, and diagnostic emitters) plus `<limits>` and `<sstream>` for suggestion heuristics.
+
+- **src/frontends/basic/SemanticAnalyzer.Stmts.cpp**
+
+  Implements the statement visitor driving BASIC semantic analysis, covering control-flow validation, scope management, and symbol tracking. `SemanticAnalyzerStmtVisitor` dispatches AST nodes to analyzer methods that resolve identifiers, maintain active FOR/NEXT stacks, and ensure each statement observes typing and flow rules. The pass checks IF/WHILE conditions, validates GOTO targets and DIM declarations, handles INPUT prompts, and coordinates array metadata with procedure scopes before lowering. Dependencies include `frontends/basic/SemanticAnalyzer.Internal.hpp`, which pulls in `ScopeTracker`, `ProcRegistry`, diagnostics utilities, and the broader AST model used during analysis.
 
 - **src/frontends/basic/SemanticAnalyzer.hpp**
 
@@ -264,6 +280,10 @@ Paths to notable documentation and tests.
   Describes the metadata schema for runtime helper signatures shared across the toolchain. It defines the `RuntimeSignature` struct capturing return and parameter types using IL type objects and documents how parameter order mirrors the C ABI. Accessor functions expose the registry map and an optional lookup helper so consumers can fetch signatures lazily without copying data. Dependencies include `il/core/Type.hpp`, `<string_view>`, `<vector>`, and `<unordered_map>`.
 
 ## IL Transform
+- **src/il/transform/ConstFold.cpp**
+
+  Runs the IL constant-folding pass, replacing integer arithmetic and recognised runtime math intrinsics with precomputed values. Helpers such as `wrapAdd`/`wrapMul` model modulo 2^64 behaviour so folded results mirror VM semantics, and `foldCall` maps literal arguments onto runtime helpers like `rt_abs`, `rt_floor`, and `rt_pow`. The pass walks every function, substitutes the folded value via `replaceAll`, and erases the defining instruction in place to keep blocks minimal while respecting domain checks. Dependencies include `il/transform/ConstFold.hpp`, IL core containers (`Module`, `Function`, `Instr`, `Value`), and the standard `<cmath>`, `<cstdint>`, `<cstdlib>`, and `<limits>` headers.
+
 - **src/il/transform/DCE.cpp**
 
   Houses the trivial dead-code elimination pass that prunes unused temporaries, redundant memory instructions, and stale block parameters. It tallies SSA uses across instructions, erases loads, stores, and allocas whose results never feed later consumers, and mirrors a lightweight liveness sweep. A final walk drops unused block parameters and rewrites branch argument lists to keep control flow well-formed. The implementation leans on `il/transform/DCE.hpp`, IL core structures (`Module`, `Function`, `Instr`, `Value`), and standard `<unordered_map>` and `<unordered_set>` containers.
@@ -280,11 +300,28 @@ Paths to notable documentation and tests.
 
   Declares the public entry point for the mem2reg optimization along with an optional statistics structure. Clients provide an `il::core::Module` and receive the number of promoted variables and eliminated memory operations when they pass a `Mem2RegStats` pointer. The interface is used by the optimizer driver and test harnesses to promote locals before other analyses run. Dependencies include `il/core/Module.hpp`.
 
+- **src/il/transform/Peephole.cpp**
+
+  Implements local IL peephole optimizations that simplify algebraic identities and collapse conditional branches. Constant-detection helpers and use counters ensure SSA safety before forwarding operands or rewriting branch terminators into unconditional jumps. Rewrites also tidy `brArgs` bundles and delete single-use predicate definitions so subsequent passes see canonical control flow. Dependencies include `il/transform/Peephole.hpp`, IL core structures (`Module`, `Function`, `Instr`, `Value`), and the standard containers brought in by that header.
+
 - **src/il/transform/PassManager.cpp**
 
   Hosts the modular pass manager that sequences module/function passes, wraps callbacks, and tracks analysis preservation across runs. It synthesizes CFG and liveness information to support passes, instantiates adapters that expose pass identifiers, and invalidates cached analyses when a pass does not declare them preserved. The implementation also provides helper factories for module/function pass lambdas and utilities to mark entire analysis sets as kept or dropped. Key dependencies span the pass manager headers, IL analysis utilities (`CFG`, `Dominators`, liveness builders), IL core containers, the verifier, and standard unordered containers.
 
+## IL Utilities
+- **src/il/utils/Utils.cpp**
+
+  Collects small IL convenience helpers used across analyses to query blocks and instructions without materializing extra structures. `belongsToBlock` performs linear membership tests over a block's instruction vector, while `terminator` and `isTerminator` centralize opcode-based control-flow classification. These utilities back verifier and optimizer code that need quick checks when rewriting IR without duplicating opcode tables. Dependencies include `il/utils/Utils.hpp` together with `il/core/BasicBlock.hpp`, `il/core/Instr.hpp`, and `il/core/Opcode.hpp` for the IR data structures.
+
 ## IL Verification
+- **src/il/verify/ControlFlowChecker.cpp**
+
+  Handles verifier checks specific to IL control flow, ensuring blocks and terminators obey structural rules. Helpers like `validateBlockParams_E` seed type information for block parameters, `iterateBlockInstructions_E` walks instructions until the terminator, and `checkBlockTerminators_E` enforces the single-terminator rule from the IL spec. Branch utilities validate jump targets, branch argument counts, and type compatibility while cross-referencing maps of reachable blocks, externs, and functions. Dependencies include `il/verify/ControlFlowChecker.hpp`, `il/verify/TypeInference.hpp`, IL core containers (`BasicBlock`, `Instr`, `Function`, `Extern`, `Param`), `support/diag_expected.hpp`, and standard `<functional>`, `<sstream>`, `<string_view>`, and `<unordered_set>` facilities.
+
+- **src/il/verify/InstructionChecker.cpp**
+
+  Provides verifier checks for non-control-flow IL instructions by pairing opcode metadata with type inference. `verifyOpcodeSignature_E` enforces operand/result counts and successor arity from `OpcodeInfo`, while targeted helpers validate allocas, memory operations, arithmetic, and runtime calls. Diagnostics format instruction snippets, queue optional warnings, and power both streaming and `Expected`-based verifier entry points so tooling can choose its preferred API. Dependencies include `il/verify/InstructionChecker.hpp`, `il/verify/TypeInference.hpp`, IL core types (`Function`, `BasicBlock`, `Instr`, `Extern`, `OpcodeInfo`), and `support/diag_expected.hpp` together with `<sstream>`, `<string_view>`, `<unordered_map>`, and `<vector>` from the standard library.
+
 - **src/il/verify/TypeInference.cpp**
 
   Provides the verifier's type-inference engine for IL, backing operand validation and diagnostic rendering. Construction ties the helper to caller-owned maps and sets so it can track temporary types, mark definitions, and uphold the invariant that every defined id has an associated type. Utility methods render single-line instruction snippets, compute primitive widths, ensure operands are defined, and surface failures as either streamed diagnostics or `Expected` errors. The implementation includes `il/verify/TypeInference.hpp`, draws on IL core instruction and value metadata, and uses `support/diag_expected.hpp` plus `<sstream>` and `<string_view>` to produce rich error text.
@@ -305,6 +342,10 @@ Paths to notable documentation and tests.
 - **src/support/arena.hpp**
 
   Declares the `il::support::Arena` class used to service fast, short-lived allocations for parsers and passes. It stores a `std::vector<std::byte>` buffer and a bump pointer so repeated `allocate` calls are O(1) until capacity runs out. The class exposes explicit reset semantics instead of per-allocation frees, making it a good fit for phase-based compilation. Dependencies include `<vector>`, `<cstddef>`, and modules that instantiate the arena such as parsers and VM helpers.
+
+- **src/support/diag_expected.cpp**
+
+  Supplies the plumbing for `Expected<void>` diagnostics used across the toolchain to report recoverable errors. It implements the boolean conversion and error accessor, provides consistent severity-to-string mapping, and centralizes error construction through `makeError`. `printDiag` consults the shared `SourceManager` to prepend file and line information so messages match compiler-style output. Dependencies include `support/diag_expected.hpp`, which defines the diagnostic types and pulls in `<ostream>`, `<string>`, and the `SourceLoc` helpers.
 
 - **src/support/diag_capture.cpp**
 
