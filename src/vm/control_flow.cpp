@@ -51,7 +51,11 @@ VM::ExecResult OpHandlers::branchToTarget(VM &vm,
         const auto &args = in.brArgs[idx];
         const size_t limit = std::min(args.size(), target->params.size());
         for (size_t i = 0; i < limit; ++i)
-            fr.params[target->params[i].id] = vm.eval(fr, args[i]);
+        {
+            const auto id = target->params[i].id;
+            assert(id < fr.params.size());
+            fr.params[id] = vm.eval(fr, args[i]);
+        }
     }
 
     bb = target;

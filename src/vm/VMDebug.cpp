@@ -11,6 +11,7 @@
 #include "support/source_manager.hpp"
 #include "vm/DebugScript.hpp"
 
+#include <cassert>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -55,22 +56,22 @@ std::optional<Slot> VM::handleDebugBreak(
         }
         for (const auto &p : bb.params)
         {
-            auto it = fr.params.find(p.id);
-            if (it != fr.params.end())
-            {
-                if (fr.regs.size() <= p.id)
-                    fr.regs.resize(p.id + 1);
-                fr.regs[p.id] = it->second;
-                debug.onStore(p.name,
-                              p.type.kind,
-                              fr.regs[p.id].i64,
-                              fr.regs[p.id].f64,
-                              fr.func->name,
-                              bb.label,
-                              0);
-            }
+            assert(p.id < fr.params.size());
+            auto &pending = fr.params[p.id];
+            if (!pending)
+                continue;
+            if (fr.regs.size() <= p.id)
+                fr.regs.resize(p.id + 1);
+            fr.regs[p.id] = *pending;
+            debug.onStore(p.name,
+                          p.type.kind,
+                          fr.regs[p.id].i64,
+                          fr.regs[p.id].f64,
+                          fr.func->name,
+                          bb.label,
+                          0);
+            pending.reset();
         }
-        fr.params.clear();
         return std::nullopt;
     }
     if (debug.hasSrcLineBPs() && debug.shouldBreakOn(*in))

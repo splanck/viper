@@ -68,6 +68,7 @@ Frame VM::setupFrame(const Function &fn,
     // incremental growth during execution.
     fr.regs.resize(fn.valueNames.size());
     assert(fr.regs.size() == fn.valueNames.size());
+    fr.params.assign(fr.regs.size(), std::nullopt);
     for (const auto &b : fn.blocks)
         blocks[b.label] = &b;
     bb = fn.blocks.empty() ? nullptr : &fn.blocks.front();
@@ -75,7 +76,11 @@ Frame VM::setupFrame(const Function &fn,
     {
         const auto &params = bb->params;
         for (size_t i = 0; i < params.size() && i < args.size(); ++i)
-            fr.params[params[i].id] = args[i];
+        {
+            const auto id = params[i].id;
+            assert(id < fr.params.size());
+            fr.params[id] = args[i];
+        }
     }
     return fr;
 }
