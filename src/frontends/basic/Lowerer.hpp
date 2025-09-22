@@ -73,6 +73,13 @@ class Lowerer
         bool isBoolean{false};
     };
 
+    /// @brief Cached signature for a user-defined procedure.
+    struct ProcedureSignature
+    {
+        Type retType{Type(Type::Kind::I64)};           ///< Declared return type.
+        std::vector<Type> paramTypes;                  ///< Declared parameter types.
+    };
+
   private:
     /// @brief Layout of blocks emitted for an IF/ELSEIF chain.
     struct IfBlocks
@@ -197,6 +204,7 @@ class Lowerer
     il::support::SourceLoc curLoc{}; ///< current source location for emitted IR
     bool boundsChecks{false};
     unsigned boundsCheckId{0};
+    std::unordered_map<std::string, ProcedureSignature> procSignatures;
 
     // runtime requirement tracking
     using RuntimeFeature = il::runtime::RuntimeFeature;
@@ -210,6 +218,11 @@ class Lowerer
 #include "frontends/basic/LowerScan.hpp"
 
     SlotType getSlotType(std::string_view name) const;
+
+  public:
+    /// @brief Lookup a cached procedure signature by BASIC name.
+    /// @return Pointer to the signature when present, nullptr otherwise.
+    const ProcedureSignature *findProcSignature(const std::string &name) const;
 };
 
 } // namespace il::frontends::basic

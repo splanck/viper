@@ -31,6 +31,7 @@ void Lowerer::emitProgram(const Program &prog)
     build::IRBuilder &b = *builder;
 
     std::vector<const Stmt *> mainStmts;
+    collectProcedureSignatures(prog);
     for (const auto &s : prog.procs)
     {
         if (auto *fn = dynamic_cast<const FunctionDecl *>(s.get()))
