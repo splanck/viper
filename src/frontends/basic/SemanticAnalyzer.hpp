@@ -134,6 +134,19 @@ class SemanticAnalyzer
         std::vector<std::string> savedForStack_;
     };
 
+    /// @brief Classify how a symbol should be tracked during resolution.
+    enum class SymbolKind
+    {
+        Reference,      ///< Existing symbol use; do not declare or type.
+        Definition,     ///< Implicit definition; apply suffix defaults if unset.
+        InputTarget     ///< INPUT destination; force suffix-based defaults.
+    };
+
+    /// @brief Resolve @p name in current scope and update symbol/type tables.
+    /// @param name Symbol to resolve; updated when a scoped alias exists.
+    /// @param kind Handling strategy indicating whether defaults should apply.
+    void resolveAndTrackSymbol(std::string &name, SymbolKind kind);
+
     /// @brief Validate variable references in @p e and recurse into subtrees.
     /// @param e Expression node to analyze.
     /// @return Inferred type of the expression.
