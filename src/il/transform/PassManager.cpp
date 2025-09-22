@@ -20,9 +20,9 @@
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
+#include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/Value.hpp"
-#include "il/core/Module.hpp"
 #include "il/verify/Verifier.hpp"
 #include <algorithm>
 #include <utility>
@@ -33,27 +33,23 @@ namespace il::transform
 {
 namespace
 {
-struct BlockState
+struct BlockInfo
 {
-    explicit BlockState(std::size_t valueCount = 0)
-        : defs(valueCount, false),
-          uses(valueCount, false),
-          liveIn(valueCount, false),
-          liveOut(valueCount, false)
+    explicit BlockInfo(std::size_t valueCount = 0)
+        : defs(valueCount, false), uses(valueCount, false)
     {
     }
 
     std::vector<bool> defs;
     std::vector<bool> uses;
-    std::vector<bool> liveIn;
-    std::vector<bool> liveOut;
 };
 
 std::size_t determineValueCapacity(const core::Function &fn)
 {
     unsigned maxId = 0;
     bool sawId = false;
-    auto noteId = [&](unsigned id) {
+    auto noteId = [&](unsigned id)
+    {
         maxId = std::max(maxId, id);
         sawId = true;
     };
@@ -112,65 +108,63 @@ inline void mergeBits(std::vector<bool> &dst, const std::vector<bool> &src)
 } // namespace
 
 /// @brief Construct predecessor and successor relationships for a function.
-/// @details Creates an empty adjacency entry for each basic block, then scans
-/// branch terminators to resolve their label targets and populate the successor
-/// and predecessor vectors inside the CFGInfo that is returned. The function
-/// only mutates the adjacency lists in the local CFGInfo; @p module and @p fn
-/// are not modified.
+/// @details Creates an adjacency entry for each basic block and delegates to
+/// `analysis::successors`/`predecessors` so branch decoding lives in a single
+/// implementation. The function only mutates the adjacency lists in the local
+/// CFGInfo; @p module and @p fn are not modified.
 /// @param module Module that owns @p fn (unused, maintained for signature parity).
 /// @param fn Function whose control-flow graph is being synthesized.
 /// @return CFG adjacency information for all blocks in @p fn.
-CFGInfo buildCFG(core::Module &, core::Function &fn)
+CFGInfo buildCFG(core::Module &module, core::Function &fn)
 {
     CFGInfo info;
-    std::unordered_map<std::string, BasicBlock *> labelMap;
+    viper::analysis::CFGContext ctx(module);
+
     for (auto &block : fn.blocks)
     {
-        labelMap[block.label] = &block;
-        info.successors[&block];
-        info.predecessors[&block];
+        auto &succ = info.successors[&block];
+        auto succBlocks = viper::analysis::successors(ctx, block);
+        succ.reserve(succBlocks.size());
+        for (auto *succBlock : succBlocks)
+            succ.push_back(succBlock);
     }
 
     for (auto &block : fn.blocks)
     {
-        if (block.instructions.empty())
-            continue;
-        const Instr &term = block.instructions.back();
-        if (term.op != Opcode::Br && term.op != Opcode::CBr)
-            continue;
-        for (const auto &label : term.labels)
-        {
-            auto it = labelMap.find(label);
-            if (it == labelMap.end())
-                continue;
-            info.successors[&block].push_back(it->second);
-            info.predecessors[it->second].push_back(&block);
-        }
+        auto &pred = info.predecessors[&block];
+        auto predBlocks = viper::analysis::predecessors(ctx, block);
+        pred.reserve(predBlocks.size());
+        for (auto *predBlock : predBlocks)
+            pred.push_back(predBlock);
     }
+
     return info;
 }
+
 /// @brief Compute liveness information for each block within @p fn.
-/// @details Builds a CFG, records block-local def/use bitsets, and then
-/// iterates a backward data-flow fixpoint that pushes successor live-in bits to
-/// predecessors until convergence. The temporary BlockState map is mutated
-/// during iteration, after which the final live-in/live-out bitsets are moved
-/// into the returned LivenessInfo structure. Neither @p module nor @p fn is
-/// mutated.
-/// @param module Owning module used for analysis context.
+/// @details Consumes the adjacency stored in @p cfg, records block-local def
+/// and use bitsets, and iterates a backward data-flow fixpoint that merges
+/// successor live-in sets until convergence. Intermediate state is stored in a
+/// temporary table keyed by basic block pointers while the resulting live-in
+/// and live-out sets are written directly into the returned LivenessInfo.
+/// @param module Owning module used for analysis context (unused).
 /// @param fn Function whose live-in/live-out sets should be determined.
+/// @param cfg Cached CFG adjacency information shared with other analyses.
 /// @return Liveness summary describing values live on block entry and exit.
-LivenessInfo computeLiveness(core::Module &module, core::Function &fn)
+LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFGInfo &cfg)
 {
-    CFGInfo cfg = buildCFG(module, fn);
+    static_cast<void>(module);
     const std::size_t valueCount = determineValueCapacity(fn);
 
-    std::unordered_map<const BasicBlock *, BlockState> states;
-    states.reserve(fn.blocks.size());
+    std::unordered_map<const BasicBlock *, BlockInfo> blockInfo;
+    blockInfo.reserve(fn.blocks.size());
+
+    LivenessInfo info;
+    info.valueCount_ = valueCount;
 
     for (auto &block : fn.blocks)
     {
-        auto insertResult = states.emplace(&block, BlockState(valueCount));
-        BlockState &state = insertResult.first->second;
+        BlockInfo state(valueCount);
 
         for (const auto &param : block.params)
             setBit(state.defs, param.id);
@@ -203,6 +197,10 @@ LivenessInfo computeLiveness(core::Module &module, core::Function &fn)
             if (instr.result)
                 setBit(state.defs, *instr.result);
         }
+
+        blockInfo.emplace(&block, std::move(state));
+        info.liveInBits_.emplace(&block, std::vector<bool>(valueCount, false));
+        info.liveOutBits_.emplace(&block, std::vector<bool>(valueCount, false));
     }
 
     std::vector<bool> scratchOut(valueCount, false);
@@ -215,42 +213,51 @@ LivenessInfo computeLiveness(core::Module &module, core::Function &fn)
         for (auto it = fn.blocks.rbegin(); it != fn.blocks.rend(); ++it)
         {
             const BasicBlock *block = &*it;
-            BlockState &state = states[block];
+            auto stateIt = blockInfo.find(block);
+            assert(stateIt != blockInfo.end());
+            BlockInfo &state = stateIt->second;
 
+            auto &liveOut = info.liveOutBits_[block];
             std::fill(scratchOut.begin(), scratchOut.end(), false);
-            for (const BasicBlock *succ : cfg.successors[block])
+            auto succIt = cfg.successors.find(block);
+            if (succIt != cfg.successors.end())
             {
-                const BlockState &succState = states[succ];
-                mergeBits(scratchOut, succState.liveIn);
+                for (const BasicBlock *succ : succIt->second)
+                {
+                    auto liveInIt = info.liveInBits_.find(succ);
+                    if (liveInIt == info.liveInBits_.end())
+                        continue;
+                    mergeBits(scratchOut, liveInIt->second);
+                }
             }
-            if (scratchOut != state.liveOut)
+            if (scratchOut != liveOut)
             {
-                state.liveOut = scratchOut;
+                liveOut = scratchOut;
                 changed = true;
             }
 
             scratchIn = state.uses;
             for (std::size_t idx = 0; idx < valueCount; ++idx)
             {
-                if (state.liveOut[idx] && !state.defs[idx])
+                if (liveOut[idx] && !state.defs[idx])
                     scratchIn[idx] = true;
             }
-            if (scratchIn != state.liveIn)
+            auto &liveIn = info.liveInBits_[block];
+            if (scratchIn != liveIn)
             {
-                state.liveIn = scratchIn;
+                liveIn = scratchIn;
                 changed = true;
             }
         }
     }
 
-    LivenessInfo info;
-    info.valueCount_ = valueCount;
-    for (auto &[block, state] : states)
-    {
-        info.liveInBits_.emplace(block, std::move(state.liveIn));
-        info.liveOutBits_.emplace(block, std::move(state.liveOut));
-    }
     return info;
+}
+
+LivenessInfo computeLiveness(core::Module &module, core::Function &fn)
+{
+    CFGInfo cfg = buildCFG(module, fn);
+    return computeLiveness(module, fn, cfg);
 }
 
 namespace
@@ -274,7 +281,10 @@ class LambdaModulePass : public ModulePass
     /// @brief Expose the identifier assigned to the wrapped module pass.
     /// @details Returns a view of the cached identifier without mutating state
     /// so the pass manager can report which pass is executing.
-    std::string_view id() const override { return id_; }
+    std::string_view id() const override
+    {
+        return id_;
+    }
 
     /// @brief Invoke the wrapped module callback.
     /// @details Forwards @p module and @p analysis to the stored callback which
@@ -309,7 +319,10 @@ class LambdaFunctionPass : public FunctionPass
     /// @brief Expose the identifier assigned to the wrapped function pass.
     /// @details Returns a view of the cached identifier without modifying
     /// adapter state, supporting pass diagnostics.
-    std::string_view id() const override { return id_; }
+    std::string_view id() const override
+    {
+        return id_;
+    }
 
     /// @brief Invoke the wrapped function callback.
     /// @details Forwards @p function and @p analysis to the stored callback,
@@ -514,7 +527,8 @@ void AnalysisManager::invalidateAfterModulePass(const PreservedAnalyses &preserv
 /// in-place.
 /// @param preserved Preservation summary describing retained analyses.
 /// @param fn Function whose cached analyses should be reconsidered.
-void AnalysisManager::invalidateAfterFunctionPass(const PreservedAnalyses &preserved, core::Function &fn)
+void AnalysisManager::invalidateAfterFunctionPass(const PreservedAnalyses &preserved,
+                                                  core::Function &fn)
 {
     if (!preserved.preservesAllModuleAnalyses())
     {
@@ -579,8 +593,8 @@ PassManager::PassManager()
     verifyBetweenPasses_ = false;
 #endif
 
-    registerFunctionAnalysis<CFGInfo>("cfg",
-                                      [](core::Module &module, core::Function &fn) { return buildCFG(module, fn); });
+    registerFunctionAnalysis<CFGInfo>(
+        "cfg", [](core::Module &module, core::Function &fn) { return buildCFG(module, fn); });
     registerFunctionAnalysis<viper::analysis::DomTree>(
         "dominators",
         [](core::Module &module, core::Function &fn)
@@ -625,12 +639,15 @@ void PassManager::registerModulePass(const std::string &id, ModulePassCallback c
 /// analyses are purged. Updates only the pass registry.
 /// @param id Unique module pass identifier.
 /// @param fn Callable invoked for each run; assumed to invalidate all analyses.
-void PassManager::registerModulePass(const std::string &id, const std::function<void(core::Module &)> &fn)
+void PassManager::registerModulePass(const std::string &id,
+                                     const std::function<void(core::Module &)> &fn)
 {
-    registerModulePass(id, [fn](core::Module &module, AnalysisManager &) {
-        fn(module);
-        return PreservedAnalyses::none();
-    });
+    registerModulePass(id,
+                       [fn](core::Module &module, AnalysisManager &)
+                       {
+                           fn(module);
+                           return PreservedAnalyses::none();
+                       });
 }
 
 /// @brief Register a function pass factory under the provided identifier.
@@ -653,10 +670,11 @@ void PassManager::registerFunctionPass(const std::string &id, FunctionPassFactor
 void PassManager::registerFunctionPass(const std::string &id, FunctionPassCallback callback)
 {
     auto cb = FunctionPassCallback(callback);
-    passRegistry_[id] = detail::PassFactory{
-        detail::PassKind::Function,
-        {},
-        [passId = std::string(id), cb]() { return std::make_unique<LambdaFunctionPass>(passId, cb); }};
+    passRegistry_[id] =
+        detail::PassFactory{detail::PassKind::Function,
+                            {},
+                            [passId = std::string(id), cb]()
+                            { return std::make_unique<LambdaFunctionPass>(passId, cb); }};
 }
 
 /// @brief Register a function pass that executes a simple mutator lambda.
@@ -665,12 +683,15 @@ void PassManager::registerFunctionPass(const std::string &id, FunctionPassCallba
 /// cleared after the pass. Updates the pass registry entry for @p id.
 /// @param id Unique function pass identifier.
 /// @param fn Callable invoked for each function; assumed to invalidate all analyses.
-void PassManager::registerFunctionPass(const std::string &id, const std::function<void(core::Function &)> &fn)
+void PassManager::registerFunctionPass(const std::string &id,
+                                       const std::function<void(core::Function &)> &fn)
 {
-    registerFunctionPass(id, [fn](core::Function &function, AnalysisManager &) {
-        fn(function);
-        return PreservedAnalyses::none();
-    });
+    registerFunctionPass(id,
+                         [fn](core::Function &function, AnalysisManager &)
+                         {
+                             fn(function);
+                             return PreservedAnalyses::none();
+                         });
 }
 
 /// @brief Register a reusable ordered list of pass identifiers.
@@ -780,4 +801,3 @@ bool PassManager::runPipeline(core::Module &module, const std::string &pipelineI
 }
 
 } // namespace il::transform
-

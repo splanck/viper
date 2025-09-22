@@ -589,6 +589,10 @@ add_executable(test_vm_opcode_dispatch unit/test_vm_opcode_dispatch.cpp)
 target_link_libraries(test_vm_opcode_dispatch PRIVATE il_io il_vm il_api)
 add_test(NAME test_vm_opcode_dispatch COMMAND test_vm_opcode_dispatch)
 
+add_executable(test_il_liveness unit/test_il_liveness.cpp)
+target_link_libraries(test_il_liveness PRIVATE il_io il_transform il_api)
+add_test(NAME test_il_liveness COMMAND test_il_liveness)
+
 add_executable(test_il_pass_manager unit/test_il_pass_manager.cpp)
 target_link_libraries(test_il_pass_manager PRIVATE il_io il_transform il_api)
 add_test(NAME test_il_pass_manager COMMAND test_il_pass_manager)
