@@ -47,8 +47,14 @@ int main()
         buf[0] = '\0';
     int status = 0;
     waitpid(pid, &status, 0);
+    assert(WIFEXITED(status) && WEXITSTATUS(status) == 1);
     std::string out(buf);
-    bool ok = out.find("unknown runtime helper 'rt_missing'") != std::string::npos;
-    assert(ok);
+    bool messageOk =
+        out.find("runtime trap: attempted to call unknown runtime helper 'rt_missing'") != std::string::npos;
+    bool functionOk = out.find("main: entry") != std::string::npos;
+    bool locationOk = out.find("(1:1:1)") != std::string::npos;
+    assert(messageOk && "expected runtime trap diagnostic for unknown runtime helper");
+    assert(functionOk && "expected function and block context in runtime diagnostic");
+    assert(locationOk && "expected source location in runtime diagnostic");
     return 0;
 }
