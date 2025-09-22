@@ -72,6 +72,10 @@ add_executable(test_il_parse_invalid_type unit/test_il_parse_invalid_type.cpp)
 target_link_libraries(test_il_parse_invalid_type PRIVATE il_core il_io il_api)
 add_test(NAME test_il_parse_invalid_type COMMAND test_il_parse_invalid_type)
 
+add_executable(test_il_function_parser_errors unit/test_il_function_parser_errors.cpp)
+target_link_libraries(test_il_function_parser_errors PRIVATE il_core il_io support)
+add_test(NAME test_il_function_parser_errors COMMAND test_il_function_parser_errors)
+
 add_executable(test_expected_api_build unit/test_expected_api_build.cpp)
 target_link_libraries(test_expected_api_build PRIVATE il_core il_io il_api)
 add_test(NAME test_expected_api_build COMMAND test_expected_api_build)
