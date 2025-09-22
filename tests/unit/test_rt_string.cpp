@@ -4,6 +4,7 @@
 // Ownership: Uses runtime library.
 // Links: docs/class-catalog.md
 #include "rt.hpp"
+#include "rt_internal.h"
 #include <cassert>
 #include <limits>
 
@@ -14,7 +15,7 @@ int main()
 
     rt_string hello = rt_const_cstr("hello");
     rt_string world = rt_const_cstr("world");
-    rt_string hw = rt_concat(hello, world);
+    rt_string hw = rt_concat(rt_string_ref(hello), rt_string_ref(world));
     assert(rt_len(hw) == 10);
     rt_string helloworld = rt_const_cstr("helloworld");
     assert(rt_str_eq(hw, helloworld));
@@ -72,6 +73,32 @@ int main()
     rt_string empty_left = rt_left(abcde, 0);
     rt_string empty_mid = rt_mid3(abcde, 2, 0);
     assert(empty_left == empty_mid);
+
+    {
+        rt_string left_owned = rt_const_cstr("left");
+        rt_string right_owned = rt_const_cstr("right");
+        rt_string left_ref = rt_string_ref(left_owned);
+        rt_string right_ref = rt_string_ref(right_owned);
+        rt_string joined = rt_concat(left_ref, right_ref);
+        auto *left_impl = (rt_string_impl *)left_owned;
+        auto *right_impl = (rt_string_impl *)right_owned;
+        assert(left_impl->refcnt == 1);
+        assert(right_impl->refcnt == 1);
+        rt_string_unref(joined);
+        rt_string_unref(left_owned);
+        rt_string_unref(right_owned);
+    }
+
+    {
+        rt_string base = rt_const_cstr("dup");
+        rt_string first = rt_string_ref(base);
+        rt_string second = rt_string_ref(base);
+        rt_string doubled = rt_concat(first, second);
+        auto *base_impl = (rt_string_impl *)base;
+        assert(base_impl->refcnt == 1);
+        rt_string_unref(doubled);
+        rt_string_unref(base);
+    }
 
     return 0;
 }

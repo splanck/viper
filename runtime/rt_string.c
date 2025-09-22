@@ -99,6 +99,21 @@ rt_string rt_concat(rt_string a, rt_string b)
         memcpy(buf + asz, b->data, bsz);
     buf[s->size] = '\0';
     s->data = buf;
+
+    int64_t a_refcnt = (a && a->refcnt != INT64_MAX) ? a->refcnt : INT64_MAX;
+    if (a)
+        rt_string_unref(a);
+    if (b)
+    {
+        if (b == a && a_refcnt != INT64_MAX && a_refcnt <= 1)
+        {
+            // The first unref already released the sole reference; avoid double free.
+        }
+        else
+        {
+            rt_string_unref(b);
+        }
+    }
     return s;
 }
 
