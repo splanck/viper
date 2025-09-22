@@ -552,11 +552,15 @@ void Lowerer::buildProcedureSkeleton(Function &f,
         builder->addBlock(f, mangler.block("ret_" + name));
 }
 
-void Lowerer::allocateLocals(const std::unordered_set<std::string> &paramNames)
+void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNames,
+                                 bool includeParams)
 {
     for (const auto &v : vars)
     {
-        if (paramNames.count(v))
+        bool isParam = paramNames.find(v) != paramNames.end();
+        if (isParam && !includeParams)
+            continue;
+        if (varSlots.find(v) != varSlots.end())
             continue;
         curLoc = {};
         SlotType slotInfo = getSlotType(v);
@@ -577,7 +581,10 @@ void Lowerer::allocateLocals(const std::unordered_set<std::string> &paramNames)
 
     for (const auto &a : arrays)
     {
-        if (paramNames.count(a))
+        bool isParam = paramNames.find(a) != paramNames.end();
+        if (isParam && !includeParams)
+            continue;
+        if (arrayLenSlots.find(a) != arrayLenSlots.end())
             continue;
         curLoc = {};
         Value slot = emitAlloca(8);
@@ -652,7 +659,7 @@ void Lowerer::lowerProcedure(const std::string &name,
 
     cur = &f.blocks.front();
     materializeParams(params);
-    allocateLocals(metadata.paramNames);
+    allocateLocalSlots(metadata.paramNames, /*includeParams=*/false);
 
     if (metadata.bodyStmts.empty())
     {
