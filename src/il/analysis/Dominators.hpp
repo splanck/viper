@@ -17,6 +17,7 @@ using Block = BasicBlock;
 
 namespace viper::analysis
 {
+struct CFGContext;
 /// @brief Dominator tree for a function.
 /// Stores immediate dominator relationships and tree children for each block.
 struct DomTree
@@ -39,8 +40,9 @@ struct DomTree
 };
 
 /// @brief Compute dominator tree for function @p F.
+/// @param ctx CFG context providing traversal utilities.
 /// @param F Function to analyze.
 /// @return Dominator tree with immediate dominators and child map.
-DomTree computeDominatorTree(il::core::Function &F);
+DomTree computeDominatorTree(const CFGContext &ctx, il::core::Function &F);
 
 } // namespace viper::analysis

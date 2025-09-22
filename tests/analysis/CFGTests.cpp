@@ -13,11 +13,9 @@ int main()
 {
     using namespace il::core;
     using viper::analysis::predecessors;
-    using viper::analysis::setModule;
     using viper::analysis::successors;
 
     Module m;
-    setModule(m);
     il::build::IRBuilder b(m);
     Function &fn = b.startFunction("f", Type(Type::Kind::Void), {});
     b.createBlock(fn, "entry");
@@ -41,18 +39,20 @@ int main()
     b.setInsertPoint(join);
     b.emitRet(std::nullopt, {});
 
-    auto sEntry = successors(entry);
+    viper::analysis::CFGContext ctx(m);
+
+    auto sEntry = successors(ctx, entry);
     assert(sEntry.size() == 2);
     assert((sEntry[0] == &t && sEntry[1] == &f) || (sEntry[0] == &f && sEntry[1] == &t));
 
-    auto sT = successors(t);
+    auto sT = successors(ctx, t);
     assert(sT.size() == 1 && sT[0] == &join);
-    auto sF = successors(f);
+    auto sF = successors(ctx, f);
     assert(sF.size() == 1 && sF[0] == &join);
-    auto sJoin = successors(join);
+    auto sJoin = successors(ctx, join);
     assert(sJoin.empty());
 
-    auto pJoin = predecessors(fn, join);
+    auto pJoin = predecessors(ctx, join);
     assert(pJoin.size() == 2);
     assert((pJoin[0] == &t && pJoin[1] == &f) || (pJoin[0] == &f && pJoin[1] == &t));
 
