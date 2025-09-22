@@ -86,7 +86,9 @@ Expected<Value> parseValue_E(const std::string &tok, ParserState &st)
                 }
             }
         }
-        return Value::temp(0);
+        std::ostringstream oss;
+        oss << "Line " << st.lineNo << ": unknown temp '" << tok << "'";
+        return Expected<Value>{makeError(st.curLoc, oss.str())};
     }
     if (tok[0] == '@')
         return Value::global(tok.substr(1));
