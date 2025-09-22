@@ -6,21 +6,24 @@
 #pragma once
 
 #include "il/io/ParserState.hpp"
+#include "support/diag_expected.hpp"
 
 #include <istream>
-#include <ostream>
 #include <string>
 
 namespace il::io::detail
 {
 
 /// @brief Parse a function header introducing parameters and return type.
-bool parseFunctionHeader(const std::string &header, ParserState &st, std::ostream &err);
+il::support::Expected<void> parseFunctionHeader(const std::string &header,
+                                                ParserState &st);
 
 /// @brief Parse a basic block label and its optional parameter list.
-bool parseBlockHeader(const std::string &header, ParserState &st, std::ostream &err);
+il::support::Expected<void> parseBlockHeader(const std::string &header,
+                                             ParserState &st);
 
 /// @brief Parse an entire function body following its header line.
-bool parseFunction(std::istream &is, std::string &header, ParserState &st, std::ostream &err);
+il::support::Expected<void> parseFunction(std::istream &is, std::string &header,
+                                          ParserState &st);
 
 } // namespace il::io::detail
