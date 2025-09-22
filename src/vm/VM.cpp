@@ -13,6 +13,7 @@
 #include "il/core/Value.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include <cassert>
+#include <iostream>
 
 using namespace il::core;
 
@@ -25,14 +26,20 @@ namespace il::vm
 /// executed via @c execFunction. Any tracing or debugging configured on the VM
 /// applies to the entire run.
 ///
-/// Workflow: look up @c main in @c fnMap, assert it exists, then call
-/// @c execFunction with an empty argument list and forward its return value.
+/// Workflow: look up @c main in @c fnMap, report a diagnostic when absent, and
+/// otherwise call @c execFunction with an empty argument list before forwarding
+/// its return value.
 ///
 /// @returns Signed 64-bit exit code produced by the program's @c main function.
+/// @retval 1 When the module lacks an entry point, after printing "missing main".
 int64_t VM::run()
 {
     auto it = fnMap.find("main");
-    assert(it != fnMap.end());
+    if (it == fnMap.end())
+    {
+        std::cerr << "missing main" << std::endl;
+        return 1;
+    }
     return execFunction(*it->second, {}).i64;
 }
 
