@@ -57,6 +57,22 @@ struct ExprVisitor
     virtual void visit(const CallExpr &) = 0;
 };
 
+/// @brief Visitor interface for mutable BASIC expressions.
+struct MutExprVisitor
+{
+    virtual ~MutExprVisitor() = default;
+    virtual void visit(IntExpr &) = 0;
+    virtual void visit(FloatExpr &) = 0;
+    virtual void visit(StringExpr &) = 0;
+    virtual void visit(BoolExpr &) = 0;
+    virtual void visit(VarExpr &) = 0;
+    virtual void visit(ArrayExpr &) = 0;
+    virtual void visit(UnaryExpr &) = 0;
+    virtual void visit(BinaryExpr &) = 0;
+    virtual void visit(BuiltinCallExpr &) = 0;
+    virtual void visit(CallExpr &) = 0;
+};
+
 /// @brief Visitor interface for BASIC statements.
 struct StmtVisitor
 {
@@ -78,6 +94,27 @@ struct StmtVisitor
     virtual void visit(const StmtList &) = 0;
 };
 
+/// @brief Visitor interface for mutable BASIC statements.
+struct MutStmtVisitor
+{
+    virtual ~MutStmtVisitor() = default;
+    virtual void visit(PrintStmt &) = 0;
+    virtual void visit(LetStmt &) = 0;
+    virtual void visit(DimStmt &) = 0;
+    virtual void visit(RandomizeStmt &) = 0;
+    virtual void visit(IfStmt &) = 0;
+    virtual void visit(WhileStmt &) = 0;
+    virtual void visit(ForStmt &) = 0;
+    virtual void visit(NextStmt &) = 0;
+    virtual void visit(GotoStmt &) = 0;
+    virtual void visit(EndStmt &) = 0;
+    virtual void visit(InputStmt &) = 0;
+    virtual void visit(ReturnStmt &) = 0;
+    virtual void visit(FunctionDecl &) = 0;
+    virtual void visit(SubDecl &) = 0;
+    virtual void visit(StmtList &) = 0;
+};
+
 /// @brief Base class for all BASIC expressions.
 struct Expr
 {
@@ -86,6 +123,8 @@ struct Expr
     virtual ~Expr() = default;
     /// @brief Accept a visitor to process this expression.
     virtual void accept(ExprVisitor &visitor) const = 0;
+    /// @brief Accept a mutable visitor to process this expression.
+    virtual void accept(MutExprVisitor &visitor) = 0;
 };
 
 using ExprPtr = std::unique_ptr<Expr>;
@@ -107,6 +146,7 @@ struct IntExpr : Expr
     /// Literal 64-bit numeric value parsed from the source.
     int64_t value;
     void accept(ExprVisitor &visitor) const override;
+    void accept(MutExprVisitor &visitor) override;
 };
 
 /// @brief Floating-point literal expression.
@@ -115,6 +155,7 @@ struct FloatExpr : Expr
     /// Literal double-precision value parsed from the source.
     double value;
     void accept(ExprVisitor &visitor) const override;
+    void accept(MutExprVisitor &visitor) override;
 };
 
 /// @brief String literal expression.
@@ -123,6 +164,7 @@ struct StringExpr : Expr
     /// Owned UTF-8 string contents without surrounding quotes.
     std::string value;
     void accept(ExprVisitor &visitor) const override;
+    void accept(MutExprVisitor &visitor) override;
 };
 
 /// @brief Boolean literal expression.
@@ -131,6 +173,7 @@ struct BoolExpr : Expr
     /// Literal boolean value parsed from the source.
     bool value = false;
     void accept(ExprVisitor &visitor) const override;
+    void accept(MutExprVisitor &visitor) override;
 };
 
 /// @brief Reference to a scalar variable.
@@ -139,6 +182,7 @@ struct VarExpr : Expr
     /// Variable name including optional type suffix.
     std::string name;
     void accept(ExprVisitor &visitor) const override;
+    void accept(MutExprVisitor &visitor) override;
 };
 
 /// @brief Array element access A(i).
@@ -149,6 +193,7 @@ struct ArrayExpr : Expr
     /// Zero-based index expression; owned and non-null.
     ExprPtr index;
     void accept(ExprVisitor &visitor) const override;
+    void accept(MutExprVisitor &visitor) override;
 };
 
 /// @brief Unary expression (e.g., NOT).
@@ -163,6 +208,7 @@ struct UnaryExpr : Expr
     /// Operand expression; owned and non-null.
     ExprPtr expr;
     void accept(ExprVisitor &visitor) const override;
+    void accept(MutExprVisitor &visitor) override;
 };
 
 /// @brief Binary expression combining two operands.
@@ -195,6 +241,7 @@ struct BinaryExpr : Expr
     /// Right-hand operand expression; owned and non-null.
     ExprPtr rhs;
     void accept(ExprVisitor &visitor) const override;
+    void accept(MutExprVisitor &visitor) override;
 };
 
 /// @brief Call to a BASIC builtin function.
@@ -231,6 +278,7 @@ struct BuiltinCallExpr : Expr
     /// Argument expressions passed to the builtin; owned.
     std::vector<ExprPtr> args;
     void accept(ExprVisitor &visitor) const override;
+    void accept(MutExprVisitor &visitor) override;
 };
 
 /// @brief Call to user-defined FUNCTION or SUB.
@@ -245,6 +293,7 @@ struct CallExpr : Expr
     /// Source location of the call operator.
     il::support::SourceLoc loc;
     void accept(ExprVisitor &visitor) const override;
+    void accept(MutExprVisitor &visitor) override;
 };
 
 /// @brief Base class for all BASIC statements.
@@ -259,6 +308,8 @@ struct Stmt
     virtual ~Stmt() = default;
     /// @brief Accept a visitor to process this statement.
     virtual void accept(StmtVisitor &visitor) const = 0;
+    /// @brief Accept a mutable visitor to process this statement.
+    virtual void accept(MutStmtVisitor &visitor) = 0;
 };
 
 using StmtPtr = std::unique_ptr<Stmt>;
@@ -288,6 +339,7 @@ struct PrintStmt : Stmt
     /// Items printed in order; unless the last item is a semicolon, a newline is appended.
     std::vector<PrintItem> items;
     void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
 };
 
 /// @brief Assignment statement to variable or array element.
@@ -299,6 +351,7 @@ struct LetStmt : Stmt
     /// Value expression to store; owned and non-null.
     ExprPtr expr;
     void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
 };
 
 /// @brief DIM statement allocating array storage.
@@ -316,6 +369,7 @@ struct DimStmt : Stmt
     /// True when DIM declares an array; false for scalar declarations.
     bool isArray = true;
     void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
 };
 
 /// @brief RANDOMIZE statement seeding the pseudo-random generator.
@@ -324,6 +378,7 @@ struct RandomizeStmt : Stmt
     /// Numeric seed expression, truncated to i64; owned and non-null.
     ExprPtr seed;
     void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
 };
 
 /// @brief IF statement with optional ELSEIF chain and ELSE branch.
@@ -351,6 +406,7 @@ struct IfStmt : Stmt
     /// Optional trailing ELSE branch (may be null) executed when no condition matched.
     StmtPtr else_branch;
     void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
 };
 
 /// @brief WHILE ... WEND loop statement.
@@ -362,6 +418,7 @@ struct WhileStmt : Stmt
     /// Body statements executed while @ref cond is true.
     std::vector<StmtPtr> body;
     void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
 };
 
 /// @brief FOR ... NEXT loop statement.
@@ -382,6 +439,7 @@ struct ForStmt : Stmt
     /// Body statements executed each iteration.
     std::vector<StmtPtr> body;
     void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
 };
 
 /// @brief NEXT statement closing a FOR.
@@ -390,6 +448,7 @@ struct NextStmt : Stmt
     /// Loop variable after NEXT.
     std::string var;
     void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
 };
 
 /// @brief GOTO statement transferring control to a line number.
@@ -398,12 +457,14 @@ struct GotoStmt : Stmt
     /// Target line number to jump to.
     int target;
     void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
 };
 
 /// @brief END statement terminating program execution.
 struct EndStmt : Stmt
 {
     void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
 };
 
 /// @brief INPUT statement to read from stdin into a variable, optionally
@@ -416,6 +477,7 @@ struct InputStmt : Stmt
     /// Target variable name (may end with '$').
     std::string var;
     void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
 };
 
 /// @brief RETURN statement optionally yielding a value.
@@ -424,6 +486,7 @@ struct ReturnStmt : Stmt
     /// Expression whose value is returned; null when no expression is provided.
     ExprPtr value;
     void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
 };
 
 /// @brief Parameter in FUNCTION or SUB declaration.
@@ -460,6 +523,7 @@ struct FunctionDecl : Stmt
     /// Location of trailing END FUNCTION keyword.
     il::support::SourceLoc endLoc;
     void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
 };
 
 /// @brief SUB declaration representing a void procedure.
@@ -474,6 +538,7 @@ struct SubDecl : Stmt
     /// Body statements.
     std::vector<StmtPtr> body;
     void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
 };
 
 /// @brief Sequence of statements executed left-to-right on one BASIC line.
@@ -482,6 +547,7 @@ struct StmtList : Stmt
     /// Ordered statements sharing the same line.
     std::vector<StmtPtr> stmts;
     void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
 };
 
 /// @brief Root node partitioning procedure declarations from main statements.
