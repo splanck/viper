@@ -23,44 +23,44 @@ ret_F#:
 }
 func @ID$(str %S$) -> str {
 entry_ID$:
-  %t4 = alloca 8
-  store str, %t4, %t0
+  %t1 = alloca 8
+  store str, %t1, %t0
   br L0_ID$
 L0_ID$:
   .loc 1 5 8
-  %t5 = load str, %t4
+  %t2 = load str, %t1
   .loc 1 5 8
-  ret %t5
+  ret %t2
 ret_ID$:
-  %t6 = const_str @.L0
-  ret %t6
+  %t3 = const_str @.L0
+  ret %t3
 }
 func @FIRST#(i64 %N) -> f64 {
 entry_FIRST#:
-  %t8 = alloca 8
-  store i64, %t8, %t0
+  %t1 = alloca 8
+  store i64, %t1, %t0
   br L0_FIRST#
 L0_FIRST#:
 L0_FIRST#:
   .loc 1 8 1
   br if_test_0_FIRST#
   .loc 1 9 16
-  %t11 = load i64, %t8
+  %t4 = load i64, %t1
   .loc 1 9 8
-  %t12 = sitofp %t11
+  %t5 = sitofp %t4
   .loc 1 9 8
-  %t13 = call @SECOND#(%t12)
+  %t6 = call @SECOND#(%t5)
   .loc 1 9 8
-  ret %t13
+  ret %t6
 ret_FIRST#:
   ret 0.0
 if_test_0_FIRST#:
   .loc 1 8 4
-  %t9 = load i64, %t8
+  %t2 = load i64, %t1
   .loc 1 8 6
-  %t10 = scmp_le %t9, 0
+  %t3 = scmp_le %t2, 0
   .loc 1 8 6
-  cbr %t10, if_then_0_FIRST#, if_else_0_FIRST#
+  cbr %t3, if_then_0_FIRST#, if_else_0_FIRST#
 if_then_0_FIRST#:
   .loc 1 8 23
   ret 0.0
@@ -73,36 +73,36 @@ if_end_0_FIRST#:
 }
 func @SECOND#(f64 %N#) -> f64 {
 entry_SECOND#:
-  %t15 = alloca 8
-  store f64, %t15, %t0
+  %t1 = alloca 8
+  store f64, %t1, %t0
   br L0_SECOND#
 L0_SECOND#:
 L0_SECOND#:
   .loc 1 12 1
   br if_test_0_SECOND#
   .loc 1 13 15
-  %t19 = load f64, %t15
+  %t5 = load f64, %t1
   .loc 1 13 18
-  %t20 = sitofp 1
+  %t6 = sitofp 1
   .loc 1 13 18
-  %t21 = fsub %t19, %t20
+  %t7 = fsub %t5, %t6
   .loc 1 13 8
-  %t22 = fptosi %t21
+  %t8 = fptosi %t7
   .loc 1 13 8
-  %t23 = call @FIRST#(%t22)
+  %t9 = call @FIRST#(%t8)
   .loc 1 13 8
-  ret %t23
+  ret %t9
 ret_SECOND#:
   ret 0.0
 if_test_0_SECOND#:
   .loc 1 12 4
-  %t16 = load f64, %t15
+  %t2 = load f64, %t1
   .loc 1 12 7
-  %t17 = sitofp 0
+  %t3 = sitofp 0
   .loc 1 12 7
-  %t18 = fcmp_le %t16, %t17
+  %t4 = fcmp_le %t2, %t3
   .loc 1 12 7
-  cbr %t18, if_then_0_SECOND#, if_else_0_SECOND#
+  cbr %t4, if_then_0_SECOND#, if_else_0_SECOND#
 if_then_0_SECOND#:
   .loc 1 12 24
   ret 0.0
@@ -118,39 +118,39 @@ entry:
   br L10
 L10:
   .loc 1 15 10
-  %t24 = sitofp 1
+  %t0 = sitofp 1
   .loc 1 15 10
-  %t25 = call @F#(%t24)
+  %t1 = call @F#(%t0)
   .loc 1 15 4
-  call @rt_print_f64(%t25)
+  call @rt_print_f64(%t1)
   .loc 1 15 4
-  %t26 = const_str @.L1
+  %t2 = const_str @.L1
   .loc 1 15 4
-  call @rt_print_str(%t26)
+  call @rt_print_str(%t2)
   .loc 1 15 4
   br L20
 L20:
   .loc 1 16 14
-  %t27 = const_str @.L2
+  %t3 = const_str @.L2
   .loc 1 16 10
-  %t28 = call @ID$(%t27)
+  %t4 = call @ID$(%t3)
   .loc 1 16 4
-  call @rt_print_str(%t28)
+  call @rt_print_str(%t4)
   .loc 1 16 4
-  %t29 = const_str @.L1
+  %t5 = const_str @.L1
   .loc 1 16 4
-  call @rt_print_str(%t29)
+  call @rt_print_str(%t5)
   .loc 1 16 4
   br L30
 L30:
   .loc 1 17 10
-  %t30 = call @FIRST#(2)
+  %t6 = call @FIRST#(2)
   .loc 1 17 4
-  call @rt_print_f64(%t30)
+  call @rt_print_f64(%t6)
   .loc 1 17 4
-  %t31 = const_str @.L1
+  %t7 = const_str @.L1
   .loc 1 17 4
-  call @rt_print_str(%t31)
+  call @rt_print_str(%t7)
   .loc 1 17 4
   br L40
 L40:

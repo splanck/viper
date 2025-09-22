@@ -194,6 +194,7 @@ class Lowerer
     BasicBlock *cur{nullptr};
     size_t fnExit{0};
     NameMangler mangler;
+    unsigned nextTemp{0};
     std::unordered_map<int, size_t> lineBlocks;
     std::unordered_map<std::string, unsigned> varSlots;
     std::unordered_map<std::string, unsigned> arrayLenSlots;

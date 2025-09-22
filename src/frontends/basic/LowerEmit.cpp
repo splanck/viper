@@ -46,6 +46,7 @@ void Lowerer::emitProgram(const Program &prog)
 
     Function &f = b.startFunction("main", Type(Type::Kind::I64), {});
     func = &f;
+    nextTemp = func->valueNames.size();
 
     b.addBlock(f, "entry");
 
@@ -461,14 +462,25 @@ std::string Lowerer::getStringLabel(const std::string &s)
     return name;
 }
 
-/// @brief Acquire the next temporary identifier compatible with the IR builder naming scheme.
-/// @return Unsigned identifier stripped from the mangled temporary name.
-/// @details Uses @c mangler::nextTemp so helper emissions stay in lockstep with the builder's
-/// expectation of temporary numbering.
+/// @brief Acquire the next temporary identifier compatible with the builder's numbering.
+/// @return Unsigned identifier matching the shared builder counter.
+/// @details Requests the next id from @c builder so manual instruction emission stays in sync
+/// with the builder-managed temporary sequence. The owning function's @c valueNames vector is
+/// extended to keep VM register sizing correct and receives a default "%tN" placeholder when no
+/// explicit debug name exists for the id.
 unsigned Lowerer::nextTempId()
 {
-    std::string name = mangler.nextTemp();
-    return static_cast<unsigned>(std::stoul(name.substr(2)));
+    unsigned id = builder ? builder->reserveTempId() : nextTemp++;
+    if (func)
+    {
+        if (func->valueNames.size() <= id)
+            func->valueNames.resize(id + 1);
+        if (func->valueNames[id].empty())
+            func->valueNames[id] = "%t" + std::to_string(id);
+    }
+    if (nextTemp <= id)
+        nextTemp = id + 1;
+    return id;
 }
 
 } // namespace il::frontends::basic
