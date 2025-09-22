@@ -29,6 +29,10 @@ Paths to notable documentation and tests.
 
   Implements compile-time folding for BASIC AST expressions using table-driven dispatch across arithmetic, comparison, and string operators. The folder walks expression subtrees, promotes numeric literals to the appropriate width, and replaces nodes with canonical `IntExpr`, `FloatExpr`, or `StringExpr` instances when evaluation succeeds. It preserves 64-bit wrap-around semantics and mutates AST nodes in place so later lowering phases see simplified trees. Dependencies include `ConstFolder.hpp`, `ConstFoldHelpers.hpp`, the expression class hierarchy, and standard utilities like `<optional>` for representing fold results.
 
+- **src/frontends/basic/Intrinsics.cpp**
+
+  Defines the BASIC intrinsic registry as a compile-time table of names, return kinds, and parameter descriptors consumed by the parser and semantic analyzer. Helper arrays encode canonical signatures (string, numeric, and optional arguments) so the same data drives arity checking and lowering decisions. Public helpers `lookup` and `dumpNames` perform linear search and deterministic enumeration rather than building dynamic maps, keeping the footprint minimal. Dependencies include `frontends/basic/Intrinsics.hpp` for the descriptor types along with `<array>` and the stream facilities pulled in through that header.
+
 - **src/frontends/basic/DiagnosticEmitter.cpp**
 
   Implements the BASIC diagnostic emitter that records error entries while forwarding them immediately to the shared `DiagnosticEngine`. It caches full source buffers keyed by file id so `printAll` can reproduce offending lines with caret markers and severity labels. Helper routines such as `emitExpected` centralize parser error wording while private helpers traverse stored text to extract a single line for display. The unit relies on `frontends/basic/DiagnosticEmitter.hpp` for the interface, which in turn brings in token metadata, `support::DiagnosticEngine`, `support::SourceManager`, and STL formatting helpers alongside `<algorithm>` and `<sstream>`.
@@ -52,6 +56,10 @@ Paths to notable documentation and tests.
 - **src/frontends/basic/LowerExpr.cpp**
 
   Houses the expression-lowering portion of `Lowerer`, mapping BASIC AST nodes into IL SSA values. Helpers like `lowerVarExpr`, `lowerLogicalBinary`, and `lowerNumericBinary` reuse shared utilities for block management, type promotion, short-circuit control flow, and divide-by-zero trapping so emitted IL stays canonical. String operators route through runtime helpers, boolean expressions synthesize temporary blocks, and all visitors keep `curLoc` updated for diagnostics. Dependencies include `frontends/basic/Lowerer.hpp`, `frontends/basic/BuiltinRegistry.hpp`, IL core types (`BasicBlock`, `Function`, `Instr`), and `<functional>`/`<vector>` for callback plumbing.
+
+- **src/frontends/basic/LowerStmt.cpp**
+
+  Implements the statement lowering half of the BASIC front end by visiting AST nodes and emitting IL through the shared `Lowerer` state. A dedicated `LowererStmtVisitor` maps each AST class to the matching `lower*` helper, keeping `curLoc` and block pointers synchronized as assignments, control flow, and runtime calls are generated. The module allocates conditional and loop blocks deterministically, handles fallthrough by inserting explicit branches, and performs type coercions for assignments and prints before storing values. Dependencies include `frontends/basic/Lowerer.hpp`, IL core containers (`BasicBlock`, `Function`, `Instr`), and standard headers such as `<cassert>`, `<utility>`, and `<vector>`.
 
 - **src/frontends/basic/Lowerer.cpp**
 
@@ -85,6 +93,14 @@ Paths to notable documentation and tests.
 
   Coordinates the BASIC parser's top-level loop, priming the token stream, wiring statement handlers, and splitting procedures from main-line statements as it walks the source. It groups colon-separated statements into `StmtList` nodes and records whether the parser has entered the executable portion of the program so procedures stay at the top. Control flow and diagnostics are delegated to specialized handlers such as `parseIf`, `parseWhile`, and `parseFunction`, which are registered at construction time. The implementation depends on the lexer/token infrastructure, the AST node hierarchy (`Program`, `FunctionDecl`, `SubDecl`, `StmtList`), and `DiagnosticEmitter`/`il::support::SourceLoc` to surface parse errors.
 
+- **src/frontends/basic/Parser_Expr.cpp**
+
+  Hosts the Pratt-style expression parser that underpins BASIC expression parsing, starting from unary operators and recursing through precedence-filtered infix parsing. Specialized helpers handle numeric, string, and boolean literals, resolve builtin function calls via the registry, and recognize array or variable references with optional argument lists. The implementation centralizes builtin argument rules and ensures missing tokens still advance via `expect`, allowing diagnostic recovery without derailing the parse. Dependencies include `frontends/basic/Parser.hpp` for the parser state, `frontends/basic/BuiltinRegistry.hpp` for builtin lookups, and `<cstdlib>` along with AST node definitions transitively included there.
+
+- **src/frontends/basic/Parser_Stmt.cpp**
+
+  Implements statement-level parsing routines for BASIC, dispatching on a precomputed handler table to interpret keywords like PRINT, IF, FOR, and DIM. Helper functions manage colon-separated statement lists, colon/line-number loop bodies, and optional constructs such as STEP expressions, INPUT prompts, and ELSEIF cascades. It also builds function and subroutine declarations by collecting parameter metadata and recording END markers, maintaining parser state for array declarations and line numbers. Dependencies include `frontends/basic/Parser.hpp` (bringing in the AST, token kinds, and diagnostics plumbing) together with `<cstdlib>` for numeric conversions and the `il::support::SourceLoc` carried by the AST nodes.
+
 - **src/frontends/basic/Parser.hpp**
 
   Declares the BASIC parser facade that coordinates token buffering and statement dispatch. It exposes `parseProgram` along with specialized helpers for each statement form, wiring a table of `StmtHandler` entries to member function pointers. Expression parsing utilities, loop body helpers, and DIM bookkeeping are declared here so front-end phases understand how control flow and arrays are surfaced before lowering. Dependencies include the BASIC AST model, lexer, diagnostic emitter, token helper headers, and standard containers such as `<array>`, `<vector>`, and `<unordered_set>`.
@@ -113,6 +129,11 @@ Paths to notable documentation and tests.
 - **src/il/analysis/Dominators.hpp**
 
   Declares the `DomTree` structure that stores immediate dominator and child relationships for each block in an IL function. It provides convenience queries such as `dominates` and `immediateDominator` so optimization passes and verifiers can reason about control flow quickly. A standalone `computeDominatorTree` entry point promises a complete computation that the implementation backs with the Cooper–Harvey–Kennedy algorithm. Dependencies include IL core block/function types plus `<unordered_map>` and `<vector>` containers, and it pairs with `Dominators.cpp` which pulls in the CFG utilities.
+
+## IL API
+- **src/il/api/expected_api.cpp**
+
+  Provides the v2 expected-based façade for the IL API, exposing thin wrappers that translate legacy boolean interfaces into `il::support::Expected` results. `parse_text_expected` forwards to the IL parser while preserving module ownership, and `verify_module_expected` defers to the verifier so callers can chain diagnostics without manual capture. The implementation intentionally contains no additional logic, ensuring the v1 and v2 entry points stay behaviorally identical apart from error propagation style. Dependencies include `il/api/expected_api.hpp`, `il/core/Module.hpp`, `il/io/Parser.hpp`, and `il/verify/Verifier.hpp`.
 
 ## IL Build
 - **src/il/build/IRBuilder.cpp**
@@ -189,6 +210,14 @@ Paths to notable documentation and tests.
   Provides constructors and formatting helpers for IL SSA values including temporaries, numeric literals, globals, and null pointers. The `toString` routine canonicalizes floating-point output by trimming trailing zeroes and ensuring deterministic formatting for the serializer, while helpers like `constInt` and `global` package values with the right tag. These utilities are widely used when building IR, pretty-printing modules, and interpreting values in the VM. The file depends on `il/core/Value.hpp` and the C++ standard library (`<sstream>`, `<iomanip>`, `<limits>`, `<utility>`) for string conversion.
 
 ## IL I/O
+- **src/il/io/FunctionParser.cpp**
+
+  Implements the low-level text parser for IL function bodies, decoding headers, block labels, and instruction streams into the mutable `ParserState`. Header parsing splits out parameter lists, return types, and seeds temporary IDs, while block parsing validates parameter arity and reconciles pending branch argument counts. The main `parseFunction` loop walks the textual body line by line, honoring `.loc` directives, delegating instruction syntax to `parseInstruction`, and emitting structured diagnostics via the capture helpers. Dependencies include `il/io/FunctionParser.hpp`, `il/core` definitions for modules, functions, blocks, and params, the sibling `InstrParser`, `ParserUtil`, `TypeParser`, and diagnostic support from `support/diag_expected.hpp`.
+
+- **src/il/io/InstrParser.cpp**
+
+  Parses individual IL instruction lines into `il::core::Instr` instances while updating the parser state that tracks temporaries, blocks, and diagnostics. Utility routines decode operands into values or types, apply opcode metadata to validate operand counts, result arity, and successor lists, and enqueue branch targets for later block resolution. Specialized parsers handle calls, branch target lists, and SSA assignment prefixes so the textual form produced by the serializer round-trips cleanly. Dependencies include `il/io/InstrParser.hpp`, IL core opcode/type/value headers, helper utilities from `ParserUtil` and `TypeParser`, and diagnostic plumbing in `support/diag_expected.hpp`.
+
 - **src/il/io/ModuleParser.cpp**
 
   Implements the module-level IL parser responsible for directives like `il`, `extern`, `global`, and `func`. Helpers normalize tokens, parse type lists via `parseType`, capture diagnostics from the function parser, and repackage failures as `Expected` errors tied to the current line. Extern and global directives mutate the active `ParserState` in place, while function headers dispatch into the dedicated function parser and version directives update module metadata. Dependencies include `il/io/ModuleParser.hpp`, IL core containers, subordinate parsers (`FunctionParser`, `ParserUtil`, `TypeParser`), `support/diag_expected.hpp`, and standard `<sstream>`, `<string_view>`, `<utility>`, and `<vector>` utilities.
@@ -201,6 +230,10 @@ Paths to notable documentation and tests.
 
   Implements the façade for parsing textual IL modules from an input stream. It seeds a `ParserState`, normalizes each line while skipping comments or blanks, and then hands structural decisions to the detail `parseModuleHeader_E` helper. Errors from that helper propagate unchanged so callers receive consistent diagnostics with precise line numbers. Dependencies include `Parser.hpp`, `ModuleParser.hpp`, `ParserUtil.hpp`, the parser-state helpers, IL core `Module` definitions, and the diagnostics `Expected` wrapper.
 
+- **src/il/io/ParserUtil.cpp**
+
+  Collects small lexical helpers shared by the IL text parser, including trimming whitespace, reading comma-delimited tokens, and parsing integer or floating literal spellings. Each function wraps the corresponding standard-library conversion while enforcing full-token consumption so upstream parsers can surface precise errors. They are intentionally stateless and operate on caller-provided buffers to keep instruction parsing allocation-free. Dependencies include `il/io/ParserUtil.hpp` together with `<cctype>` and `<exception>` from the standard library.
+
 - **src/il/io/Parser.hpp**
 
   Declares the IL parser entry point that orchestrates module, function, and instruction sub-parsers. The class exposes a single static `parse` routine, signaling that parsing is a stateless operation layered over a supplied module instance. Its includes reveal the composition of specialized parsers and parser-state bookkeeping while documenting the diagnostic channel used for reporting errors. Dependencies include IL core forward declarations, the function/instruction/module parser headers, `ParserState.hpp`, and the `il::support::Expected` utility.
@@ -212,6 +245,10 @@ Paths to notable documentation and tests.
 - **src/il/io/ParserState.hpp**
 
   Declares `il::io::detail::ParserState`, the mutable context threaded through module, function, and instruction parsers. It keeps references to the current module, function, and basic block along with SSA bookkeeping structures like `tempIds`, `nextTemp`, and unresolved branch metadata. The nested `PendingBr` struct and `blockParamCount` map let parsers defer validation until all labels are seen while `curLoc` tracks active `.loc` directives for diagnostics. Dependencies cover `il/core/fwd.hpp`, `support/source_location.hpp`, and standard `<string>`, `<unordered_map>`, and `<vector>` utilities.
+
+- **src/il/io/TypeParser.cpp**
+
+  Translates textual IL type mnemonics like `i64`, `ptr`, or `str` into `il::core::Type` objects used by the parser, returning a default type when the spelling is unknown. Callers can optionally receive a success flag via the `ok` pointer, allowing higher-level parsers to differentiate between absent and malformed type annotations. The mapping mirrors the primitive set documented in `docs/il-spec.md`, ensuring serializer and parser stay aligned on accepted spellings. Dependencies include `il/io/TypeParser.hpp`, which exposes the interface backed by `il::core::Type` definitions.
 
 - **src/il/io/Serializer.cpp**
 
@@ -268,6 +305,10 @@ Paths to notable documentation and tests.
 - **src/support/arena.hpp**
 
   Declares the `il::support::Arena` class used to service fast, short-lived allocations for parsers and passes. It stores a `std::vector<std::byte>` buffer and a bump pointer so repeated `allocate` calls are O(1) until capacity runs out. The class exposes explicit reset semantics instead of per-allocation frees, making it a good fit for phase-based compilation. Dependencies include `<vector>`, `<cstddef>`, and modules that instantiate the arena such as parsers and VM helpers.
+
+- **src/support/diag_capture.cpp**
+
+  Supplies the out-of-line utilities for `DiagCapture`, converting captured diagnostic buffers into stream output or `Expected<void>` results. The helper forwards to `printDiag` for rendering, and `toDiag` reuses `makeError` so stored text becomes a structured diagnostic tied to an empty source location. `capture_to_expected_impl` bridges legacy boolean-returning APIs into the newer Expected-based flow by either returning success or the captured error. Dependencies include `support/diag_capture.hpp`, which brings in the diagnostic primitives and Expected helpers these adapters rely on.
 
 - **src/support/diagnostics.cpp**
 
