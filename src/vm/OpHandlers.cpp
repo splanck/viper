@@ -141,7 +141,11 @@ const VM::OpcodeHandlerTable &getOpcodeHandlers()
                   SIDE_EFFECTS,                                                                    \
                   SUCCESSORS,                                                                      \
                   TERMINATOR,                                                                      \
-                  DISPATCH)                                                                        \
+                  DISPATCH,                                                                        \
+                  PARSE0,                                                                          \
+                  PARSE1,                                                                          \
+                  PARSE2,                                                                          \
+                  PARSE3)                                                                          \
     handlers[static_cast<size_t>(Opcode::NAME)] = handlerForDispatch(DISPATCH);
 #include "il/core/Opcode.def"
 #undef IL_OPCODE

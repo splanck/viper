@@ -84,6 +84,26 @@ enum class VMDispatch : uint8_t
 /// @brief Maximum number of operand categories stored per opcode.
 inline constexpr size_t kMaxOperandCategories = 3;
 
+/// @brief Describes how the textual parser should interpret an operand slot.
+enum class OperandParseKind : uint8_t
+{
+    None,         ///< No token expected in this slot.
+    Value,        ///< Parse a general value operand.
+    TypeImmediate,///< Parse a type literal influencing the instruction type.
+    BranchTarget, ///< Parse a successor label with optional arguments.
+    Call          ///< Parse call-style callee and argument list syntax.
+};
+
+/// @brief Maximum number of parser descriptors stored per opcode.
+inline constexpr size_t kMaxOperandParseEntries = 4;
+
+/// @brief Declarative description of how to parse an opcode's tokens.
+struct OperandParseSpec
+{
+    OperandParseKind kind; ///< Kind of token expected at this position.
+    const char *role;      ///< Human-readable role used for diagnostics (optional).
+};
+
 /// @brief Static description of an opcode signature and behaviour.
 struct OpcodeInfo
 {
@@ -97,6 +117,7 @@ struct OpcodeInfo
     uint8_t numSuccessors; ///< Number of successor labels required.
     bool isTerminator; ///< Instruction terminates a block.
     VMDispatch vmDispatch; ///< Interpreter dispatch category.
+    std::array<OperandParseSpec, kMaxOperandParseEntries> parse; ///< Textual parsing recipe.
 };
 
 /// @brief Metadata table indexed by @c Opcode enumerators.
