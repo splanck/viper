@@ -71,5 +71,42 @@ int main()
         t = lex.next();
         assert(t.kind == TokenKind::RParen);
     }
+    // Validate case-insensitive keyword recognition via lookup table.
+    {
+        struct KeywordCase
+        {
+            const char *input;
+            const char *canonical;
+            TokenKind kind;
+        };
+
+        const KeywordCase cases[] = {{"print", "PRINT", TokenKind::KeywordPrint},
+                                     {"RanDoMize", "RANDOMIZE", TokenKind::KeywordRandomize},
+                                     {"elseIf", "ELSEIF", TokenKind::KeywordElseIf},
+                                     {"wHiLe", "WHILE", TokenKind::KeywordWhile},
+                                     {"WeNd", "WEND", TokenKind::KeywordWend},
+                                     {"oReLsE", "ORELSE", TokenKind::KeywordOrElse},
+                                     {"oR", "OR", TokenKind::KeywordOr},
+                                     {"fUnCtIoN", "FUNCTION", TokenKind::KeywordFunction}};
+        for (const auto &kw : cases)
+        {
+            std::string src = std::string(kw.input) + "\n";
+            Lexer lex(src, fid);
+            Token t = lex.next();
+            assert(t.kind == kw.kind);
+            assert(t.lexeme == kw.canonical);
+        }
+    }
+    // Ensure identifiers remain uppercased when source is lower or mixed case.
+    {
+        std::string src = "alpha beta$ Gamma#\n";
+        Lexer lex(src, fid);
+        Token t = lex.next();
+        assert(t.kind == TokenKind::Identifier && t.lexeme == "ALPHA");
+        t = lex.next();
+        assert(t.kind == TokenKind::Identifier && t.lexeme == "BETA$");
+        t = lex.next();
+        assert(t.kind == TokenKind::Identifier && t.lexeme == "GAMMA#");
+    }
     return 0;
 }
