@@ -240,7 +240,9 @@ void SemanticAnalyzer::analyzeFor(const ForStmt &f)
 
 void SemanticAnalyzer::analyzeGoto(const GotoStmt &g)
 {
-    labelRefs_.insert(g.target);
+    auto insertResult = labelRefs_.insert(g.target);
+    if (insertResult.second && activeProcScope_)
+        activeProcScope_->noteLabelRefInserted(g.target);
     if (!labels_.count(g.target))
     {
         std::string msg = "unknown line " + std::to_string(g.target);
@@ -333,19 +335,39 @@ void SemanticAnalyzer::analyzeDim(const DimStmt &d)
         {
             std::string unique = scopes_.declareLocal(dc->name);
             dc->name = unique;
-            symbols_.insert(unique);
+            auto insertResult = symbols_.insert(unique);
+            if (insertResult.second && activeProcScope_)
+                activeProcScope_->noteSymbolInserted(unique);
         }
     }
     else
     {
-        symbols_.insert(dc->name);
+        auto insertResult = symbols_.insert(dc->name);
+        if (insertResult.second && activeProcScope_)
+            activeProcScope_->noteSymbolInserted(dc->name);
     }
     if (dc->isArray)
     {
+        auto itArray = arrays_.find(dc->name);
+        if (activeProcScope_)
+        {
+            std::optional<long long> previous;
+            if (itArray != arrays_.end())
+                previous = itArray->second;
+            activeProcScope_->noteArrayMutation(dc->name, previous);
+        }
         arrays_[dc->name] = sz;
     }
     else
     {
+        auto itType = varTypes_.find(dc->name);
+        if (activeProcScope_)
+        {
+            std::optional<Type> previous;
+            if (itType != varTypes_.end())
+                previous = itType->second;
+            activeProcScope_->noteVarTypeMutation(dc->name, previous);
+        }
         varTypes_[dc->name] = astToSemanticType(dc->type);
     }
 }
