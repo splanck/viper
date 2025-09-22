@@ -47,5 +47,55 @@ int main()
     reg.registerProc(f); // duplicate
     assert(diag.errorCount() == 1);
 
+    // Duplicate parameter diagnostics for FUNCTION declarations
+    FunctionDecl dupFunc;
+    dupFunc.name = "BAR";
+    Param dupParam;
+    dupParam.name = "X";
+    dupParam.type = Type::I64;
+    dupFunc.params.push_back(dupParam);
+    Param dupParam2 = dupParam;
+    dupFunc.params.push_back(dupParam2);
+    auto prevErrors = diag.errorCount();
+    reg.registerProc(dupFunc);
+    assert(diag.errorCount() == prevErrors + 1);
+
+    // Duplicate parameter diagnostics for SUB declarations
+    SubDecl dupSub;
+    dupSub.name = "BAZ";
+    Param subParam;
+    subParam.name = "Y";
+    subParam.type = Type::I64;
+    dupSub.params.push_back(subParam);
+    Param subParam2 = subParam;
+    dupSub.params.push_back(subParam2);
+    prevErrors = diag.errorCount();
+    reg.registerProc(dupSub);
+    assert(diag.errorCount() == prevErrors + 1);
+
+    // Invalid array parameter diagnostics for FUNCTION declarations
+    FunctionDecl arrayFunc;
+    arrayFunc.name = "ARRFN";
+    Param arrParam;
+    arrParam.name = "ARR";
+    arrParam.type = Type::F64;
+    arrParam.is_array = true;
+    arrayFunc.params.push_back(arrParam);
+    prevErrors = diag.errorCount();
+    reg.registerProc(arrayFunc);
+    assert(diag.errorCount() == prevErrors + 1);
+
+    // Invalid array parameter diagnostics for SUB declarations
+    SubDecl arraySub;
+    arraySub.name = "ARRSUB";
+    Param arrSubParam;
+    arrSubParam.name = "ARRS";
+    arrSubParam.type = Type::F64;
+    arrSubParam.is_array = true;
+    arraySub.params.push_back(arrSubParam);
+    prevErrors = diag.errorCount();
+    reg.registerProc(arraySub);
+    assert(diag.errorCount() == prevErrors + 1);
+
     return 0;
 }

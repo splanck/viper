@@ -6,6 +6,7 @@
 #pragma once
 
 #include <optional>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -52,6 +53,16 @@ class ProcRegistry
     const ProcSignature *lookup(const std::string &name) const;
 
   private:
+    struct ProcDescriptor
+    {
+        ProcSignature::Kind kind;
+        std::optional<Type> retType;
+        std::span<const Param> params;
+        il::support::SourceLoc loc;
+    };
+
+    ProcSignature buildSignature(const ProcDescriptor &descriptor);
+
     SemanticDiagnostics &de;
     ProcTable procs_;
 };
