@@ -502,6 +502,10 @@ add_executable(test_vm_runtime_concurrency unit/test_vm_runtime_concurrency.cpp)
 target_link_libraries(test_vm_runtime_concurrency PRIVATE il_build il_vm support Threads::Threads)
 add_test(NAME test_vm_runtime_concurrency COMMAND test_vm_runtime_concurrency)
 
+add_executable(test_vm_runtime_bridge_marshalling unit/test_vm_runtime_bridge_marshalling.cpp)
+target_link_libraries(test_vm_runtime_bridge_marshalling PRIVATE il_vm)
+add_test(NAME test_vm_runtime_bridge_marshalling COMMAND test_vm_runtime_bridge_marshalling)
+
 add_executable(test_vm_alloca_negative unit/test_vm_alloca_negative.cpp)
 target_link_libraries(test_vm_alloca_negative PRIVATE il_build il_vm support)
 add_test(NAME test_vm_alloca_negative COMMAND test_vm_alloca_negative)
