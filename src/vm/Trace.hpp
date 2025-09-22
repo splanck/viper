@@ -5,6 +5,8 @@
 // Links: docs/dev/vm.md
 #pragma once
 
+#include <memory>
+
 namespace il::core
 {
 struct Instr;
@@ -45,11 +47,20 @@ class TraceSink
     /// @brief Create sink with configuration @p cfg.
     explicit TraceSink(TraceConfig cfg = {});
 
+    /// @brief Destroy sink and release cached resources.
+    ~TraceSink();
+
     /// @brief Record execution of instruction @p in within frame @p fr.
     void onStep(const il::core::Instr &in, const Frame &fr);
 
   private:
     TraceConfig cfg; ///< Active configuration
+
+    /// @brief Internal LRU cache for source lines when tracing in SRC mode.
+    struct SourceCache;
+
+    /// @brief Lazily constructed source line cache storage.
+    std::unique_ptr<SourceCache> srcCache;
 };
 
 } // namespace il::vm

@@ -68,8 +68,21 @@ Frame VM::setupFrame(const Function &fn,
     // incremental growth during execution.
     fr.regs.resize(fn.valueNames.size());
     assert(fr.regs.size() == fn.valueNames.size());
+    size_t totalInstr = 0;
     for (const auto &b : fn.blocks)
+        totalInstr += b.instructions.size();
+    fr.instrLocations.reserve(totalInstr);
+    for (const auto &b : fn.blocks)
+    {
         blocks[b.label] = &b;
+        for (size_t idx = 0; idx < b.instructions.size(); ++idx)
+        {
+            Frame::InstrLocation loc{};
+            loc.block = &b;
+            loc.index = idx;
+            fr.instrLocations.emplace(&b.instructions[idx], loc);
+        }
+    }
     bb = fn.blocks.empty() ? nullptr : &fn.blocks.front();
     if (bb)
     {

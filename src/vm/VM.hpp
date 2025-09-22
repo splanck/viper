@@ -70,6 +70,17 @@ struct Frame
     /// @brief Pending block parameter values.
     /// @ownership Owned by the frame; entries cleared when parameters applied.
     std::unordered_map<unsigned, Slot> params;
+
+    /// @brief Cached mapping from instruction pointer to block/index within the function.
+    /// @ownership Owned by the frame; populated during setup for O(1) trace lookups.
+    struct InstrLocation
+    {
+        const il::core::BasicBlock *block = nullptr; ///< Containing basic block
+        size_t index = 0;                             ///< Instruction offset in block
+    };
+
+    /// @brief Lookup table keyed by instruction address for fast tracing metadata.
+    std::unordered_map<const il::core::Instr *, InstrLocation> instrLocations;
 };
 
 /// @brief Simple interpreter for the IL.
