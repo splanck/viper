@@ -585,8 +585,8 @@ PassManager::PassManager()
         "dominators",
         [](core::Module &module, core::Function &fn)
         {
-            viper::analysis::setModule(module);
-            return viper::analysis::computeDominatorTree(fn);
+            viper::analysis::CFGContext ctx(module);
+            return viper::analysis::computeDominatorTree(ctx, fn);
         });
     registerFunctionAnalysis<LivenessInfo>("liveness",
                                            [](core::Module &module, core::Function &fn)
