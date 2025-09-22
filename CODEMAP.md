@@ -153,6 +153,10 @@ Paths to notable documentation and tests.
 
   Provides the implementation of the semantic diagnostics façade that wraps the BASIC `DiagnosticEmitter`. Member functions forward severities, codes, and source ranges to the emitter while helper utilities format the standardized messaging for non-boolean conditions. The class also surfaces error and warning counters so the analyzer can decide when to abort compilation. Dependencies consist of `frontends/basic/SemanticDiagnostics.hpp` along with `<string>` and `<utility>` for assembling diagnostic text.
 
+- **src/frontends/basic/Token.cpp**
+
+  Implements the token kind to string mapper used by BASIC lexer and tooling diagnostics to render human-readable token names. The switch enumerates every `TokenKind`, covering keywords, operators, and sentinel values so debuggers and golden tests stay in sync with the parser. Because the function omits a default case it triggers compiler warnings whenever new token kinds are introduced, keeping the mapping complete over time. Dependencies are limited to `frontends/basic/Token.hpp` and the standard language support already included there.
+
 ## Codegen
 - **src/codegen/x86_64/placeholder.cpp**
 
@@ -491,6 +495,21 @@ Paths to notable documentation and tests.
 
 
 ## Tools
+- **src/tools/basic-ast-dump/main.cpp**
+
+  Implements the standalone `basic-ast-dump` utility that reads a BASIC source file and prints its abstract syntax tree. The `main` routine validates that exactly one path argument is supplied, loads the file into memory, and registers it with the shared `SourceManager` so locations resolve correctly. It then builds a `Parser`, constructs the AST, and renders it to standard output via `AstPrinter`, making the tool useful for debugging front-end behaviour and producing golden data. Dependencies include `frontends/basic/AstPrinter.hpp`, `frontends/basic/Parser.hpp`, `support/source_manager.hpp`, and standard I/O headers `<fstream>`, `<sstream>`, and `<iostream>`.
+
+- **src/tools/basic-lex-dump/main.cpp**
+
+  Provides the `basic-lex-dump` command-line tool for inspecting how the lexer tokenizes BASIC input. After checking the argument count and loading the requested file, it registers the buffer with `SourceManager`, instantiates `Lexer`, and repeatedly calls `next` until an EOF token is produced. Each token is printed with its line and column plus the lexeme for identifiers, strings, and numbers, allowing developers to build golden token streams when evolving the lexer. Dependencies cover `frontends/basic/Lexer.hpp`, `frontends/basic/Token.hpp`, `support/source_manager.hpp`, and the standard `<fstream>`, `<sstream>`, and `<iostream>` facilities.
+
+- **src/tools/il-dis/main.cpp**
+
+  Acts as a tiny IL disassembler demo that constructs a module in memory and emits it as text. The program uses `il::build::IRBuilder` to declare the runtime `rt_print_str` extern, create a global string, and populate `main` with basic blocks and instructions that print and return zero. Once the synthetic module is built it serializes the result to standard output via the IL serializer, making the example handy for tutorials and smoke tests. Dependencies include `il/build/IRBuilder.hpp`, `il/io/Serializer.hpp`, and `<iostream>`.
+
+- **src/tools/ilc/break_spec.cpp**
+
+  Implements helpers for parsing the `--break` specifications accepted by the `ilc` driver. `isSrcBreakSpec` splits strings on the final colon, ensures the right-hand side contains only digits, and checks that the left-hand side resembles a path so breakpoints map cleanly to files. By rejecting malformed input early it prevents the debugger from enqueuing meaningless breakpoints that would confuse later resolution stages. Dependencies are limited to the local `break_spec.hpp` plus `<cctype>` and `<string>` from the standard library.
 - **src/tools/ilc/main.cpp**
 
   Hosts the entry point for the `ilc` multipurpose driver. `usage` prints the supported subcommands and BASIC guidance, and `main` validates arguments before dispatching to `cmdRunIL`, `cmdILOpt`, or `cmdFrontBasic`. It also lists BASIC intrinsics so users know which builtin names are available when invoking the front-end mode. Dependencies include the local `cli.hpp`, `frontends/basic/Intrinsics.hpp`, and standard `<iostream>`/`<string>` facilities.
@@ -514,3 +533,64 @@ Paths to notable documentation and tests.
 - **src/tools/il-verify/il-verify.cpp**
 
   Implements the standalone `il-verify` tool that parses and verifies IL modules from disk. The main routine handles `--version`, checks usage, opens the requested file, and routes diagnostics from the expected-based parse and verify helpers. It prints `OK` on success and returns non-zero when I/O, parsing, or verification fails. Dependencies include `il/api/expected_api.hpp`, `il/core/Module.hpp`, and `<fstream>`, `<iostream>`, `<string>` from the standard library.
+
+## TUI
+- **tui/apps/tui_demo.cpp**
+
+  Serves as the sample executable demonstrating how to wire the terminal UI stack together. It inspects the `VIPERTUI_NO_TTY` environment variable to decide whether to run headless, constructs a `TerminalSession`, real terminal IO adapter, theme, and backing text buffer, then builds a widget tree containing a `TextView` and `ListView` joined by an `HSplitter`. The app registers those widgets with the `FocusManager`, primes the event loop, and in interactive mode enters a platform-specific read loop that decodes keystrokes into `ui::Event`s fed to `App`. Execution exits when the user presses Ctrl+Q, making the demo handy for manual testing and screenshots. Dependencies include `tui/app.hpp`, `tui/style/theme.hpp`, `tui/term/input.hpp`, `tui/term/session.hpp`, `tui/term/term_io.hpp`, `tui/text/text_buffer.hpp`, `tui/views/text_view.hpp`, `tui/widgets/list_view.hpp`, `tui/widgets/splitter.hpp`, plus `<cstdlib>`, `<memory>`, `<string>`, `<vector>`, and platform console headers.
+
+- **tui/src/app.cpp**
+
+  Implements the headless `viper::tui::App` loop that coordinates focus, layout, and rendering for the widget hierarchy. The constructor captures the root widget, wraps the provided `TermIO` in the renderer, and pre-sizes the internal `ScreenBuffer` to match the requested terminal dimensions. `tick` drains queued events, handles tab-based focus cycling, consults an optional `input::Keymap`, and forwards remaining events to the focused widget before laying out and painting the tree. After rendering it flushes the buffer through `Renderer::draw`, snapshots the previous frame for diffing, and exposes `resize` so callers can adjust the terminal geometry. Dependencies come from `tui/app.hpp`, which pulls in the UI widget base classes, focus manager, renderer, terminal key event definitions, and screen buffer utilities.
+
+- **tui/src/config/config.cpp**
+
+  Parses the INI-style configuration files that customize themes, key bindings, and editor behaviour. Static helpers trim whitespace, parse hexadecimal colours, interpret key chords, and normalize boolean strings so the loader tolerates user formatting quirks. `loadFromFile` walks the file line by line, tracking the current section to fill theme palettes, append global keymap bindings, and configure editor options like tab width or soft wrapping. Dependencies include `tui/config/config.hpp` along with `<algorithm>`, `<cctype>`, `<fstream>`, `<sstream>`, and `<string_view>`.
+
+- **tui/src/input/keymap.cpp**
+
+  Defines the `Keymap` that maps key chords onto executable commands. It provides comparison and hash operators for `KeyChord`, allowing global and widget-specific bindings to live in unordered maps keyed by modifiers, key codes, and Unicode codepoints. The implementation records command metadata, registers bindings, executes the stored callbacks, and exposes lookup helpers so widgets or palettes can inspect the command list. `handle` checks widget overrides before consulting the global table, returning whether the event was consumed. Dependencies reside in `tui/input/keymap.hpp`, which itself pulls in the UI widget base class and `tui::term::KeyEvent` definitions.
+
+- **tui/src/render/renderer.cpp**
+
+  Implements the ANSI escape renderer that emits minimal terminal updates based on `ScreenBuffer` diffs. `setStyle` lazily writes either 24-bit or 256-colour sequences depending on the true-colour flag while caching the last style to avoid redundant output. `moveCursor` and `draw` cooperate to reposition the terminal cursor, walk changed spans, encode UTF-8 glyphs by hand, and stream them through the borrowed `TermIO` before flushing. Dependencies include `tui/render/renderer.hpp` together with `<string>`, `<string_view>`, and `<vector>`.
+
+- **tui/src/render/screen.cpp**
+
+  Backs the renderer with a `ScreenBuffer` that tracks both the current and previous frame at cell granularity. Equality operators for `RGBA`, `Style`, and `Cell` make diffing straightforward when searching for modified regions. `resize`, `clear`, `snapshotPrev`, and `computeDiff` maintain the double buffer and produce compact spans describing changes so the renderer can minimize writes. Dependencies consist of `tui/render/screen.hpp` and `<algorithm>` for bulk operations.
+
+- **tui/src/style/theme.cpp**
+
+  Provides the default colour theme consumed by widgets and renderers. The constructor seeds normal, accent, disabled, and selection palettes with RGBA values tuned for dark terminals. `style` returns the palette entry matching a requested role so drawing code can translate semantic roles into colours without duplicating tables. Dependencies include `tui/style/theme.hpp` and the render style definitions it exposes.
+
+- **tui/src/syntax/rules.cpp**
+
+  Implements a lightweight syntax highlighter driven by a JSON array of regex rules. An internal `JsonParser` walks the configuration, interpreting each rule's pattern and style block (including colour and bold attributes) into compiled `std::regex` objects and `render::Style` values. `SyntaxRuleSet::spans` caches the last highlighted text for each line to avoid recomputation until edits invalidate the entry. Dependencies include `tui/syntax/rules.hpp`, `<cctype>`, `<fstream>`, `<sstream>`, and the rendering and regex support provided through that header.
+
+- **tui/src/term/clipboard.cpp**
+
+  Offers clipboard implementations that rely on OSC 52 escape sequences to copy text from the terminal. Helper routines perform base64 encoding, honour the `VIPERTUI_DISABLE_OSC52` environment flag, and assemble the precise control strings terminals expect. `Osc52Clipboard` writes the encoded payload through a `TermIO` adapter and flushes it, while `MockClipboard` records the sequence and decodes it back to text for tests. Dependencies include `tui/term/clipboard.hpp`, `tui/term/term_io.hpp`, and standard `<cstdlib>`, `<string>`, and `<string_view>` utilities.
+
+- **tui/src/term/input.cpp**
+
+  Translates raw terminal bytes into structured key and mouse events through the `InputDecoder` state machine. The decoder buffers partial UTF-8 sequences, recognises CSI escape patterns, and understands bracketed paste and SGR mouse encodings so higher-level code receives meaningful events. Helper functions parse numeric parameters, derive modifier masks, and enqueue `KeyEvent` or `MouseEvent` objects for later consumption. Dependencies come from `tui/term/input.hpp` alongside `<string_view>` and the container types supplied via the header.
+
+- **tui/src/term/session.cpp**
+
+  Wraps terminal initialisation in an RAII `TerminalSession` that toggles raw mode, alternate screens, and optional mouse reporting. Construction checks environment toggles, consults `isatty`/`tcgetattr` on POSIX or `GetConsoleMode` on Windows, and uses `RealTermIO` to write the escape sequences that prepare the host terminal. The destructor reverses those changes—disabling mouse tracking, leaving the alternate screen, restoring the cursor, and reapplying saved terminal attributes—only when initialisation succeeded. Dependencies include `tui/term/session.hpp`, `tui/term/term_io.hpp`, and the platform headers pulled in transitively.
+
+- **tui/src/text/text_buffer.cpp**
+
+  Implements a piece-table `TextBuffer` supporting efficient insertions, deletions, undo/redo, and line lookups for the editor. `load` seeds the original buffer and line index, while `insert` and `erase` split pieces, update size counters, maintain the line-start table, and record operations into grouped transactions. `beginTxn`, `endTxn`, and query helpers such as `getText` rebuild substrings on demand without copying stored text, keeping edits and history compact. Dependencies include `tui/text/text_buffer.hpp` together with `<algorithm>` and `<cassert>`; the header supplies the container types used here.
+
+- **tui/src/ui/widget.cpp**
+
+  Provides the default behaviour for the abstract `ui::Widget` base class. It caches the rectangle passed to `layout`, implements `paint` and `onEvent` as no-ops to be overridden by concrete widgets, and reports that widgets do not accept focus unless they explicitly opt in. Additional helpers expose the stored rectangle and ignore focus-change notifications, keeping the base contract minimal. Dependencies are limited to `tui/ui/widget.hpp`, which defines the widget interface and supporting structures.
+
+- **tui/src/views/text_view.cpp**
+
+  Implements the primary text editor view that renders a `TextBuffer`, tracks selection state, and responds to navigation commands. It translates between byte offsets and screen columns using UTF-8 decoding plus `util::char_width`, clamps cursor movement, and maintains scroll offsets so the caret stays visible. The painting routine draws an optional gutter, applies syntax highlight spans, and writes selection or highlight styles into the `ScreenBuffer` using the injected theme. Dependencies span `tui/views/text_view.hpp`, `tui/render/screen.hpp`, `tui/syntax/rules.hpp`, and standard `<algorithm>` and `<string>` helpers.
+
+- **tui/src/widgets/command_palette.cpp**
+
+  Defines the command palette widget that lets users search and run registered keymap commands. It keeps a lowercase query string, rebuilds the filtered command ID list on every change, and captures focus so keystrokes immediately update the palette. Event handling consumes backspace, printable characters, and enter to trigger the top match, while `paint` draws the prompt and visible results into the `ScreenBuffer`. Dependencies include `tui/widgets/command_palette.hpp`, `tui/render/screen.hpp`, and the keymap facilities provided through the header.
