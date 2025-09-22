@@ -13,6 +13,7 @@
 #include "il/api/expected_api.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Module.hpp"
+#include "il/verify/Verifier.hpp"
 #include "support/source_manager.hpp"
 #include "vm/VM.hpp"
 #include <algorithm>
@@ -210,7 +211,7 @@ int cmdRunIL(int argc, char **argv)
         il::support::printDiag(pe.error(), std::cerr);
         return 1;
     }
-    auto ve = il::api::v2::verify_module_expected(m);
+    auto ve = il::verify::Verifier::verify(m);
     if (!ve)
     {
         il::support::printDiag(ve.error(), std::cerr);

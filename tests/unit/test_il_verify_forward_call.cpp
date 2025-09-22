@@ -4,12 +4,12 @@
 // Ownership/Lifetime: Modules and functions are local to the test.
 // Links: docs/il-spec.md
 
-#include "il/api/expected_api.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/verify/Verifier.hpp"
 #include "il/core/Type.hpp"
 
 #include <cassert>
@@ -61,7 +61,7 @@ int main()
         module.functions.push_back(caller);
         module.functions.push_back(callee);
 
-        auto forwardResult = il::api::v2::verify_module_expected(module);
+        auto forwardResult = il::verify::Verifier::verify(module);
         assert(forwardResult && "verifier should allow calls to later functions");
     }
 
@@ -89,7 +89,7 @@ int main()
         module.functions.push_back(makeVoidFunction("dup"));
         module.functions.push_back(makeVoidFunction("dup"));
 
-        auto duplicateResult = il::api::v2::verify_module_expected(module);
+        auto duplicateResult = il::verify::Verifier::verify(module);
         assert(!duplicateResult && "duplicate function names must still be rejected");
         assert(duplicateResult.error().message.find("duplicate function @dup") != std::string::npos);
     }

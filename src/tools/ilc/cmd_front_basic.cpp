@@ -12,8 +12,9 @@
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
-#include "il/api/expected_api.hpp"
 #include "il/io/Serializer.hpp"
+#include "il/api/expected_api.hpp"
+#include "il/verify/Verifier.hpp"
 #include "support/source_manager.hpp"
 #include "vm/VM.hpp"
 #include <cstdint>
@@ -133,7 +134,7 @@ int cmdFrontBasic(int argc, char **argv)
         io::Serializer::write(m, std::cout);
         return 0;
     }
-    auto ve = il::api::v2::verify_module_expected(m);
+    auto ve = il::verify::Verifier::verify(m);
     if (!ve)
     {
         il::support::printDiag(ve.error(), std::cerr);
