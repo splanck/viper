@@ -69,8 +69,8 @@ class DebugCtrl
     const il::support::SourceManager *getSourceManager() const;
 
     /// @brief Normalize @p p by canonicalizing separators and dot segments.
-    /// Replaces backslashes with forward slashes, removes redundant "./", and
-    /// collapses "dir/../" without resolving symlinks.
+    /// Uses std::filesystem::path::lexically_normal() after converting
+    /// backslashes to forward slashes to ensure stable breakpoint comparisons.
     static std::string normalizePath(std::string p);
 
     /// @brief Register a watch on variable @p name.
