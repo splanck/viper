@@ -358,10 +358,11 @@ Expected<void> verifyModule_E(const Module &m, std::vector<Diag> &warnings)
     {
         if (!funcs.emplace(fn.name, &fn).second)
             return Expected<void>{makeError({}, "duplicate function @" + fn.name)};
+    }
 
+    for (const auto &fn : m.functions)
         if (auto result = verifyFunction_E(fn, externs, funcs, warnings); !result)
             return result;
-    }
 
     return {};
 }
