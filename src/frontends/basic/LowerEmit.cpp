@@ -10,6 +10,7 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include <cassert>
+#include <unordered_set>
 
 using namespace il::core;
 
@@ -68,54 +69,19 @@ void Lowerer::emitProgram(const Program &prog)
     // allocate slots in entry
     BasicBlock *entry = &f.blocks.front();
     cur = entry;
-    for (const auto &v : vars)
-    {
-        curLoc = {};
-        SlotType slotInfo = getSlotType(v);
-        if (slotInfo.isArray)
-        {
-            Value slot = emitAlloca(8);
-            varSlots[v] = slot.id; // Value::temp id
-            continue;
-        }
-        Value slot = emitAlloca(slotInfo.isBoolean ? 1 : 8);
-        varSlots[v] = slot.id; // Value::temp id
-        if (slotInfo.isBoolean)
-            emitStore(ilBoolTy(), slot, emitBoolConst(false));
-    }
-    if (boundsChecks)
-    {
-        for (const auto &a : arrays)
-        {
-            curLoc = {};
-            Value slot = emitAlloca(8);
-            arrayLenSlots[a] = slot.id;
-        }
-    }
-    if (!mainStmts.empty())
-    {
-        curLoc = {};
-        emitBr(&f.blocks[lineBlocks[mainStmts.front()->line]]);
-    }
-    else
+    allocateLocals(std::unordered_set<std::string>());
+
+    if (mainStmts.empty())
     {
         curLoc = {};
         emitRet(Value::constInt(0));
     }
-
-    // lower statements sequentially
-    for (size_t i = 0; i < mainStmts.size(); ++i)
+    else
     {
-        cur = &f.blocks[lineBlocks[mainStmts[i]->line]];
-        lowerStmt(*mainStmts[i]);
-        if (!cur->terminated)
-        {
-            BasicBlock *next = (i + 1 < mainStmts.size())
-                                   ? &f.blocks[lineBlocks[mainStmts[i + 1]->line]]
-                                   : &f.blocks[fnExit];
-            curLoc = mainStmts[i]->loc;
-            emitBr(next);
-        }
+        lowerStatementSequence(
+            mainStmts,
+            /*stopOnTerminated=*/false,
+            [&](const Stmt &stmt) { curLoc = stmt.loc; });
     }
 
     cur = &f.blocks[fnExit];
