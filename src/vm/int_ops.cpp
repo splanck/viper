@@ -17,55 +17,6 @@ using namespace il::core;
 
 namespace il::vm::detail
 {
-namespace
-{
-    /// @brief Apply a binary integer VM operation using evaluated operands.
-    /// @param fr Current frame that will receive the result via @c ops::storeResult.
-    /// @param in Instruction describing the opcode and destination slot.
-    /// @param lhs Pre-evaluated left operand slot.
-    /// @param rhs Pre-evaluated right operand slot.
-    /// @param compute Callable writing the resulting integer into @p out with the
-    ///        IL's wrap-around semantics for `i64` values (see docs/il-reference.md
-    ///        §Integer Arithmetic and §Types).
-    /// @return Execution result signalling normal fallthrough.
-    /// @note The helper isolates operand fetching so individual opcode handlers only
-    ///       specify the arithmetic rule while maintaining the frame mutation contract.
-    template <typename Compute>
-    VM::ExecResult applyBinary(Frame &fr,
-                               const Instr &in,
-                               const Slot &lhs,
-                               const Slot &rhs,
-                               Compute compute)
-    {
-        Slot out{};
-        compute(out, lhs, rhs);
-        ops::storeResult(fr, in, out);
-        return {};
-    }
-
-    /// @brief Apply an integer comparison producing a canonical `i1` result.
-    /// @param fr Current frame that will be updated with a 0/1 boolean outcome.
-    /// @param in Instruction describing the comparison opcode and destination slot.
-    /// @param lhs Pre-evaluated left operand slot.
-    /// @param rhs Pre-evaluated right operand slot.
-    /// @param compare Callable returning @c true when the comparison succeeds.
-    /// @return Execution result signalling normal fallthrough.
-    /// @note The result is canonicalised to the IL boolean domain (`0` or `1`) per
-    ///       docs/il-reference.md §Comparisons.
-    template <typename Compare>
-    VM::ExecResult applyCompare(Frame &fr,
-                                const Instr &in,
-                                const Slot &lhs,
-                                const Slot &rhs,
-                                Compare compare)
-    {
-        Slot out{};
-        out.i64 = compare(lhs, rhs) ? 1 : 0;
-        ops::storeResult(fr, in, out);
-        return {};
-    }
-} // namespace
-
 /// @brief Interpret the `add` opcode for 64-bit integers.
 /// @param vm Active VM used to evaluate operand values.
 /// @param fr Execution frame mutated to hold the result.
@@ -87,10 +38,11 @@ VM::ExecResult OpHandlers::handleAdd(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot lhs = vm.eval(fr, in.operands[0]);
-    Slot rhs = vm.eval(fr, in.operands[1]);
-    return applyBinary(fr, in, lhs, rhs, [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                                           { out.i64 = lhsVal.i64 + rhsVal.i64; });
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            { out.i64 = lhsVal.i64 + rhsVal.i64; });
 }
 
 /// @brief Interpret the `sub` opcode for 64-bit integers.
@@ -106,10 +58,11 @@ VM::ExecResult OpHandlers::handleSub(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot lhs = vm.eval(fr, in.operands[0]);
-    Slot rhs = vm.eval(fr, in.operands[1]);
-    return applyBinary(fr, in, lhs, rhs, [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                                           { out.i64 = lhsVal.i64 - rhsVal.i64; });
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            { out.i64 = lhsVal.i64 - rhsVal.i64; });
 }
 
 /// @brief Interpret the `mul` opcode for 64-bit integers.
@@ -126,10 +79,11 @@ VM::ExecResult OpHandlers::handleMul(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot lhs = vm.eval(fr, in.operands[0]);
-    Slot rhs = vm.eval(fr, in.operands[1]);
-    return applyBinary(fr, in, lhs, rhs, [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                                           { out.i64 = lhsVal.i64 * rhsVal.i64; });
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            { out.i64 = lhsVal.i64 * rhsVal.i64; });
 }
 
 /// @brief Interpret the `xor` opcode for 64-bit integers.
@@ -145,10 +99,11 @@ VM::ExecResult OpHandlers::handleXor(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot lhs = vm.eval(fr, in.operands[0]);
-    Slot rhs = vm.eval(fr, in.operands[1]);
-    return applyBinary(fr, in, lhs, rhs, [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                                           { out.i64 = lhsVal.i64 ^ rhsVal.i64; });
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            { out.i64 = lhsVal.i64 ^ rhsVal.i64; });
 }
 
 /// @brief Interpret the `shl` opcode for integer left shifts.
@@ -165,10 +120,11 @@ VM::ExecResult OpHandlers::handleShl(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot lhs = vm.eval(fr, in.operands[0]);
-    Slot rhs = vm.eval(fr, in.operands[1]);
-    return applyBinary(fr, in, lhs, rhs, [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                                           { out.i64 = lhsVal.i64 << rhsVal.i64; });
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            { out.i64 = lhsVal.i64 << rhsVal.i64; });
 }
 
 /// @brief Interpret the `icmp_eq` opcode for integer equality comparisons.
@@ -184,10 +140,11 @@ VM::ExecResult OpHandlers::handleICmpEq(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot lhs = vm.eval(fr, in.operands[0]);
-    Slot rhs = vm.eval(fr, in.operands[1]);
-    return applyCompare(fr, in, lhs, rhs, [](const Slot &lhsVal, const Slot &rhsVal)
-                                          { return lhsVal.i64 == rhsVal.i64; });
+    return ops::applyCompare(vm,
+                             fr,
+                             in,
+                             [](const Slot &lhsVal, const Slot &rhsVal)
+                             { return lhsVal.i64 == rhsVal.i64; });
 }
 
 /// @brief Interpret the `icmp_ne` opcode for integer inequality comparisons.
@@ -202,10 +159,11 @@ VM::ExecResult OpHandlers::handleICmpNe(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot lhs = vm.eval(fr, in.operands[0]);
-    Slot rhs = vm.eval(fr, in.operands[1]);
-    return applyCompare(fr, in, lhs, rhs, [](const Slot &lhsVal, const Slot &rhsVal)
-                                          { return lhsVal.i64 != rhsVal.i64; });
+    return ops::applyCompare(vm,
+                             fr,
+                             in,
+                             [](const Slot &lhsVal, const Slot &rhsVal)
+                             { return lhsVal.i64 != rhsVal.i64; });
 }
 
 /// @brief Interpret the `scmp_gt` opcode for signed greater-than comparisons.
@@ -221,10 +179,11 @@ VM::ExecResult OpHandlers::handleSCmpGT(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot lhs = vm.eval(fr, in.operands[0]);
-    Slot rhs = vm.eval(fr, in.operands[1]);
-    return applyCompare(fr, in, lhs, rhs, [](const Slot &lhsVal, const Slot &rhsVal)
-                                          { return lhsVal.i64 > rhsVal.i64; });
+    return ops::applyCompare(vm,
+                             fr,
+                             in,
+                             [](const Slot &lhsVal, const Slot &rhsVal)
+                             { return lhsVal.i64 > rhsVal.i64; });
 }
 
 /// @brief Interpret the `scmp_lt` opcode for signed less-than comparisons.
@@ -240,10 +199,11 @@ VM::ExecResult OpHandlers::handleSCmpLT(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot lhs = vm.eval(fr, in.operands[0]);
-    Slot rhs = vm.eval(fr, in.operands[1]);
-    return applyCompare(fr, in, lhs, rhs, [](const Slot &lhsVal, const Slot &rhsVal)
-                                          { return lhsVal.i64 < rhsVal.i64; });
+    return ops::applyCompare(vm,
+                             fr,
+                             in,
+                             [](const Slot &lhsVal, const Slot &rhsVal)
+                             { return lhsVal.i64 < rhsVal.i64; });
 }
 
 /// @brief Interpret the `scmp_le` opcode for signed less-or-equal comparisons.
@@ -259,10 +219,11 @@ VM::ExecResult OpHandlers::handleSCmpLE(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot lhs = vm.eval(fr, in.operands[0]);
-    Slot rhs = vm.eval(fr, in.operands[1]);
-    return applyCompare(fr, in, lhs, rhs, [](const Slot &lhsVal, const Slot &rhsVal)
-                                          { return lhsVal.i64 <= rhsVal.i64; });
+    return ops::applyCompare(vm,
+                             fr,
+                             in,
+                             [](const Slot &lhsVal, const Slot &rhsVal)
+                             { return lhsVal.i64 <= rhsVal.i64; });
 }
 
 /// @brief Interpret the `scmp_ge` opcode for signed greater-or-equal comparisons.
@@ -278,10 +239,11 @@ VM::ExecResult OpHandlers::handleSCmpGE(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot lhs = vm.eval(fr, in.operands[0]);
-    Slot rhs = vm.eval(fr, in.operands[1]);
-    return applyCompare(fr, in, lhs, rhs, [](const Slot &lhsVal, const Slot &rhsVal)
-                                          { return lhsVal.i64 >= rhsVal.i64; });
+    return ops::applyCompare(vm,
+                             fr,
+                             in,
+                             [](const Slot &lhsVal, const Slot &rhsVal)
+                             { return lhsVal.i64 >= rhsVal.i64; });
 }
 
 /// @brief Interpret the `trunc1`/`zext1` opcodes that normalise between `i1` and `i64`.

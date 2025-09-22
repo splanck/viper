@@ -16,58 +16,6 @@ using namespace il::core;
 
 namespace il::vm::detail
 {
-namespace
-{
-    /// @brief Apply a binary floating-point computation and persist the result in the frame.
-    /// @details The provided @p compute functor is expected to populate @p out with an IEEE-754
-    /// binary64 result derived from @p lhs and @p rhs using host `double` semantics. The frame is
-    /// mutated exclusively by the call to ops::storeResult so callers can rely on the helpers not
-    /// touching other slots.
-    /// @param fr Active frame that receives the computed slot.
-    /// @param in Instruction that provides operand/result slots.
-    /// @param lhs Evaluated left operand.
-    /// @param rhs Evaluated right operand.
-    /// @param compute Functor that encodes the specific floating-point operation.
-    /// @return Always returns an empty ExecResult because arithmetic traps are represented by the
-    /// host IEEE-754 behaviour (e.g., propagation of NaNs or infinities).
-    template <typename Compute>
-    VM::ExecResult applyFloatBinary(Frame &fr,
-                                    const Instr &in,
-                                    const Slot &lhs,
-                                    const Slot &rhs,
-                                    Compute compute)
-    {
-        Slot out{};
-        compute(out, lhs, rhs);
-        ops::storeResult(fr, in, out);
-        return {};
-    }
-
-    /// @brief Apply a floating-point comparison and write an integer truth value into the frame.
-    /// @details The @p compare functor must implement the desired IEEE-754 ordered comparison using
-    /// host `double` semantics. NaNs follow host rules (ordered comparisons yield false, while
-    /// unordered predicates can be modelled by the functor). The frame mutation is limited to
-    /// ops::storeResult so surrounding state remains untouched.
-    /// @param fr Active frame that receives the comparison result.
-    /// @param in Instruction describing operands and destination slot.
-    /// @param lhs Evaluated left operand.
-    /// @param rhs Evaluated right operand.
-    /// @param compare Functor returning true when the comparison holds under host IEEE-754 rules.
-    /// @return Empty ExecResult with the boolean encoded as 1/0 in the destination slot.
-    template <typename Compare>
-    VM::ExecResult applyFloatCompare(Frame &fr,
-                                     const Instr &in,
-                                     const Slot &lhs,
-                                     const Slot &rhs,
-                                     Compare compare)
-    {
-        Slot out{};
-        out.i64 = compare(lhs.f64, rhs.f64) ? 1 : 0;
-        ops::storeResult(fr, in, out);
-        return {};
-    }
-} // namespace
-
 /// @brief Add two floating-point values and store the IEEE-754 sum.
 /// @details Relies on host binary64 addition so NaNs propagate and infinities behave per IEEE-754.
 /// The handler mutates the frame only by writing the result slot via ops::storeResult.
@@ -81,10 +29,11 @@ VM::ExecResult OpHandlers::handleFAdd(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot lhs = vm.eval(fr, in.operands[0]);
-    Slot rhs = vm.eval(fr, in.operands[1]);
-    return applyFloatBinary(fr, in, lhs, rhs, [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                                                { out.f64 = lhsVal.f64 + rhsVal.f64; });
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            { out.f64 = lhsVal.f64 + rhsVal.f64; });
 }
 
 /// @brief Subtract two floating-point values and store the IEEE-754 difference.
@@ -100,10 +49,11 @@ VM::ExecResult OpHandlers::handleFSub(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot lhs = vm.eval(fr, in.operands[0]);
-    Slot rhs = vm.eval(fr, in.operands[1]);
-    return applyFloatBinary(fr, in, lhs, rhs, [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                                                { out.f64 = lhsVal.f64 - rhsVal.f64; });
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            { out.f64 = lhsVal.f64 - rhsVal.f64; });
 }
 
 /// @brief Multiply two floating-point values and store the IEEE-754 product.
@@ -119,10 +69,11 @@ VM::ExecResult OpHandlers::handleFMul(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot lhs = vm.eval(fr, in.operands[0]);
-    Slot rhs = vm.eval(fr, in.operands[1]);
-    return applyFloatBinary(fr, in, lhs, rhs, [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                                                { out.f64 = lhsVal.f64 * rhsVal.f64; });
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            { out.f64 = lhsVal.f64 * rhsVal.f64; });
 }
 
 /// @brief Divide two floating-point values and store the IEEE-754 quotient.
@@ -138,10 +89,11 @@ VM::ExecResult OpHandlers::handleFDiv(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot lhs = vm.eval(fr, in.operands[0]);
-    Slot rhs = vm.eval(fr, in.operands[1]);
-    return applyFloatBinary(fr, in, lhs, rhs, [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                                                { out.f64 = lhsVal.f64 / rhsVal.f64; });
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            { out.f64 = lhsVal.f64 / rhsVal.f64; });
 }
 
 /// @brief Compare two floating-point values for equality and store 1 when they are equal.
@@ -157,9 +109,11 @@ VM::ExecResult OpHandlers::handleFCmpEQ(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot lhs = vm.eval(fr, in.operands[0]);
-    Slot rhs = vm.eval(fr, in.operands[1]);
-    return applyFloatCompare(fr, in, lhs, rhs, [](double lhsVal, double rhsVal) { return lhsVal == rhsVal; });
+    return ops::applyCompare(vm,
+                             fr,
+                             in,
+                             [](const Slot &lhsVal, const Slot &rhsVal)
+                             { return lhsVal.f64 == rhsVal.f64; });
 }
 
 /// @brief Compare two floating-point values for inequality and store 1 when they differ.
@@ -175,9 +129,11 @@ VM::ExecResult OpHandlers::handleFCmpNE(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot lhs = vm.eval(fr, in.operands[0]);
-    Slot rhs = vm.eval(fr, in.operands[1]);
-    return applyFloatCompare(fr, in, lhs, rhs, [](double lhsVal, double rhsVal) { return lhsVal != rhsVal; });
+    return ops::applyCompare(vm,
+                             fr,
+                             in,
+                             [](const Slot &lhsVal, const Slot &rhsVal)
+                             { return lhsVal.f64 != rhsVal.f64; });
 }
 
 /// @brief Compare two floating-point values and store 1 when lhs > rhs under IEEE-754 ordering.
@@ -193,9 +149,11 @@ VM::ExecResult OpHandlers::handleFCmpGT(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot lhs = vm.eval(fr, in.operands[0]);
-    Slot rhs = vm.eval(fr, in.operands[1]);
-    return applyFloatCompare(fr, in, lhs, rhs, [](double lhsVal, double rhsVal) { return lhsVal > rhsVal; });
+    return ops::applyCompare(vm,
+                             fr,
+                             in,
+                             [](const Slot &lhsVal, const Slot &rhsVal)
+                             { return lhsVal.f64 > rhsVal.f64; });
 }
 
 /// @brief Compare two floating-point values and store 1 when lhs < rhs under IEEE-754 ordering.
@@ -211,9 +169,11 @@ VM::ExecResult OpHandlers::handleFCmpLT(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot lhs = vm.eval(fr, in.operands[0]);
-    Slot rhs = vm.eval(fr, in.operands[1]);
-    return applyFloatCompare(fr, in, lhs, rhs, [](double lhsVal, double rhsVal) { return lhsVal < rhsVal; });
+    return ops::applyCompare(vm,
+                             fr,
+                             in,
+                             [](const Slot &lhsVal, const Slot &rhsVal)
+                             { return lhsVal.f64 < rhsVal.f64; });
 }
 
 /// @brief Compare two floating-point values and store 1 when lhs <= rhs.
@@ -229,9 +189,11 @@ VM::ExecResult OpHandlers::handleFCmpLE(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot lhs = vm.eval(fr, in.operands[0]);
-    Slot rhs = vm.eval(fr, in.operands[1]);
-    return applyFloatCompare(fr, in, lhs, rhs, [](double lhsVal, double rhsVal) { return lhsVal <= rhsVal; });
+    return ops::applyCompare(vm,
+                             fr,
+                             in,
+                             [](const Slot &lhsVal, const Slot &rhsVal)
+                             { return lhsVal.f64 <= rhsVal.f64; });
 }
 
 /// @brief Compare two floating-point values and store 1 when lhs >= rhs.
@@ -247,9 +209,11 @@ VM::ExecResult OpHandlers::handleFCmpGE(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot lhs = vm.eval(fr, in.operands[0]);
-    Slot rhs = vm.eval(fr, in.operands[1]);
-    return applyFloatCompare(fr, in, lhs, rhs, [](double lhsVal, double rhsVal) { return lhsVal >= rhsVal; });
+    return ops::applyCompare(vm,
+                             fr,
+                             in,
+                             [](const Slot &lhsVal, const Slot &rhsVal)
+                             { return lhsVal.f64 >= rhsVal.f64; });
 }
 
 /// @brief Convert a signed 64-bit integer to an IEEE-754 binary64 value.
