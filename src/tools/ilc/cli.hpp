@@ -74,7 +74,8 @@ int cmdFrontBasic(int argc, char **argv);
 ///
 /// @param argc Number of arguments following `-run`.
 /// @param argv Argument vector beginning with the IL file path.
-/// @return Exit code of the executed program or `1` when validation fails.
+/// @return Exit code of the executed program or `1` when validation fails or the
+///         module lacks `func @main()` (emitting "missing main").
 ///
 /// @note May modify `stdin`, emit trace/debug information to `stderr`, and
 /// collect execution statistics.
