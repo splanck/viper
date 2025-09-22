@@ -172,7 +172,8 @@ class Lowerer
                                 const std::string &name,
                                 const ProcedureMetadata &metadata);
 
-    void allocateLocals(const std::unordered_set<std::string> &paramNames);
+    void allocateLocalSlots(const std::unordered_set<std::string> &paramNames,
+                            bool includeParams);
 
     void lowerStatementSequence(const std::vector<const Stmt *> &stmts,
                                 bool stopOnTerminated,
