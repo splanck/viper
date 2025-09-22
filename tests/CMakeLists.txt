@@ -643,6 +643,12 @@ add_test(NAME basic_ast_pretty_boolean COMMAND ${CMAKE_COMMAND}
   -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/basic/parse/test_pretty_boolean.ast
   -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/check_ast.cmake)
 
+add_test(NAME basic_ast_future_keywords COMMAND ${CMAKE_COMMAND}
+  -DBASIC_AST_DUMP=${BASIC_AST_DUMP}
+  -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/parse/test_future_keywords.bas
+  -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/basic/parse/test_future_keywords.ast
+  -P ${CMAKE_SOURCE_DIR}/tests/golden/basic_ast/check_ast.cmake)
+
 set(BASIC_LEX_DUMP $<TARGET_FILE:basic-lex-dump>)
 add_test(NAME basic_lex_comments COMMAND ${CMAKE_COMMAND}
   -DBASIC_LEX_DUMP=${BASIC_LEX_DUMP}

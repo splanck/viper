@@ -54,6 +54,11 @@ class Parser
     /// @return Parsed statement or nullptr on error.
     StmtPtr parseStatement(int line);
 
+    /// @brief Identify whether the lookahead token begins a new statement.
+    /// @param kind Token kind to classify.
+    /// @return True when a handler or structural keyword marks the start of a new statement.
+    bool isStatementStart(TokenKind kind) const;
+
     /// @brief Parse a PRINT statement.
     /// @return PRINT statement node.
     StmtPtr parsePrint();

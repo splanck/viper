@@ -31,6 +31,37 @@ StmtPtr Parser::parseStatement(int line)
     return stmt;
 }
 
+/// @brief Check whether @p kind marks the beginning of a statement.
+/// @param kind Token to examine.
+/// @return True when a handler or structural keyword introduces a new statement.
+bool Parser::isStatementStart(TokenKind kind) const
+{
+    switch (kind)
+    {
+        case TokenKind::KeywordAnd:
+        case TokenKind::KeywordOr:
+        case TokenKind::KeywordNot:
+        case TokenKind::KeywordAndAlso:
+        case TokenKind::KeywordOrElse:
+            return false;
+        case TokenKind::KeywordThen:
+        case TokenKind::KeywordElse:
+        case TokenKind::KeywordElseIf:
+        case TokenKind::KeywordWend:
+        case TokenKind::KeywordTo:
+        case TokenKind::KeywordStep:
+        case TokenKind::KeywordAs:
+            return true;
+        default:
+            break;
+    }
+    const auto index = static_cast<std::size_t>(kind);
+    if (index >= stmtHandlers_.size())
+        return false;
+    const auto &handler = stmtHandlers_[index];
+    return handler.no_arg != nullptr || handler.with_line != nullptr;
+}
+
 /// @brief Parse a PRINT statement.
 /// @return PrintStmt containing expressions and separators in order.
 /// @note Stops parsing at end-of-line, colon, or when a new statement keyword is encountered.
@@ -43,8 +74,7 @@ StmtPtr Parser::parsePrint()
     while (!at(TokenKind::EndOfLine) && !at(TokenKind::EndOfFile) && !at(TokenKind::Colon))
     {
         TokenKind k = peek().kind;
-        if (k >= TokenKind::KeywordPrint && k <= TokenKind::KeywordNot &&
-            k != TokenKind::KeywordAnd && k != TokenKind::KeywordOr && k != TokenKind::KeywordNot)
+        if (isStatementStart(k))
             break;
         if (at(TokenKind::Comma))
         {
