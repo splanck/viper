@@ -169,9 +169,9 @@ static unsigned ensureParam(
     if (it != BS.params.end())
         return it->second;
     Param p;
-    p.name = "a" + std::to_string(varId);
-    p.type = vars[varId].type;
     p.id = nextId++;
+    p.type = vars[varId].type;
+    p.name = "t" + std::to_string(p.id);
     unsigned idx = B->params.size();
     B->params.push_back(p);
     BS.params[varId] = idx;
@@ -450,13 +450,17 @@ void mem2reg(Module &M, Mem2RegStats *stats)
     for (auto &F : M.functions)
     {
         AllocaMap infos = collectAllocas(F);
+        AllocaMap promotable;
         for (auto &[id, info] : infos)
         {
-            if (infos.size() > 1 && !info.singleBlock)
+            if (info.addressTaken || !info.hasStore)
                 continue;
-            AllocaMap single{{id, info}};
-            promoteVariables(F, single, stats, cfg);
+            if (info.type.kind != Type::Kind::I64 && info.type.kind != Type::Kind::F64 &&
+                info.type.kind != Type::Kind::I1)
+                continue;
+            promotable.emplace(id, info);
         }
+        promoteVariables(F, promotable, stats, cfg);
     }
 }
 
