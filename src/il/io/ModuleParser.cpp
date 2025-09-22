@@ -101,7 +101,19 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
         return Expected<void>{makeError({}, oss.str())};
     }
     size_t q1 = line.find('"', eq);
+    if (q1 == std::string::npos)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing opening '\"'";
+        return Expected<void>{makeError({}, oss.str())};
+    }
     size_t q2 = line.rfind('"');
+    if (q2 == std::string::npos || q2 <= q1)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing closing '\"'";
+        return Expected<void>{makeError({}, oss.str())};
+    }
     std::string name = trim(line.substr(at + 1, eq - at - 1));
     std::string init = line.substr(q1 + 1, q2 - q1 - 1);
     st.m.globals.push_back({name, Type(Type::Kind::Str), init});
