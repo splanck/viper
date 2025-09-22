@@ -10,6 +10,8 @@
 #include "il/core/Instr.hpp"
 #include "support/source_location.hpp"
 #include "support/source_manager.hpp"
+#include <algorithm>
+#include <filesystem>
 #include <iostream>
 
 namespace il::vm
@@ -20,48 +22,18 @@ namespace il::vm
 /// @return Canonical path with resolved '.' and '..' segments.
 std::string DebugCtrl::normalizePath(std::string p)
 {
-    for (char &c : p)
-        if (c == '\\')
-            c = '/';
-    bool absolute = !p.empty() && p.front() == '/';
-    std::vector<std::string> stack;
-    std::string segment;
-    auto flush = [&]()
-    {
-        if (segment.empty() || segment == ".")
-        {
-            segment.clear();
-            return;
-        }
-        if (segment == "..")
-        {
-            if (!stack.empty() && stack.back() != "..")
-                stack.pop_back();
-            else if (!absolute)
-                stack.push_back("..");
-        }
-        else
-            stack.push_back(std::move(segment));
-        segment.clear();
-    };
-    for (size_t i = 0; i <= p.size(); ++i)
-    {
-        char c = (i < p.size()) ? p[i] : '/';
-        if (c == '/')
-            flush();
-        else
-            segment += c;
-    }
-    std::string out = absolute ? "/" : "";
-    for (size_t i = 0; i < stack.size(); ++i)
-    {
-        if (i)
-            out += '/';
-        out += stack[i];
-    }
-    if (out.empty())
-        return absolute ? std::string{"/"} : std::string{"."};
-    return out;
+    std::replace(p.begin(), p.end(), '\\', '/');
+
+    if (p.empty())
+        return ".";
+
+    std::filesystem::path normalized = std::filesystem::path(p).lexically_normal();
+    std::string generic = normalized.generic_string();
+
+    if (generic.empty())
+        return p.front() == '/' ? std::string{"/"} : std::string{"."};
+
+    return generic;
 }
 
 /// @brief Intern a block label for breakpoint lookup.

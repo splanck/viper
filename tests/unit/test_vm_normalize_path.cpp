@@ -11,8 +11,11 @@ int main()
 {
     using il::vm::DebugCtrl;
     assert(DebugCtrl::normalizePath(R"(a\b\c)") == "a/b/c");
+    assert(DebugCtrl::normalizePath(R"(C:\project\src\..\main.bas)") == "C:/project/main.bas");
     assert(DebugCtrl::normalizePath("./a/./b") == "a/b");
+    assert(DebugCtrl::normalizePath("../foo/../bar") == "../bar");
     assert(DebugCtrl::normalizePath("dir/../file") == "file");
     assert(DebugCtrl::normalizePath("/foo/../") == "/");
+    assert(DebugCtrl::normalizePath("") == ".");
     return 0;
 }
