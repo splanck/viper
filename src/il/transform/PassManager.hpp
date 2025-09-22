@@ -9,6 +9,7 @@
 
 #include <any>
 #include <cassert>
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <string>
@@ -29,10 +30,115 @@ struct CFGInfo
 };
 
 /// @brief Cached liveness sets (live-in/live-out) for each block.
-struct LivenessInfo
+class LivenessInfo
 {
-    std::unordered_map<const core::BasicBlock *, std::unordered_set<unsigned>> liveIn;
-    std::unordered_map<const core::BasicBlock *, std::unordered_set<unsigned>> liveOut;
+  public:
+    /// @brief Lightweight view over the live value bitset for a block edge.
+    class SetView
+    {
+      public:
+        SetView() = default;
+
+        /// @brief Query whether a value identifier is marked live.
+        /// @param valueId Dense identifier for the SSA value.
+        /// @return True when the identifier is within range and flagged live.
+        bool contains(unsigned valueId) const
+        {
+            return bits_ && valueId < bits_->size() && (*bits_)[valueId];
+        }
+
+        /// @brief Visit every live value identifier in the set.
+        /// @tparam Fn Callable invoked with each live value identifier.
+        template <typename Fn>
+        void forEach(Fn &&fn) const
+        {
+            if (!bits_)
+                return;
+            for (unsigned id = 0; id < bits_->size(); ++id)
+            {
+                if ((*bits_)[id])
+                    fn(id);
+            }
+        }
+
+        /// @brief Check whether the set contains any live values.
+        /// @return True when no value bits are set.
+        bool empty() const
+        {
+            if (!bits_)
+                return true;
+            for (bool bit : *bits_)
+            {
+                if (bit)
+                    return false;
+            }
+            return true;
+        }
+
+        /// @brief Access the underlying bitset for integration tests or debugging.
+        /// @return Reference to the immutable bitset representation.
+        const std::vector<bool> &bits() const
+        {
+            assert(bits_ && "liveness set view is empty");
+            return *bits_;
+        }
+
+      private:
+        explicit SetView(const std::vector<bool> *bits) : bits_(bits) {}
+
+        const std::vector<bool> *bits_ = nullptr;
+
+        friend class LivenessInfo;
+    };
+
+    /// @brief Retrieve the live-in set for @p block.
+    /// @param block Basic block whose entry set is requested.
+    /// @return Lightweight view over the live-in values.
+    SetView liveIn(const core::BasicBlock &block) const { return liveIn(&block); }
+
+    /// @brief Retrieve the live-in set for @p block.
+    /// @param block Basic block pointer whose entry set is requested.
+    /// @return Lightweight view over the live-in values.
+    SetView liveIn(const core::BasicBlock *block) const
+    {
+        if (!block)
+            return SetView();
+        auto it = liveInBits_.find(block);
+        if (it == liveInBits_.end())
+            return SetView();
+        return SetView(&it->second);
+    }
+
+    /// @brief Retrieve the live-out set for @p block.
+    /// @param block Basic block whose exit set is requested.
+    /// @return Lightweight view over the live-out values.
+    SetView liveOut(const core::BasicBlock &block) const { return liveOut(&block); }
+
+    /// @brief Retrieve the live-out set for @p block pointer.
+    /// @param block Basic block pointer whose exit set is requested.
+    /// @return Lightweight view over the live-out values.
+    SetView liveOut(const core::BasicBlock *block) const
+    {
+        if (!block)
+            return SetView();
+        auto it = liveOutBits_.find(block);
+        if (it == liveOutBits_.end())
+            return SetView();
+        return SetView(&it->second);
+    }
+
+    /// @brief Number of dense SSA value slots tracked by this liveness summary.
+    /// @return Count of bits allocated per block.
+    std::size_t valueCount() const { return valueCount_; }
+
+  private:
+    using BitSet = std::vector<bool>;
+
+    std::size_t valueCount_{0};
+    std::unordered_map<const core::BasicBlock *, BitSet> liveInBits_;
+    std::unordered_map<const core::BasicBlock *, BitSet> liveOutBits_;
+
+    friend LivenessInfo computeLiveness(core::Module &module, core::Function &fn);
 };
 
 /// @brief Tracks which analyses remain valid after a pass executes.
