@@ -1,5 +1,5 @@
 <!--
-File: docs/dev/semantics.md
+File: docs/dev/frontends/semantics.md
 Purpose: Notes on BASIC semantic analysis passes.
 -->
 
