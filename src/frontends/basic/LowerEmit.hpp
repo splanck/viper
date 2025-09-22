@@ -6,6 +6,7 @@
 #pragma once
 
 private:
+void collectProcedureSignatures(const Program &prog);
 void collectVars(const Program &prog);
 void collectVars(const std::vector<const Stmt *> &stmts);
 void lowerFunctionDecl(const FunctionDecl &decl);
