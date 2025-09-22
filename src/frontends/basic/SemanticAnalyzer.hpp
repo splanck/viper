@@ -124,14 +124,35 @@ class SemanticAnalyzer
 
         ~ProcedureScope() noexcept;
 
+        void noteSymbolInserted(const std::string &name);
+        void noteVarTypeMutation(const std::string &name, std::optional<Type> previous);
+        void noteArrayMutation(const std::string &name, std::optional<long long> previous);
+        void noteLabelInserted(int label);
+        void noteLabelRefInserted(int label);
+
       private:
+        struct VarTypeDelta
+        {
+            std::string name;
+            std::optional<Type> previous;
+        };
+
+        struct ArrayDelta
+        {
+            std::string name;
+            std::optional<long long> previous;
+        };
+
         SemanticAnalyzer &analyzer_;
-        std::unordered_set<std::string> savedSymbols_;
-        std::unordered_map<std::string, Type> savedVarTypes_;
-        std::unordered_map<std::string, long long> savedArrays_;
-        std::unordered_set<int> savedLabels_;
-        std::unordered_set<int> savedLabelRefs_;
-        std::vector<std::string> savedForStack_;
+        ProcedureScope *previous_{nullptr};
+        size_t forStackDepth_{0};
+        std::vector<std::string> newSymbols_;
+        std::vector<int> newLabels_;
+        std::vector<int> newLabelRefs_;
+        std::vector<VarTypeDelta> varTypeDeltas_;
+        std::vector<ArrayDelta> arrayDeltas_;
+        std::unordered_set<std::string> trackedVarTypes_;
+        std::unordered_set<std::string> trackedArrays_;
     };
 
     /// @brief Classify how a symbol should be tracked during resolution.
@@ -266,6 +287,7 @@ class SemanticAnalyzer
     std::unordered_set<int> labels_;
     std::unordered_set<int> labelRefs_;
     std::vector<std::string> forStack_; ///< Active FOR loop variables.
+    ProcedureScope *activeProcScope_{nullptr};
 };
 
 } // namespace il::frontends::basic
