@@ -70,6 +70,8 @@ Expected<void> parseInstructionShim_E(const std::string &line, ParserState &st)
     return Expected<void>{makeError(st.curLoc, std::move(message))};
 }
 
+} // namespace
+
 /// @brief Parses a function header and initialises the parser state for a new
 /// function.
 ///
@@ -86,7 +88,7 @@ Expected<void> parseInstructionShim_E(const std::string &line, ParserState &st)
 /// @param st Parser state receiving the new function and reset block context.
 /// @return Empty on success; otherwise, an error diagnostic describing the malformed
 /// header.
-Expected<void> parseFunctionHeader_E(const std::string &header, ParserState &st)
+Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
 {
     size_t at = header.find('@');
     size_t lp = header.find('(', at);
@@ -153,7 +155,7 @@ Expected<void> parseFunctionHeader_E(const std::string &header, ParserState &st)
 /// temporary mappings.
 /// @return Empty on success; otherwise, a diagnostic capturing the malformed
 /// header information.
-Expected<void> parseBlockHeader_E(const std::string &header, ParserState &st)
+Expected<void> parseBlockHeader(const std::string &header, ParserState &st)
 {
     size_t lp = header.find('(');
     std::vector<Param> bparams;
@@ -237,9 +239,9 @@ Expected<void> parseBlockHeader_E(const std::string &header, ParserState &st)
 /// @param header Original header string already consumed from the stream.
 /// @param st Parser state receiving the fully parsed function definition.
 /// @return Empty on success; otherwise, a diagnostic describing the parsing issue.
-Expected<void> parseFunction_E(std::istream &is, std::string &header, ParserState &st)
+Expected<void> parseFunction(std::istream &is, std::string &header, ParserState &st)
 {
-    auto headerResult = parseFunctionHeader_E(header, st);
+    auto headerResult = parseFunctionHeader(header, st);
     if (!headerResult)
         return headerResult;
 
@@ -258,7 +260,7 @@ Expected<void> parseFunction_E(std::istream &is, std::string &header, ParserStat
         }
         if (line.back() == ':')
         {
-            auto blockResult = parseBlockHeader_E(line.substr(0, line.size() - 1), st);
+            auto blockResult = parseBlockHeader(line.substr(0, line.size() - 1), st);
             if (!blockResult)
                 return blockResult;
             continue;
@@ -282,54 +284,6 @@ Expected<void> parseFunction_E(std::istream &is, std::string &header, ParserStat
             return instr;
     }
     return {};
-}
-
-} // namespace
-
-/// @brief Public wrapper for parsing function headers that prints diagnostics.
-///
-/// Wraps parseFunctionHeader_E() and emits any captured diagnostic to @p err via
-/// il::support::printDiag. The parser state is mutated identically to the helper.
-bool parseFunctionHeader(const std::string &header, ParserState &st, std::ostream &err)
-{
-    auto result = parseFunctionHeader_E(header, st);
-    if (!result)
-    {
-        il::support::printDiag(result.error(), err);
-        return false;
-    }
-    return true;
-}
-
-/// @brief Public wrapper for parsing block headers that prints diagnostics.
-///
-/// Forwards to parseBlockHeader_E() and prints any resulting diagnostic via
-/// il::support::printDiag. The parser state is mutated with a new block when
-/// parsing succeeds.
-bool parseBlockHeader(const std::string &header, ParserState &st, std::ostream &err)
-{
-    auto result = parseBlockHeader_E(header, st);
-    if (!result)
-    {
-        il::support::printDiag(result.error(), err);
-        return false;
-    }
-    return true;
-}
-
-/// @brief Public wrapper for parsing complete functions that prints diagnostics.
-///
-/// Delegates to parseFunction_E() and prints any diagnostic produced. On success,
-/// @p st is updated to include the fully parsed function appended to the module.
-bool parseFunction(std::istream &is, std::string &header, ParserState &st, std::ostream &err)
-{
-    auto result = parseFunction_E(is, header, st);
-    if (!result)
-    {
-        il::support::printDiag(result.error(), err);
-        return false;
-    }
-    return true;
 }
 
 } // namespace il::io::detail
