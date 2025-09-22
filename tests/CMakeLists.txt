@@ -76,6 +76,11 @@ add_executable(test_il_parse_misc_instructions unit/test_il_parse_misc_instructi
 target_link_libraries(test_il_parse_misc_instructions PRIVATE il_core il_io il_api)
 add_test(NAME test_il_parse_misc_instructions COMMAND test_il_parse_misc_instructions)
 
+add_executable(test_il_function_parser_errors unit/test_il_function_parser_errors.cpp)
+target_link_libraries(test_il_function_parser_errors PRIVATE il_core il_io support)
+add_test(NAME test_il_function_parser_errors COMMAND test_il_function_parser_errors)
+
+
 add_executable(test_expected_api_build unit/test_expected_api_build.cpp)
 target_link_libraries(test_expected_api_build PRIVATE il_core il_io il_api)
 add_test(NAME test_expected_api_build COMMAND test_expected_api_build)
@@ -457,6 +462,10 @@ add_test(NAME test_basic_semantic COMMAND test_basic_semantic)
 add_executable(test_basic_lowerer_collect unit/test_basic_lowerer_collect.cpp)
 target_link_libraries(test_basic_lowerer_collect PRIVATE fe_basic support)
 add_test(NAME test_basic_lowerer_collect COMMAND test_basic_lowerer_collect)
+
+add_executable(test_basic_lowerer_conversions unit/test_basic_lowerer_conversions.cpp)
+target_link_libraries(test_basic_lowerer_conversions PRIVATE fe_basic support)
+add_test(NAME test_basic_lowerer_conversions COMMAND test_basic_lowerer_conversions)
 
 add_executable(test_basic_semantic_components unit/test_basic_semantic_components.cpp)
 target_link_libraries(test_basic_semantic_components PRIVATE fe_basic support)
