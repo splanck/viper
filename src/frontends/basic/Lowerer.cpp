@@ -426,6 +426,17 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
     return info;
 }
 
+/// @brief Lookup a cached procedure signature by BASIC identifier.
+/// @param name BASIC procedure name including suffix.
+/// @return Pointer to the signature when recorded, nullptr otherwise.
+const Lowerer::ProcedureSignature *Lowerer::findProcSignature(const std::string &name) const
+{
+    auto it = procSignatures.find(name);
+    if (it == procSignatures.end())
+        return nullptr;
+    return &it->second;
+}
+
 /// @brief Construct a lowering context.
 /// @param boundsChecks When true, enable allocation of auxiliary slots used to
 ///        emit runtime array bounds checks during lowering.
@@ -458,6 +469,7 @@ Module Lowerer::lowerProgram(const Program &prog)
     varTypes.clear();
     strings.clear();
     arrays.clear();
+    procSignatures.clear();
     boundsCheckId = 0;
 
     runtimeFeatures.reset();
@@ -493,6 +505,42 @@ void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
     for (const auto *stmt : stmts)
         if (stmt)
             stmt->accept(stmtVisitor);
+}
+
+/// @brief Cache declared signatures for all user-defined procedures in a program.
+/// @param prog BASIC program supplying FUNCTION and SUB declarations.
+/// @details Signatures are recorded prior to lowering so call expressions can
+///          coerce arguments and results even for forward references.
+void Lowerer::collectProcedureSignatures(const Program &prog)
+{
+    procSignatures.clear();
+    for (const auto &decl : prog.procs)
+    {
+        if (auto *fn = dynamic_cast<const FunctionDecl *>(decl.get()))
+        {
+            ProcedureSignature sig;
+            sig.retType = coreTypeForAstType(fn->ret);
+            sig.paramTypes.reserve(fn->params.size());
+            for (const auto &p : fn->params)
+            {
+                Type ty = p.is_array ? Type(Type::Kind::Ptr) : coreTypeForAstType(p.type);
+                sig.paramTypes.push_back(ty);
+            }
+            procSignatures.emplace(fn->name, std::move(sig));
+        }
+        else if (auto *sub = dynamic_cast<const SubDecl *>(decl.get()))
+        {
+            ProcedureSignature sig;
+            sig.retType = Type(Type::Kind::Void);
+            sig.paramTypes.reserve(sub->params.size());
+            for (const auto &p : sub->params)
+            {
+                Type ty = p.is_array ? Type(Type::Kind::Ptr) : coreTypeForAstType(p.type);
+                sig.paramTypes.push_back(ty);
+            }
+            procSignatures.emplace(sub->name, std::move(sig));
+        }
+    }
 }
 
 Lowerer::ProcedureMetadata Lowerer::collectProcedureMetadata(
