@@ -495,6 +495,127 @@ void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
             stmt->accept(stmtVisitor);
 }
 
+Lowerer::ProcedureMetadata Lowerer::collectProcedureMetadata(
+    const std::vector<Param> &params,
+    const std::vector<StmtPtr> &body,
+    const ProcedureConfig &config)
+{
+    ProcedureMetadata metadata;
+    metadata.paramCount = params.size();
+    metadata.bodyStmts.reserve(body.size());
+    for (const auto &stmt : body)
+        metadata.bodyStmts.push_back(stmt.get());
+
+    collectVars(metadata.bodyStmts);
+
+    if (config.postCollect)
+        config.postCollect();
+
+    metadata.irParams.reserve(params.size());
+    for (const auto &p : params)
+    {
+        metadata.paramNames.insert(p.name);
+        Type ty = p.is_array ? Type(Type::Kind::Ptr) : coreTypeForAstType(p.type);
+        metadata.irParams.push_back({p.name, ty});
+    }
+
+    return metadata;
+}
+
+void Lowerer::buildProcedureSkeleton(Function &f,
+                                     const std::string &name,
+                                     const ProcedureMetadata &metadata)
+{
+    blockNamer = std::make_unique<BlockNamer>(name);
+
+    builder->addBlock(f, blockNamer->entry());
+
+    for (size_t i = 0; i < metadata.paramCount; ++i)
+        mangler.nextTemp();
+
+    size_t blockIndex = 1;
+    for (const auto *stmt : metadata.bodyStmts)
+    {
+        if (blockNamer)
+            builder->addBlock(f, blockNamer->line(stmt->line));
+        else
+            builder->addBlock(
+                f,
+                mangler.block("L" + std::to_string(stmt->line) + "_" + name));
+        lineBlocks[stmt->line] = blockIndex++;
+    }
+
+    fnExit = f.blocks.size();
+    if (blockNamer)
+        builder->addBlock(f, blockNamer->ret());
+    else
+        builder->addBlock(f, mangler.block("ret_" + name));
+}
+
+void Lowerer::allocateLocals(const std::unordered_set<std::string> &paramNames)
+{
+    for (const auto &v : vars)
+    {
+        if (paramNames.count(v))
+            continue;
+        curLoc = {};
+        SlotType slotInfo = getSlotType(v);
+        if (slotInfo.isArray)
+        {
+            Value slot = emitAlloca(8);
+            varSlots[v] = slot.id;
+            continue;
+        }
+        Value slot = emitAlloca(slotInfo.isBoolean ? 1 : 8);
+        varSlots[v] = slot.id;
+        if (slotInfo.isBoolean)
+            emitStore(ilBoolTy(), slot, emitBoolConst(false));
+    }
+
+    if (!boundsChecks)
+        return;
+
+    for (const auto &a : arrays)
+    {
+        if (paramNames.count(a))
+            continue;
+        curLoc = {};
+        Value slot = emitAlloca(8);
+        arrayLenSlots[a] = slot.id;
+    }
+}
+
+void Lowerer::lowerStatementSequence(
+    const std::vector<const Stmt *> &stmts,
+    bool stopOnTerminated,
+    const std::function<void(const Stmt &)> &beforeBranch)
+{
+    if (stmts.empty())
+        return;
+
+    curLoc = {};
+    emitBr(&func->blocks[lineBlocks[stmts.front()->line]]);
+
+    for (size_t i = 0; i < stmts.size(); ++i)
+    {
+        const Stmt &stmt = *stmts[i];
+        cur = &func->blocks[lineBlocks[stmt.line]];
+        lowerStmt(stmt);
+        if (cur->terminated)
+        {
+            if (stopOnTerminated)
+                break;
+            continue;
+        }
+        BasicBlock *next = (i + 1 < stmts.size())
+                               ? &func->blocks[lineBlocks[stmts[i + 1]->line]]
+                               : &func->blocks[fnExit];
+        if (beforeBranch)
+            beforeBranch(stmt);
+        emitBr(next);
+    }
+}
+
 /// @brief Lower a single BASIC procedure using the provided configuration.
 /// @param name Symbol name used for both mangling and emitted function labels.
 /// @param params Formal parameters describing incoming values.
@@ -516,92 +637,24 @@ void Lowerer::lowerProcedure(const std::string &name,
 {
     resetLoweringState();
 
-    std::vector<const Stmt *> bodyPtrs;
-    bodyPtrs.reserve(body.size());
-    for (const auto &stmt : body)
-        bodyPtrs.push_back(stmt.get());
-    collectVars(bodyPtrs);
-
-    if (config.postCollect)
-        config.postCollect();
-
-    std::unordered_set<std::string> paramNames;
-    std::vector<il::core::Param> irParams;
-    irParams.reserve(params.size());
-    for (const auto &p : params)
-    {
-        paramNames.insert(p.name);
-        Type ty = p.is_array ? Type(Type::Kind::Ptr) : coreTypeForAstType(p.type);
-        irParams.push_back({p.name, ty});
-    }
+    ProcedureMetadata metadata =
+        collectProcedureMetadata(params, body, config);
 
     assert(config.emitEmptyBody && "Missing empty body return handler");
     assert(config.emitFinalReturn && "Missing final return handler");
     if (!config.emitEmptyBody || !config.emitFinalReturn)
         return;
 
-    Function &f = builder->startFunction(name, config.retType, irParams);
+    Function &f = builder->startFunction(name, config.retType, metadata.irParams);
     func = &f;
 
-    blockNamer = std::make_unique<BlockNamer>(name);
-
-    builder->addBlock(f, blockNamer->entry());
-
-    for (size_t i = 0; i < params.size(); ++i)
-        mangler.nextTemp();
-
-    std::vector<int> lines;
-    lines.reserve(body.size());
-    for (const auto &stmt : body)
-    {
-        if (blockNamer)
-            builder->addBlock(f, blockNamer->line(stmt->line));
-        else
-            builder->addBlock(f, mangler.block("L" + std::to_string(stmt->line) + "_" + name));
-        lines.push_back(stmt->line);
-    }
-    fnExit = f.blocks.size();
-    if (blockNamer)
-        builder->addBlock(f, blockNamer->ret());
-    else
-        builder->addBlock(f, mangler.block("ret_" + name));
-
-    for (size_t i = 0; i < lines.size(); ++i)
-        lineBlocks[lines[i]] = i + 1;
+    buildProcedureSkeleton(f, name, metadata);
 
     cur = &f.blocks.front();
     materializeParams(params);
+    allocateLocals(metadata.paramNames);
 
-    for (const auto &v : vars)
-    {
-        if (paramNames.count(v))
-            continue;
-        curLoc = {};
-        SlotType slotInfo = getSlotType(v);
-        if (slotInfo.isArray)
-        {
-            Value slot = emitAlloca(8);
-            varSlots[v] = slot.id;
-            continue;
-        }
-        Value slot = emitAlloca(slotInfo.isBoolean ? 1 : 8);
-        varSlots[v] = slot.id;
-        if (slotInfo.isBoolean)
-            emitStore(ilBoolTy(), slot, emitBoolConst(false));
-    }
-    if (boundsChecks)
-    {
-        for (const auto &a : arrays)
-        {
-            if (paramNames.count(a))
-                continue;
-            curLoc = {};
-            Value slot = emitAlloca(8);
-            arrayLenSlots[a] = slot.id;
-        }
-    }
-
-    if (body.empty())
+    if (metadata.bodyStmts.empty())
     {
         curLoc = {};
         config.emitEmptyBody();
@@ -609,20 +662,7 @@ void Lowerer::lowerProcedure(const std::string &name,
         return;
     }
 
-    curLoc = {};
-    emitBr(&f.blocks[lineBlocks[body.front()->line]]);
-
-    for (size_t i = 0; i < body.size(); ++i)
-    {
-        cur = &f.blocks[lineBlocks[body[i]->line]];
-        lowerStmt(*body[i]);
-        if (cur->terminated)
-            break;
-        BasicBlock *next = (i + 1 < body.size())
-                               ? &f.blocks[lineBlocks[body[i + 1]->line]]
-                               : &f.blocks[fnExit];
-        emitBr(next);
-    }
+    lowerStatementSequence(metadata.bodyStmts, /*stopOnTerminated=*/true);
 
     cur = &f.blocks[fnExit];
     curLoc = {};
