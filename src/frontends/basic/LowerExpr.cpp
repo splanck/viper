@@ -95,39 +95,13 @@ class LowererExprVisitor final : public ExprVisitor
             if (callee && i < callee->params.size())
             {
                 il::core::Type paramTy = callee->params[i].type;
-                if (paramTy.kind == il::core::Type::Kind::F64 &&
-                    arg.type.kind == il::core::Type::Kind::I64)
+                if (paramTy.kind == il::core::Type::Kind::F64)
                 {
-                    lowerer_.curLoc = expr.loc;
-                    arg.value =
-                        lowerer_.emitUnary(Opcode::Sitofp,
-                                           il::core::Type(il::core::Type::Kind::F64),
-                                           arg.value);
-                    arg.type = il::core::Type(il::core::Type::Kind::F64);
+                    arg = lowerer_.coerceToF64(std::move(arg), expr.loc);
                 }
-                else if (paramTy.kind == il::core::Type::Kind::F64 &&
-                         arg.type.kind == il::core::Type::Kind::I1)
+                else if (paramTy.kind == il::core::Type::Kind::I64)
                 {
-                    lowerer_.curLoc = expr.loc;
-                    arg.value =
-                        lowerer_.emitUnary(Opcode::Zext1,
-                                           il::core::Type(il::core::Type::Kind::I64),
-                                           arg.value);
-                    arg.value =
-                        lowerer_.emitUnary(Opcode::Sitofp,
-                                           il::core::Type(il::core::Type::Kind::F64),
-                                           arg.value);
-                    arg.type = il::core::Type(il::core::Type::Kind::F64);
-                }
-                else if (paramTy.kind == il::core::Type::Kind::I64 &&
-                         arg.type.kind == il::core::Type::Kind::I1)
-                {
-                    lowerer_.curLoc = expr.loc;
-                    arg.value =
-                        lowerer_.emitUnary(Opcode::Zext1,
-                                           il::core::Type(il::core::Type::Kind::I64),
-                                           arg.value);
-                    arg.type = il::core::Type(il::core::Type::Kind::I64);
+                    arg = lowerer_.coerceToI64(std::move(arg), expr.loc);
                 }
             }
             args.push_back(arg.value);
@@ -250,10 +224,9 @@ Lowerer::RVal Lowerer::lowerBoolBranchExpr(Value cond,
 Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
 {
     RVal val = lowerExpr(*u.expr);
+    RVal condVal = coerceToBool(std::move(val), u.loc);
     curLoc = u.loc;
-    Value cond = val.value;
-    if (val.type.kind != Type::Kind::I1)
-        cond = emitUnary(Opcode::Trunc1, ilBoolTy(), cond);
+    Value cond = condVal.value;
     return lowerBoolBranchExpr(
         cond,
         u.loc,
@@ -286,14 +259,8 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
     RVal lhs = lowerExpr(*b.lhs);
     curLoc = b.loc;
 
-    auto toBool = [&](const RVal &val) {
-        Value v = val.value;
-        if (val.type.kind != Type::Kind::I1)
-        {
-            curLoc = b.loc;
-            v = emitUnary(Opcode::Trunc1, ilBoolTy(), v);
-        }
-        return v;
+    auto toBool = [&](RVal val) {
+        return coerceToBool(std::move(val), b.loc).value;
     };
 
     if (b.op == BinaryExpr::Op::LogicalAndShort)
@@ -433,9 +400,9 @@ Lowerer::RVal Lowerer::lowerStringBinary(const BinaryExpr &b, RVal lhs, RVal rhs
     Value eq = emitCallRet(ilBoolTy(), "rt_str_eq", {lhs.value, rhs.value});
     if (b.op == BinaryExpr::Op::Ne)
     {
-        Value z = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), eq);
+        Value z = coerceToI64({eq, ilBoolTy()}, b.loc).value;
         Value x = emitBinary(Opcode::Xor, Type(Type::Kind::I64), z, Value::constInt(1));
-        Value res = emitUnary(Opcode::Trunc1, ilBoolTy(), x);
+        Value res = coerceToBool({x, Type(Type::Kind::I64)}, b.loc).value;
         return {res, ilBoolTy()};
     }
     return {eq, ilBoolTy()};
@@ -459,13 +426,11 @@ Lowerer::RVal Lowerer::lowerNumericBinary(const BinaryExpr &b, RVal lhs, RVal rh
     curLoc = b.loc;
     if (lhs.type.kind == Type::Kind::I64 && rhs.type.kind == Type::Kind::F64)
     {
-        lhs.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), lhs.value);
-        lhs.type = Type(Type::Kind::F64);
+        lhs = coerceToF64(std::move(lhs), b.loc);
     }
     else if (lhs.type.kind == Type::Kind::F64 && rhs.type.kind == Type::Kind::I64)
     {
-        rhs.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), rhs.value);
-        rhs.type = Type(Type::Kind::F64);
+        rhs = coerceToF64(std::move(rhs), b.loc);
     }
     bool isFloat = lhs.type.kind == Type::Kind::F64;
     Opcode op = Opcode::Add;
@@ -557,17 +522,11 @@ Lowerer::RVal Lowerer::lowerArg(const BuiltinCallExpr &c, size_t idx)
     return lowerExpr(*c.args[idx]);
 }
 
-/// @brief Ensure a value is represented as a 64-bit integer.
+/// @brief Coerce a value into a 64-bit integer representation.
 /// @param v Value/type pair to normalize.
 /// @param loc Source location used for emitted conversions.
-/// @return Updated value guaranteed to have `i64` type.
-/// @details
-/// - Control flow: Executes linearly without creating new blocks.
-/// - Emitted IL: Uses @ref emitUnary to sign-extend booleans via `zext` and
-///   convert floating-point inputs with `fptosi`.
-/// - Side effects: Updates @ref curLoc before emitting conversions and mutates
-///   the provided @ref Lowerer::RVal in place.
-Lowerer::RVal Lowerer::ensureI64(RVal v, il::support::SourceLoc loc)
+/// @return Updated value guaranteed to have `i64` type when conversion occurs.
+Lowerer::RVal Lowerer::coerceToI64(RVal v, il::support::SourceLoc loc)
 {
     if (v.type.kind == Type::Kind::I1)
     {
@@ -584,22 +543,15 @@ Lowerer::RVal Lowerer::ensureI64(RVal v, il::support::SourceLoc loc)
     return v;
 }
 
-/// @brief Ensure a value is represented as a 64-bit floating-point number.
+/// @brief Coerce a value into a 64-bit floating-point representation.
 /// @param v Value/type pair to normalize.
 /// @param loc Source location used for emitted conversions.
-/// @return Updated value guaranteed to have `f64` type.
-/// @details
-/// - Control flow: Executes sequentially, delegating to @ref ensureI64 when a
-///   narrowing or widening conversion is required.
-/// - Emitted IL: Emits @ref emitUnary instructions for integer-to-float
-///   promotion via `sitofp`.
-/// - Side effects: Updates @ref curLoc prior to generating conversions and
-///   mutates the provided @ref Lowerer::RVal in place.
-Lowerer::RVal Lowerer::ensureF64(RVal v, il::support::SourceLoc loc)
+/// @return Updated value guaranteed to have `f64` type when conversion occurs.
+Lowerer::RVal Lowerer::coerceToF64(RVal v, il::support::SourceLoc loc)
 {
     if (v.type.kind == Type::Kind::F64)
         return v;
-    v = ensureI64(std::move(v), loc);
+    v = coerceToI64(std::move(v), loc);
     if (v.type.kind == Type::Kind::I64)
     {
         curLoc = loc;
@@ -607,6 +559,43 @@ Lowerer::RVal Lowerer::ensureF64(RVal v, il::support::SourceLoc loc)
         v.type = Type(Type::Kind::F64);
     }
     return v;
+}
+
+/// @brief Coerce a value into a boolean representation.
+/// @param v Value/type pair to normalize.
+/// @param loc Source location used for emitted conversions.
+/// @return Updated value guaranteed to have `i1` type when conversion occurs.
+Lowerer::RVal Lowerer::coerceToBool(RVal v, il::support::SourceLoc loc)
+{
+    if (v.type.kind == Type::Kind::I1)
+        return v;
+    if (v.type.kind == Type::Kind::F64)
+        v = coerceToI64(std::move(v), loc);
+    if (v.type.kind != Type::Kind::I1)
+    {
+        curLoc = loc;
+        v.value = emitUnary(Opcode::Trunc1, ilBoolTy(), v.value);
+        v.type = ilBoolTy();
+    }
+    return v;
+}
+
+/// @brief Ensure a value is represented as a 64-bit integer.
+/// @param v Value/type pair to normalize.
+/// @param loc Source location used for emitted conversions.
+/// @return Updated value guaranteed to have `i64` type.
+Lowerer::RVal Lowerer::ensureI64(RVal v, il::support::SourceLoc loc)
+{
+    return coerceToI64(std::move(v), loc);
+}
+
+/// @brief Ensure a value is represented as a 64-bit floating-point number.
+/// @param v Value/type pair to normalize.
+/// @param loc Source location used for emitted conversions.
+/// @return Updated value guaranteed to have `f64` type.
+Lowerer::RVal Lowerer::ensureF64(RVal v, il::support::SourceLoc loc)
+{
+    return coerceToF64(std::move(v), loc);
 }
 
 /// @brief Lower the RND builtin.

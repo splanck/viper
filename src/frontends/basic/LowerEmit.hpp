@@ -111,6 +111,9 @@ RVal lowerRnd(const BuiltinCallExpr &expr);
 private:
 // Shared argument helpers
 RVal lowerArg(const BuiltinCallExpr &c, size_t idx);
+RVal coerceToI64(RVal v, il::support::SourceLoc loc);
+RVal coerceToF64(RVal v, il::support::SourceLoc loc);
+RVal coerceToBool(RVal v, il::support::SourceLoc loc);
 RVal ensureI64(RVal v, il::support::SourceLoc loc);
 RVal ensureF64(RVal v, il::support::SourceLoc loc);
 
