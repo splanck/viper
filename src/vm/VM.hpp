@@ -110,7 +110,7 @@ class VM
        DebugScript *script = nullptr);
 
     /// @brief Execute the module's entry function.
-    /// @return Exit code from main function.
+    /// @return Exit code from @c main or `1` when the entry point is missing.
     int64_t run();
 
     /// @brief Function signature for opcode handlers.
