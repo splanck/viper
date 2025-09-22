@@ -11,6 +11,7 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include <cassert>
+#include <utility>
 #include <vector>
 
 using namespace il::core;
@@ -133,22 +134,15 @@ void Lowerer::lowerLet(const LetStmt &stmt)
         bool isBool = slotInfo.isBoolean;
         if (!isStr && !isF64 && !isBool && v.type.kind == Type::Kind::I1)
         {
-            curLoc = stmt.loc;
-            Value z = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), v.value);
-            v.value = z;
-            v.type = Type(Type::Kind::I64);
+            v = coerceToI64(std::move(v), stmt.loc);
         }
         if (isF64 && v.type.kind == Type::Kind::I64)
         {
-            curLoc = stmt.loc;
-            v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
-            v.type = Type(Type::Kind::F64);
+            v = coerceToF64(std::move(v), stmt.loc);
         }
         else if (!isStr && !isF64 && !isBool && v.type.kind == Type::Kind::F64)
         {
-            curLoc = stmt.loc;
-            v.value = emitUnary(Opcode::Fptosi, Type(Type::Kind::I64), v.value);
-            v.type = Type(Type::Kind::I64);
+            v = coerceToI64(std::move(v), stmt.loc);
         }
         curLoc = stmt.loc;
         emitStore(targetTy, Value::temp(it->second), v.value);
@@ -157,9 +151,7 @@ void Lowerer::lowerLet(const LetStmt &stmt)
     {
         if (v.type.kind == Type::Kind::I1)
         {
-            curLoc = stmt.loc;
-            Value z = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), v.value);
-            v.value = z;
+            v = coerceToI64(std::move(v), stmt.loc);
         }
         Value ptr = lowerArrayAddr(*arr);
         curLoc = stmt.loc;
@@ -187,10 +179,7 @@ void Lowerer::lowerPrint(const PrintStmt &stmt)
                 RVal v = lowerExpr(*it.expr);
                 if (v.type.kind == Type::Kind::I1)
                 {
-                    curLoc = stmt.loc;
-                    Value z = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), v.value);
-                    v.value = z;
-                    v.type = Type(Type::Kind::I64);
+                    v = coerceToI64(std::move(v), stmt.loc);
                 }
                 curLoc = stmt.loc;
                 if (v.type.kind == Type::Kind::Str)
@@ -284,13 +273,8 @@ void Lowerer::lowerIfCondition(const Expr &cond,
 {
     cur = testBlk;
     RVal c = lowerExpr(cond);
-    if (c.type.kind != Type::Kind::I1)
-    {
-        curLoc = loc;
-        Value b1 = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), c.value);
-        c = {b1, Type(Type::Kind::I1)};
-    }
-    emitCBr(c.value, thenBlk, falseBlk);
+    Value condVal = coerceToBool(std::move(c), loc).value;
+    emitCBr(condVal, thenBlk, falseBlk);
 }
 
 /// @brief Lower the body of a single IF or ELSE branch.
@@ -418,12 +402,7 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
     // head
     cur = head;
     RVal cond = lowerExpr(*stmt.cond);
-    if (cond.type.kind != Type::Kind::I1)
-    {
-        curLoc = stmt.loc;
-        Value b1 = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), cond.value);
-        cond = {b1, Type(Type::Kind::I1)};
-    }
+    cond = coerceToBool(std::move(cond), stmt.loc);
     curLoc = stmt.loc;
     emitCBr(cond.value, body, done);
 
@@ -677,16 +656,19 @@ void Lowerer::lowerInput(const InputStmt &stmt)
         Value n = emitCallRet(Type(Type::Kind::I64), "rt_to_int", {s});
         if (slotInfo.isBoolean)
         {
-            Value b = emitUnary(Opcode::Trunc1, ilBoolTy(), n);
+            Value b = coerceToBool({n, Type(Type::Kind::I64)}, stmt.loc).value;
+            curLoc = stmt.loc;
             emitStore(ilBoolTy(), target, b);
         }
         else if (slotInfo.type.kind == Type::Kind::F64)
         {
-            Value f = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), n);
+            Value f = coerceToF64({n, Type(Type::Kind::I64)}, stmt.loc).value;
+            curLoc = stmt.loc;
             emitStore(Type(Type::Kind::F64), target, f);
         }
         else
         {
+            curLoc = stmt.loc;
             emitStore(Type(Type::Kind::I64), target, n);
         }
     }
@@ -726,15 +708,7 @@ void Lowerer::lowerDim(const DimStmt &stmt)
 void Lowerer::lowerRandomize(const RandomizeStmt &stmt)
 {
     RVal s = lowerExpr(*stmt.seed);
-    Value seed = s.value;
-    if (s.type.kind == Type::Kind::F64)
-    {
-        seed = emitUnary(Opcode::Fptosi, Type(Type::Kind::I64), seed);
-    }
-    else if (s.type.kind == Type::Kind::I1)
-    {
-        seed = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), seed);
-    }
+    Value seed = coerceToI64(std::move(s), stmt.loc).value;
     curLoc = stmt.loc;
     emitCall("rt_randomize_i64", {seed});
 }
