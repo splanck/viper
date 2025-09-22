@@ -7,12 +7,39 @@ endif()
 if(NOT DEFINED GOLDEN)
   message(FATAL_ERROR "GOLDEN not set")
 endif()
-execute_process(COMMAND ${ILC} front basic -run ${BAS_FILE} --trace=src ERROR_FILE trace.txt RESULT_VARIABLE r)
-if(NOT r EQUAL 0)
-  message(FATAL_ERROR "execution failed")
+set(TRACE_BEFORE trace_before.txt)
+set(TRACE_AFTER trace_after.txt)
+
+execute_process(
+  COMMAND ${ILC} front basic -run ${BAS_FILE} --trace=src
+  ERROR_FILE ${TRACE_BEFORE}
+  RESULT_VARIABLE r_before)
+if(NOT r_before EQUAL 0)
+  message(FATAL_ERROR "execution failed (uncached)")
 endif()
-file(READ trace.txt OUT)
+
+execute_process(
+  COMMAND ${ILC} front basic -run ${BAS_FILE} --trace=src
+  ERROR_FILE ${TRACE_AFTER}
+  RESULT_VARIABLE r_after)
+if(NOT r_after EQUAL 0)
+  message(FATAL_ERROR "execution failed (cached)")
+endif()
+
+file(READ ${TRACE_BEFORE} OUT_BEFORE)
+file(READ ${TRACE_AFTER} OUT_AFTER)
 file(READ ${GOLDEN} EXP)
-if(NOT OUT STREQUAL EXP)
-  message(FATAL_ERROR "trace mismatch")
+
+if(NOT OUT_BEFORE STREQUAL EXP)
+  message(FATAL_ERROR "trace mismatch before optimization")
 endif()
+
+if(NOT OUT_AFTER STREQUAL EXP)
+  message(FATAL_ERROR "trace mismatch after optimization")
+endif()
+
+if(NOT OUT_BEFORE STREQUAL OUT_AFTER)
+  message(FATAL_ERROR "trace output changed between runs")
+endif()
+
+file(REMOVE ${TRACE_BEFORE} ${TRACE_AFTER})
