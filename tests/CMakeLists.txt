@@ -118,6 +118,15 @@ add_executable(test_tools_break_parsing tools/BreakParsingTests.cpp
 target_include_directories(test_tools_break_parsing PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME test_tools_break_parsing COMMAND test_tools_break_parsing)
 
+add_executable(test_cli_run_missing_main
+  unit/test_cli_run_missing_main.cpp
+  ${CMAKE_SOURCE_DIR}/src/tools/ilc/cli.cpp
+  ${CMAKE_SOURCE_DIR}/src/tools/ilc/cmd_run_il.cpp
+  ${CMAKE_SOURCE_DIR}/src/tools/ilc/break_spec.cpp)
+target_include_directories(test_cli_run_missing_main PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_cli_run_missing_main PRIVATE il_vm il_api support)
+add_test(NAME test_cli_run_missing_main COMMAND test_cli_run_missing_main)
+
 add_executable(test_vm_trace_il vm/TraceILTests.cpp)
 add_test(NAME test_vm_trace_il COMMAND test_vm_trace_il $<TARGET_FILE:ilc> ${CMAKE_SOURCE_DIR}/examples/il/trace_min.il ${CMAKE_SOURCE_DIR}/tests/vm/trace_min.trace)
 add_executable(test_vm_break_label vm/BreakLabelTests.cpp)
