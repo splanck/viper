@@ -19,7 +19,7 @@ using semantic_analyzer_detail::astToSemanticType;
 using semantic_analyzer_detail::conditionExprText;
 using semantic_analyzer_detail::semanticTypeName;
 
-class SemanticAnalyzerStmtVisitor final : public StmtVisitor
+class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
 {
   public:
     explicit SemanticAnalyzerStmtVisitor(SemanticAnalyzer &analyzer) noexcept
@@ -27,27 +27,27 @@ class SemanticAnalyzerStmtVisitor final : public StmtVisitor
     {
     }
 
-    void visit(const PrintStmt &stmt) override { analyzer_.analyzePrint(stmt); }
-    void visit(const LetStmt &stmt) override { analyzer_.analyzeLet(stmt); }
-    void visit(const DimStmt &stmt) override { analyzer_.analyzeDim(stmt); }
-    void visit(const RandomizeStmt &stmt) override { analyzer_.analyzeRandomize(stmt); }
-    void visit(const IfStmt &stmt) override { analyzer_.analyzeIf(stmt); }
-    void visit(const WhileStmt &stmt) override { analyzer_.analyzeWhile(stmt); }
-    void visit(const ForStmt &stmt) override { analyzer_.analyzeFor(stmt); }
-    void visit(const NextStmt &stmt) override { analyzer_.analyzeNext(stmt); }
-    void visit(const GotoStmt &stmt) override { analyzer_.analyzeGoto(stmt); }
-    void visit(const EndStmt &stmt) override { analyzer_.analyzeEnd(stmt); }
-    void visit(const InputStmt &stmt) override { analyzer_.analyzeInput(stmt); }
-    void visit(const ReturnStmt &) override {}
-    void visit(const FunctionDecl &) override {}
-    void visit(const SubDecl &) override {}
-    void visit(const StmtList &stmt) override { analyzer_.analyzeStmtList(stmt); }
+    void visit(PrintStmt &stmt) override { analyzer_.analyzePrint(stmt); }
+    void visit(LetStmt &stmt) override { analyzer_.analyzeLet(stmt); }
+    void visit(DimStmt &stmt) override { analyzer_.analyzeDim(stmt); }
+    void visit(RandomizeStmt &stmt) override { analyzer_.analyzeRandomize(stmt); }
+    void visit(IfStmt &stmt) override { analyzer_.analyzeIf(stmt); }
+    void visit(WhileStmt &stmt) override { analyzer_.analyzeWhile(stmt); }
+    void visit(ForStmt &stmt) override { analyzer_.analyzeFor(stmt); }
+    void visit(NextStmt &stmt) override { analyzer_.analyzeNext(stmt); }
+    void visit(GotoStmt &stmt) override { analyzer_.analyzeGoto(stmt); }
+    void visit(EndStmt &stmt) override { analyzer_.analyzeEnd(stmt); }
+    void visit(InputStmt &stmt) override { analyzer_.analyzeInput(stmt); }
+    void visit(ReturnStmt &) override {}
+    void visit(FunctionDecl &) override {}
+    void visit(SubDecl &) override {}
+    void visit(StmtList &stmt) override { analyzer_.analyzeStmtList(stmt); }
 
   private:
     SemanticAnalyzer &analyzer_;
 };
 
-void SemanticAnalyzer::visitStmt(const Stmt &s)
+void SemanticAnalyzer::visitStmt(Stmt &s)
 {
     SemanticAnalyzerStmtVisitor visitor(*this);
     s.accept(visitor);
@@ -138,15 +138,15 @@ void SemanticAnalyzer::analyzeConstExpr(const LetStmt &l)
     de.emit(il::support::Severity::Error, "B2007", l.loc, 1, std::move(msg));
 }
 
-void SemanticAnalyzer::analyzeLet(const LetStmt &l)
+void SemanticAnalyzer::analyzeLet(LetStmt &l)
 {
     if (!l.target)
         return;
-    if (auto *v = const_cast<VarExpr *>(dynamic_cast<const VarExpr *>(l.target.get())))
+    if (auto *v = dynamic_cast<VarExpr *>(l.target.get()))
     {
         analyzeVarAssignment(*v, l);
     }
-    else if (auto *a = const_cast<ArrayExpr *>(dynamic_cast<const ArrayExpr *>(l.target.get())))
+    else if (auto *a = dynamic_cast<ArrayExpr *>(l.target.get()))
     {
         analyzeArrayAssignment(*a, l);
     }
@@ -156,7 +156,7 @@ void SemanticAnalyzer::analyzeLet(const LetStmt &l)
     }
 }
 
-void SemanticAnalyzer::checkConditionExpr(const Expr &expr)
+void SemanticAnalyzer::checkConditionExpr(Expr &expr)
 {
     Type condTy = visitExpr(expr);
     if (condTy == Type::Unknown || condTy == Type::Bool)
@@ -218,17 +218,16 @@ void SemanticAnalyzer::analyzeWhile(const WhileStmt &w)
             visitStmt(*bs);
 }
 
-void SemanticAnalyzer::analyzeFor(const ForStmt &f)
+void SemanticAnalyzer::analyzeFor(ForStmt &f)
 {
-    auto *fc = const_cast<ForStmt *>(&f);
-    resolveAndTrackSymbol(fc->var, SymbolKind::Definition);
+    resolveAndTrackSymbol(f.var, SymbolKind::Definition);
     if (f.start)
         visitExpr(*f.start);
     if (f.end)
         visitExpr(*f.end);
     if (f.step)
         visitExpr(*f.step);
-    forStack_.push_back(fc->var);
+    forStack_.push_back(f.var);
     {
         ScopeTracker::ScopedScope scope(scopes_);
         for (const auto &bs : f.body)
@@ -287,54 +286,52 @@ void SemanticAnalyzer::analyzeRandomize(const RandomizeStmt &r)
     }
 }
 
-void SemanticAnalyzer::analyzeInput(const InputStmt &inp)
+void SemanticAnalyzer::analyzeInput(InputStmt &inp)
 {
     if (inp.prompt)
         visitExpr(*inp.prompt);
-    auto *ic = const_cast<InputStmt *>(&inp);
-    resolveAndTrackSymbol(ic->var, SymbolKind::InputTarget);
+    resolveAndTrackSymbol(inp.var, SymbolKind::InputTarget);
 }
 
-void SemanticAnalyzer::analyzeDim(const DimStmt &d)
+void SemanticAnalyzer::analyzeDim(DimStmt &d)
 {
-    auto *dc = const_cast<DimStmt *>(&d);
     long long sz = -1;
-    if (dc->isArray)
+    if (d.isArray)
     {
-        if (dc->size)
+        if (d.size)
         {
-            auto ty = visitExpr(*dc->size);
+            auto ty = visitExpr(*d.size);
             if (ty != Type::Unknown && ty != Type::Int)
             {
                 std::string msg = "size type mismatch";
-                de.emit(il::support::Severity::Error, "B2001", dc->loc, 1, std::move(msg));
+                de.emit(il::support::Severity::Error, "B2001", d.loc, 1, std::move(msg));
             }
-            if (auto *ci = dynamic_cast<const IntExpr *>(dc->size.get()))
+            if (auto *ci = dynamic_cast<const IntExpr *>(d.size.get()))
             {
                 sz = ci->value;
                 if (sz <= 0)
                 {
                     std::string msg = "array size must be positive";
-                    de.emit(il::support::Severity::Error, "B2003", dc->loc, 1, std::move(msg));
+                    de.emit(il::support::Severity::Error, "B2003", d.loc, 1, std::move(msg));
                 }
             }
         }
     }
     if (scopes_.hasScope())
     {
-        if (scopes_.isDeclaredInCurrentScope(dc->name))
+        if (scopes_.isDeclaredInCurrentScope(d.name))
         {
-            std::string msg = "duplicate local '" + dc->name + "'";
+            std::string msg = "duplicate local '" + d.name + "'";
             de.emit(il::support::Severity::Error,
                     "B1006",
-                    dc->loc,
-                    static_cast<uint32_t>(dc->name.size()),
+                    d.loc,
+                    static_cast<uint32_t>(d.name.size()),
                     std::move(msg));
         }
         else
         {
-            std::string unique = scopes_.declareLocal(dc->name);
-            dc->name = unique;
+            std::string unique = scopes_.declareLocal(d.name);
+            d.name = unique;
             auto insertResult = symbols_.insert(unique);
             if (insertResult.second && activeProcScope_)
                 activeProcScope_->noteSymbolInserted(unique);
@@ -342,33 +339,33 @@ void SemanticAnalyzer::analyzeDim(const DimStmt &d)
     }
     else
     {
-        auto insertResult = symbols_.insert(dc->name);
+        auto insertResult = symbols_.insert(d.name);
         if (insertResult.second && activeProcScope_)
-            activeProcScope_->noteSymbolInserted(dc->name);
+            activeProcScope_->noteSymbolInserted(d.name);
     }
-    if (dc->isArray)
+    if (d.isArray)
     {
-        auto itArray = arrays_.find(dc->name);
+        auto itArray = arrays_.find(d.name);
         if (activeProcScope_)
         {
             std::optional<long long> previous;
             if (itArray != arrays_.end())
                 previous = itArray->second;
-            activeProcScope_->noteArrayMutation(dc->name, previous);
+            activeProcScope_->noteArrayMutation(d.name, previous);
         }
-        arrays_[dc->name] = sz;
+        arrays_[d.name] = sz;
     }
     else
     {
-        auto itType = varTypes_.find(dc->name);
+        auto itType = varTypes_.find(d.name);
         if (activeProcScope_)
         {
             std::optional<Type> previous;
             if (itType != varTypes_.end())
                 previous = itType->second;
-            activeProcScope_->noteVarTypeMutation(dc->name, previous);
+            activeProcScope_->noteVarTypeMutation(d.name, previous);
         }
-        varTypes_[dc->name] = astToSemanticType(dc->type);
+        varTypes_[d.name] = astToSemanticType(d.type);
     }
 }
 
