@@ -68,6 +68,10 @@ add_executable(test_il_parse_first_error unit/test_il_parse_first_error.cpp)
 target_link_libraries(test_il_parse_first_error PRIVATE il_core il_io il_api)
 add_test(NAME test_il_parse_first_error COMMAND test_il_parse_first_error)
 
+add_executable(test_il_parse_global_missing_quotes unit/test_il_parse_global_missing_quotes.cpp)
+target_link_libraries(test_il_parse_global_missing_quotes PRIVATE il_core il_io il_api)
+add_test(NAME test_il_parse_global_missing_quotes COMMAND test_il_parse_global_missing_quotes)
+
 add_executable(test_il_parse_invalid_type unit/test_il_parse_invalid_type.cpp)
 target_link_libraries(test_il_parse_invalid_type PRIVATE il_core il_io il_api)
 add_test(NAME test_il_parse_invalid_type COMMAND test_il_parse_invalid_type)
