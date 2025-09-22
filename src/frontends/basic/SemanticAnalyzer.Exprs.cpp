@@ -23,7 +23,7 @@ using semantic_analyzer_detail::levenshtein;
 using semantic_analyzer_detail::logicalOpName;
 using semantic_analyzer_detail::semanticTypeName;
 
-class SemanticAnalyzerExprVisitor final : public ExprVisitor
+class SemanticAnalyzerExprVisitor final : public MutExprVisitor
 {
   public:
     explicit SemanticAnalyzerExprVisitor(SemanticAnalyzer &analyzer) noexcept
@@ -31,33 +31,22 @@ class SemanticAnalyzerExprVisitor final : public ExprVisitor
     {
     }
 
-    void visit(const IntExpr &) override { result_ = SemanticAnalyzer::Type::Int; }
-    void visit(const FloatExpr &) override { result_ = SemanticAnalyzer::Type::Float; }
-    void visit(const StringExpr &) override { result_ = SemanticAnalyzer::Type::String; }
-    void visit(const BoolExpr &) override { result_ = SemanticAnalyzer::Type::Bool; }
+    void visit(IntExpr &) override { result_ = SemanticAnalyzer::Type::Int; }
+    void visit(FloatExpr &) override { result_ = SemanticAnalyzer::Type::Float; }
+    void visit(StringExpr &) override { result_ = SemanticAnalyzer::Type::String; }
+    void visit(BoolExpr &) override { result_ = SemanticAnalyzer::Type::Bool; }
 
-    void visit(const VarExpr &expr) override
-    {
-        auto &mutableExpr = const_cast<VarExpr &>(expr);
-        result_ = analyzer_.analyzeVar(mutableExpr);
-    }
+    void visit(VarExpr &expr) override { result_ = analyzer_.analyzeVar(expr); }
 
-    void visit(const ArrayExpr &expr) override
-    {
-        auto &mutableExpr = const_cast<ArrayExpr &>(expr);
-        result_ = analyzer_.analyzeArray(mutableExpr);
-    }
+    void visit(ArrayExpr &expr) override { result_ = analyzer_.analyzeArray(expr); }
 
-    void visit(const UnaryExpr &expr) override { result_ = analyzer_.analyzeUnary(expr); }
+    void visit(UnaryExpr &expr) override { result_ = analyzer_.analyzeUnary(expr); }
 
-    void visit(const BinaryExpr &expr) override { result_ = analyzer_.analyzeBinary(expr); }
+    void visit(BinaryExpr &expr) override { result_ = analyzer_.analyzeBinary(expr); }
 
-    void visit(const BuiltinCallExpr &expr) override
-    {
-        result_ = analyzer_.analyzeBuiltinCall(expr);
-    }
+    void visit(BuiltinCallExpr &expr) override { result_ = analyzer_.analyzeBuiltinCall(expr); }
 
-    void visit(const CallExpr &expr) override { result_ = analyzer_.analyzeCall(expr); }
+    void visit(CallExpr &expr) override { result_ = analyzer_.analyzeCall(expr); }
 
     [[nodiscard]] SemanticAnalyzer::Type result() const noexcept { return result_; }
 
@@ -308,7 +297,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
     return Type::Int;
 }
 
-SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(const Expr &e)
+SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(Expr &e)
 {
     SemanticAnalyzerExprVisitor visitor(*this);
     e.accept(visitor);
