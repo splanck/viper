@@ -463,6 +463,7 @@ Module Lowerer::lowerProgram(const Program &prog)
     builder = &b;
 
     mangler = NameMangler();
+    nextTemp = 0;
     lineBlocks.clear();
     varSlots.clear();
     arrayLenSlots.clear();
@@ -577,9 +578,6 @@ void Lowerer::buildProcedureSkeleton(Function &f,
     blockNamer = std::make_unique<BlockNamer>(name);
 
     builder->addBlock(f, blockNamer->entry());
-
-    for (size_t i = 0; i < metadata.paramCount; ++i)
-        mangler.nextTemp();
 
     size_t blockIndex = 1;
     for (const auto *stmt : metadata.bodyStmts)
@@ -702,6 +700,7 @@ void Lowerer::lowerProcedure(const std::string &name,
 
     Function &f = builder->startFunction(name, config.retType, metadata.irParams);
     func = &f;
+    nextTemp = func->valueNames.size();
 
     buildProcedureSkeleton(f, name, metadata);
 
@@ -786,6 +785,7 @@ void Lowerer::resetLoweringState()
     varTypes.clear();
     lineBlocks.clear();
     boundsCheckId = 0;
+    nextTemp = 0;
 }
 
 /// @brief Allocate stack storage for incoming parameters and record their types.

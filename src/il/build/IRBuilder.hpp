@@ -95,6 +95,10 @@ class IRBuilder
     /// @param v Optional return value.
     void emitRet(const std::optional<Value> &v, il::support::SourceLoc loc);
 
+    /// @brief Reserve the next SSA temporary identifier for the active function.
+    /// @return Newly assigned temporary id.
+    unsigned reserveTempId();
+
   private:
     Module &mod;                   ///< Module being constructed
     Function *curFunc{nullptr};    ///< Current function

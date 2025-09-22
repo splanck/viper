@@ -28,6 +28,24 @@ bool entryHasAlloca(const il::core::Function &fn)
     return false;
 }
 
+bool tempsHaveNames(const il::core::Function &fn)
+{
+    for (const auto &bb : fn.blocks)
+    {
+        for (const auto &instr : bb.instructions)
+        {
+            if (!instr.result)
+                continue;
+            unsigned id = *instr.result;
+            if (fn.valueNames.size() <= id)
+                return false;
+            if (fn.valueNames[id].empty())
+                return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 int main()
@@ -61,5 +79,7 @@ int main()
     assert(mainFn && funcF);
     assert(entryHasAlloca(*mainFn));
     assert(entryHasAlloca(*funcF));
+    assert(tempsHaveNames(*mainFn));
+    assert(tempsHaveNames(*funcF));
     return 0;
 }
