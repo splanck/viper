@@ -77,24 +77,15 @@ class LowererExprVisitor final : public ExprVisitor
 
     void visit(const CallExpr &expr) override
     {
-        const Function *callee = nullptr;
-        if (lowerer_.mod)
-        {
-            for (const auto &f : lowerer_.mod->functions)
-                if (f.name == expr.callee)
-                {
-                    callee = &f;
-                    break;
-                }
-        }
+        const auto *signature = lowerer_.findProcSignature(expr.callee);
         std::vector<Value> args;
         args.reserve(expr.args.size());
         for (size_t i = 0; i < expr.args.size(); ++i)
         {
             Lowerer::RVal arg = lowerer_.lowerExpr(*expr.args[i]);
-            if (callee && i < callee->params.size())
+            if (signature && i < signature->paramTypes.size())
             {
-                il::core::Type paramTy = callee->params[i].type;
+                il::core::Type paramTy = signature->paramTypes[i];
                 if (paramTy.kind == il::core::Type::Kind::F64)
                 {
                     arg = lowerer_.coerceToF64(std::move(arg), expr.loc);
@@ -107,10 +98,10 @@ class LowererExprVisitor final : public ExprVisitor
             args.push_back(arg.value);
         }
         lowerer_.curLoc = expr.loc;
-        if (callee && callee->retType.kind != il::core::Type::Kind::Void)
+        if (signature && signature->retType.kind != il::core::Type::Kind::Void)
         {
-            Value res = lowerer_.emitCallRet(callee->retType, expr.callee, args);
-            result_ = Lowerer::RVal{res, callee->retType};
+            Value res = lowerer_.emitCallRet(signature->retType, expr.callee, args);
+            result_ = Lowerer::RVal{res, signature->retType};
         }
         else
         {
