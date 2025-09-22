@@ -267,9 +267,12 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
     const auto *desc = il::runtime::findRuntimeDescriptor(name);
     if (!desc)
     {
-        assert(false && "unknown runtime call");
+        std::ostringstream os;
+        os << "unknown runtime helper '" << name << "'";
+        RuntimeBridge::trap(os.str(), loc, fn, block);
+        return res;
     }
-    else if (checkArgs(desc->signature.paramTypes.size()))
+    if (checkArgs(desc->signature.paramTypes.size()))
     {
         const auto &sig = desc->signature;
         std::vector<void *> rawArgs(sig.paramTypes.size());
