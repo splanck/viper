@@ -138,7 +138,7 @@ Slot VM::runFunctionLoop(ExecState &st)
         const Instr &in = st.bb->instructions[st.ip];
         if (auto br = processDebugControl(st, &in, false))
             return *br;
-        tracer.onStep(in, st.fr);
+        tracer.onStep(in, st.fr, st.bb, st.ip);
         ++instrCount;
         auto res = executeOpcode(st.fr, in, st.blocks, st.bb, st.ip);
         if (res.returned)

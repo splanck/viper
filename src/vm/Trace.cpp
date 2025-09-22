@@ -99,34 +99,40 @@ TraceSink::TraceSink(TraceConfig cfg) : cfg(cfg)
 #endif
 }
 
-void TraceSink::onStep(const il::core::Instr &in, const Frame &fr)
+void TraceSink::onStep(const il::core::Instr &in,
+                       const Frame &fr,
+                       const il::core::BasicBlock *blk,
+                       size_t ip)
 {
     if (!cfg.enabled())
         return;
     LocaleGuard lg(std::cerr);
     std::cerr << std::noboolalpha << std::dec;
     const auto *fn = fr.func;
-    const il::core::BasicBlock *blk = nullptr;
-    size_t ip = 0;
-    for (const auto &b : fn->blocks)
+    const il::core::BasicBlock *block = blk;
+    size_t index = ip;
+    if (!block)
     {
-        for (size_t i = 0; i < b.instructions.size(); ++i)
+        for (const auto &b : fn->blocks)
         {
-            if (&b.instructions[i] == &in)
+            for (size_t i = 0; i < b.instructions.size(); ++i)
             {
-                blk = &b;
-                ip = i;
-                break;
+                if (&b.instructions[i] == &in)
+                {
+                    block = &b;
+                    index = i;
+                    break;
+                }
             }
+            if (block)
+                break;
         }
-        if (blk)
-            break;
     }
-    if (!blk)
+    if (!block)
         return;
     if (cfg.mode == TraceConfig::IL)
     {
-        std::cerr << "[IL] fn=@" << fn->name << " blk=" << blk->label << " ip=#" << ip
+        std::cerr << "[IL] fn=@" << fn->name << " blk=" << block->label << " ip=#" << index
                   << " op=" << il::core::toString(in.op);
         if (!in.operands.empty())
         {
@@ -170,8 +176,8 @@ void TraceSink::onStep(const il::core::Instr &in, const Frame &fr)
                 }
             }
         }
-        std::cerr << "[SRC] " << locStr << "  (fn=@" << fn->name << " blk=" << blk->label << " ip=#"
-                  << ip << ')';
+        std::cerr << "[SRC] " << locStr << "  (fn=@" << fn->name << " blk=" << block->label
+                  << " ip=#" << index << ')';
         if (!srcLine.empty())
             std::cerr << "  " << srcLine;
         std::cerr << '\n' << std::flush;

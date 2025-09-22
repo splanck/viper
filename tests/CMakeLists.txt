@@ -119,7 +119,11 @@ target_include_directories(test_tools_break_parsing PRIVATE ${CMAKE_SOURCE_DIR}/
 add_test(NAME test_tools_break_parsing COMMAND test_tools_break_parsing)
 
 add_executable(test_vm_trace_il vm/TraceILTests.cpp)
-add_test(NAME test_vm_trace_il COMMAND test_vm_trace_il $<TARGET_FILE:ilc> ${CMAKE_SOURCE_DIR}/examples/il/trace_min.il ${CMAKE_SOURCE_DIR}/tests/vm/trace_min.trace)
+add_test(NAME test_vm_trace_il COMMAND test_vm_trace_il
+  $<TARGET_FILE:ilc>
+  ${CMAKE_SOURCE_DIR}/examples/il/trace_min.il
+  ${CMAKE_SOURCE_DIR}/tests/vm/trace_min.trace
+  ${CMAKE_SOURCE_DIR}/tests/vm/trace_min_src.trace)
 add_executable(test_vm_break_label vm/BreakLabelTests.cpp)
 add_test(NAME test_vm_break_label COMMAND test_vm_break_label $<TARGET_FILE:ilc> ${CMAKE_SOURCE_DIR}/examples/il/break_label.il)
 add_executable(test_vm_debug_script vm/DebugScriptTests.cpp)

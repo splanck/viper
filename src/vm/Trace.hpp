@@ -5,9 +5,12 @@
 // Links: docs/dev/vm.md
 #pragma once
 
+#include <cstddef>
+
 namespace il::core
 {
 struct Instr;
+struct BasicBlock;
 } // namespace il::core
 
 namespace il::support
@@ -46,7 +49,14 @@ class TraceSink
     explicit TraceSink(TraceConfig cfg = {});
 
     /// @brief Record execution of instruction @p in within frame @p fr.
-    void onStep(const il::core::Instr &in, const Frame &fr);
+    /// @param blk Optional basic block containing @p in. When null, the sink
+    ///            will locate the instruction by scanning the function.
+    /// @param ip  Instruction index within @p blk. Ignored when @p blk is
+    ///            omitted and recomputed via the fallback scan.
+    void onStep(const il::core::Instr &in,
+                const Frame &fr,
+                const il::core::BasicBlock *blk = nullptr,
+                size_t ip = 0);
 
   private:
     TraceConfig cfg; ///< Active configuration

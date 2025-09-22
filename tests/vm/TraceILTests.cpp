@@ -11,34 +11,48 @@
 
 int main(int argc, char **argv)
 {
-    if (argc != 4)
+    if (argc != 5)
     {
-        std::cerr << "usage: TraceILTests <ilc> <il file> <golden>\n";
+        std::cerr << "usage: TraceILTests <ilc> <il file> <il golden> <src golden>\n";
         return 1;
     }
     std::string ilc = argv[1];
     std::string ilFile = argv[2];
-    std::string golden = argv[3];
-    std::string outFile = "trace.out";
-    std::string cmd = ilc + " -run " + ilFile + " --trace=il 2>" + outFile;
+    std::string ilGolden = argv[3];
+    std::string srcGolden = argv[4];
+    auto checkTrace = [](const std::string &outPath,
+                         const std::string &goldPath,
+                         const char *label) -> bool {
+        std::ifstream out(outPath);
+        std::ifstream gold(goldPath);
+        std::string o, g;
+        while (std::getline(out, o))
+        {
+            if (!std::getline(gold, g) || o != g)
+            {
+                std::cerr << label << " trace mismatch\n";
+                return false;
+            }
+        }
+        if (std::getline(gold, g))
+        {
+            std::cerr << label << " golden has extra lines\n";
+            return false;
+        }
+        return true;
+    };
+    std::string ilOutFile = "trace_il.out";
+    std::string cmd = ilc + " -run " + ilFile + " --trace=il 2>" + ilOutFile;
     if (std::system(cmd.c_str()) != 0)
         return 1;
-    std::ifstream out(outFile);
-    std::ifstream gold(golden);
-    std::string o, g;
-    while (std::getline(out, o))
-    {
-        if (!std::getline(gold, g) || o != g)
-        {
-            std::cerr << "trace mismatch\n";
-            return 1;
-        }
-    }
-    if (std::getline(gold, g))
-    {
-        std::cerr << "golden has extra lines\n";
+    if (!checkTrace(ilOutFile, ilGolden, "IL"))
         return 1;
-    }
+    std::string srcOutFile = "trace_src.out";
+    cmd = ilc + " -run " + ilFile + " --trace=src 2>" + srcOutFile;
+    if (std::system(cmd.c_str()) != 0)
+        return 1;
+    if (!checkTrace(srcOutFile, srcGolden, "SRC"))
+        return 1;
     std::string noneFile = "none.out";
     cmd = ilc + " -run " + ilFile + " 2>" + noneFile;
     if (std::system(cmd.c_str()) != 0)
@@ -49,7 +63,8 @@ int main(int argc, char **argv)
         std::cerr << "trace emitted without flag\n";
         return 1;
     }
-    std::remove(outFile.c_str());
+    std::remove(ilOutFile.c_str());
+    std::remove(srcOutFile.c_str());
     std::remove(noneFile.c_str());
     return 0;
 }
