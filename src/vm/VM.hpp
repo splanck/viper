@@ -6,6 +6,7 @@
 #pragma once
 
 #include "vm/Debug.hpp"
+#include "vm/RuntimeBridge.hpp"
 #include "vm/Trace.hpp"
 #include "il/core/fwd.hpp"
 #include "il/core/Opcode.hpp"
@@ -155,6 +156,9 @@ class VM
     /// @brief Interned runtime strings.
     /// @ownership Owned by the VM; manages @c rt_string handles.
     std::unordered_map<std::string, rt_string> strMap;
+
+    /// @brief Trap metadata for the currently executing runtime call.
+    RuntimeCallContext runtimeContext;
 
     /// @brief Execute function @p fn with optional arguments.
     /// @param fn Function to execute.
