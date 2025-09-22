@@ -11,6 +11,8 @@
  * Allocate a block of memory for runtime usage.
  *
  * @param bytes Number of bytes to allocate. Must be non-negative.
+ *              A zero-byte request yields a one-byte allocation to ensure a
+ *              non-null result.
  * @return Pointer to allocated memory, or traps on invalid input or failure.
  */
 void *rt_alloc(int64_t bytes)
@@ -22,7 +24,10 @@ void *rt_alloc(int64_t bytes)
         rt_trap("allocation too large");
         return NULL;
     }
-    void *p = malloc((size_t)bytes);
+    size_t request = (size_t)bytes;
+    if (request == 0)
+        request = 1;
+    void *p = malloc(request);
     if (!p)
         rt_trap("out of memory");
     return p;
