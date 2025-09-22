@@ -15,6 +15,14 @@ namespace il::vm
 
 union Slot; // defined in VM.hpp
 
+/// @brief Stores runtime call metadata for trap diagnostics.
+struct RuntimeCallContext
+{
+    il::support::SourceLoc loc{}; ///< Source location of the active runtime call.
+    std::string function;         ///< Name of the calling function.
+    std::string block;            ///< Label of the calling basic block.
+};
+
 /// @brief Provides entry points from the VM into the C runtime library.
 class RuntimeBridge
 {
@@ -26,7 +34,8 @@ class RuntimeBridge
     /// @param fn Calling function name.
     /// @param block Calling block label.
     /// @return Result slot from runtime call.
-    static Slot call(const std::string &name,
+    static Slot call(RuntimeCallContext &ctx,
+                     const std::string &name,
                      const std::vector<Slot> &args,
                      const il::support::SourceLoc &loc,
                      const std::string &fn,
@@ -38,6 +47,10 @@ class RuntimeBridge
                      const il::support::SourceLoc &loc,
                      const std::string &fn,
                      const std::string &block);
+
+    /// @brief Access the runtime call context active on the current thread.
+    /// @return Pointer to the call context when a runtime call is executing; nullptr otherwise.
+    static const RuntimeCallContext *activeContext();
 };
 
 } // namespace il::vm

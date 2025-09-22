@@ -164,7 +164,7 @@ VM::ExecResult OpHandlers::handleCall(VM &vm,
     if (it != vm.fnMap.end())
         out = vm.execFunction(*it->second, args);
     else
-        out = RuntimeBridge::call(in.callee, args, in.loc, fr.func->name, bb->label);
+        out = RuntimeBridge::call(vm.runtimeContext, in.callee, args, in.loc, fr.func->name, bb->label);
     ops::storeResult(fr, in, out);
     return {};
 }

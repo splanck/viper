@@ -15,30 +15,55 @@ using il::support::SourceLoc;
 
 namespace
 {
+using il::vm::RuntimeCallContext;
 using il::vm::Slot;
 using il::core::Type;
 
-/// @brief Global scratch space for recording the current source location.
-/// @details Runtime calls may trigger traps inside the C runtime. The VM
-/// populates these globals prior to dispatch so that the hook `vm_trap` can
-/// report a precise function/block/SourceLoc. They are cleared after every call.
-SourceLoc curLoc{};
-/// @brief Fully qualified name of the function currently executing.
-std::string curFn;
-/// @brief Label of the current basic block within the function.
-std::string curBlock;
+/// @brief Thread-local pointer to the runtime call context for active trap reporting.
+thread_local RuntimeCallContext *tlsContext = nullptr;
+
+struct ContextGuard
+{
+    RuntimeCallContext *previous;
+    RuntimeCallContext *current;
+
+    explicit ContextGuard(RuntimeCallContext &ctx) : previous(tlsContext), current(&ctx)
+    {
+        tlsContext = &ctx;
+    }
+
+    ~ContextGuard()
+    {
+        if (current)
+        {
+            current->loc = {};
+            current->function.clear();
+            current->block.clear();
+        }
+        tlsContext = previous;
+    }
+};
 
 } // namespace
 
 /// @brief Entry point invoked from the C runtime when a trap occurs.
 /// @details Serves as the external hook that the C runtime calls when
 /// `rt_abort`-style routines detect a fatal condition. The VM stores call-site
-/// context in globals via `RuntimeBridge::call`; this hook relays the trap
-/// through `RuntimeBridge::trap` so diagnostics carry function, block, and
-/// source information.
+/// context in a thread-local pointer via `RuntimeBridge::call`; this hook relays
+/// the trap through `RuntimeBridge::trap` so diagnostics carry function, block,
+/// and source information.
+#if defined(__GNUC__)
+extern "C" __attribute__((weak)) void vm_trap(const char *msg)
+#else
 extern "C" void vm_trap(const char *msg)
+#endif
 {
-    il::vm::RuntimeBridge::trap(msg ? msg : "trap", curLoc, curFn, curBlock);
+    const auto *ctx = il::vm::RuntimeBridge::activeContext();
+    const char *trapMsg = msg ? msg : "trap";
+    if (ctx)
+        il::vm::RuntimeBridge::trap(trapMsg, ctx->loc, ctx->function, ctx->block);
+    else
+        il::vm::RuntimeBridge::trap(trapMsg, {}, "", "");
 }
 
 namespace il::vm
@@ -48,17 +73,19 @@ namespace il::vm
 /// @details Establishes the trap bookkeeping for the duration of the call,
 /// validates the arity against the lazily initialized dispatch table, and then
 /// executes the bound C adapter. Any trap that fires while the callee runs is
-/// able to surface precise context through the globals populated here.
-Slot RuntimeBridge::call(const std::string &name,
+/// able to surface precise context through the thread-local state populated
+/// here.
+Slot RuntimeBridge::call(RuntimeCallContext &ctx,
+                         const std::string &name,
                          const std::vector<Slot> &args,
                          const SourceLoc &loc,
                          const std::string &fn,
                          const std::string &block)
 {
-    // Stash call site info so `vm_trap` can find it if the callee traps.
-    curLoc = loc;
-    curFn = fn;
-    curBlock = block;
+    ctx.loc = loc;
+    ctx.function = fn;
+    ctx.block = block;
+    ContextGuard guard(ctx);
     Slot res{};
     auto checkArgs = [&](size_t count)
     {
@@ -154,9 +181,6 @@ Slot RuntimeBridge::call(const std::string &name,
                 break;
         }
     }
-    curLoc = {};
-    curFn.clear();
-    curBlock.clear();
     return res;
 }
 
@@ -182,6 +206,11 @@ void RuntimeBridge::trap(const std::string &msg,
             os << " (" << loc.file_id << ':' << loc.line << ':' << loc.column << ')';
     }
     rt_abort(os.str().c_str());
+}
+
+const RuntimeCallContext *RuntimeBridge::activeContext()
+{
+    return tlsContext;
 }
 
 } // namespace il::vm
