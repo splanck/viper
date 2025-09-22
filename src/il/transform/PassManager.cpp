@@ -24,6 +24,7 @@
 #include "il/core/Value.hpp"
 #include "il/core/Module.hpp"
 #include "il/verify/Verifier.hpp"
+#include <algorithm>
 #include <utility>
 
 using namespace il::core;
@@ -34,11 +35,81 @@ namespace
 {
 struct BlockState
 {
-    std::unordered_set<unsigned> defs;
-    std::unordered_set<unsigned> uses;
-    std::unordered_set<unsigned> liveIn;
-    std::unordered_set<unsigned> liveOut;
+    explicit BlockState(std::size_t valueCount = 0)
+        : defs(valueCount, false),
+          uses(valueCount, false),
+          liveIn(valueCount, false),
+          liveOut(valueCount, false)
+    {
+    }
+
+    std::vector<bool> defs;
+    std::vector<bool> uses;
+    std::vector<bool> liveIn;
+    std::vector<bool> liveOut;
 };
+
+std::size_t determineValueCapacity(const core::Function &fn)
+{
+    unsigned maxId = 0;
+    bool sawId = false;
+    auto noteId = [&](unsigned id) {
+        maxId = std::max(maxId, id);
+        sawId = true;
+    };
+
+    for (const auto &param : fn.params)
+        noteId(param.id);
+
+    for (const auto &block : fn.blocks)
+    {
+        for (const auto &param : block.params)
+            noteId(param.id);
+
+        for (const auto &instr : block.instructions)
+        {
+            for (const auto &operand : instr.operands)
+            {
+                if (operand.kind == Value::Kind::Temp)
+                    noteId(operand.id);
+            }
+            for (const auto &argList : instr.brArgs)
+            {
+                for (const auto &arg : argList)
+                {
+                    if (arg.kind == Value::Kind::Temp)
+                        noteId(arg.id);
+                }
+            }
+            if (instr.result)
+                noteId(*instr.result);
+        }
+    }
+
+    std::size_t capacity = sawId ? static_cast<std::size_t>(maxId) + 1 : 0;
+    if (fn.valueNames.size() > capacity)
+        capacity = fn.valueNames.size();
+    return capacity;
+}
+
+inline void setBit(std::vector<bool> &bits, unsigned id)
+{
+    assert(id < bits.size());
+    if (id < bits.size())
+        bits[id] = true;
+}
+
+inline void mergeBits(std::vector<bool> &dst, const std::vector<bool> &src)
+{
+    assert(dst.size() == src.size());
+    for (std::size_t idx = 0; idx < dst.size(); ++idx)
+    {
+        if (src[idx])
+            dst[idx] = true;
+    }
+}
+
+} // namespace
 
 /// @brief Construct predecessor and successor relationships for a function.
 /// @details Creates an empty adjacency entry for each basic block, then scans
@@ -79,44 +150,63 @@ CFGInfo buildCFG(core::Module &, core::Function &fn)
     return info;
 }
 /// @brief Compute liveness information for each block within @p fn.
-/// @details Builds a CFG, records block-local def/use sets, and then iterates a
-/// backward data-flow fixpoint that pushes successor live-in values to
+/// @details Builds a CFG, records block-local def/use bitsets, and then
+/// iterates a backward data-flow fixpoint that pushes successor live-in bits to
 /// predecessors until convergence. The temporary BlockState map is mutated
-/// during iteration, after which the final live-in/live-out sets are copied into
-/// the returned LivenessInfo structure. Neither @p module nor @p fn is mutated.
+/// during iteration, after which the final live-in/live-out bitsets are moved
+/// into the returned LivenessInfo structure. Neither @p module nor @p fn is
+/// mutated.
 /// @param module Owning module used for analysis context.
 /// @param fn Function whose live-in/live-out sets should be determined.
 /// @return Liveness summary describing values live on block entry and exit.
 LivenessInfo computeLiveness(core::Module &module, core::Function &fn)
 {
     CFGInfo cfg = buildCFG(module, fn);
+    const std::size_t valueCount = determineValueCapacity(fn);
+
     std::unordered_map<const BasicBlock *, BlockState> states;
+    states.reserve(fn.blocks.size());
 
     for (auto &block : fn.blocks)
     {
-        BlockState &state = states[&block];
+        auto insertResult = states.emplace(&block, BlockState(valueCount));
+        BlockState &state = insertResult.first->second;
+
         for (const auto &param : block.params)
-            state.defs.insert(param.id);
+            setBit(state.defs, param.id);
 
         for (const auto &instr : block.instructions)
         {
             for (const auto &operand : instr.operands)
             {
-                if (operand.kind == Value::Kind::Temp && !state.defs.count(operand.id))
-                    state.uses.insert(operand.id);
+                if (operand.kind != Value::Kind::Temp)
+                    continue;
+                const unsigned id = operand.id;
+                if (id >= valueCount)
+                    continue;
+                if (!state.defs[id])
+                    state.uses[id] = true;
             }
             for (const auto &argList : instr.brArgs)
             {
                 for (const auto &arg : argList)
                 {
-                    if (arg.kind == Value::Kind::Temp && !state.defs.count(arg.id))
-                        state.uses.insert(arg.id);
+                    if (arg.kind != Value::Kind::Temp)
+                        continue;
+                    const unsigned id = arg.id;
+                    if (id >= valueCount)
+                        continue;
+                    if (!state.defs[id])
+                        state.uses[id] = true;
                 }
             }
             if (instr.result)
-                state.defs.insert(*instr.result);
+                setBit(state.defs, *instr.result);
         }
     }
+
+    std::vector<bool> scratchOut(valueCount, false);
+    std::vector<bool> scratchIn(valueCount, false);
 
     bool changed = true;
     while (changed)
@@ -127,41 +217,44 @@ LivenessInfo computeLiveness(core::Module &module, core::Function &fn)
             const BasicBlock *block = &*it;
             BlockState &state = states[block];
 
-            std::unordered_set<unsigned> newOut;
+            std::fill(scratchOut.begin(), scratchOut.end(), false);
             for (const BasicBlock *succ : cfg.successors[block])
             {
-                BlockState &succState = states[succ];
-                newOut.insert(succState.liveIn.begin(), succState.liveIn.end());
+                const BlockState &succState = states[succ];
+                mergeBits(scratchOut, succState.liveIn);
             }
-            if (newOut != state.liveOut)
+            if (scratchOut != state.liveOut)
             {
-                state.liveOut = std::move(newOut);
+                state.liveOut = scratchOut;
                 changed = true;
             }
 
-            std::unordered_set<unsigned> newIn = state.uses;
-            for (unsigned value : state.liveOut)
+            scratchIn = state.uses;
+            for (std::size_t idx = 0; idx < valueCount; ++idx)
             {
-                if (!state.defs.count(value))
-                    newIn.insert(value);
+                if (state.liveOut[idx] && !state.defs[idx])
+                    scratchIn[idx] = true;
             }
-            if (newIn != state.liveIn)
+            if (scratchIn != state.liveIn)
             {
-                state.liveIn = std::move(newIn);
+                state.liveIn = scratchIn;
                 changed = true;
             }
         }
     }
 
     LivenessInfo info;
+    info.valueCount_ = valueCount;
     for (auto &[block, state] : states)
     {
-        info.liveIn[block] = state.liveIn;
-        info.liveOut[block] = state.liveOut;
+        info.liveInBits_.emplace(block, std::move(state.liveIn));
+        info.liveOutBits_.emplace(block, std::move(state.liveOut));
     }
     return info;
 }
 
+namespace
+{
 /// @brief Adapter that wraps a module-pass callback into the ModulePass API.
 /// @details Captures a module pass identifier and callback so the pass manager
 /// can lazily produce ModulePass instances. Construction mutates only the
