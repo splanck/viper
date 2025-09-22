@@ -253,10 +253,12 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
     Slot res{};
     auto checkArgs = [&](size_t count)
     {
-        if (args.size() < count)
+        if (args.size() != count)
         {
             std::ostringstream os;
             os << name << ": expected " << count << " argument(s), got " << args.size();
+            if (args.size() > count)
+                os << " (excess runtime operands)";
             RuntimeBridge::trap(os.str(), loc, fn, block);
             return false;
         }
