@@ -261,4 +261,15 @@ void IRBuilder::emitRet(const std::optional<Value> &v, il::support::SourceLoc lo
     append(std::move(instr));
 }
 
+/// @brief Reserve the next SSA temporary identifier for the currently active function.
+/// @return Identifier assigned to the new temporary.
+unsigned IRBuilder::reserveTempId()
+{
+    assert(curFunc && "reserveTempId requires an active function");
+    unsigned id = nextTemp++;
+    if (curFunc->valueNames.size() <= id)
+        curFunc->valueNames.resize(id + 1);
+    return id;
+}
+
 } // namespace il::build

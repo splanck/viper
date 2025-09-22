@@ -31,13 +31,13 @@ entry:
   br L0
 L0:
   .loc 1 4 7
-  %t1 = call @F()
+  %t0 = call @F()
   .loc 1 4 1
-  call @rt_print_i64(%t1)
+  call @rt_print_i64(%t0)
   .loc 1 4 1
-  %t2 = const_str @.L0
+  %t1 = const_str @.L0
   .loc 1 4 1
-  call @rt_print_str(%t2)
+  call @rt_print_str(%t1)
   .loc 1 4 1
   br exit
 exit:
