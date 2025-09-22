@@ -21,26 +21,71 @@ namespace il::frontends::basic
 using semantic_analyzer_detail::astToSemanticType;
 
 SemanticAnalyzer::ProcedureScope::ProcedureScope(SemanticAnalyzer &analyzer) noexcept
-    : analyzer_(analyzer),
-      savedSymbols_(analyzer.symbols_),
-      savedVarTypes_(analyzer.varTypes_),
-      savedArrays_(analyzer.arrays_),
-      savedLabels_(analyzer.labels_),
-      savedLabelRefs_(analyzer.labelRefs_),
-      savedForStack_(analyzer.forStack_)
+    : analyzer_(analyzer)
 {
+    previous_ = analyzer_.activeProcScope_;
+    analyzer_.activeProcScope_ = this;
+    forStackDepth_ = analyzer_.forStack_.size();
     analyzer_.scopes_.pushScope();
 }
 
 SemanticAnalyzer::ProcedureScope::~ProcedureScope() noexcept
 {
+    analyzer_.activeProcScope_ = previous_;
+    for (const auto &label : newLabelRefs_)
+        analyzer_.labelRefs_.erase(label);
+    for (const auto &label : newLabels_)
+        analyzer_.labels_.erase(label);
+    for (const auto &name : newSymbols_)
+        analyzer_.symbols_.erase(name);
+    for (const auto &delta : varTypeDeltas_)
+    {
+        if (delta.previous)
+            analyzer_.varTypes_[delta.name] = *delta.previous;
+        else
+            analyzer_.varTypes_.erase(delta.name);
+    }
+    for (const auto &delta : arrayDeltas_)
+    {
+        if (delta.previous)
+            analyzer_.arrays_[delta.name] = *delta.previous;
+        else
+            analyzer_.arrays_.erase(delta.name);
+    }
+    if (analyzer_.forStack_.size() > forStackDepth_)
+        analyzer_.forStack_.resize(forStackDepth_);
     analyzer_.scopes_.popScope();
-    analyzer_.symbols_ = std::move(savedSymbols_);
-    analyzer_.varTypes_ = std::move(savedVarTypes_);
-    analyzer_.arrays_ = std::move(savedArrays_);
-    analyzer_.labels_ = std::move(savedLabels_);
-    analyzer_.labelRefs_ = std::move(savedLabelRefs_);
-    analyzer_.forStack_ = std::move(savedForStack_);
+}
+
+void SemanticAnalyzer::ProcedureScope::noteSymbolInserted(const std::string &name)
+{
+    newSymbols_.push_back(name);
+}
+
+void SemanticAnalyzer::ProcedureScope::noteVarTypeMutation(const std::string &name,
+                                                           std::optional<Type> previous)
+{
+    if (!trackedVarTypes_.insert(name).second)
+        return;
+    varTypeDeltas_.push_back({name, previous});
+}
+
+void SemanticAnalyzer::ProcedureScope::noteArrayMutation(const std::string &name,
+                                                         std::optional<long long> previous)
+{
+    if (!trackedArrays_.insert(name).second)
+        return;
+    arrayDeltas_.push_back({name, previous});
+}
+
+void SemanticAnalyzer::ProcedureScope::noteLabelInserted(int label)
+{
+    newLabels_.push_back(label);
+}
+
+void SemanticAnalyzer::ProcedureScope::noteLabelRefInserted(int label)
+{
+    newLabelRefs_.push_back(label);
 }
 
 template <typename Proc, typename BodyCallback>
@@ -50,11 +95,40 @@ void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc, BodyCallback &&b
     for (const auto &p : proc.params)
     {
         scopes_.bind(p.name, p.name);
-        symbols_.insert(p.name);
+        auto insertResult = symbols_.insert(p.name);
+        if (insertResult.second && activeProcScope_)
+            activeProcScope_->noteSymbolInserted(p.name);
+
+        auto itType = varTypes_.find(p.name);
+        if (activeProcScope_)
+        {
+            std::optional<Type> previous;
+            if (itType != varTypes_.end())
+                previous = itType->second;
+            activeProcScope_->noteVarTypeMutation(p.name, previous);
+        }
         varTypes_[p.name] = astToSemanticType(p.type);
+
         if (p.is_array)
+        {
+            auto itArray = arrays_.find(p.name);
+            if (activeProcScope_)
+            {
+                std::optional<long long> previous;
+                if (itArray != arrays_.end())
+                    previous = itArray->second;
+                activeProcScope_->noteArrayMutation(p.name, previous);
+            }
             arrays_[p.name] = -1;
+        }
     }
+    for (const auto &st : proc.body)
+        if (st)
+        {
+            auto insertResult = labels_.insert(st->line);
+            if (insertResult.second && activeProcScope_)
+                activeProcScope_->noteLabelInserted(st->line);
+        }
     for (const auto &st : proc.body)
         if (st)
             visitStmt(*st);

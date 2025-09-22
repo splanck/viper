@@ -52,10 +52,13 @@ void SemanticAnalyzer::resolveAndTrackSymbol(std::string &name, SymbolKind kind)
     if (kind == SymbolKind::Reference)
         return;
 
-    symbols_.insert(name);
+    auto insertResult = symbols_.insert(name);
+    if (insertResult.second && activeProcScope_)
+        activeProcScope_->noteSymbolInserted(name);
 
     const bool forceDefault = kind == SymbolKind::InputTarget;
-    if (forceDefault || !varTypes_.count(name))
+    auto itType = varTypes_.find(name);
+    if (forceDefault || itType == varTypes_.end())
     {
         Type defaultType = Type::Int;
         if (!name.empty())
@@ -64,6 +67,13 @@ void SemanticAnalyzer::resolveAndTrackSymbol(std::string &name, SymbolKind kind)
                 defaultType = Type::String;
             else if (name.back() == '#')
                 defaultType = Type::Float;
+        }
+        if (activeProcScope_)
+        {
+            std::optional<Type> previous;
+            if (itType != varTypes_.end())
+                previous = itType->second;
+            activeProcScope_->noteVarTypeMutation(name, previous);
         }
         varTypes_[name] = defaultType;
     }
