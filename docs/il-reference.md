@@ -15,7 +15,7 @@ Viper IL is the project’s "thin waist" intermediate language designed to sit b
 * **Explicit control flow** – each basic block ends with exactly one terminator; no fallthrough.
 * **Static types** – a minimal set of primitive types (`i1`, `i64`, `f64`, `ptr`, `str`, `void`).
 
-Execution is organized as functions consisting of labelled basic blocks.  Modules may execute either under the IL virtual machine interpreter or after lowering to native code through a C runtime.  Front ends such as BASIC first lower into IL patterns described in [BASIC lowering](../archive/docs/references/lowering.md).
+Execution is organized as functions consisting of labelled basic blocks.  Modules may execute either under the IL virtual machine interpreter or after lowering to native code through a C runtime.  Front ends such as BASIC first lower into IL patterns described in [BASIC lowering](lowering/basic-to-il.md).
 
 ## Module & Function Syntax
 An IL module is a set of declarations and function definitions.  It starts with a version line:
