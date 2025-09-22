@@ -82,6 +82,34 @@ SemanticAnalyzer::ProcedureScope::~ProcedureScope() noexcept
     analyzer_.forStack_ = std::move(savedForStack_);
 }
 
+/// @brief Resolve a symbol name and update bookkeeping according to @p kind.
+/// @param name Symbol identifier to resolve and track.
+/// @param kind Strategy describing how the resolved symbol should be recorded.
+void SemanticAnalyzer::resolveAndTrackSymbol(std::string &name, SymbolKind kind)
+{
+    if (auto mapped = scopes_.resolve(name))
+        name = *mapped;
+
+    if (kind == SymbolKind::Reference)
+        return;
+
+    symbols_.insert(name);
+
+    const bool forceDefault = kind == SymbolKind::InputTarget;
+    if (forceDefault || !varTypes_.count(name))
+    {
+        Type defaultType = Type::Int;
+        if (!name.empty())
+        {
+            if (name.back() == '$')
+                defaultType = Type::String;
+            else if (name.back() == '#')
+                defaultType = Type::Float;
+        }
+        varTypes_[name] = defaultType;
+    }
+}
+
 namespace
 {
 /// @brief Compute the Levenshtein edit distance between two strings.
@@ -470,22 +498,10 @@ void SemanticAnalyzer::analyzePrint(const PrintStmt &p)
 ///       incompatible.
 void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
 {
-    if (auto mapped = scopes_.resolve(v.name))
-        v.name = *mapped;
-    symbols_.insert(v.name);
+    resolveAndTrackSymbol(v.name, SymbolKind::Definition);
     Type varTy = Type::Int;
-    auto itType = varTypes_.find(v.name);
-    if (itType != varTypes_.end())
-    {
+    if (auto itType = varTypes_.find(v.name); itType != varTypes_.end())
         varTy = itType->second;
-    }
-    else if (!v.name.empty())
-    {
-        if (v.name.back() == '$')
-            varTy = Type::String;
-        else if (v.name.back() == '#')
-            varTy = Type::Float;
-    }
     if (l.expr)
     {
         Type exprTy = visitExpr(*l.expr);
@@ -505,8 +521,6 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
             de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
         }
     }
-    if (itType == varTypes_.end())
-        varTypes_[v.name] = varTy;
 }
 
 /// @brief Validate an assignment to an array element.
@@ -517,8 +531,7 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
 ///       and bounds warnings (B3001).
 void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
 {
-    if (auto mapped = scopes_.resolve(a.name))
-        a.name = *mapped;
+    resolveAndTrackSymbol(a.name, SymbolKind::Reference);
     if (!arrays_.count(a.name))
     {
         std::string msg = "unknown array '" + a.name + "'";
@@ -668,9 +681,7 @@ void SemanticAnalyzer::analyzeWhile(const WhileStmt &w)
 void SemanticAnalyzer::analyzeFor(const ForStmt &f)
 {
     auto *fc = const_cast<ForStmt *>(&f);
-    if (auto mapped = scopes_.resolve(fc->var))
-        fc->var = *mapped;
-    symbols_.insert(fc->var);
+    resolveAndTrackSymbol(fc->var, SymbolKind::Definition);
     if (f.start)
         visitExpr(*f.start);
     if (f.end)
@@ -757,15 +768,7 @@ void SemanticAnalyzer::analyzeInput(const InputStmt &inp)
     if (inp.prompt)
         visitExpr(*inp.prompt);
     auto *ic = const_cast<InputStmt *>(&inp);
-    if (auto mapped = scopes_.resolve(ic->var))
-        ic->var = *mapped;
-    symbols_.insert(ic->var);
-    if (!ic->var.empty() && ic->var.back() == '$')
-        varTypes_[ic->var] = Type::String;
-    else if (!ic->var.empty() && ic->var.back() == '#')
-        varTypes_[ic->var] = Type::Float;
-    else
-        varTypes_[ic->var] = Type::Int;
+    resolveAndTrackSymbol(ic->var, SymbolKind::InputTarget);
 }
 
 /// @brief Analyze a DIM declaration statement.
@@ -846,8 +849,7 @@ void SemanticAnalyzer::visitStmt(const Stmt &s)
 ///       Levenshtein suggestions when the variable is unknown.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeVar(VarExpr &v)
 {
-    if (auto mapped = scopes_.resolve(v.name))
-        v.name = *mapped;
+    resolveAndTrackSymbol(v.name, SymbolKind::Reference);
     if (!symbols_.count(v.name))
     {
         std::string best;
@@ -1622,8 +1624,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeCall(const CallExpr &c)
 ///       (B2001), and static bounds warnings (B3001).
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
 {
-    if (auto mapped = scopes_.resolve(a.name))
-        a.name = *mapped;
+    resolveAndTrackSymbol(a.name, SymbolKind::Reference);
     if (!arrays_.count(a.name))
     {
         std::string msg = "unknown array '" + a.name + "'";
