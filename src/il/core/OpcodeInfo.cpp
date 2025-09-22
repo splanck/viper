@@ -21,14 +21,31 @@ constexpr std::array<TypeCategory, kMaxOperandCategories> makeOperands(TypeCateg
 {
     return {a, b, c};
 }
+
+/// Builds a parser descriptor for a single operand slot.
+constexpr OperandParseSpec makeParseSpec(OperandParseKind kind = OperandParseKind::None,
+                                         const char *role = nullptr)
+{
+    return {kind, role};
+}
+
+/// Builds the operand-parse descriptor array for an opcode definition.
+constexpr std::array<OperandParseSpec, kMaxOperandParseEntries>
+makeParseList(OperandParseSpec a = makeParseSpec(),
+              OperandParseSpec b = makeParseSpec(),
+              OperandParseSpec c = makeParseSpec(),
+              OperandParseSpec d = makeParseSpec())
+{
+    return {a, b, c, d};
+}
 } // namespace
 
 const std::array<OpcodeInfo, kNumOpcodes> kOpcodeTable = {
     {
-#define IL_OPCODE(NAME, MNEMONIC, RES_ARITY, RES_TYPE, MIN_OPS, MAX_OPS, OP0, OP1, OP2, SIDE_EFFECTS, SUCCESSORS, TERMINATOR,      \
-                  DISPATCH)                                                                                                       \
+#define IL_OPCODE(NAME, MNEMONIC, RES_ARITY, RES_TYPE, MIN_OPS, MAX_OPS, OP0, OP1, OP2, SIDE_EFFECTS, SUCCESSORS, TERMINATOR,     \
+                  DISPATCH, PARSE0, PARSE1, PARSE2, PARSE3)                                                                        \
         {MNEMONIC, RES_ARITY, RES_TYPE, MIN_OPS, MAX_OPS, makeOperands(OP0, OP1, OP2), SIDE_EFFECTS, SUCCESSORS, TERMINATOR,      \
-         DISPATCH},
+         DISPATCH, makeParseList(PARSE0, PARSE1, PARSE2, PARSE3)},
 #include "il/core/Opcode.def"
 #undef IL_OPCODE
     }
