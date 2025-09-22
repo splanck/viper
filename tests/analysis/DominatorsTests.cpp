@@ -15,7 +15,6 @@ int main()
     using namespace viper::analysis;
 
     Module m;
-    setModule(m);
     il::build::IRBuilder b(m);
 
     // Diamond graph: entry -> {t, f} -> join
@@ -38,15 +37,18 @@ int main()
     b.setInsertPoint(dJoin);
     b.emitRet(std::nullopt, {});
 
-    DomTree dtDiamond = computeDominatorTree(diamond);
-    assert(dtDiamond.immediateDominator(&dEntry) == nullptr);
-    assert(dtDiamond.immediateDominator(&dT) == &dEntry);
-    assert(dtDiamond.immediateDominator(&dF) == &dEntry);
-    assert(dtDiamond.immediateDominator(&dJoin) == &dEntry);
-    assert(dtDiamond.dominates(&dEntry, &dT));
-    assert(dtDiamond.dominates(&dEntry, &dF));
-    assert(dtDiamond.dominates(&dEntry, &dJoin));
-    assert(!dtDiamond.dominates(&dT, &dF));
+    {
+        CFGContext ctx(m);
+        DomTree dtDiamond = computeDominatorTree(ctx, diamond);
+        assert(dtDiamond.immediateDominator(&dEntry) == nullptr);
+        assert(dtDiamond.immediateDominator(&dT) == &dEntry);
+        assert(dtDiamond.immediateDominator(&dF) == &dEntry);
+        assert(dtDiamond.immediateDominator(&dJoin) == &dEntry);
+        assert(dtDiamond.dominates(&dEntry, &dT));
+        assert(dtDiamond.dominates(&dEntry, &dF));
+        assert(dtDiamond.dominates(&dEntry, &dJoin));
+        assert(!dtDiamond.dominates(&dT, &dF));
+    }
 
     // Linear chain: A -> B -> C
     Function &chain = b.startFunction("chain", Type(Type::Kind::Void), {});
@@ -64,12 +66,15 @@ int main()
     b.setInsertPoint(C);
     b.emitRet(std::nullopt, {});
 
-    DomTree dtChain = computeDominatorTree(chain);
-    assert(dtChain.immediateDominator(&A) == nullptr);
-    assert(dtChain.immediateDominator(&B) == &A);
-    assert(dtChain.immediateDominator(&C) == &B);
-    assert(dtChain.dominates(&A, &B));
-    assert(dtChain.dominates(&A, &C));
+    {
+        CFGContext ctx(m);
+        DomTree dtChain = computeDominatorTree(ctx, chain);
+        assert(dtChain.immediateDominator(&A) == nullptr);
+        assert(dtChain.immediateDominator(&B) == &A);
+        assert(dtChain.immediateDominator(&C) == &B);
+        assert(dtChain.dominates(&A, &B));
+        assert(dtChain.dominates(&A, &C));
+    }
 
     return 0;
 }

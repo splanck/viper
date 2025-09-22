@@ -19,84 +19,77 @@
 
 namespace
 {
-const il::core::Module *gModule = nullptr;
+il::core::Function *lookupParent(const viper::analysis::CFGContext &ctx, const il::core::Block &block)
+{
+    auto it = ctx.blockToFunction.find(&block);
+    if (it == ctx.blockToFunction.end())
+        return nullptr;
+    return it->second;
+}
 }
 
 namespace viper::analysis
 {
 
-/// @brief Set the module used for subsequent CFG queries.
-///
-/// Stores a pointer to @p M so that later traversals can resolve block
-/// labels to concrete blocks when computing edges.
-/// @param M Module providing function and block context for queries.
-void setModule(const il::core::Module &M)
+CFGContext::CFGContext(il::core::Module &module) : module(&module)
 {
-    gModule = &M;
+    for (auto &fn : module.functions)
+    {
+        for (auto &blk : fn.blocks)
+            blockToFunction[&blk] = &fn;
+    }
 }
 
 /// @brief Gather successor blocks of @p B.
 ///
 /// Examines the terminator instruction of @p B and returns the blocks
 /// targeted by branch or conditional branch operations.
+/// @param ctx Context providing access to the parent function mapping.
 /// @param B Block whose outgoing edges are requested.
 /// @return List of successor blocks. The list is empty if the current
 /// module is unset, @p B lacks a branch terminator, or the targets cannot
 /// be resolved.
-/// @invariant setModule() has been invoked prior to calling.
-std::vector<il::core::Block *> successors(const il::core::Block &B)
+/// @invariant A valid CFGContext describing @p B's parent function is provided.
+std::vector<il::core::Block *> successors(const CFGContext &ctx, const il::core::Block &B)
 {
     std::vector<il::core::Block *> out;
-    if (!gModule || B.instructions.empty())
+    if (!ctx.module || B.instructions.empty())
         return out;
 
     const il::core::Instr &term = B.instructions.back();
     if (term.op != il::core::Opcode::Br && term.op != il::core::Opcode::CBr)
         return out;
 
-    const il::core::Function *parent = nullptr;
-    for (const auto &fn : gModule->functions)
-    {
-        for (const auto &blk : fn.blocks)
-        {
-            if (&blk == &B)
-            {
-                parent = &fn;
-                break;
-            }
-        }
-        if (parent)
-            break;
-    }
+    il::core::Function *parent = lookupParent(ctx, B);
     if (!parent)
         return out;
 
     for (const auto &lbl : term.labels)
     {
-        for (auto &blk : parent->blocks)
-        {
-            if (blk.label == lbl)
-            {
-                out.push_back(const_cast<il::core::Block *>(&blk));
-                break;
-            }
-        }
+        auto it = std::find_if(parent->blocks.begin(), parent->blocks.end(),
+                               [&](il::core::Block &blk) { return blk.label == lbl; });
+        if (it != parent->blocks.end())
+            out.push_back(&*it);
     }
     return out;
 }
 
-/// @brief Gather predecessor blocks of @p B within function @p F.
+/// @brief Gather predecessor blocks of @p B within its parent function.
 ///
-/// Scans every block in @p F for branch or conditional branch terminators
+/// Scans every block in the owning function for branch or conditional branch terminators
 /// that reference @p B by label.
-/// @param F Function containing the blocks to scan.
+/// @param ctx Context providing block-to-function lookup.
 /// @param B Target block whose incoming edges are requested.
 /// @return List of predecessor blocks; empty if none are found.
 /// @note Blocks with non-branch terminators are ignored.
-std::vector<il::core::Block *> predecessors(const il::core::Function &F, const il::core::Block &B)
+std::vector<il::core::Block *> predecessors(const CFGContext &ctx, const il::core::Block &B)
 {
     std::vector<il::core::Block *> out;
-    for (auto &blk : F.blocks)
+    il::core::Function *parent = lookupParent(ctx, B);
+    if (!parent)
+        return out;
+
+    for (auto &blk : parent->blocks)
     {
         if (blk.instructions.empty())
             continue;
@@ -107,7 +100,7 @@ std::vector<il::core::Block *> predecessors(const il::core::Function &F, const i
         {
             if (lbl == B.label)
             {
-                out.push_back(const_cast<il::core::Block *>(&blk));
+                out.push_back(&blk);
                 break;
             }
         }
@@ -120,12 +113,11 @@ std::vector<il::core::Block *> predecessors(const il::core::Function &F, const i
 /// Performs an iterative DFS starting from the entry block and records
 /// each block after all its successors have been visited. Only blocks
 /// reachable from the entry block are included.
+/// @param ctx Context providing successor lookups.
 /// @param F Function whose blocks are traversed.
 /// @return Blocks in post-order; empty if @p F has no blocks.
-/// @invariant setModule() has been called so successor edges can be
-/// resolved.
 /// @note Unreachable blocks are omitted from the result.
-std::vector<il::core::Block *> postOrder(il::core::Function &F)
+std::vector<il::core::Block *> postOrder(const CFGContext &ctx, il::core::Function &F)
 {
     std::vector<il::core::Block *> out;
     if (F.blocks.empty())
@@ -143,7 +135,7 @@ std::vector<il::core::Block *> postOrder(il::core::Function &F)
     std::vector<Frame> stack;
 
     il::core::Block *entry = &F.blocks[0];
-    stack.push_back({entry, 0, successors(*entry)});
+    stack.push_back({entry, 0, successors(ctx, *entry)});
     visited.insert(entry);
 
     while (!stack.empty())
@@ -155,7 +147,7 @@ std::vector<il::core::Block *> postOrder(il::core::Function &F)
             if (!visited.count(next))
             {
                 visited.insert(next);
-                stack.push_back({next, 0, successors(*next)});
+                stack.push_back({next, 0, successors(ctx, *next)});
             }
         }
         else
@@ -172,11 +164,12 @@ std::vector<il::core::Block *> postOrder(il::core::Function &F)
 /// Generates the post-order sequence and then reverses it so that the
 /// entry block appears first. Only blocks reachable from the entry block
 /// are present.
+/// @param ctx Context providing successor lookups.
 /// @param F Function whose blocks are traversed.
 /// @return Blocks in reverse post-order; empty if @p F has no blocks.
-std::vector<il::core::Block *> reversePostOrder(il::core::Function &F)
+std::vector<il::core::Block *> reversePostOrder(const CFGContext &ctx, il::core::Function &F)
 {
-    auto po = postOrder(F);
+    auto po = postOrder(ctx, F);
     std::reverse(po.begin(), po.end());
     return po;
 }
@@ -186,12 +179,12 @@ std::vector<il::core::Block *> reversePostOrder(il::core::Function &F)
 /// Uses Kahn's algorithm to order blocks such that all edges go from
 /// earlier to later blocks. If the graph contains a cycle, an empty
 /// vector is returned.
+/// @param ctx Context providing predecessor/successor lookups.
 /// @param F Function whose blocks are ordered.
 /// @return Blocks in topological order or an empty list if @p F is empty
 /// or cyclic.
-/// @invariant setModule() has been invoked so successor edges can be
-/// inspected.
-std::vector<il::core::Block *> topoOrder(il::core::Function &F)
+/// @invariant @p ctx describes the module containing @p F.
+std::vector<il::core::Block *> topoOrder(const CFGContext &ctx, il::core::Function &F)
 {
     std::vector<il::core::Block *> out;
     if (F.blocks.empty())
@@ -200,7 +193,7 @@ std::vector<il::core::Block *> topoOrder(il::core::Function &F)
     std::unordered_map<il::core::Block *, std::size_t> indegree;
     indegree.reserve(F.blocks.size());
     for (auto &blk : F.blocks)
-        indegree[&blk] = predecessors(F, blk).size();
+        indegree[&blk] = predecessors(ctx, blk).size();
 
     std::queue<il::core::Block *> q;
     for (auto &blk : F.blocks)
@@ -212,7 +205,7 @@ std::vector<il::core::Block *> topoOrder(il::core::Function &F)
         auto *b = q.front();
         q.pop();
         out.push_back(b);
-        for (auto *succ : successors(*b))
+        for (auto *succ : successors(ctx, *b))
         {
             auto it = indegree.find(succ);
             if (it == indegree.end())
@@ -231,15 +224,14 @@ std::vector<il::core::Block *> topoOrder(il::core::Function &F)
 ///
 /// Delegates to topoOrder() and compares the number of blocks returned
 /// against the total blocks in @p F.
+/// @param ctx Context providing successor and predecessor lookups.
 /// @param F Function whose CFG is inspected.
 /// @return `true` if @p F has no cycles or no blocks; otherwise `false`.
-/// @invariant setModule() has been invoked so successor edges can be
-/// resolved.
-bool isAcyclic(il::core::Function &F)
+bool isAcyclic(const CFGContext &ctx, il::core::Function &F)
 {
     if (F.blocks.empty())
         return true;
-    auto order = topoOrder(F);
+    auto order = topoOrder(ctx, F);
     return order.size() == F.blocks.size();
 }
 

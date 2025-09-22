@@ -56,14 +56,15 @@ bool DomTree::dominates(il::core::Block *A, il::core::Block *B) const
 ///
 /// Implements the Cooper–Harvey–Kennedy algorithm to derive immediate
 /// dominators for every block in the function.
+/// @param ctx CFG context used to access traversal helpers.
 /// @param F Function whose dominator relationships are computed.
 /// @return A fully populated dominator tree with parent and child links.
 /// @invariant The function must have a valid control-flow graph with a
 /// single entry block.
-DomTree computeDominatorTree(il::core::Function &F)
+DomTree computeDominatorTree(const CFGContext &ctx, il::core::Function &F)
 {
     DomTree DT;
-    auto rpo = reversePostOrder(F);
+    auto rpo = reversePostOrder(ctx, F);
     if (rpo.empty())
         return DT;
 
@@ -81,7 +82,7 @@ DomTree computeDominatorTree(il::core::Function &F)
         for (std::size_t i = 1; i < rpo.size(); ++i)
         {
             il::core::Block *b = rpo[i];
-            auto preds = predecessors(F, *b);
+            auto preds = predecessors(ctx, *b);
 
             il::core::Block *newIdom = nullptr;
             for (auto *p : preds)

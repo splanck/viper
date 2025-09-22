@@ -214,7 +214,13 @@ static void addIncoming(BasicBlock *B,
 
 /// Forward declaration for recursive SSA renaming.
 static Value renameUses(
-    Function &F, BasicBlock *B, unsigned varId, VarMap &vars, BlockMap &blocks, unsigned &nextId);
+    Function &F,
+    BasicBlock *B,
+    unsigned varId,
+    VarMap &vars,
+    BlockMap &blocks,
+    unsigned &nextId,
+    const analysis::CFGContext &ctx);
 
 /// Resolve a variable's value at the start of block `B` by reading from its
 /// predecessors.
@@ -230,9 +236,15 @@ static Value renameUses(
 /// @return SSA value representing the variable at block entry.
 /// @sideeffect May mutate CFG by adding params and arguments.
 static Value readFromPreds(
-    Function &F, BasicBlock *B, unsigned varId, VarMap &vars, BlockMap &blocks, unsigned &nextId)
+    Function &F,
+    BasicBlock *B,
+    unsigned varId,
+    VarMap &vars,
+    BlockMap &blocks,
+    unsigned &nextId,
+    const analysis::CFGContext &ctx)
 {
-    auto preds = analysis::predecessors(F, *B);
+    auto preds = analysis::predecessors(ctx, *B);
     if (preds.empty())
     {
         const Type &ty = vars[varId].type;
@@ -242,7 +254,7 @@ static Value readFromPreds(
     Value paramVal = Value::temp(B->params[pIdx].id);
     for (auto *P : preds)
     {
-        Value arg = renameUses(F, P, varId, vars, blocks, nextId);
+        Value arg = renameUses(F, P, varId, vars, blocks, nextId, ctx);
         addIncoming(B, varId, P, arg, vars, blocks, nextId);
     }
     return paramVal;
@@ -262,7 +274,13 @@ static Value readFromPreds(
 /// @return SSA value for the variable within `B`.
 /// @sideeffect May add block parameters and update definition maps.
 static Value renameUses(
-    Function &F, BasicBlock *B, unsigned varId, VarMap &vars, BlockMap &blocks, unsigned &nextId)
+    Function &F,
+    BasicBlock *B,
+    unsigned varId,
+    VarMap &vars,
+    BlockMap &blocks,
+    unsigned &nextId,
+    const analysis::CFGContext &ctx)
 {
     VarState &VS = vars[varId];
     if (auto it = VS.defs.find(B); it != VS.defs.end())
@@ -276,7 +294,7 @@ static Value renameUses(
         BS.incomplete.insert(varId);
         return v;
     }
-    Value v = readFromPreds(F, B, varId, vars, blocks, nextId);
+    Value v = readFromPreds(F, B, varId, vars, blocks, nextId, ctx);
     VS.defs[B] = v;
     return v;
 }
@@ -291,14 +309,19 @@ static Value renameUses(
 /// @param blocks Block state table.
 /// @param nextId Counter for generating temp ids.
 /// @sideeffect May mutate CFG with additional parameters and arguments.
-static void sealBlocks(Function &F, BasicBlock *B, VarMap &vars, BlockMap &blocks, unsigned &nextId)
+static void sealBlocks(Function &F,
+                       BasicBlock *B,
+                       VarMap &vars,
+                       BlockMap &blocks,
+                       unsigned &nextId,
+                       const analysis::CFGContext &ctx)
 {
     BlockState &BS = blocks[B];
     if (BS.sealed)
         return;
     for (unsigned varId : BS.incomplete)
     {
-        Value v = readFromPreds(F, B, varId, vars, blocks, nextId);
+        Value v = readFromPreds(F, B, varId, vars, blocks, nextId, ctx);
         if (!vars[varId].defs.count(B))
             vars[varId].defs[B] = v;
     }
@@ -315,7 +338,10 @@ static void sealBlocks(Function &F, BasicBlock *B, VarMap &vars, BlockMap &block
 /// @param infos Metadata about allocas gathered by `collectAllocas`.
 /// @param stats Optional statistics accumulator.
 /// @sideeffect Mutates blocks and instructions in `F` and updates `stats`.
-static void promoteVariables(Function &F, const AllocaMap &infos, Mem2RegStats *stats)
+static void promoteVariables(Function &F,
+                             const AllocaMap &infos,
+                             Mem2RegStats *stats,
+                             const analysis::CFGContext &ctx)
 {
     VarMap vars;
     for (auto &[id, AI] : infos)
@@ -340,7 +366,7 @@ static void promoteVariables(Function &F, const AllocaMap &infos, Mem2RegStats *
     for (auto &B : F.blocks)
     {
         BlockState bs;
-        bs.totalPreds = analysis::predecessors(F, B).size();
+        bs.totalPreds = analysis::predecessors(ctx, B).size();
         bs.sealed = bs.totalPreds == 0;
         blocks[&B] = bs;
     }
@@ -370,7 +396,7 @@ static void promoteVariables(Function &F, const AllocaMap &infos, Mem2RegStats *
                 I.operands[0].kind == Value::Kind::Temp && vars.count(I.operands[0].id))
             {
                 unsigned varId = I.operands[0].id;
-                Value v = renameUses(F, B, varId, vars, blocks, nextId);
+                Value v = renameUses(F, B, varId, vars, blocks, nextId, ctx);
                 if (I.result)
                     replaceAllUses(F, *I.result, v);
                 B->instructions.erase(B->instructions.begin() + i);
@@ -391,7 +417,7 @@ static void promoteVariables(Function &F, const AllocaMap &infos, Mem2RegStats *
             ++i;
         }
 
-        auto succs = analysis::successors(*B);
+        auto succs = analysis::successors(ctx, *B);
         for (auto *S : succs)
         {
             BlockState &SS = blocks[S];
@@ -402,7 +428,7 @@ static void promoteVariables(Function &F, const AllocaMap &infos, Mem2RegStats *
                 queued.insert(S);
             }
             if (SS.seenPreds == SS.totalPreds)
-                sealBlocks(F, S, vars, blocks, nextId);
+                sealBlocks(F, S, vars, blocks, nextId, ctx);
         }
     }
 }
@@ -420,7 +446,7 @@ static void promoteVariables(Function &F, const AllocaMap &infos, Mem2RegStats *
 /// @sideeffect Mutates functions within the module.
 void mem2reg(Module &M, Mem2RegStats *stats)
 {
-    analysis::setModule(M);
+    analysis::CFGContext cfg(M);
     for (auto &F : M.functions)
     {
         AllocaMap infos = collectAllocas(F);
@@ -429,7 +455,7 @@ void mem2reg(Module &M, Mem2RegStats *stats)
             if (infos.size() > 1 && !info.singleBlock)
                 continue;
             AllocaMap single{{id, info}};
-            promoteVariables(F, single, stats);
+            promoteVariables(F, single, stats, cfg);
         }
     }
 }

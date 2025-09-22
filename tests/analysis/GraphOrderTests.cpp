@@ -13,10 +13,10 @@
 using namespace il::core;
 using namespace viper::analysis;
 
-static void checkOrders(Function &fn)
+static void checkOrders(const CFGContext &ctx, Function &fn)
 {
-    auto po = postOrder(fn);
-    auto rpo = reversePostOrder(fn);
+    auto po = postOrder(ctx, fn);
+    auto rpo = reversePostOrder(ctx, fn);
 
     assert(po.size() == fn.blocks.size());
     assert(rpo.size() == fn.blocks.size());
@@ -33,7 +33,6 @@ static void checkOrders(Function &fn)
 int main()
 {
     Module m;
-    setModule(m);
     il::build::IRBuilder b(m);
 
     // Diamond: entry -> {t,f} -> join
@@ -56,7 +55,10 @@ int main()
     b.setInsertPoint(dJoin);
     b.emitRet(std::nullopt, {});
 
-    checkOrders(diamond);
+    {
+        CFGContext ctx(m);
+        checkOrders(ctx, diamond);
+    }
 
     // Linear chain: A -> B -> C
     Function &chain = b.startFunction("chain", Type(Type::Kind::Void), {});
@@ -74,7 +76,10 @@ int main()
     b.setInsertPoint(C);
     b.emitRet(std::nullopt, {});
 
-    checkOrders(chain);
+    {
+        CFGContext ctx(m);
+        checkOrders(ctx, chain);
+    }
 
     return 0;
 }
