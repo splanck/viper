@@ -71,9 +71,9 @@ struct Frame
     /// @invariant Never exceeds @c stack.size().
     size_t sp = 0;
 
-    /// @brief Pending block parameter values.
-    /// @ownership Owned by the frame; entries cleared when parameters applied.
-    std::unordered_map<unsigned, Slot> params;
+    /// @brief Pending block parameter values indexed by SSA id.
+    /// @ownership Owned by the frame; sized to the register file and reset on use.
+    std::vector<std::optional<Slot>> params;
 };
 
 /// @brief Simple interpreter for the IL.
