@@ -1,5 +1,5 @@
 <!--
-File: docs/dev/parser.md
+File: docs/dev/frontends/parser.md
 Purpose: Notes on BASIC parser and comment lexing.
 -->
 

@@ -1,12 +1,12 @@
 <!--
 SPDX-License-Identifier: MIT
-File: docs/style-guide.md
+File: docs/dev/style-guide.md
 Purpose: Documentation and comment conventions.
 -->
 
 # Style guide
 
-See [AGENTS.md](../AGENTS.md) for project-wide policies. This guide defines
+See [AGENTS.md](../../AGENTS.md) for project-wide policies. This guide defines
 comment conventions and file headers for the Viper codebase. All contributors
 must follow these rules when adding new code or updating existing files.
 
