@@ -69,7 +69,7 @@ void Lowerer::emitProgram(const Program &prog)
     // allocate slots in entry
     BasicBlock *entry = &f.blocks.front();
     cur = entry;
-    allocateLocals(std::unordered_set<std::string>());
+    allocateLocalSlots(std::unordered_set<std::string>(), /*includeParams=*/true);
 
     if (mainStmts.empty())
     {
