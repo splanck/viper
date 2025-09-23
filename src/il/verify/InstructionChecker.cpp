@@ -12,6 +12,7 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/OpcodeInfo.hpp"
+#include "il/verify/DiagSink.hpp"
 #include "il/verify/TypeInference.hpp"
 #include "support/diag_expected.hpp"
 
@@ -60,9 +61,9 @@ void emitWarning(const Function &fn,
                  const BasicBlock &bb,
                  const Instr &instr,
                  std::string_view message,
-                 std::vector<Diag> &warnings)
+                 DiagSink &sink)
 {
-    warnings.push_back(Diag{Severity::Warning, formatInstrDiag(fn, bb, instr, message), instr.loc});
+    sink.report(Diag{Severity::Warning, formatInstrDiag(fn, bb, instr, message), instr.loc});
 }
 
 /// @brief Validate operand/result arity constraints against opcode metadata.
@@ -185,7 +186,7 @@ Expected<void> checkAlloca_E(const Function &fn,
                              const BasicBlock &bb,
                              const Instr &instr,
                              TypeInference &types,
-                             std::vector<Diag> &warnings)
+                             DiagSink &sink)
 {
     if (instr.operands.empty())
         return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "missing size operand"))};
@@ -199,7 +200,7 @@ Expected<void> checkAlloca_E(const Function &fn,
         if (sz < 0)
             return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "negative alloca size"))};
         if (sz > (1LL << 20))
-            emitWarning(fn, bb, instr, "huge alloca", warnings);
+            emitWarning(fn, bb, instr, "huge alloca", sink);
     }
 
     types.recordResult(instr, Type(Type::Kind::Ptr));
@@ -458,7 +459,7 @@ Expected<void> checkDefault_E(const Instr &instr, TypeInference &types)
 /// @param externs Table of known extern declarations.
 /// @param funcs Table of known function definitions.
 /// @param types Type inference engine for operand queries and result recording.
-/// @param warnings Accumulates warning diagnostics emitted during validation.
+/// @param sink Diagnostic sink receiving warnings emitted during validation.
 /// @return Empty on success; otherwise an error diagnostic describing the
 ///         violated rule.
 Expected<void> verifyInstruction_impl(const Function &fn,
@@ -467,12 +468,12 @@ Expected<void> verifyInstruction_impl(const Function &fn,
                                       const std::unordered_map<std::string, const Extern *> &externs,
                                       const std::unordered_map<std::string, const Function *> &funcs,
                                       TypeInference &types,
-                                      std::vector<Diag> &warnings)
+                                      DiagSink &sink)
 {
     switch (instr.op)
     {
         case Opcode::Alloca:
-            return checkAlloca_E(fn, bb, instr, types, warnings);
+            return checkAlloca_E(fn, bb, instr, types, sink);
         case Opcode::Add:
         case Opcode::Sub:
         case Opcode::Mul:
@@ -552,9 +553,9 @@ Expected<void> verifyInstruction_E(const Function &fn,
                                     const std::unordered_map<std::string, const Extern *> &externs,
                                     const std::unordered_map<std::string, const Function *> &funcs,
                                     TypeInference &types,
-                                    std::vector<Diag> &warnings)
+                                    DiagSink &sink)
 {
-    return verifyInstruction_impl(fn, bb, instr, externs, funcs, types, warnings);
+    return verifyInstruction_impl(fn, bb, instr, externs, funcs, types, sink);
 }
 
 bool verifyOpcodeSignature(const Function &fn,
@@ -578,16 +579,16 @@ bool verifyInstruction(const Function &fn,
                        TypeInference &types,
                        std::ostream &err)
 {
-    std::vector<Diag> warnings;
-    if (auto result = verifyInstruction_E(fn, bb, instr, externs, funcs, types, warnings); !result)
+    CollectingDiagSink sink;
+    if (auto result = verifyInstruction_E(fn, bb, instr, externs, funcs, types, sink); !result)
     {
-        for (const auto &warning : warnings)
+        for (const auto &warning : sink.diagnostics())
             il::support::printDiag(warning, err);
         il::support::printDiag(result.error(), err);
         return false;
     }
 
-    for (const auto &warning : warnings)
+    for (const auto &warning : sink.diagnostics())
         il::support::printDiag(warning, err);
     return true;
 }
@@ -605,9 +606,9 @@ Expected<void> verifyInstruction_expected(const Function &fn,
                                            const std::unordered_map<std::string, const Extern *> &externs,
                                            const std::unordered_map<std::string, const Function *> &funcs,
                                            TypeInference &types,
-                                           std::vector<Diag> &warnings)
+                                           DiagSink &sink)
 {
-    return verifyInstruction_E(fn, bb, instr, externs, funcs, types, warnings);
+    return verifyInstruction_E(fn, bb, instr, externs, funcs, types, sink);
 }
 
 } // namespace il::verify
