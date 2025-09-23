@@ -1,6 +1,6 @@
 // File: src/il/analysis/CFG.cpp
 // Purpose: Implements minimal CFG utilities for IL blocks and functions.
-// Key invariants: Results are computed on demand; no caches or global graphs.
+// Key invariants: Successor lookups consult cached per-function label maps.
 // Ownership/Lifetime: Uses IL objects owned by the caller.
 // Links: docs/dev/analysis.md
 
@@ -26,6 +26,19 @@ il::core::Function *lookupParent(const viper::analysis::CFGContext &ctx, const i
         return nullptr;
     return it->second;
 }
+
+il::core::Block *lookupBlock(const viper::analysis::CFGContext &ctx,
+                             il::core::Function &function,
+                             const std::string &label)
+{
+    auto fnIt = ctx.functionLabelToBlock.find(&function);
+    if (fnIt == ctx.functionLabelToBlock.end())
+        return nullptr;
+    auto blkIt = fnIt->second.find(label);
+    if (blkIt == fnIt->second.end())
+        return nullptr;
+    return blkIt->second;
+}
 }
 
 namespace viper::analysis
@@ -35,8 +48,12 @@ CFGContext::CFGContext(il::core::Module &module) : module(&module)
 {
     for (auto &fn : module.functions)
     {
+        auto &labelMap = functionLabelToBlock[&fn];
         for (auto &blk : fn.blocks)
+        {
             blockToFunction[&blk] = &fn;
+            labelMap.emplace(blk.label, &blk);
+        }
     }
 }
 
@@ -66,10 +83,8 @@ std::vector<il::core::Block *> successors(const CFGContext &ctx, const il::core:
 
     for (const auto &lbl : term.labels)
     {
-        auto it = std::find_if(parent->blocks.begin(), parent->blocks.end(),
-                               [&](il::core::Block &blk) { return blk.label == lbl; });
-        if (it != parent->blocks.end())
-            out.push_back(&*it);
+        if (auto *target = lookupBlock(ctx, *parent, lbl))
+            out.push_back(target);
     }
     return out;
 }

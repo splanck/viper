@@ -1,10 +1,11 @@
 // File: src/il/analysis/CFG.hpp
 // Purpose: Minimal control-flow graph utilities for IL blocks and functions.
-// Key invariants: Computes edges on demand without caching.
+// Key invariants: Successor lookups reuse precomputed label maps per function.
 // Ownership/Lifetime: Operates on IL structures owned by caller.
 // Links: docs/dev/analysis.md
 #pragma once
 
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -32,6 +33,9 @@ struct CFGContext
 
     il::core::Module *module{nullptr};
     std::unordered_map<const il::core::Block *, il::core::Function *> blockToFunction;
+    /// @brief Cache mapping function pointers to their blocks indexed by label.
+    std::unordered_map<il::core::Function *, std::unordered_map<std::string, il::core::Block *>>
+        functionLabelToBlock;
 };
 
 /// @brief Return successors of block @p B by inspecting its terminator.
