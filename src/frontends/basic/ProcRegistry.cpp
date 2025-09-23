@@ -52,42 +52,42 @@ ProcSignature ProcRegistry::buildSignature(const ProcDescriptor &descriptor)
     return sig;
 }
 
-void ProcRegistry::registerProc(const FunctionDecl &f)
+void ProcRegistry::registerProcImpl(std::string_view name,
+                                    const ProcDescriptor &descriptor,
+                                    il::support::SourceLoc loc)
 {
-    if (procs_.count(f.name))
+    std::string nameStr{name};
+
+    if (procs_.count(nameStr))
     {
-        std::string msg = "duplicate procedure '" + f.name + "'";
+        std::string msg = "duplicate procedure '" + nameStr + "'";
         de.emit(il::support::Severity::Error,
                 "B1004",
-                f.loc,
-                static_cast<uint32_t>(f.name.size()),
+                loc,
+                static_cast<uint32_t>(nameStr.size()),
                 std::move(msg));
         return;
     }
+
+    procs_.emplace(std::move(nameStr), buildSignature(descriptor));
+}
+
+void ProcRegistry::registerProc(const FunctionDecl &f)
+{
     const ProcDescriptor descriptor{ProcSignature::Kind::Function,
                                     f.ret,
                                     std::span<const Param>{f.params},
                                     f.loc};
-    procs_.emplace(f.name, buildSignature(descriptor));
+    registerProcImpl(f.name, descriptor, f.loc);
 }
 
 void ProcRegistry::registerProc(const SubDecl &s)
 {
-    if (procs_.count(s.name))
-    {
-        std::string msg = "duplicate procedure '" + s.name + "'";
-        de.emit(il::support::Severity::Error,
-                "B1004",
-                s.loc,
-                static_cast<uint32_t>(s.name.size()),
-                std::move(msg));
-        return;
-    }
     const ProcDescriptor descriptor{ProcSignature::Kind::Sub,
                                     std::nullopt,
                                     std::span<const Param>{s.params},
                                     s.loc};
-    procs_.emplace(s.name, buildSignature(descriptor));
+    registerProcImpl(s.name, descriptor, s.loc);
 }
 
 const ProcTable &ProcRegistry::procs() const
