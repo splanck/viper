@@ -30,6 +30,7 @@ namespace il::frontends::basic
 void Lowerer::emitProgram(const Program &prog)
 {
     build::IRBuilder &b = *builder;
+    ProcedureContext &ctx = context();
 
     std::vector<const Stmt *> mainStmts;
     collectProcedureSignatures(prog);
@@ -43,11 +44,11 @@ void Lowerer::emitProgram(const Program &prog)
     for (const auto &s : prog.main)
         mainStmts.push_back(s.get());
 
-    lineBlocks.clear();
+    ctx.lineBlocks().clear();
 
     Function &f = b.startFunction("main", Type(Type::Kind::I64), {});
-    func = &f;
-    nextTemp = func->valueNames.size();
+    ctx.setFunction(&f);
+    ctx.setNextTemp(f.valueNames.size());
 
     b.addBlock(f, "entry");
 
@@ -58,18 +59,18 @@ void Lowerer::emitProgram(const Program &prog)
         b.addBlock(f, mangler.block("L" + std::to_string(stmt->line)));
         lines.push_back(stmt->line);
     }
-    fnExit = f.blocks.size();
+    ctx.setExitIndex(f.blocks.size());
     b.addBlock(f, mangler.block("exit"));
 
     for (size_t i = 0; i < lines.size(); ++i)
-        lineBlocks[lines[i]] = i + 1;
+        ctx.lineBlocks()[lines[i]] = i + 1;
 
     resetSymbolState();
     collectVars(mainStmts);
 
     // allocate slots in entry
     BasicBlock *entry = &f.blocks.front();
-    cur = entry;
+    ctx.setCurrent(entry);
     allocateLocalSlots(std::unordered_set<std::string>(), /*includeParams=*/true);
 
     if (mainStmts.empty())
@@ -85,7 +86,7 @@ void Lowerer::emitProgram(const Program &prog)
             [&](const Stmt &stmt) { curLoc = stmt.loc; });
     }
 
-    cur = &f.blocks[fnExit];
+    ctx.setCurrent(&f.blocks[ctx.exitIndex()]);
     curLoc = {};
     emitRet(Value::constInt(0));
 }
@@ -128,32 +129,37 @@ Lowerer::IlValue Lowerer::emitBoolFromBranches(const std::function<void(Value)> 
                                                std::string_view elseLabelBase,
                                                std::string_view joinLabelBase)
 {
+    ProcedureContext &ctx = context();
     Value slot = emitAlloca(1);
 
     auto labelFor = [&](std::string_view base) {
         std::string hint(base);
-        return blockNamer ? blockNamer->generic(hint) : mangler.block(hint);
+        if (BlockNamer *blockNamer = ctx.blockNamer())
+            return blockNamer->generic(hint);
+        return mangler.block(hint);
     };
 
     std::string thenLbl = labelFor(thenLabelBase);
     std::string elseLbl = labelFor(elseLabelBase);
     std::string joinLbl = labelFor(joinLabelBase);
 
+    Function *func = ctx.function();
+    assert(func && "emitBoolFromBranches requires an active function");
     BasicBlock *thenBlk = &builder->addBlock(*func, thenLbl);
     BasicBlock *elseBlk = &builder->addBlock(*func, elseLbl);
     BasicBlock *joinBlk = &builder->addBlock(*func, joinLbl);
 
-    cur = thenBlk;
+    ctx.setCurrent(thenBlk);
     emitThen(slot);
-    if (!cur->terminated)
+    if (ctx.current() && !ctx.current()->terminated)
         emitBr(joinBlk);
 
-    cur = elseBlk;
+    ctx.setCurrent(elseBlk);
     emitElse(slot);
-    if (!cur->terminated)
+    if (ctx.current() && !ctx.current()->terminated)
         emitBr(joinBlk);
 
-    cur = joinBlk;
+    ctx.setCurrent(joinBlk);
     return emitLoad(ilBoolTy(), slot);
 }
 
@@ -166,6 +172,7 @@ Lowerer::IlValue Lowerer::emitBoolFromBranches(const std::function<void(Value)> 
 /// failing path can trap via the runtime helper before control resumes at the success block.
 Value Lowerer::lowerArrayAddr(const ArrayExpr &expr)
 {
+    ProcedureContext &ctx = context();
     const auto *info = findSymbol(expr.name);
     assert(info && info->slotId);
     Value slot = Value::temp(*info->slotId);
@@ -182,27 +189,29 @@ Value Lowerer::lowerArrayAddr(const ArrayExpr &expr)
         Value ge64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), ge);
         Value or64 = emitBinary(Opcode::Or, Type(Type::Kind::I64), neg64, ge64);
         Value cond = emitUnary(Opcode::Trunc1, ilBoolTy(), or64);
-        size_t curIdx = static_cast<size_t>(cur - &func->blocks[0]);
+        Function *func = ctx.function();
+        assert(func && ctx.current());
+        size_t curIdx = static_cast<size_t>(ctx.current() - &func->blocks[0]);
         size_t okIdx = func->blocks.size();
-        std::string okLbl = blockNamer ? blockNamer->tag("bc_ok" + std::to_string(boundsCheckId))
-                                       : mangler.block("bc_ok" + std::to_string(boundsCheckId));
+        unsigned bcId = ctx.consumeBoundsCheckId();
+        BlockNamer *blockNamer = ctx.blockNamer();
+        std::string okLbl = blockNamer ? blockNamer->tag("bc_ok" + std::to_string(bcId))
+                                       : mangler.block("bc_ok" + std::to_string(bcId));
         builder->addBlock(*func, okLbl);
         size_t failIdx = func->blocks.size();
-        std::string failLbl = blockNamer
-                                  ? blockNamer->tag("bc_fail" + std::to_string(boundsCheckId))
-                                  : mangler.block("bc_fail" + std::to_string(boundsCheckId));
+        std::string failLbl = blockNamer ? blockNamer->tag("bc_fail" + std::to_string(bcId))
+                                         : mangler.block("bc_fail" + std::to_string(bcId));
         builder->addBlock(*func, failLbl);
         BasicBlock *ok = &func->blocks[okIdx];
         BasicBlock *fail = &func->blocks[failIdx];
-        cur = &func->blocks[curIdx];
-        ++boundsCheckId;
+        ctx.setCurrent(&func->blocks[curIdx]);
         emitCBr(cond, fail, ok);
-        cur = fail;
+        ctx.setCurrent(fail);
         std::string msg = "bounds check failed: " + expr.name + "[i]";
         Value s = emitConstStr(getStringLabel(msg));
         emitCall("rt_trap", {s});
         emitTrap();
-        cur = ok;
+        ctx.setCurrent(ok);
     }
     Value off = emitBinary(Opcode::Shl, Type(Type::Kind::I64), idx.value, Value::constInt(3));
     Value ptr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), base, off);
@@ -223,7 +232,9 @@ Value Lowerer::emitAlloca(int bytes)
     in.type = Type(Type::Kind::Ptr);
     in.operands.push_back(Value::constInt(bytes));
     in.loc = curLoc;
-    cur->instructions.push_back(in);
+    BasicBlock *block = context().current();
+    assert(block && "emitAlloca requires an active block");
+    block->instructions.push_back(in);
     return Value::temp(id);
 }
 
@@ -242,7 +253,9 @@ Value Lowerer::emitLoad(Type ty, Value addr)
     in.type = ty;
     in.operands.push_back(addr);
     in.loc = curLoc;
-    cur->instructions.push_back(in);
+    BasicBlock *block = context().current();
+    assert(block && "emitLoad requires an active block");
+    block->instructions.push_back(in);
     return Value::temp(id);
 }
 
@@ -259,7 +272,9 @@ void Lowerer::emitStore(Type ty, Value addr, Value val)
     in.type = ty;
     in.operands = {addr, val};
     in.loc = curLoc;
-    cur->instructions.push_back(in);
+    BasicBlock *block = context().current();
+    assert(block && "emitStore requires an active block");
+    block->instructions.push_back(in);
 }
 
 /// @brief Advance a FOR-loop induction variable by a step amount.
@@ -291,7 +306,9 @@ Value Lowerer::emitBinary(Opcode op, Type ty, Value lhs, Value rhs)
     in.type = ty;
     in.operands = {lhs, rhs};
     in.loc = curLoc;
-    cur->instructions.push_back(in);
+    BasicBlock *block = context().current();
+    assert(block && "emitBinary requires an active block");
+    block->instructions.push_back(in);
     return Value::temp(id);
 }
 
@@ -311,7 +328,9 @@ Value Lowerer::emitUnary(Opcode op, Type ty, Value val)
     in.type = ty;
     in.operands = {val};
     in.loc = curLoc;
-    cur->instructions.push_back(in);
+    BasicBlock *block = context().current();
+    assert(block && "emitUnary requires an active block");
+    block->instructions.push_back(in);
     return Value::temp(id);
 }
 
@@ -327,8 +346,10 @@ void Lowerer::emitBr(BasicBlock *target)
     in.type = Type(Type::Kind::Void);
     in.labels.push_back(target->label);
     in.loc = curLoc;
-    cur->instructions.push_back(in);
-    cur->terminated = true;
+    BasicBlock *block = context().current();
+    assert(block && "emitBr requires an active block");
+    block->instructions.push_back(in);
+    block->terminated = true;
 }
 
 /// @brief Emit a conditional branch in the current block.
@@ -346,8 +367,10 @@ void Lowerer::emitCBr(Value cond, BasicBlock *t, BasicBlock *f)
     in.labels.push_back(t->label);
     in.labels.push_back(f->label);
     in.loc = curLoc;
-    cur->instructions.push_back(in);
-    cur->terminated = true;
+    BasicBlock *block = context().current();
+    assert(block && "emitCBr requires an active block");
+    block->instructions.push_back(in);
+    block->terminated = true;
 }
 
 /// @brief Emit a call with no returned value.
@@ -363,7 +386,9 @@ void Lowerer::emitCall(const std::string &callee, const std::vector<Value> &args
     in.callee = callee;
     in.operands = args;
     in.loc = curLoc;
-    cur->instructions.push_back(in);
+    BasicBlock *block = context().current();
+    assert(block && "emitCall requires an active block");
+    block->instructions.push_back(in);
 }
 
 /// @brief Emit a call returning a value.
@@ -382,7 +407,9 @@ Value Lowerer::emitCallRet(Type ty, const std::string &callee, const std::vector
     in.callee = callee;
     in.operands = args;
     in.loc = curLoc;
-    cur->instructions.push_back(in);
+    BasicBlock *block = context().current();
+    assert(block && "emitCallRet requires an active block");
+    block->instructions.push_back(in);
     return Value::temp(id);
 }
 
@@ -400,7 +427,9 @@ Value Lowerer::emitConstStr(const std::string &globalName)
     in.type = Type(Type::Kind::Str);
     in.operands.push_back(Value::global(globalName));
     in.loc = curLoc;
-    cur->instructions.push_back(in);
+    BasicBlock *block = context().current();
+    assert(block && "emitConstStr requires an active block");
+    block->instructions.push_back(in);
     return Value::temp(id);
 }
 
@@ -415,8 +444,10 @@ void Lowerer::emitRet(Value v)
     in.type = Type(Type::Kind::Void);
     in.operands.push_back(v);
     in.loc = curLoc;
-    cur->instructions.push_back(in);
-    cur->terminated = true;
+    BasicBlock *block = context().current();
+    assert(block && "emitRet requires an active block");
+    block->instructions.push_back(in);
+    block->terminated = true;
 }
 
 /// @brief Emit a void return terminator in the current block.
@@ -427,8 +458,10 @@ void Lowerer::emitRetVoid()
     in.op = Opcode::Ret;
     in.type = Type(Type::Kind::Void);
     in.loc = curLoc;
-    cur->instructions.push_back(in);
-    cur->terminated = true;
+    BasicBlock *block = context().current();
+    assert(block && "emitRetVoid requires an active block");
+    block->instructions.push_back(in);
+    block->terminated = true;
 }
 
 /// @brief Emit a trap terminator in the current block.
@@ -440,8 +473,10 @@ void Lowerer::emitTrap()
     in.op = Opcode::Trap;
     in.type = Type(Type::Kind::Void);
     in.loc = curLoc;
-    cur->instructions.push_back(in);
-    cur->terminated = true;
+    BasicBlock *block = context().current();
+    assert(block && "emitTrap requires an active block");
+    block->instructions.push_back(in);
+    block->terminated = true;
 }
 
 /// @brief Retrieve or create the global label for a string literal.
@@ -468,16 +503,26 @@ std::string Lowerer::getStringLabel(const std::string &s)
 /// explicit debug name exists for the id.
 unsigned Lowerer::nextTempId()
 {
-    unsigned id = builder ? builder->reserveTempId() : nextTemp++;
-    if (func)
+    ProcedureContext &ctx = context();
+    unsigned id = 0;
+    if (builder)
+    {
+        id = builder->reserveTempId();
+    }
+    else
+    {
+        id = ctx.nextTemp();
+        ctx.setNextTemp(id + 1);
+    }
+    if (Function *func = ctx.function())
     {
         if (func->valueNames.size() <= id)
             func->valueNames.resize(id + 1);
         if (func->valueNames[id].empty())
             func->valueNames[id] = "%t" + std::to_string(id);
     }
-    if (nextTemp <= id)
-        nextTemp = id + 1;
+    if (ctx.nextTemp() <= id)
+        ctx.setNextTemp(id + 1);
     return id;
 }
 

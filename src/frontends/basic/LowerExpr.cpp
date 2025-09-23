@@ -170,7 +170,8 @@ Lowerer::RVal Lowerer::lowerBoolBranchExpr(Value cond,
                                            std::string_view elseLabelBase,
                                            std::string_view joinLabelBase)
 {
-    BasicBlock *origin = cur;
+    ProcedureContext &ctx = context();
+    BasicBlock *origin = ctx.current();
     BasicBlock *thenBlk = nullptr;
     BasicBlock *elseBlk = nullptr;
 
@@ -180,11 +181,11 @@ Lowerer::RVal Lowerer::lowerBoolBranchExpr(Value cond,
 
     IlValue result = emitBoolFromBranches(
         [&](Value slot) {
-            thenBlk = cur;
+            thenBlk = ctx.current();
             emitThen(slot);
         },
         [&](Value slot) {
-            elseBlk = cur;
+            elseBlk = ctx.current();
             emitElse(slot);
         },
         thenBase,
@@ -193,12 +194,12 @@ Lowerer::RVal Lowerer::lowerBoolBranchExpr(Value cond,
 
     assert(thenBlk && elseBlk);
 
-    BasicBlock *joinBlk = cur;
+    BasicBlock *joinBlk = ctx.current();
 
-    cur = origin;
+    ctx.setCurrent(origin);
     curLoc = loc;
     emitCBr(cond, thenBlk, elseBlk);
-    cur = joinBlk;
+    ctx.setCurrent(joinBlk);
     return {result, ilBoolTy()};
 }
 
@@ -355,15 +356,19 @@ Lowerer::RVal Lowerer::lowerDivOrMod(const BinaryExpr &b)
     RVal rhs = lowerExpr(*b.rhs);
     curLoc = b.loc;
     Value cond = emitBinary(Opcode::ICmpEq, ilBoolTy(), rhs.value, Value::constInt(0));
+    ProcedureContext &ctx = context();
+    Function *func = ctx.function();
+    assert(func && "lowerDivOrMod requires an active function");
+    BlockNamer *blockNamer = ctx.blockNamer();
     std::string trapLbl = blockNamer ? blockNamer->generic("div0") : mangler.block("div0");
     std::string okLbl = blockNamer ? blockNamer->generic("divok") : mangler.block("divok");
     BasicBlock *trapBB = &builder->addBlock(*func, trapLbl);
     BasicBlock *okBB = &builder->addBlock(*func, okLbl);
     emitCBr(cond, trapBB, okBB);
-    cur = trapBB;
+    ctx.setCurrent(trapBB);
     curLoc = b.loc;
     emitTrap();
-    cur = okBB;
+    ctx.setCurrent(okBB);
     curLoc = b.loc;
     Opcode op = (b.op == BinaryExpr::Op::IDiv) ? Opcode::SDiv : Opcode::SRem;
     Value res = emitBinary(op, Type(Type::Kind::I64), lhs.value, rhs.value);
