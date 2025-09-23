@@ -348,11 +348,17 @@ void Lowerer::buildProcedureSkeleton(Function &f,
                                      const std::string &name,
                                      const ProcedureMetadata &metadata)
 {
-    blockNamer = std::make_unique<BlockNamer>(name);
+    ProcedureContext &ctx = context();
+    ctx.setBlockNamer(std::make_unique<BlockNamer>(name));
+    BlockNamer *blockNamer = ctx.blockNamer();
 
-    builder->addBlock(f, blockNamer->entry());
+    builder->addBlock(
+        f,
+        blockNamer ? blockNamer->entry()
+                   : mangler.block("entry_" + name));
 
     size_t blockIndex = 1;
+    auto &lineBlocks = ctx.lineBlocks();
     for (const auto *stmt : metadata.bodyStmts)
     {
         if (blockNamer)
@@ -364,7 +370,7 @@ void Lowerer::buildProcedureSkeleton(Function &f,
         lineBlocks[stmt->line] = blockIndex++;
     }
 
-    fnExit = f.blocks.size();
+    ctx.setExitIndex(f.blocks.size());
     if (blockNamer)
         builder->addBlock(f, blockNamer->ret());
     else
@@ -434,9 +440,9 @@ void Lowerer::lowerStatementSequence(
 ///          skeleton: entry block, per-line blocks, and exit block. Parameter
 ///          and local stack slots are materialized before walking statements.
 ///          The helper drives `lowerStmt` for each statement and finally invokes
-///          the configured return generator. Numerous members (`func`, `cur`,
-///          `lineBlocks`, `symbols`, `blockNamer`) are mutated to reflect the
-///          active procedure.
+///          the configured return generator while the procedure context tracks
+///          the active function, current block, and block mappings for the
+///          duration of lowering.
 void Lowerer::lowerProcedure(const std::string &name,
                              const std::vector<Param> &params,
                              const std::vector<StmtPtr> &body,
@@ -499,9 +505,7 @@ void Lowerer::lowerSubDecl(const SubDecl &decl)
 void Lowerer::resetLoweringState()
 {
     resetSymbolState();
-    lineBlocks.clear();
-    boundsCheckId = 0;
-    nextTemp = 0;
+    context().reset();
 }
 
 /// @brief Allocate stack storage for incoming parameters and record their types.
@@ -514,6 +518,9 @@ void Lowerer::resetLoweringState()
 ///          slots.
 void Lowerer::materializeParams(const std::vector<Param> &params)
 {
+    ProcedureContext &ctx = context();
+    Function *func = ctx.function();
+    assert(func && "materializeParams requires an active function");
     for (size_t i = 0; i < params.size(); ++i)
     {
         const auto &p = params[i];

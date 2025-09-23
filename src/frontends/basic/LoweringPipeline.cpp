@@ -224,12 +224,11 @@ void ProgramLowering::run(const Program &prog, il::core::Module &module)
     lowerer.builder = &builder;
 
     lowerer.mangler = NameMangler();
-    lowerer.nextTemp = 0;
-    lowerer.lineBlocks.clear();
+    auto &ctx = lowerer.context();
+    ctx.reset();
     lowerer.symbols.clear();
     lowerer.nextStringId = 0;
     lowerer.procSignatures.clear();
-    lowerer.boundsCheckId = 0;
 
     lowerer.runtimeTracker.reset();
 
@@ -304,6 +303,7 @@ void ProcedureLowering::emit(const std::string &name,
                              const Lowerer::ProcedureConfig &config)
 {
     lowerer.resetLoweringState();
+    auto &ctx = lowerer.context();
 
     Lowerer::ProcedureMetadata metadata =
         lowerer.collectProcedureMetadata(params, body, config);
@@ -315,12 +315,12 @@ void ProcedureLowering::emit(const std::string &name,
 
     il::core::Function &f =
         lowerer.builder->startFunction(name, config.retType, metadata.irParams);
-    lowerer.func = &f;
-    lowerer.nextTemp = lowerer.func->valueNames.size();
+    ctx.setFunction(&f);
+    ctx.setNextTemp(f.valueNames.size());
 
     lowerer.buildProcedureSkeleton(f, name, metadata);
 
-    lowerer.cur = &f.blocks.front();
+    ctx.setCurrent(&f.blocks.front());
     lowerer.materializeParams(params);
     lowerer.allocateLocalSlots(metadata.paramNames, /*includeParams=*/false);
 
@@ -328,17 +328,17 @@ void ProcedureLowering::emit(const std::string &name,
     {
         lowerer.curLoc = {};
         config.emitEmptyBody();
-        lowerer.blockNamer.reset();
+        ctx.resetBlockNamer();
         return;
     }
 
     lowerer.lowerStatementSequence(metadata.bodyStmts, /*stopOnTerminated=*/true);
 
-    lowerer.cur = &f.blocks[lowerer.fnExit];
+    ctx.setCurrent(&f.blocks[ctx.exitIndex()]);
     lowerer.curLoc = {};
     config.emitFinalReturn();
 
-    lowerer.blockNamer.reset();
+    ctx.resetBlockNamer();
 }
 
 StatementLowering::StatementLowering(Lowerer &lowerer) : lowerer(lowerer) {}
@@ -352,23 +352,28 @@ void StatementLowering::lowerSequence(
         return;
 
     lowerer.curLoc = {};
-    lowerer.emitBr(&lowerer.func->blocks[lowerer.lineBlocks[stmts.front()->line]]);
+    auto &ctx = lowerer.context();
+    auto *func = ctx.function();
+    assert(func && "lowerSequence requires an active function");
+    auto &lineBlocks = ctx.lineBlocks();
+    lowerer.emitBr(&func->blocks[lineBlocks[stmts.front()->line]]);
 
     for (size_t i = 0; i < stmts.size(); ++i)
     {
         const Stmt &stmt = *stmts[i];
-        lowerer.cur = &lowerer.func->blocks[lowerer.lineBlocks[stmt.line]];
+        ctx.setCurrent(&func->blocks[lineBlocks[stmt.line]]);
         lowerer.lowerStmt(stmt);
-        if (lowerer.cur->terminated)
+        auto *current = ctx.current();
+        if (current && current->terminated)
         {
             if (stopOnTerminated)
                 break;
             continue;
         }
-        il::core::BasicBlock *next =
+        auto *next =
             (i + 1 < stmts.size())
-                ? &lowerer.func->blocks[lowerer.lineBlocks[stmts[i + 1]->line]]
-                : &lowerer.func->blocks[lowerer.fnExit];
+                ? &func->blocks[lineBlocks[stmts[i + 1]->line]]
+                : &func->blocks[ctx.exitIndex()];
         if (beforeBranch)
             beforeBranch(stmt);
         lowerer.emitBr(next);
