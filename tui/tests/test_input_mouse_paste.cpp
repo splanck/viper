@@ -10,6 +10,7 @@
 using viper::tui::term::InputDecoder;
 using viper::tui::term::MouseEvent;
 using viper::tui::term::PasteEvent;
+using viper::tui::term::KeyEvent;
 
 int main()
 {
@@ -43,6 +44,13 @@ int main()
     auto pe = d.drain_paste();
     assert(pe.size() == 1);
     assert(pe[0].text == "hello\nworld");
+
+    d.feed("\x1b[A");
+    auto ke = d.drain();
+    assert(ke.size() == 1);
+    assert(ke[0].code == KeyEvent::Code::Up);
+    me = d.drain_mouse();
+    assert(me.empty());
 
     return 0;
 }
