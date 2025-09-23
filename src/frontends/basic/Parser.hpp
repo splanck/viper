@@ -10,6 +10,7 @@
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lexer.hpp"
 #include <array>
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -33,6 +34,60 @@ class Parser
     std::unique_ptr<Program> parseProgram();
 
   private:
+    /// @brief Helper that manages statement parsing loops and shared token patterns.
+    class StatementContext
+    {
+      public:
+        /// @brief Aggregated information about a terminating keyword.
+        struct TerminatorInfo
+        {
+            int line = 0;                            ///< Optional line number that preceded the terminator.
+            il::support::SourceLoc loc{};            ///< Source location where the terminator keyword appeared.
+        };
+
+        using TerminatorPredicate = std::function<bool(int)>;                     ///< Predicate identifying terminator tokens.
+        using TerminatorConsumer = std::function<void(int, TerminatorInfo &)>;     ///< Callback consuming the terminator tokens.
+
+        /// @brief Construct a context bound to @p parser.
+        /// @param parser Owning parser providing token accessors.
+        explicit StatementContext(Parser &parser);
+
+        /// @brief Consume a single leading colon or end-of-line if present.
+        void skipLeadingSeparator();
+
+        /// @brief Consume all consecutive end-of-line tokens.
+        void skipLineBreaks();
+
+        /// @brief Consume a colon or end-of-line token if immediately present.
+        void skipStatementSeparator();
+
+        /// @brief Invoke @p fn with an optional numeric line label.
+        /// @param fn Callback receiving the parsed line number (zero when absent).
+        void withOptionalLineNumber(const std::function<void(int)> &fn);
+
+        /// @brief Parse statements until @p isTerminator matches and populate @p dst.
+        /// @param isTerminator Predicate determining when the body ends.
+        /// @param onTerminator Callback consuming the terminator once detected.
+        /// @param dst Destination vector receiving parsed statements.
+        /// @return Line/location metadata of the terminating keyword.
+        TerminatorInfo consumeStatementBody(const TerminatorPredicate &isTerminator,
+                                           const TerminatorConsumer &onTerminator,
+                                           std::vector<StmtPtr> &dst);
+
+        /// @brief Parse statements until @p terminator is encountered.
+        /// @param terminator Token that terminates the body.
+        /// @param dst Destination vector receiving parsed statements.
+        /// @return Line/location metadata of the terminator keyword.
+        TerminatorInfo consumeStatementBody(TokenKind terminator, std::vector<StmtPtr> &dst);
+
+      private:
+        Parser &parser_; ///< Parent parser that owns the token stream.
+    };
+
+    /// @brief Create a statement context bound to this parser instance.
+    /// @return StatementContext referencing the parser's token stream.
+    StatementContext statementContext();
+
     mutable Lexer lexer_;                    ///< Provides tokens from the source buffer.
     mutable std::vector<Token> tokens_;      ///< Lookahead token buffer.
     DiagnosticEmitter *emitter_ = nullptr;   ///< Diagnostic sink; not owned.
@@ -71,12 +126,6 @@ class Parser
     /// @param line Line number of the IF keyword.
     /// @return IF statement node.
     StmtPtr parseIf(int line);
-
-    /// @brief Parse the body of a loop terminated by @p terminator.
-    /// @param terminator Token that ends the loop (e.g., WEND or NEXT).
-    /// @param lineOut Optional pointer receiving the terminator's line number.
-    /// @param dst Destination vector populated with parsed statements.
-    void parseLoopBody(TokenKind terminator, int *lineOut, std::vector<StmtPtr> &dst);
 
     /// @brief Parse a WHILE loop.
     /// @return WHILE statement node.
