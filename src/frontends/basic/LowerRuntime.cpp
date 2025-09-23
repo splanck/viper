@@ -7,23 +7,44 @@
 // Links: docs/class-catalog.md
 
 // Requires the consolidated Lowerer interface for runtime tracking declarations.
+#include "frontends/basic/LowerRuntime.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "il/build/IRBuilder.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include <cassert>
 #include <string>
 #include <string_view>
 
-using namespace il::core;
-
 namespace il::frontends::basic
 {
 
-/// @brief Hash runtime helper identifiers by their enumerator value.
-/// @param f Runtime helper enumerator to hash.
-/// @return Hash value derived from the underlying enum ordinal.
-size_t Lowerer::RuntimeFeatureHash::operator()(RuntimeFeature f) const
+std::size_t RuntimeHelperTracker::RuntimeFeatureHash::operator()(RuntimeFeature f) const
 {
-    return static_cast<size_t>(f);
+    return static_cast<std::size_t>(f);
+}
+
+void RuntimeHelperTracker::reset()
+{
+    requested_.reset();
+    ordered_.clear();
+    tracked_.clear();
+}
+
+void RuntimeHelperTracker::requestHelper(RuntimeFeature feature)
+{
+    requested_.set(static_cast<std::size_t>(feature));
+}
+
+bool RuntimeHelperTracker::isHelperNeeded(RuntimeFeature feature) const
+{
+    return requested_.test(static_cast<std::size_t>(feature));
+}
+
+void RuntimeHelperTracker::trackRuntime(RuntimeFeature feature)
+{
+    requestHelper(feature);
+    if (tracked_.insert(feature).second)
+        ordered_.push_back(feature);
 }
 
 namespace
@@ -33,8 +54,7 @@ namespace
 ///          wiring, and lowering metadata remain synchronized.
 /// @param b IR builder that will receive the extern declaration.
 /// @param desc Runtime descriptor describing the helper to declare.
-/// @note This helper mutates the builder but does not touch runtimeOrder or
-///       runtimeSet tracking.
+/// @note This helper mutates the builder but leaves the tracker state untouched.
 void declareRuntimeExtern(build::IRBuilder &b, const il::runtime::RuntimeDescriptor &desc)
 {
     b.addExtern(std::string(desc.name), desc.signature.retType, desc.signature.paramTypes);
@@ -42,28 +62,13 @@ void declareRuntimeExtern(build::IRBuilder &b, const il::runtime::RuntimeDescrip
 } // namespace
 
 /// @brief Declare every runtime helper required by the current lowering run.
-/// @details Emits baseline helpers unconditionally and consults lowering
-///          toggles recorded through requestHelper/isHelperNeeded along with
-///          boundsChecks to decide which additional helpers are necessary. Runtime
-///          math helpers requested dynamically are iterated in the order
-///          recorded by trackRuntime so declaration emission remains
-///          deterministic. Each declaration delegates to declareRuntimeExtern,
-///          which looks up the canonical signature via RuntimeSignatures.
+/// @details Emits baseline helpers unconditionally and consults tracker state
+///          to determine optional helpers. Ordered helpers are replayed by
+///          iterating the recorded sequence so declarations remain
+///          deterministic.
 /// @param b IR builder used to register extern declarations.
-/// @note Assumes runtimeOrder has been populated through trackRuntime calls;
-///       missing signatures are enforced by the assertion in
-///       declareRuntimeExtern.
-void Lowerer::requestHelper(RuntimeFeature feature)
-{
-    runtimeFeatures.set(static_cast<size_t>(feature));
-}
-
-bool Lowerer::isHelperNeeded(RuntimeFeature feature) const
-{
-    return runtimeFeatures.test(static_cast<size_t>(feature));
-}
-
-void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
+/// @param boundsChecks Whether array bounds helpers should be declared.
+void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boundsChecks) const
 {
     const auto &registry = il::runtime::runtimeRegistry();
     for (const auto &entry : registry)
@@ -86,7 +91,7 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         }
     }
 
-    for (RuntimeFeature feature : runtimeOrder)
+    for (RuntimeFeature feature : ordered_)
     {
         const auto *desc = il::runtime::findRuntimeDescriptor(feature);
         assert(desc && "requested runtime feature missing from registry");
@@ -94,19 +99,24 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
     }
 }
 
-/// @brief Record that a runtime helper is needed for the current program.
-/// @details Inserts @p fn into runtimeSet, using it as a visited filter, and
-///          appends @p fn to runtimeOrder the first time it appears. This
-///          preserves deterministic declaration order when
-///          declareRequiredRuntime later walks runtimeOrder.
-/// @param fn Identifier for the runtime helper that lowering just requested.
-/// @post runtimeSet always contains @p fn; runtimeOrder grows only when @p fn
-///       was not previously tracked.
+void Lowerer::requestHelper(RuntimeFeature feature)
+{
+    runtimeTracker.requestHelper(feature);
+}
+
+bool Lowerer::isHelperNeeded(RuntimeFeature feature) const
+{
+    return runtimeTracker.isHelperNeeded(feature);
+}
+
 void Lowerer::trackRuntime(RuntimeFeature feature)
 {
-    runtimeFeatures.set(static_cast<size_t>(feature));
-    if (runtimeSet.insert(feature).second)
-        runtimeOrder.push_back(feature);
+    runtimeTracker.trackRuntime(feature);
+}
+
+void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
+{
+    runtimeTracker.declareRequiredRuntime(b, boundsChecks);
 }
 
 } // namespace il::frontends::basic
