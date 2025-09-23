@@ -10,7 +10,7 @@
 #include <string>
 #include <string_view>
 
-namespace tui::term
+namespace viper::tui::term
 {
 namespace
 {
@@ -176,4 +176,4 @@ void MockClipboard::clear()
     last_.clear();
 }
 
-} // namespace tui::term
+} // namespace viper::tui::term

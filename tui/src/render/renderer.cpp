@@ -12,7 +12,7 @@
 namespace viper::tui::render
 {
 
-Renderer::Renderer(::tui::term::TermIO &tio, bool truecolor) : tio_(tio), truecolor_(truecolor) {}
+Renderer::Renderer(::viper::tui::term::TermIO &tio, bool truecolor) : tio_(tio), truecolor_(truecolor) {}
 
 namespace
 {

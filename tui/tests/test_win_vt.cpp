@@ -8,7 +8,7 @@
 int main()
 {
 #ifdef _WIN32
-    tui::TerminalSession session;
+    viper::tui::TerminalSession session;
 #endif
     return 0;
 }
