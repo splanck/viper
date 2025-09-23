@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <string>
+#include <string_view>
 
 using viper::tui::util::char_width;
 
@@ -16,8 +17,10 @@ namespace viper::tui::views
 {
 namespace
 {
-std::pair<char32_t, std::size_t> decodeChar(const std::string &s, std::size_t off)
+std::pair<char32_t, std::size_t> decodeChar(std::string_view s, std::size_t off)
 {
+    if (off >= s.size())
+        return {U'\uFFFD', 1};
     unsigned char c = static_cast<unsigned char>(s[off]);
     if (c < 0x80)
         return {c, 1};
@@ -63,12 +66,12 @@ std::size_t TextView::cursorCol() const
     return cursor_col_;
 }
 
-std::pair<char32_t, std::size_t> TextView::decodeChar(const std::string &s, std::size_t off)
+std::pair<char32_t, std::size_t> TextView::decodeChar(std::string_view s, std::size_t off)
 {
     return ::viper::tui::views::decodeChar(s, off);
 }
 
-std::size_t TextView::lineWidth(const std::string &line)
+std::size_t TextView::lineWidth(std::string_view line)
 {
     std::size_t i = 0;
     std::size_t c = 0;
@@ -81,7 +84,7 @@ std::size_t TextView::lineWidth(const std::string &line)
     return c;
 }
 
-std::size_t TextView::columnToOffset(const std::string &line, std::size_t col)
+std::size_t TextView::columnToOffset(std::string_view line, std::size_t col)
 {
     std::size_t i = 0;
     std::size_t c = 0;
@@ -99,27 +102,45 @@ std::size_t TextView::columnToOffset(const std::string &line, std::size_t col)
 
 std::size_t TextView::offsetFromRowCol(std::size_t row, std::size_t col) const
 {
-    std::string text = buf_.str();
-    std::size_t off = 0;
-    std::size_t r = 0;
-    while (r < row)
+    const std::size_t total = buf_.lineCount();
+    if (total == 0)
     {
-        std::size_t pos = text.find('\n', off);
-        if (pos == std::string::npos)
-            return text.size();
-        off = pos + 1;
-        ++r;
+        return 0;
     }
-    std::size_t lineEnd = text.find('\n', off);
-    std::string line =
-        lineEnd == std::string::npos ? text.substr(off) : text.substr(off, lineEnd - off);
-    return off + columnToOffset(line, col);
+    if (row >= total)
+    {
+        return buf_.size();
+    }
+
+    auto line = buf_.lineView(row);
+    std::size_t byteOffset = 0;
+    std::size_t currentCol = 0;
+    line.forEachSegment([&](std::string_view segment) -> bool {
+        std::size_t idx = 0;
+        while (idx < segment.size())
+        {
+            auto [cp, len] = decodeChar(segment, idx);
+            if (len == 0)
+            {
+                return false;
+            }
+            std::size_t width = static_cast<std::size_t>(char_width(cp));
+            if (currentCol + width > col)
+            {
+                return false;
+            }
+            idx += len;
+            byteOffset += len;
+            currentCol += width;
+        }
+        return true;
+    });
+    return line.offset() + byteOffset;
 }
 
 std::size_t TextView::totalLines() const
 {
-    std::string text = buf_.str();
-    return std::count(text.begin(), text.end(), '\n') + 1;
+    return buf_.lineCount();
 }
 
 void TextView::setCursor(std::size_t row, std::size_t col, bool shift, bool updateTarget)
@@ -142,24 +163,83 @@ void TextView::setHighlights(std::vector<std::pair<std::size_t, std::size_t>> ra
 
 void TextView::moveCursorToOffset(std::size_t off)
 {
-    std::string text = buf_.str();
+    const std::size_t size = buf_.size();
+    const std::size_t clamped = std::min(off, size);
+    const std::size_t total = buf_.lineCount();
+
     std::size_t row = 0;
-    std::size_t col = 0;
-    std::size_t pos = 0;
-    while (pos < off && pos < text.size())
+    std::size_t rowStart = 0;
+
+    if (total > 0)
     {
-        if (text[pos] == '\n')
+        std::size_t low = 0;
+        std::size_t high = total;
+        while (low < high)
+        {
+            std::size_t mid = (low + high) / 2;
+            std::size_t start = buf_.lineOffset(mid);
+            if (start <= clamped)
+            {
+                row = mid;
+                rowStart = start;
+                low = mid + 1;
+            }
+            else
+            {
+                high = mid;
+            }
+        }
+        rowStart = buf_.lineOffset(row);
+
+        std::size_t length = buf_.lineLength(row);
+        if (row + 1 < total && clamped == rowStart + length)
         {
             ++row;
-            col = 0;
-            ++pos;
-            continue;
+            if (row >= total)
+            {
+                row = total - 1;
+            }
+            rowStart = buf_.lineOffset(row);
+            length = buf_.lineLength(row);
         }
-        auto [cp, len] = decodeChar(text, pos);
-        col += static_cast<std::size_t>(char_width(cp));
-        pos += len;
+
+        std::size_t inLineOffset = clamped > rowStart ? clamped - rowStart : 0;
+        if (inLineOffset > length)
+        {
+            inLineOffset = length;
+        }
+
+        std::size_t col = 0;
+        std::size_t consumed = 0;
+        auto line = buf_.lineView(row);
+        line.forEachSegment([&](std::string_view segment) -> bool {
+            std::size_t idx = 0;
+            while (idx < segment.size() && consumed < inLineOffset)
+            {
+                auto [cp, len] = decodeChar(segment, idx);
+                if (len == 0)
+                {
+                    return false;
+                }
+                std::size_t advance = std::min(len, inLineOffset - consumed);
+                consumed += advance;
+                col += static_cast<std::size_t>(char_width(cp));
+                idx += len;
+                if (consumed >= inLineOffset)
+                {
+                    break;
+                }
+            }
+            return consumed < inLineOffset;
+        });
+
+        setCursor(row, col, false, true);
     }
-    setCursor(row, col, false, true);
+    else
+    {
+        setCursor(0, 0, false, true);
+    }
+
     if (cursor_row_ < top_row_)
         top_row_ = cursor_row_;
     if (cursor_row_ >= top_row_ + static_cast<std::size_t>(rect_.h))

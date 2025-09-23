@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cstddef>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -75,9 +76,9 @@ class TextView : public ui::Widget
     std::vector<std::pair<std::size_t, std::size_t>> highlights_{};
 
     // helpers
-    static std::pair<char32_t, std::size_t> decodeChar(const std::string &s, std::size_t off);
-    static std::size_t lineWidth(const std::string &line);
-    static std::size_t columnToOffset(const std::string &line, std::size_t col);
+    static std::pair<char32_t, std::size_t> decodeChar(std::string_view s, std::size_t off);
+    static std::size_t lineWidth(std::string_view line);
+    static std::size_t columnToOffset(std::string_view line, std::size_t col);
     std::size_t offsetFromRowCol(std::size_t row, std::size_t col) const;
     std::size_t totalLines() const;
     void setCursor(std::size_t row, std::size_t col, bool shift, bool updateTarget);

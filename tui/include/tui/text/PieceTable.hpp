@@ -4,12 +4,14 @@
 // @ownership PieceTable owns original/add buffers and change payload copies.
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <functional>
 #include <list>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace viper::tui::text
 {
@@ -73,6 +75,10 @@ class PieceTable
     /// @brief Extract text within [pos, pos + len).
     [[nodiscard]] std::string getText(std::size_t pos, std::size_t len) const;
 
+    /// @brief Iterate contiguous segments covering [pos, pos + len).
+    template <typename Fn>
+    void forEachSegment(std::size_t pos, std::size_t len, Fn &&fn) const;
+
     /// @brief Insert text at position returning span callbacks.
     Change insertInternal(std::size_t pos, std::string_view text);
 
@@ -102,3 +108,30 @@ class PieceTable
     std::size_t size_{};
 };
 } // namespace viper::tui::text
+
+template <typename Fn>
+void viper::tui::text::PieceTable::forEachSegment(std::size_t pos, std::size_t len, Fn &&fn) const
+{
+    std::size_t idx = 0;
+    for (auto it = pieces_.cbegin(); it != pieces_.cend() && len > 0; ++it)
+    {
+        if (pos >= idx + it->length)
+        {
+            idx += it->length;
+            continue;
+        }
+
+        std::size_t start_in_piece = pos > idx ? pos - idx : 0U;
+        std::size_t take = std::min(it->length - start_in_piece, len);
+        const std::string &buf = it->buf == BufferKind::Add ? add_ : original_;
+        std::string_view view(buf.data() + it->start + start_in_piece, take);
+        if (!std::invoke(std::forward<Fn>(fn), view))
+        {
+            break;
+        }
+
+        pos += take;
+        len -= take;
+        idx += it->length;
+    }
+}
