@@ -7,8 +7,8 @@
 
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/TypeSuffix.hpp"
 #include <optional>
-#include <string_view>
 #include <vector>
 
 namespace il::frontends::basic
@@ -32,20 +32,6 @@ Lowerer::ExprType exprTypeFromAstType(::il::frontends::basic::Type ty)
         default:
             return Lowerer::ExprType::I64;
     }
-}
-
-::il::frontends::basic::Type inferAstTypeFromName(std::string_view name)
-{
-    using AstType = ::il::frontends::basic::Type;
-    if (!name.empty())
-    {
-        char suffix = name.back();
-        if (suffix == '$')
-            return AstType::Str;
-        if (suffix == '#')
-            return AstType::F64;
-    }
-    return AstType::I64;
 }
 
 } // namespace
