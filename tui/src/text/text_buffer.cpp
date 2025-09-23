@@ -9,6 +9,21 @@
 
 namespace viper::tui::text
 {
+TextBuffer::LineView::LineView(const PieceTable &table, std::size_t offset, std::size_t length)
+    : table_(table), offset_(offset), length_(length)
+{
+}
+
+std::size_t TextBuffer::LineView::offset() const
+{
+    return offset_;
+}
+
+std::size_t TextBuffer::LineView::length() const
+{
+    return length_;
+}
+
 void TextBuffer::load(std::string text)
 {
     auto change = table_.load(std::move(text));
@@ -19,6 +34,46 @@ void TextBuffer::load(std::string text)
 std::size_t TextBuffer::size() const
 {
     return table_.size();
+}
+
+std::size_t TextBuffer::lineCount() const
+{
+    return line_index_.count();
+}
+
+std::size_t TextBuffer::lineOffset(std::size_t lineNo) const
+{
+    if (lineNo >= line_index_.count())
+    {
+        return table_.size();
+    }
+    return line_index_.start(lineNo);
+}
+
+std::size_t TextBuffer::lineLength(std::size_t lineNo) const
+{
+    if (lineNo >= line_index_.count())
+    {
+        return 0;
+    }
+
+    const std::size_t start = line_index_.start(lineNo);
+    const std::size_t nextLine = lineNo + 1;
+    if (nextLine < line_index_.count())
+    {
+        const std::size_t nextStart = line_index_.start(nextLine);
+        if (nextStart > start)
+        {
+            return nextStart - start - 1;
+        }
+        return 0;
+    }
+    return table_.size() > start ? table_.size() - start : 0U;
+}
+
+TextBuffer::LineView TextBuffer::lineView(std::size_t lineNo) const
+{
+    return LineView(table_, lineOffset(lineNo), lineLength(lineNo));
 }
 
 void TextBuffer::beginTxn()
