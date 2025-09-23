@@ -84,6 +84,15 @@ class TextBuffer
         }
     }
 
+    /// @brief Number of indexed lines tracked by the line index.
+    [[nodiscard]] std::size_t lineCount() const;
+
+    /// @brief Starting byte offset for a line; returns buffer size when out of range.
+    [[nodiscard]] std::size_t lineStart(std::size_t lineNo) const;
+
+    /// @brief Exclusive ending byte offset excluding trailing newline; clamps to buffer size.
+    [[nodiscard]] std::size_t lineEnd(std::size_t lineNo) const;
+
     /// @brief Retrieve starting offset for a line, clamped to buffer end.
     [[nodiscard]] std::size_t lineOffset(std::size_t lineNo) const;
 
@@ -92,9 +101,6 @@ class TextBuffer
 
     /// @brief Retrieve line metadata and segment iterator for a line.
     [[nodiscard]] LineView lineView(std::size_t lineNo) const;
-
-    /// @brief Number of indexed lines.
-    [[nodiscard]] std::size_t lineCount() const;
 
     /// @brief Get full buffer content.
     [[nodiscard]] std::string str() const;
