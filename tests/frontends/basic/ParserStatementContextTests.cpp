@@ -77,5 +77,72 @@ int main()
         assert(dynamic_cast<PrintStmt *>(ifStmt->else_branch.get()));
     }
 
+    {
+        std::string src =
+            "10 IF FLAG THEN\n"
+            "20 PRINT 1\n"
+            "30 ELSEIF OTHER THEN\n"
+            "40 PRINT 2\n"
+            "50 ELSE\n"
+            "60 PRINT 3\n"
+            "70 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("ifelseif.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        assert(prog);
+        assert(prog->main.size() == 2);
+        auto *ifStmt = dynamic_cast<IfStmt *>(prog->main[0].get());
+        assert(ifStmt);
+        assert(ifStmt->then_branch);
+        assert(ifStmt->then_branch->line == 10);
+        assert(dynamic_cast<PrintStmt *>(ifStmt->then_branch.get()));
+        assert(ifStmt->elseifs.size() == 1);
+        assert(ifStmt->elseifs[0].then_branch);
+        assert(ifStmt->elseifs[0].then_branch->line == 10);
+        assert(dynamic_cast<PrintStmt *>(ifStmt->elseifs[0].then_branch.get()));
+        assert(ifStmt->else_branch);
+        assert(ifStmt->else_branch->line == 10);
+        assert(dynamic_cast<PrintStmt *>(ifStmt->else_branch.get()));
+    }
+
+    {
+        std::string src =
+            "10 IF FLAG THEN PRINT 1 ELSEIF OTHER THEN PRINT 2 ELSE PRINT 3\n"
+            "20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("ifinline.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        assert(prog);
+        assert(prog->main.size() == 2);
+        auto *ifStmt = dynamic_cast<IfStmt *>(prog->main[0].get());
+        assert(ifStmt);
+        assert(ifStmt->then_branch);
+        assert(dynamic_cast<PrintStmt *>(ifStmt->then_branch.get()));
+        assert(ifStmt->elseifs.size() == 1);
+        assert(dynamic_cast<PrintStmt *>(ifStmt->elseifs[0].then_branch.get()));
+        assert(ifStmt->else_branch);
+        assert(dynamic_cast<PrintStmt *>(ifStmt->else_branch.get()));
+    }
+
+    {
+        std::string src =
+            "10 IF FLAG THEN PRINT 1: PRINT 2\n"
+            "20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("ifcolon.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        assert(prog);
+        assert(prog->main.size() == 2);
+        auto *list = dynamic_cast<StmtList *>(prog->main[0].get());
+        assert(list);
+        assert(list->stmts.size() == 2);
+        auto *ifStmt = dynamic_cast<IfStmt *>(list->stmts[0].get());
+        assert(ifStmt);
+        assert(dynamic_cast<PrintStmt *>(list->stmts[1].get()));
+    }
+
     return 0;
 }
