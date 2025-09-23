@@ -19,34 +19,360 @@ namespace il::frontends::basic
 namespace
 {
 using B = BuiltinCallExpr::Builtin;
+using LowerRule = BuiltinLoweringRule;
+using ResultSpec = LowerRule::ResultSpec;
+using Variant = LowerRule::Variant;
+using Condition = Variant::Condition;
+using VariantKind = Variant::Kind;
+using Argument = LowerRule::Argument;
+using Transform = LowerRule::ArgTransform;
+using TransformKind = LowerRule::ArgTransform::Kind;
+using Feature = LowerRule::Feature;
+using FeatureAction = LowerRule::Feature::Action;
+
+static const std::array<LowerRule, 23> kBuiltinLoweringRules = {{
+    { // LEN
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::I64},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_len",
+                    .arguments = {Argument{.index = 0}}},
+        },
+    },
+    { // MID$
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
+        .variants = {
+            Variant{.condition = Condition::IfArgPresent,
+                    .conditionArg = 2,
+                    .callLocArg = 2,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_mid3",
+                    .arguments = {Argument{.index = 0},
+                                  Argument{.index = 1,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureI64},
+                                                          Transform{.kind = TransformKind::AddConst, .immediate = -1}}},
+                                  Argument{.index = 2,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureI64}}}},
+                    .features = {Feature{.action = FeatureAction::Request,
+                                         .feature = il::runtime::RuntimeFeature::Mid3}}},
+            Variant{.condition = Condition::IfArgMissing,
+                    .conditionArg = 2,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_mid2",
+                    .arguments = {Argument{.index = 0},
+                                  Argument{.index = 1,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureI64},
+                                                          Transform{.kind = TransformKind::AddConst, .immediate = -1}}}},
+                    .features = {Feature{.action = FeatureAction::Request,
+                                         .feature = il::runtime::RuntimeFeature::Mid2}}},
+        },
+    },
+    { // LEFT$
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_left",
+                    .arguments = {Argument{.index = 0},
+                                  Argument{.index = 1,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureI64}}}},
+                    .features = {Feature{.action = FeatureAction::Request,
+                                         .feature = il::runtime::RuntimeFeature::Left}}},
+        },
+    },
+    { // RIGHT$
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_right",
+                    .arguments = {Argument{.index = 0},
+                                  Argument{.index = 1,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureI64}}}},
+                    .features = {Feature{.action = FeatureAction::Request,
+                                         .feature = il::runtime::RuntimeFeature::Right}}},
+        },
+    },
+    { // STR$
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
+        .variants = {
+            Variant{.condition = Condition::IfArgTypeIs,
+                    .conditionArg = 0,
+                    .conditionType = Lowerer::ExprType::F64,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_f64_to_str",
+                    .arguments = {Argument{.index = 0,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureF64}}}},
+                    .features = {Feature{.action = FeatureAction::Request,
+                                         .feature = il::runtime::RuntimeFeature::F64ToStr}}},
+            Variant{.condition = Condition::Always,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_int_to_str",
+                    .arguments = {Argument{.index = 0,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureI64}}}},
+                    .features = {Feature{.action = FeatureAction::Request,
+                                         .feature = il::runtime::RuntimeFeature::IntToStr}}},
+        },
+    },
+    { // VAL
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::I64},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_to_int",
+                    .arguments = {Argument{.index = 0}},
+                    .features = {Feature{.action = FeatureAction::Request,
+                                         .feature = il::runtime::RuntimeFeature::ToInt}}},
+        },
+    },
+    { // INT
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::I64},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .kind = VariantKind::EmitUnary,
+                    .opcode = il::core::Opcode::Fptosi,
+                    .arguments = {Argument{.index = 0,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureF64}}}}},
+        },
+    },
+    { // SQR
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::F64},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_sqrt",
+                    .arguments = {Argument{.index = 0,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureF64}}}},
+                    .features = {Feature{.action = FeatureAction::Track,
+                                         .feature = il::runtime::RuntimeFeature::Sqrt}}},
+        },
+    },
+    { // ABS
+        .result = {.kind = ResultSpec::Kind::FromArg, .type = Lowerer::ExprType::I64, .argIndex = 0},
+        .variants = {
+            Variant{.condition = Condition::IfArgTypeIs,
+                    .conditionArg = 0,
+                    .conditionType = Lowerer::ExprType::F64,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_abs_f64",
+                    .arguments = {Argument{.index = 0,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureF64}}}},
+                    .features = {Feature{.action = FeatureAction::Track,
+                                         .feature = il::runtime::RuntimeFeature::AbsF64}}},
+            Variant{.condition = Condition::Always,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_abs_i64",
+                    .arguments = {Argument{.index = 0,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureI64}}}},
+                    .features = {Feature{.action = FeatureAction::Track,
+                                         .feature = il::runtime::RuntimeFeature::AbsI64}}},
+        },
+    },
+    { // FLOOR
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::F64},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_floor",
+                    .arguments = {Argument{.index = 0,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureF64}}}},
+                    .features = {Feature{.action = FeatureAction::Track,
+                                         .feature = il::runtime::RuntimeFeature::Floor}}},
+        },
+    },
+    { // CEIL
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::F64},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_ceil",
+                    .arguments = {Argument{.index = 0,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureF64}}}},
+                    .features = {Feature{.action = FeatureAction::Track,
+                                         .feature = il::runtime::RuntimeFeature::Ceil}}},
+        },
+    },
+    { // SIN
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::F64},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_sin",
+                    .arguments = {Argument{.index = 0,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureF64}}}},
+                    .features = {Feature{.action = FeatureAction::Track,
+                                         .feature = il::runtime::RuntimeFeature::Sin}}},
+        },
+    },
+    { // COS
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::F64},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_cos",
+                    .arguments = {Argument{.index = 0,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureF64}}}},
+                    .features = {Feature{.action = FeatureAction::Track,
+                                         .feature = il::runtime::RuntimeFeature::Cos}}},
+        },
+    },
+    { // POW
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::F64},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_pow",
+                    .arguments = {Argument{.index = 0,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureF64}}},
+                                  Argument{.index = 1,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureF64}}}},
+                    .features = {Feature{.action = FeatureAction::Track,
+                                         .feature = il::runtime::RuntimeFeature::Pow}}},
+        },
+    },
+    { // RND
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::F64},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_rnd",
+                    .features = {Feature{.action = FeatureAction::Track,
+                                         .feature = il::runtime::RuntimeFeature::Rnd}}},
+        },
+    },
+    { // INSTR
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::I64},
+        .variants = {
+            Variant{.condition = Condition::IfArgPresent,
+                    .conditionArg = 2,
+                    .callLocArg = 2,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_instr3",
+                    .arguments = {Argument{.index = 0,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureI64},
+                                                          Transform{.kind = TransformKind::AddConst, .immediate = -1}}},
+                                  Argument{.index = 1},
+                                  Argument{.index = 2}},
+                    .features = {Feature{.action = FeatureAction::Request,
+                                         .feature = il::runtime::RuntimeFeature::Instr3}}},
+            Variant{.condition = Condition::IfArgMissing,
+                    .conditionArg = 2,
+                    .callLocArg = 1,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_instr2",
+                    .arguments = {Argument{.index = 0}, Argument{.index = 1}},
+                    .features = {Feature{.action = FeatureAction::Request,
+                                         .feature = il::runtime::RuntimeFeature::Instr2}}},
+        },
+    },
+    { // LTRIM$
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_ltrim",
+                    .arguments = {Argument{.index = 0}},
+                    .features = {Feature{.action = FeatureAction::Request,
+                                         .feature = il::runtime::RuntimeFeature::Ltrim}}},
+        },
+    },
+    { // RTRIM$
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_rtrim",
+                    .arguments = {Argument{.index = 0}},
+                    .features = {Feature{.action = FeatureAction::Request,
+                                         .feature = il::runtime::RuntimeFeature::Rtrim}}},
+        },
+    },
+    { // TRIM$
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_trim",
+                    .arguments = {Argument{.index = 0}},
+                    .features = {Feature{.action = FeatureAction::Request,
+                                         .feature = il::runtime::RuntimeFeature::Trim}}},
+        },
+    },
+    { // UCASE$
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_ucase",
+                    .arguments = {Argument{.index = 0}},
+                    .features = {Feature{.action = FeatureAction::Request,
+                                         .feature = il::runtime::RuntimeFeature::Ucase}}},
+        },
+    },
+    { // LCASE$
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_lcase",
+                    .arguments = {Argument{.index = 0}},
+                    .features = {Feature{.action = FeatureAction::Request,
+                                         .feature = il::runtime::RuntimeFeature::Lcase}}},
+        },
+    },
+    { // CHR$
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_chr",
+                    .arguments = {Argument{.index = 0,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureI64}}}},
+                    .features = {Feature{.action = FeatureAction::Request,
+                                         .feature = il::runtime::RuntimeFeature::Chr}}},
+        },
+    },
+    { // ASC
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::I64},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_asc",
+                    .arguments = {Argument{.index = 0}},
+                    .features = {Feature{.action = FeatureAction::Request,
+                                         .feature = il::runtime::RuntimeFeature::Asc}}},
+        },
+    },
+}};
 
 // Dense metadata table indexed by BuiltinCallExpr::Builtin enumerators. The
 // order must remain in lockstep with the enum definition so that we can index
 // directly without translation.
 static const std::array<BuiltinInfo, 23> kBuiltins = {{
-    {"LEN", 1, 1, &SemanticAnalyzer::analyzeLen, &Lowerer::lowerLen},
-    {"MID$", 2, 3, &SemanticAnalyzer::analyzeMid, &Lowerer::lowerMid},
-    {"LEFT$", 2, 2, &SemanticAnalyzer::analyzeLeft, &Lowerer::lowerLeft},
-    {"RIGHT$", 2, 2, &SemanticAnalyzer::analyzeRight, &Lowerer::lowerRight},
-    {"STR$", 1, 1, &SemanticAnalyzer::analyzeStr, &Lowerer::lowerStr},
-    {"VAL", 1, 1, &SemanticAnalyzer::analyzeVal, &Lowerer::lowerVal},
-    {"INT", 1, 1, &SemanticAnalyzer::analyzeInt, &Lowerer::lowerInt},
-    {"SQR", 1, 1, &SemanticAnalyzer::analyzeSqr, &Lowerer::lowerSqr},
-    {"ABS", 1, 1, &SemanticAnalyzer::analyzeAbs, &Lowerer::lowerAbs},
-    {"FLOOR", 1, 1, &SemanticAnalyzer::analyzeFloor, &Lowerer::lowerFloor},
-    {"CEIL", 1, 1, &SemanticAnalyzer::analyzeCeil, &Lowerer::lowerCeil},
-    {"SIN", 1, 1, &SemanticAnalyzer::analyzeSin, &Lowerer::lowerSin},
-    {"COS", 1, 1, &SemanticAnalyzer::analyzeCos, &Lowerer::lowerCos},
-    {"POW", 2, 2, &SemanticAnalyzer::analyzePow, &Lowerer::lowerPow},
-    {"RND", 0, 0, &SemanticAnalyzer::analyzeRnd, &Lowerer::lowerRnd},
-    {"INSTR", 2, 3, &SemanticAnalyzer::analyzeInstr, &Lowerer::lowerInstr},
-    {"LTRIM$", 1, 1, &SemanticAnalyzer::analyzeLtrim, &Lowerer::lowerLtrim},
-    {"RTRIM$", 1, 1, &SemanticAnalyzer::analyzeRtrim, &Lowerer::lowerRtrim},
-    {"TRIM$", 1, 1, &SemanticAnalyzer::analyzeTrim, &Lowerer::lowerTrim},
-    {"UCASE$", 1, 1, &SemanticAnalyzer::analyzeUcase, &Lowerer::lowerUcase},
-    {"LCASE$", 1, 1, &SemanticAnalyzer::analyzeLcase, &Lowerer::lowerLcase},
-    {"CHR$", 1, 1, &SemanticAnalyzer::analyzeChr, &Lowerer::lowerChr},
-    {"ASC", 1, 1, &SemanticAnalyzer::analyzeAsc, &Lowerer::lowerAsc},
+    {"LEN", 1, 1, &SemanticAnalyzer::analyzeLen},
+    {"MID$", 2, 3, &SemanticAnalyzer::analyzeMid},
+    {"LEFT$", 2, 2, &SemanticAnalyzer::analyzeLeft},
+    {"RIGHT$", 2, 2, &SemanticAnalyzer::analyzeRight},
+    {"STR$", 1, 1, &SemanticAnalyzer::analyzeStr},
+    {"VAL", 1, 1, &SemanticAnalyzer::analyzeVal},
+    {"INT", 1, 1, &SemanticAnalyzer::analyzeInt},
+    {"SQR", 1, 1, &SemanticAnalyzer::analyzeSqr},
+    {"ABS", 1, 1, &SemanticAnalyzer::analyzeAbs},
+    {"FLOOR", 1, 1, &SemanticAnalyzer::analyzeFloor},
+    {"CEIL", 1, 1, &SemanticAnalyzer::analyzeCeil},
+    {"SIN", 1, 1, &SemanticAnalyzer::analyzeSin},
+    {"COS", 1, 1, &SemanticAnalyzer::analyzeCos},
+    {"POW", 2, 2, &SemanticAnalyzer::analyzePow},
+    {"RND", 0, 0, &SemanticAnalyzer::analyzeRnd},
+    {"INSTR", 2, 3, &SemanticAnalyzer::analyzeInstr},
+    {"LTRIM$", 1, 1, &SemanticAnalyzer::analyzeLtrim},
+    {"RTRIM$", 1, 1, &SemanticAnalyzer::analyzeRtrim},
+    {"TRIM$", 1, 1, &SemanticAnalyzer::analyzeTrim},
+    {"UCASE$", 1, 1, &SemanticAnalyzer::analyzeUcase},
+    {"LCASE$", 1, 1, &SemanticAnalyzer::analyzeLcase},
+    {"CHR$", 1, 1, &SemanticAnalyzer::analyzeChr},
+    {"ASC", 1, 1, &SemanticAnalyzer::analyzeAsc},
 }};
 
 static const std::array<BuiltinScanRule, 23> kBuiltinScanRules = {{
@@ -308,8 +634,7 @@ static const std::unordered_map<std::string_view, B> kByName = {
 
 /// @brief Fetch metadata for a BASIC built-in represented by its enum value.
 /// @param b Builtin enumerator to inspect.
-/// @return Reference to the metadata describing semantic, lowering, and scan
-///         hooks.
+/// @return Reference to the metadata describing the semantic analysis hook.
 /// @pre @p b must be a valid BuiltinCallExpr::Builtin enumerator; passing an
 ///      out-of-range value results in undefined behavior due to direct array
 ///      indexing.
@@ -338,6 +663,14 @@ std::optional<BuiltinCallExpr::Builtin> lookupBuiltin(std::string_view name)
 const BuiltinScanRule &getBuiltinScanRule(BuiltinCallExpr::Builtin b)
 {
     return kBuiltinScanRules[static_cast<std::size_t>(b)];
+}
+
+/// @brief Access the lowering rule for a BASIC builtin.
+/// @param b Builtin enumerator identifying the builtin.
+/// @return Reference to the declarative lowering description.
+const BuiltinLoweringRule &getBuiltinLoweringRule(BuiltinCallExpr::Builtin b)
+{
+    return kBuiltinLoweringRules[static_cast<std::size_t>(b)];
 }
 
 } // namespace il::frontends::basic
