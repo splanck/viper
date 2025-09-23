@@ -17,30 +17,6 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace
-{
-il::core::Function *lookupParent(const viper::analysis::CFGContext &ctx, const il::core::Block &block)
-{
-    auto it = ctx.blockToFunction.find(&block);
-    if (it == ctx.blockToFunction.end())
-        return nullptr;
-    return it->second;
-}
-
-il::core::Block *lookupBlock(const viper::analysis::CFGContext &ctx,
-                             il::core::Function &function,
-                             const std::string &label)
-{
-    auto fnIt = ctx.functionLabelToBlock.find(&function);
-    if (fnIt == ctx.functionLabelToBlock.end())
-        return nullptr;
-    auto blkIt = fnIt->second.find(label);
-    if (blkIt == fnIt->second.end())
-        return nullptr;
-    return blkIt->second;
-}
-}
-
 namespace viper::analysis
 {
 
@@ -53,6 +29,41 @@ CFGContext::CFGContext(il::core::Module &module) : module(&module)
         {
             blockToFunction[&blk] = &fn;
             labelMap.emplace(blk.label, &blk);
+            blockSuccessors[&blk];
+            blockPredecessors[&blk];
+        }
+    }
+
+    for (auto &fn : module.functions)
+    {
+        auto &labelMap = functionLabelToBlock[&fn];
+        for (auto &blk : fn.blocks)
+        {
+            auto &succ = blockSuccessors[&blk];
+            if (blk.instructions.empty())
+                continue;
+
+            const il::core::Instr &term = blk.instructions.back();
+            if (term.op != il::core::Opcode::Br && term.op != il::core::Opcode::CBr)
+                continue;
+
+            for (const auto &lbl : term.labels)
+            {
+                auto it = labelMap.find(lbl);
+                if (it == labelMap.end())
+                    continue;
+                succ.push_back(it->second);
+            }
+
+            std::unordered_set<il::core::Block *> recorded;
+            recorded.reserve(succ.size());
+            for (auto *target : succ)
+            {
+                if (!target || recorded.count(target))
+                    continue;
+                recorded.insert(target);
+                blockPredecessors[target].push_back(&blk);
+            }
         }
     }
 }
@@ -69,24 +80,10 @@ CFGContext::CFGContext(il::core::Module &module) : module(&module)
 /// @invariant A valid CFGContext describing @p B's parent function is provided.
 std::vector<il::core::Block *> successors(const CFGContext &ctx, const il::core::Block &B)
 {
-    std::vector<il::core::Block *> out;
-    if (!ctx.module || B.instructions.empty())
-        return out;
-
-    const il::core::Instr &term = B.instructions.back();
-    if (term.op != il::core::Opcode::Br && term.op != il::core::Opcode::CBr)
-        return out;
-
-    il::core::Function *parent = lookupParent(ctx, B);
-    if (!parent)
-        return out;
-
-    for (const auto &lbl : term.labels)
-    {
-        if (auto *target = lookupBlock(ctx, *parent, lbl))
-            out.push_back(target);
-    }
-    return out;
+    auto it = ctx.blockSuccessors.find(&B);
+    if (it == ctx.blockSuccessors.end())
+        return {};
+    return it->second;
 }
 
 /// @brief Gather predecessor blocks of @p B within its parent function.
@@ -99,28 +96,10 @@ std::vector<il::core::Block *> successors(const CFGContext &ctx, const il::core:
 /// @note Blocks with non-branch terminators are ignored.
 std::vector<il::core::Block *> predecessors(const CFGContext &ctx, const il::core::Block &B)
 {
-    std::vector<il::core::Block *> out;
-    il::core::Function *parent = lookupParent(ctx, B);
-    if (!parent)
-        return out;
-
-    for (auto &blk : parent->blocks)
-    {
-        if (blk.instructions.empty())
-            continue;
-        const il::core::Instr &term = blk.instructions.back();
-        if (term.op != il::core::Opcode::Br && term.op != il::core::Opcode::CBr)
-            continue;
-        for (const auto &lbl : term.labels)
-        {
-            if (lbl == B.label)
-            {
-                out.push_back(&blk);
-                break;
-            }
-        }
-    }
-    return out;
+    auto it = ctx.blockPredecessors.find(&B);
+    if (it == ctx.blockPredecessors.end())
+        return {};
+    return it->second;
 }
 
 /// @brief Compute a depth-first post-order traversal of @p F.
