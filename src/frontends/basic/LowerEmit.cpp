@@ -5,6 +5,7 @@
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
 // Links: docs/class-catalog.md
 
+// Requires the consolidated Lowerer interface for emission helpers.
 #include "frontends/basic/Lowerer.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
