@@ -3,7 +3,7 @@
 // dispatch.
 // Key invariants: Folding preserves 64-bit wrap-around semantics.
 // Ownership/Lifetime: AST nodes are mutated in place.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 // License: MIT (see LICENSE).
 
 #include "frontends/basic/ConstFolder.hpp"

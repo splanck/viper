@@ -5,7 +5,7 @@
 //                 character position.
 // Ownership/Lifetime: Lexer borrows the source buffer; caller retains
 //                     ownership.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/Lexer.hpp"
 #include <array>

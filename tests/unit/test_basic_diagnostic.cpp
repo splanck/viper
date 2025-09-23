@@ -2,7 +2,7 @@
 // Purpose: Ensure DiagnosticEmitter formats BASIC diagnostics with carets and codes.
 // Key invariants: Output contains error code and caret underlined range.
 // Ownership/Lifetime: Test owns all objects locally.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"

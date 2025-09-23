@@ -2,7 +2,7 @@
 // Purpose: Unit tests for BASIC lexer tokenization across common statements.
 // Key invariants: Tokens emitted match expected kinds and lexemes.
 // Ownership/Lifetime: N/A (test).
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/Lexer.hpp"
 #include "support/source_manager.hpp"

@@ -2,7 +2,7 @@
 // Purpose: Implements helpers for source location metadata.
 // Key invariants: File identifier 0 indicates an unknown location.
 // Ownership/Lifetime: Provides value-type utilities with no dynamic ownership.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "support/source_location.hpp"
 

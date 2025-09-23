@@ -2,7 +2,7 @@
 // Purpose: Ensure VM traps when referencing undefined globals.
 // Key invariants: Missing global names must emit "unknown global" trap.
 // Ownership: Test constructs IL module and executes VM.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"

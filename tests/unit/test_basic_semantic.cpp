@@ -4,7 +4,7 @@
 // Key invariants: Analyzer collects symbols/labels and lowering produces
 //                 functions for user procedures and main.
 // Ownership/Lifetime: Test owns all objects locally.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"

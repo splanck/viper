@@ -3,7 +3,7 @@
 // Purpose: Implements helper structs that orchestrate BASIC lowering stages.
 // Key invariants: Helpers mutate Lowerer state in isolation per stage invocation.
 // Ownership/Lifetime: Helpers borrow Lowerer references owned by callers.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/LoweringPipeline.hpp"

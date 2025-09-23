@@ -2,7 +2,7 @@
 // Purpose: Verify Parser distinguishes variable and array references.
 // Key invariants: Identifier without parentheses yields VarExpr; with index yields ArrayExpr.
 // Ownership/Lifetime: Test owns parser and AST.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/Parser.hpp"
 #include "support/source_manager.hpp"

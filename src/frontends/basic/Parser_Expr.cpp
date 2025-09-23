@@ -3,7 +3,7 @@
 // Purpose: Expression parsing for BASIC (Pratt parser).
 // Key invariants: Respects operator precedence for correct AST construction.
 // Ownership/Lifetime: Expressions owned by caller via std::unique_ptr.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Parser.hpp"

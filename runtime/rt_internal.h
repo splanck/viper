@@ -2,7 +2,7 @@
 // Purpose: Defines internal runtime structures shared across implementation files.
 // Key invariants: Strings use reference counts; structure layout is stable.
 // Ownership/Lifetime: Caller manages lifetime of rt_string instances.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #pragma once
 

@@ -2,7 +2,7 @@
 // Purpose: Generic helpers for ConstFolder numeric, comparison, and string operations.
 // Key invariants: Helpers rely on Numeric promotion semantics and preserve 64-bit wrap-around for
 // integers. Ownership/Lifetime: Returned ExprPtr objects are heap-allocated and owned by the
-// caller. Links: docs/class-catalog.md
+// caller. Links: docs/codemap.md
 #pragma once
 
 #include "frontends/basic/ConstFolder.hpp"

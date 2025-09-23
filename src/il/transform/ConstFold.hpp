@@ -3,7 +3,7 @@
 // Key invariants: Only folds operations with literal operands.
 // Updates integer ops and selected math intrinsics.
 // Ownership/Lifetime: Mutates the module in place.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include "il/core/fwd.hpp"

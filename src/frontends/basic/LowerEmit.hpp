@@ -2,7 +2,7 @@
 // Purpose: Declares IR emission helpers and lowering routines for BASIC.
 // Key invariants: Control-flow labels remain deterministic via BlockNamer.
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 private:

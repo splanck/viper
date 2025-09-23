@@ -3,7 +3,7 @@
 // Key invariants: The stored string stream contents are preserved when converting
 //                 to a Diagnostic; print operations delegate to printDiag.
 // Ownership/Lifetime: DiagCapture owns its string buffer; diagnostics copy the text.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "support/diag_capture.hpp"
 

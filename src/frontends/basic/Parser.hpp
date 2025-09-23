@@ -3,7 +3,7 @@
 //          main statement lists.
 // Key invariants: Maintains token lookahead buffer.
 // Ownership/Lifetime: Parser owns lexer and token buffer.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include "frontends/basic/AST.hpp"

@@ -3,7 +3,7 @@
 // Key invariants: Dynamic buffer allocation is used when snprintf reports
 //                 output longer than the initial stack buffer.
 // Ownership: Uses runtime library.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #include "rt_internal.h"
 #include <cstdio>
 #include <cassert>

@@ -2,7 +2,7 @@
 // Purpose: Implements token navigation helpers for BASIC parser.
 // Key invariants: Buffer always holds current token.
 // Ownership/Lifetime: Parser owns lexer and token buffer.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"

@@ -2,7 +2,7 @@
 // Purpose: Declares helpers for inferring BASIC semantic types from identifier suffixes.
 // Key invariants: BASIC suffix characters map to a single AST scalar type.
 // Ownership/Lifetime: Pure utility with no retained state.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include "frontends/basic/AST.hpp"

@@ -2,7 +2,7 @@
 // Purpose: Declares runtime tracking and declaration helpers for BASIC lowering.
 // Key invariants: Runtime declarations are emitted exactly once per function.
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include "il/runtime/RuntimeSignatures.hpp"

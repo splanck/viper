@@ -3,7 +3,7 @@
 // Purpose: Implements IR emission helpers and program emission for BASIC lowering.
 // Key invariants: Block labels are deterministic via BlockNamer or mangler.
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 // Requires the consolidated Lowerer interface for emission helpers.
 #include "frontends/basic/Lowerer.hpp"

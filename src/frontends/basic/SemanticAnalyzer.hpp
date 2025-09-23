@@ -4,7 +4,7 @@
 // Key invariants: Analyzer tracks defined symbols and reports unknown
 //                 references.
 // Ownership/Lifetime: Analyzer borrows DiagnosticEmitter; no AST ownership.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include "frontends/basic/AST.hpp"

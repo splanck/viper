@@ -2,7 +2,7 @@
 // Purpose: Provides lexical scope tracking with name mangling for the BASIC front end.
 // Key invariants: Scopes form a stack; resolving searches innermost to outermost.
 // Ownership/Lifetime: Owned by SemanticAnalyzer; no AST ownership.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include <optional>

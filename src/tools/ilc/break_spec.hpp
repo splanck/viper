@@ -2,7 +2,7 @@
 // Purpose: Helpers for parsing --break flag specifications.
 // Key invariants: None.
 // Ownership/Lifetime: N/A.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #pragma once
 

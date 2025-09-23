@@ -2,7 +2,7 @@
 // Purpose: Declares bump allocator for temporary objects.
 // Key invariants: None.
 // Ownership/Lifetime: Arena owns all allocated memory.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include <cstddef>

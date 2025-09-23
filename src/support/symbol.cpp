@@ -2,7 +2,7 @@
 // Purpose: Implements helpers for the Symbol identifier type.
 // Key invariants: Symbol value 0 remains reserved for invalid identifiers.
 // Ownership/Lifetime: Operates on value types without owning resources.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "support/symbol.hpp"
 

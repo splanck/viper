@@ -2,7 +2,7 @@
 // Purpose: Wraps DiagnosticEmitter for semantic analysis utilities.
 // Key invariants: Forwards diagnostics without altering counts.
 // Ownership/Lifetime: Borrows DiagnosticEmitter; no ownership of sources.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include "frontends/basic/DiagnosticEmitter.hpp"

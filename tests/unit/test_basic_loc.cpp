@@ -2,7 +2,7 @@
 // Purpose: Ensure BASIC AST and IL instructions retain source locations.
 // Key invariants: Locations must match expected columns.
 // Ownership: Test owns constructed AST and module.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/Parser.hpp"

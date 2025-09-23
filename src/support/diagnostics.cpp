@@ -2,7 +2,7 @@
 // Purpose: Implements diagnostic reporting utilities.
 // Key invariants: None.
 // Ownership/Lifetime: Diagnostic engine owns stored messages.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "diagnostics.hpp"
 #include "source_manager.hpp"

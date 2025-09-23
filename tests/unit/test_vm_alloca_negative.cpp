@@ -2,7 +2,7 @@
 // Purpose: Ensure VM traps on negative allocation sizes.
 // Key invariants: Alloca with negative bytes must emit "negative allocation" trap.
 // Ownership: Test constructs IL module and executes VM.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"
