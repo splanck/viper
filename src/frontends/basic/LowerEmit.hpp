@@ -87,35 +87,8 @@ RVal lowerNumericBinary(const BinaryExpr &expr, RVal lhs, RVal rhs);
 /// @return Resulting value and type.
 RVal lowerBuiltinCall(const BuiltinCallExpr &expr);
 
-public:
-// Built-in helpers
-RVal lowerLen(const BuiltinCallExpr &expr);
-RVal lowerMid(const BuiltinCallExpr &expr);
-RVal lowerLeft(const BuiltinCallExpr &expr);
-RVal lowerRight(const BuiltinCallExpr &expr);
-RVal lowerStr(const BuiltinCallExpr &expr);
-RVal lowerVal(const BuiltinCallExpr &expr);
-RVal lowerInt(const BuiltinCallExpr &expr);
-RVal lowerInstr(const BuiltinCallExpr &expr);
-RVal lowerLtrim(const BuiltinCallExpr &expr);
-RVal lowerRtrim(const BuiltinCallExpr &expr);
-RVal lowerTrim(const BuiltinCallExpr &expr);
-RVal lowerUcase(const BuiltinCallExpr &expr);
-RVal lowerLcase(const BuiltinCallExpr &expr);
-RVal lowerChr(const BuiltinCallExpr &expr);
-RVal lowerAsc(const BuiltinCallExpr &expr);
-RVal lowerSqr(const BuiltinCallExpr &expr);
-RVal lowerAbs(const BuiltinCallExpr &expr);
-RVal lowerFloor(const BuiltinCallExpr &expr);
-RVal lowerCeil(const BuiltinCallExpr &expr);
-RVal lowerSin(const BuiltinCallExpr &expr);
-RVal lowerCos(const BuiltinCallExpr &expr);
-RVal lowerPow(const BuiltinCallExpr &expr);
-RVal lowerRnd(const BuiltinCallExpr &expr);
-
 private:
 // Shared argument helpers
-RVal lowerArg(const BuiltinCallExpr &c, size_t idx);
 RVal coerceToI64(RVal v, il::support::SourceLoc loc);
 RVal coerceToF64(RVal v, il::support::SourceLoc loc);
 RVal coerceToBool(RVal v, il::support::SourceLoc loc);
