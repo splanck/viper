@@ -164,6 +164,15 @@ Without `--passes`, the default pipeline is `mem2reg,constfold,peephole,dce`.
 ilc il-opt foo.il -o foo.opt.il --mem2reg-stats
 ```
 
+## CMake integration
+
+Projects embedding Viper tooling can consume the exported CMake package:
+
+```cmake
+find_package(Viper CONFIG REQUIRED)
+target_link_libraries(mytool PRIVATE viper::il_core viper::il_io viper::il_vm)
+```
+
 ## Exit codes
 
 | Code | Meaning |
