@@ -1,0 +1,167 @@
+// File: tests/frontends/basic/SemanticAnalyzerBinaryExprTests.cpp
+// Purpose: Exercise BASIC semantic analyzer binary expression rules via table lookup.
+// Key invariants: Each BinaryExpr::Op maps to the expected diagnostics and result handling.
+// Ownership/Lifetime: Tests own parser, analyzer, and diagnostic objects locally.
+// Links: docs/class-catalog.md
+
+#include "frontends/basic/DiagnosticEmitter.hpp"
+#include "frontends/basic/Parser.hpp"
+#include "frontends/basic/SemanticAnalyzer.hpp"
+#include "support/source_manager.hpp"
+#include <cassert>
+#include <sstream>
+#include <string>
+
+using namespace il::frontends::basic;
+using namespace il::support;
+
+namespace
+{
+
+struct AnalysisResult
+{
+    size_t errors;
+    size_t warnings;
+    std::string output;
+};
+
+AnalysisResult analyzeSnippet(const std::string &src)
+{
+    SourceManager sm;
+    uint32_t fid = sm.addFile("snippet.bas");
+    Parser parser(src, fid);
+    auto program = parser.parseProgram();
+    assert(program);
+
+    DiagnosticEngine de;
+    DiagnosticEmitter emitter(de, sm);
+    emitter.addSource(fid, src);
+
+    SemanticAnalyzer analyzer(emitter);
+    analyzer.analyze(*program);
+
+    std::ostringstream oss;
+    emitter.printAll(oss);
+    return {emitter.errorCount(), emitter.warningCount(), oss.str()};
+}
+
+std::string makeSnippet(const std::string &expr)
+{
+    return "10 LET X = " + expr + "\n20 END\n";
+}
+
+} // namespace
+
+int main()
+{
+    {
+        auto result = analyzeSnippet(makeSnippet("1 + \"A\""));
+        assert(result.errors == 1);
+        assert(result.output.find("error[B2001]") != std::string::npos);
+    }
+
+    {
+        auto result = analyzeSnippet(makeSnippet("5 - 2"));
+        assert(result.errors == 0);
+    }
+
+    {
+        auto result = analyzeSnippet(makeSnippet("1 * TRUE"));
+        assert(result.errors == 1);
+        assert(result.output.find("error[B2001]") != std::string::npos);
+    }
+
+    {
+        auto result = analyzeSnippet(makeSnippet("4 / \"A\""));
+        assert(result.errors == 1);
+        assert(result.output.find("error[B2001]") != std::string::npos);
+    }
+
+    {
+        auto result = analyzeSnippet(makeSnippet("4 / 0"));
+        assert(result.errors == 1);
+        assert(result.output.find("error[B2002]") != std::string::npos);
+    }
+
+    {
+        auto result = analyzeSnippet(makeSnippet("4 \\ 2.5"));
+        assert(result.errors == 1);
+        assert(result.output.find("error[B2001]") != std::string::npos);
+    }
+
+    {
+        auto result = analyzeSnippet(makeSnippet("4 \\ 0"));
+        assert(result.errors == 1);
+        assert(result.output.find("error[B2002]") != std::string::npos);
+    }
+
+    {
+        auto result = analyzeSnippet(makeSnippet("4 MOD 2.5"));
+        assert(result.errors == 1);
+        assert(result.output.find("error[B2001]") != std::string::npos);
+    }
+
+    {
+        auto result = analyzeSnippet(makeSnippet("4 MOD 0"));
+        assert(result.errors == 1);
+        assert(result.output.find("error[B2002]") != std::string::npos);
+    }
+
+    {
+        auto result = analyzeSnippet(makeSnippet("\"A\" = \"B\""));
+        assert(result.errors == 0);
+    }
+
+    {
+        auto result = analyzeSnippet(makeSnippet("1 <> \"A\""));
+        assert(result.errors == 1);
+        assert(result.output.find("error[B2001]") != std::string::npos);
+    }
+
+    {
+        auto result = analyzeSnippet(makeSnippet("\"A\" < \"B\""));
+        assert(result.errors == 1);
+        assert(result.output.find("error[B2001]") != std::string::npos);
+    }
+
+    {
+        auto result = analyzeSnippet(makeSnippet("1 <= 2"));
+        assert(result.errors == 0);
+    }
+
+    {
+        auto result = analyzeSnippet(makeSnippet("1 > \"A\""));
+        assert(result.errors == 1);
+        assert(result.output.find("error[B2001]") != std::string::npos);
+    }
+
+    {
+        auto result = analyzeSnippet(makeSnippet("3 >= 1"));
+        assert(result.errors == 0);
+    }
+
+    {
+        auto result = analyzeSnippet(makeSnippet("TRUE ANDALSO 1"));
+        assert(result.errors == 1);
+        assert(result.output.find("error[E1002]") != std::string::npos);
+    }
+
+    {
+        auto result = analyzeSnippet(makeSnippet("TRUE ORELSE FALSE"));
+        assert(result.errors == 0);
+    }
+
+    {
+        auto result = analyzeSnippet(makeSnippet("1 AND 2"));
+        assert(result.errors == 1);
+        assert(result.output.find("error[E1002]") != std::string::npos);
+    }
+
+    {
+        auto result = analyzeSnippet(makeSnippet("TRUE OR FALSE"));
+        assert(result.errors == 0);
+    }
+
+    return 0;
+}
+
