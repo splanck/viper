@@ -62,6 +62,10 @@ function(viper_add_basic_main_tests)
   target_link_libraries(test_basic_constfold PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_constfold test_basic_constfold)
 
+  viper_add_test_exe(test_basic_compiler ${_VIPER_BASIC_UNIT_DIR}/test_basic_compiler.cpp)
+  target_link_libraries(test_basic_compiler PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_basic_compiler test_basic_compiler)
+
   viper_add_test_exe(test_basic_ast_mutation ${_VIPER_BASIC_UNIT_DIR}/test_basic_ast_mutation.cpp)
   target_link_libraries(test_basic_ast_mutation PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_ast_mutation test_basic_ast_mutation)

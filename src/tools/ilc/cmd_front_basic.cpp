@@ -7,11 +7,7 @@
 
 #include "vm/Trace.hpp"
 #include "cli.hpp"
-#include "frontends/basic/ConstFolder.hpp"
-#include "frontends/basic/DiagnosticEmitter.hpp"
-#include "frontends/basic/Lowerer.hpp"
-#include "frontends/basic/Parser.hpp"
-#include "frontends/basic/SemanticAnalyzer.hpp"
+#include "frontends/basic/BasicCompiler.hpp"
 #include "il/io/Serializer.hpp"
 #include "il/api/expected_api.hpp"
 #include "il/verify/Verifier.hpp"
@@ -27,52 +23,6 @@
 using namespace il;
 using namespace il::frontends::basic;
 using namespace il::support;
-
-/**
- * @brief Compile a BASIC source file to IL.
- *
- * @details The compilation pipeline reads the source from disk, parses it into
- * an AST, folds constants, performs semantic analysis with diagnostics, and
- * finally lowers the validated program into IL.
- *
- * @param path Path to the BASIC source.
- * @param boundsChecks Enable bounds checks during lowering.
- * @param hadErrors Set to true if compilation fails.
- * @return Compiled IL module or empty module on error.
- */
-static core::Module compileBasicToIL(const std::string &path,
-                                     bool boundsChecks,
-                                     bool &hadErrors,
-                                     SourceManager &sm)
-{
-    hadErrors = true;
-    std::ifstream in(path);
-    if (!in)
-    {
-        std::cerr << "unable to open " << path << "\n";
-        return {};
-    }
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    std::string src = ss.str();
-    uint32_t fid = sm.addFile(path);
-    Parser p(src, fid);
-    auto prog = p.parseProgram();
-    foldConstants(*prog);
-    support::DiagnosticEngine de;
-    DiagnosticEmitter em(de, sm);
-    em.addSource(fid, src);
-    SemanticAnalyzer sema(em);
-    sema.analyze(*prog);
-    if (em.errorCount() > 0)
-    {
-        em.printAll(std::cerr);
-        return {};
-    }
-    Lowerer lower(boundsChecks);
-    hadErrors = false;
-    return lower.lower(*prog);
-}
 
 /**
  * @brief Handle BASIC front-end subcommands.
@@ -125,10 +75,29 @@ int cmdFrontBasic(int argc, char **argv)
         usage();
         return 1;
     }
-    bool hadErrors = false;
-    core::Module m = compileBasicToIL(file, sharedOpts.boundsChecks, hadErrors, sm);
-    if (hadErrors)
+    std::ifstream in(file);
+    if (!in)
+    {
+        std::cerr << "unable to open " << file << "\n";
         return 1;
+    }
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    std::string source = ss.str();
+
+    BasicCompilerOptions compilerOpts{};
+    compilerOpts.boundsChecks = sharedOpts.boundsChecks;
+    BasicCompilerInput compilerInput{source, file};
+    auto result = compileBasic(compilerInput, compilerOpts, sm);
+    if (!result.succeeded())
+    {
+        if (result.emitter)
+        {
+            result.emitter->printAll(std::cerr);
+        }
+        return 1;
+    }
+    core::Module m = std::move(result.module);
     if (emitIl)
     {
         io::Serializer::write(m, std::cout);
