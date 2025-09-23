@@ -24,6 +24,22 @@ namespace il::frontends::basic
 
 using pipeline_detail::coreTypeForAstType;
 
+void Lowerer::ProcedureState::reset()
+{
+    fnExit = 0;
+    nextTemp = 0;
+    boundsCheckId = 0;
+    lineBlocks.clear();
+    varSlots.clear();
+    arrayLenSlots.clear();
+    varTypes.clear();
+    vars.clear();
+    arrays.clear();
+    runtimeFeatures.reset();
+    runtimeOrder.clear();
+    runtimeSet.clear();
+}
+
 Lowerer::BlockNamer::BlockNamer(std::string p) : proc(std::move(p)) {}
 
 std::string Lowerer::BlockNamer::entry() const
@@ -138,9 +154,9 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
     SlotType info;
     std::string key(name);
     using AstType = ::il::frontends::basic::Type;
-    auto it = varTypes.find(key);
-    AstType astTy = (it != varTypes.end()) ? it->second : inferAstTypeFromName(name);
-    info.isArray = arrays.find(key) != arrays.end();
+    auto it = procState.varTypes.find(key);
+    AstType astTy = (it != procState.varTypes.end()) ? it->second : inferAstTypeFromName(name);
+    info.isArray = procState.arrays.find(key) != procState.arrays.end();
     info.isBoolean = !info.isArray && astTy == AstType::Bool;
     info.type = info.isArray ? Type(Type::Kind::Ptr) : coreTypeForAstType(astTy);
     return info;
@@ -262,10 +278,10 @@ void Lowerer::buildProcedureSkeleton(Function &f,
             builder->addBlock(
                 f,
                 mangler.block("L" + std::to_string(stmt->line) + "_" + name));
-        lineBlocks[stmt->line] = blockIndex++;
+        procState.lineBlocks[stmt->line] = blockIndex++;
     }
 
-    fnExit = f.blocks.size();
+    procState.fnExit = f.blocks.size();
     if (blockNamer)
         builder->addBlock(f, blockNamer->ret());
     else
@@ -275,23 +291,23 @@ void Lowerer::buildProcedureSkeleton(Function &f,
 void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNames,
                                  bool includeParams)
 {
-    for (const auto &v : vars)
+    for (const auto &v : procState.vars)
     {
         bool isParam = paramNames.find(v) != paramNames.end();
         if (isParam && !includeParams)
             continue;
-        if (varSlots.find(v) != varSlots.end())
+        if (procState.varSlots.find(v) != procState.varSlots.end())
             continue;
         curLoc = {};
         SlotType slotInfo = getSlotType(v);
         if (slotInfo.isArray)
         {
             Value slot = emitAlloca(8);
-            varSlots[v] = slot.id;
+            procState.varSlots[v] = slot.id;
             continue;
         }
         Value slot = emitAlloca(slotInfo.isBoolean ? 1 : 8);
-        varSlots[v] = slot.id;
+        procState.varSlots[v] = slot.id;
         if (slotInfo.isBoolean)
             emitStore(ilBoolTy(), slot, emitBoolConst(false));
     }
@@ -299,16 +315,16 @@ void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNam
     if (!boundsChecks)
         return;
 
-    for (const auto &a : arrays)
+    for (const auto &a : procState.arrays)
     {
         bool isParam = paramNames.find(a) != paramNames.end();
         if (isParam && !includeParams)
             continue;
-        if (arrayLenSlots.find(a) != arrayLenSlots.end())
+        if (procState.arrayLenSlots.find(a) != procState.arrayLenSlots.end())
             continue;
         curLoc = {};
         Value slot = emitAlloca(8);
-        arrayLenSlots[a] = slot.id;
+        procState.arrayLenSlots[a] = slot.id;
     }
 }
 
@@ -368,7 +384,7 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
 
     ProcedureConfig config;
     config.retType = coreTypeForAstType(decl.ret);
-    config.postCollect = [&]() { varTypes[decl.name] = decl.ret; };
+    config.postCollect = [&]() { procState.varTypes[decl.name] = decl.ret; };
     config.emitEmptyBody = [&]() { emitRet(defaultRet()); };
     config.emitFinalReturn = [&]() { emitRet(defaultRet()); };
 
@@ -395,14 +411,7 @@ void Lowerer::lowerSubDecl(const SubDecl &decl)
 ///          reset so diagnostics and helper labels remain deterministic.
 void Lowerer::resetLoweringState()
 {
-    vars.clear();
-    arrays.clear();
-    varSlots.clear();
-    arrayLenSlots.clear();
-    varTypes.clear();
-    lineBlocks.clear();
-    boundsCheckId = 0;
-    nextTemp = 0;
+    procState.reset();
 }
 
 /// @brief Allocate stack storage for incoming parameters and record their types.
@@ -419,13 +428,13 @@ void Lowerer::materializeParams(const std::vector<Param> &params)
         const auto &p = params[i];
         bool isBoolParam = !p.is_array && p.type == AstType::Bool;
         Value slot = emitAlloca(isBoolParam ? 1 : 8);
-        varSlots[p.name] = slot.id;
-        varTypes[p.name] = p.type;
+        procState.varSlots[p.name] = slot.id;
+        procState.varTypes[p.name] = p.type;
         il::core::Type ty = func->params[i].type;
         Value incoming = Value::temp(func->params[i].id);
         emitStore(ty, slot, incoming);
         if (p.is_array)
-            arrays.insert(p.name);
+            procState.arrays.insert(p.name);
     }
 }
 

@@ -51,8 +51,8 @@ class ScanExprVisitor final : public ExprVisitor
 
     void visit(const VarExpr &expr) override
     {
-        auto it = lowerer_.varTypes.find(expr.name);
-        if (it != lowerer_.varTypes.end())
+        auto it = lowerer_.procState.varTypes.find(expr.name);
+        if (it != lowerer_.procState.varTypes.end())
         {
             result_ = exprTypeFromAstType(it->second);
             return;
@@ -108,13 +108,15 @@ class ScanStmtVisitor final : public StmtVisitor
             lowerer_.scanExpr(*stmt.expr);
         if (auto *var = dynamic_cast<const VarExpr *>(stmt.target.get()))
         {
-            if (!var->name.empty() && lowerer_.varTypes.find(var->name) == lowerer_.varTypes.end())
-                lowerer_.varTypes[var->name] = inferAstTypeFromName(var->name);
+            if (!var->name.empty() &&
+                lowerer_.procState.varTypes.find(var->name) == lowerer_.procState.varTypes.end())
+                lowerer_.procState.varTypes[var->name] = inferAstTypeFromName(var->name);
         }
         else if (auto *arr = dynamic_cast<const ArrayExpr *>(stmt.target.get()))
         {
-            if (!arr->name.empty() && lowerer_.varTypes.find(arr->name) == lowerer_.varTypes.end())
-                lowerer_.varTypes[arr->name] = inferAstTypeFromName(arr->name);
+            if (!arr->name.empty() &&
+                lowerer_.procState.varTypes.find(arr->name) == lowerer_.procState.varTypes.end())
+                lowerer_.procState.varTypes[arr->name] = inferAstTypeFromName(arr->name);
             lowerer_.scanExpr(*arr->index);
         }
     }
@@ -123,9 +125,9 @@ class ScanStmtVisitor final : public StmtVisitor
     {
         lowerer_.requestHelper(Lowerer::RuntimeFeature::Alloc);
         if (!stmt.name.empty())
-            lowerer_.varTypes[stmt.name] = stmt.type;
+            lowerer_.procState.varTypes[stmt.name] = stmt.type;
         if (stmt.isArray)
-            lowerer_.arrays.insert(stmt.name);
+            lowerer_.procState.arrays.insert(stmt.name);
         if (stmt.size)
             lowerer_.scanExpr(*stmt.size);
     }
@@ -166,8 +168,9 @@ class ScanStmtVisitor final : public StmtVisitor
 
     void visit(const ForStmt &stmt) override
     {
-        if (!stmt.var.empty() && lowerer_.varTypes.find(stmt.var) == lowerer_.varTypes.end())
-            lowerer_.varTypes[stmt.var] = inferAstTypeFromName(stmt.var);
+        if (!stmt.var.empty() &&
+            lowerer_.procState.varTypes.find(stmt.var) == lowerer_.procState.varTypes.end())
+            lowerer_.procState.varTypes[stmt.var] = inferAstTypeFromName(stmt.var);
         lowerer_.scanExpr(*stmt.start);
         lowerer_.scanExpr(*stmt.end);
         if (stmt.step)
@@ -192,8 +195,9 @@ class ScanStmtVisitor final : public StmtVisitor
             lowerer_.scanExpr(*stmt.prompt);
         if (stmt.var.empty() || stmt.var.back() != '$')
             lowerer_.requestHelper(Lowerer::RuntimeFeature::ToInt);
-        if (!stmt.var.empty() && lowerer_.varTypes.find(stmt.var) == lowerer_.varTypes.end())
-            lowerer_.varTypes[stmt.var] = inferAstTypeFromName(stmt.var);
+        if (!stmt.var.empty() &&
+            lowerer_.procState.varTypes.find(stmt.var) == lowerer_.procState.varTypes.end())
+            lowerer_.procState.varTypes[stmt.var] = inferAstTypeFromName(stmt.var);
     }
 
     void visit(const ReturnStmt &stmt) override
