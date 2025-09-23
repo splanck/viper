@@ -1,0 +1,617 @@
+# SPDX-License-Identifier: MIT
+# File: tests/basic/CMakeLists.txt
+# Purpose: BASIC frontend unit and golden tests.
+
+set(VIPER_BASIC_LIBS fe_basic support)
+set(VIPER_BASIC_LIBS ${VIPER_BASIC_LIBS} PARENT_SCOPE)
+
+function(viper_add_basic_early_tests)
+  if(TARGET test_basic_lexer_high_bit)
+    return()
+  endif()
+
+  viper_add_test_exe(test_basic_lexer_high_bit ${VIPER_TESTS_DIR}/unit/test_basic_lexer_high_bit.cpp)
+  target_link_libraries(test_basic_lexer_high_bit PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_basic_lexer_high_bit test_basic_lexer_high_bit)
+endfunction()
+
+function(viper_add_basic_main_tests)
+  if(TARGET test_basic_lexer)
+    return()
+  endif()
+
+  set(_VIPER_BASIC_UNIT_DIR ${VIPER_TESTS_DIR}/unit)
+
+  viper_add_test_exe(test_basic_lexer ${_VIPER_BASIC_UNIT_DIR}/test_basic_lexer.cpp)
+  target_link_libraries(test_basic_lexer PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_basic_lexer test_basic_lexer)
+
+  viper_add_test_exe(test_basic_loc ${_VIPER_BASIC_UNIT_DIR}/test_basic_loc.cpp)
+  target_link_libraries(test_basic_loc PRIVATE fe_basic il_build il_core support)
+  viper_add_ctest(test_basic_loc test_basic_loc)
+
+  viper_add_test_exe(test_basic_expr_loc ${_VIPER_BASIC_UNIT_DIR}/test_basic_expr_loc.cpp)
+  target_link_libraries(test_basic_expr_loc PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_basic_expr_loc test_basic_expr_loc)
+
+  viper_add_test_exe(test_basic_semantic ${_VIPER_BASIC_UNIT_DIR}/test_basic_semantic.cpp)
+  target_link_libraries(test_basic_semantic PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_basic_semantic test_basic_semantic)
+
+  viper_add_test_exe(test_basic_lowerer_collect ${_VIPER_BASIC_UNIT_DIR}/test_basic_lowerer_collect.cpp)
+  target_link_libraries(test_basic_lowerer_collect PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_basic_lowerer_collect test_basic_lowerer_collect)
+
+  viper_add_test_exe(test_basic_lowerer_conversions ${_VIPER_BASIC_UNIT_DIR}/test_basic_lowerer_conversions.cpp)
+  target_link_libraries(test_basic_lowerer_conversions PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_basic_lowerer_conversions test_basic_lowerer_conversions)
+
+  viper_add_test_exe(test_basic_semantic_components ${_VIPER_BASIC_UNIT_DIR}/test_basic_semantic_components.cpp)
+  target_link_libraries(test_basic_semantic_components PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_basic_semantic_components test_basic_semantic_components)
+
+  viper_add_test_exe(test_basic_intrinsic_semantics ${_VIPER_BASIC_UNIT_DIR}/test_basic_intrinsic_semantics.cpp)
+  target_link_libraries(test_basic_intrinsic_semantics PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_basic_intrinsic_semantics test_basic_intrinsic_semantics)
+
+  viper_add_test_exe(test_basic_diagnostic ${_VIPER_BASIC_UNIT_DIR}/test_basic_diagnostic.cpp)
+  target_link_libraries(test_basic_diagnostic PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_basic_diagnostic test_basic_diagnostic)
+
+  viper_add_test_exe(test_basic_constfold ${_VIPER_BASIC_UNIT_DIR}/test_basic_constfold.cpp)
+  target_link_libraries(test_basic_constfold PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_basic_constfold test_basic_constfold)
+
+  viper_add_test_exe(test_basic_ast_mutation ${_VIPER_BASIC_UNIT_DIR}/test_basic_ast_mutation.cpp)
+  target_link_libraries(test_basic_ast_mutation PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_basic_ast_mutation test_basic_ast_mutation)
+
+  viper_add_test_exe(test_basic_parse_array_var ${_VIPER_BASIC_UNIT_DIR}/test_basic_parse_array_var.cpp)
+  target_link_libraries(test_basic_parse_array_var PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_basic_parse_array_var test_basic_parse_array_var)
+
+  viper_add_test_exe(test_basic_parse_loops ${_VIPER_BASIC_UNIT_DIR}/test_basic_parse_loops.cpp)
+  target_link_libraries(test_basic_parse_loops PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_basic_parse_loops test_basic_parse_loops)
+
+  viper_add_test_exe(test_frontends_basic_statement_context ${VIPER_TESTS_DIR}/frontends/basic/ParserStatementContextTests.cpp)
+  target_link_libraries(test_frontends_basic_statement_context PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_frontends_basic_statement_context test_frontends_basic_statement_context)
+
+  viper_add_test_exe(test_frontends_basic_semantic_exprs ${VIPER_TESTS_DIR}/frontends/basic/SemanticAnalyzerBinaryExprTests.cpp)
+  target_link_libraries(test_frontends_basic_semantic_exprs PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_frontends_basic_semantic_exprs test_frontends_basic_semantic_exprs)
+
+  viper_add_test_exe(test_basic_intrinsics ${_VIPER_BASIC_UNIT_DIR}/test_basic_intrinsics.cpp)
+  target_link_libraries(test_basic_intrinsics PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_basic_intrinsics test_basic_intrinsics)
+
+  viper_add_test_exe(test_basic_ast_printer ${_VIPER_BASIC_UNIT_DIR}/test_basic_ast_printer.cpp)
+  target_link_libraries(test_basic_ast_printer PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_basic_ast_printer test_basic_ast_printer)
+endfunction()
+
+function(viper_add_basic_ast_golden_tests)
+  if(TEST basic_ast_ex1)
+    return()
+  endif()
+
+  set(_VIPER_BASIC_AST_DIR ${VIPER_TESTS_DIR}/golden/basic_ast)
+  set(_VIPER_BASIC_PARSE_DIR ${VIPER_TESTS_DIR}/basic/parse)
+  set(_VIPER_BASIC_AST_CHECK ${_VIPER_BASIC_AST_DIR}/check_ast.cmake)
+  set(_VIPER_BASIC_AST_DUMP $<TARGET_FILE:basic-ast-dump>)
+
+  viper_add_ctest(basic_ast_ex1
+    ${CMAKE_COMMAND}
+    -DBASIC_AST_DUMP=${_VIPER_BASIC_AST_DUMP}
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex1_hello_cond.bas
+    -DGOLDEN=${_VIPER_BASIC_AST_DIR}/ex1_hello_cond.ast
+    -P ${_VIPER_BASIC_AST_CHECK})
+
+  viper_add_ctest(basic_ast_ex2
+    ${CMAKE_COMMAND}
+    -DBASIC_AST_DUMP=${_VIPER_BASIC_AST_DUMP}
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex2_sum_1_to_10.bas
+    -DGOLDEN=${_VIPER_BASIC_AST_DIR}/ex2_sum_1_to_10.ast
+    -P ${_VIPER_BASIC_AST_CHECK})
+
+  viper_add_ctest(basic_ast_divmod_precedence
+    ${CMAKE_COMMAND}
+    -DBASIC_AST_DUMP=${_VIPER_BASIC_AST_DUMP}
+    -DBAS_FILE=${_VIPER_BASIC_AST_DIR}/divmod_precedence.bas
+    -DGOLDEN=${_VIPER_BASIC_AST_DIR}/divmod_precedence.ast
+    -P ${_VIPER_BASIC_AST_CHECK})
+
+  viper_add_ctest(basic_ast_float_literals
+    ${CMAKE_COMMAND}
+    -DBASIC_AST_DUMP=${_VIPER_BASIC_AST_DUMP}
+    -DBAS_FILE=${_VIPER_BASIC_AST_DIR}/float_literals.bas
+    -DGOLDEN=${_VIPER_BASIC_AST_DIR}/float_literals.ast
+    -P ${_VIPER_BASIC_AST_CHECK})
+
+  viper_add_ctest(basic_ast_functions_subs_parsing
+    ${CMAKE_COMMAND}
+    -DBASIC_AST_DUMP=${_VIPER_BASIC_AST_DUMP}
+    -DBAS_FILE=${_VIPER_BASIC_AST_DIR}/functions_subs_parsing.bas
+    -DGOLDEN=${_VIPER_BASIC_AST_DIR}/functions_subs_parsing.ast
+    -P ${_VIPER_BASIC_AST_CHECK})
+
+  viper_add_ctest(basic_ast_funcs_then_code
+    ${CMAKE_COMMAND}
+    -DBASIC_AST_DUMP=${_VIPER_BASIC_AST_DUMP}
+    -DBAS_FILE=${_VIPER_BASIC_PARSE_DIR}/FuncsThenCode.bas
+    -DGOLDEN=${_VIPER_BASIC_PARSE_DIR}/FuncsThenCode.ast
+    -P ${_VIPER_BASIC_AST_CHECK})
+
+  viper_add_ctest(basic_ast_intrinsic_calls
+    ${CMAKE_COMMAND}
+    -DBASIC_AST_DUMP=${_VIPER_BASIC_AST_DUMP}
+    -DBAS_FILE=${_VIPER_BASIC_PARSE_DIR}/IntrinsicCalls.bas
+    -DGOLDEN=${_VIPER_BASIC_PARSE_DIR}/IntrinsicCalls.ast
+    -P ${_VIPER_BASIC_AST_CHECK})
+
+  viper_add_ctest(basic_ast_boolean_exprs
+    ${CMAKE_COMMAND}
+    -DBASIC_AST_DUMP=${_VIPER_BASIC_AST_DUMP}
+    -DBAS_FILE=${_VIPER_BASIC_PARSE_DIR}/test_boolean_exprs.bas
+    -DGOLDEN=${_VIPER_BASIC_PARSE_DIR}/test_boolean_exprs.ast
+    -P ${_VIPER_BASIC_AST_CHECK})
+
+  viper_add_ctest(basic_ast_pretty_boolean
+    ${CMAKE_COMMAND}
+    -DBASIC_AST_DUMP=${_VIPER_BASIC_AST_DUMP}
+    -DBAS_FILE=${_VIPER_BASIC_PARSE_DIR}/test_pretty_boolean.bas
+    -DGOLDEN=${_VIPER_BASIC_PARSE_DIR}/test_pretty_boolean.ast
+    -P ${_VIPER_BASIC_AST_CHECK})
+
+  viper_add_ctest(basic_ast_future_keywords
+    ${CMAKE_COMMAND}
+    -DBASIC_AST_DUMP=${_VIPER_BASIC_AST_DUMP}
+    -DBAS_FILE=${_VIPER_BASIC_PARSE_DIR}/test_future_keywords.bas
+    -DGOLDEN=${_VIPER_BASIC_PARSE_DIR}/test_future_keywords.ast
+    -P ${_VIPER_BASIC_AST_CHECK})
+endfunction()
+
+function(viper_add_basic_lex_golden_tests)
+  if(TEST basic_lex_comments)
+    return()
+  endif()
+
+  set(_VIPER_BASIC_LEX_DIR ${VIPER_TESTS_DIR}/basic/lex)
+  set(_VIPER_BASIC_LEX_DUMP $<TARGET_FILE:basic-lex-dump>)
+
+  viper_add_ctest(basic_lex_comments
+    ${CMAKE_COMMAND}
+    -DBASIC_LEX_DUMP=${_VIPER_BASIC_LEX_DUMP}
+    -DBAS_FILE=${_VIPER_BASIC_LEX_DIR}/Comments.bas
+    -DGOLDEN=${_VIPER_BASIC_LEX_DIR}/Comments.tokens
+    -P ${_VIPER_BASIC_LEX_DIR}/check_tokens.cmake)
+
+  viper_add_ctest(basic_lex_boolean_tokens
+    ${CMAKE_COMMAND}
+    -DBASIC_LEX_DUMP=${_VIPER_BASIC_LEX_DUMP}
+    -DBAS_FILE=${_VIPER_BASIC_LEX_DIR}/test_boolean_tokens.bas
+    -DGOLDEN=${_VIPER_BASIC_LEX_DIR}/test_boolean_tokens.expect
+    -P ${_VIPER_BASIC_LEX_DIR}/check_tokens.cmake)
+endfunction()
+
+function(viper_add_basic_to_il_golden_tests)
+  if(TEST basic_to_il_ex1)
+    return()
+  endif()
+
+  set(_VIPER_BASIC_ILC $<TARGET_FILE:ilc>)
+  set(_VIPER_BASIC_TO_IL_DIR ${VIPER_TESTS_DIR}/golden/basic_to_il)
+  set(_VIPER_BASIC_TO_IL_CHECK ${_VIPER_BASIC_TO_IL_DIR}/check_il.cmake)
+  set(_VIPER_BASIC_TO_IL_CHECK_BOUNDS ${_VIPER_BASIC_TO_IL_DIR}/check_il_bounds.cmake)
+  set(_VIPER_GOLDEN_SRC_DIR ${VIPER_TESTS_DIR}/golden/src)
+  set(_VIPER_GOLDEN_IL_DIR ${VIPER_TESTS_DIR}/golden/il)
+  set(_VIPER_BASIC_GOLDENS_DIR ${VIPER_TESTS_DIR}/basic/goldens)
+
+  viper_add_ctest(basic_to_il_ex1
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex1_hello_cond.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/ex1_hello_cond.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_ex2
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex2_sum_1_to_10.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/ex2_sum_1_to_10.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_ex3
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex3_for_table.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/ex3_for_table.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_ex4
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex4_if_elseif.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/ex4_if_elseif.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_ex_elseif
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex_elseif.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/ex_elseif.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_ex6
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex6_array_sum.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/ex6_array_sum.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_not
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex_not.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/not.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_print_commas
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex_print_commas.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/print_commas.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_print_semicolons
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex_print_semicolons.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/print_semicolons.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_print_newline_control
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex_print_newline_control.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/print_newline_control.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_colon
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/ex_colon.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/ex_colon.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_loc
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/loc_add.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/loc_add.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_strings
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/strings.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/strings.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_string_cmp
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/string_cmp.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/string_cmp.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_boolean_literals
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_GOLDEN_SRC_DIR}/boolean_literals.bas
+    -DGOLDEN=${_VIPER_GOLDEN_IL_DIR}/boolean_literals.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_boolean_dim_and_assign
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_GOLDEN_SRC_DIR}/boolean_dim_and_assign.bas
+    -DGOLDEN=${_VIPER_GOLDEN_IL_DIR}/boolean_dim_and_assign.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_boolean_branch_join_skeleton
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_GOLDEN_SRC_DIR}/boolean_branch_join_skeleton.bas
+    -DGOLDEN=${_VIPER_GOLDEN_IL_DIR}/boolean_branch_join_skeleton.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_boolean_not
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_GOLDEN_SRC_DIR}/boolean_not.bas
+    -DGOLDEN=${_VIPER_GOLDEN_IL_DIR}/boolean_not.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_boolean_and
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_GOLDEN_SRC_DIR}/boolean_and.bas
+    -DGOLDEN=${_VIPER_GOLDEN_IL_DIR}/boolean_and.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_boolean_or
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_GOLDEN_SRC_DIR}/boolean_or.bas
+    -DGOLDEN=${_VIPER_GOLDEN_IL_DIR}/boolean_or.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_boolean_andalso
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_GOLDEN_SRC_DIR}/boolean_andalso.bas
+    -DGOLDEN=${_VIPER_GOLDEN_IL_DIR}/boolean_andalso.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_boolean_orelse
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_GOLDEN_SRC_DIR}/boolean_orelse.bas
+    -DGOLDEN=${_VIPER_GOLDEN_IL_DIR}/boolean_orelse.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_conversions
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/conversions.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/conversions.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_float_ops
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/float_ops.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/float_ops.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_math_phase1
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/math_phase1.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/math_phase1.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_math_phase2
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/math_phase2.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/math_phase2.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_abs_mixed
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/abs_mixed.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/abs_mixed.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_bounds_checks
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/bounds_check.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/bounds_check.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK_BOUNDS})
+
+  viper_add_ctest(basic_to_il_randomize
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/randomize.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/randomize.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_rnd
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/rnd.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/rnd.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_lower_funcdef_only
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/lower_funcdef_only.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/lower_funcdef_only.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_calls_lowering
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/calls_lowering.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/calls_lowering.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_instr
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/instr.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/instr.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_len_mid
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_GOLDENS_DIR}/LenMid.bas
+    -DGOLDEN=${_VIPER_BASIC_GOLDENS_DIR}/LenMid.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_instr_dispatch
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_GOLDENS_DIR}/Instr.bas
+    -DGOLDEN=${_VIPER_BASIC_GOLDENS_DIR}/Instr.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_labels_proc_loops
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_GOLDENS_DIR}/labels_proc_loops.bas
+    -DGOLDEN=${_VIPER_BASIC_GOLDENS_DIR}/labels_proc_loops.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_suffix_free_vars
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_GOLDENS_DIR}/SuffixFreeVars.bas
+    -DGOLDEN=${_VIPER_BASIC_GOLDENS_DIR}/SuffixFreeVars.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_lower_program_with_proc
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_GOLDENS_DIR}/LowerProgramWithProc.bas
+    -DGOLDEN=${_VIPER_BASIC_GOLDENS_DIR}/LowerProgramWithProc.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_return_nest
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_GOLDENS_DIR}/ReturnNest.bas
+    -DGOLDEN=${_VIPER_BASIC_GOLDENS_DIR}/ReturnNest.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+endfunction()
+
+function(viper_add_basic_strings_test)
+  if(TEST basic_strings)
+    return()
+  endif()
+
+  viper_add_ctest(basic_strings ${CMAKE_SOURCE_DIR}/scripts/test_strings.sh)
+  set_tests_properties(basic_strings PROPERTIES LABELS BasicStrings)
+endfunction()
+
+function(viper_add_basic_semantics_golden_tests)
+  if(TEST basic_semantics_proc_registration)
+    return()
+  endif()
+
+  set(_VIPER_BASIC_ILC $<TARGET_FILE:ilc>)
+  set(_VIPER_BASIC_SEMANTICS_DIR ${VIPER_TESTS_DIR}/basic/semantics)
+  set(_VIPER_BASIC_NEGATIVES_DIR ${VIPER_TESTS_DIR}/basic/negatives)
+  set(_VIPER_GOLDEN_ERRORS_DIR ${VIPER_TESTS_DIR}/golden/basic_errors)
+
+  file(READ ${_VIPER_BASIC_SEMANTICS_DIR}/proc_registration_ok.err EXPECT_PROC_REG)
+  string(STRIP "${EXPECT_PROC_REG}" EXPECT_PROC_REG)
+  viper_add_ctest(basic_semantics_proc_registration
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/proc_registration_ok.bas
+    "-DEXPECT=${EXPECT_PROC_REG}"
+    -P ${_VIPER_GOLDEN_ERRORS_DIR}/check_error.cmake)
+
+  file(READ ${_VIPER_BASIC_SEMANTICS_DIR}/missing_return.err EXPECT_MISSING_RET)
+  string(STRIP "${EXPECT_MISSING_RET}" EXPECT_MISSING_RET)
+  viper_add_ctest(basic_semantics_missing_return
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/missing_return.bas
+    "-DEXPECT=${EXPECT_MISSING_RET}"
+    -P ${_VIPER_GOLDEN_ERRORS_DIR}/check_error.cmake)
+
+  file(READ ${_VIPER_BASIC_SEMANTICS_DIR}/sub_in_expr.err EXPECT_SUB_IN_EXPR)
+  string(STRIP "${EXPECT_SUB_IN_EXPR}" EXPECT_SUB_IN_EXPR)
+  viper_add_ctest(basic_semantics_sub_in_expr
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/sub_in_expr.bas
+    "-DEXPECT=${EXPECT_SUB_IN_EXPR}"
+    -P ${_VIPER_GOLDEN_ERRORS_DIR}/check_error.cmake)
+
+  viper_add_ctest(basic_semantics_funcs_then_code
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/FuncsThenCode.ok.bas
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_ok.cmake)
+
+  viper_add_ctest(basic_semantics_boolean_type_ok
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/test_boolean_type_ok.bas
+    -DDIAG_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/test_boolean_type_ok.diag
+    -DSOURCE_ROOT=${CMAKE_SOURCE_DIR}
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_diag.cmake)
+
+  viper_add_ctest(basic_semantics_condition_boolean_ok
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/test_condition_boolean_ok.bas
+    -DDIAG_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/test_condition_boolean_ok.diag
+    -DSOURCE_ROOT=${CMAKE_SOURCE_DIR}
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_diag.cmake)
+
+  viper_add_ctest(basic_semantics_condition_nonboolean_errors
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/test_condition_nonboolean_errors.bas
+    -DDIAG_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/test_condition_nonboolean_errors.diag
+    -DEXPECT_STATUS=1
+    -DSOURCE_ROOT=${CMAKE_SOURCE_DIR}
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_diag.cmake)
+
+  viper_add_ctest(basic_negatives_if_int_condition
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_NEGATIVES_DIR}/test_if_int_condition.bas
+    -DDIAG_FILE=${_VIPER_BASIC_NEGATIVES_DIR}/test_if_int_condition.diag
+    -DEXPECT_STATUS=1
+    -DSOURCE_ROOT=${CMAKE_SOURCE_DIR}
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_diag.cmake)
+
+  viper_add_ctest(basic_negatives_while_float_condition
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_NEGATIVES_DIR}/test_while_float_condition.bas
+    -DDIAG_FILE=${_VIPER_BASIC_NEGATIVES_DIR}/test_while_float_condition.diag
+    -DEXPECT_STATUS=1
+    -DSOURCE_ROOT=${CMAKE_SOURCE_DIR}
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_diag.cmake)
+
+  viper_add_ctest(basic_semantics_boolean_constfold
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/test_boolean_constfold.bas
+    -DEXPECT_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/test_boolean_constfold.expect
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+endfunction()
+
+function(viper_add_basic_integration_tests)
+  if(TEST basic_boolean_andalso_short)
+    return()
+  endif()
+
+  set(_VIPER_BASIC_ILC $<TARGET_FILE:ilc>)
+  set(_VIPER_BASIC_INTEGRATION_DIR ${VIPER_TESTS_DIR}/integration)
+  set(_VIPER_BASIC_SEMANTICS_DIR ${VIPER_TESTS_DIR}/basic/semantics)
+
+  viper_add_ctest(basic_boolean_andalso_short
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_INTEGRATION_DIR}/basic_boolean_andalso_short.bas
+    -DEXPECT_FILE=${_VIPER_BASIC_INTEGRATION_DIR}/basic_boolean_andalso_short.expect
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+  viper_add_ctest(basic_boolean_truth
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_INTEGRATION_DIR}/basic_boolean_truth.bas
+    -DEXPECT_FILE=${_VIPER_BASIC_INTEGRATION_DIR}/basic_boolean_truth.expect
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+  viper_add_ctest(basic_boolean_shortcircuit
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_INTEGRATION_DIR}/basic_shortcircuit.bas
+    -DEXPECT_FILE=${_VIPER_BASIC_INTEGRATION_DIR}/basic_shortcircuit.expect
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+endfunction()
