@@ -6,6 +6,7 @@
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
 // Links: docs/class-catalog.md
 
+// Requires the consolidated Lowerer interface for runtime tracking declarations.
 #include "frontends/basic/Lowerer.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include <cassert>
