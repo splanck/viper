@@ -152,6 +152,8 @@ add_executable(test_vm_debug_script vm/DebugScriptTests.cpp)
 add_test(NAME test_vm_debug_script COMMAND test_vm_debug_script $<TARGET_FILE:ilc> ${CMAKE_SOURCE_DIR}/examples/il/debug_script.il ${CMAKE_SOURCE_DIR}/examples/il/debug_script.txt)
 add_executable(test_vm_watch vm/WatchTests.cpp)
 add_test(NAME test_vm_watch COMMAND test_vm_watch $<TARGET_FILE:ilc> ${CMAKE_SOURCE_DIR}/tests/vm/WatchTests.il)
+add_executable(test_vm_block_param_step vm/BlockParamStepTests.cpp)
+add_test(NAME test_vm_block_param_step COMMAND test_vm_block_param_step $<TARGET_FILE:ilc> ${CMAKE_SOURCE_DIR}/tests/vm/BlockParamStep.il ${CMAKE_SOURCE_DIR}/tests/vm/BlockParamStep.txt)
 
 add_executable(test_vm_summary vm/SummaryTests.cpp)
 add_test(NAME test_vm_summary COMMAND test_vm_summary $<TARGET_FILE:ilc> ${CMAKE_SOURCE_DIR}/examples/il/summary.il)
