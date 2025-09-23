@@ -185,7 +185,78 @@ class Lowerer
         size_t doneIdx{0};
     };
 
-    std::unique_ptr<BlockNamer> blockNamer;
+    /// @brief Aggregates mutable state for the procedure currently being lowered.
+    /// @invariant Reset before each procedure to avoid leaking state across lowers.
+    struct ProcedureContext
+    {
+        /// @brief Reset to an empty state ready for a new procedure.
+        void reset() noexcept
+        {
+            function_ = nullptr;
+            current_ = nullptr;
+            exitIndex_ = 0;
+            lineBlocks_.clear();
+            blockNamer_.reset();
+            nextTemp_ = 0;
+            boundsCheckId_ = 0;
+        }
+
+        [[nodiscard]] Function *function() const noexcept { return function_; }
+
+        void setFunction(Function *function) noexcept { function_ = function; }
+
+        [[nodiscard]] BasicBlock *current() const noexcept { return current_; }
+
+        void setCurrent(BasicBlock *block) noexcept { current_ = block; }
+
+        [[nodiscard]] size_t exitIndex() const noexcept { return exitIndex_; }
+
+        void setExitIndex(size_t index) noexcept { exitIndex_ = index; }
+
+        [[nodiscard]] unsigned nextTemp() const noexcept { return nextTemp_; }
+
+        void setNextTemp(unsigned next) noexcept { nextTemp_ = next; }
+
+        [[nodiscard]] unsigned boundsCheckId() const noexcept { return boundsCheckId_; }
+
+        void setBoundsCheckId(unsigned id) noexcept { boundsCheckId_ = id; }
+
+        /// @brief Return the current bounds-check identifier and advance it.
+        unsigned consumeBoundsCheckId() noexcept { return boundsCheckId_++; }
+
+        [[nodiscard]] std::unordered_map<int, size_t> &lineBlocks() noexcept
+        {
+            return lineBlocks_;
+        }
+
+        [[nodiscard]] const std::unordered_map<int, size_t> &lineBlocks() const noexcept
+        {
+            return lineBlocks_;
+        }
+
+        [[nodiscard]] BlockNamer *blockNamer() noexcept { return blockNamer_.get(); }
+
+        [[nodiscard]] const BlockNamer *blockNamer() const noexcept
+        {
+            return blockNamer_.get();
+        }
+
+        void setBlockNamer(std::unique_ptr<BlockNamer> namer) noexcept
+        {
+            blockNamer_ = std::move(namer);
+        }
+
+        void resetBlockNamer() noexcept { blockNamer_.reset(); }
+
+      private:
+        Function *function_{nullptr};
+        BasicBlock *current_{nullptr};
+        size_t exitIndex_{0};
+        std::unordered_map<int, size_t> lineBlocks_;
+        std::unique_ptr<BlockNamer> blockNamer_;
+        unsigned nextTemp_{0};
+        unsigned boundsCheckId_{0};
+    };
 
   public:
     struct ProcedureConfig;
@@ -430,18 +501,14 @@ class Lowerer
 
     build::IRBuilder *builder{nullptr};
     Module *mod{nullptr};
-    Function *func{nullptr};
-    BasicBlock *cur{nullptr};
-    size_t fnExit{0};
     NameMangler mangler;
-    unsigned nextTemp{0};
-    std::unordered_map<int, size_t> lineBlocks;
     std::unordered_map<std::string, SymbolInfo> symbols;
     il::support::SourceLoc curLoc{}; ///< current source location for emitted IR
     bool boundsChecks{false};
-    unsigned boundsCheckId{0};
     size_t nextStringId{0};
     std::unordered_map<std::string, ProcedureSignature> procSignatures;
+
+    ProcedureContext context_;
 
     // runtime requirement tracking
     using RuntimeFeature = il::runtime::RuntimeFeature;
@@ -479,6 +546,10 @@ class Lowerer
     /// @brief Lookup a cached procedure signature by BASIC name.
     /// @return Pointer to the signature when present, nullptr otherwise.
     const ProcedureSignature *findProcSignature(const std::string &name) const;
+
+    [[nodiscard]] ProcedureContext &context() noexcept { return context_; }
+
+    [[nodiscard]] const ProcedureContext &context() const noexcept { return context_; }
 };
 
 } // namespace il::frontends::basic
