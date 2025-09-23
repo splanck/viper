@@ -25,6 +25,9 @@ add_subdirectory(il/io)
 
 add_library(il_verify STATIC
   il/verify/Verifier.cpp
+  il/verify/ExternVerifier.cpp
+  il/verify/GlobalVerifier.cpp
+  il/verify/FunctionVerifier.cpp
   il/verify/InstructionChecker.cpp
   il/verify/ControlFlowChecker.cpp
   il/verify/TypeInference.cpp)

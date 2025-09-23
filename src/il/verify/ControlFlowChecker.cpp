@@ -11,6 +11,7 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Param.hpp"
+#include "il/verify/DiagSink.hpp"
 #include "support/diag_expected.hpp"
 
 #include <functional>
@@ -35,7 +36,7 @@ using VerifyInstrFnExpected = std::function<Expected<void>(const Function &fn,
                                                            const std::unordered_map<std::string, const Extern *> &externs,
                                                            const std::unordered_map<std::string, const Function *> &funcs,
                                                            TypeInference &types,
-                                                           std::vector<Diag> &warnings)>;
+                                                           DiagSink &sink)>;
 
 namespace
 {
@@ -111,14 +112,14 @@ Expected<void> iterateBlockInstructions_impl(const Function &fn,
                                              const std::unordered_map<std::string, const Function *> &funcs,
                                              TypeInference &types,
                                              const VerifyInstrFnExpected &verifyInstrFn,
-                                             std::vector<Diag> &warnings)
+                                             DiagSink &sink)
 {
     for (const auto &instr : bb.instructions)
     {
         if (auto result = types.ensureOperandsDefined_E(fn, bb, instr); !result)
             return result;
 
-        if (auto result = verifyInstrFn(fn, bb, instr, blockMap, externs, funcs, types, warnings); !result)
+        if (auto result = verifyInstrFn(fn, bb, instr, blockMap, externs, funcs, types, sink); !result)
             return result;
 
         if (isTerminator(instr.op))
@@ -343,9 +344,9 @@ Expected<void> iterateBlockInstructions_E(const Function &fn,
                                            const std::unordered_map<std::string, const Function *> &funcs,
                                            TypeInference &types,
                                            const VerifyInstrFnExpected &verifyInstrFn,
-                                           std::vector<Diag> &warnings)
+                                           DiagSink &sink)
 {
-    return iterateBlockInstructions_impl(fn, bb, blockMap, externs, funcs, types, verifyInstrFn, warnings);
+    return iterateBlockInstructions_impl(fn, bb, blockMap, externs, funcs, types, verifyInstrFn, sink);
 }
 
 Expected<void> checkBlockTerminators_E(const Function &fn, const BasicBlock &bb)
@@ -407,19 +408,19 @@ bool iterateBlockInstructions(VerifyInstrFn verifyInstrFn,
                               TypeInference &types,
                               std::ostream &err)
 {
-    std::vector<Diag> warnings;
+    CollectingDiagSink warnings;
     VerifyInstrFnExpected shim = [&](const Function &fnRef, const BasicBlock &bbRef, const Instr &instrRef,
                                      const std::unordered_map<std::string, const BasicBlock *> &blockMapRef,
                                      const std::unordered_map<std::string, const Extern *> &externsRef,
                                      const std::unordered_map<std::string, const Function *> &funcsRef,
                                      TypeInference &typesRef,
-                                     std::vector<Diag> &warningSink) -> Expected<void>
+                                     DiagSink &warningSink) -> Expected<void>
     {
         std::ostringstream capture;
         bool ok = verifyInstrFn(fnRef, bbRef, instrRef, blockMapRef, externsRef, funcsRef, typesRef, capture);
         ParsedCapture parsed = parseCapturedLines(capture.str());
         for (const auto &msg : parsed.warnings)
-            warningSink.push_back(Diag{Severity::Warning, msg, instrRef.loc});
+            warningSink.report(Diag{Severity::Warning, msg, instrRef.loc});
         if (!ok)
         {
             std::string message = joinMessages(parsed.errors);
@@ -432,13 +433,13 @@ bool iterateBlockInstructions(VerifyInstrFn verifyInstrFn,
 
     if (auto result = iterateBlockInstructions_E(fn, bb, blockMap, externs, funcs, types, shim, warnings); !result)
     {
-        for (const auto &warning : warnings)
+        for (const auto &warning : warnings.diagnostics())
             il::support::printDiag(warning, err);
         il::support::printDiag(result.error(), err);
         return false;
     }
 
-    for (const auto &warning : warnings)
+    for (const auto &warning : warnings.diagnostics())
         il::support::printDiag(warning, err);
     return true;
 }
