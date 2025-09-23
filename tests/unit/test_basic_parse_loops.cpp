@@ -2,7 +2,7 @@
 // Purpose: Verify loop parsing shares body handling without regressing NEXT/WEND semantics.
 // Key invariants: Loop bodies exclude terminators and preserve nested statement line numbers.
 // Ownership/Lifetime: Test owns parser, AST, and source manager instances.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/Parser.hpp"
 #include "support/source_manager.hpp"

@@ -3,7 +3,7 @@
 //          see LICENSE).
 // Key invariants: None.
 // Ownership/Lifetime: Nodes owned via std::unique_ptr.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/AST.hpp"
 

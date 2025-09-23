@@ -40,7 +40,7 @@ the file's role. Use this template:
 // Purpose: Declares the Bar helper.
 // Key invariants: ID remains unique.
 // Ownership/Lifetime: Caller frees instances.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 ```
 
 ## Doxygen API comments

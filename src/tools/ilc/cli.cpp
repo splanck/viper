@@ -3,7 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: N/A.
 // License: MIT (see LICENSE).
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "cli.hpp"
 

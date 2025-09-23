@@ -3,7 +3,7 @@
 // Purpose: Implements helpers for inferring BASIC semantic types from identifier suffixes.
 // Key invariants: BASIC suffix characters map deterministically to AST scalar types.
 // Ownership/Lifetime: Stateless utility functions.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/TypeSuffix.hpp"
 

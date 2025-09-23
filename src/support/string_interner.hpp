@@ -2,7 +2,7 @@
 // Purpose: Declares string interning and symbol types.
 // Key invariants: Symbol id 0 is invalid.
 // Ownership/Lifetime: Interner owns stored strings.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include "symbol.hpp"

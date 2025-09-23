@@ -3,7 +3,7 @@
 // Key invariants: Backslashes become slashes; '..' segments collapsed;
 // basename extracted from normalized path.
 // Ownership: Standalone executable.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #include "vm/Debug.hpp"
 #include <cassert>
 

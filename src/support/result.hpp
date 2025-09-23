@@ -2,7 +2,7 @@
 // Purpose: Provides a simple Result type for error handling.
 // Key invariants: None.
 // Ownership/Lifetime: Result owns contained value or error.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include <optional>

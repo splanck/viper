@@ -3,7 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Printer does not own AST nodes.
 // Notes: Uses internal Printer helper for consistent formatting.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/AstPrinter.hpp"
 #include "frontends/basic/BuiltinRegistry.hpp"

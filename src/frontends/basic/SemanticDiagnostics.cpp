@@ -2,7 +2,7 @@
 // Purpose: Implements semantic diagnostic helpers for BASIC front-end analysis.
 // Key invariants: Diagnostics are forwarded without altering DiagnosticEmitter state.
 // Ownership/Lifetime: Borrows DiagnosticEmitter references; no ownership transfer.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/SemanticDiagnostics.hpp"
 

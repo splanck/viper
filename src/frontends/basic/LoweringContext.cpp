@@ -3,7 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Context references module owned externally.
 // License: MIT (see LICENSE).
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/LoweringContext.hpp"
 #include "il/build/IRBuilder.hpp"

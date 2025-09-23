@@ -2,7 +2,7 @@
 // Purpose: Implementation helpers for parsing --break flag specifications.
 // Key invariants: Matches syntactic checks defined in header documentation.
 // Ownership/Lifetime: N/A.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "break_spec.hpp"
 

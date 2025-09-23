@@ -2,7 +2,7 @@
 // Purpose: Verify runtime trap metadata remains isolated per VM under concurrency.
 // Key invariants: Concurrent runtime calls must preserve distinct trap context.
 // Ownership: Constructs independent modules per thread and overrides vm_trap.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "il/build/IRBuilder.hpp"
 #include "support/source_location.hpp"

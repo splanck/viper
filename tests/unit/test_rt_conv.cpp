@@ -2,7 +2,7 @@
 // Purpose: Verify numeric to string runtime conversions.
 // Key invariants: Returned strings match decimal formatting used by PRINT.
 // Ownership: Uses runtime library.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #include "rt_internal.h"
 #include <cassert>
 #include <string>

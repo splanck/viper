@@ -2,7 +2,7 @@
 // Purpose: Validate runtime registry metadata coverage.
 // License: MIT License.
 // Key invariants: Every descriptor publishes a handler and signature mapping.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "il/runtime/RuntimeSignatures.hpp"
 #include <cassert>

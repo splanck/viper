@@ -6,7 +6,7 @@
 // Key invariants: Symbol tables mirror analyzer state; helper routines remain
 //                 internal to the BASIC frontend.
 // Ownership/Lifetime: Borrowed DiagnosticEmitter; AST nodes owned externally.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 

@@ -2,7 +2,7 @@
 // Purpose: Ensure runtime bridge traps when rt_print_str is called with too many arguments.
 // Key invariants: Calls with excess args should emit descriptive trap rather than crash.
 // Ownership: Test constructs IL module and executes VM.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"

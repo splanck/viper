@@ -3,7 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Functions do not take ownership of nodes.
 // Notes: Uses internal Printer helper for formatting.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include "frontends/basic/AST.hpp"

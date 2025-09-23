@@ -3,7 +3,7 @@
 // Purpose: BASIC front-end driver for ilc.
 // Key invariants: None.
 // Ownership/Lifetime: Tool owns loaded modules.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "vm/Trace.hpp"
 #include "cli.hpp"

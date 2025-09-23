@@ -2,7 +2,7 @@
 // Purpose: Verify runtime-originated traps report instruction source locations.
 // Key invariants: Trap output includes function, block, and location.
 // Ownership: Test builds IL calling runtime and runs VM.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"

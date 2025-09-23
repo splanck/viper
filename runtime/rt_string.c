@@ -2,7 +2,7 @@
 // Purpose: Implements string manipulation utilities for the BASIC runtime.
 // Key invariants: Strings use reference counts; operations trap on invalid inputs.
 // Ownership/Lifetime: Caller manages returned strings and reference counts.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "rt_internal.h"
 #include <ctype.h>

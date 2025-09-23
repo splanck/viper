@@ -7,7 +7,7 @@
 //                 functions for arity/type checking.
 // Ownership/Lifetime: Analyzer borrows DiagnosticEmitter; AST nodes owned
 //                     externally.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 

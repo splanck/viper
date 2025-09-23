@@ -3,7 +3,7 @@
 // License: MIT License. See LICENSE in the project root for details.
 // Key invariants: None.
 // Ownership/Lifetime: SourceManager owns loaded buffers.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "source_manager.hpp"
 

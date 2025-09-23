@@ -3,7 +3,7 @@
 // Key invariants: Transformations preserve program semantics.
 // Ownership/Lifetime: Operates in place on the module.
 // License: MIT (see LICENSE for details).
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "il/transform/Peephole.hpp"
 #include "il/core/Function.hpp"
