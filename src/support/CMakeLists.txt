@@ -9,4 +9,7 @@ add_library(support STATIC
   diag_capture.cpp
 )
 
-target_include_directories(support PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
+target_include_directories(support PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
+)
