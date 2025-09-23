@@ -1,9 +1,11 @@
 // tui/include/tui/term/input.hpp
-// @brief Decode UTF-8 byte streams into key events.
+// @brief Decode UTF-8 byte streams into key, mouse, and paste events.
 // @invariant Maintains UTF-8 state across feeds.
-// @ownership Does not own input buffers; owns internal event queue.
+// @ownership Does not own input buffers; owns internal event queues.
 #pragma once
 
+#include "tui/term/CsiParser.hpp"
+#include "tui/term/Utf8Decoder.hpp"
 #include "tui/term/key_event.hpp"
 
 #include <string>
@@ -12,12 +14,15 @@
 
 namespace viper::tui::term
 {
-/// @brief Incremental UTF-8 decoder producing key events.
+/// @brief Incremental UTF-8 decoder producing terminal input events.
 /// @invariant Handles partial sequences across feed() calls.
 /// @ownership Stores decoded events internally.
 class InputDecoder
 {
   public:
+    /// @brief Create a decoder with empty output queues.
+    InputDecoder();
+
     /// @brief Feed bytes into decoder.
     /// @param bytes UTF-8 encoded data.
     void feed(std::string_view bytes);
@@ -43,17 +48,16 @@ class InputDecoder
     void emit(uint32_t cp);
     State handle_csi(char final, std::string_view params);
     void handle_ss3(char final, std::string_view params);
-    void handle_sgr_mouse(char final, std::string_view params);
-    static unsigned decode_mod(int value);
 
     State state_{State::Utf8};
     std::string seq_{};
-    uint32_t cp_{0};
-    unsigned expected_{0};
+    Utf8Decoder utf8_decoder_{};
     std::vector<KeyEvent> key_events_{};
     std::vector<MouseEvent> mouse_events_{};
     std::vector<PasteEvent> paste_events_{};
     std::string paste_buf_{};
+    CsiParser csi_parser_;
 };
 
 } // namespace viper::tui::term
+
