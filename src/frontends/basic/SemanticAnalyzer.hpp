@@ -195,6 +195,8 @@ class SemanticAnalyzer
     void emitOperandTypeMismatch(const BinaryExpr &expr, std::string_view diagId);
     /// @brief Emit divide-by-zero diagnostic when appropriate.
     void emitDivideByZero(const BinaryExpr &expr);
+    /// @brief Determine whether the RHS of @p expr is the integer literal 0.
+    bool rhsIsLiteralZero(const BinaryExpr &expr) const;
     /// @brief Ensure operands are numeric (INT or FLOAT) when required.
     void validateNumericOperands(const BinaryExpr &expr,
                                  Type lhs,
