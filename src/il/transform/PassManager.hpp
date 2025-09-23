@@ -26,7 +26,8 @@ namespace il::transform
 struct CFGInfo
 {
     std::unordered_map<const core::BasicBlock *, std::vector<const core::BasicBlock *>> successors;
-    std::unordered_map<const core::BasicBlock *, std::vector<const core::BasicBlock *>> predecessors;
+    std::unordered_map<const core::BasicBlock *, std::vector<const core::BasicBlock *>>
+        predecessors;
 };
 
 /// @brief Cached liveness sets (live-in/live-out) for each block.
@@ -49,8 +50,7 @@ class LivenessInfo
 
         /// @brief Visit every live value identifier in the set.
         /// @tparam Fn Callable invoked with each live value identifier.
-        template <typename Fn>
-        void forEach(Fn &&fn) const
+        template <typename Fn> void forEach(Fn &&fn) const
         {
             if (!bits_)
                 return;
@@ -94,7 +94,10 @@ class LivenessInfo
     /// @brief Retrieve the live-in set for @p block.
     /// @param block Basic block whose entry set is requested.
     /// @return Lightweight view over the live-in values.
-    SetView liveIn(const core::BasicBlock &block) const { return liveIn(&block); }
+    SetView liveIn(const core::BasicBlock &block) const
+    {
+        return liveIn(&block);
+    }
 
     /// @brief Retrieve the live-in set for @p block.
     /// @param block Basic block pointer whose entry set is requested.
@@ -112,7 +115,10 @@ class LivenessInfo
     /// @brief Retrieve the live-out set for @p block.
     /// @param block Basic block whose exit set is requested.
     /// @return Lightweight view over the live-out values.
-    SetView liveOut(const core::BasicBlock &block) const { return liveOut(&block); }
+    SetView liveOut(const core::BasicBlock &block) const
+    {
+        return liveOut(&block);
+    }
 
     /// @brief Retrieve the live-out set for @p block pointer.
     /// @param block Basic block pointer whose exit set is requested.
@@ -129,7 +135,10 @@ class LivenessInfo
 
     /// @brief Number of dense SSA value slots tracked by this liveness summary.
     /// @return Count of bits allocated per block.
-    std::size_t valueCount() const { return valueCount_; }
+    std::size_t valueCount() const
+    {
+        return valueCount_;
+    }
 
   private:
     using BitSet = std::vector<bool>;
@@ -139,7 +148,13 @@ class LivenessInfo
     std::unordered_map<const core::BasicBlock *, BitSet> liveOutBits_;
 
     friend LivenessInfo computeLiveness(core::Module &module, core::Function &fn);
+    friend LivenessInfo computeLiveness(core::Module &module,
+                                        core::Function &fn,
+                                        const CFGInfo &cfg);
 };
+
+LivenessInfo computeLiveness(core::Module &module, core::Function &fn);
+LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFGInfo &cfg);
 
 /// @brief Tracks which analyses remain valid after a pass executes.
 class PreservedAnalyses
@@ -226,8 +241,7 @@ class AnalysisManager
                     const ModuleAnalysisMap &moduleAnalyses,
                     const FunctionAnalysisMap &functionAnalyses);
 
-    template <typename Result>
-    Result &getModuleResult(const std::string &id)
+    template <typename Result> Result &getModuleResult(const std::string &id)
     {
         assert(moduleAnalyses_ && "no module analyses registered");
         auto it = moduleAnalyses_->find(id);
@@ -235,14 +249,14 @@ class AnalysisManager
         std::any &cache = moduleCache_[id];
         if (!cache.has_value())
             cache = it->second.compute(module_);
-        assert(it->second.type == std::type_index(typeid(Result)) && "analysis result type mismatch");
+        assert(it->second.type == std::type_index(typeid(Result)) &&
+               "analysis result type mismatch");
         auto *value = std::any_cast<Result>(&cache);
         assert(value && "analysis result cast failed");
         return *value;
     }
 
-    template <typename Result>
-    Result &getFunctionResult(const std::string &id, core::Function &fn)
+    template <typename Result> Result &getFunctionResult(const std::string &id, core::Function &fn)
     {
         assert(functionAnalyses_ && "no function analyses registered");
         auto it = functionAnalyses_->find(id);
@@ -250,7 +264,8 @@ class AnalysisManager
         std::any &cache = functionCache_[id][&fn];
         if (!cache.has_value())
             cache = it->second.compute(module_, fn);
-        assert(it->second.type == std::type_index(typeid(Result)) && "analysis result type mismatch");
+        assert(it->second.type == std::type_index(typeid(Result)) &&
+               "analysis result type mismatch");
         auto *value = std::any_cast<Result>(&cache);
         assert(value && "analysis result cast failed");
         return *value;
@@ -264,7 +279,8 @@ class AnalysisManager
     const ModuleAnalysisMap *moduleAnalyses_;
     const FunctionAnalysisMap *functionAnalyses_;
     std::unordered_map<std::string, std::any> moduleCache_;
-    std::unordered_map<std::string, std::unordered_map<const core::Function *, std::any>> functionCache_;
+    std::unordered_map<std::string, std::unordered_map<const core::Function *, std::any>>
+        functionCache_;
 };
 
 /// @brief Coordinates pass execution, analysis caching, and pipelines.
@@ -275,7 +291,8 @@ class PassManager
     using ModulePassFactory = std::function<std::unique_ptr<ModulePass>()>;
     using FunctionPassFactory = std::function<std::unique_ptr<FunctionPass>()>;
     using ModulePassCallback = std::function<PreservedAnalyses(core::Module &, AnalysisManager &)>;
-    using FunctionPassCallback = std::function<PreservedAnalyses(core::Function &, AnalysisManager &)>;
+    using FunctionPassCallback =
+        std::function<PreservedAnalyses(core::Function &, AnalysisManager &)>;
 
     PassManager();
 
@@ -303,7 +320,8 @@ class PassManager
 
     void registerFunctionPass(const std::string &id, FunctionPassFactory factory);
     void registerFunctionPass(const std::string &id, FunctionPassCallback callback);
-    void registerFunctionPass(const std::string &id, const std::function<void(core::Function &)> &fn);
+    void registerFunctionPass(const std::string &id,
+                              const std::function<void(core::Function &)> &fn);
 
     void registerPipeline(const std::string &id, Pipeline pipeline);
     const Pipeline *getPipeline(const std::string &id) const;
@@ -322,4 +340,3 @@ class PassManager
 };
 
 } // namespace il::transform
-
