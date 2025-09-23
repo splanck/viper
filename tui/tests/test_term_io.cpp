@@ -9,7 +9,7 @@
 
 int main()
 {
-    tui::term::StringTermIO tio;
+    viper::tui::term::StringTermIO tio;
     tio.write("hello");
     tio.flush();
     assert(tio.buffer() == "hello");

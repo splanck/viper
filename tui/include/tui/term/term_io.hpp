@@ -2,7 +2,7 @@
 #include <string>
 #include <string_view>
 
-namespace tui::term
+namespace viper::tui::term
 {
 
 class TermIO
@@ -35,4 +35,4 @@ class StringTermIO : public TermIO
     std::string buf_;
 };
 
-} // namespace tui::term
+} // namespace viper::tui::term

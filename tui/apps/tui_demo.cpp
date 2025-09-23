@@ -32,8 +32,8 @@ int main()
         headless = (v[0] == '1');
     }
 
-    tui::TerminalSession session;
-    tui::term::RealTermIO tio;
+    viper::tui::TerminalSession session;
+    viper::tui::term::RealTermIO tio;
 
     viper::tui::style::Theme theme;
     viper::tui::text::TextBuffer buf;

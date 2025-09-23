@@ -1,7 +1,7 @@
 #include "tui/term/session.hpp"
 #include "tui/term/term_io.hpp"
 
-namespace tui
+namespace viper::tui
 {
 
 static inline bool env_no_tty()
@@ -69,7 +69,7 @@ TerminalSession::TerminalSession()
 
     if (!env_no_tty() && env_true("VIPERTUI_MOUSE"))
     {
-        ::tui::term::RealTermIO io;
+        ::viper::tui::term::RealTermIO io;
         io.write("\x1b[?1000h\x1b[?1002h\x1b[?1006h"); // enable mouse + SGR
         io.flush();
     }
@@ -84,7 +84,7 @@ TerminalSession::~TerminalSession()
 
     if (!env_no_tty() && env_true("VIPERTUI_MOUSE"))
     {
-        ::tui::term::RealTermIO io;
+        ::viper::tui::term::RealTermIO io;
         io.write("\x1b[?1006l\x1b[?1002l\x1b[?1000l"); // disable SGR + motion + mouse
         io.flush();
     }
@@ -112,4 +112,4 @@ bool TerminalSession::active() const
     return active_;
 }
 
-} // namespace tui
+} // namespace viper::tui

@@ -13,7 +13,7 @@
 
 #include <cassert>
 
-using tui::term::StringTermIO;
+using viper::tui::term::StringTermIO;
 using viper::tui::input::KeyChord;
 using viper::tui::input::Keymap;
 using viper::tui::render::Renderer;
