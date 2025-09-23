@@ -11,6 +11,8 @@ add_library(tui STATIC
   src/term/term_io.cpp
   src/term/session.cpp
   src/term/input.cpp
+  src/term/CsiParser.cpp
+  src/term/Utf8Decoder.cpp
   src/term/clipboard.cpp
   src/input/keymap.cpp
   src/util/unicode.cpp
