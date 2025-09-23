@@ -3,7 +3,7 @@
 // Purpose: Implements AST scanning to compute expression types and runtime requirements.
 // Key invariants: Scanning only mutates bookkeeping flags; no IR emitted.
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Lowerer.hpp"

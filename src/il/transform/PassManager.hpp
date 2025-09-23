@@ -2,7 +2,7 @@
 // Purpose: Declare a modular IL pass manager with analysis caching and pipelines.
 // Key invariants: Pass registration IDs are unique; analysis caches respect preservation info.
 // Ownership/Lifetime: PassManager stores factories and analysis descriptors with static lifetime.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include "il/core/fwd.hpp"

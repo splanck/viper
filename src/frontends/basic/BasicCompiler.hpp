@@ -2,7 +2,7 @@
 // Purpose: Declares the BASIC front-end driver that compiles source text into IL.
 // Key invariants: Diagnostics are captured before emitting the final module.
 // Ownership/Lifetime: Result owns diagnostics; borrows SourceManager for source mapping.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include "frontends/basic/DiagnosticEmitter.hpp"

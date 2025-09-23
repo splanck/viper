@@ -2,7 +2,7 @@
 // Purpose: Implements the BASIC front-end pipeline producing IL modules.
 // Key invariants: Diagnostics capture all failures; lowering only runs on valid programs.
 // Ownership/Lifetime: Result owns diagnostics; borrows SourceManager for source mapping.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/BasicCompiler.hpp"
 

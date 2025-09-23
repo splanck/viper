@@ -6,7 +6,7 @@
 // Key invariants: Registry entries correspond 1:1 with BuiltinCallExpr::Builtin
 //                 enum order.
 // Ownership/Lifetime: Static data only.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Lowerer.hpp"

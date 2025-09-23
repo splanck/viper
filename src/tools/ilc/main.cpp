@@ -3,7 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Tool owns loaded modules.
 // License: MIT.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "cli.hpp"
 #include "frontends/basic/Intrinsics.hpp"

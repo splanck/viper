@@ -4,7 +4,7 @@
 // Key invariants: Relies on token buffer for lookahead.
 // Ownership/Lifetime: Parser owns tokens produced by lexer.
 // License: MIT (see LICENSE).
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/Parser.hpp"
 #include <cstdlib>

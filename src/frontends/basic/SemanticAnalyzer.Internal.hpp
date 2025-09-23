@@ -5,7 +5,7 @@
 //                 leaking into public headers.
 // Ownership/Lifetime: Stateless free functions used by SemanticAnalyzer
 //                     implementation files.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include "frontends/basic/SemanticAnalyzer.hpp"

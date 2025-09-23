@@ -2,7 +2,7 @@
 // Purpose: Wraps DiagnosticEngine to format BASIC diagnostics with codes and carets.
 // Key invariants: Stored diagnostics maintain emission order.
 // Ownership/Lifetime: Borrows DiagnosticEngine and SourceManager; owns source copies.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include "frontends/basic/Token.hpp"

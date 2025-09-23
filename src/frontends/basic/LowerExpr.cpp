@@ -4,7 +4,7 @@
 // Key invariants: Expression lowering preserves operand types, injecting
 //                 conversions to match IL expectations and runtime helpers.
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 // Requires the consolidated Lowerer interface for expression lowering helpers.
 #include "frontends/basic/Lowerer.hpp"

@@ -3,7 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Tool owns parsed module.
 // License: MIT License. See LICENSE for details.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

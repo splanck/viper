@@ -8,7 +8,7 @@
 //                 diagnostics for invalid constructs.
 // Ownership/Lifetime: Analyzer borrows DiagnosticEmitter; AST nodes remain
 //                     owned externally.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 

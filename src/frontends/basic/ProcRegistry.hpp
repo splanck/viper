@@ -2,7 +2,7 @@
 // Purpose: Manages BASIC procedure signatures and registration diagnostics.
 // Key invariants: Each procedure name maps to a unique signature.
 // Ownership/Lifetime: Borrows SemanticDiagnostics; no AST ownership.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include <optional>

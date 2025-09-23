@@ -2,7 +2,7 @@
 // Purpose: Ensure IRBuilder emits an error when call targets are missing.
 // Key invariants: emitCall must throw for unknown callees.
 // Ownership: Test owns all constructed objects.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "il/build/IRBuilder.hpp"
 #include <cassert>

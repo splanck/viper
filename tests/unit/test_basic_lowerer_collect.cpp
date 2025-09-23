@@ -2,7 +2,7 @@
 // Purpose: Ensure BASIC lowerer collects variables from all statement visitors.
 // Key invariants: RANDOMIZE/RETURN statements must allocate referenced variables.
 // Ownership: Test owns constructed AST and module.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/Parser.hpp"

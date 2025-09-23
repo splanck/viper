@@ -2,7 +2,7 @@
 // Purpose: Verify runtime string helpers including substring operations clamp inputs.
 // Key invariants: Substring operations clamp start/length and avoid overflow.
 // Ownership: Uses runtime library.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #include "rt.hpp"
 #include "rt_internal.h"
 #include <cassert>

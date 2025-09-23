@@ -3,7 +3,7 @@
 // Purpose: Implements BASIC diagnostic formatting with codes and carets.
 // Key invariants: Diagnostics printed in emission order.
 // Ownership/Lifetime: Holds copies of source text; borrows engine and manager.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include <algorithm>

@@ -2,7 +2,7 @@
 // Purpose: Declares BASIC token lexer with single-line comment support.
 // Key invariants: Current position always within source buffer.
 // Ownership/Lifetime: Lexer does not own the source buffer.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include "frontends/basic/Token.hpp"

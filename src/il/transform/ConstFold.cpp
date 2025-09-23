@@ -2,7 +2,7 @@
 // Purpose: Implements constant folding for integer ops and math intrinsics.
 // Key invariants: Uses wraparound semantics for integers and C math for f64.
 // Ownership/Lifetime: Operates in place on the module.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 // License: MIT (see LICENSE)
 
 #include "il/transform/ConstFold.hpp"

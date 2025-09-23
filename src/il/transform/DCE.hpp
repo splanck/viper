@@ -2,7 +2,7 @@
 // Purpose: Dead-code elimination for IL.
 // Key invariants: Removes unused temps and redundant memory ops.
 // Ownership/Lifetime: Mutates the module in place.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include "il/core/fwd.hpp"

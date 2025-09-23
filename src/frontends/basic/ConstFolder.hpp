@@ -2,7 +2,7 @@
 // Purpose: Declares utilities to fold constant BASIC expressions.
 // Key invariants: Only pure expressions with literal operands are folded.
 // Ownership/Lifetime: Functions mutate AST in place, nodes owned by caller.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include "frontends/basic/AST.hpp"

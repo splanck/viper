@@ -3,7 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Tokens passed by value.
 // License: MIT License. See LICENSE in the project root for full license information.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/Token.hpp"
 

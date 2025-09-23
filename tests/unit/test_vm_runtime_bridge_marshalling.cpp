@@ -2,7 +2,7 @@
 // Purpose: Validate RuntimeBridge argument and result marshalling for supported types.
 // Key invariants: Each IL type kind maps to the correct Slot storage and runtime buffer.
 // Ownership: Uses runtime library helpers; callers release any allocated resources.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VM.hpp"

@@ -2,7 +2,7 @@
 // Purpose: Validate BASIC AST printer output for representative nodes.
 // Key invariants: Printer emits stable textual form for statements/expressions.
 // Ownership/Lifetime: Tests allocate AST nodes with std::unique_ptr.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/AstPrinter.hpp"
 #include <cassert>

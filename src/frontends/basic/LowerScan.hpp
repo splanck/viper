@@ -2,7 +2,7 @@
 // Purpose: Declares AST scanning helpers for BASIC lowering.
 // Key invariants: Scanning only mutates bookkeeping flags; no IR is emitted.
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 public:

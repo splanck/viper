@@ -3,7 +3,7 @@
 // Purpose: Define registry of BASIC intrinsic functions.
 // Key invariants: Table contents remain sorted by declaration order.
 // Ownership/Lifetime: Intrinsic descriptors are static.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/Intrinsics.hpp"
 

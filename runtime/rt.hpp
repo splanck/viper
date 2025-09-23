@@ -2,7 +2,7 @@
 // Purpose: Declares C runtime utilities for memory, strings, and I/O.
 // Key invariants: Reference counts remain non-negative.
 // Ownership/Lifetime: Caller manages returned strings.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include <stdint.h>

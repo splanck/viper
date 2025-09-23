@@ -2,7 +2,7 @@
 // Purpose: Implements I/O utilities and trap handling for the BASIC runtime.
 // Key invariants: Output routines do not append newlines unless specified.
 // Ownership/Lifetime: Caller manages strings passed to printing routines.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "rt_internal.h"
 #include <stdio.h>
