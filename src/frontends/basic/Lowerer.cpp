@@ -8,6 +8,7 @@
 // Links: docs/class-catalog.md
 
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/TypeSuffix.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -21,7 +22,6 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
-using pipeline_detail::astTypeFromName;
 using pipeline_detail::coreTypeForAstType;
 
 Lowerer::BlockNamer::BlockNamer(std::string p) : proc(std::move(p)) {}
@@ -139,7 +139,7 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
     std::string key(name);
     using AstType = ::il::frontends::basic::Type;
     auto it = varTypes.find(key);
-    AstType astTy = (it != varTypes.end()) ? it->second : astTypeFromName(name);
+    AstType astTy = (it != varTypes.end()) ? it->second : inferAstTypeFromName(name);
     info.isArray = arrays.find(key) != arrays.end();
     info.isBoolean = !info.isArray && astTy == AstType::Bool;
     info.type = info.isArray ? Type(Type::Kind::Ptr) : coreTypeForAstType(astTy);
