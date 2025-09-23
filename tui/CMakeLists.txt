@@ -42,9 +42,29 @@ add_library(tui STATIC
   src/config/config.cpp
 )
 
-target_include_directories(tui PUBLIC include)
+target_include_directories(tui PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
+)
+
+if(VIPER_INSTALL_TUI)
+  install(TARGETS tui
+    EXPORT ViperTargets
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper
+  )
+
+  install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/tui/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/tui
+    FILES_MATCHING PATTERN "*.hpp"
+  )
+endif()
 
 add_subdirectory(apps)
 
-enable_testing()
-add_subdirectory(tests)
+if(VIPER_BUILD_TESTING)
+  enable_testing()
+  add_subdirectory(tests)
+endif()
