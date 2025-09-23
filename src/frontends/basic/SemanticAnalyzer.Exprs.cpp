@@ -289,6 +289,12 @@ void SemanticAnalyzer::emitDivideByZero(const BinaryExpr &expr)
     de.emit(il::support::Severity::Error, "B2002", expr.loc, 1, std::move(msg));
 }
 
+bool SemanticAnalyzer::rhsIsLiteralZero(const BinaryExpr &expr) const
+{
+    const auto *ri = dynamic_cast<const IntExpr *>(expr.rhs.get());
+    return ri != nullptr && ri->value == 0;
+}
+
 void SemanticAnalyzer::validateNumericOperands(const BinaryExpr &expr,
                                                Type lhs,
                                                Type rhs,
@@ -307,12 +313,9 @@ void SemanticAnalyzer::validateDivisionOperands(const BinaryExpr &expr,
                                                 std::string_view diagId)
 {
     validateNumericOperands(expr, lhs, rhs, diagId);
-    if (dynamic_cast<const IntExpr *>(expr.lhs.get()) &&
-        dynamic_cast<const IntExpr *>(expr.rhs.get()))
+    if (dynamic_cast<const IntExpr *>(expr.lhs.get()) && rhsIsLiteralZero(expr))
     {
-        const auto *ri = static_cast<const IntExpr *>(expr.rhs.get());
-        if (ri->value == 0)
-            emitDivideByZero(expr);
+        emitDivideByZero(expr);
     }
 }
 
@@ -326,12 +329,9 @@ void SemanticAnalyzer::validateIntegerOperands(const BinaryExpr &expr,
     {
         emitOperandTypeMismatch(expr, diagId);
     }
-    if (dynamic_cast<const IntExpr *>(expr.lhs.get()) &&
-        dynamic_cast<const IntExpr *>(expr.rhs.get()))
+    if (dynamic_cast<const IntExpr *>(expr.lhs.get()) && rhsIsLiteralZero(expr))
     {
-        const auto *ri = static_cast<const IntExpr *>(expr.rhs.get());
-        if (ri->value == 0)
-            emitDivideByZero(expr);
+        emitDivideByZero(expr);
     }
 }
 
