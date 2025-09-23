@@ -32,6 +32,9 @@ add_library(tui STATIC
   src/widgets/list_view.cpp
   src/widgets/tree_view.cpp
   src/syntax/rules.cpp
+  src/text/EditHistory.cpp
+  src/text/LineIndex.cpp
+  src/text/PieceTable.cpp
   src/text/text_buffer.cpp
   src/text/search.cpp
   src/views/text_view.cpp
