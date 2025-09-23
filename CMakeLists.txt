@@ -1,5 +1,6 @@
-cmake_minimum_required(VERSION 3.16)
-project(Viper LANGUAGES C CXX VERSION 0.1.0)
+cmake_minimum_required(VERSION 3.20)
+project(Viper LANGUAGES CXX VERSION 0.1.0)
+enable_language(C)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -10,7 +11,7 @@ option(VIPER_BUILD_TESTING "Enable CTest-based tests" ON)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
-set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
