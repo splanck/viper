@@ -97,6 +97,7 @@ VM::ExecState VM::prepareExecution(const Function &fn, const std::vector<Slot> &
 {
     ExecState st;
     st.fr = setupFrame(fn, args, st.blocks, st.bb);
+    tracer.onFramePrepared(st.fr);
     debug.resetLastHit();
     st.ip = 0;
     st.skipBreakOnce = false;

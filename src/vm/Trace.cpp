@@ -100,6 +100,21 @@ TraceSink::TraceSink(TraceConfig cfg) : cfg(cfg)
 #endif
 }
 
+void TraceSink::onFramePrepared(const Frame &fr)
+{
+    if (!fr.func)
+        return;
+    auto [it, inserted] = instrLocations.try_emplace(fr.func);
+    if (!inserted)
+        return;
+    auto &map = it->second;
+    for (const auto &block : fr.func->blocks)
+    {
+        for (size_t idx = 0; idx < block.instructions.size(); ++idx)
+            map.emplace(&block.instructions[idx], InstrLocation{&block, idx});
+    }
+}
+
 const TraceSink::FileCacheEntry *TraceSink::getOrLoadFile(uint32_t file_id, std::string path_hint)
 {
     if (!cfg.sm || file_id == 0)
@@ -137,21 +152,19 @@ void TraceSink::onStep(const il::core::Instr &in, const Frame &fr)
     LocaleGuard lg(std::cerr);
     std::cerr << std::noboolalpha << std::dec;
     const auto *fn = fr.func;
+    if (!fn)
+        return;
     const il::core::BasicBlock *blk = nullptr;
     size_t ip = 0;
-    for (const auto &b : fn->blocks)
+    auto fnIt = instrLocations.find(fn);
+    if (fnIt != instrLocations.end())
     {
-        for (size_t i = 0; i < b.instructions.size(); ++i)
+        auto locIt = fnIt->second.find(&in);
+        if (locIt != fnIt->second.end())
         {
-            if (&b.instructions[i] == &in)
-            {
-                blk = &b;
-                ip = i;
-                break;
-            }
+            blk = locIt->second.block;
+            ip = locIt->second.ip;
         }
-        if (blk)
-            break;
     }
     if (!blk)
         return;
