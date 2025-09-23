@@ -7,11 +7,11 @@
 #pragma once
 
 #include "frontends/basic/AST.hpp"
+#include "frontends/basic/LowerRuntime.hpp"
 #include "frontends/basic/NameMangler.hpp"
 #include "il/build/IRBuilder.hpp"
 #include "il/core/Module.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
-#include <bitset>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -446,19 +446,7 @@ class Lowerer
     // runtime requirement tracking
     using RuntimeFeature = il::runtime::RuntimeFeature;
 
-    static constexpr size_t kRuntimeFeatureCount =
-        static_cast<size_t>(RuntimeFeature::Count);
-
-    std::bitset<kRuntimeFeatureCount> runtimeFeatures;
-
-    struct RuntimeFeatureHash
-    {
-        size_t operator()(RuntimeFeature f) const;
-    };
-
-    std::vector<RuntimeFeature> runtimeOrder;
-
-    std::unordered_set<RuntimeFeature, RuntimeFeatureHash> runtimeSet;
+    RuntimeHelperTracker runtimeTracker;
 
     void requestHelper(RuntimeFeature feature);
 
