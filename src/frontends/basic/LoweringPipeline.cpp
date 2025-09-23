@@ -287,34 +287,22 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
     lowerer.procSignatures.clear();
     for (const auto &decl : prog.procs)
     {
-        if (auto *fn = dynamic_cast<const FunctionDecl *>(decl.get()))
+        const auto sigView = decl->declaredSignature();
+        if (!sigView)
+            continue;
+
+        Lowerer::ProcedureSignature sig;
+        sig.retType = sigView->retType
+                          ? coreTypeForAstType(*sigView->retType)
+                          : il::core::Type(il::core::Type::Kind::Void);
+        sig.paramTypes.reserve(sigView->params.size());
+        for (const auto &p : sigView->params)
         {
-            Lowerer::ProcedureSignature sig;
-            sig.retType = coreTypeForAstType(fn->ret);
-            sig.paramTypes.reserve(fn->params.size());
-            for (const auto &p : fn->params)
-            {
-                il::core::Type ty = p.is_array
-                                        ? il::core::Type(il::core::Type::Kind::Ptr)
-                                        : coreTypeForAstType(p.type);
-                sig.paramTypes.push_back(ty);
-            }
-            lowerer.procSignatures.emplace(fn->name, std::move(sig));
+            il::core::Type ty = p.is_array ? il::core::Type(il::core::Type::Kind::Ptr)
+                                           : coreTypeForAstType(p.type);
+            sig.paramTypes.push_back(ty);
         }
-        else if (auto *sub = dynamic_cast<const SubDecl *>(decl.get()))
-        {
-            Lowerer::ProcedureSignature sig;
-            sig.retType = il::core::Type(il::core::Type::Kind::Void);
-            sig.paramTypes.reserve(sub->params.size());
-            for (const auto &p : sub->params)
-            {
-                il::core::Type ty = p.is_array
-                                        ? il::core::Type(il::core::Type::Kind::Ptr)
-                                        : coreTypeForAstType(p.type);
-                sig.paramTypes.push_back(ty);
-            }
-            lowerer.procSignatures.emplace(sub->name, std::move(sig));
-        }
+        lowerer.procSignatures.emplace(std::string(sigView->name), std::move(sig));
     }
 }
 

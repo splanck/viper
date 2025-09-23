@@ -8,7 +8,10 @@
 #include "support/source_location.hpp"
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace il::frontends::basic
@@ -296,6 +299,35 @@ struct CallExpr : Expr
     void accept(MutExprVisitor &visitor) override;
 };
 
+/// @brief Parameter in FUNCTION or SUB declaration.
+struct Param
+{
+    /// Parameter name including optional suffix.
+    Identifier name;
+
+    /// Resolved type from suffix.
+    Type type = Type::I64;
+
+    /// True if parameter declared with ().
+    bool is_array = false;
+
+    /// Source location of the parameter name.
+    il::support::SourceLoc loc;
+};
+
+/// @brief View over a procedure declaration's signature elements.
+struct ProcSignatureView
+{
+    /// BASIC identifier of the procedure.
+    std::string_view name;
+
+    /// Return type when declared as a FUNCTION; absent for SUB.
+    std::optional<Type> retType;
+
+    /// Ordered parameter descriptors from the declaration.
+    std::span<const Param> params;
+};
+
 /// @brief Base class for all BASIC statements.
 struct Stmt
 {
@@ -310,6 +342,9 @@ struct Stmt
     virtual void accept(StmtVisitor &visitor) const = 0;
     /// @brief Accept a mutable visitor to process this statement.
     virtual void accept(MutStmtVisitor &visitor) = 0;
+
+    /// @brief Inspect the declared signature when this statement is a procedure.
+    virtual std::optional<ProcSignatureView> declaredSignature() const;
 };
 
 using StmtPtr = std::unique_ptr<Stmt>;
@@ -489,22 +524,6 @@ struct ReturnStmt : Stmt
     void accept(MutStmtVisitor &visitor) override;
 };
 
-/// @brief Parameter in FUNCTION or SUB declaration.
-struct Param
-{
-    /// Parameter name including optional suffix.
-    Identifier name;
-
-    /// Resolved type from suffix.
-    Type type = Type::I64;
-
-    /// True if parameter declared with ().
-    bool is_array = false;
-
-    /// Source location of the parameter name.
-    il::support::SourceLoc loc;
-};
-
 /// @brief FUNCTION declaration with optional parameters and return type.
 struct FunctionDecl : Stmt
 {
@@ -524,6 +543,7 @@ struct FunctionDecl : Stmt
     il::support::SourceLoc endLoc;
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
+    std::optional<ProcSignatureView> declaredSignature() const override;
 };
 
 /// @brief SUB declaration representing a void procedure.
@@ -539,6 +559,7 @@ struct SubDecl : Stmt
     std::vector<StmtPtr> body;
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
+    std::optional<ProcSignatureView> declaredSignature() const override;
 };
 
 /// @brief Sequence of statements executed left-to-right on one BASIC line.
