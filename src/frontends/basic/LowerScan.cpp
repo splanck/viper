@@ -121,7 +121,7 @@ class ScanStmtVisitor final : public StmtVisitor
 
     void visit(const DimStmt &stmt) override
     {
-        lowerer_.requestHelper(Lowerer::RuntimeFeature::Alloc);
+        lowerer_.runtimeTracker.requestHelper(Lowerer::RuntimeFeature::Alloc);
         if (!stmt.name.empty())
             lowerer_.varTypes[stmt.name] = stmt.type;
         if (stmt.isArray)
@@ -132,7 +132,7 @@ class ScanStmtVisitor final : public StmtVisitor
 
     void visit(const RandomizeStmt &stmt) override
     {
-        lowerer_.trackRuntime(Lowerer::RuntimeFeature::RandomizeI64);
+        lowerer_.runtimeTracker.trackRuntime(Lowerer::RuntimeFeature::RandomizeI64);
         if (stmt.seed)
             lowerer_.scanExpr(*stmt.seed);
     }
@@ -187,11 +187,11 @@ class ScanStmtVisitor final : public StmtVisitor
 
     void visit(const InputStmt &stmt) override
     {
-        lowerer_.requestHelper(Lowerer::RuntimeFeature::InputLine);
+        lowerer_.runtimeTracker.requestHelper(Lowerer::RuntimeFeature::InputLine);
         if (stmt.prompt)
             lowerer_.scanExpr(*stmt.prompt);
         if (stmt.var.empty() || stmt.var.back() != '$')
-            lowerer_.requestHelper(Lowerer::RuntimeFeature::ToInt);
+            lowerer_.runtimeTracker.requestHelper(Lowerer::RuntimeFeature::ToInt);
         if (!stmt.var.empty() && lowerer_.varTypes.find(stmt.var) == lowerer_.varTypes.end())
             lowerer_.varTypes[stmt.var] = inferAstTypeFromName(stmt.var);
     }
@@ -255,13 +255,13 @@ Lowerer::ExprType Lowerer::scanBinaryExpr(const BinaryExpr &b)
     ExprType rt = scanExpr(*b.rhs);
     if (b.op == BinaryExpr::Op::Add && lt == ExprType::Str && rt == ExprType::Str)
     {
-        requestHelper(RuntimeFeature::Concat);
+        runtimeTracker.requestHelper(RuntimeFeature::Concat);
         return ExprType::Str;
     }
     if (b.op == BinaryExpr::Op::Eq || b.op == BinaryExpr::Op::Ne)
     {
         if (lt == ExprType::Str || rt == ExprType::Str)
-            requestHelper(RuntimeFeature::StrEq);
+            runtimeTracker.requestHelper(RuntimeFeature::StrEq);
         return ExprType::Bool;
     }
     if (b.op == BinaryExpr::Op::LogicalAndShort || b.op == BinaryExpr::Op::LogicalOrShort ||
@@ -358,10 +358,10 @@ Lowerer::ExprType Lowerer::scanBuiltinCallExpr(const BuiltinCallExpr &c)
         switch (feature.action)
         {
             case Feature::Action::Request:
-                requestHelper(feature.feature);
+                runtimeTracker.requestHelper(feature.feature);
                 break;
             case Feature::Action::Track:
-                trackRuntime(feature.feature);
+                runtimeTracker.trackRuntime(feature.feature);
                 break;
         }
     }

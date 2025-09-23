@@ -268,9 +268,7 @@ void ProgramLowering::run(const Program &prog, il::core::Module &module)
     lowerer.procSignatures.clear();
     lowerer.boundsCheckId = 0;
 
-    lowerer.runtimeFeatures.reset();
-    lowerer.runtimeOrder.clear();
-    lowerer.runtimeSet.clear();
+    lowerer.runtimeTracker.reset();
 
     lowerer.scanProgram(prog);
     lowerer.declareRequiredRuntime(builder);

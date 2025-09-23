@@ -228,13 +228,12 @@ class Lowerer
     // runtime requirement tracking
     using RuntimeFeature = il::runtime::RuntimeFeature;
 
-    static constexpr size_t kRuntimeFeatureCount =
-        static_cast<size_t>(RuntimeFeature::Count);
-
-    std::bitset<kRuntimeFeatureCount> runtimeFeatures;
-
 #include "frontends/basic/LowerRuntime.hpp"
 #include "frontends/basic/LowerScan.hpp"
+
+    RuntimeFeatureTracker runtimeTracker;
+
+    void declareRequiredRuntime(build::IRBuilder &b);
 
     SlotType getSlotType(std::string_view name) const;
 

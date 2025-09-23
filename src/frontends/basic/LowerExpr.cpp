@@ -762,10 +762,10 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
         switch (feature.action)
         {
             case BuiltinLoweringRule::Feature::Action::Request:
-                requestHelper(feature.feature);
+                runtimeTracker.requestHelper(feature.feature);
                 break;
             case BuiltinLoweringRule::Feature::Action::Track:
-                trackRuntime(feature.feature);
+                runtimeTracker.trackRuntime(feature.feature);
                 break;
         }
     }

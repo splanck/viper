@@ -51,8 +51,8 @@ struct BuiltinScanRule
         /// @brief Which Lowerer helper should be invoked for the feature.
         enum class Action
         {
-            Request, ///< Call Lowerer::requestHelper.
-            Track,   ///< Call Lowerer::trackRuntime.
+            Request, ///< Call Lowerer::RuntimeFeatureTracker::requestHelper.
+            Track,   ///< Call Lowerer::RuntimeFeatureTracker::trackRuntime.
         } action{Action::Request};
 
         /// @brief Conditional guard controlling whether the feature fires.
@@ -99,8 +99,8 @@ struct BuiltinLoweringRule
         /// @brief Which runtime tracking API to invoke.
         enum class Action
         {
-            Request, ///< Call @ref Lowerer::requestHelper.
-            Track,   ///< Call @ref Lowerer::trackRuntime.
+            Request, ///< Call @ref Lowerer::RuntimeFeatureTracker::requestHelper.
+            Track,   ///< Call @ref Lowerer::RuntimeFeatureTracker::trackRuntime.
         } action{Action::Request};
 
         il::runtime::RuntimeFeature feature{il::runtime::RuntimeFeature::Count}; ///< Runtime feature identifier.

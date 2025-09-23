@@ -5,15 +5,26 @@
 // Links: docs/class-catalog.md
 #pragma once
 
-struct RuntimeFeatureHash
+class RuntimeFeatureTracker
 {
-    size_t operator()(RuntimeFeature f) const;
+  public:
+    void reset();
+
+    void requestHelper(RuntimeFeature feature);
+    bool isHelperNeeded(RuntimeFeature feature) const;
+    void trackRuntime(RuntimeFeature feature);
+    void declareRequiredRuntime(build::IRBuilder &b, bool boundsChecks) const;
+
+  private:
+    struct RuntimeFeatureHash
+    {
+        std::size_t operator()(RuntimeFeature f) const;
+    };
+
+    static constexpr std::size_t kRuntimeFeatureCount =
+        static_cast<std::size_t>(RuntimeFeature::Count);
+
+    std::bitset<kRuntimeFeatureCount> features_{};
+    std::vector<RuntimeFeature> ordered_{};
+    std::unordered_set<RuntimeFeature, RuntimeFeatureHash> seen_{};
 };
-
-std::vector<RuntimeFeature> runtimeOrder;
-std::unordered_set<RuntimeFeature, RuntimeFeatureHash> runtimeSet;
-
-void requestHelper(RuntimeFeature feature);
-bool isHelperNeeded(RuntimeFeature feature) const;
-void trackRuntime(RuntimeFeature feature);
-void declareRequiredRuntime(build::IRBuilder &b);
