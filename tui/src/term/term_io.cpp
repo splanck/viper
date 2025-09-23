@@ -1,7 +1,7 @@
 #include "tui/term/term_io.hpp"
 #include <cstdio>
 
-namespace tui::term
+namespace viper::tui::term
 {
 
 void RealTermIO::write(std::string_view s)
@@ -40,4 +40,4 @@ void StringTermIO::clear()
     buf_.clear();
 }
 
-} // namespace tui::term
+} // namespace viper::tui::term

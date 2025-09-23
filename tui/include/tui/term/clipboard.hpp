@@ -7,7 +7,7 @@
 #include <string>
 #include <string_view>
 
-namespace tui::term
+namespace viper::tui::term
 {
 class TermIO;
 
@@ -44,4 +44,4 @@ class MockClipboard : public Clipboard
     std::string last_{};
 };
 
-} // namespace tui::term
+} // namespace viper::tui::term

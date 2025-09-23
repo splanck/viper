@@ -12,7 +12,7 @@
 #include <memory>
 #include <string>
 
-using tui::term::StringTermIO;
+using viper::tui::term::StringTermIO;
 using viper::tui::App;
 using viper::tui::render::ScreenBuffer;
 using viper::tui::ui::VStack;
