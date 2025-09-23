@@ -11,4 +11,7 @@ add_library(il_io STATIC
 
 target_link_libraries(il_io PUBLIC il_core)
 
-target_include_directories(il_io PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+target_include_directories(il_io PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
+)

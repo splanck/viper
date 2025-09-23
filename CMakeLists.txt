@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
-project(ilc LANGUAGES C CXX VERSION 0.1.0)
+project(Viper LANGUAGES C CXX VERSION 0.1.0)
+
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+option(VIPER_INSTALL_TUI "Install TUI apps/libraries" OFF)
+option(VIPER_BUILD_TESTING "Enable CTest-based tests" ON)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -99,22 +105,93 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   message(STATUS "Stdlib (Clang): libc++=${IL_USE_LIBCXX}")
 endif()
 
-enable_testing()
+if(VIPER_BUILD_TESTING)
+  enable_testing()
+endif()
 
 add_subdirectory(runtime)
 add_subdirectory(src)
 
 # ---- ViperTUI subproject ----
 option(BUILD_TUI "Build ViperTUI subproject" ON)
+if(VIPER_INSTALL_TUI AND NOT BUILD_TUI)
+  message(WARNING "VIPER_INSTALL_TUI is ON but BUILD_TUI is OFF; no TUI targets will be installed.")
+endif()
 if(BUILD_TUI)
   add_subdirectory(tui)
 endif()
-add_subdirectory(tests)
+
+if(VIPER_BUILD_TESTING)
+  add_subdirectory(tests)
+endif()
 
 add_custom_target(distclean
   COMMAND "${CMAKE_COMMAND}" -P "${CMAKE_SOURCE_DIR}/cmake/DistClean.cmake"
   COMMENT "Scrub CMake-generated files in this build tree"
 )
+
+set(VIPER_PUBLIC_LIB_TARGETS
+  support
+  rt
+  il_core
+  il_runtime
+  il_build
+  il_io
+  il_verify
+  il_analysis
+  il_transform
+  il_utils
+  il_vm
+  fe_basic
+  il_api
+)
+
+install(TARGETS ${VIPER_PUBLIC_LIB_TARGETS}
+  EXPORT ViperTargets
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper
+)
+
+set(VIPER_CLI_TARGETS ilc il-verify il-dis)
+install(TARGETS ${VIPER_CLI_TARGETS}
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+export(EXPORT ViperTargets
+  NAMESPACE viper::
+  FILE "${CMAKE_CURRENT_BINARY_DIR}/ViperTargets.cmake"
+)
+
+install(EXPORT ViperTargets
+  NAMESPACE viper::
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Viper
+)
+
+write_basic_package_version_file(
+  "${CMAKE_CURRENT_BINARY_DIR}/ViperConfigVersion.cmake"
+  VERSION ${PROJECT_VERSION}
+  COMPATIBILITY SameMajorVersion
+)
+
+configure_package_config_file(
+  "${CMAKE_CURRENT_LIST_DIR}/cmake/ViperConfig.cmake.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/ViperConfig.cmake"
+  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Viper
+)
+
+install(FILES
+  "${CMAKE_CURRENT_BINARY_DIR}/ViperConfig.cmake"
+  "${CMAKE_CURRENT_BINARY_DIR}/ViperConfigVersion.cmake"
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Viper
+)
+
+set(CPACK_PACKAGE_NAME "Viper")
+set(CPACK_PACKAGE_VENDOR "Viper Project")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_GENERATOR "TGZ;ZIP")
+include(CPack)
 
 # Silence benign duplicate-library warnings on macOS
 option(VIPER_SUPPRESS_DUPLIB_WARN "Suppress ld64 duplicate library warnings" ON)
