@@ -27,7 +27,7 @@ void *rt_alloc(int64_t bytes)
     size_t request = (size_t)bytes;
     if (request == 0)
         request = 1;
-    void *p = malloc(request);
+    void *p = calloc(1, request);
     if (!p)
         rt_trap("out of memory");
     return p;
