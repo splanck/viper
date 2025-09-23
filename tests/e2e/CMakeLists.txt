@@ -81,7 +81,7 @@ function(viper_add_e2e_vm_suite)
     ${CMAKE_COMMAND}
     -DILC=$<TARGET_FILE:ilc>
     -DSRC_FILE=tests/e2e/BreakSrcExact.bas
-    -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/goldens/break_src_exact.out
+    -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/break_src_exact.out
     -DLINE=1
     -DROOT=${CMAKE_SOURCE_DIR}
     -P ${_VIPER_E2E_DIR}/test_break_src_exact.cmake)
@@ -91,7 +91,7 @@ function(viper_add_e2e_vm_suite)
     ${CMAKE_COMMAND}
     -DILC=$<TARGET_FILE:ilc>
     -DSRC_FILE=tests/e2e/BreakSrcCoalesce.bas
-    -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/goldens/break_src_coalesce.out
+    -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/break_src_coalesce.out
     -DLINE=1
     -DROOT=${CMAKE_SOURCE_DIR}
     -P ${_VIPER_E2E_DIR}/test_break_src_exact.cmake)
