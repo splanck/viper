@@ -21,288 +21,8 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
-namespace
-{
-
-/// @brief Translate a BASIC AST scalar type into the IL core representation.
-/// @param ty BASIC semantic type sourced from the front-end AST.
-/// @return Corresponding IL type used for stack slots and temporaries.
-/// @note BOOL lowers to the IL `i1` type while string scalars lower to the
-///       canonical string handle type. Unrecognized enumerators fall back to
-///       I64, although the parser should prevent that from happening.
-il::core::Type coreTypeForAstType(::il::frontends::basic::Type ty)
-{
-    using il::core::Type;
-    switch (ty)
-    {
-        case ::il::frontends::basic::Type::I64:
-            return Type(Type::Kind::I64);
-        case ::il::frontends::basic::Type::F64:
-            return Type(Type::Kind::F64);
-        case ::il::frontends::basic::Type::Str:
-            return Type(Type::Kind::Str);
-        case ::il::frontends::basic::Type::Bool:
-            return Type(Type::Kind::I1);
-    }
-    return Type(Type::Kind::I64);
-}
-
-/// @brief Infer the BASIC AST type for an identifier by inspecting its suffix.
-/// @param name Identifier to analyze.
-/// @return BASIC type derived from the suffix; defaults to integer for
-///         suffix-free names.
-::il::frontends::basic::Type astTypeFromName(std::string_view name)
-{
-    using AstType = ::il::frontends::basic::Type;
-    if (!name.empty())
-    {
-        switch (name.back())
-        {
-            case '$':
-                return AstType::Str;
-            case '#':
-                return AstType::F64;
-            default:
-                break;
-        }
-    }
-    return AstType::I64;
-}
-
-/// @brief Expression visitor accumulating referenced variable and array names.
-class VarCollectExprVisitor final : public ExprVisitor
-{
-  public:
-    VarCollectExprVisitor(
-        std::unordered_set<std::string> &vars,
-        std::unordered_set<std::string> &arrays,
-        std::unordered_map<std::string, ::il::frontends::basic::Type> &varTypes)
-        : vars_(vars), arrays_(arrays), varTypes_(varTypes)
-    {
-    }
-
-    void visit(const IntExpr &) override {}
-
-    void visit(const FloatExpr &) override {}
-
-    void visit(const StringExpr &) override {}
-
-    void visit(const BoolExpr &) override {}
-
-    void visit(const VarExpr &expr) override
-    {
-        vars_.insert(expr.name);
-        recordImplicitType(expr.name);
-    }
-
-    void visit(const ArrayExpr &expr) override
-    {
-        vars_.insert(expr.name);
-        arrays_.insert(expr.name);
-        recordImplicitType(expr.name);
-        if (expr.index)
-            expr.index->accept(*this);
-    }
-
-    void visit(const UnaryExpr &expr) override
-    {
-        if (expr.expr)
-            expr.expr->accept(*this);
-    }
-
-    void visit(const BinaryExpr &expr) override
-    {
-        if (expr.lhs)
-            expr.lhs->accept(*this);
-        if (expr.rhs)
-            expr.rhs->accept(*this);
-    }
-
-    void visit(const BuiltinCallExpr &expr) override
-    {
-        for (const auto &arg : expr.args)
-            if (arg)
-                arg->accept(*this);
-    }
-
-    void visit(const CallExpr &expr) override
-    {
-        for (const auto &arg : expr.args)
-            if (arg)
-                arg->accept(*this);
-    }
-
-  private:
-    void recordImplicitType(const std::string &name)
-    {
-        if (name.empty())
-            return;
-        if (varTypes_.find(name) != varTypes_.end())
-            return;
-        varTypes_[name] = astTypeFromName(name);
-    }
-
-    std::unordered_set<std::string> &vars_;
-    std::unordered_set<std::string> &arrays_;
-    std::unordered_map<std::string, ::il::frontends::basic::Type> &varTypes_;
-};
-
-/// @brief Statement visitor walking child expressions/statements to collect names.
-class VarCollectStmtVisitor final : public StmtVisitor
-{
-  public:
-    VarCollectStmtVisitor(VarCollectExprVisitor &exprVisitor,
-                          std::unordered_set<std::string> &vars,
-                          std::unordered_set<std::string> &arrays,
-                          std::unordered_map<std::string, ::il::frontends::basic::Type> &varTypes)
-        : exprVisitor_(exprVisitor), vars_(vars), arrays_(arrays), varTypes_(varTypes)
-    {
-    }
-
-    void visit(const PrintStmt &stmt) override
-    {
-        for (const auto &item : stmt.items)
-            if (item.kind == PrintItem::Kind::Expr && item.expr)
-                item.expr->accept(exprVisitor_);
-    }
-
-    void visit(const LetStmt &stmt) override
-    {
-        if (stmt.target)
-            stmt.target->accept(exprVisitor_);
-        if (stmt.expr)
-            stmt.expr->accept(exprVisitor_);
-    }
-
-    void visit(const DimStmt &stmt) override
-    {
-        vars_.insert(stmt.name);
-        varTypes_[stmt.name] = stmt.type;
-        if (stmt.isArray)
-        {
-            arrays_.insert(stmt.name);
-            if (stmt.size)
-                stmt.size->accept(exprVisitor_);
-        }
-    }
-
-    void visit(const RandomizeStmt &stmt) override
-    {
-        if (stmt.seed)
-            stmt.seed->accept(exprVisitor_);
-    }
-
-    void visit(const IfStmt &stmt) override
-    {
-        if (stmt.cond)
-            stmt.cond->accept(exprVisitor_);
-        if (stmt.then_branch)
-            stmt.then_branch->accept(*this);
-        for (const auto &elseif : stmt.elseifs)
-        {
-            if (elseif.cond)
-                elseif.cond->accept(exprVisitor_);
-            if (elseif.then_branch)
-                elseif.then_branch->accept(*this);
-        }
-        if (stmt.else_branch)
-            stmt.else_branch->accept(*this);
-    }
-
-    void visit(const WhileStmt &stmt) override
-    {
-        if (stmt.cond)
-            stmt.cond->accept(exprVisitor_);
-        for (const auto &sub : stmt.body)
-            if (sub)
-                sub->accept(*this);
-    }
-
-    void visit(const ForStmt &stmt) override
-    {
-        if (!stmt.var.empty())
-        {
-            vars_.insert(stmt.var);
-            if (varTypes_.find(stmt.var) == varTypes_.end())
-                varTypes_[stmt.var] = astTypeFromName(stmt.var);
-        }
-        if (stmt.start)
-            stmt.start->accept(exprVisitor_);
-        if (stmt.end)
-            stmt.end->accept(exprVisitor_);
-        if (stmt.step)
-            stmt.step->accept(exprVisitor_);
-        for (const auto &sub : stmt.body)
-            if (sub)
-                sub->accept(*this);
-    }
-
-    void visit(const NextStmt &stmt) override
-    {
-        if (!stmt.var.empty())
-            vars_.insert(stmt.var);
-    }
-
-    void visit(const GotoStmt &) override {}
-
-    void visit(const EndStmt &) override {}
-
-    void visit(const InputStmt &stmt) override
-    {
-        if (stmt.prompt)
-            stmt.prompt->accept(exprVisitor_);
-        if (!stmt.var.empty())
-        {
-            vars_.insert(stmt.var);
-            if (varTypes_.find(stmt.var) == varTypes_.end())
-                varTypes_[stmt.var] = astTypeFromName(stmt.var);
-        }
-    }
-
-    void visit(const ReturnStmt &stmt) override
-    {
-        if (stmt.value)
-            stmt.value->accept(exprVisitor_);
-    }
-
-    void visit(const FunctionDecl &stmt) override
-    {
-        for (const auto &bodyStmt : stmt.body)
-            if (bodyStmt)
-                bodyStmt->accept(*this);
-    }
-
-    void visit(const SubDecl &stmt) override
-    {
-        for (const auto &bodyStmt : stmt.body)
-            if (bodyStmt)
-                bodyStmt->accept(*this);
-    }
-
-    void visit(const StmtList &stmt) override
-    {
-        for (const auto &sub : stmt.stmts)
-            if (sub)
-                sub->accept(*this);
-    }
-
-  private:
-    VarCollectExprVisitor &exprVisitor_;
-    std::unordered_set<std::string> &vars_;
-    std::unordered_set<std::string> &arrays_;
-    std::unordered_map<std::string, ::il::frontends::basic::Type> &varTypes_;
-
-    void recordImplicitType(const std::string &name)
-    {
-        if (name.empty())
-            return;
-        if (varTypes_.find(name) != varTypes_.end())
-            return;
-        varTypes_[name] = astTypeFromName(name);
-    }
-};
-
-} // namespace
+using pipeline_detail::astTypeFromName;
+using pipeline_detail::coreTypeForAstType;
 
 Lowerer::BlockNamer::BlockNamer(std::string p) : proc(std::move(p)) {}
 
@@ -442,7 +162,15 @@ const Lowerer::ProcedureSignature *Lowerer::findProcSignature(const std::string 
 ///        emit runtime array bounds checks during lowering.
 /// @note The constructor merely stores configuration; transient lowering state
 ///       is reset each time a program or procedure is processed.
-Lowerer::Lowerer(bool boundsChecks) : boundsChecks(boundsChecks) {}
+Lowerer::Lowerer(bool boundsChecks)
+    : programLowering(std::make_unique<ProgramLowering>(*this)),
+      procedureLowering(std::make_unique<ProcedureLowering>(*this)),
+      statementLowering(std::make_unique<StatementLowering>(*this)),
+      boundsChecks(boundsChecks)
+{
+}
+
+Lowerer::~Lowerer() = default;
 
 /// @brief Lower a full BASIC program into an IL module.
 /// @param prog Parsed program containing procedures and top-level statements.
@@ -456,31 +184,8 @@ Lowerer::Lowerer(bool boundsChecks) : boundsChecks(boundsChecks) {}
 ///          while the temporary `Module m` owns the resulting IR.
 Module Lowerer::lowerProgram(const Program &prog)
 {
-    // Procs first, then a synthetic @main for top-level statements.
     Module m;
-    mod = &m;
-    build::IRBuilder b(m);
-    builder = &b;
-
-    mangler = NameMangler();
-    nextTemp = 0;
-    lineBlocks.clear();
-    varSlots.clear();
-    arrayLenSlots.clear();
-    varTypes.clear();
-    strings.clear();
-    arrays.clear();
-    procSignatures.clear();
-    boundsCheckId = 0;
-
-    runtimeFeatures.reset();
-    runtimeOrder.clear();
-    runtimeSet.clear();
-
-    scanProgram(prog);
-    declareRequiredRuntime(b);
-    emitProgram(prog);
-
+    programLowering->run(prog, m);
     return m;
 }
 
@@ -501,11 +206,7 @@ Module Lowerer::lower(const Program &prog)
 ///          different program regions.
 void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
 {
-    VarCollectExprVisitor exprVisitor(vars, arrays, varTypes);
-    VarCollectStmtVisitor stmtVisitor(exprVisitor, vars, arrays, varTypes);
-    for (const auto *stmt : stmts)
-        if (stmt)
-            stmt->accept(stmtVisitor);
+    procedureLowering->collectVars(stmts);
 }
 
 /// @brief Cache declared signatures for all user-defined procedures in a program.
@@ -514,34 +215,7 @@ void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
 ///          coerce arguments and results even for forward references.
 void Lowerer::collectProcedureSignatures(const Program &prog)
 {
-    procSignatures.clear();
-    for (const auto &decl : prog.procs)
-    {
-        if (auto *fn = dynamic_cast<const FunctionDecl *>(decl.get()))
-        {
-            ProcedureSignature sig;
-            sig.retType = coreTypeForAstType(fn->ret);
-            sig.paramTypes.reserve(fn->params.size());
-            for (const auto &p : fn->params)
-            {
-                Type ty = p.is_array ? Type(Type::Kind::Ptr) : coreTypeForAstType(p.type);
-                sig.paramTypes.push_back(ty);
-            }
-            procSignatures.emplace(fn->name, std::move(sig));
-        }
-        else if (auto *sub = dynamic_cast<const SubDecl *>(decl.get()))
-        {
-            ProcedureSignature sig;
-            sig.retType = Type(Type::Kind::Void);
-            sig.paramTypes.reserve(sub->params.size());
-            for (const auto &p : sub->params)
-            {
-                Type ty = p.is_array ? Type(Type::Kind::Ptr) : coreTypeForAstType(p.type);
-                sig.paramTypes.push_back(ty);
-            }
-            procSignatures.emplace(sub->name, std::move(sig));
-        }
-    }
+    procedureLowering->collectProcedureSignatures(prog);
 }
 
 Lowerer::ProcedureMetadata Lowerer::collectProcedureMetadata(
@@ -643,30 +317,7 @@ void Lowerer::lowerStatementSequence(
     bool stopOnTerminated,
     const std::function<void(const Stmt &)> &beforeBranch)
 {
-    if (stmts.empty())
-        return;
-
-    curLoc = {};
-    emitBr(&func->blocks[lineBlocks[stmts.front()->line]]);
-
-    for (size_t i = 0; i < stmts.size(); ++i)
-    {
-        const Stmt &stmt = *stmts[i];
-        cur = &func->blocks[lineBlocks[stmt.line]];
-        lowerStmt(stmt);
-        if (cur->terminated)
-        {
-            if (stopOnTerminated)
-                break;
-            continue;
-        }
-        BasicBlock *next = (i + 1 < stmts.size())
-                               ? &func->blocks[lineBlocks[stmts[i + 1]->line]]
-                               : &func->blocks[fnExit];
-        if (beforeBranch)
-            beforeBranch(stmt);
-        emitBr(next);
-    }
+    statementLowering->lowerSequence(stmts, stopOnTerminated, beforeBranch);
 }
 
 /// @brief Lower a single BASIC procedure using the provided configuration.
@@ -688,41 +339,7 @@ void Lowerer::lowerProcedure(const std::string &name,
                              const std::vector<StmtPtr> &body,
                              const ProcedureConfig &config)
 {
-    resetLoweringState();
-
-    ProcedureMetadata metadata =
-        collectProcedureMetadata(params, body, config);
-
-    assert(config.emitEmptyBody && "Missing empty body return handler");
-    assert(config.emitFinalReturn && "Missing final return handler");
-    if (!config.emitEmptyBody || !config.emitFinalReturn)
-        return;
-
-    Function &f = builder->startFunction(name, config.retType, metadata.irParams);
-    func = &f;
-    nextTemp = func->valueNames.size();
-
-    buildProcedureSkeleton(f, name, metadata);
-
-    cur = &f.blocks.front();
-    materializeParams(params);
-    allocateLocalSlots(metadata.paramNames, /*includeParams=*/false);
-
-    if (metadata.bodyStmts.empty())
-    {
-        curLoc = {};
-        config.emitEmptyBody();
-        blockNamer.reset();
-        return;
-    }
-
-    lowerStatementSequence(metadata.bodyStmts, /*stopOnTerminated=*/true);
-
-    cur = &f.blocks[fnExit];
-    curLoc = {};
-    config.emitFinalReturn();
-
-    blockNamer.reset();
+    procedureLowering->emit(name, params, body, config);
 }
 
 /// @brief Lower a FUNCTION declaration into an IL function definition.
@@ -819,12 +436,7 @@ void Lowerer::materializeParams(const std::vector<Param> &params)
 ///          before lowering begins.
 void Lowerer::collectVars(const Program &prog)
 {
-    std::vector<const Stmt *> ptrs;
-    for (const auto &s : prog.procs)
-        ptrs.push_back(s.get());
-    for (const auto &s : prog.main)
-        ptrs.push_back(s.get());
-    collectVars(ptrs);
+    procedureLowering->collectVars(prog);
 }
 
 
