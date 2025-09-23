@@ -36,6 +36,203 @@ Lowerer::ExprType exprTypeFromAstType(::il::frontends::basic::Type ty)
 
 } // namespace
 
+class ScanExprVisitor final : public ExprVisitor
+{
+  public:
+    explicit ScanExprVisitor(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
+
+    void visit(const IntExpr &) override { result_ = Lowerer::ExprType::I64; }
+
+    void visit(const FloatExpr &) override { result_ = Lowerer::ExprType::F64; }
+
+    void visit(const StringExpr &) override { result_ = Lowerer::ExprType::Str; }
+
+    void visit(const BoolExpr &) override { result_ = Lowerer::ExprType::I64; }
+
+    void visit(const VarExpr &expr) override
+    {
+        auto it = lowerer_.varTypes.find(expr.name);
+        if (it != lowerer_.varTypes.end())
+        {
+            result_ = exprTypeFromAstType(it->second);
+            return;
+        }
+        result_ = exprTypeFromAstType(inferAstTypeFromName(expr.name));
+    }
+
+    void visit(const ArrayExpr &expr) override { result_ = lowerer_.scanArrayExpr(expr); }
+
+    void visit(const UnaryExpr &expr) override { result_ = lowerer_.scanUnaryExpr(expr); }
+
+    void visit(const BinaryExpr &expr) override { result_ = lowerer_.scanBinaryExpr(expr); }
+
+    void visit(const BuiltinCallExpr &expr) override
+    {
+        result_ = lowerer_.scanBuiltinCallExpr(expr);
+    }
+
+    void visit(const CallExpr &expr) override
+    {
+        for (const auto &arg : expr.args)
+        {
+            if (arg)
+                lowerer_.scanExpr(*arg);
+        }
+        result_ = Lowerer::ExprType::I64;
+    }
+
+    [[nodiscard]] Lowerer::ExprType result() const noexcept { return result_; }
+
+  private:
+    Lowerer &lowerer_;
+    Lowerer::ExprType result_{Lowerer::ExprType::I64};
+};
+
+class ScanStmtVisitor final : public StmtVisitor
+{
+  public:
+    explicit ScanStmtVisitor(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
+
+    void visit(const PrintStmt &stmt) override
+    {
+        for (const auto &it : stmt.items)
+        {
+            if (it.kind == PrintItem::Kind::Expr && it.expr)
+                lowerer_.scanExpr(*it.expr);
+        }
+    }
+
+    void visit(const LetStmt &stmt) override
+    {
+        if (stmt.expr)
+            lowerer_.scanExpr(*stmt.expr);
+        if (auto *var = dynamic_cast<const VarExpr *>(stmt.target.get()))
+        {
+            if (!var->name.empty() && lowerer_.varTypes.find(var->name) == lowerer_.varTypes.end())
+                lowerer_.varTypes[var->name] = inferAstTypeFromName(var->name);
+        }
+        else if (auto *arr = dynamic_cast<const ArrayExpr *>(stmt.target.get()))
+        {
+            if (!arr->name.empty() && lowerer_.varTypes.find(arr->name) == lowerer_.varTypes.end())
+                lowerer_.varTypes[arr->name] = inferAstTypeFromName(arr->name);
+            lowerer_.scanExpr(*arr->index);
+        }
+    }
+
+    void visit(const DimStmt &stmt) override
+    {
+        lowerer_.requestHelper(Lowerer::RuntimeFeature::Alloc);
+        if (!stmt.name.empty())
+            lowerer_.varTypes[stmt.name] = stmt.type;
+        if (stmt.isArray)
+            lowerer_.arrays.insert(stmt.name);
+        if (stmt.size)
+            lowerer_.scanExpr(*stmt.size);
+    }
+
+    void visit(const RandomizeStmt &stmt) override
+    {
+        lowerer_.trackRuntime(Lowerer::RuntimeFeature::RandomizeI64);
+        if (stmt.seed)
+            lowerer_.scanExpr(*stmt.seed);
+    }
+
+    void visit(const IfStmt &stmt) override
+    {
+        if (stmt.cond)
+            lowerer_.scanExpr(*stmt.cond);
+        if (stmt.then_branch)
+            lowerer_.scanStmt(*stmt.then_branch);
+        for (const auto &elseif : stmt.elseifs)
+        {
+            if (elseif.cond)
+                lowerer_.scanExpr(*elseif.cond);
+            if (elseif.then_branch)
+                lowerer_.scanStmt(*elseif.then_branch);
+        }
+        if (stmt.else_branch)
+            lowerer_.scanStmt(*stmt.else_branch);
+    }
+
+    void visit(const WhileStmt &stmt) override
+    {
+        lowerer_.scanExpr(*stmt.cond);
+        for (const auto &child : stmt.body)
+        {
+            if (child)
+                lowerer_.scanStmt(*child);
+        }
+    }
+
+    void visit(const ForStmt &stmt) override
+    {
+        if (!stmt.var.empty() && lowerer_.varTypes.find(stmt.var) == lowerer_.varTypes.end())
+            lowerer_.varTypes[stmt.var] = inferAstTypeFromName(stmt.var);
+        lowerer_.scanExpr(*stmt.start);
+        lowerer_.scanExpr(*stmt.end);
+        if (stmt.step)
+            lowerer_.scanExpr(*stmt.step);
+        for (const auto &child : stmt.body)
+        {
+            if (child)
+                lowerer_.scanStmt(*child);
+        }
+    }
+
+    void visit(const NextStmt &) override {}
+
+    void visit(const GotoStmt &) override {}
+
+    void visit(const EndStmt &) override {}
+
+    void visit(const InputStmt &stmt) override
+    {
+        lowerer_.requestHelper(Lowerer::RuntimeFeature::InputLine);
+        if (stmt.prompt)
+            lowerer_.scanExpr(*stmt.prompt);
+        if (stmt.var.empty() || stmt.var.back() != '$')
+            lowerer_.requestHelper(Lowerer::RuntimeFeature::ToInt);
+        if (!stmt.var.empty() && lowerer_.varTypes.find(stmt.var) == lowerer_.varTypes.end())
+            lowerer_.varTypes[stmt.var] = inferAstTypeFromName(stmt.var);
+    }
+
+    void visit(const ReturnStmt &stmt) override
+    {
+        if (stmt.value)
+            lowerer_.scanExpr(*stmt.value);
+    }
+
+    void visit(const FunctionDecl &stmt) override
+    {
+        for (const auto &child : stmt.body)
+        {
+            if (child)
+                lowerer_.scanStmt(*child);
+        }
+    }
+
+    void visit(const SubDecl &stmt) override
+    {
+        for (const auto &child : stmt.body)
+        {
+            if (child)
+                lowerer_.scanStmt(*child);
+        }
+    }
+
+    void visit(const StmtList &stmt) override
+    {
+        for (const auto &child : stmt.stmts)
+        {
+            if (child)
+                lowerer_.scanStmt(*child);
+        }
+    }
+
+  private:
+    Lowerer &lowerer_;
+};
+
 /// @brief Scans a unary expression and propagates operand requirements.
 /// @param u BASIC unary expression to inspect.
 /// @return The inferred type of the operand expression.
@@ -181,40 +378,14 @@ Lowerer::ExprType Lowerer::scanBuiltinCallExpr(const BuiltinCallExpr &c)
 /// @brief Scans an arbitrary expression node, dispatching to specialized helpers.
 /// @param e Expression node to inspect.
 /// @return The inferred BASIC expression type.
-/// @details Uses dynamic casts to determine the concrete expression kind, scanning
-/// child expressions as needed so that nested runtime requirements are recorded. All
-/// expressions default to integer type when no specific specialization applies.
+/// @details Instantiates a ScanExprVisitor that captures the result type and traverses
+/// child expressions so nested runtime requirements are recorded. All expressions
+/// default to integer type when no specific specialization applies.
 Lowerer::ExprType Lowerer::scanExpr(const Expr &e)
 {
-    if (dynamic_cast<const IntExpr *>(&e))
-        return ExprType::I64;
-    if (dynamic_cast<const FloatExpr *>(&e))
-        return ExprType::F64;
-    if (dynamic_cast<const StringExpr *>(&e))
-        return ExprType::Str;
-    if (auto *v = dynamic_cast<const VarExpr *>(&e))
-    {
-        auto it = varTypes.find(v->name);
-        if (it != varTypes.end())
-            return exprTypeFromAstType(it->second);
-        return exprTypeFromAstType(inferAstTypeFromName(v->name));
-    }
-    if (auto *u = dynamic_cast<const UnaryExpr *>(&e))
-        return scanUnaryExpr(*u);
-    if (auto *b = dynamic_cast<const BinaryExpr *>(&e))
-        return scanBinaryExpr(*b);
-    if (auto *arr = dynamic_cast<const ArrayExpr *>(&e))
-        return scanArrayExpr(*arr);
-    if (auto *c = dynamic_cast<const BuiltinCallExpr *>(&e))
-        return scanBuiltinCallExpr(*c);
-    if (auto *c = dynamic_cast<const CallExpr *>(&e))
-    {
-        for (const auto &a : c->args)
-            if (a)
-                scanExpr(*a);
-        return ExprType::I64;
-    }
-    return ExprType::I64;
+    ScanExprVisitor visitor(*this);
+    e.accept(visitor);
+    return visitor.result();
 }
 
 /// @brief Scans a statement tree to accumulate runtime requirements from nested nodes.
@@ -223,107 +394,8 @@ Lowerer::ExprType Lowerer::scanExpr(const Expr &e)
 /// statements so that every reachable expression contributes its requirements.
 void Lowerer::scanStmt(const Stmt &s)
 {
-    if (auto *l = dynamic_cast<const LetStmt *>(&s))
-    {
-        if (l->expr)
-            scanExpr(*l->expr);
-        if (auto *var = dynamic_cast<const VarExpr *>(l->target.get()))
-        {
-            if (!var->name.empty() && varTypes.find(var->name) == varTypes.end())
-                varTypes[var->name] = inferAstTypeFromName(var->name);
-        }
-        else if (auto *arr = dynamic_cast<const ArrayExpr *>(l->target.get()))
-        {
-            if (!arr->name.empty() && varTypes.find(arr->name) == varTypes.end())
-                varTypes[arr->name] = inferAstTypeFromName(arr->name);
-            scanExpr(*arr->index);
-        }
-    }
-    else if (auto *p = dynamic_cast<const PrintStmt *>(&s))
-    {
-        for (const auto &it : p->items)
-            if (it.kind == PrintItem::Kind::Expr && it.expr)
-                scanExpr(*it.expr);
-    }
-    else if (auto *i = dynamic_cast<const IfStmt *>(&s))
-    {
-        if (i->cond)
-            scanExpr(*i->cond);
-        if (i->then_branch)
-            scanStmt(*i->then_branch);
-        for (const auto &ei : i->elseifs)
-        {
-            if (ei.cond)
-                scanExpr(*ei.cond);
-            if (ei.then_branch)
-                scanStmt(*ei.then_branch);
-        }
-        if (i->else_branch)
-            scanStmt(*i->else_branch);
-    }
-    else if (auto *w = dynamic_cast<const WhileStmt *>(&s))
-    {
-        scanExpr(*w->cond);
-        for (const auto &st : w->body)
-            scanStmt(*st);
-    }
-    else if (auto *f = dynamic_cast<const ForStmt *>(&s))
-    {
-        if (!f->var.empty() && varTypes.find(f->var) == varTypes.end())
-            varTypes[f->var] = inferAstTypeFromName(f->var);
-        scanExpr(*f->start);
-        scanExpr(*f->end);
-        if (f->step)
-            scanExpr(*f->step);
-        for (const auto &st : f->body)
-            scanStmt(*st);
-    }
-    else if (auto *inp = dynamic_cast<const InputStmt *>(&s))
-    {
-        requestHelper(RuntimeFeature::InputLine);
-        if (inp->prompt)
-            scanExpr(*inp->prompt);
-        if (inp->var.empty() || inp->var.back() != '$')
-            requestHelper(RuntimeFeature::ToInt);
-        if (!inp->var.empty() && varTypes.find(inp->var) == varTypes.end())
-            varTypes[inp->var] = inferAstTypeFromName(inp->var);
-    }
-    else if (auto *d = dynamic_cast<const DimStmt *>(&s))
-    {
-        requestHelper(RuntimeFeature::Alloc);
-        if (!d->name.empty())
-            varTypes[d->name] = d->type;
-        if (d->isArray)
-            arrays.insert(d->name);
-        if (d->size)
-            scanExpr(*d->size);
-    }
-    else if (auto *r = dynamic_cast<const RandomizeStmt *>(&s))
-    {
-        trackRuntime(RuntimeFeature::RandomizeI64);
-        if (r->seed)
-            scanExpr(*r->seed);
-    }
-    else if (auto *ret = dynamic_cast<const ReturnStmt *>(&s))
-    {
-        if (ret->value)
-            scanExpr(*ret->value);
-    }
-    else if (auto *fn = dynamic_cast<const FunctionDecl *>(&s))
-    {
-        for (const auto &bs : fn->body)
-            scanStmt(*bs);
-    }
-    else if (auto *sub = dynamic_cast<const SubDecl *>(&s))
-    {
-        for (const auto &bs : sub->body)
-            scanStmt(*bs);
-    }
-    else if (auto *lst = dynamic_cast<const StmtList *>(&s))
-    {
-        for (const auto &sub : lst->stmts)
-            scanStmt(*sub);
-    }
+    ScanStmtVisitor visitor(*this);
+    s.accept(visitor);
 }
 
 /// @brief Scans a full BASIC program for runtime requirements.

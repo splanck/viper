@@ -25,6 +25,8 @@ namespace il::frontends::basic
 
 class LowererExprVisitor;
 class LowererStmtVisitor;
+class ScanExprVisitor;
+class ScanStmtVisitor;
 struct ProgramLowering;
 struct ProcedureLowering;
 struct StatementLowering;
@@ -52,6 +54,8 @@ class Lowerer
   private:
     friend class LowererExprVisitor;
     friend class LowererStmtVisitor;
+    friend class ScanExprVisitor;
+    friend class ScanStmtVisitor;
     friend struct ProgramLowering;
     friend struct ProcedureLowering;
     friend struct StatementLowering;
