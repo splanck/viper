@@ -120,17 +120,34 @@ StmtPtr Parser::parseIf(int line)
     consume(); // IF
     auto cond = parseExpression();
     expect(TokenKind::KeywordThen);
+    auto ctx = statementContext();
+    bool hasLineBreak = at(TokenKind::EndOfLine);
+    ctx.skipLineBreaks();
+    if (hasLineBreak && at(TokenKind::Number))
+        consume();
     auto thenStmt = parseStatement(line);
     std::vector<IfStmt::ElseIf> elseifs;
     StmtPtr elseStmt;
     while (true)
     {
+        bool branchBreak = at(TokenKind::EndOfLine);
+        ctx.skipLineBreaks();
+        if (branchBreak && at(TokenKind::Number))
+        {
+            TokenKind next = peek(1).kind;
+            if (next == TokenKind::KeywordElseIf || next == TokenKind::KeywordElse)
+                consume();
+        }
         if (at(TokenKind::KeywordElseIf))
         {
             consume();
             IfStmt::ElseIf ei;
             ei.cond = parseExpression();
             expect(TokenKind::KeywordThen);
+            bool elseifBreak = at(TokenKind::EndOfLine);
+            ctx.skipLineBreaks();
+            if (elseifBreak && at(TokenKind::Number))
+                consume();
             ei.then_branch = parseStatement(line);
             if (ei.then_branch)
                 ei.then_branch->line = line;
@@ -146,6 +163,7 @@ StmtPtr Parser::parseIf(int line)
                 IfStmt::ElseIf ei;
                 ei.cond = parseExpression();
                 expect(TokenKind::KeywordThen);
+                ctx.skipLineBreaks();
                 ei.then_branch = parseStatement(line);
                 if (ei.then_branch)
                     ei.then_branch->line = line;
@@ -154,6 +172,10 @@ StmtPtr Parser::parseIf(int line)
             }
             else
             {
+                bool elseBreak = at(TokenKind::EndOfLine);
+                ctx.skipLineBreaks();
+                if (elseBreak && at(TokenKind::Number))
+                    consume();
                 elseStmt = parseStatement(line);
                 if (elseStmt)
                     elseStmt->line = line;
@@ -172,51 +194,6 @@ StmtPtr Parser::parseIf(int line)
     return stmt;
 }
 
-/// @brief Parse the statements within a loop until @p terminator is encountered.
-/// @param terminator Token that terminates the loop body.
-/// @param lineOut Optional pointer receiving the line label that preceded the terminator.
-/// @param dst Destination vector collecting parsed body statements.
-void Parser::parseLoopBody(TokenKind terminator, int *lineOut, std::vector<StmtPtr> &dst)
-{
-    if (lineOut)
-        *lineOut = 0;
-
-    if (at(TokenKind::EndOfLine))
-        consume();
-    else if (at(TokenKind::Colon))
-        consume();
-
-    while (true)
-    {
-        while (at(TokenKind::EndOfLine))
-            consume();
-        if (at(TokenKind::EndOfFile))
-            break;
-        int innerLine = 0;
-        if (at(TokenKind::Number))
-        {
-            innerLine = std::atoi(peek().lexeme.c_str());
-            consume();
-        }
-        if (at(terminator))
-        {
-            if (lineOut)
-                *lineOut = innerLine;
-            consume();
-            if (terminator == TokenKind::KeywordNext && at(TokenKind::Identifier))
-                consume();
-            break;
-        }
-        auto bodyStmt = parseStatement(innerLine);
-        bodyStmt->line = innerLine;
-        dst.push_back(std::move(bodyStmt));
-        if (at(TokenKind::Colon))
-            consume();
-        else if (at(TokenKind::EndOfLine))
-            consume();
-    }
-}
-
 /// @brief Parse a WHILE loop terminated by WEND.
 /// @return WhileStmt with condition and body statements.
 /// @note Consumes statements until a matching WEND token.
@@ -228,7 +205,8 @@ StmtPtr Parser::parseWhile()
     auto stmt = std::make_unique<WhileStmt>();
     stmt->loc = loc;
     stmt->cond = std::move(cond);
-    parseLoopBody(TokenKind::KeywordWend, nullptr, stmt->body);
+    auto ctxWhile = statementContext();
+    ctxWhile.consumeStatementBody(TokenKind::KeywordWend, stmt->body);
     return stmt;
 }
 
@@ -257,7 +235,15 @@ StmtPtr Parser::parseFor()
     stmt->start = std::move(start);
     stmt->end = std::move(end);
     stmt->step = std::move(step);
-    parseLoopBody(TokenKind::KeywordNext, nullptr, stmt->body);
+    auto ctxFor = statementContext();
+    ctxFor.consumeStatementBody(
+        [&](int) { return at(TokenKind::KeywordNext); },
+        [&](int, StatementContext::TerminatorInfo &) {
+            consume();
+            if (at(TokenKind::Identifier))
+                consume();
+        },
+        stmt->body);
     return stmt;
 }
 
@@ -485,37 +471,15 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionHeader()
 /// @return Location of the END keyword token.
 il::support::SourceLoc Parser::parseProcedureBody(TokenKind endKind, std::vector<StmtPtr> &body)
 {
-    if (at(TokenKind::EndOfLine))
-        consume();
-    else if (at(TokenKind::Colon))
-        consume();
-    il::support::SourceLoc endLoc{};
-    while (true)
-    {
-        while (at(TokenKind::EndOfLine))
-            consume();
-        int innerLine = 0;
-        if (at(TokenKind::Number))
-        {
-            innerLine = std::atoi(peek().lexeme.c_str());
-            consume();
-        }
-        if (at(TokenKind::KeywordEnd) && peek(1).kind == endKind)
-        {
-            endLoc = peek().loc;
+    auto ctx = statementContext();
+    auto info = ctx.consumeStatementBody(
+        [&](int) { return at(TokenKind::KeywordEnd) && peek(1).kind == endKind; },
+        [&](int, StatementContext::TerminatorInfo &) {
             consume();
             consume();
-            break;
-        }
-        auto stmt = parseStatement(innerLine);
-        stmt->line = innerLine;
-        body.push_back(std::move(stmt));
-        if (at(TokenKind::Colon))
-            consume();
-        else if (at(TokenKind::EndOfLine))
-            consume();
-    }
-    return endLoc;
+        },
+        body);
+    return info.loc;
 }
 
 /// @brief Parse statements comprising a function body.

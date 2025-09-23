@@ -40,6 +40,87 @@ Parser::Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *emitte
     setHandler(TokenKind::KeywordReturn, {&Parser::parseReturn, nullptr});
 }
 
+Parser::StatementContext::StatementContext(Parser &parser) : parser_(parser) {}
+
+void Parser::StatementContext::skipLeadingSeparator()
+{
+    if (parser_.at(TokenKind::EndOfLine))
+        parser_.consume();
+    else if (parser_.at(TokenKind::Colon))
+        parser_.consume();
+}
+
+void Parser::StatementContext::skipLineBreaks()
+{
+    while (parser_.at(TokenKind::EndOfLine))
+        parser_.consume();
+}
+
+void Parser::StatementContext::skipStatementSeparator()
+{
+    if (parser_.at(TokenKind::Colon))
+        parser_.consume();
+    else if (parser_.at(TokenKind::EndOfLine))
+        parser_.consume();
+}
+
+void Parser::StatementContext::withOptionalLineNumber(const std::function<void(int)> &fn)
+{
+    int line = 0;
+    if (parser_.at(TokenKind::Number))
+    {
+        line = std::atoi(parser_.peek().lexeme.c_str());
+        parser_.consume();
+    }
+    fn(line);
+}
+
+Parser::StatementContext::TerminatorInfo Parser::StatementContext::consumeStatementBody(
+    const TerminatorPredicate &isTerminator, const TerminatorConsumer &onTerminator,
+    std::vector<StmtPtr> &dst)
+{
+    TerminatorInfo info;
+    skipLeadingSeparator();
+    while (!parser_.at(TokenKind::EndOfFile))
+    {
+        skipLineBreaks();
+        if (parser_.at(TokenKind::EndOfFile))
+            break;
+
+        bool done = false;
+        withOptionalLineNumber([&](int line) {
+            if (isTerminator(line))
+            {
+                info.line = line;
+                info.loc = parser_.peek().loc;
+                onTerminator(line, info);
+                done = true;
+                return;
+            }
+            auto stmt = parser_.parseStatement(line);
+            stmt->line = line;
+            dst.push_back(std::move(stmt));
+        });
+        if (done)
+            break;
+        skipStatementSeparator();
+    }
+    return info;
+}
+
+Parser::StatementContext::TerminatorInfo Parser::StatementContext::consumeStatementBody(TokenKind terminator,
+                                                                                        std::vector<StmtPtr> &dst)
+{
+    auto predicate = [&](int) { return parser_.at(terminator); };
+    auto consumer = [&](int, TerminatorInfo &) { parser_.consume(); };
+    return consumeStatementBody(predicate, consumer, dst);
+}
+
+Parser::StatementContext Parser::statementContext()
+{
+    return StatementContext(*this);
+}
+
 /// @brief Parse the entire BASIC program.
 /// @return Root program node with separated procedure and main sections.
 /// @note Assumes all procedures appear before the first main statement.
@@ -48,10 +129,10 @@ std::unique_ptr<Program> Parser::parseProgram()
     auto prog = std::make_unique<Program>();
     prog->loc = peek().loc;
     bool inMain = false;
+    auto ctx = statementContext();
     while (!at(TokenKind::EndOfFile))
     {
-        while (at(TokenKind::EndOfLine))
-            consume();
+        ctx.skipLineBreaks();
         if (at(TokenKind::EndOfFile))
             break;
         int line = 0;
@@ -69,6 +150,7 @@ std::unique_ptr<Program> Parser::parseProgram()
             if (at(TokenKind::Colon))
             {
                 consume();
+                ctx.skipLineBreaks();
                 continue;
             }
             break;
@@ -97,8 +179,7 @@ std::unique_ptr<Program> Parser::parseProgram()
             inMain = true;
             prog->main.push_back(std::move(root));
         }
-        if (at(TokenKind::EndOfLine))
-            consume();
+        ctx.skipStatementSeparator();
     }
     return prog;
 }
