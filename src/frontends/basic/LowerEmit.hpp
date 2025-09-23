@@ -11,6 +11,8 @@ void collectVars(const Program &prog);
 void collectVars(const std::vector<const Stmt *> &stmts);
 void lowerFunctionDecl(const FunctionDecl &decl);
 void lowerSubDecl(const SubDecl &decl);
+
+public:
 /// @brief Configuration shared by FUNCTION and SUB lowering.
 struct ProcedureConfig
 {
@@ -19,6 +21,8 @@ struct ProcedureConfig
     std::function<void()> emitEmptyBody;  ///< Emit return path for empty bodies.
     std::function<void()> emitFinalReturn;///< Emit return in the synthetic exit block.
 };
+
+private:
 /// @brief Lower shared procedure scaffolding for FUNCTION/SUB declarations.
 void lowerProcedure(const std::string &name,
                     const std::vector<Param> &params,
