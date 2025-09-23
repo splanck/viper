@@ -25,6 +25,9 @@ namespace il::frontends::basic
 
 class LowererExprVisitor;
 class LowererStmtVisitor;
+struct ProgramLowering;
+struct ProcedureLowering;
+struct StatementLowering;
 
 /// @brief Lowers BASIC AST into IL Module.
 /// @invariant Generates deterministic block names per procedure using BlockNamer.
@@ -35,6 +38,8 @@ class Lowerer
     /// @brief Construct a lowerer.
     /// @param boundsChecks Enable debug array bounds checks.
     explicit Lowerer(bool boundsChecks = false);
+
+    ~Lowerer();
 
     /// @brief Lower @p prog into an IL module with @main entry.
     /// @notes Procedures are lowered before a synthetic `@main` encompassing
@@ -47,6 +52,9 @@ class Lowerer
   private:
     friend class LowererExprVisitor;
     friend class LowererStmtVisitor;
+    friend struct ProgramLowering;
+    friend struct ProcedureLowering;
+    friend struct StatementLowering;
 
     using Module = il::core::Module;
     using Function = il::core::Function;
@@ -161,8 +169,10 @@ class Lowerer
 
     std::unique_ptr<BlockNamer> blockNamer;
 
+  public:
     struct ProcedureConfig;
 
+  private:
     struct ProcedureMetadata
     {
         std::vector<const Stmt *> bodyStmts;
@@ -187,6 +197,10 @@ class Lowerer
                                 const std::function<void(const Stmt &)> &beforeBranch = {});
 
 #include "frontends/basic/LowerEmit.hpp"
+
+    std::unique_ptr<ProgramLowering> programLowering;
+    std::unique_ptr<ProcedureLowering> procedureLowering;
+    std::unique_ptr<StatementLowering> statementLowering;
 
     build::IRBuilder *builder{nullptr};
     Module *mod{nullptr};
@@ -227,3 +241,5 @@ class Lowerer
 };
 
 } // namespace il::frontends::basic
+
+#include "frontends/basic/LoweringPipeline.hpp"
