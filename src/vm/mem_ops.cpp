@@ -64,7 +64,22 @@ VM::ExecResult OpHandlers::handleAlloca(VM &vm,
 
     const size_t size = static_cast<size_t>(bytes);
     const size_t addr = fr.sp;
-    assert(addr + size <= fr.stack.size() && "stack overflow in alloca");
+    const size_t stackSize = fr.stack.size();
+
+    auto trapOverflow = [&]() -> VM::ExecResult {
+        RuntimeBridge::trap("stack overflow in alloca", in.loc, fr.func->name, "");
+        VM::ExecResult result{};
+        result.returned = true;
+        return result;
+    };
+
+    if (addr > stackSize)
+        return trapOverflow();
+
+    const size_t remaining = stackSize - addr;
+    if (size > remaining)
+        return trapOverflow();
+
     std::memset(fr.stack.data() + addr, 0, size);
 
     Slot out{};
