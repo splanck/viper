@@ -110,6 +110,50 @@ StmtPtr Parser::parseLet()
     return stmt;
 }
 
+/// @brief Skip any optional line number that appears after a newline.
+/// @param ctx Statement context providing newline skipping helpers.
+/// @param followerKinds Optional whitelist of tokens that may follow the line label.
+void Parser::skipOptionalLineLabelAfterBreak(StatementContext &ctx,
+                                             std::initializer_list<TokenKind> followerKinds)
+{
+    if (!at(TokenKind::EndOfLine))
+        return;
+
+    ctx.skipLineBreaks();
+
+    if (!at(TokenKind::Number))
+        return;
+
+    if (!followerKinds.size())
+    {
+        consume();
+        return;
+    }
+
+    TokenKind next = peek(1).kind;
+    for (auto follower : followerKinds)
+    {
+        if (next == follower)
+        {
+            consume();
+            return;
+        }
+    }
+}
+
+/// @brief Parse the body of a single IF branch while preserving separators.
+/// @param line Line number propagated to nested statements.
+/// @param ctx Statement context providing separator helpers.
+/// @return Parsed statement representing the branch body.
+StmtPtr Parser::parseIfBranchBody(int line, StatementContext &ctx)
+{
+    skipOptionalLineLabelAfterBreak(ctx);
+    auto stmt = parseStatement(line);
+    if (stmt)
+        stmt->line = line;
+    return stmt;
+}
+
 /// @brief Parse an IF/THEN[/ELSEIF/ELSE] statement.
 /// @param line Line number propagated to nested statements.
 /// @return IfStmt with condition and branch nodes.
@@ -121,36 +165,19 @@ StmtPtr Parser::parseIf(int line)
     auto cond = parseExpression();
     expect(TokenKind::KeywordThen);
     auto ctx = statementContext();
-    bool hasLineBreak = at(TokenKind::EndOfLine);
-    ctx.skipLineBreaks();
-    if (hasLineBreak && at(TokenKind::Number))
-        consume();
-    auto thenStmt = parseStatement(line);
+    auto thenStmt = parseIfBranchBody(line, ctx);
     std::vector<IfStmt::ElseIf> elseifs;
     StmtPtr elseStmt;
     while (true)
     {
-        bool branchBreak = at(TokenKind::EndOfLine);
-        ctx.skipLineBreaks();
-        if (branchBreak && at(TokenKind::Number))
-        {
-            TokenKind next = peek(1).kind;
-            if (next == TokenKind::KeywordElseIf || next == TokenKind::KeywordElse)
-                consume();
-        }
+        skipOptionalLineLabelAfterBreak(ctx, {TokenKind::KeywordElseIf, TokenKind::KeywordElse});
         if (at(TokenKind::KeywordElseIf))
         {
             consume();
             IfStmt::ElseIf ei;
             ei.cond = parseExpression();
             expect(TokenKind::KeywordThen);
-            bool elseifBreak = at(TokenKind::EndOfLine);
-            ctx.skipLineBreaks();
-            if (elseifBreak && at(TokenKind::Number))
-                consume();
-            ei.then_branch = parseStatement(line);
-            if (ei.then_branch)
-                ei.then_branch->line = line;
+            ei.then_branch = parseIfBranchBody(line, ctx);
             elseifs.push_back(std::move(ei));
             continue;
         }
@@ -163,22 +190,13 @@ StmtPtr Parser::parseIf(int line)
                 IfStmt::ElseIf ei;
                 ei.cond = parseExpression();
                 expect(TokenKind::KeywordThen);
-                ctx.skipLineBreaks();
-                ei.then_branch = parseStatement(line);
-                if (ei.then_branch)
-                    ei.then_branch->line = line;
+                ei.then_branch = parseIfBranchBody(line, ctx);
                 elseifs.push_back(std::move(ei));
                 continue;
             }
             else
             {
-                bool elseBreak = at(TokenKind::EndOfLine);
-                ctx.skipLineBreaks();
-                if (elseBreak && at(TokenKind::Number))
-                    consume();
-                elseStmt = parseStatement(line);
-                if (elseStmt)
-                    elseStmt->line = line;
+                elseStmt = parseIfBranchBody(line, ctx);
             }
         }
         break;
