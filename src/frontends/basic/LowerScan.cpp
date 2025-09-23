@@ -7,7 +7,9 @@
 
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include <optional>
 #include <string_view>
+#include <vector>
 
 namespace il::frontends::basic
 {
@@ -98,323 +100,96 @@ Lowerer::ExprType Lowerer::scanArrayExpr(const ArrayExpr &arr)
     return ExprType::I64;
 }
 
-/// @brief Scans a BASIC builtin call and delegates to specialized helpers when present.
+/// @brief Scans a BASIC builtin call using declarative metadata.
 /// @param c Builtin call expression to inspect.
 /// @return The inferred result type of the builtin invocation.
-/// @details Looks up builtin metadata to find a scan helper. When a helper is
-/// registered, it is invoked to set runtime requirements and scan child expressions;
-/// otherwise, each argument is scanned generically and the expression is treated as
-/// returning an integer value.
+/// @details Applies the BuiltinScanRule for the builtin to traverse arguments and
+/// request any runtime helpers required by the call.
 Lowerer::ExprType Lowerer::scanBuiltinCallExpr(const BuiltinCallExpr &c)
 {
-    const auto &info = getBuiltinInfo(c.builtin);
-    if (info.scan)
-        return (this->*(info.scan))(c);
-    for (auto &a : c.args)
-        if (a)
-            scanExpr(*a);
-    return ExprType::I64;
-}
+    const auto &rule = getBuiltinScanRule(c.builtin);
+    std::vector<std::optional<ExprType>> argTypes(c.args.size());
 
-/// @brief Scans the LEN builtin to ensure its operand requirements are processed.
-/// @param c Builtin call expression representing LEN.
-/// @return Always yields an integer length value.
-/// @details LEN does not require additional runtime helpers; it simply scans the
-/// first argument when present so nested expressions propagate their requirements.
-Lowerer::ExprType Lowerer::scanLen(const BuiltinCallExpr &c)
-{
-    if (c.args[0])
-        scanExpr(*c.args[0]);
-    return ExprType::I64;
-}
+    auto scanArg = [&](std::size_t idx) {
+        if (idx >= c.args.size())
+            return;
+        const auto &arg = c.args[idx];
+        if (!arg)
+            return;
+        argTypes[idx] = scanExpr(*arg);
+    };
 
-/// @brief Scans the MID builtin and marks the appropriate runtime helper variant.
-/// @param c Builtin call expression representing MID.
-/// @return Reports a string result for the substring extraction.
-/// @details Chooses between the two-argument and three-argument runtime helpers based
-/// on the provided arguments, then scans each child argument to propagate additional
-/// requirements.
-Lowerer::ExprType Lowerer::scanMid(const BuiltinCallExpr &c)
-{
-    if (c.args.size() >= 3 && c.args[2])
-        requestHelper(RuntimeFeature::Mid3);
+    if (rule.traversal == BuiltinScanRule::ArgTraversal::All)
+    {
+        for (std::size_t i = 0; i < c.args.size(); ++i)
+            scanArg(i);
+    }
     else
-        requestHelper(RuntimeFeature::Mid2);
-    for (auto &a : c.args)
-        if (a)
-            scanExpr(*a);
-    return ExprType::Str;
-}
+    {
+        for (std::size_t idx : rule.explicitArgs)
+            scanArg(idx);
+    }
 
-/// @brief Scans the LEFT$ builtin and records its runtime dependency.
-/// @param c Builtin call expression representing LEFT$.
-/// @return Reports a string type for the substring result.
-/// @details Enables the LEFT runtime helper and scans every provided argument so that
-/// nested expressions contribute their requirements.
-Lowerer::ExprType Lowerer::scanLeft(const BuiltinCallExpr &c)
-{
-    requestHelper(RuntimeFeature::Left);
-    for (auto &a : c.args)
-        if (a)
-            scanExpr(*a);
-    return ExprType::Str;
-}
+    auto hasArg = [&](std::size_t idx) {
+        return idx < c.args.size() && c.args[idx] != nullptr;
+    };
 
-/// @brief Scans the RIGHT$ builtin and records its runtime dependency.
-/// @param c Builtin call expression representing RIGHT$.
-/// @return Reports a string type for the substring result.
-/// @details Enables the RIGHT runtime helper and scans every provided argument so that
-/// nested expressions contribute their requirements.
-Lowerer::ExprType Lowerer::scanRight(const BuiltinCallExpr &c)
-{
-    requestHelper(RuntimeFeature::Right);
-    for (auto &a : c.args)
-        if (a)
-            scanExpr(*a);
-    return ExprType::Str;
-}
+    auto argType = [&](std::size_t idx) -> std::optional<ExprType> {
+        if (idx >= argTypes.size())
+            return std::nullopt;
+        return argTypes[idx];
+    };
 
-/// @brief Scans the STR$ builtin and records numeric-to-string runtime needs.
-/// @param c Builtin call expression representing STR$.
-/// @return Reports a string type produced by the conversion.
-/// @details Marks both integer and floating-point to string runtime helpers as required
-/// and scans the argument expression when present.
-Lowerer::ExprType Lowerer::scanStr(const BuiltinCallExpr &c)
-{
-    requestHelper(RuntimeFeature::IntToStr);
-    requestHelper(RuntimeFeature::F64ToStr);
-    if (c.args[0])
-        scanExpr(*c.args[0]);
-    return ExprType::Str;
-}
+    using Feature = BuiltinScanRule::Feature;
+    for (const auto &feature : rule.features)
+    {
+        bool apply = false;
+        switch (feature.condition)
+        {
+            case Feature::Condition::Always:
+                apply = true;
+                break;
+            case Feature::Condition::IfArgPresent:
+                apply = hasArg(feature.argIndex);
+                break;
+            case Feature::Condition::IfArgMissing:
+                apply = !hasArg(feature.argIndex);
+                break;
+            case Feature::Condition::IfArgTypeIs:
+            {
+                auto ty = argType(feature.argIndex);
+                apply = ty && *ty == feature.type;
+                break;
+            }
+            case Feature::Condition::IfArgTypeIsNot:
+            {
+                auto ty = argType(feature.argIndex);
+                apply = ty && *ty != feature.type;
+                break;
+            }
+        }
 
-/// @brief Scans the VAL builtin and records numeric parsing runtime usage.
-/// @param c Builtin call expression representing VAL.
-/// @return Reports an integer result for the parsed numeric value.
-/// @details Enables the VAL runtime helper and scans the argument expression when
-/// provided to capture nested requirements.
-Lowerer::ExprType Lowerer::scanVal(const BuiltinCallExpr &c)
-{
-    requestHelper(RuntimeFeature::ToInt);
-    if (c.args[0])
-        scanExpr(*c.args[0]);
-    return ExprType::I64;
-}
+        if (!apply)
+            continue;
 
-/// @brief Scans the INT builtin to propagate operand requirements.
-/// @param c Builtin call expression representing INT.
-/// @return Returns the integer truncation result type.
-/// @details INT does not require additional runtime helpers; it scans the first
-/// argument when present.
-Lowerer::ExprType Lowerer::scanInt(const BuiltinCallExpr &c)
-{
-    if (c.args[0])
-        scanExpr(*c.args[0]);
-    return ExprType::I64;
-}
+        switch (feature.action)
+        {
+            case Feature::Action::Request:
+                requestHelper(feature.feature);
+                break;
+            case Feature::Action::Track:
+                trackRuntime(feature.feature);
+                break;
+        }
+    }
 
-/// @brief Scans the SQR builtin and records the runtime square-root helper.
-/// @param c Builtin call expression representing SQR.
-/// @return Reports a floating-point result.
-/// @details Scans the operand to propagate nested requirements and marks the runtime
-/// square-root function as required.
-Lowerer::ExprType Lowerer::scanSqr(const BuiltinCallExpr &c)
-{
-    if (c.args[0])
-        scanExpr(*c.args[0]);
-    trackRuntime(RuntimeFeature::Sqrt);
-    return ExprType::F64;
-}
-
-/// @brief Scans the ABS builtin and selects the appropriate runtime helper.
-/// @param c Builtin call expression representing ABS.
-/// @return Propagates the operand's numeric type.
-/// @details Scans the operand to determine its type and then records either the integer
-/// or floating-point absolute-value runtime helper based on the operand type.
-Lowerer::ExprType Lowerer::scanAbs(const BuiltinCallExpr &c)
-{
-    ExprType ty = ExprType::I64;
-    if (c.args[0])
-        ty = scanExpr(*c.args[0]);
-    if (ty == ExprType::F64)
-        trackRuntime(RuntimeFeature::AbsF64);
-    else
-        trackRuntime(RuntimeFeature::AbsI64);
-    return ty;
-}
-
-/// @brief Scans the FLOOR builtin and records its runtime helper requirement.
-/// @param c Builtin call expression representing FLOOR.
-/// @return Reports a floating-point result after flooring.
-/// @details Scans the operand when present and marks the runtime floor helper.
-Lowerer::ExprType Lowerer::scanFloor(const BuiltinCallExpr &c)
-{
-    if (c.args[0])
-        scanExpr(*c.args[0]);
-    trackRuntime(RuntimeFeature::Floor);
-    return ExprType::F64;
-}
-
-/// @brief Scans the CEIL builtin and records its runtime helper requirement.
-/// @param c Builtin call expression representing CEIL.
-/// @return Reports a floating-point result after ceiling.
-/// @details Scans the operand when present and marks the runtime ceil helper.
-Lowerer::ExprType Lowerer::scanCeil(const BuiltinCallExpr &c)
-{
-    if (c.args[0])
-        scanExpr(*c.args[0]);
-    trackRuntime(RuntimeFeature::Ceil);
-    return ExprType::F64;
-}
-
-/// @brief Scans the SIN builtin and records its runtime helper requirement.
-/// @param c Builtin call expression representing SIN.
-/// @return Reports a floating-point result from the sine operation.
-/// @details Scans the operand when present and marks the runtime sine helper.
-Lowerer::ExprType Lowerer::scanSin(const BuiltinCallExpr &c)
-{
-    if (c.args[0])
-        scanExpr(*c.args[0]);
-    trackRuntime(RuntimeFeature::Sin);
-    return ExprType::F64;
-}
-
-/// @brief Scans the COS builtin and records its runtime helper requirement.
-/// @param c Builtin call expression representing COS.
-/// @return Reports a floating-point result from the cosine operation.
-/// @details Scans the operand when present and marks the runtime cosine helper.
-Lowerer::ExprType Lowerer::scanCos(const BuiltinCallExpr &c)
-{
-    if (c.args[0])
-        scanExpr(*c.args[0]);
-    trackRuntime(RuntimeFeature::Cos);
-    return ExprType::F64;
-}
-
-/// @brief Scans the POW builtin and records its runtime helper requirement.
-/// @param c Builtin call expression representing POW.
-/// @return Reports a floating-point result from exponentiation.
-/// @details Scans both base and exponent operands when present and marks the runtime
-/// power helper.
-Lowerer::ExprType Lowerer::scanPow(const BuiltinCallExpr &c)
-{
-    if (c.args[0])
-        scanExpr(*c.args[0]);
-    if (c.args[1])
-        scanExpr(*c.args[1]);
-    trackRuntime(RuntimeFeature::Pow);
-    return ExprType::F64;
-}
-
-/// @brief Scans the RND builtin and records its runtime helper requirement.
-/// @return Reports a floating-point random result.
-/// @details RND has no child expressions; it simply marks the runtime random helper.
-Lowerer::ExprType Lowerer::scanRnd(const BuiltinCallExpr &)
-{
-    trackRuntime(RuntimeFeature::Rnd);
-    return ExprType::F64;
-}
-
-/// @brief Scans the INSTR builtin and selects the matching runtime helper variant.
-/// @param c Builtin call expression representing INSTR.
-/// @return Reports an integer position result.
-/// @details Chooses between the two-argument and three-argument runtime helpers based
-/// on the arguments supplied, scanning each child expression to capture nested
-/// requirements.
-Lowerer::ExprType Lowerer::scanInstr(const BuiltinCallExpr &c)
-{
-    if (c.args.size() >= 3 && c.args[0])
-        requestHelper(RuntimeFeature::Instr3);
-    else
-        requestHelper(RuntimeFeature::Instr2);
-    for (auto &a : c.args)
-        if (a)
-            scanExpr(*a);
-    return ExprType::I64;
-}
-
-/// @brief Scans the LTRIM$ builtin and records its runtime helper requirement.
-/// @param c Builtin call expression representing LTRIM$.
-/// @return Reports a string result for the trimmed value.
-/// @details Enables the left-trim runtime helper and scans the operand when present.
-Lowerer::ExprType Lowerer::scanLtrim(const BuiltinCallExpr &c)
-{
-    requestHelper(RuntimeFeature::Ltrim);
-    if (c.args[0])
-        scanExpr(*c.args[0]);
-    return ExprType::Str;
-}
-
-/// @brief Scans the RTRIM$ builtin and records its runtime helper requirement.
-/// @param c Builtin call expression representing RTRIM$.
-/// @return Reports a string result for the trimmed value.
-/// @details Enables the right-trim runtime helper and scans the operand when present.
-Lowerer::ExprType Lowerer::scanRtrim(const BuiltinCallExpr &c)
-{
-    requestHelper(RuntimeFeature::Rtrim);
-    if (c.args[0])
-        scanExpr(*c.args[0]);
-    return ExprType::Str;
-}
-
-/// @brief Scans the TRIM$ builtin and records its runtime helper requirement.
-/// @param c Builtin call expression representing TRIM$.
-/// @return Reports a string result for the trimmed value.
-/// @details Enables the full-trim runtime helper and scans the operand when present.
-Lowerer::ExprType Lowerer::scanTrim(const BuiltinCallExpr &c)
-{
-    requestHelper(RuntimeFeature::Trim);
-    if (c.args[0])
-        scanExpr(*c.args[0]);
-    return ExprType::Str;
-}
-
-/// @brief Scans the UCASE$ builtin and records its runtime helper requirement.
-/// @param c Builtin call expression representing UCASE$.
-/// @return Reports a string result for the upper-cased value.
-/// @details Enables the uppercase runtime helper and scans the operand when present.
-Lowerer::ExprType Lowerer::scanUcase(const BuiltinCallExpr &c)
-{
-    requestHelper(RuntimeFeature::Ucase);
-    if (c.args[0])
-        scanExpr(*c.args[0]);
-    return ExprType::Str;
-}
-
-/// @brief Scans the LCASE$ builtin and records its runtime helper requirement.
-/// @param c Builtin call expression representing LCASE$.
-/// @return Reports a string result for the lower-cased value.
-/// @details Enables the lowercase runtime helper and scans the operand when present.
-Lowerer::ExprType Lowerer::scanLcase(const BuiltinCallExpr &c)
-{
-    requestHelper(RuntimeFeature::Lcase);
-    if (c.args[0])
-        scanExpr(*c.args[0]);
-    return ExprType::Str;
-}
-
-/// @brief Scans the CHR$ builtin and records its runtime helper requirement.
-/// @param c Builtin call expression representing CHR$.
-/// @return Reports a string result from the character conversion.
-/// @details Enables the character runtime helper and scans the operand when present.
-Lowerer::ExprType Lowerer::scanChr(const BuiltinCallExpr &c)
-{
-    requestHelper(RuntimeFeature::Chr);
-    if (c.args[0])
-        scanExpr(*c.args[0]);
-    return ExprType::Str;
-}
-
-/// @brief Scans the ASC builtin and records its runtime helper requirement.
-/// @param c Builtin call expression representing ASC.
-/// @return Reports an integer code point.
-/// @details Enables the ASCII runtime helper and scans the operand when present.
-Lowerer::ExprType Lowerer::scanAsc(const BuiltinCallExpr &c)
-{
-    requestHelper(RuntimeFeature::Asc);
-    if (c.args[0])
-        scanExpr(*c.args[0]);
-    return ExprType::I64;
+    ExprType result = rule.result.type;
+    if (rule.result.kind == BuiltinScanRule::ResultSpec::Kind::FromArg)
+    {
+        if (auto ty = argType(rule.result.argIndex))
+            result = *ty;
+    }
+    return result;
 }
 
 /// @brief Scans an arbitrary expression node, dispatching to specialized helpers.
