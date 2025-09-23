@@ -13,6 +13,7 @@
 #include "il/core/Instr.hpp"
 #include <cassert>
 #include <functional>
+#include <optional>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -497,22 +498,6 @@ Lowerer::RVal Lowerer::lowerBinaryExpr(const BinaryExpr &b)
     return lowerNumericBinary(b, lhs, rhs);
 }
 
-/// @brief Lower a single builtin argument expression.
-/// @param c Builtin invocation currently being lowered.
-/// @param idx Index of the argument to translate.
-/// @return Lowered argument value and its IL type.
-/// @details
-/// - Control flow: Executes inline in the current block and simply forwards to
-///   @ref lowerExpr.
-/// - Emitted IL: Whatever @ref lowerExpr produces for the argument subtree.
-/// - Side effects: Validates argument presence via @ref assert and propagates
-///   any state changes performed by @ref lowerExpr.
-Lowerer::RVal Lowerer::lowerArg(const BuiltinCallExpr &c, size_t idx)
-{
-    assert(idx < c.args.size() && c.args[idx]);
-    return lowerExpr(*c.args[idx]);
-}
-
 /// @brief Coerce a value into a 64-bit integer representation.
 /// @param v Value/type pair to normalize.
 /// @param loc Source location used for emitted conversions.
@@ -589,429 +574,203 @@ Lowerer::RVal Lowerer::ensureF64(RVal v, il::support::SourceLoc loc)
     return coerceToF64(std::move(v), loc);
 }
 
-/// @brief Lower the RND builtin.
-/// @param c Builtin call expression representing `RND`.
-/// @return Floating-point result produced by the runtime helper.
+/// @brief Lower a BASIC builtin call using declarative metadata.
+/// @param c Builtin call AST node to translate.
+/// @return Lowered value and its IL type.
 /// @details
-/// - Control flow: Straight-line emission within the current block.
-/// - Emitted IL: Generates a call returning `f64` to the `rt_rnd` runtime
-///   function.
-/// - Side effects: Updates @ref curLoc so the runtime call inherits the
-///   builtin's source location.
-Lowerer::RVal Lowerer::lowerRnd(const BuiltinCallExpr &c)
-{
-    curLoc = c.loc;
-    Value res = emitCallRet(Type(Type::Kind::F64), "rt_rnd", {});
-    return {res, Type(Type::Kind::F64)};
-}
-
-/// @brief Lower the LEN builtin.
-/// @param c Builtin call expression representing `LEN`.
-/// @return Integer length of the supplied string.
-/// @details
-/// - Control flow: Straight-line within the current block.
-/// - Emitted IL: Issues a call to `rt_len` returning an `i64` result.
-/// - Side effects: Updates @ref curLoc before emitting the runtime call.
-Lowerer::RVal Lowerer::lowerLen(const BuiltinCallExpr &c)
-{
-    RVal s = lowerArg(c, 0);
-    curLoc = c.loc;
-    Value res = emitCallRet(Type(Type::Kind::I64), "rt_len", {s.value});
-    return {res, Type(Type::Kind::I64)};
-}
-
-/// @brief Lower the MID$ builtin with optional length argument.
-/// @param c Builtin call expression representing `MID$`.
-/// @return String slice materialized by runtime helpers.
-/// @details
-/// - Control flow: Straight-line emission while optionally branching on the
-///   presence of the third argument at compile time.
-/// - Emitted IL: Computes zero-based offsets, then calls either `rt_mid2` or
-///   `rt_mid3`, marking which runtime entry points are required.
-/// - Side effects: Updates @ref curLoc and records the runtime helper variant
-///   needed for later linkage.
-Lowerer::RVal Lowerer::lowerMid(const BuiltinCallExpr &c)
-{
-    RVal s = lowerArg(c, 0);
-    RVal i = ensureI64(lowerArg(c, 1), c.loc);
-    Value start0 = emitBinary(Opcode::Add, Type(Type::Kind::I64), i.value, Value::constInt(-1));
-    curLoc = c.loc;
-    if (c.args.size() >= 3 && c.args[2])
-    {
-        RVal n = ensureI64(lowerArg(c, 2), c.loc);
-        Value res = emitCallRet(Type(Type::Kind::Str), "rt_mid3", {s.value, start0, n.value});
-        requestHelper(RuntimeFeature::Mid3);
-        return {res, Type(Type::Kind::Str)};
-    }
-    Value res = emitCallRet(Type(Type::Kind::Str), "rt_mid2", {s.value, start0});
-    requestHelper(RuntimeFeature::Mid2);
-    return {res, Type(Type::Kind::Str)};
-}
-
-/// @brief Lower the LEFT$ builtin.
-/// @param c Builtin call expression representing `LEFT$`.
-/// @return String value returned from the runtime helper.
-/// @details
-/// - Control flow: Linear within the current block.
-/// - Emitted IL: Ensures the length argument is an `i64` and calls
-///   `rt_left`, tracking that the runtime stub is required.
-/// - Side effects: Updates @ref curLoc and records the LEFT$ runtime helper requirement.
-Lowerer::RVal Lowerer::lowerLeft(const BuiltinCallExpr &c)
-{
-    RVal s = lowerArg(c, 0);
-    RVal n = ensureI64(lowerArg(c, 1), c.loc);
-    curLoc = c.loc;
-    Value res = emitCallRet(Type(Type::Kind::Str), "rt_left", {s.value, n.value});
-    requestHelper(RuntimeFeature::Left);
-    return {res, Type(Type::Kind::Str)};
-}
-
-/// @brief Lower the RIGHT$ builtin.
-/// @param c Builtin call expression representing `RIGHT$`.
-/// @return String slice produced by the runtime helper.
-/// @details
-/// - Control flow: Remains in the current block without branching.
-/// - Emitted IL: Converts the count argument to `i64` and calls `rt_right`.
-/// - Side effects: Updates @ref curLoc and records the RIGHT$ runtime helper requirement.
-Lowerer::RVal Lowerer::lowerRight(const BuiltinCallExpr &c)
-{
-    RVal s = lowerArg(c, 0);
-    RVal n = ensureI64(lowerArg(c, 1), c.loc);
-    curLoc = c.loc;
-    Value res = emitCallRet(Type(Type::Kind::Str), "rt_right", {s.value, n.value});
-    requestHelper(RuntimeFeature::Right);
-    return {res, Type(Type::Kind::Str)};
-}
-
-/// @brief Lower the STR$ builtin converting numbers to strings.
-/// @param c Builtin call expression representing `STR$`.
-/// @return String value returned by the runtime conversion helper.
-/// @details
-/// - Control flow: Straight-line emission that normalizes the operand type.
-/// - Emitted IL: Delegates to @ref ensureF64 or @ref ensureI64 before calling
-///   the appropriate runtime converter.
-/// - Side effects: Updates @ref curLoc and mutates the operand's
-///   @ref Lowerer::RVal to reflect any type promotion performed.
-Lowerer::RVal Lowerer::lowerStr(const BuiltinCallExpr &c)
-{
-    RVal v = lowerArg(c, 0);
-    if (v.type.kind == Type::Kind::F64)
-    {
-        v = ensureF64(std::move(v), c.loc);
-        curLoc = c.loc;
-        Value res = emitCallRet(Type(Type::Kind::Str), "rt_f64_to_str", {v.value});
-        return {res, Type(Type::Kind::Str)};
-    }
-    v = ensureI64(std::move(v), c.loc);
-    curLoc = c.loc;
-    Value res = emitCallRet(Type(Type::Kind::Str), "rt_int_to_str", {v.value});
-    return {res, Type(Type::Kind::Str)};
-}
-
-/// @brief Lower the VAL builtin converting strings to integers.
-/// @param c Builtin call expression representing `VAL`.
-/// @return Integer value parsed by the runtime.
-/// @details
-/// - Control flow: Straight-line emission using the current block.
-/// - Emitted IL: Calls `rt_to_int` returning an `i64` result.
-/// - Side effects: Updates @ref curLoc before invoking the runtime routine.
-Lowerer::RVal Lowerer::lowerVal(const BuiltinCallExpr &c)
-{
-    RVal s = lowerArg(c, 0);
-    curLoc = c.loc;
-    Value res = emitCallRet(Type(Type::Kind::I64), "rt_to_int", {s.value});
-    return {res, Type(Type::Kind::I64)};
-}
-
-/// @brief Lower the INT builtin performing truncation toward zero.
-/// @param c Builtin call expression representing `INT`.
-/// @return Integer value after truncating the operand.
-/// @details
-/// - Control flow: Linear within the current block.
-/// - Emitted IL: Ensures the operand is `f64` and converts via `fptosi`.
-/// - Side effects: Updates @ref curLoc for the emitted conversion.
-Lowerer::RVal Lowerer::lowerInt(const BuiltinCallExpr &c)
-{
-    RVal f = ensureF64(lowerArg(c, 0), c.loc);
-    curLoc = c.loc;
-    Value res = emitUnary(Opcode::Fptosi, Type(Type::Kind::I64), f.value);
-    return {res, Type(Type::Kind::I64)};
-}
-
-/// @brief Lower the INSTR builtin for substring search.
-/// @param c Builtin call expression representing `INSTR`.
-/// @return Integer index result provided by the runtime.
-/// @details
-/// - Control flow: Linear emission that chooses between the two-argument and
-///   three-argument runtime entry points based on AST structure.
-/// - Emitted IL: Adjusts user-facing 1-based indices, then calls either
-///   `rt_instr2` or `rt_instr3` and records which helper is needed.
-/// - Side effects: Updates @ref curLoc and records which INSTR helper variant
-///   is required for linkage.
-Lowerer::RVal Lowerer::lowerInstr(const BuiltinCallExpr &c)
-{
-    curLoc = c.loc;
-    if (c.args.size() >= 3 && c.args[0])
-    {
-        RVal start = ensureI64(lowerArg(c, 0), c.loc);
-        Value start0 =
-            emitBinary(Opcode::Add, Type(Type::Kind::I64), start.value, Value::constInt(-1));
-        RVal hay = lowerArg(c, 1);
-        RVal needle = lowerArg(c, 2);
-        Value res =
-            emitCallRet(Type(Type::Kind::I64), "rt_instr3", {start0, hay.value, needle.value});
-        requestHelper(RuntimeFeature::Instr3);
-        return {res, Type(Type::Kind::I64)};
-    }
-    RVal hay = lowerArg(c, 0);
-    RVal needle = lowerArg(c, 1);
-    Value res = emitCallRet(Type(Type::Kind::I64), "rt_instr2", {hay.value, needle.value});
-    requestHelper(RuntimeFeature::Instr2);
-    return {res, Type(Type::Kind::I64)};
-}
-
-/// @brief Lower the LTRIM$ builtin.
-/// @param c Builtin call expression representing `LTRIM$`.
-/// @return Trimmed string value from the runtime helper.
-/// @details
-/// - Control flow: Straight-line within the current block.
-/// - Emitted IL: Calls `rt_ltrim` with the lowered string argument.
-/// - Side effects: Updates @ref curLoc and records the LTRIM$ runtime helper requirement.
-Lowerer::RVal Lowerer::lowerLtrim(const BuiltinCallExpr &c)
-{
-    RVal s = lowerArg(c, 0);
-    curLoc = c.loc;
-    Value res = emitCallRet(Type(Type::Kind::Str), "rt_ltrim", {s.value});
-    requestHelper(RuntimeFeature::Ltrim);
-    return {res, Type(Type::Kind::Str)};
-}
-
-/// @brief Lower the RTRIM$ builtin.
-/// @param c Builtin call expression representing `RTRIM$`.
-/// @return Trimmed string value from the runtime helper.
-/// @details
-/// - Control flow: Linear within the current block.
-/// - Emitted IL: Calls `rt_rtrim` with the lowered string argument.
-/// - Side effects: Updates @ref curLoc and records the RTRIM$ runtime helper requirement.
-Lowerer::RVal Lowerer::lowerRtrim(const BuiltinCallExpr &c)
-{
-    RVal s = lowerArg(c, 0);
-    curLoc = c.loc;
-    Value res = emitCallRet(Type(Type::Kind::Str), "rt_rtrim", {s.value});
-    requestHelper(RuntimeFeature::Rtrim);
-    return {res, Type(Type::Kind::Str)};
-}
-
-/// @brief Lower the TRIM$ builtin.
-/// @param c Builtin call expression representing `TRIM$`.
-/// @return Trimmed string value from the runtime helper.
-/// @details
-/// - Control flow: Linear within the current block.
-/// - Emitted IL: Calls `rt_trim` with the lowered string argument.
-/// - Side effects: Updates @ref curLoc and records the TRIM$ runtime helper requirement.
-Lowerer::RVal Lowerer::lowerTrim(const BuiltinCallExpr &c)
-{
-    RVal s = lowerArg(c, 0);
-    curLoc = c.loc;
-    Value res = emitCallRet(Type(Type::Kind::Str), "rt_trim", {s.value});
-    requestHelper(RuntimeFeature::Trim);
-    return {res, Type(Type::Kind::Str)};
-}
-
-/// @brief Lower the UCASE$ builtin.
-/// @param c Builtin call expression representing `UCASE$`.
-/// @return Upper-cased string produced by the runtime helper.
-/// @details
-/// - Control flow: Straight-line within the current block.
-/// - Emitted IL: Calls `rt_ucase` with the lowered string argument.
-/// - Side effects: Updates @ref curLoc and records the UCASE$ runtime helper requirement.
-Lowerer::RVal Lowerer::lowerUcase(const BuiltinCallExpr &c)
-{
-    RVal s = lowerArg(c, 0);
-    curLoc = c.loc;
-    Value res = emitCallRet(Type(Type::Kind::Str), "rt_ucase", {s.value});
-    requestHelper(RuntimeFeature::Ucase);
-    return {res, Type(Type::Kind::Str)};
-}
-
-/// @brief Lower the LCASE$ builtin.
-/// @param c Builtin call expression representing `LCASE$`.
-/// @return Lower-cased string produced by the runtime helper.
-/// @details
-/// - Control flow: Straight-line within the current block.
-/// - Emitted IL: Calls `rt_lcase` with the lowered string argument.
-/// - Side effects: Updates @ref curLoc and records the LCASE$ runtime helper requirement.
-Lowerer::RVal Lowerer::lowerLcase(const BuiltinCallExpr &c)
-{
-    RVal s = lowerArg(c, 0);
-    curLoc = c.loc;
-    Value res = emitCallRet(Type(Type::Kind::Str), "rt_lcase", {s.value});
-    requestHelper(RuntimeFeature::Lcase);
-    return {res, Type(Type::Kind::Str)};
-}
-
-/// @brief Lower the CHR$ builtin.
-/// @param c Builtin call expression representing `CHR$`.
-/// @return Single-character string produced by the runtime helper.
-/// @details
-/// - Control flow: Linear within the current block.
-/// - Emitted IL: Converts the code point to `i64` and calls `rt_chr`.
-/// - Side effects: Updates @ref curLoc and records the CHR$ runtime helper requirement.
-Lowerer::RVal Lowerer::lowerChr(const BuiltinCallExpr &c)
-{
-    RVal code = ensureI64(lowerArg(c, 0), c.loc);
-    curLoc = c.loc;
-    Value res = emitCallRet(Type(Type::Kind::Str), "rt_chr", {code.value});
-    requestHelper(RuntimeFeature::Chr);
-    return {res, Type(Type::Kind::Str)};
-}
-
-/// @brief Lower the ASC builtin.
-/// @param c Builtin call expression representing `ASC`.
-/// @return Integer code point extracted by the runtime helper.
-/// @details
-/// - Control flow: Straight-line within the current block.
-/// - Emitted IL: Calls `rt_asc` with the lowered string argument.
-/// - Side effects: Updates @ref curLoc and records the ASC runtime helper requirement.
-Lowerer::RVal Lowerer::lowerAsc(const BuiltinCallExpr &c)
-{
-    RVal s = lowerArg(c, 0);
-    curLoc = c.loc;
-    Value res = emitCallRet(Type(Type::Kind::I64), "rt_asc", {s.value});
-    requestHelper(RuntimeFeature::Asc);
-    return {res, Type(Type::Kind::I64)};
-}
-
-/// @brief Lower the SQR builtin (square root).
-/// @param c Builtin call expression representing `SQR`.
-/// @return Floating-point result produced by the runtime helper.
-/// @details
-/// - Control flow: Linear within the current block.
-/// - Emitted IL: Normalizes the operand to `f64` and calls `rt_sqrt`.
-/// - Side effects: Updates @ref curLoc prior to the runtime call.
-Lowerer::RVal Lowerer::lowerSqr(const BuiltinCallExpr &c)
-{
-    RVal v = ensureF64(lowerArg(c, 0), c.loc);
-    curLoc = c.loc;
-    Value res = emitCallRet(Type(Type::Kind::F64), "rt_sqrt", {v.value});
-    return {res, Type(Type::Kind::F64)};
-}
-
-/// @brief Lower the ABS builtin.
-/// @param c Builtin call expression representing `ABS`.
-/// @return Absolute value result with the matching numeric type.
-/// @details
-/// - Control flow: Straight-line within the current block.
-/// - Emitted IL: Chooses between `rt_abs_f64` and `rt_abs_i64` after ensuring
-///   the operand has the appropriate type.
-/// - Side effects: Updates @ref curLoc and mutates the operand
-///   @ref Lowerer::RVal when conversions are performed.
-Lowerer::RVal Lowerer::lowerAbs(const BuiltinCallExpr &c)
-{
-    RVal v = lowerArg(c, 0);
-    if (v.type.kind == Type::Kind::F64)
-    {
-        v = ensureF64(std::move(v), c.loc);
-        curLoc = c.loc;
-        Value res = emitCallRet(Type(Type::Kind::F64), "rt_abs_f64", {v.value});
-        return {res, Type(Type::Kind::F64)};
-    }
-    v = ensureI64(std::move(v), c.loc);
-    curLoc = c.loc;
-    Value res = emitCallRet(Type(Type::Kind::I64), "rt_abs_i64", {v.value});
-    return {res, Type(Type::Kind::I64)};
-}
-
-/// @brief Lower the FLOOR builtin.
-/// @param c Builtin call expression representing `FLOOR`.
-/// @return Floating-point result from the runtime helper.
-/// @details
-/// - Control flow: Linear within the current block.
-/// - Emitted IL: Ensures the operand is `f64` and calls `rt_floor`.
-/// - Side effects: Updates @ref curLoc prior to emitting the call.
-Lowerer::RVal Lowerer::lowerFloor(const BuiltinCallExpr &c)
-{
-    RVal v = ensureF64(lowerArg(c, 0), c.loc);
-    curLoc = c.loc;
-    Value res = emitCallRet(Type(Type::Kind::F64), "rt_floor", {v.value});
-    return {res, Type(Type::Kind::F64)};
-}
-
-/// @brief Lower the CEIL builtin.
-/// @param c Builtin call expression representing `CEIL`.
-/// @return Floating-point result from the runtime helper.
-/// @details
-/// - Control flow: Linear within the current block.
-/// - Emitted IL: Ensures the operand is `f64` and calls `rt_ceil`.
-/// - Side effects: Updates @ref curLoc prior to emitting the call.
-Lowerer::RVal Lowerer::lowerCeil(const BuiltinCallExpr &c)
-{
-    RVal v = ensureF64(lowerArg(c, 0), c.loc);
-    curLoc = c.loc;
-    Value res = emitCallRet(Type(Type::Kind::F64), "rt_ceil", {v.value});
-    return {res, Type(Type::Kind::F64)};
-}
-
-/// @brief Lower the SIN builtin.
-/// @param c Builtin call expression representing `SIN`.
-/// @return Floating-point result from the runtime helper.
-/// @details
-/// - Control flow: Linear within the current block.
-/// - Emitted IL: Ensures the operand is `f64` and calls `rt_sin`.
-/// - Side effects: Updates @ref curLoc prior to emitting the call.
-Lowerer::RVal Lowerer::lowerSin(const BuiltinCallExpr &c)
-{
-    RVal v = ensureF64(lowerArg(c, 0), c.loc);
-    curLoc = c.loc;
-    Value res = emitCallRet(Type(Type::Kind::F64), "rt_sin", {v.value});
-    return {res, Type(Type::Kind::F64)};
-}
-
-/// @brief Lower the COS builtin.
-/// @param c Builtin call expression representing `COS`.
-/// @return Floating-point result from the runtime helper.
-/// @details
-/// - Control flow: Linear within the current block.
-/// - Emitted IL: Ensures the operand is `f64` and calls `rt_cos`.
-/// - Side effects: Updates @ref curLoc prior to emitting the call.
-Lowerer::RVal Lowerer::lowerCos(const BuiltinCallExpr &c)
-{
-    RVal v = ensureF64(lowerArg(c, 0), c.loc);
-    curLoc = c.loc;
-    Value res = emitCallRet(Type(Type::Kind::F64), "rt_cos", {v.value});
-    return {res, Type(Type::Kind::F64)};
-}
-
-/// @brief Lower the POW builtin.
-/// @param c Builtin call expression representing `POW`.
-/// @return Floating-point result from the runtime helper.
-/// @details
-/// - Control flow: Linear within the current block.
-/// - Emitted IL: Ensures both operands are `f64` and calls `rt_pow`.
-/// - Side effects: Updates @ref curLoc prior to emitting the call.
-Lowerer::RVal Lowerer::lowerPow(const BuiltinCallExpr &c)
-{
-    RVal a = ensureF64(lowerArg(c, 0), c.loc);
-    RVal b = ensureF64(lowerArg(c, 1), c.loc);
-    curLoc = c.loc;
-    Value res = emitCallRet(Type(Type::Kind::F64), "rt_pow", {a.value, b.value});
-    return {res, Type(Type::Kind::F64)};
-}
-
-/// @brief Dispatch lowering for builtin call expressions.
-/// @param c Builtin call AST node.
-/// @return Lowered value and type produced by the builtin implementation.
-/// @details
-/// - Control flow: Delegates to the registered lowering member function when
-///   available, otherwise falls back to an integer zero constant.
-/// - Emitted IL: Dependent on the selected builtin handler.
-/// - Side effects: None beyond those performed by the dispatched helper.
+/// - Control flow: Follows the first matching metadata variant, which may emit
+///   straight-line code or runtime calls depending on argument presence and
+///   types.
+/// - Emitted IL: Applies argument transforms (coercions, adjustments) prior to
+///   issuing runtime calls or unary conversions.
+/// - Side effects: Records runtime helper usage according to the variant's
+///   feature actions.
 Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
 {
-    const auto &info = getBuiltinInfo(c.builtin);
-    if (info.lower)
-        return (this->*(info.lower))(c);
-    return {Value::constInt(0), Type(Type::Kind::I64)};
+    const auto &rule = getBuiltinLoweringRule(c.builtin);
+
+    std::vector<std::optional<ExprType>> originalTypes(c.args.size());
+    std::vector<std::optional<il::support::SourceLoc>> argLocs(c.args.size());
+    for (std::size_t i = 0; i < c.args.size(); ++i)
+    {
+        const auto &arg = c.args[i];
+        if (!arg)
+            continue;
+        argLocs[i] = arg->loc;
+        originalTypes[i] = scanExpr(*arg);
+    }
+
+    auto hasArg = [&](std::size_t idx) -> bool {
+        return idx < c.args.size() && c.args[idx] != nullptr;
+    };
+
+    std::vector<std::optional<RVal>> loweredArgs(c.args.size());
+
+    const auto *variant = static_cast<const BuiltinLoweringRule::Variant *>(nullptr);
+    for (const auto &candidate : rule.variants)
+    {
+        bool matches = false;
+        switch (candidate.condition)
+        {
+            case BuiltinLoweringRule::Variant::Condition::Always:
+                matches = true;
+                break;
+            case BuiltinLoweringRule::Variant::Condition::IfArgPresent:
+                matches = hasArg(candidate.conditionArg);
+                break;
+            case BuiltinLoweringRule::Variant::Condition::IfArgMissing:
+                matches = !hasArg(candidate.conditionArg);
+                break;
+            case BuiltinLoweringRule::Variant::Condition::IfArgTypeIs:
+                if (hasArg(candidate.conditionArg) && originalTypes[candidate.conditionArg])
+                    matches = *originalTypes[candidate.conditionArg] == candidate.conditionType;
+                break;
+            case BuiltinLoweringRule::Variant::Condition::IfArgTypeIsNot:
+                if (hasArg(candidate.conditionArg) && originalTypes[candidate.conditionArg])
+                    matches = *originalTypes[candidate.conditionArg] != candidate.conditionType;
+                break;
+        }
+        if (matches)
+        {
+            variant = &candidate;
+            break;
+        }
+    }
+
+    if (!variant && !rule.variants.empty())
+        variant = &rule.variants.front();
+    if (!variant)
+        return {Value::constInt(0), Type(Type::Kind::I64)};
+
+    auto ensureLowered = [&](std::size_t idx) -> RVal & {
+        assert(hasArg(idx) && "builtin lowering referenced missing argument");
+        auto &slot = loweredArgs[idx];
+        if (!slot)
+            slot = lowerExpr(*c.args[idx]);
+        return *slot;
+    };
+
+    auto typeFromExpr = [&](ExprType expr) -> Type {
+        switch (expr)
+        {
+            case ExprType::F64:
+                return Type(Type::Kind::F64);
+            case ExprType::Str:
+                return Type(Type::Kind::Str);
+            case ExprType::Bool:
+                return ilBoolTy();
+            case ExprType::I64:
+            default:
+                return Type(Type::Kind::I64);
+        }
+    };
+
+    auto resolveResultType = [&]() -> Type {
+        switch (rule.result.kind)
+        {
+            case BuiltinLoweringRule::ResultSpec::Kind::Fixed:
+                return typeFromExpr(rule.result.type);
+            case BuiltinLoweringRule::ResultSpec::Kind::FromArg:
+            {
+                std::size_t idx = rule.result.argIndex;
+                if (hasArg(idx))
+                    return ensureLowered(idx).type;
+                return typeFromExpr(rule.result.type);
+            }
+        }
+        return Type(Type::Kind::I64);
+    };
+
+    auto applyTransforms = [&](std::size_t idx,
+                               const std::vector<BuiltinLoweringRule::ArgTransform> &transforms) -> RVal & {
+        RVal &slot = ensureLowered(idx);
+        for (const auto &transform : transforms)
+        {
+            switch (transform.kind)
+            {
+                case BuiltinLoweringRule::ArgTransform::Kind::EnsureI64:
+                    slot = ensureI64(std::move(slot), c.loc);
+                    break;
+                case BuiltinLoweringRule::ArgTransform::Kind::EnsureF64:
+                    slot = ensureF64(std::move(slot), c.loc);
+                    break;
+                case BuiltinLoweringRule::ArgTransform::Kind::CoerceI64:
+                    slot = coerceToI64(std::move(slot), c.loc);
+                    break;
+                case BuiltinLoweringRule::ArgTransform::Kind::CoerceF64:
+                    slot = coerceToF64(std::move(slot), c.loc);
+                    break;
+                case BuiltinLoweringRule::ArgTransform::Kind::CoerceBool:
+                    slot = coerceToBool(std::move(slot), c.loc);
+                    break;
+                case BuiltinLoweringRule::ArgTransform::Kind::AddConst:
+                    curLoc = argLocs[idx].value_or(c.loc);
+                    slot.value =
+                        emitBinary(Opcode::Add, Type(Type::Kind::I64), slot.value, Value::constInt(transform.immediate));
+                    slot.type = Type(Type::Kind::I64);
+                    break;
+            }
+        }
+        return slot;
+    };
+
+    auto selectCallLoc = [&](const std::optional<std::size_t> &idx) -> il::support::SourceLoc {
+        if (idx && *idx < argLocs.size() && argLocs[*idx])
+        {
+            return *argLocs[*idx];
+        }
+        return c.loc;
+    };
+
+    Value resultValue = Value::constInt(0);
+    Type resultType = Type(Type::Kind::I64);
+
+    switch (variant->kind)
+    {
+        case BuiltinLoweringRule::Variant::Kind::CallRuntime:
+        {
+            std::vector<Value> callArgs;
+            callArgs.reserve(variant->arguments.size());
+            for (const auto &argSpec : variant->arguments)
+            {
+                RVal &argVal = applyTransforms(argSpec.index, argSpec.transforms);
+                callArgs.push_back(argVal.value);
+            }
+            resultType = resolveResultType();
+            curLoc = selectCallLoc(variant->callLocArg);
+            resultValue = emitCallRet(resultType, variant->runtime, callArgs);
+            break;
+        }
+        case BuiltinLoweringRule::Variant::Kind::EmitUnary:
+        {
+            assert(!variant->arguments.empty() && "unary builtin requires an operand");
+            const auto &argSpec = variant->arguments.front();
+            RVal &argVal = applyTransforms(argSpec.index, argSpec.transforms);
+            resultType = resolveResultType();
+            curLoc = selectCallLoc(variant->callLocArg);
+            resultValue = emitUnary(variant->opcode, resultType, argVal.value);
+            break;
+        }
+        case BuiltinLoweringRule::Variant::Kind::Custom:
+        default:
+            assert(false && "custom builtin lowering variant is not supported");
+            return {Value::constInt(0), Type(Type::Kind::I64)};
+    }
+
+    for (const auto &feature : variant->features)
+    {
+        switch (feature.action)
+        {
+            case BuiltinLoweringRule::Feature::Action::Request:
+                requestHelper(feature.feature);
+                break;
+            case BuiltinLoweringRule::Feature::Action::Track:
+                trackRuntime(feature.feature);
+                break;
+        }
+    }
+
+    return {resultValue, resultType};
 }
 
 /// @brief Entry point for lowering BASIC expressions to IL.
