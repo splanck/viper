@@ -30,6 +30,11 @@ target_link_libraries(test_il_serialize PRIVATE il_core il_build il_io support)
 target_compile_definitions(test_il_serialize PRIVATE TESTS_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_test(NAME test_il_serialize COMMAND test_il_serialize)
 
+add_executable(test_il_serialize_opcodes unit/test_il_serialize_opcodes.cpp)
+target_link_libraries(test_il_serialize_opcodes PRIVATE il_core il_io support)
+target_compile_definitions(test_il_serialize_opcodes PRIVATE TESTS_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_test(NAME test_il_serialize_opcodes COMMAND test_il_serialize_opcodes)
+
 add_executable(test_il_malformed_cbr unit/test_il_malformed_cbr.cpp)
 target_link_libraries(test_il_malformed_cbr PRIVATE il_core il_io support)
 add_test(NAME test_il_malformed_cbr COMMAND test_il_malformed_cbr)

@@ -15,6 +15,8 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/Value.hpp"
 #include <algorithm>
+#include <array>
+#include <functional>
 #include <sstream>
 
 namespace il::io
@@ -24,6 +26,133 @@ using namespace il::core;
 
 namespace
 {
+
+using Formatter = std::function<void(const Instr &, std::ostream &)>;
+
+constexpr size_t toIndex(Opcode op)
+{
+    return static_cast<size_t>(op);
+}
+
+void printValueList(std::ostream &os, const std::vector<Value> &values)
+{
+    for (size_t i = 0; i < values.size(); ++i)
+    {
+        if (i)
+            os << ", ";
+        os << il::core::toString(values[i]);
+    }
+}
+
+void printDefaultOperands(const Instr &instr, std::ostream &os)
+{
+    if (instr.operands.empty())
+        return;
+    os << ' ';
+    printValueList(os, instr.operands);
+}
+
+void printCallOperands(const Instr &instr, std::ostream &os)
+{
+    os << " @" << instr.callee << "(";
+    printValueList(os, instr.operands);
+    os << ')';
+}
+
+void printRetOperand(const Instr &instr, std::ostream &os)
+{
+    if (instr.operands.empty())
+        return;
+    os << ' ' << il::core::toString(instr.operands[0]);
+}
+
+void printLoadOperands(const Instr &instr, std::ostream &os)
+{
+    os << ' ' << instr.type.toString();
+    if (!instr.operands.empty())
+        os << ", " << il::core::toString(instr.operands[0]);
+}
+
+void printStoreOperands(const Instr &instr, std::ostream &os)
+{
+    os << ' ' << instr.type.toString();
+    if (!instr.operands.empty())
+    {
+        os << ", " << il::core::toString(instr.operands[0]);
+        if (instr.operands.size() > 1)
+            os << ", " << il::core::toString(instr.operands[1]);
+    }
+}
+
+void printBranchTarget(const Instr &instr, size_t index, std::ostream &os)
+{
+    if (index >= instr.labels.size())
+        return;
+    os << instr.labels[index];
+    if (index < instr.brArgs.size() && !instr.brArgs[index].empty())
+    {
+        os << '(';
+        printValueList(os, instr.brArgs[index]);
+        os << ')';
+    }
+}
+
+void printBrOperands(const Instr &instr, std::ostream &os)
+{
+    if (instr.labels.empty())
+        return;
+    os << ' ';
+    printBranchTarget(instr, 0, os);
+}
+
+void printCBrOperands(const Instr &instr, std::ostream &os)
+{
+    if (instr.operands.empty())
+    {
+        os << " ; missing label";
+        return;
+    }
+
+    os << ' ' << il::core::toString(instr.operands[0]);
+
+    if (instr.labels.empty())
+    {
+        os << " ; missing label";
+        return;
+    }
+
+    os << ", ";
+    printBranchTarget(instr, 0, os);
+
+    if (instr.labels.size() >= 2)
+    {
+        os << ", ";
+        printBranchTarget(instr, 1, os);
+    }
+    else
+    {
+        os << " ; missing label";
+    }
+}
+
+const Formatter &formatterFor(Opcode op)
+{
+    static const auto formatters = [] {
+        std::array<Formatter, kNumOpcodes> table;
+        for (auto &fmt : table)
+        {
+            fmt = [](const Instr &instr, std::ostream &os) { printDefaultOperands(instr, os); };
+        }
+        table[toIndex(Opcode::Call)] = [](const Instr &instr, std::ostream &os) { printCallOperands(instr, os); };
+        table[toIndex(Opcode::Ret)] = [](const Instr &instr, std::ostream &os) { printRetOperand(instr, os); };
+        table[toIndex(Opcode::Br)] = [](const Instr &instr, std::ostream &os) { printBrOperands(instr, os); };
+        table[toIndex(Opcode::CBr)] = [](const Instr &instr, std::ostream &os) { printCBrOperands(instr, os); };
+        table[toIndex(Opcode::Load)] = [](const Instr &instr, std::ostream &os) { printLoadOperands(instr, os); };
+        table[toIndex(Opcode::Store)] = [](const Instr &instr, std::ostream &os) { printStoreOperands(instr, os); };
+        return table;
+    }();
+    return formatters[toIndex(op)];
+}
 
 /// @brief Emit a single extern declaration.
 /// @param e Describes the imported function and its signature; not owned.
@@ -64,102 +193,8 @@ void printInstr(const Instr &in, std::ostream &os)
     if (in.result)
         os << "%t" << *in.result << " = ";
     os << il::core::toString(in.op);
-    if (in.op == Opcode::Call)
-    {
-        os << " @" << in.callee << "(";
-        for (size_t i = 0; i < in.operands.size(); ++i)
-        {
-            if (i)
-                os << ", ";
-            os << il::core::toString(in.operands[i]);
-        }
-        os << ")";
-    }
-    else if (in.op == Opcode::Ret)
-    {
-        if (!in.operands.empty())
-            os << " " << il::core::toString(in.operands[0]);
-    }
-    else if (in.op == Opcode::Br)
-    {
-        if (!in.labels.empty())
-        {
-            os << " " << in.labels[0];
-            if (!in.brArgs.empty() && !in.brArgs[0].empty())
-            {
-                os << "(";
-                for (size_t i = 0; i < in.brArgs[0].size(); ++i)
-                {
-                    if (i)
-                        os << ", ";
-                    os << il::core::toString(in.brArgs[0][i]);
-                }
-                os << ")";
-            }
-        }
-    }
-    else if (in.op == Opcode::CBr)
-    {
-        os << " " << il::core::toString(in.operands[0]);
-        if (in.labels.empty())
-        {
-            os << " ; missing label";
-        }
-        else
-        {
-            os << ", " << in.labels[0];
-            if (!in.brArgs.empty() && !in.brArgs[0].empty())
-            {
-                os << "(";
-                for (size_t i = 0; i < in.brArgs[0].size(); ++i)
-                {
-                    if (i)
-                        os << ", ";
-                    os << il::core::toString(in.brArgs[0][i]);
-                }
-                os << ")";
-            }
-            if (in.labels.size() >= 2)
-            {
-                os << ", " << in.labels[1];
-                if (in.brArgs.size() > 1 && !in.brArgs[1].empty())
-                {
-                    os << "(";
-                    for (size_t i = 0; i < in.brArgs[1].size(); ++i)
-                    {
-                        if (i)
-                            os << ", ";
-                        os << il::core::toString(in.brArgs[1][i]);
-                    }
-                    os << ")";
-                }
-            }
-            else
-            {
-                os << " ; missing label";
-            }
-        }
-    }
-    else if (in.op == Opcode::Load)
-    {
-        os << " " << in.type.toString() << ", " << il::core::toString(in.operands[0]);
-    }
-    else if (in.op == Opcode::Store)
-    {
-        os << " " << in.type.toString() << ", " << il::core::toString(in.operands[0]) << ", "
-           << il::core::toString(in.operands[1]);
-    }
-    else
-    {
-        if (!in.operands.empty())
-            os << " ";
-        for (size_t i = 0; i < in.operands.size(); ++i)
-        {
-            if (i)
-                os << ", ";
-            os << il::core::toString(in.operands[i]);
-        }
-    }
+    const auto &formatter = formatterFor(in.op);
+    formatter(in, os);
     os << "\n";
 }
 
