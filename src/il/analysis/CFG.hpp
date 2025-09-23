@@ -23,10 +23,10 @@ namespace viper::analysis
 /// @brief Lightweight context bundling module information for CFG queries.
 ///
 /// Stores a reference to the active module alongside a lookup table mapping
-/// basic blocks to their owning functions. The mapping is computed eagerly on
-/// construction so subsequent CFG utilities can resolve block parents without
-/// global state. The caller is responsible for rebuilding the context if the
-/// module's function/block layout changes.
+/// basic blocks to their owning functions. Successor and predecessor lists are
+/// computed eagerly so subsequent CFG utilities reuse cached edge data without
+/// rescanning block terminators. The caller is responsible for rebuilding the
+/// context if the module's function/block layout changes.
 struct CFGContext
 {
     explicit CFGContext(il::core::Module &module);
@@ -36,6 +36,10 @@ struct CFGContext
     /// @brief Cache mapping function pointers to their blocks indexed by label.
     std::unordered_map<il::core::Function *, std::unordered_map<std::string, il::core::Block *>>
         functionLabelToBlock;
+    /// @brief Cached successor lists per block constructed eagerly.
+    std::unordered_map<const il::core::Block *, std::vector<il::core::Block *>> blockSuccessors;
+    /// @brief Cached predecessor lists derived from the successor cache.
+    std::unordered_map<const il::core::Block *, std::vector<il::core::Block *>> blockPredecessors;
 };
 
 /// @brief Return successors of block @p B by inspecting its terminator.
