@@ -34,6 +34,23 @@ Lowerer::ExprType exprTypeFromAstType(::il::frontends::basic::Type ty)
     }
 }
 
+Lowerer::ExprType exprTypeFromBuiltinKind(BuiltinValueKind kind)
+{
+    using ExprType = Lowerer::ExprType;
+    switch (kind)
+    {
+        case BuiltinValueKind::Int:
+            return ExprType::I64;
+        case BuiltinValueKind::Float:
+            return ExprType::F64;
+        case BuiltinValueKind::String:
+            return ExprType::Str;
+        case BuiltinValueKind::Bool:
+            return ExprType::Bool;
+    }
+    return ExprType::I64;
+}
+
 } // namespace
 
 /// @brief Scans a unary expression and propagates operand requirements.
@@ -169,11 +186,17 @@ Lowerer::ExprType Lowerer::scanBuiltinCallExpr(const BuiltinCallExpr &c)
         }
     }
 
-    ExprType result = rule.result.type;
-    if (rule.result.kind == BuiltinScanRule::ResultSpec::Kind::FromArg)
+    const auto &info = getBuiltinInfo(c.builtin);
+    ExprType result = ExprType::I64;
+    if (info.semantics)
     {
-        if (auto ty = argType(rule.result.argIndex))
-            result = *ty;
+        const auto &semantics = *info.semantics;
+        result = exprTypeFromBuiltinKind(semantics.result.type);
+        if (semantics.result.kind == BuiltinSemantics::ResultSpec::Kind::FromArg)
+        {
+            if (auto ty = argType(semantics.result.argIndex))
+                result = *ty;
+        }
     }
     return result;
 }

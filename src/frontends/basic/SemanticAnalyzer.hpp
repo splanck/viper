@@ -23,6 +23,10 @@
 namespace il::frontends::basic
 {
 
+enum class BuiltinTypeSet : unsigned;
+struct BuiltinSemantics;
+
+
 class SemanticAnalyzerExprVisitor;
 class SemanticAnalyzerStmtVisitor;
 
@@ -223,65 +227,19 @@ class SemanticAnalyzer
     /// @brief Analyze built-in function call.
     Type analyzeBuiltinCall(const BuiltinCallExpr &c);
 
-  public:
-    /// @brief Analyze RND builtin.
-    Type analyzeRnd(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze LEN builtin.
-    Type analyzeLen(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze MID$ builtin.
-    Type analyzeMid(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze LEFT$ builtin.
-    Type analyzeLeft(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze RIGHT$ builtin.
-    Type analyzeRight(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze STR$ builtin.
-    Type analyzeStr(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze VAL builtin.
-    Type analyzeVal(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze INT builtin.
-    Type analyzeInt(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze INSTR builtin.
-    Type analyzeInstr(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze LTRIM$ builtin.
-    Type analyzeLtrim(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze RTRIM$ builtin.
-    Type analyzeRtrim(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze TRIM$ builtin.
-    Type analyzeTrim(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze UCASE$ builtin.
-    Type analyzeUcase(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze LCASE$ builtin.
-    Type analyzeLcase(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze CHR$ builtin.
-    Type analyzeChr(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze ASC builtin.
-    Type analyzeAsc(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze SQR builtin.
-    Type analyzeSqr(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze ABS builtin.
-    Type analyzeAbs(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze FLOOR builtin.
-    Type analyzeFloor(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze CEIL builtin.
-    Type analyzeCeil(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze SIN builtin.
-    Type analyzeSin(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze COS builtin.
-    Type analyzeCos(const BuiltinCallExpr &c, const std::vector<Type> &args);
-    /// @brief Analyze POW builtin.
-    Type analyzePow(const BuiltinCallExpr &c, const std::vector<Type> &args);
-
   private:
-    /// @brief Check argument count is within [@p min,@p max].
+    /// @brief Check argument count against builtin semantics metadata.
     bool checkArgCount(const BuiltinCallExpr &c,
                        const std::vector<Type> &args,
-                       size_t min,
-                       size_t max);
-    /// @brief Verify argument @p idx is one of @p allowed types.
+                       const BuiltinSemantics &semantics);
+    /// @brief Verify argument @p idx adheres to the builtin's allowed type set.
     bool checkArgType(const BuiltinCallExpr &c,
                       size_t idx,
                       Type argTy,
-                      std::initializer_list<Type> allowed);
+                      BuiltinTypeSet allowed);
+    /// @brief Compute builtin result type based on semantic metadata.
+    Type computeBuiltinResult(const BuiltinSemantics &semantics,
+                              const std::vector<Type> &args);
     /// @brief Resolve callee of user-defined call.
     const ProcSignature *resolveCallee(const CallExpr &c);
     /// @brief Collect and validate argument types for user-defined call.
