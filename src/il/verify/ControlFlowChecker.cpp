@@ -71,10 +71,10 @@ std::string formatInstrDiag(const Function &fn,
 ///         void parameters.
 /// @details Ensures block parameters are unique and non-void so predecessors can
 ///          match arguments, per docs/il-reference.md section "Basic Blocks".
-Expected<void> validateBlockParams_E(const Function &fn,
-                                      const BasicBlock &bb,
-                                      TypeInference &types,
-                                      std::vector<unsigned> &paramIds)
+Expected<void> validateBlockParams_impl(const Function &fn,
+                                        const BasicBlock &bb,
+                                        TypeInference &types,
+                                        std::vector<unsigned> &paramIds)
 {
     std::unordered_set<std::string> paramNames;
     for (const auto &param : bb.params)
@@ -104,14 +104,14 @@ Expected<void> validateBlockParams_E(const Function &fn,
 ///         or the callback; otherwise empty.
 /// @details Stops after the first terminator to honour the single-terminator
 ///          rule outlined in docs/il-reference.md ("Explicit control flow").
-Expected<void> iterateBlockInstructions_E(const Function &fn,
-                                           const BasicBlock &bb,
-                                           const std::unordered_map<std::string, const BasicBlock *> &blockMap,
-                                           const std::unordered_map<std::string, const Extern *> &externs,
-                                           const std::unordered_map<std::string, const Function *> &funcs,
-                                           TypeInference &types,
-                                           const VerifyInstrFnExpected &verifyInstrFn,
-                                           std::vector<Diag> &warnings)
+Expected<void> iterateBlockInstructions_impl(const Function &fn,
+                                             const BasicBlock &bb,
+                                             const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                                             const std::unordered_map<std::string, const Extern *> &externs,
+                                             const std::unordered_map<std::string, const Function *> &funcs,
+                                             TypeInference &types,
+                                             const VerifyInstrFnExpected &verifyInstrFn,
+                                             std::vector<Diag> &warnings)
 {
     for (const auto &instr : bb.instructions)
     {
@@ -134,7 +134,7 @@ Expected<void> iterateBlockInstructions_E(const Function &fn,
 ///         instructions after a terminator, or is missing a terminator.
 /// @details Implements the "explicit control flow" requirement described in
 ///          docs/il-reference.md: every block ends with exactly one terminator.
-Expected<void> checkBlockTerminators_E(const Function &fn, const BasicBlock &bb)
+Expected<void> checkBlockTerminators_impl(const Function &fn, const BasicBlock &bb)
 {
     if (bb.instructions.empty())
         return Expected<void>{makeError({}, formatBlockDiag(fn, bb, "empty block"))};
@@ -202,11 +202,11 @@ Expected<void> verifyBranchArgs(const Function &fn,
 /// @details Checks the IL Control Flow rule that `br` only names one target and
 ///          forwards arguments compatible with that block (docs/il-reference.md,
 ///          section "Control Flow", `br`).
-Expected<void> verifyBr_E(const Function &fn,
-                           const BasicBlock &bb,
-                           const Instr &instr,
-                           const std::unordered_map<std::string, const BasicBlock *> &blockMap,
-                           TypeInference &types)
+Expected<void> verifyBr_impl(const Function &fn,
+                             const BasicBlock &bb,
+                             const Instr &instr,
+                             const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                             TypeInference &types)
 {
     bool argsOk = instr.operands.empty() && instr.labels.size() == 1;
     if (!argsOk)
@@ -234,11 +234,11 @@ Expected<void> verifyBr_E(const Function &fn,
 /// @details Enforces docs/il-reference.md section "Control Flow" (`cbr`):
 ///          conditions must be `i1` and each successor must receive matching
 ///          argument payloads.
-Expected<void> verifyCBr_E(const Function &fn,
-                            const BasicBlock &bb,
-                            const Instr &instr,
-                            const std::unordered_map<std::string, const BasicBlock *> &blockMap,
-                            TypeInference &types)
+Expected<void> verifyCBr_impl(const Function &fn,
+                              const BasicBlock &bb,
+                              const Instr &instr,
+                              const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                              TypeInference &types)
 {
     bool condOk = instr.operands.size() == 1 && instr.labels.size() == 2 &&
                    types.valueType(instr.operands[0]).kind == Type::Kind::I1;
@@ -269,10 +269,10 @@ Expected<void> verifyCBr_E(const Function &fn,
 /// @details Implements docs/il-reference.md section "Control Flow" (`ret`),
 ///          ensuring the terminator conforms to the function's declared return
 ///          type.
-Expected<void> verifyRet_E(const Function &fn,
-                            const BasicBlock &bb,
-                            const Instr &instr,
-                            TypeInference &types)
+Expected<void> verifyRet_impl(const Function &fn,
+                              const BasicBlock &bb,
+                              const Instr &instr,
+                              TypeInference &types)
 {
     if (fn.retType.kind == Type::Kind::Void)
     {
@@ -327,6 +327,57 @@ std::string joinMessages(const std::vector<std::string> &messages)
 }
 
 } // namespace
+
+Expected<void> validateBlockParams_E(const Function &fn,
+                                      const BasicBlock &bb,
+                                      TypeInference &types,
+                                      std::vector<unsigned> &paramIds)
+{
+    return validateBlockParams_impl(fn, bb, types, paramIds);
+}
+
+Expected<void> iterateBlockInstructions_E(const Function &fn,
+                                           const BasicBlock &bb,
+                                           const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                                           const std::unordered_map<std::string, const Extern *> &externs,
+                                           const std::unordered_map<std::string, const Function *> &funcs,
+                                           TypeInference &types,
+                                           const VerifyInstrFnExpected &verifyInstrFn,
+                                           std::vector<Diag> &warnings)
+{
+    return iterateBlockInstructions_impl(fn, bb, blockMap, externs, funcs, types, verifyInstrFn, warnings);
+}
+
+Expected<void> checkBlockTerminators_E(const Function &fn, const BasicBlock &bb)
+{
+    return checkBlockTerminators_impl(fn, bb);
+}
+
+Expected<void> verifyBr_E(const Function &fn,
+                           const BasicBlock &bb,
+                           const Instr &instr,
+                           const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                           TypeInference &types)
+{
+    return verifyBr_impl(fn, bb, instr, blockMap, types);
+}
+
+Expected<void> verifyCBr_E(const Function &fn,
+                            const BasicBlock &bb,
+                            const Instr &instr,
+                            const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                            TypeInference &types)
+{
+    return verifyCBr_impl(fn, bb, instr, blockMap, types);
+}
+
+Expected<void> verifyRet_E(const Function &fn,
+                            const BasicBlock &bb,
+                            const Instr &instr,
+                            TypeInference &types)
+{
+    return verifyRet_impl(fn, bb, instr, types);
+}
 
 bool isTerminator(Opcode op)
 {
@@ -444,57 +495,6 @@ bool verifyRet(const Function &fn,
         return false;
     }
     return true;
-}
-
-Expected<void> validateBlockParams_expected(const Function &fn,
-                                             const BasicBlock &bb,
-                                             TypeInference &types,
-                                             std::vector<unsigned> &paramIds)
-{
-    return validateBlockParams_E(fn, bb, types, paramIds);
-}
-
-Expected<void> iterateBlockInstructions_expected(const Function &fn,
-                                                  const BasicBlock &bb,
-                                                  const std::unordered_map<std::string, const BasicBlock *> &blockMap,
-                                                  const std::unordered_map<std::string, const Extern *> &externs,
-                                                  const std::unordered_map<std::string, const Function *> &funcs,
-                                                  TypeInference &types,
-                                                  const VerifyInstrFnExpected &verifyInstrFn,
-                                                  std::vector<Diag> &warnings)
-{
-    return iterateBlockInstructions_E(fn, bb, blockMap, externs, funcs, types, verifyInstrFn, warnings);
-}
-
-Expected<void> checkBlockTerminators_expected(const Function &fn, const BasicBlock &bb)
-{
-    return checkBlockTerminators_E(fn, bb);
-}
-
-Expected<void> verifyBr_expected(const Function &fn,
-                                 const BasicBlock &bb,
-                                 const Instr &instr,
-                                 const std::unordered_map<std::string, const BasicBlock *> &blockMap,
-                                 TypeInference &types)
-{
-    return verifyBr_E(fn, bb, instr, blockMap, types);
-}
-
-Expected<void> verifyCBr_expected(const Function &fn,
-                                  const BasicBlock &bb,
-                                  const Instr &instr,
-                                  const std::unordered_map<std::string, const BasicBlock *> &blockMap,
-                                  TypeInference &types)
-{
-    return verifyCBr_E(fn, bb, instr, blockMap, types);
-}
-
-Expected<void> verifyRet_expected(const Function &fn,
-                                  const BasicBlock &bb,
-                                  const Instr &instr,
-                                  TypeInference &types)
-{
-    return verifyRet_E(fn, bb, instr, types);
 }
 
 } // namespace il::verify

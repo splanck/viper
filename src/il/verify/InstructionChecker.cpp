@@ -71,9 +71,9 @@ void emitWarning(const Function &fn,
 /// @param instr Instruction whose signature is being checked.
 /// @return Empty on success; otherwise an error diagnostic describing the
 ///         structural mismatch.
-Expected<void> verifyOpcodeSignature_E(const Function &fn,
-                                        const BasicBlock &bb,
-                                        const Instr &instr)
+Expected<void> verifyOpcodeSignature_impl(const Function &fn,
+                                          const BasicBlock &bb,
+                                          const Instr &instr)
 {
     const auto &info = getOpcodeInfo(instr.op);
 
@@ -461,13 +461,13 @@ Expected<void> checkDefault_E(const Instr &instr, TypeInference &types)
 /// @param warnings Accumulates warning diagnostics emitted during validation.
 /// @return Empty on success; otherwise an error diagnostic describing the
 ///         violated rule.
-Expected<void> verifyInstruction_E(const Function &fn,
-                                    const BasicBlock &bb,
-                                    const Instr &instr,
-                                    const std::unordered_map<std::string, const Extern *> &externs,
-                                    const std::unordered_map<std::string, const Function *> &funcs,
-                                    TypeInference &types,
-                                    std::vector<Diag> &warnings)
+Expected<void> verifyInstruction_impl(const Function &fn,
+                                      const BasicBlock &bb,
+                                      const Instr &instr,
+                                      const std::unordered_map<std::string, const Extern *> &externs,
+                                      const std::unordered_map<std::string, const Function *> &funcs,
+                                      TypeInference &types,
+                                      std::vector<Diag> &warnings)
 {
     switch (instr.op)
     {
@@ -538,6 +538,24 @@ Expected<void> verifyInstruction_E(const Function &fn,
 }
 
 } // namespace
+
+Expected<void> verifyOpcodeSignature_E(const Function &fn,
+                                        const BasicBlock &bb,
+                                        const Instr &instr)
+{
+    return verifyOpcodeSignature_impl(fn, bb, instr);
+}
+
+Expected<void> verifyInstruction_E(const Function &fn,
+                                    const BasicBlock &bb,
+                                    const Instr &instr,
+                                    const std::unordered_map<std::string, const Extern *> &externs,
+                                    const std::unordered_map<std::string, const Function *> &funcs,
+                                    TypeInference &types,
+                                    std::vector<Diag> &warnings)
+{
+    return verifyInstruction_impl(fn, bb, instr, externs, funcs, types, warnings);
+}
 
 bool verifyOpcodeSignature(const Function &fn,
                            const BasicBlock &bb,
