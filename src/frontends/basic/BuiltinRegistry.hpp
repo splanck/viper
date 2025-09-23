@@ -9,35 +9,15 @@
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
+#include "il/core/Opcode.hpp"
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string_view>
 #include <vector>
 
 namespace il::frontends::basic
 {
-/// @brief Metadata for a BASIC built-in function.
-struct BuiltinInfo
-{
-    const char *name;    ///< BASIC source spelling.
-    std::size_t minArgs; ///< Minimum accepted arguments.
-    std::size_t maxArgs; ///< Maximum accepted arguments.
-
-    using AnalyzeFn = SemanticAnalyzer::Type (SemanticAnalyzer::*)(
-        const BuiltinCallExpr &, const std::vector<SemanticAnalyzer::Type> &);
-    AnalyzeFn analyze; ///< Semantic analysis hook.
-
-    using LowerFn = typename Lowerer::RVal (Lowerer::*)(const BuiltinCallExpr &);
-    LowerFn lower; ///< Lowering hook.
-
-};
-
-/// @brief Lookup builtin info by enum.
-const BuiltinInfo &getBuiltinInfo(BuiltinCallExpr::Builtin b);
-
-/// @brief Find builtin enum by BASIC name.
-std::optional<BuiltinCallExpr::Builtin> lookupBuiltin(std::string_view name);
-
 /// @brief Declarative scan rule describing runtime requirements for a builtin.
 struct BuiltinScanRule
 {
@@ -95,5 +75,115 @@ struct BuiltinScanRule
 
 /// @brief Fetch the declarative scan rule for a builtin.
 const BuiltinScanRule &getBuiltinScanRule(BuiltinCallExpr::Builtin b);
+
+/// @brief Declarative lowering rule describing runtime invocation for a builtin.
+struct BuiltinLoweringRule
+{
+    /// @brief Result strategy mirroring @ref BuiltinScanRule::ResultSpec.
+    struct ResultSpec
+    {
+        /// @brief How the result type is determined at lowering time.
+        enum class Kind
+        {
+            Fixed,   ///< Always use the supplied @ref type.
+            FromArg, ///< Mirror the type of an argument index.
+        } kind{Kind::Fixed};
+
+        Lowerer::ExprType type{Lowerer::ExprType::I64}; ///< Result type when fixed.
+        std::size_t argIndex{0};                        ///< Referenced argument index.
+    };
+
+    /// @brief Runtime helper invocation tracking used during lowering.
+    struct Feature
+    {
+        /// @brief Which runtime tracking API to invoke.
+        enum class Action
+        {
+            Request, ///< Call @ref Lowerer::requestHelper.
+            Track,   ///< Call @ref Lowerer::trackRuntime.
+        } action{Action::Request};
+
+        il::runtime::RuntimeFeature feature{il::runtime::RuntimeFeature::Count}; ///< Runtime feature identifier.
+    };
+
+    /// @brief Transformation applied to an argument prior to emission.
+    struct ArgTransform
+    {
+        /// @brief Specific adjustment performed on the argument value.
+        enum class Kind
+        {
+            EnsureI64, ///< Invoke @ref Lowerer::ensureI64.
+            EnsureF64, ///< Invoke @ref Lowerer::ensureF64.
+            CoerceI64, ///< Invoke @ref Lowerer::coerceToI64.
+            CoerceF64, ///< Invoke @ref Lowerer::coerceToF64.
+            CoerceBool,///< Invoke @ref Lowerer::coerceToBool.
+            AddConst,  ///< Emit an add with an integer constant.
+        } kind{Kind::EnsureI64};
+
+        std::int64_t immediate{0}; ///< Constant used by AddConst.
+    };
+
+    /// @brief Argument description for runtime emission.
+    struct Argument
+    {
+        std::size_t index{0};                         ///< Index into BuiltinCallExpr::args.
+        std::vector<ArgTransform> transforms{};       ///< Transformations to apply before use.
+    };
+
+    /// @brief Variant describing how to materialize the builtin call.
+    struct Variant
+    {
+        /// @brief Selection predicate for the variant.
+        enum class Condition
+        {
+            Always,        ///< Applies unconditionally.
+            IfArgPresent,  ///< Applies when argument exists.
+            IfArgMissing,  ///< Applies when argument is absent.
+            IfArgTypeIs,   ///< Applies when argument type matches.
+            IfArgTypeIsNot ///< Applies when argument type differs.
+        } condition{Condition::Always};
+
+        std::size_t conditionArg{0};                 ///< Argument inspected by the condition.
+        Lowerer::ExprType conditionType{Lowerer::ExprType::I64}; ///< Type operand for type-based predicates.
+        std::optional<std::size_t> callLocArg{};     ///< Optional argument providing emission location.
+
+        /// @brief Lowering strategy for the variant.
+        enum class Kind
+        {
+            CallRuntime, ///< Call a runtime helper.
+            EmitUnary,   ///< Emit a unary opcode.
+            Custom,      ///< Reserved for bespoke handlers.
+        } kind{Kind::CallRuntime};
+
+        const char *runtime{nullptr}; ///< Runtime symbol name when calling helpers.
+        il::core::Opcode opcode{il::core::Opcode::Add}; ///< Unary opcode when @ref kind == EmitUnary.
+        std::vector<Argument> arguments{}; ///< Ordered argument specifications.
+        std::vector<Feature> features{};   ///< Feature tracking applied for this variant.
+    };
+
+    ResultSpec result{};                     ///< Result determination rule.
+    std::vector<Variant> variants{};         ///< Ordered set of variants; first match is used.
+};
+
+/// @brief Metadata for a BASIC built-in function.
+struct BuiltinInfo
+{
+    const char *name;    ///< BASIC source spelling.
+    std::size_t minArgs; ///< Minimum accepted arguments.
+    std::size_t maxArgs; ///< Maximum accepted arguments.
+
+    using AnalyzeFn = SemanticAnalyzer::Type (SemanticAnalyzer::*)(
+        const BuiltinCallExpr &, const std::vector<SemanticAnalyzer::Type> &);
+    AnalyzeFn analyze; ///< Semantic analysis hook.
+};
+
+/// @brief Lookup builtin info by enum.
+const BuiltinInfo &getBuiltinInfo(BuiltinCallExpr::Builtin b);
+
+/// @brief Find builtin enum by BASIC name.
+std::optional<BuiltinCallExpr::Builtin> lookupBuiltin(std::string_view name);
+
+/// @brief Fetch the lowering rule for a builtin.
+const BuiltinLoweringRule &getBuiltinLoweringRule(BuiltinCallExpr::Builtin b);
 
 } // namespace il::frontends::basic
