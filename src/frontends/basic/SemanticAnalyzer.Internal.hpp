@@ -12,9 +12,31 @@
 
 #include <cstddef>
 #include <string>
+#include <string_view>
 
 namespace il::frontends::basic::semantic_analyzer_detail
 {
+
+struct ExprRule
+{
+    using OperandValidator = void (SemanticAnalyzer::*)(const BinaryExpr &,
+                                                        SemanticAnalyzer::Type,
+                                                        SemanticAnalyzer::Type,
+                                                        std::string_view);
+    using ResultTypeFn = SemanticAnalyzer::Type (*)(SemanticAnalyzer::Type,
+                                                    SemanticAnalyzer::Type);
+
+    BinaryExpr::Op op;
+    OperandValidator validator;
+    ResultTypeFn result;
+    std::string_view mismatchDiag;
+};
+
+const ExprRule &exprRule(BinaryExpr::Op op);
+
+std::string formatLogicalOperandMessage(BinaryExpr::Op op,
+                                        SemanticAnalyzer::Type lhs,
+                                        SemanticAnalyzer::Type rhs);
 
 size_t levenshtein(const std::string &a, const std::string &b);
 SemanticAnalyzer::Type astToSemanticType(::il::frontends::basic::Type ty);
