@@ -6,6 +6,7 @@
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
 // Links: docs/class-catalog.md
 
+// Requires the consolidated Lowerer interface for expression lowering helpers.
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "il/core/BasicBlock.hpp"
