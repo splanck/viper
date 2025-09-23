@@ -30,8 +30,8 @@ static void set_disable()
 int main()
 {
     clear_disable();
-    tui::term::StringTermIO tio;
-    tui::term::Osc52Clipboard cb(tio);
+    viper::tui::term::StringTermIO tio;
+    viper::tui::term::Osc52Clipboard cb(tio);
     bool ok = cb.copy("hello");
     assert(ok);
     assert(tio.buffer() == "\x1b]52;c;aGVsbG8=\x07");
@@ -42,7 +42,7 @@ int main()
     assert(tio.buffer() == "\x1b]52;c;aGVsbG8=\x07");
 
     clear_disable();
-    tui::term::MockClipboard mock;
+    viper::tui::term::MockClipboard mock;
     ok = mock.copy("test");
     assert(ok);
     assert(mock.last() == "\x1b]52;c;dGVzdA==\x07");

@@ -13,7 +13,7 @@
 #include <windows.h>
 #endif
 
-namespace tui
+namespace viper::tui
 {
 
 class TerminalSession
@@ -37,4 +37,4 @@ class TerminalSession
 #endif
 };
 
-} // namespace tui
+} // namespace viper::tui

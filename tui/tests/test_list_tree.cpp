@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-using tui::term::StringTermIO;
+using viper::tui::term::StringTermIO;
 using viper::tui::render::Renderer;
 using viper::tui::render::ScreenBuffer;
 using viper::tui::style::Role;

@@ -21,7 +21,7 @@ class App
   public:
     /// @brief Construct app with root widget and terminal I/O.
     App(std::unique_ptr<ui::Widget> root,
-        ::tui::term::TermIO &tio,
+        ::viper::tui::term::TermIO &tio,
         int rows,
         int cols,
         bool truecolor = false);

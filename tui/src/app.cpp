@@ -8,7 +8,7 @@
 namespace viper::tui
 {
 App::App(
-    std::unique_ptr<ui::Widget> root, ::tui::term::TermIO &tio, int rows, int cols, bool truecolor)
+    std::unique_ptr<ui::Widget> root, ::viper::tui::term::TermIO &tio, int rows, int cols, bool truecolor)
     : root_(std::move(root)), renderer_(tio, truecolor), rows_(rows), cols_(cols)
 {
     screen_.resize(rows, cols);
