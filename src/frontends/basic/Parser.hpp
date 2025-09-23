@@ -11,6 +11,7 @@
 #include "frontends/basic/Lexer.hpp"
 #include <array>
 #include <functional>
+#include <initializer_list>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -87,6 +88,19 @@ class Parser
     /// @brief Create a statement context bound to this parser instance.
     /// @return StatementContext referencing the parser's token stream.
     StatementContext statementContext();
+
+    /// @brief Consume optional line labels that follow a line break.
+    /// @param ctx Statement context providing newline skipping helpers.
+    /// @param followerKinds When non-empty, only consume the label when the
+    ///        subsequent token is one of the specified kinds.
+    void skipOptionalLineLabelAfterBreak(StatementContext &ctx,
+                                         std::initializer_list<TokenKind> followerKinds = {});
+
+    /// @brief Parse the body of a single IF-related branch.
+    /// @param line Line number propagated to the branch statement.
+    /// @param ctx Statement context for separator management.
+    /// @return Parsed statement belonging to the branch body.
+    StmtPtr parseIfBranchBody(int line, StatementContext &ctx);
 
     mutable Lexer lexer_;                    ///< Provides tokens from the source buffer.
     mutable std::vector<Token> tokens_;      ///< Lookahead token buffer.
