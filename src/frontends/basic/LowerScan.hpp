@@ -22,29 +22,6 @@ ExprType scanArrayExpr(const ArrayExpr &arr);
 
 public:
 ExprType scanBuiltinCallExpr(const BuiltinCallExpr &c);
-ExprType scanLen(const BuiltinCallExpr &c);
-ExprType scanMid(const BuiltinCallExpr &c);
-ExprType scanLeft(const BuiltinCallExpr &c);
-ExprType scanRight(const BuiltinCallExpr &c);
-ExprType scanStr(const BuiltinCallExpr &c);
-ExprType scanVal(const BuiltinCallExpr &c);
-ExprType scanInt(const BuiltinCallExpr &c);
-ExprType scanSqr(const BuiltinCallExpr &c);
-ExprType scanAbs(const BuiltinCallExpr &c);
-ExprType scanFloor(const BuiltinCallExpr &c);
-ExprType scanCeil(const BuiltinCallExpr &c);
-ExprType scanSin(const BuiltinCallExpr &c);
-ExprType scanCos(const BuiltinCallExpr &c);
-ExprType scanPow(const BuiltinCallExpr &c);
-ExprType scanRnd(const BuiltinCallExpr &c);
-ExprType scanInstr(const BuiltinCallExpr &c);
-ExprType scanLtrim(const BuiltinCallExpr &c);
-ExprType scanRtrim(const BuiltinCallExpr &c);
-ExprType scanTrim(const BuiltinCallExpr &c);
-ExprType scanUcase(const BuiltinCallExpr &c);
-ExprType scanLcase(const BuiltinCallExpr &c);
-ExprType scanChr(const BuiltinCallExpr &c);
-ExprType scanAsc(const BuiltinCallExpr &c);
 
 private:
 void scanStmt(const Stmt &s);
