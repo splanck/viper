@@ -258,19 +258,9 @@ void ProgramLowering::run(const Program &prog, il::core::Module &module)
     lowerer.builder = &builder;
 
     lowerer.mangler = NameMangler();
-    lowerer.nextTemp = 0;
-    lowerer.lineBlocks.clear();
-    lowerer.varSlots.clear();
-    lowerer.arrayLenSlots.clear();
-    lowerer.varTypes.clear();
+    lowerer.procState.reset();
     lowerer.strings.clear();
-    lowerer.arrays.clear();
     lowerer.procSignatures.clear();
-    lowerer.boundsCheckId = 0;
-
-    lowerer.runtimeFeatures.reset();
-    lowerer.runtimeOrder.clear();
-    lowerer.runtimeSet.clear();
 
     lowerer.scanProgram(prog);
     lowerer.declareRequiredRuntime(builder);
@@ -320,8 +310,10 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
 
 void ProcedureLowering::collectVars(const std::vector<const Stmt *> &stmts)
 {
-    VarCollectExprVisitor exprVisitor(lowerer.vars, lowerer.arrays, lowerer.varTypes);
-    VarCollectStmtVisitor stmtVisitor(exprVisitor, lowerer.vars, lowerer.arrays, lowerer.varTypes);
+    VarCollectExprVisitor exprVisitor(
+        lowerer.procState.vars, lowerer.procState.arrays, lowerer.procState.varTypes);
+    VarCollectStmtVisitor stmtVisitor(
+        exprVisitor, lowerer.procState.vars, lowerer.procState.arrays, lowerer.procState.varTypes);
     for (const auto *stmt : stmts)
         if (stmt)
             stmt->accept(stmtVisitor);
@@ -355,7 +347,7 @@ void ProcedureLowering::emit(const std::string &name,
     il::core::Function &f =
         lowerer.builder->startFunction(name, config.retType, metadata.irParams);
     lowerer.func = &f;
-    lowerer.nextTemp = lowerer.func->valueNames.size();
+    lowerer.procState.nextTemp = lowerer.func->valueNames.size();
 
     lowerer.buildProcedureSkeleton(f, name, metadata);
 
@@ -373,7 +365,7 @@ void ProcedureLowering::emit(const std::string &name,
 
     lowerer.lowerStatementSequence(metadata.bodyStmts, /*stopOnTerminated=*/true);
 
-    lowerer.cur = &f.blocks[lowerer.fnExit];
+    lowerer.cur = &f.blocks[lowerer.procState.fnExit];
     lowerer.curLoc = {};
     config.emitFinalReturn();
 
@@ -391,12 +383,12 @@ void StatementLowering::lowerSequence(
         return;
 
     lowerer.curLoc = {};
-    lowerer.emitBr(&lowerer.func->blocks[lowerer.lineBlocks[stmts.front()->line]]);
+    lowerer.emitBr(&lowerer.func->blocks[lowerer.procState.lineBlocks[stmts.front()->line]]);
 
     for (size_t i = 0; i < stmts.size(); ++i)
     {
         const Stmt &stmt = *stmts[i];
-        lowerer.cur = &lowerer.func->blocks[lowerer.lineBlocks[stmt.line]];
+        lowerer.cur = &lowerer.func->blocks[lowerer.procState.lineBlocks[stmt.line]];
         lowerer.lowerStmt(stmt);
         if (lowerer.cur->terminated)
         {
@@ -406,8 +398,8 @@ void StatementLowering::lowerSequence(
         }
         il::core::BasicBlock *next =
             (i + 1 < stmts.size())
-                ? &lowerer.func->blocks[lowerer.lineBlocks[stmts[i + 1]->line]]
-                : &lowerer.func->blocks[lowerer.fnExit];
+                ? &lowerer.func->blocks[lowerer.procState.lineBlocks[stmts[i + 1]->line]]
+                : &lowerer.func->blocks[lowerer.procState.fnExit];
         if (beforeBranch)
             beforeBranch(stmt);
         lowerer.emitBr(next);

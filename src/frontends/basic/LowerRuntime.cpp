@@ -54,12 +54,12 @@ void declareRuntimeExtern(build::IRBuilder &b, const il::runtime::RuntimeDescrip
 ///       declareRuntimeExtern.
 void Lowerer::requestHelper(RuntimeFeature feature)
 {
-    runtimeFeatures.set(static_cast<size_t>(feature));
+    procState.runtimeFeatures.set(static_cast<size_t>(feature));
 }
 
 bool Lowerer::isHelperNeeded(RuntimeFeature feature) const
 {
-    return runtimeFeatures.test(static_cast<size_t>(feature));
+    return procState.runtimeFeatures.test(static_cast<size_t>(feature));
 }
 
 void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
@@ -85,7 +85,7 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         }
     }
 
-    for (RuntimeFeature feature : runtimeOrder)
+    for (RuntimeFeature feature : procState.runtimeOrder)
     {
         const auto *desc = il::runtime::findRuntimeDescriptor(feature);
         assert(desc && "requested runtime feature missing from registry");
@@ -103,9 +103,9 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
 ///       was not previously tracked.
 void Lowerer::trackRuntime(RuntimeFeature feature)
 {
-    runtimeFeatures.set(static_cast<size_t>(feature));
-    if (runtimeSet.insert(feature).second)
-        runtimeOrder.push_back(feature);
+    procState.runtimeFeatures.set(static_cast<size_t>(feature));
+    if (procState.runtimeSet.insert(feature).second)
+        procState.runtimeOrder.push_back(feature);
 }
 
 } // namespace il::frontends::basic

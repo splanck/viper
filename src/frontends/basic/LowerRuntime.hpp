@@ -5,14 +5,6 @@
 // Links: docs/class-catalog.md
 #pragma once
 
-struct RuntimeFeatureHash
-{
-    size_t operator()(RuntimeFeature f) const;
-};
-
-std::vector<RuntimeFeature> runtimeOrder;
-std::unordered_set<RuntimeFeature, RuntimeFeatureHash> runtimeSet;
-
 void requestHelper(RuntimeFeature feature);
 bool isHelperNeeded(RuntimeFeature feature) const;
 void trackRuntime(RuntimeFeature feature);

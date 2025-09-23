@@ -42,11 +42,11 @@ void Lowerer::emitProgram(const Program &prog)
     for (const auto &s : prog.main)
         mainStmts.push_back(s.get());
 
-    lineBlocks.clear();
+    procState.reset();
 
     Function &f = b.startFunction("main", Type(Type::Kind::I64), {});
     func = &f;
-    nextTemp = func->valueNames.size();
+    procState.nextTemp = func->valueNames.size();
 
     b.addBlock(f, "entry");
 
@@ -57,15 +57,15 @@ void Lowerer::emitProgram(const Program &prog)
         b.addBlock(f, mangler.block("L" + std::to_string(stmt->line)));
         lines.push_back(stmt->line);
     }
-    fnExit = f.blocks.size();
+    procState.fnExit = f.blocks.size();
     b.addBlock(f, mangler.block("exit"));
 
     for (size_t i = 0; i < lines.size(); ++i)
-        lineBlocks[lines[i]] = i + 1;
+        procState.lineBlocks[lines[i]] = i + 1;
 
-    vars.clear();
-    arrays.clear();
-    varTypes.clear();
+    procState.vars.clear();
+    procState.arrays.clear();
+    procState.varTypes.clear();
     collectVars(mainStmts);
 
     // allocate slots in entry
@@ -86,7 +86,7 @@ void Lowerer::emitProgram(const Program &prog)
             [&](const Stmt &stmt) { curLoc = stmt.loc; });
     }
 
-    cur = &f.blocks[fnExit];
+    cur = &f.blocks[procState.fnExit];
     curLoc = {};
     emitRet(Value::constInt(0));
 }
@@ -167,16 +167,16 @@ Lowerer::IlValue Lowerer::emitBoolFromBranches(const std::function<void(Value)> 
 /// failing path can trap via the runtime helper before control resumes at the success block.
 Value Lowerer::lowerArrayAddr(const ArrayExpr &expr)
 {
-    auto it = varSlots.find(expr.name);
-    assert(it != varSlots.end());
+    auto it = procState.varSlots.find(expr.name);
+    assert(it != procState.varSlots.end());
     Value slot = Value::temp(it->second);
     Value base = emitLoad(Type(Type::Kind::Ptr), slot);
     RVal idx = lowerExpr(*expr.index);
     curLoc = expr.loc;
     if (boundsChecks)
     {
-        auto lenIt = arrayLenSlots.find(expr.name);
-        assert(lenIt != arrayLenSlots.end());
+        auto lenIt = procState.arrayLenSlots.find(expr.name);
+        assert(lenIt != procState.arrayLenSlots.end());
         Value len = emitLoad(Type(Type::Kind::I64), Value::temp(lenIt->second));
         Value neg = emitBinary(Opcode::SCmpLT, ilBoolTy(), idx.value, Value::constInt(0));
         Value ge = emitBinary(Opcode::SCmpGE, ilBoolTy(), idx.value, len);
@@ -186,18 +186,19 @@ Value Lowerer::lowerArrayAddr(const ArrayExpr &expr)
         Value cond = emitUnary(Opcode::Trunc1, ilBoolTy(), or64);
         size_t curIdx = static_cast<size_t>(cur - &func->blocks[0]);
         size_t okIdx = func->blocks.size();
-        std::string okLbl = blockNamer ? blockNamer->tag("bc_ok" + std::to_string(boundsCheckId))
-                                       : mangler.block("bc_ok" + std::to_string(boundsCheckId));
+        std::string okLbl = blockNamer
+                                ? blockNamer->tag("bc_ok" + std::to_string(procState.boundsCheckId))
+                                : mangler.block("bc_ok" + std::to_string(procState.boundsCheckId));
         builder->addBlock(*func, okLbl);
         size_t failIdx = func->blocks.size();
         std::string failLbl = blockNamer
-                                  ? blockNamer->tag("bc_fail" + std::to_string(boundsCheckId))
-                                  : mangler.block("bc_fail" + std::to_string(boundsCheckId));
+                                  ? blockNamer->tag("bc_fail" + std::to_string(procState.boundsCheckId))
+                                  : mangler.block("bc_fail" + std::to_string(procState.boundsCheckId));
         builder->addBlock(*func, failLbl);
         BasicBlock *ok = &func->blocks[okIdx];
         BasicBlock *fail = &func->blocks[failIdx];
         cur = &func->blocks[curIdx];
-        ++boundsCheckId;
+        ++procState.boundsCheckId;
         emitCBr(cond, fail, ok);
         cur = fail;
         std::string msg = "bounds check failed: " + expr.name + "[i]";
@@ -470,7 +471,7 @@ std::string Lowerer::getStringLabel(const std::string &s)
 /// explicit debug name exists for the id.
 unsigned Lowerer::nextTempId()
 {
-    unsigned id = builder ? builder->reserveTempId() : nextTemp++;
+    unsigned id = builder ? builder->reserveTempId() : procState.nextTemp++;
     if (func)
     {
         if (func->valueNames.size() <= id)
@@ -478,8 +479,8 @@ unsigned Lowerer::nextTempId()
         if (func->valueNames[id].empty())
             func->valueNames[id] = "%t" + std::to_string(id);
     }
-    if (nextTemp <= id)
-        nextTemp = id + 1;
+    if (procState.nextTemp <= id)
+        procState.nextTemp = id + 1;
     return id;
 }
 

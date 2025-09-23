@@ -210,19 +210,10 @@ class Lowerer
     Module *mod{nullptr};
     Function *func{nullptr};
     BasicBlock *cur{nullptr};
-    size_t fnExit{0};
     NameMangler mangler;
-    unsigned nextTemp{0};
-    std::unordered_map<int, size_t> lineBlocks;
-    std::unordered_map<std::string, unsigned> varSlots;
-    std::unordered_map<std::string, unsigned> arrayLenSlots;
-    std::unordered_map<std::string, AstType> varTypes;
     std::unordered_map<std::string, std::string> strings;
-    std::unordered_set<std::string> vars;
-    std::unordered_set<std::string> arrays;
     il::support::SourceLoc curLoc{}; ///< current source location for emitted IR
     bool boundsChecks{false};
-    unsigned boundsCheckId{0};
     std::unordered_map<std::string, ProcedureSignature> procSignatures;
 
     // runtime requirement tracking
@@ -231,7 +222,32 @@ class Lowerer
     static constexpr size_t kRuntimeFeatureCount =
         static_cast<size_t>(RuntimeFeature::Count);
 
-    std::bitset<kRuntimeFeatureCount> runtimeFeatures;
+    struct RuntimeFeatureHash
+    {
+        size_t operator()(RuntimeFeature f) const;
+    };
+
+    /// @brief Aggregates per-procedure lowering state.
+    /// @invariant Must be reset between procedures to avoid leaking metadata.
+    struct ProcedureState
+    {
+        size_t fnExit{0};
+        unsigned nextTemp{0};
+        unsigned boundsCheckId{0};
+        std::unordered_map<int, size_t> lineBlocks;
+        std::unordered_map<std::string, unsigned> varSlots;
+        std::unordered_map<std::string, unsigned> arrayLenSlots;
+        std::unordered_map<std::string, AstType> varTypes;
+        std::unordered_set<std::string> vars;
+        std::unordered_set<std::string> arrays;
+        std::bitset<kRuntimeFeatureCount> runtimeFeatures;
+        std::vector<RuntimeFeature> runtimeOrder;
+        std::unordered_set<RuntimeFeature, RuntimeFeatureHash> runtimeSet;
+
+        void reset();
+    };
+
+    ProcedureState procState{};
 
 #include "frontends/basic/LowerRuntime.hpp"
 #include "frontends/basic/LowerScan.hpp"

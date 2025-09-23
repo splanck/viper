@@ -125,8 +125,8 @@ void Lowerer::lowerLet(const LetStmt &stmt)
     RVal v = lowerExpr(*stmt.expr);
     if (auto *var = dynamic_cast<const VarExpr *>(stmt.target.get()))
     {
-        auto it = varSlots.find(var->name);
-        assert(it != varSlots.end());
+        auto it = procState.varSlots.find(var->name);
+        assert(it != procState.varSlots.end());
         SlotType slotInfo = getSlotType(var->name);
         Type targetTy = slotInfo.type;
         bool isStr = targetTy.kind == Type::Kind::Str;
@@ -570,8 +570,8 @@ void Lowerer::lowerFor(const ForStmt &stmt)
     RVal start = lowerExpr(*stmt.start);
     RVal end = lowerExpr(*stmt.end);
     RVal step = stmt.step ? lowerExpr(*stmt.step) : RVal{Value::constInt(1), Type(Type::Kind::I64)};
-    auto it = varSlots.find(stmt.var);
-    assert(it != varSlots.end());
+    auto it = procState.varSlots.find(stmt.var);
+    assert(it != procState.varSlots.end());
     Value slot = Value::temp(it->second);
     curLoc = stmt.loc;
     emitStore(Type(Type::Kind::I64), slot, start.value);
@@ -606,8 +606,8 @@ void Lowerer::lowerNext(const NextStmt &next)
 ///          the current block as terminated.
 void Lowerer::lowerGoto(const GotoStmt &stmt)
 {
-    auto it = lineBlocks.find(stmt.target);
-    if (it != lineBlocks.end())
+    auto it = procState.lineBlocks.find(stmt.target);
+    if (it != procState.lineBlocks.end())
     {
         curLoc = stmt.loc;
         emitBr(&func->blocks[it->second]);
@@ -622,7 +622,7 @@ void Lowerer::lowerGoto(const GotoStmt &stmt)
 void Lowerer::lowerEnd(const EndStmt &stmt)
 {
     curLoc = stmt.loc;
-    emitBr(&func->blocks[fnExit]);
+    emitBr(&func->blocks[procState.fnExit]);
 }
 
 /// @brief Lower an INPUT statement.
@@ -646,7 +646,7 @@ void Lowerer::lowerInput(const InputStmt &stmt)
     }
     Value s = emitCallRet(Type(Type::Kind::Str), "rt_input_line", {});
     SlotType slotInfo = getSlotType(stmt.var);
-    Value target = Value::temp(varSlots[stmt.var]);
+    Value target = Value::temp(procState.varSlots[stmt.var]);
     if (slotInfo.type.kind == Type::Kind::Str)
     {
         emitStore(Type(Type::Kind::Str), target, s);
@@ -688,13 +688,13 @@ void Lowerer::lowerDim(const DimStmt &stmt)
     curLoc = stmt.loc;
     Value bytes = emitBinary(Opcode::Mul, Type(Type::Kind::I64), sz.value, Value::constInt(8));
     Value base = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {bytes});
-    auto it = varSlots.find(stmt.name);
-    assert(it != varSlots.end());
+    auto it = procState.varSlots.find(stmt.name);
+    assert(it != procState.varSlots.end());
     emitStore(Type(Type::Kind::Ptr), Value::temp(it->second), base);
     if (boundsChecks)
     {
-        auto lenIt = arrayLenSlots.find(stmt.name);
-        if (lenIt != arrayLenSlots.end())
+        auto lenIt = procState.arrayLenSlots.find(stmt.name);
+        if (lenIt != procState.arrayLenSlots.end())
             emitStore(Type(Type::Kind::I64), Value::temp(lenIt->second), sz.value);
     }
 }

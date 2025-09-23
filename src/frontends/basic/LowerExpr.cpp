@@ -134,8 +134,8 @@ class LowererExprVisitor final : public ExprVisitor
 Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v)
 {
     curLoc = v.loc;
-    auto it = varSlots.find(v.name);
-    assert(it != varSlots.end());
+    auto it = procState.varSlots.find(v.name);
+    assert(it != procState.varSlots.end());
     Value ptr = Value::temp(it->second);
     SlotType info = getSlotType(v.name);
     Type ty = info.type;
