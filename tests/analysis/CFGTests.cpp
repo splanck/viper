@@ -39,6 +39,18 @@ int main()
     b.setInsertPoint(join);
     b.emitRet(std::nullopt, {});
 
+    Function &other = b.startFunction("g", Type(Type::Kind::Void), {});
+    b.createBlock(other, "entry");
+    b.createBlock(other, "t");
+    Block &otherEntry = other.blocks[0];
+    Block &otherT = other.blocks[1];
+
+    b.setInsertPoint(otherEntry);
+    b.br(otherT, {});
+
+    b.setInsertPoint(otherT);
+    b.emitRet(std::nullopt, {});
+
     viper::analysis::CFGContext ctx(m);
 
     auto sEntry = successors(ctx, entry);
@@ -51,6 +63,11 @@ int main()
     assert(sF.size() == 1 && sF[0] == &join);
     auto sJoin = successors(ctx, join);
     assert(sJoin.empty());
+
+    auto sOtherEntry = successors(ctx, otherEntry);
+    assert(sOtherEntry.size() == 1 && sOtherEntry[0] == &otherT);
+    auto sOtherT = successors(ctx, otherT);
+    assert(sOtherT.empty());
 
     auto pJoin = predecessors(ctx, join);
     assert(pJoin.size() == 2);
