@@ -525,6 +525,10 @@ add_executable(test_basic_parse_loops unit/test_basic_parse_loops.cpp)
 target_link_libraries(test_basic_parse_loops PRIVATE fe_basic support)
 add_test(NAME test_basic_parse_loops COMMAND test_basic_parse_loops)
 
+add_executable(test_frontends_basic_statement_context frontends/basic/ParserStatementContextTests.cpp)
+target_link_libraries(test_frontends_basic_statement_context PRIVATE fe_basic support)
+add_test(NAME test_frontends_basic_statement_context COMMAND test_frontends_basic_statement_context)
+
 add_executable(test_basic_intrinsics unit/test_basic_intrinsics.cpp)
 target_link_libraries(test_basic_intrinsics PRIVATE fe_basic support)
 add_test(NAME test_basic_intrinsics COMMAND test_basic_intrinsics)
