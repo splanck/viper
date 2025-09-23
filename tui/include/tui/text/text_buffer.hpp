@@ -1,18 +1,20 @@
 // tui/include/tui/text/text_buffer.hpp
-// @brief Piece table based text buffer with grouped undo/redo.
-// @invariant Positions are byte offsets; inserts append to add buffer without copying existing
-// text.
-// @ownership TextBuffer owns original and add buffers, callers own returned strings.
+// @brief Piece-table-backed text buffer composing line index and edit history.
+// @invariant Byte offsets remain stable across helpers; helpers receive change callbacks.
+// @ownership TextBuffer owns storage helpers and returns copies for callers.
 #pragma once
 
-#include <list>
+#include "tui/text/EditHistory.hpp"
+#include "tui/text/LineIndex.hpp"
+#include "tui/text/PieceTable.hpp"
+
+#include <cstddef>
 #include <string>
 #include <string_view>
-#include <vector>
 
 namespace viper::tui::text
 {
-/// @brief Text buffer using a piece table.
+/// @brief Text buffer orchestrating piece table, line index, and history.
 class TextBuffer
 {
   public:
@@ -20,10 +22,10 @@ class TextBuffer
     void load(std::string text);
 
     /// @brief Insert text at byte position.
-    void insert(size_t pos, std::string_view text);
+    void insert(std::size_t pos, std::string_view text);
 
     /// @brief Erase len bytes starting at pos.
-    void erase(size_t pos, size_t len);
+    void erase(std::size_t pos, std::size_t len);
 
     /// @brief Begin a transaction grouping subsequent edits.
     void beginTxn();
@@ -38,64 +40,17 @@ class TextBuffer
     [[nodiscard]] bool redo();
 
     /// @brief Get line content without trailing newline.
-    [[nodiscard]] std::string getLine(size_t lineNo) const;
+    [[nodiscard]] std::string getLine(std::size_t lineNo) const;
 
     /// @brief Get full buffer content.
     [[nodiscard]] std::string str() const;
 
     /// @brief Total byte length.
-    [[nodiscard]] size_t size() const;
+    [[nodiscard]] std::size_t size() const;
 
   private:
-    enum class BufferKind
-    {
-        Original,
-        Add
-    };
-
-    struct Piece
-    {
-        BufferKind buf;
-        size_t start;
-        size_t length;
-    };
-
-    enum class OpType
-    {
-        Insert,
-        Erase
-    };
-
-    struct Op
-    {
-        OpType type;
-        size_t pos;
-        std::string text; // inserted or removed text
-    };
-
-    using Txn = std::vector<Op>;
-
-    // buffers and pieces
-    std::list<Piece> pieces_{};
-    std::string original_{};
-    std::string add_{};
-    size_t size_{};
-
-    // line index: start offset of each line
-    std::vector<size_t> line_starts_{};
-
-    // undo/redo stacks
-    std::vector<Txn> undo_stack_{};
-    std::vector<Txn> redo_stack_{};
-    bool in_txn_{};
-    Txn txn_ops_{};
-
-    // helpers
-    void insertInternal(size_t pos, std::string_view text);
-    void eraseInternal(size_t pos, size_t len);
-    std::string getText(size_t pos, size_t len) const;
-    std::list<Piece>::iterator findPiece(size_t pos, size_t &offset);
-    void updateLinesInsert(size_t pos, std::string_view text);
-    void updateLinesErase(size_t pos, size_t len);
+    PieceTable table_{};
+    LineIndex line_index_{};
+    EditHistory history_{};
 };
 } // namespace viper::tui::text
