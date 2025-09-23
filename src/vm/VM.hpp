@@ -187,7 +187,7 @@ class VM
                      std::unordered_map<std::string, const il::core::BasicBlock *> &blocks,
                      const il::core::BasicBlock *&bb);
 
-    /// @brief Handle pending debug breaks and parameter transfers.
+    /// @brief Handle pending debug breaks at block entry or instruction boundaries.
     /// @param fr Current frame.
     /// @param bb Current basic block.
     /// @param ip Instruction index within @p bb.
@@ -199,6 +199,11 @@ class VM
                                          size_t ip,
                                          bool &skipBreakOnce,
                                          const il::core::Instr *in);
+
+    /// @brief Transfer pending parameters for @p bb into @p fr.
+    /// @param fr Frame whose registers receive parameter values.
+    /// @param bb Basic block whose parameters are being populated.
+    void transferBlockParams(Frame &fr, const il::core::BasicBlock &bb);
 
     /// @brief Execute instruction @p in updating control flow state.
     /// @param fr Current frame.

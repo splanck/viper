@@ -21,12 +21,41 @@ using namespace il::core;
 namespace il::vm
 {
 
+/// Apply pending block parameter transfers for the given block.
+///
+/// Any arguments staged by a predecessor terminator are copied into the frame's
+/// register file and announced to the debug controller. Parameters are cleared
+/// after transfer so repeated calls are harmless when no updates remain.
+///
+/// @param fr Current frame whose registers receive parameter values.
+/// @param bb Basic block that has just become active.
+void VM::transferBlockParams(Frame &fr, const BasicBlock &bb)
+{
+    for (const auto &p : bb.params)
+    {
+        assert(p.id < fr.params.size());
+        auto &pending = fr.params[p.id];
+        if (!pending)
+            continue;
+        if (fr.regs.size() <= p.id)
+            fr.regs.resize(p.id + 1);
+        fr.regs[p.id] = *pending;
+        debug.onStore(p.name,
+                      p.type.kind,
+                      fr.regs[p.id].i64,
+                      fr.regs[p.id].f64,
+                      fr.func->name,
+                      bb.label,
+                      0);
+        pending.reset();
+    }
+}
+
 /// Manage a potential debug break before or after executing an instruction.
 ///
 /// Checks label and source line breakpoints using @c DebugCtrl. When a break is
 /// hit the optional @c DebugScript controls stepping; otherwise a fixed slot is
-/// returned to pause execution. Pending block parameter transfers are also
-/// applied here when entering a new block.
+/// returned to pause execution.
 ///
 /// @param fr            Current frame.
 /// @param bb            Current basic block.
@@ -53,24 +82,6 @@ std::optional<Slot> VM::handleDebugBreak(
             if (act.kind == DebugActionKind::Step)
                 stepBudget = act.count;
             skipBreakOnce = true;
-        }
-        for (const auto &p : bb.params)
-        {
-            assert(p.id < fr.params.size());
-            auto &pending = fr.params[p.id];
-            if (!pending)
-                continue;
-            if (fr.regs.size() <= p.id)
-                fr.regs.resize(p.id + 1);
-            fr.regs[p.id] = *pending;
-            debug.onStore(p.name,
-                          p.type.kind,
-                          fr.regs[p.id].i64,
-                          fr.regs[p.id].f64,
-                          fr.func->name,
-                          bb.label,
-                          0);
-            pending.reset();
         }
         return std::nullopt;
     }
@@ -110,6 +121,8 @@ std::optional<Slot> VM::processDebugControl(ExecState &st, const Instr *in, bool
             s.i64 = 1;
             return s;
         }
+        if (st.ip == 0 && st.bb)
+            transferBlockParams(st.fr, *st.bb);
         if (st.ip == 0 && stepBudget == 0 && !st.skipBreakOnce)
             if (auto br = handleDebugBreak(st.fr, *st.bb, st.ip, st.skipBreakOnce, nullptr))
                 return br;
