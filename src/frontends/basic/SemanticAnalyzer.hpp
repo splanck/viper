@@ -26,6 +26,12 @@ namespace il::frontends::basic
 class SemanticAnalyzerExprVisitor;
 class SemanticAnalyzerStmtVisitor;
 
+namespace semantic_analyzer_detail
+{
+struct ExprRule;
+const ExprRule &exprRule(BinaryExpr::Op op);
+}
+
 /// @brief Traverses BASIC AST to collect symbols and labels, validate variable
 ///        references, and verify FOR/NEXT nesting.
 /// @invariant Symbol table only contains definitions; unknown uses report
@@ -65,6 +71,8 @@ class SemanticAnalyzer
   private:
     friend class SemanticAnalyzerExprVisitor;
     friend class SemanticAnalyzerStmtVisitor;
+    friend const semantic_analyzer_detail::ExprRule &
+    semantic_analyzer_detail::exprRule(BinaryExpr::Op op);
 
     /// @brief Record symbols and labels from a statement.
     /// @param s Statement node to analyze.
@@ -183,14 +191,35 @@ class SemanticAnalyzer
     Type analyzeUnary(const UnaryExpr &u);
     /// @brief Analyze binary expression.
     Type analyzeBinary(const BinaryExpr &b);
-    /// @brief Analyze arithmetic operators (+, -, *).
-    Type analyzeArithmetic(const BinaryExpr &b, Type lt, Type rt);
-    /// @brief Analyze division and modulus operators.
-    Type analyzeDivMod(const BinaryExpr &b, Type lt, Type rt);
-    /// @brief Analyze comparison operators (==, <>, <, <=, >, >=).
-    Type analyzeComparison(const BinaryExpr &b, Type lt, Type rt);
-    /// @brief Analyze logical operators (AND, OR).
-    Type analyzeLogical(const BinaryExpr &b, Type lt, Type rt);
+    /// @brief Emit operand type mismatch diagnostic for binary expressions.
+    void emitOperandTypeMismatch(const BinaryExpr &expr, std::string_view diagId);
+    /// @brief Emit divide-by-zero diagnostic when appropriate.
+    void emitDivideByZero(const BinaryExpr &expr);
+    /// @brief Ensure operands are numeric (INT or FLOAT) when required.
+    void validateNumericOperands(const BinaryExpr &expr,
+                                 Type lhs,
+                                 Type rhs,
+                                 std::string_view diagId);
+    /// @brief Validate division operands and detect divide-by-zero.
+    void validateDivisionOperands(const BinaryExpr &expr,
+                                  Type lhs,
+                                  Type rhs,
+                                  std::string_view diagId);
+    /// @brief Validate integer-only operators and detect divide-by-zero.
+    void validateIntegerOperands(const BinaryExpr &expr,
+                                 Type lhs,
+                                 Type rhs,
+                                 std::string_view diagId);
+    /// @brief Validate comparison operands allowing numeric or string equality.
+    void validateComparisonOperands(const BinaryExpr &expr,
+                                    Type lhs,
+                                    Type rhs,
+                                    std::string_view diagId);
+    /// @brief Validate logical operators requiring BOOLEAN operands.
+    void validateLogicalOperands(const BinaryExpr &expr,
+                                 Type lhs,
+                                 Type rhs,
+                                 std::string_view diagId);
     /// @brief Analyze built-in function call.
     Type analyzeBuiltinCall(const BuiltinCallExpr &c);
 
