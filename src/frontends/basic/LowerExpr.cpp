@@ -127,19 +127,19 @@ class LowererExprVisitor final : public ExprVisitor
 /// @details
 /// - Control flow: Executes entirely within the current basic block without
 ///   branching or block creation.
-/// - Emitted IL: Issues a load from the stack slot recorded in
-///   @ref varSlots, selecting pointer, string, floating, or boolean types as
+/// - Emitted IL: Issues a load from the stack slot recorded in the symbol
+///   metadata, selecting pointer, string, floating, or boolean types as
 ///   required.
 /// - Side effects: Updates @ref curLoc so diagnostics and subsequent
 ///   instructions are tagged with @p v's source location.
 Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v)
 {
     curLoc = v.loc;
-    auto it = varSlots.find(v.name);
-    assert(it != varSlots.end());
-    Value ptr = Value::temp(it->second);
-    SlotType info = getSlotType(v.name);
-    Type ty = info.type;
+    const auto *sym = findSymbol(v.name);
+    assert(sym && sym->slotId);
+    Value ptr = Value::temp(*sym->slotId);
+    SlotType slotInfo = getSlotType(v.name);
+    Type ty = slotInfo.type;
     Value val = emitLoad(ty, ptr);
     return {val, ty};
 }

@@ -64,9 +64,7 @@ void Lowerer::emitProgram(const Program &prog)
     for (size_t i = 0; i < lines.size(); ++i)
         lineBlocks[lines[i]] = i + 1;
 
-    vars.clear();
-    arrays.clear();
-    varTypes.clear();
+    resetSymbolState();
     collectVars(mainStmts);
 
     // allocate slots in entry
@@ -162,23 +160,22 @@ Lowerer::IlValue Lowerer::emitBoolFromBranches(const std::function<void(Value)> 
 /// @brief Lower the address of a BASIC array element, inserting bounds checks if enabled.
 /// @param expr Array access expression referencing a declared BASIC array.
 /// @return Address pointing at the computed element.
-/// @details The base pointer is recovered from @c varSlots and arithmetic is emitted in the
+/// @details The base pointer is recovered from the symbol table and arithmetic is emitted in the
 /// current block identified by @c cur. When bounds checking is active, additional ok/fail blocks
 /// are created through @c builder and named with @c blockNamer (falling back to @c mangler) so the
 /// failing path can trap via the runtime helper before control resumes at the success block.
 Value Lowerer::lowerArrayAddr(const ArrayExpr &expr)
 {
-    auto it = varSlots.find(expr.name);
-    assert(it != varSlots.end());
-    Value slot = Value::temp(it->second);
+    const auto *info = findSymbol(expr.name);
+    assert(info && info->slotId);
+    Value slot = Value::temp(*info->slotId);
     Value base = emitLoad(Type(Type::Kind::Ptr), slot);
     RVal idx = lowerExpr(*expr.index);
     curLoc = expr.loc;
     if (boundsChecks)
     {
-        auto lenIt = arrayLenSlots.find(expr.name);
-        assert(lenIt != arrayLenSlots.end());
-        Value len = emitLoad(Type(Type::Kind::I64), Value::temp(lenIt->second));
+        assert(info->arrayLengthSlot);
+        Value len = emitLoad(Type(Type::Kind::I64), Value::temp(*info->arrayLengthSlot));
         Value neg = emitBinary(Opcode::SCmpLT, ilBoolTy(), idx.value, Value::constInt(0));
         Value ge = emitBinary(Opcode::SCmpGE, ilBoolTy(), idx.value, len);
         Value neg64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), neg);
@@ -450,17 +447,17 @@ void Lowerer::emitTrap()
 /// @brief Retrieve or create the global label for a string literal.
 /// @param s Literal contents.
 /// @return Stable label used to refer to the literal.
-/// @details Caches previously generated labels in @c strings and requests @c builder to emit the
-/// global if the literal is first seen.
+/// @details Caches previously generated labels in the symbol map and requests
+/// @c builder to emit the global if the literal is first seen.
 std::string Lowerer::getStringLabel(const std::string &s)
 {
-    auto it = strings.find(s);
-    if (it != strings.end())
-        return it->second;
-    std::string name = ".L" + std::to_string(strings.size());
+    auto &info = ensureSymbol(s);
+    if (!info.stringLabel.empty())
+        return info.stringLabel;
+    std::string name = ".L" + std::to_string(nextStringId++);
     builder->addGlobalStr(name, s);
-    strings[s] = name;
-    return name;
+    info.stringLabel = name;
+    return info.stringLabel;
 }
 
 /// @brief Acquire the next temporary identifier compatible with the builder's numbering.
