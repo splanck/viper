@@ -247,6 +247,10 @@ add_executable(test_rt_alloc_zero runtime/RTAllocZeroTests.cpp)
 target_link_libraries(test_rt_alloc_zero PRIVATE rt)
 add_test(NAME test_rt_alloc_zero COMMAND test_rt_alloc_zero)
 
+add_executable(test_rt_alloc_zero_fill runtime/RTAllocZeroFillTests.cpp)
+target_link_libraries(test_rt_alloc_zero_fill PRIVATE rt)
+add_test(NAME test_rt_alloc_zero_fill COMMAND test_rt_alloc_zero_fill)
+
 add_executable(test_rt_input_line runtime/RTInputLineTests.cpp)
 target_link_libraries(test_rt_input_line PRIVATE rt)
 add_test(NAME test_rt_input_line COMMAND test_rt_input_line)
