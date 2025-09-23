@@ -8,7 +8,6 @@
 
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/Lowerer.hpp"
-#include "frontends/basic/SemanticAnalyzer.hpp"
 #include <cstddef>
 #include <optional>
 #include <string_view>
@@ -16,20 +15,93 @@
 
 namespace il::frontends::basic
 {
+/// @brief Primitive value categories supported by builtin metadata.
+enum class BuiltinValueKind
+{
+    Int,   ///< Integral values.
+    Float, ///< Floating-point values.
+    String, ///< String values.
+    Bool,  ///< Boolean values.
+};
+
+/// @brief Bitmask describing allowed argument types.
+enum class BuiltinTypeSet : unsigned
+{
+    None = 0,
+    Int = 1u << 0,
+    Float = 1u << 1,
+    String = 1u << 2,
+    Bool = 1u << 3,
+};
+
+constexpr BuiltinTypeSet operator|(BuiltinTypeSet lhs, BuiltinTypeSet rhs)
+{
+    return static_cast<BuiltinTypeSet>(static_cast<unsigned>(lhs) |
+                                       static_cast<unsigned>(rhs));
+}
+
+constexpr BuiltinTypeSet operator&(BuiltinTypeSet lhs, BuiltinTypeSet rhs)
+{
+    return static_cast<BuiltinTypeSet>(static_cast<unsigned>(lhs) &
+                                       static_cast<unsigned>(rhs));
+}
+
+constexpr BuiltinTypeSet operator~(BuiltinTypeSet value)
+{
+    return static_cast<BuiltinTypeSet>(~static_cast<unsigned>(value));
+}
+
+inline bool contains(BuiltinTypeSet set, BuiltinTypeSet mask)
+{
+    return (set & mask) == mask;
+}
+
+/// @brief Declarative semantic rules for builtin analysis.
+struct BuiltinSemantics
+{
+    /// @brief Result computation strategy.
+    struct ResultSpec
+    {
+        enum class Kind
+        {
+            Fixed,   ///< Always returns the specified @ref type.
+            FromArg, ///< Mirrors the type of @ref argIndex when available.
+        } kind{Kind::Fixed};
+
+        BuiltinValueKind type{BuiltinValueKind::Int}; ///< Fixed result or fallback type.
+        std::size_t argIndex{0}; ///< Argument index inspected for FromArg results.
+
+        static ResultSpec fixed(BuiltinValueKind t)
+        {
+            return {Kind::Fixed, t, 0};
+        }
+
+        static ResultSpec fromArg(std::size_t idx, BuiltinValueKind fallback)
+        {
+            return {Kind::FromArg, fallback, idx};
+        }
+    };
+
+    /// @brief Argument specification for a single arity signature.
+    struct Signature
+    {
+        std::vector<BuiltinTypeSet> args{}; ///< Allowed types for each argument.
+    };
+
+    std::size_t minArgs{0}; ///< Minimum accepted arguments.
+    std::size_t maxArgs{0}; ///< Maximum accepted arguments.
+    std::vector<Signature> signatures{}; ///< Supported arity/type combinations.
+    ResultSpec result{}; ///< Result computation rule.
+};
+
 /// @brief Metadata for a BASIC built-in function.
 struct BuiltinInfo
 {
-    const char *name;    ///< BASIC source spelling.
-    std::size_t minArgs; ///< Minimum accepted arguments.
-    std::size_t maxArgs; ///< Maximum accepted arguments.
-
-    using AnalyzeFn = SemanticAnalyzer::Type (SemanticAnalyzer::*)(
-        const BuiltinCallExpr &, const std::vector<SemanticAnalyzer::Type> &);
-    AnalyzeFn analyze; ///< Semantic analysis hook.
+    const char *name;                    ///< BASIC source spelling.
+    const BuiltinSemantics *semantics;   ///< Declarative semantic rules.
 
     using LowerFn = typename Lowerer::RVal (Lowerer::*)(const BuiltinCallExpr &);
     LowerFn lower; ///< Lowering hook.
-
 };
 
 /// @brief Lookup builtin info by enum.
@@ -41,20 +113,6 @@ std::optional<BuiltinCallExpr::Builtin> lookupBuiltin(std::string_view name);
 /// @brief Declarative scan rule describing runtime requirements for a builtin.
 struct BuiltinScanRule
 {
-    /// @brief How the builtin's result type should be computed.
-    struct ResultSpec
-    {
-        /// @brief Result strategy used during scanning.
-        enum class Kind
-        {
-            Fixed,    ///< Always yields the @ref type supplied below.
-            FromArg,  ///< Mirrors the type inferred for a specific argument.
-        } kind{Kind::Fixed};
-
-        Lowerer::ExprType type{Lowerer::ExprType::I64}; ///< Fixed type or fallback.
-        std::size_t argIndex{0};                        ///< Argument index for FromArg.
-    } result{};
-
     /// @brief How scanning should traverse the builtin's argument list.
     enum class ArgTraversal
     {
