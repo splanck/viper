@@ -7,6 +7,7 @@
 
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/LoweringPipeline.hpp"
+#include "frontends/basic/TypeSuffix.hpp"
 #include "il/build/IRBuilder.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -17,7 +18,6 @@
 namespace il::frontends::basic
 {
 
-using pipeline_detail::astTypeFromName;
 using pipeline_detail::coreTypeForAstType;
 
 namespace
@@ -93,7 +93,7 @@ class VarCollectExprVisitor final : public ExprVisitor
             return;
         if (varTypes_.find(name) != varTypes_.end())
             return;
-        varTypes_[name] = astTypeFromName(name);
+        varTypes_[name] = inferAstTypeFromName(name);
     }
 
     std::unordered_set<std::string> &vars_;
@@ -178,7 +178,7 @@ class VarCollectStmtVisitor final : public StmtVisitor
         {
             vars_.insert(stmt.var);
             if (varTypes_.find(stmt.var) == varTypes_.end())
-                varTypes_[stmt.var] = astTypeFromName(stmt.var);
+                varTypes_[stmt.var] = inferAstTypeFromName(stmt.var);
         }
         if (stmt.start)
             stmt.start->accept(exprVisitor_);
@@ -209,7 +209,7 @@ class VarCollectStmtVisitor final : public StmtVisitor
         {
             vars_.insert(stmt.var);
             if (varTypes_.find(stmt.var) == varTypes_.end())
-                varTypes_[stmt.var] = astTypeFromName(stmt.var);
+                varTypes_[stmt.var] = inferAstTypeFromName(stmt.var);
         }
     }
 

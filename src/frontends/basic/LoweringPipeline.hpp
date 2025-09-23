@@ -10,7 +10,6 @@
 #include "il/core/Type.hpp"
 #include <functional>
 #include <string>
-#include <string_view>
 #include <vector>
 
 namespace il::frontends::basic
@@ -40,26 +39,6 @@ inline il::core::Type coreTypeForAstType(::il::frontends::basic::Type ty)
     return Type(Type::Kind::I64);
 }
 
-/// @brief Infer the BASIC AST type for an identifier by inspecting its suffix.
-/// @param name Identifier to analyze.
-/// @return BASIC type derived from the suffix; defaults to integer for suffix-free names.
-inline ::il::frontends::basic::Type astTypeFromName(std::string_view name)
-{
-    using AstType = ::il::frontends::basic::Type;
-    if (!name.empty())
-    {
-        switch (name.back())
-        {
-            case '$':
-                return AstType::Str;
-            case '#':
-                return AstType::F64;
-            default:
-                break;
-        }
-    }
-    return AstType::I64;
-}
 } // namespace pipeline_detail
 
 /// @brief Coordinates program-level lowering by seeding module state and driving emission.

@@ -8,6 +8,7 @@ add_library(fe_basic STATIC
   Parser_Expr.cpp
   Parser_Token.cpp
   NameMangler.cpp
+  TypeSuffix.cpp
   LoweringContext.cpp
   LoweringPipeline.cpp
   BuiltinRegistry.cpp
