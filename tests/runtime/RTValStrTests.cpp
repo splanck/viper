@@ -2,7 +2,7 @@
 // Purpose: Validate VAL and STR$ runtime conversions.
 // Key invariants: Parsing stops at non-numeric; round-trip within tolerance.
 // Ownership: Uses runtime library.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #include "rt_internal.h"
 #include <cassert>
 #include <cmath>

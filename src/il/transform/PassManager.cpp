@@ -11,7 +11,7 @@
 // Purpose: Implement the modular IL pass manager and analysis caching.
 // Key invariants: Pipelines execute in registration order; analyses obey preservation contracts.
 // Ownership/Lifetime: PassManager owns factories; AnalysisManager caches live within a run.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "il/transform/PassManager.hpp"
 

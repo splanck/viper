@@ -2,7 +2,7 @@
 // Purpose: Validate BASIC parser statement context helpers for colon chains and nested flows.
 // Key invariants: StatementContext centralizes separator handling without altering AST shape.
 // Ownership/Lifetime: Test owns parser/source manager objects and inspects resulting AST.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/Parser.hpp"
 #include "support/source_manager.hpp"

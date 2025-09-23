@@ -2,7 +2,7 @@
 // Purpose: Declares modular lowering helpers composing the BASIC lowering pipeline.
 // Key invariants: Helpers operate on Lowerer state without taking ownership.
 // Ownership/Lifetime: Helper structs borrow a Lowerer instance for the duration of calls.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include "frontends/basic/AST.hpp"

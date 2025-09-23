@@ -2,7 +2,7 @@
 // Purpose: Declarations for ilc subcommand handlers and usage helper.
 // Key invariants: None.
 // Ownership/Lifetime: N/A.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #pragma once
 

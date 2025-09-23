@@ -2,7 +2,7 @@
 // Purpose: Ensure runtime bridge traps when unknown runtime helpers are invoked.
 // Key invariants: Calls to helpers absent from the runtime registry must produce traps in all build modes.
 // Ownership: Test constructs IL module and executes the VM in a child to capture diagnostics.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"

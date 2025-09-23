@@ -4,7 +4,7 @@
 // Key invariants: Control-flow block creation remains deterministic via
 //                 Lowerer::BlockNamer or NameMangler fallbacks.
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 // Requires the consolidated Lowerer interface for statement lowering helpers.
 #include "frontends/basic/Lowerer.hpp"

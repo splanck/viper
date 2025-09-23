@@ -2,7 +2,7 @@
 // Purpose: Unit test for BASIC intrinsic registry lookups.
 // Key invariants: Verifies parameter counts/types for selected intrinsics.
 // Ownership/Lifetime: Test owns nothing.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/Intrinsics.hpp"
 #include <cassert>

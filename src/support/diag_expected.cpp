@@ -3,7 +3,7 @@
 // License: MIT License. See LICENSE in the project root for details.
 // Key invariants: Diagnostics consistently report severity and optional source locations.
 // Ownership/Lifetime: Diagnostics own their message strings; no additional ownership here.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "diag_expected.hpp"
 

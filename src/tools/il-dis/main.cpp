@@ -3,7 +3,7 @@
 // License: MIT License (see LICENSE).
 // Key invariants: None.
 // Ownership/Lifetime: Tool owns constructed module.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "il/build/IRBuilder.hpp"
 #include "il/io/Serializer.hpp"

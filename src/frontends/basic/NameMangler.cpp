@@ -2,7 +2,7 @@
 // Purpose: Implements symbol mangling for BASIC frontend.
 // Key invariants: None.
 // Ownership/Lifetime: Uses strings managed externally.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/NameMangler.hpp"
 

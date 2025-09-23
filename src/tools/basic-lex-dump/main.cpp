@@ -3,7 +3,7 @@
 // Purpose: Command-line tool to dump BASIC tokens for golden tests.
 // Key invariants: None.
 // Ownership/Lifetime: Tool owns loaded source.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/Lexer.hpp"
 #include "frontends/basic/Token.hpp"

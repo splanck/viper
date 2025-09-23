@@ -2,7 +2,7 @@
 // Purpose: Implements IL optimization subcommand.
 // Key invariants: None.
 // Ownership/Lifetime: Tool owns loaded modules.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 // License: MIT.
 
 #include "il/transform/Mem2Reg.hpp"

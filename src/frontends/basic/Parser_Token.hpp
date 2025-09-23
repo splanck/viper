@@ -2,7 +2,7 @@
 // Purpose: Token navigation helpers for BASIC parser.
 // Key invariants: Buffer always holds current token.
 // Ownership/Lifetime: Parser owns lexer and token buffer.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 /// @brief Test whether the current token matches a given kind.

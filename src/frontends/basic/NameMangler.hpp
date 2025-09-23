@@ -2,7 +2,7 @@
 // Purpose: Declares symbol mangling helpers for BASIC frontend.
 // Key invariants: None.
 // Ownership/Lifetime: Functions allocate strings for caller.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include <string>

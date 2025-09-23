@@ -2,7 +2,7 @@
 // Purpose: Declares manager for source file identifiers.
 // Key invariants: File ID 0 is invalid.
 // Ownership/Lifetime: Manager owns file path strings.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include "source_location.hpp"

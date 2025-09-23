@@ -2,7 +2,7 @@
 // Purpose: Implements BASIC procedure registry behaviors and diagnostics.
 // Key invariants: Registry maintains unique procedure names and signatures.
 // Ownership/Lifetime: ProcRegistry borrows SemanticDiagnostics lifetime.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/ProcRegistry.hpp"
 

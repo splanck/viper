@@ -3,7 +3,7 @@
 //          semantic and lowering hooks.
 // Key invariants: Table order matches BuiltinCallExpr::Builtin enum.
 // Ownership/Lifetime: Static compile-time data only; no dynamic allocation.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include "frontends/basic/AST.hpp"

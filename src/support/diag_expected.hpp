@@ -2,7 +2,7 @@
 // Purpose: Provides diagnostic helpers and a lightweight Expected container for CLI tools.
 // Key invariants: Diagnostics encapsulate a single severity, message, and location; Expected holds either a value or diagnostic.
 // Ownership/Lifetime: Expected owns success payloads or diagnostics; diagnostics own their message buffers.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include "support/diagnostics.hpp"

@@ -2,7 +2,7 @@
 // Purpose: Ensure VM traps when alloca is missing size operand.
 // Key invariants: Alloca without size must emit "missing allocation size" trap.
 // Ownership: Test constructs IL module and executes VM.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"

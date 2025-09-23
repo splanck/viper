@@ -2,7 +2,7 @@
 // Purpose: Implement trivial dead-code elimination and block param cleanup.
 // Key invariants: Simplifications preserve verifier correctness.
 // Ownership/Lifetime: Mutates the module in place.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "il/transform/DCE.hpp"
 #include "il/core/Function.hpp"

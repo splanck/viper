@@ -2,7 +2,7 @@
 // Purpose: Verify VM trap messages include instruction source locations.
 // Key invariants: Trap output must reference function, block, and location.
 // Ownership: Test constructs IL module and executes VM.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"

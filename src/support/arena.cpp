@@ -2,7 +2,7 @@
 // Purpose: Implements bump allocator for short-lived objects.
 // Key invariants: None.
 // Ownership/Lifetime: Arena owns allocated memory until reset.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "arena.hpp"
 

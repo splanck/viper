@@ -8,7 +8,7 @@
 //                 validation consults ProcRegistry signatures.
 // Ownership/Lifetime: Borrowed DiagnosticEmitter; ProcRegistry managed by the
 //                     analyzer instance.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 

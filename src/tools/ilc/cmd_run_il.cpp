@@ -3,7 +3,7 @@
 // License: MIT (see LICENSE).
 // Key invariants: None.
 // Ownership/Lifetime: Tool owns loaded modules.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "vm/Debug.hpp"
 #include "vm/DebugScript.hpp"

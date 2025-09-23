@@ -2,7 +2,7 @@
 // Purpose: Ensure semantic analyzer reports descriptive intrinsic diagnostics.
 // Key invariants: Invalid calls produce specific messages; float widths allowed.
 // Ownership/Lifetime: Test owns all objects locally.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"

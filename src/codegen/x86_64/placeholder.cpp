@@ -2,7 +2,7 @@
 // Purpose: Stub implementation for x86_64 code generation library.
 // Key invariants: None.
 // Ownership/Lifetime: Not applicable.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 namespace il::codegen::x86_64
 {
 

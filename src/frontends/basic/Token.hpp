@@ -2,7 +2,7 @@
 // Purpose: Defines token types for BASIC lexer.
 // Key invariants: Tokens carry source locations.
 // Ownership/Lifetime: Tokens are value types.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include "support/source_location.hpp"

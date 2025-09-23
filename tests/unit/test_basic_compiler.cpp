@@ -2,7 +2,7 @@
 // Purpose: Verify the BASIC compiler pipeline produces IL from in-memory input.
 // Key invariants: Successful compilation yields IL functions with no diagnostics.
 // Ownership/Lifetime: Test owns compiler inputs and source manager.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/BasicCompiler.hpp"
 #include "support/source_manager.hpp"

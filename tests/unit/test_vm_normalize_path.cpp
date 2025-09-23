@@ -2,7 +2,7 @@
 // Purpose: Verify debug path normalization collapses separators and dot segments.
 // Key invariants: Backslashes become slashes; './' removed; 'dir/../' collapsed.
 // Ownership: Standalone executable.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #include "vm/Debug.hpp"
 #include <cassert>
 #include <string>

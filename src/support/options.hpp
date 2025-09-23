@@ -2,7 +2,7 @@
 // Purpose: Declares command-line option parsing helpers.
 // Key invariants: None.
 // Ownership/Lifetime: Caller owns option values.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include <string>

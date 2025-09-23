@@ -2,7 +2,7 @@
 // Purpose: Declare registry of BASIC intrinsic functions.
 // Key invariants: Table entries are immutable and cover all supported intrinsics.
 // Ownership/Lifetime: Intrinsic descriptors are static; callers must not free.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #pragma once
 

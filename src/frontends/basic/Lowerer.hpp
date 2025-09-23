@@ -3,7 +3,7 @@
 // centralized runtime declarations.
 // Key invariants: Procedure block labels are deterministic.
 // Ownership/Lifetime: Lowerer does not own AST or module.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #pragma once
 
 #include "frontends/basic/AST.hpp"

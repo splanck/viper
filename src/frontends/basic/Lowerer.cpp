@@ -5,7 +5,7 @@
 //          runtime declarations.
 // Key invariants: Block names inside procedures are deterministic via BlockNamer.
 // Ownership/Lifetime: Uses contexts managed externally.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/TypeSuffix.hpp"

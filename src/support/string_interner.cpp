@@ -2,7 +2,7 @@
 // Purpose: Implements string interning facility.
 // Key invariants: Symbol id 0 is reserved.
 // Ownership/Lifetime: Interner owns interned strings.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "string_interner.hpp"
 

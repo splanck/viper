@@ -2,7 +2,7 @@
 // Purpose: Ensure BASIC lexer handles high-bit characters without UB.
 // Key invariants: None.
 // Ownership/Lifetime: N/A (test).
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 #include "frontends/basic/Lexer.hpp"
 #include <cassert>
 #include <string>

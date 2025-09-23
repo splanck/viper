@@ -2,7 +2,7 @@
 // Purpose: Implements memory allocation helpers for the BASIC runtime.
 // Key invariants: Allocation sizes must be non-negative and fit in size_t.
 // Ownership/Lifetime: Caller owns and must free returned memory blocks.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "rt_internal.h"
 #include <stdlib.h>

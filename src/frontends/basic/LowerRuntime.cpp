@@ -4,7 +4,7 @@
 // Purpose: Implements runtime tracking and declaration utilities for BASIC lowering.
 // Key invariants: Runtime declarations are emitted once in deterministic order.
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 // Requires the consolidated Lowerer interface for runtime tracking declarations.
 #include "frontends/basic/LowerRuntime.hpp"

@@ -3,7 +3,7 @@
 // Key invariants: Const folder short-circuits and loop folding mutate AST; semantic
 //                 analyzer rewrites scoped identifiers consistently.
 // Ownership/Lifetime: Test owns AST objects and infrastructure locally.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/ConstFolder.hpp"

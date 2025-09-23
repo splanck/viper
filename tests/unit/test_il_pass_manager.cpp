@@ -2,7 +2,7 @@
 // Purpose: Exercise PassManager pipelines, analysis caching, and preservation semantics.
 // Key invariants: Custom analyses should only recompute when passes invalidate them.
 // Ownership: Test constructs a module in-memory and runs passes locally.
-// Links: docs/class-catalog.md
+// Links: docs/codemap.md
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"
