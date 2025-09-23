@@ -8,6 +8,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -62,6 +63,10 @@ class ProcRegistry
     };
 
     ProcSignature buildSignature(const ProcDescriptor &descriptor);
+
+    void registerProcImpl(std::string_view name,
+                          const ProcDescriptor &descriptor,
+                          il::support::SourceLoc loc);
 
     SemanticDiagnostics &de;
     ProcTable procs_;
