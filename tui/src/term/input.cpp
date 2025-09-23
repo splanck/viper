@@ -1,7 +1,7 @@
 // tui/src/term/input.cpp
-// @brief Implements UTF-8 input decoding into key events.
+// @brief Implements UTF-8 input decoding into terminal events.
 // @invariant Partial UTF-8 sequences are preserved across feeds.
-// @ownership Owns decoded event queue; no ownership of input bytes.
+// @ownership Owns decoded event queues; no ownership of input bytes.
 
 #include "tui/term/input.hpp"
 
@@ -9,6 +9,11 @@
 
 namespace viper::tui::term
 {
+
+InputDecoder::InputDecoder()
+    : csi_parser_(key_events_, mouse_events_, paste_buf_)
+{
+}
 
 void InputDecoder::emit(uint32_t cp)
 {
@@ -42,222 +47,23 @@ void InputDecoder::emit(uint32_t cp)
     key_events_.push_back(ev);
 }
 
-static std::vector<int> parse_params(std::string_view params)
-{
-    std::vector<int> out;
-    int val = 0;
-    bool have = false;
-    for (char c : params)
-    {
-        if (c >= '0' && c <= '9')
-        {
-            val = val * 10 + (c - '0');
-            have = true;
-        }
-        else if (c == ';')
-        {
-            out.push_back(have ? val : 0);
-            val = 0;
-            have = false;
-        }
-    }
-    if (have)
-    {
-        out.push_back(val);
-    }
-    return out;
-}
-
-unsigned InputDecoder::decode_mod(int value)
-{
-    if (value < 2)
-    {
-        return 0;
-    }
-    return static_cast<unsigned>(value - 1);
-}
-
-void InputDecoder::handle_sgr_mouse(char final, std::string_view params)
-{
-    auto nums = parse_params(params);
-    if (nums.size() < 3)
-    {
-        return;
-    }
-    int b = nums[0];
-    MouseEvent ev{};
-    ev.x = nums[1] - 1;
-    ev.y = nums[2] - 1;
-    if (b & 4)
-    {
-        ev.mods |= KeyEvent::Shift;
-    }
-    if (b & 8)
-    {
-        ev.mods |= KeyEvent::Alt;
-    }
-    if (b & 16)
-    {
-        ev.mods |= KeyEvent::Ctrl;
-    }
-
-    if ((b >= 64 && b <= 65) || (b >= 96 && b <= 97))
-    {
-        ev.type = MouseEvent::Type::Wheel;
-        ev.buttons = (b & 1) ? 2u : 1u;
-    }
-    else if (final == 'm')
-    {
-        ev.type = MouseEvent::Type::Up;
-        ev.buttons = 1u << (b & 3);
-    }
-    else if (b & 32)
-    {
-        ev.type = MouseEvent::Type::Move;
-        ev.buttons = 1u << (b & 3);
-    }
-    else
-    {
-        ev.type = MouseEvent::Type::Down;
-        ev.buttons = 1u << (b & 3);
-    }
-    mouse_events_.push_back(ev);
-}
-
 InputDecoder::State InputDecoder::handle_csi(char final, std::string_view params)
 {
-    if ((final == 'M' || final == 'm') && !params.empty() && params.front() == '<')
+    auto result = csi_parser_.handle(final, params);
+    if (result.start_paste)
     {
-        handle_sgr_mouse(final, params.substr(1));
-        return State::Utf8;
+        return State::Paste;
     }
-
-    auto nums = parse_params(params);
-    unsigned mods = 0;
-    if (final == '~')
-    {
-        if (nums.size() >= 2)
-        {
-            mods = decode_mod(nums[1]);
-        }
-        if (!nums.empty())
-        {
-            if (nums[0] == 200)
-            {
-                paste_buf_.clear();
-                return State::Paste;
-            }
-        }
-        if (nums.empty())
-        {
-            return State::Utf8;
-        }
-        KeyEvent ev{};
-        ev.mods = mods;
-        switch (nums[0])
-        {
-            case 1:
-                ev.code = KeyEvent::Code::Home;
-                break;
-            case 2:
-                ev.code = KeyEvent::Code::Insert;
-                break;
-            case 3:
-                ev.code = KeyEvent::Code::Delete;
-                break;
-            case 4:
-                ev.code = KeyEvent::Code::End;
-                break;
-            case 5:
-                ev.code = KeyEvent::Code::PageUp;
-                break;
-            case 6:
-                ev.code = KeyEvent::Code::PageDown;
-                break;
-            case 11:
-                ev.code = KeyEvent::Code::F1;
-                break;
-            case 12:
-                ev.code = KeyEvent::Code::F2;
-                break;
-            case 13:
-                ev.code = KeyEvent::Code::F3;
-                break;
-            case 14:
-                ev.code = KeyEvent::Code::F4;
-                break;
-            case 15:
-                ev.code = KeyEvent::Code::F5;
-                break;
-            case 17:
-                ev.code = KeyEvent::Code::F6;
-                break;
-            case 18:
-                ev.code = KeyEvent::Code::F7;
-                break;
-            case 19:
-                ev.code = KeyEvent::Code::F8;
-                break;
-            case 20:
-                ev.code = KeyEvent::Code::F9;
-                break;
-            case 21:
-                ev.code = KeyEvent::Code::F10;
-                break;
-            case 23:
-                ev.code = KeyEvent::Code::F11;
-                break;
-            case 24:
-                ev.code = KeyEvent::Code::F12;
-                break;
-            default:
-                return State::Utf8;
-        }
-        key_events_.push_back(ev);
-        return State::Utf8;
-    }
-
-    if (nums.size() >= 2)
-    {
-        mods = decode_mod(nums[1]);
-    }
-
-    KeyEvent ev{};
-    ev.mods = mods;
-    switch (final)
-    {
-        case 'A':
-            ev.code = KeyEvent::Code::Up;
-            break;
-        case 'B':
-            ev.code = KeyEvent::Code::Down;
-            break;
-        case 'C':
-            ev.code = KeyEvent::Code::Right;
-            break;
-        case 'D':
-            ev.code = KeyEvent::Code::Left;
-            break;
-        case 'H':
-            ev.code = KeyEvent::Code::Home;
-            break;
-        case 'F':
-            ev.code = KeyEvent::Code::End;
-            break;
-        default:
-            return State::Utf8;
-    }
-    key_events_.push_back(ev);
     return State::Utf8;
 }
 
 void InputDecoder::handle_ss3(char final, std::string_view params)
 {
-    auto nums = parse_params(params);
+    auto nums = csi_parser_.parse_params(params);
     unsigned mods = 0;
     if (nums.size() >= 2)
     {
-        mods = decode_mod(nums[1]);
+        mods = csi_parser_.decode_mod(nums[1]);
     }
 
     KeyEvent ev{};
@@ -308,53 +114,29 @@ void InputDecoder::feed(std::string_view bytes)
         switch (state_)
         {
             case State::Utf8:
-                if (expected_ == 0)
+            {
+                if (utf8_decoder_.idle() && b == 0x1b)
                 {
-                    if (b == 0x1b)
-                    {
-                        state_ = State::Esc;
-                    }
-                    else if (b < 0x80)
-                    {
-                        emit(b);
-                    }
-                    else if ((b & 0xE0) == 0xC0)
-                    {
-                        cp_ = b & 0x1F;
-                        expected_ = 1;
-                    }
-                    else if ((b & 0xF0) == 0xE0)
-                    {
-                        cp_ = b & 0x0F;
-                        expected_ = 2;
-                    }
-                    else if ((b & 0xF8) == 0xF0)
-                    {
-                        cp_ = b & 0x07;
-                        expected_ = 3;
-                    }
-                    else
-                    {
-                        key_events_.push_back(KeyEvent{});
-                    }
-                }
-                else if ((b & 0xC0) == 0x80)
-                {
-                    cp_ = (cp_ << 6) | (b & 0x3F);
-                    if (--expected_ == 0)
-                    {
-                        emit(cp_);
-                        cp_ = 0;
-                    }
+                    state_ = State::Esc;
                 }
                 else
                 {
-                    key_events_.push_back(KeyEvent{});
-                    cp_ = 0;
-                    expected_ = 0;
-                    --i;
+                    Utf8Result result = utf8_decoder_.feed(b);
+                    if (result.has_codepoint)
+                    {
+                        emit(result.codepoint);
+                    }
+                    if (result.error)
+                    {
+                        key_events_.push_back(KeyEvent{});
+                    }
+                    if (result.replay)
+                    {
+                        --i;
+                    }
                 }
                 break;
+            }
             case State::Esc:
                 if (b == '[')
                 {
@@ -470,3 +252,4 @@ std::vector<PasteEvent> InputDecoder::drain_paste()
 }
 
 } // namespace viper::tui::term
+
