@@ -43,8 +43,13 @@ int main()
     const std::size_t sample = kLines / 2;
     assert(buf.lineOffset(sample) == sample * (kWidth + 1));
     assert(buf.lineLength(sample) == kWidth);
+    assert(buf.lineStart(sample) == buf.lineOffset(sample));
+    assert(buf.lineEnd(sample) == buf.lineStart(sample) + kWidth);
     assert(buf.lineOffset(kLines - 1) == (kLines - 1) * (kWidth + 1));
     assert(buf.lineLength(kLines - 1) == kWidth);
+    assert(buf.lineEnd(kLines - 1) == buf.size());
+    assert(buf.lineStart(kLines) == buf.size());
+    assert(buf.lineEnd(kLines) == buf.size());
 
     Theme theme;
     TextView view(buf, theme, false);

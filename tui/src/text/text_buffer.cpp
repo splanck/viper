@@ -41,7 +41,7 @@ std::size_t TextBuffer::lineCount() const
     return line_index_.count();
 }
 
-std::size_t TextBuffer::lineOffset(std::size_t lineNo) const
+std::size_t TextBuffer::lineStart(std::size_t lineNo) const
 {
     if (lineNo >= line_index_.count())
     {
@@ -50,11 +50,11 @@ std::size_t TextBuffer::lineOffset(std::size_t lineNo) const
     return line_index_.start(lineNo);
 }
 
-std::size_t TextBuffer::lineLength(std::size_t lineNo) const
+std::size_t TextBuffer::lineEnd(std::size_t lineNo) const
 {
     if (lineNo >= line_index_.count())
     {
-        return 0;
+        return table_.size();
     }
 
     const std::size_t start = line_index_.start(lineNo);
@@ -64,11 +64,27 @@ std::size_t TextBuffer::lineLength(std::size_t lineNo) const
         const std::size_t nextStart = line_index_.start(nextLine);
         if (nextStart > start)
         {
-            return nextStart - start - 1;
+            return nextStart - 1;
         }
+        return start;
+    }
+    return table_.size();
+}
+
+std::size_t TextBuffer::lineOffset(std::size_t lineNo) const
+{
+    return lineStart(lineNo);
+}
+
+std::size_t TextBuffer::lineLength(std::size_t lineNo) const
+{
+    const std::size_t start = lineStart(lineNo);
+    const std::size_t end = lineEnd(lineNo);
+    if (end <= start)
+    {
         return 0;
     }
-    return table_.size() > start ? table_.size() - start : 0U;
+    return end - start;
 }
 
 TextBuffer::LineView TextBuffer::lineView(std::size_t lineNo) const
