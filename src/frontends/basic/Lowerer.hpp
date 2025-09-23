@@ -14,6 +14,7 @@
 #include <bitset>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -75,6 +76,19 @@ class Lowerer
     {
         Value value;
         Type type;
+    };
+
+    /// @brief Aggregated metadata for a BASIC symbol.
+    struct SymbolInfo
+    {
+        AstType type{AstType::I64};      ///< BASIC type derived from declarations or suffixes.
+        bool hasType{false};             ///< True when @ref type was explicitly recorded.
+        bool isArray{false};             ///< True when symbol refers to an array.
+        bool isBoolean{false};           ///< True when scalar bool storage is required.
+        bool referenced{false};          ///< Tracks whether lowering observed the symbol.
+        std::optional<unsigned> slotId;  ///< Stack slot id for the variable when materialized.
+        std::optional<unsigned> arrayLengthSlot; ///< Optional slot for array length (bounds checks).
+        std::string stringLabel;         ///< Cached label for deduplicated string literals.
     };
 
   private:
@@ -422,15 +436,11 @@ class Lowerer
     NameMangler mangler;
     unsigned nextTemp{0};
     std::unordered_map<int, size_t> lineBlocks;
-    std::unordered_map<std::string, unsigned> varSlots;
-    std::unordered_map<std::string, unsigned> arrayLenSlots;
-    std::unordered_map<std::string, AstType> varTypes;
-    std::unordered_map<std::string, std::string> strings;
-    std::unordered_set<std::string> vars;
-    std::unordered_set<std::string> arrays;
+    std::unordered_map<std::string, SymbolInfo> symbols;
     il::support::SourceLoc curLoc{}; ///< current source location for emitted IR
     bool boundsChecks{false};
     unsigned boundsCheckId{0};
+    size_t nextStringId{0};
     std::unordered_map<std::string, ProcedureSignature> procSignatures;
 
     // runtime requirement tracking
@@ -459,7 +469,23 @@ class Lowerer
     void declareRequiredRuntime(build::IRBuilder &b);
 #include "frontends/basic/LowerScan.hpp"
 
+  public:
+    SymbolInfo &ensureSymbol(std::string_view name);
+
+    SymbolInfo *findSymbol(std::string_view name);
+
+    const SymbolInfo *findSymbol(std::string_view name) const;
+
+    void markSymbolReferenced(std::string_view name);
+
+    void markArray(std::string_view name);
+
+    void setSymbolType(std::string_view name, AstType type);
+
+  private:
     SlotType getSlotType(std::string_view name) const;
+
+    void resetSymbolState();
 
   public:
     /// @brief Lookup a cached procedure signature by BASIC name.
