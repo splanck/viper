@@ -46,6 +46,14 @@ class Parser
             il::support::SourceLoc loc{};            ///< Source location where the terminator keyword appeared.
         };
 
+        /// @brief Classification of the last separator consumed by the context.
+        enum class SeparatorKind
+        {
+            None,      ///< No separator consumed since the previous statement.
+            Colon,     ///< A colon separated the previous and next statements.
+            LineBreak, ///< A line break separated the previous and next statements.
+        };
+
         using TerminatorPredicate = std::function<bool(int)>;                     ///< Predicate identifying terminator tokens.
         using TerminatorConsumer = std::function<void(int, TerminatorInfo &)>;     ///< Callback consuming the terminator tokens.
 
@@ -57,7 +65,8 @@ class Parser
         void skipLeadingSeparator();
 
         /// @brief Consume all consecutive end-of-line tokens.
-        void skipLineBreaks();
+        /// @return True when at least one line break was consumed.
+        bool skipLineBreaks();
 
         /// @brief Consume a colon or end-of-line token if immediately present.
         void skipStatementSeparator();
@@ -65,6 +74,14 @@ class Parser
         /// @brief Invoke @p fn with an optional numeric line label.
         /// @param fn Callback receiving the parsed line number (zero when absent).
         void withOptionalLineNumber(const std::function<void(int)> &fn);
+
+        /// @brief Remember a line label that should seed the next statement.
+        /// @param line Parsed line number to reuse on the next call.
+        void stashPendingLine(int line);
+
+        /// @brief Report which separator most recently separated statements.
+        /// @return Classification of the most recent separator.
+        SeparatorKind lastSeparator() const { return lastSeparator_; }
 
         /// @brief Parse statements until @p isTerminator matches and populate @p dst.
         /// @param isTerminator Predicate determining when the body ends.
@@ -83,11 +100,18 @@ class Parser
 
       private:
         Parser &parser_; ///< Parent parser that owns the token stream.
+        int pendingLine_ = -1; ///< Deferred line label for the next statement.
+        SeparatorKind lastSeparator_ = SeparatorKind::LineBreak; ///< Classification of the last separator consumed.
     };
 
     /// @brief Create a statement context bound to this parser instance.
     /// @return StatementContext referencing the parser's token stream.
     StatementContext statementContext();
+
+    /// @brief Parse the next logical statement line into a single AST node.
+    /// @param ctx Statement context that manages separators and line labels.
+    /// @return Either a single statement or a StmtList when multiple statements share a line.
+    StmtPtr parseStatementLine(StatementContext &ctx);
 
     /// @brief Consume optional line labels that follow a line break.
     /// @param ctx Statement context providing newline skipping helpers.
