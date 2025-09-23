@@ -12,8 +12,6 @@
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include <cassert>
-#include <unordered_map>
-#include <unordered_set>
 
 namespace il::frontends::basic
 {
@@ -23,17 +21,11 @@ using pipeline_detail::coreTypeForAstType;
 namespace
 {
 
-/// @brief Expression visitor accumulating referenced variable and array names.
+/// @brief Expression visitor accumulating symbol metadata for referenced variables and arrays.
 class VarCollectExprVisitor final : public ExprVisitor
 {
   public:
-    VarCollectExprVisitor(
-        std::unordered_set<std::string> &vars,
-        std::unordered_set<std::string> &arrays,
-        std::unordered_map<std::string, ::il::frontends::basic::Type> &varTypes)
-        : vars_(vars), arrays_(arrays), varTypes_(varTypes)
-    {
-    }
+    explicit VarCollectExprVisitor(Lowerer &lowerer) : lowerer_(lowerer) {}
 
     void visit(const IntExpr &) override {}
 
@@ -45,15 +37,13 @@ class VarCollectExprVisitor final : public ExprVisitor
 
     void visit(const VarExpr &expr) override
     {
-        vars_.insert(expr.name);
-        recordImplicitType(expr.name);
+        lowerer_.markSymbolReferenced(expr.name);
     }
 
     void visit(const ArrayExpr &expr) override
     {
-        vars_.insert(expr.name);
-        arrays_.insert(expr.name);
-        recordImplicitType(expr.name);
+        lowerer_.markSymbolReferenced(expr.name);
+        lowerer_.markArray(expr.name);
         if (expr.index)
             expr.index->accept(*this);
     }
@@ -87,29 +77,15 @@ class VarCollectExprVisitor final : public ExprVisitor
     }
 
   private:
-    void recordImplicitType(const std::string &name)
-    {
-        if (name.empty())
-            return;
-        if (varTypes_.find(name) != varTypes_.end())
-            return;
-        varTypes_[name] = inferAstTypeFromName(name);
-    }
-
-    std::unordered_set<std::string> &vars_;
-    std::unordered_set<std::string> &arrays_;
-    std::unordered_map<std::string, ::il::frontends::basic::Type> &varTypes_;
+    Lowerer &lowerer_;
 };
 
 /// @brief Statement visitor walking child expressions/statements to collect names.
 class VarCollectStmtVisitor final : public StmtVisitor
 {
   public:
-    VarCollectStmtVisitor(VarCollectExprVisitor &exprVisitor,
-                          std::unordered_set<std::string> &vars,
-                          std::unordered_set<std::string> &arrays,
-                          std::unordered_map<std::string, ::il::frontends::basic::Type> &varTypes)
-        : exprVisitor_(exprVisitor), vars_(vars), arrays_(arrays), varTypes_(varTypes)
+    VarCollectStmtVisitor(VarCollectExprVisitor &exprVisitor, Lowerer &lowerer)
+        : exprVisitor_(exprVisitor), lowerer_(lowerer)
     {
     }
 
@@ -130,14 +106,14 @@ class VarCollectStmtVisitor final : public StmtVisitor
 
     void visit(const DimStmt &stmt) override
     {
-        vars_.insert(stmt.name);
-        varTypes_[stmt.name] = stmt.type;
+        if (stmt.name.empty())
+            return;
+        lowerer_.setSymbolType(stmt.name, stmt.type);
+        lowerer_.markSymbolReferenced(stmt.name);
         if (stmt.isArray)
-        {
-            arrays_.insert(stmt.name);
-            if (stmt.size)
-                stmt.size->accept(exprVisitor_);
-        }
+            lowerer_.markArray(stmt.name);
+        if (stmt.size)
+            stmt.size->accept(exprVisitor_);
     }
 
     void visit(const RandomizeStmt &stmt) override
@@ -175,11 +151,7 @@ class VarCollectStmtVisitor final : public StmtVisitor
     void visit(const ForStmt &stmt) override
     {
         if (!stmt.var.empty())
-        {
-            vars_.insert(stmt.var);
-            if (varTypes_.find(stmt.var) == varTypes_.end())
-                varTypes_[stmt.var] = inferAstTypeFromName(stmt.var);
-        }
+            lowerer_.markSymbolReferenced(stmt.var);
         if (stmt.start)
             stmt.start->accept(exprVisitor_);
         if (stmt.end)
@@ -194,7 +166,7 @@ class VarCollectStmtVisitor final : public StmtVisitor
     void visit(const NextStmt &stmt) override
     {
         if (!stmt.var.empty())
-            vars_.insert(stmt.var);
+            lowerer_.markSymbolReferenced(stmt.var);
     }
 
     void visit(const GotoStmt &) override {}
@@ -206,11 +178,7 @@ class VarCollectStmtVisitor final : public StmtVisitor
         if (stmt.prompt)
             stmt.prompt->accept(exprVisitor_);
         if (!stmt.var.empty())
-        {
-            vars_.insert(stmt.var);
-            if (varTypes_.find(stmt.var) == varTypes_.end())
-                varTypes_[stmt.var] = inferAstTypeFromName(stmt.var);
-        }
+            lowerer_.markSymbolReferenced(stmt.var);
     }
 
     void visit(const ReturnStmt &stmt) override
@@ -242,9 +210,7 @@ class VarCollectStmtVisitor final : public StmtVisitor
 
   private:
     VarCollectExprVisitor &exprVisitor_;
-    std::unordered_set<std::string> &vars_;
-    std::unordered_set<std::string> &arrays_;
-    std::unordered_map<std::string, ::il::frontends::basic::Type> &varTypes_;
+    Lowerer &lowerer_;
 };
 
 } // namespace
@@ -260,11 +226,8 @@ void ProgramLowering::run(const Program &prog, il::core::Module &module)
     lowerer.mangler = NameMangler();
     lowerer.nextTemp = 0;
     lowerer.lineBlocks.clear();
-    lowerer.varSlots.clear();
-    lowerer.arrayLenSlots.clear();
-    lowerer.varTypes.clear();
-    lowerer.strings.clear();
-    lowerer.arrays.clear();
+    lowerer.symbols.clear();
+    lowerer.nextStringId = 0;
     lowerer.procSignatures.clear();
     lowerer.boundsCheckId = 0;
 
@@ -320,8 +283,8 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
 
 void ProcedureLowering::collectVars(const std::vector<const Stmt *> &stmts)
 {
-    VarCollectExprVisitor exprVisitor(lowerer.vars, lowerer.arrays, lowerer.varTypes);
-    VarCollectStmtVisitor stmtVisitor(exprVisitor, lowerer.vars, lowerer.arrays, lowerer.varTypes);
+    VarCollectExprVisitor exprVisitor(lowerer);
+    VarCollectStmtVisitor stmtVisitor(exprVisitor, lowerer);
     for (const auto *stmt : stmts)
         if (stmt)
             stmt->accept(stmtVisitor);

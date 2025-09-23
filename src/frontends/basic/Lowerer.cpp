@@ -133,16 +133,115 @@ std::string Lowerer::BlockNamer::tag(const std::string &base) const
     return base + "_" + proc;
 }
 
+Lowerer::SymbolInfo &Lowerer::ensureSymbol(std::string_view name)
+{
+    std::string key(name);
+    auto [it, inserted] = symbols.emplace(std::move(key), SymbolInfo{});
+    if (inserted)
+    {
+        it->second.type = AstType::I64;
+        it->second.hasType = false;
+        it->second.isArray = false;
+        it->second.isBoolean = false;
+        it->second.referenced = false;
+    }
+    return it->second;
+}
+
+Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name)
+{
+    auto it = symbols.find(std::string(name));
+    if (it == symbols.end())
+        return nullptr;
+    return &it->second;
+}
+
+const Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name) const
+{
+    auto it = symbols.find(std::string(name));
+    if (it == symbols.end())
+        return nullptr;
+    return &it->second;
+}
+
+void Lowerer::setSymbolType(std::string_view name, AstType type)
+{
+    auto &info = ensureSymbol(name);
+    info.type = type;
+    info.hasType = true;
+    info.isBoolean = !info.isArray && type == AstType::Bool;
+}
+
+void Lowerer::markSymbolReferenced(std::string_view name)
+{
+    if (name.empty())
+        return;
+    auto &info = ensureSymbol(name);
+    if (!info.hasType)
+    {
+        info.type = inferAstTypeFromName(name);
+        info.hasType = true;
+        info.isBoolean = !info.isArray && info.type == AstType::Bool;
+    }
+    info.referenced = true;
+}
+
+void Lowerer::markArray(std::string_view name)
+{
+    if (name.empty())
+        return;
+    auto &info = ensureSymbol(name);
+    info.isArray = true;
+    if (info.isBoolean)
+        info.isBoolean = false;
+}
+
+void Lowerer::resetSymbolState()
+{
+    for (auto it = symbols.begin(); it != symbols.end();)
+    {
+        SymbolInfo &info = it->second;
+        if (!info.stringLabel.empty())
+        {
+            info.type = AstType::I64;
+            info.hasType = false;
+            info.isArray = false;
+            info.isBoolean = false;
+            info.referenced = false;
+            info.slotId.reset();
+            info.arrayLengthSlot.reset();
+            ++it;
+            continue;
+        }
+        it = symbols.erase(it);
+    }
+}
+
 Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
 {
     SlotType info;
-    std::string key(name);
-    using AstType = ::il::frontends::basic::Type;
-    auto it = varTypes.find(key);
-    AstType astTy = (it != varTypes.end()) ? it->second : inferAstTypeFromName(name);
-    info.isArray = arrays.find(key) != arrays.end();
-    info.isBoolean = !info.isArray && astTy == AstType::Bool;
-    info.type = info.isArray ? Type(Type::Kind::Ptr) : coreTypeForAstType(astTy);
+    AstType astTy = inferAstTypeFromName(name);
+    if (const auto *sym = findSymbol(name))
+    {
+        if (sym->hasType)
+            astTy = sym->type;
+        info.isArray = sym->isArray;
+        if (sym->isBoolean && !info.isArray)
+            info.isBoolean = true;
+        else if (!sym->hasType && !info.isArray)
+            info.isBoolean = (astTy == AstType::Bool);
+        else
+            info.isBoolean = false;
+    }
+    else
+    {
+        info.isArray = false;
+        info.isBoolean = (astTy == AstType::Bool);
+    }
+    if (info.isArray)
+        info.type = Type(Type::Kind::Ptr);
+    else
+        info.type = coreTypeForAstType(info.isBoolean ? AstType::Bool : astTy);
     return info;
 }
 
@@ -199,11 +298,11 @@ Module Lowerer::lower(const Program &prog)
 
 /// @brief Discover variable usage within a statement list.
 /// @param stmts Statements whose expressions are analyzed.
-/// @details Populates `vars`, `arrays`, and `varTypes` so subsequent lowering can
-///          materialize storage for every name. Array metadata is captured so
-///          bounds slots can be emitted when enabled. The traversal preserves
-///          existing set entries, allowing incremental accumulation across
-///          different program regions.
+/// @details Populates the symbol table with references, inferred types, and array
+///          flags so subsequent lowering can materialize storage for every name.
+///          Array metadata is captured so bounds slots can be emitted when enabled.
+///          The traversal preserves existing entries, allowing incremental
+///          accumulation across different program regions.
 void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
 {
     procedureLowering->collectVars(stmts);
@@ -275,23 +374,25 @@ void Lowerer::buildProcedureSkeleton(Function &f,
 void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNames,
                                  bool includeParams)
 {
-    for (const auto &v : vars)
+    for (auto &[name, info] : symbols)
     {
-        bool isParam = paramNames.find(v) != paramNames.end();
+        if (!info.referenced)
+            continue;
+        bool isParam = paramNames.find(name) != paramNames.end();
         if (isParam && !includeParams)
             continue;
-        if (varSlots.find(v) != varSlots.end())
+        if (info.slotId)
             continue;
         curLoc = {};
-        SlotType slotInfo = getSlotType(v);
+        SlotType slotInfo = getSlotType(name);
         if (slotInfo.isArray)
         {
             Value slot = emitAlloca(8);
-            varSlots[v] = slot.id;
+            info.slotId = slot.id;
             continue;
         }
         Value slot = emitAlloca(slotInfo.isBoolean ? 1 : 8);
-        varSlots[v] = slot.id;
+        info.slotId = slot.id;
         if (slotInfo.isBoolean)
             emitStore(ilBoolTy(), slot, emitBoolConst(false));
     }
@@ -299,16 +400,18 @@ void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNam
     if (!boundsChecks)
         return;
 
-    for (const auto &a : arrays)
+    for (auto &[name, info] : symbols)
     {
-        bool isParam = paramNames.find(a) != paramNames.end();
+        if (!info.referenced || !info.isArray)
+            continue;
+        bool isParam = paramNames.find(name) != paramNames.end();
         if (isParam && !includeParams)
             continue;
-        if (arrayLenSlots.find(a) != arrayLenSlots.end())
+        if (info.arrayLengthSlot)
             continue;
         curLoc = {};
         Value slot = emitAlloca(8);
-        arrayLenSlots[a] = slot.id;
+        info.arrayLengthSlot = slot.id;
     }
 }
 
@@ -332,8 +435,8 @@ void Lowerer::lowerStatementSequence(
 ///          and local stack slots are materialized before walking statements.
 ///          The helper drives `lowerStmt` for each statement and finally invokes
 ///          the configured return generator. Numerous members (`func`, `cur`,
-///          `lineBlocks`, `varSlots`, `arrays`, `blockNamer`) are mutated to
-///          reflect the active procedure.
+///          `lineBlocks`, `symbols`, `blockNamer`) are mutated to reflect the
+///          active procedure.
 void Lowerer::lowerProcedure(const std::string &name,
                              const std::vector<Param> &params,
                              const std::vector<StmtPtr> &body,
@@ -346,8 +449,8 @@ void Lowerer::lowerProcedure(const std::string &name,
 /// @param decl BASIC FUNCTION metadata and body.
 /// @details Configures a @ref ProcedureConfig that materializes default return
 ///          values when the body falls through. The function result type is
-///          cached in `varTypes` so the caller may bind its slot when invoking
-///          the function.
+///          recorded in the symbol table so the caller may bind its slot when
+///          invoking the function.
 void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
 {
     auto defaultRet = [&]()
@@ -368,7 +471,7 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
 
     ProcedureConfig config;
     config.retType = coreTypeForAstType(decl.ret);
-    config.postCollect = [&]() { varTypes[decl.name] = decl.ret; };
+    config.postCollect = [&]() { setSymbolType(decl.name, decl.ret); };
     config.emitEmptyBody = [&]() { emitRet(defaultRet()); };
     config.emitFinalReturn = [&]() { emitRet(defaultRet()); };
 
@@ -395,11 +498,7 @@ void Lowerer::lowerSubDecl(const SubDecl &decl)
 ///          reset so diagnostics and helper labels remain deterministic.
 void Lowerer::resetLoweringState()
 {
-    vars.clear();
-    arrays.clear();
-    varSlots.clear();
-    arrayLenSlots.clear();
-    varTypes.clear();
+    resetSymbolState();
     lineBlocks.clear();
     boundsCheckId = 0;
     nextTemp = 0;
@@ -408,10 +507,11 @@ void Lowerer::resetLoweringState()
 /// @brief Allocate stack storage for incoming parameters and record their types.
 /// @param params BASIC formal parameters for the current procedure.
 /// @details Emits an alloca per parameter and stores the incoming SSA value into
-///          the slot. Array parameters are remembered in `arrays` to avoid
+///          the slot. Array parameters are flagged in the symbol table to avoid
 ///          copying the referenced buffer, while boolean parameters request a
-///          single-byte allocation. Side effects update `varSlots`, `varTypes`,
-///          and potentially `arrays`.
+///          single-byte allocation. Side effects update the associated
+///          SymbolInfo entries so later loads and stores reuse the recorded
+///          slots.
 void Lowerer::materializeParams(const std::vector<Param> &params)
 {
     for (size_t i = 0; i < params.size(); ++i)
@@ -419,20 +519,22 @@ void Lowerer::materializeParams(const std::vector<Param> &params)
         const auto &p = params[i];
         bool isBoolParam = !p.is_array && p.type == AstType::Bool;
         Value slot = emitAlloca(isBoolParam ? 1 : 8);
-        varSlots[p.name] = slot.id;
-        varTypes[p.name] = p.type;
+        if (p.is_array)
+            markArray(p.name);
+        setSymbolType(p.name, p.type);
+        markSymbolReferenced(p.name);
+        auto &info = ensureSymbol(p.name);
+        info.slotId = slot.id;
         il::core::Type ty = func->params[i].type;
         Value incoming = Value::temp(func->params[i].id);
         emitStore(ty, slot, incoming);
-        if (p.is_array)
-            arrays.insert(p.name);
     }
 }
 
 /// @brief Collect variable usage for every procedure and the main body.
 /// @param prog Program whose statements are scanned.
 /// @details Aggregates pointers to all statements and forwards to the granular
-///          collector so that `vars` and `arrays` contain every referenced name
+///          collector so that symbol metadata reflects every referenced name
 ///          before lowering begins.
 void Lowerer::collectVars(const Program &prog)
 {
