@@ -343,6 +343,8 @@ void Lowerer::emitBr(BasicBlock *target)
     Instr in;
     in.op = Opcode::Br;
     in.type = Type(Type::Kind::Void);
+    if (target->label.empty())
+        target->label = nextFallbackBlockLabel();
     in.labels.push_back(target->label);
     in.loc = curLoc;
     BasicBlock *block = context().current();
@@ -523,6 +525,11 @@ unsigned Lowerer::nextTempId()
     if (ctx.nextTemp() <= id)
         ctx.setNextTemp(id + 1);
     return id;
+}
+
+std::string Lowerer::nextFallbackBlockLabel()
+{
+    return mangler.block("bb_" + std::to_string(nextFallbackBlockId++));
 }
 
 } // namespace il::frontends::basic
