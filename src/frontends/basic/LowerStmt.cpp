@@ -414,7 +414,10 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
     builder->addBlock(*func, doneLbl);
     BasicBlock *head = &func->blocks[start];
     BasicBlock *body = &func->blocks[start + 1];
-    BasicBlock *done = &func->blocks[start + 2];
+    size_t doneIdx = start + 2;
+    BasicBlock *done = &func->blocks[doneIdx];
+
+    ctx.pushLoopExit(done);
 
     curLoc = stmt.loc;
     emitBr(head);
@@ -430,6 +433,7 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
     ctx.setCurrent(body);
     lowerLoopBody(stmt.body);
     BasicBlock *current = ctx.current();
+    bool exitTaken = ctx.loopExitTaken();
     bool term = current && current->terminated;
     if (!term)
     {
@@ -437,8 +441,11 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
         emitBr(head);
     }
 
+    done = &func->blocks[doneIdx];
+    ctx.refreshLoopExitTarget(done);
     ctx.setCurrent(done);
-    done->terminated = term;
+    done->terminated = exitTaken ? false : term;
+    ctx.popLoopExit();
 }
 
 void Lowerer::lowerDo(const DoStmt &stmt)
@@ -516,6 +523,9 @@ void Lowerer::lowerForConstStep(
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
     assert(func && "lowerForConstStep requires an active function");
+    size_t doneIdx = fb.doneIdx;
+    BasicBlock *done = &func->blocks[doneIdx];
+    ctx.pushLoopExit(done);
     curLoc = stmt.loc;
     emitBr(&func->blocks[fb.headIdx]);
     ctx.setCurrent(&func->blocks[fb.headIdx]);
@@ -529,6 +539,7 @@ void Lowerer::lowerForConstStep(
     ctx.setCurrent(&func->blocks[fb.bodyIdx]);
     lowerLoopBody(stmt.body);
     BasicBlock *current = ctx.current();
+    bool exitTaken = ctx.loopExitTaken();
     bool term = current && current->terminated;
     if (!term)
     {
@@ -540,8 +551,11 @@ void Lowerer::lowerForConstStep(
         curLoc = stmt.loc;
         emitBr(&func->blocks[fb.headIdx]);
     }
-    ctx.setCurrent(&func->blocks[fb.doneIdx]);
-    func->blocks[fb.doneIdx].terminated = term;
+    done = &func->blocks[doneIdx];
+    ctx.refreshLoopExitTarget(done);
+    ctx.setCurrent(done);
+    done->terminated = exitTaken ? false : term;
+    ctx.popLoopExit();
 }
 
 /// @brief Lower a FOR loop whose STEP expression is evaluated at runtime.
@@ -563,6 +577,9 @@ void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal st
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
     assert(func && "lowerForVarStep requires an active function");
+    size_t doneIdx = fb.doneIdx;
+    BasicBlock *done = &func->blocks[doneIdx];
+    ctx.pushLoopExit(done);
     curLoc = stmt.loc;
     emitCBr(stepNonNeg, &func->blocks[fb.headPosIdx], &func->blocks[fb.headNegIdx]);
     ctx.setCurrent(&func->blocks[fb.headPosIdx]);
@@ -582,6 +599,7 @@ void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal st
     ctx.setCurrent(&func->blocks[fb.bodyIdx]);
     lowerLoopBody(stmt.body);
     BasicBlock *current = ctx.current();
+    bool exitTaken = ctx.loopExitTaken();
     bool term = current && current->terminated;
     if (!term)
     {
@@ -593,8 +611,11 @@ void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal st
         curLoc = stmt.loc;
         emitCBr(stepNonNeg, &func->blocks[fb.headPosIdx], &func->blocks[fb.headNegIdx]);
     }
-    ctx.setCurrent(&func->blocks[fb.doneIdx]);
-    func->blocks[fb.doneIdx].terminated = term;
+    done = &func->blocks[doneIdx];
+    ctx.refreshLoopExitTarget(done);
+    ctx.setCurrent(done);
+    done->terminated = exitTaken ? false : term;
+    ctx.popLoopExit();
 }
 
 /// @brief Lower a BASIC FOR statement.
@@ -639,8 +660,16 @@ void Lowerer::lowerNext(const NextStmt &next)
 
 void Lowerer::lowerExit(const ExitStmt &stmt)
 {
-    (void)stmt;
-    // TODO: Implement EXIT lowering.
+    ProcedureContext &ctx = context();
+    BasicBlock *target = ctx.currentLoopExit();
+    curLoc = stmt.loc;
+    if (!target)
+    {
+        emitTrap();
+        return;
+    }
+    emitBr(target);
+    ctx.markLoopExitTaken();
 }
 
 /// @brief Lower a GOTO jump.
