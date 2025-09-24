@@ -2,7 +2,7 @@
 // Purpose: Declares parser for IL textual representation.
 // Key invariants: None.
 // Ownership/Lifetime: Parser views input string without owning.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "il/core/fwd.hpp"

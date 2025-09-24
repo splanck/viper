@@ -2,7 +2,7 @@
 // Purpose: Represents external function declarations in IL modules.
 // Key invariants: Parameter count matches signature.
 // Ownership/Lifetime: Module owns extern declarations.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "il/core/Type.hpp"

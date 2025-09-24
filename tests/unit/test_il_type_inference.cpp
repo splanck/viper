@@ -2,7 +2,7 @@
 // Purpose: Exercise il::verify::TypeInference helper routines.
 // Key invariants: TypeInference must track definitions and report operand issues.
 // Ownership/Lifetime: Uses local modules and temporaries.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

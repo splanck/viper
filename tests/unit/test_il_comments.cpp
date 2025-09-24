@@ -2,7 +2,7 @@
 // Purpose: Ensure IL parser handles files starting with comment headers.
 // Key invariants: Leading lines beginning with '//' before the version line are ignored.
 // Ownership/Lifetime: Test owns module and buffers locally.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

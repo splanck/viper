@@ -2,7 +2,7 @@
 // Purpose: Declares diagnostic sinks used by verifier components to collect warnings.
 // Key invariants: Sinks accept diagnostics in the order reported and decide ownership policy.
 // Ownership/Lifetime: Implementations own stored diagnostics or forward them immediately.
-// Links: docs/il-reference.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "support/diag_expected.hpp"

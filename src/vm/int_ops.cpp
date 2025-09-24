@@ -4,7 +4,7 @@
 //          1-bit conversions.
 // Key invariants: Results use 64-bit two's complement semantics consistent with the IL
 //                 reference, and handlers only mutate the current frame.
-// Links: docs/il-reference.md §Integer Arithmetic, §Bitwise and Shifts, §Comparisons,
+// Links: docs/il-guide.md#reference §Integer Arithmetic, §Bitwise and Shifts, §Comparisons,
 //        §Conversions
 
 #include "vm/OpHandlers.hpp"
@@ -26,7 +26,7 @@ namespace il::vm::detail
 /// @param ip Unused instruction index for this opcode.
 /// @return Normal execution result without control transfer.
 /// @note Operands are summed as signed 64-bit values with two's complement
-///       wrap-around, matching docs/il-reference.md §Integer Arithmetic and the
+///       wrap-around, matching docs/il-guide.md#reference §Integer Arithmetic and the
 ///       `i64` type rules in §Types.
 VM::ExecResult OpHandlers::handleAdd(VM &vm,
                                      Frame &fr,
@@ -47,7 +47,7 @@ VM::ExecResult OpHandlers::handleAdd(VM &vm,
 
 /// @brief Interpret the `sub` opcode for 64-bit integers.
 /// @note Operand evaluation and frame updates mirror @ref OpHandlers::handleAdd, with subtraction
-///       obeying two's complement wrap semantics per docs/il-reference.md §Integer Arithmetic.
+///       obeying two's complement wrap semantics per docs/il-guide.md#reference §Integer Arithmetic.
 VM::ExecResult OpHandlers::handleSub(VM &vm,
                                      Frame &fr,
                                      const Instr &in,
@@ -67,7 +67,7 @@ VM::ExecResult OpHandlers::handleSub(VM &vm,
 
 /// @brief Interpret the `mul` opcode for 64-bit integers.
 /// @note Multiplication uses the same operand handling helpers as addition, wraps
-///       modulo 2^64 per docs/il-reference.md §Integer Arithmetic, and stores the
+///       modulo 2^64 per docs/il-guide.md#reference §Integer Arithmetic, and stores the
 ///       result back into the destination register.
 VM::ExecResult OpHandlers::handleMul(VM &vm,
                                      Frame &fr,
@@ -88,7 +88,7 @@ VM::ExecResult OpHandlers::handleMul(VM &vm,
 
 /// @brief Interpret the `xor` opcode for 64-bit integers.
 /// @note Operands are evaluated via @c vm.eval and the bitwise result is stored back
-///       into the destination register, matching docs/il-reference.md §Bitwise and Shifts.
+///       into the destination register, matching docs/il-guide.md#reference §Bitwise and Shifts.
 VM::ExecResult OpHandlers::handleXor(VM &vm,
                                      Frame &fr,
                                      const Instr &in,
@@ -109,7 +109,7 @@ VM::ExecResult OpHandlers::handleXor(VM &vm,
 /// @brief Interpret the `shl` opcode for integer left shifts.
 /// @note The shift count is taken from the second operand; well-formed IL keeps it within
 ///       [0, 63] so the host operation remains defined, and the result is written back
-///       to the frame (docs/il-reference.md §Bitwise and Shifts).
+///       to the frame (docs/il-guide.md#reference §Bitwise and Shifts).
 VM::ExecResult OpHandlers::handleShl(VM &vm,
                                      Frame &fr,
                                      const Instr &in,
@@ -129,7 +129,7 @@ VM::ExecResult OpHandlers::handleShl(VM &vm,
 
 /// @brief Interpret the `icmp_eq` opcode for integer equality comparisons.
 /// @note Produces a canonical `i1` value (0 or 1) stored via @c ops::storeResult,
-///       following docs/il-reference.md §Comparisons.
+///       following docs/il-guide.md#reference §Comparisons.
 VM::ExecResult OpHandlers::handleICmpEq(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
@@ -148,7 +148,7 @@ VM::ExecResult OpHandlers::handleICmpEq(VM &vm,
 }
 
 /// @brief Interpret the `icmp_ne` opcode for integer inequality comparisons.
-/// @note Semantics mirror @ref OpHandlers::handleICmpEq with negated predicate per docs/il-reference.md §Comparisons.
+/// @note Semantics mirror @ref OpHandlers::handleICmpEq with negated predicate per docs/il-guide.md#reference §Comparisons.
 VM::ExecResult OpHandlers::handleICmpNe(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
@@ -168,7 +168,7 @@ VM::ExecResult OpHandlers::handleICmpNe(VM &vm,
 
 /// @brief Interpret the `scmp_gt` opcode for signed greater-than comparisons.
 /// @note Reads both operands as signed 64-bit integers and stores a canonical `i1`
-///       result, consistent with docs/il-reference.md §Comparisons.
+///       result, consistent with docs/il-guide.md#reference §Comparisons.
 VM::ExecResult OpHandlers::handleSCmpGT(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
@@ -188,7 +188,7 @@ VM::ExecResult OpHandlers::handleSCmpGT(VM &vm,
 
 /// @brief Interpret the `scmp_lt` opcode for signed less-than comparisons.
 /// @note Shares operand evaluation and storage behaviour with other comparison handlers,
-///       producing canonical booleans per docs/il-reference.md §Comparisons.
+///       producing canonical booleans per docs/il-guide.md#reference §Comparisons.
 VM::ExecResult OpHandlers::handleSCmpLT(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
@@ -207,7 +207,7 @@ VM::ExecResult OpHandlers::handleSCmpLT(VM &vm,
 }
 
 /// @brief Interpret the `scmp_le` opcode for signed less-or-equal comparisons.
-/// @note Uses signed ordering per docs/il-reference.md §Comparisons and returns a
+/// @note Uses signed ordering per docs/il-guide.md#reference §Comparisons and returns a
 ///       canonical `i1` result written into the destination register.
 VM::ExecResult OpHandlers::handleSCmpLE(VM &vm,
                                         Frame &fr,
@@ -227,7 +227,7 @@ VM::ExecResult OpHandlers::handleSCmpLE(VM &vm,
 }
 
 /// @brief Interpret the `scmp_ge` opcode for signed greater-or-equal comparisons.
-/// @note Completes the signed comparison set defined in docs/il-reference.md §Comparisons
+/// @note Completes the signed comparison set defined in docs/il-guide.md#reference §Comparisons
 ///       by writing 0 or 1 into the destination register.
 VM::ExecResult OpHandlers::handleSCmpGE(VM &vm,
                                         Frame &fr,
@@ -248,7 +248,7 @@ VM::ExecResult OpHandlers::handleSCmpGE(VM &vm,
 
 /// @brief Interpret the `trunc1`/`zext1` opcodes that normalise between `i1` and `i64`.
 /// @note The operand is masked to the least-significant bit so the stored value is a
-///       canonical boolean per docs/il-reference.md §Conversions.
+///       canonical boolean per docs/il-guide.md#reference §Conversions.
 VM::ExecResult OpHandlers::handleTruncOrZext1(VM &vm,
                                               Frame &fr,
                                               const Instr &in,

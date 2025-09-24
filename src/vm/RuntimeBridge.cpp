@@ -3,7 +3,7 @@
 // License: MIT License
 // Key invariants: None.
 // Ownership/Lifetime: Bridge does not own VM or runtime resources.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "vm/RuntimeBridge.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"

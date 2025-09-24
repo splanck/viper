@@ -2,7 +2,7 @@
 // Purpose: Represents global variables in IL modules.
 // Key invariants: Initialized values match declared type.
 // Ownership/Lifetime: Module owns global variables.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "il/core/Type.hpp"

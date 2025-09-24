@@ -2,7 +2,7 @@
 // Purpose: Declares verification utilities for module global declarations.
 // Key invariants: Global names must be unique; pointers remain valid for module lifetime.
 // Ownership/Lifetime: Stores pointers back into the inspected module only for lookup reuse.
-// Links: docs/il-reference.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "il/verify/DiagSink.hpp"
