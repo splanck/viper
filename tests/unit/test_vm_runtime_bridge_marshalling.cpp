@@ -101,6 +101,56 @@ int main()
     Slot voidResult = callBridge("rt_randomize_i64", {seedArg}, Type::Kind::Void, {Type::Kind::I64});
     assert(voidResult.i64 == 0);
 
+    Slot arrLenArg{};
+    arrLenArg.i64 = 3;
+    Slot arrHandle = callBridge("rt_arr_i32_new", {arrLenArg}, Type::Kind::Ptr, {Type::Kind::I64});
+    assert(arrHandle.ptr != nullptr);
+
+    Slot arrSlot{};
+    arrSlot.ptr = arrHandle.ptr;
+    Slot arrLenResult = callBridge("rt_arr_i32_len", {arrSlot}, Type::Kind::I64, {Type::Kind::Ptr});
+    assert(arrLenResult.i64 == 3);
+
+    Slot arrIdx{};
+    arrIdx.i64 = 1;
+    Slot arrValue{};
+    arrValue.i64 = -17;
+    Slot setResult = callBridge("rt_arr_i32_set",
+                                {arrSlot, arrIdx, arrValue},
+                                Type::Kind::Void,
+                                {Type::Kind::Ptr, Type::Kind::I64, Type::Kind::I64});
+    assert(setResult.i64 == 0);
+
+    Slot getIdx{};
+    getIdx.i64 = 1;
+    Slot arrGetResult = callBridge("rt_arr_i32_get",
+                                   {arrSlot, getIdx},
+                                   Type::Kind::I64,
+                                   {Type::Kind::Ptr, Type::Kind::I64});
+    assert(arrGetResult.i64 == -17);
+
+    Slot resizeLen{};
+    resizeLen.i64 = 5;
+    Slot resizeResult = callBridge("rt_arr_i32_resize",
+                                   {arrSlot, resizeLen},
+                                   Type::Kind::Ptr,
+                                   {Type::Kind::Ptr, Type::Kind::I64});
+    assert(resizeResult.ptr != nullptr);
+    arrSlot.ptr = resizeResult.ptr;
+
+    Slot resizedLen = callBridge("rt_arr_i32_len", {arrSlot}, Type::Kind::I64, {Type::Kind::Ptr});
+    assert(resizedLen.i64 == 5);
+
+    Slot newIdx{};
+    newIdx.i64 = 3;
+    Slot zeroResult = callBridge("rt_arr_i32_get",
+                                 {arrSlot, newIdx},
+                                 Type::Kind::I64,
+                                 {Type::Kind::Ptr, Type::Kind::I64});
+    assert(zeroResult.i64 == 0);
+
+    free(arrSlot.ptr);
+
     for (bool covered : coveredKinds)
         assert(covered);
 
