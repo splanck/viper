@@ -68,6 +68,8 @@ const char *tokenKindToString(TokenKind k)
             return "INPUT";
         case TokenKind::KeywordDim:
             return "DIM";
+        case TokenKind::KeywordRedim:
+            return "REDIM";
         case TokenKind::KeywordAs:
             return "AS";
         case TokenKind::KeywordRandomize:
@@ -102,6 +104,10 @@ const char *tokenKindToString(TokenKind k)
             return "SUB";
         case TokenKind::KeywordReturn:
             return "RETURN";
+        case TokenKind::KeywordLbound:
+            return "LBOUND";
+        case TokenKind::KeywordUbound:
+            return "UBOUND";
         case TokenKind::KeywordBoolean:
             return "BOOLEAN";
         case TokenKind::KeywordTrue:

@@ -149,6 +149,12 @@ int main()
     dimScalar->type = Type::Str;
     prog.main.push_back(std::move(dimScalar));
 
+    auto redim = std::make_unique<ReDimStmt>();
+    redim->line = 37;
+    redim->name = "ARR";
+    redim->size = makeInt(20);
+    prog.main.push_back(std::move(redim));
+
     auto randomize = std::make_unique<RandomizeStmt>();
     randomize->line = 40;
     randomize->seed = makeInt(123);
@@ -258,6 +264,7 @@ int main()
                                  "20: (LET ARR(I) (SQR (+ 1 2.5)))\n"
                                  "30: (DIM ARR 10 AS F64)\n"
                                  "35: (DIM S$ AS STR)\n"
+                                 "37: (REDIM ARR 20)\n"
                                  "40: (RANDOMIZE 123)\n"
                                  "50: (INPUT \"Value?\", N)\n"
                                  "60: (IF (> A 0) THEN (SEQ (LET B TRUE) (GOTO 100)) ELSEIF (< A "

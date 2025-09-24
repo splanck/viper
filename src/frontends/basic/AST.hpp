@@ -28,6 +28,7 @@ struct CallExpr;
 struct PrintStmt;
 struct LetStmt;
 struct DimStmt;
+struct ReDimStmt;
 struct RandomizeStmt;
 struct IfStmt;
 struct WhileStmt;
@@ -80,6 +81,7 @@ struct StmtVisitor
     virtual void visit(const PrintStmt &) = 0;
     virtual void visit(const LetStmt &) = 0;
     virtual void visit(const DimStmt &) = 0;
+    virtual void visit(const ReDimStmt &) = 0;
     virtual void visit(const RandomizeStmt &) = 0;
     virtual void visit(const IfStmt &) = 0;
     virtual void visit(const WhileStmt &) = 0;
@@ -101,6 +103,7 @@ struct MutStmtVisitor
     virtual void visit(PrintStmt &) = 0;
     virtual void visit(LetStmt &) = 0;
     virtual void visit(DimStmt &) = 0;
+    virtual void visit(ReDimStmt &) = 0;
     virtual void visit(RandomizeStmt &) = 0;
     virtual void visit(IfStmt &) = 0;
     virtual void visit(WhileStmt &) = 0;
@@ -368,6 +371,19 @@ struct DimStmt : Stmt
 
     /// True when DIM declares an array; false for scalar declarations.
     bool isArray = true;
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief REDIM statement resizing an existing array.
+struct ReDimStmt : Stmt
+{
+    /// Array name whose storage is being reallocated.
+    std::string name;
+
+    /// Number of elements in the resized array; owned and non-null.
+    ExprPtr size;
+
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
 };

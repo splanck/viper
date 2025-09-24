@@ -140,6 +140,16 @@ class ScanStmtVisitor final : public StmtVisitor
             lowerer_.scanExpr(*stmt.size);
     }
 
+    void visit(const ReDimStmt &stmt) override
+    {
+        lowerer_.requestHelper(Lowerer::RuntimeFeature::Alloc);
+        if (!stmt.name.empty())
+            lowerer_.markSymbolReferenced(stmt.name);
+        lowerer_.markArray(stmt.name);
+        if (stmt.size)
+            lowerer_.scanExpr(*stmt.size);
+    }
+
     void visit(const RandomizeStmt &stmt) override
     {
         lowerer_.trackRuntime(Lowerer::RuntimeFeature::RandomizeI64);

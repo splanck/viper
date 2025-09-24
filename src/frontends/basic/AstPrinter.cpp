@@ -205,6 +205,17 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         printer.os << ')';
     }
 
+    void visit(const ReDimStmt &stmt) override
+    {
+        printer.os << "(REDIM " << stmt.name;
+        if (stmt.size)
+        {
+            printer.os << ' ';
+            stmt.size->accept(exprPrinter);
+        }
+        printer.os << ')';
+    }
+
     void visit(const RandomizeStmt &stmt) override
     {
         printer.os << "(RANDOMIZE ";

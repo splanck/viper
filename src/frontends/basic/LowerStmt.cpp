@@ -36,6 +36,8 @@ class LowererStmtVisitor final : public StmtVisitor
             lowerer_.lowerDim(stmt);
     }
 
+    void visit(const ReDimStmt &stmt) override { lowerer_.lowerReDim(stmt); }
+
     void visit(const RandomizeStmt &stmt) override { lowerer_.lowerRandomize(stmt); }
 
     void visit(const IfStmt &stmt) override { lowerer_.lowerIf(stmt); }
@@ -730,6 +732,23 @@ void Lowerer::lowerDim(const DimStmt &stmt)
         if (info && info->arrayLengthSlot)
             emitStore(Type(Type::Kind::I64), Value::temp(*info->arrayLengthSlot), sz.value);
     }
+}
+
+/// @brief Lower a REDIM array reallocation.
+/// @param stmt REDIM statement describing the new size.
+/// @details Re-evaluates the target length and stores a freshly allocated buffer
+///          into the tracked array slot, mirroring DIM lowering semantics.
+void Lowerer::lowerReDim(const ReDimStmt &stmt)
+{
+    RVal sz = lowerExpr(*stmt.size);
+    curLoc = stmt.loc;
+    Value bytes = emitBinary(Opcode::Mul, Type(Type::Kind::I64), sz.value, Value::constInt(8));
+    Value base = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {bytes});
+    const auto *info = findSymbol(stmt.name);
+    assert(info && info->slotId);
+    emitStore(Type(Type::Kind::Ptr), Value::temp(*info->slotId), base);
+    if (boundsChecks && info && info->arrayLengthSlot)
+        emitStore(Type(Type::Kind::I64), Value::temp(*info->arrayLengthSlot), sz.value);
 }
 
 /// @brief Lower a RANDOMIZE seed update.

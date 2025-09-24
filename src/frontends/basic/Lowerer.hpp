@@ -447,6 +447,8 @@ class Lowerer
 
     void lowerDim(const DimStmt &stmt);
 
+    void lowerReDim(const ReDimStmt &stmt);
+
     void lowerRandomize(const RandomizeStmt &stmt);
 
     // helpers
