@@ -3,7 +3,7 @@
 //          LICENSE).
 // Key invariants: ParserState maintains current function and block context.
 // Ownership/Lifetime: Populates functions directly within the supplied module.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/io/FunctionParser.hpp"
 #include "il/core/BasicBlock.hpp"

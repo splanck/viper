@@ -2,7 +2,7 @@
 // Purpose: Enumerates IL instruction opcodes.
 // Key invariants: Enumeration values match IL spec.
 // Ownership/Lifetime: Not applicable.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include <cstddef>
@@ -12,7 +12,7 @@ namespace il::core
 {
 
 /// @brief All instruction opcodes defined by the IL.
-/// @see docs/il-spec.md §3 for opcode descriptions.
+/// @see docs/il-guide.md#reference §3 for opcode descriptions.
 enum class Opcode
 {
 #define IL_OPCODE(NAME, ...) NAME,

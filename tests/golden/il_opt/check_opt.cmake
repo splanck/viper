@@ -3,7 +3,7 @@
 # Key invariants: Uses a unique output file per test to prevent cross-test
 # clobbering during parallel runs. Emits helpful diffs and artifacts on failure.
 # Ownership/Lifetime: Invoked by CTest for IL optimizer golden tests.
-# Links: docs/class-catalog.md
+# Links: docs/codemap.md
 
 if(NOT DEFINED ILC)
   message(FATAL_ERROR "ILC not set")

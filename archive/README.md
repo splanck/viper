@@ -7,7 +7,7 @@ Purpose: High-signal landing page with build and run instructions.
 
 Viper is a small, deterministic compiler toolchain:
 
-- **Front end:** BASIC lowers to a minimal, well-typed [IL v0.1.2](docs/il-reference.md).
+- **Front end:** BASIC lowers to a minimal, well-typed [IL v0.1.2](docs/il-guide.md#reference).
 - **Runtime/VM:** A portable C runtime and C++ VM execute IL directly.
 - **Backends:** Native codegen is deferred until IL + VM + front ends are solid.
 
@@ -32,12 +32,12 @@ cmake --build build -j
 ## Documentation
 
 - [Getting Started](docs/getting-started.md)
-- [BASIC Reference](docs/basic-reference.md)
-- [IL Spec (v0.1.2)](docs/il-reference.md)
-- [Lowering (BASIC → IL)](docs/references/lowering.md)
-- [Tutorials: BASIC](docs/tutorials/basic.md), [IL](docs/tutorials/il.md)
-- [Architecture (contributors)](docs/dev/architecture.md)
-- [CLI (ilc)](docs/references/ilc.md)
+- [BASIC Reference](docs/basic-language.md)
+- [IL Spec (v0.1.2)](docs/il-guide.md#reference)
+- [Lowering (BASIC → IL)](docs/il-guide.md#lowering)
+- [Tutorials: BASIC](docs/tutorials-examples.md#basic-tutorial), [IL](docs/tutorials-examples.md#il-tutorial)
+- [Architecture (contributors)](docs/architecture.md)
+- [CLI (ilc)](docs/tools.md#ilc)
 - Examples: [BASIC](examples/basic), [IL](examples/il)
 
 ## Layout

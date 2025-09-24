@@ -2,7 +2,7 @@
 // Purpose: Declares IL verifier that checks modules.
 // Key invariants: None.
 // Ownership/Lifetime: Verifier does not own modules.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "support/diag_expected.hpp"

@@ -2,7 +2,7 @@
 // Purpose: Provides helper methods for IL instructions.
 // Key invariants: None.
 // Ownership/Lifetime: Instructions stored by value in blocks.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/core/Instr.hpp"
 

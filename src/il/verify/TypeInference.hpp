@@ -2,7 +2,7 @@
 // Purpose: Declares utilities for IL verifier type inference and operand validation.
 // Key invariants: Tracks temporary definitions and exposes queries for operand types.
 // Ownership/Lifetime: Non-owning views over caller-provided maps/sets.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "il/core/Type.hpp"

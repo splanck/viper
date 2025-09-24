@@ -3,10 +3,10 @@
 Paths to notable documentation and tests.
 
 ## Docs
-- docs/overview.md — architecture overview
-- docs/il-quickstart.md — beginner IL tutorial with runnable snippets
-- docs/basic-reference.md — BASIC language reference and intrinsics
-- docs/il-reference.md — full IL reference
+- docs/architecture.md — architecture overview
+- docs/il-guide.md#quickstart — beginner IL tutorial with runnable snippets
+- docs/basic-language.md — BASIC language reference and intrinsics
+- docs/il-guide.md#reference — full IL reference
 
 ## Front End (BASIC)
 - **src/frontends/basic/AST.cpp**
@@ -297,7 +297,7 @@ Paths to notable documentation and tests.
 
 - **src/il/io/TypeParser.cpp**
 
-  Translates textual IL type mnemonics like `i64`, `ptr`, or `str` into `il::core::Type` objects used by the parser, returning a default type when the spelling is unknown. Callers can optionally receive a success flag via the `ok` pointer, allowing higher-level parsers to differentiate between absent and malformed type annotations. The mapping mirrors the primitive set documented in `docs/il-spec.md`, ensuring serializer and parser stay aligned on accepted spellings. Dependencies include `il/io/TypeParser.hpp`, which exposes the interface backed by `il::core::Type` definitions.
+  Translates textual IL type mnemonics like `i64`, `ptr`, or `str` into `il::core::Type` objects used by the parser, returning a default type when the spelling is unknown. Callers can optionally receive a success flag via the `ok` pointer, allowing higher-level parsers to differentiate between absent and malformed type annotations. The mapping mirrors the primitive set documented in `docs/il-guide.md#reference`, ensuring serializer and parser stay aligned on accepted spellings. Dependencies include `il/io/TypeParser.hpp`, which exposes the interface backed by `il::core::Type` definitions.
 
 - **src/il/io/Serializer.cpp**
 

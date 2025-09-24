@@ -2,7 +2,7 @@
 // Purpose: Declares the instruction verification rule interface.
 // Key invariants: Rules operate with verifier-provided context and do not own data.
 // Ownership/Lifetime: Implementations hold references managed by the verifier.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "il/core/Instr.hpp"

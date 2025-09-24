@@ -3,7 +3,7 @@
 // Key invariants: Ensures terminators and branch arguments satisfy structural rules.
 // Ownership/Lifetime: Operates with caller-provided verifier state.
 // License: MIT (see LICENSE).
-// Links: docs/il-reference.md
+// Links: docs/il-guide.md#reference
 
 #include "il/verify/ControlFlowChecker.hpp"
 #include "il/core/BasicBlock.hpp"
@@ -71,7 +71,7 @@ std::string formatInstrDiag(const Function &fn,
 /// @return Empty on success; otherwise diagnostics describing duplicate names or
 ///         void parameters.
 /// @details Ensures block parameters are unique and non-void so predecessors can
-///          match arguments, per docs/il-reference.md section "Basic Blocks".
+///          match arguments, per docs/il-guide.md#reference section "Basic Blocks".
 Expected<void> validateBlockParams_impl(const Function &fn,
                                         const BasicBlock &bb,
                                         TypeInference &types,
@@ -104,7 +104,7 @@ Expected<void> validateBlockParams_impl(const Function &fn,
 /// @return Propagates the first verification error produced by operand checking
 ///         or the callback; otherwise empty.
 /// @details Stops after the first terminator to honour the single-terminator
-///          rule outlined in docs/il-reference.md ("Explicit control flow").
+///          rule outlined in docs/il-guide.md#reference ("Explicit control flow").
 Expected<void> iterateBlockInstructions_impl(const Function &fn,
                                              const BasicBlock &bb,
                                              const std::unordered_map<std::string, const BasicBlock *> &blockMap,
@@ -134,7 +134,7 @@ Expected<void> iterateBlockInstructions_impl(const Function &fn,
 /// @return Diagnostic if the block is empty, has multiple terminators, contains
 ///         instructions after a terminator, or is missing a terminator.
 /// @details Implements the "explicit control flow" requirement described in
-///          docs/il-reference.md: every block ends with exactly one terminator.
+///          docs/il-guide.md#reference: every block ends with exactly one terminator.
 Expected<void> checkBlockTerminators_impl(const Function &fn, const BasicBlock &bb)
 {
     if (bb.instructions.empty())
@@ -169,7 +169,7 @@ Expected<void> checkBlockTerminators_impl(const Function &fn, const BasicBlock &
 /// @param label Label string used for diagnostics.
 /// @param types Type inference context queried for argument types.
 /// @return Diagnostic if argument counts or kinds differ from target parameters.
-/// @details Enforces docs/il-reference.md section "Basic Blocks": predecessors
+/// @details Enforces docs/il-guide.md#reference section "Basic Blocks": predecessors
 ///          must pass arguments matching the parameters declared by the
 ///          destination block.
 Expected<void> verifyBranchArgs(const Function &fn,
@@ -201,7 +201,7 @@ Expected<void> verifyBranchArgs(const Function &fn,
 /// @return Diagnostic if the terminator has operands, the wrong number of
 ///         labels, or mismatched branch arguments.
 /// @details Checks the IL Control Flow rule that `br` only names one target and
-///          forwards arguments compatible with that block (docs/il-reference.md,
+///          forwards arguments compatible with that block (docs/il-guide.md#reference,
 ///          section "Control Flow", `br`).
 Expected<void> verifyBr_impl(const Function &fn,
                              const BasicBlock &bb,
@@ -232,7 +232,7 @@ Expected<void> verifyBr_impl(const Function &fn,
 /// @param types Type inference context queried for operand and argument types.
 /// @return Diagnostic if the condition is ill-typed, labels are missing, or
 ///         branch arguments fail to match their destination parameters.
-/// @details Enforces docs/il-reference.md section "Control Flow" (`cbr`):
+/// @details Enforces docs/il-guide.md#reference section "Control Flow" (`cbr`):
 ///          conditions must be `i1` and each successor must receive matching
 ///          argument payloads.
 Expected<void> verifyCBr_impl(const Function &fn,
@@ -267,7 +267,7 @@ Expected<void> verifyCBr_impl(const Function &fn,
 /// @param types Type inference context used to query operand kinds.
 /// @return Diagnostic if a `void` function returns a value or a non-`void`
 ///         function omits or mismatches the return operand.
-/// @details Implements docs/il-reference.md section "Control Flow" (`ret`),
+/// @details Implements docs/il-guide.md#reference section "Control Flow" (`ret`),
 ///          ensuring the terminator conforms to the function's declared return
 ///          type.
 Expected<void> verifyRet_impl(const Function &fn,

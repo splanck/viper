@@ -2,7 +2,7 @@
 // Purpose: Coordinates module verification passes for externs, globals, and functions.
 // Key invariants: Passes run sequentially and halt on the first structural or typing error.
 // Ownership/Lifetime: Operates on caller-owned modules; diagnostic sinks manage their own storage.
-// Links: docs/il-reference.md
+// Links: docs/il-guide.md#reference
 
 #include "il/verify/Verifier.hpp"
 
