@@ -28,6 +28,24 @@ function(viper_add_golden_suite_tests)
     "-DEXPECT=${EXPECT_MISMATCHED_NEXT}"
     -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
+  file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/exit_outside_loop.stderr EXPECT_EXIT_OUTSIDE_LOOP)
+  string(STRIP "${EXPECT_EXIT_OUTSIDE_LOOP}" EXPECT_EXIT_OUTSIDE_LOOP)
+  viper_add_ctest(basic_error_exit_outside_loop
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/exit_outside_loop.bas
+    "-DEXPECT=${EXPECT_EXIT_OUTSIDE_LOOP}"
+    -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+  file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/exit_mismatch.stderr EXPECT_EXIT_MISMATCH)
+  string(STRIP "${EXPECT_EXIT_MISMATCH}" EXPECT_EXIT_MISMATCH)
+  viper_add_ctest(basic_error_exit_mismatch
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/exit_mismatch.bas
+    "-DEXPECT=${EXPECT_EXIT_MISMATCH}"
+    -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
   file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/loop_var_assignment.stderr EXPECT_LOOP_VAR_ASSIGNMENT)
   string(STRIP "${EXPECT_LOOP_VAR_ASSIGNMENT}" EXPECT_LOOP_VAR_ASSIGNMENT)
   viper_add_ctest(basic_error_loop_var_assignment
