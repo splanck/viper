@@ -30,13 +30,12 @@ int main()
     }
 
     {
-        std::string src =
-            "10 WHILE FLAG\n"
-            "20 FOR I = 1 TO 3\n"
-            "30 PRINT I: IF I = 2 THEN PRINT 99\n"
-            "40 NEXT I\n"
-            "50 WEND\n"
-            "60 END\n";
+        std::string src = "10 WHILE FLAG\n"
+                          "20 FOR I = 1 TO 3\n"
+                          "30 PRINT I: IF I = 2 THEN PRINT 99\n"
+                          "40 NEXT I\n"
+                          "50 WEND\n"
+                          "60 END\n";
         SourceManager sm;
         uint32_t fid = sm.addFile("nested.bas");
         Parser p(src, fid);
@@ -57,12 +56,11 @@ int main()
     }
 
     {
-        std::string src =
-            "10 IF FLAG THEN\n"
-            "20 PRINT 1\n"
-            "30 ELSE\n"
-            "40 PRINT 2\n"
-            "50 END\n";
+        std::string src = "10 IF FLAG THEN\n"
+                          "20 PRINT 1\n"
+                          "30 ELSE\n"
+                          "40 PRINT 2\n"
+                          "50 END\n";
         SourceManager sm;
         uint32_t fid = sm.addFile("ifnewlines.bas");
         Parser p(src, fid);
@@ -78,14 +76,13 @@ int main()
     }
 
     {
-        std::string src =
-            "10 IF FLAG THEN\n"
-            "20 PRINT 1\n"
-            "30 ELSEIF OTHER THEN\n"
-            "40 PRINT 2\n"
-            "50 ELSE\n"
-            "60 PRINT 3\n"
-            "70 END\n";
+        std::string src = "10 IF FLAG THEN\n"
+                          "20 PRINT 1\n"
+                          "30 ELSEIF OTHER THEN\n"
+                          "40 PRINT 2\n"
+                          "50 ELSE\n"
+                          "60 PRINT 3\n"
+                          "70 END\n";
         SourceManager sm;
         uint32_t fid = sm.addFile("ifelseif.bas");
         Parser p(src, fid);
@@ -107,9 +104,8 @@ int main()
     }
 
     {
-        std::string src =
-            "10 IF FLAG THEN PRINT 1 ELSEIF OTHER THEN PRINT 2 ELSE PRINT 3\n"
-            "20 END\n";
+        std::string src = "10 IF FLAG THEN PRINT 1 ELSEIF OTHER THEN PRINT 2 ELSE PRINT 3\n"
+                          "20 END\n";
         SourceManager sm;
         uint32_t fid = sm.addFile("ifinline.bas");
         Parser p(src, fid);
@@ -127,9 +123,8 @@ int main()
     }
 
     {
-        std::string src =
-            "10 IF FLAG THEN PRINT 1: PRINT 2\n"
-            "20 END\n";
+        std::string src = "10 IF FLAG THEN PRINT 1: PRINT 2\n"
+                          "20 END\n";
         SourceManager sm;
         uint32_t fid = sm.addFile("ifcolon.bas");
         Parser p(src, fid);
@@ -142,6 +137,68 @@ int main()
         auto *ifStmt = dynamic_cast<IfStmt *>(list->stmts[0].get());
         assert(ifStmt);
         assert(dynamic_cast<PrintStmt *>(list->stmts[1].get()));
+    }
+
+    {
+        std::string src = "10 DO WHILE FLAG\n"
+                          "20 PRINT 1\n"
+                          "30 LOOP\n"
+                          "40 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("dowhile.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        assert(prog);
+        assert(prog->main.size() == 2);
+        auto *doStmt = dynamic_cast<DoStmt *>(prog->main[0].get());
+        assert(doStmt);
+        assert(doStmt->condKind == DoStmt::CondKind::While);
+        assert(doStmt->testPos == DoStmt::TestPos::Pre);
+        assert(doStmt->cond);
+        auto *var = dynamic_cast<VarExpr *>(doStmt->cond.get());
+        assert(var);
+        assert(var->name == "FLAG");
+        assert(doStmt->body.size() == 1);
+        assert(dynamic_cast<PrintStmt *>(doStmt->body[0].get()));
+    }
+
+    {
+        std::string src = "10 DO\n"
+                          "20 PRINT 1\n"
+                          "30 LOOP UNTIL DONE\n"
+                          "40 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("dountil.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        assert(prog);
+        assert(prog->main.size() == 2);
+        auto *doStmt = dynamic_cast<DoStmt *>(prog->main[0].get());
+        assert(doStmt);
+        assert(doStmt->condKind == DoStmt::CondKind::Until);
+        assert(doStmt->testPos == DoStmt::TestPos::Post);
+        assert(doStmt->cond);
+        auto *var = dynamic_cast<VarExpr *>(doStmt->cond.get());
+        assert(var);
+        assert(var->name == "DONE");
+        assert(doStmt->body.size() == 1);
+        assert(dynamic_cast<PrintStmt *>(doStmt->body[0].get()));
+    }
+
+    {
+        std::string src = "10 DO: LOOP\n"
+                          "20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("doloop.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        assert(prog);
+        assert(prog->main.size() == 2);
+        auto *doStmt = dynamic_cast<DoStmt *>(prog->main[0].get());
+        assert(doStmt);
+        assert(doStmt->condKind == DoStmt::CondKind::None);
+        assert(!doStmt->cond);
+        assert(doStmt->body.empty());
     }
 
     return 0;

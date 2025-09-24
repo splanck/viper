@@ -42,8 +42,9 @@ class Parser
         /// @brief Aggregated information about a terminating keyword.
         struct TerminatorInfo
         {
-            int line = 0;                            ///< Optional line number that preceded the terminator.
-            il::support::SourceLoc loc{};            ///< Source location where the terminator keyword appeared.
+            int line = 0; ///< Optional line number that preceded the terminator.
+            il::support::SourceLoc
+                loc{}; ///< Source location where the terminator keyword appeared.
         };
 
         /// @brief Classification of the last separator consumed by the context.
@@ -54,8 +55,10 @@ class Parser
             LineBreak, ///< A line break separated the previous and next statements.
         };
 
-        using TerminatorPredicate = std::function<bool(int)>;                     ///< Predicate identifying terminator tokens.
-        using TerminatorConsumer = std::function<void(int, TerminatorInfo &)>;     ///< Callback consuming the terminator tokens.
+        using TerminatorPredicate =
+            std::function<bool(int)>; ///< Predicate identifying terminator tokens.
+        using TerminatorConsumer = std::function<void(
+            int, TerminatorInfo &)>; ///< Callback consuming the terminator tokens.
 
         /// @brief Construct a context bound to @p parser.
         /// @param parser Owning parser providing token accessors.
@@ -81,7 +84,10 @@ class Parser
 
         /// @brief Report which separator most recently separated statements.
         /// @return Classification of the most recent separator.
-        SeparatorKind lastSeparator() const { return lastSeparator_; }
+        SeparatorKind lastSeparator() const
+        {
+            return lastSeparator_;
+        }
 
         /// @brief Parse statements until @p isTerminator matches and populate @p dst.
         /// @param isTerminator Predicate determining when the body ends.
@@ -89,8 +95,8 @@ class Parser
         /// @param dst Destination vector receiving parsed statements.
         /// @return Line/location metadata of the terminating keyword.
         TerminatorInfo consumeStatementBody(const TerminatorPredicate &isTerminator,
-                                           const TerminatorConsumer &onTerminator,
-                                           std::vector<StmtPtr> &dst);
+                                            const TerminatorConsumer &onTerminator,
+                                            std::vector<StmtPtr> &dst);
 
         /// @brief Parse statements until @p terminator is encountered.
         /// @param terminator Token that terminates the body.
@@ -99,9 +105,10 @@ class Parser
         TerminatorInfo consumeStatementBody(TokenKind terminator, std::vector<StmtPtr> &dst);
 
       private:
-        Parser &parser_; ///< Parent parser that owns the token stream.
+        Parser &parser_;       ///< Parent parser that owns the token stream.
         int pendingLine_ = -1; ///< Deferred line label for the next statement.
-        SeparatorKind lastSeparator_ = SeparatorKind::LineBreak; ///< Classification of the last separator consumed.
+        SeparatorKind lastSeparator_ =
+            SeparatorKind::LineBreak; ///< Classification of the last separator consumed.
     };
 
     /// @brief Create a statement context bound to this parser instance.
@@ -138,7 +145,8 @@ class Parser
         StmtPtr (Parser::*with_line)(int) = nullptr; ///< Handler requiring line number.
     };
 
-    std::array<StmtHandler, static_cast<std::size_t>(TokenKind::Count)> stmtHandlers_{}; ///< Token to parser mapping.
+    std::array<StmtHandler, static_cast<std::size_t>(TokenKind::Count)>
+        stmtHandlers_{}; ///< Token to parser mapping.
 
 #include "frontends/basic/Parser_Token.hpp"
 
@@ -168,6 +176,10 @@ class Parser
     /// @brief Parse a WHILE loop.
     /// @return WHILE statement node.
     StmtPtr parseWhile();
+
+    /// @brief Parse a DO ... LOOP statement.
+    /// @return DO statement node with optional tests.
+    StmtPtr parseDo();
 
     /// @brief Parse a FOR loop.
     /// @return FOR statement node.
