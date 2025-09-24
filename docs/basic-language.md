@@ -46,6 +46,25 @@ Programs can include top-level statements and user-defined procedures. Procedure
 50 LET A(1) = I
 ```
 
+### Arrays (1-D)
+Arrays use zero-based indexing. `DIM` allocates a fixed-length array and `REDIM`
+changes its length in place. `LBOUND(arrayVar)` always returns `0`, and
+`UBOUND(arrayVar)` evaluates to `len - 1`. Elements are currently stored as
+`Int32`; additional element types are planned.
+
+```basic
+10 DIM A(3)
+20 LET A(0) = 10
+30 PRINT LBOUND(A), UBOUND(A)
+40 PRINT A(0), A(2)
+50 PRINT A(3)  ' runtime error: index 3 is out of bounds (array length is 3)
+60 REDIM A(5)
+70 PRINT UBOUND(A)
+```
+
+Out-of-bounds accesses trigger a runtime bounds check that terminates the
+program with an error message.
+
 ### Variables and assignment
 Variables are created with `LET`. Scalars are named without suffix (int), with `#` (float), or `$` (string).
 
