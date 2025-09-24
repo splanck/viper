@@ -206,6 +206,9 @@ class Lowerer
             blockNamer_.reset();
             nextTemp_ = 0;
             boundsCheckId_ = 0;
+            loopExitTargets_.clear();
+            loopExitTargetIdx_.clear();
+            loopExitTaken_.clear();
         }
 
         [[nodiscard]] Function *function() const noexcept { return function_; }
@@ -230,6 +233,61 @@ class Lowerer
 
         /// @brief Return the current bounds-check identifier and advance it.
         unsigned consumeBoundsCheckId() noexcept { return boundsCheckId_++; }
+
+        void pushLoopExit(BasicBlock *bb)
+        {
+            loopExitTargets_.push_back(bb);
+            if (function_)
+            {
+                auto base = &function_->blocks[0];
+                loopExitTargetIdx_.push_back(static_cast<size_t>(bb - base));
+            }
+            else
+            {
+                loopExitTargetIdx_.push_back(0);
+            }
+            loopExitTaken_.push_back(false);
+        }
+
+        void popLoopExit()
+        {
+            loopExitTargets_.pop_back();
+            loopExitTargetIdx_.pop_back();
+            loopExitTaken_.pop_back();
+        }
+
+        [[nodiscard]] BasicBlock *currentLoopExit() const
+        {
+            if (loopExitTargetIdx_.empty() || !function_)
+                return nullptr;
+            size_t idx = loopExitTargetIdx_.back();
+            if (idx >= function_->blocks.size())
+                return nullptr;
+            return &function_->blocks[idx];
+        }
+
+        void markLoopExitTaken()
+        {
+            if (!loopExitTaken_.empty())
+                loopExitTaken_.back() = true;
+        }
+
+        void refreshLoopExitTarget(BasicBlock *bb)
+        {
+            if (loopExitTargets_.empty())
+                return;
+            loopExitTargets_.back() = bb;
+            if (function_)
+            {
+                auto base = &function_->blocks[0];
+                loopExitTargetIdx_.back() = static_cast<size_t>(bb - base);
+            }
+        }
+
+        [[nodiscard]] bool loopExitTaken() const
+        {
+            return !loopExitTaken_.empty() && loopExitTaken_.back();
+        }
 
         [[nodiscard]] std::unordered_map<int, size_t> &lineBlocks() noexcept
         {
@@ -263,6 +321,9 @@ class Lowerer
         std::unique_ptr<BlockNamer> blockNamer_;
         unsigned nextTemp_{0};
         unsigned boundsCheckId_{0};
+        std::vector<BasicBlock *> loopExitTargets_;
+        std::vector<size_t> loopExitTargetIdx_;
+        std::vector<bool> loopExitTaken_;
     };
 
   public:
