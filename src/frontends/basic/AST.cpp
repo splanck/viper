@@ -94,6 +94,18 @@ void LBoundExpr::accept(MutExprVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this UBOUND query node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void UBoundExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void UBoundExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
 /// @brief Forwards this unary operation node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void UnaryExpr::accept(ExprVisitor &visitor) const

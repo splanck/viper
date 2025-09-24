@@ -66,6 +66,8 @@ class ScanExprVisitor final : public ExprVisitor
 
     void visit(const LBoundExpr &expr) override { result_ = lowerer_.scanLBoundExpr(expr); }
 
+    void visit(const UBoundExpr &expr) override { result_ = lowerer_.scanUBoundExpr(expr); }
+
     void visit(const UnaryExpr &expr) override { result_ = lowerer_.scanUnaryExpr(expr); }
 
     void visit(const BinaryExpr &expr) override { result_ = lowerer_.scanBinaryExpr(expr); }
@@ -322,6 +324,17 @@ Lowerer::ExprType Lowerer::scanLBoundExpr(const LBoundExpr &expr)
 {
     markSymbolReferenced(expr.name);
     markArray(expr.name);
+    return ExprType::I64;
+}
+
+/// @brief Scans a UBOUND expression, marking the referenced array and runtime helper.
+/// @param expr BASIC UBOUND expression identifying the array symbol.
+/// @return Always reports an integer result.
+Lowerer::ExprType Lowerer::scanUBoundExpr(const UBoundExpr &expr)
+{
+    markSymbolReferenced(expr.name);
+    markArray(expr.name);
+    requireArrayI32Len();
     return ExprType::I64;
 }
 

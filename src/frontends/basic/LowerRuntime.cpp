@@ -109,6 +109,11 @@ void Lowerer::requireArrayI32Resize()
     needsArrI32Resize = true;
 }
 
+void Lowerer::requireArrayI32Len()
+{
+    needsArrI32Len = true;
+}
+
 void Lowerer::requestHelper(RuntimeFeature feature)
 {
     runtimeTracker.requestHelper(feature);
@@ -137,6 +142,8 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         declareManual("rt_arr_i32_new");
     if (needsArrI32Resize)
         declareManual("rt_arr_i32_resize");
+    if (needsArrI32Len)
+        declareManual("rt_arr_i32_len");
 }
 
 } // namespace il::frontends::basic
