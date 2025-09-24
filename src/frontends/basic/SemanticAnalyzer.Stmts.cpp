@@ -30,6 +30,7 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
     void visit(PrintStmt &stmt) override { analyzer_.analyzePrint(stmt); }
     void visit(LetStmt &stmt) override { analyzer_.analyzeLet(stmt); }
     void visit(DimStmt &stmt) override { analyzer_.analyzeDim(stmt); }
+    void visit(ReDimStmt &stmt) override { analyzer_.analyzeReDim(stmt); }
     void visit(RandomizeStmt &stmt) override { analyzer_.analyzeRandomize(stmt); }
     void visit(IfStmt &stmt) override { analyzer_.analyzeIf(stmt); }
     void visit(WhileStmt &stmt) override { analyzer_.analyzeWhile(stmt); }
@@ -367,6 +368,41 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
         }
         varTypes_[d.name] = astToSemanticType(d.type);
     }
+}
+
+void SemanticAnalyzer::analyzeReDim(ReDimStmt &d)
+{
+    long long sz = -1;
+    if (d.size)
+    {
+        auto ty = visitExpr(*d.size);
+        if (ty != Type::Unknown && ty != Type::Int)
+        {
+            std::string msg = "size type mismatch";
+            de.emit(il::support::Severity::Error, "B2001", d.loc, 1, std::move(msg));
+        }
+        if (auto *ci = dynamic_cast<const IntExpr *>(d.size.get()))
+        {
+            sz = ci->value;
+            if (sz <= 0)
+            {
+                std::string msg = "array size must be positive";
+                de.emit(il::support::Severity::Error, "B2003", d.loc, 1, std::move(msg));
+            }
+        }
+    }
+
+    resolveAndTrackSymbol(d.name, SymbolKind::Definition);
+
+    auto itArray = arrays_.find(d.name);
+    if (activeProcScope_)
+    {
+        std::optional<long long> previous;
+        if (itArray != arrays_.end())
+            previous = itArray->second;
+        activeProcScope_->noteArrayMutation(d.name, previous);
+    }
+    arrays_[d.name] = sz;
 }
 
 } // namespace il::frontends::basic

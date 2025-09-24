@@ -102,6 +102,8 @@ class SemanticAnalyzer
     void analyzeInput(InputStmt &s);
     /// @brief Analyze DIM statement @p s.
     void analyzeDim(DimStmt &s);
+    /// @brief Analyze REDIM statement @p s.
+    void analyzeReDim(ReDimStmt &s);
 
     /// @brief Analyze assignment to a simple variable in LET.
     void analyzeVarAssignment(VarExpr &v, const LetStmt &s);
