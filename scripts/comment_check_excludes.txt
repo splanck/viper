@@ -26,7 +26,7 @@ src/tools/il-verify/il-verify.cpp
 src/tools/ilc/main.cpp
 src/vm/RuntimeBridge.cpp
 src/vm/VM.cpp
-runtime/rt.c
+src/runtime/rt.c
 tests/unit/test_basic_lexer.cpp
 tests/unit/test_il_roundtrip.cpp
 tests/unit/test_il_serialize.cpp

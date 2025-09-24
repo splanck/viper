@@ -8,9 +8,10 @@ set(RT_SOURCES
 )
 
 add_library(rt STATIC ${RT_SOURCES})
-target_include_directories(rt PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
+target_include_directories(rt
+  PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/runtime>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
 
 if(NOT WIN32)

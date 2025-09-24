@@ -1,4 +1,4 @@
-// File: runtime/rt_io.c
+// File: src/runtime/rt_io.c
 // Purpose: Implements I/O utilities and trap handling for the BASIC runtime.
 // Key invariants: Output routines do not append newlines unless specified.
 // Ownership/Lifetime: Caller manages strings passed to printing routines.
