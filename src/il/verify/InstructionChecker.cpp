@@ -33,6 +33,168 @@ using il::support::Expected;
 using il::support::Severity;
 using il::support::makeError;
 
+std::string formatInstrDiag(const Function &fn,
+                            const BasicBlock &bb,
+                            const Instr &instr,
+                            std::string_view message);
+
+enum class RuntimeArrayCallee
+{
+    None,
+    New,
+    Len,
+    Get,
+    Set,
+    Resize
+};
+
+RuntimeArrayCallee classifyRuntimeArrayCallee(std::string_view callee)
+{
+    if (callee == "rt_arr_i32_new")
+        return RuntimeArrayCallee::New;
+    if (callee == "rt_arr_i32_len")
+        return RuntimeArrayCallee::Len;
+    if (callee == "rt_arr_i32_get")
+        return RuntimeArrayCallee::Get;
+    if (callee == "rt_arr_i32_set")
+        return RuntimeArrayCallee::Set;
+    if (callee == "rt_arr_i32_resize")
+        return RuntimeArrayCallee::Resize;
+    return RuntimeArrayCallee::None;
+}
+
+Expected<void> checkRuntimeArrayCall(const Function &fn,
+                                     const BasicBlock &bb,
+                                     const Instr &instr,
+                                     TypeInference &types)
+{
+    const RuntimeArrayCallee calleeKind = classifyRuntimeArrayCallee(instr.callee);
+    if (calleeKind == RuntimeArrayCallee::None)
+        return {};
+
+    const auto fail = [&](std::string_view message) {
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, message))};
+    };
+
+    const auto requireArgCount = [&](size_t expected) -> Expected<void> {
+        if (instr.operands.size() == expected)
+            return {};
+
+        std::ostringstream ss;
+        ss << "expected " << expected << " argument";
+        if (expected != 1)
+            ss << 's';
+        ss << " to @" << instr.callee;
+        return fail(ss.str());
+    };
+
+    const auto requireOperandType = [&](size_t index, Type::Kind expected, std::string_view role) {
+        bool missing = false;
+        const Type actual = types.valueType(instr.operands[index], &missing);
+        if (missing)
+        {
+            std::ostringstream ss;
+            ss << "@" << instr.callee << " " << role << " operand has unknown type";
+            return fail(ss.str());
+        }
+        if (actual.kind != expected)
+        {
+            std::ostringstream ss;
+            ss << "@" << instr.callee << " " << role << " operand must be " << kindToString(expected);
+            return fail(ss.str());
+        }
+        return Expected<void>{};
+    };
+
+    const auto requireResultType = [&](Type::Kind expected) -> Expected<void> {
+        if (!instr.result)
+        {
+            std::ostringstream ss;
+            ss << "@" << instr.callee << " must produce " << kindToString(expected) << " result";
+            return fail(ss.str());
+        }
+        if (instr.type.kind != expected)
+        {
+            std::ostringstream ss;
+            ss << "@" << instr.callee << " result must be " << kindToString(expected);
+            return fail(ss.str());
+        }
+        return Expected<void>{};
+    };
+
+    const auto requireNoResult = [&]() -> Expected<void> {
+        if (instr.result)
+        {
+            std::ostringstream ss;
+            ss << "@" << instr.callee << " must not produce a result";
+            return fail(ss.str());
+        }
+        if (instr.type.kind != Type::Kind::Void)
+        {
+            std::ostringstream ss;
+            ss << "@" << instr.callee << " result type must be void";
+            return fail(ss.str());
+        }
+        return Expected<void>{};
+    };
+
+    switch (calleeKind)
+    {
+        case RuntimeArrayCallee::New:
+        {
+            if (auto result = requireArgCount(1); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::I64, "length"); !result)
+                return result;
+            return requireResultType(Type::Kind::Ptr);
+        }
+        case RuntimeArrayCallee::Len:
+        {
+            if (auto result = requireArgCount(1); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            return requireResultType(Type::Kind::I64);
+        }
+        case RuntimeArrayCallee::Get:
+        {
+            if (auto result = requireArgCount(2); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            if (auto result = requireOperandType(1, Type::Kind::I64, "index"); !result)
+                return result;
+            return requireResultType(Type::Kind::I64);
+        }
+        case RuntimeArrayCallee::Set:
+        {
+            if (auto result = requireArgCount(3); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            if (auto result = requireOperandType(1, Type::Kind::I64, "index"); !result)
+                return result;
+            if (auto result = requireOperandType(2, Type::Kind::I64, "value"); !result)
+                return result;
+            return requireNoResult();
+        }
+        case RuntimeArrayCallee::Resize:
+        {
+            if (auto result = requireArgCount(2); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            if (auto result = requireOperandType(1, Type::Kind::I64, "length"); !result)
+                return result;
+            return requireResultType(Type::Kind::Ptr);
+        }
+        case RuntimeArrayCallee::None:
+            break;
+    }
+
+    return {};
+}
+
 /// @brief Format a canonical diagnostic string for an instruction.
 /// @param fn Function that owns the instruction.
 /// @param bb Basic block containing the instruction.
@@ -412,6 +574,9 @@ Expected<void> checkCall_E(const Function &fn,
                            const std::unordered_map<std::string, const Function *> &funcs,
                            TypeInference &types)
 {
+    if (auto result = checkRuntimeArrayCall(fn, bb, instr, types); !result)
+        return result;
+
     const Extern *sig = nullptr;
     const Function *fnSig = nullptr;
     if (auto it = externs.find(instr.callee); it != externs.end())
