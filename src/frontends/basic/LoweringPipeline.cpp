@@ -48,6 +48,12 @@ class VarCollectExprVisitor final : public ExprVisitor
             expr.index->accept(*this);
     }
 
+    void visit(const LBoundExpr &expr) override
+    {
+        lowerer_.markSymbolReferenced(expr.name);
+        lowerer_.markArray(expr.name);
+    }
+
     void visit(const UnaryExpr &expr) override
     {
         if (expr.expr)
@@ -241,6 +247,8 @@ void ProgramLowering::run(const Program &prog, il::core::Module &module)
     lowerer.procSignatures.clear();
 
     lowerer.runtimeTracker.reset();
+    lowerer.needsArrI32New = false;
+    lowerer.needsArrI32Resize = false;
 
     lowerer.scanProgram(prog);
     lowerer.declareRequiredRuntime(builder);

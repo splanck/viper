@@ -199,6 +199,8 @@ class SemanticAnalyzer
     Type analyzeUnary(const UnaryExpr &u);
     /// @brief Analyze binary expression.
     Type analyzeBinary(const BinaryExpr &b);
+    /// @brief Analyze LBOUND expression.
+    Type analyzeLBound(LBoundExpr &expr);
     /// @brief Emit operand type mismatch diagnostic for binary expressions.
     void emitOperandTypeMismatch(const BinaryExpr &expr, std::string_view diagId);
     /// @brief Emit divide-by-zero diagnostic when appropriate.
