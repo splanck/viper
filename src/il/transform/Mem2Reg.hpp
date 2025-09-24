@@ -3,7 +3,7 @@
 // Key invariants: Promotes i64/f64/i1 allocas with no escaped addresses using
 // sealed SSA construction with block parameters, handling loops. Ownership/
 // Lifetime: Mutates the module in place.
-// Links: docs/passes/mem2reg.md
+// Links: docs/il-guide.md#mem2reg
 #pragma once
 
 #include "il/core/Module.hpp"

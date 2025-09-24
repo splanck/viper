@@ -2,7 +2,7 @@
 // Purpose: Declares IL type representation.
 // Key invariants: Kind field determines payload.
 // Ownership/Lifetime: Types are lightweight values.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include <string>

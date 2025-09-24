@@ -2,7 +2,7 @@
 // Purpose: Declares the shared registry of runtime helper signatures.
 // Key invariants: Entries mirror the runtime C ABI and remain stable for consumers.
 // Ownership/Lifetime: Registry data lives for the duration of the process.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "il/core/Type.hpp"

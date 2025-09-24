@@ -2,7 +2,7 @@
 // Purpose: Implements helpers for IL values.
 // Key invariants: None.
 // Ownership/Lifetime: Values are owned by their users.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/core/Value.hpp"
 
