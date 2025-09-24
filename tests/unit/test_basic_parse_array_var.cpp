@@ -40,5 +40,18 @@ int main()
         assert(idx && idx->value == 1);
     }
 
+    // REDIM statement
+    {
+        std::string src = "10 DIM A(2)\n20 REDIM A(4)\n30 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("test.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        auto *redim = dynamic_cast<ReDimStmt *>(prog->main[1].get());
+        assert(redim && redim->name == "A");
+        auto *size = dynamic_cast<IntExpr *>(redim->size.get());
+        assert(size && size->value == 4);
+    }
+
     return 0;
 }

@@ -193,6 +193,10 @@ class Parser
     /// @return DIM statement node.
     StmtPtr parseDim();
 
+    /// @brief Parse a REDIM statement resizing arrays.
+    /// @return REDIM statement node.
+    StmtPtr parseReDim();
+
     /// @brief Parse a RANDOMIZE statement.
     /// @return RANDOMIZE statement node.
     StmtPtr parseRandomize();

@@ -514,6 +514,12 @@ private:
             foldExpr(stmt.size);
     }
 
+    void visit(ReDimStmt &stmt) override
+    {
+        if (stmt.size)
+            foldExpr(stmt.size);
+    }
+
     void visit(RandomizeStmt &) override {}
 
     void visit(IfStmt &stmt) override

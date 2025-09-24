@@ -371,6 +371,24 @@ StmtPtr Parser::parseDim()
     return stmt;
 }
 
+/// @brief Parse a REDIM statement resizing an array.
+/// @return ReDimStmt with name and new size expression.
+StmtPtr Parser::parseReDim()
+{
+    auto loc = peek().loc;
+    consume(); // REDIM
+    Token nameTok = expect(TokenKind::Identifier);
+    expect(TokenKind::LParen);
+    auto size = parseExpression();
+    expect(TokenKind::RParen);
+    auto stmt = std::make_unique<ReDimStmt>();
+    stmt->loc = loc;
+    stmt->name = nameTok.lexeme;
+    stmt->size = std::move(size);
+    arrays_.insert(stmt->name);
+    return stmt;
+}
+
 /// @brief Parse a RANDOMIZE statement setting the PRNG seed.
 /// @return RandomizeStmt with the seed expression.
 StmtPtr Parser::parseRandomize()
