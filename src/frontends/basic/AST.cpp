@@ -166,6 +166,18 @@ void DimStmt::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this REDIM statement node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void ReDimStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void ReDimStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
 /// @brief Forwards this randomize statement node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void RandomizeStmt::accept(StmtVisitor &visitor) const

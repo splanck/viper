@@ -116,6 +116,16 @@ class VarCollectStmtVisitor final : public StmtVisitor
             stmt.size->accept(exprVisitor_);
     }
 
+    void visit(const ReDimStmt &stmt) override
+    {
+        if (stmt.name.empty())
+            return;
+        lowerer_.markSymbolReferenced(stmt.name);
+        lowerer_.markArray(stmt.name);
+        if (stmt.size)
+            stmt.size->accept(exprVisitor_);
+    }
+
     void visit(const RandomizeStmt &stmt) override
     {
         if (stmt.seed)

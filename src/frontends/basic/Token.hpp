@@ -44,6 +44,7 @@ enum class TokenKind
     KeywordEnd,
     KeywordInput,
     KeywordDim,
+    KeywordRedim,
     KeywordAs,
     KeywordRandomize,
     KeywordAnd,
@@ -61,6 +62,8 @@ enum class TokenKind
     KeywordFunction,
     KeywordSub,
     KeywordReturn,
+    KeywordLbound,
+    KeywordUbound,
 
     // Operators -------------------------------------------------------------
     Plus,         ///< '+'.
