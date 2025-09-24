@@ -1,11 +1,48 @@
 ---
 status: active
 audience: public
-last-verified: 2025-09-23
+last-verified: 2025-09-24
 ---
 
-## Build
+## Prerequisites
 
-## Run
+Set up the core toolchain before cloning the repository:
+- CMake ≥ 3.20.
+- A C++20-capable compiler (GCC, Clang, or MSVC) and optionally Ninja for faster multi-config builds.
+- Python 3.x if you plan to run helper scripts under `scripts/`.
 
-## First Programs
+## Build (Linux/macOS/Windows)
+
+Use an out-of-source build directory so you can cleanly rebuild or switch configurations.
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build build -j
+```
+
+If you want a relocatable tree for packaging or downstream testing, install into a local prefix:
+
+```sh
+cmake --install build --prefix ./_install
+```
+
+## Quick sanity check
+
+After the build finishes, confirm the primary tools respond to `--help`:
+
+```sh
+./build/bin/il-verify --help
+./build/bin/il-dis --help
+```
+
+Explore the [tutorials-examples.md#examples](tutorials-examples.md#examples) section to run a sample end-to-end once the binaries are in place.
+
+## What to read next
+
+- Architecture → [architecture.md](architecture.md)
+- BASIC language → [basic-language.md](basic-language.md)
+- IL guide → [il-guide.md](il-guide.md)
+- Runtime & VM → [runtime-vm.md](runtime-vm.md)
+- Tools (CLI) → [tools.md](tools.md)
+- Tutorials & Examples → [tutorials-examples.md](tutorials-examples.md)
+- Contributor Guide → [contributor-guide.md](contributor-guide.md)
