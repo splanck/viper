@@ -666,6 +666,11 @@ Modules must begin with `il 0.1.2`.  A conforming implementation accepts this gr
 
 Integer arguments to `SQR`, `FLOOR`, and `CEIL` are first widened to `f64`.
 
+> **Arrays today.** BASIC array declarations and accesses lower to runtime
+> helpers such as `@rt_arr_i32_new`, `@rt_arr_i32_len`, `@rt_arr_i32_get`, and
+> `@rt_arr_i32_set`. The front end emits bounds checks in IL; failing a check
+> calls `@rt_arr_oob_panic` before touching the array storage.
+
 ### Procedure calls
 
 User-defined `FUNCTION` and `SUB` calls lower to direct `call` instructions.
