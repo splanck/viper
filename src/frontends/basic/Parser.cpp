@@ -30,6 +30,7 @@ Parser::Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *emitte
     setHandler(TokenKind::KeywordDo, {&Parser::parseDo, nullptr});
     setHandler(TokenKind::KeywordFor, {&Parser::parseFor, nullptr});
     setHandler(TokenKind::KeywordNext, {&Parser::parseNext, nullptr});
+    setHandler(TokenKind::KeywordExit, {&Parser::parseExit, nullptr});
     setHandler(TokenKind::KeywordGoto, {&Parser::parseGoto, nullptr});
     setHandler(TokenKind::KeywordEnd, {&Parser::parseEnd, nullptr});
     setHandler(TokenKind::KeywordInput, {&Parser::parseInput, nullptr});

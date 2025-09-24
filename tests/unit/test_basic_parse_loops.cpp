@@ -50,5 +50,26 @@ int main()
         assert(endStmt);
     }
 
+    {
+        std::string src = "10 EXIT FOR\n20 EXIT WHILE\n30 EXIT DO\n40 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("loops.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        assert(prog);
+        assert(prog->main.size() == 4);
+        auto *exitFor = dynamic_cast<ExitStmt *>(prog->main[0].get());
+        assert(exitFor);
+        assert(exitFor->kind == ExitStmt::LoopKind::For);
+        auto *exitWhile = dynamic_cast<ExitStmt *>(prog->main[1].get());
+        assert(exitWhile);
+        assert(exitWhile->kind == ExitStmt::LoopKind::While);
+        auto *exitDo = dynamic_cast<ExitStmt *>(prog->main[2].get());
+        assert(exitDo);
+        assert(exitDo->kind == ExitStmt::LoopKind::Do);
+        auto *endStmt = dynamic_cast<EndStmt *>(prog->main[3].get());
+        assert(endStmt);
+    }
+
     return 0;
 }
