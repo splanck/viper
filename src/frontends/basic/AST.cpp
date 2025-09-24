@@ -310,6 +310,13 @@ void ReturnStmt::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Returns no signature information for statements that are not procedures.
+/// @return Empty optional indicating the statement does not declare a procedure.
+std::optional<ProcSignatureView> Stmt::declaredSignature() const
+{
+    return std::nullopt;
+}
+
 /// @brief Forwards this function declaration node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void FunctionDecl::accept(StmtVisitor &visitor) const
@@ -322,6 +329,12 @@ void FunctionDecl::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+std::optional<ProcSignatureView> FunctionDecl::declaredSignature() const
+{
+    return ProcSignatureView{std::string_view{name}, std::optional<Type>{ret},
+                             std::span<const Param>{params}};
+}
+
 /// @brief Forwards this subroutine declaration node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void SubDecl::accept(StmtVisitor &visitor) const
@@ -332,6 +345,12 @@ void SubDecl::accept(StmtVisitor &visitor) const
 void SubDecl::accept(MutStmtVisitor &visitor)
 {
     visitor.visit(*this);
+}
+
+std::optional<ProcSignatureView> SubDecl::declaredSignature() const
+{
+    return ProcSignatureView{std::string_view{name}, std::nullopt,
+                             std::span<const Param>{params}};
 }
 
 /// @brief Forwards this statement list node to the visitor for double dispatch.

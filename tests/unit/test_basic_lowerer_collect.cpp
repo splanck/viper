@@ -57,6 +57,9 @@ int main()
         "20 RANDOMIZE SEED\n"
         "30 RETURN SEED\n"
         "40 END FUNCTION\n"
+        "50 SUB SHOW(A())\n"
+        "60 PRINT A(0)\n"
+        "70 END SUB\n"
         "100 RANDOMIZE MAINSEED\n"
         "110 PRINT MAINSEED\n";
 
@@ -81,5 +84,16 @@ int main()
     assert(entryHasAlloca(*funcF));
     assert(tempsHaveNames(*mainFn));
     assert(tempsHaveNames(*funcF));
+
+    const auto *sigF = lowerer.findProcSignature("F");
+    assert(sigF);
+    assert(sigF->retType.kind == il::core::Type::Kind::I64);
+    assert(sigF->paramTypes.empty());
+
+    const auto *sigShow = lowerer.findProcSignature("SHOW");
+    assert(sigShow);
+    assert(sigShow->retType.kind == il::core::Type::Kind::Void);
+    assert(sigShow->paramTypes.size() == 1);
+    assert(sigShow->paramTypes.front().kind == il::core::Type::Kind::Ptr);
     return 0;
 }
