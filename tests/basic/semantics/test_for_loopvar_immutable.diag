@@ -1,0 +1,3 @@
+tests/basic/semantics/test_for_loopvar_immutable.bas:2:4: error[B1010]: cannot assign to loop variable 'I' inside FOR
+20 LET I = 5   ' error
+   ^
