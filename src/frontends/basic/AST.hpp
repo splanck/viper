@@ -24,6 +24,7 @@ struct UnaryExpr;
 struct BinaryExpr;
 struct BuiltinCallExpr;
 struct LBoundExpr;
+struct UBoundExpr;
 struct CallExpr;
 
 struct PrintStmt;
@@ -57,6 +58,7 @@ struct ExprVisitor
     virtual void visit(const BinaryExpr &) = 0;
     virtual void visit(const BuiltinCallExpr &) = 0;
     virtual void visit(const LBoundExpr &) = 0;
+    virtual void visit(const UBoundExpr &) = 0;
     virtual void visit(const CallExpr &) = 0;
 };
 
@@ -74,6 +76,7 @@ struct MutExprVisitor
     virtual void visit(BinaryExpr &) = 0;
     virtual void visit(BuiltinCallExpr &) = 0;
     virtual void visit(LBoundExpr &) = 0;
+    virtual void visit(UBoundExpr &) = 0;
     virtual void visit(CallExpr &) = 0;
 };
 
@@ -206,6 +209,15 @@ struct ArrayExpr : Expr
 struct LBoundExpr : Expr
 {
     /// Name of the array operand queried for its lower bound.
+    std::string name;
+    void accept(ExprVisitor &visitor) const override;
+    void accept(MutExprVisitor &visitor) override;
+};
+
+/// @brief Query the logical upper bound of an array.
+struct UBoundExpr : Expr
+{
+    /// Name of the array operand queried for its upper bound.
     std::string name;
     void accept(ExprVisitor &visitor) const override;
     void accept(MutExprVisitor &visitor) override;

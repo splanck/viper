@@ -383,6 +383,11 @@ class Lowerer
     /// @return Resulting value and type.
     RVal lowerBuiltinCall(const BuiltinCallExpr &expr);
 
+    /// @brief Lower a UBOUND query expression.
+    /// @param expr UBOUND expression node naming the array.
+    /// @return Resulting value and type.
+    RVal lowerUBoundExpr(const UBoundExpr &expr);
+
     // Shared argument helpers
     RVal coerceToI64(RVal v, il::support::SourceLoc loc);
 
@@ -518,9 +523,11 @@ class Lowerer
     RuntimeHelperTracker runtimeTracker;
     bool needsArrI32New{false};
     bool needsArrI32Resize{false};
+    bool needsArrI32Len{false};
 
     void requireArrayI32New();
     void requireArrayI32Resize();
+    void requireArrayI32Len();
     void requestHelper(RuntimeFeature feature);
 
     bool isHelperNeeded(RuntimeFeature feature) const;
