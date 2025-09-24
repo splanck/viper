@@ -238,6 +238,18 @@ void WhileStmt::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this DO loop node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void DoStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void DoStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
 /// @brief Forwards this for loop node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void ForStmt::accept(StmtVisitor &visitor) const
@@ -258,6 +270,18 @@ void NextStmt::accept(StmtVisitor &visitor) const
 }
 
 void NextStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+/// @brief Forwards this EXIT statement node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void ExitStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void ExitStmt::accept(MutStmtVisitor &visitor)
 {
     visitor.visit(*this);
 }
