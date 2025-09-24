@@ -77,6 +77,12 @@ class LowererExprVisitor final : public ExprVisitor
         result_ = lowerer_.lowerBuiltinCall(expr);
     }
 
+    void visit(const LBoundExpr &expr) override
+    {
+        lowerer_.curLoc = expr.loc;
+        result_ = Lowerer::RVal{Value::constInt(0), il::core::Type(il::core::Type::Kind::I64)};
+    }
+
     void visit(const CallExpr &expr) override
     {
         const auto *signature = lowerer_.findProcSignature(expr.callee);

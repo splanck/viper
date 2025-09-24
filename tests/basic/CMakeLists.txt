@@ -254,6 +254,13 @@ function(viper_add_basic_to_il_golden_tests)
     -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/ex6_array_sum.il
     -P ${_VIPER_BASIC_TO_IL_CHECK})
 
+  viper_add_ctest(basic_to_il_array_dim_redim
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/array_dim_redim.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/array_dim_redim.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
   viper_add_ctest(basic_to_il_not
     ${CMAKE_COMMAND}
     -DILC=${_VIPER_BASIC_ILC}
