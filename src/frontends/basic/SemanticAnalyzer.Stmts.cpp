@@ -261,20 +261,37 @@ void SemanticAnalyzer::analyzeWhile(const WhileStmt &w)
 {
     if (w.cond)
         checkConditionExpr(*w.cond);
-    ScopeTracker::ScopedScope scope(scopes_);
-    for (const auto &bs : w.body)
-        if (bs)
-            visitStmt(*bs);
+    loopStack_.push_back(LoopKind::While);
+    {
+        ScopeTracker::ScopedScope scope(scopes_);
+        for (const auto &bs : w.body)
+            if (bs)
+                visitStmt(*bs);
+    }
+    loopStack_.pop_back();
 }
 
 void SemanticAnalyzer::analyzeDo(const DoStmt &d)
 {
-    if (d.cond)
-        checkConditionExpr(*d.cond);
-    ScopeTracker::ScopedScope scope(scopes_);
-    for (const auto &bs : d.body)
-        if (bs)
-            visitStmt(*bs);
+    auto checkCond = [&]() {
+        if (d.cond)
+            checkConditionExpr(*d.cond);
+    };
+
+    if (d.testPos == DoStmt::TestPos::Pre)
+        checkCond();
+
+    loopStack_.push_back(LoopKind::Do);
+    {
+        ScopeTracker::ScopedScope scope(scopes_);
+        for (const auto &bs : d.body)
+            if (bs)
+                visitStmt(*bs);
+    }
+    loopStack_.pop_back();
+
+    if (d.testPos == DoStmt::TestPos::Post)
+        checkCond();
 }
 
 void SemanticAnalyzer::analyzeFor(ForStmt &f)
@@ -287,12 +304,14 @@ void SemanticAnalyzer::analyzeFor(ForStmt &f)
     if (f.step)
         visitExpr(*f.step);
     forStack_.push_back(f.var);
+    loopStack_.push_back(LoopKind::For);
     {
         ScopeTracker::ScopedScope scope(scopes_);
         for (const auto &bs : f.body)
             if (bs)
                 visitStmt(*bs);
     }
+    loopStack_.pop_back();
     forStack_.pop_back();
 }
 
@@ -329,8 +348,53 @@ void SemanticAnalyzer::analyzeNext(const NextStmt &n)
 
 void SemanticAnalyzer::analyzeExit(const ExitStmt &stmt)
 {
-    (void)stmt;
-    // TODO: Validate EXIT statements once loop tracking is implemented.
+    const auto toLoopKind = [](ExitStmt::LoopKind kind) {
+        switch (kind)
+        {
+            case ExitStmt::LoopKind::For:
+                return LoopKind::For;
+            case ExitStmt::LoopKind::While:
+                return LoopKind::While;
+            case ExitStmt::LoopKind::Do:
+                return LoopKind::Do;
+        }
+        return LoopKind::While;
+    };
+    const auto loopKindName = [](LoopKind kind) {
+        switch (kind)
+        {
+            case LoopKind::For:
+                return "FOR";
+            case LoopKind::While:
+                return "WHILE";
+            case LoopKind::Do:
+                return "DO";
+        }
+        return "WHILE";
+    };
+
+    const auto targetLoop = toLoopKind(stmt.kind);
+    const char *targetName = loopKindName(targetLoop);
+
+    if (loopStack_.empty())
+    {
+        std::string msg = "EXIT ";
+        msg += targetName;
+        msg += " used outside of any loop";
+        de.emit(il::support::Severity::Error, "B1011", stmt.loc, 4, std::move(msg));
+        return;
+    }
+
+    const auto activeLoop = loopStack_.back();
+    if (activeLoop != targetLoop)
+    {
+        std::string msg = "EXIT ";
+        msg += targetName;
+        msg += " does not match innermost loop (";
+        msg += loopKindName(activeLoop);
+        msg += ')';
+        de.emit(il::support::Severity::Error, "B1011", stmt.loc, 4, std::move(msg));
+    }
 }
 
 void SemanticAnalyzer::analyzeEnd(const EndStmt &)
