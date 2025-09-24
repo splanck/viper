@@ -34,8 +34,10 @@ struct ReDimStmt;
 struct RandomizeStmt;
 struct IfStmt;
 struct WhileStmt;
+struct DoStmt;
 struct ForStmt;
 struct NextStmt;
+struct ExitStmt;
 struct GotoStmt;
 struct EndStmt;
 struct InputStmt;
@@ -91,8 +93,10 @@ struct StmtVisitor
     virtual void visit(const RandomizeStmt &) = 0;
     virtual void visit(const IfStmt &) = 0;
     virtual void visit(const WhileStmt &) = 0;
+    virtual void visit(const DoStmt &) = 0;
     virtual void visit(const ForStmt &) = 0;
     virtual void visit(const NextStmt &) = 0;
+    virtual void visit(const ExitStmt &) = 0;
     virtual void visit(const GotoStmt &) = 0;
     virtual void visit(const EndStmt &) = 0;
     virtual void visit(const InputStmt &) = 0;
@@ -113,8 +117,10 @@ struct MutStmtVisitor
     virtual void visit(RandomizeStmt &) = 0;
     virtual void visit(IfStmt &) = 0;
     virtual void visit(WhileStmt &) = 0;
+    virtual void visit(DoStmt &) = 0;
     virtual void visit(ForStmt &) = 0;
     virtual void visit(NextStmt &) = 0;
+    virtual void visit(ExitStmt &) = 0;
     virtual void visit(GotoStmt &) = 0;
     virtual void visit(EndStmt &) = 0;
     virtual void visit(InputStmt &) = 0;
@@ -461,6 +467,33 @@ struct WhileStmt : Stmt
     void accept(MutStmtVisitor &visitor) override;
 };
 
+/// @brief DO ... LOOP statement supporting WHILE and UNTIL tests.
+struct DoStmt : Stmt
+{
+    /// Condition kind controlling loop continuation.
+    enum class CondKind
+    {
+        None,  ///< No explicit condition; loop runs until EXIT.
+        While, ///< Continue while condition evaluates to true.
+        Until, ///< Continue until condition evaluates to true.
+    } condKind{CondKind::None};
+
+    /// Whether condition is evaluated before or after executing the body.
+    enum class TestPos
+    {
+        Pre,  ///< Evaluate condition before each iteration.
+        Post, ///< Evaluate condition after executing the body.
+    } testPos{TestPos::Pre};
+
+    /// Continuation condition; null when @ref condKind == CondKind::None.
+    ExprPtr cond;
+
+    /// Ordered statements forming the loop body.
+    std::vector<StmtPtr> body;
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
 /// @brief FOR ... NEXT loop statement.
 struct ForStmt : Stmt
 {
@@ -487,6 +520,21 @@ struct NextStmt : Stmt
 {
     /// Loop variable after NEXT.
     std::string var;
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief EXIT statement leaving the innermost enclosing loop.
+struct ExitStmt : Stmt
+{
+    /// Loop type targeted by this EXIT.
+    enum class LoopKind
+    {
+        For,   ///< EXIT FOR
+        While, ///< EXIT WHILE
+        Do,    ///< EXIT DO
+    } kind{LoopKind::While};
+
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
 };

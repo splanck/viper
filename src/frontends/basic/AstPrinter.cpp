@@ -271,6 +271,40 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         printer.os << "})";
     }
 
+    void visit(const DoStmt &stmt) override
+    {
+        printer.os << "(DO "
+                    << (stmt.testPos == DoStmt::TestPos::Pre ? "pre" : "post") << ' ';
+        switch (stmt.condKind)
+        {
+            case DoStmt::CondKind::None:
+                printer.os << "NONE";
+                break;
+            case DoStmt::CondKind::While:
+                printer.os << "WHILE";
+                break;
+            case DoStmt::CondKind::Until:
+                printer.os << "UNTIL";
+                break;
+        }
+        if (stmt.condKind != DoStmt::CondKind::None && stmt.cond)
+        {
+            printer.os << ' ';
+            stmt.cond->accept(exprPrinter);
+        }
+        printer.os << " {";
+        bool first = true;
+        for (const auto &bodyStmt : stmt.body)
+        {
+            if (!first)
+                printer.os << ' ';
+            first = false;
+            printer.os << std::to_string(bodyStmt->line) << ':';
+            bodyStmt->accept(*this);
+        }
+        printer.os << "})";
+    }
+
     void visit(const ForStmt &stmt) override
     {
         printer.os << "(FOR " << stmt.var << " = ";
@@ -298,6 +332,24 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
     void visit(const NextStmt &stmt) override
     {
         printer.os << "(NEXT " << stmt.var << ')';
+    }
+
+    void visit(const ExitStmt &stmt) override
+    {
+        printer.os << "(EXIT ";
+        switch (stmt.kind)
+        {
+            case ExitStmt::LoopKind::For:
+                printer.os << "FOR";
+                break;
+            case ExitStmt::LoopKind::While:
+                printer.os << "WHILE";
+                break;
+            case ExitStmt::LoopKind::Do:
+                printer.os << "DO";
+                break;
+        }
+        printer.os << ')';
     }
 
     void visit(const GotoStmt &stmt) override

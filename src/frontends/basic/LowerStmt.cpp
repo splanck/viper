@@ -44,9 +44,13 @@ class LowererStmtVisitor final : public StmtVisitor
 
     void visit(const WhileStmt &stmt) override { lowerer_.lowerWhile(stmt); }
 
+    void visit(const DoStmt &stmt) override { lowerer_.lowerDo(stmt); }
+
     void visit(const ForStmt &stmt) override { lowerer_.lowerFor(stmt); }
 
     void visit(const NextStmt &stmt) override { lowerer_.lowerNext(stmt); }
+
+    void visit(const ExitStmt &stmt) override { lowerer_.lowerExit(stmt); }
 
     void visit(const GotoStmt &stmt) override { lowerer_.lowerGoto(stmt); }
 
@@ -437,6 +441,12 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
     done->terminated = term;
 }
 
+void Lowerer::lowerDo(const DoStmt &stmt)
+{
+    (void)stmt;
+    // TODO: Implement DO ... LOOP lowering.
+}
+
 /// @brief Create the block layout shared by FOR loops.
 /// @param varStep Whether the loop has a variable (runtime) step expression.
 /// @return Descriptor pointing to the inserted head/body/inc/done blocks.
@@ -625,6 +635,12 @@ void Lowerer::lowerFor(const ForStmt &stmt)
 void Lowerer::lowerNext(const NextStmt &next)
 {
     (void)next;
+}
+
+void Lowerer::lowerExit(const ExitStmt &stmt)
+{
+    (void)stmt;
+    // TODO: Implement EXIT lowering.
 }
 
 /// @brief Lower a GOTO jump.

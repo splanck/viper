@@ -196,6 +196,17 @@ class ScanStmtVisitor final : public StmtVisitor
         }
     }
 
+    void visit(const DoStmt &stmt) override
+    {
+        if (stmt.cond)
+            lowerer_.scanExpr(*stmt.cond);
+        for (const auto &child : stmt.body)
+        {
+            if (child)
+                lowerer_.scanStmt(*child);
+        }
+    }
+
     void visit(const ForStmt &stmt) override
     {
         if (!stmt.var.empty())
@@ -216,6 +227,7 @@ class ScanStmtVisitor final : public StmtVisitor
     }
 
     void visit(const NextStmt &) override {}
+    void visit(const ExitStmt &) override {}
 
     void visit(const GotoStmt &) override {}
 
