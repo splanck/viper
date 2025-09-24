@@ -744,7 +744,10 @@ stay stable. Within a procedure `proc`, block names follow these patterns:
 * `entry_proc` and `ret_proc` for the entry and synthetic return blocks.
 * `if_then_k_proc`, `if_else_k_proc`, `if_end_k_proc` for `IF` constructs.
 * `while_head_k_proc`, `while_body_k_proc`, `while_end_k_proc` for `WHILE`.
+* `do_head_k_proc`, `do_body_k_proc`, `do_end_k_proc` for `DO` / `LOOP`.
 * `for_head_k_proc`, `for_body_k_proc`, `for_inc_k_proc`, `for_end_k_proc` for `FOR`.
+* `exit_end_k_proc` is not used; `EXIT` statements branch directly to the
+  surrounding loop's `*_end_k_proc` block.
 * `call_cont_k_proc` for call continuations.
 
 The counter `k` is monotonic **per procedure**; labels never depend on container

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2025-09-23
+last-verified: 2025-09-24
 ---
 
 <a id="basic-reference"></a>
@@ -123,6 +123,38 @@ Conditional blocks evaluate boolean expressions. Each branch ends with `END IF`.
 40 WEND
 ```
 
+#### DO / LOOP
+`DO` / `LOOP` supports both pre-test and post-test forms. `WHILE` repeats while
+the condition is true; `UNTIL` repeats until the condition becomes true.
+
+```basic
+10 DO WHILE I < 3
+20   PRINT I
+30   LET I = I + 1
+40 LOOP
+
+50 DO UNTIL READY
+60   INPUT READY
+70 LOOP
+
+80 DO
+90   PRINT "tick"
+100  LET I = I + 1
+110 LOOP WHILE I < 5
+
+120 DO
+130   PRINT "polling"
+140 LOOP UNTIL DONE()
+
+150 DO
+160   PRINT "infinite"
+170   EXIT DO        ' exit manually when ready
+180 LOOP
+```
+
+The final form above runs indefinitely unless an `EXIT DO` transfers control to
+the loop's `LOOP` terminator.
+
 #### FOR / NEXT
 `FOR` loops iterate over an inclusive range.
 
@@ -131,6 +163,14 @@ Conditional blocks evaluate boolean expressions. Each branch ends with `END IF`.
 20   PRINT I
 30 NEXT I
 ```
+
+The loop variable is immutable inside the body. Attempting to reassign it (for
+example, `I = I + 1`) is rejected during semantic analysis with an error such as
+`error: FOR loop variable 'I' cannot be reassigned inside the loop`.
+
+#### EXIT statements
+`EXIT FOR`, `EXIT WHILE`, and `EXIT DO` terminate the innermost loop of the
+matching kind and continue execution after that loop.
 
 #### Multi-statement lines
 Separate statements on the same line with `:`.
