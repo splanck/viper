@@ -125,6 +125,11 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
         printer.os << ')';
     }
 
+    void visit(const LBoundExpr &expr) override
+    {
+        printer.os << "(LBOUND " << expr.name << ')';
+    }
+
     void visit(const CallExpr &expr) override
     {
         printer.os << '(' << expr.callee;

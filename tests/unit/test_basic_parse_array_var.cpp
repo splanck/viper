@@ -40,6 +40,18 @@ int main()
         assert(idx && idx->value == 1);
     }
 
+    // LBOUND expression
+    {
+        std::string src = "10 DIM A(2)\n20 LET X = LBOUND(A)\n30 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("test.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        auto *let = dynamic_cast<LetStmt *>(prog->main[1].get());
+        auto *lb = dynamic_cast<LBoundExpr *>(let->expr.get());
+        assert(lb && lb->name == "A");
+    }
+
     // REDIM statement
     {
         std::string src = "10 DIM A(2)\n20 REDIM A(4)\n30 END\n";

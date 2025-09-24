@@ -713,20 +713,19 @@ void Lowerer::lowerInput(const InputStmt &stmt)
 /// @brief Lower a DIM array allocation.
 /// @param stmt DIM statement describing the array name and size.
 /// @details Evaluates the requested element count, allocates backing storage
-///          via @c rt_alloc, and stores the base pointer into the array slot.
-///          When @ref boundsChecks is enabled it also records the logical
-///          length so runtime bounds checks can read it. Instructions are tagged
-///          with @ref curLoc for diagnostics; @ref cur itself remains
-///          unchanged.
+///          via @c rt_arr_i32_new, and stores the resulting handle into the
+///          array slot. When @ref boundsChecks is enabled it also records the
+///          logical length so runtime bounds checks can read it. Instructions
+///          are tagged with @ref curLoc for diagnostics; @ref cur itself
+///          remains unchanged.
 void Lowerer::lowerDim(const DimStmt &stmt)
 {
     RVal sz = lowerExpr(*stmt.size);
     curLoc = stmt.loc;
-    Value bytes = emitBinary(Opcode::Mul, Type(Type::Kind::I64), sz.value, Value::constInt(8));
-    Value base = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {bytes});
+    Value handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_i32_new", {sz.value});
     const auto *info = findSymbol(stmt.name);
     assert(info && info->slotId);
-    emitStore(Type(Type::Kind::Ptr), Value::temp(*info->slotId), base);
+    emitStore(Type(Type::Kind::Ptr), Value::temp(*info->slotId), handle);
     if (boundsChecks)
     {
         if (info && info->arrayLengthSlot)
@@ -736,17 +735,19 @@ void Lowerer::lowerDim(const DimStmt &stmt)
 
 /// @brief Lower a REDIM array reallocation.
 /// @param stmt REDIM statement describing the new size.
-/// @details Re-evaluates the target length and stores a freshly allocated buffer
-///          into the tracked array slot, mirroring DIM lowering semantics.
+/// @details Re-evaluates the target length, invokes @c rt_arr_i32_resize to
+///          adjust the array storage, and stores the returned handle into the
+///          tracked array slot, mirroring DIM lowering semantics.
 void Lowerer::lowerReDim(const ReDimStmt &stmt)
 {
     RVal sz = lowerExpr(*stmt.size);
     curLoc = stmt.loc;
-    Value bytes = emitBinary(Opcode::Mul, Type(Type::Kind::I64), sz.value, Value::constInt(8));
-    Value base = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {bytes});
     const auto *info = findSymbol(stmt.name);
     assert(info && info->slotId);
-    emitStore(Type(Type::Kind::Ptr), Value::temp(*info->slotId), base);
+    Value slot = Value::temp(*info->slotId);
+    Value current = emitLoad(Type(Type::Kind::Ptr), slot);
+    Value resized = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_i32_resize", {current, sz.value});
+    emitStore(Type(Type::Kind::Ptr), slot, resized);
     if (boundsChecks && info && info->arrayLengthSlot)
         emitStore(Type(Type::Kind::I64), Value::temp(*info->arrayLengthSlot), sz.value);
 }

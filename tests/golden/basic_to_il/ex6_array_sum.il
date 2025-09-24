@@ -6,7 +6,7 @@ extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
 extern @rt_input_line() -> str
 extern @rt_to_int(str) -> i64
-extern @rt_alloc(i64) -> ptr
+extern @rt_arr_i32_new(i64) -> ptr
 global const str @.L0 = "
 "
 func @main() -> i64 {
@@ -29,11 +29,9 @@ L20:
   .loc 1 2 10
   %t6 = load i64, %t3
   .loc 1 2 4
-  %t7 = mul %t6, 8
+  %t7 = call @rt_arr_i32_new(%t6)
   .loc 1 2 4
-  %t8 = call @rt_alloc(%t7)
-  .loc 1 2 4
-  store ptr, %t2, %t8
+  store ptr, %t2, %t7
   .loc 1 2 4
   br L30
 L30:
@@ -51,13 +49,13 @@ L50:
   br loop_head
 L100:
   .loc 1 10 11
-  %t28 = load i64, %t0
+  %t27 = load i64, %t0
   .loc 1 10 5
-  call @rt_print_i64(%t28)
+  call @rt_print_i64(%t27)
   .loc 1 10 5
-  %t29 = const_str @.L0
+  %t28 = const_str @.L0
   .loc 1 10 5
-  call @rt_print_str(%t29)
+  call @rt_print_str(%t28)
   .loc 1 10 5
   br L110
 L110:
@@ -67,52 +65,52 @@ exit:
   ret 0
 loop_head:
   .loc 1 5 10
-  %t9 = load i64, %t1
+  %t8 = load i64, %t1
   .loc 1 5 14
-  %t10 = load i64, %t3
+  %t9 = load i64, %t3
   .loc 1 5 12
-  %t11 = scmp_lt %t9, %t10
+  %t10 = scmp_lt %t8, %t9
   .loc 1 5 4
-  cbr %t11, loop_body, done
+  cbr %t10, loop_body, done
 loop_body:
   .loc 1 6 17
-  %t12 = load i64, %t1
+  %t11 = load i64, %t1
   .loc 1 6 21
-  %t13 = load i64, %t1
+  %t12 = load i64, %t1
   .loc 1 6 19
-  %t14 = mul %t12, %t13
+  %t13 = mul %t11, %t12
   .loc 1 6 19
-  %t15 = load ptr, %t2
+  %t14 = load ptr, %t2
   .loc 1 6 12
-  %t16 = load i64, %t1
+  %t15 = load i64, %t1
   .loc 1 6 10
-  %t17 = shl %t16, 3
+  %t16 = shl %t15, 3
   .loc 1 6 10
-  %t18 = gep %t15, %t17
+  %t17 = gep %t14, %t16
   .loc 1 6 6
-  store i64, %t18, %t14
+  store i64, %t17, %t13
   .loc 1 7 14
-  %t19 = load i64, %t0
+  %t18 = load i64, %t0
   .loc 1 7 18
-  %t20 = load ptr, %t2
+  %t19 = load ptr, %t2
   .loc 1 7 20
-  %t21 = load i64, %t1
+  %t20 = load i64, %t1
   .loc 1 7 18
-  %t22 = shl %t21, 3
+  %t21 = shl %t20, 3
   .loc 1 7 18
-  %t23 = gep %t20, %t22
+  %t22 = gep %t19, %t21
   .loc 1 7 18
-  %t24 = load i64, %t23
+  %t23 = load i64, %t22
   .loc 1 7 16
-  %t25 = add %t19, %t24
+  %t24 = add %t18, %t23
   .loc 1 7 6
-  store i64, %t0, %t25
+  store i64, %t0, %t24
   .loc 1 8 14
-  %t26 = load i64, %t1
+  %t25 = load i64, %t1
   .loc 1 8 16
-  %t27 = add %t26, 1
+  %t26 = add %t25, 1
   .loc 1 8 6
-  store i64, %t1, %t27
+  store i64, %t1, %t26
   .loc 1 5 4
   br loop_head
 done:
