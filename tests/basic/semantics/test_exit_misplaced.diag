@@ -1,0 +1,6 @@
+tests/basic/semantics/test_exit_misplaced.bas:1:4: error[B1011]: EXIT DO used outside of any loop
+10 EXIT DO      ' error: no active DO
+   ^^^^
+tests/basic/semantics/test_exit_misplaced.bas:3:6: error[B1011]: EXIT FOR does not match innermost loop (WHILE)
+30   EXIT FOR   ' error: innermost is WHILE
+     ^^^^
