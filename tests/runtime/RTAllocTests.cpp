@@ -2,7 +2,7 @@
 // Purpose: Verify rt_alloc traps on negative allocation sizes.
 // Key invariants: rt_alloc reports "negative allocation" when bytes < 0.
 // Ownership: Uses runtime library.
-// Links: docs/runtime-abi.md
+// Links: docs/runtime-vm.md#runtime-abi
 #include "rt.hpp"
 #include <cassert>
 #include <string>

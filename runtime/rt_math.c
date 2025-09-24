@@ -2,7 +2,7 @@
 // Purpose: Implements portable math helpers for the runtime.
 // Key invariants: Follows IEEE semantics; no traps on domain errors.
 // Ownership/Lifetime: None.
-// Links: docs/runtime-abi.md
+// Links: docs/runtime-vm.md#runtime-abi
 
 #include "rt_math.h"
 #include "rt.hpp"

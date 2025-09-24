@@ -3,7 +3,7 @@
 // Key invariants: 1-based indexing semantics; empty needle returns clamped
 // start; extreme start values clamp to 1.
 // Ownership: Uses runtime library.
-// Links: docs/runtime-abi.md
+// Links: docs/runtime-vm.md#runtime-abi
 #include "rt.hpp"
 #include <cassert>
 #include <limits.h>

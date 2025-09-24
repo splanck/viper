@@ -1420,7 +1420,7 @@ done:
 Sources:
 - docs/il-guide.md#quickstart
 - docs/il-guide.md#reference
-- archive/docs/references/il.md
+- docs/il-guide.md#reference
 - docs/il-guide.md#lowering
 - docs/il-guide.md#constfold
 - docs/il-guide.md#mem2reg

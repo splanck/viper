@@ -2,7 +2,7 @@
 // Purpose: Ensure rt_chr traps on out-of-range input.
 // Key invariants: Codes outside 0-255 trigger runtime trap.
 // Ownership: Uses runtime library.
-// Links: docs/runtime-abi.md
+// Links: docs/runtime-vm.md#runtime-abi
 #include "rt.hpp"
 #include <cassert>
 #include <string>

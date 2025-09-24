@@ -2,7 +2,7 @@
 // Purpose: Implements deterministic random number generator.
 // Key invariants: Uses 64-bit LCG with fixed multiplier and increment; sequence is reproducible for
 // given seed. Ownership/Lifetime: Maintains a single internal state value; not thread-safe. Links:
-// docs/runtime-abi.md
+// docs/runtime-vm.md#runtime-abi
 
 #include "rt_random.h"
 
