@@ -12,6 +12,7 @@
 #include "il/core/Instr.hpp"
 #include <cassert>
 #include <unordered_set>
+#include <utility>
 
 using namespace il::core;
 
@@ -170,7 +171,7 @@ Lowerer::IlValue Lowerer::emitBoolFromBranches(const std::function<void(Value)> 
 /// current block identified by @c cur. When bounds checking is active, additional ok/fail blocks
 /// are created through @c builder and named with @c blockNamer (falling back to @c mangler) so the
 /// failing path can trap via the runtime helper before control resumes at the success block.
-Value Lowerer::lowerArrayAddr(const ArrayExpr &expr)
+Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr)
 {
     ProcedureContext &ctx = context();
     const auto *info = findSymbol(expr.name);
@@ -178,44 +179,42 @@ Value Lowerer::lowerArrayAddr(const ArrayExpr &expr)
     Value slot = Value::temp(*info->slotId);
     Value base = emitLoad(Type(Type::Kind::Ptr), slot);
     RVal idx = lowerExpr(*expr.index);
+    idx = coerceToI64(std::move(idx), expr.loc);
+    Value index = idx.value;
     curLoc = expr.loc;
-    if (boundsChecks)
-    {
-        assert(info->arrayLengthSlot);
-        Value len = emitLoad(Type(Type::Kind::I64), Value::temp(*info->arrayLengthSlot));
-        Value neg = emitBinary(Opcode::SCmpLT, ilBoolTy(), idx.value, Value::constInt(0));
-        Value ge = emitBinary(Opcode::SCmpGE, ilBoolTy(), idx.value, len);
-        Value neg64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), neg);
-        Value ge64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), ge);
-        Value or64 = emitBinary(Opcode::Or, Type(Type::Kind::I64), neg64, ge64);
-        Value cond = emitUnary(Opcode::Trunc1, ilBoolTy(), or64);
-        Function *func = ctx.function();
-        assert(func && ctx.current());
-        size_t curIdx = static_cast<size_t>(ctx.current() - &func->blocks[0]);
-        size_t okIdx = func->blocks.size();
-        unsigned bcId = ctx.consumeBoundsCheckId();
-        BlockNamer *blockNamer = ctx.blockNamer();
-        std::string okLbl = blockNamer ? blockNamer->tag("bc_ok" + std::to_string(bcId))
-                                       : mangler.block("bc_ok" + std::to_string(bcId));
-        builder->addBlock(*func, okLbl);
-        size_t failIdx = func->blocks.size();
-        std::string failLbl = blockNamer ? blockNamer->tag("bc_fail" + std::to_string(bcId))
-                                         : mangler.block("bc_fail" + std::to_string(bcId));
-        builder->addBlock(*func, failLbl);
-        BasicBlock *ok = &func->blocks[okIdx];
-        BasicBlock *fail = &func->blocks[failIdx];
-        ctx.setCurrent(&func->blocks[curIdx]);
-        emitCBr(cond, fail, ok);
-        ctx.setCurrent(fail);
-        std::string msg = "bounds check failed: " + expr.name + "[i]";
-        Value s = emitConstStr(getStringLabel(msg));
-        emitCall("rt_trap", {s});
-        emitTrap();
-        ctx.setCurrent(ok);
-    }
-    Value off = emitBinary(Opcode::Shl, Type(Type::Kind::I64), idx.value, Value::constInt(3));
-    Value ptr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), base, off);
-    return ptr;
+
+    Value len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {base});
+    Value neg = emitBinary(Opcode::SCmpLT, ilBoolTy(), index, Value::constInt(0));
+    Value ge = emitBinary(Opcode::SCmpGE, ilBoolTy(), index, len);
+    Value neg64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), neg);
+    Value ge64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), ge);
+    Value failSum = emitBinary(Opcode::Add, Type(Type::Kind::I64), neg64, ge64);
+    Value cond = emitBinary(Opcode::SCmpGT, ilBoolTy(), failSum, Value::constInt(0));
+
+    Function *func = ctx.function();
+    assert(func && ctx.current());
+    size_t curIdx = static_cast<size_t>(ctx.current() - &func->blocks[0]);
+    unsigned bcId = ctx.consumeBoundsCheckId();
+    BlockNamer *blockNamer = ctx.blockNamer();
+    size_t okIdx = func->blocks.size();
+    std::string okLbl = blockNamer ? blockNamer->tag("bc_ok" + std::to_string(bcId))
+                                   : mangler.block("bc_ok" + std::to_string(bcId));
+    builder->addBlock(*func, okLbl);
+    size_t oobIdx = func->blocks.size();
+    std::string oobLbl = blockNamer ? blockNamer->tag("bc_oob" + std::to_string(bcId))
+                                    : mangler.block("bc_oob" + std::to_string(bcId));
+    builder->addBlock(*func, oobLbl);
+    BasicBlock *ok = &func->blocks[okIdx];
+    BasicBlock *oob = &func->blocks[oobIdx];
+    ctx.setCurrent(&func->blocks[curIdx]);
+    emitCBr(cond, oob, ok);
+
+    ctx.setCurrent(oob);
+    emitCall("rt_arr_oob_panic", {index, len});
+    emitTrap();
+
+    ctx.setCurrent(ok);
+    return ArrayAccess{base, index};
 }
 
 /// @brief Allocate stack storage within the current block.
