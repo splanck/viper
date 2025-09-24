@@ -54,6 +54,12 @@ class VarCollectExprVisitor final : public ExprVisitor
         lowerer_.markArray(expr.name);
     }
 
+    void visit(const UBoundExpr &expr) override
+    {
+        lowerer_.markSymbolReferenced(expr.name);
+        lowerer_.markArray(expr.name);
+    }
+
     void visit(const UnaryExpr &expr) override
     {
         if (expr.expr)
@@ -249,6 +255,7 @@ void ProgramLowering::run(const Program &prog, il::core::Module &module)
     lowerer.runtimeTracker.reset();
     lowerer.needsArrI32New = false;
     lowerer.needsArrI32Resize = false;
+    lowerer.needsArrI32Len = false;
 
     lowerer.scanProgram(prog);
     lowerer.declareRequiredRuntime(builder);

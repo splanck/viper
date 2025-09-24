@@ -20,6 +20,7 @@ ExprType scanUnaryExpr(const UnaryExpr &u);
 ExprType scanBinaryExpr(const BinaryExpr &b);
 ExprType scanArrayExpr(const ArrayExpr &arr);
 ExprType scanLBoundExpr(const LBoundExpr &expr);
+ExprType scanUBoundExpr(const UBoundExpr &expr);
 
 public:
 ExprType scanBuiltinCallExpr(const BuiltinCallExpr &c);

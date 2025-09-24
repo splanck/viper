@@ -83,6 +83,11 @@ class LowererExprVisitor final : public ExprVisitor
         result_ = Lowerer::RVal{Value::constInt(0), il::core::Type(il::core::Type::Kind::I64)};
     }
 
+    void visit(const UBoundExpr &expr) override
+    {
+        result_ = lowerer_.lowerUBoundExpr(expr);
+    }
+
     void visit(const CallExpr &expr) override
     {
         const auto *signature = lowerer_.findProcSignature(expr.callee);
@@ -148,6 +153,19 @@ Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v)
     Type ty = slotInfo.type;
     Value val = emitLoad(ty, ptr);
     return {val, ty};
+}
+
+Lowerer::RVal Lowerer::lowerUBoundExpr(const UBoundExpr &expr)
+{
+    curLoc = expr.loc;
+    const auto *sym = findSymbol(expr.name);
+    assert(sym && sym->slotId && "UBOUND requires materialized array slot");
+    Value slot = Value::temp(*sym->slotId);
+    Value base = emitLoad(Type(Type::Kind::Ptr), slot);
+    curLoc = expr.loc;
+    Value len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {base});
+    Value upper = emitBinary(Opcode::Sub, Type(Type::Kind::I64), len, Value::constInt(1));
+    return {upper, Type(Type::Kind::I64)};
 }
 
 /// @brief Materialize a boolean result using custom then/else emitters.

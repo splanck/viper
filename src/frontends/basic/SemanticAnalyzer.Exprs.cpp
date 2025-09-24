@@ -186,6 +186,8 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
 
     void visit(LBoundExpr &expr) override { result_ = analyzer_.analyzeLBound(expr); }
 
+    void visit(UBoundExpr &expr) override { result_ = analyzer_.analyzeUBound(expr); }
+
     void visit(CallExpr &expr) override { result_ = analyzer_.analyzeCall(expr); }
 
     [[nodiscard]] SemanticAnalyzer::Type result() const noexcept { return result_; }
@@ -417,6 +419,33 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
 }
 
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeLBound(LBoundExpr &expr)
+{
+    resolveAndTrackSymbol(expr.name, SymbolKind::Reference);
+    if (!arrays_.count(expr.name))
+    {
+        std::string msg = "unknown array '" + expr.name + "'";
+        de.emit(il::support::Severity::Error,
+                "B1001",
+                expr.loc,
+                static_cast<uint32_t>(expr.name.size()),
+                std::move(msg));
+        return Type::Unknown;
+    }
+    if (auto itType = varTypes_.find(expr.name);
+        itType != varTypes_.end() && itType->second != Type::ArrayInt)
+    {
+        std::string msg = "variable '" + expr.name + "' is not an array";
+        de.emit(il::support::Severity::Error,
+                "B2001",
+                expr.loc,
+                static_cast<uint32_t>(expr.name.size()),
+                std::move(msg));
+        return Type::Unknown;
+    }
+    return Type::Int;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeUBound(UBoundExpr &expr)
 {
     resolveAndTrackSymbol(expr.name, SymbolKind::Reference);
     if (!arrays_.count(expr.name))
