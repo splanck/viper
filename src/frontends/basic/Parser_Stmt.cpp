@@ -6,6 +6,7 @@
 // Links: docs/codemap.md
 
 #include "frontends/basic/Parser.hpp"
+#include <cstdio>
 #include <cstdlib>
 
 namespace il::frontends::basic
@@ -228,6 +229,67 @@ StmtPtr Parser::parseWhile()
     return stmt;
 }
 
+/// @brief Parse a DO ... LOOP statement with optional pre/post conditions.
+/// @return DoStmt capturing condition position and body statements.
+StmtPtr Parser::parseDo()
+{
+    auto loc = peek().loc;
+    consume(); // DO
+    auto stmt = std::make_unique<DoStmt>();
+    stmt->loc = loc;
+
+    bool hasPreTest = false;
+    if (at(TokenKind::KeywordWhile) || at(TokenKind::KeywordUntil))
+    {
+        hasPreTest = true;
+        Token testTok = consume();
+        stmt->testPos = DoStmt::TestPos::Pre;
+        stmt->condKind = testTok.kind == TokenKind::KeywordWhile ? DoStmt::CondKind::While
+                                                                 : DoStmt::CondKind::Until;
+        stmt->cond = parseExpression();
+    }
+
+    auto ctxDo = statementContext();
+    ctxDo.consumeStatementBody(TokenKind::KeywordLoop, stmt->body);
+
+    bool hasPostTest = false;
+    Token postTok{};
+    DoStmt::CondKind postKind = DoStmt::CondKind::None;
+    ExprPtr postCond;
+    if (at(TokenKind::KeywordWhile) || at(TokenKind::KeywordUntil))
+    {
+        postTok = consume();
+        hasPostTest = true;
+        postKind = postTok.kind == TokenKind::KeywordWhile ? DoStmt::CondKind::While
+                                                           : DoStmt::CondKind::Until;
+        postCond = parseExpression();
+    }
+
+    if (hasPreTest && hasPostTest)
+    {
+        if (emitter_)
+        {
+            emitter_->emit(il::support::Severity::Error,
+                           "B0001",
+                           postTok.loc,
+                           static_cast<uint32_t>(postTok.lexeme.size()),
+                           "multiple DO loop tests");
+        }
+        else
+        {
+            std::fprintf(stderr, "multiple DO loop tests\n");
+        }
+    }
+    else if (hasPostTest)
+    {
+        stmt->testPos = DoStmt::TestPos::Post;
+        stmt->condKind = postKind;
+        stmt->cond = std::move(postCond);
+    }
+
+    return stmt;
+}
+
 /// @brief Parse a FOR loop terminated by NEXT.
 /// @return ForStmt describing loop variable, bounds, and body.
 /// @note Optional STEP expression is supported.
@@ -254,14 +316,14 @@ StmtPtr Parser::parseFor()
     stmt->end = std::move(end);
     stmt->step = std::move(step);
     auto ctxFor = statementContext();
-    ctxFor.consumeStatementBody(
-        [&](int) { return at(TokenKind::KeywordNext); },
-        [&](int, StatementContext::TerminatorInfo &) {
-            consume();
-            if (at(TokenKind::Identifier))
-                consume();
-        },
-        stmt->body);
+    ctxFor.consumeStatementBody([&](int) { return at(TokenKind::KeywordNext); },
+                                [&](int, StatementContext::TerminatorInfo &)
+                                {
+                                    consume();
+                                    if (at(TokenKind::Identifier))
+                                        consume();
+                                },
+                                stmt->body);
     return stmt;
 }
 
@@ -510,7 +572,8 @@ il::support::SourceLoc Parser::parseProcedureBody(TokenKind endKind, std::vector
     auto ctx = statementContext();
     auto info = ctx.consumeStatementBody(
         [&](int) { return at(TokenKind::KeywordEnd) && peek(1).kind == endKind; },
-        [&](int, StatementContext::TerminatorInfo &) {
+        [&](int, StatementContext::TerminatorInfo &)
+        {
             consume();
             consume();
         },
