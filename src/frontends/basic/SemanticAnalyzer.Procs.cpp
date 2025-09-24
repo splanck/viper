@@ -107,7 +107,8 @@ void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc, BodyCallback &&b
                 previous = itType->second;
             activeProcScope_->noteVarTypeMutation(p.name, previous);
         }
-        varTypes_[p.name] = astToSemanticType(p.type);
+        Type paramType = p.is_array ? Type::ArrayInt : astToSemanticType(p.type);
+        varTypes_[p.name] = paramType;
 
         if (p.is_array)
         {

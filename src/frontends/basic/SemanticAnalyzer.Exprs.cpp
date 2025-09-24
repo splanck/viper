@@ -381,6 +381,18 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
         visitExpr(*a.index);
         return Type::Unknown;
     }
+    if (auto itType = varTypes_.find(a.name);
+        itType != varTypes_.end() && itType->second != Type::ArrayInt)
+    {
+        std::string msg = "variable '" + a.name + "' is not an array";
+        de.emit(il::support::Severity::Error,
+                "B2001",
+                a.loc,
+                static_cast<uint32_t>(a.name.size()),
+                std::move(msg));
+        visitExpr(*a.index);
+        return Type::Unknown;
+    }
     Type ty = visitExpr(*a.index);
     if (ty != Type::Unknown && ty != Type::Int)
     {
