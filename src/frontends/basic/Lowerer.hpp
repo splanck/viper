@@ -78,6 +78,13 @@ class Lowerer
         Type type;
     };
 
+    /// @brief Result of lowering an array access expression.
+    struct ArrayAccess
+    {
+        Value base;  ///< Array handle loaded from the BASIC slot.
+        Value index; ///< Zero-based element index, coerced to i64.
+    };
+
     /// @brief Aggregated metadata for a BASIC symbol.
     struct SymbolInfo
     {
@@ -498,7 +505,7 @@ class Lowerer
 
     unsigned nextTempId();
 
-    Value lowerArrayAddr(const ArrayExpr &expr);
+    ArrayAccess lowerArrayAccess(const ArrayExpr &expr);
 
     void emitProgram(const Program &prog);
 
@@ -524,10 +531,16 @@ class Lowerer
     bool needsArrI32New{false};
     bool needsArrI32Resize{false};
     bool needsArrI32Len{false};
+    bool needsArrI32Get{false};
+    bool needsArrI32Set{false};
+    bool needsArrOobPanic{false};
 
     void requireArrayI32New();
     void requireArrayI32Resize();
     void requireArrayI32Len();
+    void requireArrayI32Get();
+    void requireArrayI32Set();
+    void requireArrayOobPanic();
     void requestHelper(RuntimeFeature feature);
 
     bool isHelperNeeded(RuntimeFeature feature) const;
