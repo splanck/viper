@@ -124,6 +124,22 @@ function(viper_add_e2e_vm_suite)
     -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/basic_abs_mixed.bas.out
     -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
 
+  viper_add_ctest(basic_array_sum
+    ${CMAKE_COMMAND}
+    -DILC=$<TARGET_FILE:ilc>
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/basic_array_sum.bas
+    -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/basic_array_sum.bas.out
+    -P ${_VIPER_E2E_DIR}/test_basic_array_sum.cmake)
+  set_tests_properties(basic_array_sum PROPERTIES LABELS VM)
+
+  viper_add_ctest(basic_array_oob
+    ${CMAKE_COMMAND}
+    -DILC=$<TARGET_FILE:ilc>
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/basic_array_oob.bas
+    "-DEXPECT_SUBSTR=rt_arr_i32: index 3 out of bounds (len=3)"
+    -P ${_VIPER_E2E_DIR}/test_basic_array_oob.cmake)
+  set_tests_properties(basic_array_oob PROPERTIES LABELS VM)
+
   viper_add_ctest(basic_factorial
     ${CMAKE_COMMAND}
     -DILC=$<TARGET_FILE:ilc>
