@@ -77,7 +77,17 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
     if (l.expr)
     {
         Type exprTy = visitExpr(*l.expr);
-        if (varTy == Type::Int && exprTy == Type::Float)
+        if (varTy == Type::ArrayInt)
+        {
+            std::string msg = "cannot assign scalar to array variable";
+            de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+        }
+        else if (exprTy == Type::ArrayInt)
+        {
+            std::string msg = "cannot assign array value to scalar variable";
+            de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+        }
+        else if (varTy == Type::Int && exprTy == Type::Float)
         {
             std::string msg = "operand type mismatch";
             de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
@@ -107,14 +117,32 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
                 static_cast<uint32_t>(a.name.size()),
                 std::move(msg));
     }
-    auto ty = visitExpr(*a.index);
-    if (ty != Type::Unknown && ty != Type::Int)
+    if (auto itType = varTypes_.find(a.name);
+        itType != varTypes_.end() && itType->second != Type::ArrayInt)
+    {
+        std::string msg = "variable '" + a.name + "' is not an array";
+        de.emit(il::support::Severity::Error,
+                "B2001",
+                a.loc,
+                static_cast<uint32_t>(a.name.size()),
+                std::move(msg));
+    }
+    auto indexTy = visitExpr(*a.index);
+    if (indexTy != Type::Unknown && indexTy != Type::Int)
     {
         std::string msg = "index type mismatch";
         de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
     }
+    Type valueTy = Type::Unknown;
     if (l.expr)
-        visitExpr(*l.expr);
+    {
+        valueTy = visitExpr(*l.expr);
+        if (valueTy != Type::Unknown && valueTy != Type::Int)
+        {
+            std::string msg = "array element type mismatch";
+            de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+        }
+    }
     auto it = arrays_.find(a.name);
     if (it != arrays_.end() && it->second >= 0)
     {
@@ -310,9 +338,9 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
             if (auto *ci = dynamic_cast<const IntExpr *>(d.size.get()))
             {
                 sz = ci->value;
-                if (sz <= 0)
+                if (sz < 0)
                 {
-                    std::string msg = "array size must be positive";
+                    std::string msg = "array size must be non-negative";
                     de.emit(il::support::Severity::Error, "B2003", d.loc, 1, std::move(msg));
                 }
             }
@@ -355,6 +383,16 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
             activeProcScope_->noteArrayMutation(d.name, previous);
         }
         arrays_[d.name] = sz;
+
+        auto itType = varTypes_.find(d.name);
+        if (activeProcScope_)
+        {
+            std::optional<Type> previous;
+            if (itType != varTypes_.end())
+                previous = itType->second;
+            activeProcScope_->noteVarTypeMutation(d.name, previous);
+        }
+        varTypes_[d.name] = Type::ArrayInt;
     }
     else
     {
@@ -384,23 +422,39 @@ void SemanticAnalyzer::analyzeReDim(ReDimStmt &d)
         if (auto *ci = dynamic_cast<const IntExpr *>(d.size.get()))
         {
             sz = ci->value;
-            if (sz <= 0)
+            if (sz < 0)
             {
-                std::string msg = "array size must be positive";
+                std::string msg = "array size must be non-negative";
                 de.emit(il::support::Severity::Error, "B2003", d.loc, 1, std::move(msg));
             }
         }
     }
 
-    resolveAndTrackSymbol(d.name, SymbolKind::Definition);
+    resolveAndTrackSymbol(d.name, SymbolKind::Reference);
 
     auto itArray = arrays_.find(d.name);
+    if (itArray == arrays_.end())
+    {
+        std::string msg = "unknown array '" + d.name + "'";
+        de.emit(il::support::Severity::Error,
+                "B1001",
+                d.loc,
+                static_cast<uint32_t>(d.name.size()),
+                std::move(msg));
+        return;
+    }
+
+    if (auto itType = varTypes_.find(d.name);
+        itType != varTypes_.end() && itType->second != Type::ArrayInt)
+    {
+        std::string msg = "REDIM target must be an array";
+        de.emit(il::support::Severity::Error, "B2001", d.loc, 1, std::move(msg));
+        return;
+    }
+
     if (activeProcScope_)
     {
-        std::optional<long long> previous;
-        if (itArray != arrays_.end())
-            previous = itArray->second;
-        activeProcScope_->noteArrayMutation(d.name, previous);
+        activeProcScope_->noteArrayMutation(d.name, itArray->second);
     }
     arrays_[d.name] = sz;
 }

@@ -150,6 +150,9 @@ int main()
     sema.analyze(*prog);
     assert(em.errorCount() == 0);
     assert(em.warningCount() == 0);
+    auto arrTy = sema.lookupVarType("A");
+    assert(arrTy.has_value());
+    assert(*arrTy == SemanticAnalyzer::Type::ArrayInt);
     assert(sema.symbols().count("A") == 1);
     assert(sema.symbols().count("FLAG") == 1);
     assert(sema.symbols().count("S$") == 1);
@@ -205,6 +208,34 @@ int main()
     {
         for (auto prefix : forbiddenPrefixes)
             assert(name.rfind(prefix, 0) != 0);
+    }
+
+    {
+        std::string redimSrc = "10 DIM X AS INT\n20 REDIM X(5)\n30 END\n";
+        SourceManager smRedim;
+        uint32_t fidRedim = smRedim.addFile("redim.bas");
+        Parser parserRedim(redimSrc, fidRedim);
+        auto progRedim = parserRedim.parseProgram();
+        DiagnosticEngine deRedim;
+        DiagnosticEmitter emRedim(deRedim, smRedim);
+        emRedim.addSource(fidRedim, redimSrc);
+        SemanticAnalyzer semaRedim(emRedim);
+        semaRedim.analyze(*progRedim);
+        assert(emRedim.errorCount() == 1);
+    }
+
+    {
+        std::string indexSrc = "10 DIM A(2)\n20 PRINT A(1.5)\n30 END\n";
+        SourceManager smIndex;
+        uint32_t fidIndex = smIndex.addFile("index.bas");
+        Parser parserIndex(indexSrc, fidIndex);
+        auto progIndex = parserIndex.parseProgram();
+        DiagnosticEngine deIndex;
+        DiagnosticEmitter emIndex(deIndex, smIndex);
+        emIndex.addSource(fidIndex, indexSrc);
+        SemanticAnalyzer semaIndex(emIndex);
+        semaIndex.analyze(*progIndex);
+        assert(emIndex.errorCount() == 1);
     }
     return 0;
 }

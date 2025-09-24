@@ -120,8 +120,14 @@ class SemanticAnalyzer
         Float,
         String,
         Bool,
+        ArrayInt,
         Unknown
     };
+
+    /// @brief Look up the tracked type for @p name when available.
+    /// @param name Symbol whose type should be queried.
+    /// @return Inferred type when recorded; std::nullopt otherwise.
+    std::optional<Type> lookupVarType(const std::string &name) const;
 
   private:
     class ProcedureScope

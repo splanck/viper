@@ -44,6 +44,14 @@ const ProcTable &SemanticAnalyzer::procs() const
     return procReg_.procs();
 }
 
+std::optional<SemanticAnalyzer::Type>
+SemanticAnalyzer::lookupVarType(const std::string &name) const
+{
+    if (auto it = varTypes_.find(name); it != varTypes_.end())
+        return it->second;
+    return std::nullopt;
+}
+
 void SemanticAnalyzer::resolveAndTrackSymbol(std::string &name, SymbolKind kind)
 {
     if (auto mapped = scopes_.resolve(name))
@@ -138,6 +146,8 @@ const char *semanticTypeName(SemanticAnalyzer::Type type)
             return "STRING";
         case Type::Bool:
             return "BOOLEAN";
+        case Type::ArrayInt:
+            return "ARRAY(INT)";
         case Type::Unknown:
             return "UNKNOWN";
     }
