@@ -161,6 +161,14 @@ class Lowerer
 
         std::string whileEnd(unsigned id) const;
 
+        unsigned nextDo();
+
+        std::string doHead(unsigned id) const;
+
+        std::string doBody(unsigned id) const;
+
+        std::string doEnd(unsigned id) const;
+
         unsigned nextFor();
 
         /// @brief Allocate next sequential ID for a call continuation.
