@@ -6,8 +6,10 @@ extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
 extern @rt_trap(str) -> void
 extern @rt_arr_i32_new(i64) -> ptr
-global const str @.L0 = "bounds check failed: A[i]"
-global const str @.L1 = "
+extern @rt_arr_i32_len(ptr) -> i64
+extern @rt_arr_i32_get(ptr, i64) -> i64
+extern @rt_arr_oob_panic(i64, i64) -> void
+global const str @.L0 = "
 "
 func @main() -> i64 {
 entry:
@@ -27,7 +29,7 @@ L20:
   .loc 1 2 10
   %t3 = load ptr, %t0
   .loc 1 2 10
-  %t4 = load i64, %t1
+  %t4 = call @rt_arr_i32_len(%t3)
   .loc 1 2 10
   %t5 = scmp_lt 1, 0
   .loc 1 2 10
@@ -37,33 +39,27 @@ L20:
   .loc 1 2 10
   %t8 = zext1 %t6
   .loc 1 2 10
-  %t9 = or %t7, %t8
+  %t9 = add %t7, %t8
   .loc 1 2 10
-  %t10 = trunc1 %t9
+  %t10 = scmp_gt %t9, 0
   .loc 1 2 10
-  cbr %t10, bc_fail0, bc_ok0
+  cbr %t10, bc_oob0, bc_ok0
 exit:
   ret 0
 bc_ok0:
   .loc 1 2 10
-  %t12 = shl 1, 3
-  .loc 1 2 10
-  %t13 = gep %t3, %t12
-  .loc 1 2 10
-  %t14 = load i64, %t13
+  %t11 = call @rt_arr_i32_get(%t3, 1)
   .loc 1 2 4
-  call @rt_print_i64(%t14)
+  call @rt_print_i64(%t11)
   .loc 1 2 4
-  %t15 = const_str @.L1
+  %t12 = const_str @.L0
   .loc 1 2 4
-  call @rt_print_str(%t15)
+  call @rt_print_str(%t12)
   .loc 1 2 4
   br exit
-bc_fail0:
+bc_oob0:
   .loc 1 2 10
-  %t11 = const_str @.L0
-  .loc 1 2 10
-  call @rt_trap(%t11)
+  call @rt_arr_oob_panic(1, %t4)
   .loc 1 2 10
   trap
 }

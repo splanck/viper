@@ -128,8 +128,14 @@ class ScanStmtVisitor final : public StmtVisitor
                 const auto *info = lowerer_.findSymbol(arr->name);
                 if (!info || !info->hasType)
                     lowerer_.setSymbolType(arr->name, inferAstTypeFromName(arr->name));
+                lowerer_.markSymbolReferenced(arr->name);
+                lowerer_.markArray(arr->name);
             }
-            lowerer_.scanExpr(*arr->index);
+            lowerer_.requireArrayI32Len();
+            lowerer_.requireArrayI32Set();
+            lowerer_.requireArrayOobPanic();
+            if (arr->index)
+                lowerer_.scanExpr(*arr->index);
         }
     }
 
@@ -313,7 +319,13 @@ Lowerer::ExprType Lowerer::scanBinaryExpr(const BinaryExpr &b)
 /// propagate to the containing expression.
 Lowerer::ExprType Lowerer::scanArrayExpr(const ArrayExpr &arr)
 {
-    scanExpr(*arr.index);
+    markSymbolReferenced(arr.name);
+    markArray(arr.name);
+    if (arr.index)
+        scanExpr(*arr.index);
+    requireArrayI32Len();
+    requireArrayI32Get();
+    requireArrayOobPanic();
     return ExprType::I64;
 }
 
