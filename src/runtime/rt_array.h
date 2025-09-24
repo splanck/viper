@@ -1,4 +1,4 @@
-// File: runtime/rt_array.h
+// File: src/runtime/rt_array.h
 // Purpose: Declares dynamic int32 array helpers for the BASIC runtime.
 // Key invariants: Array length never exceeds capacity; storage is contiguous.
 // Ownership/Lifetime: Caller owns array handles and must free them with free().

@@ -79,7 +79,7 @@ When the native backend is enabled, the same IL feeds the code generator instead
 - **Front end:** `src/frontends/basic/`.
 - **IL core:** `src/il/core/`, `src/il/io/`, `src/il/build/`, `src/il/verify/`.
 - **Passes:** `src/il/transform/`.
-- **VM:** `src/vm/`, `runtime/`.
+- **VM:** `src/vm/`, `src/runtime/`.
 - **Code generation:** `src/codegen/`.
 - **Support utilities:** `src/support/`.
 - **Tools:** `src/tools/ilc/` (driver and subcommands), `src/tools/`.
@@ -149,7 +149,7 @@ The verifier runs after passes to enforce correctness before execution or code g
 
 ### Runtime & ABI (externs)
 
-Extern symbols in IL map to C functions declared in `runtime/rt.hpp`. Strings use reference-counted heap objects; numeric values are 64-bit.
+Extern symbols in IL map to C functions declared in `src/runtime/rt.hpp`. Strings use reference-counted heap objects; numeric values are 64-bit.
 
 Initial runtime surface (all prefixed `rt_`):
 
@@ -276,7 +276,7 @@ Modules declare an IL version (`il 0.1.2`) at the top. The runtime ABI aims to r
 /CMakeLists.txt
 /cmake/              # compiler flags, toolchain helpers
 /docs/               # IL spec, developer docs, ADRs
-/runtime/            # C runtime (librt.a): rt_*.c, rt.hpp
+/src/runtime/        # C runtime (librt.a): rt_*.c, rt.hpp
 /src/
   support/           # shared utilities
   il/                # core types, IR, builder, verifier, I/O

@@ -1,4 +1,4 @@
-// File: runtime/rt_math.h
+// File: src/runtime/rt_math.h
 // Purpose: Declares portable math helpers for the runtime.
 // Key invariants: Functions mirror C math library semantics.
 // Ownership/Lifetime: None.
