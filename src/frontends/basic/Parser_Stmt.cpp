@@ -345,6 +345,59 @@ StmtPtr Parser::parseNext()
     return stmt;
 }
 
+/// @brief Parse an EXIT statement identifying the enclosing loop kind.
+/// @return ExitStmt targeting FOR, WHILE, or DO loops.
+StmtPtr Parser::parseExit()
+{
+    auto loc = peek().loc;
+    consume(); // EXIT
+
+    ExitStmt::LoopKind kind = ExitStmt::LoopKind::While;
+    if (at(TokenKind::KeywordFor))
+    {
+        consume();
+        kind = ExitStmt::LoopKind::For;
+    }
+    else if (at(TokenKind::KeywordWhile))
+    {
+        consume();
+        kind = ExitStmt::LoopKind::While;
+    }
+    else if (at(TokenKind::KeywordDo))
+    {
+        consume();
+        kind = ExitStmt::LoopKind::Do;
+    }
+    else
+    {
+        Token unexpected = peek();
+        il::support::SourceLoc diagLoc = unexpected.kind == TokenKind::EndOfFile ? loc : unexpected.loc;
+        uint32_t length = unexpected.lexeme.empty()
+                               ? 1u
+                               : static_cast<uint32_t>(unexpected.lexeme.size());
+        if (emitter_)
+        {
+            emitter_->emit(il::support::Severity::Error,
+                           "B0002",
+                           diagLoc,
+                           length,
+                           "expected FOR, WHILE, or DO after EXIT");
+        }
+        else
+        {
+            std::fprintf(stderr, "expected FOR, WHILE, or DO after EXIT\n");
+        }
+        auto noop = std::make_unique<EndStmt>();
+        noop->loc = loc;
+        return noop;
+    }
+
+    auto stmt = std::make_unique<ExitStmt>();
+    stmt->loc = loc;
+    stmt->kind = kind;
+    return stmt;
+}
+
 /// @brief Parse a GOTO statement targeting a numeric line.
 /// @return GotoStmt with destination line number.
 StmtPtr Parser::parseGoto()
