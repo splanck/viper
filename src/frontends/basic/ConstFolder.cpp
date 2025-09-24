@@ -285,6 +285,8 @@ private:
 
     void visit(LBoundExpr &) override {}
 
+    void visit(UBoundExpr &) override {}
+
     void visit(UnaryExpr &expr) override
     {
         foldExpr(expr.expr);
