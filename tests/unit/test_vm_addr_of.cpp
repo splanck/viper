@@ -2,7 +2,7 @@
 // Purpose: Verify VM addr_of instruction returns pointer to global string.
 // Key invariants: Returned pointer's data matches global initializer.
 // Ownership: Test constructs IL module and executes VM.
-// Links: docs/il-reference.md
+// Links: docs/il-guide.md#reference
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

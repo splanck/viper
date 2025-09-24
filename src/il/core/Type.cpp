@@ -2,7 +2,7 @@
 // Purpose: Implements helpers for IL type system.
 // Key invariants: None.
 // Ownership/Lifetime: Types are value objects.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/core/Type.hpp"
 

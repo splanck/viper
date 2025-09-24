@@ -4,7 +4,7 @@
 // Key invariants: Operations respect frame stack bounds, pointer provenance,
 // and type semantics.
 // Ownership/Lifetime: Handlers mutate the active frame without retaining state.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "vm/OpHandlers.hpp"
 

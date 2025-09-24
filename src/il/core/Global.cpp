@@ -2,7 +2,7 @@
 // Purpose: Provides helpers for global variables.
 // Key invariants: None.
 // Ownership/Lifetime: Module owns global declarations.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/core/Global.hpp"
 

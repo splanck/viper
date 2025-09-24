@@ -2,7 +2,7 @@
 // Purpose: Implements global declaration verification ensuring uniqueness within a module.
 // Key invariants: Global definitions may not share a name; lookup table mirrors module globals.
 // Ownership/Lifetime: Stores pointers to module-owned globals for later lookups.
-// Links: docs/il-reference.md
+// Links: docs/il-guide.md#reference
 
 #include "il/verify/GlobalVerifier.hpp"
 

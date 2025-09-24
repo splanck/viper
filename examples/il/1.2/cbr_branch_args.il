@@ -1,4 +1,4 @@
-il 0.1.2 ; // File: examples/il/1.2/cbr_branch_args.il // Purpose: Demonstrates conditional branch with block arguments. // Links: docs/il-spec.md#control-flow-terminators
+il 0.1.2 ; // File: examples/il/1.2/cbr_branch_args.il // Purpose: Demonstrates conditional branch with block arguments. // Links: docs/il-guide.md#reference#control-flow-terminators
 
 func @select(i64 %a, i64 %b, i1 %cond) -> i64 {
 entry:

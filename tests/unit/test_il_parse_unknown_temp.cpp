@@ -2,7 +2,7 @@
 // Purpose: Ensure IL parser reports an error when encountering an unknown SSA name.
 // Key invariants: Parser surfaces diagnostics for unresolved temporary references.
 // Ownership/Lifetime: Test constructs modules and diagnostic buffers locally.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

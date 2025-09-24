@@ -2,7 +2,7 @@
 ## Purpose: Verify VM aborts when exceeding configured step limit.
 ## Key invariants: Exceeding the limit yields non-zero exit and message.
 ## Ownership/Lifetime: Invoked by CTest.
-## Links: docs/class-catalog.md
+## Links: docs/codemap.md
 
 # Use unique filenames to avoid collisions when tests run in parallel.
 set(OUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/vm_step_limit.out.txt")

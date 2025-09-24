@@ -1,7 +1,7 @@
 // File: tests/unit/test_il_parse_negative.cpp
 // Purpose: Ensure IL parser rejects malformed constructs, including block params, branch arguments,
 // and numeric literals. Key invariants: Parser returns false for invalid input. Ownership/Lifetime:
-// Test owns all modules and buffers locally. Links: docs/il-spec.md
+// Test owns all modules and buffers locally. Links: docs/il-guide.md#reference
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

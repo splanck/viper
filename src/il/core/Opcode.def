@@ -1,7 +1,7 @@
 // File: src/il/core/Opcode.def
 // Purpose: Declarative list of IL opcodes and metadata consumed by generators.
 // Notes: Each entry expands differently depending on IL_OPCODE definition.
-// Keep entries in sync with docs/il-spec.md opcode table.
+// Keep entries in sync with docs/il-guide.md#reference opcode table.
 #ifndef IL_OPCODE
 #error "IL_OPCODE must be defined before including Opcode.def"
 #endif

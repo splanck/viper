@@ -3,7 +3,7 @@
 // Purpose: Implements serializer for IL modules to text.
 // Key invariants: Output is deterministic in canonical mode.
 // Ownership/Lifetime: Serializer does not own modules.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/io/Serializer.hpp"
 #include "il/core/BasicBlock.hpp"

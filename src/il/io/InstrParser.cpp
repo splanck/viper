@@ -2,7 +2,7 @@
 // Purpose: Implements parsing of IL instruction statements (MIT License; see LICENSE).
 // Key invariants: ParserState must reference a current function and basic block.
 // Ownership/Lifetime: Instructions are appended to the ParserState's active block.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/io/InstrParser.hpp"
 #include "il/core/BasicBlock.hpp"

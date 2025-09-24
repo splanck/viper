@@ -2,7 +2,7 @@
 // Purpose: Verify block parameters and branch arguments in IRBuilder.
 // Key invariants: Parameter counts and branch arities match.
 // Ownership/Lifetime: Uses builder with local module.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/build/IRBuilder.hpp"
 #include <cassert>
