@@ -2,7 +2,7 @@
 // Purpose: Declares portable math helpers for the runtime.
 // Key invariants: Functions mirror C math library semantics.
 // Ownership/Lifetime: None.
-// Links: docs/runtime-abi.md
+// Links: docs/runtime-vm.md#runtime-abi
 #pragma once
 
 #include <stdint.h>

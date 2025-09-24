@@ -2,7 +2,7 @@
 // Purpose: Verify rt_alloc returns zero-initialized memory.
 // Key invariants: Memory returned from rt_alloc must contain only zero bytes.
 // Ownership: Uses runtime library and frees allocated memory.
-// Links: docs/runtime-abi.md
+// Links: docs/runtime-vm.md#runtime-abi
 #include "rt.hpp"
 #include <assert.h>
 #include <stddef.h>

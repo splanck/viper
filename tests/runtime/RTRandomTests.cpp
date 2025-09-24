@@ -2,7 +2,7 @@
 // Purpose: Validate deterministic LCG random generator.
 // Key invariants: Sequence reproducible for given seed; outputs in [0,1).
 // Ownership: Uses runtime library.
-// Links: docs/runtime-abi.md
+// Links: docs/runtime-vm.md#runtime-abi
 #include "rt_random.h"
 #include <cassert>
 

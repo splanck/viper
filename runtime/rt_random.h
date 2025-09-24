@@ -2,7 +2,7 @@
 // Purpose: Declares deterministic random number helpers.
 // Key invariants: 64-bit linear congruential generator; reproducible across platforms.
 // Ownership/Lifetime: Uses internal global state; single-threaded.
-// Links: docs/runtime-abi.md
+// Links: docs/runtime-vm.md#runtime-abi
 #pragma once
 
 #include <stdint.h>

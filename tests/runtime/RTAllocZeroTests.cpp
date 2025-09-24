@@ -4,7 +4,7 @@
 //                 behavior would trap. The test asserts the new logic treats
 //                 zero as a valid allocation size.
 // Ownership: Uses runtime library.
-// Links: docs/runtime-abi.md
+// Links: docs/runtime-vm.md#runtime-abi
 #include "rt.hpp"
 #include <assert.h>
 #include <stddef.h>
