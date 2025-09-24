@@ -1,4 +1,4 @@
-// File: runtime/rt_math.c
+// File: src/runtime/rt_math.c
 // Purpose: Implements portable math helpers for the runtime.
 // Key invariants: Follows IEEE semantics; no traps on domain errors.
 // Ownership/Lifetime: None.

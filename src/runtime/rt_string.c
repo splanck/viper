@@ -1,4 +1,4 @@
-// File: runtime/rt_string.c
+// File: src/runtime/rt_string.c
 // Purpose: Implements string manipulation utilities for the BASIC runtime.
 // Key invariants: Strings use reference counts; operations trap on invalid inputs.
 // Ownership/Lifetime: Caller manages returned strings and reference counts.
