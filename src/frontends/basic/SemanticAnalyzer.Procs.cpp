@@ -26,6 +26,7 @@ SemanticAnalyzer::ProcedureScope::ProcedureScope(SemanticAnalyzer &analyzer) noe
     previous_ = analyzer_.activeProcScope_;
     analyzer_.activeProcScope_ = this;
     forStackDepth_ = analyzer_.forStack_.size();
+    loopStackDepth_ = analyzer_.loopStack_.size();
     analyzer_.scopes_.pushScope();
 }
 
@@ -54,6 +55,8 @@ SemanticAnalyzer::ProcedureScope::~ProcedureScope() noexcept
     }
     if (analyzer_.forStack_.size() > forStackDepth_)
         analyzer_.forStack_.resize(forStackDepth_);
+    if (analyzer_.loopStack_.size() > loopStackDepth_)
+        analyzer_.loopStack_.resize(loopStackDepth_);
     analyzer_.scopes_.popScope();
 }
 
@@ -192,6 +195,7 @@ void SemanticAnalyzer::analyze(const Program &prog)
     labels_.clear();
     labelRefs_.clear();
     forStack_.clear();
+    loopStack_.clear();
     varTypes_.clear();
     arrays_.clear();
     procReg_.clear();
