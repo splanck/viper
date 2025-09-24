@@ -1,56 +1,78 @@
-# Prerequisites
-*.d
+# --- IDEs / Editors ---
+.idea/
+*.iml
+.vscode/
+*.code-workspace
+.clangd/
+.cache/
+.clang-tidy
+.clang-tidy-cache/
+.cquery_cached_index/
+.vs/
+ipch/
 
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
+# --- OS junk ---
+.DS_Store
+Thumbs.db
 
-# Precompiled Headers
-*.gch
-*.pch
-
-# Linker files
-*.ilk
-
-# Debugger Files
-*.pdb
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
-*.exe
-*.out
-*.app
-
-# Debug information files
-*.dwo
-
-# CMake build artifacts
+# --- CMake / Ninja / Make build artifacts ---
 /build/
-/build*/
+/build-*/
+cmake-build-*/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
-*.cmake
+compile_commands.json
+install_manifest.txt
+Testing/
+CTestTestfile.cmake
+Makefile
 *.ninja
-*.o.d
+.ninja_deps
+.ninja_log
 
-# Others
+# --- Compilers / Linkers ---
+*.o
+*.obj
+*.lo
+*.slo
+*.la
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+*.gch
+*.pch
+*.ilk
+*.dSYM/
+
+# --- Dependency / tool caches ---
+ccache/
+vcpkg_installed/
+vcpkg_downloads/
+.mypy_cache/
+.pytest_cache/
+
+# --- Coverage / profiling ---
+coverage/
+*.gcno
+*.gcda
+*.profraw
+*.profdata
+lcov.info
+
+# --- Logs / temp / swaps ---
 *.log
+*.tmp
+*.temp
 *.swp
-.DS_Store
+*.swo
+*.bak
+*.orig
+~*
+
+# --- Project-specific test/run outputs (if created) ---
+tests/**/output/
+tests/**/out/
