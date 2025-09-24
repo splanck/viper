@@ -77,11 +77,77 @@ RuntimeLowering makeLowering(RuntimeLoweringKind kind,
     return lowering;
 }
 
+/// @brief Adapter converting IL i64 arguments into size_t for array helpers.
+void invokeRtArrI32New(void **args, void *result)
+{
+    const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[0]) : nullptr;
+    const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
+    void *arr = rt_arr_i32_new(len);
+    if (result)
+        *reinterpret_cast<void **>(result) = arr;
+}
+
+/// @brief Adapter converting array handle and index arguments for length queries.
+void invokeRtArrI32Len(void **args, void *result)
+{
+    const auto arrPtr = args ? reinterpret_cast<void *const *>(args[0]) : nullptr;
+    const void *arr = arrPtr ? *arrPtr : nullptr;
+    const size_t len = rt_arr_i32_len(arr);
+    if (result)
+        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(len);
+}
+
+/// @brief Adapter reading array elements and widening i32 results to i64.
+void invokeRtArrI32Get(void **args, void *result)
+{
+    const auto arrPtr = args ? reinterpret_cast<void *const *>(args[0]) : nullptr;
+    const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
+    const void *arr = arrPtr ? *arrPtr : nullptr;
+    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
+    const int32_t value = rt_arr_i32_get(arr, idx);
+    if (result)
+        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(value);
+}
+
+/// @brief Adapter writing array elements with truncation to 32 bits.
+void invokeRtArrI32Set(void **args, void * /*result*/)
+{
+    const auto arrPtr = args ? reinterpret_cast<void **>(args[0]) : nullptr;
+    const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
+    const auto valPtr = args ? reinterpret_cast<const int64_t *>(args[2]) : nullptr;
+    void *arr = arrPtr ? *arrPtr : nullptr;
+    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
+    const int32_t value = valPtr ? static_cast<int32_t>(*valPtr) : 0;
+    rt_arr_i32_set(arr, idx, value);
+}
+
+/// @brief Adapter resizing arrays while converting indices to size_t.
+void invokeRtArrI32Resize(void **args, void *result)
+{
+    const auto arrPtr = args ? reinterpret_cast<void **>(args[0]) : nullptr;
+    const auto newLenPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
+    void *arr = arrPtr ? *arrPtr : nullptr;
+    const size_t newLen = newLenPtr ? static_cast<size_t>(*newLenPtr) : 0;
+    void *resized = rt_arr_i32_resize(arr, newLen);
+    if (result)
+        *reinterpret_cast<void **>(result) = resized;
+}
+
+/// @brief Adapter invoking the noreturn out-of-bounds panic helper.
+void invokeRtArrOobPanic(void **args, void * /*result*/)
+{
+    const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[0]) : nullptr;
+    const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
+    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
+    const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
+    rt_arr_oob_panic(idx, len);
+}
+
 /// @brief Populate the runtime descriptor registry with known helper declarations.
 std::vector<RuntimeDescriptor> buildRegistry()
 {
     std::vector<RuntimeDescriptor> entries;
-    entries.reserve(40);
+    entries.reserve(48);
     auto add = [&](std::string_view name,
                    Kind ret,
                    std::initializer_list<Kind> params,
@@ -167,6 +233,36 @@ std::vector<RuntimeDescriptor> buildRegistry()
         {Kind::I64},
         &DirectHandler<&rt_alloc, void *, int64_t>::invoke,
         feature(RuntimeFeature::Alloc));
+    add("rt_arr_i32_new",
+        Kind::Ptr,
+        {Kind::I64},
+        &invokeRtArrI32New,
+        manual());
+    add("rt_arr_i32_len",
+        Kind::I64,
+        {Kind::Ptr},
+        &invokeRtArrI32Len,
+        manual());
+    add("rt_arr_i32_get",
+        Kind::I64,
+        {Kind::Ptr, Kind::I64},
+        &invokeRtArrI32Get,
+        manual());
+    add("rt_arr_i32_set",
+        Kind::Void,
+        {Kind::Ptr, Kind::I64, Kind::I64},
+        &invokeRtArrI32Set,
+        manual());
+    add("rt_arr_i32_resize",
+        Kind::Ptr,
+        {Kind::Ptr, Kind::I64},
+        &invokeRtArrI32Resize,
+        manual());
+    add("rt_arr_oob_panic",
+        Kind::Void,
+        {Kind::I64, Kind::I64},
+        &invokeRtArrOobPanic,
+        manual());
     add("rt_left",
         Kind::Str,
         {Kind::Str, Kind::I64},
