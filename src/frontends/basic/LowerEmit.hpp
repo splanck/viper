@@ -117,6 +117,7 @@ bool lowerIfBranch(const Stmt *stmt,
                    il::support::SourceLoc loc);
 void lowerIf(const IfStmt &stmt);
 void lowerWhile(const WhileStmt &stmt);
+void lowerDo(const DoStmt &stmt);
 void lowerLoopBody(const std::vector<StmtPtr> &body);
 void lowerFor(const ForStmt &stmt);
 void lowerForConstStep(const ForStmt &stmt, Value slot, RVal end, RVal step, int64_t stepConst);
@@ -124,6 +125,7 @@ void lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal step);
 ForBlocks setupForBlocks(bool varStep);
 void emitForStep(Value slot, Value step);
 void lowerNext(const NextStmt &stmt);
+void lowerExit(const ExitStmt &stmt);
 void lowerGoto(const GotoStmt &stmt);
 void lowerEnd(const EndStmt &stmt);
 void lowerInput(const InputStmt &stmt);

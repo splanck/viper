@@ -88,12 +88,16 @@ class SemanticAnalyzer
     void analyzeIf(const IfStmt &s);
     /// @brief Analyze WHILE statement @p s.
     void analyzeWhile(const WhileStmt &s);
+    /// @brief Analyze DO statement @p s.
+    void analyzeDo(const DoStmt &s);
     /// @brief Analyze FOR statement @p s.
     void analyzeFor(ForStmt &s);
     /// @brief Analyze GOTO statement @p s.
     void analyzeGoto(const GotoStmt &s);
     /// @brief Analyze NEXT statement @p s.
     void analyzeNext(const NextStmt &s);
+    /// @brief Analyze EXIT statement @p s.
+    void analyzeExit(const ExitStmt &s);
     /// @brief Analyze END statement @p s.
     void analyzeEnd(const EndStmt &s);
     /// @brief Analyze RANDOMIZE statement @p s.

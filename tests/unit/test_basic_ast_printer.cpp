@@ -233,6 +233,24 @@ int main()
     forStmt->body.push_back(std::move(forPrint));
     prog.main.push_back(std::move(forStmt));
 
+    auto doStmt = std::make_unique<DoStmt>();
+    doStmt->line = 85;
+    doStmt->testPos = DoStmt::TestPos::Post;
+    doStmt->condKind = DoStmt::CondKind::Until;
+    doStmt->cond = makeVar("DONE");
+    auto doPrint = std::make_unique<PrintStmt>();
+    doPrint->line = 86;
+    PrintItem doItem;
+    doItem.expr = makeString("LOOP");
+    doPrint->items.push_back(std::move(doItem));
+    doStmt->body.push_back(std::move(doPrint));
+    prog.main.push_back(std::move(doStmt));
+
+    auto exitStmt = std::make_unique<ExitStmt>();
+    exitStmt->line = 87;
+    exitStmt->kind = ExitStmt::LoopKind::Do;
+    prog.main.push_back(std::move(exitStmt));
+
     auto nextStmt = std::make_unique<NextStmt>();
     nextStmt->line = 90;
     nextStmt->var = "I";
@@ -271,6 +289,8 @@ int main()
                                  "0) THEN (PRINT \"NEG\") ELSE (PRINT \"ZERO\"))\n"
                                  "70: (WHILE (NOT DONE) {71:(PRINT 1)})\n"
                                  "80: (FOR I = 1 TO 5 STEP 2 {81:(PRINT I)})\n"
+                                 "85: (DO post UNTIL DONE {86:(PRINT \"LOOP\")})\n"
+                                 "87: (EXIT DO)\n"
                                  "90: (NEXT I)\n"
                                  "100: (GOTO 200)\n"
                                  "110: (RETURN (FNRESULT B ARR(I)))\n"

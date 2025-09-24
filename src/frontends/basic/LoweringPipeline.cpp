@@ -170,6 +170,15 @@ class VarCollectStmtVisitor final : public StmtVisitor
                 sub->accept(*this);
     }
 
+    void visit(const DoStmt &stmt) override
+    {
+        if (stmt.cond)
+            stmt.cond->accept(exprVisitor_);
+        for (const auto &sub : stmt.body)
+            if (sub)
+                sub->accept(*this);
+    }
+
     void visit(const ForStmt &stmt) override
     {
         if (!stmt.var.empty())
@@ -190,6 +199,8 @@ class VarCollectStmtVisitor final : public StmtVisitor
         if (!stmt.var.empty())
             lowerer_.markSymbolReferenced(stmt.var);
     }
+
+    void visit(const ExitStmt &) override {}
 
     void visit(const GotoStmt &) override {}
 
