@@ -283,6 +283,8 @@ private:
         foldExpr(expr.index);
     }
 
+    void visit(LBoundExpr &) override {}
+
     void visit(UnaryExpr &expr) override
     {
         foldExpr(expr.expr);

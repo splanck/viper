@@ -364,6 +364,21 @@ ExprPtr Parser::parsePrimary()
         consume();
         return b;
     }
+    if (at(TokenKind::KeywordLbound))
+    {
+        auto loc = peek().loc;
+        consume();
+        expect(TokenKind::LParen);
+        std::string name;
+        Token ident = expect(TokenKind::Identifier);
+        if (ident.kind == TokenKind::Identifier)
+            name = ident.lexeme;
+        expect(TokenKind::RParen);
+        auto l = std::make_unique<LBoundExpr>();
+        l->loc = loc;
+        l->name = std::move(name);
+        return l;
+    }
     if (!at(TokenKind::Identifier))
     {
         if (auto b = lookupBuiltin(peek().lexeme))

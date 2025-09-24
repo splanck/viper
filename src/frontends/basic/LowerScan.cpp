@@ -64,6 +64,8 @@ class ScanExprVisitor final : public ExprVisitor
 
     void visit(const ArrayExpr &expr) override { result_ = lowerer_.scanArrayExpr(expr); }
 
+    void visit(const LBoundExpr &expr) override { result_ = lowerer_.scanLBoundExpr(expr); }
+
     void visit(const UnaryExpr &expr) override { result_ = lowerer_.scanUnaryExpr(expr); }
 
     void visit(const BinaryExpr &expr) override { result_ = lowerer_.scanBinaryExpr(expr); }
@@ -131,21 +133,23 @@ class ScanStmtVisitor final : public StmtVisitor
 
     void visit(const DimStmt &stmt) override
     {
-        lowerer_.requestHelper(Lowerer::RuntimeFeature::Alloc);
         if (!stmt.name.empty())
             lowerer_.setSymbolType(stmt.name, stmt.type);
         if (stmt.isArray)
+        {
+            lowerer_.requireArrayI32New();
             lowerer_.markArray(stmt.name);
+        }
         if (stmt.size)
             lowerer_.scanExpr(*stmt.size);
     }
 
     void visit(const ReDimStmt &stmt) override
     {
-        lowerer_.requestHelper(Lowerer::RuntimeFeature::Alloc);
         if (!stmt.name.empty())
             lowerer_.markSymbolReferenced(stmt.name);
         lowerer_.markArray(stmt.name);
+        lowerer_.requireArrayI32Resize();
         if (stmt.size)
             lowerer_.scanExpr(*stmt.size);
     }
@@ -308,6 +312,16 @@ Lowerer::ExprType Lowerer::scanBinaryExpr(const BinaryExpr &b)
 Lowerer::ExprType Lowerer::scanArrayExpr(const ArrayExpr &arr)
 {
     scanExpr(*arr.index);
+    return ExprType::I64;
+}
+
+/// @brief Scans a LBOUND expression, marking the referenced array.
+/// @param expr BASIC LBOUND expression identifying the array symbol.
+/// @return Always reports an integer result.
+Lowerer::ExprType Lowerer::scanLBoundExpr(const LBoundExpr &expr)
+{
+    markSymbolReferenced(expr.name);
+    markArray(expr.name);
     return ExprType::I64;
 }
 

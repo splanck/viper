@@ -99,6 +99,16 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
     }
 }
 
+void Lowerer::requireArrayI32New()
+{
+    needsArrI32New = true;
+}
+
+void Lowerer::requireArrayI32Resize()
+{
+    needsArrI32Resize = true;
+}
+
 void Lowerer::requestHelper(RuntimeFeature feature)
 {
     runtimeTracker.requestHelper(feature);
@@ -117,6 +127,16 @@ void Lowerer::trackRuntime(RuntimeFeature feature)
 void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
 {
     runtimeTracker.declareRequiredRuntime(b, boundsChecks);
+
+    auto declareManual = [&](std::string_view name) {
+        if (const auto *desc = il::runtime::findRuntimeDescriptor(name))
+            b.addExtern(std::string(desc->name), desc->signature.retType, desc->signature.paramTypes);
+    };
+
+    if (needsArrI32New)
+        declareManual("rt_arr_i32_new");
+    if (needsArrI32Resize)
+        declareManual("rt_arr_i32_resize");
 }
 
 } // namespace il::frontends::basic

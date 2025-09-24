@@ -516,7 +516,11 @@ class Lowerer
     using RuntimeFeature = il::runtime::RuntimeFeature;
 
     RuntimeHelperTracker runtimeTracker;
+    bool needsArrI32New{false};
+    bool needsArrI32Resize{false};
 
+    void requireArrayI32New();
+    void requireArrayI32Resize();
     void requestHelper(RuntimeFeature feature);
 
     bool isHelperNeeded(RuntimeFeature feature) const;
