@@ -2,7 +2,7 @@
 // Purpose: Verify rt_alloc traps when allocation exceeds size_t range.
 // Key invariants: rt_alloc reports "allocation too large" when bytes > SIZE_MAX.
 // Ownership: Uses runtime library.
-// Links: docs/runtime-abi.md
+// Links: docs/runtime-vm.md#runtime-abi
 #include "rt.hpp"
 #include <cassert>
 #include <stdint.h>

@@ -1,7 +1,7 @@
 // File: tests/runtime/RTInputLineTests.cpp
 // Purpose: Ensure rt_input_line handles lines longer than the initial buffer and EOF-terminated
 // lines. Key invariants: rt_input_line returns full line content for >1023 chars, with or without
-// trailing newline. Ownership: Uses runtime library. Links: docs/runtime-abi.md
+// trailing newline. Ownership: Uses runtime library. Links: docs/runtime-vm.md#runtime-abi
 #include "rt_internal.h"
 #include <cassert>
 #include <cstring>

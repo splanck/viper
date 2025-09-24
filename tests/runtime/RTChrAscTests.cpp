@@ -2,7 +2,7 @@
 // Purpose: Validate CHR$ and ASC runtime helpers.
 // Key invariants: CHR$ validates 0-255 range; ASC returns 0 for empty string.
 // Ownership: Uses runtime library.
-// Links: docs/runtime-abi.md
+// Links: docs/runtime-vm.md#runtime-abi
 #include "rt.hpp"
 #include <cassert>
 

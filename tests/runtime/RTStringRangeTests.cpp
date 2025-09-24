@@ -2,7 +2,7 @@
 // Purpose: Verify runtime string helpers report negative start/length diagnostics.
 // Key invariants: LEFT$ and MID$ trap with specific messages on invalid ranges.
 // Ownership: Uses runtime library.
-// Links: docs/runtime-abi.md
+// Links: docs/runtime-vm.md#runtime-abi
 #include "rt.hpp"
 #include <cassert>
 #include <string>

@@ -2,7 +2,7 @@
 // Purpose: Validate basic math runtime wrappers.
 // Key invariants: Results match libm within tolerance.
 // Ownership: Uses runtime library.
-// Links: docs/runtime-abi.md
+// Links: docs/runtime-vm.md#runtime-abi
 #include "rt_math.h"
 #include <cassert>
 #include <cmath>

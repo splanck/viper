@@ -2,7 +2,7 @@
 // Purpose: Verify rt_abs_i64 traps on overflow input.
 // Key invariants: Overflowing inputs trigger runtime trap.
 // Ownership: Uses runtime library; stubs vm_trap to capture message.
-// Links: docs/runtime-abi.md
+// Links: docs/runtime-vm.md#runtime-abi
 #include "rt_math.h"
 #include <cassert>
 #include <climits>
