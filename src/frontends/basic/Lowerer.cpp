@@ -86,6 +86,26 @@ std::string Lowerer::BlockNamer::whileEnd(unsigned id) const
     return "while_end_" + std::to_string(id) + "_" + proc;
 }
 
+unsigned Lowerer::BlockNamer::nextDo()
+{
+    return loopCounter++;
+}
+
+std::string Lowerer::BlockNamer::doHead(unsigned id) const
+{
+    return "do_head_" + std::to_string(id) + "_" + proc;
+}
+
+std::string Lowerer::BlockNamer::doBody(unsigned id) const
+{
+    return "do_body_" + std::to_string(id) + "_" + proc;
+}
+
+std::string Lowerer::BlockNamer::doEnd(unsigned id) const
+{
+    return "do_end_" + std::to_string(id) + "_" + proc;
+}
+
 unsigned Lowerer::BlockNamer::nextFor()
 {
     return loopCounter++;
