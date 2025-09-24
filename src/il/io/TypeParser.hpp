@@ -1,8 +1,8 @@
 // File: src/il/io/TypeParser.hpp
 // Purpose: Declares helpers for parsing textual IL type specifiers.
-// Key invariants: Type identifiers adhere to docs/il-spec.md definitions.
+// Key invariants: Type identifiers adhere to docs/il-guide.md#reference definitions.
 // Ownership/Lifetime: Returned Type objects belong to callers.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "il/core/Type.hpp"

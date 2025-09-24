@@ -3,7 +3,7 @@
 // Purpose: Implement VM handlers for branching, calls, and traps.
 // Key invariants: Control-flow handlers maintain block parameters and frame state.
 // Ownership/Lifetime: Handlers mutate the active frame without persisting external state.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "vm/OpHandlers.hpp"
 

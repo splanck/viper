@@ -3,7 +3,7 @@
 // Key invariants: Delegates work to module/function/instruction helpers.
 // Ownership/Lifetime: Operates on external module references without owning them.
 // License: MIT (see LICENSE).
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/io/Parser.hpp"
 #include "il/core/Module.hpp"

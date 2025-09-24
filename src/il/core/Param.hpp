@@ -2,7 +2,7 @@
 // Purpose: Defines parameter representation for functions and blocks.
 // Key invariants: Type matches associated signature or block.
 // Ownership/Lifetime: Parameters stored by value.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "il/core/Type.hpp"

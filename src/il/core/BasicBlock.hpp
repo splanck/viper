@@ -2,7 +2,7 @@
 // Purpose: Represents a sequence of IL instructions and optional parameters.
 // Key invariants: terminated is true when block ends with control flow.
 // Ownership/Lifetime: Functions own blocks by value.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "il/core/Instr.hpp"

@@ -259,6 +259,7 @@ Modules declare an IL version (`il 0.1.2`) at the top. The runtime ABI aims to r
 - **Pass:** transformation over an IL module.
 - **VM frame:** stack record for a function invocation.
 
+<a id="cpp-overview"></a>
 ## C++ Project Overview
 
 ### Guiding principles
@@ -475,6 +476,7 @@ ret
 - Clean separation between front end ↔ IL ↔ VM/codegen ↔ runtime.
 - Interpreter-first workflow keeps the IL as the stable contract between language and machine layers.
 
+<a id="tui-architecture"></a>
 ## ViperTUI Architecture
 
 ViperTUI is an experimental terminal UI library built in layers. Each layer stays focused and exposes a small surface so higher tiers can be tested without a real terminal.
@@ -524,5 +526,5 @@ assert(tio.buffer().find("expected text") != std::string::npos);
 
 `StringTermIO` records all writes and allows assertions on the exact escape sequences produced by the render layer.
 
-Sources: docs/overview.md; docs/tui-architecture.md; archive/docs/cpp-overview.md; archive/docs/project-overview.md; archive/docs/dev-cli.md; archive/docs/dev/architecture.md.
+Sources: docs/architecture.md; docs/architecture.md#tui-architecture; archive/docs/architecture.md#cpp-overview; archive/docs/project-overview.md; archive/docs/dev-cli.md; archive/docs/dev/architecture.md.
 

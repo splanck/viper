@@ -2,7 +2,7 @@
 // Purpose: Implements function-level verification by coordinating block and instruction checks.
 // Key invariants: Functions must start with an entry block, maintain unique labels, and respect call signatures.
 // Ownership/Lifetime: Operates on module-provided data; no allocations persist beyond verification.
-// Links: docs/il-reference.md
+// Links: docs/il-guide.md#reference
 
 #include "il/verify/FunctionVerifier.hpp"
 

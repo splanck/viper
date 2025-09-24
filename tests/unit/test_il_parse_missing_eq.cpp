@@ -2,7 +2,7 @@
 // Purpose: Ensure IL parser reports error when result assignment lacks '='.
 // Key invariants: Parser reports malformed instructions through Expected diagnostics.
 // Ownership/Lifetime: Test constructs modules and buffers locally.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

@@ -2,7 +2,7 @@
 // Purpose: Declares stack-based virtual machine executing IL.
 // Key invariants: None.
 // Ownership/Lifetime: VM does not own module or runtime bridge.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "vm/Debug.hpp"

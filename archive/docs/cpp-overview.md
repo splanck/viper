@@ -1,6 +1,6 @@
 <!--
 SPDX-License-Identifier: MIT
-File: docs/cpp-overview.md
+File: docs/architecture.md#cpp-overview
 Purpose: C++ project layout overview.
 -->
 
@@ -290,7 +290,7 @@ struct Diagnostic { Severity sev; std::string msg; SourceLoc loc; };
 
  - il-reference.md — the spec you wrote (versioned, with change log).
 - /docs/adr/ — short Architecture Decision Records (e.g., “no φ in v0.1”).
-- /docs/dev/ — build/run instructions, backend ABI notes, coding standards.
+- docs/contributor-guide.md — build/run instructions, backend ABI notes, coding standards.
 - Auto‑generated API docs with Doxygen (optional).
 
 1. Milestones (project plan)

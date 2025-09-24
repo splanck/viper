@@ -1,8 +1,8 @@
 // File: src/vm/OpHandlers.hpp
 // Purpose: Declares opcode handler helpers and dispatch table for the VM.
-// Key invariants: Handlers implement IL opcode semantics according to docs/il-spec.md.
+// Key invariants: Handlers implement IL opcode semantics according to docs/il-guide.md#reference.
 // Ownership/Lifetime: Handlers operate on VM-owned frames and do not retain references.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "vm/VM.hpp"

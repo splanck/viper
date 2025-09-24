@@ -2,7 +2,7 @@
 // Purpose: Represents an IL function definition and its basic blocks.
 // Key invariants: Parameter list matches return type; blocks form a valid CFG.
 // Ownership/Lifetime: Module owns Function; Function owns parameters, blocks, and value names.
-// Links: docs/il-reference.md#functions
+// Links: docs/il-guide.md#reference#functions
 #pragma once
 
 #include "il/core/BasicBlock.hpp"
@@ -15,7 +15,7 @@ namespace il::core
 {
 
 /// @brief Definition of an IL function with parameters and basic blocks.
-/// @see docs/il-reference.md
+/// @see docs/il-guide.md#reference
 struct Function
 {
     /// Human-readable identifier for the function.

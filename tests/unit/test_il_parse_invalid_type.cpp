@@ -2,7 +2,7 @@
 // Purpose: Ensure parser rejects extern declarations with unknown types.
 // Key invariants: Parser returns false and reports unknown type diagnostic.
 // Ownership/Lifetime: Test constructs modules and streams locally.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

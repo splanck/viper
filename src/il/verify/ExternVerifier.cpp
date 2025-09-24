@@ -2,7 +2,7 @@
 // Purpose: Implements verification of module extern declarations and builds lookup tables.
 // Key invariants: Extern signatures remain stable during verification; duplicate names are rejected.
 // Ownership/Lifetime: Stores pointers to module-owned extern declarations.
-// Links: docs/il-reference.md
+// Links: docs/il-guide.md#reference
 
 #include "il/verify/ExternVerifier.hpp"
 

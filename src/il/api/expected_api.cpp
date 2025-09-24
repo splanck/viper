@@ -2,7 +2,7 @@
 // Purpose: Provide Expected-based implementations for IL parsing and verification wrappers.
 // Key invariants: Mirrors legacy bool-returning APIs while emitting diagnostics through Expected.
 // Ownership/Lifetime: Callers retain ownership of modules and streams passed by reference.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/api/expected_api.hpp"
 

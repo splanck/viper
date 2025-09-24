@@ -2,7 +2,7 @@
 // Purpose: Declares lexical helpers shared by IL parser components.
 // Key invariants: None.
 // Ownership/Lifetime: Stateless utility routines operate on caller-provided data.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include <sstream>

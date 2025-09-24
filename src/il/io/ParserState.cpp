@@ -2,7 +2,7 @@
 // Purpose: Implements shared parser state helpers for IL parsing routines.
 // Key invariants: Module reference remains valid for the lifetime of the state.
 // Ownership/Lifetime: Stores non-owning references to externally managed IR.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/io/ParserState.hpp"
 

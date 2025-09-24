@@ -2,7 +2,7 @@
 // Purpose: Container for IL externs, globals, and functions.
 // Key invariants: Names are unique within a module.
 // Ownership/Lifetime: Module owns contained objects by value.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "il/core/Extern.hpp"

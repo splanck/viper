@@ -2,7 +2,7 @@
 // Purpose: Implements IL function manipulation helpers.
 // Key invariants: None.
 // Ownership/Lifetime: Module owns functions.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/core/Function.hpp"
 

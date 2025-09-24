@@ -4,6 +4,7 @@ audience: public
 last-verified: 2025-09-23
 ---
 
+<a id="basic-reference"></a>
 ## Reference
 
 ### Comments
@@ -346,5 +347,5 @@ ilc --break main.bas:10 --watch X program.bas
 - [`strings/csv.bas`](../examples/basic/strings/csv.bas) builds a CSV line.
 
 Sources:
-- `docs/basic-reference.md`
+- `docs/basic-language.md`
 - `archive/docs/references/basic.md`

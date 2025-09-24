@@ -112,11 +112,11 @@ build/src/tools/ilc/ilc -run examples/il/ex1_hello_cond.il
 
 ## References
 
-- **IL Quickstart**: [docs/il-quickstart.md](docs/il-quickstart.md)
-- [BASIC Reference](docs/basic-reference.md)
-- [IL Reference](docs/il-reference.md)
+- **IL Quickstart**: [docs/il-guide.md#quickstart](docs/il-guide.md#quickstart)
+- [BASIC Reference](docs/basic-language.md)
+- [IL Reference](docs/il-guide.md#reference)
 - [ViperTUI](tui/): experimental terminal UI library
-- [ViperTUI Architecture](docs/tui-architecture.md)
+- [ViperTUI Architecture](docs/architecture.md#tui-architecture)
 
 ## Contributing
 

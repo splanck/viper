@@ -3,7 +3,7 @@
 // Key invariants: Table entries align with il/core/Opcode.def definitions.
 // Ownership/Lifetime: Dispatch table is lazily initialised and shared across VMs.
 // License: MIT (see LICENSE file in the project root for terms).
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "vm/OpHandlers.hpp"
 

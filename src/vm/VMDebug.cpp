@@ -2,7 +2,7 @@
 // Purpose: Implements debugging helpers for VM breakpoint and step handling.
 // Key invariants: Debug hooks respect configured breakpoints and step limits.
 // Ownership/Lifetime: Operates on VM-owned frames without assuming external lifetime.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "vm/VM.hpp"
 #include "il/core/BasicBlock.hpp"

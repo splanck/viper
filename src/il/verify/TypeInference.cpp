@@ -3,7 +3,7 @@
 // Key invariants: Maintains consistency between temporary maps and defined sets.
 // Ownership/Lifetime: Operates on storage owned by Verifier callers.
 // License: MIT (see LICENSE).
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/verify/TypeInference.hpp"
 #include "il/core/BasicBlock.hpp"

@@ -3,7 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Builder references module owned externally.
 // License: MIT (see LICENSE).
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/build/IRBuilder.hpp"
 #include <cassert>

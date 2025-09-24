@@ -2,7 +2,7 @@
 // Purpose: Declares text serializer for IL modules.
 // Key invariants: None.
 // Ownership/Lifetime: Serializer operates on provided modules.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "il/core/fwd.hpp"

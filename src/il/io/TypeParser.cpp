@@ -1,9 +1,9 @@
 // File: src/il/io/TypeParser.cpp
 // Purpose: Implements parsing for IL textual type specifiers.
-// Key invariants: Supported types mirror docs/il-spec.md definitions.
+// Key invariants: Supported types mirror docs/il-guide.md#reference definitions.
 // Ownership/Lifetime: Stateless utilities returning value objects.
 // License: MIT (see LICENSE for details).
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/io/TypeParser.hpp"
 

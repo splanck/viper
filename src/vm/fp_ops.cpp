@@ -4,7 +4,7 @@
 // Key invariants: Floating-point operations follow IEEE-754 semantics of host double type.
 // Ownership/Lifetime: Handlers operate on frame-local slots without retaining references.
 // Assumptions: Host doubles implement IEEE-754 binary64 semantics and frames mutate only via ops::storeResult.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "vm/OpHandlers.hpp"
 

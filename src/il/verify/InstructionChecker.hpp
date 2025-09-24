@@ -2,7 +2,7 @@
 // Purpose: Declares helpers that validate IL instructions during verification.
 // Key invariants: Operates on instructions within a single basic block context.
 // Ownership/Lifetime: Stateless functions relying on caller-managed storage.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "il/core/fwd.hpp"

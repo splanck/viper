@@ -2,7 +2,7 @@
 // Purpose: Exercise metadata-driven instruction parsing across varied opcode forms.
 // Key invariants: Parser accepts operands/results/labels for uncommon opcodes.
 // Ownership/Lifetime: Test owns all modules and buffers.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Instr.hpp"

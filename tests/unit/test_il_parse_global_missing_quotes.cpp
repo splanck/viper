@@ -2,7 +2,7 @@
 // Purpose: Ensure IL parser reports diagnostics when global string quotes are missing.
 // Key invariants: Parser surfaces a single diagnostic instead of crashing on malformed globals.
 // Ownership/Lifetime: Test owns parsing streams and module instance.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

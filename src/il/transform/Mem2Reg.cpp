@@ -5,7 +5,7 @@
 // supporting arbitrary control-flow including loops. Ownership/Lifetime:
 // Mutates the module in place, introducing block params and branch args while
 // removing allocas/loads/stores.
-// Links: docs/passes/mem2reg.md
+// Links: docs/il-guide.md#mem2reg
 
 #include "il/transform/Mem2Reg.hpp"
 #include "il/analysis/CFG.hpp"

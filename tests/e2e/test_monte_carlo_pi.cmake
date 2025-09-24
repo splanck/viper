@@ -2,7 +2,7 @@
 ## Purpose: Check BASIC Monte Carlo Pi example runs and outputs expected result.
 ## Key invariants: Floating-point output matches expected range/format.
 ## Ownership/Lifetime: Invoked by CTest.
-## Links: docs/class-catalog.md
+## Links: docs/codemap.md
 
 # Use a unique filename to avoid collisions when tests run in parallel.
 set(OUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/monte_carlo_pi.out.txt")

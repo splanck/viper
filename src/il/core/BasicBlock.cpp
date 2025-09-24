@@ -2,7 +2,7 @@
 // Purpose: Defines out-of-line methods for BasicBlock.
 // Key invariants: None.
 // Ownership/Lifetime: Blocks owned by functions.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/core/BasicBlock.hpp"
 

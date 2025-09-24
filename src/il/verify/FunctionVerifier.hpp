@@ -2,7 +2,7 @@
 // Purpose: Declares the verifier responsible for validating module functions and their bodies.
 // Key invariants: Function, block, and instruction checks follow IL specification invariants.
 // Ownership/Lifetime: Holds pointers into the inspected module for the duration of verification only.
-// Links: docs/il-reference.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "il/verify/DiagSink.hpp"

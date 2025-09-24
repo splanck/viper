@@ -3,7 +3,7 @@
 // Key invariants: Table entries stay in sync with the Opcode enumeration order.
 // Ownership/Lifetime: Static storage duration, read-only access via kOpcodeTable.
 // License: MIT
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/core/OpcodeInfo.hpp"
 

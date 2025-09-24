@@ -2,7 +2,7 @@
 ## Purpose: Validate BASIC math example (phase1) output matches golden file.
 ## Key invariants: VM execution output equals expected golden output.
 ## Ownership/Lifetime: Invoked by CTest.
-## Links: docs/class-catalog.md
+## Links: docs/codemap.md
 
 if(NOT DEFINED ILC)
   message(FATAL_ERROR "ILC not set")

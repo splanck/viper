@@ -3,7 +3,7 @@
 // Key invariants: ParserState remains at module scope when invoked.
 // Ownership/Lifetime: Directly mutates the module referenced by ParserState.
 // License: MIT (see LICENSE for details).
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/io/ModuleParser.hpp"
 #include "il/core/Function.hpp"

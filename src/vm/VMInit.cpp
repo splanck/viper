@@ -2,7 +2,7 @@
 // Purpose: Implements VM construction and execution state preparation routines.
 // Key invariants: Ensures frames and execution state are initialised consistently.
 // Ownership/Lifetime: VM retains references to module functions and runtime strings.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "vm/VM.hpp"
 #include "il/core/BasicBlock.hpp"

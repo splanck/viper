@@ -2,7 +2,7 @@
 // Purpose: Declares helper class for building IL modules.
 // Key invariants: None.
 // Ownership/Lifetime: Does not own the module it modifies.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "il/core/BasicBlock.hpp"

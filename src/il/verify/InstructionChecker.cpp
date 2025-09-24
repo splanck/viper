@@ -3,7 +3,7 @@
 // Key invariants: Relies on TypeInference to keep operand types consistent.
 // Ownership/Lifetime: Functions operate on caller-provided structures.
 // License: MIT (see LICENSE).
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/verify/InstructionChecker.hpp"
 #include "il/core/BasicBlock.hpp"

@@ -3,7 +3,7 @@
 // Purpose: Implements stack-based virtual machine for IL.
 // Key invariants: None.
 // Ownership/Lifetime: VM references module owned externally.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "vm/VM.hpp"
 #include "il/core/BasicBlock.hpp"

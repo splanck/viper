@@ -2,7 +2,7 @@
 ## Purpose: Ensure BASIC random walk example runs deterministically.
 ## Key invariants: Output equals expected value.
 ## Ownership/Lifetime: Invoked by CTest.
-## Links: docs/class-catalog.md
+## Links: docs/codemap.md
 
 # Use a unique filename to avoid collisions when tests run in parallel.
 set(OUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/random_walk.out.txt")

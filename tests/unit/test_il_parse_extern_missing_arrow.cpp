@@ -2,7 +2,7 @@
 // Purpose: Ensure IL parser reports error when extern declaration lacks '->'.
 // Key invariants: Parser reports malformed extern declarations through Expected diagnostics.
 // Ownership/Lifetime: Test constructs modules and buffers locally.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"
