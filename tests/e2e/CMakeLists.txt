@@ -132,6 +132,22 @@ function(viper_add_e2e_vm_suite)
     -P ${_VIPER_E2E_DIR}/test_basic_array_sum.cmake)
   set_tests_properties(basic_array_sum PROPERTIES LABELS VM)
 
+  viper_add_ctest(basic_do_exit
+    ${CMAKE_COMMAND}
+    -DILC=$<TARGET_FILE:ilc>
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/do_exit.bas
+    -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/do_exit.bas.out
+    -P ${_VIPER_E2E_DIR}/test_do_exit.cmake)
+  set_tests_properties(basic_do_exit PROPERTIES LABELS VM)
+
+  viper_add_ctest(basic_for_step_neg
+    ${CMAKE_COMMAND}
+    -DILC=$<TARGET_FILE:ilc>
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/for_step_neg.bas
+    -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/for_step_neg.bas.out
+    -P ${_VIPER_E2E_DIR}/test_do_exit.cmake)
+  set_tests_properties(basic_for_step_neg PROPERTIES LABELS VM)
+
   viper_add_ctest(basic_array_oob
     ${CMAKE_COMMAND}
     -DILC=$<TARGET_FILE:ilc>

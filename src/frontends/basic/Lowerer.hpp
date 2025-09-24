@@ -578,6 +578,8 @@ class Lowerer
 
     unsigned nextTempId();
 
+    std::string nextFallbackBlockLabel();
+
     ArrayAccess lowerArrayAccess(const ArrayExpr &expr);
 
     void emitProgram(const Program &prog);
@@ -593,6 +595,7 @@ class Lowerer
     il::support::SourceLoc curLoc{}; ///< current source location for emitted IR
     bool boundsChecks{false};
     size_t nextStringId{0};
+    size_t nextFallbackBlockId{0};
     std::unordered_map<std::string, ProcedureSignature> procSignatures;
 
     ProcedureContext context_;

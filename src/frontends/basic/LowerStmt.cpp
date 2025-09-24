@@ -462,27 +462,33 @@ void Lowerer::lowerDo(const DoStmt &stmt)
     builder->addBlock(*func, headLbl);
     builder->addBlock(*func, bodyLbl);
     builder->addBlock(*func, doneLbl);
-    BasicBlock *head = &func->blocks[start];
-    BasicBlock *body = &func->blocks[start + 1];
+    size_t headIdx = start;
+    size_t bodyIdx = start + 1;
     size_t doneIdx = start + 2;
     BasicBlock *done = &func->blocks[doneIdx];
 
     ctx.pushLoopExit(done);
 
     auto emitConditionBranch = [&](const RVal &condVal) {
+        BasicBlock *body = &func->blocks[bodyIdx];
+        BasicBlock *doneBlk = &func->blocks[doneIdx];
         if (stmt.condKind == DoStmt::CondKind::While)
         {
             curLoc = stmt.loc;
-            emitCBr(condVal.value, body, done);
+            emitCBr(condVal.value, body, doneBlk);
         }
         else
         {
             curLoc = stmt.loc;
-            emitCBr(condVal.value, done, body);
+            emitCBr(condVal.value, doneBlk, body);
         }
     };
 
     auto emitHead = [&]() {
+        func->blocks[headIdx].label = headLbl;
+        func->blocks[bodyIdx].label = bodyLbl;
+        BasicBlock *head = &func->blocks[headIdx];
+        BasicBlock *body = &func->blocks[bodyIdx];
         ctx.setCurrent(head);
         curLoc = stmt.loc;
         if (stmt.condKind == DoStmt::CondKind::None)
@@ -501,16 +507,18 @@ void Lowerer::lowerDo(const DoStmt &stmt)
         case DoStmt::TestPos::Pre:
         {
             curLoc = stmt.loc;
-            emitBr(head);
+            func->blocks[headIdx].label = headLbl;
+            emitBr(&func->blocks[headIdx]);
             emitHead();
-            ctx.setCurrent(body);
+            ctx.setCurrent(&func->blocks[bodyIdx]);
             break;
         }
         case DoStmt::TestPos::Post:
         {
             curLoc = stmt.loc;
-            emitBr(body);
-            ctx.setCurrent(body);
+            func->blocks[bodyIdx].label = bodyLbl;
+            emitBr(&func->blocks[bodyIdx]);
+            ctx.setCurrent(&func->blocks[bodyIdx]);
             break;
         }
     }
@@ -523,7 +531,8 @@ void Lowerer::lowerDo(const DoStmt &stmt)
     if (!term)
     {
         curLoc = stmt.loc;
-        emitBr(head);
+        func->blocks[headIdx].label = headLbl;
+        emitBr(&func->blocks[headIdx]);
     }
 
     if (stmt.testPos == DoStmt::TestPos::Post)
@@ -531,6 +540,7 @@ void Lowerer::lowerDo(const DoStmt &stmt)
         emitHead();
     }
 
+    func->blocks[doneIdx].label = doneLbl;
     done = &func->blocks[doneIdx];
     ctx.refreshLoopExitTarget(done);
     ctx.setCurrent(done);
