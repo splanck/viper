@@ -437,6 +437,8 @@ class Lowerer
 
     void lowerWhile(const WhileStmt &stmt);
 
+    void lowerDo(const DoStmt &stmt);
+
     void lowerLoopBody(const std::vector<StmtPtr> &body);
 
     void lowerFor(const ForStmt &stmt);
@@ -450,6 +452,8 @@ class Lowerer
     void emitForStep(Value slot, Value step);
 
     void lowerNext(const NextStmt &stmt);
+
+    void lowerExit(const ExitStmt &stmt);
 
     void lowerGoto(const GotoStmt &stmt);
 

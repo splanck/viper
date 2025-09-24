@@ -545,6 +545,14 @@ private:
             foldStmt(bodyStmt);
     }
 
+    void visit(DoStmt &stmt) override
+    {
+        if (stmt.cond)
+            foldExpr(stmt.cond);
+        for (auto &bodyStmt : stmt.body)
+            foldStmt(bodyStmt);
+    }
+
     void visit(ForStmt &stmt) override
     {
         foldExpr(stmt.start);
@@ -556,6 +564,7 @@ private:
     }
 
     void visit(NextStmt &) override {}
+    void visit(ExitStmt &) override {}
     void visit(GotoStmt &) override {}
     void visit(EndStmt &) override {}
     void visit(InputStmt &) override {}

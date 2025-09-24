@@ -34,8 +34,10 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
     void visit(RandomizeStmt &stmt) override { analyzer_.analyzeRandomize(stmt); }
     void visit(IfStmt &stmt) override { analyzer_.analyzeIf(stmt); }
     void visit(WhileStmt &stmt) override { analyzer_.analyzeWhile(stmt); }
+    void visit(DoStmt &stmt) override { analyzer_.analyzeDo(stmt); }
     void visit(ForStmt &stmt) override { analyzer_.analyzeFor(stmt); }
     void visit(NextStmt &stmt) override { analyzer_.analyzeNext(stmt); }
+    void visit(ExitStmt &stmt) override { analyzer_.analyzeExit(stmt); }
     void visit(GotoStmt &stmt) override { analyzer_.analyzeGoto(stmt); }
     void visit(EndStmt &stmt) override { analyzer_.analyzeEnd(stmt); }
     void visit(InputStmt &stmt) override { analyzer_.analyzeInput(stmt); }
@@ -247,6 +249,16 @@ void SemanticAnalyzer::analyzeWhile(const WhileStmt &w)
             visitStmt(*bs);
 }
 
+void SemanticAnalyzer::analyzeDo(const DoStmt &d)
+{
+    if (d.cond)
+        checkConditionExpr(*d.cond);
+    ScopeTracker::ScopedScope scope(scopes_);
+    for (const auto &bs : d.body)
+        if (bs)
+            visitStmt(*bs);
+}
+
 void SemanticAnalyzer::analyzeFor(ForStmt &f)
 {
     resolveAndTrackSymbol(f.var, SymbolKind::Definition);
@@ -295,6 +307,12 @@ void SemanticAnalyzer::analyzeNext(const NextStmt &n)
     {
         forStack_.pop_back();
     }
+}
+
+void SemanticAnalyzer::analyzeExit(const ExitStmt &stmt)
+{
+    (void)stmt;
+    // TODO: Validate EXIT statements once loop tracking is implemented.
 }
 
 void SemanticAnalyzer::analyzeEnd(const EndStmt &)
