@@ -82,6 +82,10 @@ function(viper_add_basic_main_tests)
   target_link_libraries(test_basic_parse_loops PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_parse_loops test_basic_parse_loops)
 
+  viper_add_test_exe(test_basic_parse_do ${_VIPER_BASIC_UNIT_DIR}/test_basic_parse_do.cpp)
+  target_link_libraries(test_basic_parse_do PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_basic_parse_do test_basic_parse_do)
+
   viper_add_test_exe(test_frontends_basic_statement_context ${VIPER_TESTS_DIR}/frontends/basic/ParserStatementContextTests.cpp)
   target_link_libraries(test_frontends_basic_statement_context PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_statement_context test_frontends_basic_statement_context)
