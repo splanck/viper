@@ -21,13 +21,13 @@ Parser::Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *emitte
 {
     tokens_.push_back(lexer_.next());
 
-    auto setHandler = [this](TokenKind kind, StmtHandler handler) {
-        stmtHandlers_[static_cast<std::size_t>(kind)] = handler;
-    };
+    auto setHandler = [this](TokenKind kind, StmtHandler handler)
+    { stmtHandlers_[static_cast<std::size_t>(kind)] = handler; };
     setHandler(TokenKind::KeywordPrint, {&Parser::parsePrint, nullptr});
     setHandler(TokenKind::KeywordLet, {&Parser::parseLet, nullptr});
     setHandler(TokenKind::KeywordIf, {nullptr, &Parser::parseIf});
     setHandler(TokenKind::KeywordWhile, {&Parser::parseWhile, nullptr});
+    setHandler(TokenKind::KeywordDo, {&Parser::parseDo, nullptr});
     setHandler(TokenKind::KeywordFor, {&Parser::parseFor, nullptr});
     setHandler(TokenKind::KeywordNext, {&Parser::parseNext, nullptr});
     setHandler(TokenKind::KeywordGoto, {&Parser::parseGoto, nullptr});
@@ -114,7 +114,8 @@ void Parser::StatementContext::stashPendingLine(int line)
 }
 
 Parser::StatementContext::TerminatorInfo Parser::StatementContext::consumeStatementBody(
-    const TerminatorPredicate &isTerminator, const TerminatorConsumer &onTerminator,
+    const TerminatorPredicate &isTerminator,
+    const TerminatorConsumer &onTerminator,
     std::vector<StmtPtr> &dst)
 {
     TerminatorInfo info;
@@ -126,19 +127,21 @@ Parser::StatementContext::TerminatorInfo Parser::StatementContext::consumeStatem
             break;
 
         bool done = false;
-        withOptionalLineNumber([&](int line) {
-            if (isTerminator(line))
+        withOptionalLineNumber(
+            [&](int line)
             {
-                info.line = line;
-                info.loc = parser_.peek().loc;
-                onTerminator(line, info);
-                done = true;
-                return;
-            }
-            auto stmt = parser_.parseStatement(line);
-            stmt->line = line;
-            dst.push_back(std::move(stmt));
-        });
+                if (isTerminator(line))
+                {
+                    info.line = line;
+                    info.loc = parser_.peek().loc;
+                    onTerminator(line, info);
+                    done = true;
+                    return;
+                }
+                auto stmt = parser_.parseStatement(line);
+                stmt->line = line;
+                dst.push_back(std::move(stmt));
+            });
         if (done)
             break;
         skipStatementSeparator();
@@ -146,8 +149,8 @@ Parser::StatementContext::TerminatorInfo Parser::StatementContext::consumeStatem
     return info;
 }
 
-Parser::StatementContext::TerminatorInfo Parser::StatementContext::consumeStatementBody(TokenKind terminator,
-                                                                                        std::vector<StmtPtr> &dst)
+Parser::StatementContext::TerminatorInfo Parser::StatementContext::consumeStatementBody(
+    TokenKind terminator, std::vector<StmtPtr> &dst)
 {
     auto predicate = [&](int) { return parser_.at(terminator); };
     auto consumer = [&](int, TerminatorInfo &) { parser_.consume(); };
@@ -164,7 +167,8 @@ StmtPtr Parser::parseStatementLine(StatementContext &ctx)
     std::vector<StmtPtr> stmts;
     int lineNumber = 0;
     bool haveLine = false;
-    auto predicate = [&](int line) {
+    auto predicate = [&](int line)
+    {
         if (!haveLine)
         {
             haveLine = true;
@@ -193,7 +197,8 @@ StmtPtr Parser::parseStatementLine(StatementContext &ctx)
         }
         return false;
     };
-    auto consumer = [&](int line, StatementContext::TerminatorInfo &) {
+    auto consumer = [&](int line, StatementContext::TerminatorInfo &)
+    {
         if (line > 0)
             ctx.stashPendingLine(line);
     };
