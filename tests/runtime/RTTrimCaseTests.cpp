@@ -2,7 +2,7 @@
 // Purpose: Validate string trimming and case mapping runtime helpers.
 // Key invariants: Whitespace includes only space and tab; case maps affect ASCII letters only.
 // Ownership: Uses runtime library.
-// Links: docs/runtime-abi.md
+// Links: docs/runtime-vm.md#runtime-abi
 #include "rt.hpp"
 #include <cassert>
 

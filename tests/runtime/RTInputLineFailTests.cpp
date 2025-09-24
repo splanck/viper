@@ -2,7 +2,7 @@
 // Purpose: Verify rt_input_line returns NULL when buffer expansion fails.
 // Key invariants: Function aborts reading on realloc failure and reports trap.
 // Ownership: Uses runtime library; stubs realloc and trap for simulation.
-// Links: docs/runtime-abi.md
+// Links: docs/runtime-vm.md#runtime-abi
 #include "rt.hpp"
 #include <cassert>
 #include <cstring>
