@@ -2,7 +2,7 @@
 // Purpose: Declares the module-level verifier for extern declarations.
 // Key invariants: Collected extern descriptors remain valid while the source module lives.
 // Ownership/Lifetime: Stores pointers into the provided module; does not own declarations.
-// Links: docs/il-reference.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "il/verify/DiagSink.hpp"

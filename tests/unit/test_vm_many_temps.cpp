@@ -2,7 +2,7 @@
 // Purpose: Ensure VM handles functions with more than 64 SSA temporaries.
 // Key invariants: Function with 70 temporaries executes and returns expected value.
 // Ownership: Test constructs IL module and executes VM.
-// Links: docs/il-reference.md
+// Links: docs/il-guide.md#reference
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

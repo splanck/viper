@@ -2,7 +2,7 @@
 # Purpose: Ensure constfold preserves program behavior.
 # Key invariants: Optimized IL runs produce identical stdout.
 # Ownership/Lifetime: Invoked by CTest.
-# Links: docs/class-catalog.md
+# Links: docs/codemap.md
 
 if(NOT DEFINED ILC)
   message(FATAL_ERROR "ILC not set")

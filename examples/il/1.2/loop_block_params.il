@@ -1,4 +1,4 @@
-il 0.1.2 ; // File: examples/il/1.2/loop_block_params.il // Purpose: Illustrates a loop using block parameters to accumulate a sum. // Links: docs/il-spec.md#functions--basic-blocks
+il 0.1.2 ; // File: examples/il/1.2/loop_block_params.il // Purpose: Illustrates a loop using block parameters to accumulate a sum. // Links: docs/il-guide.md#reference#functions--basic-blocks
 
 func @sum_to_three() -> i64 {
 entry:

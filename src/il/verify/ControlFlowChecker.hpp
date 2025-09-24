@@ -2,7 +2,7 @@
 // Purpose: Declares helpers focused on IL control-flow verification.
 // Key invariants: Terminators and block parameters follow IL structural rules.
 // Ownership/Lifetime: Operates on caller-managed verifier context.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "il/core/Opcode.hpp"

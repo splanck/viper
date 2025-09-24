@@ -3,7 +3,7 @@
 // Purpose: Defines the shared runtime descriptor registry for IL consumers.
 // Key invariants: Registry contents reflect the runtime C ABI signatures.
 // Ownership/Lifetime: Uses static storage duration; entries are immutable after construction.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/runtime/RuntimeSignatures.hpp"
 

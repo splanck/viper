@@ -3,7 +3,7 @@
 // Key invariants: None.
 // Ownership/Lifetime: Stateless functions operate on caller-provided buffers.
 // License: MIT (see LICENSE).
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 
 #include "il/io/ParserUtil.hpp"
 

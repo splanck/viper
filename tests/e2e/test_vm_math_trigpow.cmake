@@ -2,7 +2,7 @@
 ## Purpose: Ensure VM trig and power math ops produce expected results.
 ## Key invariants: Execution output matches golden file.
 ## Ownership/Lifetime: Invoked by CTest.
-## Links: docs/class-catalog.md
+## Links: docs/codemap.md
 
 if(NOT DEFINED ILC)
   message(FATAL_ERROR "ILC not set")

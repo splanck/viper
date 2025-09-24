@@ -2,7 +2,7 @@
 // Purpose: Defines IL instruction representation.
 // Key invariants: Opcode determines operand layout.
 // Ownership/Lifetime: Instructions stored by value in basic blocks.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "il/core/Opcode.hpp"

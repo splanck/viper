@@ -2,7 +2,7 @@
 // Purpose: Declares adapter between VM and runtime library.
 // Key invariants: None.
 // Ownership/Lifetime: VM owns the bridge.
-// Links: docs/il-spec.md
+// Links: docs/il-guide.md#reference
 #pragma once
 
 #include "rt.hpp"
