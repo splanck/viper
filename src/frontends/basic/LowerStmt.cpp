@@ -450,8 +450,92 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
 
 void Lowerer::lowerDo(const DoStmt &stmt)
 {
-    (void)stmt;
-    // TODO: Implement DO ... LOOP lowering.
+    ProcedureContext &ctx = context();
+    Function *func = ctx.function();
+    assert(func && "lowerDo requires an active function");
+    BlockNamer *blockNamer = ctx.blockNamer();
+    size_t start = func->blocks.size();
+    unsigned id = blockNamer ? blockNamer->nextDo() : 0;
+    std::string headLbl = blockNamer ? blockNamer->doHead(id) : mangler.block("do_head");
+    std::string bodyLbl = blockNamer ? blockNamer->doBody(id) : mangler.block("do_body");
+    std::string doneLbl = blockNamer ? blockNamer->doEnd(id) : mangler.block("do_done");
+    builder->addBlock(*func, headLbl);
+    builder->addBlock(*func, bodyLbl);
+    builder->addBlock(*func, doneLbl);
+    BasicBlock *head = &func->blocks[start];
+    BasicBlock *body = &func->blocks[start + 1];
+    size_t doneIdx = start + 2;
+    BasicBlock *done = &func->blocks[doneIdx];
+
+    ctx.pushLoopExit(done);
+
+    auto emitConditionBranch = [&](const RVal &condVal) {
+        if (stmt.condKind == DoStmt::CondKind::While)
+        {
+            curLoc = stmt.loc;
+            emitCBr(condVal.value, body, done);
+        }
+        else
+        {
+            curLoc = stmt.loc;
+            emitCBr(condVal.value, done, body);
+        }
+    };
+
+    auto emitHead = [&]() {
+        ctx.setCurrent(head);
+        curLoc = stmt.loc;
+        if (stmt.condKind == DoStmt::CondKind::None)
+        {
+            emitBr(body);
+            return;
+        }
+        assert(stmt.cond && "DO loop missing condition for conditional form");
+        RVal cond = lowerExpr(*stmt.cond);
+        cond = coerceToBool(std::move(cond), stmt.loc);
+        emitConditionBranch(cond);
+    };
+
+    switch (stmt.testPos)
+    {
+        case DoStmt::TestPos::Pre:
+        {
+            curLoc = stmt.loc;
+            emitBr(head);
+            emitHead();
+            ctx.setCurrent(body);
+            break;
+        }
+        case DoStmt::TestPos::Post:
+        {
+            curLoc = stmt.loc;
+            emitBr(body);
+            ctx.setCurrent(body);
+            break;
+        }
+    }
+
+    lowerLoopBody(stmt.body);
+    BasicBlock *current = ctx.current();
+    bool exitTaken = ctx.loopExitTaken();
+    bool term = current && current->terminated;
+
+    if (!term)
+    {
+        curLoc = stmt.loc;
+        emitBr(head);
+    }
+
+    if (stmt.testPos == DoStmt::TestPos::Post)
+    {
+        emitHead();
+    }
+
+    done = &func->blocks[doneIdx];
+    ctx.refreshLoopExitTarget(done);
+    ctx.setCurrent(done);
+    done->terminated = exitTaken ? false : term;
+    ctx.popLoopExit();
 }
 
 /// @brief Create the block layout shared by FOR loops.
