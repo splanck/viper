@@ -1,4 +1,13 @@
-add_library(rt STATIC rt_memory.c rt_string.c rt_io.c rt_math.c rt_random.c rt_array.c)
+set(RT_SOURCES
+  rt_memory.c
+  rt_string.c
+  rt_io.c
+  rt_math.c
+  rt_random.c
+  rt_array.c
+)
+
+add_library(rt STATIC ${RT_SOURCES})
 target_include_directories(rt PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
