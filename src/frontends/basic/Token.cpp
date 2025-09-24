@@ -52,6 +52,8 @@ const char *tokenKindToString(TokenKind k)
             return "WHILE";
         case TokenKind::KeywordWend:
             return "WEND";
+        case TokenKind::KeywordLoop:
+            return "LOOP";
         case TokenKind::KeywordFor:
             return "FOR";
         case TokenKind::KeywordTo:
@@ -64,10 +66,14 @@ const char *tokenKindToString(TokenKind k)
             return "GOTO";
         case TokenKind::KeywordEnd:
             return "END";
+        case TokenKind::KeywordExit:
+            return "EXIT";
         case TokenKind::KeywordInput:
             return "INPUT";
         case TokenKind::KeywordDim:
             return "DIM";
+        case TokenKind::KeywordDo:
+            return "DO";
         case TokenKind::KeywordRedim:
             return "REDIM";
         case TokenKind::KeywordAs:
@@ -108,6 +114,8 @@ const char *tokenKindToString(TokenKind k)
             return "LBOUND";
         case TokenKind::KeywordUbound:
             return "UBOUND";
+        case TokenKind::KeywordUntil:
+            return "UNTIL";
         case TokenKind::KeywordBoolean:
             return "BOOLEAN";
         case TokenKind::KeywordTrue:

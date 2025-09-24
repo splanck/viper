@@ -36,14 +36,17 @@ enum class TokenKind
     KeywordElseIf,
     KeywordWhile,
     KeywordWend,
+    KeywordLoop,
     KeywordFor,
     KeywordTo,
     KeywordStep,
     KeywordNext,
     KeywordGoto,
     KeywordEnd,
+    KeywordExit,
     KeywordInput,
     KeywordDim,
+    KeywordDo,
     KeywordRedim,
     KeywordAs,
     KeywordRandomize,
@@ -64,6 +67,7 @@ enum class TokenKind
     KeywordReturn,
     KeywordLbound,
     KeywordUbound,
+    KeywordUntil,
 
     // Operators -------------------------------------------------------------
     Plus,         ///< '+'.
