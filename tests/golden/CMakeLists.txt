@@ -28,6 +28,24 @@ function(viper_add_golden_suite_tests)
     "-DEXPECT=${EXPECT_MISMATCHED_NEXT}"
     -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
+  file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/loop_var_assignment.stderr EXPECT_LOOP_VAR_ASSIGNMENT)
+  string(STRIP "${EXPECT_LOOP_VAR_ASSIGNMENT}" EXPECT_LOOP_VAR_ASSIGNMENT)
+  viper_add_ctest(basic_error_loop_var_assignment
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/loop_var_assignment.bas
+    "-DEXPECT=${EXPECT_LOOP_VAR_ASSIGNMENT}"
+    -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+  file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/loop_var_input.stderr EXPECT_LOOP_VAR_INPUT)
+  string(STRIP "${EXPECT_LOOP_VAR_INPUT}" EXPECT_LOOP_VAR_INPUT)
+  viper_add_ctest(basic_error_loop_var_input
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/loop_var_input.bas
+    "-DEXPECT=${EXPECT_LOOP_VAR_INPUT}"
+    -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
   file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/bad_goto.stderr EXPECT_BAD_GOTO)
   string(STRIP "${EXPECT_BAD_GOTO}" EXPECT_BAD_GOTO)
   viper_add_ctest(basic_error_bad_goto
