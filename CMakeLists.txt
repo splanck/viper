@@ -60,7 +60,7 @@ add_link_options(${IL_LINK_FLAGS})
 
 file(GLOB_RECURSE ALL_CXX_SOURCE_FILES
      src/*.cpp src/*.hpp
-     runtime/*.cpp runtime/*.hpp)
+     src/runtime/*.cpp src/runtime/*.hpp)
 
 add_custom_target(format
   COMMAND clang-format -i ${ALL_CXX_SOURCE_FILES}
@@ -110,7 +110,7 @@ if(VIPER_BUILD_TESTING)
   enable_testing()
 endif()
 
-add_subdirectory(runtime)
+add_subdirectory(${CMAKE_SOURCE_DIR}/src/runtime)
 add_subdirectory(src)
 
 # ---- ViperTUI subproject ----

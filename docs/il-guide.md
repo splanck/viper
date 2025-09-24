@@ -563,7 +563,7 @@ The IL runtime provides helper functions used by front ends and tests:
 | `@rt_alloc` | `i64 -> ptr` | allocate bytes; negative size traps |
 | `@rt_free` | `ptr -> void` | deallocate buffer (optional in v0.1.2) |
 
-Strings are reference-counted by the runtime implementation.  See [runtime/](runtime/) for additional details.
+Strings are reference-counted by the runtime implementation.  See [src/runtime/](../src/runtime/) for additional details.
 
 #### Memory Model
 IL v0.1.2 is single-threaded.  Pointers are plain addresses with no aliasing rules beyond the type requirements of `load` and `store`.  Memory obtained through `alloca` or the runtime follows the alignment rules above, and invalid accesses (null or misaligned) trap deterministically.

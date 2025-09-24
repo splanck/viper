@@ -1,4 +1,4 @@
-// File: runtime/rt_random.h
+// File: src/runtime/rt_random.h
 // Purpose: Declares deterministic random number helpers.
 // Key invariants: 64-bit linear congruential generator; reproducible across platforms.
 // Ownership/Lifetime: Uses internal global state; single-threaded.

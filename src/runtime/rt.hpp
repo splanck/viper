@@ -1,4 +1,4 @@
-// File: runtime/rt.hpp
+// File: src/runtime/rt.hpp
 // Purpose: Declares C runtime utilities for memory, strings, and I/O.
 // Key invariants: Reference counts remain non-negative.
 // Ownership/Lifetime: Caller manages returned strings.
