@@ -7,6 +7,8 @@
 
 #include <stdint.h>
 
+#include "rt_array.h"
+
 #ifdef __cplusplus
 extern "C"
 {
