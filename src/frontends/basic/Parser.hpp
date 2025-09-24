@@ -189,6 +189,10 @@ class Parser
     /// @return NEXT statement node.
     StmtPtr parseNext();
 
+    /// @brief Parse an EXIT statement identifying the loop kind.
+    /// @return EXIT statement node.
+    StmtPtr parseExit();
+
     /// @brief Parse a GOTO statement.
     /// @return GOTO statement node.
     StmtPtr parseGoto();
