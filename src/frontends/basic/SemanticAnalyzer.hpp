@@ -166,6 +166,7 @@ class SemanticAnalyzer
         SemanticAnalyzer &analyzer_;
         ProcedureScope *previous_{nullptr};
         size_t forStackDepth_{0};
+        size_t loopStackDepth_{0};
         std::vector<std::string> newSymbols_;
         std::vector<int> newLabels_;
         std::vector<int> newLabelRefs_;
@@ -181,6 +182,14 @@ class SemanticAnalyzer
         Reference,      ///< Existing symbol use; do not declare or type.
         Definition,     ///< Implicit definition; apply suffix defaults if unset.
         InputTarget     ///< INPUT destination; force suffix-based defaults.
+    };
+
+    /// @brief Track active loop constructs for EXIT validation.
+    enum class LoopKind
+    {
+        For,
+        While,
+        Do
     };
 
     /// @brief Resolve @p name in current scope and update symbol/type tables.
@@ -334,6 +343,7 @@ class SemanticAnalyzer
     std::unordered_set<int> labels_;
     std::unordered_set<int> labelRefs_;
     std::vector<std::string> forStack_; ///< Active FOR loop variables.
+    std::vector<LoopKind> loopStack_;   ///< Active loop constructs for EXIT validation.
     ProcedureScope *activeProcScope_{nullptr};
 };
 
