@@ -73,6 +73,24 @@ void SemanticAnalyzer::analyzePrint(const PrintStmt &p)
 void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
 {
     resolveAndTrackSymbol(v.name, SymbolKind::Definition);
+    bool loopVarMutation = false;
+    for (auto it = forStack_.rbegin(); it != forStack_.rend(); ++it)
+    {
+        if (*it == v.name)
+        {
+            loopVarMutation = true;
+            break;
+        }
+    }
+    if (loopVarMutation)
+    {
+        std::string msg = "cannot assign to loop variable '" + v.name + "' inside FOR";
+        de.emit(il::support::Severity::Error,
+                "B1010",
+                l.loc,
+                static_cast<uint32_t>(v.name.size()),
+                std::move(msg));
+    }
     Type varTy = Type::Int;
     if (auto itType = varTypes_.find(v.name); itType != varTypes_.end())
         varTy = itType->second;
@@ -338,6 +356,24 @@ void SemanticAnalyzer::analyzeInput(InputStmt &inp)
     if (inp.prompt)
         visitExpr(*inp.prompt);
     resolveAndTrackSymbol(inp.var, SymbolKind::InputTarget);
+    bool loopVarMutation = false;
+    for (auto it = forStack_.rbegin(); it != forStack_.rend(); ++it)
+    {
+        if (*it == inp.var)
+        {
+            loopVarMutation = true;
+            break;
+        }
+    }
+    if (loopVarMutation)
+    {
+        std::string msg = "cannot assign to loop variable '" + inp.var + "' inside FOR";
+        de.emit(il::support::Severity::Error,
+                "B1010",
+                inp.loc,
+                static_cast<uint32_t>(inp.var.size()),
+                std::move(msg));
+    }
 }
 
 void SemanticAnalyzer::analyzeDim(DimStmt &d)
