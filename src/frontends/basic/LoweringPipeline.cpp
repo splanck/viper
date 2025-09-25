@@ -269,6 +269,8 @@ void ProgramLowering::run(const Program &prog, il::core::Module &module)
     lowerer.needsArrI32Len = false;
     lowerer.needsArrI32Get = false;
     lowerer.needsArrI32Set = false;
+    lowerer.needsArrI32Retain = false;
+    lowerer.needsArrI32Release = false;
     lowerer.needsArrOobPanic = false;
 
     lowerer.scanProgram(prog);
@@ -374,6 +376,9 @@ void ProcedureLowering::emit(const std::string &name,
     lowerer.lowerStatementSequence(metadata.bodyStmts, /*stopOnTerminated=*/true);
 
     ctx.setCurrent(&f.blocks[ctx.exitIndex()]);
+    lowerer.curLoc = {};
+    lowerer.releaseArrayLocals(metadata.paramNames);
+    lowerer.releaseArrayParams(metadata.paramNames);
     lowerer.curLoc = {};
     config.emitFinalReturn();
 

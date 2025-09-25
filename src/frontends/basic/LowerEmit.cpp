@@ -89,6 +89,9 @@ void Lowerer::emitProgram(const Program &prog)
 
     ctx.setCurrent(&f.blocks[ctx.exitIndex()]);
     curLoc = {};
+    releaseArrayLocals(std::unordered_set<std::string>{});
+    releaseArrayParams(std::unordered_set<std::string>{});
+    curLoc = {};
     emitRet(Value::constInt(0));
 }
 
@@ -432,6 +435,60 @@ Value Lowerer::emitConstStr(const std::string &globalName)
     assert(block && "emitConstStr requires an active block");
     block->instructions.push_back(in);
     return Value::temp(id);
+}
+
+void Lowerer::storeArray(Value slot, Value value)
+{
+    requireArrayI32Retain();
+    emitCall("rt_arr_i32_retain", {value});
+    Value oldValue = emitLoad(Type(Type::Kind::Ptr), slot);
+    requireArrayI32Release();
+    emitCall("rt_arr_i32_release", {oldValue});
+    emitStore(Type(Type::Kind::Ptr), slot, value);
+}
+
+void Lowerer::releaseArrayLocals(const std::unordered_set<std::string> &paramNames)
+{
+    bool requested = false;
+    for (auto &[name, info] : symbols)
+    {
+        if (!info.referenced || !info.slotId || !info.isArray)
+            continue;
+        if (paramNames.contains(name))
+            continue;
+        Value slot = Value::temp(*info.slotId);
+        Value handle = emitLoad(Type(Type::Kind::Ptr), slot);
+        if (!requested)
+        {
+            requireArrayI32Release();
+            requested = true;
+        }
+        emitCall("rt_arr_i32_release", {handle});
+        emitStore(Type(Type::Kind::Ptr), slot, Value::null());
+    }
+}
+
+void Lowerer::releaseArrayParams(const std::unordered_set<std::string> &paramNames)
+{
+    if (paramNames.empty())
+        return;
+    bool requested = false;
+    for (auto &[name, info] : symbols)
+    {
+        if (!info.referenced || !info.slotId || !info.isArray)
+            continue;
+        if (!paramNames.contains(name))
+            continue;
+        Value slot = Value::temp(*info.slotId);
+        Value handle = emitLoad(Type(Type::Kind::Ptr), slot);
+        if (!requested)
+        {
+            requireArrayI32Release();
+            requested = true;
+        }
+        emitCall("rt_arr_i32_release", {handle});
+        emitStore(Type(Type::Kind::Ptr), slot, Value::null());
+    }
 }
 
 /// @brief Emit a return carrying a value.

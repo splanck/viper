@@ -567,6 +567,9 @@ class Lowerer
     void emitCall(const std::string &callee, const std::vector<Value> &args);
 
     Value emitConstStr(const std::string &globalName);
+    void storeArray(Value slot, Value value);
+    void releaseArrayLocals(const std::unordered_set<std::string> &paramNames);
+    void releaseArrayParams(const std::unordered_set<std::string> &paramNames);
 
     void emitTrap();
 
@@ -609,6 +612,8 @@ class Lowerer
     bool needsArrI32Len{false};
     bool needsArrI32Get{false};
     bool needsArrI32Set{false};
+    bool needsArrI32Retain{false};
+    bool needsArrI32Release{false};
     bool needsArrOobPanic{false};
 
     void requireArrayI32New();
@@ -616,6 +621,8 @@ class Lowerer
     void requireArrayI32Len();
     void requireArrayI32Get();
     void requireArrayI32Set();
+    void requireArrayI32Retain();
+    void requireArrayI32Release();
     void requireArrayOobPanic();
     void requestHelper(RuntimeFeature feature);
 
