@@ -114,6 +114,11 @@ void Parser::StatementContext::stashPendingLine(int line)
     pendingLine_ = line;
 }
 
+Parser::StatementContext::SeparatorKind Parser::StatementContext::lastSeparator() const
+{
+    return lastSeparator_;
+}
+
 Parser::StatementContext::TerminatorInfo Parser::StatementContext::consumeStatementBody(
     const TerminatorPredicate &isTerminator,
     const TerminatorConsumer &onTerminator,
