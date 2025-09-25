@@ -16,6 +16,26 @@
 namespace il::frontends::basic
 {
 
+namespace pipeline_detail
+{
+il::core::Type coreTypeForAstType(::il::frontends::basic::Type ty)
+{
+    using il::core::Type;
+    switch (ty)
+    {
+        case ::il::frontends::basic::Type::I64:
+            return Type(Type::Kind::I64);
+        case ::il::frontends::basic::Type::F64:
+            return Type(Type::Kind::F64);
+        case ::il::frontends::basic::Type::Str:
+            return Type(Type::Kind::Str);
+        case ::il::frontends::basic::Type::Bool:
+            return Type(Type::Kind::I1);
+    }
+    return Type(Type::Kind::I64);
+}
+} // namespace pipeline_detail
+
 using pipeline_detail::coreTypeForAstType;
 
 namespace
