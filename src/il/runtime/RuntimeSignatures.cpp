@@ -11,6 +11,7 @@
 #include "rt_internal.h"
 #include "rt_math.h"
 #include "rt_random.h"
+#include <cstdint>
 #include <initializer_list>
 #include <type_traits>
 #include <unordered_map>
@@ -82,7 +83,7 @@ void invokeRtArrI32New(void **args, void *result)
 {
     const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[0]) : nullptr;
     const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
-    void *arr = rt_arr_i32_new(len);
+    int32_t *arr = rt_arr_i32_new(len);
     if (result)
         *reinterpret_cast<void **>(result) = arr;
 }
@@ -91,7 +92,7 @@ void invokeRtArrI32New(void **args, void *result)
 void invokeRtArrI32Len(void **args, void *result)
 {
     const auto arrPtr = args ? reinterpret_cast<void *const *>(args[0]) : nullptr;
-    const void *arr = arrPtr ? *arrPtr : nullptr;
+    int32_t *arr = arrPtr ? *reinterpret_cast<int32_t *const *>(arrPtr) : nullptr;
     const size_t len = rt_arr_i32_len(arr);
     if (result)
         *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(len);
@@ -102,7 +103,7 @@ void invokeRtArrI32Get(void **args, void *result)
 {
     const auto arrPtr = args ? reinterpret_cast<void *const *>(args[0]) : nullptr;
     const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
-    const void *arr = arrPtr ? *arrPtr : nullptr;
+    int32_t *arr = arrPtr ? *reinterpret_cast<int32_t *const *>(arrPtr) : nullptr;
     const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
     const int32_t value = rt_arr_i32_get(arr, idx);
     if (result)
@@ -115,7 +116,7 @@ void invokeRtArrI32Set(void **args, void * /*result*/)
     const auto arrPtr = args ? reinterpret_cast<void **>(args[0]) : nullptr;
     const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
     const auto valPtr = args ? reinterpret_cast<const int64_t *>(args[2]) : nullptr;
-    void *arr = arrPtr ? *arrPtr : nullptr;
+    int32_t *arr = arrPtr ? *reinterpret_cast<int32_t **>(arrPtr) : nullptr;
     const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
     const int32_t value = valPtr ? static_cast<int32_t>(*valPtr) : 0;
     rt_arr_i32_set(arr, idx, value);
@@ -126,9 +127,14 @@ void invokeRtArrI32Resize(void **args, void *result)
 {
     const auto arrPtr = args ? reinterpret_cast<void **>(args[0]) : nullptr;
     const auto newLenPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
-    void *arr = arrPtr ? *arrPtr : nullptr;
+    int32_t *arr = arrPtr ? *reinterpret_cast<int32_t **>(arrPtr) : nullptr;
     const size_t newLen = newLenPtr ? static_cast<size_t>(*newLenPtr) : 0;
-    void *resized = rt_arr_i32_resize(arr, newLen);
+    int32_t *local = arr;
+    int32_t **handle = arrPtr ? reinterpret_cast<int32_t **>(arrPtr) : &local;
+    int rc = rt_arr_i32_resize(handle, newLen);
+    int32_t *resized = (rc == 0) ? *handle : nullptr;
+    if (arrPtr && rc == 0)
+        *reinterpret_cast<int32_t **>(arrPtr) = resized;
     if (result)
         *reinterpret_cast<void **>(result) = resized;
 }

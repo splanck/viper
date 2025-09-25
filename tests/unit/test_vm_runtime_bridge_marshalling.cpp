@@ -7,6 +7,7 @@
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VM.hpp"
 #include "il/core/Type.hpp"
+#include "rt_array.h"
 #include "rt_internal.h"
 #include <array>
 #include <initializer_list>
@@ -149,7 +150,7 @@ int main()
                                  {Type::Kind::Ptr, Type::Kind::I64});
     assert(zeroResult.i64 == 0);
 
-    free(arrSlot.ptr);
+    rt_arr_i32_release(static_cast<int32_t *>(arrSlot.ptr));
 
     for (bool covered : coveredKinds)
         assert(covered);
