@@ -92,6 +92,10 @@ function(viper_add_il_core_tests)
   target_link_libraries(test_il_verify_forward_call PRIVATE il_core il_verify il_api)
   viper_add_ctest(test_il_verify_forward_call test_il_verify_forward_call)
 
+  viper_add_test_exe(test_il_verify_release_lifetime ${_VIPER_IL_UNIT_DIR}/test_il_verify_release_lifetime.cpp)
+  target_link_libraries(test_il_verify_release_lifetime PRIVATE il_core il_verify il_api)
+  viper_add_ctest(test_il_verify_release_lifetime test_il_verify_release_lifetime)
+
   viper_add_test_exe(test_il_type_inference ${_VIPER_IL_UNIT_DIR}/test_il_type_inference.cpp)
   target_link_libraries(test_il_type_inference PRIVATE il_core il_verify ${VIPER_IL_SUPPORT_LIB})
   viper_add_ctest(test_il_type_inference test_il_type_inference)

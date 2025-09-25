@@ -17,6 +17,8 @@
 #include "il/verify/TypeInference.hpp"
 
 #include <sstream>
+#include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 
 using namespace il::core;
@@ -26,6 +28,28 @@ namespace il::verify
 using il::support::Diag;
 using il::support::Expected;
 using il::support::makeError;
+
+namespace
+{
+
+std::string formatInstrDiag(const Function &fn,
+                            const BasicBlock &bb,
+                            const Instr &instr,
+                            std::string_view message)
+{
+    std::ostringstream oss;
+    oss << fn.name << ":" << bb.label << ": " << makeSnippet(instr);
+    if (!message.empty())
+        oss << ": " << message;
+    return oss.str();
+}
+
+bool isRuntimeArrayRelease(const Instr &instr)
+{
+    return instr.op == Opcode::Call && instr.callee == "rt_arr_i32_release";
+}
+
+} // namespace
 
 Expected<void> validateBlockParams_E(const Function &fn,
                                      const BasicBlock &bb,
@@ -202,13 +226,56 @@ Expected<void> FunctionVerifier::verifyBlock(const Function &fn,
     if (auto result = validateBlockParams_E(fn, bb, types, paramIds); !result)
         return result;
 
+    std::unordered_set<unsigned> released;
+
     for (const auto &instr : bb.instructions)
     {
         if (auto result = types.ensureOperandsDefined_E(fn, bb, instr); !result)
             return result;
 
+        if (isRuntimeArrayRelease(instr))
+        {
+            if (!instr.operands.empty() && instr.operands[0].kind == Value::Kind::Temp)
+            {
+                const unsigned id = instr.operands[0].id;
+                if (released.count(id) != 0)
+                {
+                    std::ostringstream message;
+                    message << "double release of %" << id;
+                    return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, message.str()))};
+                }
+            }
+        }
+        else
+        {
+            const auto checkValue = [&](const Value &value) -> Expected<void> {
+                if (value.kind != Value::Kind::Temp)
+                    return Expected<void>{};
+                const unsigned id = value.id;
+                if (released.count(id) == 0)
+                    return Expected<void>{};
+                std::ostringstream message;
+                message << "use after release of %" << id;
+                return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, message.str()))};
+            };
+
+            for (const auto &operand : instr.operands)
+                if (auto result = checkValue(operand); !result)
+                    return result;
+
+            for (const auto &bundle : instr.brArgs)
+                for (const auto &argument : bundle)
+                    if (auto result = checkValue(argument); !result)
+                        return result;
+        }
+
         if (auto result = verifyInstruction(fn, bb, instr, blockMap, types, sink); !result)
             return result;
+
+        if (isRuntimeArrayRelease(instr) && !instr.operands.empty() && instr.operands[0].kind == Value::Kind::Temp)
+        {
+            released.insert(instr.operands[0].id);
+        }
 
         if (isTerminator(instr.op))
             break;
