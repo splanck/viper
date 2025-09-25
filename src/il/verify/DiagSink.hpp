@@ -7,7 +7,6 @@
 
 #include "support/diag_expected.hpp"
 
-#include <utility>
 #include <vector>
 
 namespace il::verify
@@ -30,23 +29,14 @@ class CollectingDiagSink : public DiagSink
   public:
     /// @brief Append @p diag to the collection.
     /// @param diag Diagnostic to store.
-    void report(il::support::Diag diag) override
-    {
-        diags_.push_back(std::move(diag));
-    }
+    void report(il::support::Diag diag) override;
 
     /// @brief Access the accumulated diagnostics.
     /// @return Immutable view of the recorded diagnostics.
-    [[nodiscard]] const std::vector<il::support::Diag> &diagnostics() const
-    {
-        return diags_;
-    }
+    [[nodiscard]] const std::vector<il::support::Diag> &diagnostics() const;
 
     /// @brief Remove all stored diagnostics.
-    void clear()
-    {
-        diags_.clear();
-    }
+    void clear();
 
   private:
     std::vector<il::support::Diag> diags_;
