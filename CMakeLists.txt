@@ -133,7 +133,7 @@ add_custom_target(distclean
 
 set(VIPER_PUBLIC_LIB_TARGETS
   support
-  rt
+  viper_runtime
   il_core
   il_runtime
   il_build
