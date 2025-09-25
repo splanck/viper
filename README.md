@@ -110,6 +110,26 @@ To execute IL with the interpreter:
 build/src/tools/ilc/ilc -run examples/il/ex1_hello_cond.il
 ```
 
+### Arrays, aliasing, and diagnostics
+
+Arrays in Viper are reference types. Assigning one array variable to another shares the handle and bumps the reference count. When a resize occurs on a shared handle the runtime performs copy-on-resize so the caller observes an isolated buffer:
+
+```basic
+10 DIM A(2)
+20 B = A
+30 B(0) = 42
+40 REDIM A(4)
+50 PRINT B(0)  ' still prints 42 — B keeps the original storage
+60 PRINT A(0)  ' prints 0 — A now points at the resized copy
+```
+
+Diagnostics include precise function/block context. For example, the verifier flags array handle misuse with the exact instruction responsible:
+
+```bash
+$ build/src/tools/il-verify/il-verify tests/il/negatives/use_after_release.il
+error: main:entry: %2 = call %t1: use after release of %1
+```
+
 ## References
 
 - **IL Quickstart**: [docs/il-guide.md#quickstart](docs/il-guide.md#quickstart)

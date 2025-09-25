@@ -252,6 +252,15 @@ function(viper_add_il_invalid_tests)
     -DFILE=${_VIPER_INVALID_DIR}/unknown_temp.il
     -DEXPECT=unknown\ temp
     -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+
+  set(_VIPER_NEGATIVE_DIR ${CMAKE_SOURCE_DIR}/tests/il/negatives)
+
+  viper_add_ctest(il_verify_negative_use_after_release
+    ${CMAKE_COMMAND}
+    -DIL_VERIFY=${IL_VERIFY}
+    -DFILE=${_VIPER_NEGATIVE_DIR}/use_after_release.il
+    -DEXPECT_FILE=${_VIPER_NEGATIVE_DIR}/use_after_release.expected
+    -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
 endfunction()
 
 function(viper_add_il_liveness_tests)

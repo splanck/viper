@@ -41,6 +41,10 @@ default state on startup is `0xDEADBEEFCAFEBABE`.
 53 bits of the state and scaling by `2^-53`. For a given seed the sequence of
 values is reproducible across platforms.
 
+### Memory model
+
+Strings and arrays ride on the shared heap header defined in [`rt_heap.h`](../src/runtime/rt_heap.h). The runtime keeps a magic tag, refcount, length, and capacity alongside every payload and validates these invariants when `VIPER_RC_DEBUG=1` (enabled for Debug builds). Array handles behave like strings: assignment and parameter passing retain, scope exits release, and `rt_arr_i32_resize` only clones when the refcount shows shared ownership. The architecture overview dives deeper into retain/release rules and copy-on-resize semantics—see [Architecture §Runtime memory model](architecture.md#runtime-memory-model).
+
 <a id="vm-internals"></a>
 ## VM Internals
 

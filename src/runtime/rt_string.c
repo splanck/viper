@@ -4,6 +4,7 @@
 // Ownership/Lifetime: Caller manages returned strings and reference counts.
 // Links: docs/codemap.md
 
+#include "rt_string.h"
 #include "rt_internal.h"
 
 #include <assert.h>
