@@ -94,34 +94,42 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
     Type varTy = Type::Int;
     if (auto itType = varTypes_.find(v.name); itType != varTypes_.end())
         varTy = itType->second;
+    Type exprTy = Type::Unknown;
     if (l.expr)
+        exprTy = visitExpr(*l.expr);
+
+    if (varTy == Type::ArrayInt)
     {
-        Type exprTy = visitExpr(*l.expr);
-        if (varTy == Type::ArrayInt)
+        if (exprTy != Type::Unknown && exprTy != Type::ArrayInt)
         {
             std::string msg = "cannot assign scalar to array variable";
             de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
         }
-        else if (exprTy == Type::ArrayInt)
-        {
-            std::string msg = "cannot assign array value to scalar variable";
-            de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
-        }
-        else if (varTy == Type::Int && exprTy == Type::Float)
-        {
-            std::string msg = "operand type mismatch";
-            de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
-        }
-        else if (varTy == Type::String && exprTy != Type::Unknown && exprTy != Type::String)
-        {
-            std::string msg = "operand type mismatch";
-            de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
-        }
-        else if (varTy == Type::Bool && exprTy != Type::Unknown && exprTy != Type::Bool)
-        {
-            std::string msg = "operand type mismatch";
-            de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
-        }
+        return;
+    }
+
+    if (!l.expr)
+        return;
+
+    if (exprTy == Type::ArrayInt)
+    {
+        std::string msg = "cannot assign array value to scalar variable";
+        de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+    }
+    else if (varTy == Type::Int && exprTy == Type::Float)
+    {
+        std::string msg = "operand type mismatch";
+        de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+    }
+    else if (varTy == Type::String && exprTy != Type::Unknown && exprTy != Type::String)
+    {
+        std::string msg = "operand type mismatch";
+        de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+    }
+    else if (varTy == Type::Bool && exprTy != Type::Unknown && exprTy != Type::Bool)
+    {
+        std::string msg = "operand type mismatch";
+        de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
     }
 }
 
