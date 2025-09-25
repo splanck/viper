@@ -14,6 +14,11 @@
 namespace il::frontends::basic
 {
 
+[[nodiscard]] bool BasicCompilerResult::succeeded() const
+{
+    return emitter && emitter->errorCount() == 0;
+}
+
 BasicCompilerResult compileBasic(const BasicCompilerInput &input,
                                  const BasicCompilerOptions &options,
                                  il::support::SourceManager &sm)
