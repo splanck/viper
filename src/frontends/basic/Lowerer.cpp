@@ -24,6 +24,161 @@ namespace il::frontends::basic
 
 using pipeline_detail::coreTypeForAstType;
 
+void Lowerer::ProcedureContext::reset() noexcept
+{
+    function_ = nullptr;
+    current_ = nullptr;
+    exitIndex_ = 0;
+    lineBlocks_.clear();
+    blockNamer_.reset();
+    nextTemp_ = 0;
+    boundsCheckId_ = 0;
+    loopExitTargets_.clear();
+    loopExitTargetIdx_.clear();
+    loopExitTaken_.clear();
+}
+
+Function *Lowerer::ProcedureContext::function() const noexcept
+{
+    return function_;
+}
+
+void Lowerer::ProcedureContext::setFunction(Function *function) noexcept
+{
+    function_ = function;
+}
+
+BasicBlock *Lowerer::ProcedureContext::current() const noexcept
+{
+    return current_;
+}
+
+void Lowerer::ProcedureContext::setCurrent(BasicBlock *block) noexcept
+{
+    current_ = block;
+}
+
+size_t Lowerer::ProcedureContext::exitIndex() const noexcept
+{
+    return exitIndex_;
+}
+
+void Lowerer::ProcedureContext::setExitIndex(size_t index) noexcept
+{
+    exitIndex_ = index;
+}
+
+unsigned Lowerer::ProcedureContext::nextTemp() const noexcept
+{
+    return nextTemp_;
+}
+
+void Lowerer::ProcedureContext::setNextTemp(unsigned next) noexcept
+{
+    nextTemp_ = next;
+}
+
+unsigned Lowerer::ProcedureContext::boundsCheckId() const noexcept
+{
+    return boundsCheckId_;
+}
+
+void Lowerer::ProcedureContext::setBoundsCheckId(unsigned id) noexcept
+{
+    boundsCheckId_ = id;
+}
+
+/// @brief Return the current bounds-check identifier and advance it.
+unsigned Lowerer::ProcedureContext::consumeBoundsCheckId() noexcept
+{
+    return boundsCheckId_++;
+}
+
+void Lowerer::ProcedureContext::pushLoopExit(BasicBlock *bb)
+{
+    loopExitTargets_.push_back(bb);
+    if (function_)
+    {
+        auto base = &function_->blocks[0];
+        loopExitTargetIdx_.push_back(static_cast<size_t>(bb - base));
+    }
+    else
+    {
+        loopExitTargetIdx_.push_back(0);
+    }
+    loopExitTaken_.push_back(false);
+}
+
+void Lowerer::ProcedureContext::popLoopExit()
+{
+    loopExitTargets_.pop_back();
+    loopExitTargetIdx_.pop_back();
+    loopExitTaken_.pop_back();
+}
+
+BasicBlock *Lowerer::ProcedureContext::currentLoopExit() const
+{
+    if (loopExitTargetIdx_.empty() || !function_)
+        return nullptr;
+    size_t idx = loopExitTargetIdx_.back();
+    if (idx >= function_->blocks.size())
+        return nullptr;
+    return &function_->blocks[idx];
+}
+
+void Lowerer::ProcedureContext::markLoopExitTaken()
+{
+    if (!loopExitTaken_.empty())
+        loopExitTaken_.back() = true;
+}
+
+void Lowerer::ProcedureContext::refreshLoopExitTarget(BasicBlock *bb)
+{
+    if (loopExitTargets_.empty())
+        return;
+    loopExitTargets_.back() = bb;
+    if (function_)
+    {
+        auto base = &function_->blocks[0];
+        loopExitTargetIdx_.back() = static_cast<size_t>(bb - base);
+    }
+}
+
+bool Lowerer::ProcedureContext::loopExitTaken() const
+{
+    return !loopExitTaken_.empty() && loopExitTaken_.back();
+}
+
+std::unordered_map<int, size_t> &Lowerer::ProcedureContext::lineBlocks() noexcept
+{
+    return lineBlocks_;
+}
+
+const std::unordered_map<int, size_t> &Lowerer::ProcedureContext::lineBlocks() const noexcept
+{
+    return lineBlocks_;
+}
+
+Lowerer::BlockNamer *Lowerer::ProcedureContext::blockNamer() noexcept
+{
+    return blockNamer_.get();
+}
+
+const Lowerer::BlockNamer *Lowerer::ProcedureContext::blockNamer() const noexcept
+{
+    return blockNamer_.get();
+}
+
+void Lowerer::ProcedureContext::setBlockNamer(std::unique_ptr<BlockNamer> namer) noexcept
+{
+    blockNamer_ = std::move(namer);
+}
+
+void Lowerer::ProcedureContext::resetBlockNamer() noexcept
+{
+    blockNamer_.reset();
+}
+
 Lowerer::BlockNamer::BlockNamer(std::string p) : proc(std::move(p)) {}
 
 std::string Lowerer::BlockNamer::entry() const
@@ -582,6 +737,16 @@ void Lowerer::materializeParams(const std::vector<Param> &params)
 void Lowerer::collectVars(const Program &prog)
 {
     procedureLowering->collectVars(prog);
+}
+
+Lowerer::ProcedureContext &Lowerer::context() noexcept
+{
+    return context_;
+}
+
+const Lowerer::ProcedureContext &Lowerer::context() const noexcept
+{
+    return context_;
 }
 
 
