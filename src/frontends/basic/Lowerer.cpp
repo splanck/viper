@@ -359,6 +359,11 @@ Lowerer::ProcedureMetadata Lowerer::collectProcedureMetadata(
         metadata.paramNames.insert(p.name);
         Type ty = p.is_array ? Type(Type::Kind::Ptr) : coreTypeForAstType(p.type);
         metadata.irParams.push_back({p.name, ty});
+        if (p.is_array)
+        {
+            requireArrayI32Retain();
+            requireArrayI32Release();
+        }
     }
 
     return metadata;
@@ -415,6 +420,7 @@ void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNam
         {
             Value slot = emitAlloca(8);
             info.slotId = slot.id;
+            emitStore(Type(Type::Kind::Ptr), slot, Value::null());
             continue;
         }
         Value slot = emitAlloca(slotInfo.isBoolean ? 1 : 8);
@@ -547,14 +553,24 @@ void Lowerer::materializeParams(const std::vector<Param> &params)
         bool isBoolParam = !p.is_array && p.type == AstType::Bool;
         Value slot = emitAlloca(isBoolParam ? 1 : 8);
         if (p.is_array)
+        {
             markArray(p.name);
+            emitStore(Type(Type::Kind::Ptr), slot, Value::null());
+        }
         setSymbolType(p.name, p.type);
         markSymbolReferenced(p.name);
         auto &info = ensureSymbol(p.name);
         info.slotId = slot.id;
         il::core::Type ty = func->params[i].type;
         Value incoming = Value::temp(func->params[i].id);
-        emitStore(ty, slot, incoming);
+        if (p.is_array)
+        {
+            storeArray(slot, incoming);
+        }
+        else
+        {
+            emitStore(ty, slot, incoming);
+        }
     }
 }
 

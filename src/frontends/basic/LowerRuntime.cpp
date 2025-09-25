@@ -124,6 +124,16 @@ void Lowerer::requireArrayI32Set()
     needsArrI32Set = true;
 }
 
+void Lowerer::requireArrayI32Retain()
+{
+    needsArrI32Retain = true;
+}
+
+void Lowerer::requireArrayI32Release()
+{
+    needsArrI32Release = true;
+}
+
 void Lowerer::requireArrayOobPanic()
 {
     needsArrOobPanic = true;
@@ -163,6 +173,10 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         declareManual("rt_arr_i32_get");
     if (needsArrI32Set)
         declareManual("rt_arr_i32_set");
+    if (needsArrI32Retain)
+        declareManual("rt_arr_i32_retain");
+    if (needsArrI32Release)
+        declareManual("rt_arr_i32_release");
     if (needsArrOobPanic)
         declareManual("rt_arr_oob_panic");
 }

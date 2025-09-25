@@ -137,23 +137,31 @@ void Lowerer::lowerLet(const LetStmt &stmt)
         assert(info && info->slotId);
         SlotType slotInfo = getSlotType(var->name);
         Type targetTy = slotInfo.type;
+        bool isArray = slotInfo.isArray;
         bool isStr = targetTy.kind == Type::Kind::Str;
         bool isF64 = targetTy.kind == Type::Kind::F64;
         bool isBool = slotInfo.isBoolean;
-        if (!isStr && !isF64 && !isBool && v.type.kind == Type::Kind::I1)
+        if (!isArray)
         {
-            v = coerceToI64(std::move(v), stmt.loc);
+            if (!isStr && !isF64 && !isBool && v.type.kind == Type::Kind::I1)
+            {
+                v = coerceToI64(std::move(v), stmt.loc);
+            }
+            if (isF64 && v.type.kind == Type::Kind::I64)
+            {
+                v = coerceToF64(std::move(v), stmt.loc);
+            }
+            else if (!isStr && !isF64 && !isBool && v.type.kind == Type::Kind::F64)
+            {
+                v = coerceToI64(std::move(v), stmt.loc);
+            }
         }
-        if (isF64 && v.type.kind == Type::Kind::I64)
-        {
-            v = coerceToF64(std::move(v), stmt.loc);
-        }
-        else if (!isStr && !isF64 && !isBool && v.type.kind == Type::Kind::F64)
-        {
-            v = coerceToI64(std::move(v), stmt.loc);
-        }
+        Value slot = Value::temp(*info->slotId);
         curLoc = stmt.loc;
-        emitStore(targetTy, Value::temp(*info->slotId), v.value);
+        if (isArray)
+            storeArray(slot, v.value);
+        else
+            emitStore(targetTy, slot, v.value);
     }
     else if (auto *arr = dynamic_cast<const ArrayExpr *>(stmt.target.get()))
     {
@@ -864,7 +872,7 @@ void Lowerer::lowerDim(const DimStmt &stmt)
     Value handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_i32_new", {sz.value});
     const auto *info = findSymbol(stmt.name);
     assert(info && info->slotId);
-    emitStore(Type(Type::Kind::Ptr), Value::temp(*info->slotId), handle);
+    storeArray(Value::temp(*info->slotId), handle);
     if (boundsChecks)
     {
         if (info && info->arrayLengthSlot)
@@ -886,7 +894,7 @@ void Lowerer::lowerReDim(const ReDimStmt &stmt)
     Value slot = Value::temp(*info->slotId);
     Value current = emitLoad(Type(Type::Kind::Ptr), slot);
     Value resized = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_i32_resize", {current, sz.value});
-    emitStore(Type(Type::Kind::Ptr), slot, resized);
+    storeArray(slot, resized);
     if (boundsChecks && info && info->arrayLengthSlot)
         emitStore(Type(Type::Kind::I64), Value::temp(*info->arrayLengthSlot), sz.value);
 }
