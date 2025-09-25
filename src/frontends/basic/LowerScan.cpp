@@ -119,6 +119,11 @@ class ScanStmtVisitor final : public StmtVisitor
                 const auto *info = lowerer_.findSymbol(var->name);
                 if (!info || !info->hasType)
                     lowerer_.setSymbolType(var->name, inferAstTypeFromName(var->name));
+                if (const auto *arrayInfo = lowerer_.findSymbol(var->name); arrayInfo && arrayInfo->isArray)
+                {
+                    lowerer_.requireArrayI32Retain();
+                    lowerer_.requireArrayI32Release();
+                }
             }
         }
         else if (auto *arr = dynamic_cast<const ArrayExpr *>(stmt.target.get()))
@@ -147,6 +152,8 @@ class ScanStmtVisitor final : public StmtVisitor
         {
             lowerer_.requireArrayI32New();
             lowerer_.markArray(stmt.name);
+            lowerer_.requireArrayI32Retain();
+            lowerer_.requireArrayI32Release();
         }
         if (stmt.size)
             lowerer_.scanExpr(*stmt.size);
@@ -158,6 +165,8 @@ class ScanStmtVisitor final : public StmtVisitor
             lowerer_.markSymbolReferenced(stmt.name);
         lowerer_.markArray(stmt.name);
         lowerer_.requireArrayI32Resize();
+        lowerer_.requireArrayI32Retain();
+        lowerer_.requireArrayI32Release();
         if (stmt.size)
             lowerer_.scanExpr(*stmt.size);
     }
