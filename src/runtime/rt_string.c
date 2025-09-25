@@ -5,16 +5,99 @@
 // Links: docs/codemap.md
 
 #include "rt_internal.h"
+
+#include <assert.h>
 #include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+static const size_t kImmortalRefcnt = SIZE_MAX - 1;
+
+static rt_heap_hdr_t *rt_string_header(rt_string s)
+{
+    if (!s || !s->heap)
+        return NULL;
+    assert(s->heap->kind == RT_HEAP_STRING);
+    return s->heap;
+}
+
+static size_t rt_string_len_bytes(rt_string s)
+{
+    if (!s)
+        return 0;
+    if (!s->heap)
+        return s->literal_len;
+    (void)rt_string_header(s);
+    return rt_heap_len(s->data);
+}
+
+static int rt_string_is_immortal_hdr(const rt_heap_hdr_t *hdr)
+{
+    return hdr && hdr->refcnt >= kImmortalRefcnt;
+}
+
+static rt_string rt_string_wrap(char *payload)
+{
+    if (!payload)
+        return NULL;
+    rt_heap_hdr_t *hdr = rt_heap_hdr(payload);
+    assert(hdr);
+    assert(hdr->kind == RT_HEAP_STRING);
+    rt_string s = (rt_string)rt_alloc(sizeof(*s));
+    s->data = payload;
+    s->heap = hdr;
+    s->literal_len = 0;
+    s->literal_refs = 0;
+    return s;
+}
+
+static rt_string rt_string_alloc(size_t len, size_t cap)
+{
+    if (cap < len + 1)
+        cap = len + 1;
+    char *payload = (char *)rt_heap_alloc(RT_HEAP_STRING, RT_ELEM_NONE, 1, len, cap);
+    if (!payload)
+    {
+        rt_trap("out of memory");
+        return NULL;
+    }
+    payload[len] = '\0';
+    return rt_string_wrap(payload);
+}
+
+static rt_string rt_string_from_bytes(const char *bytes, size_t len)
+{
+    rt_string s = rt_string_alloc(len, len + 1);
+    if (!s)
+        return NULL;
+    if (len > 0)
+        memcpy(s->data, bytes, len);
+    s->data[len] = '\0';
+    return s;
+}
+
 static rt_string rt_empty_string(void)
 {
-    static struct rt_string_impl empty = {INT64_MAX, 0, 0, ""};
-    return &empty;
+    static rt_string empty = NULL;
+    if (!empty)
+    {
+        char *payload = (char *)rt_heap_alloc(RT_HEAP_STRING, RT_ELEM_NONE, 1, 0, 1);
+        if (!payload)
+            rt_trap("rt_empty_string: alloc");
+        payload[0] = '\0';
+        rt_heap_hdr_t *hdr = rt_heap_hdr(payload);
+        assert(hdr);
+        assert(hdr->kind == RT_HEAP_STRING);
+        hdr->refcnt = kImmortalRefcnt;
+        empty = (rt_string)rt_alloc(sizeof(*empty));
+        empty->data = payload;
+        empty->heap = hdr;
+        empty->literal_len = 0;
+        empty->literal_refs = 0;
+    }
+    return empty;
 }
 
 /**
@@ -25,13 +108,23 @@ static rt_string rt_empty_string(void)
  *
  * Returns: Input string pointer @p s.
  *
- * Side effects: Increments @p s->refcnt unless @p s is NULL or the shared
- * empty string.
+ * Side effects: Increments heap reference count unless @p s is NULL or the
+ * shared empty string.
  */
 rt_string rt_string_ref(rt_string s)
 {
-    if (s && s->refcnt != INT64_MAX)
-        s->refcnt++;
+    if (!s)
+        return NULL;
+    rt_heap_hdr_t *hdr = rt_string_header(s);
+    if (!hdr)
+    {
+        if (s->literal_refs < SIZE_MAX)
+            s->literal_refs++;
+        return s;
+    }
+    if (rt_string_is_immortal_hdr(hdr))
+        return s;
+    rt_heap_retain(s->data);
     return s;
 }
 
@@ -45,14 +138,20 @@ rt_string rt_string_ref(rt_string s)
  */
 void rt_string_unref(rt_string s)
 {
-    if (!s || s->refcnt == INT64_MAX)
+    if (!s)
         return;
-    if (--s->refcnt == 0)
+    rt_heap_hdr_t *hdr = rt_string_header(s);
+    if (!hdr)
     {
-        if (s->capacity > 0 && s->data)
-            free((void *)s->data);
-        free(s);
+        if (s->literal_refs > 0 && --s->literal_refs == 0)
+            free(s);
+        return;
     }
+    if (rt_string_is_immortal_hdr(hdr))
+        return;
+    size_t next = rt_heap_release(s->data);
+    if (next == 0)
+        free(s);
 }
 
 rt_string rt_const_cstr(const char *c)
@@ -60,16 +159,16 @@ rt_string rt_const_cstr(const char *c)
     if (!c)
         return NULL;
     rt_string s = (rt_string)rt_alloc(sizeof(*s));
-    s->refcnt = 1;
-    s->size = (int64_t)strlen(c);
-    s->capacity = 0;
-    s->data = c;
+    s->data = (char *)c;
+    s->heap = NULL;
+    s->literal_len = strlen(c);
+    s->literal_refs = 1;
     return s;
 }
 
 int64_t rt_len(rt_string s)
 {
-    return s ? s->size : 0;
+    return (int64_t)rt_string_len_bytes(s);
 }
 
 /**
@@ -86,34 +185,19 @@ int64_t rt_len(rt_string s)
  */
 rt_string rt_concat(rt_string a, rt_string b)
 {
-    int64_t asz = a ? a->size : 0;
-    int64_t bsz = b ? b->size : 0;
-    rt_string s = (rt_string)rt_alloc(sizeof(*s));
-    s->refcnt = 1;
-    s->size = asz + bsz;
-    s->capacity = s->size;
-    char *buf = (char *)rt_alloc(s->size + 1);
-    if (a && a->data)
-        memcpy(buf, a->data, asz);
-    if (b && b->data)
-        memcpy(buf + asz, b->data, bsz);
-    buf[s->size] = '\0';
-    s->data = buf;
-
-    int64_t a_refcnt = (a && a->refcnt != INT64_MAX) ? a->refcnt : INT64_MAX;
+    size_t asz = rt_string_len_bytes(a);
+    size_t bsz = rt_string_len_bytes(b);
+    size_t total = asz + bsz;
+    rt_string s = rt_string_alloc(total, total + 1);
+    if (a && a->data && asz > 0)
+        memcpy(s->data, a->data, asz);
+    if (b && b->data && bsz > 0)
+        memcpy(s->data + asz, b->data, bsz);
+    s->data[total] = '\0';
     if (a)
         rt_string_unref(a);
     if (b)
-    {
-        if (b == a && a_refcnt != INT64_MAX && a_refcnt <= 1)
-        {
-            // The first unref already released the sole reference; avoid double free.
-        }
-        else
-        {
-            rt_string_unref(b);
-        }
-    }
+        rt_string_unref(b);
     return s;
 }
 
@@ -138,27 +222,21 @@ rt_string rt_substr(rt_string s, int64_t start, int64_t len)
         start = 0;
     if (len < 0)
         len = 0;
-    if (start > s->size)
-        start = s->size;
-    int64_t avail = s->size - start;
-    if (len > avail)
-        len = avail;
-    if (len == 0)
+    size_t slen = rt_string_len_bytes(s);
+    if ((uint64_t)start > slen)
+        start = (int64_t)slen;
+    size_t start_idx = (size_t)start;
+    size_t avail = slen - start_idx;
+    size_t copy_len = (size_t)len;
+    if (copy_len > avail)
+        copy_len = avail;
+    if (copy_len == 0)
         return rt_empty_string();
-    if (start == 0 && len == s->size)
+    if (start_idx == 0 && copy_len == slen)
     {
         return rt_string_ref(s);
     }
-    // O(len) time, one allocation and copy of len bytes.
-    rt_string r = (rt_string)rt_alloc(sizeof(*r));
-    r->refcnt = 1;
-    r->size = len;
-    r->capacity = len;
-    char *data = (char *)rt_alloc(len + 1);
-    memcpy(data, s->data + start, len);
-    data[len] = '\0';
-    r->data = data;
-    return r;
+    return rt_string_from_bytes(s->data + start_idx, copy_len);
 }
 
 /**
@@ -183,9 +261,10 @@ rt_string rt_left(rt_string s, int64_t n)
         snprintf(buf, sizeof(buf), "LEFT$: len must be >= 0 (got %lld)", (long long)n);
         rt_trap(buf);
     }
+    size_t slen = rt_string_len_bytes(s);
     if (n == 0)
         return rt_empty_string();
-    if (n >= s->size)
+    if ((size_t)n >= slen)
     {
         return rt_string_ref(s);
     }
@@ -215,16 +294,16 @@ rt_string rt_right(rt_string s, int64_t n)
         snprintf(buf, sizeof(buf), "RIGHT$: len must be >= 0 (got %lld)", (long long)n);
         rt_trap(buf);
     }
-    int64_t len = s->size;
+    size_t len = rt_string_len_bytes(s);
     if (n == 0)
         return rt_empty_string();
-    if (n >= len)
+    if ((size_t)n >= len)
     {
         return rt_string_ref(s);
     }
-    int64_t start = len - n;
+    size_t start = len - (size_t)n;
     // O(n) copy via rt_substr.
-    return rt_substr(s, start, n);
+    return rt_substr(s, (int64_t)start, n);
 }
 
 /**
@@ -248,16 +327,16 @@ rt_string rt_mid2(rt_string s, int64_t start)
         snprintf(buf, sizeof(buf), "MID$: start must be >= 0 (got %lld)", (long long)start);
         rt_trap(buf);
     }
-    int64_t len = s->size;
+    size_t len = rt_string_len_bytes(s);
     if (start <= 0)
     {
         return rt_string_ref(s);
     }
-    if (start >= len)
+    if ((size_t)start >= len)
         return rt_empty_string();
-    int64_t n = len - start;
+    size_t n = len - (size_t)start;
     // O(n) copy via rt_substr.
-    return rt_substr(s, start, n);
+    return rt_substr(s, start, (int64_t)n);
 }
 
 /**
@@ -290,15 +369,15 @@ rt_string rt_mid3(rt_string s, int64_t start, int64_t len)
         snprintf(buf, sizeof(buf), "MID$: len must be >= 0 (got %lld)", (long long)len);
         rt_trap(buf);
     }
-    int64_t slen = s->size;
-    if (len == 0 || start >= slen)
+    size_t slen = rt_string_len_bytes(s);
+    if (len == 0 || (size_t)start >= slen)
         return rt_empty_string();
-    if (start == 0 && len >= slen)
+    if (start == 0 && (size_t)len >= slen)
     {
         return rt_string_ref(s);
     }
-    if (len > slen - start)
-        len = slen - start;
+    if ((size_t)len > slen - (size_t)start)
+        len = (int64_t)(slen - (size_t)start);
     // O(len) copy via rt_substr.
     return rt_substr(s, start, len);
 }
@@ -322,11 +401,16 @@ static int64_t rt_find(rt_string hay, int64_t start, rt_string needle)
         return 0;
     if (start < 0)
         start = 0;
-    if (start > hay->size)
-        start = hay->size;
-    for (int64_t i = start; i + needle->size <= hay->size; ++i)
-        if (memcmp(hay->data + i, needle->data, (size_t)needle->size) == 0)
-            return i + 1;
+    size_t hay_len = rt_string_len_bytes(hay);
+    size_t needle_len = rt_string_len_bytes(needle);
+    if ((uint64_t)start > hay_len)
+        start = (int64_t)hay_len;
+    size_t start_idx = (size_t)start;
+    if (needle_len > hay_len - start_idx)
+        return 0;
+    for (size_t i = start_idx; i + needle_len <= hay_len; ++i)
+        if (memcmp(hay->data + i, needle->data, needle_len) == 0)
+            return (int64_t)(i + 1);
     return 0;
 }
 
@@ -346,7 +430,8 @@ int64_t rt_instr2(rt_string hay, rt_string needle)
 {
     if (!hay || !needle)
         return 0;
-    if (needle->size == 0)
+    size_t needle_len = rt_string_len_bytes(needle);
+    if (needle_len == 0)
         return 1;
     return rt_find(hay, 0, needle);
 }
@@ -370,11 +455,12 @@ int64_t rt_instr3(int64_t start, rt_string hay, rt_string needle)
 {
     if (!hay || !needle)
         return 0;
-    int64_t len = hay->size;
+    size_t len = rt_string_len_bytes(hay);
     int64_t pos = start <= 1 ? 0 : start - 1;
-    if (pos > len)
-        pos = len;
-    if (needle->size == 0)
+    if ((uint64_t)pos > len)
+        pos = (int64_t)len;
+    size_t needle_len = rt_string_len_bytes(needle);
+    if (needle_len == 0)
         return pos + 1;
     return rt_find(hay, pos, needle);
 }
@@ -393,10 +479,11 @@ rt_string rt_ltrim(rt_string s)
 {
     if (!s)
         rt_trap("rt_ltrim: null");
-    int64_t i = 0;
-    while (i < s->size && (s->data[i] == ' ' || s->data[i] == '\t'))
+    size_t slen = rt_string_len_bytes(s);
+    size_t i = 0;
+    while (i < slen && (s->data[i] == ' ' || s->data[i] == '\t'))
         ++i;
-    return rt_substr(s, i, s->size - i);
+    return rt_substr(s, (int64_t)i, (int64_t)(slen - i));
 }
 
 /**
@@ -413,10 +500,10 @@ rt_string rt_rtrim(rt_string s)
 {
     if (!s)
         rt_trap("rt_rtrim: null");
-    int64_t end = s->size;
+    size_t end = rt_string_len_bytes(s);
     while (end > 0 && (s->data[end - 1] == ' ' || s->data[end - 1] == '\t'))
         --end;
-    return rt_substr(s, 0, end);
+    return rt_substr(s, 0, (int64_t)end);
 }
 
 /**
@@ -433,13 +520,14 @@ rt_string rt_trim(rt_string s)
 {
     if (!s)
         rt_trap("rt_trim: null");
-    int64_t start = 0;
-    int64_t end = s->size;
+    size_t slen = rt_string_len_bytes(s);
+    size_t start = 0;
+    size_t end = slen;
     while (start < end && (s->data[start] == ' ' || s->data[start] == '\t'))
         ++start;
     while (end > start && (s->data[end - 1] == ' ' || s->data[end - 1] == '\t'))
         --end;
-    return rt_substr(s, start, end - start);
+    return rt_substr(s, (int64_t)start, (int64_t)(end - start));
 }
 
 /**
@@ -456,20 +544,16 @@ rt_string rt_ucase(rt_string s)
 {
     if (!s)
         rt_trap("rt_ucase: null");
-    rt_string r = (rt_string)rt_alloc(sizeof(*r));
-    r->refcnt = 1;
-    r->size = s->size;
-    r->capacity = r->size;
-    char *data = (char *)rt_alloc(r->size + 1);
-    for (int64_t i = 0; i < r->size; ++i)
+    size_t len = rt_string_len_bytes(s);
+    rt_string r = rt_string_alloc(len, len + 1);
+    for (size_t i = 0; i < len; ++i)
     {
         unsigned char c = (unsigned char)s->data[i];
         if (c >= 'a' && c <= 'z')
             c = (unsigned char)(c - 'a' + 'A');
-        data[i] = (char)c;
+        r->data[i] = (char)c;
     }
-    data[r->size] = '\0';
-    r->data = data;
+    r->data[len] = '\0';
     return r;
 }
 
@@ -487,20 +571,16 @@ rt_string rt_lcase(rt_string s)
 {
     if (!s)
         rt_trap("rt_lcase: null");
-    rt_string r = (rt_string)rt_alloc(sizeof(*r));
-    r->refcnt = 1;
-    r->size = s->size;
-    r->capacity = r->size;
-    char *data = (char *)rt_alloc(r->size + 1);
-    for (int64_t i = 0; i < r->size; ++i)
+    size_t len = rt_string_len_bytes(s);
+    rt_string r = rt_string_alloc(len, len + 1);
+    for (size_t i = 0; i < len; ++i)
     {
         unsigned char c = (unsigned char)s->data[i];
         if (c >= 'A' && c <= 'Z')
             c = (unsigned char)(c - 'A' + 'a');
-        data[i] = (char)c;
+        r->data[i] = (char)c;
     }
-    data[r->size] = '\0';
-    r->data = data;
+    r->data[len] = '\0';
     return r;
 }
 
@@ -522,15 +602,8 @@ rt_string rt_chr(int64_t code)
         snprintf(buf, sizeof(buf), "CHR$: code must be 0-255 (got %lld)", (long long)code);
         rt_trap(buf);
     }
-    rt_string s = (rt_string)rt_alloc(sizeof(*s));
-    s->refcnt = 1;
-    s->size = 1;
-    s->capacity = 1;
-    char *data = (char *)rt_alloc(2);
-    data[0] = (char)(unsigned char)code;
-    data[1] = '\0';
-    s->data = data;
-    return s;
+    char ch = (char)(unsigned char)code;
+    return rt_string_from_bytes(&ch, 1);
 }
 
 /**
@@ -547,7 +620,8 @@ int64_t rt_asc(rt_string s)
 {
     if (!s)
         rt_trap("rt_asc: null");
-    if (s->size <= 0 || !s->data)
+    size_t len = rt_string_len_bytes(s);
+    if (len == 0 || !s->data)
         return 0;
     return (int64_t)(unsigned char)s->data[0];
 }
@@ -567,9 +641,13 @@ int64_t rt_str_eq(rt_string a, rt_string b)
 {
     if (!a || !b)
         return 0;
-    if (a->size != b->size)
+    if (a == b)
+        return 1;
+    size_t alen = rt_string_len_bytes(a);
+    size_t blen = rt_string_len_bytes(b);
+    if (alen != blen)
         return 0;
-    return memcmp(a->data, b->data, (size_t)a->size) == 0;
+    return memcmp(a->data, b->data, alen) == 0;
 }
 
 /**
@@ -588,7 +666,7 @@ int64_t rt_to_int(rt_string s)
     if (!s)
         rt_trap("rt_to_int: null");
     const char *p = s->data;
-    size_t len = (size_t)s->size;
+    size_t len = rt_string_len_bytes(s);
     size_t i = 0;
     while (i < len && isspace((unsigned char)p[i]))
         ++i;
@@ -632,6 +710,7 @@ rt_string rt_int_to_str(int64_t v)
 
     const char *src = buf;
     char *tmp = NULL;
+    size_t len = (size_t)n;
     if (n >= (int)sizeof(buf))
     {
         tmp = (char *)malloc((size_t)n + 1);
@@ -644,15 +723,10 @@ rt_string rt_int_to_str(int64_t v)
             rt_trap("rt_int_to_str: format");
         }
         src = tmp;
+        len = (size_t)n2;
     }
 
-    rt_string s = (rt_string)rt_alloc(sizeof(*s));
-    s->refcnt = 1;
-    s->size = n;
-    s->capacity = n;
-    char *data = (char *)rt_alloc((size_t)n + 1);
-    memcpy(data, src, (size_t)n + 1);
-    s->data = data;
+    rt_string s = rt_string_from_bytes(src, len);
 
     if (tmp)
         free(tmp);
@@ -678,6 +752,7 @@ rt_string rt_f64_to_str(double v)
 
     const char *src = buf;
     char *tmp = NULL;
+    size_t len = (size_t)n;
     if (n >= (int)sizeof(buf))
     {
         tmp = (char *)malloc((size_t)n + 1);
@@ -690,15 +765,10 @@ rt_string rt_f64_to_str(double v)
             rt_trap("rt_f64_to_str: format");
         }
         src = tmp;
+        len = (size_t)n2;
     }
 
-    rt_string s = (rt_string)rt_alloc(sizeof(*s));
-    s->refcnt = 1;
-    s->size = n;
-    s->capacity = n;
-    char *data = (char *)rt_alloc((size_t)n + 1);
-    memcpy(data, src, (size_t)n + 1);
-    s->data = data;
+    rt_string s = rt_string_from_bytes(src, len);
 
     if (tmp)
         free(tmp);
