@@ -79,6 +79,18 @@ int main()
     arrGet.params = {Type(Type::Kind::Ptr), Type(Type::Kind::I64)};
     externs[arrGet.name] = &arrGet;
 
+    Extern arrRetain;
+    arrRetain.name = "rt_arr_i32_retain";
+    arrRetain.retType = Type(Type::Kind::Void);
+    arrRetain.params = {Type(Type::Kind::Ptr)};
+    externs[arrRetain.name] = &arrRetain;
+
+    Extern arrRelease;
+    arrRelease.name = "rt_arr_i32_release";
+    arrRelease.retType = Type(Type::Kind::Void);
+    arrRelease.params = {Type(Type::Kind::Ptr)};
+    externs[arrRelease.name] = &arrRelease;
+
     std::unordered_map<unsigned, Type> arrTemps;
     arrTemps[10] = Type(Type::Kind::Ptr);
     arrTemps[11] = Type(Type::Kind::I64);
@@ -117,6 +129,45 @@ int main()
     assert(!ok);
     const std::string arrDiag = arrErrBad.str();
     assert(arrDiag.find("@rt_arr_i32_get index operand must be i64") != std::string::npos);
+
+    std::unordered_map<unsigned, Type> retainTemps;
+    retainTemps[30] = Type(Type::Kind::Ptr);
+    std::unordered_set<unsigned> retainDefined = {30};
+    TypeInference retainTypes(retainTemps, retainDefined);
+
+    Instr retainCall;
+    retainCall.op = Opcode::Call;
+    retainCall.callee = arrRetain.name;
+    retainCall.operands.push_back(Value::temp(30));
+    retainCall.type = Type(Type::Kind::Void);
+
+    std::ostringstream retainErr;
+    ok = verifyInstruction(fn, bb, retainCall, externs, funcs, retainTypes, retainErr);
+    assert(ok);
+    assert(retainErr.str().empty());
+
+    Instr retainBadType;
+    retainBadType.op = Opcode::Call;
+    retainBadType.callee = arrRetain.name;
+    retainBadType.operands.push_back(Value::constInt(0));
+    retainBadType.type = Type(Type::Kind::Void);
+
+    std::ostringstream retainBadErr;
+    ok = verifyInstruction(fn, bb, retainBadType, externs, funcs, retainTypes, retainBadErr);
+    assert(!ok);
+    const std::string retainDiag = retainBadErr.str();
+    assert(retainDiag.find("@rt_arr_i32_retain handle operand must be ptr") != std::string::npos);
+
+    Instr releaseArity;
+    releaseArity.op = Opcode::Call;
+    releaseArity.callee = arrRelease.name;
+    releaseArity.type = Type(Type::Kind::Void);
+
+    std::ostringstream releaseErr;
+    ok = verifyInstruction(fn, bb, releaseArity, externs, funcs, retainTypes, releaseErr);
+    assert(!ok);
+    const std::string releaseDiag = releaseErr.str();
+    assert(releaseDiag.find("expected 1 argument to @rt_arr_i32_release") != std::string::npos);
 
     return 0;
 }
