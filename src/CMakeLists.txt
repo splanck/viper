@@ -17,7 +17,7 @@ target_include_directories(il_core PUBLIC
 )
 
 add_library(il_runtime STATIC il/runtime/RuntimeSignatures.cpp)
-target_link_libraries(il_runtime PUBLIC il_core rt)
+target_link_libraries(il_runtime PUBLIC il_core viper_runtime)
 target_include_directories(il_runtime PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
@@ -100,7 +100,7 @@ target_include_directories(il_vm PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
-target_link_libraries(il_vm PUBLIC il_core il_runtime rt support)
+target_link_libraries(il_vm PUBLIC il_core il_runtime viper_runtime support)
 
 add_library(il_codegen_x86_64 STATIC codegen/x86_64/placeholder.cpp)
 set_target_properties(il_codegen_x86_64 PROPERTIES LINKER_LANGUAGE CXX)

@@ -6,8 +6,8 @@
 
 #pragma once
 
-#include "rt.hpp"
 #include "rt_heap.h"
+#include "rt.hpp"
 
 struct rt_string_impl
 {

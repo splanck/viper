@@ -158,6 +158,18 @@ Initial runtime surface (all prefixed `rt_`):
 - Memory: `rt_alloc`, `rt_free`.
 - Optional math helpers: `rt_sin`, `rt_cos`, `rt_pow`, etc.
 
+#### Runtime memory model
+
+Strings and arrays share a single heap layout described by [`rt_heap.h`](../src/runtime/rt_heap.h). Every payload pointer is preceded by an `rt_heap_hdr_t` header containing a magic tag, the allocation kind, the element kind, reference count, length, and capacity. The helper accessors in `rt_heap.c` validate this header on every retain/release in debug builds, ensuring both strings and arrays obey the same invariants.
+
+Arrays are true reference types: assigning to another variable or passing as a parameter forwards the handle and bumps the refcount. No eager copy happens. When `rt_arr_i32_resize` observes a shared array (`refcnt > 1`) it allocates a fresh payload, copies the active prefix, releases the old handle, and returns the new pointer—effectively copy-on-resize. In-place growth only occurs when the array is uniquely owned.
+
+Ownership rules mirror strings. The lowering pipeline emits retains on assignment boundaries, scope exit releases, parameter teardown releases, and function returns transfer ownership to the caller. Violating these rules (e.g., releasing then reusing a temp in the same block) is caught by the IL verifier.
+
+Define `VIPER_RC_DEBUG=1` (set automatically for Debug builds) or export the environment variable `VIPER_RC_DEBUG` to make the runtime log every retain/release along with the resulting refcount. These checks highlight double releases, missing retains, or stale handles early in development.
+
+Additional runtime details live in the [Runtime & VM Guide](runtime-vm.md#runtime-memory-model).
+
 Front-end intrinsics lower directly to these routines. Both the VM and native code call the same C ABI, so the runtime must remain stable across releases.
 
 ### VM interpreter

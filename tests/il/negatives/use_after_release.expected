@@ -1,0 +1,1 @@
+error: main:entry: %2 = call %t1: use after release of %1
