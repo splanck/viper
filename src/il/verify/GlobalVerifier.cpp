@@ -19,6 +19,11 @@ using il::support::Expected;
 using il::support::makeError;
 }
 
+[[nodiscard]] const GlobalVerifier::GlobalMap &GlobalVerifier::globals() const
+{
+    return globals_;
+}
+
 Expected<void> GlobalVerifier::run(const Module &module, DiagSink &)
 {
     globals_.clear();
