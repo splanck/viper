@@ -7,11 +7,12 @@
 #pragma once
 
 #include "rt.hpp"
+#include "rt_heap.h"
 
 struct rt_string_impl
 {
-    int64_t refcnt;
-    int64_t size;
-    int64_t capacity;
-    const char *data;
+    char *data;
+    rt_heap_hdr_t *heap;
+    size_t literal_len;
+    size_t literal_refs;
 };

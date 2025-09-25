@@ -27,7 +27,7 @@ static void feed_and_check(size_t len, bool with_newline)
     close(fds[0]);
     rt_string s = rt_input_line();
     assert(s);
-    assert(s->size == (int64_t)input.size());
+    assert(rt_len(s) == (int64_t)input.size());
     assert(std::memcmp(s->data, input.data(), input.size()) == 0);
 }
 
