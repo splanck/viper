@@ -45,7 +45,9 @@ enum class RuntimeArrayCallee
     Len,
     Get,
     Set,
-    Resize
+    Resize,
+    Retain,
+    Release
 };
 
 RuntimeArrayCallee classifyRuntimeArrayCallee(std::string_view callee)
@@ -60,6 +62,10 @@ RuntimeArrayCallee classifyRuntimeArrayCallee(std::string_view callee)
         return RuntimeArrayCallee::Set;
     if (callee == "rt_arr_i32_resize")
         return RuntimeArrayCallee::Resize;
+    if (callee == "rt_arr_i32_retain")
+        return RuntimeArrayCallee::Retain;
+    if (callee == "rt_arr_i32_release")
+        return RuntimeArrayCallee::Release;
     return RuntimeArrayCallee::None;
 }
 
@@ -187,6 +193,22 @@ Expected<void> checkRuntimeArrayCall(const Function &fn,
             if (auto result = requireOperandType(1, Type::Kind::I64, "length"); !result)
                 return result;
             return requireResultType(Type::Kind::Ptr);
+        }
+        case RuntimeArrayCallee::Retain:
+        {
+            if (auto result = requireArgCount(1); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            return requireNoResult();
+        }
+        case RuntimeArrayCallee::Release:
+        {
+            if (auto result = requireArgCount(1); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            return requireNoResult();
         }
         case RuntimeArrayCallee::None:
             break;
