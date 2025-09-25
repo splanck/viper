@@ -243,6 +243,15 @@ function(viper_add_golden_suite_tests)
     -DPASSES=mem2reg
     -P ${_VIPER_GOLDEN_DIR}/il_opt/check_opt.cmake)
 
+  file(READ ${_VIPER_GOLDEN_DIR}/arrays/assign_alias.stdout EXPECT_ASSIGN_ALIAS)
+  string(STRIP "${EXPECT_ASSIGN_ALIAS}" EXPECT_ASSIGN_ALIAS)
+  viper_add_ctest(basic_arrays_assign_alias
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DBAS_FILE=${_VIPER_GOLDEN_DIR}/arrays/assign_alias.bas
+    "-DEXPECT=${EXPECT_ASSIGN_ALIAS}"
+    -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
   file(READ ${_VIPER_GOLDEN_DIR}/quickstart.stdout EXPECT_QUICKSTART)
   string(STRIP "${EXPECT_QUICKSTART}" EXPECT_QUICKSTART)
   viper_add_ctest(il_quickstart_example
