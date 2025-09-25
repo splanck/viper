@@ -153,7 +153,7 @@ void invokeRtArrOobPanic(void **args, void * /*result*/)
 std::vector<RuntimeDescriptor> buildRegistry()
 {
     std::vector<RuntimeDescriptor> entries;
-    entries.reserve(48);
+    entries.reserve(50);
     auto add = [&](std::string_view name,
                    Kind ret,
                    std::initializer_list<Kind> params,
@@ -243,6 +243,16 @@ std::vector<RuntimeDescriptor> buildRegistry()
         Kind::Ptr,
         {Kind::I64},
         &invokeRtArrI32New,
+        manual());
+    add("rt_arr_i32_retain",
+        Kind::Void,
+        {Kind::Ptr},
+        &DirectHandler<&rt_arr_i32_retain, void, int32_t *>::invoke,
+        manual());
+    add("rt_arr_i32_release",
+        Kind::Void,
+        {Kind::Ptr},
+        &DirectHandler<&rt_arr_i32_release, void, int32_t *>::invoke,
         manual());
     add("rt_arr_i32_len",
         Kind::I64,
