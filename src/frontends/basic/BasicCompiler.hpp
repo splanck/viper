@@ -51,10 +51,7 @@ struct BasicCompilerResult
     il::core::Module module{};
 
     /// @brief Helper indicating whether compilation succeeded without errors.
-    [[nodiscard]] bool succeeded() const
-    {
-        return emitter && emitter->errorCount() == 0;
-    }
+    [[nodiscard]] bool succeeded() const;
 };
 
 /// @brief Compile BASIC source text into IL.
