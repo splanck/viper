@@ -43,10 +43,7 @@ class LivenessInfo
         /// @brief Query whether a value identifier is marked live.
         /// @param valueId Dense identifier for the SSA value.
         /// @return True when the identifier is within range and flagged live.
-        bool contains(unsigned valueId) const
-        {
-            return bits_ && valueId < bits_->size() && (*bits_)[valueId];
-        }
+        bool contains(unsigned valueId) const;
 
         /// @brief Visit every live value identifier in the set.
         /// @tparam Fn Callable invoked with each live value identifier.
@@ -63,28 +60,14 @@ class LivenessInfo
 
         /// @brief Check whether the set contains any live values.
         /// @return True when no value bits are set.
-        bool empty() const
-        {
-            if (!bits_)
-                return true;
-            for (bool bit : *bits_)
-            {
-                if (bit)
-                    return false;
-            }
-            return true;
-        }
+        bool empty() const;
 
         /// @brief Access the underlying bitset for integration tests or debugging.
         /// @return Reference to the immutable bitset representation.
-        const std::vector<bool> &bits() const
-        {
-            assert(bits_ && "liveness set view is empty");
-            return *bits_;
-        }
+        const std::vector<bool> &bits() const;
 
       private:
-        explicit SetView(const std::vector<bool> *bits) : bits_(bits) {}
+        explicit SetView(const std::vector<bool> *bits);
 
         const std::vector<bool> *bits_ = nullptr;
 
@@ -94,51 +77,26 @@ class LivenessInfo
     /// @brief Retrieve the live-in set for @p block.
     /// @param block Basic block whose entry set is requested.
     /// @return Lightweight view over the live-in values.
-    SetView liveIn(const core::BasicBlock &block) const
-    {
-        return liveIn(&block);
-    }
+    SetView liveIn(const core::BasicBlock &block) const;
 
     /// @brief Retrieve the live-in set for @p block.
     /// @param block Basic block pointer whose entry set is requested.
     /// @return Lightweight view over the live-in values.
-    SetView liveIn(const core::BasicBlock *block) const
-    {
-        if (!block)
-            return SetView();
-        auto it = liveInBits_.find(block);
-        if (it == liveInBits_.end())
-            return SetView();
-        return SetView(&it->second);
-    }
+    SetView liveIn(const core::BasicBlock *block) const;
 
     /// @brief Retrieve the live-out set for @p block.
     /// @param block Basic block whose exit set is requested.
     /// @return Lightweight view over the live-out values.
-    SetView liveOut(const core::BasicBlock &block) const
-    {
-        return liveOut(&block);
-    }
+    SetView liveOut(const core::BasicBlock &block) const;
 
     /// @brief Retrieve the live-out set for @p block pointer.
     /// @param block Basic block pointer whose exit set is requested.
     /// @return Lightweight view over the live-out values.
-    SetView liveOut(const core::BasicBlock *block) const
-    {
-        if (!block)
-            return SetView();
-        auto it = liveOutBits_.find(block);
-        if (it == liveOutBits_.end())
-            return SetView();
-        return SetView(&it->second);
-    }
+    SetView liveOut(const core::BasicBlock *block) const;
 
     /// @brief Number of dense SSA value slots tracked by this liveness summary.
     /// @return Count of bits allocated per block.
-    std::size_t valueCount() const
-    {
-        return valueCount_;
-    }
+    std::size_t valueCount() const;
 
   private:
     using BitSet = std::vector<bool>;
