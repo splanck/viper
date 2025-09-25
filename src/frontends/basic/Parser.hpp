@@ -84,10 +84,7 @@ class Parser
 
         /// @brief Report which separator most recently separated statements.
         /// @return Classification of the most recent separator.
-        SeparatorKind lastSeparator() const
-        {
-            return lastSeparator_;
-        }
+        SeparatorKind lastSeparator() const;
 
         /// @brief Parse statements until @p isTerminator matches and populate @p dst.
         /// @param isTerminator Predicate determining when the body ends.
