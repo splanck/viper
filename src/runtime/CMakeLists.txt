@@ -5,6 +5,7 @@ set(RT_SOURCES
   rt_math.c
   rt_random.c
   rt_array.c
+  rt_heap.c
 )
 
 add_library(rt STATIC ${RT_SOURCES})
@@ -23,5 +24,6 @@ install(FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_math.h
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_random.h
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_array.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/rt_heap.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper
 )
