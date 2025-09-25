@@ -28,10 +28,7 @@ class GlobalVerifier
     using GlobalMap = std::unordered_map<std::string, const il::core::Global *>;
 
     /// @brief Access the verified global lookup table.
-    [[nodiscard]] const GlobalMap &globals() const
-    {
-        return globals_;
-    }
+    [[nodiscard]] const GlobalMap &globals() const;
 
     /// @brief Verify globals in @p module and populate the lookup table.
     /// @param module Module to inspect.
