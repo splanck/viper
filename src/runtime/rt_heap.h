@@ -30,6 +30,11 @@ typedef struct rt_heap_hdr
 
 #define RT_MAGIC 0x52504956u /* 'VIPR' little-endian */
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 void *rt_heap_alloc(rt_heap_kind_t kind,
                     rt_elem_kind_t elem_kind,
                     size_t elem_size,
@@ -42,3 +47,7 @@ void *rt_heap_data(rt_heap_hdr_t *h);
 size_t rt_heap_len(void *payload);
 size_t rt_heap_cap(void *payload);
 void rt_heap_set_len(void *payload, size_t new_len);
+
+#ifdef __cplusplus
+}
+#endif

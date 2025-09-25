@@ -64,6 +64,6 @@ int main()
     rt_string s = rt_int_to_str(1234567890LL);
     std::string expected(40, '0');
     expected.replace(expected.size() - 10, 10, "1234567890");
-    assert(s && std::string(s->data, (size_t)s->size) == expected);
+    assert(s && std::string(s->data, rt_heap_len(s->data)) == expected);
     return 0;
 }
