@@ -22,22 +22,7 @@ namespace pipeline_detail
 /// @brief Translate a BASIC AST scalar type into the IL core representation.
 /// @param ty BASIC semantic type sourced from the front-end AST.
 /// @return Corresponding IL type used for stack slots and temporaries.
-inline il::core::Type coreTypeForAstType(::il::frontends::basic::Type ty)
-{
-    using il::core::Type;
-    switch (ty)
-    {
-        case ::il::frontends::basic::Type::I64:
-            return Type(Type::Kind::I64);
-        case ::il::frontends::basic::Type::F64:
-            return Type(Type::Kind::F64);
-        case ::il::frontends::basic::Type::Str:
-            return Type(Type::Kind::Str);
-        case ::il::frontends::basic::Type::Bool:
-            return Type(Type::Kind::I1);
-    }
-    return Type(Type::Kind::I64);
-}
+il::core::Type coreTypeForAstType(::il::frontends::basic::Type ty);
 
 } // namespace pipeline_detail
 
