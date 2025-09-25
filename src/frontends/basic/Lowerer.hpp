@@ -205,121 +205,54 @@ class Lowerer
     struct ProcedureContext
     {
         /// @brief Reset to an empty state ready for a new procedure.
-        void reset() noexcept
-        {
-            function_ = nullptr;
-            current_ = nullptr;
-            exitIndex_ = 0;
-            lineBlocks_.clear();
-            blockNamer_.reset();
-            nextTemp_ = 0;
-            boundsCheckId_ = 0;
-            loopExitTargets_.clear();
-            loopExitTargetIdx_.clear();
-            loopExitTaken_.clear();
-        }
+        void reset() noexcept;
 
-        [[nodiscard]] Function *function() const noexcept { return function_; }
+        [[nodiscard]] Function *function() const noexcept;
 
-        void setFunction(Function *function) noexcept { function_ = function; }
+        void setFunction(Function *function) noexcept;
 
-        [[nodiscard]] BasicBlock *current() const noexcept { return current_; }
+        [[nodiscard]] BasicBlock *current() const noexcept;
 
-        void setCurrent(BasicBlock *block) noexcept { current_ = block; }
+        void setCurrent(BasicBlock *block) noexcept;
 
-        [[nodiscard]] size_t exitIndex() const noexcept { return exitIndex_; }
+        [[nodiscard]] size_t exitIndex() const noexcept;
 
-        void setExitIndex(size_t index) noexcept { exitIndex_ = index; }
+        void setExitIndex(size_t index) noexcept;
 
-        [[nodiscard]] unsigned nextTemp() const noexcept { return nextTemp_; }
+        [[nodiscard]] unsigned nextTemp() const noexcept;
 
-        void setNextTemp(unsigned next) noexcept { nextTemp_ = next; }
+        void setNextTemp(unsigned next) noexcept;
 
-        [[nodiscard]] unsigned boundsCheckId() const noexcept { return boundsCheckId_; }
+        [[nodiscard]] unsigned boundsCheckId() const noexcept;
 
-        void setBoundsCheckId(unsigned id) noexcept { boundsCheckId_ = id; }
+        void setBoundsCheckId(unsigned id) noexcept;
 
         /// @brief Return the current bounds-check identifier and advance it.
-        unsigned consumeBoundsCheckId() noexcept { return boundsCheckId_++; }
+        unsigned consumeBoundsCheckId() noexcept;
 
-        void pushLoopExit(BasicBlock *bb)
-        {
-            loopExitTargets_.push_back(bb);
-            if (function_)
-            {
-                auto base = &function_->blocks[0];
-                loopExitTargetIdx_.push_back(static_cast<size_t>(bb - base));
-            }
-            else
-            {
-                loopExitTargetIdx_.push_back(0);
-            }
-            loopExitTaken_.push_back(false);
-        }
+        void pushLoopExit(BasicBlock *bb);
 
-        void popLoopExit()
-        {
-            loopExitTargets_.pop_back();
-            loopExitTargetIdx_.pop_back();
-            loopExitTaken_.pop_back();
-        }
+        void popLoopExit();
 
-        [[nodiscard]] BasicBlock *currentLoopExit() const
-        {
-            if (loopExitTargetIdx_.empty() || !function_)
-                return nullptr;
-            size_t idx = loopExitTargetIdx_.back();
-            if (idx >= function_->blocks.size())
-                return nullptr;
-            return &function_->blocks[idx];
-        }
+        [[nodiscard]] BasicBlock *currentLoopExit() const;
 
-        void markLoopExitTaken()
-        {
-            if (!loopExitTaken_.empty())
-                loopExitTaken_.back() = true;
-        }
+        void markLoopExitTaken();
 
-        void refreshLoopExitTarget(BasicBlock *bb)
-        {
-            if (loopExitTargets_.empty())
-                return;
-            loopExitTargets_.back() = bb;
-            if (function_)
-            {
-                auto base = &function_->blocks[0];
-                loopExitTargetIdx_.back() = static_cast<size_t>(bb - base);
-            }
-        }
+        void refreshLoopExitTarget(BasicBlock *bb);
 
-        [[nodiscard]] bool loopExitTaken() const
-        {
-            return !loopExitTaken_.empty() && loopExitTaken_.back();
-        }
+        [[nodiscard]] bool loopExitTaken() const;
 
-        [[nodiscard]] std::unordered_map<int, size_t> &lineBlocks() noexcept
-        {
-            return lineBlocks_;
-        }
+        [[nodiscard]] std::unordered_map<int, size_t> &lineBlocks() noexcept;
 
-        [[nodiscard]] const std::unordered_map<int, size_t> &lineBlocks() const noexcept
-        {
-            return lineBlocks_;
-        }
+        [[nodiscard]] const std::unordered_map<int, size_t> &lineBlocks() const noexcept;
 
-        [[nodiscard]] BlockNamer *blockNamer() noexcept { return blockNamer_.get(); }
+        [[nodiscard]] BlockNamer *blockNamer() noexcept;
 
-        [[nodiscard]] const BlockNamer *blockNamer() const noexcept
-        {
-            return blockNamer_.get();
-        }
+        [[nodiscard]] const BlockNamer *blockNamer() const noexcept;
 
-        void setBlockNamer(std::unique_ptr<BlockNamer> namer) noexcept
-        {
-            blockNamer_ = std::move(namer);
-        }
+        void setBlockNamer(std::unique_ptr<BlockNamer> namer) noexcept;
 
-        void resetBlockNamer() noexcept { blockNamer_.reset(); }
+        void resetBlockNamer() noexcept;
 
       private:
         Function *function_{nullptr};
@@ -656,9 +589,9 @@ class Lowerer
     /// @return Pointer to the signature when present, nullptr otherwise.
     const ProcedureSignature *findProcSignature(const std::string &name) const;
 
-    [[nodiscard]] ProcedureContext &context() noexcept { return context_; }
+    [[nodiscard]] ProcedureContext &context() noexcept;
 
-    [[nodiscard]] const ProcedureContext &context() const noexcept { return context_; }
+    [[nodiscard]] const ProcedureContext &context() const noexcept;
 };
 
 } // namespace il::frontends::basic
