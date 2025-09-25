@@ -252,6 +252,15 @@ function(viper_add_golden_suite_tests)
     "-DEXPECT=${EXPECT_ASSIGN_ALIAS}"
     -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
+  file(READ ${_VIPER_GOLDEN_DIR}/arrays/resize_breaks_share.stdout EXPECT_ARRAY_RESIZE_BREAKS_SHARE)
+  string(STRIP "${EXPECT_ARRAY_RESIZE_BREAKS_SHARE}" EXPECT_ARRAY_RESIZE_BREAKS_SHARE)
+  viper_add_ctest(basic_arrays_resize_breaks_share
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DBAS_FILE=${_VIPER_GOLDEN_DIR}/arrays/resize_breaks_share.bas
+    "-DEXPECT=${EXPECT_ARRAY_RESIZE_BREAKS_SHARE}"
+    -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
   file(READ ${_VIPER_GOLDEN_DIR}/quickstart.stdout EXPECT_QUICKSTART)
   string(STRIP "${EXPECT_QUICKSTART}" EXPECT_QUICKSTART)
   viper_add_ctest(il_quickstart_example
