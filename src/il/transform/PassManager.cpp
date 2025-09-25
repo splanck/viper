@@ -25,12 +25,94 @@
 #include "il/core/Value.hpp"
 #include "il/verify/Verifier.hpp"
 #include <algorithm>
+#include <cassert>
 #include <utility>
 
 using namespace il::core;
 
 namespace il::transform
 {
+/// @brief Query whether a value identifier is marked live.
+/// @param valueId Dense identifier for the SSA value.
+/// @return True when the identifier is within range and flagged live.
+bool LivenessInfo::SetView::contains(unsigned valueId) const
+{
+    return bits_ && valueId < bits_->size() && (*bits_)[valueId];
+}
+
+/// @brief Check whether the set contains any live values.
+/// @return True when no value bits are set.
+bool LivenessInfo::SetView::empty() const
+{
+    if (!bits_)
+        return true;
+    for (bool bit : *bits_)
+    {
+        if (bit)
+            return false;
+    }
+    return true;
+}
+
+/// @brief Access the underlying bitset for integration tests or debugging.
+/// @return Reference to the immutable bitset representation.
+const std::vector<bool> &LivenessInfo::SetView::bits() const
+{
+    assert(bits_ && "liveness set view is empty");
+    return *bits_;
+}
+
+LivenessInfo::SetView::SetView(const std::vector<bool> *bits) : bits_(bits) {}
+
+/// @brief Retrieve the live-in set for @p block.
+/// @param block Basic block whose entry set is requested.
+/// @return Lightweight view over the live-in values.
+LivenessInfo::SetView LivenessInfo::liveIn(const core::BasicBlock &block) const
+{
+    return liveIn(&block);
+}
+
+/// @brief Retrieve the live-in set for @p block.
+/// @param block Basic block pointer whose entry set is requested.
+/// @return Lightweight view over the live-in values.
+LivenessInfo::SetView LivenessInfo::liveIn(const core::BasicBlock *block) const
+{
+    if (!block)
+        return SetView();
+    auto it = liveInBits_.find(block);
+    if (it == liveInBits_.end())
+        return SetView();
+    return SetView(&it->second);
+}
+
+/// @brief Retrieve the live-out set for @p block.
+/// @param block Basic block whose exit set is requested.
+/// @return Lightweight view over the live-out values.
+LivenessInfo::SetView LivenessInfo::liveOut(const core::BasicBlock &block) const
+{
+    return liveOut(&block);
+}
+
+/// @brief Retrieve the live-out set for @p block pointer.
+/// @param block Basic block pointer whose exit set is requested.
+/// @return Lightweight view over the live-out values.
+LivenessInfo::SetView LivenessInfo::liveOut(const core::BasicBlock *block) const
+{
+    if (!block)
+        return SetView();
+    auto it = liveOutBits_.find(block);
+    if (it == liveOutBits_.end())
+        return SetView();
+    return SetView(&it->second);
+}
+
+/// @brief Number of dense SSA value slots tracked by this liveness summary.
+/// @return Count of bits allocated per block.
+std::size_t LivenessInfo::valueCount() const
+{
+    return valueCount_;
+}
+
 namespace
 {
 struct BlockInfo
