@@ -82,8 +82,10 @@ int main()
         rt_string joined = rt_concat(left_ref, right_ref);
         auto *left_impl = (rt_string_impl *)left_owned;
         auto *right_impl = (rt_string_impl *)right_owned;
-        assert(left_impl->refcnt == 1);
-        assert(right_impl->refcnt == 1);
+        assert(left_impl->heap == nullptr);
+        assert(right_impl->heap == nullptr);
+        assert(left_impl->literal_refs == 1);
+        assert(right_impl->literal_refs == 1);
         rt_string_unref(joined);
         rt_string_unref(left_owned);
         rt_string_unref(right_owned);
@@ -95,7 +97,8 @@ int main()
         rt_string second = rt_string_ref(base);
         rt_string doubled = rt_concat(first, second);
         auto *base_impl = (rt_string_impl *)base;
-        assert(base_impl->refcnt == 1);
+        assert(base_impl->heap == nullptr);
+        assert(base_impl->literal_refs == 1);
         rt_string_unref(doubled);
         rt_string_unref(base);
     }

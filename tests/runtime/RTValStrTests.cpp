@@ -17,9 +17,9 @@ int main()
     assert(rt_val(rt_const_cstr("")) == 0.0);
 
     rt_string s42 = rt_str(42.0);
-    assert(std::string(s42->data, (size_t)s42->size) == "42");
+    assert(std::string(s42->data, rt_heap_len(s42->data)) == "42");
     rt_string sn = rt_str(-3.5);
-    assert(std::string(sn->data, (size_t)sn->size) == "-3.5");
+    assert(std::string(sn->data, rt_heap_len(sn->data)) == "-3.5");
 
     double vals[] = {0.0, 1.25, -2.5, 123.456};
     for (double v : vals)
@@ -34,6 +34,6 @@ int main()
     char tmp[64];
     int len = std::snprintf(tmp, sizeof(tmp), "%g", static_cast<double>(big));
     rt_string sbig = rt_str(static_cast<double>(big));
-    assert(std::string(sbig->data, (size_t)sbig->size) == std::string(tmp, (size_t)len));
+    assert(std::string(sbig->data, rt_heap_len(sbig->data)) == std::string(tmp, (size_t)len));
     return 0;
 }

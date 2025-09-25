@@ -5,6 +5,8 @@
 // Links: docs/codemap.md
 
 #include "rt_internal.h"
+
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -53,8 +55,21 @@ void rt_trap(const char *msg)
  */
 void rt_print_str(rt_string s)
 {
-    if (s && s->data)
-        fwrite(s->data, 1, (size_t)s->size, stdout);
+    if (!s || !s->data)
+        return;
+    size_t len = 0;
+    if (s->heap)
+    {
+        assert(s->heap->kind == RT_HEAP_STRING);
+        len = rt_heap_len(s->data);
+    }
+    else
+    {
+        len = s->literal_len;
+    }
+    if (len == 0)
+        return;
+    fwrite(s->data, 1, len, stdout);
 }
 
 /**
@@ -119,12 +134,21 @@ rt_string rt_input_line(void)
     }
     buf[len] = '\0';
     rt_string s = (rt_string)rt_alloc(sizeof(*s));
-    s->refcnt = 1;
-    s->size = (int64_t)len;
-    s->capacity = s->size;
-    char *data = (char *)rt_alloc(len + 1);
-    memcpy(data, buf, len + 1);
-    s->data = data;
+    char *payload = (char *)rt_heap_alloc(RT_HEAP_STRING, RT_ELEM_NONE, 1, len, len + 1);
+    if (!payload)
+    {
+        free(buf);
+        rt_trap("out of memory");
+        return NULL;
+    }
+    memcpy(payload, buf, len + 1);
+    s->data = payload;
+    rt_heap_hdr_t *hdr = rt_heap_hdr(payload);
+    assert(hdr);
+    assert(hdr->kind == RT_HEAP_STRING);
+    s->heap = hdr;
+    s->literal_len = 0;
+    s->literal_refs = 0;
     free(buf);
     return s;
 }

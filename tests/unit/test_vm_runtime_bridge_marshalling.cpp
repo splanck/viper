@@ -70,7 +70,7 @@ int main()
     Slot strNumberResult = callBridge("rt_int_to_str", {numberArg}, Type::Kind::Str, {Type::Kind::I64});
     assert(strNumberResult.str != nullptr);
     rt_string numberStr = strNumberResult.str;
-    std::string numberText(numberStr->data, static_cast<size_t>(numberStr->size));
+    std::string numberText(numberStr->data, rt_heap_len(numberStr->data));
     assert(numberText == "12345");
     rt_string_unref(numberStr);
 
