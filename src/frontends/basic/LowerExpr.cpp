@@ -9,6 +9,7 @@
 // Requires the consolidated Lowerer interface for expression lowering helpers.
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/BuiltinRegistry.hpp"
+#include "frontends/basic/TypeSuffix.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -366,40 +367,109 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
     return {emitBoolConst(false), ilBoolTy()};
 }
 
-/// @brief Lower integer division and modulo with divide-by-zero trapping.
+/// @brief Lower integer division and modulo with width-aware narrowing.
 /// @param b Binary expression describing the operation.
 /// @return Resulting integer value alongside its IL type.
 /// @details
-/// - Control flow: Introduces explicit trap and success blocks, branching on
-///   a zero-divisor check before emitting the selected arithmetic instruction.
-/// - Emitted IL: Generates an `icmp eq` against zero, a `cbr` that targets the
-///   trap and ok blocks, a call to @ref emitTrap, and finally either
-///   `sdiv.chk0` or `srem.chk0`.
-/// - Side effects: Updates @ref cur while creating additional blocks and
-///   records @ref curLoc for diagnostic accuracy.
+/// - Control flow: Runs linearly in the current block, relying on the
+///   checked `sdiv`/`srem` opcodes for divide-by-zero and overflow traps.
+/// - Emitted IL: Classifies the operand ranks using AST hints and narrows the
+///   values to either `i16` or `i32` with `cast.si_narrow.chk` before issuing
+///   the selected arithmetic instruction.
+/// - Side effects: Updates @ref curLoc for each emitted narrowing so traps are
+///   attributed to the original expression location.
 Lowerer::RVal Lowerer::lowerDivOrMod(const BinaryExpr &b)
 {
     RVal lhs = lowerExpr(*b.lhs);
     RVal rhs = lowerExpr(*b.rhs);
-    curLoc = b.loc;
-    Value cond = emitBinary(Opcode::ICmpEq, ilBoolTy(), rhs.value, Value::constInt(0));
-    ProcedureContext &ctx = context();
-    Function *func = ctx.function();
-    assert(func && "lowerDivOrMod requires an active function");
-    BlockNamer *blockNamer = ctx.blockNamer();
-    std::string trapLbl = blockNamer ? blockNamer->generic("div0") : mangler.block("div0");
-    std::string okLbl = blockNamer ? blockNamer->generic("divok") : mangler.block("divok");
-    BasicBlock *trapBB = &builder->addBlock(*func, trapLbl);
-    BasicBlock *okBB = &builder->addBlock(*func, okLbl);
-    emitCBr(cond, trapBB, okBB);
-    ctx.setCurrent(trapBB);
-    curLoc = b.loc;
-    emitTrap();
-    ctx.setCurrent(okBB);
-    curLoc = b.loc;
+
+    std::function<std::optional<Type::Kind>(const Expr &, const RVal &)> classifyIntegerRank;
+    classifyIntegerRank = [&](const Expr &expr, const RVal &val) -> std::optional<Type::Kind> {
+        using Kind = Type::Kind;
+        switch (val.type.kind)
+        {
+            case Kind::I16:
+                return Kind::I16;
+            case Kind::I32:
+                return Kind::I32;
+            case Kind::F64:
+            case Kind::Str:
+            case Kind::Ptr:
+            case Kind::I1:
+            case Kind::Void:
+                return std::nullopt;
+            case Kind::I64:
+                break;
+        }
+
+        if (const auto *intLit = dynamic_cast<const IntExpr *>(&expr))
+        {
+            if (intLit->value >= std::numeric_limits<int16_t>::min() &&
+                intLit->value <= std::numeric_limits<int16_t>::max())
+                return Kind::I16;
+            if (intLit->value >= std::numeric_limits<int32_t>::min() &&
+                intLit->value <= std::numeric_limits<int32_t>::max())
+                return Kind::I32;
+            return std::nullopt;
+        }
+        if (const auto *var = dynamic_cast<const VarExpr *>(&expr))
+        {
+            if (const auto *info = findSymbol(var->name))
+            {
+                if (info->hasType)
+                {
+                    if (info->type == AstType::F64)
+                        return std::nullopt;
+                }
+            }
+            AstType astTy = inferAstTypeFromName(var->name);
+            if (astTy == AstType::F64)
+                return std::nullopt;
+            return Kind::I16;
+        }
+        if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expr))
+        {
+            if (unary->expr)
+                return classifyIntegerRank(*unary->expr, val);
+        }
+        return std::nullopt;
+    };
+
+    auto narrowTo = [&](const Expr &expr, RVal v, Type target) {
+        if (v.type.kind == target.kind)
+            return v;
+        v = coerceToI64(std::move(v), expr.loc);
+        curLoc = expr.loc;
+        v.value = emitUnary(Opcode::CastSiNarrowChk, target, v.value);
+        v.type = target;
+        return v;
+    };
+
+    std::optional<Type::Kind> lhsRank = classifyIntegerRank(*b.lhs, lhs);
+    std::optional<Type::Kind> rhsRank = classifyIntegerRank(*b.rhs, rhs);
+
     Opcode op = (b.op == BinaryExpr::Op::IDiv) ? Opcode::SDivChk0 : Opcode::SRemChk0;
-    Value res = emitBinary(op, Type(Type::Kind::I64), lhs.value, rhs.value);
-    return {res, Type(Type::Kind::I64)};
+    Type resultTy(Type::Kind::I64);
+
+    if (lhsRank && rhsRank)
+    {
+        Type::Kind promoted = (*lhsRank == Type::Kind::I32 || *rhsRank == Type::Kind::I32)
+                                  ? Type::Kind::I32
+                                  : Type::Kind::I16;
+        resultTy = Type(promoted);
+        lhs = narrowTo(*b.lhs, std::move(lhs), resultTy);
+        rhs = narrowTo(*b.rhs, std::move(rhs), resultTy);
+    }
+    else
+    {
+        lhs = coerceToI64(std::move(lhs), b.loc);
+        rhs = coerceToI64(std::move(rhs), b.loc);
+        resultTy = Type(Type::Kind::I64);
+    }
+
+    curLoc = b.loc;
+    Value res = emitBinary(op, resultTy, lhs.value, rhs.value);
+    return {res, resultTy};
 }
 
 /// @brief Lower string binary operations, mapping to runtime helpers.
