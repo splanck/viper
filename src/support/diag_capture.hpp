@@ -39,6 +39,10 @@ Expected<void> capture_to_expected_impl(bool ok, DiagCapture &capture);
 /// @tparam F Callable type invoked with an std::ostream& to perform the legacy work.
 /// @param legacyCall Callable that returns true on success and writes diagnostics on failure.
 /// @return Empty Expected on success; diagnostic payload converted from captured text on failure.
+///
+/// This function must remain inline because it is a template instantiated with
+/// arbitrary functors across translation units; moving it to a source file
+/// would break those instantiations.
 template <class F> inline Expected<void> capture_to_expected(F &&legacyCall)
 {
     DiagCapture capture;
