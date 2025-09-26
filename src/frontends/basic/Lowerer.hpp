@@ -491,6 +491,9 @@ class Lowerer
     /// @brief Emit unary instruction of @p op on @p val producing @p ty.
     Value emitUnary(Opcode op, Type ty, Value val);
 
+    /// @brief Emit checked integer negation for @p val producing type @p ty.
+    Value emitCheckedNeg(Type ty, Value val);
+
     void emitBr(BasicBlock *target);
 
     void emitCBr(Value cond, BasicBlock *t, BasicBlock *f);
