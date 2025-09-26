@@ -20,6 +20,8 @@ Type inferAstTypeFromName(std::string_view name)
                 return Type::Str;
             case '#':
                 return Type::F64;
+            case '!':
+                return Type::F64;
             default:
                 break;
         }
