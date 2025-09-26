@@ -85,6 +85,10 @@ enum class VMDispatch : uint8_t
     Sitofp,
     Fptosi,
     CastFpToSiRteChk,
+    CastSiNarrowChk,
+    CastUiNarrowChk,
+    CastSiToFp,
+    CastUiToFp,
     TruncOrZext1,
     Trap
 };

@@ -6,6 +6,7 @@
 #include "vm/VM.hpp"
 
 #include <cassert>
+#include <cstdint>
 #include <limits>
 #include <string>
 #include <sys/wait.h>
@@ -69,6 +70,32 @@ void buildBinaryFunction(Module &module,
     ret.operands.push_back(Value::temp(*instr.result));
     bb.instructions.push_back(ret);
 }
+
+void buildUnaryFunction(Module &module,
+                        Opcode op,
+                        Type::Kind type,
+                        int64_t operand)
+{
+    il::build::IRBuilder builder(module);
+    auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
+    auto &bb = builder.addBlock(fn, "entry");
+    builder.setInsertPoint(bb);
+
+    Instr instr;
+    instr.result = builder.reserveTempId();
+    instr.op = op;
+    instr.type = Type(type);
+    instr.operands.push_back(Value::constInt(operand));
+    instr.loc = {1, 1, 1};
+    bb.instructions.push_back(instr);
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.loc = {1, 1, 1};
+    ret.operands.push_back(Value::temp(*instr.result));
+    bb.instructions.push_back(ret);
+}
 } // namespace
 
 int main()
@@ -106,6 +133,35 @@ int main()
         buildBinaryFunction(module, Opcode::SDivChk0, Type::Kind::I16, std::numeric_limits<int16_t>::min(), -1);
         const std::string out = captureTrap(module);
         assert(out.find("integer overflow in sdiv.chk0") != std::string::npos);
+    }
+
+    {
+        Module module;
+        buildBinaryFunction(module, Opcode::UDivChk0, Type::Kind::I64, -1, 2);
+        il::vm::VM vm(module);
+        assert(vm.run() == std::numeric_limits<int64_t>::max());
+    }
+
+    {
+        Module module;
+        buildBinaryFunction(module, Opcode::URemChk0, Type::Kind::I64, -1, 2);
+        il::vm::VM vm(module);
+        assert(vm.run() == 1);
+    }
+
+    {
+        Module module;
+        buildUnaryFunction(module, Opcode::CastSiNarrowChk, Type::Kind::I16, 12345);
+        il::vm::VM vm(module);
+        assert(vm.run() == 12345);
+    }
+
+    {
+        Module module;
+        buildUnaryFunction(module, Opcode::CastSiNarrowChk, Type::Kind::I16, std::numeric_limits<int32_t>::max());
+        const std::string out = captureTrap(module);
+        assert(out.find("InvalidCast") != std::string::npos);
+        assert(out.find("cast.si_narrow.chk") != std::string::npos);
     }
 
     return 0;
