@@ -21,6 +21,10 @@ Paths to notable documentation and tests.
 
   Renders BASIC ASTs into s-expression-style strings for debugging tools and golden tests. Nested `ExprPrinter` and `StmtPrinter` visitors walk every node type and stream formatted output through the shared `Printer` helper to keep formatting centralized. Formatting logic normalizes numeric output, resolves builtin names, and emits statement punctuation so the textual tree mirrors parser semantics. Dependencies include `frontends/basic/AstPrinter.hpp`, `frontends/basic/BuiltinRegistry.hpp`, and `<array>`/`<sstream>` for lookup tables and temporary buffers.
 
+- **src/frontends/basic/BasicCompiler.cpp**
+
+  Coordinates the front-end pipeline that turns a BASIC buffer into an IL module by chaining parsing, constant folding, semantic analysis, and lowering. It provisions a `DiagnosticEmitter` backed by the shared `SourceManager`, registers the source text, and ensures each phase stops on the first unrecoverable error before continuing. File identifiers are resolved for in-memory or on-disk inputs so diagnostics have stable provenance, and lowering honours bounds-check options before returning the finished module. Dependencies include `frontends/basic/BasicCompiler.hpp`, `frontends/basic/Parser.hpp`, `frontends/basic/ConstFolder.hpp`, `frontends/basic/SemanticAnalyzer.hpp`, `frontends/basic/Lowerer.hpp`, and `support::SourceManager`.
+
 - **src/frontends/basic/BuiltinRegistry.cpp**
 
   Implements the BASIC builtin registry that maps canonical names to semantic and lowering callbacks shared across the front end. It materializes a dense table aligned with the `BuiltinCallExpr::Builtin` enum and a lookup map so passes can discover handlers without ad-hoc string switches. Lookup helpers return analyzer visitors, lowering functions, and scan hooks, letting semantic analysis enforce arity while lowering reuses shared emitters. Dependencies include `frontends/basic/BuiltinRegistry.hpp`, `frontends/basic/Lowerer.hpp`, `frontends/basic/SemanticAnalyzer.hpp`, and the standard `<array>` and `<unordered_map>` containers.
@@ -52,6 +56,10 @@ Paths to notable documentation and tests.
 - **src/frontends/basic/LowerEmit.cpp**
 
   Hosts the lowering routines that translate BASIC programs and statements into IL instructions while preserving deterministic block layouts. The implementation walks parsed procedures, creates `main`, and seeds stack allocations before dispatching to statement-specific emitters such as `lowerIf` and `lowerFor`. It leans on helpers like `emitBoolFromBranches`, `emitAlloca`, and the `BlockNamer` embedded in `Lowerer` to guarantee stable SSA IDs and branch labels. Dependencies include `Lowerer.hpp`, `il::build::IRBuilder`, IL core block/function types, and runtime helper emitters declared in sibling headers.
+
+- **src/frontends/basic/LoweringPipeline.cpp**
+
+  Implements the helper visitors and utilities `Lowerer` uses to stage BASIC lowering in well-defined passes. The expression and statement collectors walk AST nodes to mark referenced symbols, arrays, and builtin usages while deferring to `Lowerer` for bookkeeping. Additional helpers translate BASIC scalar types to IL core kinds and ensure array metadata is recorded before emission so later passes see consistent slot information. Dependencies include `frontends/basic/LoweringPipeline.hpp`, `frontends/basic/Lowerer.hpp`, `frontends/basic/TypeSuffix.hpp`, `il/build/IRBuilder.hpp`, and IL core block/function definitions.
 
 - **src/frontends/basic/LowerEmit.hpp**
 
@@ -152,6 +160,10 @@ Paths to notable documentation and tests.
 - **src/frontends/basic/SemanticDiagnostics.cpp**
 
   Provides the implementation of the semantic diagnostics façade that wraps the BASIC `DiagnosticEmitter`. Member functions forward severities, codes, and source ranges to the emitter while helper utilities format the standardized messaging for non-boolean conditions. The class also surfaces error and warning counters so the analyzer can decide when to abort compilation. Dependencies consist of `frontends/basic/SemanticDiagnostics.hpp` along with `<string>` and `<utility>` for assembling diagnostic text.
+
+- **src/frontends/basic/TypeSuffix.cpp**
+
+  Offers the tiny helper that infers a BASIC identifier’s type from its trailing sigil so semantic analysis and lowering agree on default numeric kinds. The routine checks the final character, mapping `$` to strings, `#` to double-precision values, and falling back to 64-bit integers when no suffix is present. Keeping the logic centralized avoids diverging suffix rules across the lexer, analyzer, and lowering pipeline. Dependencies are limited to `frontends/basic/TypeSuffix.hpp` and the standard `<string_view>` facilities it includes.
 
 - **src/frontends/basic/Token.cpp**
 
@@ -363,6 +375,22 @@ Paths to notable documentation and tests.
 
   Defines the `TypeInference` helper interface that the verifier uses to reason about IL operand types. It offers queries for value types and byte widths along with mutation hooks to record or drop temporaries as control flow progresses. Both streaming and `Expected`-returning verification APIs share the same backing state, giving callers flexibility without duplicating logic. Dependencies span IL core headers for types, values, and forward declarations together with `<unordered_map>`, `<unordered_set>`, `<ostream>`, and `<string>` from the standard library.
 
+- **src/il/verify/DiagSink.cpp**
+
+  Implements the `CollectingDiagSink` used by verifier components to accumulate diagnostics while walking a module. Each reported `Diag` is appended in arrival order so callers can replay or transform the messages after verification completes. The sink also exposes `clear` and read-only accessors, making it a reusable staging buffer for both Expected-based and streaming error paths. Dependencies include `il/verify/DiagSink.hpp` and the diagnostic primitives in `il::support`.
+
+- **src/il/verify/ExternVerifier.cpp**
+
+  Validates that all extern declarations in a module are unique and align with the runtime’s ABI signatures. The verifier interns each extern in a name-to-pointer map, reporting duplicates and augmenting messages when signatures disagree. When a declared extern maps to a known runtime helper it cross-checks parameter and return types so the VM bridge can safely invoke it later. Dependencies include `il/verify/ExternVerifier.hpp`, `il/core/Module.hpp`, `il/core/Extern.hpp`, and the runtime signature table in `il/runtime/RuntimeSignatures.hpp` with `<sstream>` for diagnostics.
+
+- **src/il/verify/FunctionVerifier.cpp**
+
+  Coordinates per-function verification by enforcing entry-block naming, unique labels, consistent signatures, and block parameter invariants before checking each instruction. Strategy objects dispatch control-flow opcodes to dedicated validators while the default strategy leverages `InstructionChecker` and `TypeInference` to ensure operand and result types match opcode contracts. The verifier builds lookup tables for externs, functions, and blocks so branch targets and call sites can be validated without repeated scans, and it emits detailed snippets when checks fail. Dependencies include `il/verify/FunctionVerifier.hpp`, `il/verify/ControlFlowChecker.hpp`, `il/verify/InstructionChecker.hpp`, `il/verify/TypeInference.hpp`, IL core headers (`Module`, `Function`, `BasicBlock`, `Instr`, `Type`, `Extern`), and `<unordered_map>`/`<unordered_set>` containers.
+
+- **src/il/verify/GlobalVerifier.cpp**
+
+  Ensures module-level globals have unique names while building a lookup table that later verification stages can query. The pass scans every `Global`, records duplicates as immediate errors, and retains pointers into the module so consumers avoid repeated linear searches. Because it owns only stable references the verifier introduces no additional lifetime constraints on the module. Dependencies include `il/verify/GlobalVerifier.hpp`, `il/core/Module.hpp`, and `il/core/Global.hpp`.
+
 - **src/il/verify/Verifier.cpp**
 
   Validates whole modules by checking extern/global uniqueness, building block maps, and dispatching per-instruction structural and typing checks. It orchestrates control-flow validation, opcode contract enforcement, and type inference while collecting both hard errors and advisory diagnostics. Runtime signatures from the bridge are cross-checked against declared externs, and helper functions iterate each block to ensure terminators and branch arguments are well-formed. The verifier depends on `Verifier.hpp`, IL core data structures, the runtime signature catalog, analysis helpers (`TypeInference`, `ControlFlowChecker`, `InstructionChecker`), and the diagnostics framework (`support/diag_expected`).
@@ -411,6 +439,35 @@ Paths to notable documentation and tests.
 - **src/support/source_location.cpp**
 
   Implements the helper that reports whether a `SourceLoc` points at a registered file. The method checks for a nonzero file identifier so diagnostics and tools can ignore default-constructed locations. Dependencies include only `support/source_location.hpp`, which defines the lightweight value type.
+
+## Runtime Library (C)
+- **src/runtime/rt_array.c**
+
+  Implements the BASIC runtime’s reference-counted int32 array helpers, including allocation, resizing, accessors, and bounds checks. Growth paths zero-fill new elements, handle copy-on-write when multiple references share the buffer, and trap on arithmetic overflow during reallocation to keep state consistent. Helper routines validate heap headers and cooperate with the shared runtime heap so arrays integrate cleanly with the VM’s garbage-aware helpers. Dependencies include `rt_array.h`, the heap primitives in `rt_heap.h`, and standard C headers for memory, assertions, and I/O.
+
+- **src/runtime/rt_heap.c**
+
+  Provides the core reference-counted heap allocator backing runtime strings and arrays. Allocation routines prepend a tagged header, zero-initialise payloads, and enforce overflow checks so helpers always observe valid metadata. Retain and release operations adjust reference counts with optional debug logging, freeing the block once the last reference is dropped while exposing utilities to query length, capacity, and raw payload pointers. Dependencies include `rt_heap.h` plus the standard C library for memory management, assertions, and debugging output.
+
+- **src/runtime/rt_io.c**
+
+  Houses the runtime’s I/O surface and trap plumbing, including weakly linked `vm_trap` forwarding and printing helpers for strings, integers, and floats. String printers cooperate with heap-managed payloads to honour literal versus heap-backed data, while `rt_input_line` reads stdin into freshly allocated runtime strings with exponential buffer growth. On fatal conditions the module reports a clear diagnostic before exiting so the VM observes consistent trap semantics. Dependencies include `rt_internal.h`, the heap utilities, and standard C headers for I/O, allocation, and assertions.
+
+- **src/runtime/rt_math.c**
+
+  Wraps libc math functions to expose the runtime ABI expected by lowered BASIC programs and the VM bridge. Each helper forwards directly to `<math.h>` while documenting IEEE-754 edge cases, and integer absolute value triggers a trap on overflow to mirror IL semantics. By funnelling all math intrinsics through this shim the compiler can rely on deterministic spellings regardless of host platform quirks. Dependencies include `rt_math.h`, the trap declarations in `rt.hpp`, and standard math and limits headers.
+
+- **src/runtime/rt_memory.c**
+
+  Offers guarded allocation helpers used by runtime string and IO routines, translating IL’s signed size requests into safe `calloc` calls. Negative or excessively large sizes trigger runtime traps, while zero-byte requests allocate a single byte so callers never receive `nullptr`. Centralising these checks keeps front-end generated helpers simple while guaranteeing consistent trap messages. Dependencies include `rt_internal.h` for trap wiring and the C standard library’s allocation APIs.
+
+- **src/runtime/rt_random.c**
+
+  Implements a deterministic 64-bit linear congruential generator that backs BASIC’s `RND` intrinsic. Seed helpers accept signed or unsigned integers to initialise the shared global state, and `rt_rnd` scales the next state into a double within [0, 1) so IL code can rely on floating-point results. Because the generator uses a fixed multiplier and increment the sequence is reproducible across runs unless reseeded. Dependencies are limited to `rt_random.h` and the C runtime headers it includes.
+
+- **src/runtime/rt_string.c**
+
+  Provides the runtime’s string representation and manipulation primitives, including reference counting, concatenation, substring extraction, trimming, case conversion, and numeric parsing. Functions distinguish between immortal literals, heap-backed data, and temporary buffers so reference management remains correct even when sharing payloads. Many helpers allocate new strings via the shared heap and route fatal conditions through `rt_trap`, ensuring VM-visible behaviour stays consistent with the IL specification. Dependencies include `rt_string.h`, `rt_internal.h`, the heap allocator, and standard C headers for character classification, memory, and numeric conversion.
 
 ## VM Runtime
 - **src/vm/control_flow.cpp**
