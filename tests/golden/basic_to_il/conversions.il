@@ -4,9 +4,8 @@ extern @rt_print_i64(i64) -> void
 extern @rt_print_f64(f64) -> void
 extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
-extern @rt_to_int(str) -> i64
-extern @rt_int_to_str(i64) -> str
-extern @rt_f64_to_str(f64) -> str
+extern @rt_val(str) -> f64
+extern @rt_str(f64) -> str
 global const str @.L0 = " "
 global const str @.L1 = "
 "
@@ -33,43 +32,45 @@ L30:
   .loc 1 3 15
   %t5 = load i64, %t4
   .loc 1 3 10
-  %t6 = call @rt_int_to_str(%t5)
-  .loc 1 3 4
-  call @rt_print_str(%t6)
-  .loc 1 3 4
-  %t7 = const_str @.L0
+  %t6 = sitofp %t5
+  .loc 1 3 10
+  %t7 = call @rt_str(%t6)
   .loc 1 3 4
   call @rt_print_str(%t7)
+  .loc 1 3 4
+  %t8 = const_str @.L0
+  .loc 1 3 4
+  call @rt_print_str(%t8)
   .loc 1 3 24
-  %t8 = load f64, %t3
+  %t9 = load f64, %t3
   .loc 1 3 19
-  %t9 = call @rt_f64_to_str(%t8)
-  .loc 1 3 4
-  call @rt_print_str(%t9)
-  .loc 1 3 4
-  %t10 = const_str @.L1
+  %t10 = call @rt_str(%t9)
   .loc 1 3 4
   call @rt_print_str(%t10)
+  .loc 1 3 4
+  %t11 = const_str @.L1
+  .loc 1 3 4
+  call @rt_print_str(%t11)
   .loc 1 3 4
   br L40
 L40:
   .loc 1 4 13
-  %t11 = const_str @.L2
+  %t12 = const_str @.L2
   .loc 1 4 4
-  store str, %t2, %t11
+  store str, %t2, %t12
   .loc 1 4 4
   br L50
 L50:
   .loc 1 5 14
-  %t12 = load str, %t2
+  %t13 = load str, %t2
   .loc 1 5 10
-  %t13 = call @rt_to_int(%t12)
+  %t14 = call @rt_val(%t13)
   .loc 1 5 4
-  call @rt_print_i64(%t13)
+  call @rt_print_f64(%t14)
   .loc 1 5 4
-  %t14 = const_str @.L1
+  %t15 = const_str @.L1
   .loc 1 5 4
-  call @rt_print_str(%t14)
+  call @rt_print_str(%t15)
   .loc 1 5 4
   br L60
 L60:
@@ -84,25 +85,25 @@ L70:
   br L80
 L80:
   .loc 1 8 14
-  %t15 = load f64, %t1
+  %t16 = load f64, %t1
   .loc 1 8 10
-  %t16 = cast.fp_to_si.rte.chk %t15
+  %t17 = cast.fp_to_si.rte.chk %t16
   .loc 1 8 4
-  call @rt_print_i64(%t16)
+  call @rt_print_i64(%t17)
   .loc 1 8 4
-  %t17 = const_str @.L0
+  %t18 = const_str @.L0
   .loc 1 8 4
-  call @rt_print_str(%t17)
+  call @rt_print_str(%t18)
   .loc 1 8 23
-  %t18 = load f64, %t0
+  %t19 = load f64, %t0
   .loc 1 8 19
-  %t19 = cast.fp_to_si.rte.chk %t18
+  %t20 = cast.fp_to_si.rte.chk %t19
   .loc 1 8 4
-  call @rt_print_i64(%t19)
+  call @rt_print_i64(%t20)
   .loc 1 8 4
-  %t20 = const_str @.L1
+  %t21 = const_str @.L1
   .loc 1 8 4
-  call @rt_print_str(%t20)
+  call @rt_print_str(%t21)
   .loc 1 8 4
   br L90
 L90:
