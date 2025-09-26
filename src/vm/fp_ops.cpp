@@ -279,14 +279,20 @@ VM::ExecResult OpHandlers::handleCastFpToSiRteChk(VM &vm,
     const double operand = value.f64;
     if (!std::isfinite(operand))
     {
-        RuntimeBridge::trap("invalid fp operand in cast.fp_to_si.rte.chk", in.loc, fr.func->name,
+        RuntimeBridge::trap(TrapKind::InvalidCast,
+                            "invalid fp operand in cast.fp_to_si.rte.chk",
+                            in.loc,
+                            fr.func->name,
                             bb ? bb->label : "");
     }
 
     const double rounded = std::nearbyint(operand);
     if (!std::isfinite(rounded))
     {
-        RuntimeBridge::trap("fp overflow in cast.fp_to_si.rte.chk", in.loc, fr.func->name,
+        RuntimeBridge::trap(TrapKind::Overflow,
+                            "fp overflow in cast.fp_to_si.rte.chk",
+                            in.loc,
+                            fr.func->name,
                             bb ? bb->label : "");
     }
 
@@ -294,7 +300,10 @@ VM::ExecResult OpHandlers::handleCastFpToSiRteChk(VM &vm,
     constexpr double kMax = static_cast<double>(std::numeric_limits<int64_t>::max());
     if (rounded < kMin || rounded > kMax)
     {
-        RuntimeBridge::trap("fp overflow in cast.fp_to_si.rte.chk", in.loc, fr.func->name,
+        RuntimeBridge::trap(TrapKind::Overflow,
+                            "fp overflow in cast.fp_to_si.rte.chk",
+                            in.loc,
+                            fr.func->name,
                             bb ? bb->label : "");
     }
 

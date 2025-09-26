@@ -194,7 +194,7 @@ VM::ExecResult OpHandlers::handleTrap(VM &vm,
     (void)vm;
     (void)blocks;
     (void)ip;
-    RuntimeBridge::trap("trap", in.loc, fr.func->name, bb->label);
+    RuntimeBridge::trap(TrapKind::DomainError, "trap", in.loc, fr.func->name, bb->label);
     VM::ExecResult result{};
     result.returned = true;
     return result;

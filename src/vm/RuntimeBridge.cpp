@@ -18,6 +18,7 @@ namespace
 {
 using il::vm::RuntimeCallContext;
 using il::vm::Slot;
+using il::vm::TrapKind;
 using il::core::Type;
 
 /// @brief Thread-local pointer to the runtime call context for active trap reporting.
@@ -225,9 +226,9 @@ extern "C" void vm_trap(const char *msg)
     const auto *ctx = il::vm::RuntimeBridge::activeContext();
     const char *trapMsg = msg ? msg : "trap";
     if (ctx)
-        il::vm::RuntimeBridge::trap(trapMsg, ctx->loc, ctx->function, ctx->block);
+        il::vm::RuntimeBridge::trap(TrapKind::DomainError, trapMsg, ctx->loc, ctx->function, ctx->block);
     else
-        il::vm::RuntimeBridge::trap(trapMsg, {}, "", "");
+        il::vm::RuntimeBridge::trap(TrapKind::DomainError, trapMsg, {}, "", "");
 }
 
 namespace il::vm
@@ -259,7 +260,7 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
             os << name << ": expected " << count << " argument(s), got " << args.size();
             if (args.size() > count)
                 os << " (excess runtime operands)";
-            RuntimeBridge::trap(os.str(), loc, fn, block);
+            RuntimeBridge::trap(TrapKind::DomainError, os.str(), loc, fn, block);
             return false;
         }
         return true;
@@ -269,7 +270,7 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
     {
         std::ostringstream os;
         os << "attempted to call unknown runtime helper '" << name << '\'';
-        RuntimeBridge::trap(os.str(), loc, fn, block);
+        RuntimeBridge::trap(TrapKind::DomainError, os.str(), loc, fn, block);
         return res;
     }
     if (checkArgs(desc->signature.paramTypes.size()))
@@ -297,24 +298,38 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
 /// @details Invoked by `vm_trap` when a runtime builtin signals a fatal
 /// condition. Formats the message with optional function, block, and source
 /// location before forwarding it to `rt_abort`.
+/// @param kind  Classification of the trap condition.
 /// @param msg   Description of the trap condition.
 /// @param loc   Source location of the trapping instruction, if available.
 /// @param fn    Fully qualified function name containing the call.
 /// @param block Label of the basic block with the trapping call.
-void RuntimeBridge::trap(const std::string &msg,
+void RuntimeBridge::trap(TrapKind kind,
+                         const std::string &msg,
                          const SourceLoc &loc,
                          const std::string &fn,
                          const std::string &block)
 {
-    std::ostringstream os;
-    os << msg;
-    if (!fn.empty())
+    std::string diagnostic;
+    if (auto *vm = VM::activeInstance())
     {
-        os << ' ' << fn << ": " << block;
-        if (loc.isValid())
-            os << " (" << loc.file_id << ':' << loc.line << ':' << loc.column << ')';
+        diagnostic = vm->formatTrapDiagnostic(kind, msg, loc, fn, block);
     }
-    rt_abort(os.str().c_str());
+    else
+    {
+        std::ostringstream os;
+        os << toString(kind);
+        if (!fn.empty())
+        {
+            os << " @ " << fn;
+            if (!block.empty())
+                os << ": " << block;
+            if (loc.isValid())
+                os << " (" << loc.file_id << ':' << loc.line << ':' << loc.column << ')';
+        }
+        os << ": " << msg;
+        diagnostic = os.str();
+    }
+    rt_abort(diagnostic.c_str());
 }
 
 const RuntimeCallContext *RuntimeBridge::activeContext()
