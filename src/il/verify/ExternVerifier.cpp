@@ -43,6 +43,11 @@ bool signaturesMatch(const Extern &decl, const il::runtime::RuntimeSignature &ru
 
 } // namespace
 
+[[nodiscard]] const ExternVerifier::ExternMap &ExternVerifier::externs() const
+{
+    return externs_;
+}
+
 Expected<void> ExternVerifier::run(const Module &module, DiagSink &)
 {
     externs_.clear();
