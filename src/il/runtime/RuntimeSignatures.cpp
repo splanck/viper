@@ -444,12 +444,12 @@ std::vector<RuntimeDescriptor> buildRegistry()
         Kind::F64,
         {Kind::Str},
         &DirectHandler<&rt_val, double, rt_string>::invoke,
-        manual());
+        feature(RuntimeFeature::Val));
     add("rt_str",
         Kind::Str,
         {Kind::F64},
         &DirectHandler<&rt_str, rt_string, double>::invoke,
-        manual());
+        feature(RuntimeFeature::Str));
     add("rt_sqrt",
         Kind::F64,
         {Kind::F64},

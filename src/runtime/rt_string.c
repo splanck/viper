@@ -6,6 +6,7 @@
 
 #include "rt_string.h"
 #include "rt_internal.h"
+#include "rt_numeric.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -746,34 +747,9 @@ rt_string rt_int_to_str(int64_t v)
  */
 rt_string rt_f64_to_str(double v)
 {
-    char buf[32];
-    int n = snprintf(buf, sizeof(buf), "%g", v);
-    if (n < 0)
-        rt_trap("rt_f64_to_str: format");
-
-    const char *src = buf;
-    char *tmp = NULL;
-    size_t len = (size_t)n;
-    if (n >= (int)sizeof(buf))
-    {
-        tmp = (char *)malloc((size_t)n + 1);
-        if (!tmp)
-            rt_trap("rt_f64_to_str: alloc");
-        int n2 = snprintf(tmp, (size_t)n + 1, "%g", v);
-        if (n2 < 0 || n2 > n)
-        {
-            free(tmp);
-            rt_trap("rt_f64_to_str: format");
-        }
-        src = tmp;
-        len = (size_t)n2;
-    }
-
-    rt_string s = rt_string_from_bytes(src, len);
-
-    if (tmp)
-        free(tmp);
-    return s;
+    char buf[64];
+    rt_str_from_double(v, buf, sizeof(buf));
+    return rt_string_from_bytes(buf, strlen(buf));
 }
 
 /**
@@ -790,11 +766,11 @@ double rt_val(rt_string s)
 {
     if (!s)
         rt_trap("rt_val: null");
-    char *endp = NULL;
-    double v = strtod(s->data, &endp);
-    if (endp == s->data)
-        return 0.0;
-    return v;
+    bool ok = true;
+    double value = rt_val_to_double(s->data, &ok);
+    if (!ok)
+        rt_trap("rt_val: overflow");
+    return value;
 }
 
 /**

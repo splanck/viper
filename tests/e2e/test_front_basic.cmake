@@ -230,18 +230,31 @@ if(NOT RCONV STREQUAL "42\n2\n-2\n")
   message(FATAL_ERROR "unexpected conversions output: ${RCONV}")
 endif()
 
-# negative VAL("abc") runtime trap
-set(tmp_val_fail "${CMAKE_BINARY_DIR}/val_fail.bas")
-file(WRITE ${tmp_val_fail} "10 PRINT VAL(\"abc\")\n")
-execute_process(COMMAND ${ILC} front basic -run ${tmp_val_fail}
-                RESULT_VARIABLE rval ERROR_FILE val_err.txt)
-if(rval EQUAL 0)
-  message(FATAL_ERROR "expected VAL failure to trap")
+# VAL("abc") returns 0 without trapping
+set(tmp_val_zero "${CMAKE_BINARY_DIR}/val_zero.bas")
+file(WRITE ${tmp_val_zero} "10 PRINT VAL(\"abc\")\n")
+execute_process(COMMAND ${ILC} front basic -run ${tmp_val_zero}
+                OUTPUT_FILE val_zero.txt RESULT_VARIABLE rval0)
+if(NOT rval0 EQUAL 0)
+  message(FATAL_ERROR "VAL(\"abc\") execution failed: ${rval0}")
+endif()
+file(READ val_zero.txt VZERO)
+if(NOT VZERO STREQUAL "0\n")
+  message(FATAL_ERROR "unexpected VAL(\"abc\") output: ${VZERO}")
+endif()
+
+# overflow VAL traps with runtime message
+set(tmp_val_over "${CMAKE_BINARY_DIR}/val_overflow.bas")
+file(WRITE ${tmp_val_over} "10 PRINT VAL(\"1E400\")\n")
+execute_process(COMMAND ${ILC} front basic -run ${tmp_val_over}
+                RESULT_VARIABLE rval_over ERROR_FILE val_err.txt)
+if(rval_over EQUAL 0)
+  message(FATAL_ERROR "expected VAL overflow to trap")
 endif()
 file(READ val_err.txt VERR)
-string(REGEX MATCH "rt_to_int: invalid" _verr1 "${VERR}")
+string(REGEX MATCH "rt_val: overflow" _verr1 "${VERR}")
 if(NOT _verr1)
-  message(FATAL_ERROR "missing rt_to_int message: ${VERR}")
+  message(FATAL_ERROR "missing rt_val overflow message: ${VERR}")
 endif()
 string(REGEX MATCH "\\([0-9]+:[0-9]+:[0-9]+\\)" _verr2 "${VERR}")
 if(NOT _verr2)

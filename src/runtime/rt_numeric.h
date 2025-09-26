@@ -7,6 +7,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -50,6 +51,36 @@ extern "C" {
     /// @param ndigits Number of digits after the decimal point (negative for tens, hundreds, ...).
     /// @return Rounded DOUBLE value.
     double rt_round_even(double x, int ndigits);
+
+    /// @brief Parse C string @p s using BASIC VAL semantics.
+    /// @param s Null-terminated input string; must not be NULL.
+    /// @param ok Output flag cleared on overflow or invalid buffer pointer.
+    /// @return Parsed DOUBLE value or 0 when no digits were consumed.
+    double rt_val_to_double(const char *s, bool *ok);
+
+    /// @brief Format DOUBLE @p x into @p out using round-trip precision.
+    /// @param x Value to format.
+    /// @param out Destination buffer; must not be NULL.
+    /// @param cap Capacity of @p out in bytes; must be non-zero.
+    void rt_str_from_double(double x, char *out, size_t cap);
+
+    /// @brief Format SINGLE @p x into @p out using round-trip precision.
+    /// @param x Value to format.
+    /// @param out Destination buffer; must not be NULL.
+    /// @param cap Capacity of @p out in bytes; must be non-zero.
+    void rt_str_from_float(float x, char *out, size_t cap);
+
+    /// @brief Format LONG @p x into @p out as minimal decimal digits.
+    /// @param x Value to format.
+    /// @param out Destination buffer; must not be NULL.
+    /// @param cap Capacity of @p out in bytes; must be non-zero.
+    void rt_str_from_i32(int32_t x, char *out, size_t cap);
+
+    /// @brief Format INTEGER @p x into @p out as minimal decimal digits.
+    /// @param x Value to format.
+    /// @param out Destination buffer; must not be NULL.
+    /// @param cap Capacity of @p out in bytes; must be non-zero.
+    void rt_str_from_i16(int16_t x, char *out, size_t cap);
 
 #ifdef __cplusplus
 }
