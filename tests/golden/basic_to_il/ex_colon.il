@@ -24,7 +24,7 @@ L10:
   .loc 1 1 34
   %t3 = load i64, %t0
   .loc 1 1 36
-  %t4 = add %t3, 1
+  %t4 = iadd.ovf %t3, 1
   .loc 1 1 26
   store i64, %t0, %t4
   .loc 1 1 48

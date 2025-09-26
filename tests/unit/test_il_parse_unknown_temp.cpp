@@ -15,7 +15,7 @@ int main()
     const char *src = R"(il 0.1.2
 func @main() -> i64 {
 entry:
-  %t0 = add %undef, 1
+  %t0 = iadd.ovf %undef, 1
   ret 0
 }
 )";

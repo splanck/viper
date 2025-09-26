@@ -9,10 +9,12 @@
 #include "frontends/basic/ConstFolder.hpp"
 #include "frontends/basic/ConstFoldHelpers.hpp"
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <optional>
 
 namespace il::frontends::basic
@@ -467,8 +469,27 @@ private:
                 if (expr.args.size() == 1)
                 {
                     auto n = detail::asNumeric(*expr.args[0]);
-                    if (n && n->isFloat)
-                        replaceWithInt(static_cast<long long>(n->f), expr.loc);
+                    if (n)
+                    {
+                        if (n->isFloat)
+                        {
+                            double operand = n->f;
+                            if (!std::isfinite(operand))
+                                break;
+                            double rounded = std::nearbyint(operand);
+                            if (!std::isfinite(rounded))
+                                break;
+                            constexpr double kMin = static_cast<double>(std::numeric_limits<long long>::min());
+                            constexpr double kMax = static_cast<double>(std::numeric_limits<long long>::max());
+                            if (rounded < kMin || rounded > kMax)
+                                break;
+                            replaceWithInt(static_cast<long long>(rounded), expr.loc);
+                        }
+                        else
+                        {
+                            replaceWithInt(n->i, expr.loc);
+                        }
+                    }
                 }
                 break;
             }

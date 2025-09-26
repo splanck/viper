@@ -191,7 +191,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr)
     Value ge = emitBinary(Opcode::SCmpGE, ilBoolTy(), index, len);
     Value neg64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), neg);
     Value ge64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), ge);
-    Value failSum = emitBinary(Opcode::Add, Type(Type::Kind::I64), neg64, ge64);
+    Value failSum = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), neg64, ge64);
     Value cond = emitBinary(Opcode::SCmpGT, ilBoolTy(), failSum, Value::constInt(0));
 
     Function *func = ctx.function();
@@ -287,7 +287,7 @@ void Lowerer::emitStore(Type ty, Value addr, Value val)
 void Lowerer::emitForStep(Value slot, Value step)
 {
     Value load = emitLoad(Type(Type::Kind::I64), slot);
-    Value add = emitBinary(Opcode::Add, Type(Type::Kind::I64), load, step);
+    Value add = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), load, step);
     emitStore(Type(Type::Kind::I64), slot, add);
 }
 

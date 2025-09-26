@@ -6,7 +6,7 @@ entry:
   br L1
 L1:
   %t1 = load i64 %t0
-  %t2 = add %t1, 1
+  %t2 = iadd.ovf %t1, 1
   store i64 %t0, %t2
   %t3 = scmp_lt %t2, 10
   cbr %t3, L1, Exit

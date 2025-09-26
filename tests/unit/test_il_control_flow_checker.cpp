@@ -46,7 +46,7 @@ int main()
     BasicBlock bbNoTerm;
     bbNoTerm.label = "body";
     Instr notTerm;
-    notTerm.op = Opcode::Add;
+    notTerm.op = Opcode::IAddOvf;
     bbNoTerm.instructions.push_back(notTerm);
     std::ostringstream errTerm;
     ok = checkBlockTerminators(fn, bbNoTerm, errTerm);

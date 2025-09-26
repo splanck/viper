@@ -14,7 +14,7 @@ int main()
     const char *src = R"(il 0.1.2
 func @main() -> i64 {
 entry:
-  %0 add 1, 2
+  %0 iadd.ovf 1, 2
 }
 )";
     std::istringstream in(src);

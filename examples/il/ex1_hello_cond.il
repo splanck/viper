@@ -11,11 +11,11 @@ entry:
   %x_slot = alloca 8
   %y_slot = alloca 8
 
-  %t0 = add 2, 3
+  %t0 = iadd.ovf 2, 3
   store i64, %x_slot, %t0
 
   %xv = load i64, %x_slot
-  %t1 = mul %xv, 2
+  %t1 = imul.ovf %xv, 2
   store i64, %y_slot, %t1
 
   %s0 = const_str @.L0

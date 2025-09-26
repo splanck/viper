@@ -266,6 +266,20 @@ function(viper_add_il_invalid_tests)
     -DFILE=${_VIPER_NEGATIVE_DIR}/use_after_release.il
     -DEXPECT_FILE=${_VIPER_NEGATIVE_DIR}/use_after_release.expected
     -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
+
+  viper_add_ctest(il_verify_negative_unchecked_srem
+    ${CMAKE_COMMAND}
+    -DIL_VERIFY=${IL_VERIFY}
+    -DFILE=${_VIPER_NEGATIVE_DIR}/unchecked_srem.il
+    -DEXPECT_FILE=${_VIPER_NEGATIVE_DIR}/unchecked_srem.expected
+    -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
+
+  viper_add_ctest(il_verify_negative_narrow_cast_nochk
+    ${CMAKE_COMMAND}
+    -DIL_VERIFY=${IL_VERIFY}
+    -DFILE=${_VIPER_NEGATIVE_DIR}/narrow_cast_nochk.il
+    -DEXPECT_FILE=${_VIPER_NEGATIVE_DIR}/narrow_cast_nochk.expected
+    -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
 endfunction()
 
 function(viper_add_il_liveness_tests)

@@ -8,9 +8,14 @@
 
 #include "vm/OpHandlers.hpp"
 
+#include "il/core/Function.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
 #include "vm/OpHandlerUtils.hpp"
+#include "vm/RuntimeBridge.hpp"
+
+#include <cmath>
+#include <limits>
 
 using namespace il::core;
 
@@ -253,6 +258,48 @@ VM::ExecResult OpHandlers::handleFptosi(VM &vm,
     Slot value = vm.eval(fr, in.operands[0]);
     Slot out{};
     out.i64 = static_cast<int64_t>(value.f64);
+    ops::storeResult(fr, in, out);
+    return {};
+}
+
+/// @brief Convert a floating-point value to a signed 64-bit integer using round-to-nearest-even.
+/// @details Traps via RuntimeBridge when the operand is non-finite or the rounded result lies
+/// outside the signed 64-bit range. Rounding obeys IEEE-754 round-to-nearest, ties-to-even via
+/// std::nearbyint operating under the default FE_TONEAREST mode.
+VM::ExecResult OpHandlers::handleCastFpToSiRteChk(VM &vm,
+                                                  Frame &fr,
+                                                  const Instr &in,
+                                                  const VM::BlockMap &blocks,
+                                                  const BasicBlock *&bb,
+                                                  size_t &ip)
+{
+    (void)blocks;
+    (void)ip;
+    const Slot value = vm.eval(fr, in.operands[0]);
+    const double operand = value.f64;
+    if (!std::isfinite(operand))
+    {
+        RuntimeBridge::trap("invalid fp operand in cast.fp_to_si.rte.chk", in.loc, fr.func->name,
+                            bb ? bb->label : "");
+    }
+
+    const double rounded = std::nearbyint(operand);
+    if (!std::isfinite(rounded))
+    {
+        RuntimeBridge::trap("fp overflow in cast.fp_to_si.rte.chk", in.loc, fr.func->name,
+                            bb ? bb->label : "");
+    }
+
+    constexpr double kMin = static_cast<double>(std::numeric_limits<int64_t>::min());
+    constexpr double kMax = static_cast<double>(std::numeric_limits<int64_t>::max());
+    if (rounded < kMin || rounded > kMax)
+    {
+        RuntimeBridge::trap("fp overflow in cast.fp_to_si.rte.chk", in.loc, fr.func->name,
+                            bb ? bb->label : "");
+    }
+
+    Slot out{};
+    out.i64 = static_cast<int64_t>(rounded);
     ops::storeResult(fr, in, out);
     return {};
 }

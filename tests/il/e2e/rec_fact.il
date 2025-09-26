@@ -14,9 +14,9 @@ entry(%n0: i64):
 base:
   ret 1
 rec(%n1: i64):
-  %n2 = add %n1, -1
+  %n2 = iadd.ovf %n1, -1
   %r = call @fact(%n2)
-  %p = mul %n1, %r
+  %p = imul.ovf %n1, %r
   ret %p
 }
 

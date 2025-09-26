@@ -33,7 +33,7 @@ int main()
 
     Instr add;
     add.result = 3u;
-    add.op = Opcode::Add;
+    add.op = Opcode::IAddOvf;
     add.operands.push_back(Value::temp(1));
     add.operands.push_back(Value::temp(2));
 

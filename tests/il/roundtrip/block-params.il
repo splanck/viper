@@ -9,7 +9,7 @@ loop(%i:i64):
   cbr %c, body(%i), exit
 
 body(%x:i64):
-  %n = add %x, 1
+  %n = iadd.ovf %x, 1
   br loop(%n)
 
 exit:

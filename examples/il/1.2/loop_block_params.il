@@ -9,8 +9,8 @@ loop(%i: i64, %acc: i64):
   cbr %cond, exit(%acc), body(%i, %acc)
 
 body(%i: i64, %acc: i64):
-  %acc1 = add %acc, %i
-  %i1 = add %i, 1
+  %acc1 = iadd.ovf %acc, %i
+  %i1 = iadd.ovf %i, 1
   br loop(%i1, %acc1)
 
 exit(%result: i64):

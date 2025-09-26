@@ -35,9 +35,9 @@ loop_head:
 
 loop_body:
   %r0 = load i64, %r_slot
-  %r1 = mul %r0, %n1
+  %r1 = imul.ovf %r0, %n1
   store i64, %r_slot, %r1
-  %n2 = sub %n1, 1
+  %n2 = isub.ovf %n1, 1
   store i64, %n_slot, %n2
   br label loop_head
 

@@ -20,7 +20,7 @@ global const str @g = "hello"
 
 func @bump(i64 %x) -> i64 {
 entry(%x0: i64):
-  %plus = add %x0, 1
+  %plus = iadd.ovf %x0, 1
   ret %plus
 }
 
@@ -34,9 +34,9 @@ entry:
   store ptr, %slot0, %p
   store i64, %slot1, 4
   %load = load i64, %slot1
-  %add = add %load, 5
-  %sub = sub %add, 1
-  %mul = mul %sub, 2
+  %add = iadd.ovf %load, 5
+  %sub = isub.ovf %add, 1
+  %mul = imul.ovf %sub, 2
   %xor = xor %mul, 3
   %shl = shl %xor, 1
   %as_float = sitofp %shl
@@ -44,7 +44,7 @@ entry:
   %fmul = fmul %fadd, 1.0
   %fsub = fsub %fmul, 0.5
   %fdiv = fdiv %fsub, 1.0
-  %back = fptosi %fdiv
+  %back = cast.fp_to_si.rte.chk %fdiv
   %eq = icmp_eq %back, %shl
   %gt = scmp_gt %shl, %back
   cbr %gt, high(%back), low(%back)
@@ -62,10 +62,10 @@ merge(%val: i64, %flag: i64):
   %ptr = load ptr, %slot0
   %ptr_bits = load i64, %slot0
   %ptr_nonzero = scmp_gt %ptr_bits, 0
-  %sum0 = add %call, %len
-  %sum1 = add %sum0, %fcmp
-  %sum2 = add %sum1, %ptr_nonzero
-  %sum = add %sum2, %trunc
+  %sum0 = iadd.ovf %call, %len
+  %sum1 = iadd.ovf %sum0, %fcmp
+  %sum2 = iadd.ovf %sum1, %ptr_nonzero
+  %sum = iadd.ovf %sum2, %trunc
   store i64, %slot2, %sum
   %out = load i64, %slot2
   ret %out

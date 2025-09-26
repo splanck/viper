@@ -40,7 +40,7 @@ L20:
   .loc 1 2 13
   %t6 = call @rt_arr_i32_len(%t5)
   .loc 1 2 13
-  %t7 = sub %t6, 1
+  %t7 = isub.ovf %t6, 1
   .loc 1 2 4
   store i64, %t1, %t7
   .loc 1 2 4
@@ -49,7 +49,7 @@ L30:
   .loc 1 3 12
   %t8 = load i64, %t1
   .loc 1 3 15
-  %t9 = add %t8, 2
+  %t9 = iadd.ovf %t8, 2
   .loc 1 3 4
   %t10 = load ptr, %t2
   .loc 1 3 4
@@ -80,7 +80,7 @@ L40:
   .loc 1 4 8
   %t19 = zext1 %t17
   .loc 1 4 8
-  %t20 = add %t18, %t19
+  %t20 = iadd.ovf %t18, %t19
   .loc 1 4 8
   %t21 = scmp_gt %t20, 0
   .loc 1 4 8
@@ -101,7 +101,7 @@ L50:
   .loc 1 5 12
   %t28 = zext1 %t26
   .loc 1 5 12
-  %t29 = add %t27, %t28
+  %t29 = iadd.ovf %t27, %t28
   .loc 1 5 12
   %t30 = scmp_gt %t29, 0
   .loc 1 5 12

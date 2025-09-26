@@ -40,11 +40,11 @@ struct Rule
 
 /// \brief Registry of peephole rules.
 inline constexpr std::array<Rule, 14> kRules{{
-    {{core::Opcode::Add, 0, 0}, {1}},
-    {{core::Opcode::Add, 1, 0}, {0}},
-    {{core::Opcode::Sub, 1, 0}, {0}},
-    {{core::Opcode::Mul, 0, 1}, {1}},
-    {{core::Opcode::Mul, 1, 1}, {0}},
+    {{core::Opcode::IAddOvf, 0, 0}, {1}},
+    {{core::Opcode::IAddOvf, 1, 0}, {0}},
+    {{core::Opcode::ISubOvf, 1, 0}, {0}},
+    {{core::Opcode::IMulOvf, 0, 1}, {1}},
+    {{core::Opcode::IMulOvf, 1, 1}, {0}},
     {{core::Opcode::And, 0, -1}, {1}},
     {{core::Opcode::And, 1, -1}, {0}},
     {{core::Opcode::Or, 0, 0}, {1}},
