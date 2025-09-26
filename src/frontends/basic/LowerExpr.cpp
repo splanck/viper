@@ -519,6 +519,32 @@ Lowerer::RVal Lowerer::lowerStringBinary(const BinaryExpr &b, RVal lhs, RVal rhs
 Lowerer::RVal Lowerer::lowerNumericBinary(const BinaryExpr &b, RVal lhs, RVal rhs)
 {
     curLoc = b.loc;
+    if (b.op == BinaryExpr::Op::Div)
+    {
+        auto promoteToF64 = [&](RVal value, const Expr &expr) {
+            if (value.type.kind == Type::Kind::F64)
+                return value;
+            value = coerceToI64(std::move(value), expr.loc);
+            curLoc = expr.loc;
+            value.value = emitUnary(Opcode::CastSiToFp, Type(Type::Kind::F64), value.value);
+            value.type = Type(Type::Kind::F64);
+            return value;
+        };
+
+        if (b.lhs)
+            lhs = promoteToF64(std::move(lhs), *b.lhs);
+        else
+            lhs = promoteToF64(std::move(lhs), b);
+        if (b.rhs)
+            rhs = promoteToF64(std::move(rhs), *b.rhs);
+        else
+            rhs = promoteToF64(std::move(rhs), b);
+
+        curLoc = b.loc;
+        Value res = emitBinary(Opcode::FDiv, Type(Type::Kind::F64), lhs.value, rhs.value);
+        return {res, Type(Type::Kind::F64)};
+    }
+
     if (lhs.type.kind == Type::Kind::I64 && rhs.type.kind == Type::Kind::F64)
     {
         lhs = coerceToF64(std::move(lhs), b.loc);

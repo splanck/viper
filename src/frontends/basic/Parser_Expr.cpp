@@ -174,7 +174,7 @@ ExprPtr Parser::parseNumber()
 {
     auto loc = peek().loc;
     std::string lex = peek().lexeme;
-    if (lex.find_first_of(".Ee#") != std::string::npos)
+    if (lex.find_first_of(".Ee#!") != std::string::npos)
     {
         auto e = std::make_unique<FloatExpr>();
         e->loc = loc;
