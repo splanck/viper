@@ -22,6 +22,10 @@ std::string kindToString(Type::Kind k)
             return "void";
         case Type::Kind::I1:
             return "i1";
+        case Type::Kind::I16:
+            return "i16";
+        case Type::Kind::I32:
+            return "i32";
         case Type::Kind::I64:
             return "i64";
         case Type::Kind::F64:

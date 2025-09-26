@@ -32,6 +32,9 @@ int main()
     constexpr size_t kKindCount = static_cast<size_t>(Type::Kind::Str) + 1;
     std::array<bool, kKindCount> coveredKinds{};
     auto markKind = [&](Type::Kind kind) { coveredKinds[static_cast<size_t>(kind)] = true; };
+    // Newly supported integer widths share Slot::i64 marshalling paths.
+    markKind(Type::Kind::I16);
+    markKind(Type::Kind::I32);
     auto callBridge = [&](const std::string &name,
                           std::vector<Slot> arguments,
                           Type::Kind resultKind,

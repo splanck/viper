@@ -21,6 +21,89 @@ using namespace il::core;
 
 namespace il::vm::detail
 {
+namespace
+{
+void emitTrap(TrapKind kind,
+              const char *message,
+              const Instr &in,
+              Frame &fr,
+              const BasicBlock *bb)
+{
+    RuntimeBridge::trap(kind, message, in.loc, fr.func->name, bb ? bb->label : "");
+}
+
+template <typename T, typename OverflowOp>
+void applyOverflowingBinary(const Instr &in,
+                            Frame &fr,
+                            const BasicBlock *bb,
+                            Slot &out,
+                            const Slot &lhsVal,
+                            const Slot &rhsVal,
+                            const char *trapMessage,
+                            OverflowOp &&op)
+{
+    T lhs = static_cast<T>(lhsVal.i64);
+    T rhs = static_cast<T>(rhsVal.i64);
+    T result{};
+    if (op(lhs, rhs, &result))
+    {
+        emitTrap(TrapKind::Overflow, trapMessage, in, fr, bb);
+        return;
+    }
+    out.i64 = static_cast<int64_t>(result);
+}
+
+template <typename T>
+void applyCheckedDiv(const Instr &in,
+                     Frame &fr,
+                     const BasicBlock *bb,
+                     Slot &out,
+                     const Slot &lhsVal,
+                     const Slot &rhsVal)
+{
+    T lhs = static_cast<T>(lhsVal.i64);
+    T rhs = static_cast<T>(rhsVal.i64);
+    if (rhs == 0)
+    {
+        emitTrap(TrapKind::DivideByZero, "divide by zero in sdiv.chk0", in, fr, bb);
+        return;
+    }
+    if (lhs == std::numeric_limits<T>::min() && rhs == static_cast<T>(-1))
+    {
+        emitTrap(TrapKind::Overflow, "integer overflow in sdiv.chk0", in, fr, bb);
+        return;
+    }
+    out.i64 = static_cast<int64_t>(static_cast<T>(lhs / rhs));
+}
+
+template <typename T>
+void applyCheckedRem(const Instr &in,
+                     Frame &fr,
+                     const BasicBlock *bb,
+                     Slot &out,
+                     const Slot &lhsVal,
+                     const Slot &rhsVal)
+{
+    T lhs = static_cast<T>(lhsVal.i64);
+    T rhs = static_cast<T>(rhsVal.i64);
+    if (rhs == 0)
+    {
+        emitTrap(TrapKind::DivideByZero, "divide by zero in srem.chk0", in, fr, bb);
+        return;
+    }
+    if (lhs == std::numeric_limits<T>::min() && rhs == static_cast<T>(-1))
+    {
+        out.i64 = 0;
+        return;
+    }
+    const int64_t wideLhs = static_cast<int64_t>(lhs);
+    const int64_t wideRhs = static_cast<int64_t>(rhs);
+    const int64_t quotient = wideLhs / wideRhs;
+    const int64_t remainder = wideLhs - quotient * wideRhs;
+    out.i64 = static_cast<int64_t>(static_cast<T>(remainder));
+}
+} // namespace
+
 /// @brief Interpret the `add` opcode for 64-bit integers.
 /// @param vm Active VM used to evaluate operand values.
 /// @param fr Execution frame mutated to hold the result.
@@ -103,19 +186,48 @@ VM::ExecResult OpHandlers::handleIAddOvf(VM &vm,
     return ops::applyBinary(vm,
                             fr,
                             in,
-                            [&](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
                             {
-                                long long result{};
-                                if (__builtin_add_overflow(lhsVal.i64, rhsVal.i64, &result))
+                                switch (in.type.kind)
                                 {
-                                    RuntimeBridge::trap(
-                                        TrapKind::Overflow,
-                                        "integer overflow in iadd.ovf",
-                                        in.loc,
-                                        fr.func->name,
-                                        bb ? bb->label : "");
+                                    case Type::Kind::I16:
+                                        applyOverflowingBinary<int16_t>(
+                                            in,
+                                            fr,
+                                            bb,
+                                            out,
+                                            lhsVal,
+                                            rhsVal,
+                                            "integer overflow in iadd.ovf",
+                                            [](int16_t lhs, int16_t rhs, int16_t *res)
+                                            { return __builtin_add_overflow(lhs, rhs, res); });
+                                        break;
+                                    case Type::Kind::I32:
+                                        applyOverflowingBinary<int32_t>(
+                                            in,
+                                            fr,
+                                            bb,
+                                            out,
+                                            lhsVal,
+                                            rhsVal,
+                                            "integer overflow in iadd.ovf",
+                                            [](int32_t lhs, int32_t rhs, int32_t *res)
+                                            { return __builtin_add_overflow(lhs, rhs, res); });
+                                        break;
+                                    case Type::Kind::I64:
+                                    default:
+                                        applyOverflowingBinary<int64_t>(
+                                            in,
+                                            fr,
+                                            bb,
+                                            out,
+                                            lhsVal,
+                                            rhsVal,
+                                            "integer overflow in iadd.ovf",
+                                            [](int64_t lhs, int64_t rhs, int64_t *res)
+                                            { return __builtin_add_overflow(lhs, rhs, res); });
+                                        break;
                                 }
-                                out.i64 = result;
                             });
 }
 
@@ -132,19 +244,48 @@ VM::ExecResult OpHandlers::handleISubOvf(VM &vm,
     return ops::applyBinary(vm,
                             fr,
                             in,
-                            [&](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
                             {
-                                long long result{};
-                                if (__builtin_sub_overflow(lhsVal.i64, rhsVal.i64, &result))
+                                switch (in.type.kind)
                                 {
-                                    RuntimeBridge::trap(
-                                        TrapKind::Overflow,
-                                        "integer overflow in isub.ovf",
-                                        in.loc,
-                                        fr.func->name,
-                                        bb ? bb->label : "");
+                                    case Type::Kind::I16:
+                                        applyOverflowingBinary<int16_t>(
+                                            in,
+                                            fr,
+                                            bb,
+                                            out,
+                                            lhsVal,
+                                            rhsVal,
+                                            "integer overflow in isub.ovf",
+                                            [](int16_t lhs, int16_t rhs, int16_t *res)
+                                            { return __builtin_sub_overflow(lhs, rhs, res); });
+                                        break;
+                                    case Type::Kind::I32:
+                                        applyOverflowingBinary<int32_t>(
+                                            in,
+                                            fr,
+                                            bb,
+                                            out,
+                                            lhsVal,
+                                            rhsVal,
+                                            "integer overflow in isub.ovf",
+                                            [](int32_t lhs, int32_t rhs, int32_t *res)
+                                            { return __builtin_sub_overflow(lhs, rhs, res); });
+                                        break;
+                                    case Type::Kind::I64:
+                                    default:
+                                        applyOverflowingBinary<int64_t>(
+                                            in,
+                                            fr,
+                                            bb,
+                                            out,
+                                            lhsVal,
+                                            rhsVal,
+                                            "integer overflow in isub.ovf",
+                                            [](int64_t lhs, int64_t rhs, int64_t *res)
+                                            { return __builtin_sub_overflow(lhs, rhs, res); });
+                                        break;
                                 }
-                                out.i64 = result;
                             });
 }
 
@@ -161,19 +302,48 @@ VM::ExecResult OpHandlers::handleIMulOvf(VM &vm,
     return ops::applyBinary(vm,
                             fr,
                             in,
-                            [&](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
                             {
-                                long long result{};
-                                if (__builtin_mul_overflow(lhsVal.i64, rhsVal.i64, &result))
+                                switch (in.type.kind)
                                 {
-                                    RuntimeBridge::trap(
-                                        TrapKind::Overflow,
-                                        "integer overflow in imul.ovf",
-                                        in.loc,
-                                        fr.func->name,
-                                        bb ? bb->label : "");
+                                    case Type::Kind::I16:
+                                        applyOverflowingBinary<int16_t>(
+                                            in,
+                                            fr,
+                                            bb,
+                                            out,
+                                            lhsVal,
+                                            rhsVal,
+                                            "integer overflow in imul.ovf",
+                                            [](int16_t lhs, int16_t rhs, int16_t *res)
+                                            { return __builtin_mul_overflow(lhs, rhs, res); });
+                                        break;
+                                    case Type::Kind::I32:
+                                        applyOverflowingBinary<int32_t>(
+                                            in,
+                                            fr,
+                                            bb,
+                                            out,
+                                            lhsVal,
+                                            rhsVal,
+                                            "integer overflow in imul.ovf",
+                                            [](int32_t lhs, int32_t rhs, int32_t *res)
+                                            { return __builtin_mul_overflow(lhs, rhs, res); });
+                                        break;
+                                    case Type::Kind::I64:
+                                    default:
+                                        applyOverflowingBinary<int64_t>(
+                                            in,
+                                            fr,
+                                            bb,
+                                            out,
+                                            lhsVal,
+                                            rhsVal,
+                                            "integer overflow in imul.ovf",
+                                            [](int64_t lhs, int64_t rhs, int64_t *res)
+                                            { return __builtin_mul_overflow(lhs, rhs, res); });
+                                        break;
                                 }
-                                out.i64 = result;
                             });
 }
 
@@ -190,29 +360,21 @@ VM::ExecResult OpHandlers::handleSDivChk0(VM &vm,
     return ops::applyBinary(vm,
                             fr,
                             in,
-                            [&](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
                             {
-                                const auto divisor = rhsVal.i64;
-                                if (divisor == 0)
+                                switch (in.type.kind)
                                 {
-                                    RuntimeBridge::trap(
-                                        TrapKind::DivideByZero,
-                                        "divide by zero in sdiv.chk0",
-                                        in.loc,
-                                        fr.func->name,
-                                        bb ? bb->label : "");
+                                    case Type::Kind::I16:
+                                        applyCheckedDiv<int16_t>(in, fr, bb, out, lhsVal, rhsVal);
+                                        break;
+                                    case Type::Kind::I32:
+                                        applyCheckedDiv<int32_t>(in, fr, bb, out, lhsVal, rhsVal);
+                                        break;
+                                    case Type::Kind::I64:
+                                    default:
+                                        applyCheckedDiv<int64_t>(in, fr, bb, out, lhsVal, rhsVal);
+                                        break;
                                 }
-                                const auto dividend = lhsVal.i64;
-                                if (dividend == std::numeric_limits<int64_t>::min() && divisor == -1)
-                                {
-                                    RuntimeBridge::trap(
-                                        TrapKind::Overflow,
-                                        "integer overflow in sdiv.chk0",
-                                        in.loc,
-                                        fr.func->name,
-                                        bb ? bb->label : "");
-                                }
-                                out.i64 = dividend / divisor;
                             });
 }
 
@@ -259,29 +421,21 @@ VM::ExecResult OpHandlers::handleSRemChk0(VM &vm,
     return ops::applyBinary(vm,
                             fr,
                             in,
-                            [&](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
                             {
-                                const auto divisor = rhsVal.i64;
-                                if (divisor == 0)
+                                switch (in.type.kind)
                                 {
-                                    RuntimeBridge::trap(
-                                        TrapKind::DivideByZero,
-                                        "divide by zero in srem.chk0",
-                                        in.loc,
-                                        fr.func->name,
-                                        bb ? bb->label : "");
+                                    case Type::Kind::I16:
+                                        applyCheckedRem<int16_t>(in, fr, bb, out, lhsVal, rhsVal);
+                                        break;
+                                    case Type::Kind::I32:
+                                        applyCheckedRem<int32_t>(in, fr, bb, out, lhsVal, rhsVal);
+                                        break;
+                                    case Type::Kind::I64:
+                                    default:
+                                        applyCheckedRem<int64_t>(in, fr, bb, out, lhsVal, rhsVal);
+                                        break;
                                 }
-                                const auto dividend = lhsVal.i64;
-                                if (dividend == std::numeric_limits<int64_t>::min() && divisor == -1)
-                                {
-                                    RuntimeBridge::trap(
-                                        TrapKind::Overflow,
-                                        "integer overflow in srem.chk0",
-                                        in.loc,
-                                        fr.func->name,
-                                        bb ? bb->label : "");
-                                }
-                                out.i64 = dividend % divisor;
                             });
 }
 

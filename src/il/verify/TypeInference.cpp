@@ -117,6 +117,10 @@ size_t TypeInference::typeSize(Type::Kind kind)
     {
         case Type::Kind::I1:
             return 1;
+        case Type::Kind::I16:
+            return 2;
+        case Type::Kind::I32:
+            return 4;
         case Type::Kind::I64:
         case Type::Kind::F64:
         case Type::Kind::Ptr:
