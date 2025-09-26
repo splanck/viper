@@ -18,6 +18,7 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+#include <limits>
 
 using namespace il::core;
 
@@ -456,9 +457,53 @@ Lowerer::RVal Lowerer::lowerNumericBinary(const BinaryExpr &b, RVal lhs, RVal rh
     {
         rhs = coerceToF64(std::move(rhs), b.loc);
     }
+    auto isIntegerKind = [](Type::Kind kind) {
+        return kind == Type::Kind::I16 || kind == Type::Kind::I32 || kind == Type::Kind::I64;
+    };
     bool isFloat = lhs.type.kind == Type::Kind::F64;
+    if (!isFloat && b.op == BinaryExpr::Op::Sub)
+    {
+        if (const auto *lhsInt = dynamic_cast<const IntExpr *>(b.lhs.get());
+            lhsInt && lhsInt->value == 0 && isIntegerKind(rhs.type.kind) &&
+            (rhs.type.kind == Type::Kind::I16 || rhs.type.kind == Type::Kind::I32))
+        {
+            Value neg = emitCheckedNeg(rhs.type, rhs.value);
+            return {neg, rhs.type};
+        }
+    }
+    auto integerArithmeticType = [](Type::Kind lhsKind, Type::Kind rhsKind) {
+        if (lhsKind == Type::Kind::I16 && rhsKind == Type::Kind::I16)
+            return Type(Type::Kind::I16);
+        if (lhsKind == Type::Kind::I32 && rhsKind == Type::Kind::I32)
+            return Type(Type::Kind::I32);
+        return Type(Type::Kind::I64);
+    };
     Opcode op = Opcode::IAddOvf;
-    Type ty = isFloat ? Type(Type::Kind::F64) : Type(Type::Kind::I64);
+    Type arithTy = isFloat ? Type(Type::Kind::F64)
+                           : integerArithmeticType(lhs.type.kind, rhs.type.kind);
+    if (!isFloat)
+    {
+        const auto *lhsInt = dynamic_cast<const IntExpr *>(b.lhs.get());
+        const auto *rhsInt = dynamic_cast<const IntExpr *>(b.rhs.get());
+        if (lhsInt && rhsInt)
+        {
+            const auto fits16 = [](long long v) {
+                return v >= std::numeric_limits<int16_t>::min() && v <= std::numeric_limits<int16_t>::max();
+            };
+            const auto fits32 = [](long long v) {
+                return v >= std::numeric_limits<int32_t>::min() && v <= std::numeric_limits<int32_t>::max();
+            };
+            if (fits16(lhsInt->value) && fits16(rhsInt->value))
+            {
+                arithTy = Type(Type::Kind::I16);
+            }
+            else if (fits32(lhsInt->value) && fits32(rhsInt->value))
+            {
+                arithTy = Type(Type::Kind::I32);
+            }
+        }
+    }
+    Type ty = arithTy;
     switch (b.op)
     {
         case BinaryExpr::Op::Add:
@@ -472,6 +517,7 @@ Lowerer::RVal Lowerer::lowerNumericBinary(const BinaryExpr &b, RVal lhs, RVal rh
             break;
         case BinaryExpr::Op::Div:
             op = isFloat ? Opcode::FDiv : Opcode::SDivChk0;
+            ty = isFloat ? arithTy : Type(Type::Kind::I64);
             break;
         case BinaryExpr::Op::Eq:
             op = isFloat ? Opcode::FCmpEQ : Opcode::ICmpEq;
@@ -548,6 +594,10 @@ Lowerer::RVal Lowerer::coerceToI64(RVal v, il::support::SourceLoc loc)
         v.value = emitUnary(Opcode::CastFpToSiRteChk, Type(Type::Kind::I64), v.value);
         v.type = Type(Type::Kind::I64);
     }
+    else if (v.type.kind == Type::Kind::I16 || v.type.kind == Type::Kind::I32)
+    {
+        v.type = Type(Type::Kind::I64);
+    }
     return v;
 }
 
@@ -577,7 +627,8 @@ Lowerer::RVal Lowerer::coerceToBool(RVal v, il::support::SourceLoc loc)
 {
     if (v.type.kind == Type::Kind::I1)
         return v;
-    if (v.type.kind == Type::Kind::F64)
+    if (v.type.kind == Type::Kind::F64 || v.type.kind == Type::Kind::I16 || v.type.kind == Type::Kind::I32 ||
+        v.type.kind == Type::Kind::I64)
         v = coerceToI64(std::move(v), loc);
     if (v.type.kind != Type::Kind::I1)
     {

@@ -336,6 +336,15 @@ Value Lowerer::emitUnary(Opcode op, Type ty, Value val)
     return Value::temp(id);
 }
 
+/// @brief Emit a checked negation for a signed integer operand.
+/// @param ty Result type describing the integer width.
+/// @param val Operand being negated.
+/// @return Temporary containing the negated value.
+Value Lowerer::emitCheckedNeg(Type ty, Value val)
+{
+    return emitBinary(Opcode::ISubOvf, ty, Value::constInt(0), val);
+}
+
 /// @brief Emit an unconditional branch to the target block.
 /// @param target Destination block that must already exist in the enclosing function.
 /// @details Appends a terminator to the block referenced by @c cur and marks it as such. The
