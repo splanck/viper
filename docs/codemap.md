@@ -8,6 +8,112 @@ Paths to notable documentation and tests.
 - docs/basic-language.md — BASIC language reference and intrinsics
 - docs/il-guide.md#reference — full IL reference
 
+## Key Source Files (Quick Orientation)
+
+### BASIC Front End
+- **src/frontends/basic/BasicCompiler.cpp**
+
+  Wires together lexing, parsing, semantic analysis, and lowering to turn a BASIC source buffer into an IL module in one call. The driver boots a `SourceManager`, captures diagnostics, and aborts the pipeline as soon as a fatal phase reports errors so no later pass sees malformed state. It also toggles bounds-checking and runtime-helper declaration based on caller options before returning the finished module. Dependencies include `BasicCompiler.hpp`, parser/const-fold/semantic/lowering headers, and shared support services such as `support::SourceManager` and `support::DiagnosticEngine`.
+
+- **src/frontends/basic/Parser.cpp**
+
+  Implements the top-level recursive-descent parser that transforms a token stream into the BASIC AST. It owns the statement dispatch table, manages colon-separated statement lists, and coordinates the expression parser fragments defined in sibling translation units. Error recovery hooks resynchronize on line numbers or statement boundaries so analysis and lowering can keep running after localized parse failures. Dependencies include `Parser.hpp`, the lexer/token infrastructure, `DiagnosticEmitter`, and the AST node headers.
+
+- **src/frontends/basic/SemanticAnalyzer.cpp**
+
+  Performs name resolution, label tracking, and type checking over parsed BASIC programs. The visitor-driven implementation mirrors the AST structure while coordinating helpers for expression inference, builtin validation, and procedure bookkeeping. It records diagnostics with precise error codes, keeps scope stacks synchronized with block nesting, and ensures functions satisfy return-path requirements before lowering. Dependencies encompass `SemanticAnalyzer.hpp`, `ProcRegistry`, `ScopeTracker`, builtin metadata, and the diagnostic utilities.
+
+- **src/frontends/basic/Lowerer.cpp**
+
+  Drives the multi-pass lowering pipeline that maps BASIC constructs onto IL functions and blocks. The module prepares runtime helper declarations, materializes deterministic block names, and invokes expression/statement emitters so SSA values, temporaries, and string literals are tracked consistently. It also respects configuration toggles for bounds checks and coordinates the creation of the synthetic `@main` procedure. Dependencies span `Lowerer.hpp`, the lowering helper sources (`LowerEmit`, `LowerExpr`, `LowerStmt`, `LowerRuntime`), the AST classes, and IL builder/types headers.
+
+- **src/frontends/basic/ConstFolder.cpp**
+
+  Evaluates BASIC expressions at compile time to simplify the AST before semantic analysis and lowering. Arithmetic and logical folders implement wrap-around semantics that match the VM, and they memoize string literals or boolean shortcuts to preserve source locations when folding. Each helper rewrites nodes in place, ensuring later passes see canonical, side-effect-free trees. Dependencies include `ConstFolder.hpp`, the helper utilities declared there, and the AST hierarchy with `<optional>` for fold results.
+
+- **src/frontends/basic/Lexer.cpp**
+
+  Tokenizes BASIC source buffers while tracking precise line and column information for diagnostics. Special-case scanners handle REM-style comments, numeric literals with optional suffixes, and keyword recognition by uppercasing identifiers on the fly. The lexer emits newline tokens to preserve statement grouping semantics and exposes helpers used by both the parser and tooling. Dependencies cover `Lexer.hpp`, token definitions, `support::SourceLoc`, and standard `<cctype>`/`<string>` utilities.
+
+### IL Core and Tooling
+- **src/il/io/Parser.cpp**
+
+  Provides the façade for reading textual IL into an in-memory module. The driver normalizes each line, skips comments, and delegates directive handling to the module parser helpers, threading diagnostics through the `Expected` channel. It builds and reuses a `ParserState` so externs, globals, and functions accumulate consistently during a single pass. Dependencies include `Parser.hpp`, `ModuleParser.hpp`, parser-state helpers, IL core module/extern definitions, and `support::diag_expected` machinery.
+
+- **src/il/io/InstrParser.cpp**
+
+  Decodes individual IL instruction lines, turning textual operands into `il::core::Value` objects and validating arity against opcode metadata. Branch parsing records successor labels for later resolution, while call parsing handles optional callee names, result ids, and argument lists. The implementation updates parser state with fresh temporaries and reports detailed diagnostics when operands fail type expectations. Dependencies include `InstrParser.hpp`, opcode/type/value headers, parser utilities, and `support::diag_expected.hpp`.
+
+- **src/il/build/IRBuilder.cpp**
+
+  Supplies the imperative API used by front ends and transforms to construct IL modules, functions, and blocks. It tracks the current insertion point, manages block parameters, creates constants, and guards against duplicate terminators to keep IR well-formed. Convenience helpers handle branch construction, function declarations, and constant folding while cooperating with opcode metadata for validation. Dependencies include `IRBuilder.hpp`, IL core containers (`Module`, `Function`, `BasicBlock`, `Instr`, `Type`, `Value`), and support utilities like `SourceLoc` plus `<cassert>` and `<stdexcept>`.
+
+- **src/il/analysis/CFG.cpp**
+
+  Implements control-flow graph queries that operate directly on IL functions without allocating explicit graph nodes. Successor and predecessor collectors inspect branch terminators, and traversal helpers yield post-order or reverse-post-order sequences for analyses and optimizations. Unreachable blocks are skipped automatically so consumers get iteration orders suitable for dominance or data-flow algorithms. Dependencies include `CFG.hpp`, IL core block/instruction types, and standard containers such as `<queue>`, `<stack>`, and `<vector>`.
+
+- **src/il/analysis/Dominators.cpp**
+
+  Builds dominator trees using the Cooper–Harvey–Kennedy algorithm on top of the CFG utilities. It iterates reverse post-order sequences, computes intersection sets for each block, and records immediate dominators plus child lists for later queries. Resulting structures let verification and transformation passes answer dominance questions without recomputing traversal state. Dependencies include `Dominators.hpp`, the CFG API, IL core block/function types, and `<unordered_map>`/`<vector>` containers.
+
+- **src/il/transform/Mem2Reg.cpp**
+
+  Promotes stack slots allocated by `alloca` into SSA form by threading values through block parameters. The pass records reaching definitions, rewrites loads and stores into direct uses, and patches branch arguments so promoted values flow across the CFG. Statistics helpers track how many temporaries were upgraded, and sealed-region checks keep the algorithm linear for structured control flow. Dependencies include `Mem2Reg.hpp`, CFG helpers, IL core structures, and standard containers like `<unordered_map>`, `<unordered_set>`, `<queue>`, and `<optional>`.
+
+- **src/il/transform/ConstFold.cpp**
+
+  Replaces foldable arithmetic, comparison, and runtime math calls with constant results to shrink IL before further optimization. Helpers model signed wrap-around, constant-propagate through simple control flow, and inline runtime math intrinsics when all operands are literal. Folded instructions are erased in place while SSA uses are redirected to the synthesized constants. Dependencies include `ConstFold.hpp`, IL core module/function/instruction/value types, and standard `<cmath>`, `<cstdint>`, `<cstdlib>`, and `<limits>` utilities.
+
+- **src/il/verify/FunctionVerifier.cpp**
+
+  Coordinates per-function verification by checking block structure, signature consistency, and instruction legality. It builds lookup tables for externs, functions, and labels, then delegates opcode-specific validation to the instruction and control-flow checkers. Detailed diagnostics include block and function names so callers can surface actionable error messages. Dependencies include `FunctionVerifier.hpp`, control-flow checker helpers, `InstructionChecker`, `TypeInference`, IL core containers, and `<unordered_map>`/`<unordered_set>`.
+
+- **src/il/verify/InstructionChecker.cpp**
+
+  Validates non-control-flow instructions, covering arithmetic, memory, and runtime call opcodes. Runtime helpers enforce argument counts and type categories, while generic checks consult opcode metadata to ensure operands and results match the specification. Errors are formatted with instruction snippets to give context about the offending SSA values. Dependencies include `InstructionChecker.hpp`, opcode metadata, `DiagSink`, `TypeInference`, and standard `<sstream>`/`<unordered_map>` utilities.
+
+- **src/il/verify/TypeInference.cpp**
+
+  Tracks the static types of SSA temporaries while instructions are verified. It records definitions as they appear, computes result types for arithmetic and memory operations, and rejects uses of undefined temporaries with precise diagnostics. Helpers also format instruction snippets and compute primitive type sizes, allowing other verifier components to stay focused on structural checks. Dependencies include `TypeInference.hpp`, IL core instruction/value types, and support diagnostics wrappers.
+
+- **src/il/runtime/RuntimeSignatures.cpp**
+
+  Houses the canonical table of runtime helper signatures consumed by the front end, VM bridge, and verifier. Each entry specifies the callee name, return type, and argument kinds so declarations remain consistent across lowering and execution. Query helpers expose the descriptors to declare externs on demand or validate runtime calls during verification. Dependencies include `RuntimeSignatures.hpp`, IL type/value headers, and standard `<array>`/`<string_view>` utilities.
+
+### VM Execution
+- **src/vm/VM.cpp**
+
+  Runs IL modules by creating the initial frame, stepping through instructions, and coordinating tracing/debug hooks. The interpreter fetches opcode handlers from the dispatch table, evaluates operands into slots, and cooperates with the runtime bridge to execute external helpers. It also manages control-flow transitions, stack unwinding, and trap propagation so the VM matches the IL reference semantics. Dependencies include `VM.hpp`, opcode handler tables, runtime bridge adapters, tracing/debug facilities, and IL core module/function/instruction types.
+
+- **src/vm/OpHandlers.cpp**
+
+  Materializes the opcode dispatch table by binding IL opcode metadata to concrete handler functions. The builder consults `Opcode.def` to route each opcode to the correct handler family and caches the resulting table for reuse between VM instances. Keeping the mapping centralized ensures new opcodes automatically plug into the interpreter loop. Dependencies include `OpHandlers.hpp`, opcode metadata headers, and generated definitions from `Opcode.def`.
+
+- **src/vm/control_flow.cpp**
+
+  Implements handlers for branch, call, return, and trap opcodes, manipulating the VM frame state as control leaves the current block. Shared helpers enqueue successor blocks, seed block parameters, and coordinate with the runtime bridge when invoking externs. The routines update the execution result structure so the main loop knows when to jump, return, or propagate a trap. Dependencies include `OpHandlers.hpp`, `OpHandlerUtils.hpp`, `RuntimeBridge.hpp`, and IL instruction/block metadata.
+
+- **src/vm/mem_ops.cpp**
+
+  Covers interpreter support for allocation, load/store, pointer arithmetic, and string constant opcodes. Each handler validates pointer operands, enforces stack bounds, and updates debug watchers when writes occur. Pointer math reuses shared helpers to compute offsets deterministically so memory semantics match the IL specification. Dependencies include `OpHandlers.hpp`, `OpHandlerUtils.hpp`, `RuntimeBridge.hpp`, IL type/value definitions, and standard `<cassert>`/`<cstring>` helpers.
+
+- **src/vm/RuntimeBridge.cpp**
+
+  Bridges the VM to the C runtime by mapping extern names onto adapter lambdas that unpack slot values and call the underlying functions. Before each call it records source locations and function names so traps report meaningful diagnostics, and it memoizes adapters to avoid repeated lookup overhead. The bridge also exposes trap helpers that the runtime uses to signal fatal conditions back to the interpreter. Dependencies include `RuntimeBridge.hpp`, the VM slot/frame types, generated runtime headers (`rt_math.h`, `rt_string.h`, etc.), and `<unordered_map>`/`<sstream>` utilities.
+
+- **src/vm/Trace.cpp**
+
+  Emits deterministic execution traces for debugging or CLI tooling. The sink locates the current block/instruction, formats operands using serializer-compatible rules, and optionally resolves source lines via the `SourceManager`. It handles platform-specific newline and buffering concerns so trace output stays stable across hosts. Dependencies include `Trace.hpp`, IL instruction/value metadata, `support/source_manager.hpp`, and standard `<filesystem>`, `<fstream>`, and `<locale>` facilities.
+
+### Support and Driver Tools
+- **src/support/diagnostics.cpp**
+
+  Implements the shared diagnostic engine that collects errors and warnings from every compiler layer. It records severities, formats messages with optional source locations, and exposes counters so callers can halt processing after fatal issues. Printing helpers map severity enums to stable spellings, enabling uniform output across the front end, verifier, and tools. Dependencies include `diagnostics.hpp`, `source_manager.hpp`, and standard stream headers.
+
+- **src/tools/ilc/cmd_front_basic.cpp**
+
+  Provides the `ilc` subcommand that compiles or runs BASIC programs from the CLI. It loads source files, registers them with the source manager, runs the BASIC front-end pipeline, and either prints IL text or verifies and executes it via the VM. Shared option parsing lets users toggle tracing, bounds checks, and runtime flags consistently with other subcommands. Dependencies include BASIC front-end headers, the IL expected-based API, serializer, VM runtime bridge, and standard `<fstream>`, `<sstream>`, and `<iostream>` facilities.
+
 ## Front End (BASIC)
 - **src/frontends/basic/AST.cpp**
 
