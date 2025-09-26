@@ -528,6 +528,8 @@ Type Parser::typeFromSuffix(std::string_view name)
             return Type::F64;
         if (c == '$')
             return Type::Str;
+        if (c == '!')
+            return Type::F64;
     }
     return Type::I64;
 }
@@ -552,6 +554,8 @@ Type Parser::parseTypeKeyword()
         if (name == "INTEGER")
             return Type::I64;
         if (name == "DOUBLE")
+            return Type::F64;
+        if (name == "SINGLE")
             return Type::F64;
         if (name == "STRING")
             return Type::Str;
