@@ -14,7 +14,7 @@ int main()
     const char *files[] = {BAD_DIR "/mismatched_paren.il",
                            BAD_DIR "/bad_arg_count.il",
                            BAD_DIR "/unknown_param_type.il",
-                           BAD_DIR "/bad_i32.il",
+                           BAD_DIR "/bad_i128.il",
                            BAD_DIR "/bad_int_literal.il",
                            BAD_DIR "/bad_float_literal.il",
                            BAD_DIR "/alloca_missing_size.il"};
