@@ -46,7 +46,7 @@ for_inc_1_F:
   .loc 1 4 1
   %t4 = load i64, %t0
   .loc 1 4 1
-  %t5 = add %t4, 1
+  %t5 = iadd.ovf %t4, 1
   .loc 1 4 1
   store i64, %t0, %t5
   .loc 1 4 1

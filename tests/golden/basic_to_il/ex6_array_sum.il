@@ -94,7 +94,7 @@ loop_body:
   .loc 1 6 21
   %t13 = load i64, %t1
   .loc 1 6 19
-  %t14 = mul %t12, %t13
+  %t14 = imul.ovf %t12, %t13
   .loc 1 6 19
   %t15 = load ptr, %t2
   .loc 1 6 12
@@ -110,7 +110,7 @@ loop_body:
   .loc 1 6 10
   %t21 = zext1 %t19
   .loc 1 6 10
-  %t22 = add %t20, %t21
+  %t22 = iadd.ovf %t20, %t21
   .loc 1 6 10
   %t23 = scmp_gt %t22, 0
   .loc 1 6 10
@@ -138,7 +138,7 @@ bc_ok0:
   .loc 1 7 18
   %t31 = zext1 %t29
   .loc 1 7 18
-  %t32 = add %t30, %t31
+  %t32 = iadd.ovf %t30, %t31
   .loc 1 7 18
   %t33 = scmp_gt %t32, 0
   .loc 1 7 18
@@ -152,13 +152,13 @@ bc_ok1:
   .loc 1 7 18
   %t34 = call @rt_arr_i32_get(%t25, %t26)
   .loc 1 7 16
-  %t35 = add %t24, %t34
+  %t35 = iadd.ovf %t24, %t34
   .loc 1 7 6
   store i64, %t0, %t35
   .loc 1 8 14
   %t36 = load i64, %t1
   .loc 1 8 16
-  %t37 = add %t36, 1
+  %t37 = iadd.ovf %t36, 1
   .loc 1 8 6
   store i64, %t1, %t37
   .loc 1 5 4

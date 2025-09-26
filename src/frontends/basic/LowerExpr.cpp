@@ -166,7 +166,7 @@ Lowerer::RVal Lowerer::lowerUBoundExpr(const UBoundExpr &expr)
     Value base = emitLoad(Type(Type::Kind::Ptr), slot);
     curLoc = expr.loc;
     Value len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {base});
-    Value upper = emitBinary(Opcode::Sub, Type(Type::Kind::I64), len, Value::constInt(1));
+    Value upper = emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), len, Value::constInt(1));
     return {upper, Type(Type::Kind::I64)};
 }
 
@@ -372,8 +372,8 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
 /// - Control flow: Introduces explicit trap and success blocks, branching on
 ///   a zero-divisor check before emitting the selected arithmetic instruction.
 /// - Emitted IL: Generates an `icmp eq` against zero, a `cbr` that targets the
-///   trap and ok blocks, a call to @ref emitTrap, and finally either `sdiv` or
-///   `srem`.
+///   trap and ok blocks, a call to @ref emitTrap, and finally either
+///   `sdiv.chk0` or `srem.chk0`.
 /// - Side effects: Updates @ref cur while creating additional blocks and
 ///   records @ref curLoc for diagnostic accuracy.
 Lowerer::RVal Lowerer::lowerDivOrMod(const BinaryExpr &b)
@@ -396,7 +396,7 @@ Lowerer::RVal Lowerer::lowerDivOrMod(const BinaryExpr &b)
     emitTrap();
     ctx.setCurrent(okBB);
     curLoc = b.loc;
-    Opcode op = (b.op == BinaryExpr::Op::IDiv) ? Opcode::SDiv : Opcode::SRem;
+    Opcode op = (b.op == BinaryExpr::Op::IDiv) ? Opcode::SDivChk0 : Opcode::SRemChk0;
     Value res = emitBinary(op, Type(Type::Kind::I64), lhs.value, rhs.value);
     return {res, Type(Type::Kind::I64)};
 }
@@ -457,21 +457,21 @@ Lowerer::RVal Lowerer::lowerNumericBinary(const BinaryExpr &b, RVal lhs, RVal rh
         rhs = coerceToF64(std::move(rhs), b.loc);
     }
     bool isFloat = lhs.type.kind == Type::Kind::F64;
-    Opcode op = Opcode::Add;
+    Opcode op = Opcode::IAddOvf;
     Type ty = isFloat ? Type(Type::Kind::F64) : Type(Type::Kind::I64);
     switch (b.op)
     {
         case BinaryExpr::Op::Add:
-            op = isFloat ? Opcode::FAdd : Opcode::Add;
+            op = isFloat ? Opcode::FAdd : Opcode::IAddOvf;
             break;
         case BinaryExpr::Op::Sub:
-            op = isFloat ? Opcode::FSub : Opcode::Sub;
+            op = isFloat ? Opcode::FSub : Opcode::ISubOvf;
             break;
         case BinaryExpr::Op::Mul:
-            op = isFloat ? Opcode::FMul : Opcode::Mul;
+            op = isFloat ? Opcode::FMul : Opcode::IMulOvf;
             break;
         case BinaryExpr::Op::Div:
-            op = isFloat ? Opcode::FDiv : Opcode::SDiv;
+            op = isFloat ? Opcode::FDiv : Opcode::SDivChk0;
             break;
         case BinaryExpr::Op::Eq:
             op = isFloat ? Opcode::FCmpEQ : Opcode::ICmpEq;
@@ -545,7 +545,7 @@ Lowerer::RVal Lowerer::coerceToI64(RVal v, il::support::SourceLoc loc)
     else if (v.type.kind == Type::Kind::F64)
     {
         curLoc = loc;
-        v.value = emitUnary(Opcode::Fptosi, Type(Type::Kind::I64), v.value);
+        v.value = emitUnary(Opcode::CastFpToSiRteChk, Type(Type::Kind::I64), v.value);
         v.type = Type(Type::Kind::I64);
     }
     return v;
@@ -737,8 +737,8 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
                     break;
                 case BuiltinLoweringRule::ArgTransform::Kind::AddConst:
                     curLoc = argLocs[idx].value_or(c.loc);
-                    slot.value =
-                        emitBinary(Opcode::Add, Type(Type::Kind::I64), slot.value, Value::constInt(transform.immediate));
+                    slot.value = emitBinary(
+                        Opcode::IAddOvf, Type(Type::Kind::I64), slot.value, Value::constInt(transform.immediate));
                     slot.type = Type(Type::Kind::I64);
                     break;
             }

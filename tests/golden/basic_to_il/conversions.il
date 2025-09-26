@@ -86,7 +86,7 @@ L80:
   .loc 1 8 14
   %t15 = load f64, %t1
   .loc 1 8 10
-  %t16 = fptosi %t15
+  %t16 = cast.fp_to_si.rte.chk %t15
   .loc 1 8 4
   call @rt_print_i64(%t16)
   .loc 1 8 4
@@ -96,7 +96,7 @@ L80:
   .loc 1 8 23
   %t18 = load f64, %t0
   .loc 1 8 19
-  %t19 = fptosi %t18
+  %t19 = cast.fp_to_si.rte.chk %t18
   .loc 1 8 4
   call @rt_print_i64(%t19)
   .loc 1 8 4

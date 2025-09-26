@@ -55,6 +55,55 @@ struct OpHandlers
                                     const il::core::BasicBlock *&bb,
                                     size_t &ip);
 
+    static VM::ExecResult handleIAddOvf(VM &vm,
+                                        Frame &fr,
+                                        const il::core::Instr &in,
+                                        const VM::BlockMap &blocks,
+                                        const il::core::BasicBlock *&bb,
+                                        size_t &ip);
+
+    static VM::ExecResult handleISubOvf(VM &vm,
+                                        Frame &fr,
+                                        const il::core::Instr &in,
+                                        const VM::BlockMap &blocks,
+                                        const il::core::BasicBlock *&bb,
+                                        size_t &ip);
+
+    static VM::ExecResult handleIMulOvf(VM &vm,
+                                        Frame &fr,
+                                        const il::core::Instr &in,
+                                        const VM::BlockMap &blocks,
+                                        const il::core::BasicBlock *&bb,
+                                        size_t &ip);
+
+    static VM::ExecResult handleSDivChk0(VM &vm,
+                                         Frame &fr,
+                                         const il::core::Instr &in,
+                                         const VM::BlockMap &blocks,
+                                         const il::core::BasicBlock *&bb,
+                                         size_t &ip);
+
+    static VM::ExecResult handleUDivChk0(VM &vm,
+                                         Frame &fr,
+                                         const il::core::Instr &in,
+                                         const VM::BlockMap &blocks,
+                                         const il::core::BasicBlock *&bb,
+                                         size_t &ip);
+
+    static VM::ExecResult handleSRemChk0(VM &vm,
+                                         Frame &fr,
+                                         const il::core::Instr &in,
+                                         const VM::BlockMap &blocks,
+                                         const il::core::BasicBlock *&bb,
+                                         size_t &ip);
+
+    static VM::ExecResult handleURemChk0(VM &vm,
+                                         Frame &fr,
+                                         const il::core::Instr &in,
+                                         const VM::BlockMap &blocks,
+                                         const il::core::BasicBlock *&bb,
+                                         size_t &ip);
+
     static VM::ExecResult handleFAdd(VM &vm,
                                      Frame &fr,
                                      const il::core::Instr &in,
@@ -243,6 +292,13 @@ struct OpHandlers
                                        const VM::BlockMap &blocks,
                                        const il::core::BasicBlock *&bb,
                                        size_t &ip);
+
+    static VM::ExecResult handleCastFpToSiRteChk(VM &vm,
+                                                 Frame &fr,
+                                                 const il::core::Instr &in,
+                                                 const VM::BlockMap &blocks,
+                                                 const il::core::BasicBlock *&bb,
+                                                 size_t &ip);
 
     static VM::ExecResult handleTruncOrZext1(VM &vm,
                                              Frame &fr,

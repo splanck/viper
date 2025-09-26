@@ -17,7 +17,7 @@ entry:
   store i64, %sum_slot, 0
 
   %n0 = load i64, %n_slot
-  %bytes = mul %n0, 8
+  %bytes = imul.ovf %n0, 8
   %abase = call @rt_alloc(%bytes)
   store ptr, %a_slot, %abase
   br label loop_head
@@ -33,15 +33,15 @@ loop_body:
   %off = shl %i0, 3
   %elem_ptr = gep %a0, %off
 
-  %sq = mul %i0, %i0
+  %sq = imul.ovf %i0, %i0
   store i64, %elem_ptr, %sq
 
   %val = load i64, %elem_ptr
   %sum0 = load i64, %sum_slot
-  %sum1 = add %sum0, %val
+  %sum1 = iadd.ovf %sum0, %val
   store i64, %sum_slot, %sum1
 
-  %i1 = add %i0, 1
+  %i1 = iadd.ovf %i0, 1
   store i64, %i_slot, %i1
   br label loop_head
 

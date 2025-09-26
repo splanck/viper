@@ -22,7 +22,7 @@ L20:
   .loc 1 2 12
   %t2 = load i64, %t1
   .loc 1 2 14
-  %t3 = mul %t2, 2
+  %t3 = imul.ovf %t2, 2
   .loc 1 2 4
   store i64, %t0, %t3
   .loc 1 2 4

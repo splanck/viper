@@ -87,7 +87,7 @@ L0_SECOND#:
   .loc 1 13 18
   %t7 = fsub %t5, %t6
   .loc 1 13 8
-  %t8 = fptosi %t7
+  %t8 = cast.fp_to_si.rte.chk %t7
   .loc 1 13 8
   %t9 = call @FIRST#(%t8)
   .loc 1 13 8
