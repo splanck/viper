@@ -156,7 +156,7 @@ struct BuiltinLoweringRule
         } kind{Kind::CallRuntime};
 
         const char *runtime{nullptr}; ///< Runtime symbol name when calling helpers.
-        il::core::Opcode opcode{il::core::Opcode::Add}; ///< Unary opcode when @ref kind == EmitUnary.
+        il::core::Opcode opcode{il::core::Opcode::IAddOvf}; ///< Unary opcode when @ref kind == EmitUnary.
         std::vector<Argument> arguments{}; ///< Ordered argument specifications.
         std::vector<Feature> features{};   ///< Feature tracking applied for this variant.
     };

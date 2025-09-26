@@ -72,13 +72,13 @@ int main()
         return Value::temp(nextTemp++);
     };
 
-    Value addRes = emitValue(Opcode::Add, Type(Type::Kind::I64), {Value::constInt(1), Value::constInt(2)});
-    Value subRes = emitValue(Opcode::Sub, Type(Type::Kind::I64), {addRes, Value::constInt(3)});
-    Value mulRes = emitValue(Opcode::Mul, Type(Type::Kind::I64), {addRes, subRes});
-    [[maybe_unused]] Value sdivRes = emitValue(Opcode::SDiv, Type(Type::Kind::I64), {mulRes, Value::constInt(5)});
-    [[maybe_unused]] Value udivRes = emitValue(Opcode::UDiv, Type(Type::Kind::I64), {Value::constInt(10), Value::constInt(2)});
-    [[maybe_unused]] Value sremRes = emitValue(Opcode::SRem, Type(Type::Kind::I64), {Value::constInt(7), Value::constInt(3)});
-    [[maybe_unused]] Value uremRes = emitValue(Opcode::URem, Type(Type::Kind::I64), {Value::constInt(9), Value::constInt(4)});
+    Value addRes = emitValue(Opcode::IAddOvf, Type(Type::Kind::I64), {Value::constInt(1), Value::constInt(2)});
+    Value subRes = emitValue(Opcode::ISubOvf, Type(Type::Kind::I64), {addRes, Value::constInt(3)});
+    Value mulRes = emitValue(Opcode::IMulOvf, Type(Type::Kind::I64), {addRes, subRes});
+    [[maybe_unused]] Value sdivRes = emitValue(Opcode::SDivChk0, Type(Type::Kind::I64), {mulRes, Value::constInt(5)});
+    [[maybe_unused]] Value udivRes = emitValue(Opcode::UDivChk0, Type(Type::Kind::I64), {Value::constInt(10), Value::constInt(2)});
+    [[maybe_unused]] Value sremRes = emitValue(Opcode::SRemChk0, Type(Type::Kind::I64), {Value::constInt(7), Value::constInt(3)});
+    [[maybe_unused]] Value uremRes = emitValue(Opcode::URemChk0, Type(Type::Kind::I64), {Value::constInt(9), Value::constInt(4)});
     Value andRes = emitValue(Opcode::And, Type(Type::Kind::I64), {Value::constInt(0xF0), Value::constInt(0x0F)});
     Value orRes = emitValue(Opcode::Or, Type(Type::Kind::I64), {andRes, Value::constInt(1)});
     Value xorRes = emitValue(Opcode::Xor, Type(Type::Kind::I64), {orRes, Value::constInt(3)});
@@ -107,6 +107,8 @@ int main()
     [[maybe_unused]] Value fcmpGeRes = emitValue(Opcode::FCmpGE, Type(Type::Kind::I1), {Value::constFloat(3.0), Value::constFloat(3.0)});
     [[maybe_unused]] Value sitofpRes = emitValue(Opcode::Sitofp, Type(Type::Kind::F64), {Value::constInt(42)});
     [[maybe_unused]] Value fptosiRes = emitValue(Opcode::Fptosi, Type(Type::Kind::I64), {Value::constFloat(5.5)});
+    [[maybe_unused]] Value castFpToSiChkRes =
+        emitValue(Opcode::CastFpToSiRteChk, Type(Type::Kind::I64), {Value::constFloat(5.5)});
     Value zextRes = emitValue(Opcode::Zext1, Type(Type::Kind::I64), {icmpNeRes});
     [[maybe_unused]] Value truncRes = emitValue(Opcode::Trunc1, Type(Type::Kind::I1), {Value::constInt(255)});
     Value allocaRes = emitValue(Opcode::Alloca, Type(Type::Kind::Ptr), {Value::constInt(8)});

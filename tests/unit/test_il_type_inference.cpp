@@ -41,7 +41,7 @@ int main()
     bb.label = "entry";
 
     Instr useUnknown;
-    useUnknown.op = Opcode::Add;
+    useUnknown.op = Opcode::IAddOvf;
     useUnknown.operands.push_back(Value::temp(2));
     std::ostringstream err;
     bool ok = types.ensureOperandsDefined(fn, bb, useUnknown, err);

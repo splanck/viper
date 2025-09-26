@@ -48,7 +48,7 @@ L20:
   .loc 1 2 10
   %t9 = zext1 %t7
   .loc 1 2 10
-  %t10 = add %t8, %t9
+  %t10 = iadd.ovf %t8, %t9
   .loc 1 2 10
   %t11 = scmp_gt %t10, 0
   .loc 1 2 10

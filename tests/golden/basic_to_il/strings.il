@@ -39,7 +39,7 @@ L30:
   .loc 1 3 15
   %t5 = load str, %t0
   .loc 1 3 19
-  %t6 = add 2, -1
+  %t6 = iadd.ovf 2, -1
   .loc 1 3 22
   %t7 = call @rt_mid3(%t5, %t6, 3)
   .loc 1 3 4
@@ -54,7 +54,7 @@ L40:
   .loc 1 4 15
   %t9 = load str, %t0
   .loc 1 4 19
-  %t10 = add 3, -1
+  %t10 = iadd.ovf 3, -1
   .loc 1 4 10
   %t11 = call @rt_mid2(%t9, %t10)
   .loc 1 4 4

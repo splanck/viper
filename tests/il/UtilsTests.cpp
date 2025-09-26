@@ -22,10 +22,10 @@ int main()
     b.label = "b";
     b.instructions.emplace_back();
     Instr &add = b.instructions.back();
-    add.op = Opcode::Add;
+    add.op = Opcode::IAddOvf;
     assert(belongsToBlock(add, b));
     Instr other;
-    other.op = Opcode::Add;
+    other.op = Opcode::IAddOvf;
     assert(!belongsToBlock(other, b));
     assert(!isTerminator(add));
     assert(terminator(b) == nullptr);
@@ -35,7 +35,7 @@ int main()
         BasicBlock blk;
         blk.label = "t";
         blk.instructions.emplace_back();
-        blk.instructions.back().op = Opcode::Add;
+        blk.instructions.back().op = Opcode::IAddOvf;
         blk.instructions.emplace_back();
         Instr &term = blk.instructions.back();
         term.op = op;

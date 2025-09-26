@@ -131,7 +131,7 @@ static const std::array<LowerRule, 23> kBuiltinLoweringRules = {{
         .variants = {
             Variant{.condition = Condition::Always,
                     .kind = VariantKind::EmitUnary,
-                    .opcode = il::core::Opcode::Fptosi,
+                    .opcode = il::core::Opcode::CastFpToSiRteChk,
                     .arguments = {Argument{.index = 0,
                                            .transforms = {Transform{.kind = TransformKind::EnsureF64}}}}},
         },

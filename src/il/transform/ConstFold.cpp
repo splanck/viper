@@ -1,6 +1,6 @@
 // File: src/il/transform/ConstFold.cpp
 // Purpose: Implements constant folding for integer ops and math intrinsics.
-// Key invariants: Uses wraparound semantics for integers and C math for f64.
+// Key invariants: Mirrors checked integer semantics and C math for f64.
 // Ownership/Lifetime: Operates in place on the module.
 // Links: docs/codemap.md
 // License: MIT (see LICENSE)
@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <limits>
+#include <optional>
 
 using namespace il::core;
 
@@ -77,39 +78,41 @@ static bool getConstFloat(const Value &v, double &out)
 }
 
 /**
- * @brief Perform addition with two's-complement wraparound semantics.
+ * @brief Perform checked addition mirroring the `.ovf` opcode semantics.
  *
- * Integer folding must mirror the VM's modulo 2^64 behaviour. Casting to
- * unsigned before applying arithmetic ensures that signed overflow follows the
- * wraparound contract instead of triggering undefined behaviour. The result is
- * converted back to a signed value to match @ref Value::constInt expectations.
+ * Folding must trap on overflow, matching the runtime behaviour of
+ * @ref Opcode::IAddOvf. The builtin overflow helpers report whether the
+ * operation overflowed; if so the caller must bail out of folding so that the
+ * verifier continues to reject the IR as trapping.
  */
-static long long wrapAdd(long long a, long long b)
+static std::optional<long long> checkedAdd(long long a, long long b)
 {
-    return static_cast<long long>(static_cast<uint64_t>(a) + static_cast<uint64_t>(b));
+    long long result{};
+    if (__builtin_add_overflow(a, b, &result))
+        return std::nullopt;
+    return result;
 }
 
 /**
- * @brief Perform subtraction with two's-complement wraparound semantics.
- *
- * Mirrors @ref wrapAdd by performing the operation in the unsigned domain to
- * avoid undefined behaviour while modelling modulo 2^64 subtraction.
+ * @brief Perform checked subtraction mirroring the `.ovf` opcode semantics.
  */
-static long long wrapSub(long long a, long long b)
+static std::optional<long long> checkedSub(long long a, long long b)
 {
-    return static_cast<long long>(static_cast<uint64_t>(a) - static_cast<uint64_t>(b));
+    long long result{};
+    if (__builtin_sub_overflow(a, b, &result))
+        return std::nullopt;
+    return result;
 }
 
 /**
- * @brief Perform multiplication with two's-complement wraparound semantics.
- *
- * The unsigned multiply emulates the IR's modulo behaviour so that folding an
- * instruction yields the same bits the VM would have produced when the operands
- * overflow the signed range.
+ * @brief Perform checked multiplication mirroring the `.ovf` opcode semantics.
  */
-static long long wrapMul(long long a, long long b)
+static std::optional<long long> checkedMul(long long a, long long b)
 {
-    return static_cast<long long>(static_cast<uint64_t>(a) * static_cast<uint64_t>(b));
+    long long result{};
+    if (__builtin_mul_overflow(a, b, &result))
+        return std::nullopt;
+    return result;
 }
 
 /**
@@ -271,6 +274,29 @@ void constFold(Module &m)
                 {
                     folded = foldCall(in, repl);
                 }
+                else if (in.operands.size() == 1)
+                {
+                    if (in.op == Opcode::CastFpToSiRteChk)
+                    {
+                        double operand;
+                        if (getConstFloat(in.operands[0], operand) && std::isfinite(operand))
+                        {
+                            double rounded = std::nearbyint(operand);
+                            if (std::isfinite(rounded))
+                            {
+                                constexpr double kMin =
+                                    static_cast<double>(std::numeric_limits<long long>::min());
+                                constexpr double kMax =
+                                    static_cast<double>(std::numeric_limits<long long>::max());
+                                if (rounded >= kMin && rounded <= kMax)
+                                {
+                                    repl = Value::constInt(static_cast<long long>(rounded));
+                                    folded = true;
+                                }
+                            }
+                        }
+                    }
+                }
                 else if (in.operands.size() == 2)
                 {
                     long long lhs, rhs, res = 0;
@@ -279,14 +305,35 @@ void constFold(Module &m)
                         folded = true;
                         switch (in.op)
                         {
-                            case Opcode::Add:
-                                res = wrapAdd(lhs, rhs);
+                            case Opcode::IAddOvf:
+                                if (const auto sum = checkedAdd(lhs, rhs))
+                                {
+                                    res = *sum;
+                                }
+                                else
+                                {
+                                    folded = false;
+                                }
                                 break;
-                            case Opcode::Sub:
-                                res = wrapSub(lhs, rhs);
+                            case Opcode::ISubOvf:
+                                if (const auto diff = checkedSub(lhs, rhs))
+                                {
+                                    res = *diff;
+                                }
+                                else
+                                {
+                                    folded = false;
+                                }
                                 break;
-                            case Opcode::Mul:
-                                res = wrapMul(lhs, rhs);
+                            case Opcode::IMulOvf:
+                                if (const auto prod = checkedMul(lhs, rhs))
+                                {
+                                    res = *prod;
+                                }
+                                else
+                                {
+                                    folded = false;
+                                }
                                 break;
                             case Opcode::And:
                                 res = lhs & rhs;

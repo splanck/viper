@@ -31,7 +31,7 @@ int main()
         bb.instructions.emplace_back();
         Instr &in = bb.instructions.back();
         in.result = i;
-        in.op = Opcode::Add;
+        in.op = Opcode::IAddOvf;
         in.type = Type(Type::Kind::I64);
         if (i == 0)
             in.operands = {Value::constInt(0), Value::constInt(0)};
