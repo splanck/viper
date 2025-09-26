@@ -7,9 +7,15 @@
 #include "rt_numeric.h"
 #include "rt.hpp"
 
+#include <ctype.h>
+#include <errno.h>
 #include <float.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <math.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -142,6 +148,122 @@ extern "C" {
 
         const double rounded = rt_round_nearest_even(scaled);
         return rounded / factor;
+    }
+
+    static int rt_is_digit_char(char ch)
+    {
+        return ch >= '0' && ch <= '9';
+    }
+
+    double rt_val_to_double(const char *s, bool *ok)
+    {
+        if (!ok)
+        {
+            rt_trap("rt_val_to_double: null ok");
+            return 0.0;
+        }
+        if (!s)
+        {
+            *ok = false;
+            rt_trap("rt_val_to_double: null string");
+            return 0.0;
+        }
+
+        const unsigned char *p = (const unsigned char *)s;
+        while (*p && isspace(*p))
+            ++p;
+
+        const char *parse = (const char *)p;
+        if (*parse == '\0')
+        {
+            *ok = true;
+            return 0.0;
+        }
+
+        if (*parse == '+' || *parse == '-')
+        {
+            const char next = parse[1];
+            if (next == '.')
+            {
+                if (!rt_is_digit_char(parse[2]))
+                {
+                    *ok = true;
+                    return 0.0;
+                }
+            }
+            else if (!rt_is_digit_char(next))
+            {
+                *ok = true;
+                return 0.0;
+            }
+        }
+        else if (*parse == '.')
+        {
+            if (!rt_is_digit_char(parse[1]))
+            {
+                *ok = true;
+                return 0.0;
+            }
+        }
+        else if (!rt_is_digit_char(*parse))
+        {
+            *ok = true;
+            return 0.0;
+        }
+
+        errno = 0;
+        char *end = NULL;
+        double value = strtod(parse, &end);
+        if (end == parse)
+        {
+            *ok = true;
+            return 0.0;
+        }
+
+        if (!isfinite(value))
+        {
+            *ok = false;
+            return 0.0;
+        }
+
+        *ok = true;
+        return value;
+    }
+
+    static void rt_format(char *out, size_t cap, const char *fmt, ...)
+    {
+        if (!out || cap == 0)
+            rt_trap("rt_format: invalid buffer");
+
+        va_list args;
+        va_start(args, fmt);
+        int written = vsnprintf(out, cap, fmt, args);
+        va_end(args);
+
+        if (written < 0)
+            rt_trap("rt_format: format error");
+        if ((size_t)written >= cap)
+            rt_trap("rt_format: truncated");
+    }
+
+    void rt_str_from_double(double x, char *out, size_t cap)
+    {
+        rt_format(out, cap, "%.17g", x);
+    }
+
+    void rt_str_from_float(float x, char *out, size_t cap)
+    {
+        rt_format(out, cap, "%.9g", (double)x);
+    }
+
+    void rt_str_from_i32(int32_t x, char *out, size_t cap)
+    {
+        rt_format(out, cap, "%" PRId32, x);
+    }
+
+    void rt_str_from_i16(int16_t x, char *out, size_t cap)
+    {
+        rt_format(out, cap, "%" PRId16, x);
     }
 
 #ifdef __cplusplus
