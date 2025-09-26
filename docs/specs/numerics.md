@@ -143,7 +143,7 @@ is statically proven to be in range.
 | `a / b` | integer or float | `fdiv` in `f64`, followed by optional `cast.double_to_single.chk` when the result rank is `SINGLE`. |
 | `a \ b` | integer ranks | `sdiv.chk0` on promoted integer width; narrow with `cast.*.chk` as needed. |
 | `a MOD b` | integer ranks | `srem.chk0` on promoted integer width; narrow with `cast.*.chk` as needed. |
-| `a ^ b` | any numeric | Call runtime helper `@rt_pow_f64(a', b')` where inputs are widened to `f64`; helper enforces `DomainError`/`Overflow`. |
+| `a ^ b` | any numeric | Call runtime helper `@rt_pow_f64_chkdom(a', b')` where inputs are widened to `f64`; helper enforces `DomainError`/`Overflow`. |
 | `INT(x)` | any numeric | For integers: no-op. For floats: runtime call `@rt_int(x')` returning the original rank. |
 | `FIX(x)` | any numeric | Runtime call `@rt_fix(x')` implementing truncate-toward-zero. |
 | `ROUND(x)` | any numeric | Runtime call `@rt_round_ties_even(x')`. |

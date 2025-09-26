@@ -156,7 +156,7 @@ Initial runtime surface (all prefixed `rt_`):
 - Console: `rt_print_str`, `rt_print_i64`, `rt_print_f64`, `rt_input_line`.
 - Strings: `rt_len`, `rt_concat`, `rt_substr`, `rt_to_int`, `rt_int_to_str`, `rt_f64_to_str`.
 - Memory: `rt_alloc`, `rt_free`.
-- Optional math helpers: `rt_sin`, `rt_cos`, `rt_pow`, etc.
+- Optional math helpers: `rt_sin`, `rt_cos`, `rt_pow_f64_chkdom`, etc.
 
 #### Runtime memory model
 

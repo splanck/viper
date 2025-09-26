@@ -6,7 +6,7 @@ extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
 extern @rt_sin(f64) -> f64
 extern @rt_cos(f64) -> f64
-extern @rt_pow(f64, f64) -> f64
+extern @rt_pow_f64_chkdom(f64, f64) -> f64
 global const str @.L0 = "
 "
 func @main() -> i64 {
@@ -36,7 +36,7 @@ L20:
   br L30
 L30:
   .loc 1 3 10
-  %t4 = call @rt_pow(2, 10)
+  %t4 = call @rt_pow_f64_chkdom(2, 10)
   .loc 1 3 4
   call @rt_print_f64(%t4)
   .loc 1 3 4
