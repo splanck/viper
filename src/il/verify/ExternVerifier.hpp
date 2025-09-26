@@ -28,10 +28,7 @@ class ExternVerifier
     using ExternMap = std::unordered_map<std::string, const il::core::Extern *>;
 
     /// @brief Access verified extern descriptors keyed by symbol name.
-    [[nodiscard]] const ExternMap &externs() const
-    {
-        return externs_;
-    }
+    [[nodiscard]] const ExternMap &externs() const;
 
     /// @brief Verify extern declarations in @p module and populate the lookup map.
     /// @param module Module whose extern table should be validated.
