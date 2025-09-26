@@ -15,6 +15,7 @@
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/RuntimeBridge.hpp"
 
+#include <cstdint>
 #include <limits>
 
 using namespace il::core;
@@ -101,6 +102,19 @@ void applyCheckedRem(const Instr &in,
     const int64_t quotient = wideLhs / wideRhs;
     const int64_t remainder = wideLhs - quotient * wideRhs;
     out.i64 = static_cast<int64_t>(static_cast<T>(remainder));
+}
+
+template <typename NarrowT>
+[[nodiscard]] bool fitsSignedRange(int64_t value)
+{
+    return value >= static_cast<int64_t>(std::numeric_limits<NarrowT>::min()) &&
+           value <= static_cast<int64_t>(std::numeric_limits<NarrowT>::max());
+}
+
+template <typename NarrowT>
+[[nodiscard]] bool fitsUnsignedRange(uint64_t value)
+{
+    return value <= static_cast<uint64_t>(std::numeric_limits<NarrowT>::max());
 }
 } // namespace
 
@@ -391,17 +405,17 @@ VM::ExecResult OpHandlers::handleUDivChk0(VM &vm,
     return ops::applyBinary(vm,
                             fr,
                             in,
-                            [&](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
                             {
                                 const auto divisor = static_cast<uint64_t>(rhsVal.i64);
                                 if (divisor == 0)
                                 {
-                                    RuntimeBridge::trap(
-                                        TrapKind::DivideByZero,
-                                        "divide by zero in udiv.chk0",
-                                        in.loc,
-                                        fr.func->name,
-                                        bb ? bb->label : "");
+                                    emitTrap(TrapKind::DivideByZero,
+                                             "divide by zero in udiv.chk0",
+                                             in,
+                                             fr,
+                                             bb);
+                                    return;
                                 }
                                 const auto dividend = static_cast<uint64_t>(lhsVal.i64);
                                 out.i64 = static_cast<int64_t>(dividend / divisor);
@@ -452,21 +466,188 @@ VM::ExecResult OpHandlers::handleURemChk0(VM &vm,
     return ops::applyBinary(vm,
                             fr,
                             in,
-                            [&](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
                             {
                                 const auto divisor = static_cast<uint64_t>(rhsVal.i64);
                                 if (divisor == 0)
                                 {
-                                    RuntimeBridge::trap(
-                                        TrapKind::DivideByZero,
-                                        "divide by zero in urem.chk0",
-                                        in.loc,
-                                        fr.func->name,
-                                        bb ? bb->label : "");
+                                    emitTrap(TrapKind::DivideByZero,
+                                             "divide by zero in urem.chk0",
+                                             in,
+                                             fr,
+                                             bb);
+                                    return;
                                 }
                                 const auto dividend = static_cast<uint64_t>(lhsVal.i64);
                                 out.i64 = static_cast<int64_t>(dividend % divisor);
                             });
+}
+
+/// @brief Interpret the `cast.si_narrow.chk` opcode with range checking for signed integers.
+VM::ExecResult OpHandlers::handleCastSiNarrowChk(VM &vm,
+                                                 Frame &fr,
+                                                 const Instr &in,
+                                                 const VM::BlockMap &blocks,
+                                                 const BasicBlock *&bb,
+                                                 size_t &ip)
+{
+    (void)blocks;
+    (void)ip;
+    const Slot value = vm.eval(fr, in.operands[0]);
+    const int64_t operand = value.i64;
+
+    auto trapOutOfRange = [&]()
+    {
+        emitTrap(TrapKind::InvalidCast,
+                 "value out of range in cast.si_narrow.chk",
+                 in,
+                 fr,
+                 bb);
+    };
+
+    int64_t narrowed = operand;
+    bool inRange = true;
+    switch (in.type.kind)
+    {
+        case Type::Kind::I16:
+            inRange = fitsSignedRange<int16_t>(operand);
+            if (inRange)
+                narrowed = static_cast<int16_t>(operand);
+            break;
+        case Type::Kind::I32:
+            inRange = fitsSignedRange<int32_t>(operand);
+            if (inRange)
+                narrowed = static_cast<int32_t>(operand);
+            break;
+        case Type::Kind::I1:
+            inRange = (operand == 0) || (operand == 1);
+            if (inRange)
+                narrowed = operand & 1;
+            break;
+        case Type::Kind::I64:
+            narrowed = operand;
+            break;
+        default:
+            emitTrap(TrapKind::InvalidCast,
+                     "unsupported target type in cast.si_narrow.chk",
+                     in,
+                     fr,
+                     bb);
+            return {};
+    }
+
+    if (!inRange)
+    {
+        trapOutOfRange();
+        return {};
+    }
+
+    Slot out{};
+    out.i64 = narrowed;
+    ops::storeResult(fr, in, out);
+    return {};
+}
+
+/// @brief Interpret the `cast.ui_narrow.chk` opcode with range checking for unsigned integers.
+VM::ExecResult OpHandlers::handleCastUiNarrowChk(VM &vm,
+                                                 Frame &fr,
+                                                 const Instr &in,
+                                                 const VM::BlockMap &blocks,
+                                                 const BasicBlock *&bb,
+                                                 size_t &ip)
+{
+    (void)blocks;
+    (void)ip;
+    const Slot value = vm.eval(fr, in.operands[0]);
+    const uint64_t operand = static_cast<uint64_t>(value.i64);
+
+    auto trapOutOfRange = [&]()
+    {
+        emitTrap(TrapKind::InvalidCast,
+                 "value out of range in cast.ui_narrow.chk",
+                 in,
+                 fr,
+                 bb);
+    };
+
+    uint64_t narrowed = operand;
+    bool inRange = true;
+    switch (in.type.kind)
+    {
+        case Type::Kind::I16:
+            inRange = fitsUnsignedRange<uint16_t>(operand);
+            if (inRange)
+                narrowed = static_cast<uint16_t>(operand);
+            break;
+        case Type::Kind::I32:
+            inRange = fitsUnsignedRange<uint32_t>(operand);
+            if (inRange)
+                narrowed = static_cast<uint32_t>(operand);
+            break;
+        case Type::Kind::I1:
+            inRange = operand <= 1;
+            if (inRange)
+                narrowed = operand & 1;
+            break;
+        case Type::Kind::I64:
+            narrowed = operand;
+            break;
+        default:
+            emitTrap(TrapKind::InvalidCast,
+                     "unsupported target type in cast.ui_narrow.chk",
+                     in,
+                     fr,
+                     bb);
+            return {};
+    }
+
+    if (!inRange)
+    {
+        trapOutOfRange();
+        return {};
+    }
+
+    Slot out{};
+    out.i64 = static_cast<int64_t>(narrowed);
+    ops::storeResult(fr, in, out);
+    return {};
+}
+
+/// @brief Interpret the `cast.si_to_fp` opcode converting signed integers to double.
+VM::ExecResult OpHandlers::handleCastSiToFp(VM &vm,
+                                            Frame &fr,
+                                            const Instr &in,
+                                            const VM::BlockMap &blocks,
+                                            const BasicBlock *&bb,
+                                            size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+    const Slot value = vm.eval(fr, in.operands[0]);
+    Slot out{};
+    out.f64 = static_cast<double>(value.i64);
+    ops::storeResult(fr, in, out);
+    return {};
+}
+
+/// @brief Interpret the `cast.ui_to_fp` opcode converting unsigned integers to double.
+VM::ExecResult OpHandlers::handleCastUiToFp(VM &vm,
+                                            Frame &fr,
+                                            const Instr &in,
+                                            const VM::BlockMap &blocks,
+                                            const BasicBlock *&bb,
+                                            size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+    const Slot value = vm.eval(fr, in.operands[0]);
+    const uint64_t operand = static_cast<uint64_t>(value.i64);
+    Slot out{};
+    out.f64 = static_cast<double>(operand);
+    ops::storeResult(fr, in, out);
+    return {};
 }
 
 /// @brief Interpret the `xor` opcode for 64-bit integers.
