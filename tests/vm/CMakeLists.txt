@@ -59,6 +59,24 @@ function(viper_add_vm_unit_tests)
     return()
   endif()
 
+  set(_VIPER_VM_DIR ${CMAKE_CURRENT_FUNCTION_LIST_DIR})
+
+  viper_add_test_exe(test_vm_trap_domain_error ${_VIPER_VM_DIR}/TrapDomainErrorTests.cpp)
+  target_link_libraries(test_vm_trap_domain_error PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  viper_add_ctest(test_vm_trap_domain_error test_vm_trap_domain_error)
+
+  viper_add_test_exe(test_vm_trap_divide_by_zero ${_VIPER_VM_DIR}/TrapDivideByZeroTests.cpp)
+  target_link_libraries(test_vm_trap_divide_by_zero PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  viper_add_ctest(test_vm_trap_divide_by_zero test_vm_trap_divide_by_zero)
+
+  viper_add_test_exe(test_vm_trap_overflow ${_VIPER_VM_DIR}/TrapOverflowTests.cpp)
+  target_link_libraries(test_vm_trap_overflow PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  viper_add_ctest(test_vm_trap_overflow test_vm_trap_overflow)
+
+  viper_add_test_exe(test_vm_trap_invalid_cast ${_VIPER_VM_DIR}/TrapInvalidCastTests.cpp)
+  target_link_libraries(test_vm_trap_invalid_cast PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  viper_add_ctest(test_vm_trap_invalid_cast test_vm_trap_invalid_cast)
+
   viper_add_test_exe(test_vm_trap_loc ${VIPER_TESTS_DIR}/unit/test_vm_trap_loc.cpp)
   target_link_libraries(test_vm_trap_loc PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_trap_loc test_vm_trap_loc)

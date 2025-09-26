@@ -8,6 +8,7 @@
 #include "vm/Debug.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/Trace.hpp"
+#include "vm/Trap.hpp"
 #include "il/core/fwd.hpp"
 #include "il/core/Opcode.hpp"
 #include "rt.hpp"
@@ -15,6 +16,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -82,6 +84,7 @@ class VM
   public:
     friend struct detail::OpHandlers; ///< Allow opcode handlers to access internals
     friend struct detail::ops::OperandDispatcher; ///< Allow shared helpers to evaluate operands
+    friend class RuntimeBridge; ///< Runtime bridge accesses trap formatting helpers
 
     /// @brief Result of executing one opcode.
     struct ExecResult
@@ -128,6 +131,28 @@ class VM
     static const OpcodeHandlerTable &getOpcodeHandlers();
 
   private:
+    /// @brief Captures instruction context for trap diagnostics.
+    struct TrapContext
+    {
+        const il::core::Function *function = nullptr; ///< Active function
+        const il::core::BasicBlock *block = nullptr;  ///< Active basic block
+        size_t instructionIndex = 0;                  ///< Instruction index within block
+        bool hasInstruction = false;                  ///< Whether instruction metadata is valid
+        il::support::SourceLoc loc{};                 ///< Source location of the instruction
+    };
+
+    /// @brief Last trap recorded by the VM for diagnostic reporting.
+    struct TrapState
+    {
+        TrapKind kind = TrapKind::DomainError; ///< Trap classification
+        std::string message;                   ///< Detailed trap message
+        std::string function;                  ///< Function name
+        std::string block;                     ///< Basic block label
+        size_t instructionIndex = 0;           ///< Instruction index within block
+        bool hasInstruction = false;           ///< Whether instruction index is meaningful
+        il::support::SourceLoc loc{};          ///< Optional source location
+    };
+
     /// @brief Module to execute.
     /// @ownership Non-owning reference; module must outlive the VM.
     const il::core::Module &mod;
@@ -164,6 +189,12 @@ class VM
 
     /// @brief Trap metadata for the currently executing runtime call.
     RuntimeCallContext runtimeContext;
+
+    /// @brief Currently executing instruction context for trap reporting.
+    TrapContext currentContext{};
+
+    /// @brief Most recent trap emitted by the VM.
+    TrapState lastTrap{};
 
     /// @brief Execute function @p fn with optional arguments.
     /// @param fn Function to execute.
@@ -218,6 +249,22 @@ class VM
         const std::unordered_map<std::string, const il::core::BasicBlock *> &blocks,
         const il::core::BasicBlock *&bb,
         size_t &ip);
+
+    /// @brief Update current trap context for instruction @p in.
+    void setCurrentContext(Frame &fr, const il::core::BasicBlock *bb, size_t ip, const il::core::Instr &in);
+
+    /// @brief Clear the active trap context.
+    void clearCurrentContext();
+
+    /// @brief Format and record trap diagnostics.
+    std::string formatTrapDiagnostic(TrapKind kind,
+                                     std::string_view detail,
+                                     const il::support::SourceLoc &loc,
+                                     const std::string &fn,
+                                     const std::string &block);
+
+    /// @brief Access active VM instance for thread-local trap reporting.
+    static VM *activeInstance();
 
     /// @brief Aggregate execution state for a running function.
     struct ExecState

@@ -7,6 +7,7 @@
 
 #include "rt.hpp"
 #include "support/source_location.hpp"
+#include "vm/Trap.hpp"
 #include <string>
 #include <vector>
 
@@ -43,7 +44,8 @@ class RuntimeBridge
 
     /// @brief Report a trap with source location @p loc within function @p fn and
     /// block @p block.
-    static void trap(const std::string &msg,
+    static void trap(TrapKind kind,
+                     const std::string &msg,
                      const il::support::SourceLoc &loc,
                      const std::string &fn,
                      const std::string &block);
