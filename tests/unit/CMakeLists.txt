@@ -47,6 +47,10 @@ function(viper_add_runtime_tests)
   target_link_libraries(test_rt_math_core PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_math_core test_rt_math_core)
 
+  viper_add_test_exe(test_rt_numeric ${VIPER_TESTS_DIR}/runtime/RTNumericTests.cpp)
+  target_link_libraries(test_rt_numeric PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+  viper_add_ctest(test_rt_numeric test_rt_numeric)
+
   viper_add_test_exe(test_rt_abs_i64_overflow ${VIPER_TESTS_DIR}/runtime/RTAbsI64OverflowTests.cpp)
   target_link_libraries(test_rt_abs_i64_overflow PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_abs_i64_overflow test_rt_abs_i64_overflow)

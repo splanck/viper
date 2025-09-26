@@ -1,0 +1,57 @@
+// File: src/runtime/rt_numeric.h
+// Purpose: Declares numeric conversion helpers enforcing BASIC semantics.
+// Key invariants: Conversions obey banker rounding and report traps via ok flags.
+// Ownership/Lifetime: None.
+// Links: docs/specs/numerics.md
+#pragma once
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+    /// @brief Convert double @p x to INTEGER using round-to-nearest-even.
+    /// @param x Input value.
+    /// @param ok Output flag cleared when the conversion overflows or input is non-finite.
+    /// @return Rounded INTEGER value when @p ok is true; unspecified otherwise.
+    int16_t rt_cint_from_double(double x, bool *ok);
+
+    /// @brief Convert double @p x to LONG using round-to-nearest-even.
+    /// @param x Input value.
+    /// @param ok Output flag cleared when the conversion overflows or input is non-finite.
+    /// @return Rounded LONG value when @p ok is true; unspecified otherwise.
+    int32_t rt_clng_from_double(double x, bool *ok);
+
+    /// @brief Convert double @p x to SINGLE.
+    /// @param x Input value.
+    /// @param ok Output flag cleared when the conversion overflows or input is non-finite.
+    /// @return Rounded SINGLE value when @p ok is true; unspecified otherwise.
+    float rt_csng_from_double(double x, bool *ok);
+
+    /// @brief Promote any finite numeric input to DOUBLE.
+    /// @param x Input value (already validated as finite).
+    /// @return Equivalent DOUBLE representation.
+    double rt_cdbl_from_any(double x);
+
+    /// @brief Compute INT(x) using floor semantics.
+    /// @param x Input value.
+    /// @return Greatest integer less than or equal to @p x as DOUBLE.
+    double rt_int_floor(double x);
+
+    /// @brief Compute FIX(x) using truncation toward zero.
+    /// @param x Input value.
+    /// @return Truncated value as DOUBLE.
+    double rt_fix_trunc(double x);
+
+    /// @brief Round @p x to @p ndigits decimal places using banker's rounding.
+    /// @param x Input value.
+    /// @param ndigits Number of digits after the decimal point (negative for tens, hundreds, ...).
+    /// @return Rounded DOUBLE value.
+    double rt_round_even(double x, int ndigits);
+
+#ifdef __cplusplus
+}
+#endif
+
