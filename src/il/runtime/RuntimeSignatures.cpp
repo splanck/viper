@@ -8,6 +8,7 @@
 #include "il/runtime/RuntimeSignatures.hpp"
 
 #include "rt.hpp"
+#include "rt_fp.h"
 #include "rt_internal.h"
 #include "rt_math.h"
 #include "rt_random.h"
@@ -22,6 +23,12 @@ namespace il::runtime
 namespace
 {
 using Kind = il::core::Type::Kind;
+
+/// @brief Placeholder handler for rt_pow_f64_chkdom, actual logic lives in the VM bridge.
+void trapPowHandler(void **, void *)
+{
+    rt_trap("rt_pow_f64_chkdom handler invoked from registry");
+}
 
 /// @brief Construct a runtime signature from the provided type kinds.
 RuntimeSignature makeSignature(Kind ret, std::initializer_list<Kind> params)
@@ -394,10 +401,10 @@ std::vector<RuntimeDescriptor> buildRegistry()
         {Kind::F64},
         &DirectHandler<&rt_cos, double, double>::invoke,
         feature(RuntimeFeature::Cos, true));
-    add("rt_pow",
+    add("rt_pow_f64_chkdom",
         Kind::F64,
         {Kind::F64, Kind::F64},
-        &DirectHandler<&rt_pow, double, double, double>::invoke,
+        &trapPowHandler,
         feature(RuntimeFeature::Pow, true));
     add("rt_randomize_i64",
         Kind::Void,
