@@ -663,11 +663,29 @@ namespace detail
 
 ExprPtr foldNumericAdd(const Expr &l, const Expr &r)
 {
-    return foldArithmetic(
+    return foldNumericBinary(
         l,
         r,
-        [](double a, double b) { return a + b; },
-        [](long long a, long long b) { return wrapAdd(a, b); });
+        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+        {
+            Numeric lhs = promote(a, b);
+            Numeric rhs = promote(b, a);
+            if (!lhs.isFloat && !rhs.isFloat)
+            {
+                const auto minI16 = std::numeric_limits<int16_t>::min();
+                const auto maxI16 = std::numeric_limits<int16_t>::max();
+                const bool lhsFitsI16 = lhs.i >= minI16 && lhs.i <= maxI16;
+                const bool rhsFitsI16 = rhs.i >= minI16 && rhs.i <= maxI16;
+                long long sum = wrapAdd(lhs.i, rhs.i);
+                if (lhsFitsI16 && rhsFitsI16 && (sum < minI16 || sum > maxI16))
+                    return std::nullopt;
+                return Numeric{false, static_cast<double>(sum), sum};
+            }
+            double lv = lhs.isFloat ? lhs.f : static_cast<double>(lhs.i);
+            double rv = rhs.isFloat ? rhs.f : static_cast<double>(rhs.i);
+            double result = lv + rv;
+            return Numeric{true, result, static_cast<long long>(result)};
+        });
 }
 
 ExprPtr foldNumericSub(const Expr &l, const Expr &r)
