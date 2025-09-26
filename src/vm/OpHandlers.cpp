@@ -124,6 +124,14 @@ VM::OpcodeHandler handlerForDispatch(VMDispatch dispatch)
             return &OpHandlers::handleFptosi;
         case VMDispatch::CastFpToSiRteChk:
             return &OpHandlers::handleCastFpToSiRteChk;
+        case VMDispatch::CastSiNarrowChk:
+            return &OpHandlers::handleCastSiNarrowChk;
+        case VMDispatch::CastUiNarrowChk:
+            return &OpHandlers::handleCastUiNarrowChk;
+        case VMDispatch::CastSiToFp:
+            return &OpHandlers::handleCastSiToFp;
+        case VMDispatch::CastUiToFp:
+            return &OpHandlers::handleCastUiToFp;
         case VMDispatch::TruncOrZext1:
             return &OpHandlers::handleTruncOrZext1;
         case VMDispatch::Trap:

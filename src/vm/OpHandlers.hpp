@@ -300,6 +300,34 @@ struct OpHandlers
                                                  const il::core::BasicBlock *&bb,
                                                  size_t &ip);
 
+    static VM::ExecResult handleCastSiNarrowChk(VM &vm,
+                                                Frame &fr,
+                                                const il::core::Instr &in,
+                                                const VM::BlockMap &blocks,
+                                                const il::core::BasicBlock *&bb,
+                                                size_t &ip);
+
+    static VM::ExecResult handleCastUiNarrowChk(VM &vm,
+                                                Frame &fr,
+                                                const il::core::Instr &in,
+                                                const VM::BlockMap &blocks,
+                                                const il::core::BasicBlock *&bb,
+                                                size_t &ip);
+
+    static VM::ExecResult handleCastSiToFp(VM &vm,
+                                           Frame &fr,
+                                           const il::core::Instr &in,
+                                           const VM::BlockMap &blocks,
+                                           const il::core::BasicBlock *&bb,
+                                           size_t &ip);
+
+    static VM::ExecResult handleCastUiToFp(VM &vm,
+                                           Frame &fr,
+                                           const il::core::Instr &in,
+                                           const VM::BlockMap &blocks,
+                                           const il::core::BasicBlock *&bb,
+                                           size_t &ip);
+
     static VM::ExecResult handleTruncOrZext1(VM &vm,
                                              Frame &fr,
                                              const il::core::Instr &in,
