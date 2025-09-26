@@ -657,17 +657,38 @@ Expected<void> verifyInstruction_impl(const Function &fn,
                                       TypeInference &types,
                                       DiagSink &sink)
 {
+    const auto rejectUnchecked = [&](std::string_view message) {
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, message))};
+    };
+
     switch (instr.op)
     {
         case Opcode::Alloca:
             return checkAlloca_E(fn, bb, instr, types, sink);
         case Opcode::Add:
+            return rejectUnchecked("signed integer add must use iadd.ovf (traps on overflow)");
         case Opcode::Sub:
+            return rejectUnchecked("signed integer sub must use isub.ovf (traps on overflow)");
         case Opcode::Mul:
+            return rejectUnchecked("signed integer mul must use imul.ovf (traps on overflow)");
         case Opcode::SDiv:
+            return rejectUnchecked(
+                "signed division must use sdiv.chk0 (traps on divide-by-zero and overflow)");
         case Opcode::UDiv:
+            return rejectUnchecked("unsigned division must use udiv.chk0 (traps on divide-by-zero)");
         case Opcode::SRem:
+            return rejectUnchecked(
+                "signed remainder must use srem.chk0 (traps on divide-by-zero; matches BASIC MOD semantics)");
         case Opcode::URem:
+            return rejectUnchecked(
+                "unsigned remainder must use urem.chk0 (traps on divide-by-zero; matches BASIC MOD semantics)");
+        case Opcode::IAddOvf:
+        case Opcode::ISubOvf:
+        case Opcode::IMulOvf:
+        case Opcode::SDivChk0:
+        case Opcode::UDivChk0:
+        case Opcode::SRemChk0:
+        case Opcode::URemChk0:
         case Opcode::And:
         case Opcode::Or:
         case Opcode::Xor:
@@ -701,7 +722,14 @@ Expected<void> verifyInstruction_impl(const Function &fn,
         case Opcode::Sitofp:
             return checkUnary_E(fn, bb, instr, types, Type::Kind::I64, Type(Type::Kind::F64));
         case Opcode::Fptosi:
+            return rejectUnchecked(
+                "fp to integer narrowing must use cast.fp_to_si.rte.chk (rounds to nearest-even and traps on overflow)");
+        case Opcode::CastFpToSiRteChk:
+        case Opcode::CastFpToUiRteChk:
             return checkUnary_E(fn, bb, instr, types, Type::Kind::F64, Type(Type::Kind::I64));
+        case Opcode::CastSiNarrowChk:
+        case Opcode::CastUiNarrowChk:
+            return checkUnary_E(fn, bb, instr, types, Type::Kind::I64, Type(Type::Kind::I64));
         case Opcode::Zext1:
             return checkUnary_E(fn, bb, instr, types, Type::Kind::I1, Type(Type::Kind::I64));
         case Opcode::Trunc1:
