@@ -220,6 +220,7 @@ Token Lexer::lexNumber()
     bool seenDot = false;
     bool seenExp = false;
     bool seenHash = false;
+    bool seenBang = false;
     if (peek() == '.')
     {
         seenDot = true;
@@ -243,15 +244,20 @@ Token Lexer::lexNumber()
         while (std::isdigit(static_cast<unsigned char>(peek())))
             s.push_back(get());
     }
-    if (peek() == '#')
+    if (peek() == '#' || peek() == '!')
     {
-        seenHash = true;
-        get();
+        char suffix = get();
+        if (suffix == '#')
+            seenHash = true;
+        else if (suffix == '!')
+            seenBang = true;
     }
     (void)seenDot;
     (void)seenExp;
     if (seenHash)
         s.push_back('#');
+    if (seenBang)
+        s.push_back('!');
     return {TokenKind::Number, s, loc};
 }
 
@@ -266,7 +272,7 @@ Token Lexer::lexIdentifierOrKeyword()
     std::string s;
     while (std::isalnum(static_cast<unsigned char>(peek())))
         s.push_back(std::toupper(static_cast<unsigned char>(get())));
-    if (peek() == '$' || peek() == '#')
+    if (peek() == '$' || peek() == '#' || peek() == '!')
         s.push_back(std::toupper(static_cast<unsigned char>(get())));
     TokenKind kind = lookupKeyword(s);
     return {kind, s, loc};
