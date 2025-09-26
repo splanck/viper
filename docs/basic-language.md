@@ -38,6 +38,8 @@ Programs can include top-level statements and user-defined procedures. Procedure
 * Strings use the `$` suffix.
 * Arrays are one-dimensional and declared with `DIM`.
 
+> **Semantics changed:** Numeric ranges, promotion rules, and traps are now governed by [specs/numerics.md](specs/numerics.md).
+
 ```basic
 10 LET I = 42
 20 LET F# = 3.14
