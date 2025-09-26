@@ -14,11 +14,33 @@
 #include "vm/RuntimeBridge.hpp"
 #include <cassert>
 #include <iostream>
+#include <sstream>
 
 using namespace il::core;
 
 namespace il::vm
 {
+namespace
+{
+thread_local VM *tlsActiveVM = nullptr; ///< Active VM for trap formatting.
+
+/// @brief Manage thread-local active VM pointer for trap reporting.
+struct ActiveVMGuard
+{
+    VM *previous = nullptr;
+
+    explicit ActiveVMGuard(VM *vm) : previous(tlsActiveVM)
+    {
+        tlsActiveVM = vm;
+    }
+
+    ~ActiveVMGuard()
+    {
+        tlsActiveVM = previous;
+    }
+};
+} // namespace
+
 
 /// Locate and execute the module's @c main function.
 ///
@@ -80,7 +102,7 @@ Slot VM::eval(Frame &fr, const Value &v)
         {
             auto it = strMap.find(v.str);
             if (it == strMap.end())
-                RuntimeBridge::trap("unknown global", {}, fr.func->name, "");
+                RuntimeBridge::trap(TrapKind::DomainError, "unknown global", {}, fr.func->name, "");
             else
                 s.str = it->second;
             return s;
@@ -140,9 +162,11 @@ VM::ExecResult VM::executeOpcode(Frame &fr,
 /// @return Return value of the function or special slot from debug control.
 Slot VM::runFunctionLoop(ExecState &st)
 {
+    clearCurrentContext();
     while (st.bb && st.ip < st.bb->instructions.size())
     {
         const Instr &in = st.bb->instructions[st.ip];
+        setCurrentContext(st.fr, st.bb, st.ip, in);
         if (auto br = processDebugControl(st, &in, false))
             return *br;
         tracer.onStep(in, st.fr);
@@ -157,6 +181,7 @@ Slot VM::runFunctionLoop(ExecState &st)
         if (auto br = processDebugControl(st, nullptr, true))
             return *br;
     }
+    clearCurrentContext();
     Slot s{};
     s.i64 = 0;
     return s;
@@ -176,6 +201,8 @@ Slot VM::runFunctionLoop(ExecState &st)
 /// @return Slot containing the function's return value.
 Slot VM::execFunction(const Function &fn, const std::vector<Slot> &args)
 {
+    ActiveVMGuard guard(this);
+    lastTrap = {};
     auto st = prepareExecution(fn, args);
     return runFunctionLoop(st);
 }
@@ -185,6 +212,76 @@ Slot VM::execFunction(const Function &fn, const std::vector<Slot> &args)
 uint64_t VM::getInstrCount() const
 {
     return instrCount;
+}
+
+void VM::setCurrentContext(Frame &fr, const BasicBlock *bb, size_t ip, const Instr &in)
+{
+    currentContext.function = fr.func;
+    currentContext.block = bb;
+    currentContext.instructionIndex = ip;
+    currentContext.hasInstruction = true;
+    currentContext.loc = in.loc;
+}
+
+void VM::clearCurrentContext()
+{
+    currentContext.function = nullptr;
+    currentContext.block = nullptr;
+    currentContext.instructionIndex = 0;
+    currentContext.hasInstruction = false;
+    currentContext.loc = {};
+}
+
+std::string VM::formatTrapDiagnostic(TrapKind kind,
+                                     std::string_view detail,
+                                     const il::support::SourceLoc &loc,
+                                     const std::string &fn,
+                                     const std::string &block)
+{
+    std::string functionName = fn;
+    if (functionName.empty() && currentContext.function)
+        functionName = currentContext.function->name;
+
+    std::string blockName = block;
+    if (blockName.empty() && currentContext.block)
+        blockName = currentContext.block->label;
+
+    il::support::SourceLoc location = loc;
+    if (!location.isValid() && currentContext.loc.isValid())
+        location = currentContext.loc;
+
+    bool hasInstruction = currentContext.hasInstruction;
+    size_t instructionIndex = currentContext.instructionIndex;
+    if (!hasInstruction)
+        instructionIndex = 0;
+
+    lastTrap.kind = kind;
+    lastTrap.message = std::string(detail);
+    lastTrap.function = functionName;
+    lastTrap.block = blockName;
+    lastTrap.hasInstruction = hasInstruction;
+    lastTrap.instructionIndex = instructionIndex;
+    lastTrap.loc = location;
+
+    std::ostringstream os;
+    os << toString(kind);
+    if (!functionName.empty())
+    {
+        os << " @ " << functionName;
+        if (!blockName.empty())
+            os << ": " << blockName;
+        if (hasInstruction)
+            os << "[#" << instructionIndex << ']';
+        if (location.isValid())
+            os << " (" << location.file_id << ':' << location.line << ':' << location.column << ')';
+    }
+    os << ": " << detail;
+    return os.str();
+}
+
+VM *VM::activeInstance()
+{
+    return tlsActiveVM;
 }
 
 } // namespace il::vm

@@ -50,11 +50,8 @@ int main()
     assert(WIFEXITED(status) && WEXITSTATUS(status) == 1);
     std::string out(buf);
     bool messageOk =
-        out.find("runtime trap: attempted to call unknown runtime helper 'rt_missing'") != std::string::npos;
-    bool functionOk = out.find("main: entry") != std::string::npos;
-    bool locationOk = out.find("(1:1:1)") != std::string::npos;
+        out.find("runtime trap: DomainError @ main: entry[#0] (1:1:1): attempted to call unknown runtime helper 'rt_missing'") !=
+        std::string::npos;
     assert(messageOk && "expected runtime trap diagnostic for unknown runtime helper");
-    assert(functionOk && "expected function and block context in runtime diagnostic");
-    assert(locationOk && "expected source location in runtime diagnostic");
     return 0;
 }

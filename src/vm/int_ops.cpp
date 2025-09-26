@@ -109,7 +109,10 @@ VM::ExecResult OpHandlers::handleIAddOvf(VM &vm,
                                 if (__builtin_add_overflow(lhsVal.i64, rhsVal.i64, &result))
                                 {
                                     RuntimeBridge::trap(
-                                        "integer overflow in iadd.ovf", in.loc, fr.func->name,
+                                        TrapKind::Overflow,
+                                        "integer overflow in iadd.ovf",
+                                        in.loc,
+                                        fr.func->name,
                                         bb ? bb->label : "");
                                 }
                                 out.i64 = result;
@@ -135,7 +138,10 @@ VM::ExecResult OpHandlers::handleISubOvf(VM &vm,
                                 if (__builtin_sub_overflow(lhsVal.i64, rhsVal.i64, &result))
                                 {
                                     RuntimeBridge::trap(
-                                        "integer overflow in isub.ovf", in.loc, fr.func->name,
+                                        TrapKind::Overflow,
+                                        "integer overflow in isub.ovf",
+                                        in.loc,
+                                        fr.func->name,
                                         bb ? bb->label : "");
                                 }
                                 out.i64 = result;
@@ -161,7 +167,10 @@ VM::ExecResult OpHandlers::handleIMulOvf(VM &vm,
                                 if (__builtin_mul_overflow(lhsVal.i64, rhsVal.i64, &result))
                                 {
                                     RuntimeBridge::trap(
-                                        "integer overflow in imul.ovf", in.loc, fr.func->name,
+                                        TrapKind::Overflow,
+                                        "integer overflow in imul.ovf",
+                                        in.loc,
+                                        fr.func->name,
                                         bb ? bb->label : "");
                                 }
                                 out.i64 = result;
@@ -187,14 +196,20 @@ VM::ExecResult OpHandlers::handleSDivChk0(VM &vm,
                                 if (divisor == 0)
                                 {
                                     RuntimeBridge::trap(
-                                        "divide by zero in sdiv.chk0", in.loc, fr.func->name,
+                                        TrapKind::DivideByZero,
+                                        "divide by zero in sdiv.chk0",
+                                        in.loc,
+                                        fr.func->name,
                                         bb ? bb->label : "");
                                 }
                                 const auto dividend = lhsVal.i64;
                                 if (dividend == std::numeric_limits<int64_t>::min() && divisor == -1)
                                 {
                                     RuntimeBridge::trap(
-                                        "integer overflow in sdiv.chk0", in.loc, fr.func->name,
+                                        TrapKind::Overflow,
+                                        "integer overflow in sdiv.chk0",
+                                        in.loc,
+                                        fr.func->name,
                                         bb ? bb->label : "");
                                 }
                                 out.i64 = dividend / divisor;
@@ -220,7 +235,10 @@ VM::ExecResult OpHandlers::handleUDivChk0(VM &vm,
                                 if (divisor == 0)
                                 {
                                     RuntimeBridge::trap(
-                                        "divide by zero in udiv.chk0", in.loc, fr.func->name,
+                                        TrapKind::DivideByZero,
+                                        "divide by zero in udiv.chk0",
+                                        in.loc,
+                                        fr.func->name,
                                         bb ? bb->label : "");
                                 }
                                 const auto dividend = static_cast<uint64_t>(lhsVal.i64);
@@ -247,14 +265,20 @@ VM::ExecResult OpHandlers::handleSRemChk0(VM &vm,
                                 if (divisor == 0)
                                 {
                                     RuntimeBridge::trap(
-                                        "divide by zero in srem.chk0", in.loc, fr.func->name,
+                                        TrapKind::DivideByZero,
+                                        "divide by zero in srem.chk0",
+                                        in.loc,
+                                        fr.func->name,
                                         bb ? bb->label : "");
                                 }
                                 const auto dividend = lhsVal.i64;
                                 if (dividend == std::numeric_limits<int64_t>::min() && divisor == -1)
                                 {
                                     RuntimeBridge::trap(
-                                        "integer overflow in srem.chk0", in.loc, fr.func->name,
+                                        TrapKind::Overflow,
+                                        "integer overflow in srem.chk0",
+                                        in.loc,
+                                        fr.func->name,
                                         bb ? bb->label : "");
                                 }
                                 out.i64 = dividend % divisor;
@@ -280,7 +304,10 @@ VM::ExecResult OpHandlers::handleURemChk0(VM &vm,
                                 if (divisor == 0)
                                 {
                                     RuntimeBridge::trap(
-                                        "divide by zero in urem.chk0", in.loc, fr.func->name,
+                                        TrapKind::DivideByZero,
+                                        "divide by zero in urem.chk0",
+                                        in.loc,
+                                        fr.func->name,
                                         bb ? bb->label : "");
                                 }
                                 const auto dividend = static_cast<uint64_t>(lhsVal.i64);

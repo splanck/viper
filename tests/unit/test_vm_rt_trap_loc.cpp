@@ -47,7 +47,7 @@ int main()
     int status = 0;
     waitpid(pid, &status, 0);
     std::string out(buf);
-    bool ok = out.find("main: entry (1:1:1)") != std::string::npos;
+    bool ok = out.find("runtime trap: DomainError @ main: entry[#1] (1:1:1): rt_to_int: invalid") != std::string::npos;
     assert(ok);
     return 0;
 }
