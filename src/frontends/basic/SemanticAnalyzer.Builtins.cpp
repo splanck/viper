@@ -147,7 +147,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeVal(const BuiltinCallExpr &c,
 {
     if (checkArgCount(c, args, 1, 1))
         checkArgType(c, 0, args[0], {Type::String});
-    return Type::Int;
+    return Type::Float;
 }
 
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeInt(const BuiltinCallExpr &c,

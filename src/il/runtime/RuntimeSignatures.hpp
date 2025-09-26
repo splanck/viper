@@ -22,6 +22,8 @@ enum class RuntimeFeature : std::size_t
     ToInt,
     IntToStr,
     F64ToStr,
+    Val,
+    Str,
     Alloc,
     StrEq,
     Left,

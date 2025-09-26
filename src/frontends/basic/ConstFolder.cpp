@@ -268,6 +268,14 @@ private:
         exprSlot() = std::move(ns);
     }
 
+    void replaceWithFloat(double v, il::support::SourceLoc loc)
+    {
+        auto nf = std::make_unique<FloatExpr>();
+        nf->loc = loc;
+        nf->value = v;
+        exprSlot() = std::move(nf);
+    }
+
     void replaceWithExpr(ExprPtr replacement)
     {
         exprSlot() = std::move(replacement);
@@ -450,17 +458,61 @@ private:
                 std::string s;
                 if (expr.args.size() == 1 && expr.args[0] && isStringLiteral(*expr.args[0], s))
                 {
-                    const char *p = s.c_str();
-                    while (*p && isspace((unsigned char)*p))
-                        ++p;
-                    const char *q = p + strlen(p);
-                    while (q > p && isspace((unsigned char)q[-1]))
-                        --q;
-                    std::string trimmed(p, q - p);
+                    const char *raw = s.c_str();
+                    while (*raw && std::isspace(static_cast<unsigned char>(*raw)))
+                        ++raw;
+
+                    if (*raw == '\0')
+                    {
+                        replaceWithFloat(0.0, expr.loc);
+                        break;
+                    }
+
+                    auto isDigit = [](char ch) {
+                        return ch >= '0' && ch <= '9';
+                    };
+
+                    if (*raw == '+' || *raw == '-')
+                    {
+                        char next = raw[1];
+                        if (next == '.')
+                        {
+                            if (!isDigit(raw[2]))
+                            {
+                                replaceWithFloat(0.0, expr.loc);
+                                break;
+                            }
+                        }
+                        else if (!isDigit(next))
+                        {
+                            replaceWithFloat(0.0, expr.loc);
+                            break;
+                        }
+                    }
+                    else if (*raw == '.')
+                    {
+                        if (!isDigit(raw[1]))
+                        {
+                            replaceWithFloat(0.0, expr.loc);
+                            break;
+                        }
+                    }
+                    else if (!isDigit(*raw))
+                    {
+                        replaceWithFloat(0.0, expr.loc);
+                        break;
+                    }
+
                     char *endp = nullptr;
-                    long long v = strtoll(trimmed.c_str(), &endp, 10);
-                    if (endp && *endp == '\0')
-                        replaceWithInt(v, expr.loc);
+                    double parsed = std::strtod(raw, &endp);
+                    if (endp == raw)
+                    {
+                        replaceWithFloat(0.0, expr.loc);
+                        break;
+                    }
+                    if (!std::isfinite(parsed))
+                        break;
+                    replaceWithFloat(parsed, expr.loc);
                 }
                 break;
             }
