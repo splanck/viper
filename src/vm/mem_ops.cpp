@@ -118,6 +118,12 @@ VM::ExecResult OpHandlers::handleLoad(VM &vm,
     Slot out{};
     switch (in.type.kind)
     {
+        case Type::Kind::I16:
+            out.i64 = static_cast<int64_t>(*reinterpret_cast<int16_t *>(ptr));
+            break;
+        case Type::Kind::I32:
+            out.i64 = static_cast<int64_t>(*reinterpret_cast<int32_t *>(ptr));
+            break;
         case Type::Kind::I64:
             out.i64 = *reinterpret_cast<int64_t *>(ptr);
             break;
@@ -168,6 +174,12 @@ VM::ExecResult OpHandlers::handleStore(VM &vm,
 
     switch (in.type.kind)
     {
+        case Type::Kind::I16:
+            *reinterpret_cast<int16_t *>(ptr) = static_cast<int16_t>(value.i64);
+            break;
+        case Type::Kind::I32:
+            *reinterpret_cast<int32_t *>(ptr) = static_cast<int32_t>(value.i64);
+            break;
         case Type::Kind::I64:
             *reinterpret_cast<int64_t *>(ptr) = value.i64;
             break;

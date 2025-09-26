@@ -348,7 +348,8 @@ static void promoteVariables(Function &F,
     {
         if (AI.addressTaken || !AI.hasStore)
             continue;
-        if (AI.type.kind != Type::Kind::I64 && AI.type.kind != Type::Kind::F64 &&
+        if (AI.type.kind != Type::Kind::I64 && AI.type.kind != Type::Kind::I32 &&
+            AI.type.kind != Type::Kind::I16 && AI.type.kind != Type::Kind::F64 &&
             AI.type.kind != Type::Kind::I1)
             continue;
         vars[id] = VarState{AI.type, {}};
@@ -455,7 +456,8 @@ void mem2reg(Module &M, Mem2RegStats *stats)
         {
             if (info.addressTaken || !info.hasStore)
                 continue;
-            if (info.type.kind != Type::Kind::I64 && info.type.kind != Type::Kind::F64 &&
+            if (info.type.kind != Type::Kind::I64 && info.type.kind != Type::Kind::I32 &&
+                info.type.kind != Type::Kind::I16 && info.type.kind != Type::Kind::F64 &&
                 info.type.kind != Type::Kind::I1)
                 continue;
             promotable.emplace(id, info);

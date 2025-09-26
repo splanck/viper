@@ -12,7 +12,7 @@
 int main()
 {
     const char *src = R"(il 0.1.2
-extern @foo(i32) -> i64
+extern @foo(i128) -> i64
 )";
     std::istringstream in(src);
     il::core::Module m;

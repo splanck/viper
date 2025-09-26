@@ -24,6 +24,10 @@ il::core::Type parseType(const std::string &token, bool *ok)
         return il::core::Type(kind);
     };
 
+    if (token == "i16")
+        return makeType(il::core::Type::Kind::I16);
+    if (token == "i32")
+        return makeType(il::core::Type::Kind::I32);
     if (token == "i64")
         return makeType(il::core::Type::Kind::I64);
     if (token == "i1")
