@@ -37,21 +37,15 @@ namespace il::transform
 /// @return True when the identifier is within range and flagged live.
 bool LivenessInfo::SetView::contains(unsigned valueId) const
 {
-    return bits_ && valueId < bits_->size() && (*bits_)[valueId];
+    return bits_ != nullptr && valueId < bits_->size() && (*bits_)[valueId];
 }
 
 /// @brief Check whether the set contains any live values.
 /// @return True when no value bits are set.
 bool LivenessInfo::SetView::empty() const
 {
-    if (!bits_)
-        return true;
-    for (bool bit : *bits_)
-    {
-        if (bit)
-            return false;
-    }
-    return true;
+    return bits_ == nullptr ||
+           std::none_of(bits_->begin(), bits_->end(), [](bool bit) { return bit; });
 }
 
 /// @brief Access the underlying bitset for integration tests or debugging.
