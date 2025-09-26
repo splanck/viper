@@ -136,9 +136,9 @@ static void replaceAll(Function &f, unsigned id, const Value &v)
 /**
  * @brief Fold recognised math runtime calls into constants.
  *
- * Matches against intrinsics such as @c rt_abs_i64, @c rt_floor, @c rt_pow, and
+ * Matches against intrinsics such as @c rt_abs_i64, @c rt_floor, @c rt_pow_f64_chkdom, and
  * trigonometric helpers. Each case documents the numeric preconditions it
- * enforces (e.g., @c rt_sqrt requires non-negative inputs, @c rt_pow only folds
+ * enforces (e.g., @c rt_sqrt requires non-negative inputs, @c rt_pow_f64_chkdom only folds
  * small integral exponents) and relies on <cmath> routines like @c std::fabs,
  * @c std::pow, and friends to mirror runtime semantics. Folding fails when
  * operands are non-constant or violate domain restrictions, ensuring no change
@@ -202,19 +202,25 @@ static bool foldCall(const Instr &in, Value &out)
         }
         return false;
     }
-    if (c == "rt_pow" && in.operands.size() == 2)
+    if (c == "rt_pow_f64_chkdom" && in.operands.size() == 2)
     {
-        double base, expd;
+        double base = 0.0;
+        double expd = 0.0;
         if (getConstFloat(in.operands[0], base) && getConstFloat(in.operands[1], expd))
         {
-            double t = std::trunc(expd);
-            if (expd == t)
+            const bool expIntegral = std::isfinite(expd) && (expd == std::trunc(expd));
+            if (!(base < 0.0 && !expIntegral) && expIntegral)
             {
-                long long exp = static_cast<long long>(t);
-                if (std::llabs(exp) <= 16)
+                const double truncated = std::trunc(expd);
+                if (std::fabs(truncated) <= 16.0)
                 {
-                    out = Value::constFloat(std::pow(base, static_cast<double>(exp)));
-                    return true;
+                    const long long exp = static_cast<long long>(truncated);
+                    const double value = std::pow(base, static_cast<double>(exp));
+                    if (std::isfinite(value))
+                    {
+                        out = Value::constFloat(value);
+                        return true;
+                    }
                 }
             }
         }

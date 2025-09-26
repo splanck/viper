@@ -222,7 +222,7 @@ static const std::array<LowerRule, 23> kBuiltinLoweringRules = {{
         .variants = {
             Variant{.condition = Condition::Always,
                     .kind = VariantKind::CallRuntime,
-                    .runtime = "rt_pow",
+                    .runtime = "rt_pow_f64_chkdom",
                     .arguments = {Argument{.index = 0,
                                            .transforms = {Transform{.kind = TransformKind::EnsureF64}}},
                                   Argument{.index = 1,
