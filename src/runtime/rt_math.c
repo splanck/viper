@@ -87,22 +87,6 @@ extern "C"
     }
 
     /**
-     * Raises @p x to the power @p y.
-     *
-     * @param x Base value.
-     * @param y Exponent value.
-     * @return @p x raised to @p y following IEEE-754 semantics.
-     *
-     * Edge cases: NaN inputs propagate. Results for negative bases with
-     * fractional exponents and 0^0 follow the platform's IEEE-754 behavior;
-     * no domain-error traps are raised.
-     */
-    double rt_pow(double x, double y)
-    {
-        return pow(x, y);
-    }
-
-    /**
      * Computes the absolute value of a signed 64-bit integer.
      *
      * @param v Input value.

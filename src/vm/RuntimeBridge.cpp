@@ -8,8 +8,10 @@
 #include "vm/RuntimeBridge.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "vm/VM.hpp"
+#include "rt_fp.h"
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <sstream>
 
 using il::support::SourceLoc;
@@ -283,6 +285,46 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
         RuntimeBridge::trap(TrapKind::DomainError, os.str(), loc, fn, block);
         return res;
     }
+    if (name == "rt_pow_f64_chkdom")
+    {
+        if (!checkArgs(2))
+            return res;
+
+        const double base = args[0].f64;
+        const double exp = args[1].f64;
+        const bool expIntegral = std::isfinite(exp) && (exp == std::trunc(exp));
+        const bool domainError = (base < 0.0) && !expIntegral;
+
+        bool ok = true;
+        const double value = rt_pow_f64_chkdom(base, exp, &ok);
+        if (!ok)
+        {
+            std::ostringstream os;
+            if (domainError)
+            {
+                os << "rt_pow_f64_chkdom: negative base with fractional exponent";
+                RuntimeBridge::trap(TrapKind::DomainError, os.str(), loc, fn, block);
+            }
+            else
+            {
+                os << "rt_pow_f64_chkdom: overflow";
+                RuntimeBridge::trap(TrapKind::Overflow, os.str(), loc, fn, block);
+            }
+            return res;
+        }
+
+        if (!std::isfinite(value))
+        {
+            std::ostringstream os;
+            os << "rt_pow_f64_chkdom: overflow";
+            RuntimeBridge::trap(TrapKind::Overflow, os.str(), loc, fn, block);
+            return res;
+        }
+
+        res.f64 = value;
+        return res;
+    }
+
     if (checkArgs(desc->signature.paramTypes.size()))
     {
         const auto &sig = desc->signature;

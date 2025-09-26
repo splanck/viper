@@ -1,4 +1,5 @@
 set(RT_SOURCES
+  rt_fp.c
   rt_memory.c
   rt_string.c
   rt_io.c
@@ -10,6 +11,7 @@ set(RT_SOURCES
 
 set(RT_PUBLIC_HEADERS
   ${CMAKE_CURRENT_SOURCE_DIR}/rt.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/rt_fp.h
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_math.h
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_random.h
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_string.h

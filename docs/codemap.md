@@ -327,7 +327,7 @@ Paths to notable documentation and tests.
 ## IL Transform
 - **src/il/transform/ConstFold.cpp**
 
-  Runs the IL constant-folding pass, replacing integer arithmetic and recognised runtime math intrinsics with precomputed values. Helpers such as `wrapAdd`/`wrapMul` model modulo 2^64 behaviour so folded results mirror VM semantics, and `foldCall` maps literal arguments onto runtime helpers like `rt_abs`, `rt_floor`, and `rt_pow`. The pass walks every function, substitutes the folded value via `replaceAll`, and erases the defining instruction in place to keep blocks minimal while respecting domain checks. Dependencies include `il/transform/ConstFold.hpp`, IL core containers (`Module`, `Function`, `Instr`, `Value`), and the standard `<cmath>`, `<cstdint>`, `<cstdlib>`, and `<limits>` headers.
+  Runs the IL constant-folding pass, replacing integer arithmetic and recognised runtime math intrinsics with precomputed values. Helpers such as `wrapAdd`/`wrapMul` model modulo 2^64 behaviour so folded results mirror VM semantics, and `foldCall` maps literal arguments onto runtime helpers like `rt_abs`, `rt_floor`, and `rt_pow_f64_chkdom`. The pass walks every function, substitutes the folded value via `replaceAll`, and erases the defining instruction in place to keep blocks minimal while respecting domain checks. Dependencies include `il/transform/ConstFold.hpp`, IL core containers (`Module`, `Function`, `Instr`, `Value`), and the standard `<cmath>`, `<cstdint>`, `<cstdlib>`, and `<limits>` headers.
 
 - **src/il/transform/DCE.cpp**
 

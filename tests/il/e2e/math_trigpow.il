@@ -3,7 +3,7 @@ extern @rt_print_str(str) -> void
 extern @rt_print_f64(f64) -> void
 extern @rt_sin(f64) -> f64
 extern @rt_cos(f64) -> f64
-extern @rt_pow(f64, f64) -> f64
+extern @rt_pow_f64_chkdom(f64, f64) -> f64
 
 global const str @.nl = "\n"
 
@@ -17,7 +17,7 @@ entry:
   call @rt_print_f64(%c)
   %nl1 = const_str @.nl
   call @rt_print_str(%nl1)
-  %p = call @rt_pow(2.0, 10.0)
+  %p = call @rt_pow_f64_chkdom(2.0, 10.0)
   call @rt_print_f64(%p)
   %nl2 = const_str @.nl
   call @rt_print_str(%nl2)
