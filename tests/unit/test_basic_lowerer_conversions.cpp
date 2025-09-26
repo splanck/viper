@@ -56,7 +56,7 @@ int main()
     }
     assert(mainFn);
 
-    std::vector<int> fptosiLines;
+    std::vector<int> castChkLines;
     std::vector<int> sitofpLines;
     std::vector<int> zextLines;
     std::vector<int> truncLines;
@@ -67,8 +67,8 @@ int main()
         {
             switch (instr.op)
             {
-                case il::core::Opcode::Fptosi:
-                    fptosiLines.push_back(instr.loc.line);
+                case il::core::Opcode::CastFpToSiRteChk:
+                    castChkLines.push_back(instr.loc.line);
                     break;
                 case il::core::Opcode::Sitofp:
                     sitofpLines.push_back(instr.loc.line);
@@ -85,7 +85,7 @@ int main()
         }
     }
 
-    assert(hasLine(fptosiLines, 2));  // LET I = 3.14
+    assert(hasLine(castChkLines, 2));  // LET I = 3.14
     assert(hasLine(sitofpLines, 3));  // LET D# = 1
     assert(hasLine(sitofpLines, 7));  // INPUT "?", D#
     assert(hasLine(zextLines, 4));    // LET I = TRUE

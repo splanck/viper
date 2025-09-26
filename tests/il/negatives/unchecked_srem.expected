@@ -1,0 +1,1 @@
+error: unchecked_srem:entry: %2 = srem %t0 %t1: signed remainder must use srem.chk0 (traps on divide-by-zero; matches BASIC MOD semantics)

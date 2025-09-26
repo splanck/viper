@@ -3,13 +3,13 @@ extern @do_work(i64, i64) -> i64
 global const str @.Lstr = "ops"
 func @all_ops() -> i64 {
 entry:
-  %t0 = add 1, 2
-  %t1 = sub %t0, 3
-  %t2 = mul %t0, %t1
-  %t3 = sdiv %t2, 5
-  %t4 = udiv 10, 2
-  %t5 = srem 7, 3
-  %t6 = urem 9, 4
+  %t0 = iadd.ovf 1, 2
+  %t1 = isub.ovf %t0, 3
+  %t2 = imul.ovf %t0, %t1
+  %t3 = sdiv.chk0 %t2, 5
+  %t4 = udiv.chk0 10, 2
+  %t5 = srem.chk0 7, 3
+  %t6 = urem.chk0 9, 4
   %t7 = and 240, 15
   %t8 = or %t7, 1
   %t9 = xor %t8, 3
@@ -38,21 +38,22 @@ entry:
   %t32 = fcmp_ge 3, 3
   %t33 = sitofp 42
   %t34 = fptosi 5.5
-  %t35 = zext1 %t18
-  %t36 = trunc1 255
-  %t37 = alloca 8
-  %t38 = gep %t37, 1
-  store i64, %t37, 64
-  %t39 = load i64, %t37
-  %t40 = addr_of @.Lstr
-  %t41 = const_str @.Lstr
-  %t42 = const_null
-  %t43 = call @do_work(%t40, 5)
-  cbr %t18, compute(%t35, %t39), abort(%t42)
+  %t35 = cast.fp_to_si.rte.chk 5.5
+  %t36 = zext1 %t18
+  %t37 = trunc1 255
+  %t38 = alloca 8
+  %t39 = gep %t38, 1
+  store i64, %t38, 64
+  %t40 = load i64, %t38
+  %t41 = addr_of @.Lstr
+  %t42 = const_str @.Lstr
+  %t43 = const_null
+  %t44 = call @do_work(%t41, 5)
+  cbr %t18, compute(%t36, %t40), abort(%t43)
 compute(%wide:i64, %loaded:i64):
-  br join(%t43, %t35)
+  br join(%t44, %t36)
 abort:
   trap
 join(%lhs:i64, %rhs:i64):
-  ret %t43
+  ret %t44
 }

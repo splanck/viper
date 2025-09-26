@@ -39,7 +39,7 @@ L20:
   br L30
 L30:
   .loc 1 3 16
-  %t6 = add 3, -1
+  %t6 = iadd.ovf 3, -1
   .loc 1 3 19
   %t7 = load str, %t0
   .loc 1 3 23

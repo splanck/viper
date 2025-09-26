@@ -16,23 +16,23 @@ int main()
 {
     SourceManager sm;
     uint32_t fid = sm.addFile("test.bas");
-    std::string src = "PRINT 1+2\n";
+    std::string src = "LET X = 1\nPRINT X+2\n";
     Parser p(src, fid);
     auto prog = p.parseProgram();
-    assert(prog->main.size() == 1);
-    auto *ps = dynamic_cast<PrintStmt *>(prog->main[0].get());
+    assert(prog->main.size() == 2);
+    auto *ps = dynamic_cast<PrintStmt *>(prog->main[1].get());
     assert(ps);
-    assert(ps->loc.file_id == fid && ps->loc.line == 1 && ps->loc.column == 1);
+    assert(ps->loc.file_id == fid && ps->loc.line == 2 && ps->loc.column == 1);
     assert(ps->items.size() == 1);
     const auto &item = ps->items[0];
     assert(item.kind == PrintItem::Kind::Expr);
     auto *bin = dynamic_cast<BinaryExpr *>(item.expr.get());
     assert(bin);
-    assert(bin->loc.column == 8);
-    auto *lhs = dynamic_cast<IntExpr *>(bin->lhs.get());
+    assert(bin->loc.line == 2 && bin->loc.column == 8);
+    auto *lhsVar = dynamic_cast<VarExpr *>(bin->lhs.get());
     auto *rhs = dynamic_cast<IntExpr *>(bin->rhs.get());
-    assert(lhs && rhs);
-    assert(lhs->loc.column == 7);
+    assert(lhsVar && rhs);
+    assert(lhsVar->loc.column == 7);
     assert(rhs->loc.column == 9);
 
     Lowerer low;
@@ -44,9 +44,9 @@ int main()
         {
             for (const auto &in : bb.instructions)
             {
-                if (in.op == il::core::Opcode::Add)
+                if (in.op == il::core::Opcode::IAddOvf)
                 {
-                    assert(in.loc.line == 1 && in.loc.column == 8);
+                    assert(in.loc.line == 2 && in.loc.column == 8);
                     foundAdd = true;
                 }
             }

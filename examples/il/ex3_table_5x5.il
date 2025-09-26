@@ -35,14 +35,14 @@ inner_head:
 
 inner_body:
   %i1 = load i64, %i_slot
-  %prod = mul %i1, %j0
+  %prod = imul.ovf %i1, %j0
   call @rt_print_i64(%prod)
-  %j1 = add %j0, 1
+  %j1 = iadd.ovf %j0, 1
   store i64, %j_slot, %j1
   br label inner_head
 
 inner_done:
-  %i2 = add %i0, 1
+  %i2 = iadd.ovf %i0, 1
   store i64, %i_slot, %i2
   br label outer_head
 

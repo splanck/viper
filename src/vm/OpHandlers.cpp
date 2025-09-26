@@ -56,6 +56,20 @@ VM::OpcodeHandler handlerForDispatch(VMDispatch dispatch)
             return &OpHandlers::handleSub;
         case VMDispatch::Mul:
             return &OpHandlers::handleMul;
+        case VMDispatch::IAddOvf:
+            return &OpHandlers::handleIAddOvf;
+        case VMDispatch::ISubOvf:
+            return &OpHandlers::handleISubOvf;
+        case VMDispatch::IMulOvf:
+            return &OpHandlers::handleIMulOvf;
+        case VMDispatch::SDivChk0:
+            return &OpHandlers::handleSDivChk0;
+        case VMDispatch::UDivChk0:
+            return &OpHandlers::handleUDivChk0;
+        case VMDispatch::SRemChk0:
+            return &OpHandlers::handleSRemChk0;
+        case VMDispatch::URemChk0:
+            return &OpHandlers::handleURemChk0;
         case VMDispatch::Xor:
             return &OpHandlers::handleXor;
         case VMDispatch::Shl:
@@ -108,6 +122,8 @@ VM::OpcodeHandler handlerForDispatch(VMDispatch dispatch)
             return &OpHandlers::handleSitofp;
         case VMDispatch::Fptosi:
             return &OpHandlers::handleFptosi;
+        case VMDispatch::CastFpToSiRteChk:
+            return &OpHandlers::handleCastFpToSiRteChk;
         case VMDispatch::TruncOrZext1:
             return &OpHandlers::handleTruncOrZext1;
         case VMDispatch::Trap:

@@ -22,17 +22,17 @@ const char *kProgram = R"(il 0.1.2
 
 func @complex(%flag:i1) -> i64 {
 entry(%flag:i1):
-  %base = add 0, 1
-  %incr = add %base, 1
+  %base = iadd.ovf 0, 1
+  %incr = iadd.ovf %base, 1
   cbr %flag, left(%incr), right(%base)
 left(%lv:i64):
-  %left = add %lv, %incr
+  %left = iadd.ovf %lv, %incr
   br join(%left, %lv)
 right(%rv:i64):
-  %right = add %rv, %base
+  %right = iadd.ovf %rv, %base
   br join(%right, %rv)
 join(%x:i64, %y:i64):
-  %sum = add %x, %y
+  %sum = iadd.ovf %x, %y
   ret %sum
 }
 )";

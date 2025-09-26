@@ -27,10 +27,10 @@ loop_head:
 
 loop_body:
   %s0 = load i64, %s_slot
-  %s1 = add %s0, %i0
+  %s1 = iadd.ovf %s0, %i0
   store i64, %s_slot, %s1
 
-  %i1 = add %i0, 1
+  %i1 = iadd.ovf %i0, 1
   store i64, %i_slot, %i1
 
   br label loop_head

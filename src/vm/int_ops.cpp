@@ -10,8 +10,12 @@
 #include "vm/OpHandlers.hpp"
 
 #include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "vm/OpHandlerUtils.hpp"
+#include "vm/RuntimeBridge.hpp"
+
+#include <limits>
 
 using namespace il::core;
 
@@ -84,6 +88,204 @@ VM::ExecResult OpHandlers::handleMul(VM &vm,
                             in,
                             [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
                             { out.i64 = lhsVal.i64 * rhsVal.i64; });
+}
+
+/// @brief Interpret the `iadd.ovf` opcode, trapping on signed overflow.
+VM::ExecResult OpHandlers::handleIAddOvf(VM &vm,
+                                         Frame &fr,
+                                         const Instr &in,
+                                         const VM::BlockMap &blocks,
+                                         const BasicBlock *&bb,
+                                         size_t &ip)
+{
+    (void)blocks;
+    (void)ip;
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [&](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            {
+                                long long result{};
+                                if (__builtin_add_overflow(lhsVal.i64, rhsVal.i64, &result))
+                                {
+                                    RuntimeBridge::trap(
+                                        "integer overflow in iadd.ovf", in.loc, fr.func->name,
+                                        bb ? bb->label : "");
+                                }
+                                out.i64 = result;
+                            });
+}
+
+/// @brief Interpret the `isub.ovf` opcode, trapping on signed overflow.
+VM::ExecResult OpHandlers::handleISubOvf(VM &vm,
+                                         Frame &fr,
+                                         const Instr &in,
+                                         const VM::BlockMap &blocks,
+                                         const BasicBlock *&bb,
+                                         size_t &ip)
+{
+    (void)blocks;
+    (void)ip;
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [&](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            {
+                                long long result{};
+                                if (__builtin_sub_overflow(lhsVal.i64, rhsVal.i64, &result))
+                                {
+                                    RuntimeBridge::trap(
+                                        "integer overflow in isub.ovf", in.loc, fr.func->name,
+                                        bb ? bb->label : "");
+                                }
+                                out.i64 = result;
+                            });
+}
+
+/// @brief Interpret the `imul.ovf` opcode, trapping on signed overflow.
+VM::ExecResult OpHandlers::handleIMulOvf(VM &vm,
+                                         Frame &fr,
+                                         const Instr &in,
+                                         const VM::BlockMap &blocks,
+                                         const BasicBlock *&bb,
+                                         size_t &ip)
+{
+    (void)blocks;
+    (void)ip;
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [&](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            {
+                                long long result{};
+                                if (__builtin_mul_overflow(lhsVal.i64, rhsVal.i64, &result))
+                                {
+                                    RuntimeBridge::trap(
+                                        "integer overflow in imul.ovf", in.loc, fr.func->name,
+                                        bb ? bb->label : "");
+                                }
+                                out.i64 = result;
+                            });
+}
+
+/// @brief Interpret the `sdiv.chk0` opcode with divide-by-zero and overflow trapping.
+VM::ExecResult OpHandlers::handleSDivChk0(VM &vm,
+                                          Frame &fr,
+                                          const Instr &in,
+                                          const VM::BlockMap &blocks,
+                                          const BasicBlock *&bb,
+                                          size_t &ip)
+{
+    (void)blocks;
+    (void)ip;
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [&](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            {
+                                const auto divisor = rhsVal.i64;
+                                if (divisor == 0)
+                                {
+                                    RuntimeBridge::trap(
+                                        "divide by zero in sdiv.chk0", in.loc, fr.func->name,
+                                        bb ? bb->label : "");
+                                }
+                                const auto dividend = lhsVal.i64;
+                                if (dividend == std::numeric_limits<int64_t>::min() && divisor == -1)
+                                {
+                                    RuntimeBridge::trap(
+                                        "integer overflow in sdiv.chk0", in.loc, fr.func->name,
+                                        bb ? bb->label : "");
+                                }
+                                out.i64 = dividend / divisor;
+                            });
+}
+
+/// @brief Interpret the `udiv.chk0` opcode with divide-by-zero trapping.
+VM::ExecResult OpHandlers::handleUDivChk0(VM &vm,
+                                          Frame &fr,
+                                          const Instr &in,
+                                          const VM::BlockMap &blocks,
+                                          const BasicBlock *&bb,
+                                          size_t &ip)
+{
+    (void)blocks;
+    (void)ip;
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [&](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            {
+                                const auto divisor = static_cast<uint64_t>(rhsVal.i64);
+                                if (divisor == 0)
+                                {
+                                    RuntimeBridge::trap(
+                                        "divide by zero in udiv.chk0", in.loc, fr.func->name,
+                                        bb ? bb->label : "");
+                                }
+                                const auto dividend = static_cast<uint64_t>(lhsVal.i64);
+                                out.i64 = static_cast<int64_t>(dividend / divisor);
+                            });
+}
+
+/// @brief Interpret the `srem.chk0` opcode with divide-by-zero and overflow trapping.
+VM::ExecResult OpHandlers::handleSRemChk0(VM &vm,
+                                          Frame &fr,
+                                          const Instr &in,
+                                          const VM::BlockMap &blocks,
+                                          const BasicBlock *&bb,
+                                          size_t &ip)
+{
+    (void)blocks;
+    (void)ip;
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [&](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            {
+                                const auto divisor = rhsVal.i64;
+                                if (divisor == 0)
+                                {
+                                    RuntimeBridge::trap(
+                                        "divide by zero in srem.chk0", in.loc, fr.func->name,
+                                        bb ? bb->label : "");
+                                }
+                                const auto dividend = lhsVal.i64;
+                                if (dividend == std::numeric_limits<int64_t>::min() && divisor == -1)
+                                {
+                                    RuntimeBridge::trap(
+                                        "integer overflow in srem.chk0", in.loc, fr.func->name,
+                                        bb ? bb->label : "");
+                                }
+                                out.i64 = dividend % divisor;
+                            });
+}
+
+/// @brief Interpret the `urem.chk0` opcode with divide-by-zero trapping.
+VM::ExecResult OpHandlers::handleURemChk0(VM &vm,
+                                          Frame &fr,
+                                          const Instr &in,
+                                          const VM::BlockMap &blocks,
+                                          const BasicBlock *&bb,
+                                          size_t &ip)
+{
+    (void)blocks;
+    (void)ip;
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [&](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            {
+                                const auto divisor = static_cast<uint64_t>(rhsVal.i64);
+                                if (divisor == 0)
+                                {
+                                    RuntimeBridge::trap(
+                                        "divide by zero in urem.chk0", in.loc, fr.func->name,
+                                        bb ? bb->label : "");
+                                }
+                                const auto dividend = static_cast<uint64_t>(lhsVal.i64);
+                                out.i64 = static_cast<int64_t>(dividend % divisor);
+                            });
 }
 
 /// @brief Interpret the `xor` opcode for 64-bit integers.

@@ -63,7 +63,7 @@ L08:
   .loc 1 6 5
   %t12 = zext1 %t10
   .loc 1 6 5
-  %t13 = add %t11, %t12
+  %t13 = iadd.ovf %t11, %t12
   .loc 1 6 5
   %t14 = scmp_gt %t13, 0
   .loc 1 6 5
@@ -97,7 +97,7 @@ L08:
   .loc 1 9 7
   %t24 = zext1 %t22
   .loc 1 9 7
-  %t25 = add %t23, %t24
+  %t25 = iadd.ovf %t23, %t24
   .loc 1 9 7
   %t26 = scmp_gt %t25, 0
   .loc 1 9 7

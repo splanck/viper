@@ -34,7 +34,7 @@ for_inc:
   .loc 1 1 4
   %t12 = load i64, %t1
   .loc 1 1 4
-  %t13 = add %t12, 1
+  %t13 = iadd.ovf %t12, 1
   .loc 1 1 4
   store i64, %t1, %t13
   .loc 1 1 4
@@ -55,7 +55,7 @@ for_body1:
   .loc 1 3 14
   %t7 = load i64, %t0
   .loc 1 3 12
-  %t8 = mul %t6, %t7
+  %t8 = imul.ovf %t6, %t7
   .loc 1 3 4
   call @rt_print_i64(%t8)
   .loc 1 3 4
@@ -68,7 +68,7 @@ for_inc1:
   .loc 1 2 4
   %t10 = load i64, %t0
   .loc 1 2 4
-  %t11 = add %t10, 1
+  %t11 = iadd.ovf %t10, 1
   .loc 1 2 4
   store i64, %t0, %t11
   .loc 1 2 4

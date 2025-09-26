@@ -34,7 +34,7 @@ L20:
   .loc 1 2 10
   %t4 = call @rt_arr_i32_len(%t3)
   .loc 1 2 10
-  %t5 = sub %t4, 1
+  %t5 = isub.ovf %t4, 1
   .loc 1 2 4
   call @rt_print_i64(%t5)
   .loc 1 2 4

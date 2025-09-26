@@ -51,6 +51,13 @@ enum class VMDispatch : uint8_t
     Add,
     Sub,
     Mul,
+    IAddOvf,
+    ISubOvf,
+    IMulOvf,
+    SDivChk0,
+    UDivChk0,
+    SRemChk0,
+    URemChk0,
     Xor,
     Shl,
     FAdd,
@@ -77,6 +84,7 @@ enum class VMDispatch : uint8_t
     Call,
     Sitofp,
     Fptosi,
+    CastFpToSiRteChk,
     TruncOrZext1,
     Trap
 };
