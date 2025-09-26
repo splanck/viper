@@ -11,6 +11,7 @@
 #include "rt_fp.h"
 #include "rt_internal.h"
 #include "rt_math.h"
+#include "rt_numeric.h"
 #include "rt_random.h"
 #include <cstdint>
 #include <initializer_list>
@@ -156,6 +157,54 @@ void invokeRtArrOobPanic(void **args, void * /*result*/)
     rt_arr_oob_panic(idx, len);
 }
 
+/// @brief Adapter invoking INTEGER conversion while widening to 64-bit storage.
+void invokeRtCintFromDouble(void **args, void *result)
+{
+    const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
+    const auto okPtr = args ? reinterpret_cast<bool *const *>(args[1]) : nullptr;
+    const double x = xPtr ? *xPtr : 0.0;
+    bool *ok = okPtr ? *okPtr : nullptr;
+    const int16_t value = rt_cint_from_double(x, ok);
+    if (result)
+        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(value);
+}
+
+/// @brief Adapter invoking LONG conversion while widening to 64-bit storage.
+void invokeRtClngFromDouble(void **args, void *result)
+{
+    const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
+    const auto okPtr = args ? reinterpret_cast<bool *const *>(args[1]) : nullptr;
+    const double x = xPtr ? *xPtr : 0.0;
+    bool *ok = okPtr ? *okPtr : nullptr;
+    const int32_t value = rt_clng_from_double(x, ok);
+    if (result)
+        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(value);
+}
+
+/// @brief Adapter invoking SINGLE conversion while widening to double precision.
+void invokeRtCsngFromDouble(void **args, void *result)
+{
+    const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
+    const auto okPtr = args ? reinterpret_cast<bool *const *>(args[1]) : nullptr;
+    const double x = xPtr ? *xPtr : 0.0;
+    bool *ok = okPtr ? *okPtr : nullptr;
+    const float value = rt_csng_from_double(x, ok);
+    if (result)
+        *reinterpret_cast<double *>(result) = static_cast<double>(value);
+}
+
+/// @brief Adapter invoking ROUND with integer digits sourced from 64-bit slots.
+void invokeRtRoundEven(void **args, void *result)
+{
+    const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
+    const auto digitsPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
+    const double x = xPtr ? *xPtr : 0.0;
+    const int ndigits = digitsPtr ? static_cast<int>(*digitsPtr) : 0;
+    const double rounded = rt_round_even(x, ndigits);
+    if (result)
+        *reinterpret_cast<double *>(result) = rounded;
+}
+
 /// @brief Populate the runtime descriptor registry with known helper declarations.
 std::vector<RuntimeDescriptor> buildRegistry()
 {
@@ -241,6 +290,41 @@ std::vector<RuntimeDescriptor> buildRegistry()
         {Kind::F64},
         &DirectHandler<&rt_f64_to_str, rt_string, double>::invoke,
         feature(RuntimeFeature::F64ToStr));
+    add("rt_cint_from_double",
+        Kind::I16,
+        {Kind::F64, Kind::Ptr},
+        &invokeRtCintFromDouble,
+        manual());
+    add("rt_clng_from_double",
+        Kind::I32,
+        {Kind::F64, Kind::Ptr},
+        &invokeRtClngFromDouble,
+        manual());
+    add("rt_csng_from_double",
+        Kind::F64,
+        {Kind::F64, Kind::Ptr},
+        &invokeRtCsngFromDouble,
+        manual());
+    add("rt_cdbl_from_any",
+        Kind::F64,
+        {Kind::F64},
+        &DirectHandler<&rt_cdbl_from_any, double, double>::invoke,
+        manual());
+    add("rt_int_floor",
+        Kind::F64,
+        {Kind::F64},
+        &DirectHandler<&rt_int_floor, double, double>::invoke,
+        manual());
+    add("rt_fix_trunc",
+        Kind::F64,
+        {Kind::F64},
+        &DirectHandler<&rt_fix_trunc, double, double>::invoke,
+        manual());
+    add("rt_round_even",
+        Kind::F64,
+        {Kind::F64, Kind::I32},
+        &invokeRtRoundEven,
+        manual());
     add("rt_alloc",
         Kind::Ptr,
         {Kind::I64},
