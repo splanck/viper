@@ -163,7 +163,8 @@ void DebugCtrl::onStore(std::string_view name,
     if (it == watches_.end())
         return;
     WatchEntry &w = it->second;
-    if (ty != il::core::Type::Kind::I1 && ty != il::core::Type::Kind::I64 &&
+    if (ty != il::core::Type::Kind::I1 && ty != il::core::Type::Kind::I16 &&
+        ty != il::core::Type::Kind::I32 && ty != il::core::Type::Kind::I64 &&
         ty != il::core::Type::Kind::F64)
     {
         std::cerr << "[WATCH] " << name << "=[unsupported]  (fn=@" << fn << " blk=" << blk

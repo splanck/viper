@@ -46,16 +46,18 @@ struct KindAccessors
     ResultAssigner assignResult = nullptr;     ///< Assignment routine for marshalled results.
 };
 
-constexpr std::array<Type::Kind, 6> kSupportedKinds = {
+constexpr std::array<Type::Kind, 8> kSupportedKinds = {
     Type::Kind::Void,
     Type::Kind::I1,
+    Type::Kind::I16,
+    Type::Kind::I32,
     Type::Kind::I64,
     Type::Kind::F64,
     Type::Kind::Ptr,
     Type::Kind::Str,
 };
 
-static_assert(kSupportedKinds.size() == 6, "update kind accessors when Type::Kind grows");
+static_assert(kSupportedKinds.size() == 8, "update kind accessors when Type::Kind grows");
 
 constexpr void *nullResultBuffer(ResultBuffers &)
 {
@@ -103,6 +105,8 @@ constexpr std::array<KindAccessors, kSupportedKinds.size()> kKindAccessors = [] 
     std::array<KindAccessors, kSupportedKinds.size()> table{};
     table[static_cast<size_t>(Type::Kind::Void)] = makeVoidAccessors();
     table[static_cast<size_t>(Type::Kind::I1)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
+    table[static_cast<size_t>(Type::Kind::I16)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
+    table[static_cast<size_t>(Type::Kind::I32)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
     table[static_cast<size_t>(Type::Kind::I64)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
     table[static_cast<size_t>(Type::Kind::F64)] = makeAccessors<&Slot::f64, &ResultBuffers::f64>();
     table[static_cast<size_t>(Type::Kind::Ptr)] = makeAccessors<&Slot::ptr, &ResultBuffers::ptr>();
@@ -117,6 +121,12 @@ static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::Void)].resultAccess
 static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::I1)].slotAccessor ==
                   &slotMemberAccessor<&Slot::i64>,
               "I1 slot accessor must target Slot::i64");
+static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::I16)].slotAccessor ==
+                  &slotMemberAccessor<&Slot::i64>,
+              "I16 slot accessor must target Slot::i64");
+static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::I32)].slotAccessor ==
+                  &slotMemberAccessor<&Slot::i64>,
+              "I32 slot accessor must target Slot::i64");
 static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::I64)].slotAccessor ==
                   &slotMemberAccessor<&Slot::i64>,
               "I64 slot accessor must target Slot::i64");
