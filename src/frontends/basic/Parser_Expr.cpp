@@ -239,7 +239,8 @@ ExprPtr Parser::parseBuiltinCall(BuiltinCallExpr::Builtin builtin, il::support::
              builtin == BuiltinCallExpr::Builtin::Left ||
              builtin == BuiltinCallExpr::Builtin::Right ||
              builtin == BuiltinCallExpr::Builtin::Str || builtin == BuiltinCallExpr::Builtin::Val ||
-             builtin == BuiltinCallExpr::Builtin::Int || builtin == BuiltinCallExpr::Builtin::Instr)
+             builtin == BuiltinCallExpr::Builtin::Int || builtin == BuiltinCallExpr::Builtin::Fix ||
+             builtin == BuiltinCallExpr::Builtin::Round || builtin == BuiltinCallExpr::Builtin::Instr)
     {
         if (!at(TokenKind::RParen))
         {

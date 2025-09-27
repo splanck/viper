@@ -314,17 +314,17 @@ std::vector<RuntimeDescriptor> buildRegistry()
         Kind::F64,
         {Kind::F64},
         &DirectHandler<&rt_int_floor, double, double>::invoke,
-        manual());
+        feature(RuntimeFeature::IntFloor));
     add("rt_fix_trunc",
         Kind::F64,
         {Kind::F64},
         &DirectHandler<&rt_fix_trunc, double, double>::invoke,
-        manual());
+        feature(RuntimeFeature::FixTrunc));
     add("rt_round_even",
         Kind::F64,
         {Kind::F64, Kind::I32},
         &invokeRtRoundEven,
-        manual());
+        feature(RuntimeFeature::RoundEven));
     add("rt_alloc",
         Kind::Ptr,
         {Kind::I64},

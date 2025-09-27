@@ -226,7 +226,7 @@ if(NOT rconv EQUAL 0)
   message(FATAL_ERROR "execution conversions failed")
 endif()
 file(READ run_conv.txt RCONV)
-if(NOT RCONV STREQUAL "42\n2\n-2\n")
+if(NOT RCONV STREQUAL "42\n1\n-2\n")
   message(FATAL_ERROR "unexpected conversions output: ${RCONV}")
 endif()
 

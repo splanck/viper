@@ -114,6 +114,7 @@ struct BuiltinLoweringRule
         {
             EnsureI64, ///< Invoke @ref Lowerer::ensureI64.
             EnsureF64, ///< Invoke @ref Lowerer::ensureF64.
+            EnsureI32, ///< Invoke @ref Lowerer::ensureI64 followed by a narrow to i32.
             CoerceI64, ///< Invoke @ref Lowerer::coerceToI64.
             CoerceF64, ///< Invoke @ref Lowerer::coerceToF64.
             CoerceBool,///< Invoke @ref Lowerer::coerceToBool.
@@ -128,6 +129,13 @@ struct BuiltinLoweringRule
     {
         std::size_t index{0};                         ///< Index into BuiltinCallExpr::args.
         std::vector<ArgTransform> transforms{};       ///< Transformations to apply before use.
+        struct DefaultValue
+        {
+            Lowerer::ExprType type{Lowerer::ExprType::I64}; ///< Expression type of the default.
+            double f64{0.0};                                ///< Floating default payload.
+            std::int64_t i64{0};                            ///< Integer default payload.
+        };
+        std::optional<DefaultValue> defaultValue{};   ///< Optional default when argument absent.
     };
 
     /// @brief Variant describing how to materialize the builtin call.
