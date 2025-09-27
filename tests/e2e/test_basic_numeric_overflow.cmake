@@ -18,8 +18,9 @@ if(NOT DEFINED EXPECT_SUBSTR)
 endif()
 string(REGEX REPLACE "^\"(.*)\"$" "\\1" EXPECT_SUBSTR "${EXPECT_SUBSTR}")
 
-set(OUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/basic_numerics_addmul.stdout.txt")
-set(ERR_FILE "${CMAKE_CURRENT_BINARY_DIR}/basic_numerics_addmul.stderr.txt")
+get_filename_component(_TEST_NAME "${BAS_FILE}" NAME_WE)
+set(OUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/${_TEST_NAME}.stdout.txt")
+set(ERR_FILE "${CMAKE_CURRENT_BINARY_DIR}/${_TEST_NAME}.stderr.txt")
 execute_process(
   COMMAND ${ILC} front basic -run ${BAS_FILE}
   OUTPUT_FILE ${OUT_FILE}
@@ -40,5 +41,5 @@ endif()
 file(READ ${ERR_FILE} ERR_RAW)
 string(STRIP "${ERR_RAW}" ERR)
 if(NOT ERR MATCHES "${EXPECT_SUBSTR}")
-  message(FATAL_ERROR "missing overflow trap: ${ERR}")
+  message(FATAL_ERROR "missing expected trap: ${ERR}")
 endif()

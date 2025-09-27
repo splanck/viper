@@ -340,6 +340,8 @@ Token Lexer::next()
             return {TokenKind::Slash, "/", loc};
         case '\\':
             return {TokenKind::Backslash, "\\", loc};
+        case '^':
+            return {TokenKind::Caret, "^", loc};
         case '=':
             return {TokenKind::Equal, "=", loc};
         case '<':
