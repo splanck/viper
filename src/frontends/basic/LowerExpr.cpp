@@ -798,6 +798,7 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
     };
 
     std::vector<std::optional<RVal>> loweredArgs(c.args.size());
+    std::vector<RVal> syntheticArgs;
 
     const auto *variant = static_cast<const BuiltinLoweringRule::Variant *>(nullptr);
     for (const auto &candidate : rule.variants)
@@ -835,7 +836,7 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
     if (!variant)
         return {Value::constInt(0), Type(Type::Kind::I64)};
 
-    auto ensureLowered = [&](std::size_t idx) -> RVal & {
+    auto ensureLoweredIndex = [&](std::size_t idx) -> RVal & {
         assert(hasArg(idx) && "builtin lowering referenced missing argument");
         auto &slot = loweredArgs[idx];
         if (!slot)
@@ -867,37 +868,85 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
             {
                 std::size_t idx = rule.result.argIndex;
                 if (hasArg(idx))
-                    return ensureLowered(idx).type;
+                    return ensureLoweredIndex(idx).type;
                 return typeFromExpr(rule.result.type);
             }
         }
         return Type(Type::Kind::I64);
     };
 
-    auto applyTransforms = [&](std::size_t idx,
+    auto ensureLoweredArgument = [&](const BuiltinLoweringRule::Argument &argSpec) -> RVal & {
+        std::size_t idx = argSpec.index;
+        if (idx < c.args.size() && c.args[idx])
+            return ensureLoweredIndex(idx);
+        if (argSpec.defaultValue)
+        {
+            const auto &def = *argSpec.defaultValue;
+            RVal value{Value::constInt(def.i64), Type(Type::Kind::I64)};
+            switch (def.type)
+            {
+                case ExprType::F64:
+                    value = RVal{Value::constFloat(def.f64), Type(Type::Kind::F64)};
+                    break;
+                case ExprType::Str:
+                    assert(false && "string default values are not supported");
+                    break;
+                case ExprType::Bool:
+                    value = RVal{emitBoolConst(def.i64 != 0), ilBoolTy()};
+                    break;
+                case ExprType::I64:
+                default:
+                    value = RVal{Value::constInt(def.i64), Type(Type::Kind::I64)};
+                    break;
+            }
+            syntheticArgs.push_back(value);
+            return syntheticArgs.back();
+        }
+        assert(false && "builtin lowering referenced missing argument without default");
+        syntheticArgs.emplace_back(Value::constInt(0), Type(Type::Kind::I64));
+        return syntheticArgs.back();
+    };
+
+    auto selectArgLoc = [&](const BuiltinLoweringRule::Argument &argSpec) -> il::support::SourceLoc {
+        if (argSpec.index < argLocs.size() && argLocs[argSpec.index])
+            return *argLocs[argSpec.index];
+        return c.loc;
+    };
+
+    auto applyTransforms = [&](const BuiltinLoweringRule::Argument &argSpec,
                                const std::vector<BuiltinLoweringRule::ArgTransform> &transforms) -> RVal & {
-        RVal &slot = ensureLowered(idx);
+        RVal &slot = ensureLoweredArgument(argSpec);
+        il::support::SourceLoc loc = selectArgLoc(argSpec);
         for (const auto &transform : transforms)
         {
             switch (transform.kind)
             {
                 case BuiltinLoweringRule::ArgTransform::Kind::EnsureI64:
-                    slot = ensureI64(std::move(slot), c.loc);
+                    slot = ensureI64(std::move(slot), loc);
                     break;
                 case BuiltinLoweringRule::ArgTransform::Kind::EnsureF64:
-                    slot = ensureF64(std::move(slot), c.loc);
+                    slot = ensureF64(std::move(slot), loc);
+                    break;
+                case BuiltinLoweringRule::ArgTransform::Kind::EnsureI32:
+                    slot = ensureI64(std::move(slot), loc);
+                    if (slot.type.kind != Type::Kind::I32)
+                    {
+                        curLoc = loc;
+                        slot.value = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), slot.value);
+                        slot.type = Type(Type::Kind::I32);
+                    }
                     break;
                 case BuiltinLoweringRule::ArgTransform::Kind::CoerceI64:
-                    slot = coerceToI64(std::move(slot), c.loc);
+                    slot = coerceToI64(std::move(slot), loc);
                     break;
                 case BuiltinLoweringRule::ArgTransform::Kind::CoerceF64:
-                    slot = coerceToF64(std::move(slot), c.loc);
+                    slot = coerceToF64(std::move(slot), loc);
                     break;
                 case BuiltinLoweringRule::ArgTransform::Kind::CoerceBool:
-                    slot = coerceToBool(std::move(slot), c.loc);
+                    slot = coerceToBool(std::move(slot), loc);
                     break;
                 case BuiltinLoweringRule::ArgTransform::Kind::AddConst:
-                    curLoc = argLocs[idx].value_or(c.loc);
+                    curLoc = loc;
                     slot.value = emitBinary(
                         Opcode::IAddOvf, Type(Type::Kind::I64), slot.value, Value::constInt(transform.immediate));
                     slot.type = Type(Type::Kind::I64);
@@ -926,7 +975,7 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
             callArgs.reserve(variant->arguments.size());
             for (const auto &argSpec : variant->arguments)
             {
-                RVal &argVal = applyTransforms(argSpec.index, argSpec.transforms);
+                RVal &argVal = applyTransforms(argSpec, argSpec.transforms);
                 callArgs.push_back(argVal.value);
             }
             resultType = resolveResultType();
@@ -938,7 +987,7 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
         {
             assert(!variant->arguments.empty() && "unary builtin requires an operand");
             const auto &argSpec = variant->arguments.front();
-            RVal &argVal = applyTransforms(argSpec.index, argSpec.transforms);
+            RVal &argVal = applyTransforms(argSpec, argSpec.transforms);
             resultType = resolveResultType();
             curLoc = selectCallLoc(variant->callLocArg);
             resultValue = emitUnary(variant->opcode, resultType, argVal.value);

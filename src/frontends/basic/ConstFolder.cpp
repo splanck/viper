@@ -523,25 +523,100 @@ private:
                     auto n = detail::asNumeric(*expr.args[0]);
                     if (n)
                     {
-                        if (n->isFloat)
+                        double operand = n->isFloat ? n->f : static_cast<double>(n->i);
+                        if (!std::isfinite(operand))
+                            break;
+                        double floored = std::floor(operand);
+                        if (!std::isfinite(floored))
+                            break;
+                        replaceWithFloat(floored, expr.loc);
+                    }
+                }
+                break;
+            }
+            case BuiltinCallExpr::Builtin::Fix:
+            {
+                if (expr.args.size() == 1)
+                {
+                    auto n = detail::asNumeric(*expr.args[0]);
+                    if (n)
+                    {
+                        double operand = n->isFloat ? n->f : static_cast<double>(n->i);
+                        if (!std::isfinite(operand))
+                            break;
+                        double truncated = std::trunc(operand);
+                        if (!std::isfinite(truncated))
+                            break;
+                        replaceWithFloat(truncated, expr.loc);
+                    }
+                }
+                break;
+            }
+            case BuiltinCallExpr::Builtin::Round:
+            {
+                if (!expr.args.empty())
+                {
+                    auto first = detail::asNumeric(*expr.args[0]);
+                    if (!first)
+                        break;
+                    double value = first->isFloat ? first->f : static_cast<double>(first->i);
+                    if (!std::isfinite(value))
+                        break;
+                    int digits = 0;
+                    if (expr.args.size() >= 2 && expr.args[1])
+                    {
+                        if (auto second = detail::asNumeric(*expr.args[1]))
                         {
-                            double operand = n->f;
-                            if (!std::isfinite(operand))
-                                break;
-                            double rounded = std::nearbyint(operand);
+                            double raw = second->isFloat ? second->f : static_cast<double>(second->i);
+                            double rounded = std::nearbyint(raw);
                             if (!std::isfinite(rounded))
                                 break;
-                            constexpr double kMin = static_cast<double>(std::numeric_limits<long long>::min());
-                            constexpr double kMax = static_cast<double>(std::numeric_limits<long long>::max());
-                            if (rounded < kMin || rounded > kMax)
+                            if (rounded < static_cast<double>(std::numeric_limits<int32_t>::min()) ||
+                                rounded > static_cast<double>(std::numeric_limits<int32_t>::max()))
                                 break;
-                            replaceWithInt(static_cast<long long>(rounded), expr.loc);
+                            digits = static_cast<int>(rounded);
                         }
                         else
                         {
-                            replaceWithInt(n->i, expr.loc);
+                            break;
                         }
                     }
+
+                    double result = value;
+                    if (digits > 0)
+                    {
+                        double scale = std::pow(10.0, static_cast<double>(digits));
+                        if (!std::isfinite(scale) || scale == 0.0)
+                            break;
+                        double scaled = value * scale;
+                        if (!std::isfinite(scaled))
+                            break;
+                        double rounded = std::nearbyint(scaled);
+                        if (!std::isfinite(rounded))
+                            break;
+                        result = rounded / scale;
+                    }
+                    else if (digits < 0)
+                    {
+                        double scale = std::pow(10.0, static_cast<double>(-digits));
+                        if (!std::isfinite(scale) || scale == 0.0)
+                            break;
+                        double scaled = value / scale;
+                        if (!std::isfinite(scaled))
+                            break;
+                        double rounded = std::nearbyint(scaled);
+                        if (!std::isfinite(rounded))
+                            break;
+                        result = rounded * scale;
+                    }
+                    else
+                    {
+                        result = std::nearbyint(value);
+                    }
+
+                    if (!std::isfinite(result))
+                        break;
+                    replaceWithFloat(result, expr.loc);
                 }
                 break;
             }
