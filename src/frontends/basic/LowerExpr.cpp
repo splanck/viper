@@ -13,6 +13,7 @@
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
+#include <algorithm>
 #include <cassert>
 #include <functional>
 #include <optional>
@@ -994,6 +995,72 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
             break;
         }
         case BuiltinLoweringRule::Variant::Kind::Custom:
+        {
+            assert(!variant->arguments.empty() && "custom builtin requires an operand");
+            const auto &argSpec = variant->arguments.front();
+            RVal &argVal = applyTransforms(argSpec, argSpec.transforms);
+            il::support::SourceLoc callLoc = selectCallLoc(variant->callLocArg);
+
+            auto handleConversion = [&](Type resultTy) {
+                Value okSlot = emitAlloca(1);
+                std::vector<Value> callArgs{argVal.value, okSlot};
+                resultType = resultTy;
+                curLoc = callLoc;
+                Value callRes = emitCallRet(resultType, variant->runtime, callArgs);
+
+                curLoc = callLoc;
+                Value okVal = emitLoad(ilBoolTy(), okSlot);
+                ProcedureContext &ctx = context();
+                Function *func = ctx.function();
+                assert(func && "conversion lowering requires active function");
+                BasicBlock *origin = ctx.current();
+                assert(origin && "conversion lowering requires active block");
+                std::string originLabel = origin->label;
+                BlockNamer *blockNamer = ctx.blockNamer();
+                std::string contLabel = blockNamer ? blockNamer->generic("conv_ok")
+                                                   : mangler.block("conv_ok");
+                std::string trapLabel = blockNamer ? blockNamer->generic("conv_trap")
+                                                   : mangler.block("conv_trap");
+                BasicBlock *contBlk = &builder->addBlock(*func, contLabel);
+                BasicBlock *trapBlk = &builder->addBlock(*func, trapLabel);
+                auto originIt = std::find_if(
+                    func->blocks.begin(), func->blocks.end(), [&](const BasicBlock &bb) {
+                        return bb.label == originLabel;
+                    });
+                assert(originIt != func->blocks.end());
+                origin = &*originIt;
+                ctx.setCurrent(origin);
+                emitCBr(okVal, contBlk, trapBlk);
+
+                ctx.setCurrent(trapBlk);
+                curLoc = callLoc;
+                Value sentinel = emitUnary(Opcode::CastFpToSiRteChk,
+                                           Type(Type::Kind::I64),
+                                           Value::constFloat(std::numeric_limits<double>::quiet_NaN()));
+                (void)sentinel;
+                emitTrap();
+
+                ctx.setCurrent(contBlk);
+                resultValue = callRes;
+            };
+
+            switch (c.builtin)
+            {
+                case BuiltinCallExpr::Builtin::Cint:
+                    handleConversion(Type(Type::Kind::I64));
+                    break;
+                case BuiltinCallExpr::Builtin::Clng:
+                    handleConversion(Type(Type::Kind::I64));
+                    break;
+                case BuiltinCallExpr::Builtin::Csng:
+                    handleConversion(Type(Type::Kind::F64));
+                    break;
+                default:
+                    assert(false && "unsupported custom builtin conversion");
+                    return {Value::constInt(0), Type(Type::Kind::I64)};
+            }
+            break;
+        }
         default:
             assert(false && "custom builtin lowering variant is not supported");
             return {Value::constInt(0), Type(Type::Kind::I64)};
