@@ -394,11 +394,6 @@ class Lowerer
     /// @return Resulting double-precision value.
     RVal lowerPowBinary(const BinaryExpr &expr, RVal lhs, RVal rhs);
 
-    /// @brief Lower STR$ with rank-sensitive runtime selection.
-    /// @param expr Built-in call expression node.
-    /// @return String result allocated by the runtime.
-    RVal lowerStrBuiltin(const BuiltinCallExpr &expr);
-
     /// @brief Lower a built-in call expression.
     /// @param expr Built-in call expression node.
     /// @return Resulting value and type.
