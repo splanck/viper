@@ -154,8 +154,28 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeInt(const BuiltinCallExpr &c,
                                                     const std::vector<Type> &args)
 {
     if (checkArgCount(c, args, 1, 1))
-        checkArgType(c, 0, args[0], {Type::Float});
-    return Type::Int;
+        checkArgType(c, 0, args[0], {Type::Int, Type::Float});
+    return Type::Float;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeFix(const BuiltinCallExpr &c,
+                                                    const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 1))
+        checkArgType(c, 0, args[0], {Type::Int, Type::Float});
+    return Type::Float;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeRound(const BuiltinCallExpr &c,
+                                                      const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 2))
+    {
+        checkArgType(c, 0, args[0], {Type::Int, Type::Float});
+        if (args.size() == 2)
+            checkArgType(c, 1, args[1], {Type::Int, Type::Float});
+    }
+    return Type::Float;
 }
 
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeInstr(const BuiltinCallExpr &c,
