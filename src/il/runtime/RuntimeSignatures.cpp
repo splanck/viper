@@ -445,6 +445,16 @@ std::vector<RuntimeDescriptor> buildRegistry()
         {Kind::Str},
         &DirectHandler<&rt_val, double, rt_string>::invoke,
         feature(RuntimeFeature::Val));
+    add("rt_val_to_double",
+        Kind::F64,
+        {Kind::Ptr, Kind::Ptr},
+        &DirectHandler<&rt_val_to_double, double, const char *, bool *>::invoke,
+        feature(RuntimeFeature::Val));
+    add("rt_string_cstr",
+        Kind::Ptr,
+        {Kind::Str},
+        &DirectHandler<&rt_string_cstr, const char *, rt_string>::invoke,
+        feature(RuntimeFeature::Val));
     add("rt_str",
         Kind::Str,
         {Kind::F64},

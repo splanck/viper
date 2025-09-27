@@ -7,6 +7,7 @@
 #include "il/runtime/RuntimeSignatures.hpp"
 #include <cassert>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 
 int main()
@@ -15,6 +16,7 @@ int main()
     assert(!registry.empty());
 
     std::unordered_set<std::string_view> names;
+    std::unordered_map<il::runtime::RuntimeFeature, const il::runtime::RuntimeDescriptor *> featureOwners;
     for (const auto &entry : registry)
     {
         assert(entry.handler && "runtime descriptor missing handler");
@@ -26,7 +28,11 @@ int main()
         if (entry.lowering.kind == il::runtime::RuntimeLoweringKind::Feature)
         {
             const auto *byFeature = il::runtime::findRuntimeDescriptor(entry.lowering.feature);
-            assert(byFeature == &entry && "descriptor lookup by feature mismatch");
+            auto [it, inserted] = featureOwners.emplace(entry.lowering.feature, &entry);
+            if (inserted)
+                assert(byFeature == &entry && "descriptor lookup by feature mismatch");
+            else
+                assert(byFeature == it->second && "descriptor lookup by feature mismatch");
         }
     }
 

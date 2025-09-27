@@ -787,3 +787,18 @@ rt_string rt_str(double v)
 {
     return rt_f64_to_str(v);
 }
+
+const char *rt_string_cstr(rt_string s)
+{
+    if (!s)
+    {
+        rt_trap("rt_string_cstr: null string");
+        return "";
+    }
+    if (!s->data)
+    {
+        rt_trap("rt_string_cstr: null data");
+        return "";
+    }
+    return s->data;
+}
