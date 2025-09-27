@@ -193,6 +193,16 @@ void invokeRtCsngFromDouble(void **args, void *result)
         *reinterpret_cast<double *>(result) = static_cast<double>(value);
 }
 
+/// @brief Adapter converting double slots to float before invoking string formatter.
+void invokeRtStrFAlloc(void **args, void *result)
+{
+    const auto valPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
+    const float value = valPtr ? static_cast<float>(*valPtr) : 0.0f;
+    rt_string str = rt_str_f_alloc(value);
+    if (result)
+        *reinterpret_cast<rt_string *>(result) = str;
+}
+
 /// @brief Adapter invoking ROUND with integer digits sourced from 64-bit slots.
 void invokeRtRoundEven(void **args, void *result)
 {
@@ -290,6 +300,26 @@ std::vector<RuntimeDescriptor> buildRegistry()
         {Kind::F64},
         &DirectHandler<&rt_f64_to_str, rt_string, double>::invoke,
         feature(RuntimeFeature::F64ToStr));
+    add("rt_str_d_alloc",
+        Kind::Str,
+        {Kind::F64},
+        &DirectHandler<&rt_str_d_alloc, rt_string, double>::invoke,
+        feature(RuntimeFeature::StrFromDouble));
+    add("rt_str_f_alloc",
+        Kind::Str,
+        {Kind::F64},
+        &invokeRtStrFAlloc,
+        feature(RuntimeFeature::StrFromSingle));
+    add("rt_str_i32_alloc",
+        Kind::Str,
+        {Kind::I32},
+        &DirectHandler<&rt_str_i32_alloc, rt_string, int32_t>::invoke,
+        feature(RuntimeFeature::StrFromI32));
+    add("rt_str_i16_alloc",
+        Kind::Str,
+        {Kind::I16},
+        &DirectHandler<&rt_str_i16_alloc, rt_string, int16_t>::invoke,
+        feature(RuntimeFeature::StrFromI16));
     add("rt_cint_from_double",
         Kind::I64,
         {Kind::F64, Kind::Ptr},
@@ -455,11 +485,6 @@ std::vector<RuntimeDescriptor> buildRegistry()
         {Kind::Str},
         &DirectHandler<&rt_string_cstr, const char *, rt_string>::invoke,
         feature(RuntimeFeature::Val));
-    add("rt_str",
-        Kind::Str,
-        {Kind::F64},
-        &DirectHandler<&rt_str, rt_string, double>::invoke,
-        feature(RuntimeFeature::Str));
     add("rt_sqrt",
         Kind::F64,
         {Kind::F64},

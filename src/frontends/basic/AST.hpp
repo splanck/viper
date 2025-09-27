@@ -169,6 +169,8 @@ struct FloatExpr : Expr
 {
     /// Literal double-precision value parsed from the source.
     double value;
+    /// True when the literal used the `!` suffix to force SINGLE semantics.
+    bool isSingle{false};
     void accept(ExprVisitor &visitor) const override;
     void accept(MutExprVisitor &visitor) override;
 };

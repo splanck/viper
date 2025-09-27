@@ -135,6 +135,26 @@ extern "C" {
     /// @return Newly allocated decimal representation.
     rt_string rt_f64_to_str(double v);
 
+    /// @brief Allocate a Viper string from a DOUBLE value using round-trip formatting.
+    /// @param v Value to format.
+    /// @return Newly allocated runtime string.
+    rt_string rt_str_d_alloc(double v);
+
+    /// @brief Allocate a Viper string from a SINGLE value using round-trip formatting.
+    /// @param v Value to format.
+    /// @return Newly allocated runtime string.
+    rt_string rt_str_f_alloc(float v);
+
+    /// @brief Allocate a Viper string from a LONG value using decimal formatting.
+    /// @param v Value to format.
+    /// @return Newly allocated runtime string.
+    rt_string rt_str_i32_alloc(int32_t v);
+
+    /// @brief Allocate a Viper string from an INTEGER value using decimal formatting.
+    /// @param v Value to format.
+    /// @return Newly allocated runtime string.
+    rt_string rt_str_i16_alloc(int16_t v);
+
     /// @brief Parse leading numeric prefix from @p s as double.
     /// @param s Source string.
     /// @return Parsed numeric value or 0 when absent.
