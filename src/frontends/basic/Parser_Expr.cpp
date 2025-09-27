@@ -18,6 +18,8 @@ int Parser::precedence(TokenKind k)
 {
     switch (k)
     {
+        case TokenKind::Caret:
+            return 7;
         case TokenKind::KeywordNot:
             return 6;
         case TokenKind::Star:
@@ -100,7 +102,8 @@ ExprPtr Parser::parseInfixRhs(ExprPtr left, int min_prec)
         TokenKind op = peek().kind;
         auto opLoc = peek().loc;
         consume();
-        auto right = parseExpression(prec + 1);
+        const bool rightAssociative = (op == TokenKind::Caret);
+        auto right = parseExpression(rightAssociative ? prec : prec + 1);
         auto bin = std::make_unique<BinaryExpr>();
         bin->loc = opLoc;
         switch (op)
@@ -122,6 +125,9 @@ ExprPtr Parser::parseInfixRhs(ExprPtr left, int min_prec)
                 break;
             case TokenKind::KeywordMod:
                 bin->op = BinaryExpr::Op::Mod;
+                break;
+            case TokenKind::Caret:
+                bin->op = BinaryExpr::Op::Pow;
                 break;
             case TokenKind::Equal:
                 bin->op = BinaryExpr::Op::Eq;

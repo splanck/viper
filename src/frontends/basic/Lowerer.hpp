@@ -387,6 +387,13 @@ class Lowerer
     /// @return Resulting value and type.
     RVal lowerNumericBinary(const BinaryExpr &expr, RVal lhs, RVal rhs);
 
+    /// @brief Lower the power operator by invoking the runtime helper.
+    /// @param expr Binary expression node.
+    /// @param lhs Pre-lowered left-hand side.
+    /// @param rhs Pre-lowered right-hand side.
+    /// @return Resulting double-precision value.
+    RVal lowerPowBinary(const BinaryExpr &expr, RVal lhs, RVal rhs);
+
     /// @brief Lower a built-in call expression.
     /// @param expr Built-in call expression node.
     /// @return Resulting value and type.

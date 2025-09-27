@@ -314,6 +314,11 @@ Lowerer::ExprType Lowerer::scanBinaryExpr(const BinaryExpr &b)
 {
     ExprType lt = scanExpr(*b.lhs);
     ExprType rt = scanExpr(*b.rhs);
+    if (b.op == BinaryExpr::Op::Pow)
+    {
+        trackRuntime(RuntimeFeature::Pow);
+        return ExprType::F64;
+    }
     if (b.op == BinaryExpr::Op::Add && lt == ExprType::Str && rt == ExprType::Str)
     {
         requestHelper(RuntimeFeature::Concat);
