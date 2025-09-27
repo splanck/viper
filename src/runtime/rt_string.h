@@ -135,6 +135,26 @@ extern "C" {
     /// @return Newly allocated decimal representation.
     rt_string rt_f64_to_str(double v);
 
+    /// @brief Allocate a runtime string from a double value using standard formatting.
+    /// @param v Double-precision value to convert.
+    /// @return Newly allocated runtime string.
+    rt_string rt_str_d_alloc(double v);
+
+    /// @brief Allocate a runtime string from a float value using standard formatting.
+    /// @param v Single-precision value to convert.
+    /// @return Newly allocated runtime string.
+    rt_string rt_str_f_alloc(float v);
+
+    /// @brief Allocate a runtime string from a 32-bit integer using standard formatting.
+    /// @param v 32-bit integer value to convert.
+    /// @return Newly allocated runtime string.
+    rt_string rt_str_i32_alloc(int32_t v);
+
+    /// @brief Allocate a runtime string from a 16-bit integer using standard formatting.
+    /// @param v 16-bit integer value to convert.
+    /// @return Newly allocated runtime string.
+    rt_string rt_str_i16_alloc(int16_t v);
+
     /// @brief Parse leading numeric prefix from @p s as double.
     /// @param s Source string.
     /// @return Parsed numeric value or 0 when absent.

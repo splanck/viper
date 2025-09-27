@@ -9,6 +9,7 @@
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/LowerRuntime.hpp"
 #include "frontends/basic/NameMangler.hpp"
+#include "frontends/basic/TypeRules.hpp"
 #include "il/build/IRBuilder.hpp"
 #include "il/core/Module.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
@@ -398,6 +399,11 @@ class Lowerer
     /// @param expr Built-in call expression node.
     /// @return Resulting value and type.
     RVal lowerBuiltinCall(const BuiltinCallExpr &expr);
+
+    /// @brief Classify the numeric type of @p expr using BASIC promotion rules.
+    /// @param expr Expression to inspect.
+    /// @return Numeric type describing INTEGER, LONG, SINGLE, or DOUBLE semantics.
+    TypeRules::NumericType classifyNumericType(const Expr &expr);
 
     /// @brief Lower a UBOUND query expression.
     /// @param expr UBOUND expression node naming the array.

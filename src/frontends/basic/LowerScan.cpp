@@ -386,6 +386,27 @@ Lowerer::ExprType Lowerer::scanBuiltinCallExpr(const BuiltinCallExpr &c)
     const auto &rule = getBuiltinScanRule(c.builtin);
     std::vector<std::optional<ExprType>> argTypes(c.args.size());
 
+    if (c.builtin == BuiltinCallExpr::Builtin::Str && !c.args.empty() && c.args[0])
+    {
+        TypeRules::NumericType numericType = classifyNumericType(*c.args[0]);
+        switch (numericType)
+        {
+            case TypeRules::NumericType::Integer:
+                requestHelper(RuntimeFeature::StrFromI16);
+                break;
+            case TypeRules::NumericType::Long:
+                requestHelper(RuntimeFeature::StrFromI32);
+                break;
+            case TypeRules::NumericType::Single:
+                requestHelper(RuntimeFeature::StrFromSingle);
+                break;
+            case TypeRules::NumericType::Double:
+            default:
+                requestHelper(RuntimeFeature::StrFromDouble);
+                break;
+        }
+    }
+
     auto scanArg = [&](std::size_t idx) {
         if (idx >= c.args.size())
             return;
