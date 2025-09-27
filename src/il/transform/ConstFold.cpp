@@ -85,34 +85,91 @@ static bool getConstFloat(const Value &v, double &out)
  * operation overflowed; if so the caller must bail out of folding so that the
  * verifier continues to reject the IR as trapping.
  */
-static std::optional<long long> checkedAdd(long long a, long long b)
+struct IntRange
 {
-    long long result{};
-    if (__builtin_add_overflow(a, b, &result))
-        return std::nullopt;
-    return result;
+    long long min;
+    long long max;
+};
+
+static std::optional<IntRange> getIntRange(const Type &type)
+{
+    switch (type.kind)
+    {
+        case Type::Kind::I16:
+            return IntRange{std::numeric_limits<std::int16_t>::min(),
+                            std::numeric_limits<std::int16_t>::max()};
+        case Type::Kind::I32:
+            return IntRange{std::numeric_limits<std::int32_t>::min(),
+                            std::numeric_limits<std::int32_t>::max()};
+        case Type::Kind::I64:
+            return IntRange{std::numeric_limits<long long>::min(),
+                            std::numeric_limits<long long>::max()};
+        default:
+            break;
+    }
+    return std::nullopt;
 }
 
-/**
- * @brief Perform checked subtraction mirroring the `.ovf` opcode semantics.
- */
-static std::optional<long long> checkedSub(long long a, long long b)
+static bool withinRange(long long value, const IntRange &range)
 {
-    long long result{};
-    if (__builtin_sub_overflow(a, b, &result))
-        return std::nullopt;
-    return result;
+    return value >= range.min && value <= range.max;
 }
 
-/**
- * @brief Perform checked multiplication mirroring the `.ovf` opcode semantics.
- */
-static std::optional<long long> checkedMul(long long a, long long b)
+template <typename T>
+static std::optional<long long> foldCheckedArithImpl(
+    Opcode op, long long lhs, long long rhs)
 {
-    long long result{};
-    if (__builtin_mul_overflow(a, b, &result))
+    const T lhsT = static_cast<T>(lhs);
+    const T rhsT = static_cast<T>(rhs);
+    if (static_cast<long long>(lhsT) != lhs || static_cast<long long>(rhsT) != rhs)
         return std::nullopt;
-    return result;
+
+    T result{};
+    bool overflow = false;
+
+    switch (op)
+    {
+        case Opcode::IAddOvf:
+            overflow = __builtin_add_overflow(lhsT, rhsT, &result);
+            break;
+        case Opcode::ISubOvf:
+            overflow = __builtin_sub_overflow(lhsT, rhsT, &result);
+            break;
+        case Opcode::IMulOvf:
+            overflow = __builtin_mul_overflow(lhsT, rhsT, &result);
+            break;
+        default:
+            return std::nullopt;
+    }
+
+    if (overflow)
+        return std::nullopt;
+
+    return static_cast<long long>(result);
+}
+
+static std::optional<long long> foldCheckedArith(
+    Opcode op, const Type &type, long long lhs, long long rhs)
+{
+    const auto bounds = getIntRange(type);
+    if (!bounds)
+        return std::nullopt;
+
+    if (!withinRange(lhs, *bounds) || !withinRange(rhs, *bounds))
+        return std::nullopt;
+
+    switch (type.kind)
+    {
+        case Type::Kind::I16:
+            return foldCheckedArithImpl<std::int16_t>(op, lhs, rhs);
+        case Type::Kind::I32:
+            return foldCheckedArithImpl<std::int32_t>(op, lhs, rhs);
+        case Type::Kind::I64:
+            return foldCheckedArithImpl<long long>(op, lhs, rhs);
+        default:
+            break;
+    }
+    return std::nullopt;
 }
 
 /**
@@ -155,6 +212,9 @@ static bool foldCall(const Instr &in, Value &out)
     if (in.op != Opcode::Call)
         return false;
     const std::string &c = in.callee;
+    if (c == "rt_val" || c == "rt_val_to_double" || c.rfind("rt_str", 0) == 0)
+        return false;
+
     if (c == "rt_abs_i64" && in.operands.size() == 1)
     {
         long long v;
@@ -184,11 +244,29 @@ static bool foldCall(const Instr &in, Value &out)
         }
         return false;
     }
+    if (c == "rt_int_floor" && in.operands.size() == 1)
+    {
+        if (getConstFloat(in.operands[0], a))
+        {
+            out = Value::constFloat(std::floor(a));
+            return true;
+        }
+        return false;
+    }
     if (c == "rt_ceil" && in.operands.size() == 1)
     {
         if (getConstFloat(in.operands[0], a))
         {
             out = Value::constFloat(std::ceil(a));
+            return true;
+        }
+        return false;
+    }
+    if (c == "rt_fix_trunc" && in.operands.size() == 1)
+    {
+        if (getConstFloat(in.operands[0], a))
+        {
+            out = Value::constFloat(std::trunc(a));
             return true;
         }
         return false;
@@ -244,6 +322,46 @@ static bool foldCall(const Instr &in, Value &out)
         }
         return false;
     }
+    if (c == "rt_round_even" && in.operands.size() == 2)
+    {
+        double value = 0.0;
+        long long digitsRaw = 0;
+        if (getConstFloat(in.operands[0], value) &&
+            isConstInt(in.operands[1], digitsRaw) &&
+            digitsRaw >= std::numeric_limits<int>::min() &&
+            digitsRaw <= std::numeric_limits<int>::max())
+        {
+            const int digits = static_cast<int>(digitsRaw);
+            double result = value;
+            if (std::isfinite(value))
+            {
+                if (digits == 0)
+                {
+                    result = std::nearbyint(value);
+                }
+                else
+                {
+                    const double absDigits = std::fabs(static_cast<double>(digits));
+                    if (absDigits <= 308.0)
+                    {
+                        const double factor = std::pow(10.0, static_cast<double>(digits));
+                        if (std::isfinite(factor) && factor != 0.0)
+                        {
+                            const double scaled = value * factor;
+                            if (std::isfinite(scaled))
+                            {
+                                const double rounded = std::nearbyint(scaled);
+                                result = rounded / factor;
+                            }
+                        }
+                    }
+                }
+            }
+            out = Value::constFloat(result);
+            return true;
+        }
+        return false;
+    }
     return false;
 }
 
@@ -265,6 +383,8 @@ static bool foldCall(const Instr &in, Value &out)
  */
 void constFold(Module &m)
 {
+    // Constant folding must be observationally equivalent to VM; where traps would
+    // occur at runtime, folding must not change behavior.
     for (auto &f : m.functions)
     {
         for (auto &b : f.blocks)
@@ -312,35 +432,49 @@ void constFold(Module &m)
                         switch (in.op)
                         {
                             case Opcode::IAddOvf:
-                                if (const auto sum = checkedAdd(lhs, rhs))
-                                {
-                                    res = *sum;
-                                }
-                                else
-                                {
-                                    folded = false;
-                                }
-                                break;
                             case Opcode::ISubOvf:
-                                if (const auto diff = checkedSub(lhs, rhs))
-                                {
-                                    res = *diff;
-                                }
-                                else
-                                {
-                                    folded = false;
-                                }
-                                break;
                             case Opcode::IMulOvf:
-                                if (const auto prod = checkedMul(lhs, rhs))
+                                if (const auto val = foldCheckedArith(in.op, in.type, lhs, rhs))
                                 {
-                                    res = *prod;
+                                    res = *val;
                                 }
                                 else
                                 {
                                     folded = false;
                                 }
                                 break;
+                            case Opcode::SDivChk0:
+                            case Opcode::SRemChk0:
+                            {
+                                const auto bounds = getIntRange(in.type);
+                                if (!bounds || !withinRange(lhs, *bounds) || !withinRange(rhs, *bounds) || rhs == 0 ||
+                                    (lhs == bounds->min && rhs == -1))
+                                {
+                                    folded = false;
+                                    break;
+                                }
+                                if (in.op == Opcode::SDivChk0)
+                                {
+                                    const long long q = lhs / rhs;
+                                    if (!withinRange(q, *bounds))
+                                    {
+                                        folded = false;
+                                        break;
+                                    }
+                                    res = q;
+                                }
+                                else
+                                {
+                                    const long long rem = lhs % rhs;
+                                    if (!withinRange(rem, *bounds))
+                                    {
+                                        folded = false;
+                                        break;
+                                    }
+                                    res = rem;
+                                }
+                                break;
+                            }
                             case Opcode::And:
                                 res = lhs & rhs;
                                 break;

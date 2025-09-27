@@ -1,0 +1,1 @@
+runtime trap: DivideByZero @ main: entry[#0]: divide by zero in sdiv.chk0
