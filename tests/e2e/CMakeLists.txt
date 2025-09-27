@@ -159,6 +159,14 @@ function(viper_add_e2e_vm_suite)
     -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
   set_tests_properties(basic_numerics_val PROPERTIES LABELS VM)
 
+  viper_add_ctest(basic_numerics_strs
+    ${CMAKE_COMMAND}
+    -DILC=$<TARGET_FILE:ilc>
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/basic/numerics_strs.bas
+    -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/basic/numerics_strs.bas.out
+    -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
+  set_tests_properties(basic_numerics_strs PROPERTIES LABELS VM)
+
   viper_add_ctest(basic_array_sum
     ${CMAKE_COMMAND}
     -DILC=$<TARGET_FILE:ilc>

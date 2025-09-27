@@ -9,6 +9,7 @@
 // Requires the consolidated Lowerer interface for expression lowering helpers.
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/BuiltinRegistry.hpp"
+#include "frontends/basic/TypeRules.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -26,6 +27,215 @@ using namespace il::core;
 
 namespace il::frontends::basic
 {
+namespace
+{
+using NumericType = TypeRules::NumericType;
+
+constexpr bool isIntegerRank(NumericType type) noexcept
+{
+    return type == NumericType::Integer || type == NumericType::Long;
+}
+
+NumericType classifyRank(Lowerer &lowerer, const Expr &expr);
+
+class NumericRankVisitor final : public ExprVisitor
+{
+  public:
+    explicit NumericRankVisitor(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
+
+    void visit(const IntExpr &expr) override
+    {
+        if (expr.value >= std::numeric_limits<int16_t>::min() && expr.value <= std::numeric_limits<int16_t>::max())
+            result_ = NumericType::Integer;
+        else if (expr.value >= std::numeric_limits<int32_t>::min() && expr.value <= std::numeric_limits<int32_t>::max())
+            result_ = NumericType::Long;
+        else
+            result_ = NumericType::Double;
+    }
+
+    void visit(const FloatExpr &expr) override
+    {
+        result_ = expr.isSingle ? NumericType::Single : NumericType::Double;
+    }
+
+    void visit(const StringExpr &) override { result_ = NumericType::Double; }
+
+    void visit(const BoolExpr &) override { result_ = NumericType::Long; }
+
+    void visit(const VarExpr &expr) override
+    {
+        NumericType type = NumericType::Long;
+        if (const auto *info = lowerer_.findSymbol(expr.name))
+        {
+            auto astTy = info->hasType ? info->type : inferAstTypeFromName(expr.name);
+            switch (astTy)
+            {
+                case ::il::frontends::basic::Type::F64:
+                    type = NumericType::Double;
+                    break;
+                case ::il::frontends::basic::Type::Bool:
+                    type = NumericType::Long;
+                    break;
+                default:
+                    type = NumericType::Long;
+                    break;
+            }
+        }
+        else
+        {
+            auto astTy = inferAstTypeFromName(expr.name);
+            type = (astTy == ::il::frontends::basic::Type::F64) ? NumericType::Double : NumericType::Long;
+        }
+        result_ = type;
+    }
+
+    void visit(const ArrayExpr &) override { result_ = NumericType::Long; }
+
+    void visit(const LBoundExpr &) override { result_ = NumericType::Long; }
+
+    void visit(const UBoundExpr &) override { result_ = NumericType::Long; }
+
+    void visit(const UnaryExpr &expr) override
+    {
+        NumericType operand = expr.expr ? classifyRank(lowerer_, *expr.expr) : NumericType::Long;
+        result_ = TypeRules::unaryResultType('-', operand);
+    }
+
+    void visit(const BinaryExpr &expr) override
+    {
+        NumericType lhs = expr.lhs ? classifyRank(lowerer_, *expr.lhs) : NumericType::Long;
+        NumericType rhs = expr.rhs ? classifyRank(lowerer_, *expr.rhs) : NumericType::Long;
+        switch (expr.op)
+        {
+            case BinaryExpr::Op::Add:
+                result_ = TypeRules::resultType('+', lhs, rhs);
+                break;
+            case BinaryExpr::Op::Sub:
+                result_ = TypeRules::resultType('-', lhs, rhs);
+                break;
+            case BinaryExpr::Op::Mul:
+                result_ = TypeRules::resultType('*', lhs, rhs);
+                break;
+            case BinaryExpr::Op::Div:
+            {
+                if (lhs == NumericType::Double || rhs == NumericType::Double)
+                {
+                    result_ = NumericType::Double;
+                }
+                else if (isIntegerRank(lhs) && isIntegerRank(rhs))
+                {
+                    result_ = NumericType::Double;
+                }
+                else if (lhs == NumericType::Single || rhs == NumericType::Single)
+                {
+                    result_ = NumericType::Single;
+                }
+                else
+                {
+                    result_ = NumericType::Single;
+                }
+                break;
+            }
+            case BinaryExpr::Op::IDiv:
+                result_ = TypeRules::resultType('\\', lhs, rhs);
+                break;
+            case BinaryExpr::Op::Mod:
+                result_ = TypeRules::resultType("MOD", lhs, rhs);
+                break;
+            case BinaryExpr::Op::Pow:
+                result_ = NumericType::Double;
+                break;
+            default:
+                result_ = NumericType::Long;
+                break;
+        }
+    }
+
+    void visit(const BuiltinCallExpr &expr) override
+    {
+        auto classifyArg = [&](std::size_t idx, NumericType fallback) {
+            if (idx < expr.args.size() && expr.args[idx])
+                return classifyRank(lowerer_, *expr.args[idx]);
+            return fallback;
+        };
+
+        using B = BuiltinCallExpr::Builtin;
+        switch (expr.builtin)
+        {
+            case B::Cint:
+                result_ = NumericType::Integer;
+                break;
+            case B::Clng:
+                result_ = NumericType::Long;
+                break;
+            case B::Csng:
+                result_ = NumericType::Single;
+                break;
+            case B::Cdbl:
+                result_ = NumericType::Double;
+                break;
+            case B::Int:
+            case B::Fix:
+            case B::Round:
+                result_ = classifyArg(0, NumericType::Long);
+                break;
+            case B::Abs:
+                result_ = classifyArg(0, NumericType::Long);
+                break;
+            case B::Sqr:
+            case B::Sin:
+            case B::Cos:
+            case B::Pow:
+            case B::Val:
+            case B::Rnd:
+            case B::Floor:
+            case B::Ceil:
+                result_ = NumericType::Double;
+                break;
+            default:
+                result_ = classifyArg(0, NumericType::Long);
+                break;
+        }
+    }
+
+    void visit(const CallExpr &expr) override
+    {
+        if (const auto *sig = lowerer_.findProcSignature(expr.callee))
+        {
+            switch (sig->retType.kind)
+            {
+                case il::core::Type::Kind::F64:
+                    result_ = NumericType::Double;
+                    return;
+                case il::core::Type::Kind::I16:
+                    result_ = NumericType::Integer;
+                    return;
+                case il::core::Type::Kind::I32:
+                case il::core::Type::Kind::I64:
+                    result_ = NumericType::Long;
+                    return;
+                default:
+                    break;
+            }
+        }
+        result_ = NumericType::Long;
+    }
+
+    [[nodiscard]] NumericType result() const noexcept { return result_; }
+
+  private:
+    Lowerer &lowerer_;
+    NumericType result_{NumericType::Long};
+};
+
+NumericType classifyRank(Lowerer &lowerer, const Expr &expr)
+{
+    NumericRankVisitor visitor(lowerer);
+    expr.accept(visitor);
+    return visitor.result();
+}
+
+} // namespace
 
 /// @brief Expression visitor that lowers nodes via Lowerer helpers.
 class LowererExprVisitor final : public ExprVisitor
@@ -516,6 +726,63 @@ Lowerer::RVal Lowerer::lowerPowBinary(const BinaryExpr &b, RVal lhs, RVal rhs)
     return {res, Type(Type::Kind::F64)};
 }
 
+Lowerer::RVal Lowerer::lowerStrBuiltin(const BuiltinCallExpr &c)
+{
+    if (c.args.empty() || !c.args.front())
+        return {Value::constInt(0), Type(Type::Kind::Str)};
+
+    const Expr &argExpr = *c.args.front();
+    NumericType rank = classifyRank(*this, argExpr);
+    RVal value = lowerExpr(argExpr);
+
+    auto narrowInteger = [&](Type::Kind targetKind, il::support::SourceLoc loc) {
+        value = ensureI64(std::move(value), loc);
+        if (value.type.kind != targetKind)
+        {
+            curLoc = loc;
+            value.value = emitUnary(Opcode::CastSiNarrowChk, Type(targetKind), value.value);
+            value.type = Type(targetKind);
+        }
+    };
+
+    switch (rank)
+    {
+        case NumericType::Integer:
+        {
+            narrowInteger(Type::Kind::I16, argExpr.loc);
+            curLoc = c.loc;
+            Value res = emitCallRet(Type(Type::Kind::Str), "rt_str_i16_alloc", {value.value});
+            requestHelper(RuntimeFeature::StrFromI16);
+            return {res, Type(Type::Kind::Str)};
+        }
+        case NumericType::Long:
+        {
+            narrowInteger(Type::Kind::I32, argExpr.loc);
+            curLoc = c.loc;
+            Value res = emitCallRet(Type(Type::Kind::Str), "rt_str_i32_alloc", {value.value});
+            requestHelper(RuntimeFeature::StrFromI32);
+            return {res, Type(Type::Kind::Str)};
+        }
+        case NumericType::Single:
+        {
+            value = ensureF64(std::move(value), argExpr.loc);
+            curLoc = c.loc;
+            Value res = emitCallRet(Type(Type::Kind::Str), "rt_str_f_alloc", {value.value});
+            requestHelper(RuntimeFeature::StrFromSingle);
+            return {res, Type(Type::Kind::Str)};
+        }
+        case NumericType::Double:
+        default:
+        {
+            value = ensureF64(std::move(value), argExpr.loc);
+            curLoc = c.loc;
+            Value res = emitCallRet(Type(Type::Kind::Str), "rt_str_d_alloc", {value.value});
+            requestHelper(RuntimeFeature::StrFromDouble);
+            return {res, Type(Type::Kind::Str)};
+        }
+    }
+}
+
 /// @brief Lower numeric binary expressions, promoting operands as needed.
 /// @param b Arithmetic or comparison expression to translate.
 /// @param lhs Lowered left-hand operand.
@@ -781,6 +1048,9 @@ Lowerer::RVal Lowerer::ensureF64(RVal v, il::support::SourceLoc loc)
 ///   feature actions.
 Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
 {
+    if (c.builtin == BuiltinCallExpr::Builtin::Str)
+        return lowerStrBuiltin(c);
+
     const auto &rule = getBuiltinLoweringRule(c.builtin);
 
     std::vector<std::optional<ExprType>> originalTypes(c.args.size());
