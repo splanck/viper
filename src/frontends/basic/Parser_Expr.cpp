@@ -185,6 +185,8 @@ ExprPtr Parser::parseNumber()
         auto e = std::make_unique<FloatExpr>();
         e->loc = loc;
         e->value = std::strtod(lex.c_str(), nullptr);
+        if (lex.find('!') != std::string::npos)
+            e->isSingle = true;
         consume();
         return e;
     }

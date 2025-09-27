@@ -4,11 +4,14 @@ extern @rt_print_i64(i64) -> void
 extern @rt_print_f64(f64) -> void
 extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
+extern @rt_str_d_alloc(f64) -> str
+extern @rt_str_f_alloc(f64) -> str
+extern @rt_str_i32_alloc(i32) -> str
+extern @rt_str_i16_alloc(i16) -> str
 extern @rt_int_floor(f64) -> f64
 extern @rt_val(str) -> f64
 extern @rt_val_to_double(ptr, ptr) -> f64
 extern @rt_string_cstr(str) -> ptr
-extern @rt_str(f64) -> str
 extern @rt_int_floor(f64) -> f64
 global const str @.L0 = " "
 global const str @.L1 = "
@@ -36,9 +39,9 @@ L30:
   .loc 1 3 15
   %t5 = load i64, %t4
   .loc 1 3 15
-  %t6 = sitofp %t5
+  %t6 = cast.si_narrow.chk %t5
   .loc 1 3 10
-  %t7 = call @rt_str(%t6)
+  %t7 = call @rt_str_i32_alloc(%t6)
   .loc 1 3 4
   call @rt_print_str(%t7)
   .loc 1 3 4
@@ -48,7 +51,7 @@ L30:
   .loc 1 3 24
   %t9 = load f64, %t3
   .loc 1 3 19
-  %t10 = call @rt_str(%t9)
+  %t10 = call @rt_str_d_alloc(%t9)
   .loc 1 3 4
   call @rt_print_str(%t10)
   .loc 1 3 4
