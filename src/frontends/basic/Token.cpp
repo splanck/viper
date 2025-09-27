@@ -136,6 +136,8 @@ const char *tokenKindToString(TokenKind k)
             return "/";
         case TokenKind::Backslash:
             return "\\";
+        case TokenKind::Caret:
+            return "^";
         case TokenKind::Equal:
             return "=";
         case TokenKind::NotEqual:

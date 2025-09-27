@@ -133,6 +133,15 @@ function(viper_add_e2e_vm_suite)
     -P ${_VIPER_E2E_DIR}/test_basic_numeric_overflow.cmake)
   set_tests_properties(basic_numerics_addmul PROPERTIES LABELS VM)
 
+  viper_add_ctest(basic_numerics_pow
+    ${CMAKE_COMMAND}
+    -DILC=$<TARGET_FILE:ilc>
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/basic/numerics_pow.bas
+    -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/basic/numerics_pow.bas.out
+    "-DEXPECT_SUBSTR=rt_pow_f64_chkdom: negative base with fractional exponent"
+    -P ${_VIPER_E2E_DIR}/test_basic_numeric_overflow.cmake)
+  set_tests_properties(basic_numerics_pow PROPERTIES LABELS VM)
+
   viper_add_ctest(basic_array_sum
     ${CMAKE_COMMAND}
     -DILC=$<TARGET_FILE:ilc>
