@@ -142,6 +142,15 @@ function(viper_add_e2e_vm_suite)
     -P ${_VIPER_E2E_DIR}/test_basic_numeric_overflow.cmake)
   set_tests_properties(basic_numerics_pow PROPERTIES LABELS VM)
 
+  viper_add_ctest(basic_numerics_conversions
+    ${CMAKE_COMMAND}
+    -DILC=$<TARGET_FILE:ilc>
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/basic/numerics_conversions.bas
+    -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/basic/numerics_conversions.bas.out
+    "-DEXPECT_SUBSTR=runtime trap: InvalidCast"
+    -P ${_VIPER_E2E_DIR}/test_basic_numeric_overflow.cmake)
+  set_tests_properties(basic_numerics_conversions PROPERTIES LABELS VM)
+
   viper_add_ctest(basic_array_sum
     ${CMAKE_COMMAND}
     -DILC=$<TARGET_FILE:ilc>

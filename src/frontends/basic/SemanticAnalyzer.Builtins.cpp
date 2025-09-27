@@ -150,6 +150,38 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeVal(const BuiltinCallExpr &c,
     return Type::Float;
 }
 
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeCint(const BuiltinCallExpr &c,
+                                                     const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 1))
+        checkArgType(c, 0, args[0], {Type::Int, Type::Float});
+    return Type::Int;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeClng(const BuiltinCallExpr &c,
+                                                     const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 1))
+        checkArgType(c, 0, args[0], {Type::Int, Type::Float});
+    return Type::Int;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeCsng(const BuiltinCallExpr &c,
+                                                     const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 1))
+        checkArgType(c, 0, args[0], {Type::Int, Type::Float});
+    return Type::Float;
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeCdbl(const BuiltinCallExpr &c,
+                                                     const std::vector<Type> &args)
+{
+    if (checkArgCount(c, args, 1, 1))
+        checkArgType(c, 0, args[0], {Type::Int, Type::Float});
+    return Type::Float;
+}
+
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeInt(const BuiltinCallExpr &c,
                                                     const std::vector<Type> &args)
 {
