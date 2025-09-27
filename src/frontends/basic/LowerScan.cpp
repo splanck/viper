@@ -383,18 +383,6 @@ Lowerer::ExprType Lowerer::scanUBoundExpr(const UBoundExpr &expr)
 /// request any runtime helpers required by the call.
 Lowerer::ExprType Lowerer::scanBuiltinCallExpr(const BuiltinCallExpr &c)
 {
-    if (c.builtin == BuiltinCallExpr::Builtin::Str)
-    {
-        if (!c.args.empty() && c.args.front())
-            scanExpr(*c.args.front());
-
-        requestHelper(RuntimeFeature::StrFromI16);
-        requestHelper(RuntimeFeature::StrFromI32);
-        requestHelper(RuntimeFeature::StrFromSingle);
-        requestHelper(RuntimeFeature::StrFromDouble);
-        return ExprType::Str;
-    }
-
     const auto &rule = getBuiltinScanRule(c.builtin);
     std::vector<std::optional<ExprType>> argTypes(c.args.size());
 
