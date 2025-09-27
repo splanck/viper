@@ -8,6 +8,8 @@
 public:
 enum class ExprType
 {
+    I16,
+    I32,
     I64,
     F64,
     Str,

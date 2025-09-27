@@ -847,13 +847,16 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
     auto typeFromExpr = [&](ExprType expr) -> Type {
         switch (expr)
         {
+            case ExprType::I16:
+            case ExprType::I32:
+            case ExprType::I64:
+                return Type(Type::Kind::I64);
             case ExprType::F64:
                 return Type(Type::Kind::F64);
             case ExprType::Str:
                 return Type(Type::Kind::Str);
             case ExprType::Bool:
                 return ilBoolTy();
-            case ExprType::I64:
             default:
                 return Type(Type::Kind::I64);
         }
@@ -983,6 +986,82 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
             resultValue = emitCallRet(resultType, variant->runtime, callArgs);
             break;
         }
+        case BuiltinLoweringRule::Variant::Kind::Custom:
+        {
+            auto lowerCheckedConversion = [&]() {
+                assert(!variant->arguments.empty() &&
+                       "numeric conversion builtin missing argument specification");
+                const auto &argSpec = variant->arguments.front();
+                RVal &argVal = applyTransforms(argSpec, argSpec.transforms);
+                Type callResultType = resolveResultType();
+
+                curLoc = selectCallLoc(variant->callLocArg);
+                Value okSlot = emitAlloca(1);
+                emitStore(ilBoolTy(), okSlot, emitBoolConst(false));
+
+                std::vector<Value> callArgs;
+                callArgs.push_back(argVal.value);
+                callArgs.push_back(okSlot);
+
+                curLoc = selectCallLoc(variant->callLocArg);
+                Value callResult = emitCallRet(callResultType, variant->runtime, callArgs);
+
+                Value okValue = emitLoad(ilBoolTy(), okSlot);
+
+                ProcedureContext &ctx = context();
+                Function *fn = ctx.function();
+                assert(fn && "numeric conversion lowering requires active function");
+
+                BasicBlock *originBlock = ctx.current();
+                std::optional<size_t> originIdx;
+                if (originBlock)
+                {
+                    BasicBlock *base = fn->blocks.data();
+                    originIdx = static_cast<size_t>(originBlock - base);
+                }
+
+                std::string successLabel = nextFallbackBlockLabel();
+                size_t successIdx = fn->blocks.size();
+                builder->addBlock(*fn, successLabel);
+                BasicBlock *successBlock = &fn->blocks[successIdx];
+
+                std::string trapLabel = nextFallbackBlockLabel();
+                size_t trapIdx = fn->blocks.size();
+                builder->addBlock(*fn, trapLabel);
+                BasicBlock *trapBlock = &fn->blocks[trapIdx];
+
+                curLoc = selectCallLoc(variant->callLocArg);
+                if (originIdx)
+                {
+                    BasicBlock *refreshed = &fn->blocks[*originIdx];
+                    ctx.setCurrent(refreshed);
+                }
+                emitCBr(okValue, successBlock, trapBlock);
+
+                ctx.setCurrent(trapBlock);
+                curLoc = selectCallLoc(variant->callLocArg);
+                Value nanConst = Value::constFloat(std::numeric_limits<double>::quiet_NaN());
+                (void)emitUnary(Opcode::CastFpToSiRteChk, Type(Type::Kind::I64), nanConst);
+                emitTrap();
+
+                ctx.setCurrent(successBlock);
+                resultType = callResultType;
+                resultValue = callResult;
+            };
+
+            switch (c.builtin)
+            {
+                case BuiltinCallExpr::Builtin::Cint:
+                case BuiltinCallExpr::Builtin::Clng:
+                case BuiltinCallExpr::Builtin::Csng:
+                    lowerCheckedConversion();
+                    break;
+                default:
+                    assert(false && "unsupported custom builtin lowering variant");
+                    return {Value::constInt(0), Type(Type::Kind::I64)};
+            }
+            break;
+        }
         case BuiltinLoweringRule::Variant::Kind::EmitUnary:
         {
             assert(!variant->arguments.empty() && "unary builtin requires an operand");
@@ -993,7 +1072,6 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
             resultValue = emitUnary(variant->opcode, resultType, argVal.value);
             break;
         }
-        case BuiltinLoweringRule::Variant::Kind::Custom:
         default:
             assert(false && "custom builtin lowering variant is not supported");
             return {Value::constInt(0), Type(Type::Kind::I64)};

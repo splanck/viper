@@ -193,7 +193,8 @@ void Lowerer::lowerPrint(const PrintStmt &stmt)
             case PrintItem::Kind::Expr:
             {
                 RVal v = lowerExpr(*it.expr);
-                if (v.type.kind == Type::Kind::I1)
+                if (v.type.kind == Type::Kind::I1 || v.type.kind == Type::Kind::I16 ||
+                    v.type.kind == Type::Kind::I32)
                 {
                     v = coerceToI64(std::move(v), stmt.loc);
                 }
