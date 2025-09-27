@@ -59,6 +59,12 @@ SemanticAnalyzer::Type numericResult(SemanticAnalyzer::Type lhs,
     return (lhs == Type::Float || rhs == Type::Float) ? Type::Float : Type::Int;
 }
 
+SemanticAnalyzer::Type powResult(SemanticAnalyzer::Type,
+                                 SemanticAnalyzer::Type) noexcept
+{
+    return SemanticAnalyzer::Type::Float;
+}
+
 SemanticAnalyzer::Type integerResult(SemanticAnalyzer::Type, SemanticAnalyzer::Type) noexcept
 {
     return SemanticAnalyzer::Type::Int;
@@ -97,6 +103,10 @@ const ExprRule &exprRule(BinaryExpr::Op op)
          {BinaryExpr::Op::Div,
           &SemanticAnalyzer::validateDivisionOperands,
           &numericResult,
+          "B2001"},
+         {BinaryExpr::Op::Pow,
+          &SemanticAnalyzer::validateNumericOperands,
+          &powResult,
           "B2001"},
          {BinaryExpr::Op::IDiv,
           &SemanticAnalyzer::validateIntegerOperands,

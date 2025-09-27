@@ -91,10 +91,11 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
 
     void visit(const BinaryExpr &expr) override
     {
-        static constexpr std::array<const char *, 16> ops = {"+",
+        static constexpr std::array<const char *, 17> ops = {"+",
                                                              "-",
                                                              "*",
                                                              "/",
+                                                             "^",
                                                              "\\",
                                                              "MOD",
                                                              "=",

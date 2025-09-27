@@ -75,6 +75,7 @@ enum class TokenKind
     Star,         ///< '*'.
     Slash,        ///< '/'.
     Backslash,    ///< '\\'.
+    Caret,        ///< '^'.
     Equal,        ///< '='.
     NotEqual,     ///< '<>'.
     Less,         ///< '<'.

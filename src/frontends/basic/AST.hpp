@@ -254,6 +254,7 @@ struct BinaryExpr : Expr
         Sub,
         Mul,
         Div,
+        Pow,
         IDiv,
         Mod,
         Eq,

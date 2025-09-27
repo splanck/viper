@@ -503,6 +503,18 @@ Lowerer::RVal Lowerer::lowerStringBinary(const BinaryExpr &b, RVal lhs, RVal rhs
     return {eq, ilBoolTy()};
 }
 
+Lowerer::RVal Lowerer::lowerPowBinary(const BinaryExpr &b, RVal lhs, RVal rhs)
+{
+    il::support::SourceLoc lhsLoc = b.lhs ? b.lhs->loc : b.loc;
+    il::support::SourceLoc rhsLoc = b.rhs ? b.rhs->loc : b.loc;
+    lhs = ensureF64(std::move(lhs), lhsLoc);
+    rhs = ensureF64(std::move(rhs), rhsLoc);
+    trackRuntime(RuntimeFeature::Pow);
+    curLoc = b.loc;
+    Value res = emitCallRet(Type(Type::Kind::F64), "rt_pow_f64_chkdom", {lhs.value, rhs.value});
+    return {res, Type(Type::Kind::F64)};
+}
+
 /// @brief Lower numeric binary expressions, promoting operands as needed.
 /// @param b Arithmetic or comparison expression to translate.
 /// @param lhs Lowered left-hand operand.
@@ -666,6 +678,8 @@ Lowerer::RVal Lowerer::lowerBinaryExpr(const BinaryExpr &b)
 
     RVal lhs = lowerExpr(*b.lhs);
     RVal rhs = lowerExpr(*b.rhs);
+    if (b.op == BinaryExpr::Op::Pow)
+        return lowerPowBinary(b, std::move(lhs), std::move(rhs));
     if ((b.op == BinaryExpr::Op::Add || b.op == BinaryExpr::Op::Eq || b.op == BinaryExpr::Op::Ne) &&
         lhs.type.kind == Type::Kind::Str && rhs.type.kind == Type::Kind::Str)
         return lowerStringBinary(b, lhs, rhs);
