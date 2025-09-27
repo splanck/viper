@@ -197,6 +197,10 @@ void Lowerer::lowerPrint(const PrintStmt &stmt)
                 {
                     v = coerceToI64(std::move(v), stmt.loc);
                 }
+                else if (v.type.kind == Type::Kind::I16 || v.type.kind == Type::Kind::I32)
+                {
+                    v = ensureI64(std::move(v), stmt.loc);
+                }
                 curLoc = stmt.loc;
                 if (v.type.kind == Type::Kind::Str)
                     emitCall("rt_print_str", {v.value});

@@ -30,7 +30,7 @@ using TransformKind = LowerRule::ArgTransform::Kind;
 using Feature = LowerRule::Feature;
 using FeatureAction = LowerRule::Feature::Action;
 
-static const std::array<LowerRule, 25> kBuiltinLoweringRules = {{
+static const std::array<LowerRule, 29> kBuiltinLoweringRules = {{
     { // LEN
         .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::I64},
         .variants = {
@@ -115,6 +115,58 @@ static const std::array<LowerRule, 25> kBuiltinLoweringRules = {{
                     .arguments = {Argument{.index = 0}},
                     .features = {Feature{.action = FeatureAction::Request,
                                          .feature = il::runtime::RuntimeFeature::Val}}},
+        },
+    },
+    { // CINT
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::I64},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .callLocArg = 0,
+                    .kind = VariantKind::Custom,
+                    .runtime = "rt_cint_from_double",
+                    .arguments = {Argument{.index = 0,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureF64}}}},
+                    .features = {Feature{.action = FeatureAction::Request,
+                                         .feature = il::runtime::RuntimeFeature::CintFromDouble}}},
+        },
+    },
+    { // CLNG
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::I64},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .callLocArg = 0,
+                    .kind = VariantKind::Custom,
+                    .runtime = "rt_clng_from_double",
+                    .arguments = {Argument{.index = 0,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureF64}}}},
+                    .features = {Feature{.action = FeatureAction::Request,
+                                         .feature = il::runtime::RuntimeFeature::ClngFromDouble}}},
+        },
+    },
+    { // CSNG
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::F64},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .callLocArg = 0,
+                    .kind = VariantKind::Custom,
+                    .runtime = "rt_csng_from_double",
+                    .arguments = {Argument{.index = 0,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureF64}}}},
+                    .features = {Feature{.action = FeatureAction::Request,
+                                         .feature = il::runtime::RuntimeFeature::CsngFromDouble}}},
+        },
+    },
+    { // CDBL
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::F64},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .callLocArg = 0,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_cdbl_from_any",
+                    .arguments = {Argument{.index = 0,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureF64}}}},
+                    .features = {Feature{.action = FeatureAction::Request,
+                                         .feature = il::runtime::RuntimeFeature::CdblFromAny}}},
         },
     },
     { // INT
@@ -381,13 +433,17 @@ static const std::array<LowerRule, 25> kBuiltinLoweringRules = {{
 // Dense metadata table indexed by BuiltinCallExpr::Builtin enumerators. The
 // order must remain in lockstep with the enum definition so that we can index
 // directly without translation.
-static const std::array<BuiltinInfo, 25> kBuiltins = {{
+static const std::array<BuiltinInfo, 29> kBuiltins = {{
     {"LEN", 1, 1, &SemanticAnalyzer::analyzeLen},
     {"MID$", 2, 3, &SemanticAnalyzer::analyzeMid},
     {"LEFT$", 2, 2, &SemanticAnalyzer::analyzeLeft},
     {"RIGHT$", 2, 2, &SemanticAnalyzer::analyzeRight},
     {"STR$", 1, 1, &SemanticAnalyzer::analyzeStr},
     {"VAL", 1, 1, &SemanticAnalyzer::analyzeVal},
+    {"CINT", 1, 1, &SemanticAnalyzer::analyzeCint},
+    {"CLNG", 1, 1, &SemanticAnalyzer::analyzeClng},
+    {"CSNG", 1, 1, &SemanticAnalyzer::analyzeCsng},
+    {"CDBL", 1, 1, &SemanticAnalyzer::analyzeCdbl},
     {"INT", 1, 1, &SemanticAnalyzer::analyzeInt},
     {"FIX", 1, 1, &SemanticAnalyzer::analyzeFix},
     {"ROUND", 1, 2, &SemanticAnalyzer::analyzeRound},
@@ -409,7 +465,7 @@ static const std::array<BuiltinInfo, 25> kBuiltins = {{
     {"ASC", 1, 1, &SemanticAnalyzer::analyzeAsc},
 }};
 
-static const std::array<BuiltinScanRule, 25> kBuiltinScanRules = {{
+static const std::array<BuiltinScanRule, 29> kBuiltinScanRules = {{
     {BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
                                  Lowerer::ExprType::I64,
                                  0},
@@ -469,6 +525,46 @@ static const std::array<BuiltinScanRule, 25> kBuiltinScanRules = {{
      {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
                                BuiltinScanRule::Feature::Condition::Always,
                                il::runtime::RuntimeFeature::Val,
+                               0,
+                               Lowerer::ExprType::I64}}},
+    {BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
+                                 Lowerer::ExprType::I64,
+                                 0},
+     BuiltinScanRule::ArgTraversal::Explicit,
+     {0},
+     {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                               BuiltinScanRule::Feature::Condition::Always,
+                               il::runtime::RuntimeFeature::CintFromDouble,
+                               0,
+                               Lowerer::ExprType::I64}}},
+    {BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
+                                 Lowerer::ExprType::I64,
+                                 0},
+     BuiltinScanRule::ArgTraversal::Explicit,
+     {0},
+     {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                               BuiltinScanRule::Feature::Condition::Always,
+                               il::runtime::RuntimeFeature::ClngFromDouble,
+                               0,
+                               Lowerer::ExprType::I64}}},
+    {BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
+                                 Lowerer::ExprType::F64,
+                                 0},
+     BuiltinScanRule::ArgTraversal::Explicit,
+     {0},
+     {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                               BuiltinScanRule::Feature::Condition::Always,
+                               il::runtime::RuntimeFeature::CsngFromDouble,
+                               0,
+                               Lowerer::ExprType::I64}}},
+    {BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
+                                 Lowerer::ExprType::F64,
+                                 0},
+     BuiltinScanRule::ArgTraversal::Explicit,
+     {0},
+     {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                               BuiltinScanRule::Feature::Condition::Always,
+                               il::runtime::RuntimeFeature::CdblFromAny,
                                0,
                                Lowerer::ExprType::I64}}},
     {BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
@@ -677,7 +773,8 @@ static const std::array<BuiltinScanRule, 25> kBuiltinScanRules = {{
 // normalized to uppercase with any suffix characters (e.g., $) preserved.
 static const std::unordered_map<std::string_view, B> kByName = {
     {"LEN", B::Len},      {"MID$", B::Mid},     {"LEFT$", B::Left}, {"RIGHT$", B::Right},
-    {"STR$", B::Str},     {"VAL", B::Val},      {"INT", B::Int},    {"FIX", B::Fix},
+    {"STR$", B::Str},     {"VAL", B::Val},      {"CINT", B::Cint},  {"CLNG", B::Clng},
+    {"CSNG", B::Csng},    {"CDBL", B::Cdbl},    {"INT", B::Int},    {"FIX", B::Fix},
     {"ROUND", B::Round},  {"SQR", B::Sqr},
     {"ABS", B::Abs},      {"FLOOR", B::Floor},  {"CEIL", B::Ceil},  {"SIN", B::Sin},
     {"COS", B::Cos},      {"POW", B::Pow},      {"RND", B::Rnd},    {"INSTR", B::Instr},
