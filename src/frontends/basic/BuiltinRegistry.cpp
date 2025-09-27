@@ -110,8 +110,9 @@ static const std::array<LowerRule, 29> kBuiltinLoweringRules = {{
         .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::F64},
         .variants = {
             Variant{.condition = Condition::Always,
-                    .kind = VariantKind::CallRuntime,
-                    .runtime = "rt_val",
+                    .callLocArg = 0,
+                    .kind = VariantKind::Custom,
+                    .runtime = "rt_val_to_double",
                     .arguments = {Argument{.index = 0}},
                     .features = {Feature{.action = FeatureAction::Request,
                                          .feature = il::runtime::RuntimeFeature::Val}}},
