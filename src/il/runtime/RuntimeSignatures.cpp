@@ -352,7 +352,7 @@ std::vector<RuntimeDescriptor> buildRegistry()
         feature(RuntimeFeature::FixTrunc));
     add("rt_round_even",
         Kind::F64,
-        {Kind::F64, Kind::I32},
+        {Kind::F64, Kind::I64},
         &invokeRtRoundEven,
         feature(RuntimeFeature::RoundEven));
     add("rt_alloc",

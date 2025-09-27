@@ -194,6 +194,35 @@ function(viper_add_golden_suite_tests)
     -DPASSES=constfold
     -P ${_VIPER_GOLDEN_DIR}/il_opt/check_opt.cmake)
 
+  file(READ ${_VIPER_GOLDEN_DIR}/constfold/constfold_add_overflow.stderr EXPECT_CONSTFOLD_ADD_OVERFLOW)
+  string(STRIP "${EXPECT_CONSTFOLD_ADD_OVERFLOW}" EXPECT_CONSTFOLD_ADD_OVERFLOW)
+  viper_add_ctest(constfold_add_overflow
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DIL_FILE=${_VIPER_GOLDEN_DIR}/constfold/constfold_add_overflow.in.il
+    -DGOLDEN=${_VIPER_GOLDEN_DIR}/constfold/constfold_add_overflow.opt.il
+    "-DEXPECT=${EXPECT_CONSTFOLD_ADD_OVERFLOW}"
+    -DEXPECT_TRAP=1
+    -P ${_VIPER_GOLDEN_DIR}/constfold/check_constfold_behavior.cmake)
+
+  file(READ ${_VIPER_GOLDEN_DIR}/constfold/constfold_div_by_zero.stderr EXPECT_CONSTFOLD_DIV_ZERO)
+  string(STRIP "${EXPECT_CONSTFOLD_DIV_ZERO}" EXPECT_CONSTFOLD_DIV_ZERO)
+  viper_add_ctest(constfold_div_by_zero
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DIL_FILE=${_VIPER_GOLDEN_DIR}/constfold/constfold_div_by_zero.in.il
+    -DGOLDEN=${_VIPER_GOLDEN_DIR}/constfold/constfold_div_by_zero.opt.il
+    "-DEXPECT=${EXPECT_CONSTFOLD_DIV_ZERO}"
+    -DEXPECT_TRAP=1
+    -P ${_VIPER_GOLDEN_DIR}/constfold/check_constfold_behavior.cmake)
+
+  viper_add_ctest(constfold_rounding
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DIL_FILE=${_VIPER_GOLDEN_DIR}/constfold/constfold_rounding.in.il
+    -DGOLDEN=${_VIPER_GOLDEN_DIR}/constfold/constfold_rounding.opt.il
+    -P ${_VIPER_GOLDEN_DIR}/constfold/check_constfold_behavior.cmake)
+
   viper_add_ctest(il_opt_cbr_same_target
     ${CMAKE_COMMAND}
     -DILC=${BASIC_ILC}

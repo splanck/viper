@@ -67,6 +67,8 @@ std::string toString(const Value &v)
                 if (!s.empty() && s.back() == '.')
                     s.pop_back();
             }
+            if (s.find_first_of(".eE") == std::string::npos)
+                s += ".0";
             return s;
         }
         case Value::Kind::ConstStr:

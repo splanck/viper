@@ -60,7 +60,7 @@ L40:
   br L50
 L50:
   .loc 1 5 10
-  %t8 = call @rt_sqrt(9)
+  %t8 = call @rt_sqrt(9.0)
   .loc 1 5 4
   call @rt_print_f64(%t8)
   .loc 1 5 4
