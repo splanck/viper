@@ -515,6 +515,60 @@ Lowerer::RVal Lowerer::lowerPowBinary(const BinaryExpr &b, RVal lhs, RVal rhs)
     return {res, Type(Type::Kind::F64)};
 }
 
+Lowerer::RVal Lowerer::lowerCintBuiltin(const BuiltinCallExpr &c)
+{
+    if (c.args.empty() || !c.args[0])
+        return {Value::constInt(0), Type(Type::Kind::I16)};
+    RVal arg = lowerExpr(*c.args[0]);
+    arg = ensureF64(std::move(arg), c.args[0]->loc);
+    trackRuntime(RuntimeFeature::CintFromDouble);
+    curLoc = c.loc;
+    Value okSlot = emitAlloca(1);
+    emitStore(ilBoolTy(), okSlot, emitBoolConst(false));
+    Value result = emitCallRet(Type(Type::Kind::I64), "rt_cint_from_double", {arg.value, okSlot});
+    return {result, Type(Type::Kind::I16)};
+}
+
+Lowerer::RVal Lowerer::lowerClngBuiltin(const BuiltinCallExpr &c)
+{
+    if (c.args.empty() || !c.args[0])
+        return {Value::constInt(0), Type(Type::Kind::I32)};
+    RVal arg = lowerExpr(*c.args[0]);
+    arg = ensureF64(std::move(arg), c.args[0]->loc);
+    trackRuntime(RuntimeFeature::ClngFromDouble);
+    curLoc = c.loc;
+    Value okSlot = emitAlloca(1);
+    emitStore(ilBoolTy(), okSlot, emitBoolConst(false));
+    Value result = emitCallRet(Type(Type::Kind::I64), "rt_clng_from_double", {arg.value, okSlot});
+    return {result, Type(Type::Kind::I32)};
+}
+
+Lowerer::RVal Lowerer::lowerCsngBuiltin(const BuiltinCallExpr &c)
+{
+    if (c.args.empty() || !c.args[0])
+        return {Value::constFloat(0.0), Type(Type::Kind::F64)};
+    RVal arg = lowerExpr(*c.args[0]);
+    arg = ensureF64(std::move(arg), c.args[0]->loc);
+    trackRuntime(RuntimeFeature::CsngFromDouble);
+    curLoc = c.loc;
+    Value okSlot = emitAlloca(1);
+    emitStore(ilBoolTy(), okSlot, emitBoolConst(false));
+    Value result = emitCallRet(Type(Type::Kind::F64), "rt_csng_from_double", {arg.value, okSlot});
+    return {result, Type(Type::Kind::F64)};
+}
+
+Lowerer::RVal Lowerer::lowerCdblBuiltin(const BuiltinCallExpr &c)
+{
+    if (c.args.empty() || !c.args[0])
+        return {Value::constFloat(0.0), Type(Type::Kind::F64)};
+    RVal arg = lowerExpr(*c.args[0]);
+    arg = ensureF64(std::move(arg), c.args[0]->loc);
+    trackRuntime(RuntimeFeature::CdblFromAny);
+    curLoc = c.loc;
+    Value result = emitCallRet(Type(Type::Kind::F64), "rt_cdbl_from_any", {arg.value});
+    return {result, Type(Type::Kind::F64)};
+}
+
 /// @brief Lower numeric binary expressions, promoting operands as needed.
 /// @param b Arithmetic or comparison expression to translate.
 /// @param lhs Lowered left-hand operand.
@@ -706,6 +760,8 @@ Lowerer::RVal Lowerer::coerceToI64(RVal v, il::support::SourceLoc loc)
     }
     else if (v.type.kind == Type::Kind::I16 || v.type.kind == Type::Kind::I32)
     {
+        curLoc = loc;
+        v.value = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I64), v.value);
         v.type = Type(Type::Kind::I64);
     }
     return v;
@@ -780,6 +836,20 @@ Lowerer::RVal Lowerer::ensureF64(RVal v, il::support::SourceLoc loc)
 ///   feature actions.
 Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
 {
+    switch (c.builtin)
+    {
+        case BuiltinCallExpr::Builtin::Cint:
+            return lowerCintBuiltin(c);
+        case BuiltinCallExpr::Builtin::Clng:
+            return lowerClngBuiltin(c);
+        case BuiltinCallExpr::Builtin::Csng:
+            return lowerCsngBuiltin(c);
+        case BuiltinCallExpr::Builtin::Cdbl:
+            return lowerCdblBuiltin(c);
+        default:
+            break;
+    }
+
     const auto &rule = getBuiltinLoweringRule(c.builtin);
 
     std::vector<std::optional<ExprType>> originalTypes(c.args.size());
@@ -847,6 +917,10 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
     auto typeFromExpr = [&](ExprType expr) -> Type {
         switch (expr)
         {
+            case ExprType::I16:
+                return Type(Type::Kind::I16);
+            case ExprType::I32:
+                return Type(Type::Kind::I32);
             case ExprType::F64:
                 return Type(Type::Kind::F64);
             case ExprType::Str:

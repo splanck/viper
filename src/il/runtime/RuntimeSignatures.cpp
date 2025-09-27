@@ -291,25 +291,25 @@ std::vector<RuntimeDescriptor> buildRegistry()
         &DirectHandler<&rt_f64_to_str, rt_string, double>::invoke,
         feature(RuntimeFeature::F64ToStr));
     add("rt_cint_from_double",
-        Kind::I16,
+        Kind::I64,
         {Kind::F64, Kind::Ptr},
         &invokeRtCintFromDouble,
-        manual());
+        feature(RuntimeFeature::CintFromDouble, true));
     add("rt_clng_from_double",
-        Kind::I32,
+        Kind::I64,
         {Kind::F64, Kind::Ptr},
         &invokeRtClngFromDouble,
-        manual());
+        feature(RuntimeFeature::ClngFromDouble, true));
     add("rt_csng_from_double",
         Kind::F64,
         {Kind::F64, Kind::Ptr},
         &invokeRtCsngFromDouble,
-        manual());
+        feature(RuntimeFeature::CsngFromDouble, true));
     add("rt_cdbl_from_any",
         Kind::F64,
         {Kind::F64},
         &DirectHandler<&rt_cdbl_from_any, double, double>::invoke,
-        manual());
+        feature(RuntimeFeature::CdblFromAny, true));
     add("rt_int_floor",
         Kind::F64,
         {Kind::F64},
