@@ -151,6 +151,14 @@ function(viper_add_e2e_vm_suite)
     -P ${_VIPER_E2E_DIR}/test_basic_numeric_overflow.cmake)
   set_tests_properties(basic_numerics_conversions PROPERTIES LABELS VM)
 
+  viper_add_ctest(basic_numerics_val
+    ${CMAKE_COMMAND}
+    -DILC=$<TARGET_FILE:ilc>
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/basic/numerics_val.bas
+    -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/basic/numerics_val.bas.out
+    -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
+  set_tests_properties(basic_numerics_val PROPERTIES LABELS VM)
+
   viper_add_ctest(basic_array_sum
     ${CMAKE_COMMAND}
     -DILC=$<TARGET_FILE:ilc>
