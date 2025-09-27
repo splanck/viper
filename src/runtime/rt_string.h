@@ -145,6 +145,11 @@ extern "C" {
     /// @return Newly allocated decimal representation.
     rt_string rt_str(double v);
 
+    /// @brief Obtain a null-terminated C string view of @p s.
+    /// @param s Source string; must not be NULL.
+    /// @return Pointer to the string's internal UTF-8 buffer.
+    const char *rt_string_cstr(rt_string s);
+
     /// @brief Wrap constant C string @p str without copying.
     /// @param str Null-terminated literal pointer.
     /// @return Non-owning runtime string view.

@@ -1055,6 +1055,87 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
                 case BuiltinCallExpr::Builtin::Csng:
                     handleConversion(Type(Type::Kind::F64));
                     break;
+                case BuiltinCallExpr::Builtin::Val:
+                {
+                    il::support::SourceLoc callLoc = selectCallLoc(variant->callLocArg);
+                    curLoc = callLoc;
+                    Value cstr = emitCallRet(Type(Type::Kind::Ptr), "rt_string_cstr", {argVal.value});
+
+                    Value okSlot = emitAlloca(1);
+                    std::vector<Value> callArgs{cstr, okSlot};
+                    resultType = resolveResultType();
+                    curLoc = callLoc;
+                    Value callRes = emitCallRet(resultType, variant->runtime, callArgs);
+
+                    curLoc = callLoc;
+                    Value okVal = emitLoad(ilBoolTy(), okSlot);
+
+                    ProcedureContext &ctx = context();
+                    Function *func = ctx.function();
+                    assert(func && "VAL lowering requires active function");
+                    BasicBlock *origin = ctx.current();
+                    assert(origin && "VAL lowering requires active block");
+                    std::string originLabel = origin->label;
+                    BlockNamer *blockNamer = ctx.blockNamer();
+                    auto labelFor = [&](const char *hint) {
+                        if (blockNamer)
+                            return blockNamer->generic(hint);
+                        return mangler.block(std::string(hint));
+                    };
+                    std::string contLabel = labelFor("val_ok");
+                    std::string trapLabel = labelFor("val_fail");
+                    std::string nanLabel = labelFor("val_nan");
+                    std::string overflowLabel = labelFor("val_over");
+                    builder->addBlock(*func, contLabel);
+                    builder->addBlock(*func, trapLabel);
+                    builder->addBlock(*func, nanLabel);
+                    builder->addBlock(*func, overflowLabel);
+
+                    auto originIt = std::find_if(func->blocks.begin(), func->blocks.end(), [&](const BasicBlock &bb) {
+                        return bb.label == originLabel;
+                    });
+                    assert(originIt != func->blocks.end());
+                    origin = &*originIt;
+                    auto findBlock = [&](const std::string &label) {
+                        auto it = std::find_if(func->blocks.begin(), func->blocks.end(), [&](const BasicBlock &bb) {
+                            return bb.label == label;
+                        });
+                        assert(it != func->blocks.end());
+                        return &*it;
+                    };
+                    BasicBlock *contBlk = findBlock(contLabel);
+                    BasicBlock *trapBlk = findBlock(trapLabel);
+                    BasicBlock *nanBlk = findBlock(nanLabel);
+                    BasicBlock *overflowBlk = findBlock(overflowLabel);
+                    ctx.setCurrent(origin);
+                    curLoc = callLoc;
+                    emitCBr(okVal, contBlk, trapBlk);
+
+                    ctx.setCurrent(trapBlk);
+                    curLoc = callLoc;
+                    Value isNan = emitBinary(Opcode::FCmpNE, ilBoolTy(), callRes, callRes);
+                    emitCBr(isNan, nanBlk, overflowBlk);
+
+                    ctx.setCurrent(nanBlk);
+                    curLoc = callLoc;
+                    Value invalidSentinel = emitUnary(Opcode::CastFpToSiRteChk,
+                                                       Type(Type::Kind::I64),
+                                                       Value::constFloat(std::numeric_limits<double>::quiet_NaN()));
+                    (void)invalidSentinel;
+                    emitTrap();
+
+                    ctx.setCurrent(overflowBlk);
+                    curLoc = callLoc;
+                    Value overflowSentinel = emitUnary(Opcode::CastFpToSiRteChk,
+                                                        Type(Type::Kind::I64),
+                                                        Value::constFloat(std::numeric_limits<double>::max()));
+                    (void)overflowSentinel;
+                    emitTrap();
+
+                    ctx.setCurrent(contBlk);
+                    resultValue = callRes;
+                    break;
+                }
                 default:
                     assert(false && "unsupported custom builtin conversion");
                     return {Value::constInt(0), Type(Type::Kind::I64)};

@@ -223,7 +223,7 @@ extern "C" {
         if (!isfinite(value))
         {
             *ok = false;
-            return 0.0;
+            return value;
         }
 
         *ok = true;
