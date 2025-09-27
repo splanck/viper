@@ -30,7 +30,7 @@ using TransformKind = LowerRule::ArgTransform::Kind;
 using Feature = LowerRule::Feature;
 using FeatureAction = LowerRule::Feature::Action;
 
-static const std::array<LowerRule, 23> kBuiltinLoweringRules = {{
+static const std::array<LowerRule, 25> kBuiltinLoweringRules = {{
     { // LEN
         .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::I64},
         .variants = {
@@ -118,13 +118,54 @@ static const std::array<LowerRule, 23> kBuiltinLoweringRules = {{
         },
     },
     { // INT
-        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::I64},
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::F64},
         .variants = {
             Variant{.condition = Condition::Always,
-                    .kind = VariantKind::EmitUnary,
-                    .opcode = il::core::Opcode::CastFpToSiRteChk,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_int_floor",
                     .arguments = {Argument{.index = 0,
-                                           .transforms = {Transform{.kind = TransformKind::EnsureF64}}}}},
+                                           .transforms = {Transform{.kind = TransformKind::EnsureF64}}}},
+                    .features = {Feature{.action = FeatureAction::Track,
+                                         .feature = il::runtime::RuntimeFeature::IntFloor}}},
+        },
+    },
+    { // FIX
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::F64},
+        .variants = {
+            Variant{.condition = Condition::Always,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_fix_trunc",
+                    .arguments = {Argument{.index = 0,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureF64}}}},
+                    .features = {Feature{.action = FeatureAction::Track,
+                                         .feature = il::runtime::RuntimeFeature::FixTrunc}}},
+        },
+    },
+    { // ROUND
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::F64},
+        .variants = {
+            Variant{.condition = Condition::IfArgPresent,
+                    .conditionArg = 1,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_round_even",
+                    .arguments = {Argument{.index = 0,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureF64}}},
+                                  Argument{.index = 1,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureI32}}}},
+                    .features = {Feature{.action = FeatureAction::Track,
+                                         .feature = il::runtime::RuntimeFeature::RoundEven}}},
+            Variant{.condition = Condition::IfArgMissing,
+                    .conditionArg = 1,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_round_even",
+                    .arguments = {Argument{.index = 0,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureF64}}},
+                                  Argument{.index = 1,
+                                           .transforms = {Transform{.kind = TransformKind::EnsureI32}},
+                                           .defaultValue = Argument::DefaultValue{.type = Lowerer::ExprType::I64,
+                                                                                   .i64 = 0}}},
+                    .features = {Feature{.action = FeatureAction::Track,
+                                         .feature = il::runtime::RuntimeFeature::RoundEven}}},
         },
     },
     { // SQR
@@ -340,7 +381,7 @@ static const std::array<LowerRule, 23> kBuiltinLoweringRules = {{
 // Dense metadata table indexed by BuiltinCallExpr::Builtin enumerators. The
 // order must remain in lockstep with the enum definition so that we can index
 // directly without translation.
-static const std::array<BuiltinInfo, 23> kBuiltins = {{
+static const std::array<BuiltinInfo, 25> kBuiltins = {{
     {"LEN", 1, 1, &SemanticAnalyzer::analyzeLen},
     {"MID$", 2, 3, &SemanticAnalyzer::analyzeMid},
     {"LEFT$", 2, 2, &SemanticAnalyzer::analyzeLeft},
@@ -348,6 +389,8 @@ static const std::array<BuiltinInfo, 23> kBuiltins = {{
     {"STR$", 1, 1, &SemanticAnalyzer::analyzeStr},
     {"VAL", 1, 1, &SemanticAnalyzer::analyzeVal},
     {"INT", 1, 1, &SemanticAnalyzer::analyzeInt},
+    {"FIX", 1, 1, &SemanticAnalyzer::analyzeFix},
+    {"ROUND", 1, 2, &SemanticAnalyzer::analyzeRound},
     {"SQR", 1, 1, &SemanticAnalyzer::analyzeSqr},
     {"ABS", 1, 1, &SemanticAnalyzer::analyzeAbs},
     {"FLOOR", 1, 1, &SemanticAnalyzer::analyzeFloor},
@@ -366,7 +409,7 @@ static const std::array<BuiltinInfo, 23> kBuiltins = {{
     {"ASC", 1, 1, &SemanticAnalyzer::analyzeAsc},
 }};
 
-static const std::array<BuiltinScanRule, 23> kBuiltinScanRules = {{
+static const std::array<BuiltinScanRule, 25> kBuiltinScanRules = {{
     {BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
                                  Lowerer::ExprType::I64,
                                  0},
@@ -429,11 +472,35 @@ static const std::array<BuiltinScanRule, 23> kBuiltinScanRules = {{
                                0,
                                Lowerer::ExprType::I64}}},
     {BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                 Lowerer::ExprType::I64,
+                                 Lowerer::ExprType::F64,
                                  0},
      BuiltinScanRule::ArgTraversal::Explicit,
      {0},
-     {}},
+     {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Track,
+                               BuiltinScanRule::Feature::Condition::Always,
+                               il::runtime::RuntimeFeature::IntFloor,
+                               0,
+                               Lowerer::ExprType::I64}}},
+    {BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
+                                 Lowerer::ExprType::F64,
+                                 0},
+     BuiltinScanRule::ArgTraversal::Explicit,
+     {0},
+     {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Track,
+                               BuiltinScanRule::Feature::Condition::Always,
+                               il::runtime::RuntimeFeature::FixTrunc,
+                               0,
+                               Lowerer::ExprType::I64}}},
+    {BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
+                                 Lowerer::ExprType::F64,
+                                 0},
+     BuiltinScanRule::ArgTraversal::Explicit,
+     {0, 1},
+     {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Track,
+                               BuiltinScanRule::Feature::Condition::Always,
+                               il::runtime::RuntimeFeature::RoundEven,
+                               0,
+                               Lowerer::ExprType::I64}}},
     {BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
                                  Lowerer::ExprType::F64,
                                  0},
@@ -610,7 +677,8 @@ static const std::array<BuiltinScanRule, 23> kBuiltinScanRules = {{
 // normalized to uppercase with any suffix characters (e.g., $) preserved.
 static const std::unordered_map<std::string_view, B> kByName = {
     {"LEN", B::Len},      {"MID$", B::Mid},     {"LEFT$", B::Left}, {"RIGHT$", B::Right},
-    {"STR$", B::Str},     {"VAL", B::Val},      {"INT", B::Int},    {"SQR", B::Sqr},
+    {"STR$", B::Str},     {"VAL", B::Val},      {"INT", B::Int},    {"FIX", B::Fix},
+    {"ROUND", B::Round},  {"SQR", B::Sqr},
     {"ABS", B::Abs},      {"FLOOR", B::Floor},  {"CEIL", B::Ceil},  {"SIN", B::Sin},
     {"COS", B::Cos},      {"POW", B::Pow},      {"RND", B::Rnd},    {"INSTR", B::Instr},
     {"LTRIM$", B::Ltrim}, {"RTRIM$", B::Rtrim}, {"TRIM$", B::Trim}, {"UCASE$", B::Ucase},

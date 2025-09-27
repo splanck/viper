@@ -291,6 +291,8 @@ struct BuiltinCallExpr : Expr
         Str,
         Val,
         Int,
+        Fix,
+        Round,
         Sqr,
         Abs,
         Floor,
