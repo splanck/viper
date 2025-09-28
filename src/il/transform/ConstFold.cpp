@@ -155,6 +155,8 @@ static bool foldCall(const Instr &in, Value &out)
     if (in.op != Opcode::Call)
         return false;
     const std::string &c = in.callee;
+    if (c == "rt_val" || c == "rt_val_to_double" || c == "rt_int_to_str" || c == "rt_f64_to_str")
+        return false;
     if (c == "rt_abs_i64" && in.operands.size() == 1)
     {
         long long v;
@@ -171,6 +173,24 @@ static bool foldCall(const Instr &in, Value &out)
         if (getConstFloat(in.operands[0], a))
         {
             out = Value::constFloat(std::fabs(a));
+            return true;
+        }
+        return false;
+    }
+    if (c == "rt_int_floor" && in.operands.size() == 1)
+    {
+        if (getConstFloat(in.operands[0], a))
+        {
+            out = Value::constFloat(std::floor(a));
+            return true;
+        }
+        return false;
+    }
+    if (c == "rt_fix_trunc" && in.operands.size() == 1)
+    {
+        if (getConstFloat(in.operands[0], a))
+        {
+            out = Value::constFloat(std::trunc(a));
             return true;
         }
         return false;
@@ -226,6 +246,46 @@ static bool foldCall(const Instr &in, Value &out)
         }
         return false;
     }
+    if (c == "rt_round_even" && in.operands.size() == 2)
+    {
+        double value = 0.0;
+        long long digits = 0;
+        if (getConstFloat(in.operands[0], value) && isConstInt(in.operands[1], digits))
+        {
+            if (!std::isfinite(value))
+            {
+                out = Value::constFloat(value);
+                return true;
+            }
+            if (digits == 0)
+            {
+                out = Value::constFloat(std::nearbyint(value));
+                return true;
+            }
+            const double digitsAsDouble = static_cast<double>(digits);
+            if (!std::isfinite(digitsAsDouble) || std::fabs(digitsAsDouble) > 308.0)
+            {
+                out = Value::constFloat(value);
+                return true;
+            }
+            const double factor = std::pow(10.0, digitsAsDouble);
+            if (!std::isfinite(factor) || factor == 0.0)
+            {
+                out = Value::constFloat(value);
+                return true;
+            }
+            const double scaled = value * factor;
+            if (!std::isfinite(scaled))
+            {
+                out = Value::constFloat(value);
+                return true;
+            }
+            const double rounded = std::nearbyint(scaled);
+            out = Value::constFloat(rounded / factor);
+            return true;
+        }
+        return false;
+    }
     if (c == "rt_sin" && in.operands.size() == 1)
     {
         if (getConstFloat(in.operands[0], a) && a == 0.0)
@@ -265,6 +325,8 @@ static bool foldCall(const Instr &in, Value &out)
  */
 void constFold(Module &m)
 {
+    // Constant folding must be observationally equivalent to VM; where traps would
+    // occur at runtime, folding must not change behavior.
     for (auto &f : m.functions)
     {
         for (auto &b : f.blocks)
@@ -315,6 +377,28 @@ void constFold(Module &m)
                                 if (const auto sum = checkedAdd(lhs, rhs))
                                 {
                                     res = *sum;
+                                }
+                                else
+                                {
+                                    folded = false;
+                                }
+                                break;
+                            case Opcode::SDivChk0:
+                                if (rhs != 0 &&
+                                    !(lhs == std::numeric_limits<long long>::min() && rhs == -1))
+                                {
+                                    res = lhs / rhs;
+                                }
+                                else
+                                {
+                                    folded = false;
+                                }
+                                break;
+                            case Opcode::SRemChk0:
+                                if (rhs != 0 &&
+                                    !(lhs == std::numeric_limits<long long>::min() && rhs == -1))
+                                {
+                                    res = lhs % rhs;
                                 }
                                 else
                                 {
