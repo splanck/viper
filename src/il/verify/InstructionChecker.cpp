@@ -16,6 +16,7 @@
 #include "il/verify/TypeInference.hpp"
 #include "support/diag_expected.hpp"
 
+#include <limits>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -37,6 +38,29 @@ std::string formatInstrDiag(const Function &fn,
                             const BasicBlock &bb,
                             const Instr &instr,
                             std::string_view message);
+
+bool constIntMatchesExpectedKind(const Value &value, Type::Kind expected)
+{
+    if (value.kind != Value::Kind::ConstInt)
+        return false;
+
+    const long long literal = value.i64;
+    switch (expected)
+    {
+        case Type::Kind::I1:
+            return literal == 0 || literal == 1;
+        case Type::Kind::I16:
+            return literal >= std::numeric_limits<int16_t>::min() &&
+                   literal <= std::numeric_limits<int16_t>::max();
+        case Type::Kind::I32:
+            return literal >= std::numeric_limits<int32_t>::min() &&
+                   literal <= std::numeric_limits<int32_t>::max();
+        case Type::Kind::I64:
+            return true;
+        default:
+            return false;
+    }
+}
 
 enum class RuntimeArrayCallee
 {
@@ -616,7 +640,9 @@ Expected<void> checkCall_E(const Function &fn,
     for (size_t i = 0; i < paramCount; ++i)
     {
         Type expected = sig ? sig->params[i] : fnSig->params[i].type;
-        if (types.valueType(instr.operands[i]).kind != expected.kind)
+        const Type::Kind actualKind = types.valueType(instr.operands[i]).kind;
+        if (actualKind != expected.kind &&
+            !constIntMatchesExpectedKind(instr.operands[i], expected.kind))
             return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "call arg type mismatch"))};
     }
 
