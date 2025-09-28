@@ -194,6 +194,29 @@ function(viper_add_golden_suite_tests)
     -DPASSES=constfold
     -P ${_VIPER_GOLDEN_DIR}/il_opt/check_opt.cmake)
 
+  viper_add_ctest(constfold_add_overflow
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DIL_FILE=${_VIPER_GOLDEN_DIR}/constfold/constfold_add_overflow.il
+    -DGOLDEN=${_VIPER_GOLDEN_DIR}/constfold/constfold_add_overflow.il
+    -DEXPECT_TRAP=Overflow
+    -P ${_VIPER_GOLDEN_DIR}/constfold/check_constfold.cmake)
+
+  viper_add_ctest(constfold_div_by_zero
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DIL_FILE=${_VIPER_GOLDEN_DIR}/constfold/constfold_div_by_zero.il
+    -DGOLDEN=${_VIPER_GOLDEN_DIR}/constfold/constfold_div_by_zero.il
+    -DEXPECT_TRAP=DivideByZero
+    -P ${_VIPER_GOLDEN_DIR}/constfold/check_constfold.cmake)
+
+  viper_add_ctest(constfold_rounding
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DIL_FILE=${_VIPER_GOLDEN_DIR}/constfold/constfold_rounding.il
+    -DGOLDEN=${_VIPER_GOLDEN_DIR}/constfold/constfold_rounding.opt.il
+    -P ${_VIPER_GOLDEN_DIR}/constfold/check_constfold.cmake)
+
   viper_add_ctest(il_opt_cbr_same_target
     ${CMAKE_COMMAND}
     -DILC=${BASIC_ILC}

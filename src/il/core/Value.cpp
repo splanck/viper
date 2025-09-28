@@ -6,6 +6,7 @@
 
 #include "il/core/Value.hpp"
 
+#include <cmath>
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -60,13 +61,17 @@ std::string toString(const Value &v)
             std::string s = oss.str();
             if (v.f64 == 0.0)
                 return "0.0";
-            if (s.find('.') != std::string::npos)
+            const bool hasDecimal = s.find('.') != std::string::npos;
+            const bool hasExp = s.find('e') != std::string::npos || s.find('E') != std::string::npos;
+            if (hasDecimal)
             {
                 while (!s.empty() && s.back() == '0')
                     s.pop_back();
                 if (!s.empty() && s.back() == '.')
                     s.pop_back();
             }
+            if (!hasDecimal && !hasExp && std::isfinite(v.f64))
+                s.append(".0");
             return s;
         }
         case Value::Kind::ConstStr:
