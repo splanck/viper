@@ -6,7 +6,7 @@ last-verified: 2025-09-23
 
 # Viper Intermediate Language (IL) Guide
 
-This guide consolidates the quickstart, normative reference, BASIC lowering rules, optimisation passes, and worked examples for Viper IL v0.1.2.
+This guide consolidates the quickstart, normative reference, BASIC lowering rules, optimisation passes, and worked examples for Viper IL v0.1.2. Trap routing, handler ABI details, and resume semantics are specified in [specs/errors.md](specs/errors.md).
 
 <a id="quickstart"></a>
 ## Quickstart
