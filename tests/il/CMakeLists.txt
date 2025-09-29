@@ -113,6 +113,10 @@ function(viper_add_il_core_tests)
   target_link_libraries(test_il_instruction_checker PRIVATE il_core il_verify ${VIPER_IL_SUPPORT_LIB})
   viper_add_ctest(test_il_instruction_checker test_il_instruction_checker)
 
+  viper_add_test_exe(test_il_error_resume_ir ${_VIPER_IL_UNIT_DIR}/test_il_error_resume_ir.cpp)
+  target_link_libraries(test_il_error_resume_ir PRIVATE il_core)
+  viper_add_ctest(test_il_error_resume_ir test_il_error_resume_ir)
+
   viper_add_test_exe(test_il_control_flow_checker ${_VIPER_IL_UNIT_DIR}/test_il_control_flow_checker.cpp)
   target_link_libraries(test_il_control_flow_checker PRIVATE il_core il_verify ${VIPER_IL_SUPPORT_LIB})
   viper_add_ctest(test_il_control_flow_checker test_il_control_flow_checker)

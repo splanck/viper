@@ -296,6 +296,12 @@ void applyDefaultType(const OpcodeInfo &info, Instr &in)
         case TypeCategory::Str:
             in.type = Type(Kind::Str);
             break;
+        case TypeCategory::Error:
+            in.type = Type(Kind::Error);
+            break;
+        case TypeCategory::ResumeTok:
+            in.type = Type(Kind::ResumeTok);
+            break;
         case TypeCategory::Void:
             in.type = Type(Kind::Void);
             break;
