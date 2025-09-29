@@ -37,6 +37,15 @@ After the build finishes, confirm the primary tools respond to `--help`:
 
 Explore the [tutorials-examples.md#examples](tutorials-examples.md#examples) section to run a sample end-to-end once the binaries are in place.
 
+## Precise Numerics
+
+Viper's execution model ships with deterministic numeric semantics ([specs/numerics.md](specs/numerics.md)) so IL and BASIC behave identically across interpreters and builds:
+
+- Integer arithmetic traps on overflow instead of wrapping, keeping logic predictable.
+- `/` always performs floating-point division while `\` truncates toward zero; `MOD` keeps the dividend's sign.
+- All rounding follows banker's rounding (ties-to-even) and casts use checked variants that raise when a value is out of range.
+- `VAL` and `STR$` guarantee consistent parse/print round-trips without locale surprises.
+
 ## What to read next
 
 - Architecture → [architecture.md](architecture.md)
