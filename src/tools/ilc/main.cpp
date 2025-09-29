@@ -7,8 +7,25 @@
 
 #include "cli.hpp"
 #include "frontends/basic/Intrinsics.hpp"
+#include "il/core/Module.hpp"
 #include <iostream>
 #include <string>
+#include <string_view>
+
+namespace
+{
+
+constexpr std::string_view kIlcVersion = "0.1.0";
+
+void printVersion()
+{
+    std::cout << "ilc v" << kIlcVersion << "\n";
+    const il::core::Module module;
+    std::cout << "IL version: " << module.version << "\n";
+    std::cout << "Precise Numerics: enabled\n";
+}
+
+} // namespace
 
 /// @brief Print synopsis and option hints for the `ilc` CLI.
 /// @details Lists supported subcommands (`-run`, `front basic`, and `il-opt`)
@@ -22,7 +39,7 @@
 void usage()
 {
     std::cerr
-        << "ilc v0.1.0\n"
+        << "ilc v" << kIlcVersion << "\n"
         << "Usage: ilc -run <file.il> [--trace=il|src] [--stdin-from <file>] [--max-steps N]"
            " [--break label|file:line]* [--break-src file:line]* [--watch name]* [--bounds-checks] "
            "[--count] [--time]\n"
@@ -61,6 +78,11 @@ int main(int argc, char **argv)
         return 1;
     }
     std::string cmd = argv[1];
+    if (cmd == "--version")
+    {
+        printVersion();
+        return 0;
+    }
     if (cmd == "-run")
     {
         return cmdRunIL(argc - 2, argv + 2);
