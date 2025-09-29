@@ -13,10 +13,12 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
 #include <algorithm>
 #include <array>
 #include <functional>
+#include <optional>
 #include <sstream>
 
 namespace il::io
@@ -174,6 +176,27 @@ void printExtern(const Extern &e, std::ostream &os)
     os << ") -> " << e.retType.toString() << "\n";
 }
 
+std::optional<Type::Kind> defaultResultKind(const OpcodeInfo &info)
+{
+    using Kind = Type::Kind;
+    switch (info.resultType)
+    {
+        case TypeCategory::I1:
+            return Kind::I1;
+        case TypeCategory::I64:
+            return Kind::I64;
+        case TypeCategory::F64:
+            return Kind::F64;
+        case TypeCategory::Ptr:
+            return Kind::Ptr;
+        case TypeCategory::Str:
+            return Kind::Str;
+        default:
+            break;
+    }
+    return std::nullopt;
+}
+
 /// @brief Emit a single instruction.
 /// @param in Instruction to serialize; operands and labels must satisfy
 ///           opcode-specific invariants.
@@ -190,8 +213,17 @@ void printInstr(const Instr &in, std::ostream &os)
     if (in.loc.isValid())
         os << "  .loc " << in.loc.file_id << ' ' << in.loc.line << ' ' << in.loc.column << "\n";
     os << "  ";
+    const auto &info = getOpcodeInfo(in.op);
     if (in.result)
-        os << "%t" << *in.result << " = ";
+    {
+        os << "%t" << *in.result;
+        if (auto def = defaultResultKind(info))
+        {
+            if (in.type.kind != *def)
+                os << ':' << in.type.toString();
+        }
+        os << " = ";
+    }
     os << il::core::toString(in.op);
     const auto &formatter = formatterFor(in.op);
     formatter(in, os);
