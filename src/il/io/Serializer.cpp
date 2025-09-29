@@ -15,6 +15,7 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
+#include "il/io/ParserUtil.hpp"
 #include <algorithm>
 #include <array>
 #include <functional>
@@ -54,6 +55,22 @@ void printDefaultOperands(const Instr &instr, std::ostream &os)
     printValueList(os, instr.operands);
 }
 
+void printTrapKindOperand(const Instr &instr, std::ostream &os)
+{
+    if (instr.operands.empty())
+        return;
+    const auto &operand = instr.operands.front();
+    if (operand.kind == Value::Kind::ConstInt)
+    {
+        if (auto token = trapKindTokenFromValue(operand.i64))
+        {
+            os << ' ' << *token;
+            return;
+        }
+    }
+    os << ' ' << il::core::toString(operand);
+}
+
 void printCallOperands(const Instr &instr, std::ostream &os)
 {
     os << " @" << instr.callee << "(";
@@ -91,6 +108,19 @@ void printBranchTarget(const Instr &instr, size_t index, std::ostream &os)
     if (index >= instr.labels.size())
         return;
     os << instr.labels[index];
+    if (index < instr.brArgs.size() && !instr.brArgs[index].empty())
+    {
+        os << '(';
+        printValueList(os, instr.brArgs[index]);
+        os << ')';
+    }
+}
+
+void printCaretBranchTarget(const Instr &instr, size_t index, std::ostream &os)
+{
+    if (index >= instr.labels.size())
+        return;
+    os << '^' << instr.labels[index];
     if (index < instr.brArgs.size() && !instr.brArgs[index].empty())
     {
         os << '(';
@@ -139,18 +169,45 @@ void printCBrOperands(const Instr &instr, std::ostream &os)
 
 const Formatter &formatterFor(Opcode op)
 {
-    static const auto formatters = [] {
+    static const auto formatters = []
+    {
         std::array<Formatter, kNumOpcodes> table;
         for (auto &fmt : table)
         {
             fmt = [](const Instr &instr, std::ostream &os) { printDefaultOperands(instr, os); };
         }
-        table[toIndex(Opcode::Call)] = [](const Instr &instr, std::ostream &os) { printCallOperands(instr, os); };
-        table[toIndex(Opcode::Ret)] = [](const Instr &instr, std::ostream &os) { printRetOperand(instr, os); };
-        table[toIndex(Opcode::Br)] = [](const Instr &instr, std::ostream &os) { printBrOperands(instr, os); };
-        table[toIndex(Opcode::CBr)] = [](const Instr &instr, std::ostream &os) { printCBrOperands(instr, os); };
-        table[toIndex(Opcode::Load)] = [](const Instr &instr, std::ostream &os) { printLoadOperands(instr, os); };
-        table[toIndex(Opcode::Store)] = [](const Instr &instr, std::ostream &os) { printStoreOperands(instr, os); };
+        table[toIndex(Opcode::Call)] = [](const Instr &instr, std::ostream &os)
+        { printCallOperands(instr, os); };
+        table[toIndex(Opcode::Ret)] = [](const Instr &instr, std::ostream &os)
+        { printRetOperand(instr, os); };
+        table[toIndex(Opcode::Br)] = [](const Instr &instr, std::ostream &os)
+        { printBrOperands(instr, os); };
+        table[toIndex(Opcode::CBr)] = [](const Instr &instr, std::ostream &os)
+        { printCBrOperands(instr, os); };
+        table[toIndex(Opcode::Load)] = [](const Instr &instr, std::ostream &os)
+        { printLoadOperands(instr, os); };
+        table[toIndex(Opcode::Store)] = [](const Instr &instr, std::ostream &os)
+        { printStoreOperands(instr, os); };
+        table[toIndex(Opcode::TrapKind)] = [](const Instr &instr, std::ostream &os)
+        { printTrapKindOperand(instr, os); };
+        table[toIndex(Opcode::EhPush)] = [](const Instr &instr, std::ostream &os)
+        {
+            if (!instr.labels.empty())
+            {
+                os << ' ';
+                printCaretBranchTarget(instr, 0, os);
+            }
+        };
+        table[toIndex(Opcode::ResumeLabel)] = [](const Instr &instr, std::ostream &os)
+        {
+            if (!instr.operands.empty())
+                os << ' ' << il::core::toString(instr.operands[0]);
+            if (!instr.labels.empty())
+            {
+                os << ", ";
+                printCaretBranchTarget(instr, 0, os);
+            }
+        };
         return table;
     }();
     return formatters[toIndex(op)];
@@ -199,6 +256,21 @@ std::optional<Type::Kind> defaultResultKind(const OpcodeInfo &info)
             break;
     }
     return std::nullopt;
+}
+
+bool isHandlerBlock(const BasicBlock &bb)
+{
+    if (bb.instructions.empty())
+        return false;
+    if (bb.instructions.front().op != Opcode::EhEntry)
+        return false;
+    if (bb.params.size() < 2)
+        return false;
+    if (bb.params[0].type.kind != Type::Kind::Error)
+        return false;
+    if (bb.params[1].type.kind != Type::Kind::ResumeTok)
+        return false;
+    return true;
 }
 
 /// @brief Emit a single instruction.
@@ -278,7 +350,11 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode)
         os << ") -> " << f.retType.toString() << " {\n";
         for (const auto &bb : f.blocks)
         {
-            os << bb.label;
+            const bool handler = isHandlerBlock(bb);
+            if (handler)
+                os << "handler ^" << bb.label;
+            else
+                os << bb.label;
             if (!bb.params.empty())
             {
                 os << '(';
@@ -286,7 +362,20 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode)
                 {
                     if (i)
                         os << ", ";
-                    os << '%' << bb.params[i].name << ':' << bb.params[i].type.toString();
+                    os << '%' << bb.params[i].name << ':';
+                    if (handler)
+                    {
+                        if (bb.params[i].type.kind == Type::Kind::Error)
+                            os << "Error";
+                        else if (bb.params[i].type.kind == Type::Kind::ResumeTok)
+                            os << "ResumeTok";
+                        else
+                            os << bb.params[i].type.toString();
+                    }
+                    else
+                    {
+                        os << bb.params[i].type.toString();
+                    }
                 }
                 os << ')';
             }
