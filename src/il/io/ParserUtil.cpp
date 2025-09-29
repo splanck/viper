@@ -7,8 +7,23 @@
 
 #include "il/io/ParserUtil.hpp"
 
+#include <array>
 #include <cctype>
 #include <exception>
+#include <optional>
+#include <string_view>
+
+namespace
+{
+struct TrapKindSymbol
+{
+    const char *name;
+    long long value;
+};
+
+constexpr std::array<TrapKindSymbol, 4> kTrapKindSymbols = {
+    {{"DivideByZero", 0}, {"Overflow", 1}, {"InvalidCast", 2}, {"DomainError", 3}}};
+} // namespace
 
 namespace il::io
 {
@@ -101,6 +116,29 @@ bool parseFloatLiteral(const std::string &token, double &value)
     {
         return false;
     }
+}
+
+bool parseTrapKindToken(const std::string &token, long long &value)
+{
+    for (const auto &entry : kTrapKindSymbols)
+    {
+        if (token == entry.name)
+        {
+            value = entry.value;
+            return true;
+        }
+    }
+    return false;
+}
+
+std::optional<std::string_view> trapKindTokenFromValue(long long value)
+{
+    for (const auto &entry : kTrapKindSymbols)
+    {
+        if (entry.value == value)
+            return entry.name;
+    }
+    return std::nullopt;
 }
 
 } // namespace il::io
