@@ -37,7 +37,7 @@ L30:
   .loc 1 3 15
   %t5 = load i64, %t4
   .loc 1 3 15
-  %t6 = cast.si_narrow.chk %t5
+  %t6:i32 = cast.si_narrow.chk %t5
   .loc 1 3 10
   %t7 = call @rt_str_i32_alloc(%t6)
   .loc 1 3 4
