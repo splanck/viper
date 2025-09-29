@@ -5,8 +5,10 @@
 // Links: docs/il-guide.md#reference
 #pragma once
 
+#include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 
 namespace il::io
 {
@@ -32,5 +34,16 @@ bool parseIntegerLiteral(const std::string &token, long long &value);
 /// @param value Destination receiving the parsed value on success.
 /// @return True if the entire token was consumed as a floating literal.
 bool parseFloatLiteral(const std::string &token, double &value);
+
+/// @brief Attempt to parse a trap kind identifier token.
+/// @param token Candidate identifier, e.g. "DivideByZero".
+/// @param value Destination receiving the enumerated integral value on success.
+/// @return True when @p token matches a known trap kind identifier.
+bool parseTrapKindToken(const std::string &token, long long &value);
+
+/// @brief Map a trap kind integral value back to its identifier spelling.
+/// @param value Enumerated integral trap kind value.
+/// @return Identifier string when known; std::nullopt otherwise.
+std::optional<std::string_view> trapKindTokenFromValue(long long value);
 
 } // namespace il::io

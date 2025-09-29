@@ -18,7 +18,8 @@ namespace il::io
 ///       observable via the returned default-constructed Type.
 il::core::Type parseType(const std::string &token, bool *ok)
 {
-    auto makeType = [ok](il::core::Type::Kind kind) {
+    auto makeType = [ok](il::core::Type::Kind kind)
+    {
         if (ok)
             *ok = true;
         return il::core::Type(kind);
@@ -38,9 +39,9 @@ il::core::Type parseType(const std::string &token, bool *ok)
         return makeType(il::core::Type::Kind::Ptr);
     if (token == "str")
         return makeType(il::core::Type::Kind::Str);
-    if (token == "error")
+    if (token == "error" || token == "Error")
         return makeType(il::core::Type::Kind::Error);
-    if (token == "resume_tok")
+    if (token == "resume_tok" || token == "ResumeTok")
         return makeType(il::core::Type::Kind::ResumeTok);
     if (token == "void")
         return makeType(il::core::Type::Kind::Void);

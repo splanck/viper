@@ -175,20 +175,23 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
 /// header information.
 Expected<void> parseBlockHeader(const std::string &header, ParserState &st)
 {
-    size_t lp = header.find('(');
+    std::string work = trim(header);
+    if (work.rfind("handler ", 0) == 0)
+        work = trim(work.substr(8));
+    size_t lp = work.find('(');
     std::vector<Param> bparams;
-    std::string label = trim(header);
+    std::string label = work;
     if (lp != std::string::npos)
     {
-        size_t rp = header.find(')', lp);
+        size_t rp = work.find(')', lp);
         if (rp == std::string::npos)
         {
             std::ostringstream oss;
             oss << "line " << st.lineNo << ": mismatched ')'";
             return Expected<void>{makeError({}, oss.str())};
         }
-        label = trim(header.substr(0, lp));
-        std::string paramsStr = header.substr(lp + 1, rp - lp - 1);
+        label = trim(work.substr(0, lp));
+        std::string paramsStr = work.substr(lp + 1, rp - lp - 1);
         std::stringstream pss(paramsStr);
         std::string q;
         while (std::getline(pss, q, ','))
@@ -223,6 +226,9 @@ Expected<void> parseBlockHeader(const std::string &header, ParserState &st)
             ++st.nextTemp;
         }
     }
+    label = trim(label);
+    if (!label.empty() && label[0] == '^')
+        label = label.substr(1);
     st.curFn->blocks.push_back({label, bparams, {}, false});
     st.curBB = &st.curFn->blocks.back();
     st.blockParamCount[label] = bparams.size();
