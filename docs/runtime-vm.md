@@ -8,6 +8,8 @@ last-verified: 2025-09-23
 
 This guide consolidates the runtime ABI, VM interpreter internals, and extern symbol bridge. Numeric conversions and trap
 behaviour shared with the BASIC front end are specified in [specs/numerics.md](specs/numerics.md).
+For the authoritative error-handling model (trap kinds, handler ABI, and BASIC lowering) see
+[specs/errors.md](specs/errors.md).
 
 <a id="runtime-abi"></a>
 ## Runtime ABI
