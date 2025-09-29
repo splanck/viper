@@ -68,8 +68,7 @@ int main()
     bb.instructions.push_back(ret);
 
     const std::string out = captureTrap(module);
-    const bool ok =
-        out.find("runtime trap: DivideByZero @ main: entry[#0] (1:1:1): divide by zero in sdiv.chk0") != std::string::npos;
+    const bool ok = out.find("Trap @main#0 line 1: DivideByZero (code=0)") != std::string::npos;
     assert(ok && "expected DivideByZero trap diagnostic with instruction index");
     return 0;
 }

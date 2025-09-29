@@ -90,6 +90,7 @@ add_library(il_vm STATIC
   vm/RuntimeBridge.cpp
   vm/OpHandlers.cpp
   vm/OpHandlerUtils.cpp
+  vm/Trap.cpp
   vm/Debug.cpp
   vm/DebugScript.cpp
   vm/Trace.cpp
