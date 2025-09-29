@@ -13,6 +13,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace il::core
@@ -79,6 +80,7 @@ class FunctionVerifier
 
     const ExternMap &externs_;
     std::unordered_map<std::string, const il::core::Function *> functionMap_;
+    std::unordered_map<std::string, std::pair<unsigned, unsigned>> handlerInfo_;
     std::vector<std::unique_ptr<InstructionStrategy>> strategies_;
 };
 
