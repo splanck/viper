@@ -23,7 +23,9 @@ struct Type
         I64,
         F64,
         Ptr,
-        Str
+        Str,
+        Error,
+        ResumeTok
     };
     Kind kind; ///< Discriminator specifying the active kind
 
