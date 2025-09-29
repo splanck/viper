@@ -213,6 +213,13 @@ function(viper_add_e2e_vm_suite)
     -DSRC_DIR=${CMAKE_SOURCE_DIR}
     -P ${_VIPER_E2E_DIR}/test_basic_random_repro.cmake)
 
+  viper_add_ctest(basic_numerics_all
+    ${CMAKE_COMMAND}
+    -DILC=$<TARGET_FILE:ilc>
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/basic/numerics_all.bas
+    -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/basic/numerics_all.bas.out
+    -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
+
   viper_add_ctest(monte_carlo_pi
     ${CMAKE_COMMAND}
     -DILC=$<TARGET_FILE:ilc>
