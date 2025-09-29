@@ -753,6 +753,74 @@ rt_string rt_f64_to_str(double v)
 }
 
 /**
+ * Purpose: Allocate a runtime string for a double value using canonical formatting.
+ *
+ * Parameters:
+ *   v - Double-precision floating-point value to format.
+ *
+ * Returns: Newly allocated string containing the decimal representation of @p v.
+ *
+ * Side effects: Allocates heap storage for the resulting string; traps on failure.
+ */
+rt_string rt_str_d_alloc(double v)
+{
+    char buf[64];
+    rt_str_from_double(v, buf, sizeof(buf));
+    return rt_string_from_bytes(buf, strlen(buf));
+}
+
+/**
+ * Purpose: Allocate a runtime string for a float value using canonical formatting.
+ *
+ * Parameters:
+ *   v - Single-precision floating-point value to format.
+ *
+ * Returns: Newly allocated string containing the decimal representation of @p v.
+ *
+ * Side effects: Allocates heap storage for the resulting string; traps on failure.
+ */
+rt_string rt_str_f_alloc(float v)
+{
+    char buf[32];
+    rt_str_from_float(v, buf, sizeof(buf));
+    return rt_string_from_bytes(buf, strlen(buf));
+}
+
+/**
+ * Purpose: Allocate a runtime string for a 32-bit integer value using canonical formatting.
+ *
+ * Parameters:
+ *   v - 32-bit signed integer to format.
+ *
+ * Returns: Newly allocated string containing the decimal representation of @p v.
+ *
+ * Side effects: Allocates heap storage for the resulting string; traps on failure.
+ */
+rt_string rt_str_i32_alloc(int32_t v)
+{
+    char buf[32];
+    rt_str_from_i32(v, buf, sizeof(buf));
+    return rt_string_from_bytes(buf, strlen(buf));
+}
+
+/**
+ * Purpose: Allocate a runtime string for a 16-bit integer value using canonical formatting.
+ *
+ * Parameters:
+ *   v - 16-bit signed integer to format.
+ *
+ * Returns: Newly allocated string containing the decimal representation of @p v.
+ *
+ * Side effects: Allocates heap storage for the resulting string; traps on failure.
+ */
+rt_string rt_str_i16_alloc(int16_t v)
+{
+    char buf[16];
+    rt_str_from_i16(v, buf, sizeof(buf));
+    return rt_string_from_bytes(buf, strlen(buf));
+}
+
+/**
  * Purpose: Parse a string as a floating-point number.
  *
  * Parameters:

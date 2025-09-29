@@ -14,6 +14,7 @@
 #include "il/core/Instr.hpp"
 #include <cassert>
 #include <functional>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -750,4 +751,139 @@ const Lowerer::ProcedureContext &Lowerer::context() const noexcept
 }
 
 
+TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
+{
+    using NumericType = TypeRules::NumericType;
+
+    auto classifyBinary = [&](const BinaryExpr &bin) -> NumericType {
+        if (!bin.lhs || !bin.rhs)
+            return NumericType::Long;
+        NumericType lhsTy = classifyNumericType(*bin.lhs);
+        NumericType rhsTy = classifyNumericType(*bin.rhs);
+        switch (bin.op)
+        {
+            case BinaryExpr::Op::Add:
+                return TypeRules::resultType('+', lhsTy, rhsTy);
+            case BinaryExpr::Op::Sub:
+                return TypeRules::resultType('-', lhsTy, rhsTy);
+            case BinaryExpr::Op::Mul:
+                return TypeRules::resultType('*', lhsTy, rhsTy);
+            case BinaryExpr::Op::Div:
+                return TypeRules::resultType('/', lhsTy, rhsTy);
+            case BinaryExpr::Op::IDiv:
+                return TypeRules::resultType('\\', lhsTy, rhsTy);
+            case BinaryExpr::Op::Mod:
+                return TypeRules::resultType("MOD", lhsTy, rhsTy);
+            case BinaryExpr::Op::Pow:
+                return TypeRules::resultType('^', lhsTy, rhsTy);
+            default:
+                return NumericType::Long;
+        }
+    };
+
+    if (const auto *i = dynamic_cast<const IntExpr *>(&expr))
+    {
+        const long long value = i->value;
+        if (value >= std::numeric_limits<int16_t>::min() && value <= std::numeric_limits<int16_t>::max())
+            return NumericType::Integer;
+        return NumericType::Long;
+    }
+    if (dynamic_cast<const BoolExpr *>(&expr))
+        return NumericType::Integer;
+    if (dynamic_cast<const StringExpr *>(&expr))
+        return NumericType::Double;
+    if (dynamic_cast<const FloatExpr *>(&expr))
+        return NumericType::Double;
+    if (const auto *var = dynamic_cast<const VarExpr *>(&expr))
+    {
+        if (const auto *info = findSymbol(var->name))
+        {
+            if (info->hasType)
+            {
+                if (info->type == AstType::F64)
+                    return NumericType::Double;
+                return NumericType::Long;
+            }
+        }
+        AstType astTy = inferAstTypeFromName(var->name);
+        return (astTy == AstType::F64) ? NumericType::Double : NumericType::Long;
+    }
+    if (const auto *arr = dynamic_cast<const ArrayExpr *>(&expr))
+    {
+        (void)arr;
+        return NumericType::Long;
+    }
+    if (const auto *lb = dynamic_cast<const LBoundExpr *>(&expr))
+    {
+        (void)lb;
+        return NumericType::Long;
+    }
+    if (const auto *ub = dynamic_cast<const UBoundExpr *>(&expr))
+    {
+        (void)ub;
+        return NumericType::Long;
+    }
+    if (const auto *un = dynamic_cast<const UnaryExpr *>(&expr))
+    {
+        if (!un->expr)
+            return NumericType::Long;
+        NumericType operand = classifyNumericType(*un->expr);
+        return operand;
+    }
+    if (const auto *bin = dynamic_cast<const BinaryExpr *>(&expr))
+        return classifyBinary(*bin);
+    if (const auto *call = dynamic_cast<const BuiltinCallExpr *>(&expr))
+    {
+        switch (call->builtin)
+        {
+            case BuiltinCallExpr::Builtin::Cint:
+                return NumericType::Integer;
+            case BuiltinCallExpr::Builtin::Clng:
+                return NumericType::Long;
+            case BuiltinCallExpr::Builtin::Csng:
+                return NumericType::Single;
+            case BuiltinCallExpr::Builtin::Cdbl:
+                return NumericType::Double;
+            case BuiltinCallExpr::Builtin::Int:
+            case BuiltinCallExpr::Builtin::Fix:
+            case BuiltinCallExpr::Builtin::Round:
+            case BuiltinCallExpr::Builtin::Sqr:
+            case BuiltinCallExpr::Builtin::Abs:
+            case BuiltinCallExpr::Builtin::Floor:
+            case BuiltinCallExpr::Builtin::Ceil:
+            case BuiltinCallExpr::Builtin::Sin:
+            case BuiltinCallExpr::Builtin::Cos:
+            case BuiltinCallExpr::Builtin::Pow:
+            case BuiltinCallExpr::Builtin::Rnd:
+            case BuiltinCallExpr::Builtin::Val:
+                return NumericType::Double;
+            case BuiltinCallExpr::Builtin::Str:
+                if (!call->args.empty() && call->args[0])
+                    return classifyNumericType(*call->args[0]);
+                return NumericType::Long;
+            default:
+                return NumericType::Double;
+        }
+    }
+    if (const auto *callExpr = dynamic_cast<const CallExpr *>(&expr))
+    {
+        if (const auto *sig = findProcSignature(callExpr->callee))
+        {
+            switch (sig->retType.kind)
+            {
+                case Type::Kind::I16:
+                    return NumericType::Integer;
+                case Type::Kind::I32:
+                case Type::Kind::I64:
+                    return NumericType::Long;
+                case Type::Kind::F64:
+                    return NumericType::Double;
+                default:
+                    break;
+            }
+        }
+        return NumericType::Long;
+    }
+    return NumericType::Long;
+}
 } // namespace il::frontends::basic
