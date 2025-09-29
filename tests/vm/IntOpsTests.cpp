@@ -125,14 +125,14 @@ int main()
         Module module;
         buildBinaryFunction(module, Opcode::IAddOvf, Type::Kind::I16, std::numeric_limits<int16_t>::max(), 1);
         const std::string out = captureTrap(module);
-        assert(out.find("integer overflow in iadd.ovf") != std::string::npos);
+        assert(out.find("Overflow (code=0)") != std::string::npos);
     }
 
     {
         Module module;
         buildBinaryFunction(module, Opcode::SDivChk0, Type::Kind::I16, std::numeric_limits<int16_t>::min(), -1);
         const std::string out = captureTrap(module);
-        assert(out.find("integer overflow in sdiv.chk0") != std::string::npos);
+        assert(out.find("Overflow (code=0)") != std::string::npos);
     }
 
     {
@@ -160,8 +160,7 @@ int main()
         Module module;
         buildUnaryFunction(module, Opcode::CastSiNarrowChk, Type::Kind::I16, std::numeric_limits<int32_t>::max());
         const std::string out = captureTrap(module);
-        assert(out.find("InvalidCast") != std::string::npos);
-        assert(out.find("cast.si_narrow.chk") != std::string::npos);
+        assert(out.find("Trap @main#0 line 1: InvalidCast (code=0)") != std::string::npos);
     }
 
     return 0;

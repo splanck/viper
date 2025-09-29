@@ -49,9 +49,7 @@ int main()
     waitpid(pid, &status, 0);
     assert(WIFEXITED(status) && WEXITSTATUS(status) == 1);
     std::string out(buf);
-    bool messageOk =
-        out.find("runtime trap: DomainError @ main: entry[#0] (1:1:1): attempted to call unknown runtime helper 'rt_missing'") !=
-        std::string::npos;
+    bool messageOk = out.find("Trap @main#0 line 1: DomainError (code=0)") != std::string::npos;
     assert(messageOk && "expected runtime trap diagnostic for unknown runtime helper");
     return 0;
 }

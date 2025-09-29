@@ -5,18 +5,49 @@
 // Links: docs/il-guide.md#reference
 #pragma once
 
+#include <cstdint>
+#include <string>
 #include <string_view>
 
 namespace il::vm
 {
 
 /// @brief Categorises runtime traps for diagnostic reporting.
-enum class TrapKind
+#ifdef EOF
+#pragma push_macro("EOF")
+#undef EOF
+#define IL_VM_TRAP_RESTORE_EOF 1
+#endif
+enum class TrapKind : int32_t
 {
-    DivideByZero, ///< Integer division or remainder by zero.
-    Overflow,     ///< Arithmetic or conversion overflow.
-    InvalidCast,  ///< Invalid cast or conversion semantics.
-    DomainError,  ///< Semantic domain violation or user trap.
+    DivideByZero = 0,    ///< Integer division or remainder by zero.
+    Overflow = 1,        ///< Arithmetic or conversion overflow.
+    InvalidCast = 2,     ///< Invalid cast or conversion semantics.
+    DomainError = 3,     ///< Semantic domain violation or user trap.
+    Bounds = 4,          ///< Bounds check failure.
+    FileNotFound = 5,    ///< File system open on a path that does not exist.
+    EOF = 6,             ///< End-of-file reached while input still expected.
+    IOError = 7,         ///< Generic I/O failure.
+    InvalidOperation = 8,///< Operation outside the allowed state machine.
+    RuntimeError = 9,    ///< Catch-all for unexpected runtime failures.
+};
+
+/// @brief Structured representation of a VM error record.
+struct VmError
+{
+    TrapKind kind = TrapKind::RuntimeError; ///< Trap classification.
+    int32_t code = 0;                       ///< Secondary error code.
+    uint64_t ip = 0;                        ///< Instruction pointer within block.
+    int32_t line = -1;                      ///< Source line, or -1 when unknown.
+};
+
+/// @brief Execution context metadata used for trap formatting.
+struct FrameInfo
+{
+    std::string function; ///< Function in which the trap occurred.
+    uint64_t ip = 0;      ///< Instruction pointer of the trap.
+    int32_t line = -1;    ///< Source line for diagnostics.
+    bool handlerInstalled = false; ///< Whether an error handler is active.
 };
 
 /// @brief Convert trap kind to canonical diagnostic string.
@@ -34,8 +65,61 @@ constexpr std::string_view toString(TrapKind kind)
             return "InvalidCast";
         case TrapKind::DomainError:
             return "DomainError";
+        case TrapKind::Bounds:
+            return "Bounds";
+        case TrapKind::FileNotFound:
+            return "FileNotFound";
+        case TrapKind::EOF:
+            return "EOF";
+        case TrapKind::IOError:
+            return "IOError";
+        case TrapKind::InvalidOperation:
+            return "InvalidOperation";
+        case TrapKind::RuntimeError:
+            return "RuntimeError";
     }
-    return "DomainError";
+    return "RuntimeError";
 }
+
+/// @brief Translate an integer payload into a TrapKind value.
+/// @param value Integer supplied by IL operands.
+/// @return Enumerated trap kind, defaulting to RuntimeError for unknown values.
+constexpr TrapKind trapKindFromValue(int32_t value)
+{
+    switch (value)
+    {
+        case static_cast<int32_t>(TrapKind::DivideByZero):
+            return TrapKind::DivideByZero;
+        case static_cast<int32_t>(TrapKind::Overflow):
+            return TrapKind::Overflow;
+        case static_cast<int32_t>(TrapKind::InvalidCast):
+            return TrapKind::InvalidCast;
+        case static_cast<int32_t>(TrapKind::DomainError):
+            return TrapKind::DomainError;
+        case static_cast<int32_t>(TrapKind::Bounds):
+            return TrapKind::Bounds;
+        case static_cast<int32_t>(TrapKind::FileNotFound):
+            return TrapKind::FileNotFound;
+        case static_cast<int32_t>(TrapKind::EOF):
+            return TrapKind::EOF;
+        case static_cast<int32_t>(TrapKind::IOError):
+            return TrapKind::IOError;
+        case static_cast<int32_t>(TrapKind::InvalidOperation):
+            return TrapKind::InvalidOperation;
+        case static_cast<int32_t>(TrapKind::RuntimeError):
+            return TrapKind::RuntimeError;
+        default:
+            return TrapKind::RuntimeError;
+    }
+}
+
+void vm_raise(TrapKind kind, int32_t code = 0);
+void vm_raise_from_error(const VmError &error);
+std::string vm_format_error(const VmError &error, const FrameInfo &frame);
+
+#ifdef IL_VM_TRAP_RESTORE_EOF
+#pragma pop_macro("EOF")
+#undef IL_VM_TRAP_RESTORE_EOF
+#endif
 
 } // namespace il::vm

@@ -45,7 +45,7 @@ int main()
     int status = 0;
     waitpid(pid, &status, 0);
     std::string out(buf);
-    bool ok = out.find("missing allocation size") != std::string::npos;
+    bool ok = out.find("Trap @main#0 line 1: DomainError (code=0)") != std::string::npos;
     assert(ok);
     return 0;
 }

@@ -69,9 +69,7 @@ int main()
     bb.instructions.push_back(ret);
 
     const std::string out = captureTrap(module);
-    const bool ok = out.find(
-                       "runtime trap: InvalidCast @ main: entry[#0] (1:1:1): invalid fp operand in cast.fp_to_si.rte.chk") !=
-                   std::string::npos;
+    const bool ok = out.find("Trap @main#0 line 1: InvalidCast (code=0)") != std::string::npos;
     assert(ok && "expected InvalidCast trap diagnostic with instruction index");
     return 0;
 }

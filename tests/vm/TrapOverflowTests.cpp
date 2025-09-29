@@ -69,8 +69,7 @@ int main()
     bb.instructions.push_back(ret);
 
     const std::string out = captureTrap(module);
-    const bool ok =
-        out.find("runtime trap: Overflow @ main: entry[#0] (1:1:1): integer overflow in iadd.ovf") != std::string::npos;
+    const bool ok = out.find("Trap @main#0 line 1: Overflow (code=0)") != std::string::npos;
     assert(ok && "expected Overflow trap diagnostic with instruction index");
     return 0;
 }
