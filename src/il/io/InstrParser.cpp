@@ -10,11 +10,11 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
 
-#include "il/io/ParserUtil.hpp"
-#include "il/io/TypeParser.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
+#include "il/io/ParserUtil.hpp"
+#include "il/io/TypeParser.hpp"
 #include "support/diag_expected.hpp"
 
 #include <cctype>
@@ -31,6 +31,7 @@ namespace
 {
 
 using il::core::Instr;
+using il::core::kNumOpcodes;
 using il::core::Opcode;
 using il::core::OpcodeInfo;
 using il::core::OperandParseKind;
@@ -38,7 +39,6 @@ using il::core::ResultArity;
 using il::core::Type;
 using il::core::TypeCategory;
 using il::core::Value;
-using il::core::kNumOpcodes;
 using il::support::Expected;
 using il::support::makeError;
 using il::support::printDiag;
@@ -238,9 +238,13 @@ Expected<void> validateShape_E(const Instr &in, ParserState &st)
 /// @param label Target block label being referenced.
 /// @param argCount Number of arguments supplied in the branch.
 /// @return Empty on success; otherwise, a diagnostic referencing @p in.loc.
-Expected<void> checkBlockArgCount(const Instr &in, ParserState &st, const std::string &label,
-                                   size_t argCount)
+Expected<void> checkBlockArgCount(const Instr &in,
+                                  ParserState &st,
+                                  const std::string &label,
+                                  size_t argCount)
 {
+    if (in.op == Opcode::EhPush)
+        return {};
     auto it = st.blockParamCount.find(label);
     if (it != st.blockParamCount.end())
     {
@@ -342,12 +346,14 @@ Expected<void> parseCallBody(const std::string &rest, Instr &in, ParserState &st
 }
 
 /// @brief Parse a branch target `<label>(args...)` fragment.
-Expected<void> parseBranchTarget(const std::string &part, Instr &in, ParserState &st, std::string &lbl,
-                                 std::vector<Value> &args)
+Expected<void> parseBranchTarget(
+    const std::string &part, Instr &in, ParserState &st, std::string &lbl, std::vector<Value> &args)
 {
-    std::string text = part;
+    std::string text = trim(part);
     if (text.rfind("label ", 0) == 0)
         text = trim(text.substr(6));
+    if (!text.empty() && text[0] == '^')
+        text = text.substr(1);
     const size_t lp = text.find('(');
     if (lp == std::string::npos)
     {
@@ -380,9 +386,9 @@ Expected<void> parseBranchTarget(const std::string &part, Instr &in, ParserState
 
 /// @brief Parse the list of branch targets for control-flow opcodes.
 Expected<void> parseBranchTargetsFromString(const std::string &text,
-                                           size_t expectedTargets,
-                                           Instr &in,
-                                           ParserState &st)
+                                            size_t expectedTargets,
+                                            Instr &in,
+                                            ParserState &st)
 {
     std::string remaining = trim(text);
     const char *mnemonic = getOpcodeInfo(in.op).name;
@@ -478,8 +484,8 @@ Expected<void> parseWithMetadata(Opcode opcode, const std::string &rest, Instr &
                 if (token.empty())
                 {
                     std::ostringstream oss;
-                    oss << "line " << st.lineNo << ": missing "
-                        << (spec.role ? spec.role : "type") << " for " << info.name;
+                    oss << "line " << st.lineNo << ": missing " << (spec.role ? spec.role : "type")
+                        << " for " << info.name;
                     return Expected<void>{makeError(in.loc, oss.str())};
                 }
                 auto ty = parseType_E(token, st);
@@ -496,10 +502,20 @@ Expected<void> parseWithMetadata(Opcode opcode, const std::string &rest, Instr &
                     if (spec.role)
                     {
                         std::ostringstream oss;
-                        oss << "line " << st.lineNo << ": missing " << spec.role << " for " << info.name;
+                        oss << "line " << st.lineNo << ": missing " << spec.role << " for "
+                            << info.name;
                         return Expected<void>{makeError(in.loc, oss.str())};
                     }
                     break;
+                }
+                if (opcode == Opcode::TrapKind)
+                {
+                    long long trapValue = 0;
+                    if (parseTrapKindToken(token, trapValue))
+                    {
+                        in.operands.push_back(Value::constInt(trapValue));
+                        break;
+                    }
                 }
                 auto value = parseValue_E(token, st);
                 if (!value)
