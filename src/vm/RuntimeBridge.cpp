@@ -365,26 +365,29 @@ void RuntimeBridge::trap(TrapKind kind,
                          const std::string &fn,
                          const std::string &block)
 {
-    std::string diagnostic;
+    (void)msg;
+    (void)block;
     if (auto *vm = VM::activeInstance())
     {
-        diagnostic = vm->formatTrapDiagnostic(kind, msg, loc, fn, block);
+        if (loc.isValid())
+            vm->currentContext.loc = loc;
+        vm_raise(kind);
+        return;
     }
-    else
-    {
-        std::ostringstream os;
-        os << toString(kind);
-        if (!fn.empty())
-        {
-            os << " @ " << fn;
-            if (!block.empty())
-                os << ": " << block;
-            if (loc.isValid())
-                os << " (" << loc.file_id << ':' << loc.line << ':' << loc.column << ')';
-        }
-        os << ": " << msg;
-        diagnostic = os.str();
-    }
+
+    VmError error{};
+    error.kind = kind;
+    error.code = 0;
+    error.ip = 0;
+    error.line = loc.isValid() ? static_cast<int32_t>(loc.line) : -1;
+
+    FrameInfo frame{};
+    frame.function = fn.empty() ? std::string("<unknown>") : fn;
+    frame.ip = 0;
+    frame.line = error.line;
+    frame.handlerInstalled = false;
+
+    const std::string diagnostic = vm_format_error(error, frame);
     rt_abort(diagnostic.c_str());
 }
 

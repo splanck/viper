@@ -21,8 +21,18 @@ struct TrapKindSymbol
     long long value;
 };
 
-constexpr std::array<TrapKindSymbol, 4> kTrapKindSymbols = {
-    {{"DivideByZero", 0}, {"Overflow", 1}, {"InvalidCast", 2}, {"DomainError", 3}}};
+constexpr std::array<TrapKindSymbol, 10> kTrapKindSymbols = {{
+    {"DivideByZero", 0},
+    {"Overflow", 1},
+    {"InvalidCast", 2},
+    {"DomainError", 3},
+    {"Bounds", 4},
+    {"FileNotFound", 5},
+    {"EOF", 6},
+    {"IOError", 7},
+    {"InvalidOperation", 8},
+    {"RuntimeError", 9},
+}};
 } // namespace
 
 namespace il::io

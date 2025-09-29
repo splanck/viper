@@ -129,7 +129,7 @@ function(viper_add_e2e_vm_suite)
     -DILC=$<TARGET_FILE:ilc>
     -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/basic/numerics_addmul.bas
     -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/basic/numerics_addmul.bas.out
-    -DEXPECT_SUBSTR="runtime trap: Overflow"
+    -DEXPECT_SUBSTR=Overflow
     -P ${_VIPER_E2E_DIR}/test_basic_numeric_overflow.cmake)
   set_tests_properties(basic_numerics_addmul PROPERTIES LABELS VM)
 
@@ -138,7 +138,7 @@ function(viper_add_e2e_vm_suite)
     -DILC=$<TARGET_FILE:ilc>
     -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/basic/numerics_pow.bas
     -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/basic/numerics_pow.bas.out
-    "-DEXPECT_SUBSTR=rt_pow_f64_chkdom: negative base with fractional exponent"
+    -DEXPECT_SUBSTR=DomainError
     -P ${_VIPER_E2E_DIR}/test_basic_numeric_overflow.cmake)
   set_tests_properties(basic_numerics_pow PROPERTIES LABELS VM)
 
@@ -147,7 +147,7 @@ function(viper_add_e2e_vm_suite)
     -DILC=$<TARGET_FILE:ilc>
     -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/basic/numerics_conversions.bas
     -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/basic/numerics_conversions.bas.out
-    "-DEXPECT_SUBSTR=runtime trap: InvalidCast"
+    -DEXPECT_SUBSTR=InvalidCast
     -P ${_VIPER_E2E_DIR}/test_basic_numeric_overflow.cmake)
   set_tests_properties(basic_numerics_conversions PROPERTIES LABELS VM)
 

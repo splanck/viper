@@ -85,6 +85,8 @@ class VM
     friend struct detail::OpHandlers; ///< Allow opcode handlers to access internals
     friend struct detail::ops::OperandDispatcher; ///< Allow shared helpers to evaluate operands
     friend class RuntimeBridge; ///< Runtime bridge accesses trap formatting helpers
+    friend void vm_raise(TrapKind kind, int32_t code);
+    friend void vm_raise_from_error(const VmError &error);
 
     /// @brief Result of executing one opcode.
     struct ExecResult
@@ -144,13 +146,9 @@ class VM
     /// @brief Last trap recorded by the VM for diagnostic reporting.
     struct TrapState
     {
-        TrapKind kind = TrapKind::DomainError; ///< Trap classification
-        std::string message;                   ///< Detailed trap message
-        std::string function;                  ///< Function name
-        std::string block;                     ///< Basic block label
-        size_t instructionIndex = 0;           ///< Instruction index within block
-        bool hasInstruction = false;           ///< Whether instruction index is meaningful
-        il::support::SourceLoc loc{};          ///< Optional source location
+        VmError error{};    ///< Structured error payload
+        FrameInfo frame{};  ///< Captured frame metadata
+        std::string message; ///< Formatted diagnostic message
     };
 
     /// @brief Module to execute.
@@ -257,11 +255,8 @@ class VM
     void clearCurrentContext();
 
     /// @brief Format and record trap diagnostics.
-    std::string formatTrapDiagnostic(TrapKind kind,
-                                     std::string_view detail,
-                                     const il::support::SourceLoc &loc,
-                                     const std::string &fn,
-                                     const std::string &block);
+    FrameInfo buildFrameInfo(const VmError &error) const;
+    std::string recordTrap(const VmError &error, const FrameInfo &frame);
 
     /// @brief Access active VM instance for thread-local trap reporting.
     static VM *activeInstance();
