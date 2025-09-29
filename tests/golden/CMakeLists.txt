@@ -172,6 +172,37 @@ function(viper_add_golden_suite_tests)
     "-DEXPECT=${EXPECT_VM_TRAP_LOC}"
     -P ${_VIPER_GOLDEN_DIR}/check_vm_trap_loc.cmake)
 
+  set(NUMERICS_IL_DIR ${_VIPER_GOLDEN_DIR}/numerics_il)
+
+  viper_add_ctest(numerics_il_i16_add_overflow
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DIL_FILE=${NUMERICS_IL_DIR}/i16_add_overflow.il
+    -DEXPECT=Overflow
+    -P ${_VIPER_GOLDEN_DIR}/check_vm_trap_loc.cmake)
+
+  viper_add_ctest(numerics_il_int_div_min_overflow
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DIL_FILE=${NUMERICS_IL_DIR}/int_div_min_overflow.il
+    -DEXPECT=Overflow
+    -P ${_VIPER_GOLDEN_DIR}/check_vm_trap_loc.cmake)
+
+  viper_add_ctest(numerics_il_i16_mul_ok
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DIL_FILE=${NUMERICS_IL_DIR}/i16_mul_ok.il
+    -DEXPECT=30000
+    -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
+
+  string(JOIN "\n" EXPECT_NUMERICS_MOD "-1" "1" "-1")
+  viper_add_ctest(numerics_il_mod_sign
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DIL_FILE=${NUMERICS_IL_DIR}/mod_sign.il
+    "-DEXPECT=${EXPECT_NUMERICS_MOD}"
+    -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
+
   viper_add_ctest(il_opt_const_if
     ${CMAKE_COMMAND}
     -DILC=${BASIC_ILC}

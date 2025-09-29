@@ -19,6 +19,7 @@
 
 #include <cctype>
 #include <exception>
+#include <optional>
 #include <sstream>
 #include <unordered_map>
 #include <utility>
@@ -540,6 +541,7 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st)
     Instr in;
     in.loc = st.curLoc;
     std::string work = line;
+    std::optional<Type> annotatedType;
     if (!work.empty() && work[0] == '%')
     {
         size_t eq = work.find('=');
@@ -550,6 +552,28 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st)
             return Expected<void>{makeError(in.loc, oss.str())};
         }
         std::string res = trim(work.substr(1, eq - 1));
+        size_t colon = res.find(':');
+        if (colon != std::string::npos)
+        {
+            std::string tyTok = trim(res.substr(colon + 1));
+            res = trim(res.substr(0, colon));
+            if (res.empty())
+            {
+                std::ostringstream oss;
+                oss << "line " << st.lineNo << ": missing temp name before type annotation";
+                return Expected<void>{makeError(in.loc, oss.str())};
+            }
+            auto ty = parseType_E(tyTok, st);
+            if (!ty)
+                return Expected<void>{ty.error()};
+            if (ty.value().kind == Type::Kind::Void)
+            {
+                std::ostringstream oss;
+                oss << "line " << st.lineNo << ": result type cannot be void";
+                return Expected<void>{makeError(in.loc, oss.str())};
+            }
+            annotatedType = ty.value();
+        }
         auto [it, inserted] = st.tempIds.emplace(res, st.nextTemp);
         if (inserted)
         {
@@ -578,6 +602,8 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st)
     auto parsed = parseWithMetadata(it->second, rest, in, st);
     if (!parsed)
         return parsed;
+    if (annotatedType)
+        in.type = *annotatedType;
     auto shape = validateShape_E(in, st);
     if (!shape)
         return shape;
