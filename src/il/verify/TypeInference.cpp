@@ -125,7 +125,10 @@ size_t TypeInference::typeSize(Type::Kind kind)
         case Type::Kind::F64:
         case Type::Kind::Ptr:
         case Type::Kind::Str:
+        case Type::Kind::ResumeTok:
             return 8;
+        case Type::Kind::Error:
+            return 24;
         case Type::Kind::Void:
             return 0;
     }

@@ -35,6 +35,8 @@ enum class TypeCategory : uint8_t
     F64,         ///< 64-bit floating point type.
     Ptr,         ///< Pointer type.
     Str,         ///< Runtime string type.
+    Error,       ///< Opaque VM error record.
+    ResumeTok,   ///< Opaque resume token provided to handlers.
     Any,         ///< No specific type requirement.
     InstrType,   ///< Type derived from the instruction's @c type field.
     Dynamic      ///< Type derived from external context (e.g., call signature).

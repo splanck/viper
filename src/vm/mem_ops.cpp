@@ -139,6 +139,10 @@ VM::ExecResult OpHandlers::handleLoad(VM &vm,
         case Type::Kind::Ptr:
             out.ptr = *reinterpret_cast<void **>(ptr);
             break;
+        case Type::Kind::Error:
+        case Type::Kind::ResumeTok:
+            out.ptr = nullptr;
+            break;
         case Type::Kind::Void:
             out.i64 = 0;
             break;
@@ -194,6 +198,9 @@ VM::ExecResult OpHandlers::handleStore(VM &vm,
             break;
         case Type::Kind::Ptr:
             *reinterpret_cast<void **>(ptr) = value.ptr;
+            break;
+        case Type::Kind::Error:
+        case Type::Kind::ResumeTok:
             break;
         case Type::Kind::Void:
             break;

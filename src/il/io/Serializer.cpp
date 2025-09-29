@@ -191,6 +191,10 @@ std::optional<Type::Kind> defaultResultKind(const OpcodeInfo &info)
             return Kind::Ptr;
         case TypeCategory::Str:
             return Kind::Str;
+        case TypeCategory::Error:
+            return Kind::Error;
+        case TypeCategory::ResumeTok:
+            return Kind::ResumeTok;
         default:
             break;
     }
