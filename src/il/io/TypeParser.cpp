@@ -38,6 +38,10 @@ il::core::Type parseType(const std::string &token, bool *ok)
         return makeType(il::core::Type::Kind::Ptr);
     if (token == "str")
         return makeType(il::core::Type::Kind::Str);
+    if (token == "error")
+        return makeType(il::core::Type::Kind::Error);
+    if (token == "resume_tok")
+        return makeType(il::core::Type::Kind::ResumeTok);
     if (token == "void")
         return makeType(il::core::Type::Kind::Void);
 

@@ -397,6 +397,8 @@ Lowerer::RVal Lowerer::lowerDivOrMod(const BinaryExpr &b)
             case Kind::Str:
             case Kind::Ptr:
             case Kind::I1:
+            case Kind::Error:
+            case Kind::ResumeTok:
             case Kind::Void:
                 return std::nullopt;
             case Kind::I64:

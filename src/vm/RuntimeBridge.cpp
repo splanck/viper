@@ -48,7 +48,7 @@ struct KindAccessors
     ResultAssigner assignResult = nullptr;     ///< Assignment routine for marshalled results.
 };
 
-constexpr std::array<Type::Kind, 8> kSupportedKinds = {
+constexpr std::array<Type::Kind, 10> kSupportedKinds = {
     Type::Kind::Void,
     Type::Kind::I1,
     Type::Kind::I16,
@@ -57,9 +57,11 @@ constexpr std::array<Type::Kind, 8> kSupportedKinds = {
     Type::Kind::F64,
     Type::Kind::Ptr,
     Type::Kind::Str,
+    Type::Kind::Error,
+    Type::Kind::ResumeTok,
 };
 
-static_assert(kSupportedKinds.size() == 8, "update kind accessors when Type::Kind grows");
+static_assert(kSupportedKinds.size() == 10, "update kind accessors when Type::Kind grows");
 
 constexpr void *nullResultBuffer(ResultBuffers &)
 {
@@ -113,6 +115,8 @@ constexpr std::array<KindAccessors, kSupportedKinds.size()> kKindAccessors = [] 
     table[static_cast<size_t>(Type::Kind::F64)] = makeAccessors<&Slot::f64, &ResultBuffers::f64>();
     table[static_cast<size_t>(Type::Kind::Ptr)] = makeAccessors<&Slot::ptr, &ResultBuffers::ptr>();
     table[static_cast<size_t>(Type::Kind::Str)] = makeAccessors<&Slot::str, &ResultBuffers::str>();
+    table[static_cast<size_t>(Type::Kind::Error)] = makeVoidAccessors();
+    table[static_cast<size_t>(Type::Kind::ResumeTok)] = makeVoidAccessors();
     return table;
 }();
 

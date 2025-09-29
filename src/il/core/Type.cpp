@@ -34,6 +34,10 @@ std::string kindToString(Type::Kind k)
             return "ptr";
         case Type::Kind::Str:
             return "str";
+        case Type::Kind::Error:
+            return "error";
+        case Type::Kind::ResumeTok:
+            return "resume_tok";
     }
     return "";
 }

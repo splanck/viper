@@ -748,6 +748,18 @@ Expected<void> verifyInstruction_impl(const Function &fn,
             return checkConstNull_E(instr, types);
         case Opcode::Call:
             return checkCall_E(fn, bb, instr, externs, funcs, types);
+        case Opcode::TrapKind:
+            return expectAllOperandType(fn, bb, instr, types, Type::Kind::I64);
+        case Opcode::TrapErr:
+            return expectAllOperandType(fn, bb, instr, types, Type::Kind::Error);
+        case Opcode::ResumeSame:
+        case Opcode::ResumeNext:
+        case Opcode::ResumeLabel:
+            return expectAllOperandType(fn, bb, instr, types, Type::Kind::ResumeTok);
+        case Opcode::EhPush:
+        case Opcode::EhPop:
+        case Opcode::EhEntry:
+            return checkDefault_E(instr, types);
         default:
             return checkDefault_E(instr, types);
     }
