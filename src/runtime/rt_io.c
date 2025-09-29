@@ -19,10 +19,10 @@
  */
 void rt_abort(const char *msg)
 {
-    if (msg)
-        fprintf(stderr, "runtime trap: %s\n", msg);
+    if (msg && *msg)
+        fprintf(stderr, "%s\n", msg);
     else
-        fprintf(stderr, "runtime trap\n");
+        fprintf(stderr, "Trap\n");
     exit(1);
 }
 

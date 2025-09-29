@@ -157,6 +157,7 @@ VM::ExecResult OpHandlers::handleCall(VM &vm,
                                       size_t &ip)
 {
     (void)blocks;
+    (void)bb;
     (void)ip;
     std::vector<Slot> args;
     args.reserve(in.operands.size());
@@ -191,10 +192,35 @@ VM::ExecResult OpHandlers::handleTrap(VM &vm,
                                       const BasicBlock *&bb,
                                       size_t &ip)
 {
-    (void)vm;
     (void)blocks;
+    (void)bb;
     (void)ip;
-    RuntimeBridge::trap(TrapKind::DomainError, "trap", in.loc, fr.func->name, bb->label);
+
+    switch (in.op)
+    {
+        case Opcode::Trap:
+            vm_raise(TrapKind::DomainError);
+            break;
+        case Opcode::TrapKind:
+        {
+            Slot kindSlot = vm.eval(fr, in.operands[0]);
+            const auto trapKind = trapKindFromValue(static_cast<int32_t>(kindSlot.i64));
+            vm_raise(trapKind);
+            break;
+        }
+        case Opcode::TrapErr:
+        {
+            Slot errorSlot = vm.eval(fr, in.operands[0]);
+            VmError error{};
+            if (errorSlot.ptr)
+                error = *reinterpret_cast<const VmError *>(errorSlot.ptr);
+            vm_raise_from_error(error);
+            break;
+        }
+        default:
+            vm_raise(TrapKind::RuntimeError);
+            break;
+    }
     VM::ExecResult result{};
     result.returned = true;
     return result;

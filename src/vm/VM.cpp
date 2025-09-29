@@ -232,51 +232,40 @@ void VM::clearCurrentContext()
     currentContext.loc = {};
 }
 
-std::string VM::formatTrapDiagnostic(TrapKind kind,
-                                     std::string_view detail,
-                                     const il::support::SourceLoc &loc,
-                                     const std::string &fn,
-                                     const std::string &block)
+FrameInfo VM::buildFrameInfo(const VmError &error) const
 {
-    std::string functionName = fn;
-    if (functionName.empty() && currentContext.function)
-        functionName = currentContext.function->name;
+    FrameInfo frame{};
+    if (currentContext.function)
+        frame.function = currentContext.function->name;
+    else if (!runtimeContext.function.empty())
+        frame.function = runtimeContext.function;
+    else if (!lastTrap.frame.function.empty())
+        frame.function = lastTrap.frame.function;
 
-    std::string blockName = block;
-    if (blockName.empty() && currentContext.block)
-        blockName = currentContext.block->label;
+    frame.ip = error.ip;
+    if (frame.ip == 0 && currentContext.hasInstruction)
+        frame.ip = static_cast<uint64_t>(currentContext.instructionIndex);
+    else if (frame.ip == 0 && lastTrap.frame.ip != 0)
+        frame.ip = lastTrap.frame.ip;
 
-    il::support::SourceLoc location = loc;
-    if (!location.isValid() && currentContext.loc.isValid())
-        location = currentContext.loc;
+    frame.line = error.line;
+    if (frame.line < 0 && currentContext.loc.isValid())
+        frame.line = static_cast<int32_t>(currentContext.loc.line);
+    else if (frame.line < 0 && runtimeContext.loc.isValid())
+        frame.line = static_cast<int32_t>(runtimeContext.loc.line);
+    else if (frame.line < 0 && lastTrap.frame.line >= 0)
+        frame.line = lastTrap.frame.line;
 
-    bool hasInstruction = currentContext.hasInstruction;
-    size_t instructionIndex = currentContext.instructionIndex;
-    if (!hasInstruction)
-        instructionIndex = 0;
+    frame.handlerInstalled = false; // Handler stack to be implemented.
+    return frame;
+}
 
-    lastTrap.kind = kind;
-    lastTrap.message = std::string(detail);
-    lastTrap.function = functionName;
-    lastTrap.block = blockName;
-    lastTrap.hasInstruction = hasInstruction;
-    lastTrap.instructionIndex = instructionIndex;
-    lastTrap.loc = location;
-
-    std::ostringstream os;
-    os << toString(kind);
-    if (!functionName.empty())
-    {
-        os << " @ " << functionName;
-        if (!blockName.empty())
-            os << ": " << blockName;
-        if (hasInstruction)
-            os << "[#" << instructionIndex << ']';
-        if (location.isValid())
-            os << " (" << location.file_id << ':' << location.line << ':' << location.column << ')';
-    }
-    os << ": " << detail;
-    return os.str();
+std::string VM::recordTrap(const VmError &error, const FrameInfo &frame)
+{
+    lastTrap.error = error;
+    lastTrap.frame = frame;
+    lastTrap.message = vm_format_error(error, frame);
+    return lastTrap.message;
 }
 
 VM *VM::activeInstance()

@@ -127,8 +127,8 @@ int main()
         Module module;
         buildPowDomainError(module);
         const std::string out = captureTrap(module);
-        const bool ok = out.find("runtime trap: DomainError") != std::string::npos &&
-                        out.find("rt_pow_f64_chkdom: negative base with fractional exponent") != std::string::npos;
+        const bool ok = out.find("Trap @main") != std::string::npos &&
+                        out.find("DomainError (code=0)") != std::string::npos;
         assert(ok && "expected DomainError trap for negative base fractional exponent");
     }
 
@@ -136,8 +136,8 @@ int main()
         Module module;
         buildPowOverflow(module);
         const std::string out = captureTrap(module);
-        const bool ok = out.find("runtime trap: Overflow") != std::string::npos &&
-                        out.find("rt_pow_f64_chkdom: overflow") != std::string::npos;
+        const bool ok = out.find("Trap @main") != std::string::npos &&
+                        out.find("Overflow (code=0)") != std::string::npos;
         assert(ok && "expected Overflow trap for large exponent");
     }
 
