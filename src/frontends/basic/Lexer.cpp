@@ -25,19 +25,23 @@ struct KeywordEntry
     TokenKind kind;
 };
 
-constexpr std::array<KeywordEntry, 48> kKeywordTable{{
+constexpr std::array<KeywordEntry, 56> kKeywordTable{{
     {"ABS", TokenKind::KeywordAbs},
     {"AND", TokenKind::KeywordAnd},
     {"ANDALSO", TokenKind::KeywordAndAlso},
+    {"APPEND", TokenKind::KeywordAppend},
     {"AS", TokenKind::KeywordAs},
+    {"BINARY", TokenKind::KeywordBinary},
     {"BOOLEAN", TokenKind::KeywordBoolean},
     {"CEIL", TokenKind::KeywordCeil},
+    {"CLOSE", TokenKind::KeywordClose},
     {"COS", TokenKind::KeywordCos},
     {"DIM", TokenKind::KeywordDim},
     {"DO", TokenKind::KeywordDo},
     {"ELSE", TokenKind::KeywordElse},
     {"ELSEIF", TokenKind::KeywordElseIf},
     {"END", TokenKind::KeywordEnd},
+    {"EOF", TokenKind::KeywordEof},
     {"ERROR", TokenKind::KeywordError},
     {"EXIT", TokenKind::KeywordExit},
     {"FALSE", TokenKind::KeywordFalse},
@@ -49,15 +53,19 @@ constexpr std::array<KeywordEntry, 48> kKeywordTable{{
     {"INPUT", TokenKind::KeywordInput},
     {"LBOUND", TokenKind::KeywordLbound},
     {"LET", TokenKind::KeywordLet},
+    {"LINE", TokenKind::KeywordLine},
     {"LOOP", TokenKind::KeywordLoop},
     {"MOD", TokenKind::KeywordMod},
     {"NEXT", TokenKind::KeywordNext},
     {"NOT", TokenKind::KeywordNot},
     {"ON", TokenKind::KeywordOn},
+    {"OPEN", TokenKind::KeywordOpen},
     {"OR", TokenKind::KeywordOr},
     {"ORELSE", TokenKind::KeywordOrElse},
+    {"OUTPUT", TokenKind::KeywordOutput},
     {"POW", TokenKind::KeywordPow},
     {"PRINT", TokenKind::KeywordPrint},
+    {"RANDOM", TokenKind::KeywordRandom},
     {"RANDOMIZE", TokenKind::KeywordRandomize},
     {"REDIM", TokenKind::KeywordRedim},
     {"RESUME", TokenKind::KeywordResume},
@@ -376,6 +384,8 @@ Token Lexer::next()
             return {TokenKind::Semicolon, ";", loc};
         case ':':
             return {TokenKind::Colon, ":", loc};
+        case '#':
+            return {TokenKind::Hash, "#", loc};
     }
     return {TokenKind::Unknown, std::string(1, c), loc};
 }
