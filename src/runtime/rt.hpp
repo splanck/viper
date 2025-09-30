@@ -9,6 +9,7 @@
 
 #include "rt_array.h"
 #include "rt_debug.h"
+#include "rt_error.h"
 #include "rt_string.h"
 
 #ifdef __cplusplus
