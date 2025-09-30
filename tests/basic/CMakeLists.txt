@@ -94,6 +94,10 @@ function(viper_add_basic_main_tests)
   target_link_libraries(test_frontends_basic_parse_on_error PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_parse_on_error test_frontends_basic_parse_on_error)
 
+  viper_add_test_exe(test_frontends_basic_parse_file_io ${VIPER_TESTS_DIR}/frontends/basic/ParseFileIoTests.cpp)
+  target_link_libraries(test_frontends_basic_parse_file_io PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_frontends_basic_parse_file_io test_frontends_basic_parse_file_io)
+
   viper_add_test_exe(test_frontends_basic_lexer_file_io ${VIPER_TESTS_DIR}/frontends/basic/LexerFileIoTests.cpp)
   target_link_libraries(test_frontends_basic_lexer_file_io PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_lexer_file_io test_frontends_basic_lexer_file_io)

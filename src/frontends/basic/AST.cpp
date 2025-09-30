@@ -298,6 +298,30 @@ void GotoStmt::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this OPEN statement node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void OpenStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void OpenStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+/// @brief Forwards this CLOSE statement node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void CloseStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void CloseStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
 /// @brief Forward this ON ERROR GOTO statement node to the visitor.
 /// @param visitor Receives the node; ownership remains with the AST.
 void OnErrorGoto::accept(StmtVisitor &visitor) const

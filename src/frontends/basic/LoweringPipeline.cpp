@@ -224,6 +224,20 @@ class VarCollectStmtVisitor final : public StmtVisitor
 
     void visit(const GotoStmt &) override {}
 
+    void visit(const OpenStmt &stmt) override
+    {
+        if (stmt.pathExpr)
+            stmt.pathExpr->accept(exprVisitor_);
+        if (stmt.channelExpr)
+            stmt.channelExpr->accept(exprVisitor_);
+    }
+
+    void visit(const CloseStmt &stmt) override
+    {
+        if (stmt.channelExpr)
+            stmt.channelExpr->accept(exprVisitor_);
+    }
+
     void visit(const OnErrorGoto &) override {}
 
     void visit(const Resume &) override {}
