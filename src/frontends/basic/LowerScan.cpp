@@ -240,6 +240,10 @@ class ScanStmtVisitor final : public StmtVisitor
 
     void visit(const GotoStmt &) override {}
 
+    void visit(const OnErrorGoto &) override {}
+
+    void visit(const Resume &) override {}
+
     void visit(const EndStmt &) override {}
 
     void visit(const InputStmt &stmt) override

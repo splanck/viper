@@ -39,8 +39,10 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
     void visit(NextStmt &stmt) override { analyzer_.analyzeNext(stmt); }
     void visit(ExitStmt &stmt) override { analyzer_.analyzeExit(stmt); }
     void visit(GotoStmt &stmt) override { analyzer_.analyzeGoto(stmt); }
+    void visit(OnErrorGoto &stmt) override { analyzer_.analyzeOnErrorGoto(stmt); }
     void visit(EndStmt &stmt) override { analyzer_.analyzeEnd(stmt); }
     void visit(InputStmt &stmt) override { analyzer_.analyzeInput(stmt); }
+    void visit(Resume &stmt) override { analyzer_.analyzeResume(stmt); }
     void visit(ReturnStmt &) override {}
     void visit(FunctionDecl &) override {}
     void visit(SubDecl &) override {}
@@ -335,6 +337,20 @@ void SemanticAnalyzer::analyzeGoto(const GotoStmt &g)
     }
 }
 
+void SemanticAnalyzer::analyzeOnErrorGoto(const OnErrorGoto &stmt)
+{
+    if (stmt.toZero)
+        return;
+    auto insertResult = labelRefs_.insert(stmt.target);
+    if (insertResult.second && activeProcScope_)
+        activeProcScope_->noteLabelRefInserted(stmt.target);
+    if (!labels_.count(stmt.target))
+    {
+        std::string msg = "unknown line " + std::to_string(stmt.target);
+        de.emit(il::support::Severity::Error, "B1003", stmt.loc, 4, std::move(msg));
+    }
+}
+
 void SemanticAnalyzer::analyzeNext(const NextStmt &n)
 {
     if (forStack_.empty() || (!n.var.empty() && n.var != forStack_.back()))
@@ -408,6 +424,20 @@ void SemanticAnalyzer::analyzeExit(const ExitStmt &stmt)
 void SemanticAnalyzer::analyzeEnd(const EndStmt &)
 {
     // nothing
+}
+
+void SemanticAnalyzer::analyzeResume(const Resume &stmt)
+{
+    if (stmt.mode != Resume::Mode::Label)
+        return;
+    auto insertResult = labelRefs_.insert(stmt.target);
+    if (insertResult.second && activeProcScope_)
+        activeProcScope_->noteLabelRefInserted(stmt.target);
+    if (!labels_.count(stmt.target))
+    {
+        std::string msg = "unknown line " + std::to_string(stmt.target);
+        de.emit(il::support::Severity::Error, "B1003", stmt.loc, 4, std::move(msg));
+    }
 }
 
 void SemanticAnalyzer::analyzeRandomize(const RandomizeStmt &r)
