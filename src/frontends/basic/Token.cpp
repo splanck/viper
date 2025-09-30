@@ -132,6 +132,22 @@ const char *tokenKindToString(TokenKind k)
             return "ANDALSO";
         case TokenKind::KeywordOrElse:
             return "ORELSE";
+        case TokenKind::KeywordOpen:
+            return "OPEN";
+        case TokenKind::KeywordClose:
+            return "CLOSE";
+        case TokenKind::KeywordOutput:
+            return "OUTPUT";
+        case TokenKind::KeywordAppend:
+            return "APPEND";
+        case TokenKind::KeywordBinary:
+            return "BINARY";
+        case TokenKind::KeywordRandom:
+            return "RANDOM";
+        case TokenKind::KeywordLine:
+            return "LINE";
+        case TokenKind::KeywordEof:
+            return "EOF";
         case TokenKind::Plus:
             return "+";
         case TokenKind::Minus:
@@ -166,6 +182,8 @@ const char *tokenKindToString(TokenKind k)
             return ";";
         case TokenKind::Colon:
             return ":";
+        case TokenKind::Hash:
+            return "#";
         case TokenKind::Count:
             break;
     }
