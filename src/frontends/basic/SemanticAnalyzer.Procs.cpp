@@ -25,6 +25,10 @@ SemanticAnalyzer::ProcedureScope::ProcedureScope(SemanticAnalyzer &analyzer) noe
 {
     previous_ = analyzer_.activeProcScope_;
     analyzer_.activeProcScope_ = this;
+    previousHandlerActive_ = analyzer_.errorHandlerActive_;
+    previousHandlerTarget_ = analyzer_.errorHandlerTarget_;
+    analyzer_.errorHandlerActive_ = false;
+    analyzer_.errorHandlerTarget_.reset();
     forStackDepth_ = analyzer_.forStack_.size();
     loopStackDepth_ = analyzer_.loopStack_.size();
     analyzer_.scopes_.pushScope();
@@ -33,6 +37,8 @@ SemanticAnalyzer::ProcedureScope::ProcedureScope(SemanticAnalyzer &analyzer) noe
 SemanticAnalyzer::ProcedureScope::~ProcedureScope() noexcept
 {
     analyzer_.activeProcScope_ = previous_;
+    analyzer_.errorHandlerActive_ = previousHandlerActive_;
+    analyzer_.errorHandlerTarget_ = previousHandlerTarget_;
     for (const auto &label : newLabelRefs_)
         analyzer_.labelRefs_.erase(label);
     for (const auto &label : newLabels_)
@@ -198,6 +204,8 @@ void SemanticAnalyzer::analyze(const Program &prog)
     loopStack_.clear();
     varTypes_.clear();
     arrays_.clear();
+    errorHandlerActive_ = false;
+    errorHandlerTarget_.reset();
     procReg_.clear();
     scopes_.reset();
 

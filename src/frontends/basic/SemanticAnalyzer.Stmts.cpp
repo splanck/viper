@@ -43,7 +43,7 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
     void visit(EndStmt &stmt) override { analyzer_.analyzeEnd(stmt); }
     void visit(InputStmt &stmt) override { analyzer_.analyzeInput(stmt); }
     void visit(Resume &stmt) override { analyzer_.analyzeResume(stmt); }
-    void visit(ReturnStmt &) override {}
+    void visit(ReturnStmt &stmt) override { analyzer_.analyzeReturn(stmt); }
     void visit(FunctionDecl &) override {}
     void visit(SubDecl &) override {}
     void visit(StmtList &stmt) override { analyzer_.analyzeStmtList(stmt); }
@@ -340,7 +340,10 @@ void SemanticAnalyzer::analyzeGoto(const GotoStmt &g)
 void SemanticAnalyzer::analyzeOnErrorGoto(const OnErrorGoto &stmt)
 {
     if (stmt.toZero)
+    {
+        clearErrorHandler();
         return;
+    }
     auto insertResult = labelRefs_.insert(stmt.target);
     if (insertResult.second && activeProcScope_)
         activeProcScope_->noteLabelRefInserted(stmt.target);
@@ -349,6 +352,7 @@ void SemanticAnalyzer::analyzeOnErrorGoto(const OnErrorGoto &stmt)
         std::string msg = "unknown line " + std::to_string(stmt.target);
         de.emit(il::support::Severity::Error, "B1003", stmt.loc, 4, std::move(msg));
     }
+    installErrorHandler(stmt.target);
 }
 
 void SemanticAnalyzer::analyzeNext(const NextStmt &n)
@@ -428,6 +432,15 @@ void SemanticAnalyzer::analyzeEnd(const EndStmt &)
 
 void SemanticAnalyzer::analyzeResume(const Resume &stmt)
 {
+    if (!hasActiveErrorHandler())
+    {
+        std::string msg = "RESUME requires an active error handler";
+        de.emit(il::support::Severity::Error,
+                "B1012",
+                stmt.loc,
+                6,
+                std::move(msg));
+    }
     if (stmt.mode != Resume::Mode::Label)
         return;
     auto insertResult = labelRefs_.insert(stmt.target);
@@ -438,6 +451,13 @@ void SemanticAnalyzer::analyzeResume(const Resume &stmt)
         std::string msg = "unknown line " + std::to_string(stmt.target);
         de.emit(il::support::Severity::Error, "B1003", stmt.loc, 4, std::move(msg));
     }
+}
+
+void SemanticAnalyzer::analyzeReturn(ReturnStmt &stmt)
+{
+    (void)stmt;
+    if (hasActiveErrorHandler())
+        clearErrorHandler();
 }
 
 void SemanticAnalyzer::analyzeRandomize(const RandomizeStmt &r)
@@ -613,6 +633,23 @@ void SemanticAnalyzer::analyzeReDim(ReDimStmt &d)
         activeProcScope_->noteArrayMutation(d.name, itArray->second);
     }
     arrays_[d.name] = sz;
+}
+
+void SemanticAnalyzer::installErrorHandler(int label)
+{
+    errorHandlerActive_ = true;
+    errorHandlerTarget_ = label;
+}
+
+void SemanticAnalyzer::clearErrorHandler()
+{
+    errorHandlerActive_ = false;
+    errorHandlerTarget_.reset();
+}
+
+bool SemanticAnalyzer::hasActiveErrorHandler() const noexcept
+{
+    return errorHandlerActive_;
 }
 
 } // namespace il::frontends::basic
