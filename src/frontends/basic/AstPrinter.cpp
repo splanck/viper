@@ -32,6 +32,24 @@ const char *typeToString(Type ty)
     return "I64";
 }
 
+const char *openModeToString(OpenStmt::Mode mode)
+{
+    switch (mode)
+    {
+        case OpenStmt::Mode::Input:
+            return "INPUT";
+        case OpenStmt::Mode::Output:
+            return "OUTPUT";
+        case OpenStmt::Mode::Append:
+            return "APPEND";
+        case OpenStmt::Mode::Binary:
+            return "BINARY";
+        case OpenStmt::Mode::Random:
+            return "RANDOM";
+    }
+    return "INPUT";
+}
+
 } // namespace
 
 struct AstPrinter::ExprPrinter final : ExprVisitor
@@ -356,6 +374,44 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
     void visit(const GotoStmt &stmt) override
     {
         printer.os << "(GOTO " << stmt.target << ')';
+    }
+
+    void visit(const OpenStmt &stmt) override
+    {
+        printer.os << "(OPEN mode=" << openModeToString(stmt.mode) << '('
+                    << static_cast<int>(stmt.mode) << ") path=";
+        if (stmt.pathExpr)
+        {
+            stmt.pathExpr->accept(exprPrinter);
+        }
+        else
+        {
+            printer.os << "<null>";
+        }
+        printer.os << " channel=#";
+        if (stmt.channelExpr)
+        {
+            stmt.channelExpr->accept(exprPrinter);
+        }
+        else
+        {
+            printer.os << "<null>";
+        }
+        printer.os << ')';
+    }
+
+    void visit(const CloseStmt &stmt) override
+    {
+        printer.os << "(CLOSE channel=#";
+        if (stmt.channelExpr)
+        {
+            stmt.channelExpr->accept(exprPrinter);
+        }
+        else
+        {
+            printer.os << "<null>";
+        }
+        printer.os << ')';
     }
 
     void visit(const OnErrorGoto &stmt) override
