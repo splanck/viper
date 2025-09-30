@@ -104,6 +104,8 @@ class SemanticAnalyzer
     void analyzeEnd(const EndStmt &s);
     /// @brief Analyze RESUME statement @p s.
     void analyzeResume(const Resume &s);
+    /// @brief Analyze RETURN statement @p s.
+    void analyzeReturn(ReturnStmt &s);
     /// @brief Analyze RANDOMIZE statement @p s.
     void analyzeRandomize(const RandomizeStmt &s);
     /// @brief Analyze INPUT statement @p s.
@@ -178,6 +180,8 @@ class SemanticAnalyzer
         std::vector<ArrayDelta> arrayDeltas_;
         std::unordered_set<std::string> trackedVarTypes_;
         std::unordered_set<std::string> trackedArrays_;
+        bool previousHandlerActive_{false};
+        std::optional<int> previousHandlerTarget_;
     };
 
     /// @brief Classify how a symbol should be tracked during resolution.
@@ -339,6 +343,13 @@ class SemanticAnalyzer
     /// @brief Determine if single statement @p s guarantees a return value.
     bool mustReturn(const Stmt &s) const;
 
+    /// @brief Install an active error handler targeting @p label.
+    void installErrorHandler(int label);
+    /// @brief Clear any active error handler.
+    void clearErrorHandler();
+    /// @brief Whether an error handler is currently active.
+    bool hasActiveErrorHandler() const noexcept;
+
     /// @brief Shared setup/teardown for analyzing procedures.
     template <typename Proc, typename BodyCallback>
     void analyzeProcedureCommon(const Proc &proc, BodyCallback &&bodyCheck);
@@ -359,6 +370,8 @@ class SemanticAnalyzer
     std::vector<std::string> forStack_; ///< Active FOR loop variables.
     std::vector<LoopKind> loopStack_;   ///< Active loop constructs for EXIT validation.
     ProcedureScope *activeProcScope_{nullptr};
+    bool errorHandlerActive_{false};
+    std::optional<int> errorHandlerTarget_;
 };
 
 } // namespace il::frontends::basic
