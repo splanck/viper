@@ -104,6 +104,13 @@ struct OpHandlers
                                          const il::core::BasicBlock *&bb,
                                          size_t &ip);
 
+    static VM::ExecResult handleIdxChk(VM &vm,
+                                       Frame &fr,
+                                       const il::core::Instr &in,
+                                       const VM::BlockMap &blocks,
+                                       const il::core::BasicBlock *&bb,
+                                       size_t &ip);
+
     static VM::ExecResult handleFAdd(VM &vm,
                                      Frame &fr,
                                      const il::core::Instr &in,
@@ -369,6 +376,34 @@ struct OpHandlers
                                             const VM::BlockMap &blocks,
                                             const il::core::BasicBlock *&bb,
                                             size_t &ip);
+
+    static VM::ExecResult handleErrGetKind(VM &vm,
+                                           Frame &fr,
+                                           const il::core::Instr &in,
+                                           const VM::BlockMap &blocks,
+                                           const il::core::BasicBlock *&bb,
+                                           size_t &ip);
+
+    static VM::ExecResult handleErrGetCode(VM &vm,
+                                           Frame &fr,
+                                           const il::core::Instr &in,
+                                           const VM::BlockMap &blocks,
+                                           const il::core::BasicBlock *&bb,
+                                           size_t &ip);
+
+    static VM::ExecResult handleErrGetIp(VM &vm,
+                                         Frame &fr,
+                                         const il::core::Instr &in,
+                                         const VM::BlockMap &blocks,
+                                         const il::core::BasicBlock *&bb,
+                                         size_t &ip);
+
+    static VM::ExecResult handleErrGetLine(VM &vm,
+                                           Frame &fr,
+                                           const il::core::Instr &in,
+                                           const VM::BlockMap &blocks,
+                                           const il::core::BasicBlock *&bb,
+                                           size_t &ip);
 
     static VM::ExecResult handleTrap(VM &vm,
                                      Frame &fr,

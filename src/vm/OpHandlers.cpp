@@ -70,6 +70,8 @@ VM::OpcodeHandler handlerForDispatch(VMDispatch dispatch)
             return &OpHandlers::handleSRemChk0;
         case VMDispatch::URemChk0:
             return &OpHandlers::handleURemChk0;
+        case VMDispatch::IdxChk:
+            return &OpHandlers::handleIdxChk;
         case VMDispatch::Xor:
             return &OpHandlers::handleXor;
         case VMDispatch::Shl:
@@ -146,6 +148,14 @@ VM::OpcodeHandler handlerForDispatch(VMDispatch dispatch)
             return &OpHandlers::handleResumeNext;
         case VMDispatch::ResumeLabel:
             return &OpHandlers::handleResumeLabel;
+        case VMDispatch::ErrGetKind:
+            return &OpHandlers::handleErrGetKind;
+        case VMDispatch::ErrGetCode:
+            return &OpHandlers::handleErrGetCode;
+        case VMDispatch::ErrGetIp:
+            return &OpHandlers::handleErrGetIp;
+        case VMDispatch::ErrGetLine:
+            return &OpHandlers::handleErrGetLine;
     }
     return nullptr;
 }
