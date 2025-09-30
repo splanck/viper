@@ -527,6 +527,13 @@ function(viper_add_basic_to_il_golden_tests)
     -DGOLDEN=${_VIPER_EH_LOWERING_DIR}/on_error_push_pop.il
     -P ${_VIPER_BASIC_TO_IL_CHECK})
 
+  viper_add_ctest(basic_to_il_resume_forms
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_EH_LOWERING_DIR}/resume_forms.bas
+    -DGOLDEN=${_VIPER_EH_LOWERING_DIR}/resume_forms.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
+
   viper_add_ctest(basic_to_il_return_nest
     ${CMAKE_COMMAND}
     -DILC=${_VIPER_BASIC_ILC}
