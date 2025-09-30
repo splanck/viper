@@ -499,6 +499,8 @@ class Lowerer
 
     void lowerOnErrorGoto(const OnErrorGoto &stmt);
 
+    void lowerResume(const Resume &stmt);
+
     void lowerEnd(const EndStmt &stmt);
 
     void lowerInput(const InputStmt &stmt);
