@@ -240,6 +240,20 @@ class ScanStmtVisitor final : public StmtVisitor
 
     void visit(const GotoStmt &) override {}
 
+    void visit(const OpenStmt &stmt) override
+    {
+        if (stmt.pathExpr)
+            lowerer_.scanExpr(*stmt.pathExpr);
+        if (stmt.channelExpr)
+            lowerer_.scanExpr(*stmt.channelExpr);
+    }
+
+    void visit(const CloseStmt &stmt) override
+    {
+        if (stmt.channelExpr)
+            lowerer_.scanExpr(*stmt.channelExpr);
+    }
+
     void visit(const OnErrorGoto &) override {}
 
     void visit(const Resume &) override {}

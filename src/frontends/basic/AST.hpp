@@ -40,6 +40,8 @@ struct NextStmt;
 struct ExitStmt;
 struct GotoStmt;
 struct EndStmt;
+struct OpenStmt;
+struct CloseStmt;
 struct InputStmt;
 struct ReturnStmt;
 struct OnErrorGoto;
@@ -100,6 +102,8 @@ struct StmtVisitor
     virtual void visit(const NextStmt &) = 0;
     virtual void visit(const ExitStmt &) = 0;
     virtual void visit(const GotoStmt &) = 0;
+    virtual void visit(const OpenStmt &) = 0;
+    virtual void visit(const CloseStmt &) = 0;
     virtual void visit(const OnErrorGoto &) = 0;
     virtual void visit(const Resume &) = 0;
     virtual void visit(const EndStmt &) = 0;
@@ -126,6 +130,8 @@ struct MutStmtVisitor
     virtual void visit(NextStmt &) = 0;
     virtual void visit(ExitStmt &) = 0;
     virtual void visit(GotoStmt &) = 0;
+    virtual void visit(OpenStmt &) = 0;
+    virtual void visit(CloseStmt &) = 0;
     virtual void visit(OnErrorGoto &) = 0;
     virtual void visit(Resume &) = 0;
     virtual void visit(EndStmt &) = 0;
@@ -557,6 +563,39 @@ struct GotoStmt : Stmt
 {
     /// Target line number to jump to.
     int target;
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief OPEN statement configuring a file channel.
+struct OpenStmt : Stmt
+{
+    /// File path expression.
+    ExprPtr pathExpr;
+
+    /// Access mode requested for the channel.
+    enum class Mode
+    {
+        Input = 0,  ///< OPEN ... FOR INPUT
+        Output = 1, ///< OPEN ... FOR OUTPUT
+        Append = 2, ///< OPEN ... FOR APPEND
+        Binary = 3, ///< OPEN ... FOR BINARY
+        Random = 4, ///< OPEN ... FOR RANDOM
+    } mode{Mode::Input};
+
+    /// Channel number expression that follows the '#'.
+    ExprPtr channelExpr;
+
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief CLOSE statement releasing a file channel.
+struct CloseStmt : Stmt
+{
+    /// Channel number expression that follows the '#'.
+    ExprPtr channelExpr;
+
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
 };

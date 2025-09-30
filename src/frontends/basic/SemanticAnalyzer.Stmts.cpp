@@ -39,6 +39,8 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
     void visit(NextStmt &stmt) override { analyzer_.analyzeNext(stmt); }
     void visit(ExitStmt &stmt) override { analyzer_.analyzeExit(stmt); }
     void visit(GotoStmt &stmt) override { analyzer_.analyzeGoto(stmt); }
+    void visit(OpenStmt &) override {}
+    void visit(CloseStmt &) override {}
     void visit(OnErrorGoto &stmt) override { analyzer_.analyzeOnErrorGoto(stmt); }
     void visit(EndStmt &stmt) override { analyzer_.analyzeEnd(stmt); }
     void visit(InputStmt &stmt) override { analyzer_.analyzeInput(stmt); }

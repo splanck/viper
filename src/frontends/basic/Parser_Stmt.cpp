@@ -412,6 +412,68 @@ StmtPtr Parser::parseGoto()
     return stmt;
 }
 
+/// @brief Parse an OPEN statement configuring file I/O channels.
+/// @return OpenStmt capturing path, mode, and channel expressions.
+StmtPtr Parser::parseOpen()
+{
+    auto loc = peek().loc;
+    consume(); // OPEN
+    auto stmt = std::make_unique<OpenStmt>();
+    stmt->loc = loc;
+    stmt->pathExpr = parseExpression();
+    expect(TokenKind::KeywordFor);
+    if (at(TokenKind::KeywordInput))
+    {
+        consume();
+        stmt->mode = OpenStmt::Mode::Input;
+    }
+    else if (at(TokenKind::KeywordOutput))
+    {
+        consume();
+        stmt->mode = OpenStmt::Mode::Output;
+    }
+    else if (at(TokenKind::KeywordAppend))
+    {
+        consume();
+        stmt->mode = OpenStmt::Mode::Append;
+    }
+    else if (at(TokenKind::KeywordBinary))
+    {
+        consume();
+        stmt->mode = OpenStmt::Mode::Binary;
+    }
+    else if (at(TokenKind::KeywordRandom))
+    {
+        consume();
+        stmt->mode = OpenStmt::Mode::Random;
+    }
+    else
+    {
+        Token unexpected = consume();
+        if (emitter_)
+        {
+            emitter_->emitExpected(unexpected.kind, TokenKind::KeywordInput, unexpected.loc);
+        }
+    }
+    expect(TokenKind::KeywordAs);
+    expect(TokenKind::Hash);
+    stmt->channelExpr = parseExpression();
+    return stmt;
+}
+
+/// @brief Parse a CLOSE statement releasing a channel.
+/// @return CloseStmt describing the channel expression.
+StmtPtr Parser::parseClose()
+{
+    auto loc = peek().loc;
+    consume(); // CLOSE
+    auto stmt = std::make_unique<CloseStmt>();
+    stmt->loc = loc;
+    expect(TokenKind::Hash);
+    stmt->channelExpr = parseExpression();
+    return stmt;
+}
+
 /// @brief Parse an ON ERROR GOTO statement that configures error handling.
 /// @return OnErrorGoto node describing the handler target or reset.
 StmtPtr Parser::parseOnErrorGoto()

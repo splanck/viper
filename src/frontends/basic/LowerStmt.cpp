@@ -54,6 +54,10 @@ class LowererStmtVisitor final : public StmtVisitor
 
     void visit(const GotoStmt &stmt) override { lowerer_.lowerGoto(stmt); }
 
+    void visit(const OpenStmt &) override {}
+
+    void visit(const CloseStmt &) override {}
+
     void visit(const OnErrorGoto &stmt) override { lowerer_.lowerOnErrorGoto(stmt); }
 
     void visit(const Resume &stmt) override { lowerer_.lowerResume(stmt); }
