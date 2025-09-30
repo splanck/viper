@@ -42,6 +42,8 @@ struct GotoStmt;
 struct EndStmt;
 struct InputStmt;
 struct ReturnStmt;
+struct OnErrorGoto;
+struct Resume;
 struct FunctionDecl;
 struct SubDecl;
 struct StmtList;
@@ -98,6 +100,8 @@ struct StmtVisitor
     virtual void visit(const NextStmt &) = 0;
     virtual void visit(const ExitStmt &) = 0;
     virtual void visit(const GotoStmt &) = 0;
+    virtual void visit(const OnErrorGoto &) = 0;
+    virtual void visit(const Resume &) = 0;
     virtual void visit(const EndStmt &) = 0;
     virtual void visit(const InputStmt &) = 0;
     virtual void visit(const ReturnStmt &) = 0;
@@ -122,6 +126,8 @@ struct MutStmtVisitor
     virtual void visit(NextStmt &) = 0;
     virtual void visit(ExitStmt &) = 0;
     virtual void visit(GotoStmt &) = 0;
+    virtual void visit(OnErrorGoto &) = 0;
+    virtual void visit(Resume &) = 0;
     virtual void visit(EndStmt &) = 0;
     virtual void visit(InputStmt &) = 0;
     virtual void visit(ReturnStmt &) = 0;
@@ -551,6 +557,35 @@ struct GotoStmt : Stmt
 {
     /// Target line number to jump to.
     int target;
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief ON ERROR GOTO statement configuring error handler target.
+struct OnErrorGoto : Stmt
+{
+    /// Destination line for error handler when @ref toZero is false.
+    int target = 0;
+
+    /// True when the statement uses "GOTO 0" to disable the handler.
+    bool toZero = false;
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief RESUME statement controlling error-handler resumption.
+struct Resume : Stmt
+{
+    /// Resumption strategy following an error handler.
+    enum class Mode
+    {
+        Same,  ///< Resume execution at the failing statement.
+        Next,  ///< Resume at the statement following the failure site.
+        Label, ///< Resume at a labeled line.
+    } mode{Mode::Same};
+
+    /// Target line label when @ref mode == Mode::Label.
+    int target = 0;
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
 };

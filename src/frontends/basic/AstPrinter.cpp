@@ -358,6 +358,37 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         printer.os << "(GOTO " << stmt.target << ')';
     }
 
+    void visit(const OnErrorGoto &stmt) override
+    {
+        printer.os << "(ON-ERROR GOTO ";
+        if (stmt.toZero)
+        {
+            printer.os << '0';
+        }
+        else
+        {
+            printer.os << stmt.target;
+        }
+        printer.os << ')';
+    }
+
+    void visit(const Resume &stmt) override
+    {
+        printer.os << "(RESUME";
+        switch (stmt.mode)
+        {
+            case Resume::Mode::Same:
+                break;
+            case Resume::Mode::Next:
+                printer.os << " NEXT";
+                break;
+            case Resume::Mode::Label:
+                printer.os << ' ' << stmt.target;
+                break;
+        }
+        printer.os << ')';
+    }
+
     void visit(const EndStmt &) override
     {
         printer.os << "(END)";
