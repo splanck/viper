@@ -92,6 +92,7 @@ enum class TokenKind
     Comma,     ///< ','.
     Semicolon, ///< ';'.
     Colon,     ///< ':'.
+    Hash,      ///< '#'.
 
     // Additional keywords and literals (appended to preserve existing values).
     KeywordBoolean, ///< 'BOOLEAN'.
@@ -99,6 +100,14 @@ enum class TokenKind
     KeywordFalse,   ///< 'FALSE'.
     KeywordAndAlso, ///< 'ANDALSO'.
     KeywordOrElse,  ///< 'ORELSE'.
+    KeywordOpen,    ///< 'OPEN'.
+    KeywordClose,   ///< 'CLOSE'.
+    KeywordOutput,  ///< 'OUTPUT'.
+    KeywordAppend,  ///< 'APPEND'.
+    KeywordBinary,  ///< 'BINARY'.
+    KeywordRandom,  ///< 'RANDOM'.
+    KeywordLine,    ///< 'LINE'.
+    KeywordEof,     ///< 'EOF'.
 
     Count, ///< Total number of token kinds (sentinel, not a real token).
 };
