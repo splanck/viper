@@ -39,6 +39,9 @@ void vm_raise_from_error(const VmError &input)
         if (error.line < 0 && vm->currentContext.loc.isValid())
             error.line = static_cast<int32_t>(vm->currentContext.loc.line);
 
+        if (vm->prepareTrap(error))
+            return;
+
         frame = vm->buildFrameInfo(error);
         message = vm->recordTrap(error, frame);
     }

@@ -69,6 +69,9 @@ Frame VM::setupFrame(const Function &fn,
     fr.regs.resize(fn.valueNames.size());
     assert(fr.regs.size() == fn.valueNames.size());
     fr.params.assign(fr.regs.size(), std::nullopt);
+    fr.ehStack.clear();
+    fr.activeError = {};
+    fr.resumeState = {};
     for (const auto &b : fn.blocks)
         blocks[b.label] = &b;
     bb = fn.blocks.empty() ? nullptr : &fn.blocks.front();
