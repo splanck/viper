@@ -140,6 +140,8 @@ VM::OpcodeHandler handlerForDispatch(VMDispatch dispatch)
             return &OpHandlers::handleErrGet;
         case VMDispatch::Trap:
             return &OpHandlers::handleTrap;
+        case VMDispatch::TrapFromErr:
+            return &OpHandlers::handleTrap;
         case VMDispatch::EhPush:
             return &OpHandlers::handleEhPush;
         case VMDispatch::EhPop:
