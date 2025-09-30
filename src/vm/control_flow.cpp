@@ -14,6 +14,7 @@
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/Trap.hpp"
+#include "vm/err_bridge.hpp"
 #include <algorithm>
 #include <cassert>
 #include <vector>
@@ -390,6 +391,13 @@ VM::ExecResult OpHandlers::handleTrap(VM &vm,
             Slot kindSlot = vm.eval(fr, in.operands[0]);
             const auto trapKind = trapKindFromValue(static_cast<int32_t>(kindSlot.i64));
             vm_raise(trapKind);
+            break;
+        }
+        case Opcode::TrapFromErr:
+        {
+            Slot codeSlot = vm.eval(fr, in.operands[0]);
+            const auto trapKind = map_err_to_trap(static_cast<int32_t>(codeSlot.i64));
+            vm_raise(trapKind, static_cast<int32_t>(codeSlot.i64));
             break;
         }
         case Opcode::TrapErr:

@@ -388,6 +388,9 @@ bool isTerminator(Opcode op)
         case Opcode::CBr:
         case Opcode::Ret:
         case Opcode::Trap:
+        case Opcode::TrapKind:
+        case Opcode::TrapFromErr:
+        case Opcode::TrapErr:
         case Opcode::ResumeSame:
         case Opcode::ResumeNext:
         case Opcode::ResumeLabel:

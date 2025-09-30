@@ -134,6 +134,7 @@ bool isTerminatorForEh(Opcode op)
         case Opcode::Ret:
         case Opcode::Trap:
         case Opcode::TrapKind:
+        case Opcode::TrapFromErr:
         case Opcode::TrapErr:
         case Opcode::ResumeSame:
         case Opcode::ResumeNext:

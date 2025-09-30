@@ -71,6 +71,13 @@ void printTrapKindOperand(const Instr &instr, std::ostream &os)
     os << ' ' << il::core::toString(operand);
 }
 
+void printTrapFromErrOperands(const Instr &instr, std::ostream &os)
+{
+    os << ' ' << instr.type.toString();
+    if (!instr.operands.empty())
+        os << ' ' << il::core::toString(instr.operands.front());
+}
+
 void printCallOperands(const Instr &instr, std::ostream &os)
 {
     os << " @" << instr.callee << "(";
@@ -190,6 +197,8 @@ const Formatter &formatterFor(Opcode op)
         { printStoreOperands(instr, os); };
         table[toIndex(Opcode::TrapKind)] = [](const Instr &instr, std::ostream &os)
         { printTrapKindOperand(instr, os); };
+        table[toIndex(Opcode::TrapFromErr)] = [](const Instr &instr, std::ostream &os)
+        { printTrapFromErrOperands(instr, os); };
         table[toIndex(Opcode::EhPush)] = [](const Instr &instr, std::ostream &os)
         {
             if (!instr.labels.empty())

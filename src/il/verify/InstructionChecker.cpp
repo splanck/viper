@@ -544,6 +544,50 @@ Expected<void> checkIdxChk_E(const Function &fn,
     return {};
 }
 
+/// @brief Validate trap.from_err operands ensure i32 typing and range.
+/// @param fn Function providing diagnostic context.
+/// @param bb Basic block containing the instruction.
+/// @param instr trap.from_err instruction under validation.
+/// @param types Type inference helper used for operand queries.
+/// @return Empty on success; otherwise an error diagnostic describing arity or typing issues.
+Expected<void> checkTrapFromErr_E(const Function &fn,
+                                  const BasicBlock &bb,
+                                  const Instr &instr,
+                                  TypeInference &types)
+{
+    if (instr.operands.size() != 1)
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "invalid operand count"))};
+
+    if (instr.type.kind != Type::Kind::I32)
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "trap.from_err expects i32 type"))};
+
+    const auto &operand = instr.operands.front();
+    if (operand.kind == Value::Kind::Temp)
+    {
+        if (types.valueType(operand).kind != Type::Kind::I32)
+        {
+            return Expected<void>{makeError(instr.loc,
+                                            formatInstrDiag(fn, bb, instr, "trap.from_err operand must be i32"))};
+        }
+    }
+    else if (operand.kind == Value::Kind::ConstInt)
+    {
+        if (operand.i64 < std::numeric_limits<int32_t>::min() || operand.i64 > std::numeric_limits<int32_t>::max())
+        {
+            return Expected<void>{makeError(instr.loc,
+                                            formatInstrDiag(fn, bb, instr,
+                                                            "trap.from_err constant out of range"))};
+        }
+    }
+    else
+    {
+        return Expected<void>{makeError(instr.loc,
+                                        formatInstrDiag(fn, bb, instr, "trap.from_err operand must be i32"))};
+    }
+
+    return {};
+}
+
 /// @brief Verify unary conversions and casts.
 /// @param fn Function supplying diagnostic context.
 /// @param bb Basic block containing the instruction.
@@ -879,6 +923,8 @@ Expected<void> verifyInstruction_impl(const Function &fn,
             return checkCall_E(fn, bb, instr, externs, funcs, types);
         case Opcode::TrapKind:
             return expectAllOperandType(fn, bb, instr, types, Type::Kind::I64);
+        case Opcode::TrapFromErr:
+            return checkTrapFromErr_E(fn, bb, instr, types);
         case Opcode::TrapErr:
             return expectAllOperandType(fn, bb, instr, types, Type::Kind::Error);
         case Opcode::ErrGetKind:
