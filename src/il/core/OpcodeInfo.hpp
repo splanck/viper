@@ -61,6 +61,7 @@ enum class VMDispatch : uint8_t
     UDivChk0,
     SRemChk0,
     URemChk0,
+    IdxChk,
     Xor,
     Shl,
     FAdd,
@@ -98,7 +99,11 @@ enum class VMDispatch : uint8_t
     EhPop,
     ResumeSame,
     ResumeNext,
-    ResumeLabel
+    ResumeLabel,
+    ErrGetKind,
+    ErrGetCode,
+    ErrGetIp,
+    ErrGetLine
 };
 
 /// @brief Maximum number of operand categories stored per opcode.

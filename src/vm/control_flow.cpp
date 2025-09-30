@@ -341,5 +341,97 @@ VM::ExecResult OpHandlers::handleTrap(VM &vm,
     return result;
 }
 
+VM::ExecResult OpHandlers::handleErrGetKind(VM &vm,
+                                            Frame &fr,
+                                            const Instr &in,
+                                            const VM::BlockMap &blocks,
+                                            const BasicBlock *&bb,
+                                            size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+
+    const Slot errorSlot = vm.eval(fr, in.operands[0]);
+    const auto *errorPtr = reinterpret_cast<const VmError *>(errorSlot.ptr);
+    assert((errorPtr == nullptr || errorPtr == &fr.activeError) &&
+           "err.get_kind operand must reference the active error record");
+    const VmError &error = errorPtr ? *errorPtr : fr.activeError;
+
+    Slot out{};
+    out.i64 = static_cast<int64_t>(static_cast<int32_t>(error.kind));
+    ops::storeResult(fr, in, out);
+    return {};
+}
+
+VM::ExecResult OpHandlers::handleErrGetCode(VM &vm,
+                                            Frame &fr,
+                                            const Instr &in,
+                                            const VM::BlockMap &blocks,
+                                            const BasicBlock *&bb,
+                                            size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+
+    const Slot errorSlot = vm.eval(fr, in.operands[0]);
+    const auto *errorPtr = reinterpret_cast<const VmError *>(errorSlot.ptr);
+    assert((errorPtr == nullptr || errorPtr == &fr.activeError) &&
+           "err.get_code operand must reference the active error record");
+    const VmError &error = errorPtr ? *errorPtr : fr.activeError;
+
+    Slot out{};
+    out.i64 = static_cast<int64_t>(error.code);
+    ops::storeResult(fr, in, out);
+    return {};
+}
+
+VM::ExecResult OpHandlers::handleErrGetIp(VM &vm,
+                                          Frame &fr,
+                                          const Instr &in,
+                                          const VM::BlockMap &blocks,
+                                          const BasicBlock *&bb,
+                                          size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+
+    const Slot errorSlot = vm.eval(fr, in.operands[0]);
+    const auto *errorPtr = reinterpret_cast<const VmError *>(errorSlot.ptr);
+    assert((errorPtr == nullptr || errorPtr == &fr.activeError) &&
+           "err.get_ip operand must reference the active error record");
+    const VmError &error = errorPtr ? *errorPtr : fr.activeError;
+
+    Slot out{};
+    out.i64 = static_cast<int64_t>(error.ip);
+    ops::storeResult(fr, in, out);
+    return {};
+}
+
+VM::ExecResult OpHandlers::handleErrGetLine(VM &vm,
+                                            Frame &fr,
+                                            const Instr &in,
+                                            const VM::BlockMap &blocks,
+                                            const BasicBlock *&bb,
+                                            size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+
+    const Slot errorSlot = vm.eval(fr, in.operands[0]);
+    const auto *errorPtr = reinterpret_cast<const VmError *>(errorSlot.ptr);
+    assert((errorPtr == nullptr || errorPtr == &fr.activeError) &&
+           "err.get_line operand must reference the active error record");
+    const VmError &error = errorPtr ? *errorPtr : fr.activeError;
+
+    Slot out{};
+    out.i64 = static_cast<int64_t>(error.line);
+    ops::storeResult(fr, in, out);
+    return {};
+}
+
 } // namespace il::vm::detail
 

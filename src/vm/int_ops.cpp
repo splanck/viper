@@ -14,6 +14,7 @@
 #include "il/core/Instr.hpp"
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/RuntimeBridge.hpp"
+#include "vm/Trap.hpp"
 
 #include <cstdint>
 #include <limits>
@@ -481,6 +482,60 @@ VM::ExecResult OpHandlers::handleURemChk0(VM &vm,
                                 const auto dividend = static_cast<uint64_t>(lhsVal.i64);
                                 out.i64 = static_cast<int64_t>(dividend % divisor);
                             });
+}
+
+/// @brief Interpret the `idx.chk` opcode for 16-bit and 32-bit indices.
+VM::ExecResult OpHandlers::handleIdxChk(VM &vm,
+                                        Frame &fr,
+                                        const Instr &in,
+                                        const VM::BlockMap &blocks,
+                                        const BasicBlock *&bb,
+                                        size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+
+    const Slot idxSlot = vm.eval(fr, in.operands[0]);
+    const Slot loSlot = vm.eval(fr, in.operands[1]);
+    const Slot hiSlot = vm.eval(fr, in.operands[2]);
+
+    Slot out{};
+    switch (in.type.kind)
+    {
+        case Type::Kind::I16:
+        {
+            const int16_t idx = static_cast<int16_t>(idxSlot.i64);
+            const int16_t lo = static_cast<int16_t>(loSlot.i64);
+            const int16_t hi = static_cast<int16_t>(hiSlot.i64);
+            if (idx < lo || idx > hi)
+            {
+                vm_raise(TrapKind::Bounds);
+                return {};
+            }
+            out.i64 = static_cast<int64_t>(idx);
+            break;
+        }
+        case Type::Kind::I32:
+        {
+            const int32_t idx = static_cast<int32_t>(idxSlot.i64);
+            const int32_t lo = static_cast<int32_t>(loSlot.i64);
+            const int32_t hi = static_cast<int32_t>(hiSlot.i64);
+            if (idx < lo || idx > hi)
+            {
+                vm_raise(TrapKind::Bounds);
+                return {};
+            }
+            out.i64 = static_cast<int64_t>(idx);
+            break;
+        }
+        default:
+            vm_raise(TrapKind::RuntimeError);
+            return {};
+    }
+
+    ops::storeResult(fr, in, out);
+    return {};
 }
 
 /// @brief Interpret the `cast.si_narrow.chk` opcode with range checking for signed integers.
