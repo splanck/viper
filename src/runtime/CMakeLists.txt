@@ -8,6 +8,7 @@ set(RT_SOURCES
   rt_array.c
   rt_heap.c
   rt_numeric.c
+  rt_debug.c
 )
 
 set(RT_PUBLIC_HEADERS
@@ -19,6 +20,7 @@ set(RT_PUBLIC_HEADERS
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_string.h
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_array.h
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_heap.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/rt_debug.h
 )
 
 add_library(viper_runtime STATIC ${RT_SOURCES})

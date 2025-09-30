@@ -19,6 +19,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <limits>
 #include <unordered_map>
 #include <vector>
 
@@ -432,23 +433,114 @@ Expected<void> checkIdxChk_E(const Function &fn,
     if (instr.operands.size() != 3)
         return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "invalid operand count"))};
 
-    const auto idxKind = types.valueType(instr.operands[0]).kind;
-    if (idxKind != Type::Kind::I16 && idxKind != Type::Kind::I32)
-    {
-        return Expected<void>{makeError(
-            instr.loc, formatInstrDiag(fn, bb, instr, "operands must be i16 or i32"))};
-    }
-
-    for (size_t i = 1; i < instr.operands.size(); ++i)
-    {
-        if (types.valueType(instr.operands[i]).kind != idxKind)
+    auto fitsInKind = [](long long value, Type::Kind kind) {
+        switch (kind)
         {
-            return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr,
-                                                                     "operands must share i16/i32 width"))};
+            case Type::Kind::I16:
+                return value >= std::numeric_limits<int16_t>::min() &&
+                       value <= std::numeric_limits<int16_t>::max();
+            case Type::Kind::I32:
+                return value >= std::numeric_limits<int32_t>::min() &&
+                       value <= std::numeric_limits<int32_t>::max();
+            default:
+                return false;
+        }
+    };
+
+    Type::Kind expectedKind = Type::Kind::Void;
+    if (instr.type.kind == Type::Kind::I16 || instr.type.kind == Type::Kind::I32)
+        expectedKind = instr.type.kind;
+
+    const auto classifyOperand = [&](const Value &value) -> Expected<Type::Kind> {
+        if (value.kind == Value::Kind::Temp)
+        {
+            Type::Kind kind = types.valueType(value).kind;
+            if (kind == Type::Kind::Void)
+            {
+                return Expected<Type::Kind>{makeError(instr.loc,
+                                                      formatInstrDiag(fn, bb, instr,
+                                                                      "unknown temp in idx.chk"))};
+            }
+            return kind;
+        }
+        if (value.kind == Value::Kind::ConstInt)
+        {
+            if (expectedKind == Type::Kind::Void)
+            {
+                if (fitsInKind(value.i64, Type::Kind::I16))
+                    return Type::Kind::I16;
+                if (fitsInKind(value.i64, Type::Kind::I32))
+                    return Type::Kind::I32;
+                return Expected<Type::Kind>{makeError(instr.loc,
+                                                      formatInstrDiag(fn,
+                                                                      bb,
+                                                                      instr,
+                                                                      "constant out of range for idx.chk"))};
+            }
+            if (!fitsInKind(value.i64, expectedKind))
+            {
+                return Expected<Type::Kind>{makeError(instr.loc,
+                                                      formatInstrDiag(fn,
+                                                                      bb,
+                                                                      instr,
+                                                                      "constant out of range for idx.chk"))};
+            }
+            return expectedKind;
+        }
+        return Expected<Type::Kind>{makeError(instr.loc,
+                                              formatInstrDiag(fn,
+                                                              bb,
+                                                              instr,
+                                                              "operands must be i16 or i32"))};
+    };
+
+    for (size_t i = 0; i < instr.operands.size(); ++i)
+    {
+        auto kindResult = classifyOperand(instr.operands[i]);
+        if (!kindResult)
+            return Expected<void>{kindResult.error()};
+        Type::Kind operandKind = kindResult.value();
+        if (operandKind != Type::Kind::I16 && operandKind != Type::Kind::I32)
+        {
+            return Expected<void>{makeError(instr.loc,
+                                            formatInstrDiag(fn,
+                                                            bb,
+                                                            instr,
+                                                            "operands must be i16 or i32"))};
+        }
+        if (expectedKind == Type::Kind::Void)
+        {
+            expectedKind = operandKind;
+        }
+        else if (operandKind != expectedKind)
+        {
+            return Expected<void>{makeError(instr.loc,
+                                            formatInstrDiag(fn,
+                                                            bb,
+                                                            instr,
+                                                            "operands must share i16/i32 width"))};
         }
     }
 
-    types.recordResult(instr, Type(idxKind));
+    if (expectedKind != Type::Kind::I16 && expectedKind != Type::Kind::I32)
+    {
+        return Expected<void>{makeError(instr.loc,
+                                        formatInstrDiag(fn,
+                                                        bb,
+                                                        instr,
+                                                        "operands must be i16 or i32"))};
+    }
+
+    if (instr.type.kind != Type::Kind::Void && instr.type.kind != expectedKind)
+    {
+        return Expected<void>{makeError(instr.loc,
+                                        formatInstrDiag(fn,
+                                                        bb,
+                                                        instr,
+                                                        "result type annotation must match operand width"))};
+    }
+
+    types.recordResult(instr, Type(expectedKind));
     return {};
 }
 

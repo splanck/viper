@@ -382,7 +382,19 @@ Expected<void> verifyRet_E(const Function &fn,
 
 bool isTerminator(Opcode op)
 {
-    return op == Opcode::Br || op == Opcode::CBr || op == Opcode::Ret || op == Opcode::Trap;
+    switch (op)
+    {
+        case Opcode::Br:
+        case Opcode::CBr:
+        case Opcode::Ret:
+        case Opcode::Trap:
+        case Opcode::ResumeSame:
+        case Opcode::ResumeNext:
+        case Opcode::ResumeLabel:
+            return true;
+        default:
+            return false;
+    }
 }
 
 bool validateBlockParams(const Function &fn,

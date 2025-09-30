@@ -100,7 +100,8 @@ enum class VMDispatch : uint8_t
     EhPop,
     ResumeSame,
     ResumeNext,
-    ResumeLabel
+    ResumeLabel,
+    EhEntry
 };
 
 /// @brief Maximum number of operand categories stored per opcode.
