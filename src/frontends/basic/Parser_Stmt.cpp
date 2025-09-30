@@ -412,6 +412,24 @@ StmtPtr Parser::parseGoto()
     return stmt;
 }
 
+/// @brief Parse an ON ERROR GOTO statement that configures error handling.
+/// @return OnErrorGoto node describing the handler target or reset.
+StmtPtr Parser::parseOnErrorGoto()
+{
+    auto loc = peek().loc;
+    consume(); // ON
+    expect(TokenKind::KeywordError);
+    expect(TokenKind::KeywordGoto);
+    Token targetTok = peek();
+    int target = std::atoi(targetTok.lexeme.c_str());
+    expect(TokenKind::Number);
+    auto stmt = std::make_unique<OnErrorGoto>();
+    stmt->loc = loc;
+    stmt->target = target;
+    stmt->toZero = targetTok.kind == TokenKind::Number && target == 0;
+    return stmt;
+}
+
 /// @brief Parse an END statement.
 /// @return EndStmt marking program or procedure termination.
 StmtPtr Parser::parseEnd()
@@ -446,6 +464,31 @@ StmtPtr Parser::parseInput()
     stmt->loc = loc;
     stmt->prompt = std::move(prompt);
     stmt->var = name;
+    return stmt;
+}
+
+/// @brief Parse a RESUME statement controlling error resumption.
+/// @return Resume node describing the desired resumption mode.
+StmtPtr Parser::parseResume()
+{
+    auto loc = peek().loc;
+    consume(); // RESUME
+    auto stmt = std::make_unique<Resume>();
+    stmt->loc = loc;
+    if (at(TokenKind::KeywordNext))
+    {
+        consume();
+        stmt->mode = Resume::Mode::Next;
+    }
+    else if (!(at(TokenKind::EndOfLine) || at(TokenKind::EndOfFile) || at(TokenKind::Colon) ||
+               isStatementStart(peek().kind)))
+    {
+        Token labelTok = peek();
+        int target = std::atoi(labelTok.lexeme.c_str());
+        expect(TokenKind::Number);
+        stmt->mode = Resume::Mode::Label;
+        stmt->target = target;
+    }
     return stmt;
 }
 

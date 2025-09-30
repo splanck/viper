@@ -194,6 +194,10 @@ class Parser
     /// @return GOTO statement node.
     StmtPtr parseGoto();
 
+    /// @brief Parse an ON ERROR GOTO statement.
+    /// @return ON ERROR statement node.
+    StmtPtr parseOnErrorGoto();
+
     /// @brief Parse an END statement.
     /// @return END statement node.
     StmtPtr parseEnd();
@@ -201,6 +205,10 @@ class Parser
     /// @brief Parse an INPUT statement.
     /// @return INPUT statement node.
     StmtPtr parseInput();
+
+    /// @brief Parse a RESUME statement.
+    /// @return RESUME statement node.
+    StmtPtr parseResume();
 
     /// @brief Parse a DIM statement defining arrays.
     /// @return DIM statement node.

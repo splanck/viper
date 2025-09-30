@@ -62,6 +62,10 @@ const char *tokenKindToString(TokenKind k)
             return "STEP";
         case TokenKind::KeywordNext:
             return "NEXT";
+        case TokenKind::KeywordOn:
+            return "ON";
+        case TokenKind::KeywordError:
+            return "ERROR";
         case TokenKind::KeywordGoto:
             return "GOTO";
         case TokenKind::KeywordEnd:
@@ -108,6 +112,8 @@ const char *tokenKindToString(TokenKind k)
             return "FUNCTION";
         case TokenKind::KeywordSub:
             return "SUB";
+        case TokenKind::KeywordResume:
+            return "RESUME";
         case TokenKind::KeywordReturn:
             return "RETURN";
         case TokenKind::KeywordLbound:
