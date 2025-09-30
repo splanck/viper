@@ -298,6 +298,30 @@ void GotoStmt::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forward this ON ERROR GOTO statement node to the visitor.
+/// @param visitor Receives the node; ownership remains with the AST.
+void OnErrorGoto::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void OnErrorGoto::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+/// @brief Forward this RESUME statement node to the visitor.
+/// @param visitor Receives the node; ownership remains with the AST.
+void Resume::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void Resume::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
 /// @brief Forwards this end statement node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void EndStmt::accept(StmtVisitor &visitor) const

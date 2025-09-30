@@ -714,6 +714,8 @@ private:
     void visit(NextStmt &) override {}
     void visit(ExitStmt &) override {}
     void visit(GotoStmt &) override {}
+    void visit(OnErrorGoto &) override {}
+    void visit(Resume &) override {}
     void visit(EndStmt &) override {}
     void visit(InputStmt &) override {}
     void visit(ReturnStmt &) override {}

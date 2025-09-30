@@ -25,7 +25,7 @@ struct KeywordEntry
     TokenKind kind;
 };
 
-constexpr std::array<KeywordEntry, 45> kKeywordTable{{
+constexpr std::array<KeywordEntry, 48> kKeywordTable{{
     {"ABS", TokenKind::KeywordAbs},
     {"AND", TokenKind::KeywordAnd},
     {"ANDALSO", TokenKind::KeywordAndAlso},
@@ -38,6 +38,7 @@ constexpr std::array<KeywordEntry, 45> kKeywordTable{{
     {"ELSE", TokenKind::KeywordElse},
     {"ELSEIF", TokenKind::KeywordElseIf},
     {"END", TokenKind::KeywordEnd},
+    {"ERROR", TokenKind::KeywordError},
     {"EXIT", TokenKind::KeywordExit},
     {"FALSE", TokenKind::KeywordFalse},
     {"FLOOR", TokenKind::KeywordFloor},
@@ -52,12 +53,14 @@ constexpr std::array<KeywordEntry, 45> kKeywordTable{{
     {"MOD", TokenKind::KeywordMod},
     {"NEXT", TokenKind::KeywordNext},
     {"NOT", TokenKind::KeywordNot},
+    {"ON", TokenKind::KeywordOn},
     {"OR", TokenKind::KeywordOr},
     {"ORELSE", TokenKind::KeywordOrElse},
     {"POW", TokenKind::KeywordPow},
     {"PRINT", TokenKind::KeywordPrint},
     {"RANDOMIZE", TokenKind::KeywordRandomize},
     {"REDIM", TokenKind::KeywordRedim},
+    {"RESUME", TokenKind::KeywordResume},
     {"RETURN", TokenKind::KeywordReturn},
     {"RND", TokenKind::KeywordRnd},
     {"SIN", TokenKind::KeywordSin},
