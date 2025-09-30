@@ -213,6 +213,42 @@ function(viper_add_golden_suite_tests)
     "-DEXPECT=${EXPECT_ERRORS_MAP_PRINT_KIND}"
     -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
 
+  file(READ ${ERRORS_MAP_DIR}/div_zero_expected.out EXPECT_ERRORS_MAP_DIV_ZERO)
+  string(STRIP "${EXPECT_ERRORS_MAP_DIV_ZERO}" EXPECT_ERRORS_MAP_DIV_ZERO)
+  viper_add_ctest(errors_map_div_zero
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DIL_FILE=${ERRORS_MAP_DIR}/div_zero.il
+    "-DEXPECT=${EXPECT_ERRORS_MAP_DIV_ZERO}"
+    -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
+
+  file(READ ${ERRORS_MAP_DIR}/cast_invalid_expected.out EXPECT_ERRORS_MAP_CAST_INVALID)
+  string(STRIP "${EXPECT_ERRORS_MAP_CAST_INVALID}" EXPECT_ERRORS_MAP_CAST_INVALID)
+  viper_add_ctest(errors_map_cast_invalid
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DIL_FILE=${ERRORS_MAP_DIR}/cast_invalid.il
+    "-DEXPECT=${EXPECT_ERRORS_MAP_CAST_INVALID}"
+    -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
+
+  file(READ ${ERRORS_MAP_DIR}/idx_oob_expected.out EXPECT_ERRORS_MAP_IDX_OOB)
+  string(STRIP "${EXPECT_ERRORS_MAP_IDX_OOB}" EXPECT_ERRORS_MAP_IDX_OOB)
+  viper_add_ctest(errors_map_idx_oob
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DIL_FILE=${ERRORS_MAP_DIR}/idx_oob.il
+    "-DEXPECT=${EXPECT_ERRORS_MAP_IDX_OOB}"
+    -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
+
+  file(READ ${ERRORS_MAP_DIR}/from_err_fnf_expected.out EXPECT_ERRORS_MAP_FROM_ERR_FNF)
+  string(STRIP "${EXPECT_ERRORS_MAP_FROM_ERR_FNF}" EXPECT_ERRORS_MAP_FROM_ERR_FNF)
+  viper_add_ctest(errors_map_from_err_fnf
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DIL_FILE=${ERRORS_MAP_DIR}/from_err_fnf.il
+    "-DEXPECT=${EXPECT_ERRORS_MAP_FROM_ERR_FNF}"
+    -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
+
   file(READ ${ERRORS_MAP_DIR}/expected.out EXPECT_ERRORS_MAP_FROM_ERR)
   string(STRIP "${EXPECT_ERRORS_MAP_FROM_ERR}" EXPECT_ERRORS_MAP_FROM_ERR)
   viper_add_ctest(errors_map_from_err
