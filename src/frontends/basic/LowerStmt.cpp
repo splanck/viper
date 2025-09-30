@@ -56,7 +56,7 @@ class LowererStmtVisitor final : public StmtVisitor
 
     void visit(const OnErrorGoto &stmt) override { lowerer_.lowerOnErrorGoto(stmt); }
 
-    void visit(const Resume &) override {}
+    void visit(const Resume &stmt) override { lowerer_.lowerResume(stmt); }
 
     void visit(const EndStmt &stmt) override { lowerer_.lowerEnd(stmt); }
 
@@ -826,6 +826,75 @@ void Lowerer::lowerOnErrorGoto(const OnErrorGoto &stmt)
     ctx.setErrorHandlerActive(true);
     ctx.setActiveErrorHandlerIndex(idx);
     ctx.setActiveErrorHandlerLine(stmt.target);
+}
+
+void Lowerer::lowerResume(const Resume &stmt)
+{
+    ProcedureContext &ctx = context();
+    Function *func = ctx.function();
+    if (!func)
+        return;
+
+    std::optional<size_t> handlerIndex;
+
+    auto &handlersByLine = ctx.errorHandlerBlocks();
+    if (auto it = handlersByLine.find(stmt.line); it != handlersByLine.end())
+    {
+        handlerIndex = it->second;
+    }
+    else if (auto active = ctx.activeErrorHandlerIndex())
+    {
+        handlerIndex = *active;
+    }
+
+    if (!handlerIndex || *handlerIndex >= func->blocks.size())
+        return;
+
+    BasicBlock &handlerBlock = func->blocks[*handlerIndex];
+    if (handlerBlock.terminated)
+        return;
+
+    if (handlerBlock.params.size() < 2)
+        return;
+
+    unsigned tokId = handlerBlock.params[1].id;
+    if (func->valueNames.size() <= tokId)
+        func->valueNames.resize(tokId + 1);
+    if (func->valueNames[tokId].empty())
+        func->valueNames[tokId] = handlerBlock.params[1].name;
+
+    Value resumeTok = Value::temp(tokId);
+
+    Instr instr;
+    instr.type = Type(Type::Kind::Void);
+    instr.loc = curLoc;
+    instr.operands.push_back(resumeTok);
+
+    switch (stmt.mode)
+    {
+        case Resume::Mode::Same:
+            instr.op = Opcode::ResumeSame;
+            break;
+        case Resume::Mode::Next:
+            instr.op = Opcode::ResumeNext;
+            break;
+        case Resume::Mode::Label:
+        {
+            instr.op = Opcode::ResumeLabel;
+            auto &lineBlocks = ctx.lineBlocks();
+            auto targetIt = lineBlocks.find(stmt.target);
+            if (targetIt == lineBlocks.end())
+                return;
+            size_t targetIdx = targetIt->second;
+            if (targetIdx >= func->blocks.size())
+                return;
+            instr.labels.push_back(func->blocks[targetIdx].label);
+            break;
+        }
+    }
+
+    handlerBlock.instructions.push_back(std::move(instr));
+    handlerBlock.terminated = true;
 }
 
 /// @brief Lower an END statement.

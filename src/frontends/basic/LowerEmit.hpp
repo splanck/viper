@@ -128,6 +128,7 @@ void lowerNext(const NextStmt &stmt);
 void lowerExit(const ExitStmt &stmt);
 void lowerGoto(const GotoStmt &stmt);
 void lowerOnErrorGoto(const OnErrorGoto &stmt);
+void lowerResume(const Resume &stmt);
 void lowerEnd(const EndStmt &stmt);
 void lowerInput(const InputStmt &stmt);
 void lowerDim(const DimStmt &stmt);
