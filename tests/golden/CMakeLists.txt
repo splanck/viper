@@ -203,6 +203,16 @@ function(viper_add_golden_suite_tests)
     "-DEXPECT=${EXPECT_NUMERICS_MOD}"
     -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
 
+  set(ERRORS_MAP_DIR ${_VIPER_GOLDEN_DIR}/errors_map)
+  file(READ ${ERRORS_MAP_DIR}/expected.out EXPECT_ERRORS_MAP_PRINT_KIND)
+  string(STRIP "${EXPECT_ERRORS_MAP_PRINT_KIND}" EXPECT_ERRORS_MAP_PRINT_KIND)
+  viper_add_ctest(errors_map_print_kind_from_handler
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DIL_FILE=${ERRORS_MAP_DIR}/print_kind_from_handler.il
+    "-DEXPECT=${EXPECT_ERRORS_MAP_PRINT_KIND}"
+    -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
+
   viper_add_ctest(il_opt_const_if
     ${CMAKE_COMMAND}
     -DILC=${BASIC_ILC}
