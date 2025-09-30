@@ -789,6 +789,22 @@ Expected<void> verifyInstruction_impl(const Function &fn,
             return expectAllOperandType(fn, bb, instr, types, Type::Kind::I64);
         case Opcode::TrapErr:
             return expectAllOperandType(fn, bb, instr, types, Type::Kind::Error);
+        case Opcode::ErrGetKind:
+        case Opcode::ErrGetCode:
+        case Opcode::ErrGetLine:
+        {
+            if (auto result = expectAllOperandType(fn, bb, instr, types, Type::Kind::Error); !result)
+                return result;
+            types.recordResult(instr, Type(Type::Kind::I32));
+            return {};
+        }
+        case Opcode::ErrGetIp:
+        {
+            if (auto result = expectAllOperandType(fn, bb, instr, types, Type::Kind::Error); !result)
+                return result;
+            types.recordResult(instr, Type(Type::Kind::I64));
+            return {};
+        }
         case Opcode::ResumeSame:
         case Opcode::ResumeNext:
         case Opcode::ResumeLabel:
