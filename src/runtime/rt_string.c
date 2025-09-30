@@ -748,7 +748,7 @@ rt_string rt_int_to_str(int64_t v)
 rt_string rt_f64_to_str(double v)
 {
     char buf[64];
-    rt_str_from_double(v, buf, sizeof(buf));
+    rt_str_from_double(v, buf, sizeof(buf), NULL);
     return rt_string_from_bytes(buf, strlen(buf));
 }
 
@@ -765,7 +765,7 @@ rt_string rt_f64_to_str(double v)
 rt_string rt_str_d_alloc(double v)
 {
     char buf[64];
-    rt_str_from_double(v, buf, sizeof(buf));
+    rt_str_from_double(v, buf, sizeof(buf), NULL);
     return rt_string_from_bytes(buf, strlen(buf));
 }
 
@@ -782,7 +782,7 @@ rt_string rt_str_d_alloc(double v)
 rt_string rt_str_f_alloc(float v)
 {
     char buf[32];
-    rt_str_from_float(v, buf, sizeof(buf));
+    rt_str_from_float(v, buf, sizeof(buf), NULL);
     return rt_string_from_bytes(buf, strlen(buf));
 }
 
@@ -799,7 +799,7 @@ rt_string rt_str_f_alloc(float v)
 rt_string rt_str_i32_alloc(int32_t v)
 {
     char buf[32];
-    rt_str_from_i32(v, buf, sizeof(buf));
+    rt_str_from_i32(v, buf, sizeof(buf), NULL);
     return rt_string_from_bytes(buf, strlen(buf));
 }
 
@@ -816,7 +816,7 @@ rt_string rt_str_i32_alloc(int32_t v)
 rt_string rt_str_i16_alloc(int16_t v)
 {
     char buf[16];
-    rt_str_from_i16(v, buf, sizeof(buf));
+    rt_str_from_i16(v, buf, sizeof(buf), NULL);
     return rt_string_from_bytes(buf, strlen(buf));
 }
 
