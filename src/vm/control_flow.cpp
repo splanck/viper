@@ -13,6 +13,7 @@
 #include "il/core/Value.hpp"
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/RuntimeBridge.hpp"
+#include "vm/Trap.hpp"
 #include <algorithm>
 #include <cassert>
 #include <vector>
@@ -21,6 +22,17 @@ using namespace il::core;
 
 namespace il::vm::detail
 {
+namespace
+{
+Frame::ResumeState *expectResumeToken(Frame &fr, const Slot &slot)
+{
+    auto *token = reinterpret_cast<Frame::ResumeState *>(slot.ptr);
+    if (!token || token != &fr.resumeState || !token->valid)
+        return nullptr;
+    return token;
+}
+} // namespace
+
 /// @brief Transfer control to a branch target and seed its parameter slots.
 /// @param vm Active VM used to evaluate branch argument values.
 /// @param fr Current frame receiving parameter updates for the successor block.
@@ -185,6 +197,109 @@ VM::ExecResult OpHandlers::handleCall(VM &vm,
 /// @note Invariant: @ref RuntimeBridge::trap never returns normally; invoking it reports
 ///       the trap and hands control back to the embedding host. The handler still marks
 ///       the frame as returned so the VM unwinds without executing further IL.
+VM::ExecResult OpHandlers::handleEhPush(VM &vm,
+                                        Frame &fr,
+                                        const Instr &in,
+                                        const VM::BlockMap &blocks,
+                                        const BasicBlock *&bb,
+                                        size_t &ip)
+{
+    (void)vm;
+    (void)bb;
+    (void)ip;
+    assert(!in.labels.empty() && "eh.push requires handler label");
+    auto it = blocks.find(in.labels[0]);
+    assert(it != blocks.end() && "eh.push target must exist");
+    Frame::HandlerRecord record{};
+    record.handler = it->second;
+    record.ipSnapshot = ip;
+    fr.ehStack.push_back(record);
+    return {};
+}
+
+VM::ExecResult OpHandlers::handleEhPop(VM &vm,
+                                       Frame &fr,
+                                       const Instr &in,
+                                       const VM::BlockMap &blocks,
+                                       const BasicBlock *&bb,
+                                       size_t &ip)
+{
+    (void)vm;
+    (void)in;
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+    if (!fr.ehStack.empty())
+        fr.ehStack.pop_back();
+    return {};
+}
+
+VM::ExecResult OpHandlers::handleResumeSame(VM &vm,
+                                            Frame &fr,
+                                            const Instr &in,
+                                            const VM::BlockMap &blocks,
+                                            const BasicBlock *&bb,
+                                            size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    Slot tokSlot = vm.eval(fr, in.operands[0]);
+    Frame::ResumeState *token = expectResumeToken(fr, tokSlot);
+    if (!token || !token->block)
+    {
+        vm_raise(TrapKind::InvalidOperation);
+        return {};
+    }
+    fr.resumeState.valid = false;
+    bb = token->block;
+    ip = token->faultIp;
+    VM::ExecResult result{};
+    result.jumped = true;
+    return result;
+}
+
+VM::ExecResult OpHandlers::handleResumeNext(VM &vm,
+                                            Frame &fr,
+                                            const Instr &in,
+                                            const VM::BlockMap &blocks,
+                                            const BasicBlock *&bb,
+                                            size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    Slot tokSlot = vm.eval(fr, in.operands[0]);
+    Frame::ResumeState *token = expectResumeToken(fr, tokSlot);
+    if (!token || !token->block)
+    {
+        vm_raise(TrapKind::InvalidOperation);
+        return {};
+    }
+    fr.resumeState.valid = false;
+    bb = token->block;
+    ip = token->nextIp;
+    VM::ExecResult result{};
+    result.jumped = true;
+    return result;
+}
+
+VM::ExecResult OpHandlers::handleResumeLabel(VM &vm,
+                                             Frame &fr,
+                                             const Instr &in,
+                                             const VM::BlockMap &blocks,
+                                             const BasicBlock *&bb,
+                                             size_t &ip)
+{
+    Slot tokSlot = vm.eval(fr, in.operands[0]);
+    Frame::ResumeState *token = expectResumeToken(fr, tokSlot);
+    if (!token)
+    {
+        vm_raise(TrapKind::InvalidOperation);
+        return {};
+    }
+    fr.resumeState.valid = false;
+    return branchToTarget(vm, fr, in, 0, blocks, bb, ip);
+}
+
 VM::ExecResult OpHandlers::handleTrap(VM &vm,
                                       Frame &fr,
                                       const Instr &in,
