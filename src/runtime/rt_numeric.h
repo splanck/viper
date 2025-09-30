@@ -9,6 +9,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include "rt_error.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -62,25 +64,29 @@ extern "C" {
     /// @param x Value to format.
     /// @param out Destination buffer; must not be NULL.
     /// @param cap Capacity of @p out in bytes; must be non-zero.
-    void rt_str_from_double(double x, char *out, size_t cap);
+    /// @param out_err Optional error record receiving Err_None on success.
+    void rt_str_from_double(double x, char *out, size_t cap, RtError *out_err);
 
     /// @brief Format SINGLE @p x into @p out using round-trip precision.
     /// @param x Value to format.
     /// @param out Destination buffer; must not be NULL.
     /// @param cap Capacity of @p out in bytes; must be non-zero.
-    void rt_str_from_float(float x, char *out, size_t cap);
+    /// @param out_err Optional error record receiving Err_None on success.
+    void rt_str_from_float(float x, char *out, size_t cap, RtError *out_err);
 
     /// @brief Format LONG @p x into @p out as minimal decimal digits.
     /// @param x Value to format.
     /// @param out Destination buffer; must not be NULL.
     /// @param cap Capacity of @p out in bytes; must be non-zero.
-    void rt_str_from_i32(int32_t x, char *out, size_t cap);
+    /// @param out_err Optional error record receiving Err_None on success.
+    void rt_str_from_i32(int32_t x, char *out, size_t cap, RtError *out_err);
 
     /// @brief Format INTEGER @p x into @p out as minimal decimal digits.
     /// @param x Value to format.
     /// @param out Destination buffer; must not be NULL.
     /// @param cap Capacity of @p out in bytes; must be non-zero.
-    void rt_str_from_i16(int16_t x, char *out, size_t cap);
+    /// @param out_err Optional error record receiving Err_None on success.
+    void rt_str_from_i16(int16_t x, char *out, size_t cap, RtError *out_err);
 
 #ifdef __cplusplus
 }
