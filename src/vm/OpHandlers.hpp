@@ -335,6 +335,41 @@ struct OpHandlers
                                              const il::core::BasicBlock *&bb,
                                              size_t &ip);
 
+    static VM::ExecResult handleEhPush(VM &vm,
+                                       Frame &fr,
+                                       const il::core::Instr &in,
+                                       const VM::BlockMap &blocks,
+                                       const il::core::BasicBlock *&bb,
+                                       size_t &ip);
+
+    static VM::ExecResult handleEhPop(VM &vm,
+                                      Frame &fr,
+                                      const il::core::Instr &in,
+                                      const VM::BlockMap &blocks,
+                                      const il::core::BasicBlock *&bb,
+                                      size_t &ip);
+
+    static VM::ExecResult handleResumeSame(VM &vm,
+                                           Frame &fr,
+                                           const il::core::Instr &in,
+                                           const VM::BlockMap &blocks,
+                                           const il::core::BasicBlock *&bb,
+                                           size_t &ip);
+
+    static VM::ExecResult handleResumeNext(VM &vm,
+                                           Frame &fr,
+                                           const il::core::Instr &in,
+                                           const VM::BlockMap &blocks,
+                                           const il::core::BasicBlock *&bb,
+                                           size_t &ip);
+
+    static VM::ExecResult handleResumeLabel(VM &vm,
+                                            Frame &fr,
+                                            const il::core::Instr &in,
+                                            const VM::BlockMap &blocks,
+                                            const il::core::BasicBlock *&bb,
+                                            size_t &ip);
+
     static VM::ExecResult handleTrap(VM &vm,
                                      Frame &fr,
                                      const il::core::Instr &in,

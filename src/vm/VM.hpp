@@ -9,6 +9,8 @@
 #include "vm/RuntimeBridge.hpp"
 #include "vm/Trace.hpp"
 #include "vm/Trap.hpp"
+#include "support/source_location.hpp"
+#include <exception>
 #include "il/core/fwd.hpp"
 #include "il/core/Opcode.hpp"
 #include "rt.hpp"
@@ -56,6 +58,20 @@ union Slot
 /// @invariant Stack pointer @c sp never exceeds @c stack size.
 struct Frame
 {
+    struct HandlerRecord
+    {
+        const il::core::BasicBlock *handler = nullptr;
+        size_t ipSnapshot = 0;
+    };
+
+    struct ResumeState
+    {
+        const il::core::BasicBlock *block = nullptr;
+        size_t faultIp = 0;
+        size_t nextIp = 0;
+        bool valid = false;
+    };
+
     /// @brief Executing function.
     /// @ownership Non-owning; function resides in the module.
     /// @invariant Never null for a valid frame.
@@ -76,6 +92,15 @@ struct Frame
     /// @brief Pending block parameter values indexed by SSA id.
     /// @ownership Owned by the frame; sized to the register file and reset on use.
     std::vector<std::optional<Slot>> params;
+
+    /// @brief Active exception handlers in this frame.
+    std::vector<HandlerRecord> ehStack;
+
+    /// @brief Error payload staged for the current handler.
+    VmError activeError{};
+
+    /// @brief Resume token payload for handler resumption.
+    ResumeState resumeState{};
 };
 
 /// @brief Simple interpreter for the IL.
@@ -269,7 +294,25 @@ class VM
         const il::core::BasicBlock *bb = nullptr; ///< Active basic block
         size_t ip = 0;                            ///< Instruction pointer within @p bb
         bool skipBreakOnce = false;               ///< Whether to skip next breakpoint
+        const il::core::BasicBlock *callSiteBlock = nullptr; ///< Block of the call that entered this frame
+        size_t callSiteIp = 0;                                ///< Instruction index of the call in the caller
+        il::support::SourceLoc callSiteLoc{};                 ///< Source location of the call site
     };
+
+    bool prepareTrap(VmError &error);
+    [[noreturn]] void throwForTrap(ExecState *target);
+
+    struct TrapDispatchSignal : std::exception
+    {
+        explicit TrapDispatchSignal(ExecState *targetState) : target(targetState) {}
+
+        ExecState *target;
+
+        const char *what() const noexcept override { return "trap dispatch"; }
+    };
+
+    /// @brief Active execution stack for trap unwinding.
+    std::vector<ExecState *> execStack;
 
     /// @brief Prepare initial execution state for @p fn.
     /// @param fn Function to execute.

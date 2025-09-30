@@ -136,6 +136,16 @@ VM::OpcodeHandler handlerForDispatch(VMDispatch dispatch)
             return &OpHandlers::handleTruncOrZext1;
         case VMDispatch::Trap:
             return &OpHandlers::handleTrap;
+        case VMDispatch::EhPush:
+            return &OpHandlers::handleEhPush;
+        case VMDispatch::EhPop:
+            return &OpHandlers::handleEhPop;
+        case VMDispatch::ResumeSame:
+            return &OpHandlers::handleResumeSame;
+        case VMDispatch::ResumeNext:
+            return &OpHandlers::handleResumeNext;
+        case VMDispatch::ResumeLabel:
+            return &OpHandlers::handleResumeLabel;
     }
     return nullptr;
 }

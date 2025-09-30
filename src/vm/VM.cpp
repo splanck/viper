@@ -12,7 +12,9 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/Value.hpp"
 #include "vm/RuntimeBridge.hpp"
+#include <algorithm>
 #include <cassert>
+#include <exception>
 #include <iostream>
 #include <sstream>
 
@@ -39,6 +41,7 @@ struct ActiveVMGuard
         tlsActiveVM = previous;
     }
 };
+
 } // namespace
 
 
@@ -162,29 +165,42 @@ VM::ExecResult VM::executeOpcode(Frame &fr,
 /// @return Return value of the function or special slot from debug control.
 Slot VM::runFunctionLoop(ExecState &st)
 {
-    clearCurrentContext();
-    while (st.bb && st.ip < st.bb->instructions.size())
+    for (;;)
     {
-        const Instr &in = st.bb->instructions[st.ip];
-        setCurrentContext(st.fr, st.bb, st.ip, in);
-        if (auto br = processDebugControl(st, &in, false))
-            return *br;
-        tracer.onStep(in, st.fr);
-        ++instrCount;
-        auto res = executeOpcode(st.fr, in, st.blocks, st.bb, st.ip);
-        if (res.returned)
-            return res.value;
-        if (res.jumped)
-            debug.resetLastHit();
-        else
-            ++st.ip;
-        if (auto br = processDebugControl(st, nullptr, true))
-            return *br;
+        clearCurrentContext();
+        try
+        {
+            while (st.bb && st.ip < st.bb->instructions.size())
+            {
+                const Instr &in = st.bb->instructions[st.ip];
+                setCurrentContext(st.fr, st.bb, st.ip, in);
+                if (auto br = processDebugControl(st, &in, false))
+                    return *br;
+                tracer.onStep(in, st.fr);
+                ++instrCount;
+                auto res = executeOpcode(st.fr, in, st.blocks, st.bb, st.ip);
+                if (res.returned)
+                    return res.value;
+                if (res.jumped)
+                    debug.resetLastHit();
+                else
+                    ++st.ip;
+                if (auto br = processDebugControl(st, nullptr, true))
+                    return *br;
+            }
+            clearCurrentContext();
+            Slot s{};
+            s.i64 = 0;
+            return s;
+        }
+        catch (const TrapDispatchSignal &signal)
+        {
+            if (signal.target != &st)
+                throw;
+            clearCurrentContext();
+            continue;
+        }
     }
-    clearCurrentContext();
-    Slot s{};
-    s.i64 = 0;
-    return s;
 }
 
 /// Execute function @p fn with optional arguments.
@@ -204,6 +220,23 @@ Slot VM::execFunction(const Function &fn, const std::vector<Slot> &args)
     ActiveVMGuard guard(this);
     lastTrap = {};
     auto st = prepareExecution(fn, args);
+    st.callSiteBlock = currentContext.block;
+    st.callSiteIp = currentContext.hasInstruction ? currentContext.instructionIndex : 0;
+    st.callSiteLoc = currentContext.loc;
+    struct ExecStackGuard
+    {
+        VM &vm;
+        VM::ExecState *state;
+        ExecStackGuard(VM &vmRef, VM::ExecState &stRef) : vm(vmRef), state(&stRef)
+        {
+            vm.execStack.push_back(state);
+        }
+        ~ExecStackGuard()
+        {
+            if (!vm.execStack.empty() && vm.execStack.back() == state)
+                vm.execStack.pop_back();
+        }
+    } guardStack(*this, st);
     return runFunctionLoop(st);
 }
 
@@ -256,7 +289,9 @@ FrameInfo VM::buildFrameInfo(const VmError &error) const
     else if (frame.line < 0 && lastTrap.frame.line >= 0)
         frame.line = lastTrap.frame.line;
 
-    frame.handlerInstalled = false; // Handler stack to be implemented.
+    frame.handlerInstalled = std::any_of(execStack.begin(), execStack.end(), [](const ExecState *st) {
+        return st && !st->fr.ehStack.empty();
+    });
     return frame;
 }
 
@@ -271,6 +306,65 @@ std::string VM::recordTrap(const VmError &error, const FrameInfo &frame)
 VM *VM::activeInstance()
 {
     return tlsActiveVM;
+}
+
+bool VM::prepareTrap(VmError &error)
+{
+    const BasicBlock *faultBlock = currentContext.block;
+    size_t faultIp = currentContext.hasInstruction ? currentContext.instructionIndex : 0;
+    il::support::SourceLoc faultLoc = currentContext.loc;
+
+    for (auto it = execStack.rbegin(); it != execStack.rend(); ++it)
+    {
+        ExecState *st = *it;
+        Frame &fr = st->fr;
+        if (!fr.ehStack.empty())
+        {
+            const auto &record = fr.ehStack.back();
+            fr.activeError = error;
+            const uint64_t ipValue = static_cast<uint64_t>(faultIp);
+            const int32_t lineValue = faultLoc.isValid() ? static_cast<int32_t>(faultLoc.line) : -1;
+            fr.activeError.ip = ipValue;
+            fr.activeError.line = lineValue;
+            error.ip = ipValue;
+            error.line = lineValue;
+
+            fr.resumeState.block = faultBlock;
+            fr.resumeState.faultIp = faultIp;
+            fr.resumeState.nextIp = faultBlock ? std::min(faultIp + 1, faultBlock->instructions.size()) : faultIp;
+            fr.resumeState.valid = true;
+
+            Slot errSlot{};
+            errSlot.ptr = &fr.activeError;
+            Slot tokSlot{};
+            tokSlot.ptr = &fr.resumeState;
+
+            if (!record.handler->params.empty())
+            {
+                const auto &params = record.handler->params;
+                fr.params[params[0].id] = errSlot;
+                if (params.size() > 1)
+                    fr.params[params[1].id] = tokSlot;
+            }
+
+            st->bb = record.handler;
+            st->ip = 0;
+            st->skipBreakOnce = false;
+
+            throwForTrap(st);
+            return true; // Unreachable but silences control-path warnings.
+        }
+
+        faultBlock = st->callSiteBlock;
+        faultIp = st->callSiteIp;
+        faultLoc = st->callSiteLoc;
+    }
+    return false;
+}
+
+[[noreturn]] void VM::throwForTrap(ExecState *target)
+{
+    throw TrapDispatchSignal(target);
 }
 
 } // namespace il::vm
