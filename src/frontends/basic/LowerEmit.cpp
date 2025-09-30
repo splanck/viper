@@ -500,12 +500,90 @@ void Lowerer::releaseArrayParams(const std::unordered_set<std::string> &paramNam
     }
 }
 
+void Lowerer::emitEhPush(BasicBlock *handler)
+{
+    assert(handler && "emitEhPush requires a handler block");
+    Instr in;
+    in.op = Opcode::EhPush;
+    in.type = Type(Type::Kind::Void);
+    in.loc = curLoc;
+    in.labels.push_back(handler->label);
+    BasicBlock *block = context().current();
+    assert(block && "emitEhPush requires an active block");
+    block->instructions.push_back(std::move(in));
+}
+
+void Lowerer::emitEhPop()
+{
+    Instr in;
+    in.op = Opcode::EhPop;
+    in.type = Type(Type::Kind::Void);
+    in.loc = curLoc;
+    BasicBlock *block = context().current();
+    assert(block && "emitEhPop requires an active block");
+    block->instructions.push_back(std::move(in));
+}
+
+void Lowerer::emitEhPopForReturn()
+{
+    if (!context().errorHandlerActive())
+        return;
+    emitEhPop();
+}
+
+void Lowerer::clearActiveErrorHandler()
+{
+    ProcedureContext &ctx = context();
+    if (ctx.errorHandlerActive())
+        emitEhPop();
+    ctx.setErrorHandlerActive(false);
+    ctx.setActiveErrorHandlerIndex(std::nullopt);
+    ctx.setActiveErrorHandlerLine(std::nullopt);
+}
+
+Lowerer::BasicBlock *Lowerer::ensureErrorHandlerBlock(int targetLine)
+{
+    ProcedureContext &ctx = context();
+    Function *func = ctx.function();
+    assert(func && "ensureErrorHandlerBlock requires an active function");
+
+    auto &handlers = ctx.errorHandlerBlocks();
+    auto it = handlers.find(targetLine);
+    if (it != handlers.end())
+        return &func->blocks[it->second];
+
+    std::string base = "handler_L" + std::to_string(targetLine);
+    std::string label;
+    if (BlockNamer *blockNamer = ctx.blockNamer())
+        label = blockNamer->tag(base);
+    else
+        label = mangler.block(base);
+
+    std::vector<il::core::Param> params = {
+        {"err", Type(Type::Kind::Error)},
+        {"tok", Type(Type::Kind::ResumeTok)}
+    };
+    BasicBlock &bb = builder->createBlock(*func, label, params);
+
+    Instr entry;
+    entry.op = Opcode::EhEntry;
+    entry.type = Type(Type::Kind::Void);
+    entry.loc = {};
+    bb.instructions.push_back(entry);
+
+    size_t idx = static_cast<size_t>(&bb - &func->blocks[0]);
+    handlers[targetLine] = idx;
+    ctx.handlerTargetLines()[idx] = targetLine;
+    return &bb;
+}
+
 /// @brief Emit a return carrying a value.
 /// @param v Value to return to the caller.
 /// @details Appends a @c ret instruction to @c cur, records the operand, and marks the block as
 /// terminated so no further instructions are added accidentally.
 void Lowerer::emitRet(Value v)
 {
+    emitEhPopForReturn();
     Instr in;
     in.op = Opcode::Ret;
     in.type = Type(Type::Kind::Void);
@@ -521,6 +599,7 @@ void Lowerer::emitRet(Value v)
 /// @details Mirrors @ref emitRet but without an operand; @c cur becomes terminated afterwards.
 void Lowerer::emitRetVoid()
 {
+    emitEhPopForReturn();
     Instr in;
     in.op = Opcode::Ret;
     in.type = Type(Type::Kind::Void);

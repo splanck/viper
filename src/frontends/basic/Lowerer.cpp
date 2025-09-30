@@ -37,6 +37,11 @@ void Lowerer::ProcedureContext::reset() noexcept
     loopExitTargets_.clear();
     loopExitTargetIdx_.clear();
     loopExitTaken_.clear();
+    errorHandlerActive_ = false;
+    activeErrorHandlerIndex_.reset();
+    activeErrorHandlerLine_.reset();
+    errorHandlerBlocks_.clear();
+    handlerTargetLines_.clear();
 }
 
 Function *Lowerer::ProcedureContext::function() const noexcept
@@ -178,6 +183,58 @@ void Lowerer::ProcedureContext::setBlockNamer(std::unique_ptr<BlockNamer> namer)
 void Lowerer::ProcedureContext::resetBlockNamer() noexcept
 {
     blockNamer_.reset();
+}
+
+bool Lowerer::ProcedureContext::errorHandlerActive() const noexcept
+{
+    return errorHandlerActive_;
+}
+
+void Lowerer::ProcedureContext::setErrorHandlerActive(bool active) noexcept
+{
+    errorHandlerActive_ = active;
+}
+
+std::optional<size_t> Lowerer::ProcedureContext::activeErrorHandlerIndex() const noexcept
+{
+    return activeErrorHandlerIndex_;
+}
+
+void Lowerer::ProcedureContext::setActiveErrorHandlerIndex(std::optional<size_t> index) noexcept
+{
+    activeErrorHandlerIndex_ = index;
+}
+
+std::optional<int> Lowerer::ProcedureContext::activeErrorHandlerLine() const noexcept
+{
+    return activeErrorHandlerLine_;
+}
+
+void Lowerer::ProcedureContext::setActiveErrorHandlerLine(std::optional<int> line) noexcept
+{
+    activeErrorHandlerLine_ = line;
+}
+
+std::unordered_map<int, size_t> &Lowerer::ProcedureContext::errorHandlerBlocks() noexcept
+{
+    return errorHandlerBlocks_;
+}
+
+const std::unordered_map<int, size_t> &
+Lowerer::ProcedureContext::errorHandlerBlocks() const noexcept
+{
+    return errorHandlerBlocks_;
+}
+
+std::unordered_map<size_t, int> &Lowerer::ProcedureContext::handlerTargetLines() noexcept
+{
+    return handlerTargetLines_;
+}
+
+const std::unordered_map<size_t, int> &
+Lowerer::ProcedureContext::handlerTargetLines() const noexcept
+{
+    return handlerTargetLines_;
 }
 
 Lowerer::BlockNamer::BlockNamer(std::string p) : proc(std::move(p)) {}

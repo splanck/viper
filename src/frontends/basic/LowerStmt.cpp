@@ -54,7 +54,7 @@ class LowererStmtVisitor final : public StmtVisitor
 
     void visit(const GotoStmt &stmt) override { lowerer_.lowerGoto(stmt); }
 
-    void visit(const OnErrorGoto &) override {}
+    void visit(const OnErrorGoto &stmt) override { lowerer_.lowerOnErrorGoto(stmt); }
 
     void visit(const Resume &) override {}
 
@@ -799,6 +799,33 @@ void Lowerer::lowerGoto(const GotoStmt &stmt)
         assert(func && "lowerGoto requires an active function");
         emitBr(&func->blocks[it->second]);
     }
+}
+
+void Lowerer::lowerOnErrorGoto(const OnErrorGoto &stmt)
+{
+    ProcedureContext &ctx = context();
+    Function *func = ctx.function();
+    BasicBlock *current = ctx.current();
+    if (!func || !current)
+        return;
+
+    curLoc = stmt.loc;
+
+    if (stmt.toZero)
+    {
+        clearActiveErrorHandler();
+        return;
+    }
+
+    clearActiveErrorHandler();
+
+    BasicBlock *handler = ensureErrorHandlerBlock(stmt.target);
+    emitEhPush(handler);
+
+    size_t idx = static_cast<size_t>(handler - &func->blocks[0]);
+    ctx.setErrorHandlerActive(true);
+    ctx.setActiveErrorHandlerIndex(idx);
+    ctx.setActiveErrorHandlerLine(stmt.target);
 }
 
 /// @brief Lower an END statement.
