@@ -91,6 +91,7 @@ add_library(il_vm STATIC
   vm/OpHandlers.cpp
   vm/OpHandlerUtils.cpp
   vm/Trap.cpp
+  vm/err_bridge.cpp
   vm/Debug.cpp
   vm/DebugScript.cpp
   vm/Trace.cpp
