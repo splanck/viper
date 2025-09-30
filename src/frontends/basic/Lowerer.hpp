@@ -255,6 +255,26 @@ class Lowerer
 
         void resetBlockNamer() noexcept;
 
+        [[nodiscard]] bool errorHandlerActive() const noexcept;
+
+        void setErrorHandlerActive(bool active) noexcept;
+
+        [[nodiscard]] std::optional<size_t> activeErrorHandlerIndex() const noexcept;
+
+        void setActiveErrorHandlerIndex(std::optional<size_t> index) noexcept;
+
+        [[nodiscard]] std::optional<int> activeErrorHandlerLine() const noexcept;
+
+        void setActiveErrorHandlerLine(std::optional<int> line) noexcept;
+
+        [[nodiscard]] std::unordered_map<int, size_t> &errorHandlerBlocks() noexcept;
+
+        [[nodiscard]] const std::unordered_map<int, size_t> &errorHandlerBlocks() const noexcept;
+
+        [[nodiscard]] std::unordered_map<size_t, int> &handlerTargetLines() noexcept;
+
+        [[nodiscard]] const std::unordered_map<size_t, int> &handlerTargetLines() const noexcept;
+
       private:
         Function *function_{nullptr};
         BasicBlock *current_{nullptr};
@@ -266,6 +286,11 @@ class Lowerer
         std::vector<BasicBlock *> loopExitTargets_;
         std::vector<size_t> loopExitTargetIdx_;
         std::vector<bool> loopExitTaken_;
+        bool errorHandlerActive_{false};
+        std::optional<size_t> activeErrorHandlerIndex_{};
+        std::optional<int> activeErrorHandlerLine_{};
+        std::unordered_map<int, size_t> errorHandlerBlocks_;
+        std::unordered_map<size_t, int> handlerTargetLines_;
     };
 
   public:
@@ -472,6 +497,8 @@ class Lowerer
 
     void lowerGoto(const GotoStmt &stmt);
 
+    void lowerOnErrorGoto(const OnErrorGoto &stmt);
+
     void lowerEnd(const EndStmt &stmt);
 
     void lowerInput(const InputStmt &stmt);
@@ -521,6 +548,12 @@ class Lowerer
     void releaseArrayParams(const std::unordered_set<std::string> &paramNames);
 
     void emitTrap();
+
+    void emitEhPush(BasicBlock *handler);
+    void emitEhPop();
+    void emitEhPopForReturn();
+    void clearActiveErrorHandler();
+    BasicBlock *ensureErrorHandlerBlock(int targetLine);
 
     void emitRet(Value v);
 
