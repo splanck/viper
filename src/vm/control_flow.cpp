@@ -186,6 +186,54 @@ VM::ExecResult OpHandlers::handleCall(VM &vm,
     return {};
 }
 
+/// @brief Handle `err.get_*` opcodes by materialising fields from the active error.
+/// @param vm Active VM instance used to evaluate the error operand.
+/// @param fr Current frame carrying the handler's active error record.
+/// @param in Instruction identifying which error field to fetch.
+/// @param blocks Unused block map required by the dispatch signature.
+/// @param bb Unused current block reference required by the dispatch signature.
+/// @param ip Unused instruction index reference required by the dispatch signature.
+/// @return Execution result indicating normal continuation.
+VM::ExecResult OpHandlers::handleErrGet(VM &vm,
+                                        Frame &fr,
+                                        const Instr &in,
+                                        const VM::BlockMap &blocks,
+                                        const BasicBlock *&bb,
+                                        size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+
+    const Slot errorSlot = vm.eval(fr, in.operands[0]);
+    const auto *error = reinterpret_cast<const VmError *>(errorSlot.ptr);
+    if (!error)
+        error = &fr.activeError;
+
+    Slot out{};
+    switch (in.op)
+    {
+        case Opcode::ErrGetKind:
+            out.i64 = static_cast<int64_t>(static_cast<int32_t>(error->kind));
+            break;
+        case Opcode::ErrGetCode:
+            out.i64 = static_cast<int64_t>(error->code);
+            break;
+        case Opcode::ErrGetIp:
+            out.i64 = static_cast<int64_t>(error->ip);
+            break;
+        case Opcode::ErrGetLine:
+            out.i64 = static_cast<int64_t>(error->line);
+            break;
+        default:
+            out.i64 = 0;
+            break;
+    }
+
+    ops::storeResult(fr, in, out);
+    return {};
+}
+
 /// @brief Handle the `trap` terminator by delegating to the runtime bridge.
 /// @param vm Active VM (unused) included for signature uniformity.
 /// @param fr Current frame providing function metadata for diagnostics.
