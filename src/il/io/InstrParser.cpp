@@ -288,6 +288,9 @@ void applyDefaultType(const OpcodeInfo &info, Instr &in)
         case TypeCategory::I1:
             in.type = Type(Kind::I1);
             break;
+        case TypeCategory::I32:
+            in.type = Type(Kind::I32);
+            break;
         case TypeCategory::I64:
             in.type = Type(Kind::I64);
             break;
