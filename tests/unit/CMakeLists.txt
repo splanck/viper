@@ -55,6 +55,10 @@ function(viper_add_runtime_tests)
   target_link_libraries(test_rt_error_plumbing PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_error_plumbing test_rt_error_plumbing)
 
+  viper_add_test_exe(test_rt_errors_io ${VIPER_TESTS_DIR}/runtime/ErrorsIoTests.c)
+  target_link_libraries(test_rt_errors_io PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+  viper_add_ctest(test_rt_errors_io test_rt_errors_io)
+
   viper_add_test_exe(test_rt_abs_i64_overflow ${VIPER_TESTS_DIR}/runtime/RTAbsI64OverflowTests.cpp)
   target_link_libraries(test_rt_abs_i64_overflow PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_abs_i64_overflow test_rt_abs_i64_overflow)
