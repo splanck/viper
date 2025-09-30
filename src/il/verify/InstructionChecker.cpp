@@ -417,6 +417,41 @@ Expected<void> checkBinary_E(const Function &fn,
     return {};
 }
 
+/// @brief Validate idx.chk range checks for operand width consistency.
+/// @param fn Function supplying diagnostic context.
+/// @param bb Basic block containing the instruction.
+/// @param instr idx.chk instruction under validation.
+/// @param types Type inference engine used for operand queries.
+/// @return Empty on success; otherwise an error diagnostic describing missing
+///         operands or type mismatches.
+Expected<void> checkIdxChk_E(const Function &fn,
+                             const BasicBlock &bb,
+                             const Instr &instr,
+                             TypeInference &types)
+{
+    if (instr.operands.size() != 3)
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "invalid operand count"))};
+
+    const auto idxKind = types.valueType(instr.operands[0]).kind;
+    if (idxKind != Type::Kind::I16 && idxKind != Type::Kind::I32)
+    {
+        return Expected<void>{makeError(
+            instr.loc, formatInstrDiag(fn, bb, instr, "operands must be i16 or i32"))};
+    }
+
+    for (size_t i = 1; i < instr.operands.size(); ++i)
+    {
+        if (types.valueType(instr.operands[i]).kind != idxKind)
+        {
+            return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr,
+                                                                     "operands must share i16/i32 width"))};
+        }
+    }
+
+    types.recordResult(instr, Type(idxKind));
+    return {};
+}
+
 /// @brief Verify unary conversions and casts.
 /// @param fn Function supplying diagnostic context.
 /// @param bb Basic block containing the instruction.
@@ -730,6 +765,8 @@ Expected<void> verifyInstruction_impl(const Function &fn,
         case Opcode::CastSiNarrowChk:
         case Opcode::CastUiNarrowChk:
             return checkUnary_E(fn, bb, instr, types, Type::Kind::I64, Type(Type::Kind::I64));
+        case Opcode::IdxChk:
+            return checkIdxChk_E(fn, bb, instr, types);
         case Opcode::Zext1:
             return checkUnary_E(fn, bb, instr, types, Type::Kind::I1, Type(Type::Kind::I64));
         case Opcode::Trunc1:
