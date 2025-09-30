@@ -96,6 +96,7 @@ enum class VMDispatch : uint8_t
     TruncOrZext1,
     ErrGet,
     Trap,
+    TrapFromErr,
     EhPush,
     EhPop,
     ResumeSame,
