@@ -253,9 +253,7 @@ Expected<void> checkEhStackBalance(const Function &fn,
         if (!terminator)
             continue;
 
-        if ((terminator->op == Opcode::Ret || terminator->op == Opcode::Trap ||
-             terminator->op == Opcode::TrapKind || terminator->op == Opcode::TrapErr ||
-             terminator->op == Opcode::ResumeSame || terminator->op == Opcode::ResumeNext) && depth != 0)
+        if (terminator->op == Opcode::Ret && depth != 0)
         {
             std::vector<const BasicBlock *> path = buildPath(states, stateIndex);
             std::string message = formatInstrDiag(
