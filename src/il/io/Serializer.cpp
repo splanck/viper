@@ -240,6 +240,8 @@ std::optional<Type::Kind> defaultResultKind(const OpcodeInfo &info)
     {
         case TypeCategory::I1:
             return Kind::I1;
+        case TypeCategory::I32:
+            return Kind::I32;
         case TypeCategory::I64:
             return Kind::I64;
         case TypeCategory::F64:

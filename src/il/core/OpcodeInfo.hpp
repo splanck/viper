@@ -31,6 +31,7 @@ enum class TypeCategory : uint8_t
     None,        ///< Unused slot or no constraint.
     Void,        ///< Void type (primarily for annotations).
     I1,          ///< Boolean integer type.
+    I32,         ///< 32-bit integer type.
     I64,         ///< 64-bit integer type.
     F64,         ///< 64-bit floating point type.
     Ptr,         ///< Pointer type.
