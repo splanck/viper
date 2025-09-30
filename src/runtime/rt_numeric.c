@@ -246,24 +246,32 @@ extern "C" {
             rt_trap("rt_format: truncated");
     }
 
-    void rt_str_from_double(double x, char *out, size_t cap)
+    void rt_str_from_double(double x, char *out, size_t cap, RtError *out_err)
     {
         rt_format(out, cap, "%.17g", x);
+        if (out_err)
+            *out_err = RT_ERROR_NONE;
     }
 
-    void rt_str_from_float(float x, char *out, size_t cap)
+    void rt_str_from_float(float x, char *out, size_t cap, RtError *out_err)
     {
         rt_format(out, cap, "%.9g", (double)x);
+        if (out_err)
+            *out_err = RT_ERROR_NONE;
     }
 
-    void rt_str_from_i32(int32_t x, char *out, size_t cap)
+    void rt_str_from_i32(int32_t x, char *out, size_t cap, RtError *out_err)
     {
         rt_format(out, cap, "%" PRId32, x);
+        if (out_err)
+            *out_err = RT_ERROR_NONE;
     }
 
-    void rt_str_from_i16(int16_t x, char *out, size_t cap)
+    void rt_str_from_i16(int16_t x, char *out, size_t cap, RtError *out_err)
     {
         rt_format(out, cap, "%" PRId16, x);
+        if (out_err)
+            *out_err = RT_ERROR_NONE;
     }
 
 #ifdef __cplusplus
