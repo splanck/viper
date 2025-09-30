@@ -714,6 +714,18 @@ private:
     void visit(NextStmt &) override {}
     void visit(ExitStmt &) override {}
     void visit(GotoStmt &) override {}
+    void visit(OpenStmt &stmt) override
+    {
+        if (stmt.pathExpr)
+            foldExpr(stmt.pathExpr);
+        if (stmt.channelExpr)
+            foldExpr(stmt.channelExpr);
+    }
+    void visit(CloseStmt &stmt) override
+    {
+        if (stmt.channelExpr)
+            foldExpr(stmt.channelExpr);
+    }
     void visit(OnErrorGoto &) override {}
     void visit(Resume &) override {}
     void visit(EndStmt &) override {}

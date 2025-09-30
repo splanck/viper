@@ -194,6 +194,14 @@ class Parser
     /// @return GOTO statement node.
     StmtPtr parseGoto();
 
+    /// @brief Parse an OPEN statement configuring file I/O.
+    /// @return OPEN statement node.
+    StmtPtr parseOpen();
+
+    /// @brief Parse a CLOSE statement releasing a channel.
+    /// @return CLOSE statement node.
+    StmtPtr parseClose();
+
     /// @brief Parse an ON ERROR GOTO statement.
     /// @return ON ERROR statement node.
     StmtPtr parseOnErrorGoto();
