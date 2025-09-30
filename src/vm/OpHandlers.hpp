@@ -104,6 +104,13 @@ struct OpHandlers
                                          const il::core::BasicBlock *&bb,
                                          size_t &ip);
 
+    static VM::ExecResult handleIdxChk(VM &vm,
+                                       Frame &fr,
+                                       const il::core::Instr &in,
+                                       const VM::BlockMap &blocks,
+                                       const il::core::BasicBlock *&bb,
+                                       size_t &ip);
+
     static VM::ExecResult handleFAdd(VM &vm,
                                      Frame &fr,
                                      const il::core::Instr &in,
@@ -334,6 +341,13 @@ struct OpHandlers
                                              const VM::BlockMap &blocks,
                                              const il::core::BasicBlock *&bb,
                                              size_t &ip);
+
+    static VM::ExecResult handleErrGet(VM &vm,
+                                       Frame &fr,
+                                       const il::core::Instr &in,
+                                       const VM::BlockMap &blocks,
+                                       const il::core::BasicBlock *&bb,
+                                       size_t &ip);
 
     static VM::ExecResult handleEhPush(VM &vm,
                                        Frame &fr,

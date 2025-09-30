@@ -70,6 +70,8 @@ VM::OpcodeHandler handlerForDispatch(VMDispatch dispatch)
             return &OpHandlers::handleSRemChk0;
         case VMDispatch::URemChk0:
             return &OpHandlers::handleURemChk0;
+        case VMDispatch::IdxChk:
+            return &OpHandlers::handleIdxChk;
         case VMDispatch::Xor:
             return &OpHandlers::handleXor;
         case VMDispatch::Shl:
@@ -134,6 +136,8 @@ VM::OpcodeHandler handlerForDispatch(VMDispatch dispatch)
             return &OpHandlers::handleCastUiToFp;
         case VMDispatch::TruncOrZext1:
             return &OpHandlers::handleTruncOrZext1;
+        case VMDispatch::ErrGet:
+            return &OpHandlers::handleErrGet;
         case VMDispatch::Trap:
             return &OpHandlers::handleTrap;
         case VMDispatch::EhPush:
