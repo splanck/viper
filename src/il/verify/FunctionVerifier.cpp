@@ -66,6 +66,20 @@ bool isResumeOpcode(Opcode op)
     return op == Opcode::ResumeSame || op == Opcode::ResumeNext || op == Opcode::ResumeLabel;
 }
 
+bool isErrAccessOpcode(Opcode op)
+{
+    switch (op)
+    {
+        case Opcode::ErrGetKind:
+        case Opcode::ErrGetCode:
+        case Opcode::ErrGetIp:
+        case Opcode::ErrGetLine:
+            return true;
+        default:
+            return false;
+    }
+}
+
 Expected<std::optional<HandlerInfo>> analyzeHandlerBlock(const Function &fn,
                                                          const BasicBlock &bb)
 {
@@ -498,6 +512,14 @@ Expected<void> FunctionVerifier::verifyBlock(const Function &fn,
                 instr.operands[0].id != handlerSignature->second)
             {
                 return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "resume.* must use handler %tok parameter"))};
+            }
+        }
+
+        if (isErrAccessOpcode(instr.op))
+        {
+            if (!handlerSignature)
+            {
+                return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "err.get_* only allowed in handler block"))};
             }
         }
 
