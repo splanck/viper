@@ -98,6 +98,10 @@ function(viper_add_basic_main_tests)
   target_link_libraries(test_frontends_basic_semantic_exprs PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_semantic_exprs test_frontends_basic_semantic_exprs)
 
+  viper_add_test_exe(test_frontends_basic_semantic_on_error ${VIPER_TESTS_DIR}/frontends/basic/SemanticAnalyzerOnErrorTests.cpp)
+  target_link_libraries(test_frontends_basic_semantic_on_error PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_frontends_basic_semantic_on_error test_frontends_basic_semantic_on_error)
+
   viper_add_test_exe(test_frontends_basic_type_rules ${VIPER_TESTS_DIR}/frontends/basic/TypeRulesTests.cpp)
   target_link_libraries(test_frontends_basic_type_rules PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_type_rules test_frontends_basic_type_rules)
