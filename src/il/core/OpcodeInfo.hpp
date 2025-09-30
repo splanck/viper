@@ -92,7 +92,12 @@ enum class VMDispatch : uint8_t
     CastSiToFp,
     CastUiToFp,
     TruncOrZext1,
-    Trap
+    Trap,
+    EhPush,
+    EhPop,
+    ResumeSame,
+    ResumeNext,
+    ResumeLabel
 };
 
 /// @brief Maximum number of operand categories stored per opcode.
