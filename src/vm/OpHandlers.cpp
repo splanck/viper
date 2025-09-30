@@ -150,6 +150,8 @@ VM::OpcodeHandler handlerForDispatch(VMDispatch dispatch)
             return &OpHandlers::handleResumeNext;
         case VMDispatch::ResumeLabel:
             return &OpHandlers::handleResumeLabel;
+        case VMDispatch::EhEntry:
+            return &OpHandlers::handleEhEntry;
     }
     return nullptr;
 }

@@ -8,6 +8,7 @@
 #include "il/runtime/RuntimeSignatures.hpp"
 
 #include "rt.hpp"
+#include "rt_debug.h"
 #include "rt_fp.h"
 #include "rt_internal.h"
 #include "rt_math.h"
@@ -260,6 +261,16 @@ std::vector<RuntimeDescriptor> buildRegistry()
         {Kind::F64},
         &DirectHandler<&rt_print_f64, void, double>::invoke,
         always());
+    add("rt_println_i32",
+        Kind::Void,
+        {Kind::I32},
+        &DirectHandler<&rt_println_i32, void, int32_t>::invoke,
+        manual());
+    add("rt_println_str",
+        Kind::Void,
+        {Kind::Ptr},
+        &DirectHandler<&rt_println_str, void, const char *>::invoke,
+        manual());
     add("rt_len",
         Kind::I64,
         {Kind::Str},

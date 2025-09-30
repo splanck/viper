@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #include "rt_array.h"
+#include "rt_debug.h"
 #include "rt_string.h"
 
 #ifdef __cplusplus
@@ -33,6 +34,14 @@ extern "C" {
     /// @brief Print 64-bit float @p v to stdout.
     /// @param v Value to print.
     void rt_print_f64(double v);
+
+    /// @brief Print signed 32-bit integer @p value with newline.
+    /// @param value Value to print in decimal.
+    void rt_println_i32(int32_t value);
+
+    /// @brief Print C string @p text with newline.
+    /// @param text Null-terminated string; treated as empty when null.
+    void rt_println_str(const char *text);
 
     /// @brief Read a line from stdin.
     /// @return Newly allocated string without trailing newline.

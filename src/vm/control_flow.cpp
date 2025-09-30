@@ -234,17 +234,38 @@ VM::ExecResult OpHandlers::handleErrGet(VM &vm,
     return {};
 }
 
-/// @brief Handle the `trap` terminator by delegating to the runtime bridge.
+/// @brief No-op handler executed when entering an exception handler block.
 /// @param vm Active VM (unused) included for signature uniformity.
-/// @param fr Current frame providing function metadata for diagnostics.
-/// @param in Instruction containing source location metadata for the trap.
+/// @param fr Current frame (unused) retained for future bookkeeping needs.
+/// @param in Instruction metadata (unused) describing the eh.entry site.
 /// @param blocks Unused block map reference required by the handler interface.
-/// @param bb Current block pointer supplying the trap's label in diagnostics.
-/// @param ip Unused instruction pointer reference for this terminator.
-/// @return Execution result flagged as @c returned to signal termination of the frame.
-/// @note Invariant: @ref RuntimeBridge::trap never returns normally; invoking it reports
-///       the trap and hands control back to the embedding host. The handler still marks
-///       the frame as returned so the VM unwinds without executing further IL.
+/// @param bb Current block pointer (unused) provided for signature parity.
+/// @param ip Instruction pointer (unused) supplied for signature parity.
+/// @return Execution result indicating normal fallthrough.
+VM::ExecResult OpHandlers::handleEhEntry(VM &vm,
+                                         Frame &fr,
+                                         const Instr &in,
+                                         const VM::BlockMap &blocks,
+                                         const BasicBlock *&bb,
+                                         size_t &ip)
+{
+    (void)vm;
+    (void)fr;
+    (void)in;
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+    return {};
+}
+
+/// @brief Push a handler entry onto the frame's exception handler stack.
+/// @param vm Active VM (unused) included for signature uniformity.
+/// @param fr Current frame receiving the handler registration.
+/// @param in Instruction carrying the handler label to install.
+/// @param blocks Mapping from labels to blocks used to resolve the handler target.
+/// @param bb Current block pointer (unused) retained for signature compatibility.
+/// @param ip Instruction pointer snapshot recorded for resume.same semantics.
+/// @return Execution result indicating normal fallthrough.
 VM::ExecResult OpHandlers::handleEhPush(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
