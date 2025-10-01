@@ -55,6 +55,34 @@ void applyOverflowingBinary(const Instr &in,
     out.i64 = static_cast<int64_t>(result);
 }
 
+template <typename OverflowOp>
+void dispatchOverflowingBinary(const Instr &in,
+                               Frame &fr,
+                               const BasicBlock *bb,
+                               Slot &out,
+                               const Slot &lhsVal,
+                               const Slot &rhsVal,
+                               const char *trapMessage,
+                               OverflowOp overflowOp)
+{
+    switch (in.type.kind)
+    {
+        case Type::Kind::I16:
+            applyOverflowingBinary<int16_t>(
+                in, fr, bb, out, lhsVal, rhsVal, trapMessage, overflowOp);
+            break;
+        case Type::Kind::I32:
+            applyOverflowingBinary<int32_t>(
+                in, fr, bb, out, lhsVal, rhsVal, trapMessage, overflowOp);
+            break;
+        case Type::Kind::I64:
+        default:
+            applyOverflowingBinary<int64_t>(
+                in, fr, bb, out, lhsVal, rhsVal, trapMessage, overflowOp);
+            break;
+    }
+}
+
 template <typename T>
 void applyCheckedDiv(const Instr &in,
                      Frame &fr,
@@ -340,46 +368,16 @@ VM::ExecResult OpHandlers::handleIAddOvf(VM &vm,
                             in,
                             [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
                             {
-                                switch (in.type.kind)
-                                {
-                                    case Type::Kind::I16:
-                                        applyOverflowingBinary<int16_t>(
-                                            in,
-                                            fr,
-                                            bb,
-                                            out,
-                                            lhsVal,
-                                            rhsVal,
-                                            "integer overflow in iadd.ovf",
-                                            [](int16_t lhs, int16_t rhs, int16_t *res)
-                                            { return __builtin_add_overflow(lhs, rhs, res); });
-                                        break;
-                                    case Type::Kind::I32:
-                                        applyOverflowingBinary<int32_t>(
-                                            in,
-                                            fr,
-                                            bb,
-                                            out,
-                                            lhsVal,
-                                            rhsVal,
-                                            "integer overflow in iadd.ovf",
-                                            [](int32_t lhs, int32_t rhs, int32_t *res)
-                                            { return __builtin_add_overflow(lhs, rhs, res); });
-                                        break;
-                                    case Type::Kind::I64:
-                                    default:
-                                        applyOverflowingBinary<int64_t>(
-                                            in,
-                                            fr,
-                                            bb,
-                                            out,
-                                            lhsVal,
-                                            rhsVal,
-                                            "integer overflow in iadd.ovf",
-                                            [](int64_t lhs, int64_t rhs, int64_t *res)
-                                            { return __builtin_add_overflow(lhs, rhs, res); });
-                                        break;
-                                }
+                                dispatchOverflowingBinary(
+                                    in,
+                                    fr,
+                                    bb,
+                                    out,
+                                    lhsVal,
+                                    rhsVal,
+                                    "integer overflow in iadd.ovf",
+                                    [](auto lhs, auto rhs, auto *res)
+                                    { return __builtin_add_overflow(lhs, rhs, res); });
                             });
 }
 
@@ -398,46 +396,16 @@ VM::ExecResult OpHandlers::handleISubOvf(VM &vm,
                             in,
                             [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
                             {
-                                switch (in.type.kind)
-                                {
-                                    case Type::Kind::I16:
-                                        applyOverflowingBinary<int16_t>(
-                                            in,
-                                            fr,
-                                            bb,
-                                            out,
-                                            lhsVal,
-                                            rhsVal,
-                                            "integer overflow in isub.ovf",
-                                            [](int16_t lhs, int16_t rhs, int16_t *res)
-                                            { return __builtin_sub_overflow(lhs, rhs, res); });
-                                        break;
-                                    case Type::Kind::I32:
-                                        applyOverflowingBinary<int32_t>(
-                                            in,
-                                            fr,
-                                            bb,
-                                            out,
-                                            lhsVal,
-                                            rhsVal,
-                                            "integer overflow in isub.ovf",
-                                            [](int32_t lhs, int32_t rhs, int32_t *res)
-                                            { return __builtin_sub_overflow(lhs, rhs, res); });
-                                        break;
-                                    case Type::Kind::I64:
-                                    default:
-                                        applyOverflowingBinary<int64_t>(
-                                            in,
-                                            fr,
-                                            bb,
-                                            out,
-                                            lhsVal,
-                                            rhsVal,
-                                            "integer overflow in isub.ovf",
-                                            [](int64_t lhs, int64_t rhs, int64_t *res)
-                                            { return __builtin_sub_overflow(lhs, rhs, res); });
-                                        break;
-                                }
+                                dispatchOverflowingBinary(
+                                    in,
+                                    fr,
+                                    bb,
+                                    out,
+                                    lhsVal,
+                                    rhsVal,
+                                    "integer overflow in isub.ovf",
+                                    [](auto lhs, auto rhs, auto *res)
+                                    { return __builtin_sub_overflow(lhs, rhs, res); });
                             });
 }
 
@@ -456,46 +424,16 @@ VM::ExecResult OpHandlers::handleIMulOvf(VM &vm,
                             in,
                             [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
                             {
-                                switch (in.type.kind)
-                                {
-                                    case Type::Kind::I16:
-                                        applyOverflowingBinary<int16_t>(
-                                            in,
-                                            fr,
-                                            bb,
-                                            out,
-                                            lhsVal,
-                                            rhsVal,
-                                            "integer overflow in imul.ovf",
-                                            [](int16_t lhs, int16_t rhs, int16_t *res)
-                                            { return __builtin_mul_overflow(lhs, rhs, res); });
-                                        break;
-                                    case Type::Kind::I32:
-                                        applyOverflowingBinary<int32_t>(
-                                            in,
-                                            fr,
-                                            bb,
-                                            out,
-                                            lhsVal,
-                                            rhsVal,
-                                            "integer overflow in imul.ovf",
-                                            [](int32_t lhs, int32_t rhs, int32_t *res)
-                                            { return __builtin_mul_overflow(lhs, rhs, res); });
-                                        break;
-                                    case Type::Kind::I64:
-                                    default:
-                                        applyOverflowingBinary<int64_t>(
-                                            in,
-                                            fr,
-                                            bb,
-                                            out,
-                                            lhsVal,
-                                            rhsVal,
-                                            "integer overflow in imul.ovf",
-                                            [](int64_t lhs, int64_t rhs, int64_t *res)
-                                            { return __builtin_mul_overflow(lhs, rhs, res); });
-                                        break;
-                                }
+                                dispatchOverflowingBinary(
+                                    in,
+                                    fr,
+                                    bb,
+                                    out,
+                                    lhsVal,
+                                    rhsVal,
+                                    "integer overflow in imul.ovf",
+                                    [](auto lhs, auto rhs, auto *res)
+                                    { return __builtin_mul_overflow(lhs, rhs, res); });
                             });
 }
 
