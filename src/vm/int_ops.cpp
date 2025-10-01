@@ -85,6 +85,52 @@ void dispatchOverflowingBinary(const Instr &in,
 }
 
 template <typename T>
+void applySignedDiv(const Instr &in,
+                    Frame &fr,
+                    const BasicBlock *bb,
+                    Slot &out,
+                    const Slot &lhsVal,
+                    const Slot &rhsVal)
+{
+    const T lhs = static_cast<T>(lhsVal.i64);
+    const T rhs = static_cast<T>(rhsVal.i64);
+    if (rhs == 0)
+    {
+        emitTrap(TrapKind::DivideByZero, "divide by zero in sdiv", in, fr, bb);
+        return;
+    }
+    if (lhs == std::numeric_limits<T>::min() && rhs == static_cast<T>(-1))
+    {
+        emitTrap(TrapKind::Overflow, "integer overflow in sdiv", in, fr, bb);
+        return;
+    }
+    out.i64 = static_cast<int64_t>(static_cast<T>(lhs / rhs));
+}
+
+template <typename T>
+void applySignedRem(const Instr &in,
+                    Frame &fr,
+                    const BasicBlock *bb,
+                    Slot &out,
+                    const Slot &lhsVal,
+                    const Slot &rhsVal)
+{
+    const T lhs = static_cast<T>(lhsVal.i64);
+    const T rhs = static_cast<T>(rhsVal.i64);
+    if (rhs == 0)
+    {
+        emitTrap(TrapKind::DivideByZero, "divide by zero in srem", in, fr, bb);
+        return;
+    }
+
+    const int64_t wideLhs = static_cast<int64_t>(lhs);
+    const int64_t wideRhs = static_cast<int64_t>(rhs);
+    const int64_t quotient = wideLhs / wideRhs;
+    const int64_t remainder = wideLhs - quotient * wideRhs;
+    out.i64 = static_cast<int64_t>(static_cast<T>(remainder));
+}
+
+template <typename T>
 void applyCheckedDiv(const Instr &in,
                      Frame &fr,
                      const BasicBlock *bb,
@@ -503,6 +549,106 @@ VM::ExecResult OpHandlers::handleIMulOvf(VM &vm,
                                     "integer overflow in imul.ovf",
                                     [](auto lhs, auto rhs, auto *res)
                                     { return __builtin_mul_overflow(lhs, rhs, res); });
+                            });
+}
+
+/// @brief Interpret the `sdiv` opcode with divide-by-zero and overflow trapping.
+VM::ExecResult OpHandlers::handleSDiv(VM &vm,
+                                      Frame &fr,
+                                      const Instr &in,
+                                      const VM::BlockMap &blocks,
+                                      const BasicBlock *&bb,
+                                      size_t &ip)
+{
+    (void)blocks;
+    (void)ip;
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            {
+                                dispatchCheckedSignedBinary<&applySignedDiv<int16_t>,
+                                                             &applySignedDiv<int32_t>,
+                                                             &applySignedDiv<int64_t>>(
+                                    in, fr, bb, out, lhsVal, rhsVal);
+                            });
+}
+
+/// @brief Interpret the `udiv` opcode with divide-by-zero trapping.
+VM::ExecResult OpHandlers::handleUDiv(VM &vm,
+                                      Frame &fr,
+                                      const Instr &in,
+                                      const VM::BlockMap &blocks,
+                                      const BasicBlock *&bb,
+                                      size_t &ip)
+{
+    (void)blocks;
+    (void)ip;
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            {
+                                applyUnsignedDivOrRem(
+                                    in,
+                                    fr,
+                                    bb,
+                                    out,
+                                    lhsVal,
+                                    rhsVal,
+                                    "divide by zero in udiv",
+                                    [](uint64_t dividend, uint64_t divisor)
+                                    { return dividend / divisor; });
+                            });
+}
+
+/// @brief Interpret the `srem` opcode with divide-by-zero trapping.
+VM::ExecResult OpHandlers::handleSRem(VM &vm,
+                                      Frame &fr,
+                                      const Instr &in,
+                                      const VM::BlockMap &blocks,
+                                      const BasicBlock *&bb,
+                                      size_t &ip)
+{
+    (void)blocks;
+    (void)ip;
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            {
+                                dispatchCheckedSignedBinary<&applySignedRem<int16_t>,
+                                                             &applySignedRem<int32_t>,
+                                                             &applySignedRem<int64_t>>(
+                                    in, fr, bb, out, lhsVal, rhsVal);
+                            });
+}
+
+/// @brief Interpret the `urem` opcode with divide-by-zero trapping.
+VM::ExecResult OpHandlers::handleURem(VM &vm,
+                                      Frame &fr,
+                                      const Instr &in,
+                                      const VM::BlockMap &blocks,
+                                      const BasicBlock *&bb,
+                                      size_t &ip)
+{
+    (void)blocks;
+    (void)ip;
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            {
+                                applyUnsignedDivOrRem(
+                                    in,
+                                    fr,
+                                    bb,
+                                    out,
+                                    lhsVal,
+                                    rhsVal,
+                                    "divide by zero in urem",
+                                    [](uint64_t dividend, uint64_t divisor)
+                                    { return dividend % divisor; });
                             });
 }
 
