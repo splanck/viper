@@ -13,6 +13,7 @@
 #include "il/core/Module.hpp"
 #include "il/core/Type.hpp"
 #include "il/verify/ControlFlowChecker.hpp"
+#include "il/verify/DiagFormat.hpp"
 #include "il/verify/InstructionChecker.hpp"
 #include "il/verify/TypeInference.hpp"
 
@@ -37,29 +38,6 @@ namespace
 {
 
 using HandlerInfo = std::pair<unsigned, unsigned>;
-
-std::string formatInstrDiag(const Function &fn,
-                            const BasicBlock &bb,
-                            const Instr &instr,
-                            std::string_view message)
-{
-    std::ostringstream oss;
-    oss << fn.name << ":" << bb.label << ": " << makeSnippet(instr);
-    if (!message.empty())
-        oss << ": " << message;
-    return oss.str();
-}
-
-std::string formatBlockDiag(const Function &fn,
-                            const BasicBlock &bb,
-                            std::string_view message)
-{
-    std::ostringstream oss;
-    oss << fn.name << ":" << bb.label;
-    if (!message.empty())
-        oss << ": " << message;
-    return oss.str();
-}
 
 bool isResumeOpcode(Opcode op)
 {
