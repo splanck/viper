@@ -1,8 +1,8 @@
 // File: src/il/verify/FunctionVerifier.cpp
 // Purpose: Implements function-level verification by coordinating block and instruction checks.
-// Key invariants: Functions must start with an entry block, maintain unique labels, and respect call signatures.
-// Ownership/Lifetime: Operates on module-provided data; no allocations persist beyond verification.
-// Links: docs/il-guide.md#reference
+// Key invariants: Functions must start with an entry block, maintain unique labels, and respect
+// call signatures. Ownership/Lifetime: Operates on module-provided data; no allocations persist
+// beyond verification. Links: docs/il-guide.md#reference
 
 #include "il/verify/FunctionVerifier.hpp"
 
@@ -14,11 +14,12 @@
 #include "il/core/Type.hpp"
 #include "il/verify/ControlFlowChecker.hpp"
 #include "il/verify/DiagFormat.hpp"
+#include "il/verify/ExceptionHandlerAnalysis.hpp"
 #include "il/verify/InstructionChecker.hpp"
+#include "il/verify/InstructionStrategies.hpp"
 #include "il/verify/TypeInference.hpp"
 
 #include <algorithm>
-#include <deque>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -36,8 +37,6 @@ using il::support::makeError;
 
 namespace
 {
-
-using HandlerInfo = std::pair<unsigned, unsigned>;
 
 bool isResumeOpcode(Opcode op)
 {
@@ -58,206 +57,6 @@ bool isErrAccessOpcode(Opcode op)
     }
 }
 
-Expected<std::optional<HandlerInfo>> analyzeHandlerBlock(const Function &fn,
-                                                         const BasicBlock &bb)
-{
-    if (bb.instructions.empty())
-        return std::optional<HandlerInfo>{};
-
-    const Instr &first = bb.instructions.front();
-    if (first.op != Opcode::EhEntry)
-    {
-        for (size_t idx = 1; idx < bb.instructions.size(); ++idx)
-        {
-            if (bb.instructions[idx].op == Opcode::EhEntry)
-            {
-                return Expected<std::optional<HandlerInfo>>{
-                    makeError(bb.instructions[idx].loc,
-                              formatInstrDiag(fn, bb, bb.instructions[idx],
-                                              "eh.entry only allowed as first instruction of handler block"))};
-            }
-        }
-        return std::optional<HandlerInfo>{};
-    }
-
-    if (bb.params.size() != 2)
-        return Expected<std::optional<HandlerInfo>>{
-            makeError({}, formatBlockDiag(fn, bb, "handler blocks must declare (%err:Error, %tok:ResumeTok)"))};
-
-    if (bb.params[0].type.kind != Type::Kind::Error || bb.params[1].type.kind != Type::Kind::ResumeTok)
-        return Expected<std::optional<HandlerInfo>>{
-            makeError({}, formatBlockDiag(fn, bb, "handler params must be (%err:Error, %tok:ResumeTok)"))};
-
-    if (bb.params[0].name != "err" || bb.params[1].name != "tok")
-        return Expected<std::optional<HandlerInfo>>{
-            makeError({}, formatBlockDiag(fn, bb, "handler params must be named %err and %tok"))};
-
-    HandlerInfo sig = {bb.params[0].id, bb.params[1].id};
-    return std::optional<HandlerInfo>{sig};
-}
-
-struct EhState
-{
-    const BasicBlock *block = nullptr;
-    int depth = 0;
-    int parent = -1;
-};
-
-bool isTerminatorForEh(Opcode op)
-{
-    switch (op)
-    {
-        case Opcode::Br:
-        case Opcode::CBr:
-        case Opcode::Ret:
-        case Opcode::Trap:
-        case Opcode::TrapKind:
-        case Opcode::TrapFromErr:
-        case Opcode::TrapErr:
-        case Opcode::ResumeSame:
-        case Opcode::ResumeNext:
-        case Opcode::ResumeLabel:
-            return true;
-        default:
-            return false;
-    }
-}
-
-std::vector<const BasicBlock *> gatherSuccessors(const Instr &terminator,
-                                                const std::unordered_map<std::string, const BasicBlock *> &blockMap)
-{
-    std::vector<const BasicBlock *> successors;
-    switch (terminator.op)
-    {
-        case Opcode::Br:
-            if (!terminator.labels.empty())
-            {
-                if (auto it = blockMap.find(terminator.labels[0]); it != blockMap.end())
-                    successors.push_back(it->second);
-            }
-            break;
-        case Opcode::CBr:
-            for (size_t idx = 0; idx < terminator.labels.size(); ++idx)
-            {
-                if (auto it = blockMap.find(terminator.labels[idx]); it != blockMap.end())
-                    successors.push_back(it->second);
-            }
-            break;
-        case Opcode::ResumeLabel:
-            if (!terminator.labels.empty())
-            {
-                if (auto it = blockMap.find(terminator.labels[0]); it != blockMap.end())
-                    successors.push_back(it->second);
-            }
-            break;
-        default:
-            break;
-    }
-    return successors;
-}
-
-std::vector<const BasicBlock *> buildPath(const std::vector<EhState> &states, int index)
-{
-    std::vector<const BasicBlock *> path;
-    for (int cur = index; cur >= 0; cur = states[cur].parent)
-        path.push_back(states[cur].block);
-    std::reverse(path.begin(), path.end());
-    return path;
-}
-
-std::string formatPathString(const std::vector<const BasicBlock *> &path)
-{
-    std::ostringstream oss;
-    for (size_t i = 0; i < path.size(); ++i)
-    {
-        if (i != 0)
-            oss << " -> ";
-        oss << path[i]->label;
-    }
-    return oss.str();
-}
-
-Expected<void> checkEhStackBalance(const Function &fn,
-                                   const std::unordered_map<std::string, const BasicBlock *> &blockMap)
-{
-    if (fn.blocks.empty())
-        return {};
-
-    std::deque<int> worklist;
-    std::vector<EhState> states;
-    std::unordered_map<const BasicBlock *, std::unordered_set<int>> visited;
-
-    states.push_back({&fn.blocks.front(), 0, -1});
-    worklist.push_back(0);
-    visited[&fn.blocks.front()].insert(0);
-
-    while (!worklist.empty())
-    {
-        const int stateIndex = worklist.front();
-        worklist.pop_front();
-
-        const EhState &state = states[stateIndex];
-        const BasicBlock &bb = *state.block;
-        int depth = state.depth;
-
-        const Instr *terminator = nullptr;
-        for (const auto &instr : bb.instructions)
-        {
-            if (instr.op == Opcode::EhPush)
-            {
-                ++depth;
-            }
-            else if (instr.op == Opcode::EhPop)
-            {
-                if (depth == 0)
-                {
-                    std::vector<const BasicBlock *> path = buildPath(states, stateIndex);
-                    std::string message = formatInstrDiag(
-                        fn,
-                        bb,
-                        instr,
-                        std::string("eh.pop without matching eh.push; path: ") + formatPathString(path));
-                    return Expected<void>{makeError(instr.loc, message)};
-                }
-                --depth;
-            }
-
-            if (isTerminatorForEh(instr.op))
-            {
-                terminator = &instr;
-                break;
-            }
-        }
-
-        if (!terminator)
-            continue;
-
-        if (terminator->op == Opcode::Ret && depth != 0)
-        {
-            std::vector<const BasicBlock *> path = buildPath(states, stateIndex);
-            std::string message = formatInstrDiag(
-                fn,
-                bb,
-                *terminator,
-                std::string("unmatched eh.push depth ") + std::to_string(depth) +
-                    "; path: " + formatPathString(path));
-            return Expected<void>{makeError(terminator->loc, message)};
-        }
-
-        const std::vector<const BasicBlock *> successors = gatherSuccessors(*terminator, blockMap);
-        for (const BasicBlock *succ : successors)
-        {
-            if (!visited[succ].insert(depth).second)
-                continue;
-            const int nextIndex = static_cast<int>(states.size());
-            states.push_back({succ, depth, stateIndex});
-            worklist.push_back(nextIndex);
-        }
-    }
-
-    return {};
-}
-
 bool isRuntimeArrayRelease(const Instr &instr)
 {
     return instr.op == Opcode::Call && instr.callee == "rt_arr_i32_release";
@@ -270,7 +69,9 @@ Expected<void> validateBlockParams_E(const Function &fn,
                                      TypeInference &types,
                                      std::vector<unsigned> &paramIds);
 Expected<void> checkBlockTerminators_E(const Function &fn, const BasicBlock &bb);
-Expected<void> verifyOpcodeSignature_E(const Function &fn, const BasicBlock &bb, const Instr &instr);
+Expected<void> verifyOpcodeSignature_E(const Function &fn,
+                                       const BasicBlock &bb,
+                                       const Instr &instr);
 Expected<void> verifyInstruction_E(const Function &fn,
                                    const BasicBlock &bb,
                                    const Instr &instr,
@@ -278,83 +79,10 @@ Expected<void> verifyInstruction_E(const Function &fn,
                                    const std::unordered_map<std::string, const Function *> &funcs,
                                    TypeInference &types,
                                    DiagSink &sink);
-Expected<void> verifyBr_E(const Function &fn,
-                          const BasicBlock &bb,
-                          const Instr &instr,
-                          const std::unordered_map<std::string, const BasicBlock *> &blockMap,
-                          TypeInference &types);
-Expected<void> verifyCBr_E(const Function &fn,
-                           const BasicBlock &bb,
-                           const Instr &instr,
-                           const std::unordered_map<std::string, const BasicBlock *> &blockMap,
-                           TypeInference &types);
-Expected<void> verifyRet_E(const Function &fn,
-                           const BasicBlock &bb,
-                           const Instr &instr,
-                           TypeInference &types);
 
-namespace
+FunctionVerifier::FunctionVerifier(const ExternMap &externs)
+    : externs_(externs), strategies_(makeDefaultInstructionStrategies())
 {
-
-class ControlFlowStrategy final : public FunctionVerifier::InstructionStrategy
-{
-  public:
-    bool matches(const Instr &instr) const override
-    {
-        return instr.op == Opcode::Br || instr.op == Opcode::CBr || instr.op == Opcode::Ret;
-    }
-
-    Expected<void> verify(const Function &fn,
-                          const BasicBlock &bb,
-                          const Instr &instr,
-                          const std::unordered_map<std::string, const BasicBlock *> &blockMap,
-                          const std::unordered_map<std::string, const Extern *> &,
-                          const std::unordered_map<std::string, const Function *> &,
-                          TypeInference &types,
-                          DiagSink &) const override
-    {
-        switch (instr.op)
-        {
-            case Opcode::Br:
-                return verifyBr_E(fn, bb, instr, blockMap, types);
-            case Opcode::CBr:
-                return verifyCBr_E(fn, bb, instr, blockMap, types);
-            case Opcode::Ret:
-                return verifyRet_E(fn, bb, instr, types);
-            default:
-                break;
-        }
-        return {};
-    }
-};
-
-class DefaultInstructionStrategy final : public FunctionVerifier::InstructionStrategy
-{
-  public:
-    bool matches(const Instr &) const override
-    {
-        return true;
-    }
-
-    Expected<void> verify(const Function &fn,
-                          const BasicBlock &bb,
-                          const Instr &instr,
-                          const std::unordered_map<std::string, const BasicBlock *> &,
-                          const std::unordered_map<std::string, const Extern *> &externs,
-                          const std::unordered_map<std::string, const Function *> &funcs,
-                          TypeInference &types,
-                          DiagSink &sink) const override
-    {
-        return verifyInstruction_E(fn, bb, instr, externs, funcs, types, sink);
-    }
-};
-
-} // namespace
-
-FunctionVerifier::FunctionVerifier(const ExternMap &externs) : externs_(externs)
-{
-    strategies_.push_back(std::make_unique<ControlFlowStrategy>());
-    strategies_.push_back(std::make_unique<DefaultInstructionStrategy>());
 }
 
 Expected<void> FunctionVerifier::run(const Module &module, DiagSink &sink)
@@ -395,7 +123,8 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
                     sigOk = false;
         }
         if (!sigOk)
-            return Expected<void>{makeError({}, "function @" + fn.name + " signature mismatch with extern")};
+            return Expected<void>{
+                makeError({}, "function @" + fn.name + " signature mismatch with extern")};
     }
 
     std::unordered_set<std::string> labels;
@@ -403,7 +132,8 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     for (const auto &bb : fn.blocks)
     {
         if (!labels.insert(bb.label).second)
-            return Expected<void>{makeError({}, formatFunctionDiag(fn, "duplicate label " + bb.label))};
+            return Expected<void>{
+                makeError({}, formatFunctionDiag(fn, "duplicate label " + bb.label))};
         blockMap[bb.label] = &bb;
     }
 
@@ -433,7 +163,8 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
             {
                 std::ostringstream message;
                 message << "eh.push target ^" << target << " must name a handler block";
-                return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, message.str()))};
+                return Expected<void>{
+                    makeError(instr.loc, formatInstrDiag(fn, bb, instr, message.str()))};
             }
         }
     }
@@ -442,16 +173,18 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
         for (const auto &instr : bb.instructions)
             for (const auto &label : instr.labels)
                 if (!labels.count(label))
-                    return Expected<void>{makeError({}, formatFunctionDiag(fn, "unknown label " + label))};
+                    return Expected<void>{
+                        makeError({}, formatFunctionDiag(fn, "unknown label " + label))};
 
     return {};
 }
 
-Expected<void> FunctionVerifier::verifyBlock(const Function &fn,
-                                             const BasicBlock &bb,
-                                             const std::unordered_map<std::string, const BasicBlock *> &blockMap,
-                                             std::unordered_map<unsigned, Type> &temps,
-                                             DiagSink &sink)
+Expected<void> FunctionVerifier::verifyBlock(
+    const Function &fn,
+    const BasicBlock &bb,
+    const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+    std::unordered_map<unsigned, Type> &temps,
+    DiagSink &sink)
 {
     std::unordered_set<unsigned> defined;
     for (const auto &entry : temps)
@@ -463,7 +196,7 @@ Expected<void> FunctionVerifier::verifyBlock(const Function &fn,
     if (auto result = validateBlockParams_E(fn, bb, types, paramIds); !result)
         return result;
 
-    std::optional<HandlerInfo> handlerSignature;
+    std::optional<HandlerSignature> handlerSignature;
     auto handlerCheck = analyzeHandlerBlock(fn, bb);
     if (!handlerCheck)
         return Expected<void>{handlerCheck.error()};
@@ -479,16 +212,23 @@ Expected<void> FunctionVerifier::verifyBlock(const Function &fn,
             return result;
 
         if (instr.op == Opcode::EhEntry && &instr != &bb.instructions.front())
-            return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "eh.entry only allowed as first instruction of handler block"))};
+            return Expected<void>{makeError(
+                instr.loc,
+                formatInstrDiag(
+                    fn, bb, instr, "eh.entry only allowed as first instruction of handler block"))};
 
         if (isResumeOpcode(instr.op))
         {
             if (!handlerSignature)
-                return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "resume.* only allowed in handler block"))};
+                return Expected<void>{makeError(
+                    instr.loc,
+                    formatInstrDiag(fn, bb, instr, "resume.* only allowed in handler block"))};
             if (instr.operands.empty() || instr.operands[0].kind != Value::Kind::Temp ||
-                instr.operands[0].id != handlerSignature->second)
+                instr.operands[0].id != handlerSignature->resumeTokenParam)
             {
-                return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "resume.* must use handler %tok parameter"))};
+                return Expected<void>{makeError(
+                    instr.loc,
+                    formatInstrDiag(fn, bb, instr, "resume.* must use handler %tok parameter"))};
             }
         }
 
@@ -496,7 +236,9 @@ Expected<void> FunctionVerifier::verifyBlock(const Function &fn,
         {
             if (!handlerSignature)
             {
-                return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "err.get_* only allowed in handler block"))};
+                return Expected<void>{makeError(
+                    instr.loc,
+                    formatInstrDiag(fn, bb, instr, "err.get_* only allowed in handler block"))};
             }
         }
 
@@ -509,13 +251,15 @@ Expected<void> FunctionVerifier::verifyBlock(const Function &fn,
                 {
                     std::ostringstream message;
                     message << "double release of %" << id;
-                    return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, message.str()))};
+                    return Expected<void>{
+                        makeError(instr.loc, formatInstrDiag(fn, bb, instr, message.str()))};
                 }
             }
         }
         else
         {
-            const auto checkValue = [&](const Value &value) -> Expected<void> {
+            const auto checkValue = [&](const Value &value) -> Expected<void>
+            {
                 if (value.kind != Value::Kind::Temp)
                     return Expected<void>{};
                 const unsigned id = value.id;
@@ -523,7 +267,8 @@ Expected<void> FunctionVerifier::verifyBlock(const Function &fn,
                     return Expected<void>{};
                 std::ostringstream message;
                 message << "use after release of %" << id;
-                return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, message.str()))};
+                return Expected<void>{
+                    makeError(instr.loc, formatInstrDiag(fn, bb, instr, message.str()))};
             };
 
             for (const auto &operand : instr.operands)
@@ -539,7 +284,8 @@ Expected<void> FunctionVerifier::verifyBlock(const Function &fn,
         if (auto result = verifyInstruction(fn, bb, instr, blockMap, types, sink); !result)
             return result;
 
-        if (isRuntimeArrayRelease(instr) && !instr.operands.empty() && instr.operands[0].kind == Value::Kind::Temp)
+        if (isRuntimeArrayRelease(instr) && !instr.operands.empty() &&
+            instr.operands[0].kind == Value::Kind::Temp)
         {
             released.insert(instr.operands[0].id);
         }
@@ -557,12 +303,13 @@ Expected<void> FunctionVerifier::verifyBlock(const Function &fn,
     return {};
 }
 
-Expected<void> FunctionVerifier::verifyInstruction(const Function &fn,
-                                                   const BasicBlock &bb,
-                                                   const Instr &instr,
-                                                   const std::unordered_map<std::string, const BasicBlock *> &blockMap,
-                                                   TypeInference &types,
-                                                   DiagSink &sink)
+Expected<void> FunctionVerifier::verifyInstruction(
+    const Function &fn,
+    const BasicBlock &bb,
+    const Instr &instr,
+    const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+    TypeInference &types,
+    DiagSink &sink)
 {
     if (auto result = verifyOpcodeSignature_E(fn, bb, instr); !result)
         return result;

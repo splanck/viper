@@ -40,6 +40,9 @@ add_library(il_verify STATIC
   il/verify/GlobalVerifier.cpp
   il/verify/FunctionVerifier.cpp
   il/verify/InstructionChecker.cpp
+  il/verify/InstructionStrategies.cpp
+  il/verify/ExceptionHandlerAnalysis.cpp
+  il/verify/BranchVerifier.cpp
   il/verify/ControlFlowChecker.cpp
   il/verify/TypeInference.cpp)
 target_link_libraries(il_verify PUBLIC il_core il_runtime)
