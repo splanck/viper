@@ -149,6 +149,16 @@ void Lowerer::requireCloseErr()
     needsCloseErr = true;
 }
 
+void Lowerer::requirePrintlnChErr()
+{
+    needsPrintlnChErr = true;
+}
+
+void Lowerer::requireLineInputChErr()
+{
+    needsLineInputChErr = true;
+}
+
 void Lowerer::requestHelper(RuntimeFeature feature)
 {
     runtimeTracker.requestHelper(feature);
@@ -193,6 +203,10 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         declareManual("rt_open_err_vstr");
     if (needsCloseErr)
         declareManual("rt_close_err");
+    if (needsPrintlnChErr)
+        declareManual("rt_println_ch_err");
+    if (needsLineInputChErr)
+        declareManual("rt_line_input_ch_err");
 }
 
 } // namespace il::frontends::basic
