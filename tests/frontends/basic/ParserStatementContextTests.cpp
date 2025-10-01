@@ -1,6 +1,6 @@
 // File: tests/frontends/basic/ParserStatementContextTests.cpp
-// Purpose: Validate BASIC parser statement context helpers for colon chains and nested flows.
-// Key invariants: StatementContext centralizes separator handling without altering AST shape.
+// Purpose: Validate BASIC parser statement sequencing helper for colon chains and nested flows.
+// Key invariants: StatementSequencer centralizes separator handling without altering AST shape.
 // Ownership/Lifetime: Test owns parser/source manager objects and inspects resulting AST.
 // Links: docs/codemap.md
 
@@ -15,6 +15,23 @@ using namespace il::support;
 int main()
 {
     {
+        std::string src = "PRINT 1\nPRINT 2: PRINT 3\nEND\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("multiline.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        assert(prog);
+        assert(prog->main.size() == 3);
+        auto *first = dynamic_cast<PrintStmt *>(prog->main[0].get());
+        assert(first);
+        auto *list = dynamic_cast<StmtList *>(prog->main[1].get());
+        assert(list);
+        assert(list->stmts.size() == 2);
+        assert(dynamic_cast<PrintStmt *>(list->stmts[0].get()));
+        assert(dynamic_cast<PrintStmt *>(list->stmts[1].get()));
+    }
+
+    {
         std::string src = "10 PRINT 1: LET X = 5\n20 END\n";
         SourceManager sm;
         uint32_t fid = sm.addFile("colon.bas");
@@ -27,6 +44,22 @@ int main()
         assert(list->stmts.size() == 2);
         assert(dynamic_cast<PrintStmt *>(list->stmts[0].get()));
         assert(dynamic_cast<LetStmt *>(list->stmts[1].get()));
+    }
+
+    {
+        std::string src = "10 PRINT 1:20 LET X = 5\n30 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("line-label.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        assert(prog);
+        assert(prog->main.size() == 3);
+        auto *first = dynamic_cast<PrintStmt *>(prog->main[0].get());
+        assert(first);
+        assert(first->line == 10);
+        auto *second = dynamic_cast<LetStmt *>(prog->main[1].get());
+        assert(second);
+        assert(second->line == 20);
     }
 
     {

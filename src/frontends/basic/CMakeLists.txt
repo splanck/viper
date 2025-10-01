@@ -7,6 +7,7 @@ add_library(fe_basic STATIC
   Parser_Stmt.cpp
   Parser_Expr.cpp
   Parser_Token.cpp
+  StatementSequencer.cpp
   NameMangler.cpp
   TypeSuffix.cpp
   TypeRules.cpp
