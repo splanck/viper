@@ -195,6 +195,20 @@ struct OpHandlers
                                     const il::core::BasicBlock *&bb,
                                     size_t &ip);
 
+    static VM::ExecResult handleLShr(VM &vm,
+                                     Frame &fr,
+                                     const il::core::Instr &in,
+                                     const VM::BlockMap &blocks,
+                                     const il::core::BasicBlock *&bb,
+                                     size_t &ip);
+
+    static VM::ExecResult handleAShr(VM &vm,
+                                     Frame &fr,
+                                     const il::core::Instr &in,
+                                     const VM::BlockMap &blocks,
+                                     const il::core::BasicBlock *&bb,
+                                     size_t &ip);
+
     static VM::ExecResult handleGEP(VM &vm,
                                     Frame &fr,
                                     const il::core::Instr &in,

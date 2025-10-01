@@ -135,6 +135,36 @@ int main()
         assert(vm.run() == (lhs | rhs));
     }
 
+    {
+        Module module;
+        const int64_t lhs = -8;
+        const int64_t rhs = 1;
+        buildBinaryFunction(module, Opcode::LShr, Type::Kind::I64, lhs, rhs);
+        il::vm::VM vm(module);
+        const uint64_t shift = static_cast<uint64_t>(rhs) & 63U;
+        const int64_t expected = static_cast<int64_t>(static_cast<uint64_t>(lhs) >> shift);
+        assert(vm.run() == expected);
+    }
+
+    {
+        Module module;
+        const int64_t lhs = -8;
+        const int64_t rhs = 1;
+        buildBinaryFunction(module, Opcode::AShr, Type::Kind::I64, lhs, rhs);
+        il::vm::VM vm(module);
+        const int64_t result = vm.run();
+        const uint64_t shift = static_cast<uint64_t>(rhs) & 63U;
+        uint64_t bits = static_cast<uint64_t>(lhs);
+        uint64_t shifted = bits >> shift;
+        if (shift != 0 && (bits & (uint64_t{1} << 63U)) != 0)
+        {
+            shifted |= (~uint64_t{0}) << (64U - shift);
+        }
+        const int64_t expected = static_cast<int64_t>(shifted);
+        assert(result == expected);
+        assert(result != static_cast<int64_t>(static_cast<uint64_t>(lhs) >> shift));
+    }
+
     expectDivideByZeroTrap(Opcode::SDiv);
     expectDivideByZeroTrap(Opcode::UDiv);
     expectDivideByZeroTrap(Opcode::SRem);

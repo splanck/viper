@@ -964,6 +964,69 @@ VM::ExecResult OpHandlers::handleShl(VM &vm,
                             { out.i64 = lhsVal.i64 << rhsVal.i64; });
 }
 
+/// @brief Interpret the `lshr` opcode for logical right shifts.
+/// @note Shift counts are masked to the canonical 0-63 range and the operation
+///       zero-extends the vacated bits, per docs/il-guide.md#reference
+///       §Bitwise and Shifts.
+VM::ExecResult OpHandlers::handleLShr(VM &vm,
+                                      Frame &fr,
+                                      const Instr &in,
+                                      const VM::BlockMap &blocks,
+                                      const BasicBlock *&bb,
+                                      size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            {
+                                const uint64_t shift = static_cast<uint64_t>(rhsVal.i64) & 63U;
+                                const uint64_t value = static_cast<uint64_t>(lhsVal.i64);
+                                out.i64 = static_cast<int64_t>(value >> shift);
+                            });
+}
+
+/// @brief Interpret the `ashr` opcode for arithmetic right shifts.
+/// @note Shift counts are masked to the canonical 0-63 range and sign bits are
+///       preserved for negative operands, matching docs/il-guide.md#reference
+///       §Bitwise and Shifts.
+VM::ExecResult OpHandlers::handleAShr(VM &vm,
+                                      Frame &fr,
+                                      const Instr &in,
+                                      const VM::BlockMap &blocks,
+                                      const BasicBlock *&bb,
+                                      size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            {
+                                const uint64_t shift = static_cast<uint64_t>(rhsVal.i64) & 63U;
+                                if (shift == 0)
+                                {
+                                    out.i64 = lhsVal.i64;
+                                    return;
+                                }
+
+                                const uint64_t value = static_cast<uint64_t>(lhsVal.i64);
+                                const bool isNegative = (value & (uint64_t{1} << 63U)) != 0;
+                                uint64_t shifted = value >> shift;
+                                if (isNegative)
+                                {
+                                    const uint64_t mask = (~uint64_t{0}) << (64U - shift);
+                                    shifted |= mask;
+                                }
+                                out.i64 = static_cast<int64_t>(shifted);
+                            });
+}
+
 /// @brief Interpret the `icmp_eq` opcode for integer equality comparisons.
 /// @note Produces a canonical `i1` value (0 or 1) stored via @c ops::storeResult,
 ///       following docs/il-guide.md#reference §Comparisons.

@@ -70,6 +70,8 @@ enum class VMDispatch : uint8_t
     Or,
     Xor,
     Shl,
+    LShr,
+    AShr,
     FAdd,
     FSub,
     FMul,
