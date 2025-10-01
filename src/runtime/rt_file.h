@@ -70,6 +70,28 @@ extern "C" {
     /// @return True when the entire buffer is written; false otherwise.
     bool rt_file_write(RtFile *file, const uint8_t *data, size_t len, RtError *out_err);
 
+    /// @brief Enumerates BASIC OPEN modes understood by the runtime wrapper API.
+    enum RtFileMode
+    {
+        RT_F_INPUT = 0,  ///< OPEN ... FOR INPUT
+        RT_F_OUTPUT = 1, ///< OPEN ... FOR OUTPUT
+        RT_F_APPEND = 2, ///< OPEN ... FOR APPEND
+        RT_F_BINARY = 3, ///< OPEN ... FOR BINARY
+        RT_F_RANDOM = 4, ///< OPEN ... FOR RANDOM
+    };
+
+    /// @brief Open @p path for the specified BASIC @p mode on @p channel.
+    /// @param path Runtime string describing the filesystem path.
+    /// @param mode Mode enumerator matching BASIC OPEN semantics.
+    /// @param channel Numeric channel identifier provided by the caller.
+    /// @return 0 on success; error code aligned with @ref Err otherwise.
+    int32_t rt_open_err_vstr(ViperString *path, int32_t mode, int32_t channel);
+
+    /// @brief Close the runtime file associated with @p channel when present.
+    /// @param channel Numeric channel identifier previously passed to OPEN.
+    /// @return 0 on success; error code aligned with @ref Err otherwise.
+    int32_t rt_close_err(int32_t channel);
+
 #ifdef __cplusplus
 }
 #endif

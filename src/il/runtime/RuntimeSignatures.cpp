@@ -546,6 +546,16 @@ std::vector<RuntimeDescriptor> buildRegistry()
         {},
         &DirectHandler<&rt_rnd, double>::invoke,
         feature(RuntimeFeature::Rnd, true));
+    add("rt_open_err_vstr",
+        Kind::I32,
+        {Kind::Str, Kind::I32, Kind::I32},
+        &DirectHandler<&rt_open_err_vstr, int32_t, ViperString *, int32_t, int32_t>::invoke,
+        manual());
+    add("rt_close_err",
+        Kind::I32,
+        {Kind::I32},
+        &DirectHandler<&rt_close_err, int32_t, int32_t>::invoke,
+        manual());
     add("rt_const_cstr",
         Kind::Str,
         {Kind::Ptr},
