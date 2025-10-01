@@ -84,6 +84,13 @@ target_include_directories(il_utils PUBLIC
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
 
+add_library(il_tools_common STATIC tools/common/module_loader.cpp)
+target_link_libraries(il_tools_common PUBLIC il_api support)
+target_include_directories(il_tools_common PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
+)
+
 add_library(il_vm STATIC
   vm/VM.cpp
   vm/VMInit.cpp
@@ -117,11 +124,11 @@ add_executable(ilc
   tools/ilc/cli.cpp
   tools/ilc/break_spec.cpp)
 set_target_properties(ilc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/ilc)
-target_link_libraries(ilc PRIVATE il_core il_io il_vm il_verify il_transform fe_basic il_api support)
+target_link_libraries(ilc PRIVATE il_core il_io il_vm il_verify il_transform fe_basic il_api support il_tools_common)
 
 add_executable(il-verify tools/il-verify/il-verify.cpp)
 set_target_properties(il-verify PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/il-verify)
-target_link_libraries(il-verify PRIVATE support il_core il_build il_io il_vm il_verify il_api)
+target_link_libraries(il-verify PRIVATE support il_core il_build il_io il_vm il_verify il_api il_tools_common)
 
 add_executable(il-dis tools/il-dis/main.cpp)
 set_target_properties(il-dis PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/il-dis)
