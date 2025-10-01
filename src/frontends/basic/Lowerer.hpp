@@ -448,6 +448,16 @@ class Lowerer
 
     RVal normalizeChannelToI32(RVal channel, il::support::SourceLoc loc);
 
+    /// @brief Emit a runtime error branch skeleton with trap handling.
+    /// @param err Error code value returned from the runtime helper.
+    /// @param loc Source location used for diagnostics.
+    /// @param labelStem Base string for fail/cont block labels.
+    /// @param onFailure Callback executed after positioning at the fail block.
+    void emitRuntimeErrCheck(Value err,
+                             il::support::SourceLoc loc,
+                             std::string_view labelStem,
+                             const std::function<void(Value)> &onFailure);
+
     void lowerLet(const LetStmt &stmt);
 
     void lowerPrint(const PrintStmt &stmt);
