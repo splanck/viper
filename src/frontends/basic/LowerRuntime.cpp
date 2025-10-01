@@ -11,6 +11,7 @@
 #include "frontends/basic/Lowerer.hpp"
 #include "il/build/IRBuilder.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
+#include <array>
 #include <cassert>
 #include <string>
 #include <string_view>
@@ -99,64 +100,79 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
     }
 }
 
+void Lowerer::setManualHelperRequired(ManualRuntimeHelper helper)
+{
+    manualHelperRequirements_[manualRuntimeHelperIndex(helper)] = true;
+}
+
+bool Lowerer::isManualHelperRequired(ManualRuntimeHelper helper) const
+{
+    return manualHelperRequirements_[manualRuntimeHelperIndex(helper)];
+}
+
+void Lowerer::resetManualHelpers()
+{
+    manualHelperRequirements_.fill(false);
+}
+
 void Lowerer::requireArrayI32New()
 {
-    needsArrI32New = true;
+    setManualHelperRequired(ManualRuntimeHelper::ArrayI32New);
 }
 
 void Lowerer::requireArrayI32Resize()
 {
-    needsArrI32Resize = true;
+    setManualHelperRequired(ManualRuntimeHelper::ArrayI32Resize);
 }
 
 void Lowerer::requireArrayI32Len()
 {
-    needsArrI32Len = true;
+    setManualHelperRequired(ManualRuntimeHelper::ArrayI32Len);
 }
 
 void Lowerer::requireArrayI32Get()
 {
-    needsArrI32Get = true;
+    setManualHelperRequired(ManualRuntimeHelper::ArrayI32Get);
 }
 
 void Lowerer::requireArrayI32Set()
 {
-    needsArrI32Set = true;
+    setManualHelperRequired(ManualRuntimeHelper::ArrayI32Set);
 }
 
 void Lowerer::requireArrayI32Retain()
 {
-    needsArrI32Retain = true;
+    setManualHelperRequired(ManualRuntimeHelper::ArrayI32Retain);
 }
 
 void Lowerer::requireArrayI32Release()
 {
-    needsArrI32Release = true;
+    setManualHelperRequired(ManualRuntimeHelper::ArrayI32Release);
 }
 
 void Lowerer::requireArrayOobPanic()
 {
-    needsArrOobPanic = true;
+    setManualHelperRequired(ManualRuntimeHelper::ArrayOobPanic);
 }
 
 void Lowerer::requireOpenErrVstr()
 {
-    needsOpenErrVstr = true;
+    setManualHelperRequired(ManualRuntimeHelper::OpenErrVstr);
 }
 
 void Lowerer::requireCloseErr()
 {
-    needsCloseErr = true;
+    setManualHelperRequired(ManualRuntimeHelper::CloseErr);
 }
 
 void Lowerer::requirePrintlnChErr()
 {
-    needsPrintlnChErr = true;
+    setManualHelperRequired(ManualRuntimeHelper::PrintlnChErr);
 }
 
 void Lowerer::requireLineInputChErr()
 {
-    needsLineInputChErr = true;
+    setManualHelperRequired(ManualRuntimeHelper::LineInputChErr);
 }
 
 void Lowerer::requestHelper(RuntimeFeature feature)
@@ -178,35 +194,38 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
 {
     runtimeTracker.declareRequiredRuntime(b, boundsChecks);
 
+    struct ManualHelperDescriptor
+    {
+        std::string_view name;
+        ManualRuntimeHelper helper;
+        [[maybe_unused]] void (Lowerer::*requireHook)();
+    };
+
+    static constexpr std::array<ManualHelperDescriptor, manualRuntimeHelperCount> manualHelpers{{
+        {"rt_arr_i32_new", ManualRuntimeHelper::ArrayI32New, &Lowerer::requireArrayI32New},
+        {"rt_arr_i32_resize", ManualRuntimeHelper::ArrayI32Resize, &Lowerer::requireArrayI32Resize},
+        {"rt_arr_i32_len", ManualRuntimeHelper::ArrayI32Len, &Lowerer::requireArrayI32Len},
+        {"rt_arr_i32_get", ManualRuntimeHelper::ArrayI32Get, &Lowerer::requireArrayI32Get},
+        {"rt_arr_i32_set", ManualRuntimeHelper::ArrayI32Set, &Lowerer::requireArrayI32Set},
+        {"rt_arr_i32_retain", ManualRuntimeHelper::ArrayI32Retain, &Lowerer::requireArrayI32Retain},
+        {"rt_arr_i32_release", ManualRuntimeHelper::ArrayI32Release, &Lowerer::requireArrayI32Release},
+        {"rt_arr_oob_panic", ManualRuntimeHelper::ArrayOobPanic, &Lowerer::requireArrayOobPanic},
+        {"rt_open_err_vstr", ManualRuntimeHelper::OpenErrVstr, &Lowerer::requireOpenErrVstr},
+        {"rt_close_err", ManualRuntimeHelper::CloseErr, &Lowerer::requireCloseErr},
+        {"rt_println_ch_err", ManualRuntimeHelper::PrintlnChErr, &Lowerer::requirePrintlnChErr},
+        {"rt_line_input_ch_err", ManualRuntimeHelper::LineInputChErr, &Lowerer::requireLineInputChErr},
+    }};
+
     auto declareManual = [&](std::string_view name) {
         if (const auto *desc = il::runtime::findRuntimeDescriptor(name))
             b.addExtern(std::string(desc->name), desc->signature.retType, desc->signature.paramTypes);
     };
 
-    if (needsArrI32New)
-        declareManual("rt_arr_i32_new");
-    if (needsArrI32Resize)
-        declareManual("rt_arr_i32_resize");
-    if (needsArrI32Len)
-        declareManual("rt_arr_i32_len");
-    if (needsArrI32Get)
-        declareManual("rt_arr_i32_get");
-    if (needsArrI32Set)
-        declareManual("rt_arr_i32_set");
-    if (needsArrI32Retain)
-        declareManual("rt_arr_i32_retain");
-    if (needsArrI32Release)
-        declareManual("rt_arr_i32_release");
-    if (needsArrOobPanic)
-        declareManual("rt_arr_oob_panic");
-    if (needsOpenErrVstr)
-        declareManual("rt_open_err_vstr");
-    if (needsCloseErr)
-        declareManual("rt_close_err");
-    if (needsPrintlnChErr)
-        declareManual("rt_println_ch_err");
-    if (needsLineInputChErr)
-        declareManual("rt_line_input_ch_err");
+    for (const auto &helper : manualHelpers)
+    {
+        if (isManualHelperRequired(helper.helper))
+            declareManual(helper.name);
+    }
 }
 
 } // namespace il::frontends::basic
