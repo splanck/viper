@@ -1146,6 +1146,99 @@ VM::ExecResult OpHandlers::handleSCmpGE(VM &vm,
                              { return lhsVal.i64 >= rhsVal.i64; });
 }
 
+/// @brief Interpret the `ucmp_lt` opcode for unsigned less-than comparisons.
+/// @note Operands are reinterpreted as unsigned 64-bit values per
+///       docs/il-guide.md#reference §Comparisons, and the result is stored as a
+///       canonical boolean.
+VM::ExecResult OpHandlers::handleUCmpLT(VM &vm,
+                                        Frame &fr,
+                                        const Instr &in,
+                                        const VM::BlockMap &blocks,
+                                        const BasicBlock *&bb,
+                                        size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+    return ops::applyCompare(vm,
+                             fr,
+                             in,
+                             [](const Slot &lhsVal, const Slot &rhsVal)
+                             {
+                                 return static_cast<uint64_t>(lhsVal.i64) <
+                                        static_cast<uint64_t>(rhsVal.i64);
+                             });
+}
+
+/// @brief Interpret the `ucmp_le` opcode for unsigned less-or-equal comparisons.
+/// @note Reuses unsigned ordering semantics and returns 0 or 1 in the
+///       destination register.
+VM::ExecResult OpHandlers::handleUCmpLE(VM &vm,
+                                        Frame &fr,
+                                        const Instr &in,
+                                        const VM::BlockMap &blocks,
+                                        const BasicBlock *&bb,
+                                        size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+    return ops::applyCompare(vm,
+                             fr,
+                             in,
+                             [](const Slot &lhsVal, const Slot &rhsVal)
+                             {
+                                 return static_cast<uint64_t>(lhsVal.i64) <=
+                                        static_cast<uint64_t>(rhsVal.i64);
+                             });
+}
+
+/// @brief Interpret the `ucmp_gt` opcode for unsigned greater-than comparisons.
+/// @note Mirrors @ref OpHandlers::handleUCmpLT with inverted predicate while
+///       maintaining canonical boolean storage.
+VM::ExecResult OpHandlers::handleUCmpGT(VM &vm,
+                                        Frame &fr,
+                                        const Instr &in,
+                                        const VM::BlockMap &blocks,
+                                        const BasicBlock *&bb,
+                                        size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+    return ops::applyCompare(vm,
+                             fr,
+                             in,
+                             [](const Slot &lhsVal, const Slot &rhsVal)
+                             {
+                                 return static_cast<uint64_t>(lhsVal.i64) >
+                                        static_cast<uint64_t>(rhsVal.i64);
+                             });
+}
+
+/// @brief Interpret the `ucmp_ge` opcode for unsigned greater-or-equal comparisons.
+/// @note Completes the unsigned comparison family with canonical boolean
+///       results.
+VM::ExecResult OpHandlers::handleUCmpGE(VM &vm,
+                                        Frame &fr,
+                                        const Instr &in,
+                                        const VM::BlockMap &blocks,
+                                        const BasicBlock *&bb,
+                                        size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+    return ops::applyCompare(vm,
+                             fr,
+                             in,
+                             [](const Slot &lhsVal, const Slot &rhsVal)
+                             {
+                                 return static_cast<uint64_t>(lhsVal.i64) >=
+                                        static_cast<uint64_t>(rhsVal.i64);
+                             });
+}
+
 /// @brief Interpret the `trunc1`/`zext1` opcodes that normalise between `i1` and `i64`.
 /// @note The operand is masked to the least-significant bit so the stored value is a
 ///       canonical boolean per docs/il-guide.md#reference §Conversions.
