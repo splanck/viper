@@ -8,12 +8,15 @@
 #include "frontends/basic/Lexer.hpp"
 #include "frontends/basic/Token.hpp"
 #include "support/source_manager.hpp"
-#include <fstream>
+#include "tools/basic/common.hpp"
+
 #include <iostream>
-#include <sstream>
+#include <optional>
+#include <string>
 
 using namespace il::frontends::basic;
 using namespace il::support;
+using il::tools::basic::loadBasicSource;
 
 /// @brief Tool entry point that dumps BASIC source tokens for golden tests.
 ///
@@ -26,23 +29,15 @@ using namespace il::support;
 /// a non-zero status.
 int main(int argc, char **argv)
 {
-    if (argc != 2)
-    {
-        std::cerr << "Usage: basic-lex-dump <file.bas>\n";
-        return 1;
-    }
-    std::ifstream in(argv[1]);
-    if (!in)
-    {
-        std::cerr << "cannot open " << argv[1] << "\n";
-        return 1;
-    }
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    std::string src = ss.str();
+    std::string src;
     SourceManager sm;
-    uint32_t fid = sm.addFile(argv[1]);
-    Lexer lex(src, fid);
+    std::optional<std::uint32_t> fileId = loadBasicSource(argc == 2 ? argv[1] : nullptr, src, sm);
+    if (!fileId)
+    {
+        return 1;
+    }
+
+    Lexer lex(src, *fileId);
     for (Token t = lex.next();; t = lex.next())
     {
         std::cout << t.loc.line << ":" << t.loc.column << " " << tokenKindToString(t.kind);
