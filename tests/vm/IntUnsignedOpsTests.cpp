@@ -117,6 +117,24 @@ int main()
         assert(vm.run() == expected);
     }
 
+    {
+        Module module;
+        const int64_t lhs = -5;
+        const int64_t rhs = 12;
+        buildBinaryFunction(module, Opcode::And, Type::Kind::I64, lhs, rhs);
+        il::vm::VM vm(module);
+        assert(vm.run() == (lhs & rhs));
+    }
+
+    {
+        Module module;
+        const int64_t lhs = -5;
+        const int64_t rhs = 12;
+        buildBinaryFunction(module, Opcode::Or, Type::Kind::I64, lhs, rhs);
+        il::vm::VM vm(module);
+        assert(vm.run() == (lhs | rhs));
+    }
+
     expectDivideByZeroTrap(Opcode::SDiv);
     expectDivideByZeroTrap(Opcode::UDiv);
     expectDivideByZeroTrap(Opcode::SRem);

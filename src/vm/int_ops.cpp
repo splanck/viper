@@ -883,6 +883,46 @@ VM::ExecResult OpHandlers::handleCastUiToFp(VM &vm,
     return {};
 }
 
+/// @brief Interpret the `and` opcode for 64-bit integers.
+/// @note Applies bitwise conjunction on canonical 64-bit operands and writes the
+///       result to the destination register, as specified in docs/il-guide.md#reference.
+VM::ExecResult OpHandlers::handleAnd(VM &vm,
+                                     Frame &fr,
+                                     const Instr &in,
+                                     const VM::BlockMap &blocks,
+                                     const BasicBlock *&bb,
+                                     size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            { out.i64 = lhsVal.i64 & rhsVal.i64; });
+}
+
+/// @brief Interpret the `or` opcode for 64-bit integers.
+/// @note Applies bitwise disjunction on canonical 64-bit operands and writes the
+///       result to the destination register, following docs/il-guide.md#reference.
+VM::ExecResult OpHandlers::handleOr(VM &vm,
+                                    Frame &fr,
+                                    const Instr &in,
+                                    const VM::BlockMap &blocks,
+                                    const BasicBlock *&bb,
+                                    size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+    return ops::applyBinary(vm,
+                            fr,
+                            in,
+                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            { out.i64 = lhsVal.i64 | rhsVal.i64; });
+}
+
 /// @brief Interpret the `xor` opcode for 64-bit integers.
 /// @note Operands are evaluated via @c vm.eval and the bitwise result is stored back
 ///       into the destination register, matching docs/il-guide.md#reference §Bitwise and Shifts.
