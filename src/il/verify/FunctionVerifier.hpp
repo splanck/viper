@@ -6,6 +6,7 @@
 #pragma once
 
 #include "il/verify/DiagSink.hpp"
+#include "il/verify/ExceptionHandlerAnalysis.hpp"
 
 #include "support/diag_expected.hpp"
 
@@ -80,7 +81,7 @@ class FunctionVerifier
 
     const ExternMap &externs_;
     std::unordered_map<std::string, const il::core::Function *> functionMap_;
-    std::unordered_map<std::string, std::pair<unsigned, unsigned>> handlerInfo_;
+    std::unordered_map<std::string, HandlerSignature> handlerInfo_;
     std::vector<std::unique_ptr<InstructionStrategy>> strategies_;
 };
 
