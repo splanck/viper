@@ -5,10 +5,13 @@
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
 // Links: docs/codemap.md
 
+#include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
+#include <cassert>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace il::frontends::basic
@@ -33,117 +36,182 @@ Lowerer::ExprType exprTypeFromAstType(::il::frontends::basic::Type ty)
             return Lowerer::ExprType::I64;
     }
 }
-
 } // namespace
 
-class ScanExprVisitor final : public ExprVisitor
+class ScanWalker final : public BasicAstWalker<ScanWalker>
 {
   public:
-    explicit ScanExprVisitor(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
+    explicit ScanWalker(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
 
-    void visit(const IntExpr &) override { result_ = Lowerer::ExprType::I64; }
+    using ExprType = Lowerer::ExprType;
 
-    void visit(const FloatExpr &) override { result_ = Lowerer::ExprType::F64; }
-
-    void visit(const StringExpr &) override { result_ = Lowerer::ExprType::Str; }
-
-    void visit(const BoolExpr &) override { result_ = Lowerer::ExprType::I64; }
-
-    void visit(const VarExpr &expr) override
+    ExprType evaluateExpr(const Expr &expr)
     {
+        StackScope scope(*this);
+        expr.accept(*this);
+        return pop();
+    }
+
+    void evaluateStmt(const Stmt &stmt)
+    {
+        StackScope scope(*this);
+        stmt.accept(*this);
+    }
+
+    void evaluateProgram(const Program &prog)
+    {
+        StackScope scope(*this);
+        for (const auto &decl : prog.procs)
+            if (decl)
+                decl->accept(*this);
+        for (const auto &stmt : prog.main)
+            if (stmt)
+                stmt->accept(*this);
+    }
+
+    // Expression hooks --------------------------------------------------
+
+    void after(const IntExpr &)
+    {
+        push(ExprType::I64);
+    }
+
+    void after(const FloatExpr &)
+    {
+        push(ExprType::F64);
+    }
+
+    void after(const StringExpr &)
+    {
+        push(ExprType::Str);
+    }
+
+    void after(const BoolExpr &)
+    {
+        push(ExprType::I64);
+    }
+
+    void after(const VarExpr &expr)
+    {
+        ExprType result = ExprType::I64;
         if (const auto *info = lowerer_.findSymbol(expr.name))
         {
             if (info->hasType)
-            {
-                result_ = exprTypeFromAstType(info->type);
-                return;
-            }
+                result = exprTypeFromAstType(info->type);
+            else
+                result = exprTypeFromAstType(inferAstTypeFromName(expr.name));
         }
-        result_ = exprTypeFromAstType(inferAstTypeFromName(expr.name));
+        else
+        {
+            result = exprTypeFromAstType(inferAstTypeFromName(expr.name));
+        }
+        push(result);
     }
 
-    void visit(const ArrayExpr &expr) override { result_ = lowerer_.scanArrayExpr(expr); }
-
-    void visit(const LBoundExpr &expr) override { result_ = lowerer_.scanLBoundExpr(expr); }
-
-    void visit(const UBoundExpr &expr) override { result_ = lowerer_.scanUBoundExpr(expr); }
-
-    void visit(const UnaryExpr &expr) override { result_ = lowerer_.scanUnaryExpr(expr); }
-
-    void visit(const BinaryExpr &expr) override { result_ = lowerer_.scanBinaryExpr(expr); }
-
-    void visit(const BuiltinCallExpr &expr) override
+    void after(const ArrayExpr &expr)
     {
-        result_ = lowerer_.scanBuiltinCallExpr(expr);
+        discardIf(expr.index != nullptr);
+        if (lvalueDepth_ > 0)
+        {
+            push(ExprType::I64);
+            return;
+        }
+        lowerer_.markSymbolReferenced(expr.name);
+        lowerer_.markArray(expr.name);
+        lowerer_.requireArrayI32Len();
+        lowerer_.requireArrayI32Get();
+        lowerer_.requireArrayOobPanic();
+        push(ExprType::I64);
     }
 
-    void visit(const CallExpr &expr) override
+    void after(const LBoundExpr &expr)
+    {
+        if (!expr.name.empty())
+        {
+            lowerer_.markSymbolReferenced(expr.name);
+            lowerer_.markArray(expr.name);
+        }
+        push(ExprType::I64);
+    }
+
+    void after(const UBoundExpr &expr)
+    {
+        if (!expr.name.empty())
+        {
+            lowerer_.markSymbolReferenced(expr.name);
+            lowerer_.markArray(expr.name);
+        }
+        lowerer_.requireArrayI32Len();
+        push(ExprType::I64);
+    }
+
+    void after(const UnaryExpr &)
+    {
+        ExprType operand = pop();
+        push(operand);
+    }
+
+    void after(const BinaryExpr &expr)
+    {
+        ExprType rhs = pop();
+        ExprType lhs = pop();
+        push(combineBinary(expr, lhs, rhs));
+    }
+
+    bool shouldVisitChildren(const BuiltinCallExpr &) { return false; }
+
+    void after(const BuiltinCallExpr &expr)
+    {
+        push(lowerer_.scanBuiltinCallExpr(expr));
+    }
+
+    bool shouldVisitChildren(const CallExpr &) { return false; }
+
+    void after(const CallExpr &expr)
     {
         for (const auto &arg : expr.args)
-        {
             if (arg)
-                lowerer_.scanExpr(*arg);
-        }
-        result_ = Lowerer::ExprType::I64;
+                consumeExpr(*arg);
+        push(ExprType::I64);
     }
 
-    [[nodiscard]] Lowerer::ExprType result() const noexcept { return result_; }
+    // Statement hooks ---------------------------------------------------
 
-  private:
-    Lowerer &lowerer_;
-    Lowerer::ExprType result_{Lowerer::ExprType::I64};
-};
-
-class ScanStmtVisitor final : public StmtVisitor
-{
-  public:
-    explicit ScanStmtVisitor(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
-
-    void visit(const PrintStmt &stmt) override
+    void after(const PrintStmt &stmt)
     {
-        for (const auto &it : stmt.items)
+        for (auto it = stmt.items.rbegin(); it != stmt.items.rend(); ++it)
         {
-            if (it.kind == PrintItem::Kind::Expr && it.expr)
-                lowerer_.scanExpr(*it.expr);
+            if (it->kind == PrintItem::Kind::Expr && it->expr)
+                pop();
         }
     }
 
-    void visit(const PrintChStmt &stmt) override
+    void before(const PrintChStmt &)
     {
         lowerer_.requirePrintlnChErr();
-        if (stmt.channelExpr)
-            lowerer_.scanExpr(*stmt.channelExpr);
-        for (const auto &arg : stmt.args)
-        {
-            if (!arg)
-                continue;
-            Lowerer::ExprType ty = lowerer_.scanExpr(*arg);
-            if (ty == Lowerer::ExprType::Str)
-                continue;
-            TypeRules::NumericType numericType = lowerer_.classifyNumericType(*arg);
-            switch (numericType)
-            {
-                case TypeRules::NumericType::Integer:
-                    lowerer_.requestHelper(Lowerer::RuntimeFeature::StrFromI16);
-                    break;
-                case TypeRules::NumericType::Long:
-                    lowerer_.requestHelper(Lowerer::RuntimeFeature::StrFromI32);
-                    break;
-                case TypeRules::NumericType::Single:
-                    lowerer_.requestHelper(Lowerer::RuntimeFeature::StrFromSingle);
-                    break;
-                case TypeRules::NumericType::Double:
-                default:
-                    lowerer_.requestHelper(Lowerer::RuntimeFeature::StrFromDouble);
-                    break;
-            }
-        }
     }
 
-    void visit(const LetStmt &stmt) override
+    void after(const PrintChStmt &stmt)
+    {
+        for (auto it = stmt.args.rbegin(); it != stmt.args.rend(); ++it)
+        {
+            if (!*it)
+                continue;
+            ExprType ty = pop();
+            handlePrintChArg(**it, ty);
+        }
+        if (stmt.channelExpr)
+            pop();
+    }
+
+    void after(const LetStmt &stmt)
     {
         if (stmt.expr)
-            lowerer_.scanExpr(*stmt.expr);
+            pop();
+
+        if (!stmt.target)
+            return;
+
         if (auto *var = dynamic_cast<const VarExpr *>(stmt.target.get()))
         {
             if (!var->name.empty())
@@ -151,7 +219,8 @@ class ScanStmtVisitor final : public StmtVisitor
                 const auto *info = lowerer_.findSymbol(var->name);
                 if (!info || !info->hasType)
                     lowerer_.setSymbolType(var->name, inferAstTypeFromName(var->name));
-                if (const auto *arrayInfo = lowerer_.findSymbol(var->name); arrayInfo && arrayInfo->isArray)
+                if (const auto *arrayInfo = lowerer_.findSymbol(var->name);
+                    arrayInfo && arrayInfo->isArray)
                 {
                     lowerer_.requireArrayI32Retain();
                     lowerer_.requireArrayI32Release();
@@ -171,84 +240,77 @@ class ScanStmtVisitor final : public StmtVisitor
             lowerer_.requireArrayI32Len();
             lowerer_.requireArrayI32Set();
             lowerer_.requireArrayOobPanic();
-            if (arr->index)
-                lowerer_.scanExpr(*arr->index);
         }
+
+        pop();
     }
 
-    void visit(const DimStmt &stmt) override
+    void before(const DimStmt &stmt)
     {
-        if (!stmt.name.empty())
-            lowerer_.setSymbolType(stmt.name, stmt.type);
+        if (stmt.name.empty())
+            return;
+        lowerer_.setSymbolType(stmt.name, stmt.type);
+        lowerer_.markSymbolReferenced(stmt.name);
         if (stmt.isArray)
         {
-            lowerer_.requireArrayI32New();
             lowerer_.markArray(stmt.name);
+            lowerer_.requireArrayI32New();
             lowerer_.requireArrayI32Retain();
             lowerer_.requireArrayI32Release();
         }
-        if (stmt.size)
-            lowerer_.scanExpr(*stmt.size);
     }
 
-    void visit(const ReDimStmt &stmt) override
+    void after(const DimStmt &stmt)
     {
-        if (!stmt.name.empty())
-            lowerer_.markSymbolReferenced(stmt.name);
+        discardIf(stmt.size != nullptr);
+    }
+
+    void before(const ReDimStmt &stmt)
+    {
+        if (stmt.name.empty())
+            return;
+        lowerer_.markSymbolReferenced(stmt.name);
         lowerer_.markArray(stmt.name);
         lowerer_.requireArrayI32Resize();
         lowerer_.requireArrayI32Retain();
         lowerer_.requireArrayI32Release();
-        if (stmt.size)
-            lowerer_.scanExpr(*stmt.size);
     }
 
-    void visit(const RandomizeStmt &stmt) override
+    void after(const ReDimStmt &stmt)
+    {
+        discardIf(stmt.size != nullptr);
+    }
+
+    void before(const RandomizeStmt &)
     {
         lowerer_.trackRuntime(Lowerer::RuntimeFeature::RandomizeI64);
-        if (stmt.seed)
-            lowerer_.scanExpr(*stmt.seed);
     }
 
-    void visit(const IfStmt &stmt) override
+    void after(const RandomizeStmt &stmt)
     {
+        discardIf(stmt.seed != nullptr);
+    }
+
+    void after(const IfStmt &stmt)
+    {
+        for (auto it = stmt.elseifs.rbegin(); it != stmt.elseifs.rend(); ++it)
+            if (it->cond)
+                pop();
         if (stmt.cond)
-            lowerer_.scanExpr(*stmt.cond);
-        if (stmt.then_branch)
-            lowerer_.scanStmt(*stmt.then_branch);
-        for (const auto &elseif : stmt.elseifs)
-        {
-            if (elseif.cond)
-                lowerer_.scanExpr(*elseif.cond);
-            if (elseif.then_branch)
-                lowerer_.scanStmt(*elseif.then_branch);
-        }
-        if (stmt.else_branch)
-            lowerer_.scanStmt(*stmt.else_branch);
+            pop();
     }
 
-    void visit(const WhileStmt &stmt) override
+    void after(const WhileStmt &stmt)
     {
-        lowerer_.scanExpr(*stmt.cond);
-        for (const auto &child : stmt.body)
-        {
-            if (child)
-                lowerer_.scanStmt(*child);
-        }
+        discardIf(stmt.cond != nullptr);
     }
 
-    void visit(const DoStmt &stmt) override
+    void after(const DoStmt &stmt)
     {
-        if (stmt.cond)
-            lowerer_.scanExpr(*stmt.cond);
-        for (const auto &child : stmt.body)
-        {
-            if (child)
-                lowerer_.scanStmt(*child);
-        }
+        discardIf(stmt.cond != nullptr);
     }
 
-    void visit(const ForStmt &stmt) override
+    void before(const ForStmt &stmt)
     {
         if (!stmt.var.empty())
         {
@@ -256,193 +318,211 @@ class ScanStmtVisitor final : public StmtVisitor
             if (!info || !info->hasType)
                 lowerer_.setSymbolType(stmt.var, inferAstTypeFromName(stmt.var));
         }
-        lowerer_.scanExpr(*stmt.start);
-        lowerer_.scanExpr(*stmt.end);
-        if (stmt.step)
-            lowerer_.scanExpr(*stmt.step);
-        for (const auto &child : stmt.body)
-        {
-            if (child)
-                lowerer_.scanStmt(*child);
-        }
     }
 
-    void visit(const NextStmt &) override {}
-    void visit(const ExitStmt &) override {}
+    void after(const ForStmt &stmt)
+    {
+        if (stmt.step)
+            pop();
+        if (stmt.end)
+            pop();
+        if (stmt.start)
+            pop();
+    }
 
-    void visit(const GotoStmt &) override {}
-
-    void visit(const OpenStmt &stmt) override
+    void before(const OpenStmt &)
     {
         lowerer_.requireOpenErrVstr();
-        if (stmt.pathExpr)
-            lowerer_.scanExpr(*stmt.pathExpr);
-        if (stmt.channelExpr)
-            lowerer_.scanExpr(*stmt.channelExpr);
     }
 
-    void visit(const CloseStmt &stmt) override
+    void after(const OpenStmt &stmt)
+    {
+        if (stmt.channelExpr)
+            pop();
+        if (stmt.pathExpr)
+            pop();
+    }
+
+    void before(const CloseStmt &)
     {
         lowerer_.requireCloseErr();
-        if (stmt.channelExpr)
-            lowerer_.scanExpr(*stmt.channelExpr);
     }
 
-    void visit(const OnErrorGoto &) override {}
+    void after(const CloseStmt &stmt)
+    {
+        discardIf(stmt.channelExpr != nullptr);
+    }
 
-    void visit(const Resume &) override {}
-
-    void visit(const EndStmt &) override {}
-
-    void visit(const InputStmt &stmt) override
+    void before(const InputStmt &stmt)
     {
         lowerer_.requestHelper(Lowerer::RuntimeFeature::InputLine);
-        if (stmt.prompt)
-            lowerer_.scanExpr(*stmt.prompt);
-        if (stmt.var.empty() || stmt.var.back() != '$')
+        inputVarName_ = stmt.var;
+    }
+
+    void after(const InputStmt &stmt)
+    {
+        discardIf(stmt.prompt != nullptr);
+        if (inputVarName_.empty() || inputVarName_.back() != '$')
             lowerer_.requestHelper(Lowerer::RuntimeFeature::ToInt);
-        if (!stmt.var.empty())
+        if (!inputVarName_.empty())
         {
-            const auto *info = lowerer_.findSymbol(stmt.var);
+            const auto *info = lowerer_.findSymbol(inputVarName_);
             if (!info || !info->hasType)
-                lowerer_.setSymbolType(stmt.var, inferAstTypeFromName(stmt.var));
+                lowerer_.setSymbolType(inputVarName_, inferAstTypeFromName(inputVarName_));
+        }
+        inputVarName_.clear();
+    }
+
+    void before(const LineInputChStmt &)
+    {
+        lowerer_.requireLineInputChErr();
+    }
+
+    void after(const LineInputChStmt &stmt)
+    {
+        if (stmt.targetVar)
+            pop();
+        if (stmt.channelExpr)
+            pop();
+    }
+
+    void after(const ReturnStmt &stmt)
+    {
+        discardIf(stmt.value != nullptr);
+    }
+
+    void after(const FunctionDecl &)
+    {
+        // No expression stack adjustments required.
+    }
+
+    void after(const SubDecl &)
+    {
+        // No expression stack adjustments required.
+    }
+
+    void after(const StmtList &)
+    {
+        // No expression stack adjustments required.
+    }
+
+  private:
+    struct StackScope
+    {
+        ScanWalker &walker;
+        std::size_t depth;
+        explicit StackScope(ScanWalker &w) : walker(w), depth(w.exprStack_.size()) {}
+        ~StackScope()
+        {
+            assert(walker.exprStack_.size() == depth && "expression stack imbalance");
+        }
+    };
+
+    void push(ExprType ty)
+    {
+        exprStack_.push_back(ty);
+    }
+
+    ExprType pop()
+    {
+        assert(!exprStack_.empty());
+        ExprType ty = exprStack_.back();
+        exprStack_.pop_back();
+        return ty;
+    }
+
+    void discardIf(bool condition)
+    {
+        if (condition)
+            (void)pop();
+    }
+
+    ExprType consumeExpr(const Expr &expr)
+    {
+        expr.accept(*this);
+        return pop();
+    }
+
+    ExprType combineBinary(const BinaryExpr &expr, ExprType lhs, ExprType rhs)
+    {
+        using Op = BinaryExpr::Op;
+        if (expr.op == Op::Pow)
+        {
+            lowerer_.trackRuntime(Lowerer::RuntimeFeature::Pow);
+            return ExprType::F64;
+        }
+        if (expr.op == Op::Add && lhs == ExprType::Str && rhs == ExprType::Str)
+        {
+            lowerer_.requestHelper(Lowerer::RuntimeFeature::Concat);
+            return ExprType::Str;
+        }
+        if (expr.op == Op::Eq || expr.op == Op::Ne)
+        {
+            if (lhs == ExprType::Str || rhs == ExprType::Str)
+                lowerer_.requestHelper(Lowerer::RuntimeFeature::StrEq);
+            return ExprType::Bool;
+        }
+        if (expr.op == Op::LogicalAndShort || expr.op == Op::LogicalOrShort || expr.op == Op::LogicalAnd ||
+            expr.op == Op::LogicalOr)
+            return ExprType::Bool;
+        if (lhs == ExprType::F64 || rhs == ExprType::F64)
+            return ExprType::F64;
+        return ExprType::I64;
+    }
+
+    void handlePrintChArg(const Expr &expr, ExprType ty)
+    {
+        if (ty == ExprType::Str)
+            return;
+        TypeRules::NumericType numericType = lowerer_.classifyNumericType(expr);
+        using Feature = Lowerer::RuntimeFeature;
+        switch (numericType)
+        {
+            case TypeRules::NumericType::Integer:
+                lowerer_.requestHelper(Feature::StrFromI16);
+                break;
+            case TypeRules::NumericType::Long:
+                lowerer_.requestHelper(Feature::StrFromI32);
+                break;
+            case TypeRules::NumericType::Single:
+                lowerer_.requestHelper(Feature::StrFromSingle);
+                break;
+            case TypeRules::NumericType::Double:
+            default:
+                lowerer_.requestHelper(Feature::StrFromDouble);
+                break;
         }
     }
 
-    void visit(const LineInputChStmt &stmt) override
+    void beforeChild(const LetStmt &stmt, const Expr &child)
     {
-        lowerer_.requireLineInputChErr();
-        if (stmt.channelExpr)
-            lowerer_.scanExpr(*stmt.channelExpr);
-        if (stmt.targetVar)
+        if (stmt.target && stmt.target.get() == &child)
+            ++lvalueDepth_;
+    }
+
+    void afterChild(const LetStmt &stmt, const Expr &child)
+    {
+        if (stmt.target && stmt.target.get() == &child)
+            --lvalueDepth_;
+    }
+
+    void beforeChild(const LineInputChStmt &stmt, const Expr &child)
+    {
+        if (stmt.targetVar && stmt.targetVar.get() == &child)
         {
             if (auto *var = dynamic_cast<const VarExpr *>(stmt.targetVar.get()))
             {
                 if (!var->name.empty())
                     lowerer_.setSymbolType(var->name, Type::Str);
             }
-            lowerer_.scanExpr(*stmt.targetVar);
         }
     }
 
-    void visit(const ReturnStmt &stmt) override
-    {
-        if (stmt.value)
-            lowerer_.scanExpr(*stmt.value);
-    }
-
-    void visit(const FunctionDecl &stmt) override
-    {
-        for (const auto &child : stmt.body)
-        {
-            if (child)
-                lowerer_.scanStmt(*child);
-        }
-    }
-
-    void visit(const SubDecl &stmt) override
-    {
-        for (const auto &child : stmt.body)
-        {
-            if (child)
-                lowerer_.scanStmt(*child);
-        }
-    }
-
-    void visit(const StmtList &stmt) override
-    {
-        for (const auto &child : stmt.stmts)
-        {
-            if (child)
-                lowerer_.scanStmt(*child);
-        }
-    }
-
-  private:
     Lowerer &lowerer_;
+    std::vector<ExprType> exprStack_;
+    std::string inputVarName_{};
+    int lvalueDepth_{0};
 };
-
-/// @brief Scans a unary expression and propagates operand requirements.
-/// @param u BASIC unary expression to inspect.
-/// @return The inferred type of the operand expression.
-/// @details Delegates scanning to the operand and introduces no additional runtime
-/// dependencies on its own.
-Lowerer::ExprType Lowerer::scanUnaryExpr(const UnaryExpr &u)
-{
-    return scanExpr(*u.expr);
-}
-
-/// @brief Scans a binary expression, recording runtime helpers for string operations.
-/// @param b BASIC binary expression to inspect.
-/// @return The resulting expression type after combining both operands.
-/// @details Recursively scans both child expressions. String concatenation marks the
-/// runtime concatenation helper as required, while string equality/inequality enables
-/// the runtime string comparison helper. Logical operators produce boolean types.
-Lowerer::ExprType Lowerer::scanBinaryExpr(const BinaryExpr &b)
-{
-    ExprType lt = scanExpr(*b.lhs);
-    ExprType rt = scanExpr(*b.rhs);
-    if (b.op == BinaryExpr::Op::Pow)
-    {
-        trackRuntime(RuntimeFeature::Pow);
-        return ExprType::F64;
-    }
-    if (b.op == BinaryExpr::Op::Add && lt == ExprType::Str && rt == ExprType::Str)
-    {
-        requestHelper(RuntimeFeature::Concat);
-        return ExprType::Str;
-    }
-    if (b.op == BinaryExpr::Op::Eq || b.op == BinaryExpr::Op::Ne)
-    {
-        if (lt == ExprType::Str || rt == ExprType::Str)
-            requestHelper(RuntimeFeature::StrEq);
-        return ExprType::Bool;
-    }
-    if (b.op == BinaryExpr::Op::LogicalAndShort || b.op == BinaryExpr::Op::LogicalOrShort ||
-        b.op == BinaryExpr::Op::LogicalAnd || b.op == BinaryExpr::Op::LogicalOr)
-        return ExprType::Bool;
-    if (lt == ExprType::F64 || rt == ExprType::F64)
-        return ExprType::F64;
-    return ExprType::I64;
-}
-
-/// @brief Scans an array access expression to capture index dependencies.
-/// @param arr BASIC array expression being inspected.
-/// @return Always reports an integer result for array loads.
-/// @details Recursively scans the index child expression so that nested requirements
-/// propagate to the containing expression.
-Lowerer::ExprType Lowerer::scanArrayExpr(const ArrayExpr &arr)
-{
-    markSymbolReferenced(arr.name);
-    markArray(arr.name);
-    if (arr.index)
-        scanExpr(*arr.index);
-    requireArrayI32Len();
-    requireArrayI32Get();
-    requireArrayOobPanic();
-    return ExprType::I64;
-}
-
-/// @brief Scans a LBOUND expression, marking the referenced array.
-/// @param expr BASIC LBOUND expression identifying the array symbol.
-/// @return Always reports an integer result.
-Lowerer::ExprType Lowerer::scanLBoundExpr(const LBoundExpr &expr)
-{
-    markSymbolReferenced(expr.name);
-    markArray(expr.name);
-    return ExprType::I64;
-}
-
-/// @brief Scans a UBOUND expression, marking the referenced array and runtime helper.
-/// @param expr BASIC UBOUND expression identifying the array symbol.
-/// @return Always reports an integer result.
-Lowerer::ExprType Lowerer::scanUBoundExpr(const UBoundExpr &expr)
-{
-    markSymbolReferenced(expr.name);
-    markArray(expr.name);
-    requireArrayI32Len();
-    return ExprType::I64;
-}
 
 /// @brief Scans a BASIC builtin call using declarative metadata.
 /// @param c Builtin call expression to inspect.
@@ -481,7 +561,8 @@ Lowerer::ExprType Lowerer::scanBuiltinCallExpr(const BuiltinCallExpr &c)
         const auto &arg = c.args[idx];
         if (!arg)
             return;
-        argTypes[idx] = scanExpr(*arg);
+        ScanWalker walker(*this);
+        argTypes[idx] = walker.evaluateExpr(*arg);
     };
 
     if (rule.traversal == BuiltinScanRule::ArgTraversal::All)
@@ -557,39 +638,22 @@ Lowerer::ExprType Lowerer::scanBuiltinCallExpr(const BuiltinCallExpr &c)
     return result;
 }
 
-/// @brief Scans an arbitrary expression node, dispatching to specialized helpers.
-/// @param e Expression node to inspect.
-/// @return The inferred BASIC expression type.
-/// @details Instantiates a ScanExprVisitor that captures the result type and traverses
-/// child expressions so nested runtime requirements are recorded. All expressions
-/// default to integer type when no specific specialization applies.
 Lowerer::ExprType Lowerer::scanExpr(const Expr &e)
 {
-    ScanExprVisitor visitor(*this);
-    e.accept(visitor);
-    return visitor.result();
+    ScanWalker walker(*this);
+    return walker.evaluateExpr(e);
 }
 
-/// @brief Scans a statement tree to accumulate runtime requirements from nested nodes.
-/// @param s Statement node to inspect.
-/// @details Walks each statement form, scanning contained expressions and child
-/// statements so that every reachable expression contributes its requirements.
 void Lowerer::scanStmt(const Stmt &s)
 {
-    ScanStmtVisitor visitor(*this);
-    s.accept(visitor);
+    ScanWalker walker(*this);
+    walker.evaluateStmt(s);
 }
 
-/// @brief Scans a full BASIC program for runtime requirements.
-/// @param prog Parsed BASIC program to inspect.
-/// @details Visits all procedure declarations and main statements, delegating to
-/// scanStmt for each top-level statement.
 void Lowerer::scanProgram(const Program &prog)
 {
-    for (const auto &s : prog.procs)
-        scanStmt(*s);
-    for (const auto &s : prog.main)
-        scanStmt(*s);
+    ScanWalker walker(*this);
+    walker.evaluateProgram(prog);
 }
 
 } // namespace il::frontends::basic
