@@ -8,12 +8,15 @@
 #include "frontends/basic/AstPrinter.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "support/source_manager.hpp"
-#include <fstream>
+#include "tools/basic/common.hpp"
+
 #include <iostream>
-#include <sstream>
+#include <optional>
+#include <string>
 
 using namespace il::frontends::basic;
 using namespace il::support;
+using il::tools::basic::loadBasicSource;
 
 /**
  * @brief Entry point for the BASIC AST dump tool.
@@ -30,23 +33,15 @@ using namespace il::support;
  */
 int main(int argc, char **argv)
 {
-    if (argc != 2)
-    {
-        std::cerr << "Usage: basic-ast-dump <file.bas>\n";
-        return 1;
-    }
-    std::ifstream in(argv[1]);
-    if (!in)
-    {
-        std::cerr << "cannot open " << argv[1] << "\n";
-        return 1;
-    }
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    std::string src = ss.str();
+    std::string src;
     SourceManager sm;
-    uint32_t fid = sm.addFile(argv[1]);
-    Parser p(src, fid);
+    std::optional<std::uint32_t> fileId = loadBasicSource(argc == 2 ? argv[1] : nullptr, src, sm);
+    if (!fileId)
+    {
+        return 1;
+    }
+
+    Parser p(src, *fileId);
     auto prog = p.parseProgram();
     AstPrinter printer;
     std::cout << printer.dump(*prog);
