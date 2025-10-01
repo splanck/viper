@@ -63,6 +63,10 @@ function(viper_add_runtime_tests)
   target_link_libraries(test_rt_file_wrappers PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_file_wrappers test_rt_file_wrappers)
 
+  viper_add_test_exe(test_rt_file_channel_io ${VIPER_TESTS_DIR}/runtime/FileChannelIoTests.c)
+  target_link_libraries(test_rt_file_channel_io PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+  viper_add_ctest(test_rt_file_channel_io test_rt_file_channel_io)
+
   viper_add_test_exe(test_rt_abs_i64_overflow ${VIPER_TESTS_DIR}/runtime/RTAbsI64OverflowTests.cpp)
   target_link_libraries(test_rt_abs_i64_overflow PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_abs_i64_overflow test_rt_abs_i64_overflow)
