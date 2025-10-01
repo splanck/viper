@@ -146,6 +146,45 @@ Lowerer::RVal Lowerer::normalizeChannelToI32(RVal channel, il::support::SourceLo
     return channel;
 }
 
+void Lowerer::emitRuntimeErrCheck(Value err,
+                                  il::support::SourceLoc loc,
+                                  std::string_view labelStem,
+                                  const std::function<void(Value)> &onFailure)
+{
+    ProcedureContext &ctx = context();
+    Function *func = ctx.function();
+    BasicBlock *original = ctx.current();
+    if (!func || !original)
+        return;
+
+    size_t curIdx = static_cast<size_t>(original - &func->blocks[0]);
+    BlockNamer *blockNamer = ctx.blockNamer();
+    std::string stem(labelStem);
+    std::string failLbl = blockNamer ? blockNamer->generic(stem + "_fail")
+                                     : mangler.block(stem + "_fail");
+    std::string contLbl = blockNamer ? blockNamer->generic(stem + "_cont")
+                                     : mangler.block(stem + "_cont");
+
+    size_t failIdx = func->blocks.size();
+    builder->addBlock(*func, failLbl);
+    size_t contIdx = func->blocks.size();
+    builder->addBlock(*func, contLbl);
+
+    BasicBlock *failBlk = &func->blocks[failIdx];
+    BasicBlock *contBlk = &func->blocks[contIdx];
+
+    ctx.setCurrent(&func->blocks[curIdx]);
+    curLoc = loc;
+    Value isFail = emitBinary(Opcode::ICmpNe, ilBoolTy(), err, Value::constInt(0));
+    emitCBr(isFail, failBlk, contBlk);
+
+    ctx.setCurrent(failBlk);
+    curLoc = loc;
+    onFailure(err);
+
+    ctx.setCurrent(contBlk);
+}
+
 void Lowerer::lowerOpen(const OpenStmt &stmt)
 {
     if (!stmt.pathExpr || !stmt.channelExpr)
@@ -164,37 +203,9 @@ void Lowerer::lowerOpen(const OpenStmt &stmt)
                             "rt_open_err_vstr",
                             {path.value, modeValue, channel.value});
 
-    curLoc = stmt.loc;
-    Value isFail = emitBinary(Opcode::ICmpNe, ilBoolTy(), err, Value::constInt(0));
-
-    ProcedureContext &ctx = context();
-    Function *func = ctx.function();
-    BasicBlock *current = ctx.current();
-    if (!func || !current)
-        return;
-
-    size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
-    BlockNamer *blockNamer = ctx.blockNamer();
-    std::string failLbl = blockNamer ? blockNamer->generic("open_fail") : mangler.block("open_fail");
-    std::string contLbl = blockNamer ? blockNamer->generic("open_cont") : mangler.block("open_cont");
-
-    size_t failIdx = func->blocks.size();
-    builder->addBlock(*func, failLbl);
-    size_t contIdx = func->blocks.size();
-    builder->addBlock(*func, contLbl);
-
-    BasicBlock *failBlk = &func->blocks[failIdx];
-    BasicBlock *contBlk = &func->blocks[contIdx];
-
-    ctx.setCurrent(&func->blocks[curIdx]);
-    curLoc = stmt.loc;
-    emitCBr(isFail, failBlk, contBlk);
-
-    ctx.setCurrent(failBlk);
-    curLoc = stmt.loc;
-    emitTrapFromErr(err);
-
-    ctx.setCurrent(contBlk);
+    emitRuntimeErrCheck(err, stmt.loc, "open", [&](Value code) {
+        emitTrapFromErr(code);
+    });
 }
 
 void Lowerer::lowerClose(const CloseStmt &stmt)
@@ -208,37 +219,9 @@ void Lowerer::lowerClose(const CloseStmt &stmt)
     curLoc = stmt.loc;
     Value err = emitCallRet(Type(Type::Kind::I32), "rt_close_err", {channel.value});
 
-    curLoc = stmt.loc;
-    Value isFail = emitBinary(Opcode::ICmpNe, ilBoolTy(), err, Value::constInt(0));
-
-    ProcedureContext &ctx = context();
-    Function *func = ctx.function();
-    BasicBlock *current = ctx.current();
-    if (!func || !current)
-        return;
-
-    size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
-    BlockNamer *blockNamer = ctx.blockNamer();
-    std::string failLbl = blockNamer ? blockNamer->generic("close_fail") : mangler.block("close_fail");
-    std::string contLbl = blockNamer ? blockNamer->generic("close_cont") : mangler.block("close_cont");
-
-    size_t failIdx = func->blocks.size();
-    builder->addBlock(*func, failLbl);
-    size_t contIdx = func->blocks.size();
-    builder->addBlock(*func, contLbl);
-
-    BasicBlock *failBlk = &func->blocks[failIdx];
-    BasicBlock *contBlk = &func->blocks[contIdx];
-
-    ctx.setCurrent(&func->blocks[curIdx]);
-    curLoc = stmt.loc;
-    emitCBr(isFail, failBlk, contBlk);
-
-    ctx.setCurrent(failBlk);
-    curLoc = stmt.loc;
-    emitTrapFromErr(err);
-
-    ctx.setCurrent(contBlk);
+    emitRuntimeErrCheck(err, stmt.loc, "close", [&](Value code) {
+        emitTrapFromErr(code);
+    });
 }
 
 /// @brief Lower an assignment or array store.
@@ -362,41 +345,6 @@ void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
     RVal channel = lowerExpr(*stmt.channelExpr);
     channel = normalizeChannelToI32(std::move(channel), stmt.loc);
 
-    auto emitErrCheck = [&](Value err, il::support::SourceLoc loc, std::string_view base) {
-        ProcedureContext &ctx = context();
-        Function *func = ctx.function();
-        BasicBlock *current = ctx.current();
-        if (!func || !current)
-            return;
-
-        size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
-        BlockNamer *blockNamer = ctx.blockNamer();
-        std::string baseName(base);
-        std::string failLbl = blockNamer ? blockNamer->generic(baseName + "_fail")
-                                         : mangler.block(baseName + "_fail");
-        std::string contLbl = blockNamer ? blockNamer->generic(baseName + "_cont")
-                                         : mangler.block(baseName + "_cont");
-
-        size_t failIdx = func->blocks.size();
-        builder->addBlock(*func, failLbl);
-        size_t contIdx = func->blocks.size();
-        builder->addBlock(*func, contLbl);
-
-        BasicBlock *failBlk = &func->blocks[failIdx];
-        BasicBlock *contBlk = &func->blocks[contIdx];
-
-        ctx.setCurrent(&func->blocks[curIdx]);
-        curLoc = loc;
-        Value isFail = emitBinary(Opcode::ICmpNe, ilBoolTy(), err, Value::constInt(0));
-        emitCBr(isFail, failBlk, contBlk);
-
-        ctx.setCurrent(failBlk);
-        curLoc = loc;
-        emitTrapFromErr(err);
-
-        ctx.setCurrent(contBlk);
-    };
-
     auto lowerArgToString = [&](const Expr &expr, RVal value) -> Value {
         if (value.type.kind == Type::Kind::Str)
             return value.value;
@@ -450,7 +398,9 @@ void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
             Value empty = emitConstStr(emptyLbl);
             curLoc = stmt.loc;
             Value err = emitCallRet(Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, empty});
-            emitErrCheck(err, stmt.loc, "printch");
+            emitRuntimeErrCheck(err, stmt.loc, "printch", [&](Value code) {
+                emitTrapFromErr(code);
+            });
         }
         return;
     }
@@ -463,7 +413,9 @@ void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
         Value text = lowerArgToString(*arg, std::move(value));
         curLoc = arg->loc;
         Value err = emitCallRet(Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, text});
-        emitErrCheck(err, arg->loc, "printch");
+        emitRuntimeErrCheck(err, arg->loc, "printch", [&](Value code) {
+            emitTrapFromErr(code);
+        });
     }
 }
 
@@ -1205,42 +1157,9 @@ void Lowerer::lowerLineInputCh(const LineInputChStmt &stmt)
 
     Value err = emitCallRet(Type(Type::Kind::I32), "rt_line_input_ch_err", {channel.value, outSlot});
 
-    auto emitErrCheck = [&](Value errCode, il::support::SourceLoc loc, std::string_view base) {
-        ProcedureContext &ctx = context();
-        Function *func = ctx.function();
-        BasicBlock *current = ctx.current();
-        if (!func || !current)
-            return;
-
-        size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
-        BlockNamer *blockNamer = ctx.blockNamer();
-        std::string baseName(base);
-        std::string failLbl = blockNamer ? blockNamer->generic(baseName + "_fail")
-                                         : mangler.block(baseName + "_fail");
-        std::string contLbl = blockNamer ? blockNamer->generic(baseName + "_cont")
-                                         : mangler.block(baseName + "_cont");
-
-        size_t failIdx = func->blocks.size();
-        builder->addBlock(*func, failLbl);
-        size_t contIdx = func->blocks.size();
-        builder->addBlock(*func, contLbl);
-
-        BasicBlock *failBlk = &func->blocks[failIdx];
-        BasicBlock *contBlk = &func->blocks[contIdx];
-
-        ctx.setCurrent(&func->blocks[curIdx]);
-        curLoc = loc;
-        Value isFail = emitBinary(Opcode::ICmpNe, ilBoolTy(), errCode, Value::constInt(0));
-        emitCBr(isFail, failBlk, contBlk);
-
-        ctx.setCurrent(failBlk);
-        curLoc = loc;
-        emitTrapFromErr(errCode);
-
-        ctx.setCurrent(contBlk);
-    };
-
-    emitErrCheck(err, stmt.loc, "lineinputch");
+    emitRuntimeErrCheck(err, stmt.loc, "lineinputch", [&](Value code) {
+        emitTrapFromErr(code);
+    });
 
     curLoc = stmt.loc;
     Value line = emitLoad(Type(Type::Kind::Str), outSlot);
