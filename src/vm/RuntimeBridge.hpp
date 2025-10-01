@@ -22,6 +22,7 @@ struct RuntimeCallContext
     il::support::SourceLoc loc{}; ///< Source location of the active runtime call.
     std::string function;         ///< Name of the calling function.
     std::string block;            ///< Label of the calling basic block.
+    std::string message;          ///< Supplemental diagnostic message from runtime.
 };
 
 /// @brief Provides entry points from the VM into the C runtime library.
