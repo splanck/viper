@@ -139,6 +139,16 @@ void Lowerer::requireArrayOobPanic()
     needsArrOobPanic = true;
 }
 
+void Lowerer::requireOpenErrVstr()
+{
+    needsOpenErrVstr = true;
+}
+
+void Lowerer::requireCloseErr()
+{
+    needsCloseErr = true;
+}
+
 void Lowerer::requestHelper(RuntimeFeature feature)
 {
     runtimeTracker.requestHelper(feature);
@@ -179,6 +189,10 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         declareManual("rt_arr_i32_release");
     if (needsArrOobPanic)
         declareManual("rt_arr_oob_panic");
+    if (needsOpenErrVstr)
+        declareManual("rt_open_err_vstr");
+    if (needsCloseErr)
+        declareManual("rt_close_err");
 }
 
 } // namespace il::frontends::basic
