@@ -21,6 +21,17 @@
 #define O_CLOEXEC 0
 #endif
 
+typedef struct RtFileChannelEntry
+{
+    int32_t channel;
+    RtFile file;
+    bool in_use;
+} RtFileChannelEntry;
+
+static RtFileChannelEntry *g_channel_entries = NULL;
+static size_t g_channel_count = 0;
+static size_t g_channel_capacity = 0;
+
 static int32_t rt_file_clamp_errno(int err)
 {
     if (err > INT32_MAX)
@@ -28,6 +39,76 @@ static int32_t rt_file_clamp_errno(int err)
     if (err < INT32_MIN)
         return INT32_MIN;
     return (int32_t)err;
+}
+
+static RtFileChannelEntry *rt_file_find_channel(int32_t channel)
+{
+    if (channel < 0)
+        return NULL;
+    for (size_t i = 0; i < g_channel_count; ++i)
+    {
+        if (g_channel_entries[i].channel == channel)
+            return &g_channel_entries[i];
+    }
+    return NULL;
+}
+
+static RtFileChannelEntry *rt_file_prepare_channel(int32_t channel)
+{
+    if (channel < 0)
+        return NULL;
+    RtFileChannelEntry *entry = rt_file_find_channel(channel);
+    if (entry)
+        return entry;
+
+    if (g_channel_count == g_channel_capacity)
+    {
+        size_t new_capacity = g_channel_capacity ? g_channel_capacity * 2 : 4;
+        RtFileChannelEntry *new_entries =
+            (RtFileChannelEntry *)realloc(g_channel_entries, new_capacity * sizeof(*new_entries));
+        if (!new_entries)
+            return NULL;
+        for (size_t i = g_channel_capacity; i < new_capacity; ++i)
+        {
+            new_entries[i].channel = 0;
+            new_entries[i].in_use = false;
+            rt_file_init(&new_entries[i].file);
+        }
+        g_channel_entries = new_entries;
+        g_channel_capacity = new_capacity;
+    }
+
+    entry = &g_channel_entries[g_channel_count++];
+    entry->channel = channel;
+    entry->in_use = false;
+    rt_file_init(&entry->file);
+    return entry;
+}
+
+static const char *rt_file_mode_string(int32_t mode)
+{
+    switch (mode)
+    {
+    case RT_F_INPUT:
+        return "r";
+    case RT_F_OUTPUT:
+        return "w";
+    case RT_F_APPEND:
+        return "a";
+    case RT_F_BINARY:
+        return "rb+";
+    case RT_F_RANDOM:
+        return "r+";
+    default:
+        return NULL;
+    }
+}
+
+static const char *rt_file_path_from_vstr(const ViperString *path)
+{
+    if (!path || !path->data)
+        return NULL;
+    return path->data;
 }
 
 static void rt_file_set_error(RtError *out_err, enum Err kind, int err)
@@ -354,5 +435,51 @@ bool rt_file_write(RtFile *file, const uint8_t *data, size_t len, RtError *out_e
     }
     rt_file_set_ok(out_err);
     return true;
+}
+
+int32_t rt_open_err_vstr(ViperString *path, int32_t mode, int32_t channel)
+{
+    const char *mode_str = rt_file_mode_string(mode);
+    const char *path_str = rt_file_path_from_vstr(path);
+    if (!mode_str || !path_str || channel < 0)
+        return (int32_t)Err_InvalidOperation;
+
+    RtFileChannelEntry *entry = rt_file_prepare_channel(channel);
+    if (!entry)
+        return (int32_t)Err_RuntimeError;
+    if (entry->in_use)
+        return (int32_t)Err_InvalidOperation;
+
+    rt_file_init(&entry->file);
+    RtError err = RT_ERROR_NONE;
+    if (!rt_file_open(&entry->file, path_str, mode_str, &err))
+    {
+        entry->in_use = false;
+        return (int32_t)err.kind;
+    }
+
+    entry->in_use = true;
+    return 0;
+}
+
+int32_t rt_close_err(int32_t channel)
+{
+    if (channel < 0)
+        return (int32_t)Err_InvalidOperation;
+    RtFileChannelEntry *entry = rt_file_find_channel(channel);
+    if (!entry || !entry->in_use)
+        return (int32_t)Err_InvalidOperation;
+
+    RtError err = RT_ERROR_NONE;
+    if (!rt_file_close(&entry->file, &err))
+    {
+        entry->in_use = false;
+        rt_file_init(&entry->file);
+        return (int32_t)err.kind;
+    }
+
+    entry->in_use = false;
+    rt_file_init(&entry->file);
+    return 0;
 }
 
