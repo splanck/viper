@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <utility>
 
 using namespace il::core;
 
@@ -131,6 +132,21 @@ void applyCheckedRem(const Instr &in,
     const int64_t quotient = wideLhs / wideRhs;
     const int64_t remainder = wideLhs - quotient * wideRhs;
     out.i64 = static_cast<int64_t>(static_cast<T>(remainder));
+}
+
+template <typename T>
+[[nodiscard]] std::pair<bool, int64_t> performBoundsCheck(const Slot &idxSlot,
+                                                          const Slot &loSlot,
+                                                          const Slot &hiSlot)
+{
+    const auto idx = static_cast<T>(idxSlot.i64);
+    const auto lo = static_cast<T>(loSlot.i64);
+    const auto hi = static_cast<T>(hiSlot.i64);
+    if (idx < lo || idx > hi)
+    {
+        return {false, static_cast<int64_t>(idx)};
+    }
+    return {true, static_cast<int64_t>(idx)};
 }
 
 template <typename NarrowT>
@@ -585,41 +601,38 @@ VM::ExecResult OpHandlers::handleIdxChk(VM &vm,
     {
         case Type::Kind::I16:
         {
-            const auto idx = static_cast<int16_t>(idxSlot.i64);
-            const auto lo = static_cast<int16_t>(loSlot.i64);
-            const auto hi = static_cast<int16_t>(hiSlot.i64);
-            if (idx < lo || idx > hi)
+            const auto [inBounds, normalized] =
+                performBoundsCheck<int16_t>(idxSlot, loSlot, hiSlot);
+            if (!inBounds)
             {
                 trapBounds();
                 return {};
             }
-            out.i64 = static_cast<int64_t>(idx);
+            out.i64 = normalized;
             break;
         }
         case Type::Kind::I32:
         {
-            const auto idx = static_cast<int32_t>(idxSlot.i64);
-            const auto lo = static_cast<int32_t>(loSlot.i64);
-            const auto hi = static_cast<int32_t>(hiSlot.i64);
-            if (idx < lo || idx > hi)
+            const auto [inBounds, normalized] =
+                performBoundsCheck<int32_t>(idxSlot, loSlot, hiSlot);
+            if (!inBounds)
             {
                 trapBounds();
                 return {};
             }
-            out.i64 = static_cast<int64_t>(idx);
+            out.i64 = normalized;
             break;
         }
         default:
         {
-            const auto idx = idxSlot.i64;
-            const auto lo = loSlot.i64;
-            const auto hi = hiSlot.i64;
-            if (idx < lo || idx > hi)
+            const auto [inBounds, normalized] =
+                performBoundsCheck<int64_t>(idxSlot, loSlot, hiSlot);
+            if (!inBounds)
             {
                 trapBounds();
                 return {};
             }
-            out.i64 = idx;
+            out.i64 = normalized;
             break;
         }
     }
