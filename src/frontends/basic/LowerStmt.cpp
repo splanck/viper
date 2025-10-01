@@ -12,6 +12,7 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include <cassert>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
@@ -54,9 +55,9 @@ class LowererStmtVisitor final : public StmtVisitor
 
     void visit(const GotoStmt &stmt) override { lowerer_.lowerGoto(stmt); }
 
-    void visit(const OpenStmt &) override {}
+    void visit(const OpenStmt &stmt) override { lowerer_.lowerOpen(stmt); }
 
-    void visit(const CloseStmt &) override {}
+    void visit(const CloseStmt &stmt) override { lowerer_.lowerClose(stmt); }
 
     void visit(const OnErrorGoto &stmt) override { lowerer_.lowerOnErrorGoto(stmt); }
 
@@ -126,6 +127,113 @@ void Lowerer::lowerReturn(const ReturnStmt &stmt)
     {
         emitRetVoid();
     }
+}
+
+void Lowerer::lowerOpen(const OpenStmt &stmt)
+{
+    if (!stmt.pathExpr || !stmt.channelExpr)
+        return;
+
+    RVal path = lowerExpr(*stmt.pathExpr);
+    RVal channel = lowerExpr(*stmt.channelExpr);
+    if (channel.type.kind != Type::Kind::I32)
+    {
+        channel = ensureI64(std::move(channel), stmt.loc);
+        curLoc = stmt.loc;
+        channel.value = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), channel.value);
+        channel.type = Type(Type::Kind::I32);
+    }
+
+    curLoc = stmt.loc;
+    Value modeValue = emitUnary(Opcode::CastSiNarrowChk,
+                                Type(Type::Kind::I32),
+                                Value::constInt(static_cast<int32_t>(stmt.mode)));
+
+    Value err = emitCallRet(Type(Type::Kind::I32),
+                            "rt_open_err_vstr",
+                            {path.value, modeValue, channel.value});
+
+    curLoc = stmt.loc;
+    Value isFail = emitBinary(Opcode::ICmpNe, ilBoolTy(), err, Value::constInt(0));
+
+    ProcedureContext &ctx = context();
+    Function *func = ctx.function();
+    BasicBlock *current = ctx.current();
+    if (!func || !current)
+        return;
+
+    size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
+    BlockNamer *blockNamer = ctx.blockNamer();
+    std::string failLbl = blockNamer ? blockNamer->generic("open_fail") : mangler.block("open_fail");
+    std::string contLbl = blockNamer ? blockNamer->generic("open_cont") : mangler.block("open_cont");
+
+    size_t failIdx = func->blocks.size();
+    builder->addBlock(*func, failLbl);
+    size_t contIdx = func->blocks.size();
+    builder->addBlock(*func, contLbl);
+
+    BasicBlock *failBlk = &func->blocks[failIdx];
+    BasicBlock *contBlk = &func->blocks[contIdx];
+
+    ctx.setCurrent(&func->blocks[curIdx]);
+    curLoc = stmt.loc;
+    emitCBr(isFail, failBlk, contBlk);
+
+    ctx.setCurrent(failBlk);
+    curLoc = stmt.loc;
+    emitTrapFromErr(err);
+
+    ctx.setCurrent(contBlk);
+}
+
+void Lowerer::lowerClose(const CloseStmt &stmt)
+{
+    if (!stmt.channelExpr)
+        return;
+
+    RVal channel = lowerExpr(*stmt.channelExpr);
+    if (channel.type.kind != Type::Kind::I32)
+    {
+        channel = ensureI64(std::move(channel), stmt.loc);
+        curLoc = stmt.loc;
+        channel.value = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), channel.value);
+        channel.type = Type(Type::Kind::I32);
+    }
+
+    curLoc = stmt.loc;
+    Value err = emitCallRet(Type(Type::Kind::I32), "rt_close_err", {channel.value});
+
+    curLoc = stmt.loc;
+    Value isFail = emitBinary(Opcode::ICmpNe, ilBoolTy(), err, Value::constInt(0));
+
+    ProcedureContext &ctx = context();
+    Function *func = ctx.function();
+    BasicBlock *current = ctx.current();
+    if (!func || !current)
+        return;
+
+    size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
+    BlockNamer *blockNamer = ctx.blockNamer();
+    std::string failLbl = blockNamer ? blockNamer->generic("close_fail") : mangler.block("close_fail");
+    std::string contLbl = blockNamer ? blockNamer->generic("close_cont") : mangler.block("close_cont");
+
+    size_t failIdx = func->blocks.size();
+    builder->addBlock(*func, failLbl);
+    size_t contIdx = func->blocks.size();
+    builder->addBlock(*func, contLbl);
+
+    BasicBlock *failBlk = &func->blocks[failIdx];
+    BasicBlock *contBlk = &func->blocks[contIdx];
+
+    ctx.setCurrent(&func->blocks[curIdx]);
+    curLoc = stmt.loc;
+    emitCBr(isFail, failBlk, contBlk);
+
+    ctx.setCurrent(failBlk);
+    curLoc = stmt.loc;
+    emitTrapFromErr(err);
+
+    ctx.setCurrent(contBlk);
 }
 
 /// @brief Lower an assignment or array store.

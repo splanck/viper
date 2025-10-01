@@ -454,6 +454,10 @@ class Lowerer
 
     void lowerReturn(const ReturnStmt &stmt);
 
+    void lowerOpen(const OpenStmt &stmt);
+
+    void lowerClose(const CloseStmt &stmt);
+
     /// @brief Emit blocks for an IF/ELSEIF chain.
     /// @param conds Number of conditions (IF + ELSEIFs).
     /// @return Indices for test/then blocks and ELSE/exit blocks.
@@ -551,6 +555,8 @@ class Lowerer
 
     void emitTrap();
 
+    void emitTrapFromErr(Value errCode);
+
     void emitEhPush(BasicBlock *handler);
     void emitEhPop();
     void emitEhPopForReturn();
@@ -599,6 +605,8 @@ class Lowerer
     bool needsArrI32Retain{false};
     bool needsArrI32Release{false};
     bool needsArrOobPanic{false};
+    bool needsOpenErrVstr{false};
+    bool needsCloseErr{false};
 
     void requireArrayI32New();
     void requireArrayI32Resize();
@@ -608,6 +616,8 @@ class Lowerer
     void requireArrayI32Retain();
     void requireArrayI32Release();
     void requireArrayOobPanic();
+    void requireOpenErrVstr();
+    void requireCloseErr();
     void requestHelper(RuntimeFeature feature);
 
     bool isHelperNeeded(RuntimeFeature feature) const;
