@@ -5,15 +5,14 @@
 // Ownership/Lifetime: Tool owns loaded modules.
 // Links: docs/codemap.md
 
+#include "break_spec.hpp"
+#include "cli.hpp"
+#include "tools/common/module_loader.hpp"
 #include "vm/Debug.hpp"
 #include "vm/DebugScript.hpp"
 #include "vm/Trace.hpp"
-#include "break_spec.hpp"
-#include "cli.hpp"
-#include "il/api/expected_api.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Module.hpp"
-#include "il/verify/Verifier.hpp"
 #include "support/source_manager.hpp"
 #include "vm/VM.hpp"
 #include <algorithm>
@@ -21,7 +20,6 @@
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
-#include <fstream>
 #include <iostream>
 #include <memory>
 #include <exception>
@@ -267,25 +265,15 @@ int executeRunIL(const RunILConfig &config)
     vm::DebugCtrl dbg = config.debugCtrl;
     dbg.setSourceManager(&sm);
 
-    std::ifstream ifs(config.ilFile);
-    if (!ifs)
-    {
-        std::cerr << "unable to open " << config.ilFile << "\n";
-        return 1;
-    }
-
     core::Module m;
-    auto pe = il::api::v2::parse_text_expected(ifs, m);
-    if (!pe)
+    auto load = il::tools::common::loadModuleFromFile(config.ilFile, m, std::cerr);
+    if (!load.succeeded())
     {
-        il::support::printDiag(pe.error(), std::cerr);
         return 1;
     }
 
-    auto ve = il::verify::Verifier::verify(m);
-    if (!ve)
+    if (!il::tools::common::verifyModule(m, std::cerr))
     {
-        il::support::printDiag(ve.error(), std::cerr);
         return 1;
     }
 
