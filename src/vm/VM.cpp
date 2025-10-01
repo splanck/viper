@@ -149,6 +149,84 @@ VM::ExecResult VM::executeOpcode(Frame &fr,
     return handler(*this, fr, in, blocks, bb, ip);
 }
 
+/// Determine whether execution should pause before or after an instruction.
+///
+/// This forwards to @c processDebugControl so the centralised debug logic
+/// remains in @c VMDebug.cpp while callers have a clear, intention-revealing
+/// helper. A non-empty result signals a pause or termination condition that the
+/// interpreter loop must honour immediately.
+///
+/// @param st      Current execution state.
+/// @param in      Instruction involved in the decision or @c nullptr when none.
+/// @param postExec True when invoked after executing @p in.
+/// @return Optional slot containing the pause sentinel.
+std::optional<Slot> VM::shouldPause(ExecState &st, const Instr *in, bool postExec)
+{
+    return processDebugControl(st, in, postExec);
+}
+
+/// Advance the interpreter by a single instruction and report early exits.
+///
+/// Performs debug checks, tracing, opcode dispatch, and post-step bookkeeping
+/// once before returning either a pause sentinel or the function's return
+/// value. When no instructions remain the default zero slot is produced to
+/// mirror falling off the end of the function body.
+///
+/// @param st Current execution state for the active frame.
+/// @return Optional slot when execution should stop; @c std::nullopt otherwise.
+std::optional<Slot> VM::stepOnce(ExecState &st)
+{
+    if (!st.bb || st.ip >= st.bb->instructions.size())
+    {
+        clearCurrentContext();
+        Slot s{};
+        s.i64 = 0;
+        return s;
+    }
+
+    const Instr &in = st.bb->instructions[st.ip];
+    setCurrentContext(st.fr, st.bb, st.ip, in);
+
+    if (auto pause = shouldPause(st, &in, false))
+        return pause;
+
+    tracer.onStep(in, st.fr);
+    ++instrCount;
+    auto res = executeOpcode(st.fr, in, st.blocks, st.bb, st.ip);
+
+    if (res.returned)
+        return res.value;
+
+    if (res.jumped)
+        debug.resetLastHit();
+    else
+        ++st.ip;
+
+    if (auto pause = shouldPause(st, nullptr, true))
+        return pause;
+
+    return std::nullopt;
+}
+
+/// Handle a trap dispatch request raised while executing an instruction.
+///
+/// Trap dispatch re-enters the interpreter via exceptions, so this helper keeps
+/// the catch-site in @c runFunctionLoop concise. When the signal targets the
+/// current execution state the current context is cleared and the interpreter
+/// restarts; otherwise the caller must rethrow to propagate the trap outward.
+///
+/// @param signal Raised dispatch request.
+/// @param st     Active execution state to compare against the signal target.
+/// @return @c true when handled for @p st; @c false when the signal targets a
+///         different frame.
+bool VM::handleTrapDispatch(const TrapDispatchSignal &signal, ExecState &st)
+{
+    if (signal.target != &st)
+        return false;
+    clearCurrentContext();
+    return true;
+}
+
 /// Main interpreter loop for executing a function.
 ///
 /// Iterates over instructions in the current basic block, invokes tracing,
@@ -170,35 +248,16 @@ Slot VM::runFunctionLoop(ExecState &st)
         clearCurrentContext();
         try
         {
-            while (st.bb && st.ip < st.bb->instructions.size())
+            while (true)
             {
-                const Instr &in = st.bb->instructions[st.ip];
-                setCurrentContext(st.fr, st.bb, st.ip, in);
-                if (auto br = processDebugControl(st, &in, false))
-                    return *br;
-                tracer.onStep(in, st.fr);
-                ++instrCount;
-                auto res = executeOpcode(st.fr, in, st.blocks, st.bb, st.ip);
-                if (res.returned)
-                    return res.value;
-                if (res.jumped)
-                    debug.resetLastHit();
-                else
-                    ++st.ip;
-                if (auto br = processDebugControl(st, nullptr, true))
-                    return *br;
+                if (auto result = stepOnce(st))
+                    return *result;
             }
-            clearCurrentContext();
-            Slot s{};
-            s.i64 = 0;
-            return s;
         }
         catch (const TrapDispatchSignal &signal)
         {
-            if (signal.target != &st)
+            if (!handleTrapDispatch(signal, st))
                 throw;
-            clearCurrentContext();
-            continue;
         }
     }
 }

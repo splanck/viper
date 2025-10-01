@@ -112,6 +112,7 @@ class VM
     friend class RuntimeBridge; ///< Runtime bridge accesses trap formatting helpers
     friend void vm_raise(TrapKind kind, int32_t code);
     friend void vm_raise_from_error(const VmError &error);
+    friend struct VMTestHook; ///< Unit tests access interpreter internals
 
     /// @brief Result of executing one opcode.
     struct ExecResult
@@ -328,6 +329,15 @@ class VM
     std::optional<Slot> processDebugControl(ExecState &st,
                                             const il::core::Instr *in,
                                             bool postExec);
+
+    /// @brief Forward to debug control logic for pause decisions.
+    std::optional<Slot> shouldPause(ExecState &st, const il::core::Instr *in, bool postExec);
+
+    /// @brief Execute a single interpreter step.
+    std::optional<Slot> stepOnce(ExecState &st);
+
+    /// @brief Handle a trap dispatch signal raised during interpretation.
+    bool handleTrapDispatch(const TrapDispatchSignal &signal, ExecState &st);
 
     /// @brief Run the main interpreter loop.
     /// @param st Prepared execution state.
