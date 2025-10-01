@@ -446,6 +446,8 @@ class Lowerer
 
     RVal ensureF64(RVal v, il::support::SourceLoc loc);
 
+    RVal normalizeChannelToI32(RVal channel, il::support::SourceLoc loc);
+
     void lowerLet(const LetStmt &stmt);
 
     void lowerPrint(const PrintStmt &stmt);
