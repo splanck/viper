@@ -172,6 +172,12 @@ function(viper_add_golden_suite_tests)
     "-DEXPECT=${EXPECT_VM_TRAP_LOC}"
     -P ${_VIPER_GOLDEN_DIR}/check_vm_trap_loc.cmake)
 
+  viper_add_ctest(vm_trap_overflow_message
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DIL_FILE=${_VIPER_GOLDEN_DIR}/vm_trap_overflow.il
+    -P ${_VIPER_GOLDEN_DIR}/check_vm_trap_overflow.cmake)
+
   set(NUMERICS_IL_DIR ${_VIPER_GOLDEN_DIR}/numerics_il)
 
   viper_add_ctest(numerics_il_i16_add_overflow
