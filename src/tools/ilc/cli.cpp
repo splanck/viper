@@ -49,6 +49,11 @@ SharedOptionParseResult parseSharedOption(int &index,
         opts.boundsChecks = true;
         return SharedOptionParseResult::Parsed;
     }
+    if (arg == "--dump-trap")
+    {
+        opts.dumpTrap = true;
+        return SharedOptionParseResult::Parsed;
+    }
     return SharedOptionParseResult::NotMatched;
 }
 
