@@ -319,18 +319,7 @@ void ProgramLowering::run(const Program &prog, il::core::Module &module)
     lowerer.procSignatures.clear();
 
     lowerer.runtimeTracker.reset();
-    lowerer.needsArrI32New = false;
-    lowerer.needsArrI32Resize = false;
-    lowerer.needsArrI32Len = false;
-    lowerer.needsArrI32Get = false;
-    lowerer.needsArrI32Set = false;
-    lowerer.needsArrI32Retain = false;
-    lowerer.needsArrI32Release = false;
-    lowerer.needsArrOobPanic = false;
-    lowerer.needsOpenErrVstr = false;
-    lowerer.needsCloseErr = false;
-    lowerer.needsPrintlnChErr = false;
-    lowerer.needsLineInputChErr = false;
+    lowerer.resetManualHelpers();
 
     lowerer.scanProgram(prog);
     lowerer.declareRequiredRuntime(builder);
