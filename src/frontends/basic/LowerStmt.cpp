@@ -134,6 +134,18 @@ void Lowerer::lowerReturn(const ReturnStmt &stmt)
     }
 }
 
+Lowerer::RVal Lowerer::normalizeChannelToI32(RVal channel, il::support::SourceLoc loc)
+{
+    if (channel.type.kind == Type::Kind::I32)
+        return channel;
+
+    channel = ensureI64(std::move(channel), loc);
+    curLoc = loc;
+    channel.value = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), channel.value);
+    channel.type = Type(Type::Kind::I32);
+    return channel;
+}
+
 void Lowerer::lowerOpen(const OpenStmt &stmt)
 {
     if (!stmt.pathExpr || !stmt.channelExpr)
@@ -141,13 +153,7 @@ void Lowerer::lowerOpen(const OpenStmt &stmt)
 
     RVal path = lowerExpr(*stmt.pathExpr);
     RVal channel = lowerExpr(*stmt.channelExpr);
-    if (channel.type.kind != Type::Kind::I32)
-    {
-        channel = ensureI64(std::move(channel), stmt.loc);
-        curLoc = stmt.loc;
-        channel.value = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), channel.value);
-        channel.type = Type(Type::Kind::I32);
-    }
+    channel = normalizeChannelToI32(std::move(channel), stmt.loc);
 
     curLoc = stmt.loc;
     Value modeValue = emitUnary(Opcode::CastSiNarrowChk,
@@ -197,13 +203,7 @@ void Lowerer::lowerClose(const CloseStmt &stmt)
         return;
 
     RVal channel = lowerExpr(*stmt.channelExpr);
-    if (channel.type.kind != Type::Kind::I32)
-    {
-        channel = ensureI64(std::move(channel), stmt.loc);
-        curLoc = stmt.loc;
-        channel.value = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), channel.value);
-        channel.type = Type(Type::Kind::I32);
-    }
+    channel = normalizeChannelToI32(std::move(channel), stmt.loc);
 
     curLoc = stmt.loc;
     Value err = emitCallRet(Type(Type::Kind::I32), "rt_close_err", {channel.value});
@@ -360,13 +360,7 @@ void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
         return;
 
     RVal channel = lowerExpr(*stmt.channelExpr);
-    if (channel.type.kind != Type::Kind::I32)
-    {
-        channel = ensureI64(std::move(channel), stmt.loc);
-        curLoc = stmt.loc;
-        channel.value = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), channel.value);
-        channel.type = Type(Type::Kind::I32);
-    }
+    channel = normalizeChannelToI32(std::move(channel), stmt.loc);
 
     auto emitErrCheck = [&](Value err, il::support::SourceLoc loc, std::string_view base) {
         ProcedureContext &ctx = context();
@@ -1203,13 +1197,7 @@ void Lowerer::lowerLineInputCh(const LineInputChStmt &stmt)
         return;
 
     RVal channel = lowerExpr(*stmt.channelExpr);
-    if (channel.type.kind != Type::Kind::I32)
-    {
-        channel = ensureI64(std::move(channel), stmt.loc);
-        curLoc = stmt.loc;
-        channel.value = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), channel.value);
-        channel.type = Type(Type::Kind::I32);
-    }
+    channel = normalizeChannelToI32(std::move(channel), stmt.loc);
 
     curLoc = stmt.loc;
     Value outSlot = emitAlloca(8);
