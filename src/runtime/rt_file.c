@@ -125,6 +125,47 @@ static void rt_file_set_ok(RtError *out_err)
         *out_err = RT_ERROR_NONE;
 }
 
+static size_t rt_file_string_view(const ViperString *s, const uint8_t **data_out)
+{
+    if (data_out)
+        *data_out = NULL;
+    if (!s || !s->data)
+        return 0;
+    if (data_out)
+        *data_out = (const uint8_t *)s->data;
+    if (s->heap)
+        return rt_heap_len(s->data);
+    return s->literal_len;
+}
+
+static int32_t rt_file_resolve_channel(int32_t channel, RtFileChannelEntry **out_entry)
+{
+    if (out_entry)
+        *out_entry = NULL;
+    if (channel < 0)
+        return (int32_t)Err_InvalidOperation;
+    RtFileChannelEntry *entry = rt_file_find_channel(channel);
+    if (!entry || !entry->in_use)
+        return (int32_t)Err_InvalidOperation;
+    if (entry->file.fd < 0)
+        return (int32_t)Err_IOError;
+    if (out_entry)
+        *out_entry = entry;
+    return 0;
+}
+
+static int32_t rt_file_write_entry(RtFileChannelEntry *entry, const uint8_t *data, size_t len)
+{
+    if (!entry || len == 0)
+        return 0;
+    if (!data)
+        return (int32_t)Err_InvalidOperation;
+    RtError err = RT_ERROR_NONE;
+    if (!rt_file_write(&entry->file, data, len, &err))
+        return (int32_t)err.kind;
+    return 0;
+}
+
 static bool rt_file_parse_mode(const char *mode, int *flags_out)
 {
     if (!mode || !mode[0])
@@ -480,6 +521,55 @@ int32_t rt_close_err(int32_t channel)
 
     entry->in_use = false;
     rt_file_init(&entry->file);
+    return 0;
+}
+
+int32_t rt_write_ch_err(int32_t channel, ViperString *s)
+{
+    RtFileChannelEntry *entry = NULL;
+    int32_t status = rt_file_resolve_channel(channel, &entry);
+    if (status != 0)
+        return status;
+
+    const uint8_t *data = NULL;
+    size_t len = rt_file_string_view(s, &data);
+    return rt_file_write_entry(entry, data, len);
+}
+
+int32_t rt_println_ch_err(int32_t channel, ViperString *s)
+{
+    RtFileChannelEntry *entry = NULL;
+    int32_t status = rt_file_resolve_channel(channel, &entry);
+    if (status != 0)
+        return status;
+
+    const uint8_t *data = NULL;
+    size_t len = rt_file_string_view(s, &data);
+    status = rt_file_write_entry(entry, data, len);
+    if (status != 0)
+        return status;
+
+    const uint8_t newline = (uint8_t)'\n';
+    return rt_file_write_entry(entry, &newline, 1);
+}
+
+int32_t rt_line_input_ch_err(int32_t channel, ViperString **out)
+{
+    if (!out)
+        return (int32_t)Err_InvalidOperation;
+    *out = NULL;
+
+    RtFileChannelEntry *entry = NULL;
+    int32_t status = rt_file_resolve_channel(channel, &entry);
+    if (status != 0)
+        return status;
+
+    rt_string line = NULL;
+    RtError err = RT_ERROR_NONE;
+    if (!rt_file_read_line(&entry->file, &line, &err))
+        return (int32_t)err.kind;
+
+    *out = line;
     return 0;
 }
 
