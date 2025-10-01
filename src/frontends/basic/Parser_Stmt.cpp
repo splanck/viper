@@ -136,9 +136,9 @@ StmtPtr Parser::parseLet()
 }
 
 /// @brief Skip any optional line number that appears after a newline.
-/// @param ctx Statement context providing newline skipping helpers.
+/// @param ctx Statement sequencer providing newline skipping helpers.
 /// @param followerKinds Optional whitelist of tokens that may follow the line label.
-void Parser::skipOptionalLineLabelAfterBreak(StatementContext &ctx,
+void Parser::skipOptionalLineLabelAfterBreak(StatementSequencer &ctx,
                                              std::initializer_list<TokenKind> followerKinds)
 {
     if (!at(TokenKind::EndOfLine))
@@ -168,9 +168,9 @@ void Parser::skipOptionalLineLabelAfterBreak(StatementContext &ctx,
 
 /// @brief Parse the body of a single IF branch while preserving separators.
 /// @param line Line number propagated to nested statements.
-/// @param ctx Statement context providing separator helpers.
+/// @param ctx Statement sequencer providing separator helpers.
 /// @return Parsed statement representing the branch body.
-StmtPtr Parser::parseIfBranchBody(int line, StatementContext &ctx)
+StmtPtr Parser::parseIfBranchBody(int line, StatementSequencer &ctx)
 {
     skipOptionalLineLabelAfterBreak(ctx);
     auto stmt = parseStatement(line);
@@ -189,7 +189,7 @@ StmtPtr Parser::parseIf(int line)
     consume(); // IF
     auto cond = parseExpression();
     expect(TokenKind::KeywordThen);
-    auto ctx = statementContext();
+    auto ctx = statementSequencer();
     auto thenStmt = parseIfBranchBody(line, ctx);
     std::vector<IfStmt::ElseIf> elseifs;
     StmtPtr elseStmt;
@@ -248,8 +248,8 @@ StmtPtr Parser::parseWhile()
     auto stmt = std::make_unique<WhileStmt>();
     stmt->loc = loc;
     stmt->cond = std::move(cond);
-    auto ctxWhile = statementContext();
-    ctxWhile.consumeStatementBody(TokenKind::KeywordWend, stmt->body);
+    auto ctxWhile = statementSequencer();
+    ctxWhile.collectStatements(TokenKind::KeywordWend, stmt->body);
     return stmt;
 }
 
@@ -273,8 +273,8 @@ StmtPtr Parser::parseDo()
         stmt->cond = parseExpression();
     }
 
-    auto ctxDo = statementContext();
-    ctxDo.consumeStatementBody(TokenKind::KeywordLoop, stmt->body);
+    auto ctxDo = statementSequencer();
+    ctxDo.collectStatements(TokenKind::KeywordLoop, stmt->body);
 
     bool hasPostTest = false;
     Token postTok{};
@@ -339,15 +339,15 @@ StmtPtr Parser::parseFor()
     stmt->start = std::move(start);
     stmt->end = std::move(end);
     stmt->step = std::move(step);
-    auto ctxFor = statementContext();
-    ctxFor.consumeStatementBody([&](int) { return at(TokenKind::KeywordNext); },
-                                [&](int, StatementContext::TerminatorInfo &)
-                                {
-                                    consume();
-                                    if (at(TokenKind::Identifier))
-                                        consume();
-                                },
-                                stmt->body);
+    auto ctxFor = statementSequencer();
+    ctxFor.collectStatements([&](int) { return at(TokenKind::KeywordNext); },
+                             [&](int, StatementSequencer::TerminatorInfo &)
+                             {
+                                 consume();
+                                 if (at(TokenKind::Identifier))
+                                     consume();
+                             },
+                             stmt->body);
     return stmt;
 }
 
@@ -771,10 +771,10 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionHeader()
 /// @return Location of the END keyword token.
 il::support::SourceLoc Parser::parseProcedureBody(TokenKind endKind, std::vector<StmtPtr> &body)
 {
-    auto ctx = statementContext();
-    auto info = ctx.consumeStatementBody(
+    auto ctx = statementSequencer();
+    auto info = ctx.collectStatements(
         [&](int) { return at(TokenKind::KeywordEnd) && peek(1).kind == endKind; },
-        [&](int, StatementContext::TerminatorInfo &)
+        [&](int, StatementSequencer::TerminatorInfo &)
         {
             consume();
             consume();
