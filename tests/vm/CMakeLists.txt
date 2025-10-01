@@ -129,6 +129,10 @@ function(viper_add_vm_unit_tests)
   target_link_libraries(test_vm_runtime_bridge_marshalling PRIVATE ${VIPER_VM_LIB})
   viper_add_ctest(test_vm_runtime_bridge_marshalling test_vm_runtime_bridge_marshalling)
 
+  viper_add_test_exe(test_vm_slot_access ${VIPER_TESTS_DIR}/unit/test_vm_slot_access.cpp)
+  target_link_libraries(test_vm_slot_access PRIVATE ${VIPER_VM_LIB})
+  viper_add_ctest(test_vm_slot_access test_vm_slot_access)
+
   viper_add_test_exe(test_vm_alloca_negative ${VIPER_TESTS_DIR}/unit/test_vm_alloca_negative.cpp)
   target_link_libraries(test_vm_alloca_negative PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_alloca_negative test_vm_alloca_negative)

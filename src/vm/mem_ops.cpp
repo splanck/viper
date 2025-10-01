@@ -14,6 +14,7 @@
 #include "il/core/Type.hpp"
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/RuntimeBridge.hpp"
+#include "vm/SlotAccess.hpp"
 #include <cassert>
 #include <cstring>
 
@@ -21,92 +22,6 @@ using namespace il::core;
 
 namespace il::vm::detail
 {
-
-namespace
-{
-
-/// @brief Loads a slot value from raw memory based on the IL type kind.
-///
-/// The helper centralizes the type-to-memory conversions used by load
-/// handlers so callers can delegate the reinterpret casts to a single
-/// implementation.
-Slot loadSlotFromPtr(Type::Kind kind, void *ptr)
-{
-    Slot out{};
-    switch (kind)
-    {
-        case Type::Kind::I16:
-            out.i64 = static_cast<int64_t>(*reinterpret_cast<int16_t *>(ptr));
-            break;
-        case Type::Kind::I32:
-            out.i64 = static_cast<int64_t>(*reinterpret_cast<int32_t *>(ptr));
-            break;
-        case Type::Kind::I64:
-            out.i64 = *reinterpret_cast<int64_t *>(ptr);
-            break;
-        case Type::Kind::I1:
-            out.i64 = static_cast<int64_t>(*reinterpret_cast<uint8_t *>(ptr) & 1);
-            break;
-        case Type::Kind::F64:
-            out.f64 = *reinterpret_cast<double *>(ptr);
-            break;
-        case Type::Kind::Str:
-            out.str = *reinterpret_cast<rt_string *>(ptr);
-            break;
-        case Type::Kind::Ptr:
-            out.ptr = *reinterpret_cast<void **>(ptr);
-            break;
-        case Type::Kind::Error:
-        case Type::Kind::ResumeTok:
-            out.ptr = nullptr;
-            break;
-        case Type::Kind::Void:
-            out.i64 = 0;
-            break;
-    }
-
-    return out;
-}
-
-/// @brief Stores a slot value to raw memory based on the IL type kind.
-///
-/// The helper mirrors `loadSlotFromPtr` to maintain load/store symmetry while
-/// keeping the pointer casts centralized.
-void storeSlotToPtr(Type::Kind kind, void *ptr, const Slot &value)
-{
-    switch (kind)
-    {
-        case Type::Kind::I16:
-            *reinterpret_cast<int16_t *>(ptr) = static_cast<int16_t>(value.i64);
-            break;
-        case Type::Kind::I32:
-            *reinterpret_cast<int32_t *>(ptr) = static_cast<int32_t>(value.i64);
-            break;
-        case Type::Kind::I64:
-            *reinterpret_cast<int64_t *>(ptr) = value.i64;
-            break;
-        case Type::Kind::I1:
-            *reinterpret_cast<uint8_t *>(ptr) = static_cast<uint8_t>(value.i64 != 0);
-            break;
-        case Type::Kind::F64:
-            *reinterpret_cast<double *>(ptr) = value.f64;
-            break;
-        case Type::Kind::Str:
-            *reinterpret_cast<rt_string *>(ptr) = value.str;
-            break;
-        case Type::Kind::Ptr:
-            *reinterpret_cast<void **>(ptr) = value.ptr;
-            break;
-        case Type::Kind::Error:
-        case Type::Kind::ResumeTok:
-            break;
-        case Type::Kind::Void:
-            break;
-    }
-}
-
-} // namespace
-
 
 /// Handles `alloca` instructions by reserving zero-initialized stack space for
 /// the current frame.
@@ -201,7 +116,9 @@ VM::ExecResult OpHandlers::handleLoad(VM &vm,
     void *ptr = vm.eval(fr, in.operands[0]).ptr;
     assert(ptr && "null load");
 
-    ops::storeResult(fr, in, loadSlotFromPtr(in.type.kind, ptr));
+    Slot out{};
+    il::vm::slot_access::loadFromPointer(in.type.kind, ptr, out);
+    ops::storeResult(fr, in, out);
     return {};
 }
 
@@ -229,7 +146,7 @@ VM::ExecResult OpHandlers::handleStore(VM &vm,
     assert(ptr && "null store");
     Slot value = vm.eval(fr, in.operands[1]);
 
-    storeSlotToPtr(in.type.kind, ptr, value);
+    il::vm::slot_access::storeToPointer(in.type.kind, ptr, value);
 
     if (in.operands[0].kind == Value::Kind::Temp)
     {

@@ -7,9 +7,9 @@
 
 #include "vm/RuntimeBridge.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
+#include "vm/SlotAccess.hpp"
 #include "vm/VM.hpp"
 #include "rt_fp.h"
-#include <array>
 #include <cassert>
 #include <cmath>
 #include <sstream>
@@ -22,146 +22,15 @@ using il::vm::RuntimeCallContext;
 using il::vm::Slot;
 using il::vm::TrapKind;
 using il::core::Type;
+using il::vm::slot_access::ResultBuffers;
 
 /// @brief Thread-local pointer to the runtime call context for active trap reporting.
 thread_local RuntimeCallContext *tlsContext = nullptr;
-
-/// @brief Aggregate of temporary storage for marshalled runtime results.
-struct ResultBuffers
-{
-    int64_t i64 = 0;       ///< Storage for integer and boolean results.
-    double f64 = 0.0;      ///< Storage for floating-point results.
-    rt_string str = nullptr; ///< Storage for runtime string results.
-    void *ptr = nullptr;   ///< Storage for pointer results.
-};
-
-/// @brief Table entry describing how a particular @ref Type::Kind maps to Slot and
-/// runtime buffer storage.
-struct KindAccessors
-{
-    using SlotAccessor = void *(*)(Slot &);
-    using ResultAccessor = void *(*)(ResultBuffers &);
-    using ResultAssigner = void (*)(Slot &, const ResultBuffers &);
-
-    SlotAccessor slotAccessor = nullptr;       ///< Accessor for VM argument slots.
-    ResultAccessor resultAccessor = nullptr;   ///< Accessor for runtime result buffers.
-    ResultAssigner assignResult = nullptr;     ///< Assignment routine for marshalled results.
-};
-
-constexpr std::array<Type::Kind, 10> kSupportedKinds = {
-    Type::Kind::Void,
-    Type::Kind::I1,
-    Type::Kind::I16,
-    Type::Kind::I32,
-    Type::Kind::I64,
-    Type::Kind::F64,
-    Type::Kind::Ptr,
-    Type::Kind::Str,
-    Type::Kind::Error,
-    Type::Kind::ResumeTok,
-};
-
-static_assert(kSupportedKinds.size() == 10, "update kind accessors when Type::Kind grows");
-
-constexpr void *nullResultBuffer(ResultBuffers &)
-{
-    return nullptr;
-}
-
-constexpr void assignNoop(Slot &, const ResultBuffers &)
-{
-}
-
-template <auto Member>
-constexpr void *slotMemberAccessor(Slot &slot)
-{
-    return static_cast<void *>(&(slot.*Member));
-}
-
-template <auto Member>
-constexpr void *bufferMemberAccessor(ResultBuffers &buffers)
-{
-    return static_cast<void *>(&(buffers.*Member));
-}
-
-template <auto SlotMember, auto BufferMember>
-constexpr void assignFromBuffer(Slot &slot, const ResultBuffers &buffers)
-{
-    slot.*SlotMember = buffers.*BufferMember;
-}
-
-constexpr KindAccessors makeVoidAccessors()
-{
-    return KindAccessors{nullptr, &nullResultBuffer, &assignNoop};
-}
-
-template <auto SlotMember, auto BufferMember>
-constexpr KindAccessors makeAccessors()
-{
-    return KindAccessors{
-        &slotMemberAccessor<SlotMember>,
-        &bufferMemberAccessor<BufferMember>,
-        &assignFromBuffer<SlotMember, BufferMember>,
-    };
-}
-
-constexpr std::array<KindAccessors, kSupportedKinds.size()> kKindAccessors = [] {
-    std::array<KindAccessors, kSupportedKinds.size()> table{};
-    table[static_cast<size_t>(Type::Kind::Void)] = makeVoidAccessors();
-    table[static_cast<size_t>(Type::Kind::I1)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
-    table[static_cast<size_t>(Type::Kind::I16)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
-    table[static_cast<size_t>(Type::Kind::I32)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
-    table[static_cast<size_t>(Type::Kind::I64)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
-    table[static_cast<size_t>(Type::Kind::F64)] = makeAccessors<&Slot::f64, &ResultBuffers::f64>();
-    table[static_cast<size_t>(Type::Kind::Ptr)] = makeAccessors<&Slot::ptr, &ResultBuffers::ptr>();
-    table[static_cast<size_t>(Type::Kind::Str)] = makeAccessors<&Slot::str, &ResultBuffers::str>();
-    table[static_cast<size_t>(Type::Kind::Error)] = makeVoidAccessors();
-    table[static_cast<size_t>(Type::Kind::ResumeTok)] = makeVoidAccessors();
-    return table;
-}();
-
-static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::Void)].slotAccessor == nullptr,
-              "Void must not expose a slot accessor");
-static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::Void)].resultAccessor == &nullResultBuffer,
-              "Void must map to the null result buffer");
-static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::I1)].slotAccessor ==
-                  &slotMemberAccessor<&Slot::i64>,
-              "I1 slot accessor must target Slot::i64");
-static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::I16)].slotAccessor ==
-                  &slotMemberAccessor<&Slot::i64>,
-              "I16 slot accessor must target Slot::i64");
-static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::I32)].slotAccessor ==
-                  &slotMemberAccessor<&Slot::i64>,
-              "I32 slot accessor must target Slot::i64");
-static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::I64)].slotAccessor ==
-                  &slotMemberAccessor<&Slot::i64>,
-              "I64 slot accessor must target Slot::i64");
-static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::F64)].slotAccessor ==
-                  &slotMemberAccessor<&Slot::f64>,
-              "F64 slot accessor must target Slot::f64");
-static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::Ptr)].slotAccessor ==
-                  &slotMemberAccessor<&Slot::ptr>,
-              "Ptr slot accessor must target Slot::ptr");
-static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::Str)].slotAccessor ==
-                  &slotMemberAccessor<&Slot::str>,
-              "Str slot accessor must target Slot::str");
-
-const KindAccessors &dispatchFor(Type::Kind kind)
-{
-    const auto index = static_cast<size_t>(kind);
-    assert(index < kKindAccessors.size() && "invalid type kind");
-    return kKindAccessors[index];
-}
 
 void *reportUnsupportedPointer(const char *msg)
 {
     assert(false && msg);
     return nullptr;
-}
-
-void reportUnsupportedAssign(const char *msg)
-{
-    assert(false && msg);
 }
 
 /// @brief Translate a VM slot to the pointer expected by the runtime handler.
@@ -170,10 +39,10 @@ void reportUnsupportedAssign(const char *msg)
 /// @return Pointer to the slot member corresponding to @p kind.
 void *slotToArgPointer(Slot &slot, Type::Kind kind)
 {
-    const auto &entry = dispatchFor(kind);
-    if (!entry.slotAccessor)
+    void *ptr = il::vm::slot_access::slotPointer(slot, kind);
+    if (!ptr)
         return reportUnsupportedPointer("unsupported runtime argument kind");
-    return entry.slotAccessor(slot);
+    return ptr;
 }
 
 /// @brief Obtain the buffer address to receive a runtime result of @p kind.
@@ -182,25 +51,10 @@ void *slotToArgPointer(Slot &slot, Type::Kind kind)
 /// @return Pointer handed to the runtime handler for writing the result.
 void *resultBufferFor(Type::Kind kind, ResultBuffers &buffers)
 {
-    const auto &entry = dispatchFor(kind);
-    if (!entry.resultAccessor)
+    void *ptr = il::vm::slot_access::resultBuffer(kind, buffers);
+    if (!ptr && kind != Type::Kind::Void && kind != Type::Kind::Error && kind != Type::Kind::ResumeTok)
         return reportUnsupportedPointer("unsupported runtime return kind");
-    return entry.resultAccessor(buffers);
-}
-
-/// @brief Store the marshalled runtime result back into VM slot @p slot.
-/// @param slot Destination VM slot.
-/// @param kind Type kind describing the expected slot member.
-/// @param buffers Temporary storage containing the runtime result.
-void assignResult(Slot &slot, Type::Kind kind, const ResultBuffers &buffers)
-{
-    const auto &entry = dispatchFor(kind);
-    if (!entry.assignResult)
-    {
-        reportUnsupportedAssign("unsupported runtime return kind");
-        return;
-    }
-    entry.assignResult(slot, buffers);
+    return ptr;
 }
 
 struct ContextGuard
@@ -345,7 +199,7 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
 
         desc->handler(rawArgs.empty() ? nullptr : rawArgs.data(), resultPtr);
 
-        assignResult(res, sig.retType.kind, buffers);
+        il::vm::slot_access::assignResult(res, sig.retType.kind, buffers);
     }
     return res;
 }
