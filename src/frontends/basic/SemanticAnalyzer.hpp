@@ -357,6 +357,9 @@ class SemanticAnalyzer
     template <typename Proc, typename BodyCallback>
     void analyzeProcedureCommon(const Proc &proc, BodyCallback &&bodyCheck);
 
+    /// @brief Register parameter @p param in the current procedure scope.
+    void registerProcedureParam(const Param &param);
+
     /// @brief Analyze body of FUNCTION @p f.
     void analyzeProc(const FunctionDecl &f);
     /// @brief Analyze body of SUB @p s.
