@@ -258,6 +258,34 @@ struct OpHandlers
                                        const il::core::BasicBlock *&bb,
                                        size_t &ip);
 
+    static VM::ExecResult handleUCmpLT(VM &vm,
+                                       Frame &fr,
+                                       const il::core::Instr &in,
+                                       const VM::BlockMap &blocks,
+                                       const il::core::BasicBlock *&bb,
+                                       size_t &ip);
+
+    static VM::ExecResult handleUCmpLE(VM &vm,
+                                       Frame &fr,
+                                       const il::core::Instr &in,
+                                       const VM::BlockMap &blocks,
+                                       const il::core::BasicBlock *&bb,
+                                       size_t &ip);
+
+    static VM::ExecResult handleUCmpGT(VM &vm,
+                                       Frame &fr,
+                                       const il::core::Instr &in,
+                                       const VM::BlockMap &blocks,
+                                       const il::core::BasicBlock *&bb,
+                                       size_t &ip);
+
+    static VM::ExecResult handleUCmpGE(VM &vm,
+                                       Frame &fr,
+                                       const il::core::Instr &in,
+                                       const VM::BlockMap &blocks,
+                                       const il::core::BasicBlock *&bb,
+                                       size_t &ip);
+
     static VM::ExecResult handleFCmpEQ(VM &vm,
                                        Frame &fr,
                                        const il::core::Instr &in,

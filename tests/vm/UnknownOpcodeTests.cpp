@@ -56,10 +56,9 @@ int main()
 
     Instr bad;
     bad.result = builder.reserveTempId();
-    bad.op = Opcode::UCmpLT;
-    bad.type = Type(Type::Kind::I1);
-    bad.operands.push_back(Value::constInt(1));
-    bad.operands.push_back(Value::constInt(1));
+    bad.op = Opcode::CastFpToUiRteChk;
+    bad.type = Type(Type::Kind::I64);
+    bad.operands.push_back(Value::constFloat(1.0));
     bad.loc = {1, 1, 1};
     bb.instructions.push_back(bad);
 
@@ -76,7 +75,7 @@ int main()
     const bool hasDiagnostic = out.find("unimplemented opcode") != std::string::npos;
     assert(hasDiagnostic && "expected diagnostic to mention unimplemented opcode");
 
-    const bool hasMnemonic = out.find("ucmp_lt") != std::string::npos;
+    const bool hasMnemonic = out.find("cast.fp_to_ui.rte.chk") != std::string::npos;
     assert(hasMnemonic && "expected diagnostic to include opcode mnemonic");
 
     return 0;
