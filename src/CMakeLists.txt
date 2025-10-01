@@ -129,12 +129,18 @@ target_link_libraries(il-dis PRIVATE support il_core il_build il_io)
 
 add_subdirectory(frontends/basic)
 
-add_executable(basic-ast-dump tools/basic-ast-dump/main.cpp)
+add_executable(basic-ast-dump
+  tools/basic-ast-dump/main.cpp
+  tools/basic/common.cpp)
 set_target_properties(basic-ast-dump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/basic-ast-dump)
 target_link_libraries(basic-ast-dump PRIVATE fe_basic support)
-add_executable(basic-lex-dump tools/basic-lex-dump/main.cpp)
+target_compile_definitions(basic-ast-dump PRIVATE VIPER_BASIC_TOOL_USAGE="Usage: basic-ast-dump <file.bas>\\n")
+add_executable(basic-lex-dump
+  tools/basic-lex-dump/main.cpp
+  tools/basic/common.cpp)
 set_target_properties(basic-lex-dump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/basic-lex-dump)
 target_link_libraries(basic-lex-dump PRIVATE fe_basic support)
+target_compile_definitions(basic-lex-dump PRIVATE VIPER_BASIC_TOOL_USAGE="Usage: basic-lex-dump <file.bas>\\n")
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/support/
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/support
