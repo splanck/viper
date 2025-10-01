@@ -12,6 +12,7 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/OpcodeInfo.hpp"
+#include "il/verify/DiagFormat.hpp"
 #include "il/verify/DiagSink.hpp"
 #include "il/verify/TypeInference.hpp"
 #include "support/diag_expected.hpp"
@@ -33,11 +34,6 @@ using il::support::Diag;
 using il::support::Expected;
 using il::support::Severity;
 using il::support::makeError;
-
-std::string formatInstrDiag(const Function &fn,
-                            const BasicBlock &bb,
-                            const Instr &instr,
-                            std::string_view message);
 
 enum class RuntimeArrayCallee
 {
@@ -216,24 +212,6 @@ Expected<void> checkRuntimeArrayCall(const Function &fn,
     }
 
     return {};
-}
-
-/// @brief Format a canonical diagnostic string for an instruction.
-/// @param fn Function that owns the instruction.
-/// @param bb Basic block containing the instruction.
-/// @param instr Instruction that triggered the diagnostic.
-/// @param message Additional detail appended to the diagnostic message.
-/// @return Fully formatted verifier diagnostic payload.
-std::string formatInstrDiag(const Function &fn,
-                            const BasicBlock &bb,
-                            const Instr &instr,
-                            std::string_view message)
-{
-    std::ostringstream oss;
-    oss << fn.name << ":" << bb.label << ": " << makeSnippet(instr);
-    if (!message.empty())
-        oss << ": " << message;
-    return oss.str();
 }
 
 /// @brief Append a warning diagnostic associated with @p instr.

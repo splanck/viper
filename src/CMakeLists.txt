@@ -33,6 +33,7 @@ target_include_directories(il_build PUBLIC
 add_subdirectory(il/io)
 
 add_library(il_verify STATIC
+  il/verify/DiagFormat.cpp
   il/verify/DiagSink.cpp
   il/verify/Verifier.cpp
   il/verify/ExternVerifier.cpp

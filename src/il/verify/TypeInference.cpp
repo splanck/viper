@@ -6,6 +6,7 @@
 // Links: docs/il-guide.md#reference
 
 #include "il/verify/TypeInference.hpp"
+#include "il/verify/DiagFormat.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -31,18 +32,6 @@ std::string formatOperands(const Instr &instr)
     for (size_t i = 0; i < instr.labels.size(); ++i)
         os << " label " << instr.labels[i];
     return os.str();
-}
-
-std::string formatInstrDiag(const Function &fn,
-                            const BasicBlock &bb,
-                            const Instr &instr,
-                            std::string_view message)
-{
-    std::ostringstream oss;
-    oss << fn.name << ":" << bb.label << ": " << makeSnippet(instr);
-    if (!message.empty())
-        oss << ": " << message;
-    return oss.str();
 }
 
 } // namespace
