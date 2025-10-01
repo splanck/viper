@@ -7,6 +7,7 @@
 
 #include "il/core/Type.hpp"
 #include <cstddef>
+#include <cstdint>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
@@ -90,6 +91,33 @@ struct RuntimeSignature
     std::vector<il::core::Type> paramTypes;  ///< Parameter types in declaration order.
 };
 
+/// @brief Enumerates optional descriptor traits published alongside metadata.
+enum class RuntimeDescriptorTrait : std::uint32_t
+{
+    None = 0u,
+    ArrayHelper = 1u << 0,
+};
+
+/// @brief Enable trait bitmask composition.
+constexpr RuntimeDescriptorTrait operator|(RuntimeDescriptorTrait lhs, RuntimeDescriptorTrait rhs)
+{
+    return static_cast<RuntimeDescriptorTrait>(static_cast<std::uint32_t>(lhs) |
+                                               static_cast<std::uint32_t>(rhs));
+}
+
+/// @brief Enable trait bitmask intersection.
+constexpr RuntimeDescriptorTrait operator&(RuntimeDescriptorTrait lhs, RuntimeDescriptorTrait rhs)
+{
+    return static_cast<RuntimeDescriptorTrait>(static_cast<std::uint32_t>(lhs) &
+                                               static_cast<std::uint32_t>(rhs));
+}
+
+/// @brief Helper that tests whether @p value publishes the requested @p trait.
+constexpr bool hasTrait(RuntimeDescriptorTrait value, RuntimeDescriptorTrait trait)
+{
+    return static_cast<bool>(value & trait);
+}
+
 /// @brief Aggregated descriptor covering signature, handler, and lowering metadata.
 struct RuntimeDescriptor
 {
@@ -97,6 +125,8 @@ struct RuntimeDescriptor
     RuntimeSignature signature;  ///< Canonical IL signature for the helper.
     RuntimeHandler handler;      ///< Adapter that invokes the C implementation.
     RuntimeLowering lowering;    ///< Lowering metadata controlling declaration.
+    RuntimeDescriptorTrait traits{RuntimeDescriptorTrait::None}; ///< Published descriptor traits.
+    std::vector<std::string_view> operandRoles;                  ///< Operand role names for diagnostics.
 };
 
 /// @brief Access the ordered registry of runtime descriptors.

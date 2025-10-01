@@ -12,6 +12,7 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/OpcodeInfo.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 #include "il/verify/DiagFormat.hpp"
 #include "il/verify/DiagSink.hpp"
 #include "il/verify/TypeInference.hpp"
@@ -35,44 +36,13 @@ using il::support::Expected;
 using il::support::Severity;
 using il::support::makeError;
 
-enum class RuntimeArrayCallee
-{
-    None,
-    New,
-    Len,
-    Get,
-    Set,
-    Resize,
-    Retain,
-    Release
-};
-
-RuntimeArrayCallee classifyRuntimeArrayCallee(std::string_view callee)
-{
-    if (callee == "rt_arr_i32_new")
-        return RuntimeArrayCallee::New;
-    if (callee == "rt_arr_i32_len")
-        return RuntimeArrayCallee::Len;
-    if (callee == "rt_arr_i32_get")
-        return RuntimeArrayCallee::Get;
-    if (callee == "rt_arr_i32_set")
-        return RuntimeArrayCallee::Set;
-    if (callee == "rt_arr_i32_resize")
-        return RuntimeArrayCallee::Resize;
-    if (callee == "rt_arr_i32_retain")
-        return RuntimeArrayCallee::Retain;
-    if (callee == "rt_arr_i32_release")
-        return RuntimeArrayCallee::Release;
-    return RuntimeArrayCallee::None;
-}
-
 Expected<void> checkRuntimeArrayCall(const Function &fn,
                                      const BasicBlock &bb,
                                      const Instr &instr,
                                      TypeInference &types)
 {
-    const RuntimeArrayCallee calleeKind = classifyRuntimeArrayCallee(instr.callee);
-    if (calleeKind == RuntimeArrayCallee::None)
+    const auto *desc = il::runtime::findRuntimeDescriptor(instr.callee);
+    if (!desc || !il::runtime::hasTrait(desc->traits, il::runtime::RuntimeDescriptorTrait::ArrayHelper))
         return {};
 
     const auto fail = [&](std::string_view message) {
@@ -91,127 +61,86 @@ Expected<void> checkRuntimeArrayCall(const Function &fn,
         return fail(ss.str());
     };
 
-    const auto requireOperandType = [&](size_t index, Type::Kind expected, std::string_view role) {
+    const auto operandRole = [&](size_t index) -> std::string_view {
+        if (index < desc->operandRoles.size())
+            return desc->operandRoles[index];
+        return std::string_view{};
+    };
+
+    const auto requireOperandType = [&](size_t index, Type::Kind expected) {
         bool missing = false;
         const Type actual = types.valueType(instr.operands[index], &missing);
+        const std::string_view role = operandRole(index);
         if (missing)
         {
             std::ostringstream ss;
-            ss << "@" << instr.callee << " " << role << " operand has unknown type";
+            ss << "@" << instr.callee;
+            if (!role.empty())
+                ss << ' ' << role << ' ';
+            else
+                ss << " operand " << (index + 1) << ' ';
+            ss << "operand has unknown type";
             return fail(ss.str());
         }
         if (actual.kind != expected)
         {
             std::ostringstream ss;
-            ss << "@" << instr.callee << " " << role << " operand must be " << kindToString(expected);
+            ss << "@" << instr.callee;
+            if (!role.empty())
+                ss << ' ' << role << ' ';
+            else
+                ss << " operand " << (index + 1) << ' ';
+            ss << "operand must be " << kindToString(expected);
             return fail(ss.str());
         }
         return Expected<void>{};
     };
 
-    const auto requireResultType = [&](Type::Kind expected) -> Expected<void> {
-        if (!instr.result)
+    const auto requireResult = [&](Type::Kind expected) -> Expected<void> {
+        if (expected == Type::Kind::Void)
         {
-            std::ostringstream ss;
-            ss << "@" << instr.callee << " must produce " << kindToString(expected) << " result";
-            return fail(ss.str());
+            if (instr.result)
+            {
+                std::ostringstream ss;
+                ss << "@" << instr.callee << " must not produce a result";
+                return fail(ss.str());
+            }
+            if (instr.type.kind != Type::Kind::Void)
+            {
+                std::ostringstream ss;
+                ss << "@" << instr.callee << " result type must be void";
+                return fail(ss.str());
+            }
         }
-        if (instr.type.kind != expected)
+        else
         {
-            std::ostringstream ss;
-            ss << "@" << instr.callee << " result must be " << kindToString(expected);
-            return fail(ss.str());
+            if (!instr.result)
+            {
+                std::ostringstream ss;
+                ss << "@" << instr.callee << " must produce " << kindToString(expected) << " result";
+                return fail(ss.str());
+            }
+            if (instr.type.kind != expected)
+            {
+                std::ostringstream ss;
+                ss << "@" << instr.callee << " result must be " << kindToString(expected);
+                return fail(ss.str());
+            }
         }
         return Expected<void>{};
     };
 
-    const auto requireNoResult = [&]() -> Expected<void> {
-        if (instr.result)
-        {
-            std::ostringstream ss;
-            ss << "@" << instr.callee << " must not produce a result";
-            return fail(ss.str());
-        }
-        if (instr.type.kind != Type::Kind::Void)
-        {
-            std::ostringstream ss;
-            ss << "@" << instr.callee << " result type must be void";
-            return fail(ss.str());
-        }
-        return Expected<void>{};
-    };
+    const auto &sig = desc->signature;
+    if (auto result = requireArgCount(sig.paramTypes.size()); !result)
+        return result;
 
-    switch (calleeKind)
+    for (size_t index = 0; index < sig.paramTypes.size(); ++index)
     {
-        case RuntimeArrayCallee::New:
-        {
-            if (auto result = requireArgCount(1); !result)
-                return result;
-            if (auto result = requireOperandType(0, Type::Kind::I64, "length"); !result)
-                return result;
-            return requireResultType(Type::Kind::Ptr);
-        }
-        case RuntimeArrayCallee::Len:
-        {
-            if (auto result = requireArgCount(1); !result)
-                return result;
-            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
-                return result;
-            return requireResultType(Type::Kind::I64);
-        }
-        case RuntimeArrayCallee::Get:
-        {
-            if (auto result = requireArgCount(2); !result)
-                return result;
-            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
-                return result;
-            if (auto result = requireOperandType(1, Type::Kind::I64, "index"); !result)
-                return result;
-            return requireResultType(Type::Kind::I64);
-        }
-        case RuntimeArrayCallee::Set:
-        {
-            if (auto result = requireArgCount(3); !result)
-                return result;
-            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
-                return result;
-            if (auto result = requireOperandType(1, Type::Kind::I64, "index"); !result)
-                return result;
-            if (auto result = requireOperandType(2, Type::Kind::I64, "value"); !result)
-                return result;
-            return requireNoResult();
-        }
-        case RuntimeArrayCallee::Resize:
-        {
-            if (auto result = requireArgCount(2); !result)
-                return result;
-            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
-                return result;
-            if (auto result = requireOperandType(1, Type::Kind::I64, "length"); !result)
-                return result;
-            return requireResultType(Type::Kind::Ptr);
-        }
-        case RuntimeArrayCallee::Retain:
-        {
-            if (auto result = requireArgCount(1); !result)
-                return result;
-            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
-                return result;
-            return requireNoResult();
-        }
-        case RuntimeArrayCallee::Release:
-        {
-            if (auto result = requireArgCount(1); !result)
-                return result;
-            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
-                return result;
-            return requireNoResult();
-        }
-        case RuntimeArrayCallee::None:
-            break;
+        if (auto result = requireOperandType(index, sig.paramTypes[index].kind); !result)
+            return result;
     }
 
-    return {};
+    return requireResult(sig.retType.kind);
 }
 
 /// @brief Append a warning diagnostic associated with @p instr.
