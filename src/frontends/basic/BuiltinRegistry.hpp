@@ -176,13 +176,8 @@ struct BuiltinLoweringRule
 /// @brief Metadata for a BASIC built-in function.
 struct BuiltinInfo
 {
-    const char *name;    ///< BASIC source spelling.
-    std::size_t minArgs; ///< Minimum accepted arguments.
-    std::size_t maxArgs; ///< Maximum accepted arguments.
-
-    using AnalyzeFn = SemanticAnalyzer::Type (SemanticAnalyzer::*)(
-        const BuiltinCallExpr &, const std::vector<SemanticAnalyzer::Type> &);
-    AnalyzeFn analyze; ///< Semantic analysis hook.
+    const char *name;                    ///< BASIC source spelling.
+    SemanticAnalyzer::BuiltinAnalyzer analyze; ///< Optional semantic handler.
 };
 
 /// @brief Lookup builtin info by enum.
