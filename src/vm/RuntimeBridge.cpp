@@ -222,6 +222,7 @@ struct ContextGuard
             current->loc = {};
             current->function.clear();
             current->block.clear();
+            current->message.clear();
         }
         tlsContext = previous;
     }
@@ -392,12 +393,15 @@ void RuntimeBridge::trap(TrapKind kind,
                          const std::string &fn,
                          const std::string &block)
 {
-    (void)msg;
-    (void)block;
     if (auto *vm = VM::activeInstance())
     {
         if (loc.isValid())
             vm->currentContext.loc = loc;
+        if (!fn.empty())
+            vm->runtimeContext.function = fn;
+        if (!block.empty())
+            vm->runtimeContext.block = block;
+        vm->runtimeContext.message = msg;
         vm_raise(kind);
         return;
     }
@@ -414,7 +418,12 @@ void RuntimeBridge::trap(TrapKind kind,
     frame.line = error.line;
     frame.handlerInstalled = false;
 
-    const std::string diagnostic = vm_format_error(error, frame);
+    std::string diagnostic = vm_format_error(error, frame);
+    if (!msg.empty())
+    {
+        diagnostic += ": ";
+        diagnostic += msg;
+    }
     rt_abort(diagnostic.c_str());
 }
 

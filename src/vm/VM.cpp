@@ -381,6 +381,12 @@ std::string VM::recordTrap(const VmError &error, const FrameInfo &frame)
     lastTrap.error = error;
     lastTrap.frame = frame;
     lastTrap.message = vm_format_error(error, frame);
+    if (!runtimeContext.message.empty())
+    {
+        lastTrap.message += ": ";
+        lastTrap.message += runtimeContext.message;
+        runtimeContext.message.clear();
+    }
     return lastTrap.message;
 }
 
