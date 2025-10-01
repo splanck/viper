@@ -28,6 +28,7 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
     }
 
     void visit(PrintStmt &stmt) override { analyzer_.analyzePrint(stmt); }
+    void visit(PrintChStmt &stmt) override { analyzer_.analyzePrintCh(stmt); }
     void visit(LetStmt &stmt) override { analyzer_.analyzeLet(stmt); }
     void visit(DimStmt &stmt) override { analyzer_.analyzeDim(stmt); }
     void visit(ReDimStmt &stmt) override { analyzer_.analyzeReDim(stmt); }
@@ -44,6 +45,7 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
     void visit(OnErrorGoto &stmt) override { analyzer_.analyzeOnErrorGoto(stmt); }
     void visit(EndStmt &stmt) override { analyzer_.analyzeEnd(stmt); }
     void visit(InputStmt &stmt) override { analyzer_.analyzeInput(stmt); }
+    void visit(LineInputChStmt &stmt) override { analyzer_.analyzeLineInputCh(stmt); }
     void visit(Resume &stmt) override { analyzer_.analyzeResume(stmt); }
     void visit(ReturnStmt &stmt) override { analyzer_.analyzeReturn(stmt); }
     void visit(FunctionDecl &) override {}
@@ -72,6 +74,15 @@ void SemanticAnalyzer::analyzePrint(const PrintStmt &p)
     for (const auto &it : p.items)
         if (it.kind == PrintItem::Kind::Expr && it.expr)
             visitExpr(*it.expr);
+}
+
+void SemanticAnalyzer::analyzePrintCh(const PrintChStmt &p)
+{
+    if (p.channelExpr)
+        visitExpr(*p.channelExpr);
+    for (const auto &arg : p.args)
+        if (arg)
+            visitExpr(*arg);
 }
 
 void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
@@ -583,6 +594,14 @@ void SemanticAnalyzer::analyzeInput(InputStmt &inp)
                 static_cast<uint32_t>(inp.var.size()),
                 std::move(msg));
     }
+}
+
+void SemanticAnalyzer::analyzeLineInputCh(LineInputChStmt &inp)
+{
+    if (inp.channelExpr)
+        visitExpr(*inp.channelExpr);
+    if (inp.targetVar)
+        visitExpr(*inp.targetVar);
 }
 
 void SemanticAnalyzer::analyzeDim(DimStmt &d)

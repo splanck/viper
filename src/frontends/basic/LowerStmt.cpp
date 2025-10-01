@@ -29,6 +29,12 @@ class LowererStmtVisitor final : public StmtVisitor
 
     void visit(const PrintStmt &stmt) override { lowerer_.lowerPrint(stmt); }
 
+    void visit(const PrintChStmt &stmt) override
+    {
+        (void)stmt;
+        // Channel-based PRINT lowering will be implemented in a future change.
+    }
+
     void visit(const LetStmt &stmt) override { lowerer_.lowerLet(stmt); }
 
     void visit(const DimStmt &stmt) override
@@ -66,6 +72,12 @@ class LowererStmtVisitor final : public StmtVisitor
     void visit(const EndStmt &stmt) override { lowerer_.lowerEnd(stmt); }
 
     void visit(const InputStmt &stmt) override { lowerer_.lowerInput(stmt); }
+
+    void visit(const LineInputChStmt &stmt) override
+    {
+        (void)stmt;
+        // Channel-based LINE INPUT lowering will be implemented in a future change.
+    }
 
     void visit(const ReturnStmt &stmt) override { lowerer_.lowerReturn(stmt); }
 

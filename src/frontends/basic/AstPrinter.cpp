@@ -205,6 +205,39 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         printer.os << ')';
     }
 
+    void visit(const PrintChStmt &stmt) override
+    {
+        printer.os << "(PRINT# channel=#";
+        if (stmt.channelExpr)
+        {
+            stmt.channelExpr->accept(exprPrinter);
+        }
+        else
+        {
+            printer.os << "<null>";
+        }
+        printer.os << " args=[";
+        bool first = true;
+        for (const auto &arg : stmt.args)
+        {
+            if (!first)
+                printer.os << ' ';
+            if (arg)
+            {
+                arg->accept(exprPrinter);
+            }
+            else
+            {
+                printer.os << "<null>";
+            }
+            first = false;
+        }
+        printer.os << ']';
+        if (!stmt.trailingNewline)
+            printer.os << " no-newline";
+        printer.os << ')';
+    }
+
     void visit(const LetStmt &stmt) override
     {
         printer.os << "(LET ";
@@ -460,6 +493,29 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
             printer.os << ',';
         }
         printer.os << ' ' << stmt.var << ')';
+    }
+
+    void visit(const LineInputChStmt &stmt) override
+    {
+        printer.os << "(LINE-INPUT# channel=#";
+        if (stmt.channelExpr)
+        {
+            stmt.channelExpr->accept(exprPrinter);
+        }
+        else
+        {
+            printer.os << "<null>";
+        }
+        printer.os << " target=";
+        if (stmt.targetVar)
+        {
+            stmt.targetVar->accept(exprPrinter);
+        }
+        else
+        {
+            printer.os << "<null>";
+        }
+        printer.os << ')';
     }
 
     void visit(const ReturnStmt &stmt) override

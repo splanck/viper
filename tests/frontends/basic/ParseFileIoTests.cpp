@@ -40,4 +40,14 @@ int main()
         std::string dump = dumpProgram("10 CLOSE #1\n20 END\n");
         assert(dump == "10: (CLOSE channel=#1)\n20: (END)\n");
     }
+
+    {
+        std::string dump = dumpProgram("10 PRINT #1, X, Y\n20 END\n");
+        assert(dump == "10: (PRINT# channel=#1 args=[X Y])\n20: (END)\n");
+    }
+
+    {
+        std::string dump = dumpProgram("10 LINE INPUT #1, A$\n20 END\n");
+        assert(dump == "10: (LINE-INPUT# channel=#1 target=A$)\n20: (END)\n");
+    }
 }

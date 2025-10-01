@@ -108,6 +108,15 @@ class ScanStmtVisitor final : public StmtVisitor
         }
     }
 
+    void visit(const PrintChStmt &stmt) override
+    {
+        if (stmt.channelExpr)
+            lowerer_.scanExpr(*stmt.channelExpr);
+        for (const auto &arg : stmt.args)
+            if (arg)
+                lowerer_.scanExpr(*arg);
+    }
+
     void visit(const LetStmt &stmt) override
     {
         if (stmt.expr)
@@ -275,6 +284,14 @@ class ScanStmtVisitor final : public StmtVisitor
             if (!info || !info->hasType)
                 lowerer_.setSymbolType(stmt.var, inferAstTypeFromName(stmt.var));
         }
+    }
+
+    void visit(const LineInputChStmt &stmt) override
+    {
+        if (stmt.channelExpr)
+            lowerer_.scanExpr(*stmt.channelExpr);
+        if (stmt.targetVar)
+            lowerer_.scanExpr(*stmt.targetVar);
     }
 
     void visit(const ReturnStmt &stmt) override

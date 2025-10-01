@@ -654,6 +654,13 @@ private:
         }
     }
 
+    void visit(PrintChStmt &stmt) override
+    {
+        foldExpr(stmt.channelExpr);
+        for (auto &arg : stmt.args)
+            foldExpr(arg);
+    }
+
     void visit(LetStmt &stmt) override
     {
         foldExpr(stmt.target);
@@ -729,7 +736,17 @@ private:
     void visit(OnErrorGoto &) override {}
     void visit(Resume &) override {}
     void visit(EndStmt &) override {}
-    void visit(InputStmt &) override {}
+    void visit(InputStmt &stmt) override
+    {
+        if (stmt.prompt)
+            foldExpr(stmt.prompt);
+    }
+
+    void visit(LineInputChStmt &stmt) override
+    {
+        foldExpr(stmt.channelExpr);
+        foldExpr(stmt.targetVar);
+    }
     void visit(ReturnStmt &) override {}
 
     void visit(FunctionDecl &) override {}
