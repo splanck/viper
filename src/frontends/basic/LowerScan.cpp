@@ -242,6 +242,7 @@ class ScanStmtVisitor final : public StmtVisitor
 
     void visit(const OpenStmt &stmt) override
     {
+        lowerer_.requireOpenErrVstr();
         if (stmt.pathExpr)
             lowerer_.scanExpr(*stmt.pathExpr);
         if (stmt.channelExpr)
@@ -250,6 +251,7 @@ class ScanStmtVisitor final : public StmtVisitor
 
     void visit(const CloseStmt &stmt) override
     {
+        lowerer_.requireCloseErr();
         if (stmt.channelExpr)
             lowerer_.scanExpr(*stmt.channelExpr);
     }

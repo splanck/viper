@@ -310,6 +310,8 @@ void ProgramLowering::run(const Program &prog, il::core::Module &module)
     lowerer.needsArrI32Retain = false;
     lowerer.needsArrI32Release = false;
     lowerer.needsArrOobPanic = false;
+    lowerer.needsOpenErrVstr = false;
+    lowerer.needsCloseErr = false;
 
     lowerer.scanProgram(prog);
     lowerer.declareRequiredRuntime(builder);

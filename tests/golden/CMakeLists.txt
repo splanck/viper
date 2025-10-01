@@ -356,6 +356,13 @@ function(viper_add_golden_suite_tests)
     -DPASSES=mem2reg
     -P ${_VIPER_GOLDEN_DIR}/il_opt/check_opt.cmake)
 
+  viper_add_ctest(basic_fileio_lowering_open_close
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DBAS_FILE=${_VIPER_GOLDEN_DIR}/fileio/lowering_open_close.bas
+    -DGOLDEN=${_VIPER_GOLDEN_DIR}/fileio/lowering_open_close.il
+    -P ${_VIPER_GOLDEN_DIR}/basic_to_il/check_il.cmake)
+
   file(READ ${_VIPER_GOLDEN_DIR}/arrays/assign_alias.stdout EXPECT_ASSIGN_ALIAS)
   string(STRIP "${EXPECT_ASSIGN_ALIAS}" EXPECT_ASSIGN_ALIAS)
   viper_add_ctest(basic_arrays_assign_alias
