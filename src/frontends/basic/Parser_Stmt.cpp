@@ -70,6 +70,30 @@ StmtPtr Parser::parsePrint()
 {
     auto loc = peek().loc;
     consume(); // PRINT
+    if (at(TokenKind::Hash))
+    {
+        consume();
+        auto stmt = std::make_unique<PrintChStmt>();
+        stmt->loc = loc;
+        stmt->channelExpr = parseExpression();
+        stmt->trailingNewline = true;
+        if (at(TokenKind::Comma))
+        {
+            consume();
+            while (true)
+            {
+                if (at(TokenKind::EndOfLine) || at(TokenKind::EndOfFile) || at(TokenKind::Colon))
+                    break;
+                if (isStatementStart(peek().kind))
+                    break;
+                stmt->args.push_back(parseExpression());
+                if (!at(TokenKind::Comma))
+                    break;
+                consume();
+            }
+        }
+        return stmt;
+    }
     auto stmt = std::make_unique<PrintStmt>();
     stmt->loc = loc;
     while (!at(TokenKind::EndOfLine) && !at(TokenKind::EndOfFile) && !at(TokenKind::Colon))
@@ -526,6 +550,22 @@ StmtPtr Parser::parseInput()
     stmt->loc = loc;
     stmt->prompt = std::move(prompt);
     stmt->var = name;
+    return stmt;
+}
+
+/// @brief Parse a LINE INPUT # statement that reads from a file channel.
+/// @return LineInputChStmt capturing channel and destination.
+StmtPtr Parser::parseLineInput()
+{
+    auto loc = peek().loc;
+    consume(); // LINE
+    expect(TokenKind::KeywordInput);
+    expect(TokenKind::Hash);
+    auto stmt = std::make_unique<LineInputChStmt>();
+    stmt->loc = loc;
+    stmt->channelExpr = parseExpression();
+    expect(TokenKind::Comma);
+    stmt->targetVar = parsePrimary();
     return stmt;
 }
 

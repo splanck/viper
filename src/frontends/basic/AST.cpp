@@ -166,6 +166,18 @@ void PrintStmt::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this PRINT # statement node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void PrintChStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void PrintChStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
 /// @brief Forwards this let statement node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void LetStmt::accept(StmtVisitor &visitor) const
@@ -366,6 +378,18 @@ void InputStmt::accept(StmtVisitor &visitor) const
 }
 
 void InputStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+/// @brief Forwards this LINE INPUT # statement node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void LineInputChStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void LineInputChStmt::accept(MutStmtVisitor &visitor)
 {
     visitor.visit(*this);
 }
