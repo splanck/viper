@@ -26,52 +26,51 @@ extern "C" {
         return nearbyint(x);
     }
 
-    static int16_t rt_cast_i16(double value, bool *ok)
+    static inline double rt_cast_integer_checked(
+        double value,
+        bool *ok,
+        double min_value,
+        double max_value,
+        const char *null_ok_trap)
     {
         if (!ok)
         {
-            rt_trap("rt_cast_i16: null ok");
-            return 0;
+            rt_trap(null_ok_trap);
+            return 0.0;
         }
 
         if (!isfinite(value))
         {
             *ok = false;
-            return 0;
+            return 0.0;
         }
 
-        if (value < (double)INT16_MIN || value > (double)INT16_MAX)
+        if (value < min_value || value > max_value)
         {
             *ok = false;
-            return 0;
+            return 0.0;
         }
 
         *ok = true;
-        return (int16_t)value;
+        return value;
+    }
+
+#define RT_CAST_INTEGER(value, ok, type, min_value, max_value, null_ok_trap) \
+    ((type)rt_cast_integer_checked(                                             \
+        (value),                                                                \
+        (ok),                                                                   \
+        (double)(min_value),                                                    \
+        (double)(max_value),                                                    \
+        (null_ok_trap)))
+
+    static int16_t rt_cast_i16(double value, bool *ok)
+    {
+        return RT_CAST_INTEGER(value, ok, int16_t, INT16_MIN, INT16_MAX, "rt_cast_i16: null ok");
     }
 
     static int32_t rt_cast_i32(double value, bool *ok)
     {
-        if (!ok)
-        {
-            rt_trap("rt_cast_i32: null ok");
-            return 0;
-        }
-
-        if (!isfinite(value))
-        {
-            *ok = false;
-            return 0;
-        }
-
-        if (value < (double)INT32_MIN || value > (double)INT32_MAX)
-        {
-            *ok = false;
-            return 0;
-        }
-
-        *ok = true;
-        return (int32_t)value;
+        return RT_CAST_INTEGER(value, ok, int32_t, INT32_MIN, INT32_MAX, "rt_cast_i32: null ok");
     }
 
     int16_t rt_cint_from_double(double x, bool *ok)
