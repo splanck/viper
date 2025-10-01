@@ -158,7 +158,7 @@ void Lowerer::emitRuntimeErrCheck(Value err,
         return;
 
     size_t curIdx = static_cast<size_t>(original - &func->blocks[0]);
-    BlockNamer *blockNamer = ctx.blockNamer();
+    BlockNamer *blockNamer = ctx.blockNames().namer();
     std::string stem(labelStem);
     std::string failLbl = blockNamer ? blockNamer->generic(stem + "_fail")
                                      : mangler.block(stem + "_fail");
@@ -432,7 +432,7 @@ Lowerer::IfBlocks Lowerer::emitIfBlocks(size_t conds)
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
     assert(func && ctx.current());
-    BlockNamer *blockNamer = ctx.blockNamer();
+    BlockNamer *blockNamer = ctx.blockNames().namer();
     size_t curIdx = static_cast<size_t>(ctx.current() - &func->blocks[0]);
     size_t start = func->blocks.size();
     unsigned firstId = 0;
@@ -601,7 +601,7 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
     assert(func && "lowerWhile requires an active function");
-    BlockNamer *blockNamer = ctx.blockNamer();
+    BlockNamer *blockNamer = ctx.blockNames().namer();
     size_t start = func->blocks.size();
     unsigned id = blockNamer ? blockNamer->nextWhile() : 0;
     std::string headLbl = blockNamer ? blockNamer->whileHead(id) : mangler.block("loop_head");
@@ -615,7 +615,7 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
     size_t doneIdx = start + 2;
     BasicBlock *done = &func->blocks[doneIdx];
 
-    ctx.pushLoopExit(done);
+    ctx.loopState().push(done);
 
     curLoc = stmt.loc;
     emitBr(head);
@@ -631,7 +631,7 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
     ctx.setCurrent(body);
     lowerLoopBody(stmt.body);
     BasicBlock *current = ctx.current();
-    bool exitTaken = ctx.loopExitTaken();
+    bool exitTaken = ctx.loopState().taken();
     bool term = current && current->terminated;
     if (!term)
     {
@@ -640,10 +640,10 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
     }
 
     done = &func->blocks[doneIdx];
-    ctx.refreshLoopExitTarget(done);
+    ctx.loopState().refresh(done);
     ctx.setCurrent(done);
     done->terminated = exitTaken ? false : term;
-    ctx.popLoopExit();
+    ctx.loopState().pop();
 }
 
 void Lowerer::lowerDo(const DoStmt &stmt)
@@ -651,7 +651,7 @@ void Lowerer::lowerDo(const DoStmt &stmt)
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
     assert(func && "lowerDo requires an active function");
-    BlockNamer *blockNamer = ctx.blockNamer();
+    BlockNamer *blockNamer = ctx.blockNames().namer();
     size_t start = func->blocks.size();
     unsigned id = blockNamer ? blockNamer->nextDo() : 0;
     std::string headLbl = blockNamer ? blockNamer->doHead(id) : mangler.block("do_head");
@@ -665,7 +665,7 @@ void Lowerer::lowerDo(const DoStmt &stmt)
     size_t doneIdx = start + 2;
     BasicBlock *done = &func->blocks[doneIdx];
 
-    ctx.pushLoopExit(done);
+    ctx.loopState().push(done);
 
     auto emitConditionBranch = [&](const RVal &condVal) {
         BasicBlock *body = &func->blocks[bodyIdx];
@@ -723,7 +723,7 @@ void Lowerer::lowerDo(const DoStmt &stmt)
 
     lowerLoopBody(stmt.body);
     BasicBlock *current = ctx.current();
-    bool exitTaken = ctx.loopExitTaken();
+    bool exitTaken = ctx.loopState().taken();
     bool term = current && current->terminated;
 
     if (!term)
@@ -740,10 +740,10 @@ void Lowerer::lowerDo(const DoStmt &stmt)
 
     func->blocks[doneIdx].label = doneLbl;
     done = &func->blocks[doneIdx];
-    ctx.refreshLoopExitTarget(done);
+    ctx.loopState().refresh(done);
     ctx.setCurrent(done);
     done->terminated = exitTaken ? false : term;
-    ctx.popLoopExit();
+    ctx.loopState().pop();
 }
 
 /// @brief Create the block layout shared by FOR loops.
@@ -758,7 +758,7 @@ Lowerer::ForBlocks Lowerer::setupForBlocks(bool varStep)
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
     assert(func && ctx.current());
-    BlockNamer *blockNamer = ctx.blockNamer();
+    BlockNamer *blockNamer = ctx.blockNames().namer();
     size_t curIdx = static_cast<size_t>(ctx.current() - &func->blocks[0]);
     size_t base = func->blocks.size();
     unsigned id = blockNamer ? blockNamer->nextFor() : 0;
@@ -817,7 +817,7 @@ void Lowerer::lowerForConstStep(
     assert(func && "lowerForConstStep requires an active function");
     size_t doneIdx = fb.doneIdx;
     BasicBlock *done = &func->blocks[doneIdx];
-    ctx.pushLoopExit(done);
+    ctx.loopState().push(done);
     curLoc = stmt.loc;
     emitBr(&func->blocks[fb.headIdx]);
     ctx.setCurrent(&func->blocks[fb.headIdx]);
@@ -831,7 +831,7 @@ void Lowerer::lowerForConstStep(
     ctx.setCurrent(&func->blocks[fb.bodyIdx]);
     lowerLoopBody(stmt.body);
     BasicBlock *current = ctx.current();
-    bool exitTaken = ctx.loopExitTaken();
+    bool exitTaken = ctx.loopState().taken();
     bool term = current && current->terminated;
     if (!term)
     {
@@ -844,10 +844,10 @@ void Lowerer::lowerForConstStep(
         emitBr(&func->blocks[fb.headIdx]);
     }
     done = &func->blocks[doneIdx];
-    ctx.refreshLoopExitTarget(done);
+    ctx.loopState().refresh(done);
     ctx.setCurrent(done);
     done->terminated = exitTaken ? false : term;
-    ctx.popLoopExit();
+    ctx.loopState().pop();
 }
 
 /// @brief Lower a FOR loop whose STEP expression is evaluated at runtime.
@@ -871,7 +871,7 @@ void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal st
     assert(func && "lowerForVarStep requires an active function");
     size_t doneIdx = fb.doneIdx;
     BasicBlock *done = &func->blocks[doneIdx];
-    ctx.pushLoopExit(done);
+    ctx.loopState().push(done);
     curLoc = stmt.loc;
     emitCBr(stepNonNeg, &func->blocks[fb.headPosIdx], &func->blocks[fb.headNegIdx]);
     ctx.setCurrent(&func->blocks[fb.headPosIdx]);
@@ -891,7 +891,7 @@ void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal st
     ctx.setCurrent(&func->blocks[fb.bodyIdx]);
     lowerLoopBody(stmt.body);
     BasicBlock *current = ctx.current();
-    bool exitTaken = ctx.loopExitTaken();
+    bool exitTaken = ctx.loopState().taken();
     bool term = current && current->terminated;
     if (!term)
     {
@@ -904,10 +904,10 @@ void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal st
         emitCBr(stepNonNeg, &func->blocks[fb.headPosIdx], &func->blocks[fb.headNegIdx]);
     }
     done = &func->blocks[doneIdx];
-    ctx.refreshLoopExitTarget(done);
+    ctx.loopState().refresh(done);
     ctx.setCurrent(done);
     done->terminated = exitTaken ? false : term;
-    ctx.popLoopExit();
+    ctx.loopState().pop();
 }
 
 /// @brief Lower a BASIC FOR statement.
@@ -953,7 +953,7 @@ void Lowerer::lowerNext(const NextStmt &next)
 void Lowerer::lowerExit(const ExitStmt &stmt)
 {
     ProcedureContext &ctx = context();
-    BasicBlock *target = ctx.currentLoopExit();
+    BasicBlock *target = ctx.loopState().current();
     curLoc = stmt.loc;
     if (!target)
     {
@@ -961,7 +961,7 @@ void Lowerer::lowerExit(const ExitStmt &stmt)
         return;
     }
     emitBr(target);
-    ctx.markLoopExitTaken();
+    ctx.loopState().markTaken();
 }
 
 /// @brief Lower a GOTO jump.
@@ -972,7 +972,7 @@ void Lowerer::lowerExit(const ExitStmt &stmt)
 ///          the current block as terminated.
 void Lowerer::lowerGoto(const GotoStmt &stmt)
 {
-    auto &lineBlocks = context().lineBlocks();
+    auto &lineBlocks = context().blockNames().lineBlocks();
     auto it = lineBlocks.find(stmt.target);
     if (it != lineBlocks.end())
     {
@@ -1005,9 +1005,9 @@ void Lowerer::lowerOnErrorGoto(const OnErrorGoto &stmt)
     emitEhPush(handler);
 
     size_t idx = static_cast<size_t>(handler - &func->blocks[0]);
-    ctx.setErrorHandlerActive(true);
-    ctx.setActiveErrorHandlerIndex(idx);
-    ctx.setActiveErrorHandlerLine(stmt.target);
+    ctx.errorHandlers().setActive(true);
+    ctx.errorHandlers().setActiveIndex(idx);
+    ctx.errorHandlers().setActiveLine(stmt.target);
 }
 
 void Lowerer::lowerResume(const Resume &stmt)
@@ -1019,12 +1019,12 @@ void Lowerer::lowerResume(const Resume &stmt)
 
     std::optional<size_t> handlerIndex;
 
-    auto &handlersByLine = ctx.errorHandlerBlocks();
+    auto &handlersByLine = ctx.errorHandlers().blocks();
     if (auto it = handlersByLine.find(stmt.line); it != handlersByLine.end())
     {
         handlerIndex = it->second;
     }
-    else if (auto active = ctx.activeErrorHandlerIndex())
+    else if (auto active = ctx.errorHandlers().activeIndex())
     {
         handlerIndex = *active;
     }
@@ -1063,7 +1063,7 @@ void Lowerer::lowerResume(const Resume &stmt)
         case Resume::Mode::Label:
         {
             instr.op = Opcode::ResumeLabel;
-            auto &lineBlocks = ctx.lineBlocks();
+            auto &lineBlocks = ctx.blockNames().lineBlocks();
             auto targetIt = lineBlocks.find(stmt.target);
             if (targetIt == lineBlocks.end())
                 return;
