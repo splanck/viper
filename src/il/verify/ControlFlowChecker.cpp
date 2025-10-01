@@ -11,6 +11,7 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Param.hpp"
+#include "il/verify/DiagFormat.hpp"
 #include "il/verify/DiagSink.hpp"
 #include "support/diag_expected.hpp"
 
@@ -40,28 +41,6 @@ using VerifyInstrFnExpected = std::function<Expected<void>(const Function &fn,
 
 namespace
 {
-std::string formatBlockDiag(const Function &fn,
-                            const BasicBlock &bb,
-                            std::string_view message)
-{
-    std::ostringstream oss;
-    oss << fn.name << ":" << bb.label;
-    if (!message.empty())
-        oss << ": " << message;
-    return oss.str();
-}
-
-std::string formatInstrDiag(const Function &fn,
-                            const BasicBlock &bb,
-                            const Instr &instr,
-                            std::string_view message)
-{
-    std::ostringstream oss;
-    oss << fn.name << ":" << bb.label << ": " << makeSnippet(instr);
-    if (!message.empty())
-        oss << ": " << message;
-    return oss.str();
-}
 
 /// @brief Validates block parameter declarations against IL structural rules.
 /// @param fn Function owning @p bb; used for diagnostics.
