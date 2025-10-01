@@ -13,6 +13,7 @@
 #include "il/core/Instr.hpp"
 #include <cassert>
 #include <cstdint>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -29,11 +30,7 @@ class LowererStmtVisitor final : public StmtVisitor
 
     void visit(const PrintStmt &stmt) override { lowerer_.lowerPrint(stmt); }
 
-    void visit(const PrintChStmt &stmt) override
-    {
-        (void)stmt;
-        // Channel-based PRINT lowering will be implemented in a future change.
-    }
+    void visit(const PrintChStmt &stmt) override { lowerer_.lowerPrintCh(stmt); }
 
     void visit(const LetStmt &stmt) override { lowerer_.lowerLet(stmt); }
 
@@ -73,11 +70,7 @@ class LowererStmtVisitor final : public StmtVisitor
 
     void visit(const InputStmt &stmt) override { lowerer_.lowerInput(stmt); }
 
-    void visit(const LineInputChStmt &stmt) override
-    {
-        (void)stmt;
-        // Channel-based LINE INPUT lowering will be implemented in a future change.
-    }
+    void visit(const LineInputChStmt &stmt) override { lowerer_.lowerLineInputCh(stmt); }
 
     void visit(const ReturnStmt &stmt) override { lowerer_.lowerReturn(stmt); }
 
@@ -358,6 +351,125 @@ void Lowerer::lowerPrint(const PrintStmt &stmt)
         Value nl = emitConstStr(nlLbl);
         curLoc = stmt.loc;
         emitCall("rt_print_str", {nl});
+    }
+}
+
+void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
+{
+    if (!stmt.channelExpr)
+        return;
+
+    RVal channel = lowerExpr(*stmt.channelExpr);
+    if (channel.type.kind != Type::Kind::I32)
+    {
+        channel = ensureI64(std::move(channel), stmt.loc);
+        curLoc = stmt.loc;
+        channel.value = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), channel.value);
+        channel.type = Type(Type::Kind::I32);
+    }
+
+    auto emitErrCheck = [&](Value err, il::support::SourceLoc loc, std::string_view base) {
+        ProcedureContext &ctx = context();
+        Function *func = ctx.function();
+        BasicBlock *current = ctx.current();
+        if (!func || !current)
+            return;
+
+        size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
+        BlockNamer *blockNamer = ctx.blockNamer();
+        std::string baseName(base);
+        std::string failLbl = blockNamer ? blockNamer->generic(baseName + "_fail")
+                                         : mangler.block(baseName + "_fail");
+        std::string contLbl = blockNamer ? blockNamer->generic(baseName + "_cont")
+                                         : mangler.block(baseName + "_cont");
+
+        size_t failIdx = func->blocks.size();
+        builder->addBlock(*func, failLbl);
+        size_t contIdx = func->blocks.size();
+        builder->addBlock(*func, contLbl);
+
+        BasicBlock *failBlk = &func->blocks[failIdx];
+        BasicBlock *contBlk = &func->blocks[contIdx];
+
+        ctx.setCurrent(&func->blocks[curIdx]);
+        curLoc = loc;
+        Value isFail = emitBinary(Opcode::ICmpNe, ilBoolTy(), err, Value::constInt(0));
+        emitCBr(isFail, failBlk, contBlk);
+
+        ctx.setCurrent(failBlk);
+        curLoc = loc;
+        emitTrapFromErr(err);
+
+        ctx.setCurrent(contBlk);
+    };
+
+    auto lowerArgToString = [&](const Expr &expr, RVal value) -> Value {
+        if (value.type.kind == Type::Kind::Str)
+            return value.value;
+
+        TypeRules::NumericType numericType = classifyNumericType(expr);
+        const char *runtime = nullptr;
+        RuntimeFeature feature = RuntimeFeature::StrFromDouble;
+
+        auto narrowInteger = [&](Type::Kind target) {
+            value = ensureI64(std::move(value), expr.loc);
+            curLoc = expr.loc;
+            value.value = emitUnary(Opcode::CastSiNarrowChk, Type(target), value.value);
+            value.type = Type(target);
+        };
+
+        switch (numericType)
+        {
+            case TypeRules::NumericType::Integer:
+                runtime = "rt_str_i16_alloc";
+                feature = RuntimeFeature::StrFromI16;
+                narrowInteger(Type::Kind::I16);
+                break;
+            case TypeRules::NumericType::Long:
+                runtime = "rt_str_i32_alloc";
+                feature = RuntimeFeature::StrFromI32;
+                narrowInteger(Type::Kind::I32);
+                break;
+            case TypeRules::NumericType::Single:
+                runtime = "rt_str_f_alloc";
+                feature = RuntimeFeature::StrFromSingle;
+                value = ensureF64(std::move(value), expr.loc);
+                break;
+            case TypeRules::NumericType::Double:
+            default:
+                runtime = "rt_str_d_alloc";
+                feature = RuntimeFeature::StrFromDouble;
+                value = ensureF64(std::move(value), expr.loc);
+                break;
+        }
+
+        requestHelper(feature);
+        curLoc = expr.loc;
+        return emitCallRet(Type(Type::Kind::Str), runtime, {value.value});
+    };
+
+    if (stmt.args.empty())
+    {
+        if (stmt.trailingNewline)
+        {
+            std::string emptyLbl = getStringLabel("");
+            Value empty = emitConstStr(emptyLbl);
+            curLoc = stmt.loc;
+            Value err = emitCallRet(Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, empty});
+            emitErrCheck(err, stmt.loc, "printch");
+        }
+        return;
+    }
+
+    for (const auto &arg : stmt.args)
+    {
+        if (!arg)
+            continue;
+        RVal value = lowerExpr(*arg);
+        Value text = lowerArgToString(*arg, std::move(value));
+        curLoc = arg->loc;
+        Value err = emitCallRet(Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, text});
+        emitErrCheck(err, arg->loc, "printch");
     }
 }
 
@@ -1082,6 +1194,77 @@ void Lowerer::lowerInput(const InputStmt &stmt)
             curLoc = stmt.loc;
             emitStore(Type(Type::Kind::I64), target, n);
         }
+    }
+}
+
+void Lowerer::lowerLineInputCh(const LineInputChStmt &stmt)
+{
+    if (!stmt.channelExpr || !stmt.targetVar)
+        return;
+
+    RVal channel = lowerExpr(*stmt.channelExpr);
+    if (channel.type.kind != Type::Kind::I32)
+    {
+        channel = ensureI64(std::move(channel), stmt.loc);
+        curLoc = stmt.loc;
+        channel.value = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), channel.value);
+        channel.type = Type(Type::Kind::I32);
+    }
+
+    curLoc = stmt.loc;
+    Value outSlot = emitAlloca(8);
+    emitStore(Type(Type::Kind::Ptr), outSlot, Value::null());
+
+    Value err = emitCallRet(Type(Type::Kind::I32), "rt_line_input_ch_err", {channel.value, outSlot});
+
+    auto emitErrCheck = [&](Value errCode, il::support::SourceLoc loc, std::string_view base) {
+        ProcedureContext &ctx = context();
+        Function *func = ctx.function();
+        BasicBlock *current = ctx.current();
+        if (!func || !current)
+            return;
+
+        size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
+        BlockNamer *blockNamer = ctx.blockNamer();
+        std::string baseName(base);
+        std::string failLbl = blockNamer ? blockNamer->generic(baseName + "_fail")
+                                         : mangler.block(baseName + "_fail");
+        std::string contLbl = blockNamer ? blockNamer->generic(baseName + "_cont")
+                                         : mangler.block(baseName + "_cont");
+
+        size_t failIdx = func->blocks.size();
+        builder->addBlock(*func, failLbl);
+        size_t contIdx = func->blocks.size();
+        builder->addBlock(*func, contLbl);
+
+        BasicBlock *failBlk = &func->blocks[failIdx];
+        BasicBlock *contBlk = &func->blocks[contIdx];
+
+        ctx.setCurrent(&func->blocks[curIdx]);
+        curLoc = loc;
+        Value isFail = emitBinary(Opcode::ICmpNe, ilBoolTy(), errCode, Value::constInt(0));
+        emitCBr(isFail, failBlk, contBlk);
+
+        ctx.setCurrent(failBlk);
+        curLoc = loc;
+        emitTrapFromErr(errCode);
+
+        ctx.setCurrent(contBlk);
+    };
+
+    emitErrCheck(err, stmt.loc, "lineinputch");
+
+    curLoc = stmt.loc;
+    Value line = emitLoad(Type(Type::Kind::Str), outSlot);
+
+    if (const auto *var = dynamic_cast<const VarExpr *>(stmt.targetVar.get()))
+    {
+        const auto *info = findSymbol(var->name);
+        if (!info || !info->slotId)
+            return;
+        Value slot = Value::temp(*info->slotId);
+        curLoc = stmt.loc;
+        emitStore(Type(Type::Kind::Str), slot, line);
     }
 }
 
