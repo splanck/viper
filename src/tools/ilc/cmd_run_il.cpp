@@ -25,6 +25,7 @@
 #include <iostream>
 #include <memory>
 #include <exception>
+#include <vector>
 #include <string>
 #include <utility>
 
@@ -32,6 +33,28 @@ using namespace il;
 
 namespace
 {
+
+struct RunILConfig
+{
+    struct SourceBreak
+    {
+        std::string file;
+        int line = 0;
+    };
+
+    std::string ilFile;
+    ilc::SharedCliOptions sharedOpts;
+    std::vector<std::string> breakLabels;
+    std::vector<SourceBreak> breakSrcLines;
+    std::vector<std::string> watchSymbols;
+    std::string debugScriptPath;
+    bool stepFlag = false;
+    bool continueFlag = false;
+    bool countFlag = false;
+    bool timeFlag = false;
+    vm::DebugCtrl debugCtrl;
+    std::unique_ptr<vm::DebugScript> debugScript;
+};
 
 bool tryParseLineNumber(const std::string &token, int &line)
 {
@@ -70,6 +93,259 @@ void reportInvalidLineNumber(const std::string &lineToken,
     usage();
 }
 
+bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
+{
+    if (argc < 1)
+    {
+        usage();
+        return false;
+    }
+
+    config.ilFile = argv[0];
+
+    for (int i = 1; i < argc; ++i)
+    {
+        std::string arg = argv[i];
+        if (arg == "--break")
+        {
+            if (i + 1 >= argc)
+            {
+                usage();
+                return false;
+            }
+            std::string spec = argv[++i];
+            if (ilc::isSrcBreakSpec(spec))
+            {
+                auto pos = spec.rfind(':');
+                std::string file = spec.substr(0, pos);
+                const std::string lineToken = spec.substr(pos + 1);
+                int line = 0;
+                if (!tryParseLineNumber(lineToken, line))
+                {
+                    reportInvalidLineNumber(lineToken, spec, "--break");
+                    return false;
+                }
+                config.breakSrcLines.push_back({ std::move(file), line });
+            }
+            else
+            {
+                config.breakLabels.push_back(std::move(spec));
+            }
+        }
+        else if (arg == "--break-src")
+        {
+            if (i + 1 >= argc)
+            {
+                usage();
+                return false;
+            }
+            std::string spec = argv[++i];
+            auto pos = spec.rfind(':');
+            if (pos != std::string::npos)
+            {
+                std::string file = spec.substr(0, pos);
+                const std::string lineToken = spec.substr(pos + 1);
+                int line = 0;
+                if (!tryParseLineNumber(lineToken, line))
+                {
+                    reportInvalidLineNumber(lineToken, spec, "--break-src");
+                    return false;
+                }
+                config.breakSrcLines.push_back({ std::move(file), line });
+            }
+            else
+            {
+                reportInvalidLineNumber("", spec, "--break-src");
+                return false;
+            }
+        }
+        else if (arg == "--debug-cmds")
+        {
+            if (i + 1 >= argc)
+            {
+                usage();
+                return false;
+            }
+            config.debugScriptPath = argv[++i];
+        }
+        else if (arg == "--step")
+        {
+            config.stepFlag = true;
+        }
+        else if (arg == "--continue")
+        {
+            config.continueFlag = true;
+        }
+        else if (arg == "--watch")
+        {
+            if (i + 1 >= argc)
+            {
+                usage();
+                return false;
+            }
+            config.watchSymbols.emplace_back(argv[++i]);
+        }
+        else if (arg == "--count")
+        {
+            config.countFlag = true;
+        }
+        else if (arg == "--time")
+        {
+            config.timeFlag = true;
+        }
+        else
+        {
+            switch (ilc::parseSharedOption(i, argc, argv, config.sharedOpts))
+            {
+            case ilc::SharedOptionParseResult::Parsed:
+                continue;
+            case ilc::SharedOptionParseResult::Error:
+                usage();
+                return false;
+            case ilc::SharedOptionParseResult::NotMatched:
+                usage();
+                return false;
+            }
+        }
+    }
+
+    if (config.continueFlag)
+    {
+        config.stepFlag = false;
+    }
+
+    return true;
+}
+
+void configureDebugger(const RunILConfig &config,
+                       vm::DebugCtrl &dbg,
+                       std::unique_ptr<vm::DebugScript> &script)
+{
+    if (config.continueFlag)
+    {
+        dbg = vm::DebugCtrl();
+        script.reset();
+        return;
+    }
+
+    for (const auto &label : config.breakLabels)
+    {
+        auto sym = dbg.internLabel(label.c_str());
+        dbg.addBreak(sym);
+    }
+    for (const auto &src : config.breakSrcLines)
+    {
+        dbg.addBreakSrcLine(src.file, src.line);
+    }
+    for (const auto &watch : config.watchSymbols)
+    {
+        dbg.addWatch(watch);
+    }
+
+    if (!config.debugScriptPath.empty())
+    {
+        script = std::make_unique<vm::DebugScript>(config.debugScriptPath);
+    }
+    if (config.stepFlag)
+    {
+        if (!script)
+        {
+            script = std::make_unique<vm::DebugScript>();
+        }
+        script->addStep(1);
+    }
+}
+
+int executeRunIL(const RunILConfig &config)
+{
+    il::support::SourceManager sm;
+    sm.addFile(config.ilFile);
+
+    vm::TraceConfig traceCfg = config.sharedOpts.trace;
+    traceCfg.sm = &sm;
+
+    vm::DebugCtrl dbg = config.debugCtrl;
+    dbg.setSourceManager(&sm);
+
+    std::ifstream ifs(config.ilFile);
+    if (!ifs)
+    {
+        std::cerr << "unable to open " << config.ilFile << "\n";
+        return 1;
+    }
+
+    core::Module m;
+    auto pe = il::api::v2::parse_text_expected(ifs, m);
+    if (!pe)
+    {
+        il::support::printDiag(pe.error(), std::cerr);
+        return 1;
+    }
+
+    auto ve = il::verify::Verifier::verify(m);
+    if (!ve)
+    {
+        il::support::printDiag(ve.error(), std::cerr);
+        return 1;
+    }
+
+    if (!config.sharedOpts.stdinPath.empty())
+    {
+        if (!freopen(config.sharedOpts.stdinPath.c_str(), "r", stdin))
+        {
+            std::cerr << "unable to open stdin file\n";
+            return 1;
+        }
+    }
+
+    if (config.stepFlag)
+    {
+        auto it = std::find_if(m.functions.begin(),
+                               m.functions.end(),
+                               [](const core::Function &f) { return f.name == "main"; });
+        if (it != m.functions.end() && !it->blocks.empty())
+        {
+            auto sym = dbg.internLabel(it->blocks.front().label);
+            dbg.addBreak(sym);
+        }
+    }
+
+    vm::VM vm(m,
+              traceCfg,
+              config.sharedOpts.maxSteps,
+              std::move(dbg),
+              config.debugScript ? config.debugScript.get() : nullptr);
+
+    std::chrono::steady_clock::time_point start;
+    if (config.timeFlag)
+    {
+        start = std::chrono::steady_clock::now();
+    }
+    int rc = static_cast<int>(vm.run());
+    std::chrono::steady_clock::time_point end;
+    if (config.timeFlag)
+    {
+        end = std::chrono::steady_clock::now();
+    }
+
+    if (config.countFlag || config.timeFlag)
+    {
+        std::cerr << "[SUMMARY]";
+        if (config.countFlag)
+        {
+            std::cerr << " instr=" << vm.getInstrCount();
+        }
+        if (config.timeFlag)
+        {
+            double ms = std::chrono::duration<double, std::milli>(end - start).count();
+            std::cerr << " time_ms=" << ms;
+        }
+        std::cerr << "\n";
+    }
+
+    return rc;
+}
+
 } // namespace
 
 /**
@@ -88,178 +364,12 @@ void reportInvalidLineNumber(const std::string &lineToken,
  */
 int cmdRunIL(int argc, char **argv)
 {
-    if (argc < 1)
+    RunILConfig config;
+    if (!parseRunILArgs(argc, argv, config))
     {
-        usage();
         return 1;
     }
-    std::string ilFile = argv[0];
-    ilc::SharedCliOptions sharedOpts;
-    vm::DebugCtrl dbg;
-    std::unique_ptr<vm::DebugScript> script;
-    il::support::SourceManager sm;
-    bool stepFlag = false;
-    bool continueFlag = false;
-    bool countFlag = false;
-    bool timeFlag = false;
-    for (int i = 1; i < argc; ++i)
-    {
-        std::string arg = argv[i];
-        if (arg == "--break" && i + 1 < argc)
-        {
-            std::string spec = argv[++i];
-            if (ilc::isSrcBreakSpec(spec))
-            {
-                auto pos = spec.rfind(':');
-                std::string file = spec.substr(0, pos);
-                const std::string lineToken = spec.substr(pos + 1);
-                int line = 0;
-                if (!tryParseLineNumber(lineToken, line))
-                {
-                    reportInvalidLineNumber(lineToken, spec, "--break");
-                    return 1;
-                }
-                dbg.addBreakSrcLine(file, line);
-            }
-            else
-            {
-                auto sym = dbg.internLabel(spec.c_str());
-                dbg.addBreak(sym);
-            }
-        }
-        else if (arg == "--break-src" && i + 1 < argc)
-        {
-            std::string spec = argv[++i];
-            auto pos = spec.rfind(':');
-            if (pos != std::string::npos)
-            {
-                std::string file = spec.substr(0, pos);
-                const std::string lineToken = spec.substr(pos + 1);
-                int line = 0;
-                if (!tryParseLineNumber(lineToken, line))
-                {
-                    reportInvalidLineNumber(lineToken, spec, "--break-src");
-                    return 1;
-                }
-                dbg.addBreakSrcLine(file, line);
-            }
-            else
-            {
-                reportInvalidLineNumber("", spec, "--break-src");
-                return 1;
-            }
-        }
-        else if (arg == "--debug-cmds" && i + 1 < argc)
-        {
-            script = std::make_unique<vm::DebugScript>(argv[++i]);
-        }
-        else if (arg == "--step")
-        {
-            stepFlag = true;
-        }
-        else if (arg == "--continue")
-        {
-            continueFlag = true;
-        }
-        else if (arg == "--watch" && i + 1 < argc)
-        {
-            dbg.addWatch(argv[++i]);
-        }
-        else if (arg == "--count")
-        {
-            countFlag = true;
-        }
-        else if (arg == "--time")
-        {
-            timeFlag = true;
-        }
-        else
-        {
-            switch (ilc::parseSharedOption(i, argc, argv, sharedOpts))
-            {
-            case ilc::SharedOptionParseResult::Parsed:
-                continue;
-            case ilc::SharedOptionParseResult::Error:
-                usage();
-                return 1;
-            case ilc::SharedOptionParseResult::NotMatched:
-                usage();
-                return 1;
-            }
-        }
-    }
-    if (continueFlag)
-    {
-        dbg = vm::DebugCtrl();
-        script.reset();
-        stepFlag = false;
-    }
-    sm.addFile(ilFile);
-    vm::TraceConfig traceCfg = sharedOpts.trace;
-    traceCfg.sm = &sm;
-    dbg.setSourceManager(&sm);
-    std::ifstream ifs(ilFile);
-    if (!ifs)
-    {
-        std::cerr << "unable to open " << ilFile << "\n";
-        return 1;
-    }
-    core::Module m;
-    auto pe = il::api::v2::parse_text_expected(ifs, m);
-    if (!pe)
-    {
-        il::support::printDiag(pe.error(), std::cerr);
-        return 1;
-    }
-    auto ve = il::verify::Verifier::verify(m);
-    if (!ve)
-    {
-        il::support::printDiag(ve.error(), std::cerr);
-        return 1;
-    }
-    if (!sharedOpts.stdinPath.empty())
-    {
-        if (!freopen(sharedOpts.stdinPath.c_str(), "r", stdin))
-        {
-            std::cerr << "unable to open stdin file\n";
-            return 1;
-        }
-    }
-    if (stepFlag)
-    {
-        auto it = std::find_if(m.functions.begin(),
-                               m.functions.end(),
-                               [](const core::Function &f) { return f.name == "main"; });
-        if (it != m.functions.end() && !it->blocks.empty())
-        {
-            auto sym = dbg.internLabel(it->blocks.front().label);
-            dbg.addBreak(sym);
-        }
-        if (!script)
-        {
-            script = std::make_unique<vm::DebugScript>();
-        }
-        script->addStep(1);
-    }
-    vm::VM vm(m, traceCfg, sharedOpts.maxSteps, std::move(dbg), script.get());
-    std::chrono::steady_clock::time_point start;
-    if (timeFlag)
-        start = std::chrono::steady_clock::now();
-    int rc = static_cast<int>(vm.run());
-    std::chrono::steady_clock::time_point end;
-    if (timeFlag)
-        end = std::chrono::steady_clock::now();
-    if (countFlag || timeFlag)
-    {
-        std::cerr << "[SUMMARY]";
-        if (countFlag)
-            std::cerr << " instr=" << vm.getInstrCount();
-        if (timeFlag)
-        {
-            double ms = std::chrono::duration<double, std::milli>(end - start).count();
-            std::cerr << " time_ms=" << ms;
-        }
-        std::cerr << "\n";
-    }
-    return rc;
+
+    configureDebugger(config, config.debugCtrl, config.debugScript);
+    return executeRunIL(config);
 }
