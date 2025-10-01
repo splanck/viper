@@ -22,6 +22,8 @@ using il::vm::RuntimeCallContext;
 using il::vm::Slot;
 using il::vm::TrapKind;
 using il::core::Type;
+using il::runtime::RuntimeHiddenParamKind;
+using il::runtime::RuntimeTrapClass;
 
 /// @brief Thread-local pointer to the runtime call context for active trap reporting.
 thread_local RuntimeCallContext *tlsContext = nullptr;
@@ -289,50 +291,10 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
         RuntimeBridge::trap(TrapKind::DomainError, os.str(), loc, fn, block);
         return res;
     }
-    if (name == "rt_pow_f64_chkdom")
-    {
-        if (!checkArgs(2))
-            return res;
-
-        const double base = args[0].f64;
-        const double exp = args[1].f64;
-        const bool expIntegral = std::isfinite(exp) && (exp == std::trunc(exp));
-        const bool domainError = (base < 0.0) && !expIntegral;
-
-        bool ok = true;
-        const double value = rt_pow_f64_chkdom(base, exp, &ok);
-        if (!ok)
-        {
-            std::ostringstream os;
-            if (domainError)
-            {
-                os << "rt_pow_f64_chkdom: negative base with fractional exponent";
-                RuntimeBridge::trap(TrapKind::DomainError, os.str(), loc, fn, block);
-            }
-            else
-            {
-                os << "rt_pow_f64_chkdom: overflow";
-                RuntimeBridge::trap(TrapKind::Overflow, os.str(), loc, fn, block);
-            }
-            return res;
-        }
-
-        if (!std::isfinite(value))
-        {
-            std::ostringstream os;
-            os << "rt_pow_f64_chkdom: overflow";
-            RuntimeBridge::trap(TrapKind::Overflow, os.str(), loc, fn, block);
-            return res;
-        }
-
-        res.f64 = value;
-        return res;
-    }
-
     if (checkArgs(desc->signature.paramTypes.size()))
     {
         const auto &sig = desc->signature;
-        std::vector<void *> rawArgs(sig.paramTypes.size());
+        std::vector<void *> rawArgs(sig.paramTypes.size() + sig.hiddenParams.size());
         for (size_t i = 0; i < sig.paramTypes.size(); ++i)
         {
             auto kind = sig.paramTypes[i].kind;
@@ -340,10 +302,75 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
             rawArgs[i] = slotToArgPointer(slot, kind);
         }
 
+        struct PowStatus
+        {
+            bool active{false};
+            bool ok{true};
+            bool *ptr{nullptr};
+        };
+
+        PowStatus powStatus;
+
+        size_t hiddenIndex = sig.paramTypes.size();
+        for (const auto &hidden : sig.hiddenParams)
+        {
+            switch (hidden.kind)
+            {
+            case RuntimeHiddenParamKind::None:
+                rawArgs[hiddenIndex++] = nullptr;
+                break;
+            case RuntimeHiddenParamKind::PowStatusPointer:
+                powStatus.active = true;
+                powStatus.ok = true;
+                powStatus.ptr = &powStatus.ok;
+                rawArgs[hiddenIndex++] = &powStatus.ptr;
+                break;
+            }
+        }
+
         ResultBuffers buffers;
         void *resultPtr = resultBufferFor(sig.retType.kind, buffers);
 
         desc->handler(rawArgs.empty() ? nullptr : rawArgs.data(), resultPtr);
+
+        auto handlePowTrap = [&]() -> bool {
+            if (desc->trapClass != RuntimeTrapClass::PowDomainOverflow || !powStatus.active)
+                return false;
+
+            if (!powStatus.ok)
+            {
+                const double base = !args.empty() ? args[0].f64 : 0.0;
+                const double exp = (args.size() > 1) ? args[1].f64 : 0.0;
+                const bool expIntegral = std::isfinite(exp) && (exp == std::trunc(exp));
+                const bool domainError = (base < 0.0) && !expIntegral;
+
+                std::ostringstream os;
+                if (domainError)
+                {
+                    os << "rt_pow_f64_chkdom: negative base with fractional exponent";
+                    RuntimeBridge::trap(TrapKind::DomainError, os.str(), loc, fn, block);
+                }
+                else
+                {
+                    os << "rt_pow_f64_chkdom: overflow";
+                    RuntimeBridge::trap(TrapKind::Overflow, os.str(), loc, fn, block);
+                }
+                return true;
+            }
+
+            if (sig.retType.kind == Type::Kind::F64 && !std::isfinite(buffers.f64))
+            {
+                std::ostringstream os;
+                os << "rt_pow_f64_chkdom: overflow";
+                RuntimeBridge::trap(TrapKind::Overflow, os.str(), loc, fn, block);
+                return true;
+            }
+
+            return false;
+        };
+
+        if (handlePowTrap())
+            return res;
 
         assignResult(res, sig.retType.kind, buffers);
     }
