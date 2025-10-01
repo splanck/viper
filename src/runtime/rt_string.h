@@ -12,6 +12,10 @@ extern "C" {
 #endif
 
     struct rt_string_impl;
+
+    /// @brief Exposes the runtime string object layout for host interop wrappers.
+    typedef struct rt_string_impl ViperString;
+
     typedef struct rt_string_impl *rt_string;
 
     /// @brief Increment the reference count of @p s when non-null.
