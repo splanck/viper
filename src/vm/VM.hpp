@@ -337,6 +337,10 @@ class VM
   public:
     /// @brief Return executed instruction count.
     uint64_t getInstrCount() const;
+
+    /// @brief Retrieve the formatted diagnostic for the most recent unhandled trap.
+    /// @return Trap message when a trap terminated execution, or `std::nullopt` otherwise.
+    std::optional<std::string> lastTrapMessage() const;
 };
 
 } // namespace il::vm

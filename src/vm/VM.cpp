@@ -247,6 +247,13 @@ uint64_t VM::getInstrCount() const
     return instrCount;
 }
 
+std::optional<std::string> VM::lastTrapMessage() const
+{
+    if (lastTrap.message.empty())
+        return std::nullopt;
+    return lastTrap.message;
+}
+
 void VM::setCurrentContext(Frame &fr, const BasicBlock *bb, size_t ip, const Instr &in)
 {
     currentContext.function = fr.func;
