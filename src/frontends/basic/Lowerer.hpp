@@ -450,6 +450,8 @@ class Lowerer
 
     void lowerPrint(const PrintStmt &stmt);
 
+    void lowerPrintCh(const PrintChStmt &stmt);
+
     void lowerStmtList(const StmtList &stmt);
 
     void lowerReturn(const ReturnStmt &stmt);
@@ -508,6 +510,8 @@ class Lowerer
     void lowerEnd(const EndStmt &stmt);
 
     void lowerInput(const InputStmt &stmt);
+
+    void lowerLineInputCh(const LineInputChStmt &stmt);
 
     void lowerDim(const DimStmt &stmt);
 
@@ -607,6 +611,8 @@ class Lowerer
     bool needsArrOobPanic{false};
     bool needsOpenErrVstr{false};
     bool needsCloseErr{false};
+    bool needsPrintlnChErr{false};
+    bool needsLineInputChErr{false};
 
     void requireArrayI32New();
     void requireArrayI32Resize();
@@ -618,6 +624,8 @@ class Lowerer
     void requireArrayOobPanic();
     void requireOpenErrVstr();
     void requireCloseErr();
+    void requirePrintlnChErr();
+    void requireLineInputChErr();
     void requestHelper(RuntimeFeature feature);
 
     bool isHelperNeeded(RuntimeFeature feature) const;
