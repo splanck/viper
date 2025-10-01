@@ -7,7 +7,9 @@
 // Links: docs/codemap.md
 
 #include "frontends/basic/Parser.hpp"
+#include <array>
 #include <cstdlib>
+#include <utility>
 
 namespace il::frontends::basic
 {
@@ -20,31 +22,34 @@ Parser::Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *emitte
     : lexer_(src, file_id), emitter_(emitter)
 {
     tokens_.push_back(lexer_.next());
-
-    auto setHandler = [this](TokenKind kind, StmtHandler handler)
-    { stmtHandlers_[static_cast<std::size_t>(kind)] = handler; };
-    setHandler(TokenKind::KeywordPrint, {&Parser::parsePrint, nullptr});
-    setHandler(TokenKind::KeywordLet, {&Parser::parseLet, nullptr});
-    setHandler(TokenKind::KeywordIf, {nullptr, &Parser::parseIf});
-    setHandler(TokenKind::KeywordWhile, {&Parser::parseWhile, nullptr});
-    setHandler(TokenKind::KeywordDo, {&Parser::parseDo, nullptr});
-    setHandler(TokenKind::KeywordFor, {&Parser::parseFor, nullptr});
-    setHandler(TokenKind::KeywordNext, {&Parser::parseNext, nullptr});
-    setHandler(TokenKind::KeywordExit, {&Parser::parseExit, nullptr});
-    setHandler(TokenKind::KeywordGoto, {&Parser::parseGoto, nullptr});
-    setHandler(TokenKind::KeywordOpen, {&Parser::parseOpen, nullptr});
-    setHandler(TokenKind::KeywordClose, {&Parser::parseClose, nullptr});
-    setHandler(TokenKind::KeywordOn, {&Parser::parseOnErrorGoto, nullptr});
-    setHandler(TokenKind::KeywordResume, {&Parser::parseResume, nullptr});
-    setHandler(TokenKind::KeywordEnd, {&Parser::parseEnd, nullptr});
-    setHandler(TokenKind::KeywordInput, {&Parser::parseInput, nullptr});
-    setHandler(TokenKind::KeywordLine, {&Parser::parseLineInput, nullptr});
-    setHandler(TokenKind::KeywordDim, {&Parser::parseDim, nullptr});
-    setHandler(TokenKind::KeywordRedim, {&Parser::parseReDim, nullptr});
-    setHandler(TokenKind::KeywordRandomize, {&Parser::parseRandomize, nullptr});
-    setHandler(TokenKind::KeywordFunction, {&Parser::parseFunction, nullptr});
-    setHandler(TokenKind::KeywordSub, {&Parser::parseSub, nullptr});
-    setHandler(TokenKind::KeywordReturn, {&Parser::parseReturn, nullptr});
+    static constexpr std::array<std::pair<TokenKind, StmtHandler>, 22> kStatementHandlers = {{
+        {TokenKind::KeywordPrint, {&Parser::parsePrint, nullptr}},
+        {TokenKind::KeywordLet, {&Parser::parseLet, nullptr}},
+        {TokenKind::KeywordIf, {nullptr, &Parser::parseIf}},
+        {TokenKind::KeywordWhile, {&Parser::parseWhile, nullptr}},
+        {TokenKind::KeywordDo, {&Parser::parseDo, nullptr}},
+        {TokenKind::KeywordFor, {&Parser::parseFor, nullptr}},
+        {TokenKind::KeywordNext, {&Parser::parseNext, nullptr}},
+        {TokenKind::KeywordExit, {&Parser::parseExit, nullptr}},
+        {TokenKind::KeywordGoto, {&Parser::parseGoto, nullptr}},
+        {TokenKind::KeywordOpen, {&Parser::parseOpen, nullptr}},
+        {TokenKind::KeywordClose, {&Parser::parseClose, nullptr}},
+        {TokenKind::KeywordOn, {&Parser::parseOnErrorGoto, nullptr}},
+        {TokenKind::KeywordResume, {&Parser::parseResume, nullptr}},
+        {TokenKind::KeywordEnd, {&Parser::parseEnd, nullptr}},
+        {TokenKind::KeywordInput, {&Parser::parseInput, nullptr}},
+        {TokenKind::KeywordLine, {&Parser::parseLineInput, nullptr}},
+        {TokenKind::KeywordDim, {&Parser::parseDim, nullptr}},
+        {TokenKind::KeywordRedim, {&Parser::parseReDim, nullptr}},
+        {TokenKind::KeywordRandomize, {&Parser::parseRandomize, nullptr}},
+        {TokenKind::KeywordFunction, {&Parser::parseFunction, nullptr}},
+        {TokenKind::KeywordSub, {&Parser::parseSub, nullptr}},
+        {TokenKind::KeywordReturn, {&Parser::parseReturn, nullptr}},
+    }};
+    for (const auto &[kind, handler] : kStatementHandlers)
+    {
+        stmtHandlers_[static_cast<std::size_t>(kind)] = handler;
+    }
 }
 
 Parser::StatementContext::StatementContext(Parser &parser) : parser_(parser) {}
