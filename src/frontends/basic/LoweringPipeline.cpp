@@ -329,6 +329,8 @@ void ProgramLowering::run(const Program &prog, il::core::Module &module)
     lowerer.needsArrOobPanic = false;
     lowerer.needsOpenErrVstr = false;
     lowerer.needsCloseErr = false;
+    lowerer.needsPrintlnChErr = false;
+    lowerer.needsLineInputChErr = false;
 
     lowerer.scanProgram(prog);
     lowerer.declareRequiredRuntime(builder);

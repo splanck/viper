@@ -110,11 +110,34 @@ class ScanStmtVisitor final : public StmtVisitor
 
     void visit(const PrintChStmt &stmt) override
     {
+        lowerer_.requirePrintlnChErr();
         if (stmt.channelExpr)
             lowerer_.scanExpr(*stmt.channelExpr);
         for (const auto &arg : stmt.args)
-            if (arg)
-                lowerer_.scanExpr(*arg);
+        {
+            if (!arg)
+                continue;
+            Lowerer::ExprType ty = lowerer_.scanExpr(*arg);
+            if (ty == Lowerer::ExprType::Str)
+                continue;
+            TypeRules::NumericType numericType = lowerer_.classifyNumericType(*arg);
+            switch (numericType)
+            {
+                case TypeRules::NumericType::Integer:
+                    lowerer_.requestHelper(Lowerer::RuntimeFeature::StrFromI16);
+                    break;
+                case TypeRules::NumericType::Long:
+                    lowerer_.requestHelper(Lowerer::RuntimeFeature::StrFromI32);
+                    break;
+                case TypeRules::NumericType::Single:
+                    lowerer_.requestHelper(Lowerer::RuntimeFeature::StrFromSingle);
+                    break;
+                case TypeRules::NumericType::Double:
+                default:
+                    lowerer_.requestHelper(Lowerer::RuntimeFeature::StrFromDouble);
+                    break;
+            }
+        }
     }
 
     void visit(const LetStmt &stmt) override
@@ -288,10 +311,18 @@ class ScanStmtVisitor final : public StmtVisitor
 
     void visit(const LineInputChStmt &stmt) override
     {
+        lowerer_.requireLineInputChErr();
         if (stmt.channelExpr)
             lowerer_.scanExpr(*stmt.channelExpr);
         if (stmt.targetVar)
+        {
+            if (auto *var = dynamic_cast<const VarExpr *>(stmt.targetVar.get()))
+            {
+                if (!var->name.empty())
+                    lowerer_.setSymbolType(var->name, Type::Str);
+            }
             lowerer_.scanExpr(*stmt.targetVar);
+        }
     }
 
     void visit(const ReturnStmt &stmt) override
