@@ -134,6 +134,38 @@ void applyCheckedRem(const Instr &in,
     out.i64 = static_cast<int64_t>(static_cast<T>(remainder));
 }
 
+using CheckedSignedBinaryFn = void (*)(const Instr &,
+                                       Frame &,
+                                       const BasicBlock *,
+                                       Slot &,
+                                       const Slot &,
+                                       const Slot &);
+
+template <CheckedSignedBinaryFn ApplyI16,
+          CheckedSignedBinaryFn ApplyI32,
+          CheckedSignedBinaryFn ApplyI64>
+void dispatchCheckedSignedBinary(const Instr &in,
+                                 Frame &fr,
+                                 const BasicBlock *bb,
+                                 Slot &out,
+                                 const Slot &lhsVal,
+                                 const Slot &rhsVal)
+{
+    switch (in.type.kind)
+    {
+        case Type::Kind::I16:
+            ApplyI16(in, fr, bb, out, lhsVal, rhsVal);
+            break;
+        case Type::Kind::I32:
+            ApplyI32(in, fr, bb, out, lhsVal, rhsVal);
+            break;
+        case Type::Kind::I64:
+        default:
+            ApplyI64(in, fr, bb, out, lhsVal, rhsVal);
+            break;
+    }
+}
+
 template <typename T>
 [[nodiscard]] std::pair<bool, int64_t> performBoundsCheck(const Slot &idxSlot,
                                                           const Slot &loSlot,
@@ -489,19 +521,10 @@ VM::ExecResult OpHandlers::handleSDivChk0(VM &vm,
                             in,
                             [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
                             {
-                                switch (in.type.kind)
-                                {
-                                    case Type::Kind::I16:
-                                        applyCheckedDiv<int16_t>(in, fr, bb, out, lhsVal, rhsVal);
-                                        break;
-                                    case Type::Kind::I32:
-                                        applyCheckedDiv<int32_t>(in, fr, bb, out, lhsVal, rhsVal);
-                                        break;
-                                    case Type::Kind::I64:
-                                    default:
-                                        applyCheckedDiv<int64_t>(in, fr, bb, out, lhsVal, rhsVal);
-                                        break;
-                                }
+                                dispatchCheckedSignedBinary<&applyCheckedDiv<int16_t>,
+                                                             &applyCheckedDiv<int32_t>,
+                                                             &applyCheckedDiv<int64_t>>(
+                                    in, fr, bb, out, lhsVal, rhsVal);
                             });
 }
 
@@ -548,19 +571,10 @@ VM::ExecResult OpHandlers::handleSRemChk0(VM &vm,
                             in,
                             [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
                             {
-                                switch (in.type.kind)
-                                {
-                                    case Type::Kind::I16:
-                                        applyCheckedRem<int16_t>(in, fr, bb, out, lhsVal, rhsVal);
-                                        break;
-                                    case Type::Kind::I32:
-                                        applyCheckedRem<int32_t>(in, fr, bb, out, lhsVal, rhsVal);
-                                        break;
-                                    case Type::Kind::I64:
-                                    default:
-                                        applyCheckedRem<int64_t>(in, fr, bb, out, lhsVal, rhsVal);
-                                        break;
-                                }
+                                dispatchCheckedSignedBinary<&applyCheckedRem<int16_t>,
+                                                             &applyCheckedRem<int32_t>,
+                                                             &applyCheckedRem<int64_t>>(
+                                    in, fr, bb, out, lhsVal, rhsVal);
                             });
 }
 
