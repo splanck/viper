@@ -160,6 +160,10 @@ function(viper_add_vm_unit_tests)
   viper_add_test_exe(test_vm_opcode_dispatch ${VIPER_TESTS_DIR}/unit/test_vm_opcode_dispatch.cpp)
   target_link_libraries(test_vm_opcode_dispatch PRIVATE il_io ${VIPER_VM_LIB} il_api)
   viper_add_ctest(test_vm_opcode_dispatch test_vm_opcode_dispatch)
+
+  viper_add_test_exe(test_vm_run_loop_helpers ${VIPER_TESTS_DIR}/unit/test_vm_run_loop_helpers.cpp)
+  target_link_libraries(test_vm_run_loop_helpers PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  viper_add_ctest(test_vm_run_loop_helpers test_vm_run_loop_helpers)
 endfunction()
 
 function(viper_add_vm_path_tests)
