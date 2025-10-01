@@ -84,6 +84,10 @@ class SemanticAnalyzer
     void analyzePrint(const PrintStmt &s);
     /// @brief Analyze LET statement @p s.
     void analyzeLet(LetStmt &s);
+    /// @brief Analyze OPEN statement @p s.
+    void analyzeOpen(OpenStmt &s);
+    /// @brief Analyze CLOSE statement @p s.
+    void analyzeClose(CloseStmt &s);
     /// @brief Analyze IF statement @p s.
     void analyzeIf(const IfStmt &s);
     /// @brief Analyze WHILE statement @p s.
@@ -153,6 +157,7 @@ class SemanticAnalyzer
         void noteSymbolInserted(const std::string &name);
         void noteVarTypeMutation(const std::string &name, std::optional<Type> previous);
         void noteArrayMutation(const std::string &name, std::optional<long long> previous);
+        void noteChannelMutation(long long channel, bool previouslyOpen);
         void noteLabelInserted(int label);
         void noteLabelRefInserted(int label);
 
@@ -169,6 +174,12 @@ class SemanticAnalyzer
             std::optional<long long> previous;
         };
 
+        struct ChannelDelta
+        {
+            long long channel;
+            bool previouslyOpen;
+        };
+
         SemanticAnalyzer &analyzer_;
         ProcedureScope *previous_{nullptr};
         size_t forStackDepth_{0};
@@ -178,8 +189,10 @@ class SemanticAnalyzer
         std::vector<int> newLabelRefs_;
         std::vector<VarTypeDelta> varTypeDeltas_;
         std::vector<ArrayDelta> arrayDeltas_;
+        std::vector<ChannelDelta> channelDeltas_;
         std::unordered_set<std::string> trackedVarTypes_;
         std::unordered_set<std::string> trackedArrays_;
+        std::unordered_set<long long> trackedChannels_;
         bool previousHandlerActive_{false};
         std::optional<int> previousHandlerTarget_;
     };
@@ -365,6 +378,7 @@ class SemanticAnalyzer
     std::unordered_set<std::string> symbols_;
     std::unordered_map<std::string, Type> varTypes_;
     std::unordered_map<std::string, long long> arrays_; ///< array sizes if known (-1 if dynamic)
+    std::unordered_set<long long> openChannels_; ///< Channels opened by literal handles.
     std::unordered_set<int> labels_;
     std::unordered_set<int> labelRefs_;
     std::vector<std::string> forStack_; ///< Active FOR loop variables.
