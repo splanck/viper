@@ -11,6 +11,7 @@
 #include "il/io/Serializer.hpp"
 #include "il/api/expected_api.hpp"
 #include "il/verify/Verifier.hpp"
+#include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
 #include "vm/VM.hpp"
 #include <cstdint>
@@ -19,75 +20,120 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <optional>
 
 using namespace il;
 using namespace il::frontends::basic;
 using namespace il::support;
 
-/**
- * @brief Handle BASIC front-end subcommands.
- *
- * @details Parses ilc shared options alongside BASIC-specific flags, then
- * compiles the requested input, optionally emits IL, verifies the module, and
- * runs it in the VM when requested.
- *
- * @param argc Number of subcommand arguments (excluding `front basic`).
- * @param argv Argument list.
- * @return Exit status code.
- */
-int cmdFrontBasic(int argc, char **argv)
+namespace
 {
-    bool emitIl = false;
-    bool run = false;
-    std::string file;
-    ilc::SharedCliOptions sharedOpts;
-    SourceManager sm;
+
+struct FrontBasicConfig
+{
+    bool emitIl{false};
+    bool run{false};
+    std::string sourcePath;
+    ilc::SharedCliOptions shared;
+    std::optional<uint32_t> sourceFileId{};
+};
+
+struct LoadedSource
+{
+    std::string buffer;
+    uint32_t fileId{0};
+};
+
+il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **argv)
+{
+    FrontBasicConfig config{};
     for (int i = 0; i < argc; ++i)
     {
         std::string arg = argv[i];
-        if (arg == "-emit-il" && i + 1 < argc)
+        if (arg == "-emit-il")
         {
-            emitIl = true;
-            file = argv[++i];
+            if (i + 1 >= argc)
+            {
+                usage();
+                return il::support::Expected<FrontBasicConfig>(
+                    il::support::Diagnostic{il::support::Severity::Error,
+                                             "missing BASIC source path", {}});
+            }
+            config.emitIl = true;
+            config.sourcePath = argv[++i];
         }
-        else if (arg == "-run" && i + 1 < argc)
+        else if (arg == "-run")
         {
-            run = true;
-            file = argv[++i];
+            if (i + 1 >= argc)
+            {
+                usage();
+                return il::support::Expected<FrontBasicConfig>(
+                    il::support::Diagnostic{il::support::Severity::Error,
+                                             "missing BASIC source path", {}});
+            }
+            config.run = true;
+            config.sourcePath = argv[++i];
         }
         else
         {
-            switch (ilc::parseSharedOption(i, argc, argv, sharedOpts))
+            switch (ilc::parseSharedOption(i, argc, argv, config.shared))
             {
             case ilc::SharedOptionParseResult::Parsed:
                 continue;
             case ilc::SharedOptionParseResult::Error:
                 usage();
-                return 1;
+                return il::support::Expected<FrontBasicConfig>(
+                    il::support::Diagnostic{il::support::Severity::Error,
+                                             "failed to parse shared option", {}});
             case ilc::SharedOptionParseResult::NotMatched:
                 usage();
-                return 1;
+                return il::support::Expected<FrontBasicConfig>(
+                    il::support::Diagnostic{il::support::Severity::Error,
+                                             "unknown flag", {}});
             }
         }
     }
-    if ((emitIl == run) || file.empty())
+
+    if ((config.emitIl == config.run) || config.sourcePath.empty())
     {
         usage();
-        return 1;
+        return il::support::Expected<FrontBasicConfig>(
+            il::support::Diagnostic{il::support::Severity::Error,
+                                     "specify exactly one of -emit-il or -run", {}});
     }
-    std::ifstream in(file);
+
+    return il::support::Expected<FrontBasicConfig>(std::move(config));
+}
+
+il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
+                                                     il::support::SourceManager &sm)
+{
+    std::ifstream in(path);
     if (!in)
     {
-        std::cerr << "unable to open " << file << "\n";
-        return 1;
+        return il::support::Expected<LoadedSource>(
+            il::support::Diagnostic{il::support::Severity::Error,
+                                     "unable to open " + path, {}});
     }
+
     std::ostringstream ss;
     ss << in.rdbuf();
-    std::string source = ss.str();
 
+    LoadedSource source{};
+    source.buffer = ss.str();
+    source.fileId = sm.addFile(path);
+    return il::support::Expected<LoadedSource>(std::move(source));
+}
+
+int runFrontBasic(const FrontBasicConfig &config, const std::string &source,
+                  il::support::SourceManager &sm)
+{
     BasicCompilerOptions compilerOpts{};
-    compilerOpts.boundsChecks = sharedOpts.boundsChecks;
-    BasicCompilerInput compilerInput{source, file};
+    compilerOpts.boundsChecks = config.shared.boundsChecks;
+
+    BasicCompilerInput compilerInput{source, config.sourcePath};
+    compilerInput.fileId = config.sourceFileId;
+
     auto result = compileBasic(compilerInput, compilerOpts, sm);
     if (!result.succeeded())
     {
@@ -97,28 +143,64 @@ int cmdFrontBasic(int argc, char **argv)
         }
         return 1;
     }
-    core::Module m = std::move(result.module);
-    if (emitIl)
+
+    core::Module module = std::move(result.module);
+
+    if (config.emitIl)
     {
-        io::Serializer::write(m, std::cout);
+        io::Serializer::write(module, std::cout);
         return 0;
     }
-    auto ve = il::verify::Verifier::verify(m);
-    if (!ve)
+
+    auto verification = il::verify::Verifier::verify(module);
+    if (!verification)
     {
-        il::support::printDiag(ve.error(), std::cerr);
+        il::support::printDiag(verification.error(), std::cerr);
         return 1;
     }
-    if (!sharedOpts.stdinPath.empty())
+
+    if (!config.shared.stdinPath.empty())
     {
-        if (!freopen(sharedOpts.stdinPath.c_str(), "r", stdin))
+        if (!freopen(config.shared.stdinPath.c_str(), "r", stdin))
         {
             std::cerr << "unable to open stdin file\n";
             return 1;
         }
     }
-    vm::TraceConfig traceCfg = sharedOpts.trace;
+
+    vm::TraceConfig traceCfg = config.shared.trace;
     traceCfg.sm = &sm;
-    vm::VM vm(m, traceCfg, sharedOpts.maxSteps);
+    vm::VM vm(module, traceCfg, config.shared.maxSteps);
     return static_cast<int>(vm.run());
+}
+
+} // namespace
+
+/**
+ * @brief Handle BASIC front-end subcommands.
+ *
+ * The driver now factors argument parsing, source loading, and execution into
+ * dedicated helpers to make future reuse easier while preserving the
+ * externally observable CLI behaviour.
+ */
+int cmdFrontBasic(int argc, char **argv)
+{
+    auto parsed = parseFrontBasicArgs(argc, argv);
+    if (!parsed)
+    {
+        return 1;
+    }
+
+    FrontBasicConfig config = std::move(parsed.value());
+
+    SourceManager sm;
+    auto source = loadSourceBuffer(config.sourcePath, sm);
+    if (!source)
+    {
+        std::cerr << source.error().message << "\n";
+        return 1;
+    }
+
+    config.sourceFileId = source.value().fileId;
+    return runFrontBasic(config, source.value().buffer, sm);
 }
