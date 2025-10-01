@@ -13,6 +13,7 @@
 #include "il/build/IRBuilder.hpp"
 #include "il/core/Module.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
+#include <array>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -613,18 +614,37 @@ class Lowerer
     using RuntimeFeature = il::runtime::RuntimeFeature;
 
     RuntimeHelperTracker runtimeTracker;
-    bool needsArrI32New{false};
-    bool needsArrI32Resize{false};
-    bool needsArrI32Len{false};
-    bool needsArrI32Get{false};
-    bool needsArrI32Set{false};
-    bool needsArrI32Retain{false};
-    bool needsArrI32Release{false};
-    bool needsArrOobPanic{false};
-    bool needsOpenErrVstr{false};
-    bool needsCloseErr{false};
-    bool needsPrintlnChErr{false};
-    bool needsLineInputChErr{false};
+
+    enum class ManualRuntimeHelper : std::size_t
+    {
+        ArrayI32New = 0,
+        ArrayI32Resize,
+        ArrayI32Len,
+        ArrayI32Get,
+        ArrayI32Set,
+        ArrayI32Retain,
+        ArrayI32Release,
+        ArrayOobPanic,
+        OpenErrVstr,
+        CloseErr,
+        PrintlnChErr,
+        LineInputChErr,
+        Count
+    };
+
+    static constexpr std::size_t manualRuntimeHelperCount =
+        static_cast<std::size_t>(ManualRuntimeHelper::Count);
+
+    static constexpr std::size_t manualRuntimeHelperIndex(ManualRuntimeHelper helper) noexcept
+    {
+        return static_cast<std::size_t>(helper);
+    }
+
+    std::array<bool, manualRuntimeHelperCount> manualHelperRequirements_{};
+
+    void setManualHelperRequired(ManualRuntimeHelper helper);
+    [[nodiscard]] bool isManualHelperRequired(ManualRuntimeHelper helper) const;
+    void resetManualHelpers();
 
     void requireArrayI32New();
     void requireArrayI32Resize();
