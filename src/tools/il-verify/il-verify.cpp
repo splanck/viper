@@ -5,10 +5,7 @@
 // License: MIT License. See LICENSE for details.
 // Links: docs/codemap.md
 
-#include "il/api/expected_api.hpp"
-#include "il/core/Module.hpp"
-#include "il/verify/Verifier.hpp"
-#include <fstream>
+#include "tools/common/module_loader.hpp"
 #include <iostream>
 #include <string>
 
@@ -34,23 +31,14 @@ int main(int argc, char **argv)
         std::cerr << "Usage: il-verify <file.il>\n";
         return 1;
     }
-    std::ifstream in(argv[1]);
-    if (!in)
-    {
-        std::cerr << "cannot open " << argv[1] << "\n";
-        return 1;
-    }
     il::core::Module m;
-    auto pe = il::api::v2::parse_text_expected(in, m);
-    if (!pe)
+    auto load = il::tools::common::loadModuleFromFile(argv[1], m, std::cerr, "cannot open ");
+    if (!load.succeeded())
     {
-        il::support::printDiag(pe.error(), std::cerr);
         return 1;
     }
-    auto ve = il::verify::Verifier::verify(m);
-    if (!ve)
+    if (!il::tools::common::verifyModule(m, std::cerr))
     {
-        il::support::printDiag(ve.error(), std::cerr);
         return 1;
     }
     std::cout << "OK\n";

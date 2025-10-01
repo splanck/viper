@@ -5,9 +5,9 @@
 // Links: docs/codemap.md
 // License: MIT.
 
-#include "il/transform/Mem2Reg.hpp"
 #include "cli.hpp"
-#include "il/api/expected_api.hpp"
+#include "tools/common/module_loader.hpp"
+#include "il/transform/Mem2Reg.hpp"
 #include "il/io/Serializer.hpp"
 #include "il/transform/ConstFold.hpp"
 #include "il/transform/DCE.hpp"
@@ -90,17 +90,10 @@ int cmdILOpt(int argc, char **argv)
         usage();
         return 1;
     }
-    std::ifstream ifs(inFile);
-    if (!ifs)
-    {
-        std::cerr << "unable to open " << inFile << "\n";
-        return 1;
-    }
     core::Module m;
-    auto pe = il::api::v2::parse_text_expected(ifs, m);
-    if (!pe)
+    auto load = il::tools::common::loadModuleFromFile(inFile, m, std::cerr);
+    if (!load.succeeded())
     {
-        il::support::printDiag(pe.error(), std::cerr);
         return 1;
     }
     transform::PassManager pm;
