@@ -30,18 +30,11 @@ void Lowerer::ProcedureContext::reset() noexcept
     function_ = nullptr;
     current_ = nullptr;
     exitIndex_ = 0;
-    lineBlocks_.clear();
-    blockNamer_.reset();
     nextTemp_ = 0;
     boundsCheckId_ = 0;
-    loopExitTargets_.clear();
-    loopExitTargetIdx_.clear();
-    loopExitTaken_.clear();
-    errorHandlerActive_ = false;
-    activeErrorHandlerIndex_.reset();
-    activeErrorHandlerLine_.reset();
-    errorHandlerBlocks_.clear();
-    handlerTargetLines_.clear();
+    blockNames_.reset();
+    loopState_.reset();
+    errorHandlers_.reset();
 }
 
 Function *Lowerer::ProcedureContext::function() const noexcept
@@ -52,6 +45,7 @@ Function *Lowerer::ProcedureContext::function() const noexcept
 void Lowerer::ProcedureContext::setFunction(Function *function) noexcept
 {
     function_ = function;
+    loopState_.setFunction(function);
 }
 
 BasicBlock *Lowerer::ProcedureContext::current() const noexcept
@@ -100,141 +94,211 @@ unsigned Lowerer::ProcedureContext::consumeBoundsCheckId() noexcept
     return boundsCheckId_++;
 }
 
-void Lowerer::ProcedureContext::pushLoopExit(BasicBlock *bb)
+Lowerer::ProcedureContext::LoopState &Lowerer::ProcedureContext::loopState() noexcept
 {
-    loopExitTargets_.push_back(bb);
+    return loopState_;
+}
+
+const Lowerer::ProcedureContext::LoopState &
+Lowerer::ProcedureContext::loopState() const noexcept
+{
+    return loopState_;
+}
+
+Lowerer::ProcedureContext::BlockNameState &
+Lowerer::ProcedureContext::blockNames() noexcept
+{
+    return blockNames_;
+}
+
+const Lowerer::ProcedureContext::BlockNameState &
+Lowerer::ProcedureContext::blockNames() const noexcept
+{
+    return blockNames_;
+}
+
+Lowerer::ProcedureContext::ErrorHandlerState &
+Lowerer::ProcedureContext::errorHandlers() noexcept
+{
+    return errorHandlers_;
+}
+
+const Lowerer::ProcedureContext::ErrorHandlerState &
+Lowerer::ProcedureContext::errorHandlers() const noexcept
+{
+    return errorHandlers_;
+}
+
+void Lowerer::ProcedureContext::BlockNameState::reset() noexcept
+{
+    lineBlocks_.clear();
+    namer_.reset();
+}
+
+std::unordered_map<int, size_t> &
+Lowerer::ProcedureContext::BlockNameState::lineBlocks() noexcept
+{
+    return lineBlocks_;
+}
+
+const std::unordered_map<int, size_t> &
+Lowerer::ProcedureContext::BlockNameState::lineBlocks() const noexcept
+{
+    return lineBlocks_;
+}
+
+Lowerer::BlockNamer *Lowerer::ProcedureContext::BlockNameState::namer() noexcept
+{
+    return namer_.get();
+}
+
+const Lowerer::BlockNamer *
+Lowerer::ProcedureContext::BlockNameState::namer() const noexcept
+{
+    return namer_.get();
+}
+
+void Lowerer::ProcedureContext::BlockNameState::setNamer(
+    std::unique_ptr<BlockNamer> namer) noexcept
+{
+    namer_ = std::move(namer);
+}
+
+void Lowerer::ProcedureContext::BlockNameState::resetNamer() noexcept
+{
+    namer_.reset();
+}
+
+void Lowerer::ProcedureContext::LoopState::reset() noexcept
+{
+    function_ = nullptr;
+    exitTargetIdx_.clear();
+    exitTaken_.clear();
+}
+
+void Lowerer::ProcedureContext::LoopState::setFunction(Function *function) noexcept
+{
+    function_ = function;
+    exitTargetIdx_.clear();
+    exitTaken_.clear();
+}
+
+void Lowerer::ProcedureContext::LoopState::push(BasicBlock *exitBlock)
+{
     if (function_)
     {
         auto base = &function_->blocks[0];
-        loopExitTargetIdx_.push_back(static_cast<size_t>(bb - base));
+        exitTargetIdx_.push_back(static_cast<size_t>(exitBlock - base));
     }
     else
     {
-        loopExitTargetIdx_.push_back(0);
+        exitTargetIdx_.push_back(0);
     }
-    loopExitTaken_.push_back(false);
+    exitTaken_.push_back(false);
 }
 
-void Lowerer::ProcedureContext::popLoopExit()
+void Lowerer::ProcedureContext::LoopState::pop()
 {
-    loopExitTargets_.pop_back();
-    loopExitTargetIdx_.pop_back();
-    loopExitTaken_.pop_back();
+    if (exitTargetIdx_.empty())
+        return;
+    exitTargetIdx_.pop_back();
+    exitTaken_.pop_back();
 }
 
-BasicBlock *Lowerer::ProcedureContext::currentLoopExit() const
+BasicBlock *Lowerer::ProcedureContext::LoopState::current() const
 {
-    if (loopExitTargetIdx_.empty() || !function_)
+    if (exitTargetIdx_.empty() || !function_)
         return nullptr;
-    size_t idx = loopExitTargetIdx_.back();
+    size_t idx = exitTargetIdx_.back();
     if (idx >= function_->blocks.size())
         return nullptr;
     return &function_->blocks[idx];
 }
 
-void Lowerer::ProcedureContext::markLoopExitTaken()
+void Lowerer::ProcedureContext::LoopState::markTaken()
 {
-    if (!loopExitTaken_.empty())
-        loopExitTaken_.back() = true;
+    if (!exitTaken_.empty())
+        exitTaken_.back() = true;
 }
 
-void Lowerer::ProcedureContext::refreshLoopExitTarget(BasicBlock *bb)
+void Lowerer::ProcedureContext::LoopState::refresh(BasicBlock *exitBlock)
 {
-    if (loopExitTargets_.empty())
+    if (exitTargetIdx_.empty() || !function_)
         return;
-    loopExitTargets_.back() = bb;
-    if (function_)
-    {
-        auto base = &function_->blocks[0];
-        loopExitTargetIdx_.back() = static_cast<size_t>(bb - base);
-    }
+    auto base = &function_->blocks[0];
+    exitTargetIdx_.back() = static_cast<size_t>(exitBlock - base);
 }
 
-bool Lowerer::ProcedureContext::loopExitTaken() const
+bool Lowerer::ProcedureContext::LoopState::taken() const
 {
-    return !loopExitTaken_.empty() && loopExitTaken_.back();
+    return !exitTaken_.empty() && exitTaken_.back();
 }
 
-std::unordered_map<int, size_t> &Lowerer::ProcedureContext::lineBlocks() noexcept
+void Lowerer::ProcedureContext::ErrorHandlerState::reset() noexcept
 {
-    return lineBlocks_;
+    active_ = false;
+    activeIndex_.reset();
+    activeLine_.reset();
+    blocks_.clear();
+    handlerTargets_.clear();
 }
 
-const std::unordered_map<int, size_t> &Lowerer::ProcedureContext::lineBlocks() const noexcept
+bool Lowerer::ProcedureContext::ErrorHandlerState::active() const noexcept
 {
-    return lineBlocks_;
+    return active_;
 }
 
-Lowerer::BlockNamer *Lowerer::ProcedureContext::blockNamer() noexcept
+void Lowerer::ProcedureContext::ErrorHandlerState::setActive(bool active) noexcept
 {
-    return blockNamer_.get();
+    active_ = active;
 }
 
-const Lowerer::BlockNamer *Lowerer::ProcedureContext::blockNamer() const noexcept
+std::optional<size_t>
+Lowerer::ProcedureContext::ErrorHandlerState::activeIndex() const noexcept
 {
-    return blockNamer_.get();
+    return activeIndex_;
 }
 
-void Lowerer::ProcedureContext::setBlockNamer(std::unique_ptr<BlockNamer> namer) noexcept
+void Lowerer::ProcedureContext::ErrorHandlerState::setActiveIndex(
+    std::optional<size_t> index) noexcept
 {
-    blockNamer_ = std::move(namer);
+    activeIndex_ = index;
 }
 
-void Lowerer::ProcedureContext::resetBlockNamer() noexcept
+std::optional<int>
+Lowerer::ProcedureContext::ErrorHandlerState::activeLine() const noexcept
 {
-    blockNamer_.reset();
+    return activeLine_;
 }
 
-bool Lowerer::ProcedureContext::errorHandlerActive() const noexcept
+void Lowerer::ProcedureContext::ErrorHandlerState::setActiveLine(
+    std::optional<int> line) noexcept
 {
-    return errorHandlerActive_;
+    activeLine_ = line;
 }
 
-void Lowerer::ProcedureContext::setErrorHandlerActive(bool active) noexcept
+std::unordered_map<int, size_t> &
+Lowerer::ProcedureContext::ErrorHandlerState::blocks() noexcept
 {
-    errorHandlerActive_ = active;
-}
-
-std::optional<size_t> Lowerer::ProcedureContext::activeErrorHandlerIndex() const noexcept
-{
-    return activeErrorHandlerIndex_;
-}
-
-void Lowerer::ProcedureContext::setActiveErrorHandlerIndex(std::optional<size_t> index) noexcept
-{
-    activeErrorHandlerIndex_ = index;
-}
-
-std::optional<int> Lowerer::ProcedureContext::activeErrorHandlerLine() const noexcept
-{
-    return activeErrorHandlerLine_;
-}
-
-void Lowerer::ProcedureContext::setActiveErrorHandlerLine(std::optional<int> line) noexcept
-{
-    activeErrorHandlerLine_ = line;
-}
-
-std::unordered_map<int, size_t> &Lowerer::ProcedureContext::errorHandlerBlocks() noexcept
-{
-    return errorHandlerBlocks_;
+    return blocks_;
 }
 
 const std::unordered_map<int, size_t> &
-Lowerer::ProcedureContext::errorHandlerBlocks() const noexcept
+Lowerer::ProcedureContext::ErrorHandlerState::blocks() const noexcept
 {
-    return errorHandlerBlocks_;
+    return blocks_;
 }
 
-std::unordered_map<size_t, int> &Lowerer::ProcedureContext::handlerTargetLines() noexcept
+std::unordered_map<size_t, int> &
+Lowerer::ProcedureContext::ErrorHandlerState::handlerTargets() noexcept
 {
-    return handlerTargetLines_;
+    return handlerTargets_;
 }
 
 const std::unordered_map<size_t, int> &
-Lowerer::ProcedureContext::handlerTargetLines() const noexcept
+Lowerer::ProcedureContext::ErrorHandlerState::handlerTargets() const noexcept
 {
-    return handlerTargetLines_;
+    return handlerTargets_;
 }
 
 Lowerer::BlockNamer::BlockNamer(std::string p) : proc(std::move(p)) {}
@@ -587,8 +651,8 @@ void Lowerer::buildProcedureSkeleton(Function &f,
                                      const ProcedureMetadata &metadata)
 {
     ProcedureContext &ctx = context();
-    ctx.setBlockNamer(std::make_unique<BlockNamer>(name));
-    BlockNamer *blockNamer = ctx.blockNamer();
+    ctx.blockNames().setNamer(std::make_unique<BlockNamer>(name));
+    BlockNamer *blockNamer = ctx.blockNames().namer();
 
     builder->addBlock(
         f,
@@ -596,7 +660,7 @@ void Lowerer::buildProcedureSkeleton(Function &f,
                    : mangler.block("entry_" + name));
 
     size_t blockIndex = 1;
-    auto &lineBlocks = ctx.lineBlocks();
+    auto &lineBlocks = ctx.blockNames().lineBlocks();
     for (const auto *stmt : metadata.bodyStmts)
     {
         if (blockNamer)

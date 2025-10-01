@@ -206,6 +206,83 @@ class Lowerer
     /// @invariant Reset before each procedure to avoid leaking state across lowers.
     struct ProcedureContext
     {
+        struct BlockNameState
+        {
+            void reset() noexcept;
+
+            [[nodiscard]] std::unordered_map<int, size_t> &lineBlocks() noexcept;
+
+            [[nodiscard]] const std::unordered_map<int, size_t> &lineBlocks() const noexcept;
+
+            [[nodiscard]] BlockNamer *namer() noexcept;
+
+            [[nodiscard]] const BlockNamer *namer() const noexcept;
+
+            void setNamer(std::unique_ptr<BlockNamer> namer) noexcept;
+
+            void resetNamer() noexcept;
+
+          private:
+            std::unordered_map<int, size_t> lineBlocks_;
+            std::unique_ptr<BlockNamer> namer_;
+        };
+
+        struct LoopState
+        {
+            void reset() noexcept;
+
+            void setFunction(Function *function) noexcept;
+
+            void push(BasicBlock *exitBlock);
+
+            void pop();
+
+            [[nodiscard]] BasicBlock *current() const;
+
+            void markTaken();
+
+            void refresh(BasicBlock *exitBlock);
+
+            [[nodiscard]] bool taken() const;
+
+          private:
+            Function *function_{nullptr};
+            std::vector<size_t> exitTargetIdx_;
+            std::vector<bool> exitTaken_;
+        };
+
+        struct ErrorHandlerState
+        {
+            void reset() noexcept;
+
+            [[nodiscard]] bool active() const noexcept;
+
+            void setActive(bool active) noexcept;
+
+            [[nodiscard]] std::optional<size_t> activeIndex() const noexcept;
+
+            void setActiveIndex(std::optional<size_t> index) noexcept;
+
+            [[nodiscard]] std::optional<int> activeLine() const noexcept;
+
+            void setActiveLine(std::optional<int> line) noexcept;
+
+            [[nodiscard]] std::unordered_map<int, size_t> &blocks() noexcept;
+
+            [[nodiscard]] const std::unordered_map<int, size_t> &blocks() const noexcept;
+
+            [[nodiscard]] std::unordered_map<size_t, int> &handlerTargets() noexcept;
+
+            [[nodiscard]] const std::unordered_map<size_t, int> &handlerTargets() const noexcept;
+
+          private:
+            bool active_{false};
+            std::optional<size_t> activeIndex_{};
+            std::optional<int> activeLine_{};
+            std::unordered_map<int, size_t> blocks_;
+            std::unordered_map<size_t, int> handlerTargets_;
+        };
+
         /// @brief Reset to an empty state ready for a new procedure.
         void reset() noexcept;
 
@@ -232,66 +309,27 @@ class Lowerer
         /// @brief Return the current bounds-check identifier and advance it.
         unsigned consumeBoundsCheckId() noexcept;
 
-        void pushLoopExit(BasicBlock *bb);
+        [[nodiscard]] LoopState &loopState() noexcept;
 
-        void popLoopExit();
+        [[nodiscard]] const LoopState &loopState() const noexcept;
 
-        [[nodiscard]] BasicBlock *currentLoopExit() const;
+        [[nodiscard]] BlockNameState &blockNames() noexcept;
 
-        void markLoopExitTaken();
+        [[nodiscard]] const BlockNameState &blockNames() const noexcept;
 
-        void refreshLoopExitTarget(BasicBlock *bb);
+        [[nodiscard]] ErrorHandlerState &errorHandlers() noexcept;
 
-        [[nodiscard]] bool loopExitTaken() const;
-
-        [[nodiscard]] std::unordered_map<int, size_t> &lineBlocks() noexcept;
-
-        [[nodiscard]] const std::unordered_map<int, size_t> &lineBlocks() const noexcept;
-
-        [[nodiscard]] BlockNamer *blockNamer() noexcept;
-
-        [[nodiscard]] const BlockNamer *blockNamer() const noexcept;
-
-        void setBlockNamer(std::unique_ptr<BlockNamer> namer) noexcept;
-
-        void resetBlockNamer() noexcept;
-
-        [[nodiscard]] bool errorHandlerActive() const noexcept;
-
-        void setErrorHandlerActive(bool active) noexcept;
-
-        [[nodiscard]] std::optional<size_t> activeErrorHandlerIndex() const noexcept;
-
-        void setActiveErrorHandlerIndex(std::optional<size_t> index) noexcept;
-
-        [[nodiscard]] std::optional<int> activeErrorHandlerLine() const noexcept;
-
-        void setActiveErrorHandlerLine(std::optional<int> line) noexcept;
-
-        [[nodiscard]] std::unordered_map<int, size_t> &errorHandlerBlocks() noexcept;
-
-        [[nodiscard]] const std::unordered_map<int, size_t> &errorHandlerBlocks() const noexcept;
-
-        [[nodiscard]] std::unordered_map<size_t, int> &handlerTargetLines() noexcept;
-
-        [[nodiscard]] const std::unordered_map<size_t, int> &handlerTargetLines() const noexcept;
+        [[nodiscard]] const ErrorHandlerState &errorHandlers() const noexcept;
 
       private:
         Function *function_{nullptr};
         BasicBlock *current_{nullptr};
         size_t exitIndex_{0};
-        std::unordered_map<int, size_t> lineBlocks_;
-        std::unique_ptr<BlockNamer> blockNamer_;
         unsigned nextTemp_{0};
         unsigned boundsCheckId_{0};
-        std::vector<BasicBlock *> loopExitTargets_;
-        std::vector<size_t> loopExitTargetIdx_;
-        std::vector<bool> loopExitTaken_;
-        bool errorHandlerActive_{false};
-        std::optional<size_t> activeErrorHandlerIndex_{};
-        std::optional<int> activeErrorHandlerLine_{};
-        std::unordered_map<int, size_t> errorHandlerBlocks_;
-        std::unordered_map<size_t, int> handlerTargetLines_;
+        BlockNameState blockNames_{};
+        LoopState loopState_{};
+        ErrorHandlerState errorHandlers_{};
     };
 
   public:
