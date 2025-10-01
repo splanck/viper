@@ -27,6 +27,9 @@ struct SharedCliOptions
 
     /// @brief Whether bounds checks should be enabled during lowering.
     bool boundsChecks = false;
+
+    /// @brief Request formatted trap diagnostics on unhandled errors.
+    bool dumpTrap = false;
 };
 
 /// @brief Result of attempting to parse a shared CLI option.

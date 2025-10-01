@@ -171,7 +171,24 @@ int runFrontBasic(const FrontBasicConfig &config, const std::string &source,
     vm::TraceConfig traceCfg = config.shared.trace;
     traceCfg.sm = &sm;
     vm::VM vm(module, traceCfg, config.shared.maxSteps);
-    return static_cast<int>(vm.run());
+    int rc = static_cast<int>(vm.run());
+    const auto trapMessage = vm.lastTrapMessage();
+    if (trapMessage)
+    {
+        if (config.shared.dumpTrap && !trapMessage->empty())
+        {
+            std::cerr << *trapMessage;
+            if (trapMessage->back() != '\n')
+            {
+                std::cerr << '\n';
+            }
+        }
+        if (rc == 0)
+        {
+            rc = 1;
+        }
+    }
+    return rc;
 }
 
 } // namespace

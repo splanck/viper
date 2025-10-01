@@ -37,6 +37,10 @@ After the build finishes, confirm the primary tools respond to `--help`:
 
 Explore the [tutorials-examples.md#examples](tutorials-examples.md#examples) section to run a sample end-to-end once the binaries are in place.
 
+## Unified Errors
+
+All front ends, the IL, and the VM share a single error and trap model so diagnostics stay consistent regardless of the entry point. Review [specs/errors.md](specs/errors.md) for the full set of trap kinds, handler semantics, and BASIC `ON ERROR` lowering rules before wiring new behavior into the stack.
+
 ## Precise Numerics
 
 Viper's execution model ships with deterministic numeric semantics ([specs/numerics.md](specs/numerics.md)) so IL and BASIC behave identically across interpreters and builds:

@@ -310,6 +310,22 @@ int executeRunIL(const RunILConfig &config)
         start = std::chrono::steady_clock::now();
     }
     int rc = static_cast<int>(vm.run());
+    const auto trapMessage = vm.lastTrapMessage();
+    if (trapMessage)
+    {
+        if (config.sharedOpts.dumpTrap && !trapMessage->empty())
+        {
+            std::cerr << *trapMessage;
+            if (trapMessage->back() != '\n')
+            {
+                std::cerr << '\n';
+            }
+        }
+        if (rc == 0)
+        {
+            rc = 1;
+        }
+    }
     std::chrono::steady_clock::time_point end;
     if (config.timeFlag)
     {
