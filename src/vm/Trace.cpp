@@ -14,7 +14,6 @@
 #include "vm/VM.hpp"
 #include <clocale>
 #include <cstdio>
-#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <locale>
@@ -115,7 +114,7 @@ void TraceSink::onFramePrepared(const Frame &fr)
     }
 }
 
-const TraceSink::FileCacheEntry *TraceSink::getOrLoadFile(uint32_t file_id, std::string path_hint)
+const TraceSink::FileCacheEntry *TraceSink::getOrLoadFile(uint32_t file_id)
 {
     if (!cfg.sm || file_id == 0)
         return nullptr;
@@ -124,15 +123,13 @@ const TraceSink::FileCacheEntry *TraceSink::getOrLoadFile(uint32_t file_id, std:
         return &it->second;
 
     FileCacheEntry entry;
-    if (!path_hint.empty())
-        entry.path = std::move(path_hint);
-    else
-        entry.path = std::string(cfg.sm->getPath(file_id));
+    std::string rawPath(cfg.sm->getPath(file_id));
+    entry.normalizedPath = pathCache.getOrNormalize(*cfg.sm, file_id, rawPath);
 
-    if (entry.path.empty())
+    if (rawPath.empty() && entry.normalizedPath.empty())
         return nullptr;
 
-    std::ifstream f(entry.path);
+    std::ifstream f(rawPath.empty() ? entry.normalizedPath : rawPath);
     if (f)
     {
         std::string line;
@@ -193,15 +190,17 @@ void TraceSink::onStep(const il::core::Instr &in, const Frame &fr)
         std::string srcLine;
         if (cfg.sm && in.loc.isValid())
         {
-            std::string path(cfg.sm->getPath(in.loc.file_id));
-            std::filesystem::path p(path);
-            locStr = p.filename().string() + ':' + std::to_string(in.loc.line) + ':' +
-                     std::to_string(in.loc.column);
-            if (!path.empty())
+            const std::string &normPath =
+                pathCache.getOrNormalize(*cfg.sm, in.loc.file_id, cfg.sm->getPath(in.loc.file_id));
+            std::string display = il::support::basename(normPath);
+            if (display.empty())
+                display = normPath;
+            if (!display.empty())
+                locStr = display + ':' + std::to_string(in.loc.line) + ':' +
+                         std::to_string(in.loc.column);
+            if (const auto *entry = getOrLoadFile(in.loc.file_id))
             {
-                const auto *entry = getOrLoadFile(in.loc.file_id, std::move(path));
-                if (entry && in.loc.line > 0 &&
-                    static_cast<size_t>(in.loc.line) <= entry->lines.size())
+                if (in.loc.line > 0 && static_cast<size_t>(in.loc.line) <= entry->lines.size())
                 {
                     const std::string &line = entry->lines[in.loc.line - 1];
                     if (!line.empty())

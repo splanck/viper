@@ -12,6 +12,8 @@
 #include <utility>
 #include <vector>
 
+#include "support/path_utils.hpp"
+
 namespace il::core
 {
 struct Instr;
@@ -71,20 +73,20 @@ class TraceSink
     /// @brief Cache entry describing a traced source file.
     struct FileCacheEntry
     {
-        std::string path;               ///< Canonical file path.
+        std::string normalizedPath;     ///< Normalized file path for display.
         std::vector<std::string> lines; ///< File contents split into lines.
     };
 
     /// @brief Retrieve cached file for @p file_id, loading it on first access.
     /// @param file_id Source file identifier.
-    /// @param path_hint Optional canonical path to avoid redundant lookups.
     /// @return Pointer to cache entry or nullptr if unavailable.
-    const FileCacheEntry *getOrLoadFile(uint32_t file_id, std::string path_hint = {});
+    const FileCacheEntry *getOrLoadFile(uint32_t file_id);
 
     TraceConfig cfg; ///< Active configuration
     std::unordered_map<const il::core::Function *, std::unordered_map<const il::core::Instr *, InstrLocation>>
         instrLocations; ///< Per-function instruction location cache.
     std::unordered_map<uint32_t, FileCacheEntry> fileCache; ///< Cached source text.
+    il::support::PathCache pathCache; ///< Normalized path cache shared across trace lookups.
 };
 
 } // namespace il::vm

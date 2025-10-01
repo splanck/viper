@@ -10,32 +10,10 @@
 #include "il/core/Instr.hpp"
 #include "support/source_location.hpp"
 #include "support/source_manager.hpp"
-#include <algorithm>
-#include <filesystem>
 #include <iostream>
 
 namespace il::vm
 {
-
-/// @brief Normalize a file system path for breakpoint comparison.
-/// @param p Path to normalize. Backslashes are replaced with '/'.
-/// @return Canonical path with resolved '.' and '..' segments.
-std::string DebugCtrl::normalizePath(std::string p)
-{
-    std::replace(p.begin(), p.end(), '\\', '/');
-
-    if (p.empty())
-        return ".";
-
-    std::filesystem::path normalized = std::filesystem::path(p).lexically_normal();
-    std::string generic = normalized.generic_string();
-
-    if (generic.empty())
-        return p.front() == '/' ? std::string{"/"} : std::string{"."};
-
-    return generic;
-}
-
 /// @brief Intern a block label for breakpoint lookup.
 /// @param label Block label to intern.
 /// @return Symbol representing the interned label.
@@ -68,9 +46,10 @@ bool DebugCtrl::shouldBreak(const il::core::BasicBlock &blk) const
 ///          breakpoint can match by either.
 void DebugCtrl::addBreakSrcLine(std::string file, int line)
 {
-    std::string normFile = normalizePath(std::move(file));
-    size_t pos = normFile.find_last_of('/');
-    std::string base = (pos == std::string::npos) ? normFile : normFile.substr(pos + 1);
+    std::string normFile = pathCache_.normalize(file);
+    std::string base = il::support::basename(normFile);
+    if (base.empty())
+        base = normFile;
     srcLineBPs_.push_back({normFile, base, line});
 }
 
@@ -109,9 +88,11 @@ bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
     // Resolve the instruction's source file, normalize the path, and derive its
     // basename. A breakpoint matches if both the line number and either the
     // normalized path or basename are equal.
-    std::string normFile = normalizePath(std::string(sm_->getPath(I.loc.file_id)));
-    size_t pos = normFile.find_last_of('/');
-    std::string base = (pos == std::string::npos) ? normFile : normFile.substr(pos + 1);
+    const std::string &normFile =
+        pathCache_.getOrNormalize(*sm_, I.loc.file_id, sm_->getPath(I.loc.file_id));
+    std::string base = il::support::basename(normFile);
+    if (base.empty())
+        base = normFile;
     int line = static_cast<int>(I.loc.line);
     for (const auto &bp : srcLineBPs_)
     {

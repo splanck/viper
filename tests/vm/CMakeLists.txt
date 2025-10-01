@@ -174,4 +174,8 @@ function(viper_add_vm_path_tests)
   viper_add_test_exe(test_path_normalize ${VIPER_TESTS_DIR}/unit/PathNormalizeTests.cpp)
   target_link_libraries(test_path_normalize PRIVATE ${VIPER_VM_LIB})
   viper_add_ctest(test_path_normalize test_path_normalize)
+
+  viper_add_test_exe(test_vm_debug_trace_paths ${VIPER_TESTS_DIR}/unit/test_vm_debug_trace_paths.cpp)
+  target_link_libraries(test_vm_debug_trace_paths PRIVATE ${VIPER_VM_LIB})
+  viper_add_ctest(test_vm_debug_trace_paths test_vm_debug_trace_paths)
 endfunction()

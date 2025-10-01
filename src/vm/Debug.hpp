@@ -9,6 +9,7 @@
 #pragma once
 
 #include "il/core/Type.hpp"
+#include "support/path_utils.hpp"
 #include "support/string_interner.hpp"
 #include "support/symbol.hpp"
 #include <optional>
@@ -68,11 +69,6 @@ class DebugCtrl
     /// @brief Retrieve associated source manager.
     const il::support::SourceManager *getSourceManager() const;
 
-    /// @brief Normalize @p p by canonicalizing separators and dot segments.
-    /// Uses std::filesystem::path::lexically_normal() after converting
-    /// backslashes to forward slashes to ensure stable breakpoint comparisons.
-    static std::string normalizePath(std::string p);
-
     /// @brief Register a watch on variable @p name.
     void addWatch(std::string_view name);
 
@@ -115,6 +111,7 @@ class DebugCtrl
     };
 
     std::unordered_map<il::support::Symbol, WatchEntry> watches_; ///< Watched variables
+    il::support::PathCache pathCache_; ///< Cached normalized paths for breakpoint checks
 };
 
 } // namespace il::vm
