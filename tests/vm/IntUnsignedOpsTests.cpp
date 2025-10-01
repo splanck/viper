@@ -7,6 +7,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -68,6 +69,40 @@ void buildBinaryFunction(Module &module,
     ret.loc = {1, 1, 1};
     ret.operands.push_back(Value::temp(*instr.result));
     bb.instructions.push_back(ret);
+}
+
+void buildComparisonFunction(Module &module, Opcode op, int64_t lhs, int64_t rhs)
+{
+    il::build::IRBuilder builder(module);
+    auto &fn = builder.startFunction("main", Type(Type::Kind::I1), {});
+    auto &bb = builder.addBlock(fn, "entry");
+    builder.setInsertPoint(bb);
+
+    Instr instr;
+    instr.result = builder.reserveTempId();
+    instr.op = op;
+    instr.type = Type(Type::Kind::I1);
+    instr.operands.push_back(Value::constInt(lhs));
+    instr.operands.push_back(Value::constInt(rhs));
+    instr.loc = {1, 1, 1};
+    bb.instructions.push_back(instr);
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.loc = {1, 1, 1};
+    ret.operands.push_back(Value::temp(*instr.result));
+    bb.instructions.push_back(ret);
+}
+
+bool runUnsignedCompare(Opcode op, int64_t lhs, int64_t rhs)
+{
+    Module module;
+    buildComparisonFunction(module, op, lhs, rhs);
+    il::vm::VM vm(module);
+    const int64_t raw = vm.run();
+    assert(raw == 0 || raw == 1);
+    return raw == 1;
 }
 
 void expectDivideByZeroTrap(Opcode op)
@@ -163,6 +198,18 @@ int main()
         const int64_t expected = static_cast<int64_t>(shifted);
         assert(result == expected);
         assert(result != static_cast<int64_t>(static_cast<uint64_t>(lhs) >> shift));
+    }
+
+    {
+        const int64_t highBit = std::numeric_limits<int64_t>::min();
+        assert(runUnsignedCompare(Opcode::UCmpLT, 0, highBit));
+        assert(!runUnsignedCompare(Opcode::UCmpLT, highBit, 0));
+        assert(runUnsignedCompare(Opcode::UCmpLE, 0, 0));
+        assert(!runUnsignedCompare(Opcode::UCmpLE, highBit, 0));
+        assert(runUnsignedCompare(Opcode::UCmpGT, highBit, 0));
+        assert(!runUnsignedCompare(Opcode::UCmpGT, 0, highBit));
+        assert(runUnsignedCompare(Opcode::UCmpGE, highBit, highBit));
+        assert(!runUnsignedCompare(Opcode::UCmpGE, 0, highBit));
     }
 
     expectDivideByZeroTrap(Opcode::SDiv);
