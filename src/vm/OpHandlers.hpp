@@ -76,6 +76,34 @@ struct OpHandlers
                                         const il::core::BasicBlock *&bb,
                                         size_t &ip);
 
+    static VM::ExecResult handleSDiv(VM &vm,
+                                     Frame &fr,
+                                     const il::core::Instr &in,
+                                     const VM::BlockMap &blocks,
+                                     const il::core::BasicBlock *&bb,
+                                     size_t &ip);
+
+    static VM::ExecResult handleUDiv(VM &vm,
+                                     Frame &fr,
+                                     const il::core::Instr &in,
+                                     const VM::BlockMap &blocks,
+                                     const il::core::BasicBlock *&bb,
+                                     size_t &ip);
+
+    static VM::ExecResult handleSRem(VM &vm,
+                                     Frame &fr,
+                                     const il::core::Instr &in,
+                                     const VM::BlockMap &blocks,
+                                     const il::core::BasicBlock *&bb,
+                                     size_t &ip);
+
+    static VM::ExecResult handleURem(VM &vm,
+                                     Frame &fr,
+                                     const il::core::Instr &in,
+                                     const VM::BlockMap &blocks,
+                                     const il::core::BasicBlock *&bb,
+                                     size_t &ip);
+
     static VM::ExecResult handleSDivChk0(VM &vm,
                                          Frame &fr,
                                          const il::core::Instr &in,
