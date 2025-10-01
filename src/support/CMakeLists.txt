@@ -7,6 +7,7 @@ add_library(support STATIC
   arena.cpp
   diag_expected.cpp
   diag_capture.cpp
+  path_utils.cpp
 )
 
 target_include_directories(support PUBLIC

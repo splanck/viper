@@ -3,19 +3,19 @@
 // Key invariants: Backslashes become slashes; './' removed; 'dir/../' collapsed.
 // Ownership: Standalone executable.
 // Links: docs/codemap.md
-#include "vm/Debug.hpp"
+#include "support/path_utils.hpp"
 #include <cassert>
 #include <string>
 
 int main()
 {
-    using il::vm::DebugCtrl;
-    assert(DebugCtrl::normalizePath(R"(a\b\c)") == "a/b/c");
-    assert(DebugCtrl::normalizePath(R"(C:\project\src\..\main.bas)") == "C:/project/main.bas");
-    assert(DebugCtrl::normalizePath("./a/./b") == "a/b");
-    assert(DebugCtrl::normalizePath("../foo/../bar") == "../bar");
-    assert(DebugCtrl::normalizePath("dir/../file") == "file");
-    assert(DebugCtrl::normalizePath("/foo/../") == "/");
-    assert(DebugCtrl::normalizePath("") == ".");
+    il::support::PathCache cache;
+    assert(cache.normalize(R"(a\b\c)") == "a/b/c");
+    assert(cache.normalize(R"(C:\project\src\..\main.bas)") == "C:/project/main.bas");
+    assert(cache.normalize("./a/./b") == "a/b");
+    assert(cache.normalize("../foo/../bar") == "../bar");
+    assert(cache.normalize("dir/../file") == "file");
+    assert(cache.normalize("/foo/../") == "/");
+    assert(cache.normalize("") == ".");
     return 0;
 }
