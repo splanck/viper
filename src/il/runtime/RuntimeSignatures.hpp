@@ -84,10 +84,31 @@ using RuntimeHandler = void (*)(void **args, void *result);
 
 /// @brief Describes the IL signature for a runtime helper function.
 /// @notes Parameter order matches the runtime C ABI.
+enum class RuntimeHiddenParamKind
+{
+    None,
+    PowStatusPointer,
+};
+
+/// @brief Hidden runtime argument injected by the VM bridge.
+struct RuntimeHiddenParam
+{
+    RuntimeHiddenParamKind kind{RuntimeHiddenParamKind::None}; ///< Classification for bridge marshalling.
+};
+
+/// @brief Classification guiding runtime trap handling for helper invocations.
+enum class RuntimeTrapClass
+{
+    None,
+    PowDomainOverflow,
+};
+
 struct RuntimeSignature
 {
     il::core::Type retType;                  ///< Return type of the helper.
     std::vector<il::core::Type> paramTypes;  ///< Parameter types in declaration order.
+    std::vector<RuntimeHiddenParam> hiddenParams; ///< Hidden arguments appended by the bridge.
+    RuntimeTrapClass trapClass{RuntimeTrapClass::None};          ///< Trap semantics for the helper.
 };
 
 /// @brief Aggregated descriptor covering signature, handler, and lowering metadata.
@@ -97,6 +118,7 @@ struct RuntimeDescriptor
     RuntimeSignature signature;  ///< Canonical IL signature for the helper.
     RuntimeHandler handler;      ///< Adapter that invokes the C implementation.
     RuntimeLowering lowering;    ///< Lowering metadata controlling declaration.
+    RuntimeTrapClass trapClass{RuntimeTrapClass::None}; ///< Trap classification for VM bridge.
 };
 
 /// @brief Access the ordered registry of runtime descriptors.
