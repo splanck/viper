@@ -5,6 +5,7 @@
 // Ownership/Lifetime: Helpers borrow Lowerer references owned by callers.
 // Links: docs/codemap.md
 
+#include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/LoweringPipeline.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
@@ -41,111 +42,45 @@ using pipeline_detail::coreTypeForAstType;
 namespace
 {
 
-/// @brief Expression visitor accumulating symbol metadata for referenced variables and arrays.
-class VarCollectExprVisitor final : public ExprVisitor
+class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
 {
   public:
-    explicit VarCollectExprVisitor(Lowerer &lowerer) : lowerer_(lowerer) {}
+    explicit VarCollectWalker(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
 
-    void visit(const IntExpr &) override {}
-
-    void visit(const FloatExpr &) override {}
-
-    void visit(const StringExpr &) override {}
-
-    void visit(const BoolExpr &) override {}
-
-    void visit(const VarExpr &expr) override
+    void after(const VarExpr &expr)
     {
-        lowerer_.markSymbolReferenced(expr.name);
+        if (!expr.name.empty())
+            lowerer_.markSymbolReferenced(expr.name);
     }
 
-    void visit(const ArrayExpr &expr) override
+    void after(const ArrayExpr &expr)
     {
-        lowerer_.markSymbolReferenced(expr.name);
-        lowerer_.markArray(expr.name);
-        if (expr.index)
-            expr.index->accept(*this);
+        if (!expr.name.empty())
+        {
+            lowerer_.markSymbolReferenced(expr.name);
+            lowerer_.markArray(expr.name);
+        }
     }
 
-    void visit(const LBoundExpr &expr) override
+    void after(const LBoundExpr &expr)
     {
-        lowerer_.markSymbolReferenced(expr.name);
-        lowerer_.markArray(expr.name);
+        if (!expr.name.empty())
+        {
+            lowerer_.markSymbolReferenced(expr.name);
+            lowerer_.markArray(expr.name);
+        }
     }
 
-    void visit(const UBoundExpr &expr) override
+    void after(const UBoundExpr &expr)
     {
-        lowerer_.markSymbolReferenced(expr.name);
-        lowerer_.markArray(expr.name);
+        if (!expr.name.empty())
+        {
+            lowerer_.markSymbolReferenced(expr.name);
+            lowerer_.markArray(expr.name);
+        }
     }
 
-    void visit(const UnaryExpr &expr) override
-    {
-        if (expr.expr)
-            expr.expr->accept(*this);
-    }
-
-    void visit(const BinaryExpr &expr) override
-    {
-        if (expr.lhs)
-            expr.lhs->accept(*this);
-        if (expr.rhs)
-            expr.rhs->accept(*this);
-    }
-
-    void visit(const CallExpr &expr) override
-    {
-        for (const auto &arg : expr.args)
-            if (arg)
-                arg->accept(*this);
-    }
-
-    void visit(const BuiltinCallExpr &expr) override
-    {
-        for (const auto &arg : expr.args)
-            if (arg)
-                arg->accept(*this);
-    }
-
-  private:
-    Lowerer &lowerer_;
-};
-
-/// @brief Statement visitor walking child expressions/statements to collect names.
-class VarCollectStmtVisitor final : public StmtVisitor
-{
-  public:
-    VarCollectStmtVisitor(VarCollectExprVisitor &exprVisitor, Lowerer &lowerer)
-        : exprVisitor_(exprVisitor), lowerer_(lowerer)
-    {
-    }
-
-    void visit(const PrintStmt &stmt) override
-    {
-        for (const auto &item : stmt.items)
-            if (item.kind == PrintItem::Kind::Expr && item.expr)
-                item.expr->accept(exprVisitor_);
-    }
-
-    void visit(const PrintChStmt &stmt) override
-    {
-        if (stmt.channelExpr)
-            stmt.channelExpr->accept(exprVisitor_);
-        for (const auto &arg : stmt.args)
-            if (arg)
-                arg->accept(exprVisitor_);
-    }
-
-    void visit(const LetStmt &stmt) override
-    {
-        if (stmt.target)
-            stmt.target->accept(exprVisitor_);
-        if (stmt.expr)
-            stmt.expr->accept(exprVisitor_);
-    }
-
-    void visit(const DimStmt &stmt) override
+    void before(const DimStmt &stmt)
     {
         if (stmt.name.empty())
             return;
@@ -153,151 +88,35 @@ class VarCollectStmtVisitor final : public StmtVisitor
         lowerer_.markSymbolReferenced(stmt.name);
         if (stmt.isArray)
             lowerer_.markArray(stmt.name);
-        if (stmt.size)
-            stmt.size->accept(exprVisitor_);
     }
 
-    void visit(const ReDimStmt &stmt) override
+    void before(const ReDimStmt &stmt)
     {
         if (stmt.name.empty())
             return;
         lowerer_.markSymbolReferenced(stmt.name);
         lowerer_.markArray(stmt.name);
-        if (stmt.size)
-            stmt.size->accept(exprVisitor_);
     }
 
-    void visit(const RandomizeStmt &stmt) override
-    {
-        if (stmt.seed)
-            stmt.seed->accept(exprVisitor_);
-    }
-
-    void visit(const IfStmt &stmt) override
-    {
-        if (stmt.cond)
-            stmt.cond->accept(exprVisitor_);
-        if (stmt.then_branch)
-            stmt.then_branch->accept(*this);
-        for (const auto &elseif : stmt.elseifs)
-        {
-            if (elseif.cond)
-                elseif.cond->accept(exprVisitor_);
-            if (elseif.then_branch)
-                elseif.then_branch->accept(*this);
-        }
-        if (stmt.else_branch)
-            stmt.else_branch->accept(*this);
-    }
-
-    void visit(const WhileStmt &stmt) override
-    {
-        if (stmt.cond)
-            stmt.cond->accept(exprVisitor_);
-        for (const auto &sub : stmt.body)
-            if (sub)
-                sub->accept(*this);
-    }
-
-    void visit(const DoStmt &stmt) override
-    {
-        if (stmt.cond)
-            stmt.cond->accept(exprVisitor_);
-        for (const auto &sub : stmt.body)
-            if (sub)
-                sub->accept(*this);
-    }
-
-    void visit(const ForStmt &stmt) override
-    {
-        if (!stmt.var.empty())
-            lowerer_.markSymbolReferenced(stmt.var);
-        if (stmt.start)
-            stmt.start->accept(exprVisitor_);
-        if (stmt.end)
-            stmt.end->accept(exprVisitor_);
-        if (stmt.step)
-            stmt.step->accept(exprVisitor_);
-        for (const auto &sub : stmt.body)
-            if (sub)
-                sub->accept(*this);
-    }
-
-    void visit(const NextStmt &stmt) override
+    void before(const ForStmt &stmt)
     {
         if (!stmt.var.empty())
             lowerer_.markSymbolReferenced(stmt.var);
     }
 
-    void visit(const ExitStmt &) override {}
-
-    void visit(const GotoStmt &) override {}
-
-    void visit(const OpenStmt &stmt) override
+    void before(const NextStmt &stmt)
     {
-        if (stmt.pathExpr)
-            stmt.pathExpr->accept(exprVisitor_);
-        if (stmt.channelExpr)
-            stmt.channelExpr->accept(exprVisitor_);
-    }
-
-    void visit(const CloseStmt &stmt) override
-    {
-        if (stmt.channelExpr)
-            stmt.channelExpr->accept(exprVisitor_);
-    }
-
-    void visit(const OnErrorGoto &) override {}
-
-    void visit(const Resume &) override {}
-
-    void visit(const EndStmt &) override {}
-
-    void visit(const InputStmt &stmt) override
-    {
-        if (stmt.prompt)
-            stmt.prompt->accept(exprVisitor_);
         if (!stmt.var.empty())
             lowerer_.markSymbolReferenced(stmt.var);
     }
 
-    void visit(const LineInputChStmt &stmt) override
+    void before(const InputStmt &stmt)
     {
-        if (stmt.channelExpr)
-            stmt.channelExpr->accept(exprVisitor_);
-        if (stmt.targetVar)
-            stmt.targetVar->accept(exprVisitor_);
-    }
-
-    void visit(const ReturnStmt &stmt) override
-    {
-        if (stmt.value)
-            stmt.value->accept(exprVisitor_);
-    }
-
-    void visit(const FunctionDecl &stmt) override
-    {
-        for (const auto &bodyStmt : stmt.body)
-            if (bodyStmt)
-                bodyStmt->accept(*this);
-    }
-
-    void visit(const SubDecl &stmt) override
-    {
-        for (const auto &bodyStmt : stmt.body)
-            if (bodyStmt)
-                bodyStmt->accept(*this);
-    }
-
-    void visit(const StmtList &stmt) override
-    {
-        for (const auto &sub : stmt.stmts)
-            if (sub)
-                sub->accept(*this);
+        if (!stmt.var.empty())
+            lowerer_.markSymbolReferenced(stmt.var);
     }
 
   private:
-    VarCollectExprVisitor &exprVisitor_;
     Lowerer &lowerer_;
 };
 
@@ -369,11 +188,10 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
 
 void ProcedureLowering::collectVars(const std::vector<const Stmt *> &stmts)
 {
-    VarCollectExprVisitor exprVisitor(lowerer);
-    VarCollectStmtVisitor stmtVisitor(exprVisitor, lowerer);
+    VarCollectWalker walker(lowerer);
     for (const auto *stmt : stmts)
         if (stmt)
-            stmt->accept(stmtVisitor);
+            walker.walkStmt(*stmt);
 }
 
 void ProcedureLowering::collectVars(const Program &prog)
