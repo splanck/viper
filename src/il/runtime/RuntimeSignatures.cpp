@@ -26,12 +26,6 @@ namespace
 {
 using Kind = il::core::Type::Kind;
 
-/// @brief Placeholder handler for rt_pow_f64_chkdom, actual logic lives in the VM bridge.
-void trapPowHandler(void **, void *)
-{
-    rt_trap("rt_pow_f64_chkdom handler invoked from registry");
-}
-
 /// @brief Construct a runtime signature from the provided type kinds.
 RuntimeSignature makeSignature(Kind ret, std::initializer_list<Kind> params)
 {
@@ -41,6 +35,14 @@ RuntimeSignature makeSignature(Kind ret, std::initializer_list<Kind> params)
     for (Kind p : params)
         sig.paramTypes.emplace_back(p);
     return sig;
+}
+
+/// @brief Build a hidden parameter descriptor for runtime bridge injection.
+RuntimeHiddenParam makeHiddenParam(RuntimeHiddenParamKind kind)
+{
+    RuntimeHiddenParam param;
+    param.kind = kind;
+    return param;
 }
 
 /// @brief Generic adapter that invokes a runtime function with direct mapping.
@@ -216,6 +218,20 @@ void invokeRtRoundEven(void **args, void *result)
         *reinterpret_cast<double *>(result) = rounded;
 }
 
+/// @brief Adapter invoking pow with an injected status pointer for trap classification.
+void invokeRtPowF64Chkdom(void **args, void *result)
+{
+    const auto basePtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
+    const auto expPtr = args ? reinterpret_cast<const double *>(args[1]) : nullptr;
+    const auto okPtrPtr = args ? reinterpret_cast<bool *const *>(args[2]) : nullptr;
+    const double base = basePtr ? *basePtr : 0.0;
+    const double exponent = expPtr ? *expPtr : 0.0;
+    bool *ok = okPtrPtr ? *okPtrPtr : nullptr;
+    const double value = rt_pow_f64_chkdom(base, exponent, ok);
+    if (result)
+        *reinterpret_cast<double *>(result) = value;
+}
+
 /// @brief Populate the runtime descriptor registry with known helper declarations.
 std::vector<RuntimeDescriptor> buildRegistry()
 {
@@ -225,13 +241,18 @@ std::vector<RuntimeDescriptor> buildRegistry()
                    Kind ret,
                    std::initializer_list<Kind> params,
                    RuntimeHandler handler,
-                   RuntimeLowering lowering)
+                   RuntimeLowering lowering,
+                   std::initializer_list<RuntimeHiddenParam> hidden = {},
+                   RuntimeTrapClass trapClass = RuntimeTrapClass::None)
     {
         RuntimeDescriptor desc;
         desc.name = name;
         desc.signature = makeSignature(ret, params);
         desc.handler = handler;
         desc.lowering = lowering;
+        desc.signature.hiddenParams.assign(hidden.begin(), hidden.end());
+        desc.signature.trapClass = trapClass;
+        desc.trapClass = trapClass;
         entries.push_back(std::move(desc));
     };
 
@@ -534,8 +555,10 @@ std::vector<RuntimeDescriptor> buildRegistry()
     add("rt_pow_f64_chkdom",
         Kind::F64,
         {Kind::F64, Kind::F64},
-        &trapPowHandler,
-        feature(RuntimeFeature::Pow, true));
+        &invokeRtPowF64Chkdom,
+        feature(RuntimeFeature::Pow, true),
+        {makeHiddenParam(RuntimeHiddenParamKind::PowStatusPointer)},
+        RuntimeTrapClass::PowDomainOverflow);
     add("rt_randomize_i64",
         Kind::Void,
         {Kind::I64},
