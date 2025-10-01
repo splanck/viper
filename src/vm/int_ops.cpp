@@ -140,6 +140,27 @@ template <typename NarrowT>
            value <= static_cast<int64_t>(std::numeric_limits<NarrowT>::max());
 }
 
+template <typename ComputeOp>
+void applyUnsignedDivOrRem(const Instr &in,
+                           Frame &fr,
+                           const BasicBlock *bb,
+                           Slot &out,
+                           const Slot &lhsVal,
+                           const Slot &rhsVal,
+                           const char *trapMessage,
+                           ComputeOp compute)
+{
+    const auto divisor = static_cast<uint64_t>(rhsVal.i64);
+    if (divisor == 0)
+    {
+        emitTrap(TrapKind::DivideByZero, trapMessage, in, fr, bb);
+        return;
+    }
+
+    const auto dividend = static_cast<uint64_t>(lhsVal.i64);
+    out.i64 = static_cast<int64_t>(compute(dividend, divisor));
+}
+
 template <typename NarrowT>
 [[nodiscard]] bool fitsUnsignedRange(uint64_t value)
 {
@@ -483,18 +504,16 @@ VM::ExecResult OpHandlers::handleUDivChk0(VM &vm,
                             in,
                             [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
                             {
-                                const auto divisor = static_cast<uint64_t>(rhsVal.i64);
-                                if (divisor == 0)
-                                {
-                                    emitTrap(TrapKind::DivideByZero,
-                                             "divide by zero in udiv.chk0",
-                                             in,
-                                             fr,
-                                             bb);
-                                    return;
-                                }
-                                const auto dividend = static_cast<uint64_t>(lhsVal.i64);
-                                out.i64 = static_cast<int64_t>(dividend / divisor);
+                                applyUnsignedDivOrRem(
+                                    in,
+                                    fr,
+                                    bb,
+                                    out,
+                                    lhsVal,
+                                    rhsVal,
+                                    "divide by zero in udiv.chk0",
+                                    [](uint64_t dividend, uint64_t divisor)
+                                    { return dividend / divisor; });
                             });
 }
 
@@ -544,18 +563,16 @@ VM::ExecResult OpHandlers::handleURemChk0(VM &vm,
                             in,
                             [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
                             {
-                                const auto divisor = static_cast<uint64_t>(rhsVal.i64);
-                                if (divisor == 0)
-                                {
-                                    emitTrap(TrapKind::DivideByZero,
-                                             "divide by zero in urem.chk0",
-                                             in,
-                                             fr,
-                                             bb);
-                                    return;
-                                }
-                                const auto dividend = static_cast<uint64_t>(lhsVal.i64);
-                                out.i64 = static_cast<int64_t>(dividend % divisor);
+                                applyUnsignedDivOrRem(
+                                    in,
+                                    fr,
+                                    bb,
+                                    out,
+                                    lhsVal,
+                                    rhsVal,
+                                    "divide by zero in urem.chk0",
+                                    [](uint64_t dividend, uint64_t divisor)
+                                    { return dividend % divisor; });
                             });
 }
 
