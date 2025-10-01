@@ -258,6 +258,26 @@ function(viper_add_golden_suite_tests)
     "-DEXPECT=${EXPECT_ERRORS_MAP_FROM_ERR}"
     -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
 
+  set(EH_RUNTIME_DIR ${_VIPER_GOLDEN_DIR}/eh_runtime)
+
+  file(READ ${EH_RUNTIME_DIR}/div_by_zero_with_handler.out EXPECT_EH_RUNTIME_DIV_ZERO_WITH_HANDLER)
+  string(STRIP "${EXPECT_EH_RUNTIME_DIV_ZERO_WITH_HANDLER}" EXPECT_EH_RUNTIME_DIV_ZERO_WITH_HANDLER)
+  viper_add_ctest(eh_runtime_div_by_zero_with_handler
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DIL_FILE=${EH_RUNTIME_DIR}/div_by_zero_with_handler.il
+    "-DEXPECT=${EXPECT_EH_RUNTIME_DIV_ZERO_WITH_HANDLER}"
+    -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
+
+  file(READ ${EH_RUNTIME_DIR}/bounds_with_handler.out EXPECT_EH_RUNTIME_BOUNDS_WITH_HANDLER)
+  string(STRIP "${EXPECT_EH_RUNTIME_BOUNDS_WITH_HANDLER}" EXPECT_EH_RUNTIME_BOUNDS_WITH_HANDLER)
+  viper_add_ctest(eh_runtime_bounds_with_handler
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DIL_FILE=${EH_RUNTIME_DIR}/bounds_with_handler.il
+    "-DEXPECT=${EXPECT_EH_RUNTIME_BOUNDS_WITH_HANDLER}"
+    -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
+
   viper_add_ctest(il_opt_const_if
     ${CMAKE_COMMAND}
     -DILC=${BASIC_ILC}
