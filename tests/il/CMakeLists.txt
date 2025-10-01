@@ -120,6 +120,15 @@ function(viper_add_il_core_tests)
   viper_add_test_exe(test_il_control_flow_checker ${_VIPER_IL_UNIT_DIR}/test_il_control_flow_checker.cpp)
   target_link_libraries(test_il_control_flow_checker PRIVATE il_core il_verify ${VIPER_IL_SUPPORT_LIB})
   viper_add_ctest(test_il_control_flow_checker test_il_control_flow_checker)
+
+  viper_add_test_exe(test_il_exception_handler_analysis
+    ${_VIPER_IL_UNIT_DIR}/test_il_exception_handler_analysis.cpp)
+  target_link_libraries(test_il_exception_handler_analysis PRIVATE il_core il_verify ${VIPER_IL_SUPPORT_LIB})
+  viper_add_ctest(test_il_exception_handler_analysis test_il_exception_handler_analysis)
+
+  viper_add_test_exe(test_il_branch_verifier ${_VIPER_IL_UNIT_DIR}/test_il_branch_verifier.cpp)
+  target_link_libraries(test_il_branch_verifier PRIVATE il_core il_verify ${VIPER_IL_SUPPORT_LIB})
+  viper_add_ctest(test_il_branch_verifier test_il_branch_verifier)
 endfunction()
 
 function(viper_add_il_utils_test)
