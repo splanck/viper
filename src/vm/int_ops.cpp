@@ -117,6 +117,143 @@ template <typename NarrowT>
 {
     return value <= static_cast<uint64_t>(std::numeric_limits<NarrowT>::max());
 }
+
+struct SignedNarrowCastTraits
+{
+    using WideType = int64_t;
+    static constexpr const char *kOutOfRangeMessage =
+        "value out of range in cast.si_narrow.chk";
+    static constexpr const char *kUnsupportedTypeMessage =
+        "unsupported target type in cast.si_narrow.chk";
+
+    static WideType toWide(int64_t raw) { return raw; }
+
+    static int64_t toStorage(WideType value) { return value; }
+
+    template <typename NarrowT>
+    static bool fits(WideType value)
+    {
+        return fitsSignedRange<NarrowT>(value);
+    }
+
+    template <typename NarrowT>
+    static int64_t narrow(WideType value)
+    {
+        return static_cast<int64_t>(static_cast<NarrowT>(value));
+    }
+
+    static bool checkBoolean(WideType value)
+    {
+        return (value == 0) || (value == 1);
+    }
+
+    static int64_t booleanValue(WideType value)
+    {
+        return value & 1;
+    }
+};
+
+struct UnsignedNarrowCastTraits
+{
+    using WideType = uint64_t;
+    static constexpr const char *kOutOfRangeMessage =
+        "value out of range in cast.ui_narrow.chk";
+    static constexpr const char *kUnsupportedTypeMessage =
+        "unsupported target type in cast.ui_narrow.chk";
+
+    static WideType toWide(int64_t raw)
+    {
+        return static_cast<WideType>(raw);
+    }
+
+    static int64_t toStorage(WideType value)
+    {
+        return static_cast<int64_t>(value);
+    }
+
+    template <typename NarrowT>
+    static bool fits(WideType value)
+    {
+        return fitsUnsignedRange<NarrowT>(value);
+    }
+
+    template <typename NarrowT>
+    static int64_t narrow(WideType value)
+    {
+        return static_cast<int64_t>(static_cast<NarrowT>(value));
+    }
+
+    static bool checkBoolean(WideType value)
+    {
+        return value <= 1;
+    }
+
+    static int64_t booleanValue(WideType value)
+    {
+        return static_cast<int64_t>(value & 1);
+    }
+};
+
+template <typename Traits>
+VM::ExecResult handleCastNarrowChkImpl(const Slot &value,
+                                       Frame &fr,
+                                       const Instr &in,
+                                       const BasicBlock *bb)
+{
+    using Wide = typename Traits::WideType;
+    const Wide operand = Traits::toWide(value.i64);
+
+    auto trapOutOfRange = [&]() {
+        emitTrap(TrapKind::InvalidCast, Traits::kOutOfRangeMessage, in, fr, bb);
+    };
+
+    int64_t narrowed = Traits::toStorage(operand);
+    bool inRange = true;
+    switch (in.type.kind)
+    {
+        case Type::Kind::I16:
+            inRange = Traits::template fits<int16_t>(operand);
+            if (inRange)
+            {
+                narrowed = Traits::template narrow<int16_t>(operand);
+            }
+            break;
+        case Type::Kind::I32:
+            inRange = Traits::template fits<int32_t>(operand);
+            if (inRange)
+            {
+                narrowed = Traits::template narrow<int32_t>(operand);
+            }
+            break;
+        case Type::Kind::I1:
+            inRange = Traits::checkBoolean(operand);
+            if (inRange)
+            {
+                narrowed = Traits::booleanValue(operand);
+            }
+            break;
+        case Type::Kind::I64:
+            break;
+        default:
+            emitTrap(TrapKind::InvalidCast,
+                     Traits::kUnsupportedTypeMessage,
+                     in,
+                     fr,
+                     bb);
+            return {};
+    }
+
+    if (!inRange)
+    {
+        trapOutOfRange();
+        return {};
+    }
+
+    Slot out{};
+    out.i64 = narrowed;
+    ops::storeResult(fr, in, out);
+    return {};
+}
 } // namespace
 
 /// @brief Interpret the `add` opcode for 64-bit integers.
@@ -564,58 +701,7 @@ VM::ExecResult OpHandlers::handleCastSiNarrowChk(VM &vm,
     (void)blocks;
     (void)ip;
     const Slot value = vm.eval(fr, in.operands[0]);
-    const int64_t operand = value.i64;
-
-    auto trapOutOfRange = [&]()
-    {
-        emitTrap(TrapKind::InvalidCast,
-                 "value out of range in cast.si_narrow.chk",
-                 in,
-                 fr,
-                 bb);
-    };
-
-    int64_t narrowed = operand;
-    bool inRange = true;
-    switch (in.type.kind)
-    {
-        case Type::Kind::I16:
-            inRange = fitsSignedRange<int16_t>(operand);
-            if (inRange)
-                narrowed = static_cast<int16_t>(operand);
-            break;
-        case Type::Kind::I32:
-            inRange = fitsSignedRange<int32_t>(operand);
-            if (inRange)
-                narrowed = static_cast<int32_t>(operand);
-            break;
-        case Type::Kind::I1:
-            inRange = (operand == 0) || (operand == 1);
-            if (inRange)
-                narrowed = operand & 1;
-            break;
-        case Type::Kind::I64:
-            narrowed = operand;
-            break;
-        default:
-            emitTrap(TrapKind::InvalidCast,
-                     "unsupported target type in cast.si_narrow.chk",
-                     in,
-                     fr,
-                     bb);
-            return {};
-    }
-
-    if (!inRange)
-    {
-        trapOutOfRange();
-        return {};
-    }
-
-    Slot out{};
-    out.i64 = narrowed;
-    ops::storeResult(fr, in, out);
-    return {};
+    return handleCastNarrowChkImpl<SignedNarrowCastTraits>(value, fr, in, bb);
 }
 
 /// @brief Interpret the `cast.ui_narrow.chk` opcode with range checking for unsigned integers.
@@ -629,58 +715,7 @@ VM::ExecResult OpHandlers::handleCastUiNarrowChk(VM &vm,
     (void)blocks;
     (void)ip;
     const Slot value = vm.eval(fr, in.operands[0]);
-    const uint64_t operand = static_cast<uint64_t>(value.i64);
-
-    auto trapOutOfRange = [&]()
-    {
-        emitTrap(TrapKind::InvalidCast,
-                 "value out of range in cast.ui_narrow.chk",
-                 in,
-                 fr,
-                 bb);
-    };
-
-    uint64_t narrowed = operand;
-    bool inRange = true;
-    switch (in.type.kind)
-    {
-        case Type::Kind::I16:
-            inRange = fitsUnsignedRange<uint16_t>(operand);
-            if (inRange)
-                narrowed = static_cast<uint16_t>(operand);
-            break;
-        case Type::Kind::I32:
-            inRange = fitsUnsignedRange<uint32_t>(operand);
-            if (inRange)
-                narrowed = static_cast<uint32_t>(operand);
-            break;
-        case Type::Kind::I1:
-            inRange = operand <= 1;
-            if (inRange)
-                narrowed = operand & 1;
-            break;
-        case Type::Kind::I64:
-            narrowed = operand;
-            break;
-        default:
-            emitTrap(TrapKind::InvalidCast,
-                     "unsupported target type in cast.ui_narrow.chk",
-                     in,
-                     fr,
-                     bb);
-            return {};
-    }
-
-    if (!inRange)
-    {
-        trapOutOfRange();
-        return {};
-    }
-
-    Slot out{};
-    out.i64 = static_cast<int64_t>(narrowed);
-    ops::storeResult(fr, in, out);
-    return {};
+    return handleCastNarrowChkImpl<UnsignedNarrowCastTraits>(value, fr, in, bb);
 }
 
 /// @brief Interpret the `cast.si_to_fp` opcode converting signed integers to double.
