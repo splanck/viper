@@ -10,13 +10,14 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include <algorithm>
-#include <cassert>
 #include <exception>
 #include <iostream>
 #include <sstream>
+#include <string>
 
 using namespace il::core;
 
@@ -41,6 +42,14 @@ struct ActiveVMGuard
         tlsActiveVM = previous;
     }
 };
+
+std::string opcodeMnemonic(Opcode op)
+{
+    const auto &info = getOpcodeInfo(op);
+    if (info.name && info.name[0] != '\0')
+        return info.name;
+    return std::string("opcode#") + std::to_string(static_cast<int>(op));
+}
 
 } // namespace
 
@@ -143,8 +152,14 @@ VM::ExecResult VM::executeOpcode(Frame &fr,
     OpcodeHandler handler = table[static_cast<size_t>(in.op)];
     if (!handler)
     {
-        assert(false && "unimplemented opcode");
-        return {};
+        RuntimeBridge::trap(TrapKind::InvalidOperation,
+                            "unimplemented opcode: " + opcodeMnemonic(in.op),
+                            {},
+                            fr.func->name,
+                            "");
+        ExecResult res{};
+        res.jumped = true;
+        return res;
     }
     return handler(*this, fr, in, blocks, bb, ip);
 }
