@@ -1071,7 +1071,7 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
                 BasicBlock *origin = ctx.current();
                 assert(origin && "conversion lowering requires active block");
                 std::string originLabel = origin->label;
-                BlockNamer *blockNamer = ctx.blockNamer();
+                BlockNamer *blockNamer = ctx.blockNames().namer();
                 std::string contLabel = blockNamer ? blockNamer->generic("conv_ok")
                                                    : mangler.block("conv_ok");
                 std::string trapLabel = blockNamer ? blockNamer->generic("conv_trap")
@@ -1131,7 +1131,7 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
                     BasicBlock *origin = ctx.current();
                     assert(origin && "VAL lowering requires active block");
                     std::string originLabel = origin->label;
-                    BlockNamer *blockNamer = ctx.blockNamer();
+                    BlockNamer *blockNamer = ctx.blockNames().namer();
                     auto labelFor = [&](const char *hint) {
                         if (blockNamer)
                             return blockNamer->generic(hint);

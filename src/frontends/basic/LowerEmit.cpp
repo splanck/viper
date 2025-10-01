@@ -45,7 +45,7 @@ void Lowerer::emitProgram(const Program &prog)
     for (const auto &s : prog.main)
         mainStmts.push_back(s.get());
 
-    ctx.lineBlocks().clear();
+    ctx.blockNames().lineBlocks().clear();
 
     Function &f = b.startFunction("main", Type(Type::Kind::I64), {});
     ctx.setFunction(&f);
@@ -64,7 +64,7 @@ void Lowerer::emitProgram(const Program &prog)
     b.addBlock(f, mangler.block("exit"));
 
     for (size_t i = 0; i < lines.size(); ++i)
-        ctx.lineBlocks()[lines[i]] = i + 1;
+        ctx.blockNames().lineBlocks()[lines[i]] = i + 1;
 
     resetSymbolState();
     collectVars(mainStmts);
@@ -138,7 +138,7 @@ Lowerer::IlValue Lowerer::emitBoolFromBranches(const std::function<void(Value)> 
 
     auto labelFor = [&](std::string_view base) {
         std::string hint(base);
-        if (BlockNamer *blockNamer = ctx.blockNamer())
+        if (BlockNamer *blockNamer = ctx.blockNames().namer())
             return blockNamer->generic(hint);
         return mangler.block(hint);
     };
@@ -198,7 +198,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr)
     assert(func && ctx.current());
     size_t curIdx = static_cast<size_t>(ctx.current() - &func->blocks[0]);
     unsigned bcId = ctx.consumeBoundsCheckId();
-    BlockNamer *blockNamer = ctx.blockNamer();
+    BlockNamer *blockNamer = ctx.blockNames().namer();
     size_t okIdx = func->blocks.size();
     std::string okLbl = blockNamer ? blockNamer->tag("bc_ok" + std::to_string(bcId))
                                    : mangler.block("bc_ok" + std::to_string(bcId));
@@ -526,7 +526,7 @@ void Lowerer::emitEhPop()
 
 void Lowerer::emitEhPopForReturn()
 {
-    if (!context().errorHandlerActive())
+    if (!context().errorHandlers().active())
         return;
     emitEhPop();
 }
@@ -534,11 +534,11 @@ void Lowerer::emitEhPopForReturn()
 void Lowerer::clearActiveErrorHandler()
 {
     ProcedureContext &ctx = context();
-    if (ctx.errorHandlerActive())
+    if (ctx.errorHandlers().active())
         emitEhPop();
-    ctx.setErrorHandlerActive(false);
-    ctx.setActiveErrorHandlerIndex(std::nullopt);
-    ctx.setActiveErrorHandlerLine(std::nullopt);
+    ctx.errorHandlers().setActive(false);
+    ctx.errorHandlers().setActiveIndex(std::nullopt);
+    ctx.errorHandlers().setActiveLine(std::nullopt);
 }
 
 Lowerer::BasicBlock *Lowerer::ensureErrorHandlerBlock(int targetLine)
@@ -547,14 +547,14 @@ Lowerer::BasicBlock *Lowerer::ensureErrorHandlerBlock(int targetLine)
     Function *func = ctx.function();
     assert(func && "ensureErrorHandlerBlock requires an active function");
 
-    auto &handlers = ctx.errorHandlerBlocks();
+    auto &handlers = ctx.errorHandlers().blocks();
     auto it = handlers.find(targetLine);
     if (it != handlers.end())
         return &func->blocks[it->second];
 
     std::string base = "handler_L" + std::to_string(targetLine);
     std::string label;
-    if (BlockNamer *blockNamer = ctx.blockNamer())
+    if (BlockNamer *blockNamer = ctx.blockNames().namer())
         label = blockNamer->tag(base);
     else
         label = mangler.block(base);
@@ -573,7 +573,7 @@ Lowerer::BasicBlock *Lowerer::ensureErrorHandlerBlock(int targetLine)
 
     size_t idx = static_cast<size_t>(&bb - &func->blocks[0]);
     handlers[targetLine] = idx;
-    ctx.handlerTargetLines()[idx] = targetLine;
+    ctx.errorHandlers().handlerTargets()[idx] = targetLine;
     return &bb;
 }
 

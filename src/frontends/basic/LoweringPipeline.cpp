@@ -417,7 +417,7 @@ void ProcedureLowering::emit(const std::string &name,
     {
         lowerer.curLoc = {};
         config.emitEmptyBody();
-        ctx.resetBlockNamer();
+        ctx.blockNames().resetNamer();
         return;
     }
 
@@ -430,7 +430,7 @@ void ProcedureLowering::emit(const std::string &name,
     lowerer.curLoc = {};
     config.emitFinalReturn();
 
-    ctx.resetBlockNamer();
+    ctx.blockNames().resetNamer();
 }
 
 StatementLowering::StatementLowering(Lowerer &lowerer) : lowerer(lowerer) {}
@@ -447,7 +447,7 @@ void StatementLowering::lowerSequence(
     auto &ctx = lowerer.context();
     auto *func = ctx.function();
     assert(func && "lowerSequence requires an active function");
-    auto &lineBlocks = ctx.lineBlocks();
+    auto &lineBlocks = ctx.blockNames().lineBlocks();
     lowerer.emitBr(&func->blocks[lineBlocks[stmts.front()->line]]);
 
     for (size_t i = 0; i < stmts.size(); ++i)
