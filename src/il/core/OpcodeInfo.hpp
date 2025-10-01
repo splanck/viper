@@ -102,7 +102,8 @@ enum class VMDispatch : uint8_t
     ResumeSame,
     ResumeNext,
     ResumeLabel,
-    EhEntry
+    EhEntry,
+    Count ///< Sentinel enumerating the number of dispatch kinds.
 };
 
 /// @brief Maximum number of operand categories stored per opcode.

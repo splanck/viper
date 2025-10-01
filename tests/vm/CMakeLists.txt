@@ -153,6 +153,10 @@ function(viper_add_vm_unit_tests)
   target_link_libraries(test_vm_addr_of PRIVATE il_io ${VIPER_VM_LIB} il_api)
   viper_add_ctest(test_vm_addr_of test_vm_addr_of)
 
+  viper_add_test_exe(test_vm_dispatch_handlers ${VIPER_TESTS_DIR}/unit/test_vm_dispatch_handlers.cpp)
+  target_link_libraries(test_vm_dispatch_handlers PRIVATE ${VIPER_VM_LIB})
+  viper_add_ctest(test_vm_dispatch_handlers test_vm_dispatch_handlers)
+
   viper_add_test_exe(test_vm_opcode_dispatch ${VIPER_TESTS_DIR}/unit/test_vm_opcode_dispatch.cpp)
   target_link_libraries(test_vm_opcode_dispatch PRIVATE il_io ${VIPER_VM_LIB} il_api)
   viper_add_ctest(test_vm_opcode_dispatch test_vm_opcode_dispatch)

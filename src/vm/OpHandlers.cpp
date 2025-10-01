@@ -10,6 +10,8 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/OpcodeInfo.hpp"
 
+#include <array>
+
 using namespace il::core;
 
 namespace il::vm
@@ -30,132 +32,63 @@ namespace il::vm::detail
 {
 namespace
 {
-/// @brief Maps opcode metadata dispatch categories to concrete handler
-/// functions.
-/// @details The dispatch field selected in Opcode.def determines which handler
-/// is returned for a given opcode; metadata entries that specify no dispatch or
-/// an unsupported category resolve to nullptr so unsupported instructions remain
-/// unbound in the table.
-VM::OpcodeHandler handlerForDispatch(VMDispatch dispatch)
+constexpr size_t kNumDispatchKinds = static_cast<size_t>(VMDispatch::Count);
+
+constexpr std::array<VM::OpcodeHandler, kNumDispatchKinds> buildDispatchHandlers()
 {
-    switch (dispatch)
-    {
-        case VMDispatch::None:
-            return nullptr;
-        case VMDispatch::Alloca:
-            return &OpHandlers::handleAlloca;
-        case VMDispatch::Load:
-            return &OpHandlers::handleLoad;
-        case VMDispatch::Store:
-            return &OpHandlers::handleStore;
-        case VMDispatch::GEP:
-            return &OpHandlers::handleGEP;
-        case VMDispatch::Add:
-            return &OpHandlers::handleAdd;
-        case VMDispatch::Sub:
-            return &OpHandlers::handleSub;
-        case VMDispatch::Mul:
-            return &OpHandlers::handleMul;
-        case VMDispatch::IAddOvf:
-            return &OpHandlers::handleIAddOvf;
-        case VMDispatch::ISubOvf:
-            return &OpHandlers::handleISubOvf;
-        case VMDispatch::IMulOvf:
-            return &OpHandlers::handleIMulOvf;
-        case VMDispatch::SDivChk0:
-            return &OpHandlers::handleSDivChk0;
-        case VMDispatch::UDivChk0:
-            return &OpHandlers::handleUDivChk0;
-        case VMDispatch::SRemChk0:
-            return &OpHandlers::handleSRemChk0;
-        case VMDispatch::URemChk0:
-            return &OpHandlers::handleURemChk0;
-        case VMDispatch::IdxChk:
-            return &OpHandlers::handleIdxChk;
-        case VMDispatch::Xor:
-            return &OpHandlers::handleXor;
-        case VMDispatch::Shl:
-            return &OpHandlers::handleShl;
-        case VMDispatch::FAdd:
-            return &OpHandlers::handleFAdd;
-        case VMDispatch::FSub:
-            return &OpHandlers::handleFSub;
-        case VMDispatch::FMul:
-            return &OpHandlers::handleFMul;
-        case VMDispatch::FDiv:
-            return &OpHandlers::handleFDiv;
-        case VMDispatch::ICmpEq:
-            return &OpHandlers::handleICmpEq;
-        case VMDispatch::ICmpNe:
-            return &OpHandlers::handleICmpNe;
-        case VMDispatch::SCmpGT:
-            return &OpHandlers::handleSCmpGT;
-        case VMDispatch::SCmpLT:
-            return &OpHandlers::handleSCmpLT;
-        case VMDispatch::SCmpLE:
-            return &OpHandlers::handleSCmpLE;
-        case VMDispatch::SCmpGE:
-            return &OpHandlers::handleSCmpGE;
-        case VMDispatch::FCmpEQ:
-            return &OpHandlers::handleFCmpEQ;
-        case VMDispatch::FCmpNE:
-            return &OpHandlers::handleFCmpNE;
-        case VMDispatch::FCmpGT:
-            return &OpHandlers::handleFCmpGT;
-        case VMDispatch::FCmpLT:
-            return &OpHandlers::handleFCmpLT;
-        case VMDispatch::FCmpLE:
-            return &OpHandlers::handleFCmpLE;
-        case VMDispatch::FCmpGE:
-            return &OpHandlers::handleFCmpGE;
-        case VMDispatch::Br:
-            return &OpHandlers::handleBr;
-        case VMDispatch::CBr:
-            return &OpHandlers::handleCBr;
-        case VMDispatch::Ret:
-            return &OpHandlers::handleRet;
-        case VMDispatch::AddrOf:
-            return &OpHandlers::handleAddrOf;
-        case VMDispatch::ConstStr:
-            return &OpHandlers::handleConstStr;
-        case VMDispatch::Call:
-            return &OpHandlers::handleCall;
-        case VMDispatch::Sitofp:
-            return &OpHandlers::handleSitofp;
-        case VMDispatch::Fptosi:
-            return &OpHandlers::handleFptosi;
-        case VMDispatch::CastFpToSiRteChk:
-            return &OpHandlers::handleCastFpToSiRteChk;
-        case VMDispatch::CastSiNarrowChk:
-            return &OpHandlers::handleCastSiNarrowChk;
-        case VMDispatch::CastUiNarrowChk:
-            return &OpHandlers::handleCastUiNarrowChk;
-        case VMDispatch::CastSiToFp:
-            return &OpHandlers::handleCastSiToFp;
-        case VMDispatch::CastUiToFp:
-            return &OpHandlers::handleCastUiToFp;
-        case VMDispatch::TruncOrZext1:
-            return &OpHandlers::handleTruncOrZext1;
-        case VMDispatch::ErrGet:
-            return &OpHandlers::handleErrGet;
-        case VMDispatch::Trap:
-            return &OpHandlers::handleTrap;
-        case VMDispatch::TrapFromErr:
-            return &OpHandlers::handleTrap;
-        case VMDispatch::EhPush:
-            return &OpHandlers::handleEhPush;
-        case VMDispatch::EhPop:
-            return &OpHandlers::handleEhPop;
-        case VMDispatch::ResumeSame:
-            return &OpHandlers::handleResumeSame;
-        case VMDispatch::ResumeNext:
-            return &OpHandlers::handleResumeNext;
-        case VMDispatch::ResumeLabel:
-            return &OpHandlers::handleResumeLabel;
-        case VMDispatch::EhEntry:
-            return &OpHandlers::handleEhEntry;
+    std::array<VM::OpcodeHandler, kNumDispatchKinds> handlers{};
+
+#define VM_DISPATCH_IMPL(DISPATCH, HANDLER_EXPR) (VMDispatch::DISPATCH, HANDLER_EXPR)
+#define VM_DISPATCH(NAME) VM_DISPATCH_IMPL(NAME, &OpHandlers::handle##NAME)
+#define VM_DISPATCH_ALT(DISPATCH, HANDLER_EXPR) VM_DISPATCH_IMPL(DISPATCH, HANDLER_EXPR)
+#define IL_OPCODE(NAME,                                                                            \
+                  MNEMONIC,                                                                        \
+                  RES_ARITY,                                                                       \
+                  RES_TYPE,                                                                        \
+                  MIN_OPS,                                                                         \
+                  MAX_OPS,                                                                         \
+                  OP0,                                                                             \
+                  OP1,                                                                             \
+                  OP2,                                                                             \
+                  SIDE_EFFECTS,                                                                    \
+                  SUCCESSORS,                                                                      \
+                  TERMINATOR,                                                                      \
+                  DISPATCH,                                                                        \
+                  PARSE0,                                                                          \
+                  PARSE1,                                                                          \
+                  PARSE2,                                                                          \
+                  PARSE3)                                                                          \
+    IL_VM_REGISTER_DISPATCH DISPATCH
+
+#define IL_VM_REGISTER_DISPATCH(DISPATCH_ENUM, HANDLER_EXPR)                                       \
+    if constexpr ((DISPATCH_ENUM) != VMDispatch::None)                                             \
+    {                                                                                              \
+        auto &slot = handlers[static_cast<size_t>(DISPATCH_ENUM)];                                 \
+        if (slot == nullptr)                                                                       \
+        {                                                                                          \
+            slot = HANDLER_EXPR;                                                                   \
+        }                                                                                          \
     }
-    return nullptr;
+
+#include "il/core/Opcode.def"
+
+#undef IL_VM_REGISTER_DISPATCH
+#undef IL_OPCODE
+#undef VM_DISPATCH_ALT
+#undef VM_DISPATCH
+#undef VM_DISPATCH_IMPL
+
+    return handlers;
+}
+
+constexpr auto kDispatchHandlers = buildDispatchHandlers();
+
+constexpr VM::OpcodeHandler handlerForDispatch(VMDispatch dispatch)
+{
+    const size_t index = static_cast<size_t>(dispatch);
+    if (index >= kDispatchHandlers.size())
+        return nullptr;
+    return kDispatchHandlers[index];
 }
 } // namespace
 
