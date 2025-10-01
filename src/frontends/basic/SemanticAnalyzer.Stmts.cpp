@@ -39,8 +39,8 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
     void visit(NextStmt &stmt) override { analyzer_.analyzeNext(stmt); }
     void visit(ExitStmt &stmt) override { analyzer_.analyzeExit(stmt); }
     void visit(GotoStmt &stmt) override { analyzer_.analyzeGoto(stmt); }
-    void visit(OpenStmt &) override {}
-    void visit(CloseStmt &) override {}
+    void visit(OpenStmt &stmt) override { analyzer_.analyzeOpen(stmt); }
+    void visit(CloseStmt &stmt) override { analyzer_.analyzeClose(stmt); }
     void visit(OnErrorGoto &stmt) override { analyzer_.analyzeOnErrorGoto(stmt); }
     void visit(EndStmt &stmt) override { analyzer_.analyzeEnd(stmt); }
     void visit(InputStmt &stmt) override { analyzer_.analyzeInput(stmt); }
@@ -214,6 +214,91 @@ void SemanticAnalyzer::analyzeLet(LetStmt &l)
     else
     {
         analyzeConstExpr(l);
+    }
+}
+
+void SemanticAnalyzer::analyzeOpen(OpenStmt &stmt)
+{
+    const bool modeValid = stmt.mode == OpenStmt::Mode::Input || stmt.mode == OpenStmt::Mode::Output ||
+                           stmt.mode == OpenStmt::Mode::Append || stmt.mode == OpenStmt::Mode::Binary ||
+                           stmt.mode == OpenStmt::Mode::Random;
+    if (!modeValid)
+    {
+        std::string msg = "invalid OPEN mode";
+        de.emit(il::support::Severity::Error, "B4001", stmt.loc, 4, std::move(msg));
+    }
+
+    if (stmt.pathExpr)
+    {
+        Type pathTy = visitExpr(*stmt.pathExpr);
+        if (pathTy != Type::Unknown && pathTy != Type::String)
+        {
+            std::string msg = "OPEN path expression must be STRING, got ";
+            msg += semanticTypeName(pathTy);
+            msg += '.';
+            de.emit(il::support::Severity::Error, "B2001", stmt.pathExpr->loc, 1, std::move(msg));
+        }
+    }
+
+    if (stmt.channelExpr)
+    {
+        Type channelTy = visitExpr(*stmt.channelExpr);
+        if (channelTy != Type::Unknown && channelTy != Type::Int)
+        {
+            std::string msg = "OPEN channel expression must be INTEGER, got ";
+            msg += semanticTypeName(channelTy);
+            msg += '.';
+            de.emit(il::support::Severity::Error, "B2001", stmt.channelExpr->loc, 1, std::move(msg));
+        }
+        else if (auto *intExpr = dynamic_cast<IntExpr *>(stmt.channelExpr.get()))
+        {
+            long long channel = intExpr->value;
+            bool wasOpen = openChannels_.count(channel) > 0;
+            if (wasOpen)
+            {
+                std::string msg = "channel #";
+                msg += std::to_string(channel);
+                msg += " is already open";
+                de.emit(il::support::Severity::Warning,
+                        "B3002",
+                        stmt.channelExpr->loc,
+                        1,
+                        std::move(msg));
+            }
+            else
+            {
+                if (activeProcScope_)
+                    activeProcScope_->noteChannelMutation(channel, false);
+                openChannels_.insert(channel);
+            }
+        }
+    }
+}
+
+void SemanticAnalyzer::analyzeClose(CloseStmt &stmt)
+{
+    if (!stmt.channelExpr)
+        return;
+
+    Type channelTy = visitExpr(*stmt.channelExpr);
+    if (channelTy != Type::Unknown && channelTy != Type::Int)
+    {
+        std::string msg = "CLOSE channel expression must be INTEGER, got ";
+        msg += semanticTypeName(channelTy);
+        msg += '.';
+        de.emit(il::support::Severity::Error, "B2001", stmt.channelExpr->loc, 1, std::move(msg));
+        return;
+    }
+
+    if (auto *intExpr = dynamic_cast<IntExpr *>(stmt.channelExpr.get()))
+    {
+        long long channel = intExpr->value;
+        if (openChannels_.count(channel))
+        {
+            if (activeProcScope_)
+                activeProcScope_->noteChannelMutation(channel, true);
+            openChannels_.erase(channel);
+        }
     }
 }
 

@@ -59,6 +59,13 @@ SemanticAnalyzer::ProcedureScope::~ProcedureScope() noexcept
         else
             analyzer_.arrays_.erase(delta.name);
     }
+    for (const auto &delta : channelDeltas_)
+    {
+        if (delta.previouslyOpen)
+            analyzer_.openChannels_.insert(delta.channel);
+        else
+            analyzer_.openChannels_.erase(delta.channel);
+    }
     if (analyzer_.forStack_.size() > forStackDepth_)
         analyzer_.forStack_.resize(forStackDepth_);
     if (analyzer_.loopStack_.size() > loopStackDepth_)
@@ -85,6 +92,13 @@ void SemanticAnalyzer::ProcedureScope::noteArrayMutation(const std::string &name
     if (!trackedArrays_.insert(name).second)
         return;
     arrayDeltas_.push_back({name, previous});
+}
+
+void SemanticAnalyzer::ProcedureScope::noteChannelMutation(long long channel, bool previouslyOpen)
+{
+    if (!trackedChannels_.insert(channel).second)
+        return;
+    channelDeltas_.push_back({channel, previouslyOpen});
 }
 
 void SemanticAnalyzer::ProcedureScope::noteLabelInserted(int label)
@@ -204,6 +218,7 @@ void SemanticAnalyzer::analyze(const Program &prog)
     loopStack_.clear();
     varTypes_.clear();
     arrays_.clear();
+    openChannels_.clear();
     errorHandlerActive_ = false;
     errorHandlerTarget_.reset();
     procReg_.clear();
