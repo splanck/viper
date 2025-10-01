@@ -625,6 +625,19 @@ void Lowerer::emitTrap()
     block->terminated = true;
 }
 
+void Lowerer::emitTrapFromErr(Value errCode)
+{
+    Instr in;
+    in.op = Opcode::TrapFromErr;
+    in.type = Type(Type::Kind::I32);
+    in.operands.push_back(errCode);
+    in.loc = curLoc;
+    BasicBlock *block = context().current();
+    assert(block && "emitTrapFromErr requires an active block");
+    block->instructions.push_back(std::move(in));
+    block->terminated = true;
+}
+
 /// @brief Retrieve or create the global label for a string literal.
 /// @param s Literal contents.
 /// @return Stable label used to refer to the literal.
