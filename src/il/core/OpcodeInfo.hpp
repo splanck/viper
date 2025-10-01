@@ -66,6 +66,8 @@ enum class VMDispatch : uint8_t
     SRemChk0,
     URemChk0,
     IdxChk,
+    And,
+    Or,
     Xor,
     Shl,
     FAdd,
