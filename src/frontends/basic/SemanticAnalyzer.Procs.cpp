@@ -111,41 +111,47 @@ void SemanticAnalyzer::ProcedureScope::noteLabelRefInserted(int label)
     newLabelRefs_.push_back(label);
 }
 
+void SemanticAnalyzer::registerProcedureParam(const Param &param)
+{
+    scopes_.bind(param.name, param.name);
+
+    std::string paramName = param.name;
+    Type paramType = param.is_array ? Type::ArrayInt : astToSemanticType(param.type);
+
+    auto itType = varTypes_.find(paramName);
+    if (activeProcScope_)
+    {
+        std::optional<Type> previous;
+        if (itType != varTypes_.end())
+            previous = itType->second;
+        activeProcScope_->noteVarTypeMutation(paramName, previous);
+    }
+    varTypes_[paramName] = paramType;
+
+    if (param.is_array)
+    {
+        auto itArray = arrays_.find(paramName);
+        if (activeProcScope_)
+        {
+            std::optional<long long> previous;
+            if (itArray != arrays_.end())
+                previous = itArray->second;
+            activeProcScope_->noteArrayMutation(paramName, previous);
+        }
+        arrays_[paramName] = -1;
+    }
+
+    resolveAndTrackSymbol(paramName, SymbolKind::Definition);
+    if (paramName != param.name)
+        scopes_.bind(param.name, paramName);
+}
+
 template <typename Proc, typename BodyCallback>
 void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc, BodyCallback &&bodyCheck)
 {
     ProcedureScope procScope(*this);
     for (const auto &p : proc.params)
-    {
-        scopes_.bind(p.name, p.name);
-        auto insertResult = symbols_.insert(p.name);
-        if (insertResult.second && activeProcScope_)
-            activeProcScope_->noteSymbolInserted(p.name);
-
-        auto itType = varTypes_.find(p.name);
-        if (activeProcScope_)
-        {
-            std::optional<Type> previous;
-            if (itType != varTypes_.end())
-                previous = itType->second;
-            activeProcScope_->noteVarTypeMutation(p.name, previous);
-        }
-        Type paramType = p.is_array ? Type::ArrayInt : astToSemanticType(p.type);
-        varTypes_[p.name] = paramType;
-
-        if (p.is_array)
-        {
-            auto itArray = arrays_.find(p.name);
-            if (activeProcScope_)
-            {
-                std::optional<long long> previous;
-                if (itArray != arrays_.end())
-                    previous = itArray->second;
-                activeProcScope_->noteArrayMutation(p.name, previous);
-            }
-            arrays_[p.name] = -1;
-        }
-    }
+        registerProcedureParam(p);
     for (const auto &st : proc.body)
         if (st)
         {
