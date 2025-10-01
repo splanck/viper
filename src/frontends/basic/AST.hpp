@@ -28,6 +28,7 @@ struct UBoundExpr;
 struct CallExpr;
 
 struct PrintStmt;
+struct PrintChStmt;
 struct LetStmt;
 struct DimStmt;
 struct ReDimStmt;
@@ -43,6 +44,7 @@ struct EndStmt;
 struct OpenStmt;
 struct CloseStmt;
 struct InputStmt;
+struct LineInputChStmt;
 struct ReturnStmt;
 struct OnErrorGoto;
 struct Resume;
@@ -91,6 +93,7 @@ struct StmtVisitor
 {
     virtual ~StmtVisitor() = default;
     virtual void visit(const PrintStmt &) = 0;
+    virtual void visit(const PrintChStmt &) = 0;
     virtual void visit(const LetStmt &) = 0;
     virtual void visit(const DimStmt &) = 0;
     virtual void visit(const ReDimStmt &) = 0;
@@ -108,6 +111,7 @@ struct StmtVisitor
     virtual void visit(const Resume &) = 0;
     virtual void visit(const EndStmt &) = 0;
     virtual void visit(const InputStmt &) = 0;
+    virtual void visit(const LineInputChStmt &) = 0;
     virtual void visit(const ReturnStmt &) = 0;
     virtual void visit(const FunctionDecl &) = 0;
     virtual void visit(const SubDecl &) = 0;
@@ -119,6 +123,7 @@ struct MutStmtVisitor
 {
     virtual ~MutStmtVisitor() = default;
     virtual void visit(PrintStmt &) = 0;
+    virtual void visit(PrintChStmt &) = 0;
     virtual void visit(LetStmt &) = 0;
     virtual void visit(DimStmt &) = 0;
     virtual void visit(ReDimStmt &) = 0;
@@ -136,6 +141,7 @@ struct MutStmtVisitor
     virtual void visit(Resume &) = 0;
     virtual void visit(EndStmt &) = 0;
     virtual void visit(InputStmt &) = 0;
+    virtual void visit(LineInputChStmt &) = 0;
     virtual void visit(ReturnStmt &) = 0;
     virtual void visit(FunctionDecl &) = 0;
     virtual void visit(SubDecl &) = 0;
@@ -155,6 +161,7 @@ struct Expr
 };
 
 using ExprPtr = std::unique_ptr<Expr>;
+using LValuePtr = ExprPtr;
 
 using Identifier = std::string;
 
@@ -390,6 +397,22 @@ struct PrintStmt : Stmt
 {
     /// Items printed in order; unless the last item is a semicolon, a newline is appended.
     std::vector<PrintItem> items;
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief PRINT # statement that outputs to a file channel.
+struct PrintChStmt : Stmt
+{
+    /// Channel expression evaluated to select the file handle; owned and non-null.
+    ExprPtr channelExpr;
+
+    /// Expressions printed to the channel, separated by commas in source.
+    std::vector<ExprPtr> args;
+
+    /// True when a trailing newline should be emitted after printing.
+    bool trailingNewline = true;
+
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
 };
@@ -645,6 +668,19 @@ struct InputStmt : Stmt
 
     /// Target variable name (may end with '$').
     std::string var;
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief LINE INPUT # statement reading an entire line from a file channel.
+struct LineInputChStmt : Stmt
+{
+    /// Channel expression evaluated to select the file handle; owned and non-null.
+    ExprPtr channelExpr;
+
+    /// Destination lvalue that receives the read line.
+    LValuePtr targetVar;
+
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
 };

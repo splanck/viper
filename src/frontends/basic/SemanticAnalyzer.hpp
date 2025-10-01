@@ -82,6 +82,8 @@ class SemanticAnalyzer
     void analyzeStmtList(const StmtList &s);
     /// @brief Analyze PRINT statement @p s.
     void analyzePrint(const PrintStmt &s);
+    /// @brief Analyze PRINT # statement @p s.
+    void analyzePrintCh(const PrintChStmt &s);
     /// @brief Analyze LET statement @p s.
     void analyzeLet(LetStmt &s);
     /// @brief Analyze OPEN statement @p s.
@@ -114,6 +116,8 @@ class SemanticAnalyzer
     void analyzeRandomize(const RandomizeStmt &s);
     /// @brief Analyze INPUT statement @p s.
     void analyzeInput(InputStmt &s);
+    /// @brief Analyze LINE INPUT # statement @p s.
+    void analyzeLineInputCh(LineInputChStmt &s);
     /// @brief Analyze DIM statement @p s.
     void analyzeDim(DimStmt &s);
     /// @brief Analyze REDIM statement @p s.

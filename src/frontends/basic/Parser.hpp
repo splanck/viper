@@ -214,6 +214,10 @@ class Parser
     /// @return INPUT statement node.
     StmtPtr parseInput();
 
+    /// @brief Parse a LINE INPUT # statement.
+    /// @return LINE INPUT statement node.
+    StmtPtr parseLineInput();
+
     /// @brief Parse a RESUME statement.
     /// @return RESUME statement node.
     StmtPtr parseResume();

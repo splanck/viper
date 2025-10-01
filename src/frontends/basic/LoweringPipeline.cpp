@@ -128,6 +128,15 @@ class VarCollectStmtVisitor final : public StmtVisitor
                 item.expr->accept(exprVisitor_);
     }
 
+    void visit(const PrintChStmt &stmt) override
+    {
+        if (stmt.channelExpr)
+            stmt.channelExpr->accept(exprVisitor_);
+        for (const auto &arg : stmt.args)
+            if (arg)
+                arg->accept(exprVisitor_);
+    }
+
     void visit(const LetStmt &stmt) override
     {
         if (stmt.target)
@@ -250,6 +259,14 @@ class VarCollectStmtVisitor final : public StmtVisitor
             stmt.prompt->accept(exprVisitor_);
         if (!stmt.var.empty())
             lowerer_.markSymbolReferenced(stmt.var);
+    }
+
+    void visit(const LineInputChStmt &stmt) override
+    {
+        if (stmt.channelExpr)
+            stmt.channelExpr->accept(exprVisitor_);
+        if (stmt.targetVar)
+            stmt.targetVar->accept(exprVisitor_);
     }
 
     void visit(const ReturnStmt &stmt) override
