@@ -225,13 +225,17 @@ std::vector<RuntimeDescriptor> buildRegistry()
                    Kind ret,
                    std::initializer_list<Kind> params,
                    RuntimeHandler handler,
-                   RuntimeLowering lowering)
+                   RuntimeLowering lowering,
+                   RuntimeDescriptorTrait traits = RuntimeDescriptorTrait::None,
+                   std::initializer_list<std::string_view> operandRoles = {})
     {
         RuntimeDescriptor desc;
         desc.name = name;
         desc.signature = makeSignature(ret, params);
         desc.handler = handler;
         desc.lowering = lowering;
+        desc.traits = traits;
+        desc.operandRoles.assign(operandRoles.begin(), operandRoles.end());
         entries.push_back(std::move(desc));
     };
 
@@ -375,37 +379,51 @@ std::vector<RuntimeDescriptor> buildRegistry()
         Kind::Ptr,
         {Kind::I64},
         &invokeRtArrI32New,
-        manual());
+        manual(),
+        RuntimeDescriptorTrait::ArrayHelper,
+        {"length"});
     add("rt_arr_i32_retain",
         Kind::Void,
         {Kind::Ptr},
         &DirectHandler<&rt_arr_i32_retain, void, int32_t *>::invoke,
-        manual());
+        manual(),
+        RuntimeDescriptorTrait::ArrayHelper,
+        {"handle"});
     add("rt_arr_i32_release",
         Kind::Void,
         {Kind::Ptr},
         &DirectHandler<&rt_arr_i32_release, void, int32_t *>::invoke,
-        manual());
+        manual(),
+        RuntimeDescriptorTrait::ArrayHelper,
+        {"handle"});
     add("rt_arr_i32_len",
         Kind::I64,
         {Kind::Ptr},
         &invokeRtArrI32Len,
-        manual());
+        manual(),
+        RuntimeDescriptorTrait::ArrayHelper,
+        {"handle"});
     add("rt_arr_i32_get",
         Kind::I64,
         {Kind::Ptr, Kind::I64},
         &invokeRtArrI32Get,
-        manual());
+        manual(),
+        RuntimeDescriptorTrait::ArrayHelper,
+        {"handle", "index"});
     add("rt_arr_i32_set",
         Kind::Void,
         {Kind::Ptr, Kind::I64, Kind::I64},
         &invokeRtArrI32Set,
-        manual());
+        manual(),
+        RuntimeDescriptorTrait::ArrayHelper,
+        {"handle", "index", "value"});
     add("rt_arr_i32_resize",
         Kind::Ptr,
         {Kind::Ptr, Kind::I64},
         &invokeRtArrI32Resize,
-        manual());
+        manual(),
+        RuntimeDescriptorTrait::ArrayHelper,
+        {"handle", "length"});
     add("rt_arr_oob_panic",
         Kind::Void,
         {Kind::I64, Kind::I64},

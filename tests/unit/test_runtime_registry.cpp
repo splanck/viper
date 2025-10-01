@@ -6,6 +6,7 @@
 
 #include "il/runtime/RuntimeSignatures.hpp"
 #include <cassert>
+#include <cstddef>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -17,6 +18,7 @@ int main()
 
     std::unordered_set<std::string_view> names;
     std::unordered_map<il::runtime::RuntimeFeature, const il::runtime::RuntimeDescriptor *> featureOwners;
+    std::size_t arrayHelperCount = 0;
     for (const auto &entry : registry)
     {
         assert(entry.handler && "runtime descriptor missing handler");
@@ -34,10 +36,18 @@ int main()
             else
                 assert(byFeature == it->second && "descriptor lookup by feature mismatch");
         }
+
+        if (il::runtime::hasTrait(entry.traits, il::runtime::RuntimeDescriptorTrait::ArrayHelper))
+        {
+            ++arrayHelperCount;
+            assert(entry.signature.paramTypes.size() == entry.operandRoles.size() &&
+                   "array helper metadata missing operand roles");
+        }
     }
 
     const auto &signatureMap = il::runtime::runtimeSignatures();
     assert(signatureMap.size() == registry.size());
+    assert(arrayHelperCount > 0 && "expected array helper descriptors to publish trait");
     return 0;
 }
 
