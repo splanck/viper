@@ -15,12 +15,70 @@
 #include "vm/RuntimeBridge.hpp"
 
 #include <cmath>
+#include <cstdint>
 #include <limits>
 
 using namespace il::core;
 
 namespace il::vm::detail
 {
+namespace
+{
+constexpr double kUint64Boundary = 18446744073709551616.0; ///< 2^64, sentinel for overflow.
+
+[[nodiscard]] uint64_t castFpToUiRoundedOrTrap(double operand,
+                                               const Instr &in,
+                                               Frame &fr,
+                                               const BasicBlock *bb)
+{
+    constexpr const char *kInvalidOperandMessage =
+        "invalid fp operand in cast.fp_to_ui.rte.chk";
+    constexpr const char *kOverflowMessage =
+        "fp overflow in cast.fp_to_ui.rte.chk";
+
+    auto trap = [&](const char *message)
+    {
+        RuntimeBridge::trap(TrapKind::Overflow,
+                            message,
+                            in.loc,
+                            fr.func->name,
+                            bb ? bb->label : "");
+    };
+
+    if (!std::isfinite(operand) || std::signbit(operand))
+    {
+        trap(kInvalidOperandMessage);
+    }
+
+    if (operand >= kUint64Boundary)
+    {
+        trap(kOverflowMessage);
+    }
+
+    double integral = 0.0;
+    const double fractional = std::modf(operand, &integral);
+
+    if (fractional > 0.5)
+    {
+        integral += 1.0;
+    }
+    else if (fractional == 0.5)
+    {
+        if (std::fmod(integral, 2.0) != 0.0)
+        {
+            integral += 1.0;
+        }
+    }
+
+    if (integral >= kUint64Boundary)
+    {
+        trap(kOverflowMessage);
+    }
+
+    return static_cast<uint64_t>(integral);
+}
+} // namespace
+
 /// @brief Add two floating-point values and store the IEEE-754 sum.
 /// @details Relies on host binary64 addition so NaNs propagate and infinities behave per IEEE-754.
 /// The handler mutates the frame only by writing the result slot via ops::storeResult.
@@ -306,6 +364,29 @@ VM::ExecResult OpHandlers::handleCastFpToSiRteChk(VM &vm,
                             fr.func->name,
                             bb ? bb->label : "");
     }
+
+    Slot out{};
+    out.i64 = static_cast<int64_t>(rounded);
+    ops::storeResult(fr, in, out);
+    return {};
+}
+
+/// @brief Convert a floating-point value to an unsigned 64-bit integer using round-to-nearest-even.
+/// @details Rejects NaNs, negative inputs (including negative zero), and values whose rounded result
+/// falls outside the unsigned 64-bit range by trapping with TrapKind::Overflow. Rounding uses the
+/// banker’s rule (ties to even) implemented via castFpToUiRoundedOrTrap to maintain deterministic
+/// behaviour across platforms.
+VM::ExecResult OpHandlers::handleCastFpToUiRteChk(VM &vm,
+                                                  Frame &fr,
+                                                  const Instr &in,
+                                                  const VM::BlockMap &blocks,
+                                                  const BasicBlock *&bb,
+                                                  size_t &ip)
+{
+    (void)blocks;
+    (void)ip;
+    const Slot value = vm.eval(fr, in.operands[0]);
+    const uint64_t rounded = castFpToUiRoundedOrTrap(value.f64, in, fr, bb);
 
     Slot out{};
     out.i64 = static_cast<int64_t>(rounded);
