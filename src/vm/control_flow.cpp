@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cassert>
 #include <vector>
+#include <sstream>
 
 using namespace il::core;
 
@@ -33,6 +34,16 @@ Frame::ResumeState *expectResumeToken(Frame &fr, const Slot &slot)
     if (!token || token != &fr.resumeState || !token->valid)
         return nullptr;
     return token;
+}
+
+void trapInvalidResume(Frame &fr,
+                       const Instr &in,
+                       const BasicBlock *bb,
+                       std::string detail)
+{
+    const std::string functionName = fr.func ? fr.func->name : std::string{};
+    const std::string blockLabel = bb ? bb->label : std::string{};
+    RuntimeBridge::trap(TrapKind::InvalidOperation, detail, in.loc, functionName, blockLabel);
 }
 
 const VmError *resolveErrorToken(Frame &fr, const Slot &slot)
@@ -328,11 +339,22 @@ VM::ExecResult OpHandlers::handleResumeSame(VM &vm,
 {
     (void)blocks;
     (void)bb;
+    if (in.operands.empty())
+    {
+        trapInvalidResume(fr, in, bb, "resume.same: missing resume token operand");
+        return {};
+    }
+
     Slot tokSlot = vm.eval(fr, in.operands[0]);
     Frame::ResumeState *token = expectResumeToken(fr, tokSlot);
-    if (!token || !token->block)
+    if (!token)
     {
-        vm_raise(TrapKind::InvalidOperation);
+        trapInvalidResume(fr, in, bb, "resume.same: requires an active resume token");
+        return {};
+    }
+    if (!token->block)
+    {
+        trapInvalidResume(fr, in, bb, "resume.same: resume target is no longer available");
         return {};
     }
     fr.resumeState.valid = false;
@@ -352,11 +374,22 @@ VM::ExecResult OpHandlers::handleResumeNext(VM &vm,
 {
     (void)blocks;
     (void)bb;
+    if (in.operands.empty())
+    {
+        trapInvalidResume(fr, in, bb, "resume.next: missing resume token operand");
+        return {};
+    }
+
     Slot tokSlot = vm.eval(fr, in.operands[0]);
     Frame::ResumeState *token = expectResumeToken(fr, tokSlot);
-    if (!token || !token->block)
+    if (!token)
     {
-        vm_raise(TrapKind::InvalidOperation);
+        trapInvalidResume(fr, in, bb, "resume.next: requires an active resume token");
+        return {};
+    }
+    if (!token->block)
+    {
+        trapInvalidResume(fr, in, bb, "resume.next: resume target is no longer available");
         return {};
     }
     fr.resumeState.valid = false;
@@ -374,11 +407,32 @@ VM::ExecResult OpHandlers::handleResumeLabel(VM &vm,
                                             const BasicBlock *&bb,
                                             size_t &ip)
 {
+    if (in.operands.empty())
+    {
+        trapInvalidResume(fr, in, bb, "resume.label: missing resume token operand");
+        return {};
+    }
+
     Slot tokSlot = vm.eval(fr, in.operands[0]);
     Frame::ResumeState *token = expectResumeToken(fr, tokSlot);
     if (!token)
     {
-        vm_raise(TrapKind::InvalidOperation);
+        trapInvalidResume(fr, in, bb, "resume.label: requires an active resume token");
+        return {};
+    }
+
+    if (in.labels.empty())
+    {
+        trapInvalidResume(fr, in, bb, "resume.label: missing destination label");
+        return {};
+    }
+
+    const auto &label = in.labels[0];
+    if (blocks.find(label) == blocks.end())
+    {
+        std::ostringstream os;
+        os << "resume.label: unknown destination label '" << label << "'";
+        trapInvalidResume(fr, in, bb, os.str());
         return {};
     }
     fr.resumeState.valid = false;
