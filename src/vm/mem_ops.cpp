@@ -325,5 +325,44 @@ VM::ExecResult OpHandlers::handleConstStr(VM &vm,
     return {};
 }
 
+/// Materializes a null constant for pointer-like handle types.
+///
+/// The handler writes a zero value into the slot corresponding to the
+/// instruction's result type. Pointer-oriented kinds (Ptr, Error, ResumeTok)
+/// use the generic pointer field, while string handles clear the runtime
+/// string slot. Other kinds fall back to the pointer field to preserve the
+/// historical behaviour for mis-specified instructions.
+VM::ExecResult OpHandlers::handleConstNull(VM &vm,
+                                           Frame &fr,
+                                           const Instr &in,
+                                           const VM::BlockMap &blocks,
+                                           const BasicBlock *&bb,
+                                           size_t &ip)
+{
+    (void)vm;
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+
+    Slot out{};
+    switch (in.type.kind)
+    {
+        case Type::Kind::Str:
+            out.str = nullptr;
+            break;
+        case Type::Kind::Error:
+        case Type::Kind::ResumeTok:
+        case Type::Kind::Ptr:
+            out.ptr = nullptr;
+            break;
+        default:
+            out.ptr = nullptr;
+            break;
+    }
+
+    ops::storeResult(fr, in, out);
+    return {};
+}
+
 } // namespace il::vm::detail
 

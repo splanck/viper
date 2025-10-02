@@ -97,6 +97,7 @@ enum class VMDispatch : uint8_t
     Ret,
     AddrOf,
     ConstStr,
+    ConstNull,
     Call,
     Sitofp,
     Fptosi,

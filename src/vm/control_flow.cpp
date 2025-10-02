@@ -34,6 +34,18 @@ Frame::ResumeState *expectResumeToken(Frame &fr, const Slot &slot)
         return nullptr;
     return token;
 }
+
+const VmError *resolveErrorToken(Frame &fr, const Slot &slot)
+{
+    const auto *error = reinterpret_cast<const VmError *>(slot.ptr);
+    if (error)
+        return error;
+
+    if (const VmError *token = vm_current_trap_token())
+        return token;
+
+    return &fr.activeError;
+}
 } // namespace
 
 /// @brief Transfer control to a branch target and seed its parameter slots.
@@ -208,10 +220,11 @@ VM::ExecResult OpHandlers::handleErrGet(VM &vm,
     (void)bb;
     (void)ip;
 
-    const Slot errorSlot = vm.eval(fr, in.operands[0]);
-    const auto *error = reinterpret_cast<const VmError *>(errorSlot.ptr);
-    if (!error)
-        error = &fr.activeError;
+    Slot operandSlot{};
+    if (!in.operands.empty())
+        operandSlot = vm.eval(fr, in.operands[0]);
+
+    const VmError *error = resolveErrorToken(fr, operandSlot);
 
     Slot out{};
     switch (in.op)
@@ -226,7 +239,7 @@ VM::ExecResult OpHandlers::handleErrGet(VM &vm,
             out.i64 = static_cast<int64_t>(error->ip);
             break;
         case Opcode::ErrGetLine:
-            out.i64 = static_cast<int64_t>(error->line);
+            out.i64 = static_cast<int64_t>(static_cast<int32_t>(error->line));
             break;
         default:
             out.i64 = 0;

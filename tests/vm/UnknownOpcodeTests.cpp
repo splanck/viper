@@ -1,50 +1,15 @@
 // File: tests/vm/UnknownOpcodeTests.cpp
-// Purpose: Ensure the VM traps gracefully when executing an opcode lacking a handler.
-// Key invariants: Diagnostics must report InvalidOperation and include opcode mnemonic details.
-// Ownership/Lifetime: Forks a child VM process to capture trap diagnostics.
+// Purpose: Ensure the VM handles previously unimplemented opcodes once handlers land.
+// Key invariants: Executing `const_null` completes without raising a trap.
+// Ownership/Lifetime: Builds a small module and executes it directly.
 // Links: docs/il-guide.md#reference
 
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"
 
 #include <cassert>
-#include <string>
-#include <sys/wait.h>
-#include <unistd.h>
 
 using namespace il::core;
-
-namespace
-{
-std::string captureTrap(Module &module)
-{
-    int fds[2];
-    assert(pipe(fds) == 0);
-    pid_t pid = fork();
-    assert(pid >= 0);
-    if (pid == 0)
-    {
-        close(fds[0]);
-        dup2(fds[1], 2);
-        il::vm::VM vm(module);
-        vm.run();
-        _exit(0);
-    }
-
-    close(fds[1]);
-    char buffer[512];
-    ssize_t n = read(fds[0], buffer, sizeof(buffer) - 1);
-    if (n < 0)
-        n = 0;
-    buffer[n] = '\0';
-    close(fds[0]);
-
-    int status = 0;
-    waitpid(pid, &status, 0);
-    assert(WIFEXITED(status) && WEXITSTATUS(status) == 1);
-    return std::string(buffer);
-}
-} // namespace
 
 int main()
 {
@@ -65,17 +30,12 @@ int main()
     ret.op = Opcode::Ret;
     ret.type = Type(Type::Kind::Void);
     ret.loc = {1, 1, 1};
+    ret.operands.push_back(Value::constInt(0));
     bb.instructions.push_back(ret);
 
-    const std::string out = captureTrap(module);
-    const bool hasInvalidOperation = out.find("InvalidOperation") != std::string::npos;
-    assert(hasInvalidOperation && "expected InvalidOperation trap for unhandled opcode");
-
-    const bool hasDiagnostic = out.find("unimplemented opcode") != std::string::npos;
-    assert(hasDiagnostic && "expected diagnostic to mention unimplemented opcode");
-
-    const bool hasMnemonic = out.find("const_null") != std::string::npos;
-    assert(hasMnemonic && "expected diagnostic to include opcode mnemonic");
+    il::vm::VM vm(module);
+    const int64_t exitCode = vm.run();
+    assert(exitCode == 0 && "const_null execution should not raise a trap");
 
     return 0;
 }
