@@ -11,6 +11,7 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
 #include "il/verify/DiagFormat.hpp"
+#include "il/verify/DiagSink.hpp"
 
 #include <algorithm>
 #include <deque>
@@ -193,13 +194,14 @@ Expected<void> checkEhStackBalance(
                 if (depth == 0)
                 {
                     std::vector<const BasicBlock *> path = buildPath(states, stateIndex);
-                    std::string message =
-                        formatInstrDiag(fn,
-                                        bb,
-                                        instr,
-                                        std::string("eh.pop without matching eh.push; path: ") +
-                                            formatPathString(path));
-                    return Expected<void>{makeError(instr.loc, message)};
+            std::string message =
+                formatInstrDiag(fn,
+                                bb,
+                                instr,
+                                std::string("eh.pop without matching eh.push; path: ") +
+                                    formatPathString(path));
+            return Expected<void>{makeVerifierError(
+                VerifyDiagCode::EhStackUnderflow, instr.loc, message)};
                 }
                 --depth;
             }
@@ -223,7 +225,8 @@ Expected<void> checkEhStackBalance(
                                 *terminator,
                                 std::string("unmatched eh.push depth ") + std::to_string(depth) +
                                     "; path: " + formatPathString(path));
-            return Expected<void>{makeError(terminator->loc, message)};
+            return Expected<void>{makeVerifierError(
+                VerifyDiagCode::EhStackLeak, terminator->loc, message)};
         }
 
         const std::vector<const BasicBlock *> successors = gatherSuccessors(*terminator, blockMap);

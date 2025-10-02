@@ -8,8 +8,59 @@
 
 #include <utility>
 
+namespace
+{
+std::string_view diagCodeToPrefix(il::verify::VerifyDiagCode code)
+{
+    using il::verify::VerifyDiagCode;
+    switch (code)
+    {
+        case VerifyDiagCode::Unknown:
+            return {};
+        case VerifyDiagCode::EhStackUnderflow:
+            return "verify.eh.underflow";
+        case VerifyDiagCode::EhStackLeak:
+            return "verify.eh.unreleased";
+    }
+    return {};
+}
+} // namespace
+
 namespace il::verify
 {
+
+std::string_view toString(VerifyDiagCode code)
+{
+    return diagCodeToPrefix(code);
+}
+
+il::support::Diag makeVerifierDiag(VerifyDiagCode code,
+                                   il::support::Severity severity,
+                                   il::support::SourceLoc loc,
+                                   std::string message)
+{
+    const std::string_view prefix = diagCodeToPrefix(code);
+    if (!prefix.empty())
+    {
+        if (!message.empty())
+        {
+            message.insert(0, ": ");
+            message.insert(0, prefix);
+        }
+        else
+        {
+            message.assign(prefix);
+        }
+    }
+    return {severity, std::move(message), loc};
+}
+
+il::support::Diag makeVerifierError(VerifyDiagCode code,
+                                    il::support::SourceLoc loc,
+                                    std::string message)
+{
+    return makeVerifierDiag(code, il::support::Severity::Error, loc, std::move(message));
+}
 
 void CollectingDiagSink::report(il::support::Diag diag)
 {
