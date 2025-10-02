@@ -113,6 +113,22 @@ constexpr TrapKind trapKindFromValue(int32_t value)
     }
 }
 
+/// @brief Obtain writable storage for constructing a trap token in the active VM.
+/// @return Pointer to a VmError slot owned by the VM or thread-local fallback when no VM is active.
+VmError *vm_acquire_trap_token();
+
+/// @brief Access the most recently written trap token for the active VM.
+/// @return Pointer to the stored VmError when available, otherwise nullptr.
+const VmError *vm_current_trap_token();
+
+/// @brief Store the diagnostic message associated with the current trap token.
+/// @param text Human-readable message text to retain alongside the token.
+void vm_store_trap_token_message(std::string_view text);
+
+/// @brief Retrieve the diagnostic message associated with the current trap token.
+/// @return Copy of the stored message text.
+std::string vm_current_trap_message();
+
 void vm_raise(TrapKind kind, int32_t code = 0);
 void vm_raise_from_error(const VmError &error);
 std::string vm_format_error(const VmError &error, const FrameInfo &frame);

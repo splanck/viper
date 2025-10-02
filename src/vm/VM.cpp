@@ -293,6 +293,7 @@ Slot VM::execFunction(const Function &fn, const std::vector<Slot> &args)
 {
     ActiveVMGuard guard(this);
     lastTrap = {};
+    trapToken = {};
     auto st = prepareExecution(fn, args);
     st.callSiteBlock = currentContext.block;
     st.callSiteIp = currentContext.hasInstruction ? currentContext.instructionIndex : 0;
