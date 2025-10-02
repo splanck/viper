@@ -1,5 +1,5 @@
 // File: tests/vm/CastOpsTests.cpp
-// Purpose: Verify VM cast handlers for 1-bit truncation and zero-extension.
+// Purpose: Verify VM cast handlers for 1-bit truncation/extension and fp-to-int conversions.
 // License: MIT License. See LICENSE in the project root for details.
 
 #include "il/build/IRBuilder.hpp"
@@ -7,8 +7,12 @@
 
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <cstdint>
 #include <limits>
+#include <string>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <utility>
 
 using namespace il::core;
@@ -70,6 +74,70 @@ int64_t runZext1(int64_t input)
     return vm.run();
 }
 
+void buildCastFpToUi(Module &module, double input)
+{
+    il::build::IRBuilder builder(module);
+    auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
+    auto &bb = builder.addBlock(fn, "entry");
+    builder.setInsertPoint(bb);
+
+    Instr cast;
+    cast.result = builder.reserveTempId();
+    cast.op = Opcode::CastFpToUiRteChk;
+    cast.type = Type(Type::Kind::I64);
+    cast.operands.push_back(Value::constFloat(input));
+    cast.loc = {1, 1, 1};
+    bb.instructions.push_back(cast);
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.loc = {1, 1, 1};
+    ret.operands.push_back(Value::temp(*cast.result));
+    bb.instructions.push_back(ret);
+}
+
+uint64_t runCastFpToUiRteChk(double input)
+{
+    Module module;
+    buildCastFpToUi(module, input);
+    il::vm::VM vm(module);
+    const int64_t raw = vm.run();
+    return static_cast<uint64_t>(raw);
+}
+
+std::string captureCastFpToUiTrap(double input)
+{
+    Module module;
+    buildCastFpToUi(module, input);
+
+    int fds[2];
+    assert(pipe(fds) == 0);
+    pid_t pid = fork();
+    assert(pid >= 0);
+    if (pid == 0)
+    {
+        close(fds[0]);
+        dup2(fds[1], 2);
+        il::vm::VM vm(module);
+        vm.run();
+        _exit(0);
+    }
+
+    close(fds[1]);
+    char buffer[512];
+    ssize_t n = read(fds[0], buffer, sizeof(buffer) - 1);
+    if (n < 0)
+        n = 0;
+    buffer[n] = '\0';
+    close(fds[0]);
+
+    int status = 0;
+    waitpid(pid, &status, 0);
+    assert(WIFEXITED(status) && WEXITSTATUS(status) == 1);
+    return std::string(buffer);
+}
+
 } // namespace
 
 int main()
@@ -93,6 +161,30 @@ int main()
     for (const auto &[input, expected] : zextCases)
     {
         assert(runZext1(input) == expected);
+    }
+
+    const std::array<std::pair<double, uint64_t>, 5> fpCastCases = {
+        {{0.0, UINT64_C(0)},
+         {0.5, UINT64_C(0)},
+         {1.5, UINT64_C(2)},
+         {2.5, UINT64_C(2)},
+         {4294967296.5, UINT64_C(4294967296)}}};
+
+    for (const auto &[input, expected] : fpCastCases)
+    {
+        assert(runCastFpToUiRteChk(input) == expected);
+    }
+
+    const std::array<double, 3> fpCastTrapInputs = {
+        std::numeric_limits<double>::quiet_NaN(),
+        -1.0,
+        std::ldexp(1.0, 64)};
+
+    for (double input : fpCastTrapInputs)
+    {
+        const std::string diag = captureCastFpToUiTrap(input);
+        const bool hasOverflow = diag.find("Trap @main#0 line 1: Overflow (code=0)") != std::string::npos;
+        assert(hasOverflow && "expected overflow trap for invalid cast.fp_to_ui.rte.chk operand");
     }
 
     return 0;
