@@ -313,6 +313,24 @@ function(viper_add_il_invalid_tests)
     -DFILE=${_VIPER_INVALID_EH_DIR}/push_leak_branch.il
     -DEXPECT_FILE=${_VIPER_INVALID_EH_DIR}/push_leak_branch.expected
     -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
+  viper_add_ctest(il_verify_invalid_eh_resume_same_no_token
+    ${CMAKE_COMMAND}
+    -DIL_VERIFY=${IL_VERIFY}
+    -DFILE=${_VIPER_INVALID_EH_DIR}/resume_same_without_token.il
+    -DEXPECT_FILE=${_VIPER_INVALID_EH_DIR}/resume_same_without_token.expected
+    -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
+  viper_add_ctest(il_verify_invalid_eh_resume_next_no_token
+    ${CMAKE_COMMAND}
+    -DIL_VERIFY=${IL_VERIFY}
+    -DFILE=${_VIPER_INVALID_EH_DIR}/resume_next_without_token.il
+    -DEXPECT_FILE=${_VIPER_INVALID_EH_DIR}/resume_next_without_token.expected
+    -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
+  viper_add_ctest(il_verify_invalid_eh_resume_label_no_token
+    ${CMAKE_COMMAND}
+    -DIL_VERIFY=${IL_VERIFY}
+    -DFILE=${_VIPER_INVALID_EH_DIR}/resume_label_without_token.il
+    -DEXPECT_FILE=${_VIPER_INVALID_EH_DIR}/resume_label_without_token.expected
+    -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
 endfunction()
 
 function(viper_add_il_liveness_tests)

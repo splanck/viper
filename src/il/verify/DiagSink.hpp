@@ -17,9 +17,10 @@ namespace il::verify
 /// @brief Identifier for structured verifier diagnostics.
 enum class VerifyDiagCode
 {
-    Unknown = 0,           ///< Unclassified diagnostic.
-    EhStackUnderflow,      ///< Encountered eh.pop with an empty handler stack.
-    EhStackLeak            ///< Execution left a function with handlers still active.
+    Unknown = 0,            ///< Unclassified diagnostic.
+    EhStackUnderflow,       ///< Encountered eh.pop with an empty handler stack.
+    EhStackLeak,            ///< Execution left a function with handlers still active.
+    EhResumeTokenMissing    ///< Resume.* executed without an active resume token.
 };
 
 /// @brief Convert a verifier diagnostic code to its textual prefix.
