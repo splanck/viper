@@ -56,9 +56,29 @@ bool isTerminatorForEh(Opcode op)
 struct EhState
 {
     const BasicBlock *block = nullptr;
-    int depth = 0;
+    std::vector<const BasicBlock *> handlerStack;
+    bool hasResumeToken = false;
     int parent = -1;
 };
+
+struct VisitedState
+{
+    std::vector<const BasicBlock *> handlerStack;
+    bool hasResumeToken = false;
+};
+
+bool stacksEqual(const std::vector<const BasicBlock *> &lhs,
+                 const std::vector<const BasicBlock *> &rhs)
+{
+    if (lhs.size() != rhs.size())
+        return false;
+    for (size_t index = 0; index < lhs.size(); ++index)
+    {
+        if (lhs[index] != rhs[index])
+            return false;
+    }
+    return true;
+}
 
 std::vector<const BasicBlock *> gatherSuccessors(
     const Instr &terminator, const std::unordered_map<std::string, const BasicBlock *> &blockMap)
@@ -167,11 +187,13 @@ Expected<void> checkEhStackBalance(
 
     std::deque<int> worklist;
     std::vector<EhState> states;
-    std::unordered_map<const BasicBlock *, std::unordered_set<int>> visited;
+    std::unordered_map<const BasicBlock *, std::vector<VisitedState>> visited;
 
-    states.push_back({&fn.blocks.front(), 0, -1});
+    EhState entryState{};
+    entryState.block = &fn.blocks.front();
+    states.push_back(entryState);
     worklist.push_back(0);
-    visited[&fn.blocks.front()].insert(0);
+    visited[entryState.block].push_back({entryState.handlerStack, entryState.hasResumeToken});
 
     while (!worklist.empty())
     {
@@ -180,30 +202,48 @@ Expected<void> checkEhStackBalance(
 
         const EhState &state = states[stateIndex];
         const BasicBlock &bb = *state.block;
-        int depth = state.depth;
+        std::vector<const BasicBlock *> handlerStack = state.handlerStack;
+        bool hasResumeToken = state.hasResumeToken;
 
         const Instr *terminator = nullptr;
         for (const auto &instr : bb.instructions)
         {
             if (instr.op == Opcode::EhPush)
             {
-                ++depth;
+                if (!instr.labels.empty())
+                {
+                    if (auto it = blockMap.find(instr.labels[0]); it != blockMap.end())
+                        handlerStack.push_back(it->second);
+                }
             }
             else if (instr.op == Opcode::EhPop)
             {
-                if (depth == 0)
+                if (handlerStack.empty())
                 {
                     std::vector<const BasicBlock *> path = buildPath(states, stateIndex);
-            std::string message =
-                formatInstrDiag(fn,
-                                bb,
-                                instr,
-                                std::string("eh.pop without matching eh.push; path: ") +
-                                    formatPathString(path));
-            return Expected<void>{makeVerifierError(
-                VerifyDiagCode::EhStackUnderflow, instr.loc, message)};
+                    std::string message = formatInstrDiag(
+                        fn,
+                        bb,
+                        instr,
+                        std::string("eh.pop without matching eh.push; path: ") +
+                            formatPathString(path));
+                    return Expected<void>{makeVerifierError(
+                        VerifyDiagCode::EhStackUnderflow, instr.loc, message)};
                 }
-                --depth;
+                handlerStack.pop_back();
+            }
+
+            if (instr.op == Opcode::ResumeSame || instr.op == Opcode::ResumeNext ||
+                instr.op == Opcode::ResumeLabel)
+            {
+                if (!hasResumeToken)
+                {
+                    std::string message = formatInstrDiag(
+                        fn, bb, instr, "resume.* requires active resume token");
+                    return Expected<void>{makeVerifierError(
+                        VerifyDiagCode::EhResumeTokenMissing, instr.loc, message)};
+                }
+                hasResumeToken = false;
             }
 
             if (isTerminatorForEh(instr.op))
@@ -216,27 +256,79 @@ Expected<void> checkEhStackBalance(
         if (!terminator)
             continue;
 
-        if (terminator->op == Opcode::Ret && depth != 0)
+        if (terminator->op == Opcode::Ret && !handlerStack.empty())
         {
             std::vector<const BasicBlock *> path = buildPath(states, stateIndex);
             std::string message =
                 formatInstrDiag(fn,
                                 bb,
                                 *terminator,
-                                std::string("unmatched eh.push depth ") + std::to_string(depth) +
+                                std::string("unmatched eh.push depth ") +
+                                    std::to_string(handlerStack.size()) +
                                     "; path: " + formatPathString(path));
             return Expected<void>{makeVerifierError(
                 VerifyDiagCode::EhStackLeak, terminator->loc, message)};
         }
 
+        if (terminator->op == Opcode::Trap || terminator->op == Opcode::TrapFromErr)
+        {
+            if (!handlerStack.empty())
+            {
+                const BasicBlock *handler = handlerStack.back();
+                VisitedState nextCtx{handlerStack, true};
+                auto &visitedEntries = visited[handler];
+                bool seen = false;
+                for (const auto &entry : visitedEntries)
+                {
+                    if (entry.hasResumeToken == nextCtx.hasResumeToken &&
+                        stacksEqual(entry.handlerStack, nextCtx.handlerStack))
+                    {
+                        seen = true;
+                        break;
+                    }
+                }
+                if (!seen)
+                {
+                    const int nextIndex = static_cast<int>(states.size());
+                    EhState nextState{};
+                    nextState.block = handler;
+                    nextState.handlerStack = handlerStack;
+                    nextState.hasResumeToken = true;
+                    nextState.parent = stateIndex;
+                    states.push_back(std::move(nextState));
+                    visitedEntries.push_back(std::move(nextCtx));
+                    worklist.push_back(nextIndex);
+                }
+            }
+            continue;
+        }
+
+        auto propagateState = [&](const BasicBlock *succ, bool tokenAvailable)
+        {
+            VisitedState ctx{handlerStack, tokenAvailable};
+            auto &entries = visited[succ];
+            for (const auto &entry : entries)
+            {
+                if (entry.hasResumeToken == ctx.hasResumeToken &&
+                    stacksEqual(entry.handlerStack, ctx.handlerStack))
+                    return;
+            }
+            const int nextIndex = static_cast<int>(states.size());
+            EhState nextState{};
+            nextState.block = succ;
+            nextState.handlerStack = handlerStack;
+            nextState.hasResumeToken = tokenAvailable;
+            nextState.parent = stateIndex;
+            states.push_back(std::move(nextState));
+            entries.push_back(std::move(ctx));
+            worklist.push_back(nextIndex);
+        };
+
         const std::vector<const BasicBlock *> successors = gatherSuccessors(*terminator, blockMap);
         for (const BasicBlock *succ : successors)
         {
-            if (!visited[succ].insert(depth).second)
-                continue;
-            const int nextIndex = static_cast<int>(states.size());
-            states.push_back({succ, depth, stateIndex});
-            worklist.push_back(nextIndex);
+            const bool tokenForSucc = terminator->op == Opcode::ResumeLabel ? false : hasResumeToken;
+            propagateState(succ, tokenForSucc);
         }
     }
 

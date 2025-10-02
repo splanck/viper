@@ -6,6 +6,7 @@ entry:
   eh.push ^H
   trap.from_err i32 1
 exit:
+  eh.pop
   ret
 handler ^H(%err:Error, %tok:ResumeTok):
   eh.entry

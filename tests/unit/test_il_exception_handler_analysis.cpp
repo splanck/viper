@@ -93,14 +93,19 @@ int main()
     balancedEntry.label = "entry";
     Instr push;
     push.op = Opcode::EhPush;
+    push.labels.push_back("handler");
     balancedEntry.instructions.push_back(push);
     Instr popOk;
     popOk.op = Opcode::EhPop;
     balancedEntry.instructions.push_back(popOk);
     balancedEntry.instructions.push_back(term);
     balancedFn.blocks.push_back(balancedEntry);
+    BasicBlock balancedHandler;
+    balancedHandler.label = "handler";
+    balancedFn.blocks.push_back(balancedHandler);
     std::unordered_map<std::string, const BasicBlock *> balancedMap;
-    balancedMap[balancedFn.blocks.front().label] = &balancedFn.blocks.front();
+    balancedMap[balancedFn.blocks[0].label] = &balancedFn.blocks[0];
+    balancedMap[balancedHandler.label] = &balancedFn.blocks[1];
     auto balancedResult = checkEhStackBalance(balancedFn, balancedMap);
     assert(balancedResult);
 
