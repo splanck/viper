@@ -101,6 +101,11 @@ function(viper_add_vm_unit_tests)
   target_link_libraries(test_vm_pow PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_pow test_vm_pow)
 
+  viper_add_test_exe(test_vm_switch ${_VIPER_VM_DIR}/SwitchTests.cpp)
+  target_link_libraries(test_vm_switch PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  target_compile_definitions(test_vm_switch PRIVATE TESTS_DIR="${CMAKE_SOURCE_DIR}/tests")
+  viper_add_ctest(test_vm_switch test_vm_switch)
+
   viper_add_test_exe(test_vm_trap_invalid_cast ${_VIPER_VM_DIR}/TrapInvalidCastTests.cpp)
   target_link_libraries(test_vm_trap_invalid_cast PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_trap_invalid_cast test_vm_trap_invalid_cast)
