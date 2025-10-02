@@ -7,10 +7,45 @@
 
 #include "support/diag_expected.hpp"
 
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace il::verify
 {
+
+/// @brief Identifier for structured verifier diagnostics.
+enum class VerifyDiagCode
+{
+    Unknown = 0,           ///< Unclassified diagnostic.
+    EhStackUnderflow,      ///< Encountered eh.pop with an empty handler stack.
+    EhStackLeak            ///< Execution left a function with handlers still active.
+};
+
+/// @brief Convert a verifier diagnostic code to its textual prefix.
+/// @param code Diagnostic code to translate.
+/// @return Stable string view describing @p code.
+std::string_view toString(VerifyDiagCode code);
+
+/// @brief Construct a diagnostic tagged with a verifier code.
+/// @param code Structured diagnostic code.
+/// @param severity Diagnostic severity classification.
+/// @param loc Optional source location associated with the diagnostic.
+/// @param message Human readable payload appended after the code prefix.
+/// @return Diagnostic ready for reporting through sinks or Expected values.
+il::support::Diag makeVerifierDiag(VerifyDiagCode code,
+                                   il::support::Severity severity,
+                                   il::support::SourceLoc loc,
+                                   std::string message);
+
+/// @brief Convenience wrapper that constructs an error diagnostic for verifier failures.
+/// @param code Structured diagnostic code.
+/// @param loc Optional source location associated with the diagnostic.
+/// @param message Human readable description appended after the code prefix.
+/// @return Error severity diagnostic referencing the provided verifier code.
+il::support::Diag makeVerifierError(VerifyDiagCode code,
+                                    il::support::SourceLoc loc,
+                                    std::string message);
 
 /// @brief Interface for verifier components to report diagnostics without coupling to storage.
 class DiagSink
