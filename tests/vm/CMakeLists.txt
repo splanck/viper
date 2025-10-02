@@ -85,6 +85,10 @@ function(viper_add_vm_unit_tests)
   target_link_libraries(test_vm_idx_chk PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_idx_chk test_vm_idx_chk)
 
+  viper_add_test_exe(test_vm_cast_ops ${_VIPER_VM_DIR}/CastOpsTests.cpp)
+  target_link_libraries(test_vm_cast_ops PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  viper_add_ctest(test_vm_cast_ops test_vm_cast_ops)
+
   viper_add_test_exe(test_vm_int_ops ${_VIPER_VM_DIR}/IntOpsTests.cpp)
   target_link_libraries(test_vm_int_ops PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_int_ops test_vm_int_ops)
