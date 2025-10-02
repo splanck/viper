@@ -39,7 +39,8 @@ class ControlFlowStrategy final : public FunctionVerifier::InstructionStrategy
   public:
     bool matches(const Instr &instr) const override
     {
-        return instr.op == Opcode::Br || instr.op == Opcode::CBr || instr.op == Opcode::Ret;
+        return instr.op == Opcode::Br || instr.op == Opcode::CBr || instr.op == Opcode::SwitchI32 ||
+               instr.op == Opcode::Ret;
     }
 
     Expected<void> verify(const Function &fn,
@@ -60,6 +61,8 @@ class ControlFlowStrategy final : public FunctionVerifier::InstructionStrategy
                 return verifyBr_E(fn, bb, instr, blockMap, types);
             case Opcode::CBr:
                 return verifyCBr_E(fn, bb, instr, blockMap, types);
+            case Opcode::SwitchI32:
+                return verifySwitchI32_E(fn, bb, instr, blockMap, types);
             case Opcode::Ret:
                 return verifyRet_E(fn, bb, instr, types);
             default:

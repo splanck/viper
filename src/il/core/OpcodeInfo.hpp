@@ -133,7 +133,8 @@ enum class OperandParseKind : uint8_t
     Value,        ///< Parse a general value operand.
     TypeImmediate,///< Parse a type literal influencing the instruction type.
     BranchTarget, ///< Parse a successor label with optional arguments.
-    Call          ///< Parse call-style callee and argument list syntax.
+    Call,         ///< Parse call-style callee and argument list syntax.
+    Switch        ///< Parse switch scrutinee/default/case syntax.
 };
 
 /// @brief Maximum number of parser descriptors stored per opcode.
@@ -181,5 +182,8 @@ std::string opcode_mnemonic(Opcode op);
 
 /// @brief Determine whether @p value denotes a variadic operand upper bound.
 bool isVariadicOperandCount(uint8_t value);
+
+/// @brief Determine whether @p value denotes a variadic successor count.
+bool isVariadicSuccessorCount(uint8_t value);
 
 } // namespace il::core

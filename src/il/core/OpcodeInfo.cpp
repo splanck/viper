@@ -81,6 +81,11 @@ bool isVariadicOperandCount(uint8_t value)
     return value == kVariadicOperandCount;
 }
 
+bool isVariadicSuccessorCount(uint8_t value)
+{
+    return value == kVariadicOperandCount;
+}
+
 /**
  * @brief Returns the mnemonic associated with the provided opcode.
  *

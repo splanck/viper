@@ -44,7 +44,8 @@ CFGContext::CFGContext(il::core::Module &module) : module(&module)
                 continue;
 
             const il::core::Instr &term = blk.instructions.back();
-            if (term.op != il::core::Opcode::Br && term.op != il::core::Opcode::CBr)
+            if (term.op != il::core::Opcode::Br && term.op != il::core::Opcode::CBr &&
+                term.op != il::core::Opcode::SwitchI32)
                 continue;
 
             for (const auto &lbl : term.labels)
