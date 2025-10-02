@@ -11,12 +11,28 @@
 #include "il/core/Module.hpp"
 
 #include <cassert>
+#include <clocale>
 #include <utility>
 
 using namespace il::core;
 
 namespace il::vm
 {
+
+namespace
+{
+
+struct NumericLocaleInitializer
+{
+    NumericLocaleInitializer()
+    {
+        std::setlocale(LC_NUMERIC, "C");
+    }
+};
+
+[[maybe_unused]] const NumericLocaleInitializer kNumericLocaleInitializer{};
+
+} // namespace
 
 /// Construct a VM instance bound to a specific IL @p Module.
 /// The constructor wires the tracing and debugging subsystems and pre-populates
