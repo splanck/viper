@@ -14,13 +14,89 @@
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/RuntimeBridge.hpp"
 
+#include <bit>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 
 using namespace il::core;
 
 namespace il::vm::detail
 {
+namespace
+{
+constexpr const char *kCastFpToUiTrapMessage = "fp overflow in cast.fp_to_ui.rte.chk";
+
+void emitCastFpToUiOverflow(const Instr &in, Frame &fr, const BasicBlock *bb)
+{
+    RuntimeBridge::trap(TrapKind::Overflow,
+                        kCastFpToUiTrapMessage,
+                        in.loc,
+                        fr.func->name,
+                        bb ? bb->label : "");
+}
+
+uint64_t roundFpToUiNearestEvenOrTrap(double operand,
+                                      Frame &fr,
+                                      const Instr &in,
+                                      const BasicBlock *bb)
+{
+    auto trapOverflow = [&]() { emitCastFpToUiOverflow(in, fr, bb); };
+
+    if (!std::isfinite(operand) || operand < 0.0)
+    {
+        trapOverflow();
+    }
+
+    constexpr double kOverflowThreshold = std::ldexp(1.0, 64);
+    if (operand >= kOverflowThreshold)
+    {
+        trapOverflow();
+    }
+
+    double integralPart = 0.0;
+    double fractionalPart = std::modf(operand, &integralPart);
+    if (fractionalPart < 0.0)
+    {
+        fractionalPart = 0.0;
+    }
+
+    if (integralPart >= kOverflowThreshold)
+    {
+        trapOverflow();
+    }
+
+    uint64_t result = static_cast<uint64_t>(integralPart);
+
+    if (result == std::numeric_limits<uint64_t>::max() && fractionalPart > 0.0)
+    {
+        trapOverflow();
+    }
+
+    if (fractionalPart > 0.5)
+    {
+        if (result == std::numeric_limits<uint64_t>::max())
+        {
+            trapOverflow();
+        }
+        ++result;
+    }
+    else if (fractionalPart == 0.5)
+    {
+        if ((result & 1ULL) != 0ULL)
+        {
+            if (result == std::numeric_limits<uint64_t>::max())
+            {
+                trapOverflow();
+            }
+            ++result;
+        }
+    }
+
+    return result;
+}
+} // namespace
+
 /// @brief Add two floating-point values and store the IEEE-754 sum.
 /// @details Relies on host binary64 addition so NaNs propagate and infinities behave per IEEE-754.
 /// The handler mutates the frame only by writing the result slot via ops::storeResult.
@@ -309,6 +385,29 @@ VM::ExecResult OpHandlers::handleCastFpToSiRteChk(VM &vm,
 
     Slot out{};
     out.i64 = static_cast<int64_t>(rounded);
+    ops::storeResult(fr, in, out);
+    return {};
+}
+
+/// @brief Convert a floating-point value to an unsigned 64-bit integer using round-to-nearest-even.
+/// @details Rejects NaNs, negative operands, and values whose rounded result exceeds the unsigned
+/// range by trapping with TrapKind::Overflow. Rounding is implemented explicitly via modf so the
+/// behaviour is deterministic across platforms irrespective of the ambient floating-point
+/// environment.
+VM::ExecResult OpHandlers::handleCastFpToUiRteChk(VM &vm,
+                                                  Frame &fr,
+                                                  const Instr &in,
+                                                  const VM::BlockMap &blocks,
+                                                  const BasicBlock *&bb,
+                                                  size_t &ip)
+{
+    (void)blocks;
+    (void)ip;
+    const Slot value = vm.eval(fr, in.operands[0]);
+    const uint64_t rounded = roundFpToUiNearestEvenOrTrap(value.f64, fr, in, bb);
+
+    Slot out{};
+    out.i64 = std::bit_cast<int64_t>(rounded);
     ops::storeResult(fr, in, out);
     return {};
 }
