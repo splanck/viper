@@ -140,6 +140,10 @@ function(viper_add_il_utils_test)
   viper_add_test_exe(test_il_utils ${_VIPER_IL_DIR}/UtilsTests.cpp)
   target_link_libraries(test_il_utils PRIVATE il_utils)
   viper_add_ctest(test_il_utils test_il_utils)
+
+  viper_add_test_exe(test_il_opcode_info ${_VIPER_IL_DIR}/OpcodeInfoTests.cpp)
+  target_link_libraries(test_il_opcode_info PRIVATE il_core)
+  viper_add_ctest(test_il_opcode_info test_il_opcode_info)
 endfunction()
 
 function(viper_add_il_analysis_tests)
