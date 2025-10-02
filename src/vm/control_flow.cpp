@@ -19,6 +19,7 @@
 #include <string>
 #include <algorithm>
 #include <cassert>
+#include <cstdint>
 #include <vector>
 #include <sstream>
 
@@ -145,6 +146,40 @@ VM::ExecResult OpHandlers::handleCBr(VM &vm,
     Slot cond = vm.eval(fr, in.operands[0]);
     const size_t targetIdx = (cond.i64 != 0) ? 0 : 1;
     return branchToTarget(vm, fr, in, targetIdx, blocks, bb, ip);
+}
+
+/// @brief Handle a `switch.i32` terminator by selecting a successor based on the
+///        scrutinee value.
+/// @param vm Active VM used to evaluate the scrutinee and case values.
+/// @param fr Current frame providing temporaries and receiving parameter updates.
+/// @param in Switch instruction describing the default label and case table.
+/// @param blocks Mapping of block labels for the parent function.
+/// @param bb Output reference updated to the chosen successor block pointer.
+/// @param ip Output instruction index reset to the beginning of the successor.
+/// @return Execution result indicating a taken jump to the matching successor.
+/// @note Invariant: verifier guarantees a well-formed default label and
+///       monotonically sized argument tables. Case matching performs a linear
+///       scan and defaults to the first label when no value matches.
+VM::ExecResult OpHandlers::handleSwitchI32(VM &vm,
+                                           Frame &fr,
+                                           const Instr &in,
+                                           const VM::BlockMap &blocks,
+                                           const BasicBlock *&bb,
+                                           size_t &ip)
+{
+    const Slot scrutineeSlot = vm.eval(fr, switchScrutinee(in));
+    const int32_t scrutinee = static_cast<int32_t>(scrutineeSlot.i64);
+
+    const size_t caseCount = switchCaseCount(in);
+    for (size_t idx = 0; idx < caseCount; ++idx)
+    {
+        const Slot caseSlot = vm.eval(fr, switchCaseValue(in, idx));
+        if (static_cast<int32_t>(caseSlot.i64) == scrutinee)
+            return branchToTarget(vm, fr, in, idx + 1, blocks, bb, ip);
+    }
+
+    assert(!in.labels.empty() && "switch must have a default successor");
+    return branchToTarget(vm, fr, in, 0, blocks, bb, ip);
 }
 
 /// @brief Handle a `ret` terminator by yielding control to the caller.

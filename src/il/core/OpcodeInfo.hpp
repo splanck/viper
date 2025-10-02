@@ -93,6 +93,7 @@ enum class VMDispatch : uint8_t
     FCmpLT,
     FCmpLE,
     FCmpGE,
+    SwitchI32,
     Br,
     CBr,
     Ret,
