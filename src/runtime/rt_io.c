@@ -5,6 +5,7 @@
 // Links: docs/codemap.md
 
 #include "rt_internal.h"
+#include "rt_format.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -89,7 +90,9 @@ void rt_print_i64(int64_t v)
  */
 void rt_print_f64(double v)
 {
-    printf("%g", v);
+    char buf[64];
+    rt_format_f64(v, buf, sizeof(buf));
+    fputs(buf, stdout);
 }
 
 /**

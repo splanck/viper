@@ -38,7 +38,7 @@ L20:
   br L30
 L30:
   .loc 1 3 10
-  %t4 = call @rt_floor(1.9)
+  %t4 = call @rt_floor(1.8999999999999999)
   .loc 1 3 4
   call @rt_print_f64(%t4)
   .loc 1 3 4
@@ -49,7 +49,7 @@ L30:
   br L40
 L40:
   .loc 1 4 10
-  %t6 = call @rt_ceil(1.1)
+  %t6 = call @rt_ceil(1.1000000000000001)
   .loc 1 4 4
   call @rt_print_f64(%t6)
   .loc 1 4 4
