@@ -60,4 +60,25 @@ struct Instr
     il::support::SourceLoc loc;
 };
 
+/// @brief Access the scrutinee operand of a switch instruction.
+const Value &switchScrutinee(const Instr &instr);
+
+/// @brief Retrieve the default branch label for a switch instruction.
+const std::string &switchDefaultLabel(const Instr &instr);
+
+/// @brief Retrieve the default branch arguments for a switch instruction.
+const std::vector<Value> &switchDefaultArgs(const Instr &instr);
+
+/// @brief Count the number of explicit case arms in a switch instruction.
+size_t switchCaseCount(const Instr &instr);
+
+/// @brief Access the value guarding the @p index-th case arm.
+const Value &switchCaseValue(const Instr &instr, size_t index);
+
+/// @brief Access the branch label for the @p index-th case arm.
+const std::string &switchCaseLabel(const Instr &instr, size_t index);
+
+/// @brief Access the branch arguments for the @p index-th case arm.
+const std::vector<Value> &switchCaseArgs(const Instr &instr, size_t index);
+
 } // namespace il::core

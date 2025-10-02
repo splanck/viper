@@ -281,32 +281,57 @@ Expected<void> verifyOpcodeSignature_impl(const Function &fn,
         return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, ss.str()))};
     }
 
-    if (instr.labels.size() != info.numSuccessors)
+    const bool variadicSucc = isVariadicSuccessorCount(info.numSuccessors);
+    if (variadicSucc)
     {
-        std::ostringstream ss;
-        ss << "expected " << static_cast<unsigned>(info.numSuccessors) << " successor";
-        if (info.numSuccessors != 1)
-            ss << 's';
-        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, ss.str()))};
+        if (instr.labels.empty())
+        {
+            std::ostringstream ss;
+            ss << "expected at least 1 successor";
+            return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, ss.str()))};
+        }
+    }
+    else
+    {
+        if (instr.labels.size() != info.numSuccessors)
+        {
+            std::ostringstream ss;
+            ss << "expected " << static_cast<unsigned>(info.numSuccessors) << " successor";
+            if (info.numSuccessors != 1)
+                ss << 's';
+            return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, ss.str()))};
+        }
     }
 
-    if (instr.brArgs.size() > info.numSuccessors)
+    if (variadicSucc)
     {
-        std::ostringstream ss;
-        ss << "expected at most " << static_cast<unsigned>(info.numSuccessors)
-           << " branch argument bundle";
-        if (info.numSuccessors != 1)
-            ss << 's';
-        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, ss.str()))};
+        if (!instr.brArgs.empty() && instr.brArgs.size() != instr.labels.size())
+        {
+            std::ostringstream ss;
+            ss << "expected branch argument bundle per successor or none";
+            return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, ss.str()))};
+        }
     }
-    if (!instr.brArgs.empty() && instr.brArgs.size() != info.numSuccessors)
+    else
     {
-        std::ostringstream ss;
-        ss << "expected " << static_cast<unsigned>(info.numSuccessors) << " branch argument bundle";
-        if (info.numSuccessors != 1)
-            ss << 's';
-        ss << ", or none";
-        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, ss.str()))};
+        if (instr.brArgs.size() > info.numSuccessors)
+        {
+            std::ostringstream ss;
+            ss << "expected at most " << static_cast<unsigned>(info.numSuccessors)
+               << " branch argument bundle";
+            if (info.numSuccessors != 1)
+                ss << 's';
+            return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, ss.str()))};
+        }
+        if (!instr.brArgs.empty() && instr.brArgs.size() != info.numSuccessors)
+        {
+            std::ostringstream ss;
+            ss << "expected " << static_cast<unsigned>(info.numSuccessors) << " branch argument bundle";
+            if (info.numSuccessors != 1)
+                ss << 's';
+            ss << ", or none";
+            return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, ss.str()))};
+        }
     }
 
     return {};

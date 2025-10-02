@@ -174,6 +174,23 @@ void printCBrOperands(const Instr &instr, std::ostream &os)
     }
 }
 
+void printSwitchI32Operands(const Instr &instr, std::ostream &os)
+{
+    if (instr.operands.empty() || instr.labels.empty())
+        return;
+
+    os << ' ' << il::core::toString(switchScrutinee(instr));
+    os << ", ";
+    printCaretBranchTarget(instr, 0, os);
+
+    const size_t caseCount = switchCaseCount(instr);
+    for (size_t idx = 0; idx < caseCount; ++idx)
+    {
+        os << ", " << il::core::toString(switchCaseValue(instr, idx)) << " -> ";
+        printCaretBranchTarget(instr, idx + 1, os);
+    }
+}
+
 const Formatter &formatterFor(Opcode op)
 {
     static const auto formatters = []
@@ -191,6 +208,8 @@ const Formatter &formatterFor(Opcode op)
         { printBrOperands(instr, os); };
         table[toIndex(Opcode::CBr)] = [](const Instr &instr, std::ostream &os)
         { printCBrOperands(instr, os); };
+        table[toIndex(Opcode::SwitchI32)] = [](const Instr &instr, std::ostream &os)
+        { printSwitchI32Operands(instr, os); };
         table[toIndex(Opcode::Load)] = [](const Instr &instr, std::ostream &os)
         { printLoadOperands(instr, os); };
         table[toIndex(Opcode::Store)] = [](const Instr &instr, std::ostream &os)

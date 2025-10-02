@@ -77,6 +77,13 @@ std::vector<const BasicBlock *> gatherSuccessors(
                     successors.push_back(it->second);
             }
             break;
+        case Opcode::SwitchI32:
+            for (size_t idx = 0; idx < terminator.labels.size(); ++idx)
+            {
+                if (auto it = blockMap.find(terminator.labels[idx]); it != blockMap.end())
+                    successors.push_back(it->second);
+            }
+            break;
         case Opcode::ResumeLabel:
             if (!terminator.labels.empty())
             {
@@ -102,6 +109,7 @@ bool isPotentialFaultingOpcode(Opcode op)
         case Opcode::ResumeLabel:
         case Opcode::Br:
         case Opcode::CBr:
+        case Opcode::SwitchI32:
         case Opcode::Ret:
             return false;
         default:

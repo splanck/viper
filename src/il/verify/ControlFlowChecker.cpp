@@ -221,6 +221,7 @@ bool isTerminator(Opcode op)
     {
         case Opcode::Br:
         case Opcode::CBr:
+        case Opcode::SwitchI32:
         case Opcode::Ret:
         case Opcode::Trap:
         case Opcode::TrapFromErr:

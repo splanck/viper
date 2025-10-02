@@ -41,6 +41,7 @@ bool isTerminatorForEh(Opcode op)
     {
         case Opcode::Br:
         case Opcode::CBr:
+        case Opcode::SwitchI32:
         case Opcode::Ret:
         case Opcode::Trap:
         case Opcode::TrapFromErr:
@@ -91,6 +92,13 @@ std::vector<const BasicBlock *> gatherSuccessors(
             }
             break;
         case Opcode::CBr:
+            for (size_t idx = 0; idx < terminator.labels.size(); ++idx)
+            {
+                if (auto it = blockMap.find(terminator.labels[idx]); it != blockMap.end())
+                    successors.push_back(it->second);
+            }
+            break;
+        case Opcode::SwitchI32:
             for (size_t idx = 0; idx < terminator.labels.size(); ++idx)
             {
                 if (auto it = blockMap.find(terminator.labels[idx]); it != blockMap.end())
