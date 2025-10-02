@@ -75,6 +75,9 @@ Trace output is identical across platforms. All numbers use the C locale with
 booleans printed as `0` or `1`, integers in base‑10, and floating-point values
 formatted using `%.17g`. Line endings are normalized to `\n` even on Windows.
 
+At process start the runtime sets `LC_NUMERIC` to `"C"` to ensure numeric
+parsing and printing stay deterministic regardless of the host locale.
+
 ### Recursion
 
 The interpreter allocates a fresh frame for each call. Recursive functions thus
