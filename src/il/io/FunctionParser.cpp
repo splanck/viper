@@ -307,6 +307,14 @@ Expected<void> parseFunction(std::istream &is, std::string &header, ParserState 
         if (!instr)
             return instr;
     }
+    if (st.curFn)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": unexpected end of file; missing '}'";
+        st.curFn = nullptr;
+        st.curBB = nullptr;
+        return Expected<void>{makeError({}, oss.str())};
+    }
     if (!st.pendingBrs.empty())
     {
         const auto &unresolved = st.pendingBrs.front();
