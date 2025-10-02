@@ -23,6 +23,8 @@ std::string_view diagCodeToPrefix(il::verify::VerifyDiagCode code)
             return "verify.eh.unreleased";
         case VerifyDiagCode::EhResumeTokenMissing:
             return "verify.eh.resume_token_missing";
+        case VerifyDiagCode::EhResumeLabelInvalidTarget:
+            return "verify.eh.resume_label_target";
     }
     return {};
 }
