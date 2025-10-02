@@ -349,6 +349,12 @@ function(viper_add_il_invalid_tests)
     -DFILE=${_VIPER_INVALID_EH_DIR}/resume_label_join_without_token.il
     -DEXPECT_FILE=${_VIPER_INVALID_EH_DIR}/resume_label_join_without_token.expected
     -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
+  viper_add_ctest(il_verify_invalid_eh_resume_label_non_postdom
+    ${CMAKE_COMMAND}
+    -DIL_VERIFY=${IL_VERIFY}
+    -DFILE=${_VIPER_INVALID_EH_DIR}/resume_label_non_postdom.il
+    -DEXPECT_FILE=${_VIPER_INVALID_EH_DIR}/resume_label_non_postdom.expected
+    -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
 endfunction()
 
 function(viper_add_il_liveness_tests)
