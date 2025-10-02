@@ -425,6 +425,19 @@ Conditional branch on an `i1` value.
 cbr %cond, then, else
 ```
 
+##### `switch.i32`
+Multi-way branch on an `i32` scrutinee with an explicit default.
+
+```text
+switch.i32 %scrutinee, ^default, 1 -> ^case_one, 2 -> ^case_two
+```
+
+The first operand is the `i32` value to test. The first label after the operand
+is the mandatory default target, written using the caret form (e.g.
+`^default(args?)`). Subsequent entries pair a distinct 32-bit integer constant
+with a branch target using `value -> ^label(args?)`. When no case matches, the
+default label is taken. Each target may optionally supply block arguments.
+
 ##### `ret`
 Return from the current function.
 

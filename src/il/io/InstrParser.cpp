@@ -194,35 +194,61 @@ Expected<void> validateShape_E(const Instr &in, ParserState &st)
             break;
     }
 
-    if (in.labels.size() != info.numSuccessors)
+    const bool variadicSucc = il::core::isVariadicSuccessorCount(info.numSuccessors);
+    if (variadicSucc)
     {
-        std::ostringstream oss;
-        oss << "line " << st.lineNo << ": " << info.name << " expects "
-            << static_cast<unsigned>(info.numSuccessors) << " label";
-        if (info.numSuccessors != 1)
-            oss << 's';
-        return Expected<void>{makeError(in.loc, oss.str())};
+        if (in.labels.empty())
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": " << info.name << " expects at least 1 label";
+            return Expected<void>{makeError(in.loc, oss.str())};
+        }
+    }
+    else
+    {
+        if (in.labels.size() != info.numSuccessors)
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": " << info.name << " expects "
+                << static_cast<unsigned>(info.numSuccessors) << " label";
+            if (info.numSuccessors != 1)
+                oss << 's';
+            return Expected<void>{makeError(in.loc, oss.str())};
+        }
     }
 
-    if (in.brArgs.size() > info.numSuccessors)
+    if (variadicSucc)
     {
-        std::ostringstream oss;
-        oss << "line " << st.lineNo << ": " << info.name << " expects at most "
-            << static_cast<unsigned>(info.numSuccessors) << " branch argument list";
-        if (info.numSuccessors != 1)
-            oss << 's';
-        return Expected<void>{makeError(in.loc, oss.str())};
+        if (!in.brArgs.empty() && in.brArgs.size() != in.labels.size())
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": " << info.name
+                << " expects branch arguments per label or none";
+            return Expected<void>{makeError(in.loc, oss.str())};
+        }
     }
-
-    if (!in.brArgs.empty() && in.brArgs.size() != info.numSuccessors)
+    else
     {
-        std::ostringstream oss;
-        oss << "line " << st.lineNo << ": " << info.name << " expects "
-            << static_cast<unsigned>(info.numSuccessors) << " branch argument list";
-        if (info.numSuccessors != 1)
-            oss << 's';
-        oss << ", or none";
-        return Expected<void>{makeError(in.loc, oss.str())};
+        if (in.brArgs.size() > info.numSuccessors)
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": " << info.name << " expects at most "
+                << static_cast<unsigned>(info.numSuccessors) << " branch argument list";
+            if (info.numSuccessors != 1)
+                oss << 's';
+            return Expected<void>{makeError(in.loc, oss.str())};
+        }
+
+        if (!in.brArgs.empty() && in.brArgs.size() != info.numSuccessors)
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": " << info.name << " expects "
+                << static_cast<unsigned>(info.numSuccessors) << " branch argument list";
+            if (info.numSuccessors != 1)
+                oss << 's';
+            oss << ", or none";
+            return Expected<void>{makeError(in.loc, oss.str())};
+        }
     }
 
     return {};
@@ -464,6 +490,120 @@ Expected<void> parseBranchTargetsFromString(const std::string &text,
     return {};
 }
 
+Expected<void> parseSwitchI32Operands(const std::string &text, Instr &in, ParserState &st)
+{
+    std::string remaining = trim(text);
+    const char *mnemonic = getOpcodeInfo(in.op).name;
+    if (remaining.empty())
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": malformed " << mnemonic;
+        return Expected<void>{makeError(in.loc, oss.str())};
+    }
+
+    bool parsingDefault = true;
+    while (!remaining.empty())
+    {
+        size_t split = remaining.size();
+        size_t depth = 0;
+        for (size_t pos = 0; pos < remaining.size(); ++pos)
+        {
+            char c = remaining[pos];
+            if (c == '(')
+                ++depth;
+            else if (c == ')')
+            {
+                if (depth == 0)
+                {
+                    std::ostringstream oss;
+                    oss << "line " << st.lineNo << ": mismatched ')";
+                    return Expected<void>{makeError(in.loc, oss.str())};
+                }
+                --depth;
+            }
+            else if (c == ',' && depth == 0)
+            {
+                split = pos;
+                break;
+            }
+        }
+
+        std::string segment = trim(remaining.substr(0, split));
+        if (segment.empty())
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": malformed " << mnemonic;
+            return Expected<void>{makeError(in.loc, oss.str())};
+        }
+
+        if (parsingDefault)
+        {
+            std::vector<Value> args;
+            std::string label;
+            auto parsed = parseBranchTarget(segment, in, st, label, args);
+            if (!parsed)
+                return parsed;
+            size_t argCount = args.size();
+            in.labels.push_back(label);
+            in.brArgs.push_back(std::move(args));
+            auto check = checkBlockArgCount(in, st, label, argCount);
+            if (!check)
+                return check;
+            parsingDefault = false;
+        }
+        else
+        {
+            const size_t arrow = segment.find("->");
+            if (arrow == std::string::npos)
+            {
+                std::ostringstream oss;
+                oss << "line " << st.lineNo << ": malformed " << mnemonic;
+                return Expected<void>{makeError(in.loc, oss.str())};
+            }
+            std::string valueText = trim(segment.substr(0, arrow));
+            std::string targetText = trim(segment.substr(arrow + 2));
+            if (valueText.empty() || targetText.empty())
+            {
+                std::ostringstream oss;
+                oss << "line " << st.lineNo << ": malformed " << mnemonic;
+                return Expected<void>{makeError(in.loc, oss.str())};
+            }
+
+            auto caseValue = parseValue_E(valueText, st);
+            if (!caseValue)
+                return Expected<void>{caseValue.error()};
+            in.operands.push_back(std::move(caseValue.value()));
+
+            std::vector<Value> args;
+            std::string label;
+            auto parsed = parseBranchTarget(targetText, in, st, label, args);
+            if (!parsed)
+                return parsed;
+            size_t argCount = args.size();
+            in.labels.push_back(label);
+            in.brArgs.push_back(std::move(args));
+            auto check = checkBlockArgCount(in, st, label, argCount);
+            if (!check)
+                return check;
+        }
+
+        if (split < remaining.size())
+            remaining = trim(remaining.substr(split + 1));
+        else
+            break;
+    }
+
+    if (parsingDefault)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": malformed " << mnemonic;
+        return Expected<void>{makeError(in.loc, oss.str())};
+    }
+
+    in.type = Type(Type::Kind::Void);
+    return {};
+}
+
 /// @brief Parse operands based on opcode metadata-driven descriptions.
 Expected<void> parseWithMetadata(Opcode opcode, const std::string &rest, Instr &in, ParserState &st)
 {
@@ -545,6 +685,16 @@ Expected<void> parseWithMetadata(Opcode opcode, const std::string &rest, Instr &
                 std::getline(ss, remainder);
                 remainder = trim(remainder);
                 auto parsed = parseBranchTargetsFromString(remainder, branchCount, in, st);
+                if (!parsed)
+                    return parsed;
+                return {};
+            }
+            case OperandParseKind::Switch:
+            {
+                std::string remainder;
+                std::getline(ss, remainder);
+                remainder = trim(remainder);
+                auto parsed = parseSwitchI32Operands(remainder, in, st);
                 if (!parsed)
                     return parsed;
                 return {};
