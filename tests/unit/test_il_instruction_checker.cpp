@@ -49,6 +49,7 @@ int main()
     Instr cn;
     cn.result = 5u;
     cn.op = Opcode::ConstNull;
+    cn.type = Type(Type::Kind::Ptr);
 
     ok = verifyInstruction(fn, bb, cn, externs, funcs, types, err);
     assert(ok);
