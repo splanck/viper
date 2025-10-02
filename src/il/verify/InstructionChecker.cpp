@@ -725,7 +725,20 @@ Expected<void> checkConstStr_E(const Function &fn,
 /// @return Always empty because ConstNull has no failure modes.
 Expected<void> checkConstNull_E(const Instr &instr, TypeInference &types)
 {
-    types.recordResult(instr, Type(Type::Kind::Ptr));
+    Type resultType = instr.type;
+    switch (resultType.kind)
+    {
+        case Type::Kind::Ptr:
+        case Type::Kind::Str:
+        case Type::Kind::Error:
+        case Type::Kind::ResumeTok:
+            break;
+        default:
+            resultType = Type(Type::Kind::Ptr);
+            break;
+    }
+
+    types.recordResult(instr, resultType);
     return {};
 }
 

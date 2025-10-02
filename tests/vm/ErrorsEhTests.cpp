@@ -150,7 +150,7 @@ Module buildResumeLabelModule()
     return module;
 }
 
-Module buildTrapErrRoundTripModule()
+Module buildErrGetKindModule()
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -184,6 +184,144 @@ Module buildTrapErrRoundTripModule()
     ret.op = Opcode::Ret;
     ret.type = Type(Type::Kind::Void);
     ret.operands.push_back(Value::temp(*getKind.result));
+    entry.instructions.push_back(ret);
+    entry.terminated = true;
+
+    return module;
+}
+
+Module buildErrGetCodeModule()
+{
+    Module module;
+    il::build::IRBuilder builder(module);
+    auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
+    auto &entry = builder.addBlock(fn, "entry");
+    builder.setInsertPoint(entry);
+
+    Instr makeStr;
+    makeStr.result = builder.reserveTempId();
+    makeStr.op = Opcode::ConstStr;
+    makeStr.type = Type(Type::Kind::Str);
+    makeStr.operands.push_back(Value::constStr("io_error"));
+    entry.instructions.push_back(makeStr);
+
+    Instr makeErr;
+    makeErr.result = builder.reserveTempId();
+    makeErr.op = Opcode::TrapErr;
+    makeErr.type = Type(Type::Kind::Error);
+    makeErr.operands.push_back(Value::constInt(static_cast<long long>(il::vm::ErrCode::Err_IOError)));
+    makeErr.operands.push_back(Value::temp(*makeStr.result));
+    entry.instructions.push_back(makeErr);
+
+    Instr nullErr;
+    nullErr.result = builder.reserveTempId();
+    nullErr.op = Opcode::ConstNull;
+    nullErr.type = Type(Type::Kind::Error);
+    entry.instructions.push_back(nullErr);
+
+    Instr getCode;
+    getCode.result = builder.reserveTempId();
+    getCode.op = Opcode::ErrGetCode;
+    getCode.type = Type(Type::Kind::I32);
+    getCode.operands.push_back(Value::temp(*nullErr.result));
+    entry.instructions.push_back(getCode);
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands.push_back(Value::temp(*getCode.result));
+    entry.instructions.push_back(ret);
+    entry.terminated = true;
+
+    return module;
+}
+
+Module buildErrGetIpModule()
+{
+    Module module;
+    il::build::IRBuilder builder(module);
+    auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
+    auto &entry = builder.addBlock(fn, "entry");
+    builder.setInsertPoint(entry);
+
+    Instr makeStr;
+    makeStr.result = builder.reserveTempId();
+    makeStr.op = Opcode::ConstStr;
+    makeStr.type = Type(Type::Kind::Str);
+    makeStr.operands.push_back(Value::constStr("io_error"));
+    entry.instructions.push_back(makeStr);
+
+    Instr makeErr;
+    makeErr.result = builder.reserveTempId();
+    makeErr.op = Opcode::TrapErr;
+    makeErr.type = Type(Type::Kind::Error);
+    makeErr.operands.push_back(Value::constInt(static_cast<long long>(il::vm::ErrCode::Err_IOError)));
+    makeErr.operands.push_back(Value::temp(*makeStr.result));
+    entry.instructions.push_back(makeErr);
+
+    Instr nullErr;
+    nullErr.result = builder.reserveTempId();
+    nullErr.op = Opcode::ConstNull;
+    nullErr.type = Type(Type::Kind::Error);
+    entry.instructions.push_back(nullErr);
+
+    Instr getIp;
+    getIp.result = builder.reserveTempId();
+    getIp.op = Opcode::ErrGetIp;
+    getIp.type = Type(Type::Kind::I64);
+    getIp.operands.push_back(Value::temp(*nullErr.result));
+    entry.instructions.push_back(getIp);
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands.push_back(Value::temp(*getIp.result));
+    entry.instructions.push_back(ret);
+    entry.terminated = true;
+
+    return module;
+}
+
+Module buildErrGetLineModule()
+{
+    Module module;
+    il::build::IRBuilder builder(module);
+    auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
+    auto &entry = builder.addBlock(fn, "entry");
+    builder.setInsertPoint(entry);
+
+    Instr makeStr;
+    makeStr.result = builder.reserveTempId();
+    makeStr.op = Opcode::ConstStr;
+    makeStr.type = Type(Type::Kind::Str);
+    makeStr.operands.push_back(Value::constStr("io_error"));
+    entry.instructions.push_back(makeStr);
+
+    Instr makeErr;
+    makeErr.result = builder.reserveTempId();
+    makeErr.op = Opcode::TrapErr;
+    makeErr.type = Type(Type::Kind::Error);
+    makeErr.operands.push_back(Value::constInt(static_cast<long long>(il::vm::ErrCode::Err_IOError)));
+    makeErr.operands.push_back(Value::temp(*makeStr.result));
+    entry.instructions.push_back(makeErr);
+
+    Instr nullErr;
+    nullErr.result = builder.reserveTempId();
+    nullErr.op = Opcode::ConstNull;
+    nullErr.type = Type(Type::Kind::Error);
+    entry.instructions.push_back(nullErr);
+
+    Instr getLine;
+    getLine.result = builder.reserveTempId();
+    getLine.op = Opcode::ErrGetLine;
+    getLine.type = Type(Type::Kind::I32);
+    getLine.operands.push_back(Value::temp(*nullErr.result));
+    entry.instructions.push_back(getLine);
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands.push_back(Value::temp(*getLine.result));
     entry.instructions.push_back(ret);
     entry.terminated = true;
 
@@ -274,10 +412,31 @@ int main()
     }
 
     {
-        Module module = buildTrapErrRoundTripModule();
+        Module module = buildErrGetKindModule();
         il::vm::VM vm(module);
         const int64_t exitCode = vm.run();
         assert(exitCode == static_cast<int64_t>(static_cast<int32_t>(il::vm::TrapKind::IOError)));
+    }
+
+    {
+        Module module = buildErrGetCodeModule();
+        il::vm::VM vm(module);
+        const int64_t exitCode = vm.run();
+        assert(exitCode == static_cast<int64_t>(static_cast<int32_t>(il::vm::ErrCode::Err_IOError)));
+    }
+
+    {
+        Module module = buildErrGetIpModule();
+        il::vm::VM vm(module);
+        const int64_t exitCode = vm.run();
+        assert(exitCode == 0);
+    }
+
+    {
+        Module module = buildErrGetLineModule();
+        il::vm::VM vm(module);
+        const int64_t exitCode = vm.run();
+        assert(exitCode == -1);
     }
 
     {
