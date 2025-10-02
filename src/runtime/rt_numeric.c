@@ -4,6 +4,10 @@
 // Ownership/Lifetime: None.
 // Links: docs/specs/numerics.md
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
+
 #include "rt_numeric.h"
 #include "rt.hpp"
 
@@ -12,10 +16,16 @@
 #include <float.h>
 #include <inttypes.h>
 #include <limits.h>
+#include <locale.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+#if defined(__APPLE__)
+#include <xlocale.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -154,6 +164,127 @@ extern "C" {
         return ch >= '0' && ch <= '9';
     }
 
+    static int rt_ascii_tolower(int ch)
+    {
+        if (ch >= 'A' && ch <= 'Z')
+            return ch - 'A' + 'a';
+        return ch;
+    }
+
+    static bool rt_match_token_ci(const char *start, const char *token, const char **out_end)
+    {
+        if (!start || !token)
+            return false;
+
+        size_t index = 0;
+        while (token[index] != '\0')
+        {
+            const unsigned char ch = (unsigned char)start[index];
+            if (ch == '\0')
+                return false;
+            if (rt_ascii_tolower((int)ch) != token[index])
+                return false;
+            ++index;
+        }
+
+        if (out_end)
+            *out_end = start + index;
+        return true;
+    }
+
+    static bool rt_parse_special_constant(const char *start, char **out_end, double *out_value)
+    {
+        if (!start || !out_value)
+            return false;
+
+        const char *cursor = start;
+        bool is_negative = false;
+        if (*cursor == '+' || *cursor == '-')
+        {
+            is_negative = (*cursor == '-');
+            ++cursor;
+        }
+
+        const char *matched_end = NULL;
+        if (rt_match_token_ci(cursor, "nan", &matched_end))
+        {
+            cursor = matched_end;
+            double value = nan("");
+            if (is_negative)
+                value = -value;
+            if (out_end)
+                *out_end = (char *)cursor;
+            *out_value = value;
+            return true;
+        }
+
+        if (rt_match_token_ci(cursor, "inf", &matched_end))
+        {
+            cursor = matched_end;
+            const char *extended = NULL;
+            if (rt_match_token_ci(cursor, "inity", &extended))
+                cursor = extended;
+
+            double value = is_negative ? -INFINITY : INFINITY;
+            if (out_end)
+                *out_end = (char *)cursor;
+            *out_value = value;
+            return true;
+        }
+
+        return false;
+    }
+
+#if defined(_WIN32)
+    static bool rt_strtod_c_locale(const char *input, char **out_end, double *out_value)
+    {
+        if (!input || !out_value)
+            return false;
+
+        _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
+        if (!c_locale)
+            return false;
+
+        errno = 0;
+        char *endptr = NULL;
+        double value = _strtod_l(input, &endptr, c_locale);
+        _free_locale(c_locale);
+
+        if (endptr == input)
+            return false;
+
+        if (out_end)
+            *out_end = endptr;
+        *out_value = value;
+        return true;
+    }
+#else
+    static bool rt_strtod_c_locale(const char *input, char **out_end, double *out_value)
+    {
+        if (!input || !out_value)
+            return false;
+
+        locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
+        if (!c_locale)
+            return false;
+
+        locale_t previous = uselocale(c_locale);
+        errno = 0;
+        char *endptr = NULL;
+        double value = strtod(input, &endptr);
+        uselocale(previous);
+        freelocale(c_locale);
+
+        if (endptr == input)
+            return false;
+
+        if (out_end)
+            *out_end = endptr;
+        *out_value = value;
+        return true;
+    }
+#endif
+
     double rt_val_to_double(const char *s, bool *ok)
     {
         if (!ok)
@@ -175,8 +306,15 @@ extern "C" {
         const char *parse = (const char *)p;
         if (*parse == '\0')
         {
-            *ok = true;
+            *ok = false;
             return 0.0;
+        }
+
+        double special_value = 0.0;
+        if (rt_parse_special_constant(parse, NULL, &special_value))
+        {
+            *ok = false;
+            return special_value;
         }
 
         if (*parse == '+' || *parse == '-')
@@ -186,13 +324,13 @@ extern "C" {
             {
                 if (!rt_is_digit_char(parse[2]))
                 {
-                    *ok = true;
+                    *ok = false;
                     return 0.0;
                 }
             }
             else if (!rt_is_digit_char(next))
             {
-                *ok = true;
+                *ok = false;
                 return 0.0;
             }
         }
@@ -200,22 +338,27 @@ extern "C" {
         {
             if (!rt_is_digit_char(parse[1]))
             {
-                *ok = true;
+                *ok = false;
                 return 0.0;
             }
         }
         else if (!rt_is_digit_char(*parse))
         {
-            *ok = true;
+            *ok = false;
             return 0.0;
         }
 
-        errno = 0;
         char *end = NULL;
-        double value = strtod(parse, &end);
-        if (end == parse)
+        double value = 0.0;
+        if (!rt_strtod_c_locale(parse, &end, &value))
         {
-            *ok = true;
+            *ok = false;
+            return 0.0;
+        }
+
+        if (end && *end == ',')
+        {
+            *ok = false;
             return 0.0;
         }
 

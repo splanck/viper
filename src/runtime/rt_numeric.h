@@ -56,8 +56,8 @@ extern "C" {
 
     /// @brief Parse C string @p s using BASIC VAL semantics.
     /// @param s Null-terminated input string; must not be NULL.
-    /// @param ok Output flag cleared on overflow or invalid buffer pointer.
-    /// @return Parsed DOUBLE value or 0 when no digits were consumed.
+    /// @param ok Output flag cleared on overflow or invalid input format.
+    /// @return Parsed DOUBLE value; returns 0 when no digits were consumed.
     double rt_val_to_double(const char *s, bool *ok);
 
     /// @brief Format DOUBLE @p x into @p out using round-trip precision.
