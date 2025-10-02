@@ -9,6 +9,7 @@
 #include "il/core/Module.hpp"
 #include "il/verify/DiagSink.hpp"
 #include "il/verify/ExternVerifier.hpp"
+#include "il/verify/EhVerifier.hpp"
 #include "il/verify/FunctionVerifier.hpp"
 #include "il/verify/GlobalVerifier.hpp"
 #include "support/diag_expected.hpp"
@@ -56,6 +57,10 @@ Expected<void> Verifier::verify(const Module &m)
 
     FunctionVerifier functionVerifier(externVerifier.externs());
     if (auto result = functionVerifier.run(m, sink); !result)
+        return appendWarnings(result, sink);
+
+    EhVerifier ehVerifier;
+    if (auto result = ehVerifier.run(m, sink); !result)
         return appendWarnings(result, sink);
 
     return {};
