@@ -12,6 +12,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -838,7 +839,11 @@ double rt_val(rt_string s)
     bool ok = true;
     double value = rt_val_to_double(s->data, &ok);
     if (!ok)
-        rt_trap("rt_val: overflow");
+    {
+        if (!isfinite(value))
+            rt_trap("rt_val: overflow");
+        return value;
+    }
     return value;
 }
 
