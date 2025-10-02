@@ -297,6 +297,22 @@ function(viper_add_il_invalid_tests)
     -DFILE=${_VIPER_NEGATIVE_DIR}/narrow_cast_nochk.il
     -DEXPECT_FILE=${_VIPER_NEGATIVE_DIR}/narrow_cast_nochk.expected
     -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
+
+  set(_VIPER_INVALID_EH_DIR ${CMAKE_SOURCE_DIR}/tests/il/invalid_eh)
+
+  viper_add_ctest(il_verify_invalid_eh_underflow
+    ${CMAKE_COMMAND}
+    -DIL_VERIFY=${IL_VERIFY}
+    -DFILE=${_VIPER_INVALID_EH_DIR}/pop_underflow.il
+    -DEXPECT_FILE=${_VIPER_INVALID_EH_DIR}/pop_underflow.expected
+    -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
+
+  viper_add_ctest(il_verify_invalid_eh_leak
+    ${CMAKE_COMMAND}
+    -DIL_VERIFY=${IL_VERIFY}
+    -DFILE=${_VIPER_INVALID_EH_DIR}/push_leak_branch.il
+    -DEXPECT_FILE=${_VIPER_INVALID_EH_DIR}/push_leak_branch.expected
+    -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
 endfunction()
 
 function(viper_add_il_liveness_tests)

@@ -147,9 +147,6 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
         if (auto result = verifyBlock(fn, bb, blockMap, temps, sink); !result)
             return result;
 
-    if (auto result = checkEhStackBalance(fn, blockMap); !result)
-        return result;
-
     for (const auto &bb : fn.blocks)
     {
         for (const auto &instr : bb.instructions)
