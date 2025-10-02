@@ -10,9 +10,66 @@
 #include "rt.hpp"
 
 #include <sstream>
+#include <string_view>
 
 namespace il::vm
 {
+
+namespace
+{
+thread_local VmError tlsTrapError{};
+thread_local std::string tlsTrapMessage;
+thread_local bool tlsTrapValid = false;
+} // namespace
+
+VmError *vm_acquire_trap_token()
+{
+    if (auto *vm = VM::activeInstance())
+    {
+        vm->trapToken.error = {};
+        vm->trapToken.message.clear();
+        vm->trapToken.valid = true;
+        return &vm->trapToken.error;
+    }
+
+    tlsTrapError = {};
+    tlsTrapMessage.clear();
+    tlsTrapValid = true;
+    return &tlsTrapError;
+}
+
+const VmError *vm_current_trap_token()
+{
+    if (auto *vm = VM::activeInstance())
+    {
+        if (!vm->trapToken.valid)
+            return nullptr;
+        return &vm->trapToken.error;
+    }
+    if (!tlsTrapValid)
+        return nullptr;
+    return &tlsTrapError;
+}
+
+void vm_store_trap_token_message(std::string_view text)
+{
+    if (auto *vm = VM::activeInstance())
+    {
+        vm->trapToken.message.assign(text.begin(), text.end());
+        vm->trapToken.valid = true;
+        return;
+    }
+
+    tlsTrapMessage.assign(text.begin(), text.end());
+    tlsTrapValid = true;
+}
+
+std::string vm_current_trap_message()
+{
+    if (auto *vm = VM::activeInstance())
+        return vm->trapToken.message;
+    return tlsTrapMessage;
+}
 
 std::string vm_format_error(const VmError &error, const FrameInfo &frame)
 {
