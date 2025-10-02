@@ -191,7 +191,8 @@ Instr &IRBuilder::append(Instr instr)
 /// @return True when @p op ends the block (branch, conditional branch, return, trap).
 bool IRBuilder::isTerminator(Opcode op) const
 {
-    return op == Opcode::Br || op == Opcode::CBr || op == Opcode::Ret || op == Opcode::Trap;
+    return op == Opcode::Br || op == Opcode::CBr || op == Opcode::SwitchI32 || op == Opcode::Ret ||
+           op == Opcode::Trap;
 }
 
 /// @brief Materialize a string constant by referencing an existing global.

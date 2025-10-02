@@ -36,6 +36,13 @@ il::support::Expected<void> verifyCBr_E(
     const std::unordered_map<std::string, const il::core::BasicBlock *> &blockMap,
     TypeInference &types);
 
+il::support::Expected<void> verifySwitchI32_E(
+    const il::core::Function &fn,
+    const il::core::BasicBlock &bb,
+    const il::core::Instr &instr,
+    const std::unordered_map<std::string, const il::core::BasicBlock *> &blockMap,
+    TypeInference &types);
+
 il::support::Expected<void> verifyRet_E(const il::core::Function &fn,
                                         const il::core::BasicBlock &bb,
                                         const il::core::Instr &instr,

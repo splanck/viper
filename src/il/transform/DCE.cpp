@@ -115,7 +115,7 @@ void dce(Module &M)
                 B.params.erase(B.params.begin() + idx);
                 for (auto &PB : F.blocks)
                     for (auto &I : PB.instructions)
-                        if ((I.op == Opcode::Br || I.op == Opcode::CBr))
+                        if (I.op == Opcode::Br || I.op == Opcode::CBr || I.op == Opcode::SwitchI32)
                         {
                             for (std::size_t l = 0; l < I.labels.size(); ++l)
                                 if (I.labels[l] == B.label && I.brArgs.size() > l &&

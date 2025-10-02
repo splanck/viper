@@ -13,9 +13,11 @@
 #include "il/verify/DiagFormat.hpp"
 #include "il/verify/TypeInference.hpp"
 
+#include <limits>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 using namespace il::core;
@@ -107,6 +109,94 @@ Expected<void> verifyCBr_E(const Function &fn,
 
     return Expected<void>{
         makeError(instr.loc, formatInstrDiag(fn, bb, instr, "conditional branch mismatch"))};
+}
+
+Expected<void> verifySwitchI32_E(const Function &fn,
+                                 const BasicBlock &bb,
+                                 const Instr &instr,
+                                 const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                                 TypeInference &types)
+{
+    if (instr.operands.empty())
+    {
+        return Expected<void>{
+            makeError(instr.loc, formatInstrDiag(fn, bb, instr, "switch.i32 missing scrutinee"))};
+    }
+
+    if (types.valueType(switchScrutinee(instr)).kind != Type::Kind::I32)
+    {
+        return Expected<void>{
+            makeError(instr.loc, formatInstrDiag(fn, bb, instr, "switch.i32 scrutinee must be i32"))};
+    }
+
+    if (instr.labels.empty())
+    {
+        return Expected<void>{
+            makeError(instr.loc, formatInstrDiag(fn, bb, instr, "switch.i32 missing default"))};
+    }
+
+    const size_t caseCount = switchCaseCount(instr);
+    if (instr.operands.size() != caseCount + 1)
+    {
+        return Expected<void>{makeError(instr.loc,
+                                        formatInstrDiag(fn,
+                                                        bb,
+                                                        instr,
+                                                        "switch.i32 operands mismatch cases"))};
+    }
+
+    if (auto it = blockMap.find(switchDefaultLabel(instr)); it != blockMap.end())
+    {
+        const auto &args = switchDefaultArgs(instr);
+        if (auto result = verifyBranchArgs(fn, bb, instr, *it->second, &args, switchDefaultLabel(instr), types);
+            !result)
+            return result;
+    }
+
+    std::unordered_set<int32_t> seen;
+    seen.reserve(caseCount);
+
+    for (size_t idx = 0; idx < caseCount; ++idx)
+    {
+        const Value &caseValue = switchCaseValue(instr, idx);
+        if (caseValue.kind != Value::Kind::ConstInt)
+        {
+            return Expected<void>{makeError(instr.loc,
+                                            formatInstrDiag(fn,
+                                                            bb,
+                                                            instr,
+                                                            "switch.i32 case must be const i32"))};
+        }
+        if (caseValue.i64 < std::numeric_limits<int32_t>::min() ||
+            caseValue.i64 > std::numeric_limits<int32_t>::max())
+        {
+            return Expected<void>{makeError(instr.loc,
+                                            formatInstrDiag(fn,
+                                                            bb,
+                                                            instr,
+                                                            "switch.i32 case out of i32 range"))};
+        }
+
+        const int32_t key = static_cast<int32_t>(caseValue.i64);
+        if (!seen.insert(key).second)
+        {
+            return Expected<void>{makeError(instr.loc,
+                                            formatInstrDiag(fn,
+                                                            bb,
+                                                            instr,
+                                                            "duplicate switch.i32 case"))};
+        }
+
+        const std::string &label = switchCaseLabel(instr, idx);
+        auto it = blockMap.find(label);
+        if (it == blockMap.end())
+            continue;
+        const auto &args = switchCaseArgs(instr, idx);
+        if (auto result = verifyBranchArgs(fn, bb, instr, *it->second, &args, label, types); !result)
+            return result;
+    }
+
+    return {};
 }
 
 Expected<void> verifyRet_E(const Function &fn,
