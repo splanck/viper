@@ -10,6 +10,7 @@
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
+#include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
 #include "il/verify/ExceptionHandlerAnalysis.hpp"
 
@@ -26,6 +27,35 @@ il::support::Expected<void> EhVerifier::run(const Module &module, DiagSink &sink
     (void)sink;
     for (const auto &fn : module.functions)
     {
+        bool hasEhOps = false;
+        for (const auto &bb : fn.blocks)
+        {
+            for (const auto &instr : bb.instructions)
+            {
+                switch (instr.op)
+                {
+                    case Opcode::EhPush:
+                    case Opcode::EhPop:
+                    case Opcode::Trap:
+                    case Opcode::TrapFromErr:
+                    case Opcode::ResumeSame:
+                    case Opcode::ResumeNext:
+                    case Opcode::ResumeLabel:
+                        hasEhOps = true;
+                        break;
+                    default:
+                        break;
+                }
+                if (hasEhOps)
+                    break;
+            }
+            if (hasEhOps)
+                break;
+        }
+
+        if (!hasEhOps)
+            continue;
+
         std::unordered_map<std::string, const BasicBlock *> blockMap;
         blockMap.reserve(fn.blocks.size());
         for (const auto &bb : fn.blocks)
