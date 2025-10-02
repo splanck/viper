@@ -1240,8 +1240,8 @@ VM::ExecResult OpHandlers::handleUCmpGE(VM &vm,
 }
 
 /// @brief Interpret the `trunc1`/`zext1` opcodes that normalise between `i1` and `i64`.
-/// @note The operand is masked to the least-significant bit so the stored value is a
-///       canonical boolean per docs/il-guide.md#reference §Conversions.
+/// @note Non-zero inputs are canonicalised to `1` while zero becomes `0`, matching
+///       docs/il-guide.md#reference §Conversions for both truncation and extension.
 VM::ExecResult OpHandlers::handleTruncOrZext1(VM &vm,
                                               Frame &fr,
                                               const Instr &in,
@@ -1252,9 +1252,22 @@ VM::ExecResult OpHandlers::handleTruncOrZext1(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot value = vm.eval(fr, in.operands[0]);
-    value.i64 &= 1;
-    ops::storeResult(fr, in, value);
+    Slot operand = vm.eval(fr, in.operands[0]);
+    const bool truthy = operand.i64 != 0;
+
+    Slot result{};
+    switch (in.op)
+    {
+        case Opcode::Trunc1:
+        case Opcode::Zext1:
+            result.i64 = truthy ? 1 : 0;
+            break;
+        default:
+            result = operand;
+            break;
+    }
+
+    ops::storeResult(fr, in, result);
     return {};
 }
 
