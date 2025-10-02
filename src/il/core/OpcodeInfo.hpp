@@ -10,6 +10,7 @@
 #include <array>
 #include <cstdint>
 #include <limits>
+#include <vector>
 
 namespace il::core
 {
@@ -168,6 +169,15 @@ extern const std::array<OpcodeInfo, kNumOpcodes> kOpcodeTable;
 /// @param op Opcode to query.
 /// @return Reference to the metadata entry for @p op.
 const OpcodeInfo &getOpcodeInfo(Opcode op);
+
+/// @brief Enumerate all opcodes defined by the IL in declaration order.
+/// @return Vector containing every opcode exactly once.
+std::vector<Opcode> all_opcodes();
+
+/// @brief Retrieve the canonical mnemonic string for an opcode.
+/// @param op Opcode to translate into text.
+/// @return Lowercase mnemonic defined by the IL spec, empty if invalid.
+std::string opcode_mnemonic(Opcode op);
 
 /// @brief Determine whether @p value denotes a variadic operand upper bound.
 bool isVariadicOperandCount(uint8_t value);

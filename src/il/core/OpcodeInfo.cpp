@@ -8,6 +8,7 @@
 #include "il/core/OpcodeInfo.hpp"
 
 #include <string>
+#include <vector>
 
 namespace il::core
 {
@@ -58,6 +59,23 @@ const OpcodeInfo &getOpcodeInfo(Opcode op)
     return kOpcodeTable[static_cast<size_t>(op)];
 }
 
+std::vector<Opcode> all_opcodes()
+{
+    std::vector<Opcode> ops;
+    ops.reserve(kNumOpcodes);
+    for (size_t index = 0; index < kNumOpcodes; ++index)
+        ops.push_back(static_cast<Opcode>(index));
+    return ops;
+}
+
+std::string opcode_mnemonic(Opcode op)
+{
+    const size_t idx = static_cast<size_t>(op);
+    if (idx >= kOpcodeTable.size())
+        return "";
+    return kOpcodeTable[idx].name;
+}
+
 bool isVariadicOperandCount(uint8_t value)
 {
     return value == kVariadicOperandCount;
@@ -74,10 +92,7 @@ bool isVariadicOperandCount(uint8_t value)
  */
 std::string toString(Opcode op)
 {
-    const size_t idx = static_cast<size_t>(op);
-    if (idx >= kOpcodeTable.size())
-        return "";
-    return kOpcodeTable[idx].name;
+    return opcode_mnemonic(op);
 }
 
 } // namespace il::core
