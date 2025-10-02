@@ -7,6 +7,7 @@
 #include "rt_string.h"
 #include "rt_internal.h"
 #include "rt_numeric.h"
+#include "rt_format.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -748,7 +749,7 @@ rt_string rt_int_to_str(int64_t v)
 rt_string rt_f64_to_str(double v)
 {
     char buf[64];
-    rt_str_from_double(v, buf, sizeof(buf), NULL);
+    rt_format_f64(v, buf, sizeof(buf));
     return rt_string_from_bytes(buf, strlen(buf));
 }
 
@@ -765,7 +766,7 @@ rt_string rt_f64_to_str(double v)
 rt_string rt_str_d_alloc(double v)
 {
     char buf[64];
-    rt_str_from_double(v, buf, sizeof(buf), NULL);
+    rt_format_f64(v, buf, sizeof(buf));
     return rt_string_from_bytes(buf, strlen(buf));
 }
 
@@ -781,8 +782,8 @@ rt_string rt_str_d_alloc(double v)
  */
 rt_string rt_str_f_alloc(float v)
 {
-    char buf[32];
-    rt_str_from_float(v, buf, sizeof(buf), NULL);
+    char buf[64];
+    rt_format_f64((double)v, buf, sizeof(buf));
     return rt_string_from_bytes(buf, strlen(buf));
 }
 

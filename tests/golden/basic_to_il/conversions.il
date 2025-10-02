@@ -80,12 +80,12 @@ L50:
   cbr %t17, val_ok, val_fail
 L60:
   .loc 1 6 4
-  store f64, %t1, 1.9
+  store f64, %t1, 1.8999999999999999
   .loc 1 6 4
   br L70
 L70:
   .loc 1 7 4
-  store f64, %t0, -1.9
+  store f64, %t0, -1.8999999999999999
   .loc 1 7 4
   br L80
 L80:
@@ -137,7 +137,7 @@ val_nan:
   trap
 val_over:
   .loc 1 5 14
-  %t20 = cast.fp_to_si.rte.chk 1.797693134862316e+308
+  %t20 = cast.fp_to_si.rte.chk 1.7976931348623157e+308
   .loc 1 5 14
   trap
 }

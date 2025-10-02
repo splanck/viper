@@ -56,7 +56,7 @@ std::string toString(const Value &v)
         {
             std::ostringstream oss;
             oss.setf(std::ios::fmtflags(0), std::ios::floatfield);
-            oss << std::setprecision(std::numeric_limits<double>::digits10 + 1) << v.f64;
+            oss << std::setprecision(std::numeric_limits<double>::digits10 + 2) << v.f64;
             std::string s = oss.str();
             if (v.f64 == 0.0)
                 return "0.0";
