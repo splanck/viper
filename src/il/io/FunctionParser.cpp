@@ -280,7 +280,7 @@ Expected<void> parseFunction(std::istream &is, std::string &header, ParserState 
         {
             st.curFn = nullptr;
             st.curBB = nullptr;
-            return {};
+            break;
         }
         if (line.back() == ':')
         {
@@ -306,6 +306,13 @@ Expected<void> parseFunction(std::istream &is, std::string &header, ParserState 
         auto instr = parseInstructionShim_E(line, st);
         if (!instr)
             return instr;
+    }
+    if (!st.pendingBrs.empty())
+    {
+        const auto &unresolved = st.pendingBrs.front();
+        std::ostringstream oss;
+        oss << "line " << unresolved.line << ": unknown block '" << unresolved.label << "'";
+        return Expected<void>{makeError({}, oss.str())};
     }
     return {};
 }

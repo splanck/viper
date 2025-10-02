@@ -48,6 +48,11 @@ function(viper_add_il_core_tests)
   target_compile_definitions(test_il_parse_roundtrip PRIVATE PARSE_ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/tests/il/parse-roundtrip" SWITCH_GOLDEN="${CMAKE_SOURCE_DIR}/tests/golden/il_opt/switch_basic.il")
   viper_add_ctest(test_il_parse_roundtrip test_il_parse_roundtrip)
 
+  viper_add_test_exe(test_il_parse_unresolved_branch ${_VIPER_IL_UNIT_DIR}/test_il_parse_unresolved_branch.cpp)
+  target_link_libraries(test_il_parse_unresolved_branch PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+  target_compile_definitions(test_il_parse_unresolved_branch PRIVATE PARSE_ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/tests/il/parse-roundtrip")
+  viper_add_ctest(test_il_parse_unresolved_branch test_il_parse_unresolved_branch)
+
   viper_add_test_exe(test_il_parse_negative ${_VIPER_IL_UNIT_DIR}/test_il_parse_negative.cpp)
   target_link_libraries(test_il_parse_negative PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   target_compile_definitions(test_il_parse_negative PRIVATE BAD_DIR="${CMAKE_SOURCE_DIR}/tests/il/parse")
