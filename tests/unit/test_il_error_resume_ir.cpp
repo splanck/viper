@@ -33,9 +33,8 @@ int main()
     entry.instructions.push_back(push);
 
     Instr trap;
-    trap.op = Opcode::TrapKind;
+    trap.op = Opcode::Trap;
     trap.type = Type(Type::Kind::Void);
-    trap.operands.push_back(Value::constInt(0));
     entry.instructions.push_back(trap);
     entry.terminated = true;
 
@@ -69,7 +68,7 @@ int main()
     assert(builtEntry.instructions[0].op == Opcode::EhPush);
     assert(builtEntry.instructions[0].labels.size() == 1);
     assert(builtEntry.instructions[0].labels[0] == "handler");
-    assert(builtEntry.instructions[1].op == Opcode::TrapKind);
+    assert(builtEntry.instructions[1].op == Opcode::Trap);
 
     const BasicBlock &builtHandler = built.blocks[1];
     assert(builtHandler.params.size() == 2);

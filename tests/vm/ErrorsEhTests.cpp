@@ -6,6 +6,7 @@
 
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"
+#include "vm/err_bridge.hpp"
 
 #include <cassert>
 
@@ -148,6 +149,112 @@ Module buildResumeLabelModule()
 
     return module;
 }
+
+Module buildTrapErrRoundTripModule()
+{
+    Module module;
+    il::build::IRBuilder builder(module);
+    auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
+    auto &entry = builder.addBlock(fn, "entry");
+    builder.setInsertPoint(entry);
+
+    Instr makeStr;
+    makeStr.result = builder.reserveTempId();
+    makeStr.op = Opcode::ConstStr;
+    makeStr.type = Type(Type::Kind::Str);
+    makeStr.operands.push_back(Value::constStr("io_error"));
+    entry.instructions.push_back(makeStr);
+
+    Instr makeErr;
+    makeErr.result = builder.reserveTempId();
+    makeErr.op = Opcode::TrapErr;
+    makeErr.type = Type(Type::Kind::Error);
+    makeErr.operands.push_back(Value::constInt(static_cast<long long>(il::vm::ErrCode::Err_IOError)));
+    makeErr.operands.push_back(Value::temp(*makeStr.result));
+    entry.instructions.push_back(makeErr);
+
+    Instr getKind;
+    getKind.result = builder.reserveTempId();
+    getKind.op = Opcode::ErrGetKind;
+    getKind.type = Type(Type::Kind::I32);
+    getKind.operands.push_back(Value::temp(*makeErr.result));
+    entry.instructions.push_back(getKind);
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands.push_back(Value::temp(*getKind.result));
+    entry.instructions.push_back(ret);
+    entry.terminated = true;
+
+    return module;
+}
+
+Module buildTrapKindReadModule()
+{
+    Module module;
+    il::build::IRBuilder builder(module);
+    auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
+    fn.blocks.reserve(3);
+    auto &entry = builder.addBlock(fn, "entry");
+    auto &body = builder.addBlock(fn, "body");
+    auto &handler = builder.createBlock(
+        fn,
+        "handler",
+        {Param{"err", Type(Type::Kind::Error), 0}, Param{"tok", Type(Type::Kind::ResumeTok), 1}});
+
+    builder.setInsertPoint(entry);
+    Instr push;
+    push.op = Opcode::EhPush;
+    push.type = Type(Type::Kind::Void);
+    push.labels.push_back("handler");
+    entry.instructions.push_back(push);
+
+    Instr br;
+    br.op = Opcode::Br;
+    br.type = Type(Type::Kind::Void);
+    br.labels.push_back("body");
+    br.brArgs.push_back({});
+    entry.instructions.push_back(br);
+    entry.terminated = true;
+
+    builder.setInsertPoint(body);
+    Instr div;
+    div.result = builder.reserveTempId();
+    div.op = Opcode::SDivChk0;
+    div.type = Type(Type::Kind::I64);
+    div.operands.push_back(Value::constInt(1));
+    div.operands.push_back(Value::constInt(0));
+    body.instructions.push_back(div);
+
+    Instr retBody;
+    retBody.op = Opcode::Ret;
+    retBody.type = Type(Type::Kind::Void);
+    retBody.operands.push_back(Value::constInt(0));
+    body.instructions.push_back(retBody);
+    body.terminated = true;
+
+    builder.setInsertPoint(handler);
+    Instr entryMarker;
+    entryMarker.op = Opcode::EhEntry;
+    entryMarker.type = Type(Type::Kind::Void);
+    handler.instructions.push_back(entryMarker);
+
+    Instr kind;
+    kind.result = builder.reserveTempId();
+    kind.op = Opcode::TrapKind;
+    kind.type = Type(Type::Kind::I64);
+    handler.instructions.push_back(kind);
+
+    Instr retHandler;
+    retHandler.op = Opcode::Ret;
+    retHandler.type = Type(Type::Kind::Void);
+    retHandler.operands.push_back(Value::temp(*kind.result));
+    handler.instructions.push_back(retHandler);
+    handler.terminated = true;
+
+    return module;
+}
 } // namespace
 
 int main()
@@ -164,6 +271,20 @@ int main()
         il::vm::VM vm(module);
         const int64_t exitCode = vm.run();
         assert(exitCode == 99);
+    }
+
+    {
+        Module module = buildTrapErrRoundTripModule();
+        il::vm::VM vm(module);
+        const int64_t exitCode = vm.run();
+        assert(exitCode == static_cast<int64_t>(static_cast<int32_t>(il::vm::TrapKind::IOError)));
+    }
+
+    {
+        Module module = buildTrapKindReadModule();
+        il::vm::VM vm(module);
+        const int64_t exitCode = vm.run();
+        assert(exitCode == static_cast<int64_t>(static_cast<int32_t>(il::vm::TrapKind::DivideByZero)));
     }
 
     return 0;

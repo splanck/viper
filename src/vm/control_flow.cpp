@@ -15,6 +15,8 @@
 #include "vm/RuntimeBridge.hpp"
 #include "vm/Trap.hpp"
 #include "vm/err_bridge.hpp"
+#include "rt_string.h"
+#include <string>
 #include <algorithm>
 #include <cassert>
 #include <vector>
@@ -353,11 +355,11 @@ VM::ExecResult OpHandlers::handleResumeNext(VM &vm,
 }
 
 VM::ExecResult OpHandlers::handleResumeLabel(VM &vm,
-                                             Frame &fr,
-                                             const Instr &in,
-                                             const VM::BlockMap &blocks,
-                                             const BasicBlock *&bb,
-                                             size_t &ip)
+                                            Frame &fr,
+                                            const Instr &in,
+                                            const VM::BlockMap &blocks,
+                                            const BasicBlock *&bb,
+                                            size_t &ip)
 {
     Slot tokSlot = vm.eval(fr, in.operands[0]);
     Frame::ResumeState *token = expectResumeToken(fr, tokSlot);
@@ -368,6 +370,72 @@ VM::ExecResult OpHandlers::handleResumeLabel(VM &vm,
     }
     fr.resumeState.valid = false;
     return branchToTarget(vm, fr, in, 0, blocks, bb, ip);
+}
+
+VM::ExecResult OpHandlers::handleTrapKind(VM &vm,
+                                         Frame &fr,
+                                         const Instr &in,
+                                         const VM::BlockMap &blocks,
+                                         const BasicBlock *&bb,
+                                         size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+
+    const VmError *error = nullptr;
+    if (!in.operands.empty())
+    {
+        Slot errorSlot = vm.eval(fr, in.operands[0]);
+        error = reinterpret_cast<const VmError *>(errorSlot.ptr);
+    }
+
+    if (!error)
+        error = vm_current_trap_token();
+    if (!error)
+        error = &fr.activeError;
+
+    Slot out{};
+    const auto kindValue = error ? static_cast<int32_t>(error->kind) : static_cast<int32_t>(TrapKind::RuntimeError);
+    out.i64 = static_cast<int64_t>(kindValue);
+    ops::storeResult(fr, in, out);
+    return {};
+}
+
+VM::ExecResult OpHandlers::handleTrapErr(VM &vm,
+                                        Frame &fr,
+                                        const Instr &in,
+                                        const VM::BlockMap &blocks,
+                                        const BasicBlock *&bb,
+                                        size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+    (void)fr;
+
+    Slot codeSlot = vm.eval(fr, in.operands[0]);
+    const int32_t code = static_cast<int32_t>(codeSlot.i64);
+
+    std::string message;
+    if (in.operands.size() > 1)
+    {
+        Slot textSlot = vm.eval(fr, in.operands[1]);
+        if (textSlot.str != nullptr)
+            message = rt_string_cstr(textSlot.str);
+    }
+
+    VmError *token = vm_acquire_trap_token();
+    token->kind = map_err_to_trap(code);
+    token->code = code;
+    token->ip = 0;
+    token->line = -1;
+    vm_store_trap_token_message(message);
+
+    Slot out{};
+    out.ptr = token;
+    ops::storeResult(fr, in, out);
+    return {};
 }
 
 VM::ExecResult OpHandlers::handleTrap(VM &vm,
@@ -386,27 +454,11 @@ VM::ExecResult OpHandlers::handleTrap(VM &vm,
         case Opcode::Trap:
             vm_raise(TrapKind::DomainError);
             break;
-        case Opcode::TrapKind:
-        {
-            Slot kindSlot = vm.eval(fr, in.operands[0]);
-            const auto trapKind = trapKindFromValue(static_cast<int32_t>(kindSlot.i64));
-            vm_raise(trapKind);
-            break;
-        }
         case Opcode::TrapFromErr:
         {
             Slot codeSlot = vm.eval(fr, in.operands[0]);
             const auto trapKind = map_err_to_trap(static_cast<int32_t>(codeSlot.i64));
             vm_raise(trapKind, static_cast<int32_t>(codeSlot.i64));
-            break;
-        }
-        case Opcode::TrapErr:
-        {
-            Slot errorSlot = vm.eval(fr, in.operands[0]);
-            VmError error{};
-            if (errorSlot.ptr)
-                error = *reinterpret_cast<const VmError *>(errorSlot.ptr);
-            vm_raise_from_error(error);
             break;
         }
         default:

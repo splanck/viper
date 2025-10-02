@@ -6,6 +6,7 @@
 
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"
+#include "vm/err_bridge.hpp"
 
 #include <array>
 #include <cassert>
@@ -26,10 +27,37 @@ std::string captureTrap(il::vm::TrapKind kind, int line)
     builder.setInsertPoint(bb);
 
     Instr trap;
-    trap.op = Opcode::TrapKind;
-    trap.type = Type(Type::Kind::Void);
-    trap.operands.push_back(Value::constInt(static_cast<long long>(kind)));
     trap.loc = {1, static_cast<uint32_t>(line), 1};
+    switch (kind)
+    {
+        case il::vm::TrapKind::DivideByZero:
+            trap.result = builder.reserveTempId();
+            trap.op = Opcode::SDivChk0;
+            trap.type = Type(Type::Kind::I64);
+            trap.operands.push_back(Value::constInt(1));
+            trap.operands.push_back(Value::constInt(0));
+            break;
+        case il::vm::TrapKind::Bounds:
+        {
+            trap.op = Opcode::TrapFromErr;
+            trap.type = Type(Type::Kind::I32);
+            trap.operands.push_back(Value::constInt(static_cast<long long>(il::vm::ErrCode::Err_Bounds)));
+            break;
+        }
+        case il::vm::TrapKind::RuntimeError:
+        {
+            trap.op = Opcode::TrapFromErr;
+            trap.type = Type(Type::Kind::I32);
+            trap.operands.push_back(Value::constInt(static_cast<long long>(il::vm::ErrCode::Err_RuntimeError)));
+            break;
+        }
+        default:
+        {
+            trap.op = Opcode::Trap;
+            trap.type = Type(Type::Kind::Void);
+            break;
+        }
+    }
     bb.instructions.push_back(trap);
 
     Instr ret;
@@ -73,11 +101,12 @@ int main()
         il::vm::TrapKind kind;
         int line;
         const char *token;
+        int code;
     };
 
-    const std::array<Sample, 3> samples = {{{il::vm::TrapKind::DivideByZero, 5, "DivideByZero"},
-                                            {il::vm::TrapKind::Bounds, 9, "Bounds"},
-                                            {il::vm::TrapKind::RuntimeError, 13, "RuntimeError"}}};
+    const std::array<Sample, 3> samples = {{{il::vm::TrapKind::DivideByZero, 5, "DivideByZero", 0},
+                                            {il::vm::TrapKind::Bounds, 9, "Bounds", static_cast<int>(il::vm::ErrCode::Err_Bounds)},
+                                            {il::vm::TrapKind::RuntimeError, 13, "RuntimeError", static_cast<int>(il::vm::ErrCode::Err_RuntimeError)}}};
 
     for (const auto &sample : samples)
     {
@@ -92,8 +121,9 @@ int main()
         const bool hasLine = out.find(lineToken) != std::string::npos;
         assert(hasLine && "trap.kind diagnostic must include source line");
 
-        const bool hasCode = out.find("code=0") != std::string::npos;
-        assert(hasCode && "trap.kind should default code to zero");
+        const std::string codeToken = "code=" + std::to_string(sample.code);
+        const bool hasCode = out.find(codeToken) != std::string::npos;
+        assert(hasCode && "trap diagnostic must include the expected code");
     }
 
     return 0;

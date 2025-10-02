@@ -900,11 +900,51 @@ Expected<void> verifyInstruction_impl(const Function &fn,
         case Opcode::Call:
             return checkCall_E(fn, bb, instr, externs, funcs, types);
         case Opcode::TrapKind:
-            return expectAllOperandType(fn, bb, instr, types, Type::Kind::I64);
+        {
+            if (!instr.operands.empty())
+            {
+                return Expected<void>{makeError(instr.loc,
+                                                formatInstrDiag(fn,
+                                                                bb,
+                                                                instr,
+                                                                "trap.kind takes no operands"))};
+            }
+            types.recordResult(instr, Type(Type::Kind::I64));
+            return {};
+        }
         case Opcode::TrapFromErr:
             return checkTrapFromErr_E(fn, bb, instr, types);
         case Opcode::TrapErr:
-            return expectAllOperandType(fn, bb, instr, types, Type::Kind::Error);
+        {
+            if (instr.operands.size() != 2)
+            {
+                return Expected<void>{makeError(instr.loc,
+                                                formatInstrDiag(fn,
+                                                                bb,
+                                                                instr,
+                                                                "trap.err expects code and text operands"))};
+            }
+            const auto codeType = types.valueType(instr.operands[0]).kind;
+            if (codeType != Type::Kind::I32)
+            {
+                return Expected<void>{makeError(instr.loc,
+                                                formatInstrDiag(fn,
+                                                                bb,
+                                                                instr,
+                                                                "trap.err code must be i32"))};
+            }
+            const auto textType = types.valueType(instr.operands[1]).kind;
+            if (textType != Type::Kind::Str)
+            {
+                return Expected<void>{makeError(instr.loc,
+                                                formatInstrDiag(fn,
+                                                                bb,
+                                                                instr,
+                                                                "trap.err text must be str"))};
+            }
+            types.recordResult(instr, Type(Type::Kind::Error));
+            return {};
+        }
         case Opcode::ErrGetKind:
         case Opcode::ErrGetCode:
         case Opcode::ErrGetLine:

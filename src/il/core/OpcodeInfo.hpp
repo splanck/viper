@@ -110,6 +110,8 @@ enum class VMDispatch : uint8_t
     ErrGet,
     Trap,
     TrapFromErr,
+    TrapErrMake,
+    TrapKindRead,
     EhPush,
     EhPop,
     ResumeSame,
