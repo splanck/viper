@@ -113,6 +113,10 @@ class VM
     friend void vm_raise(TrapKind kind, int32_t code);
     friend void vm_raise_from_error(const VmError &error);
     friend struct VMTestHook; ///< Unit tests access interpreter internals
+    friend VmError *vm_acquire_trap_token();
+    friend const VmError *vm_current_trap_token();
+    friend void vm_store_trap_token_message(std::string_view text);
+    friend std::string vm_current_trap_message();
 
     /// @brief Result of executing one opcode.
     struct ExecResult
@@ -177,6 +181,13 @@ class VM
         std::string message; ///< Formatted diagnostic message
     };
 
+    struct TrapToken
+    {
+        VmError error{};        ///< Stored error payload for trap.err construction
+        std::string message;    ///< Message associated with the token
+        bool valid = false;     ///< Whether the token contains a constructed error
+    };
+
     /// @brief Module to execute.
     /// @ownership Non-owning reference; module must outlive the VM.
     const il::core::Module &mod;
@@ -219,6 +230,7 @@ class VM
 
     /// @brief Most recent trap emitted by the VM.
     TrapState lastTrap{};
+    TrapToken trapToken{};
 
     /// @brief Execute function @p fn with optional arguments.
     /// @param fn Function to execute.
