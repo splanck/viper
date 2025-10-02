@@ -11,7 +11,7 @@ if(NOT DEFINED SRC_DIR)
   message(FATAL_ERROR "SRC_DIR not set")
 endif()
 set(IL_FILE "${SRC_DIR}/tests/il/e2e/rec_fact.il")
-set(GOLDEN "${SRC_DIR}/tests/il/goldens/rec_fact.out")
+set(GOLDEN "${SRC_DIR}/tests/golden/e2e/rec_fact.out")
 # Use a unique filename to avoid collisions when tests run in parallel.
 set(OUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/vm_rec_fact.out.txt")
 execute_process(COMMAND ${ILC} -run ${IL_FILE} OUTPUT_FILE ${OUT_FILE} RESULT_VARIABLE r)

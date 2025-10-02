@@ -246,7 +246,7 @@ function(viper_add_basic_to_il_golden_tests)
   set(_VIPER_BASIC_TO_IL_CHECK_BOUNDS ${_VIPER_BASIC_TO_IL_DIR}/check_il_bounds.cmake)
   set(_VIPER_GOLDEN_SRC_DIR ${VIPER_TESTS_DIR}/golden/src)
   set(_VIPER_GOLDEN_IL_DIR ${VIPER_TESTS_DIR}/golden/il)
-  set(_VIPER_BASIC_GOLDENS_DIR ${VIPER_TESTS_DIR}/basic/goldens)
+  set(_VIPER_BASIC_GOLDENS_DIR ${VIPER_TESTS_DIR}/golden/basic_lowering)
   set(_VIPER_EH_LOWERING_DIR ${VIPER_TESTS_DIR}/golden/eh_lowering)
 
   viper_add_ctest(basic_to_il_ex1
