@@ -18,6 +18,8 @@ using il::support::SourceLoc;
 
 namespace
 {
+using il::core::kindToString;
+using il::vm::RuntimeBridge;
 using il::vm::RuntimeCallContext;
 using il::vm::Slot;
 using il::vm::TrapKind;
@@ -155,15 +157,15 @@ const KindAccessors &dispatchFor(Type::Kind kind)
     return kKindAccessors[index];
 }
 
-void *reportUnsupportedPointer(const char *msg)
+void *reportUnsupportedPointer(std::string msg)
 {
-    assert(false && msg);
+    RuntimeBridge::trap(TrapKind::InvalidOperation, msg, {}, "", "");
     return nullptr;
 }
 
-void reportUnsupportedAssign(const char *msg)
+void reportUnsupportedAssign(std::string msg)
 {
-    assert(false && msg);
+    RuntimeBridge::trap(TrapKind::InvalidOperation, msg, {}, "", "");
 }
 
 /// @brief Translate a VM slot to the pointer expected by the runtime handler.
@@ -174,7 +176,12 @@ void *slotToArgPointer(Slot &slot, Type::Kind kind)
 {
     const auto &entry = dispatchFor(kind);
     if (!entry.slotAccessor)
-        return reportUnsupportedPointer("unsupported runtime argument kind");
+    {
+        std::ostringstream os;
+        os << "runtime bridge does not support argument kind '" << kindToString(kind)
+           << "'";
+        return reportUnsupportedPointer(os.str());
+    }
     return entry.slotAccessor(slot);
 }
 
@@ -186,7 +193,11 @@ void *resultBufferFor(Type::Kind kind, ResultBuffers &buffers)
 {
     const auto &entry = dispatchFor(kind);
     if (!entry.resultAccessor)
-        return reportUnsupportedPointer("unsupported runtime return kind");
+    {
+        std::ostringstream os;
+        os << "runtime bridge does not support return kind '" << kindToString(kind) << "'";
+        return reportUnsupportedPointer(os.str());
+    }
     return entry.resultAccessor(buffers);
 }
 
@@ -199,7 +210,9 @@ void assignResult(Slot &slot, Type::Kind kind, const ResultBuffers &buffers)
     const auto &entry = dispatchFor(kind);
     if (!entry.assignResult)
     {
-        reportUnsupportedAssign("unsupported runtime return kind");
+        std::ostringstream os;
+        os << "runtime bridge cannot assign return kind '" << kindToString(kind) << "'";
+        reportUnsupportedAssign(os.str());
         return;
     }
     entry.assignResult(slot, buffers);
