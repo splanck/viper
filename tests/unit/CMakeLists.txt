@@ -51,6 +51,10 @@ function(viper_add_runtime_tests)
   target_link_libraries(test_rt_numeric PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_numeric test_rt_numeric)
 
+  viper_add_test_exe(test_rt_float_determinism ${VIPER_TESTS_DIR}/runtime/FloatDeterminismTests.cpp)
+  target_link_libraries(test_rt_float_determinism PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+  viper_add_ctest(test_rt_float_determinism test_rt_float_determinism)
+
   viper_add_test_exe(test_rt_error_plumbing ${VIPER_TESTS_DIR}/runtime/RtErrorPlumbingTests.cpp)
   target_link_libraries(test_rt_error_plumbing PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_error_plumbing test_rt_error_plumbing)
