@@ -363,6 +363,13 @@ struct OpHandlers
                                          const il::core::BasicBlock *&bb,
                                          size_t &ip);
 
+    static VM::ExecResult handleConstNull(VM &vm,
+                                          Frame &fr,
+                                          const il::core::Instr &in,
+                                          const VM::BlockMap &blocks,
+                                          const il::core::BasicBlock *&bb,
+                                          size_t &ip);
+
     static VM::ExecResult handleCall(VM &vm,
                                      Frame &fr,
                                      const il::core::Instr &in,
