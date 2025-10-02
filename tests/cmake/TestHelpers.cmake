@@ -21,3 +21,25 @@ endfunction()
 function(viper_add_ctest name)
   add_test(NAME ${name} COMMAND ${ARGN})
 endfunction()
+
+# Ensure no new golden directories sneak into the tree. Golden tests must rely on
+# the shared suites under tests/golden/ rather than ad-hoc "goldens" folders.
+function(viper_assert_no_goldens_directories)
+  file(
+    GLOB_RECURSE _viper_goldens
+    LIST_DIRECTORIES true
+    RELATIVE "${CMAKE_SOURCE_DIR}/tests"
+    "${CMAKE_SOURCE_DIR}/tests/*")
+
+  list(FILTER _viper_goldens INCLUDE REGEX "/goldens$")
+
+  if(_viper_goldens)
+    list(TRANSFORM _viper_goldens PREPEND "${CMAKE_SOURCE_DIR}/tests/")
+    list(JOIN _viper_goldens "\n  " _viper_goldens_pretty)
+    message(
+      FATAL_ERROR
+      "Golden directories named 'goldens' are prohibited. Remove or rename:\n  ${_viper_goldens_pretty}")
+  endif()
+endfunction()
+
+viper_assert_no_goldens_directories()
