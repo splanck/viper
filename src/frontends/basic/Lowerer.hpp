@@ -35,6 +35,11 @@ struct ProcedureLowering;
 struct StatementLowering;
 class DiagnosticEmitter;
 
+namespace builtins
+{
+class LowerCtx;
+} // namespace builtins
+
 /// @brief Lowers BASIC AST into IL Module.
 /// @invariant Generates deterministic block names per procedure using BlockNamer.
 /// @ownership Owns produced Module; uses IRBuilder for structure emission.
@@ -69,6 +74,7 @@ class Lowerer
     friend struct ProgramLowering;
     friend struct ProcedureLowering;
     friend struct StatementLowering;
+    friend class builtins::LowerCtx;
 
     using Module = il::core::Module;
     using Function = il::core::Function;
