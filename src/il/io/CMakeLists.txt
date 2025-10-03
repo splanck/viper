@@ -1,4 +1,4 @@
-add_library(il_io STATIC
+add_library(viper_il_io STATIC
   FunctionParser.cpp
   InstrParser.cpp
   ModuleParser.cpp
@@ -9,9 +9,9 @@ add_library(il_io STATIC
   TypeParser.cpp
 )
 
-target_link_libraries(il_io PUBLIC il_core)
+target_link_libraries(viper_il_io PRIVATE viper_il_core)
 
-target_include_directories(il_io PUBLIC
+target_include_directories(viper_il_io PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )

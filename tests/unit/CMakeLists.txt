@@ -2,7 +2,7 @@
 # File: tests/unit/CMakeLists.txt
 # Purpose: Build standalone unit test executables.
 
-set(VIPER_UNIT_SUPPORT_LIBS support)
+set(VIPER_UNIT_SUPPORT_LIBS viper_support)
 set(VIPER_UNIT_SUPPORT_LIBS ${VIPER_UNIT_SUPPORT_LIBS} PARENT_SCOPE)
 set(VIPER_RUNTIME_TEST_LIBS viper_runtime)
 set(VIPER_RUNTIME_TEST_LIBS ${VIPER_RUNTIME_TEST_LIBS} PARENT_SCOPE)
