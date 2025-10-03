@@ -58,6 +58,10 @@ endif()
 add_compile_options(${IL_COMPILE_FLAGS})
 add_link_options(${IL_LINK_FLAGS})
 
+if(APPLE)
+  add_link_options(-Wl,-no_warn_duplicate_libraries)
+endif()
+
 function(viper_assert_no_directory_link_libraries dir label)
   if("${dir}" STREQUAL ".")
     get_property(_dir_link_libs DIRECTORY PROPERTY LINK_LIBRARIES)
