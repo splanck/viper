@@ -61,6 +61,12 @@ function(viper_add_runtime_tests)
     TEST_NAME runtime_FloatFormattingTests)
   target_link_libraries(test_rt_float_formatting PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
 
+  viper_add_test(
+    test_rt_int64_to_string
+    ${VIPER_TESTS_DIR}/runtime/Int64ToStringTests.cpp
+    TEST_NAME runtime_Int64ToStringTests)
+  target_link_libraries(test_rt_int64_to_string PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+
   viper_add_test(test_rt_error_plumbing ${VIPER_TESTS_DIR}/runtime/RtErrorPlumbingTests.cpp)
   target_link_libraries(test_rt_error_plumbing PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_error_plumbing test_rt_error_plumbing)
