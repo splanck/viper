@@ -1,6 +1,6 @@
 add_subdirectory(support)
 
-add_library(il_core STATIC
+add_library(viper_il_core STATIC
   il/core/OpcodeInfo.cpp
   il/core/Type.cpp
   il/core/Value.cpp
@@ -11,20 +11,21 @@ add_library(il_core STATIC
   il/core/Extern.cpp
   il/core/Module.cpp
 )
-target_include_directories(il_core PUBLIC
+target_include_directories(viper_il_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
+target_link_libraries(viper_il_core PRIVATE viper_support)
 
 add_library(il_runtime STATIC il/runtime/RuntimeSignatures.cpp)
-target_link_libraries(il_runtime PUBLIC il_core viper_runtime)
+target_link_libraries(il_runtime PUBLIC viper_il_core viper_runtime)
 target_include_directories(il_runtime PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
 
 add_library(il_build STATIC il/build/IRBuilder.cpp)
-target_link_libraries(il_build PUBLIC il_core support)
+target_link_libraries(il_build PUBLIC viper_il_core viper_support)
 target_include_directories(il_build PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
@@ -32,7 +33,7 @@ target_include_directories(il_build PUBLIC
 
 add_subdirectory(il/io)
 
-add_library(il_verify STATIC
+add_library(viper_il_verify STATIC
   il/verify/DiagFormat.cpp
   il/verify/DiagSink.cpp
   il/verify/EhVerifier.cpp
@@ -46,15 +47,29 @@ add_library(il_verify STATIC
   il/verify/BranchVerifier.cpp
   il/verify/ControlFlowChecker.cpp
   il/verify/TypeInference.cpp)
-target_link_libraries(il_verify PUBLIC il_core il_runtime)
-target_include_directories(il_verify PUBLIC
+target_link_libraries(viper_il_verify PRIVATE viper_il_core il_runtime)
+target_include_directories(viper_il_verify PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
 
+add_library(viper_il_full INTERFACE)
+target_link_libraries(viper_il_full INTERFACE
+  viper_il_core
+  viper_il_verify
+  viper_il_io
+  viper_support
+)
+
+add_library(viper::support   ALIAS viper_support)
+add_library(viper::il_core   ALIAS viper_il_core)
+add_library(viper::il_verify ALIAS viper_il_verify)
+add_library(viper::il_io     ALIAS viper_il_io)
+add_library(viper::il_full   ALIAS viper_il_full)
+
 add_library(il_api STATIC il/api/expected_api.cpp)
 target_link_libraries(il_api
-  PUBLIC support il_io il_verify)
+  PUBLIC viper_il_full)
 target_include_directories(il_api PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
@@ -63,7 +78,7 @@ target_include_directories(il_api PUBLIC
 add_library(il_analysis STATIC
   il/analysis/CFG.cpp
   il/analysis/Dominators.cpp)
-target_link_libraries(il_analysis PUBLIC il_core)
+target_link_libraries(il_analysis PUBLIC viper_il_core)
 target_include_directories(il_analysis PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
@@ -75,21 +90,21 @@ add_library(il_transform STATIC
   il/transform/ConstFold.cpp
   il/transform/DCE.cpp
   il/transform/Mem2Reg.cpp)
-target_link_libraries(il_transform PUBLIC il_core il_verify il_analysis)
+target_link_libraries(il_transform PUBLIC viper_il_core viper_il_verify il_analysis)
 target_include_directories(il_transform PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
 
 add_library(il_utils STATIC il/utils/Utils.cpp)
-target_link_libraries(il_utils PUBLIC il_core)
+target_link_libraries(il_utils PUBLIC viper_il_core)
 target_include_directories(il_utils PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
 
 add_library(il_tools_common STATIC tools/common/module_loader.cpp)
-target_link_libraries(il_tools_common PUBLIC il_api support)
+target_link_libraries(il_tools_common PUBLIC il_api)
 target_include_directories(il_tools_common PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
@@ -115,7 +130,7 @@ target_include_directories(il_vm PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
-target_link_libraries(il_vm PUBLIC il_core il_runtime viper_runtime support)
+target_link_libraries(il_vm PUBLIC viper_il_core il_runtime viper_runtime viper_support)
 
 add_library(il_codegen_x86_64 STATIC codegen/x86_64/placeholder.cpp)
 set_target_properties(il_codegen_x86_64 PROPERTIES LINKER_LANGUAGE CXX)
@@ -128,15 +143,15 @@ add_executable(ilc
   tools/ilc/cli.cpp
   tools/ilc/break_spec.cpp)
 set_target_properties(ilc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/ilc)
-target_link_libraries(ilc PRIVATE il_core il_io il_vm il_verify il_transform fe_basic il_api support il_tools_common)
+target_link_libraries(ilc PRIVATE viper_il_full il_vm il_transform fe_basic il_api il_tools_common)
 
 add_executable(il-verify tools/il-verify/il-verify.cpp)
 set_target_properties(il-verify PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/il-verify)
-target_link_libraries(il-verify PRIVATE support il_core il_build il_io il_vm il_verify il_api il_tools_common)
+target_link_libraries(il-verify PRIVATE viper_il_full il_build il_vm il_api il_tools_common)
 
 add_executable(il-dis tools/il-dis/main.cpp)
 set_target_properties(il-dis PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/il-dis)
-target_link_libraries(il-dis PRIVATE support il_core il_build il_io)
+target_link_libraries(il-dis PRIVATE viper_il_full il_build)
 
 add_subdirectory(frontends/basic)
 
@@ -144,13 +159,13 @@ add_executable(basic-ast-dump
   tools/basic-ast-dump/main.cpp
   tools/basic/common.cpp)
 set_target_properties(basic-ast-dump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/basic-ast-dump)
-target_link_libraries(basic-ast-dump PRIVATE fe_basic support)
+target_link_libraries(basic-ast-dump PRIVATE fe_basic)
 target_compile_definitions(basic-ast-dump PRIVATE VIPER_BASIC_TOOL_USAGE="Usage: basic-ast-dump <file.bas>\\n")
 add_executable(basic-lex-dump
   tools/basic-lex-dump/main.cpp
   tools/basic/common.cpp)
 set_target_properties(basic-lex-dump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/basic-lex-dump)
-target_link_libraries(basic-lex-dump PRIVATE fe_basic support)
+target_link_libraries(basic-lex-dump PRIVATE fe_basic)
 target_compile_definitions(basic-lex-dump PRIVATE VIPER_BASIC_TOOL_USAGE="Usage: basic-lex-dump <file.bas>\\n")
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/support/

@@ -2,10 +2,8 @@
 # File: tests/il/CMakeLists.txt
 # Purpose: IL parser, verifier, and analysis tests.
 
-set(VIPER_IL_CORE_IO_LIBS il_core il_io)
+set(VIPER_IL_CORE_IO_LIBS viper_il_full)
 set(VIPER_IL_CORE_IO_LIBS ${VIPER_IL_CORE_IO_LIBS} PARENT_SCOPE)
-set(VIPER_IL_SUPPORT_LIB support)
-set(VIPER_IL_SUPPORT_LIB ${VIPER_IL_SUPPORT_LIB} PARENT_SCOPE)
 set(VIPER_IL_ANALYSIS_LIBS il_analysis il_build)
 set(VIPER_IL_ANALYSIS_LIBS ${VIPER_IL_ANALYSIS_LIBS} PARENT_SCOPE)
 
@@ -17,29 +15,29 @@ function(viper_add_il_core_tests)
   set(_VIPER_IL_UNIT_DIR ${VIPER_TESTS_DIR}/unit)
 
   viper_add_test_exe(test_il_serialize ${_VIPER_IL_UNIT_DIR}/test_il_serialize.cpp)
-  target_link_libraries(test_il_serialize PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build ${VIPER_IL_SUPPORT_LIB})
+  target_link_libraries(test_il_serialize PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build)
   target_compile_definitions(test_il_serialize PRIVATE TESTS_DIR="${VIPER_TESTS_DIR}")
   viper_add_ctest(test_il_serialize test_il_serialize)
 
   viper_add_test_exe(test_il_serialize_opcodes ${_VIPER_IL_UNIT_DIR}/test_il_serialize_opcodes.cpp)
-  target_link_libraries(test_il_serialize_opcodes PRIVATE ${VIPER_IL_CORE_IO_LIBS} ${VIPER_IL_SUPPORT_LIB})
+  target_link_libraries(test_il_serialize_opcodes PRIVATE ${VIPER_IL_CORE_IO_LIBS})
   target_compile_definitions(test_il_serialize_opcodes PRIVATE TESTS_DIR="${VIPER_TESTS_DIR}")
   viper_add_ctest(test_il_serialize_opcodes test_il_serialize_opcodes)
 
   viper_add_test_exe(test_il_malformed_cbr ${_VIPER_IL_UNIT_DIR}/test_il_malformed_cbr.cpp)
-  target_link_libraries(test_il_malformed_cbr PRIVATE ${VIPER_IL_CORE_IO_LIBS} ${VIPER_IL_SUPPORT_LIB})
+  target_link_libraries(test_il_malformed_cbr PRIVATE ${VIPER_IL_CORE_IO_LIBS})
   viper_add_ctest(test_il_malformed_cbr test_il_malformed_cbr)
 
   viper_add_test_exe(test_irbuilder_call_ret ${_VIPER_IL_UNIT_DIR}/test_irbuilder_call_ret.cpp)
-  target_link_libraries(test_irbuilder_call_ret PRIVATE il_core il_build ${VIPER_IL_SUPPORT_LIB})
+  target_link_libraries(test_irbuilder_call_ret PRIVATE il_build ${VIPER_IL_CORE_IO_LIBS})
   viper_add_ctest(test_irbuilder_call_ret test_irbuilder_call_ret)
 
   viper_add_test_exe(test_irbuilder_call_unknown ${_VIPER_IL_UNIT_DIR}/test_irbuilder_call_unknown.cpp)
-  target_link_libraries(test_irbuilder_call_unknown PRIVATE il_core il_build ${VIPER_IL_SUPPORT_LIB})
+  target_link_libraries(test_irbuilder_call_unknown PRIVATE il_build ${VIPER_IL_CORE_IO_LIBS})
   viper_add_ctest(test_irbuilder_call_unknown test_irbuilder_call_unknown)
 
   viper_add_test_exe(test_il_roundtrip ${_VIPER_IL_UNIT_DIR}/test_il_roundtrip.cpp)
-  target_link_libraries(test_il_roundtrip PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_verify il_api)
+  target_link_libraries(test_il_roundtrip PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   target_compile_definitions(test_il_roundtrip PRIVATE EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/examples" ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/tests/il/roundtrip")
   viper_add_ctest(test_il_roundtrip test_il_roundtrip)
 
@@ -54,7 +52,7 @@ function(viper_add_il_core_tests)
   viper_add_ctest(test_il_parse_unresolved_branch test_il_parse_unresolved_branch)
 
   viper_add_test_exe(test_il_parse_param_prefix ${_VIPER_IL_UNIT_DIR}/test_il_parse_param_prefix.cpp)
-  target_link_libraries(test_il_parse_param_prefix PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api ${VIPER_IL_SUPPORT_LIB})
+  target_link_libraries(test_il_parse_param_prefix PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   target_compile_definitions(test_il_parse_param_prefix PRIVATE PARSE_ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/tests/il/parse-roundtrip")
   viper_add_ctest(test_il_parse_param_prefix test_il_parse_param_prefix)
 
@@ -107,7 +105,7 @@ function(viper_add_il_core_tests)
   viper_add_ctest(test_il_parse_misc_instructions test_il_parse_misc_instructions)
 
   viper_add_test_exe(test_il_function_parser_errors ${_VIPER_IL_UNIT_DIR}/test_il_function_parser_errors.cpp)
-  target_link_libraries(test_il_function_parser_errors PRIVATE ${VIPER_IL_CORE_IO_LIBS} ${VIPER_IL_SUPPORT_LIB})
+  target_link_libraries(test_il_function_parser_errors PRIVATE ${VIPER_IL_CORE_IO_LIBS})
   viper_add_ctest(test_il_function_parser_errors test_il_function_parser_errors)
 
   viper_add_test_exe(test_expected_api_build ${_VIPER_IL_UNIT_DIR}/test_expected_api_build.cpp)
@@ -115,19 +113,19 @@ function(viper_add_il_core_tests)
   viper_add_ctest(test_expected_api_build test_expected_api_build)
 
   viper_add_test_exe(test_il_verify_trap ${_VIPER_IL_UNIT_DIR}/test_il_verify_trap.cpp)
-  target_link_libraries(test_il_verify_trap PRIVATE il_core il_verify il_api)
+  target_link_libraries(test_il_verify_trap PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   viper_add_ctest(test_il_verify_trap test_il_verify_trap)
 
   viper_add_test_exe(test_il_verify_forward_call ${_VIPER_IL_UNIT_DIR}/test_il_verify_forward_call.cpp)
-  target_link_libraries(test_il_verify_forward_call PRIVATE il_core il_verify il_api)
+  target_link_libraries(test_il_verify_forward_call PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   viper_add_ctest(test_il_verify_forward_call test_il_verify_forward_call)
 
   viper_add_test_exe(test_il_verify_release_lifetime ${_VIPER_IL_UNIT_DIR}/test_il_verify_release_lifetime.cpp)
-  target_link_libraries(test_il_verify_release_lifetime PRIVATE il_core il_verify il_api)
+  target_link_libraries(test_il_verify_release_lifetime PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   viper_add_ctest(test_il_verify_release_lifetime test_il_verify_release_lifetime)
 
   viper_add_test_exe(test_il_type_inference ${_VIPER_IL_UNIT_DIR}/test_il_type_inference.cpp)
-  target_link_libraries(test_il_type_inference PRIVATE il_core il_verify ${VIPER_IL_SUPPORT_LIB})
+  target_link_libraries(test_il_type_inference PRIVATE ${VIPER_IL_CORE_IO_LIBS})
   viper_add_ctest(test_il_type_inference test_il_type_inference)
 
   viper_add_test_exe(test_runtime_registry ${_VIPER_IL_UNIT_DIR}/test_runtime_registry.cpp)
@@ -135,24 +133,24 @@ function(viper_add_il_core_tests)
   viper_add_ctest(test_runtime_registry test_runtime_registry)
 
   viper_add_test_exe(test_il_instruction_checker ${_VIPER_IL_UNIT_DIR}/test_il_instruction_checker.cpp)
-  target_link_libraries(test_il_instruction_checker PRIVATE il_core il_verify ${VIPER_IL_SUPPORT_LIB})
+  target_link_libraries(test_il_instruction_checker PRIVATE ${VIPER_IL_CORE_IO_LIBS})
   viper_add_ctest(test_il_instruction_checker test_il_instruction_checker)
 
   viper_add_test_exe(test_il_error_resume_ir ${_VIPER_IL_UNIT_DIR}/test_il_error_resume_ir.cpp)
-  target_link_libraries(test_il_error_resume_ir PRIVATE il_core)
+  target_link_libraries(test_il_error_resume_ir PRIVATE ${VIPER_IL_CORE_IO_LIBS})
   viper_add_ctest(test_il_error_resume_ir test_il_error_resume_ir)
 
   viper_add_test_exe(test_il_control_flow_checker ${_VIPER_IL_UNIT_DIR}/test_il_control_flow_checker.cpp)
-  target_link_libraries(test_il_control_flow_checker PRIVATE il_core il_verify ${VIPER_IL_SUPPORT_LIB})
+  target_link_libraries(test_il_control_flow_checker PRIVATE ${VIPER_IL_CORE_IO_LIBS})
   viper_add_ctest(test_il_control_flow_checker test_il_control_flow_checker)
 
   viper_add_test_exe(test_il_exception_handler_analysis
     ${_VIPER_IL_UNIT_DIR}/test_il_exception_handler_analysis.cpp)
-  target_link_libraries(test_il_exception_handler_analysis PRIVATE il_core il_verify ${VIPER_IL_SUPPORT_LIB})
+  target_link_libraries(test_il_exception_handler_analysis PRIVATE ${VIPER_IL_CORE_IO_LIBS})
   viper_add_ctest(test_il_exception_handler_analysis test_il_exception_handler_analysis)
 
   viper_add_test_exe(test_il_branch_verifier ${_VIPER_IL_UNIT_DIR}/test_il_branch_verifier.cpp)
-  target_link_libraries(test_il_branch_verifier PRIVATE il_core il_verify ${VIPER_IL_SUPPORT_LIB})
+  target_link_libraries(test_il_branch_verifier PRIVATE ${VIPER_IL_CORE_IO_LIBS})
   viper_add_ctest(test_il_branch_verifier test_il_branch_verifier)
 endfunction()
 
@@ -167,11 +165,11 @@ function(viper_add_il_utils_test)
   viper_add_ctest(test_il_utils test_il_utils)
 
   viper_add_test_exe(test_il_opcode_info ${_VIPER_IL_DIR}/OpcodeInfoTests.cpp)
-  target_link_libraries(test_il_opcode_info PRIVATE il_core)
+  target_link_libraries(test_il_opcode_info PRIVATE ${VIPER_IL_CORE_IO_LIBS})
   viper_add_ctest(test_il_opcode_info test_il_opcode_info)
 
   viper_add_test_exe(test_il_invalid_eh ${_VIPER_IL_DIR}/InvalidEhTests.cpp)
-  target_link_libraries(test_il_invalid_eh PRIVATE il_core il_io il_verify il_api ${VIPER_IL_SUPPORT_LIB})
+  target_link_libraries(test_il_invalid_eh PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   target_compile_definitions(
     test_il_invalid_eh PRIVATE INVALID_EH_DIR="${CMAKE_SOURCE_DIR}/tests/il/invalid_eh")
   viper_add_ctest(il_InvalidEhTests test_il_invalid_eh)
@@ -396,10 +394,10 @@ function(viper_add_il_liveness_tests)
   set(_VIPER_IL_UNIT_DIR ${VIPER_TESTS_DIR}/unit)
 
   viper_add_test_exe(test_il_liveness ${_VIPER_IL_UNIT_DIR}/test_il_liveness.cpp)
-  target_link_libraries(test_il_liveness PRIVATE il_io il_transform il_api)
+  target_link_libraries(test_il_liveness PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_transform il_api)
   viper_add_ctest(test_il_liveness test_il_liveness)
 
   viper_add_test_exe(test_il_pass_manager ${_VIPER_IL_UNIT_DIR}/test_il_pass_manager.cpp)
-  target_link_libraries(test_il_pass_manager PRIVATE il_io il_transform il_api)
+  target_link_libraries(test_il_pass_manager PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_transform il_api)
   viper_add_ctest(test_il_pass_manager test_il_pass_manager)
 endfunction()

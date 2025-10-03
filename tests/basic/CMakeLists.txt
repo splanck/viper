@@ -2,7 +2,7 @@
 # File: tests/basic/CMakeLists.txt
 # Purpose: BASIC frontend unit and golden tests.
 
-set(VIPER_BASIC_LIBS fe_basic support)
+set(VIPER_BASIC_LIBS fe_basic)
 set(VIPER_BASIC_LIBS ${VIPER_BASIC_LIBS} PARENT_SCOPE)
 
 function(viper_add_basic_early_tests)
@@ -27,7 +27,7 @@ function(viper_add_basic_main_tests)
   viper_add_ctest(test_basic_lexer test_basic_lexer)
 
   viper_add_test_exe(test_basic_loc ${_VIPER_BASIC_UNIT_DIR}/test_basic_loc.cpp)
-  target_link_libraries(test_basic_loc PRIVATE fe_basic il_build il_core support)
+  target_link_libraries(test_basic_loc PRIVATE fe_basic il_build viper_il_full)
   viper_add_ctest(test_basic_loc test_basic_loc)
 
   viper_add_test_exe(test_basic_expr_loc ${_VIPER_BASIC_UNIT_DIR}/test_basic_expr_loc.cpp)
