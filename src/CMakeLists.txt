@@ -25,7 +25,11 @@ target_include_directories(il_runtime PUBLIC
 )
 
 add_library(il_build STATIC il/build/IRBuilder.cpp)
-target_link_libraries(il_build PUBLIC viper_il_core viper_support)
+target_link_libraries(il_build
+  PUBLIC
+    viper_il_core
+  PRIVATE
+    viper_support)
 target_include_directories(il_build PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
@@ -90,7 +94,12 @@ add_library(il_transform STATIC
   il/transform/ConstFold.cpp
   il/transform/DCE.cpp
   il/transform/Mem2Reg.cpp)
-target_link_libraries(il_transform PUBLIC viper_il_core viper_il_verify il_analysis)
+target_link_libraries(il_transform
+  PUBLIC
+    viper_il_core
+  PRIVATE
+    viper_il_verify
+    il_analysis)
 target_include_directories(il_transform PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
@@ -130,7 +139,13 @@ target_include_directories(il_vm PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
-target_link_libraries(il_vm PUBLIC viper_il_core il_runtime viper_runtime viper_support)
+target_link_libraries(il_vm
+  PUBLIC
+    viper_il_core
+    il_runtime
+    viper_runtime
+  PRIVATE
+    viper_support)
 
 add_library(il_codegen_x86_64 STATIC codegen/x86_64/placeholder.cpp)
 set_target_properties(il_codegen_x86_64 PROPERTIES LINKER_LANGUAGE CXX)
