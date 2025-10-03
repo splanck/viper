@@ -111,21 +111,54 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
         p = trim(p);
         if (p.empty())
             continue;
-        std::stringstream ps(p);
-        std::string ty, nm;
-        ps >> ty >> nm;
-        if (!ty.empty() && !nm.empty() && nm[0] == '%')
+        std::string ty;
+        std::string nm;
+        size_t colon = p.find(':');
+        if (colon != std::string::npos)
         {
-            bool ok = true;
-            Type parsedTy = parseType(ty, &ok);
-            if (!ok || parsedTy.kind == Type::Kind::Void)
+            std::string left = trim(p.substr(0, colon));
+            std::string right = trim(p.substr(colon + 1));
+            if (left.empty() || right.empty())
             {
                 std::ostringstream oss;
-                oss << "line " << st.lineNo << ": unknown param type";
+                oss << "line " << st.lineNo << ": malformed parameter";
                 return Expected<void>{makeError({}, oss.str())};
             }
-            params.push_back({nm.substr(1), parsedTy});
+            nm = std::move(left);
+            ty = std::move(right);
         }
+        else
+        {
+            std::stringstream ps(p);
+            ps >> ty >> nm;
+        }
+        if (ty.empty() || nm.empty())
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": malformed parameter";
+            return Expected<void>{makeError({}, oss.str())};
+        }
+        if (nm[0] != '%')
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": parameter name must start with '%'";
+            return Expected<void>{makeError({}, oss.str())};
+        }
+        if (nm.size() == 1)
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": missing parameter name";
+            return Expected<void>{makeError({}, oss.str())};
+        }
+        bool ok = true;
+        Type parsedTy = parseType(ty, &ok);
+        if (!ok || parsedTy.kind == Type::Kind::Void)
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": unknown param type";
+            return Expected<void>{makeError({}, oss.str())};
+        }
+        params.push_back({nm.substr(1), parsedTy});
     }
     std::string retStr = trim(header.substr(arr + 2, lb - arr - 2));
     bool retOk = true;
