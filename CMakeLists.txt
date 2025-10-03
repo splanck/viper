@@ -132,13 +132,14 @@ add_custom_target(distclean
 )
 
 set(VIPER_PUBLIC_LIB_TARGETS
-  support
+  viper_support
   viper_runtime
-  il_core
+  viper_il_core
   il_runtime
   il_build
-  il_io
-  il_verify
+  viper_il_io
+  viper_il_verify
+  viper_il_full
   il_analysis
   il_transform
   il_utils
