@@ -29,45 +29,57 @@ if_test_0:
   .loc 1 2 9
   %t2 = icmp_eq %t1, 1
   .loc 1 2 9
-  cbr %t2, if_then_0, if_test_1
+  %t3 = zext1 %t2
+  .loc 1 2 9
+  %t4 = isub.ovf 0, %t3
+  .loc 1 2 4
+  %t5 = trunc1 %t4
+  .loc 1 2 4
+  cbr %t5, if_then_0, if_test_1
 if_then_0:
   .loc 1 2 24
-  %t3 = const_str @.L0
+  %t6 = const_str @.L0
   .loc 1 2 18
-  call @rt_print_str(%t3)
+  call @rt_print_str(%t6)
   .loc 1 2 18
-  %t4 = const_str @.L1
+  %t7 = const_str @.L1
   .loc 1 2 18
-  call @rt_print_str(%t4)
+  call @rt_print_str(%t7)
   .loc 1 2 4
   br if_exit
 if_test_1:
   .loc 1 2 37
-  %t5 = load i64, %t0
+  %t8 = load i64, %t0
   .loc 1 2 39
-  %t6 = icmp_eq %t5, 2
+  %t9 = icmp_eq %t8, 2
   .loc 1 2 39
-  cbr %t6, if_then_1, if_else
+  %t10 = zext1 %t9
+  .loc 1 2 39
+  %t11 = isub.ovf 0, %t10
+  .loc 1 2 4
+  %t12 = trunc1 %t11
+  .loc 1 2 4
+  cbr %t12, if_then_1, if_else
 if_then_1:
   .loc 1 2 54
-  %t7 = const_str @.L2
+  %t13 = const_str @.L2
   .loc 1 2 48
-  call @rt_print_str(%t7)
+  call @rt_print_str(%t13)
   .loc 1 2 48
-  %t8 = const_str @.L1
+  %t14 = const_str @.L1
   .loc 1 2 48
-  call @rt_print_str(%t8)
+  call @rt_print_str(%t14)
   .loc 1 2 4
   br if_exit
 if_else:
   .loc 1 2 71
-  %t9 = const_str @.L3
+  %t15 = const_str @.L3
   .loc 1 2 65
-  call @rt_print_str(%t9)
+  call @rt_print_str(%t15)
   .loc 1 2 65
-  %t10 = const_str @.L1
+  %t16 = const_str @.L1
   .loc 1 2 65
-  call @rt_print_str(%t10)
+  call @rt_print_str(%t16)
   .loc 1 2 4
   br if_exit
 if_exit:

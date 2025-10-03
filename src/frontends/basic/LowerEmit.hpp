@@ -5,6 +5,8 @@
 // Links: docs/codemap.md
 #pragma once
 
+#include <cstdint>
+
 private:
 void collectProcedureSignatures(const Program &prog);
 void collectVars(const Program &prog);
@@ -148,6 +150,10 @@ void emitStore(Type ty, Value addr, Value val);
 Value emitBinary(Opcode op, Type ty, Value lhs, Value rhs);
 /// @brief Emit unary instruction of @p op on @p val producing @p ty.
 Value emitUnary(Opcode op, Type ty, Value val);
+Value emitConstI64(std::int64_t v);
+Value emitZext1ToI64(Value val);
+Value emitISub(Value lhs, Value rhs);
+Value emitBasicLogicalI64(Value b1);
 void emitBr(BasicBlock *target);
 void emitCBr(Value cond, BasicBlock *t, BasicBlock *f);
 Value emitCallRet(Type ty, const std::string &callee, const std::vector<Value> &args);

@@ -18,8 +18,14 @@ L10:
 L20:
   .loc 1 2 12
   %t2 = trunc1 1
+  .loc 1 2 12
+  %t3 = zext1 %t2
+  .loc 1 2 12
+  %t4 = isub.ovf 0, %t3
   .loc 1 2 4
-  store i1, %t0, %t2
+  %t5 = trunc1 %t4
+  .loc 1 2 4
+  store i1, %t0, %t5
   .loc 1 2 4
   br L30
 L30:
@@ -27,31 +33,33 @@ L30:
   br if_test_0
 L40:
   .loc 1 4 10
-  %t5 = load i1, %t0
+  %t8 = load i1, %t0
   .loc 1 4 4
-  %t6 = zext1 %t5
+  %t9 = zext1 %t8
   .loc 1 4 4
-  call @rt_print_i64(%t6)
+  %t10 = isub.ovf 0, %t9
   .loc 1 4 4
-  %t7 = const_str @.L0
+  call @rt_print_i64(%t10)
   .loc 1 4 4
-  call @rt_print_str(%t7)
+  %t11 = const_str @.L0
+  .loc 1 4 4
+  call @rt_print_str(%t11)
   .loc 1 4 4
   br exit
 exit:
   ret 0
 if_test_0:
   .loc 1 3 7
-  %t3 = load i1, %t0
+  %t6 = load i1, %t0
   .loc 1 3 7
-  cbr %t3, if_then_0, if_else
+  cbr %t6, if_then_0, if_else
 if_then_0:
   .loc 1 3 14
   call @rt_print_i64(1)
   .loc 1 3 14
-  %t4 = const_str @.L0
+  %t7 = const_str @.L0
   .loc 1 3 14
-  call @rt_print_str(%t4)
+  call @rt_print_str(%t7)
   .loc 1 3 4
   br if_exit
 if_else:
