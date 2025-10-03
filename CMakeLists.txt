@@ -22,7 +22,7 @@ option(IL_SANITIZE_ADDRESS "Enable address sanitizer" OFF)
 option(IL_SANITIZE_UNDEFINED "Enable undefined behavior sanitizer" OFF)
 
 set(IL_COMPILE_FLAGS -Wall -Wextra -Wpedantic)
-set(IL_LINK_FLAGS "")
+set(IL_LINK_FLAGS)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   list(APPEND IL_COMPILE_FLAGS -Wno-unused-parameter -Wno-unused-private-field -Wno-mismatched-tags)
@@ -55,11 +55,20 @@ if(IL_USE_LIBCXX AND CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT APPLE)
   list(APPEND IL_LINK_FLAGS -stdlib=libc++)
 endif()
 
-add_compile_options(${IL_COMPILE_FLAGS})
-add_link_options(${IL_LINK_FLAGS})
+add_library(viper_common_opts INTERFACE)
+target_compile_features(viper_common_opts INTERFACE cxx_std_20)
+if(IL_COMPILE_FLAGS)
+  target_compile_options(viper_common_opts INTERFACE ${IL_COMPILE_FLAGS})
+endif()
+
+set(_viper_link_opts ${IL_LINK_FLAGS})
+list(FILTER _viper_link_opts EXCLUDE REGEX "^$")
+if(_viper_link_opts)
+  target_link_options(viper_common_opts INTERFACE ${_viper_link_opts})
+endif()
 
 if(APPLE)
-  add_link_options(-Wl,-no_warn_duplicate_libraries)
+  target_link_options(viper_common_opts INTERFACE -Wl,-no_warn_duplicate_libraries)
 endif()
 
 function(viper_assert_no_directory_link_libraries dir label)

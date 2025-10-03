@@ -33,7 +33,7 @@ else()
 endif()
 
 add_library(viper_testing INTERFACE)
-target_link_libraries(viper_testing INTERFACE viper::il_full ${_viper_testing_gtest_targets})
+target_link_libraries(viper_testing INTERFACE viper_common_opts viper::il_full ${_viper_testing_gtest_targets})
 
 if(IL_ENABLE_DOCS_LINT)
   find_package(Python3 COMPONENTS Interpreter REQUIRED)
