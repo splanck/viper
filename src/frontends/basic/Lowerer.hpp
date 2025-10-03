@@ -32,6 +32,7 @@ class ScanWalker;
 struct ProgramLowering;
 struct ProcedureLowering;
 struct StatementLowering;
+class DiagnosticEmitter;
 
 /// @brief Lowers BASIC AST into IL Module.
 /// @invariant Generates deterministic block names per procedure using BlockNamer.
@@ -52,6 +53,13 @@ class Lowerer
 
     /// @brief Backward-compatibility wrapper for older call sites.
     il::core::Module lower(const Program &prog);
+
+    /// @brief Attach diagnostic emitter used for frontend errors during lowering.
+    /// @param emitter Diagnostic sink; may be nullptr to disable emission.
+    void setDiagnosticEmitter(DiagnosticEmitter *emitter) noexcept;
+
+    /// @brief Access the diagnostic emitter when present.
+    [[nodiscard]] DiagnosticEmitter *diagnosticEmitter() const noexcept;
 
   private:
     friend class LowererExprVisitor;
@@ -645,6 +653,8 @@ class Lowerer
     std::unordered_map<std::string, ProcedureSignature> procSignatures;
 
     ProcedureContext context_;
+
+    DiagnosticEmitter *diagnosticEmitter_{nullptr};
 
     // runtime requirement tracking
     using RuntimeFeature = il::runtime::RuntimeFeature;
