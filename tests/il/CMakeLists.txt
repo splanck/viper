@@ -169,6 +169,12 @@ function(viper_add_il_utils_test)
   viper_add_test_exe(test_il_opcode_info ${_VIPER_IL_DIR}/OpcodeInfoTests.cpp)
   target_link_libraries(test_il_opcode_info PRIVATE il_core)
   viper_add_ctest(test_il_opcode_info test_il_opcode_info)
+
+  viper_add_test_exe(test_il_invalid_eh ${_VIPER_IL_DIR}/InvalidEhTests.cpp)
+  target_link_libraries(test_il_invalid_eh PRIVATE il_core il_io il_verify il_api ${VIPER_IL_SUPPORT_LIB})
+  target_compile_definitions(
+    test_il_invalid_eh PRIVATE INVALID_EH_DIR="${CMAKE_SOURCE_DIR}/tests/il/invalid_eh")
+  viper_add_ctest(il_InvalidEhTests test_il_invalid_eh)
 endfunction()
 
 function(viper_add_il_analysis_tests)
