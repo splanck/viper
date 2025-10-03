@@ -8,6 +8,7 @@
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"
 
+#include <array>
 #include <cassert>
 #include <cstdint>
 #include <cstdlib>
@@ -15,6 +16,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace il::core;
@@ -100,6 +102,15 @@ Module buildSwitchModule(const SwitchSpec &spec)
     return module;
 }
 
+int64_t runSwitch(const SwitchSpec &baseSpec, int32_t scrutinee)
+{
+    SwitchSpec spec = baseSpec;
+    spec.scrutinee = scrutinee;
+    Module module = buildSwitchModule(spec);
+    il::vm::VM vm(module);
+    return vm.run();
+}
+
 std::string readFile(const std::string &path)
 {
     std::ifstream file(path);
@@ -122,6 +133,42 @@ std::string switchTraceGolden()
 
 int main()
 {
+    {
+        const SwitchSpec denseBase{0,
+                                   "dense_default",
+                                   99,
+                                   {{"dense_case0", 0, 100},
+                                    {"dense_case1", 1, 101},
+                                    {"dense_case2", 2, 102}}};
+        const std::array<std::pair<int32_t, int64_t>, 4> denseCases{{
+            {0, 100},
+            {1, 101},
+            {2, 102},
+            {37, 99},
+        }};
+
+        for (const auto &[scrutinee, expected] : denseCases)
+            assert(runSwitch(denseBase, scrutinee) == expected);
+    }
+
+    {
+        const SwitchSpec sparseBase{0,
+                                    "sparse_default",
+                                    0,
+                                    {{"sparse_case2", 2, 222},
+                                     {"sparse_case10", 10, 1010},
+                                     {"sparse_case42", 42, 4242}}};
+        const std::array<std::pair<int32_t, int64_t>, 4> sparseCases{{
+            {2, 222},
+            {10, 1010},
+            {42, 4242},
+            {-1, 0},
+        }};
+
+        for (const auto &[scrutinee, expected] : sparseCases)
+            assert(runSwitch(sparseBase, scrutinee) == expected);
+    }
+
     {
         SwitchSpec spec{7,
                         "default_case",
