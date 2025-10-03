@@ -213,7 +213,15 @@ Expected<void> parseBlockHeader(const std::string &header, ParserState &st)
         work = trim(work.substr(8));
     size_t lp = work.find('(');
     std::vector<Param> bparams;
-    std::string label = work;
+    std::string label = lp != std::string::npos ? trim(work.substr(0, lp)) : trim(work);
+    if (!label.empty() && label[0] == '^')
+        label = label.substr(1);
+    if (st.blockParamCount.find(label) != st.blockParamCount.end())
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": duplicate block '" << label << "'";
+        return Expected<void>{makeError({}, oss.str())};
+    }
     if (lp != std::string::npos)
     {
         size_t rp = work.find(')', lp);
@@ -223,7 +231,6 @@ Expected<void> parseBlockHeader(const std::string &header, ParserState &st)
             oss << "line " << st.lineNo << ": mismatched ')'";
             return Expected<void>{makeError({}, oss.str())};
         }
-        label = trim(work.substr(0, lp));
         std::string paramsStr = work.substr(lp + 1, rp - lp - 1);
         std::stringstream pss(paramsStr);
         std::string q;
@@ -259,9 +266,6 @@ Expected<void> parseBlockHeader(const std::string &header, ParserState &st)
             ++st.nextTemp;
         }
     }
-    label = trim(label);
-    if (!label.empty() && label[0] == '^')
-        label = label.substr(1);
     st.curFn->blocks.push_back({label, bparams, {}, false});
     st.curBB = &st.curFn->blocks.back();
     st.blockParamCount[label] = bparams.size();
