@@ -1,5 +1,6 @@
 // File: src/il/analysis/CFG.cpp
 // Purpose: Implements minimal CFG utilities for IL blocks and functions.
+// License: MIT License. See LICENSE in the project root for details.
 // Key invariants: Successor lookups consult cached per-function label maps.
 // Ownership/Lifetime: Uses IL objects owned by the caller.
 // Links: docs/dev/analysis.md
@@ -20,6 +21,14 @@
 namespace viper::analysis
 {
 
+/// @brief Construct a CFG analysis context for the provided module.
+///
+/// Builds per-function label lookup tables, pre-populates successor caches for
+/// each block's branch targets, and records predecessor lists by inverting the
+/// discovered successor edges. The constructor also tracks the parent function
+/// for every block encountered so that subsequent queries can resolve
+/// relationships efficiently.
+/// @param module IL module whose functions and blocks seed the CFG caches.
 CFGContext::CFGContext(il::core::Module &module) : module(&module)
 {
     for (auto &fn : module.functions)
