@@ -147,7 +147,7 @@ function(viper_add_vm_unit_tests)
   viper_add_ctest(test_vm_runtime_concurrency test_vm_runtime_concurrency)
 
   viper_add_test(test_vm_runtime_bridge_marshalling ${VIPER_TESTS_DIR}/unit/test_vm_runtime_bridge_marshalling.cpp)
-  target_link_libraries(test_vm_runtime_bridge_marshalling PRIVATE ${VIPER_VM_LIB})
+  target_link_libraries(test_vm_runtime_bridge_marshalling PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_runtime_bridge_marshalling test_vm_runtime_bridge_marshalling)
 
   viper_add_test(test_vm_alloca_negative ${VIPER_TESTS_DIR}/unit/test_vm_alloca_negative.cpp)
@@ -175,11 +175,11 @@ function(viper_add_vm_unit_tests)
   viper_add_ctest(test_vm_addr_of test_vm_addr_of)
 
   viper_add_test(test_vm_dispatch_handlers ${VIPER_TESTS_DIR}/unit/test_vm_dispatch_handlers.cpp)
-  target_link_libraries(test_vm_dispatch_handlers PRIVATE ${VIPER_VM_LIB})
+  target_link_libraries(test_vm_dispatch_handlers PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_dispatch_handlers test_vm_dispatch_handlers)
 
   viper_add_test(test_vm_opcode_coverage ${_VIPER_VM_DIR}/OpcodeCoverageTests.cpp)
-  target_link_libraries(test_vm_opcode_coverage PRIVATE ${VIPER_VM_LIB})
+  target_link_libraries(test_vm_opcode_coverage PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_opcode_coverage test_vm_opcode_coverage)
 
   viper_add_test(test_vm_opcode_dispatch ${VIPER_TESTS_DIR}/unit/test_vm_opcode_dispatch.cpp)
@@ -197,10 +197,10 @@ function(viper_add_vm_path_tests)
   endif()
 
   viper_add_test(test_vm_normalize_path ${VIPER_TESTS_DIR}/unit/test_vm_normalize_path.cpp)
-  target_link_libraries(test_vm_normalize_path PRIVATE ${VIPER_VM_LIB})
+  target_link_libraries(test_vm_normalize_path PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_normalize_path test_vm_normalize_path)
 
   viper_add_test(test_path_normalize ${VIPER_TESTS_DIR}/unit/PathNormalizeTests.cpp)
-  target_link_libraries(test_path_normalize PRIVATE ${VIPER_VM_LIB})
+  target_link_libraries(test_path_normalize PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_path_normalize test_path_normalize)
 endfunction()
