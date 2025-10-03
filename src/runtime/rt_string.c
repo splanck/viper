@@ -8,6 +8,7 @@
 #include "rt_internal.h"
 #include "rt_numeric.h"
 #include "rt_format.h"
+#include "rt_int_format.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -262,7 +263,9 @@ rt_string rt_left(rt_string s, int64_t n)
     if (n < 0)
     {
         char buf[64];
-        snprintf(buf, sizeof(buf), "LEFT$: len must be >= 0 (got %lld)", (long long)n);
+        char numbuf[32];
+        rt_i64_to_cstr(n, numbuf, sizeof(numbuf));
+        snprintf(buf, sizeof(buf), "LEFT$: len must be >= 0 (got %s)", numbuf);
         rt_trap(buf);
     }
     size_t slen = rt_string_len_bytes(s);
@@ -295,7 +298,9 @@ rt_string rt_right(rt_string s, int64_t n)
     if (n < 0)
     {
         char buf[64];
-        snprintf(buf, sizeof(buf), "RIGHT$: len must be >= 0 (got %lld)", (long long)n);
+        char numbuf[32];
+        rt_i64_to_cstr(n, numbuf, sizeof(numbuf));
+        snprintf(buf, sizeof(buf), "RIGHT$: len must be >= 0 (got %s)", numbuf);
         rt_trap(buf);
     }
     size_t len = rt_string_len_bytes(s);
@@ -328,7 +333,9 @@ rt_string rt_mid2(rt_string s, int64_t start)
     if (start < 0)
     {
         char buf[64];
-        snprintf(buf, sizeof(buf), "MID$: start must be >= 0 (got %lld)", (long long)start);
+        char numbuf[32];
+        rt_i64_to_cstr(start, numbuf, sizeof(numbuf));
+        snprintf(buf, sizeof(buf), "MID$: start must be >= 0 (got %s)", numbuf);
         rt_trap(buf);
     }
     size_t len = rt_string_len_bytes(s);
@@ -364,13 +371,17 @@ rt_string rt_mid3(rt_string s, int64_t start, int64_t len)
     if (start < 0)
     {
         char buf[64];
-        snprintf(buf, sizeof(buf), "MID$: start must be >= 0 (got %lld)", (long long)start);
+        char numbuf[32];
+        rt_i64_to_cstr(start, numbuf, sizeof(numbuf));
+        snprintf(buf, sizeof(buf), "MID$: start must be >= 0 (got %s)", numbuf);
         rt_trap(buf);
     }
     if (len < 0)
     {
         char buf[64];
-        snprintf(buf, sizeof(buf), "MID$: len must be >= 0 (got %lld)", (long long)len);
+        char numbuf[32];
+        rt_i64_to_cstr(len, numbuf, sizeof(numbuf));
+        snprintf(buf, sizeof(buf), "MID$: len must be >= 0 (got %s)", numbuf);
         rt_trap(buf);
     }
     size_t slen = rt_string_len_bytes(s);
@@ -603,7 +614,9 @@ rt_string rt_chr(int64_t code)
     if (code < 0 || code > 255)
     {
         char buf[64];
-        snprintf(buf, sizeof(buf), "CHR$: code must be 0-255 (got %lld)", (long long)code);
+        char numbuf[32];
+        rt_i64_to_cstr(code, numbuf, sizeof(numbuf));
+        snprintf(buf, sizeof(buf), "CHR$: code must be 0-255 (got %s)", numbuf);
         rt_trap(buf);
     }
     char ch = (char)(unsigned char)code;
@@ -707,33 +720,50 @@ int64_t rt_to_int(rt_string s)
  */
 rt_string rt_int_to_str(int64_t v)
 {
-    char buf[32];
-    int n = snprintf(buf, sizeof(buf), "%lld", (long long)v);
-    if (n < 0)
+    char stack_buf[32];
+    char *buf = stack_buf;
+    size_t cap = sizeof(stack_buf);
+    char *heap_buf = NULL;
+
+    size_t written = rt_i64_to_cstr(v, buf, cap);
+    if (written == 0 && buf[0] == '\0')
         rt_trap("rt_int_to_str: format");
 
-    const char *src = buf;
-    char *tmp = NULL;
-    size_t len = (size_t)n;
-    if (n >= (int)sizeof(buf))
+    while (written + 1 >= cap)
     {
-        tmp = (char *)malloc((size_t)n + 1);
-        if (!tmp)
-            rt_trap("rt_int_to_str: alloc");
-        int n2 = snprintf(tmp, (size_t)n + 1, "%lld", (long long)v);
-        if (n2 < 0 || n2 > n)
+        if (cap > SIZE_MAX / 2)
         {
-            free(tmp);
+            if (heap_buf)
+                free(heap_buf);
+            rt_trap("rt_int_to_str: overflow");
+        }
+        size_t new_cap = cap * 2;
+        char *new_buf = (char *)malloc(new_cap);
+        if (!new_buf)
+        {
+            if (heap_buf)
+                free(heap_buf);
+            rt_trap("rt_int_to_str: alloc");
+        }
+        size_t new_written = rt_i64_to_cstr(v, new_buf, new_cap);
+        if (new_written == 0 && new_buf[0] == '\0')
+        {
+            free(new_buf);
+            if (heap_buf)
+                free(heap_buf);
             rt_trap("rt_int_to_str: format");
         }
-        src = tmp;
-        len = (size_t)n2;
+        if (heap_buf)
+            free(heap_buf);
+        heap_buf = new_buf;
+        buf = new_buf;
+        cap = new_cap;
+        written = new_written;
     }
 
-    rt_string s = rt_string_from_bytes(src, len);
-
-    if (tmp)
-        free(tmp);
+    rt_string s = rt_string_from_bytes(buf, written);
+    if (heap_buf)
+        free(heap_buf);
     return s;
 }
 
