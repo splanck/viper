@@ -10,7 +10,7 @@ function(viper_add_basic_early_tests)
     return()
   endif()
 
-  viper_add_test_exe(test_basic_lexer_high_bit ${VIPER_TESTS_DIR}/unit/test_basic_lexer_high_bit.cpp)
+  viper_add_test(test_basic_lexer_high_bit ${VIPER_TESTS_DIR}/unit/test_basic_lexer_high_bit.cpp)
   target_link_libraries(test_basic_lexer_high_bit PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_lexer_high_bit test_basic_lexer_high_bit)
 endfunction()
@@ -22,111 +22,111 @@ function(viper_add_basic_main_tests)
 
   set(_VIPER_BASIC_UNIT_DIR ${VIPER_TESTS_DIR}/unit)
 
-  viper_add_test_exe(test_basic_lexer ${_VIPER_BASIC_UNIT_DIR}/test_basic_lexer.cpp)
+  viper_add_test(test_basic_lexer ${_VIPER_BASIC_UNIT_DIR}/test_basic_lexer.cpp)
   target_link_libraries(test_basic_lexer PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_lexer test_basic_lexer)
 
-  viper_add_test_exe(test_basic_loc ${_VIPER_BASIC_UNIT_DIR}/test_basic_loc.cpp)
+  viper_add_test(test_basic_loc ${_VIPER_BASIC_UNIT_DIR}/test_basic_loc.cpp)
   target_link_libraries(test_basic_loc PRIVATE fe_basic il_build viper_il_full)
   viper_add_ctest(test_basic_loc test_basic_loc)
 
-  viper_add_test_exe(test_basic_expr_loc ${_VIPER_BASIC_UNIT_DIR}/test_basic_expr_loc.cpp)
+  viper_add_test(test_basic_expr_loc ${_VIPER_BASIC_UNIT_DIR}/test_basic_expr_loc.cpp)
   target_link_libraries(test_basic_expr_loc PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_expr_loc test_basic_expr_loc)
 
-  viper_add_test_exe(test_basic_semantic ${_VIPER_BASIC_UNIT_DIR}/test_basic_semantic.cpp)
+  viper_add_test(test_basic_semantic ${_VIPER_BASIC_UNIT_DIR}/test_basic_semantic.cpp)
   target_link_libraries(test_basic_semantic PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_semantic test_basic_semantic)
 
-  viper_add_test_exe(test_basic_lowerer_collect ${_VIPER_BASIC_UNIT_DIR}/test_basic_lowerer_collect.cpp)
+  viper_add_test(test_basic_lowerer_collect ${_VIPER_BASIC_UNIT_DIR}/test_basic_lowerer_collect.cpp)
   target_link_libraries(test_basic_lowerer_collect PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_lowerer_collect test_basic_lowerer_collect)
 
-  viper_add_test_exe(test_basic_lowerer_conversions ${_VIPER_BASIC_UNIT_DIR}/test_basic_lowerer_conversions.cpp)
+  viper_add_test(test_basic_lowerer_conversions ${_VIPER_BASIC_UNIT_DIR}/test_basic_lowerer_conversions.cpp)
   target_link_libraries(test_basic_lowerer_conversions PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_lowerer_conversions test_basic_lowerer_conversions)
 
-  viper_add_test_exe(test_basic_lowerer_runtime_helpers ${_VIPER_BASIC_UNIT_DIR}/test_basic_lowerer_runtime_helpers.cpp)
+  viper_add_test(test_basic_lowerer_runtime_helpers ${_VIPER_BASIC_UNIT_DIR}/test_basic_lowerer_runtime_helpers.cpp)
   target_link_libraries(test_basic_lowerer_runtime_helpers PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_lowerer_runtime_helpers test_basic_lowerer_runtime_helpers)
 
-  viper_add_test_exe(test_basic_semantic_components ${_VIPER_BASIC_UNIT_DIR}/test_basic_semantic_components.cpp)
+  viper_add_test(test_basic_semantic_components ${_VIPER_BASIC_UNIT_DIR}/test_basic_semantic_components.cpp)
   target_link_libraries(test_basic_semantic_components PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_semantic_components test_basic_semantic_components)
 
-  viper_add_test_exe(test_basic_semantic_arrays ${_VIPER_BASIC_UNIT_DIR}/test_basic_semantic_arrays.cpp)
+  viper_add_test(test_basic_semantic_arrays ${_VIPER_BASIC_UNIT_DIR}/test_basic_semantic_arrays.cpp)
   target_link_libraries(test_basic_semantic_arrays PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_semantic_arrays test_basic_semantic_arrays)
 
-  viper_add_test_exe(test_basic_intrinsic_semantics ${_VIPER_BASIC_UNIT_DIR}/test_basic_intrinsic_semantics.cpp)
+  viper_add_test(test_basic_intrinsic_semantics ${_VIPER_BASIC_UNIT_DIR}/test_basic_intrinsic_semantics.cpp)
   target_link_libraries(test_basic_intrinsic_semantics PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_intrinsic_semantics test_basic_intrinsic_semantics)
 
-  viper_add_test_exe(test_basic_diagnostic ${_VIPER_BASIC_UNIT_DIR}/test_basic_diagnostic.cpp)
+  viper_add_test(test_basic_diagnostic ${_VIPER_BASIC_UNIT_DIR}/test_basic_diagnostic.cpp)
   target_link_libraries(test_basic_diagnostic PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_diagnostic test_basic_diagnostic)
 
-  viper_add_test_exe(test_basic_constfold ${_VIPER_BASIC_UNIT_DIR}/test_basic_constfold.cpp)
+  viper_add_test(test_basic_constfold ${_VIPER_BASIC_UNIT_DIR}/test_basic_constfold.cpp)
   target_link_libraries(test_basic_constfold PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_constfold test_basic_constfold)
 
-  viper_add_test_exe(test_basic_compiler ${_VIPER_BASIC_UNIT_DIR}/test_basic_compiler.cpp)
+  viper_add_test(test_basic_compiler ${_VIPER_BASIC_UNIT_DIR}/test_basic_compiler.cpp)
   target_link_libraries(test_basic_compiler PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_compiler test_basic_compiler)
 
-  viper_add_test_exe(test_basic_ast_mutation ${_VIPER_BASIC_UNIT_DIR}/test_basic_ast_mutation.cpp)
+  viper_add_test(test_basic_ast_mutation ${_VIPER_BASIC_UNIT_DIR}/test_basic_ast_mutation.cpp)
   target_link_libraries(test_basic_ast_mutation PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_ast_mutation test_basic_ast_mutation)
 
-  viper_add_test_exe(test_basic_parse_array_var ${_VIPER_BASIC_UNIT_DIR}/test_basic_parse_array_var.cpp)
+  viper_add_test(test_basic_parse_array_var ${_VIPER_BASIC_UNIT_DIR}/test_basic_parse_array_var.cpp)
   target_link_libraries(test_basic_parse_array_var PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_parse_array_var test_basic_parse_array_var)
 
-  viper_add_test_exe(test_basic_parse_loops ${_VIPER_BASIC_UNIT_DIR}/test_basic_parse_loops.cpp)
+  viper_add_test(test_basic_parse_loops ${_VIPER_BASIC_UNIT_DIR}/test_basic_parse_loops.cpp)
   target_link_libraries(test_basic_parse_loops PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_parse_loops test_basic_parse_loops)
 
-  viper_add_test_exe(test_basic_parse_do ${_VIPER_BASIC_UNIT_DIR}/test_basic_parse_do.cpp)
+  viper_add_test(test_basic_parse_do ${_VIPER_BASIC_UNIT_DIR}/test_basic_parse_do.cpp)
   target_link_libraries(test_basic_parse_do PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_parse_do test_basic_parse_do)
 
-  viper_add_test_exe(test_frontends_basic_statement_context ${VIPER_TESTS_DIR}/frontends/basic/ParserStatementContextTests.cpp)
+  viper_add_test(test_frontends_basic_statement_context ${VIPER_TESTS_DIR}/frontends/basic/ParserStatementContextTests.cpp)
   target_link_libraries(test_frontends_basic_statement_context PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_statement_context test_frontends_basic_statement_context)
 
-  viper_add_test_exe(test_frontends_basic_parse_on_error ${VIPER_TESTS_DIR}/frontends/basic/ParseOnErrorTests.cpp)
+  viper_add_test(test_frontends_basic_parse_on_error ${VIPER_TESTS_DIR}/frontends/basic/ParseOnErrorTests.cpp)
   target_link_libraries(test_frontends_basic_parse_on_error PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_parse_on_error test_frontends_basic_parse_on_error)
 
-  viper_add_test_exe(test_frontends_basic_parse_file_io ${VIPER_TESTS_DIR}/frontends/basic/ParseFileIoTests.cpp)
+  viper_add_test(test_frontends_basic_parse_file_io ${VIPER_TESTS_DIR}/frontends/basic/ParseFileIoTests.cpp)
   target_link_libraries(test_frontends_basic_parse_file_io PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_parse_file_io test_frontends_basic_parse_file_io)
 
-  viper_add_test_exe(test_frontends_basic_lexer_file_io ${VIPER_TESTS_DIR}/frontends/basic/LexerFileIoTests.cpp)
+  viper_add_test(test_frontends_basic_lexer_file_io ${VIPER_TESTS_DIR}/frontends/basic/LexerFileIoTests.cpp)
   target_link_libraries(test_frontends_basic_lexer_file_io PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_lexer_file_io test_frontends_basic_lexer_file_io)
 
-  viper_add_test_exe(test_frontends_basic_semantic_exprs ${VIPER_TESTS_DIR}/frontends/basic/SemanticAnalyzerBinaryExprTests.cpp)
+  viper_add_test(test_frontends_basic_semantic_exprs ${VIPER_TESTS_DIR}/frontends/basic/SemanticAnalyzerBinaryExprTests.cpp)
   target_link_libraries(test_frontends_basic_semantic_exprs PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_semantic_exprs test_frontends_basic_semantic_exprs)
 
-  viper_add_test_exe(test_frontends_basic_semantic_on_error ${VIPER_TESTS_DIR}/frontends/basic/SemanticAnalyzerOnErrorTests.cpp)
+  viper_add_test(test_frontends_basic_semantic_on_error ${VIPER_TESTS_DIR}/frontends/basic/SemanticAnalyzerOnErrorTests.cpp)
   target_link_libraries(test_frontends_basic_semantic_on_error PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_semantic_on_error test_frontends_basic_semantic_on_error)
 
-  viper_add_test_exe(test_frontends_basic_semantic_file_io ${VIPER_TESTS_DIR}/frontends/basic/SemanticsFileIoTests.cpp)
+  viper_add_test(test_frontends_basic_semantic_file_io ${VIPER_TESTS_DIR}/frontends/basic/SemanticsFileIoTests.cpp)
   target_link_libraries(test_frontends_basic_semantic_file_io PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_semantic_file_io test_frontends_basic_semantic_file_io)
 
-  viper_add_test_exe(test_frontends_basic_type_rules ${VIPER_TESTS_DIR}/frontends/basic/TypeRulesTests.cpp)
+  viper_add_test(test_frontends_basic_type_rules ${VIPER_TESTS_DIR}/frontends/basic/TypeRulesTests.cpp)
   target_link_libraries(test_frontends_basic_type_rules PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_type_rules test_frontends_basic_type_rules)
 
-  viper_add_test_exe(test_basic_intrinsics ${_VIPER_BASIC_UNIT_DIR}/test_basic_intrinsics.cpp)
+  viper_add_test(test_basic_intrinsics ${_VIPER_BASIC_UNIT_DIR}/test_basic_intrinsics.cpp)
   target_link_libraries(test_basic_intrinsics PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_intrinsics test_basic_intrinsics)
 
-  viper_add_test_exe(test_basic_ast_printer ${_VIPER_BASIC_UNIT_DIR}/test_basic_ast_printer.cpp)
+  viper_add_test(test_basic_ast_printer ${_VIPER_BASIC_UNIT_DIR}/test_basic_ast_printer.cpp)
   target_link_libraries(test_basic_ast_printer PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_ast_printer test_basic_ast_printer)
 endfunction()
