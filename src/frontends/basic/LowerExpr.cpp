@@ -10,6 +10,7 @@
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
+#include "frontends/basic/DiagnosticEmitter.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -26,6 +27,29 @@ using namespace il::core;
 
 namespace il::frontends::basic
 {
+
+namespace
+{
+std::string_view logicalOperatorDisplayName(BinaryExpr::Op op) noexcept
+{
+    switch (op)
+    {
+        case BinaryExpr::Op::LogicalAndShort:
+            return "ANDALSO";
+        case BinaryExpr::Op::LogicalOrShort:
+            return "ORELSE";
+        case BinaryExpr::Op::LogicalAnd:
+            return "AND";
+        case BinaryExpr::Op::LogicalOr:
+            return "OR";
+        default:
+            break;
+    }
+    return "<logical>";
+}
+
+constexpr std::string_view kDiagUnsupportedLogicalOperator = "B4002";
+} // namespace
 
 /// @brief Expression visitor that lowers nodes via Lowerer helpers.
 class LowererExprVisitor final : public ExprVisitor
@@ -364,7 +388,19 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
             });
     }
 
-    assert(false && "unsupported logical operator");
+    if (auto *emitter = diagnosticEmitter())
+    {
+        std::string_view opText = logicalOperatorDisplayName(b.op);
+        std::string message = "unsupported logical operator '";
+        message.append(opText);
+        message.append("'; assuming FALSE");
+        emitter->emit(il::support::Severity::Error,
+                      std::string(kDiagUnsupportedLogicalOperator),
+                      b.loc,
+                      0,
+                      std::move(message));
+    }
+
     return {emitBoolConst(false), ilBoolTy()};
 }
 
