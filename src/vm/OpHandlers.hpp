@@ -48,6 +48,13 @@ struct OpHandlers
                                     const il::core::BasicBlock *&bb,
                                     size_t &ip);
 
+    static VM::ExecResult handleISub(VM &vm,
+                                     Frame &fr,
+                                     const il::core::Instr &in,
+                                     const VM::BlockMap &blocks,
+                                     const il::core::BasicBlock *&bb,
+                                     size_t &ip);
+
     static VM::ExecResult handleMul(VM &vm,
                                     Frame &fr,
                                     const il::core::Instr &in,

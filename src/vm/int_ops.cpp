@@ -447,6 +447,19 @@ VM::ExecResult OpHandlers::handleSub(VM &vm,
                             { out.i64 = lhsVal.i64 - rhsVal.i64; });
 }
 
+/// @brief Interpret the `isub` opcode for 64-bit integers.
+/// @note Routes to @ref OpHandlers::handleSub to share two's complement semantics with
+///       the general subtraction handler.
+VM::ExecResult OpHandlers::handleISub(VM &vm,
+                                      Frame &fr,
+                                      const Instr &in,
+                                      const VM::BlockMap &blocks,
+                                      const BasicBlock *&bb,
+                                      size_t &ip)
+{
+    return handleSub(vm, fr, in, blocks, bb, ip);
+}
+
 /// @brief Interpret the `mul` opcode for 64-bit integers.
 /// @note Multiplication uses the same operand handling helpers as addition, wraps
 ///       modulo 2^64 per docs/il-guide.md#reference §Integer Arithmetic, and stores the
