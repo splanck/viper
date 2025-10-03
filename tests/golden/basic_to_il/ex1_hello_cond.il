@@ -74,25 +74,31 @@ if_test_0:
   .loc 1 6 9
   %t11 = scmp_gt %t10, 8
   .loc 1 6 9
-  cbr %t11, if_then_0, if_else
+  %t12 = zext1 %t11
+  .loc 1 6 9
+  %t13 = isub.ovf 0, %t12
+  .loc 1 6 4
+  %t14 = trunc1 %t13
+  .loc 1 6 4
+  cbr %t14, if_then_0, if_else
 if_then_0:
   .loc 1 6 24
-  %t12 = load i64, %t0
+  %t15 = load i64, %t0
   .loc 1 6 18
-  call @rt_print_i64(%t12)
+  call @rt_print_i64(%t15)
   .loc 1 6 18
-  %t13 = const_str @.L1
+  %t16 = const_str @.L1
   .loc 1 6 18
-  call @rt_print_str(%t13)
+  call @rt_print_str(%t16)
   .loc 1 6 4
   br if_exit
 if_else:
   .loc 1 6 31
   call @rt_print_i64(4)
   .loc 1 6 31
-  %t14 = const_str @.L1
+  %t17 = const_str @.L1
   .loc 1 6 31
-  call @rt_print_str(%t14)
+  call @rt_print_str(%t17)
   .loc 1 6 4
   br if_exit
 if_exit:

@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cassert>
 #include <functional>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -84,7 +85,16 @@ class LowererExprVisitor final : public ExprVisitor
     void visit(const BoolExpr &expr) override
     {
         lowerer_.curLoc = expr.loc;
-        result_ = Lowerer::RVal{lowerer_.emitBoolConst(expr.value), lowerer_.ilBoolTy()};
+        if (lowerer_.context().current() == nullptr)
+        {
+            Value logical = Value::constInt(expr.value ? -1 : 0);
+            result_ = Lowerer::RVal{logical, il::core::Type(il::core::Type::Kind::I64)};
+            return;
+        }
+        Value raw = lowerer_.emitBoolConst(expr.value);
+        lowerer_.curLoc = expr.loc;
+        Value logical = lowerer_.emitBasicLogicalI64(raw);
+        result_ = Lowerer::RVal{logical, il::core::Type(il::core::Type::Kind::I64)};
     }
 
     void visit(const VarExpr &expr) override { result_ = lowerer_.lowerVarExpr(expr); }
@@ -255,7 +265,39 @@ Lowerer::RVal Lowerer::lowerBoolBranchExpr(Value cond,
     curLoc = loc;
     emitCBr(cond, thenBlk, elseBlk);
     ctx.setCurrent(joinBlk);
-    return {result, ilBoolTy()};
+    curLoc = loc;
+    Value logical = emitBasicLogicalI64(result);
+    return {logical, Type(Type::Kind::I64)};
+}
+
+Lowerer::Value Lowerer::emitConstI64(std::int64_t v)
+{
+    return Value::constInt(v);
+}
+
+Lowerer::Value Lowerer::emitZext1ToI64(Value val)
+{
+    return emitUnary(Opcode::Zext1, Type(Type::Kind::I64), val);
+}
+
+Lowerer::Value Lowerer::emitISub(Value lhs, Value rhs)
+{
+    return emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), lhs, rhs);
+}
+
+Lowerer::Value Lowerer::emitBasicLogicalI64(Value b1)
+{
+    if (context().current() == nullptr)
+    {
+        if (b1.kind == Value::Kind::ConstInt)
+        {
+            return Value::constInt(b1.i64 != 0 ? -1 : 0);
+        }
+        return Value::constInt(0);
+    }
+    Value i64zero = emitConstI64(0);
+    Value zext = emitZext1ToI64(b1);
+    return emitISub(i64zero, zext);
 }
 
 /// @brief Lower a unary BASIC expression, currently handling logical NOT.
@@ -359,17 +401,13 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
         Value lhsBool = toBool(lhs);
         RVal rhs = lowerExpr(*b.rhs);
         Value rhsBool = toBool(rhs);
-        return lowerBoolBranchExpr(
-            lhsBool,
-            b.loc,
-            [&](Value slot) {
-                curLoc = b.loc;
-                emitStore(ilBoolTy(), slot, rhsBool);
-            },
-            [&](Value slot) {
-                curLoc = b.loc;
-                emitStore(ilBoolTy(), slot, emitBoolConst(false));
-            });
+        curLoc = b.loc;
+        Value lhsLogical = emitBasicLogicalI64(lhsBool);
+        curLoc = b.loc;
+        Value rhsLogical = emitBasicLogicalI64(rhsBool);
+        curLoc = b.loc;
+        Value res = emitBinary(Opcode::And, Type(Type::Kind::I64), lhsLogical, rhsLogical);
+        return {res, Type(Type::Kind::I64)};
     }
 
     if (b.op == BinaryExpr::Op::LogicalOr)
@@ -377,17 +415,13 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
         Value lhsBool = toBool(lhs);
         RVal rhs = lowerExpr(*b.rhs);
         Value rhsBool = toBool(rhs);
-        return lowerBoolBranchExpr(
-            lhsBool,
-            b.loc,
-            [&](Value slot) {
-                curLoc = b.loc;
-                emitStore(ilBoolTy(), slot, emitBoolConst(true));
-            },
-            [&](Value slot) {
-                curLoc = b.loc;
-                emitStore(ilBoolTy(), slot, rhsBool);
-            });
+        curLoc = b.loc;
+        Value lhsLogical = emitBasicLogicalI64(lhsBool);
+        curLoc = b.loc;
+        Value rhsLogical = emitBasicLogicalI64(rhsBool);
+        curLoc = b.loc;
+        Value res = emitBinary(Opcode::Or, Type(Type::Kind::I64), lhsLogical, rhsLogical);
+        return {res, Type(Type::Kind::I64)};
     }
 
     if (auto *emitter = diagnosticEmitter())
@@ -410,7 +444,9 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
                       std::move(message));
     }
 
-    return {emitBoolConst(false), ilBoolTy()};
+    curLoc = b.loc;
+    Value logicalFalse = emitBasicLogicalI64(emitBoolConst(false));
+    return {logicalFalse, Type(Type::Kind::I64)};
 }
 
 /// @brief Lower integer division and modulo with width-aware narrowing.
@@ -541,14 +577,14 @@ Lowerer::RVal Lowerer::lowerStringBinary(const BinaryExpr &b, RVal lhs, RVal rhs
         return {res, Type(Type::Kind::Str)};
     }
     Value eq = emitCallRet(ilBoolTy(), "rt_str_eq", {lhs.value, rhs.value});
+    Value eqLogical = emitBasicLogicalI64(eq);
     if (b.op == BinaryExpr::Op::Ne)
     {
-        Value z = coerceToI64({eq, ilBoolTy()}, b.loc).value;
-        Value x = emitBinary(Opcode::Xor, Type(Type::Kind::I64), z, Value::constInt(1));
-        Value res = coerceToBool({x, Type(Type::Kind::I64)}, b.loc).value;
-        return {res, ilBoolTy()};
+        curLoc = b.loc;
+        Value res = emitBinary(Opcode::Xor, Type(Type::Kind::I64), eqLogical, emitConstI64(-1));
+        return {res, Type(Type::Kind::I64)};
     }
-    return {eq, ilBoolTy()};
+    return {eqLogical, Type(Type::Kind::I64)};
 }
 
 Lowerer::RVal Lowerer::lowerPowBinary(const BinaryExpr &b, RVal lhs, RVal rhs)
@@ -703,6 +739,12 @@ Lowerer::RVal Lowerer::lowerNumericBinary(const BinaryExpr &b, RVal lhs, RVal rh
             break; // other ops handled elsewhere
     }
     Value res = emitBinary(op, ty, lhs.value, rhs.value);
+    if (ty.kind == Type::Kind::I1)
+    {
+        curLoc = b.loc;
+        Value logical = emitBasicLogicalI64(res);
+        return {logical, Type(Type::Kind::I64)};
+    }
     return {res, ty};
 }
 
@@ -743,7 +785,7 @@ Lowerer::RVal Lowerer::coerceToI64(RVal v, il::support::SourceLoc loc)
     if (v.type.kind == Type::Kind::I1)
     {
         curLoc = loc;
-        v.value = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), v.value);
+        v.value = emitBasicLogicalI64(v.value);
         v.type = Type(Type::Kind::I64);
     }
     else if (v.type.kind == Type::Kind::F64)

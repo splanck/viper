@@ -48,53 +48,60 @@ L50:
   %t10 = load i64, %t5
   .loc 1 5 16
   %t11 = icmp_ne %t10, 0
+  .loc 1 5 16
+  %t12 = zext1 %t11
+  .loc 1 5 16
+  %t13 = isub.ovf 0, %t12
   .loc 1 5 4
-  store i1, %t2, %t11
+  %t14 = trunc1 %t13
+  .loc 1 5 4
+  store i1, %t2, %t14
   .loc 1 5 4
   br L60
 L60:
   .loc 1 6 17
-  %t12 = load i1, %t2
+  %t15 = load i1, %t2
   .loc 1 6 26
-  %t13 = load i64, %t4
+  %t16 = load i64, %t4
   .loc 1 6 28
-  %t14 = icmp_ne %t13, 0
+  %t17 = icmp_ne %t16, 0
   .loc 1 6 28
-  %t15 = alloca 1
+  %t18 = zext1 %t17
+  .loc 1 6 28
+  %t19 = isub.ovf 0, %t18
   .loc 1 6 21
-  cbr %t12, bool_then, bool_else
+  %t20 = trunc1 %t19
+  .loc 1 6 21
+  %t21 = zext1 %t15
+  .loc 1 6 21
+  %t22 = isub.ovf 0, %t21
+  .loc 1 6 21
+  %t23 = zext1 %t20
+  .loc 1 6 21
+  %t24 = isub.ovf 0, %t23
+  .loc 1 6 21
+  %t25 = and %t22, %t24
+  .loc 1 6 4
+  %t26 = trunc1 %t25
+  .loc 1 6 4
+  store i1, %t0, %t26
+  .loc 1 6 4
+  br L70
 L70:
   .loc 1 7 10
-  %t18 = load i1, %t0
+  %t27 = load i1, %t0
   .loc 1 7 4
-  %t19 = zext1 %t18
+  %t28 = zext1 %t27
   .loc 1 7 4
-  call @rt_print_i64(%t19)
+  %t29 = isub.ovf 0, %t28
   .loc 1 7 4
-  %t20 = const_str @.L0
+  call @rt_print_i64(%t29)
   .loc 1 7 4
-  call @rt_print_str(%t20)
+  %t30 = const_str @.L0
+  .loc 1 7 4
+  call @rt_print_str(%t30)
   .loc 1 7 4
   br exit
 exit:
   ret 0
-bool_then:
-  .loc 1 6 21
-  store i1, %t15, %t14
-  .loc 1 6 21
-  br bool_join
-bool_else:
-  .loc 1 6 21
-  %t16 = trunc1 0
-  .loc 1 6 21
-  store i1, %t15, %t16
-  .loc 1 6 21
-  br bool_join
-bool_join:
-  .loc 1 6 21
-  %t17 = load i1, %t15
-  .loc 1 6 4
-  store i1, %t0, %t17
-  .loc 1 6 4
-  br L70
 }

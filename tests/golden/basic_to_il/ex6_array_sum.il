@@ -62,21 +62,21 @@ L50:
   br loop_head
 L100:
   .loc 1 10 11
-  %t38 = load i64, %t0
+  %t41 = load i64, %t0
   .loc 1 10 5
-  call @rt_print_i64(%t38)
+  call @rt_print_i64(%t41)
   .loc 1 10 5
-  %t39 = const_str @.L0
+  %t42 = const_str @.L0
   .loc 1 10 5
-  call @rt_print_str(%t39)
+  call @rt_print_str(%t42)
   .loc 1 10 5
   br L110
 L110:
   .loc 1 11 5
   br exit
 exit:
-  %t40 = load ptr, %t2
-  call @rt_arr_i32_release(%t40)
+  %t43 = load ptr, %t2
+  call @rt_arr_i32_release(%t43)
   store ptr, %t2, null
   ret 0
 loop_head:
@@ -86,86 +86,92 @@ loop_head:
   %t10 = load i64, %t3
   .loc 1 5 12
   %t11 = scmp_lt %t9, %t10
+  .loc 1 5 12
+  %t12 = zext1 %t11
+  .loc 1 5 12
+  %t13 = isub.ovf 0, %t12
   .loc 1 5 4
-  cbr %t11, loop_body, done
+  %t14 = trunc1 %t13
+  .loc 1 5 4
+  cbr %t14, loop_body, done
 loop_body:
   .loc 1 6 17
-  %t12 = load i64, %t1
+  %t15 = load i64, %t1
   .loc 1 6 21
-  %t13 = load i64, %t1
-  .loc 1 6 19
-  %t14 = imul.ovf %t12, %t13
-  .loc 1 6 19
-  %t15 = load ptr, %t2
-  .loc 1 6 12
   %t16 = load i64, %t1
+  .loc 1 6 19
+  %t17 = imul.ovf %t15, %t16
+  .loc 1 6 19
+  %t18 = load ptr, %t2
+  .loc 1 6 12
+  %t19 = load i64, %t1
   .loc 1 6 10
-  %t17 = call @rt_arr_i32_len(%t15)
+  %t20 = call @rt_arr_i32_len(%t18)
   .loc 1 6 10
-  %t18 = scmp_lt %t16, 0
+  %t21 = scmp_lt %t19, 0
   .loc 1 6 10
-  %t19 = scmp_ge %t16, %t17
+  %t22 = scmp_ge %t19, %t20
   .loc 1 6 10
-  %t20 = zext1 %t18
+  %t23 = zext1 %t21
   .loc 1 6 10
-  %t21 = zext1 %t19
+  %t24 = zext1 %t22
   .loc 1 6 10
-  %t22 = iadd.ovf %t20, %t21
+  %t25 = iadd.ovf %t23, %t24
   .loc 1 6 10
-  %t23 = scmp_gt %t22, 0
+  %t26 = scmp_gt %t25, 0
   .loc 1 6 10
-  cbr %t23, bc_oob0, bc_ok0
+  cbr %t26, bc_oob0, bc_ok0
 done:
   .loc 1 5 4
   br L100
 bc_ok0:
   .loc 1 6 6
-  call @rt_arr_i32_set(%t15, %t16, %t14)
+  call @rt_arr_i32_set(%t18, %t19, %t17)
   .loc 1 7 14
-  %t24 = load i64, %t0
+  %t27 = load i64, %t0
   .loc 1 7 18
-  %t25 = load ptr, %t2
+  %t28 = load ptr, %t2
   .loc 1 7 20
-  %t26 = load i64, %t1
+  %t29 = load i64, %t1
   .loc 1 7 18
-  %t27 = call @rt_arr_i32_len(%t25)
+  %t30 = call @rt_arr_i32_len(%t28)
   .loc 1 7 18
-  %t28 = scmp_lt %t26, 0
+  %t31 = scmp_lt %t29, 0
   .loc 1 7 18
-  %t29 = scmp_ge %t26, %t27
+  %t32 = scmp_ge %t29, %t30
   .loc 1 7 18
-  %t30 = zext1 %t28
+  %t33 = zext1 %t31
   .loc 1 7 18
-  %t31 = zext1 %t29
+  %t34 = zext1 %t32
   .loc 1 7 18
-  %t32 = iadd.ovf %t30, %t31
+  %t35 = iadd.ovf %t33, %t34
   .loc 1 7 18
-  %t33 = scmp_gt %t32, 0
+  %t36 = scmp_gt %t35, 0
   .loc 1 7 18
-  cbr %t33, bc_oob1, bc_ok1
+  cbr %t36, bc_oob1, bc_ok1
 bc_oob0:
   .loc 1 6 10
-  call @rt_arr_oob_panic(%t16, %t17)
+  call @rt_arr_oob_panic(%t19, %t20)
   .loc 1 6 10
   trap
 bc_ok1:
   .loc 1 7 18
-  %t34 = call @rt_arr_i32_get(%t25, %t26)
+  %t37 = call @rt_arr_i32_get(%t28, %t29)
   .loc 1 7 16
-  %t35 = iadd.ovf %t24, %t34
+  %t38 = iadd.ovf %t27, %t37
   .loc 1 7 6
-  store i64, %t0, %t35
+  store i64, %t0, %t38
   .loc 1 8 14
-  %t36 = load i64, %t1
+  %t39 = load i64, %t1
   .loc 1 8 16
-  %t37 = iadd.ovf %t36, 1
+  %t40 = iadd.ovf %t39, 1
   .loc 1 8 6
-  store i64, %t1, %t37
+  store i64, %t1, %t40
   .loc 1 5 4
   br loop_head
 bc_oob1:
   .loc 1 7 18
-  call @rt_arr_oob_panic(%t26, %t27)
+  call @rt_arr_oob_panic(%t29, %t30)
   .loc 1 7 18
   trap
 }
