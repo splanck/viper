@@ -24,7 +24,7 @@ function(viper_add_e2e_vm_suite)
   set(_VIPER_E2E_DIR ${CMAKE_CURRENT_FUNCTION_LIST_DIR})
 
   if(NOT TARGET float_out)
-    viper_add_test_exe(float_out ${_VIPER_E2E_DIR}/support/FloatOut.cpp)
+    viper_add_test(float_out ${_VIPER_E2E_DIR}/support/FloatOut.cpp NO_CTEST)
   endif()
 
   viper_add_ctest(vm_strings_example
