@@ -1,4 +1,5 @@
 // File: src/vm/Trace.cpp
+// License: MIT License. See LICENSE in the project root for full license information.
 // Purpose: Implement deterministic tracing for IL VM steps.
 // Key invariants: Each executed instruction produces at most one flushed line.
 // Ownership/Lifetime: Uses external streams; no resource ownership.
@@ -93,6 +94,9 @@ void printValue(std::ostream &os, const il::core::Value &v)
 }
 } // namespace
 
+/// @brief Construct a TraceSink with the given configuration.
+/// @param cfg Trace configuration controlling emission behavior and source lookup.
+/// @return Trace sink ready to emit records according to @p cfg.
 TraceSink::TraceSink(TraceConfig cfg) : cfg(cfg)
 {
 #ifdef _WIN32
@@ -100,6 +104,9 @@ TraceSink::TraceSink(TraceConfig cfg) : cfg(cfg)
 #endif
 }
 
+/// @brief Precompute instruction source locations for a prepared frame.
+/// @param fr The frame whose function's instructions should be indexed.
+/// @return Nothing.
 void TraceSink::onFramePrepared(const Frame &fr)
 {
     if (!fr.func)
@@ -115,6 +122,10 @@ void TraceSink::onFramePrepared(const Frame &fr)
     }
 }
 
+/// @brief Retrieve cached file contents, loading from disk if necessary.
+/// @param file_id Source manager identifier for the file.
+/// @param path_hint Optional filesystem path to use when the source manager path is empty.
+/// @return Cached file entry or nullptr when the file cannot be resolved.
 const TraceSink::FileCacheEntry *TraceSink::getOrLoadFile(uint32_t file_id, std::string path_hint)
 {
     if (!cfg.sm || file_id == 0)
@@ -145,6 +156,10 @@ const TraceSink::FileCacheEntry *TraceSink::getOrLoadFile(uint32_t file_id, std:
     return &pos->second;
 }
 
+/// @brief Emit a trace line for a single executed instruction.
+/// @param in Instruction being executed.
+/// @param fr Execution frame that provides function and block context.
+/// @return Nothing.
 void TraceSink::onStep(const il::core::Instr &in, const Frame &fr)
 {
     if (!cfg.enabled())
