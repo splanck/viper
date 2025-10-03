@@ -39,14 +39,20 @@ if_test_0:
   .loc 1 2 10
   %t4 = call @rt_str_eq(%t2, %t3)
   .loc 1 2 10
-  cbr %t4, if_then_0, if_else
+  %t5 = zext1 %t4
+  .loc 1 2 10
+  %t6 = isub.ovf 0, %t5
+  .loc 1 2 4
+  %t7 = trunc1 %t6
+  .loc 1 2 4
+  cbr %t7, if_then_0, if_else
 if_then_0:
   .loc 1 2 25
   call @rt_print_i64(1)
   .loc 1 2 25
-  %t5 = const_str @.L1
+  %t8 = const_str @.L1
   .loc 1 2 25
-  call @rt_print_str(%t5)
+  call @rt_print_str(%t8)
   .loc 1 2 4
   br if_exit
 if_else:
@@ -57,26 +63,28 @@ if_exit:
   br L30
 if_test_01:
   .loc 1 3 7
-  %t6 = load str, %t0
+  %t9 = load str, %t0
   .loc 1 3 13
-  %t7 = const_str @.L2
+  %t10 = const_str @.L2
   .loc 1 3 10
-  %t8 = call @rt_str_eq(%t6, %t7)
+  %t11 = call @rt_str_eq(%t9, %t10)
   .loc 1 3 10
-  %t9 = zext1 %t8
+  %t12 = zext1 %t11
   .loc 1 3 10
-  %t10 = xor %t9, 1
+  %t13 = isub.ovf 0, %t12
   .loc 1 3 10
-  %t11 = trunc1 %t10
-  .loc 1 3 10
-  cbr %t11, if_then_01, if_else1
+  %t14 = xor %t13, -1
+  .loc 1 3 4
+  %t15 = trunc1 %t14
+  .loc 1 3 4
+  cbr %t15, if_then_01, if_else1
 if_then_01:
   .loc 1 3 22
   call @rt_print_i64(2)
   .loc 1 3 22
-  %t12 = const_str @.L1
+  %t16 = const_str @.L1
   .loc 1 3 22
-  call @rt_print_str(%t12)
+  call @rt_print_str(%t16)
   .loc 1 3 4
   br if_exit1
 if_else1:

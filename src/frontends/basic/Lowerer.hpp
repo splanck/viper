@@ -14,6 +14,7 @@
 #include "il/core/Module.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include <array>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -597,6 +598,14 @@ class Lowerer
 
     /// @brief Emit unary instruction of @p op on @p val producing @p ty.
     Value emitUnary(Opcode op, Type ty, Value val);
+
+    Value emitConstI64(std::int64_t v);
+
+    Value emitZext1ToI64(Value val);
+
+    Value emitISub(Value lhs, Value rhs);
+
+    Value emitBasicLogicalI64(Value b1);
 
     /// @brief Emit checked integer negation for @p val producing type @p ty.
     Value emitCheckedNeg(Type ty, Value val);
