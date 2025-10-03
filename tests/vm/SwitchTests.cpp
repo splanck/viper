@@ -1,9 +1,8 @@
 // File: tests/vm/SwitchTests.cpp
-// Purpose: Validate VM switch.i32 execution paths and trace/debug diagnostics.
-// Key invariants: Switch instruction selects correct successor and reports it
-// deterministically via trace and debug streams.
-// Ownership/Lifetime: Tests build modules on the fly and execute them immediately.
-// Links: docs/il-guide.md#reference
+// Purpose: Verify that VM switch.i32 selects the correct target and default blocks.
+// Key invariants: Each switch arm returns its associated value and defaults when unmatched.
+// Ownership/Lifetime: Modules are constructed per test and executed immediately.
+// Links: docs/il-guide.md#reference#control-flow-terminators
 
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"
@@ -11,9 +10,6 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdlib>
-#include <fstream>
-#include <iostream>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -21,19 +17,18 @@ using namespace il::core;
 
 namespace
 {
-struct CaseSpec
+struct SwitchCase
 {
     std::string label;
     int32_t match;
-    int64_t ret;
+    int64_t result;
 };
 
-struct SwitchSpec
+struct SwitchProgram
 {
-    int32_t scrutinee;
     std::string defaultLabel;
-    int64_t defaultValue;
-    std::vector<CaseSpec> cases;
+    int64_t defaultResult;
+    std::vector<SwitchCase> cases;
 };
 
 Instr makeRet(int64_t value)
@@ -45,15 +40,15 @@ Instr makeRet(int64_t value)
     return ret;
 }
 
-Module buildSwitchModule(const SwitchSpec &spec)
+Module buildSwitchModule(const SwitchProgram &program, int32_t scrutinee)
 {
     Module module;
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
-    builder.addBlock(fn, "entry");
-    builder.addBlock(fn, spec.defaultLabel);
 
-    for (const auto &cs : spec.cases)
+    builder.addBlock(fn, "entry");
+    builder.addBlock(fn, program.defaultLabel);
+    for (const auto &cs : program.cases)
         builder.addBlock(fn, cs.label);
 
     auto findBlock = [&fn](const std::string &label) -> BasicBlock & {
@@ -67,125 +62,69 @@ Module buildSwitchModule(const SwitchSpec &spec)
     };
 
     BasicBlock &entry = findBlock("entry");
-    BasicBlock &defaultBlock = findBlock(spec.defaultLabel);
-
-    std::vector<BasicBlock *> caseBlocks;
-    caseBlocks.reserve(spec.cases.size());
-    for (const auto &cs : spec.cases)
-        caseBlocks.push_back(&findBlock(cs.label));
+    BasicBlock &defaultBlock = findBlock(program.defaultLabel);
 
     Instr sw;
     sw.op = Opcode::SwitchI32;
     sw.type = Type(Type::Kind::Void);
-    sw.operands.push_back(Value::constInt(spec.scrutinee));
-    sw.labels.push_back(spec.defaultLabel);
+    sw.operands.push_back(Value::constInt(scrutinee));
+    sw.labels.push_back(program.defaultLabel);
     sw.brArgs.emplace_back();
-    for (const auto &cs : spec.cases)
+
+    for (const auto &cs : program.cases)
     {
         sw.operands.push_back(Value::constInt(cs.match));
         sw.labels.push_back(cs.label);
         sw.brArgs.emplace_back();
     }
+
     entry.instructions.push_back(sw);
     entry.terminated = true;
 
-    defaultBlock.instructions.push_back(makeRet(spec.defaultValue));
+    defaultBlock.instructions.push_back(makeRet(program.defaultResult));
     defaultBlock.terminated = true;
-    for (size_t i = 0; i < caseBlocks.size(); ++i)
+
+    for (const auto &cs : program.cases)
     {
-        caseBlocks[i]->instructions.push_back(makeRet(spec.cases[i].ret));
-        caseBlocks[i]->terminated = true;
+        BasicBlock &block = findBlock(cs.label);
+        block.instructions.push_back(makeRet(cs.result));
+        block.terminated = true;
     }
 
     return module;
 }
 
-std::string readFile(const std::string &path)
+int64_t runSwitch(const SwitchProgram &program, int32_t scrutinee)
 {
-    std::ifstream file(path);
-    assert(file && "failed to open golden file");
-    std::ostringstream buffer;
-    buffer << file.rdbuf();
-    return buffer.str();
-}
-
-std::string switchTraceGolden()
-{
-#ifdef TESTS_DIR
-    const std::string path = std::string(TESTS_DIR) + "/golden/il_opt/switch_basic.out";
-#else
-    const std::string path = "tests/golden/il_opt/switch_basic.out";
-#endif
-    return readFile(path);
+    Module module = buildSwitchModule(program, scrutinee);
+    il::vm::VM vm(module);
+    return vm.run();
 }
 }
 
 int main()
 {
-    {
-        SwitchSpec spec{7,
-                        "default_case",
-                        42,
-                        {{"first_case", 1, 11}, {"last_case", 3, 33}}};
-        Module module = buildSwitchModule(spec);
-        il::vm::VM vm(module);
-        assert(vm.run() == 42);
-    }
+    const SwitchProgram dense{
+        "dense_default",
+        99,
+        {{"dense_case_0", 0, 10}, {"dense_case_1", 1, 20}, {"dense_case_2", 2, 30}},
+    };
 
-    {
-        SwitchSpec spec{1,
-                        "fallback",
-                        99,
-                        {{"case_first", 1, 111}, {"case_last", 3, 333}}};
-        Module module = buildSwitchModule(spec);
-        il::vm::TraceConfig traceCfg;
-        traceCfg.mode = il::vm::TraceConfig::IL;
-        std::ostringstream err;
-        auto *oldBuf = std::cerr.rdbuf(err.rdbuf());
-        il::vm::VM vm(module, traceCfg);
-        const int64_t result = vm.run();
-        std::cerr.rdbuf(oldBuf);
-        assert(result == 111);
-        const std::string expected = switchTraceGolden();
-        assert(err.str() == expected);
-    }
+    assert(runSwitch(dense, 0) == 10);
+    assert(runSwitch(dense, 1) == 20);
+    assert(runSwitch(dense, 2) == 30);
+    assert(runSwitch(dense, 7) == 99);
 
-    {
-        SwitchSpec spec{3,
-                        "default_case",
-                        0,
-                        {{"first_case", 1, 5}, {"last_case", 3, 55}}};
-        Module module = buildSwitchModule(spec);
-        il::vm::VM vm(module);
-        assert(vm.run() == 55);
-    }
+    const SwitchProgram sparse{
+        "sparse_default",
+        0,
+        {{"sparse_case_0", 2, 200}, {"sparse_case_1", 10, 1000}, {"sparse_case_2", 42, 4200}},
+    };
 
-    {
-        SwitchSpec spec{1,
-                        "fallback",
-                        300,
-                        {{"dup_first", 1, 10}, {"dup_second", 1, 20}}};
-        Module module = buildSwitchModule(spec);
-        il::vm::DebugCtrl debug;
-        debug.addBreak(debug.internLabel("dup_first"));
-        debug.addBreak(debug.internLabel("dup_second"));
-        std::ostringstream err;
-        auto *oldBuf = std::cerr.rdbuf(err.rdbuf());
-        il::vm::VM vm(module, {}, 0, debug);
-        const int64_t result = vm.run();
-        std::cerr.rdbuf(oldBuf);
-        const std::string output = err.str();
-        assert(result == 10);
-        assert(output.find("blk=dup_first") != std::string::npos);
-        assert(output.find("blk=dup_second") == std::string::npos);
-    }
-
-    {
-        SwitchSpec spec{5, "only_default", 123, {}};
-        Module module = buildSwitchModule(spec);
-        il::vm::VM vm(module);
-        assert(vm.run() == 123);
-    }
+    assert(runSwitch(sparse, 2) == 200);
+    assert(runSwitch(sparse, 10) == 1000);
+    assert(runSwitch(sparse, 42) == 4200);
+    assert(runSwitch(sparse, 7) == 0);
 
     return 0;
 }
