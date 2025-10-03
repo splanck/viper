@@ -593,6 +593,16 @@ Module Lowerer::lower(const Program &prog)
     return lowerProgram(prog);
 }
 
+void Lowerer::setDiagnosticEmitter(DiagnosticEmitter *emitter) noexcept
+{
+    diagnosticEmitter_ = emitter;
+}
+
+DiagnosticEmitter *Lowerer::diagnosticEmitter() const noexcept
+{
+    return diagnosticEmitter_;
+}
+
 /// @brief Discover variable usage within a statement list.
 /// @param stmts Statements whose expressions are analyzed.
 /// @details Populates the symbol table with references, inferred types, and array
