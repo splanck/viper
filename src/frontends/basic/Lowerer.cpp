@@ -8,6 +8,7 @@
 // Links: docs/codemap.md
 
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -596,6 +597,20 @@ Module Lowerer::lower(const Program &prog)
 void Lowerer::setDiagnosticEmitter(DiagnosticEmitter *emitter) noexcept
 {
     diagnosticEmitter_ = emitter;
+    if (emitter)
+    {
+        TypeRules::setTypeErrorSink([emitter](const TypeRules::TypeError &error) {
+            emitter->emit(il::support::Severity::Error,
+                          error.code,
+                          il::support::SourceLoc{},
+                          0,
+                          error.message);
+        });
+    }
+    else
+    {
+        TypeRules::setTypeErrorSink({});
+    }
 }
 
 DiagnosticEmitter *Lowerer::diagnosticEmitter() const noexcept

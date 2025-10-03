@@ -9,7 +9,8 @@
 #include "frontends/basic/TypeRules.hpp"
 
 #include <array>
-#include <cassert>
+#include <string>
+#include <utility>
 
 namespace il::frontends::basic
 {
@@ -17,6 +18,68 @@ namespace
 {
 using NumericType = TypeRules::NumericType;
 using BinaryFn = NumericType (*)(NumericType, NumericType) noexcept;
+
+TypeRules::TypeErrorSink &typeErrorSink() noexcept
+{
+    static TypeRules::TypeErrorSink sink;
+    return sink;
+}
+
+std::string_view numericTypeName(NumericType type) noexcept
+{
+    switch (type)
+    {
+        case NumericType::Integer:
+            return "INTEGER";
+        case NumericType::Long:
+            return "LONG";
+        case NumericType::Single:
+            return "SINGLE";
+        case NumericType::Double:
+            return "DOUBLE";
+    }
+    return "UNKNOWN";
+}
+
+void emitTypeError(std::string code, std::string message) noexcept
+{
+    if (auto &sink = typeErrorSink())
+    {
+        sink(TypeRules::TypeError{std::move(code), std::move(message)});
+    }
+}
+
+void reportUnsupportedBinary(std::string_view op, NumericType lhs, NumericType rhs) noexcept
+{
+    std::string message = "unsupported numeric operator '";
+    message += op;
+    message += "' for operands ";
+    message += numericTypeName(lhs);
+    message += " and ";
+    message += numericTypeName(rhs);
+    message += '.';
+    emitTypeError("B2101", std::move(message));
+}
+
+void reportUnsupportedUnaryOperator(char op, NumericType operand) noexcept
+{
+    std::string message = "unsupported unary operator '";
+    message.push_back(op);
+    message += "' for operand ";
+    message += numericTypeName(operand);
+    message += '.';
+    emitTypeError("B2102", std::move(message));
+}
+
+void reportUnsupportedUnaryOperand(char op, NumericType operand) noexcept
+{
+    std::string message = "unsupported operand ";
+    message += numericTypeName(operand);
+    message += " for unary operator '";
+    message.push_back(op);
+    message += "'.";
+    emitTypeError("B2103", std::move(message));
+}
 
 constexpr bool isInteger(NumericType type) noexcept
 {
@@ -99,6 +162,11 @@ constexpr bool equalsIgnoreCase(std::string_view lhs, std::string_view rhs) noex
 
 } // namespace
 
+void TypeRules::setTypeErrorSink(TypeErrorSink sink) noexcept
+{
+    typeErrorSink() = std::move(sink);
+}
+
 TypeRules::NumericType TypeRules::resultType(std::string_view op,
                                              NumericType lhs,
                                              NumericType rhs) noexcept
@@ -111,7 +179,8 @@ TypeRules::NumericType TypeRules::resultType(std::string_view op,
         if (equalsIgnoreCase(rule.op, op))
             return rule.fn(lhs, rhs);
     }
-    assert(false && "Unsupported operator");
+    // Recoverable path: emit diagnostic and fall back to lhs type.
+    reportUnsupportedBinary(op, lhs, rhs);
     return lhs;
 }
 
@@ -124,16 +193,24 @@ TypeRules::NumericType TypeRules::resultType(char op,
         if (rule.op.size() == 1 && rule.op.front() == op)
             return rule.fn(lhs, rhs);
     }
-    assert(false && "Unsupported operator");
+    // Recoverable path: emit diagnostic and fall back to lhs type.
+    std::string opStr(1, op);
+    reportUnsupportedBinary(opStr, lhs, rhs);
     return lhs;
 }
 
 TypeRules::NumericType TypeRules::unaryResultType(char op, NumericType operand) noexcept
 {
-    assert(op == '-' && "Only unary minus supported");
+    if (op != '-')
+    {
+        // Recoverable path: emit diagnostic and preserve operand type.
+        reportUnsupportedUnaryOperator(op, operand);
+        return operand;
+    }
     if (isFloat(operand) || isInteger(operand))
         return operand;
-    assert(false && "Unsupported operand type for unary minus");
+    // Recoverable path: emit diagnostic and preserve operand type.
+    reportUnsupportedUnaryOperand(op, operand);
     return operand;
 }
 

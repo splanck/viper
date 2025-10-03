@@ -5,6 +5,8 @@
 // Links: docs/codemap.md
 #pragma once
 
+#include <functional>
+#include <string>
 #include <string_view>
 
 namespace il::frontends::basic
@@ -24,6 +26,16 @@ class TypeRules
         Double,  ///< 64-bit IEEE-754 floating-point.
     };
 
+    /// @brief Structured information describing a numeric type error.
+    struct TypeError
+    {
+        std::string code;    ///< Project-defined diagnostic code.
+        std::string message; ///< Human-readable explanation.
+    };
+
+    /// @brief Callback invoked when recoverable type errors occur.
+    using TypeErrorSink = std::function<void(const TypeError &error)>;
+
     /// @brief Determine the binary operator result type.
     /// @param op Operator token ("+", "-", "*", "/", "\\", "MOD", "^").
     /// @param lhs Left operand numeric type.
@@ -38,6 +50,9 @@ class TypeRules
     /// @param op Unary operator (currently only '-').
     /// @param operand Operand numeric type.
     static NumericType unaryResultType(char op, NumericType operand) noexcept;
+
+    /// @brief Install a callback used to report recoverable type errors.
+    static void setTypeErrorSink(TypeErrorSink sink) noexcept;
 };
 
 } // namespace il::frontends::basic
