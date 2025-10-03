@@ -41,8 +41,26 @@ using il::support::makeError;
 Expected<void> parseExtern_E(const std::string &line, ParserState &st)
 {
     size_t at = line.find('@');
+    if (at == std::string::npos)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing '@'";
+        return Expected<void>{makeError({}, oss.str())};
+    }
     size_t lp = line.find('(', at);
+    if (lp == std::string::npos)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing '('";
+        return Expected<void>{makeError({}, oss.str())};
+    }
     size_t rp = line.find(')', lp);
+    if (rp == std::string::npos)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing ')'";
+        return Expected<void>{makeError({}, oss.str())};
+    }
     size_t arr = line.find("->", rp);
     if (arr == std::string::npos)
     {

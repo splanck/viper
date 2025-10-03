@@ -8,6 +8,10 @@
 
 #include "frontends/basic/ConstFolder.hpp"
 #include "frontends/basic/ConstFoldHelpers.hpp"
+
+extern "C" {
+#include "runtime/rt_format.h"
+}
 #include <cctype>
 #include <cmath>
 #include <cstdint>
@@ -627,11 +631,15 @@ private:
                     auto n = detail::asNumeric(*expr.args[0]);
                     if (n)
                     {
-                        char buf[32];
+                        char buf[64];
                         if (n->isFloat)
-                            snprintf(buf, sizeof(buf), "%g", n->f);
+                        {
+                            rt_format_f64(n->f, buf, sizeof(buf));
+                        }
                         else
+                        {
                             snprintf(buf, sizeof(buf), "%lld", n->i);
+                        }
                         replaceWithStr(buf, expr.loc);
                     }
                 }
