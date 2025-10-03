@@ -50,6 +50,7 @@ std::string_view logicalOperatorDisplayName(BinaryExpr::Op op) noexcept
 }
 
 constexpr std::string_view kDiagUnsupportedLogicalOperator = "B4002";
+constexpr std::string_view kDiagUnsupportedCustomBuiltinVariant = "B4003";
 } // namespace
 
 /// @brief Expression visitor that lowers nodes via Lowerer helpers.
@@ -1242,8 +1243,38 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
             break;
         }
         default:
-            assert(false && "custom builtin lowering variant is not supported");
-            return {Value::constInt(0), Type(Type::Kind::I64)};
+        {
+            auto variantKindName = [&]() -> std::string {
+                switch (variant->kind)
+                {
+                    case BuiltinLoweringRule::Variant::Kind::CallRuntime:
+                        return "CallRuntime";
+                    case BuiltinLoweringRule::Variant::Kind::EmitUnary:
+                        return "EmitUnary";
+                    case BuiltinLoweringRule::Variant::Kind::Custom:
+                        return "Custom";
+                }
+                std::string unknown = "<unknown (";
+                unknown.append(std::to_string(static_cast<int>(variant->kind)));
+                unknown.push_back(')');
+                return unknown;
+            };
+
+            if (auto *emitter = diagnosticEmitter())
+            {
+                std::string message = "custom builtin lowering variant is not supported: ";
+                message.append(variantKindName());
+                emitter->emit(il::support::Severity::Error,
+                              std::string(kDiagUnsupportedCustomBuiltinVariant),
+                              selectCallLoc(variant->callLocArg),
+                              0,
+                              std::move(message));
+            }
+
+            resultValue = Value::constInt(0);
+            resultType = Type(Type::Kind::I64);
+            break;
+        }
     }
 
     for (const auto &feature : variant->features)
