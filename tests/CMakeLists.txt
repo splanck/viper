@@ -37,6 +37,11 @@ add_subdirectory(basic)
 add_subdirectory(golden)
 add_subdirectory(e2e)
 
+viper_add_ctest(NoAssertFalseGuard
+  ${CMAKE_COMMAND}
+  -DVIPER_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+  -P ${CMAKE_SOURCE_DIR}/tests/tools/NoAssertFalseTest.cmake)
+
 viper_add_unit_support_tests()
 viper_add_il_core_tests()
 viper_add_basic_early_tests()
