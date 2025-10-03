@@ -85,15 +85,7 @@ class LowererExprVisitor final : public ExprVisitor
     void visit(const BoolExpr &expr) override
     {
         lowerer_.curLoc = expr.loc;
-        if (lowerer_.context().current() == nullptr)
-        {
-            Value logical = Value::constInt(expr.value ? -1 : 0);
-            result_ = Lowerer::RVal{logical, il::core::Type(il::core::Type::Kind::I64)};
-            return;
-        }
-        Value raw = lowerer_.emitBoolConst(expr.value);
-        lowerer_.curLoc = expr.loc;
-        Value logical = lowerer_.emitBasicLogicalI64(raw);
+        Value logical = lowerer_.emitConstI64(expr.value ? -1 : 0);
         result_ = Lowerer::RVal{logical, il::core::Type(il::core::Type::Kind::I64)};
     }
 
