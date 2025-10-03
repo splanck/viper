@@ -143,15 +143,15 @@ add_executable(ilc
   tools/ilc/cli.cpp
   tools/ilc/break_spec.cpp)
 set_target_properties(ilc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/ilc)
-target_link_libraries(ilc PRIVATE viper_il_full il_vm il_transform fe_basic il_api il_tools_common)
+target_link_libraries(ilc PRIVATE viper::il_full il_vm il_transform fe_basic il_api il_tools_common)
 
 add_executable(il-verify tools/il-verify/il-verify.cpp)
 set_target_properties(il-verify PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/il-verify)
-target_link_libraries(il-verify PRIVATE viper_il_full il_build il_vm il_api il_tools_common)
+target_link_libraries(il-verify PRIVATE viper::il_full il_build il_vm il_api il_tools_common)
 
 add_executable(il-dis tools/il-dis/main.cpp)
 set_target_properties(il-dis PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/il-dis)
-target_link_libraries(il-dis PRIVATE viper_il_full il_build)
+target_link_libraries(il-dis PRIVATE viper::il_full il_build)
 
 add_subdirectory(frontends/basic)
 
