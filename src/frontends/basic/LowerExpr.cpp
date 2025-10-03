@@ -217,14 +217,15 @@ Lowerer::RVal Lowerer::lowerUBoundExpr(const UBoundExpr &expr)
 /// @param thenLabelBase Optional label stem used when naming the then block.
 /// @param elseLabelBase Optional label stem used when naming the else block.
 /// @param joinLabelBase Optional label stem used when naming the join block.
-/// @return Boolean result paired with its IL type.
+/// @return Boolean result paired with its IL `i1` type.
 /// @details
 /// - Control flow: Saves the originating block, requests a structured branch
 ///   from @ref emitBoolFromBranches, and then wires up the conditional branch
 ///   from @p cond back at the origin before resuming in the join block.
 /// - Emitted IL: Allocates a temporary boolean slot, lets @p emitThen and
 ///   @p emitElse populate it via @ref emitStore, and finally emits a
-///   conditional branch via @ref emitCBr.
+///   conditional branch via @ref emitCBr. Callers may translate the `i1`
+///   result to BASIC logical words with @ref emitBasicLogicalI64.
 /// - Side effects: Mutates @ref cur and @ref curLoc while stitching together
 ///   the control-flow graph and asserts both closures emitted their blocks.
 Lowerer::RVal Lowerer::lowerBoolBranchExpr(Value cond,
@@ -266,8 +267,7 @@ Lowerer::RVal Lowerer::lowerBoolBranchExpr(Value cond,
     emitCBr(cond, thenBlk, elseBlk);
     ctx.setCurrent(joinBlk);
     curLoc = loc;
-    Value logical = emitBasicLogicalI64(result);
-    return {logical, Type(Type::Kind::I64)};
+    return {result, ilBoolTy()};
 }
 
 Lowerer::Value Lowerer::emitConstI64(std::int64_t v)
@@ -318,7 +318,7 @@ Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
     RVal condVal = coerceToBool(std::move(val), u.loc);
     curLoc = u.loc;
     Value cond = condVal.value;
-    return lowerBoolBranchExpr(
+    RVal negated = lowerBoolBranchExpr(
         cond,
         u.loc,
         [&](Value slot) {
@@ -329,6 +329,10 @@ Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
             curLoc = u.loc;
             emitStore(ilBoolTy(), slot, emitBoolConst(true));
         });
+
+    curLoc = u.loc;
+    Value logical = emitBasicLogicalI64(negated.value);
+    return {logical, Type(Type::Kind::I64)};
 }
 
 /// @brief Lower BASIC logical binary expressions, including short-circuiting.
@@ -357,7 +361,7 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
     if (b.op == BinaryExpr::Op::LogicalAndShort)
     {
         Value cond = toBool(lhs);
-        return lowerBoolBranchExpr(
+        RVal andResult = lowerBoolBranchExpr(
             cond,
             b.loc,
             [&](Value slot) {
@@ -373,12 +377,16 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
             "and_rhs",
             "and_false",
             "and_done");
+
+        curLoc = b.loc;
+        Value logical = emitBasicLogicalI64(andResult.value);
+        return {logical, Type(Type::Kind::I64)};
     }
 
     if (b.op == BinaryExpr::Op::LogicalOrShort)
     {
         Value cond = toBool(lhs);
-        return lowerBoolBranchExpr(
+        RVal orResult = lowerBoolBranchExpr(
             cond,
             b.loc,
             [&](Value slot) {
@@ -394,6 +402,10 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
             "or_true",
             "or_rhs",
             "or_done");
+
+        curLoc = b.loc;
+        Value logical = emitBasicLogicalI64(orResult.value);
+        return {logical, Type(Type::Kind::I64)};
     }
 
     if (b.op == BinaryExpr::Op::LogicalAnd)
@@ -445,8 +457,10 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
     }
 
     curLoc = b.loc;
-    Value logicalFalse = emitBasicLogicalI64(emitBoolConst(false));
-    return {logicalFalse, Type(Type::Kind::I64)};
+    Value logicalFalse = emitBoolConst(false);
+    curLoc = b.loc;
+    Value logicalWord = emitBasicLogicalI64(logicalFalse);
+    return {logicalWord, Type(Type::Kind::I64)};
 }
 
 /// @brief Lower integer division and modulo with width-aware narrowing.
