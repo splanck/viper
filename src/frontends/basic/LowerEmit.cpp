@@ -112,6 +112,21 @@ Lowerer::IlValue Lowerer::emitBoolConst(bool v)
     return emitUnary(Opcode::Trunc1, ilBoolTy(), Value::constInt(v ? 1 : 0));
 }
 
+Value Lowerer::emitConstI64(std::int64_t v)
+{
+    return Value::constInt(v);
+}
+
+Value Lowerer::emitZext1ToI64(Value b1)
+{
+    return emitUnary(Opcode::Zext1, Type(Type::Kind::I64), b1);
+}
+
+Value Lowerer::emitISub(Value lhs, Value rhs)
+{
+    return emitBinary(Opcode::Sub, Type(Type::Kind::I64), lhs, rhs);
+}
+
 /// @brief Build a boolean by merging results from synthetic then/else blocks.
 /// @param emitThen Callback that stores the truthy value to the provided slot within the
 /// then block.

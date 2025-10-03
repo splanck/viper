@@ -14,6 +14,7 @@
 #include "il/core/Module.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include <array>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -597,6 +598,18 @@ class Lowerer
 
     /// @brief Emit unary instruction of @p op on @p val producing @p ty.
     Value emitUnary(Opcode op, Type ty, Value val);
+
+    /// @brief Materialize a constant 64-bit integer value.
+    Value emitConstI64(std::int64_t v);
+
+    /// @brief Zero-extend an i1 predicate to BASIC's 64-bit logical form.
+    Value emitZext1ToI64(Value b1);
+
+    /// @brief Emit a 64-bit integer subtraction.
+    Value emitISub(Value lhs, Value rhs);
+
+    /// @brief Convert an i1 predicate into BASIC's -1/0 logical encoding.
+    Value emitBasicLogicalI64(Value b1);
 
     /// @brief Emit checked integer negation for @p val producing type @p ty.
     Value emitCheckedNeg(Type ty, Value val);
