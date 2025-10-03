@@ -1,5 +1,6 @@
 // File: src/il/verify/BranchVerifier.cpp
 // Purpose: Implement branch and return verification helpers shared by the IL verifier.
+// License: Distributed under the MIT license alongside the main project license text.
 // Key invariants: Branch instructions respect target parameter lists; returns match function
 // signatures. Ownership/Lifetime: Operates on caller-owned IL data without persisting references
 // beyond invocation. Links: docs/il-guide.md#reference
@@ -30,6 +31,19 @@ using il::support::makeError;
 namespace
 {
 
+/// @brief Validates that a branch transfers arguments compatible with its target block.
+///
+/// Ensures the provided @p args match @p target parameter arity and inferred types. When
+/// mismatches occur, a formatted diagnostic tied to @p instr is returned via the
+/// il::support::Expected error channel.
+///
+/// @param fn Function containing the branch instruction.
+/// @param bb Basic block holding @p instr.
+/// @param instr Branch-like instruction whose arguments are validated.
+/// @param target Destination block receiving the branch arguments.
+/// @param args Optional branch argument vector aligned with @p target params.
+/// @param label Label string associated with the evaluated branch edge.
+/// @param types Inference context used to obtain operand types for comparison.
 Expected<void> verifyBranchArgs(const Function &fn,
                                 const BasicBlock &bb,
                                 const Instr &instr,
@@ -58,6 +72,17 @@ Expected<void> verifyBranchArgs(const Function &fn,
 
 } // namespace
 
+/// @brief Verifies an unconditional branch instruction forwards correct operands and target.
+///
+/// Validates operand/label counts for `br` instructions and checks arguments against the
+/// resolved target block signature using verifyBranchArgs(). On any mismatch a diagnostic is
+/// emitted through the Expected error result.
+///
+/// @param fn Function currently being verified.
+/// @param bb Block containing the unconditional branch.
+/// @param instr The branch instruction to verify.
+/// @param blockMap Lookup table mapping block labels to their definitions.
+/// @param types Type inference cache supplying operand type information.
 Expected<void> verifyBr_E(const Function &fn,
                           const BasicBlock &bb,
                           const Instr &instr,
@@ -81,6 +106,17 @@ Expected<void> verifyBr_E(const Function &fn,
     return {};
 }
 
+/// @brief Verifies a conditional branch instruction's condition and successor arguments.
+///
+/// Ensures a single i1 condition operand, exactly two successor labels, and per-edge argument
+/// compatibility as checked by verifyBranchArgs(). Errors propagate diagnostics describing the
+/// offending edge or condition mismatch.
+///
+/// @param fn Function currently being verified.
+/// @param bb Block containing the conditional branch.
+/// @param instr Conditional branch instruction under validation.
+/// @param blockMap Mapping from block labels to their resolved blocks.
+/// @param types Type inference cache used for operand type queries.
 Expected<void> verifyCBr_E(const Function &fn,
                            const BasicBlock &bb,
                            const Instr &instr,
@@ -111,6 +147,18 @@ Expected<void> verifyCBr_E(const Function &fn,
         makeError(instr.loc, formatInstrDiag(fn, bb, instr, "conditional branch mismatch"))};
 }
 
+/// @brief Validates switch.i32 structure, operand types, and branch argument conformity.
+///
+/// Checks that the scrutinee exists and is i32, that default and case labels are present, and
+/// that each case operand is a unique 32-bit integer. Branch arguments for the default and each
+/// case are compared against their targets using verifyBranchArgs(), returning diagnostics on
+/// any inconsistencies.
+///
+/// @param fn Function currently being verified.
+/// @param bb Block containing the switch instruction.
+/// @param instr switch.i32 instruction whose structure is examined.
+/// @param blockMap Lookup for resolving target blocks referenced by labels.
+/// @param types Type inference context providing operand type data.
 Expected<void> verifySwitchI32_E(const Function &fn,
                                  const BasicBlock &bb,
                                  const Instr &instr,
