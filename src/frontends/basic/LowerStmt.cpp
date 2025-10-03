@@ -247,17 +247,24 @@ void Lowerer::lowerLet(const LetStmt &stmt)
         bool isBool = slotInfo.isBoolean;
         if (!isArray)
         {
-            if (!isStr && !isF64 && !isBool && v.type.kind == Type::Kind::I1)
+            if (isBool)
             {
-                v = coerceToI64(std::move(v), stmt.loc);
+                v = coerceToBool(std::move(v), stmt.loc);
             }
-            if (isF64 && v.type.kind == Type::Kind::I64)
+            else
             {
-                v = coerceToF64(std::move(v), stmt.loc);
-            }
-            else if (!isStr && !isF64 && !isBool && v.type.kind == Type::Kind::F64)
-            {
-                v = coerceToI64(std::move(v), stmt.loc);
+                if (!isStr && !isF64 && v.type.kind == Type::Kind::I1)
+                {
+                    v = coerceToI64(std::move(v), stmt.loc);
+                }
+                if (isF64 && v.type.kind == Type::Kind::I64)
+                {
+                    v = coerceToF64(std::move(v), stmt.loc);
+                }
+                else if (!isStr && !isF64 && v.type.kind == Type::Kind::F64)
+                {
+                    v = coerceToI64(std::move(v), stmt.loc);
+                }
             }
         }
         Value slot = Value::temp(*info->slotId);

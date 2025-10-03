@@ -32,70 +32,62 @@ L30:
   %t5 = load i64, %t2
   .loc 1 3 14
   %t6 = icmp_ne %t5, 0
+  .loc 1 3 14
+  %t7 = zext1 %t6
+  .loc 1 3 14
+  %t8 = sub 0, %t7
   .loc 1 3 4
-  store i1, %t0, %t6
+  %t9 = trunc1 %t8
+  .loc 1 3 4
+  store i1, %t0, %t9
   .loc 1 3 4
   br L40
 L40:
   .loc 1 4 10
-  %t7 = load i1, %t0
-  .loc 1 4 15
-  %t8 = trunc1 1
-  .loc 1 4 15
-  %t9 = alloca 1
-L50:
-  .loc 1 5 10
-  %t14 = trunc1 0
-  .loc 1 5 20
-  %t15 = load i1, %t0
-  .loc 1 5 20
-  %t16 = alloca 1
-  .loc 1 5 16
-  cbr %t14, bool_then1, bool_else1
-exit:
-  ret 0
-bool_then:
-bool_else:
+  %t10 = load i1, %t0
   .loc 1 4 12
-  store i1, %t9, %t8
+  %t11 = zext1 %t10
   .loc 1 4 12
-  br bool_join
-bool_join:
+  %t12 = sub 0, %t11
   .loc 1 4 12
-  %t11 = load i1, %t9
+  %t13 = trunc1 -1
+  .loc 1 4 12
+  %t14 = zext1 %t13
+  .loc 1 4 12
+  %t15 = sub 0, %t14
+  .loc 1 4 12
+  %t16 = or %t12, %t15
   .loc 1 4 4
-  %t12 = zext1 %t11
+  call @rt_print_i64(%t16)
   .loc 1 4 4
-  call @rt_print_i64(%t12)
+  %t17 = const_str @.L0
   .loc 1 4 4
-  %t13 = const_str @.L0
-  .loc 1 4 4
-  call @rt_print_str(%t13)
+  call @rt_print_str(%t17)
   .loc 1 4 4
   br L50
-bool_then1:
+L50:
   .loc 1 5 16
-  store i1, %t16, %t15
+  %t18 = trunc1 0
   .loc 1 5 16
-  br bool_join1
-bool_else1:
-  .loc 1 5 16
-  %t17 = trunc1 0
-  .loc 1 5 16
-  store i1, %t16, %t17
-  .loc 1 5 16
-  br bool_join1
-bool_join1:
-  .loc 1 5 16
-  %t18 = load i1, %t16
-  .loc 1 5 4
   %t19 = zext1 %t18
+  .loc 1 5 16
+  %t20 = sub 0, %t19
+  .loc 1 5 20
+  %t21 = load i1, %t0
+  .loc 1 5 16
+  %t22 = zext1 %t21
+  .loc 1 5 16
+  %t23 = sub 0, %t22
+  .loc 1 5 16
+  %t24 = and %t20, %t23
   .loc 1 5 4
-  call @rt_print_i64(%t19)
+  call @rt_print_i64(%t24)
   .loc 1 5 4
-  %t20 = const_str @.L0
+  %t25 = const_str @.L0
   .loc 1 5 4
-  call @rt_print_str(%t20)
+  call @rt_print_str(%t25)
   .loc 1 5 4
   br exit
+exit:
+  ret 0
 }
