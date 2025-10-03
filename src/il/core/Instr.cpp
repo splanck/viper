@@ -2,6 +2,7 @@
 // Purpose: Provides helper methods for IL instructions.
 // Key invariants: Switch helpers assert opcode correctness.
 // Ownership/Lifetime: Instructions stored by value in blocks.
+// License: MIT
 // Links: docs/il-guide.md#reference
 
 #include "il/core/Instr.hpp"
@@ -12,11 +13,21 @@ namespace il::core
 {
 namespace
 {
+/// @brief Verifies that a helper is operating on a switch instruction.
+/// @param instr Instruction subjected to the helper.
+/// @pre instr.op must be Opcode::SwitchI32.
 void requireSwitch(const Instr &instr)
 {
     assert(instr.op == Opcode::SwitchI32 && "expected switch instruction");
 }
 
+/// @brief Returns the branch arguments vector for a switch target.
+/// @param instr Switch instruction providing the branch data.
+/// @param index Zero-based index into instr.labels and instr.brArgs.
+/// @return Reference to the argument list for the given branch label.
+/// @pre instr must satisfy requireSwitch().
+/// @pre index must be less than instr.labels.size() and instr.brArgs.size().
+/// @post The returned reference remains valid for the lifetime of @p instr.
 const std::vector<Value> &argsOrEmpty(const Instr &instr, size_t index)
 {
     requireSwitch(instr);
@@ -26,6 +37,11 @@ const std::vector<Value> &argsOrEmpty(const Instr &instr, size_t index)
 }
 } // namespace
 
+/// @brief Retrieves the value tested by the switch instruction.
+/// @param instr Switch instruction providing the scrutinee.
+/// @return Reference to the scrutinee value.
+/// @pre instr must satisfy requireSwitch().
+/// @pre instr.operands must contain at least one entry representing the scrutinee.
 const Value &switchScrutinee(const Instr &instr)
 {
     requireSwitch(instr);
@@ -33,6 +49,11 @@ const Value &switchScrutinee(const Instr &instr)
     return instr.operands.front();
 }
 
+/// @brief Retrieves the label for the default branch of a switch.
+/// @param instr Switch instruction containing the default label.
+/// @return Reference to the default branch label string.
+/// @pre instr must satisfy requireSwitch().
+/// @pre instr.labels must contain at least one entry representing the default label.
 const std::string &switchDefaultLabel(const Instr &instr)
 {
     requireSwitch(instr);
@@ -40,11 +61,19 @@ const std::string &switchDefaultLabel(const Instr &instr)
     return instr.labels.front();
 }
 
+/// @brief Retrieves the argument vector associated with the default branch.
+/// @param instr Switch instruction containing branch arguments.
+/// @return Reference to the default branch argument list (possibly empty).
+/// @pre instr must satisfy requireSwitch().
 const std::vector<Value> &switchDefaultArgs(const Instr &instr)
 {
     return argsOrEmpty(instr, 0);
 }
 
+/// @brief Determines how many non-default cases exist for a switch.
+/// @param instr Switch instruction to inspect.
+/// @return Number of explicit case labels in the instruction.
+/// @pre instr must satisfy requireSwitch().
 size_t switchCaseCount(const Instr &instr)
 {
     requireSwitch(instr);
@@ -53,6 +82,13 @@ size_t switchCaseCount(const Instr &instr)
     return instr.labels.size() - 1;
 }
 
+/// @brief Retrieves the scrutinee value matched by a specific case.
+/// @param instr Switch instruction containing the case information.
+/// @param index Zero-based index selecting the desired case.
+/// @return Reference to the case's comparison value.
+/// @pre instr must satisfy requireSwitch().
+/// @pre index must be less than switchCaseCount(instr).
+/// @pre instr.operands must contain the scrutinee followed by case values.
 const Value &switchCaseValue(const Instr &instr, size_t index)
 {
     requireSwitch(instr);
@@ -61,6 +97,12 @@ const Value &switchCaseValue(const Instr &instr, size_t index)
     return instr.operands[index + 1];
 }
 
+/// @brief Retrieves the destination label for a specific switch case.
+/// @param instr Switch instruction containing the target labels.
+/// @param index Zero-based index selecting the desired case.
+/// @return Reference to the label string associated with the case.
+/// @pre instr must satisfy requireSwitch().
+/// @pre index must be less than switchCaseCount(instr).
 const std::string &switchCaseLabel(const Instr &instr, size_t index)
 {
     requireSwitch(instr);
@@ -68,6 +110,12 @@ const std::string &switchCaseLabel(const Instr &instr, size_t index)
     return instr.labels[index + 1];
 }
 
+/// @brief Retrieves the argument vector passed to a specific switch case target.
+/// @param instr Switch instruction containing branch arguments.
+/// @param index Zero-based index selecting the desired case.
+/// @return Reference to the argument list for the selected case (possibly empty).
+/// @pre instr must satisfy requireSwitch().
+/// @pre index must be less than switchCaseCount(instr).
 const std::vector<Value> &switchCaseArgs(const Instr &instr, size_t index)
 {
     return argsOrEmpty(instr, index + 1);
