@@ -58,6 +58,20 @@ endif()
 add_compile_options(${IL_COMPILE_FLAGS})
 add_link_options(${IL_LINK_FLAGS})
 
+function(viper_assert_no_directory_link_libraries dir label)
+  if("${dir}" STREQUAL ".")
+    get_property(_dir_link_libs DIRECTORY PROPERTY LINK_LIBRARIES)
+  else()
+    get_property(_dir_link_libs DIRECTORY "${dir}" PROPERTY LINK_LIBRARIES)
+  endif()
+  if(_dir_link_libs)
+    message(FATAL_ERROR
+      "Directory-scope link_libraries() detected in ${label}. "
+      "Please link libraries on their owning targets instead. "
+      "LINK_LIBRARIES=${_dir_link_libs}")
+  endif()
+endfunction()
+
 file(GLOB_RECURSE ALL_CXX_SOURCE_FILES
      src/*.cpp src/*.hpp
      src/runtime/*.cpp src/runtime/*.hpp)
@@ -111,7 +125,10 @@ if(VIPER_BUILD_TESTING)
 endif()
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/src/runtime)
+viper_assert_no_directory_link_libraries("src/runtime" "src/runtime")
+
 add_subdirectory(src)
+viper_assert_no_directory_link_libraries("src" "src")
 
 # ---- ViperTUI subproject ----
 option(BUILD_TUI "Build ViperTUI subproject" ON)
@@ -120,10 +137,12 @@ if(VIPER_INSTALL_TUI AND NOT BUILD_TUI)
 endif()
 if(BUILD_TUI)
   add_subdirectory(tui)
+  viper_assert_no_directory_link_libraries("tui" "tui")
 endif()
 
 if(VIPER_BUILD_TESTING)
   add_subdirectory(tests)
+  viper_assert_no_directory_link_libraries("tests" "tests")
 endif()
 
 add_custom_target(distclean
@@ -200,3 +219,5 @@ option(VIPER_SUPPRESS_DUPLIB_WARN "Suppress ld64 duplicate library warnings" ON)
 if(APPLE AND VIPER_SUPPRESS_DUPLIB_WARN)
   add_link_options(-Wl,-no_warn_duplicate_libraries)
 endif()
+
+viper_assert_no_directory_link_libraries("." "root project")
