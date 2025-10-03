@@ -54,6 +54,7 @@ enum class VMDispatch : uint8_t
     GEP,
     Add,
     Sub,
+    ISub,
     Mul,
     IAddOvf,
     ISubOvf,

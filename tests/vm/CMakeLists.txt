@@ -186,6 +186,10 @@ function(viper_add_vm_unit_tests)
   target_link_libraries(test_vm_opcode_dispatch PRIVATE viper_il_full ${VIPER_VM_LIB} il_api)
   viper_add_ctest(test_vm_opcode_dispatch test_vm_opcode_dispatch)
 
+  viper_add_test(test_vm_zext1_isub ${VIPER_TESTS_DIR}/unit/test_vm_zext1_isub.cpp)
+  target_link_libraries(test_vm_zext1_isub PRIVATE viper_il_full ${VIPER_VM_LIB} il_api)
+  viper_add_ctest(test_vm_zext1_isub test_vm_zext1_isub)
+
   viper_add_test(test_vm_run_loop_helpers ${VIPER_TESTS_DIR}/unit/test_vm_run_loop_helpers.cpp)
   target_link_libraries(test_vm_run_loop_helpers PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_run_loop_helpers test_vm_run_loop_helpers)
