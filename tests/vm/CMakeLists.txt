@@ -4,7 +4,7 @@
 
 set(VIPER_VM_LIB il_vm)
 set(VIPER_VM_LIB ${VIPER_VM_LIB} PARENT_SCOPE)
-set(VIPER_VM_SUPPORT_LIB support)
+set(VIPER_VM_SUPPORT_LIB viper_support)
 set(VIPER_VM_SUPPORT_LIB ${VIPER_VM_SUPPORT_LIB} PARENT_SCOPE)
 
 function(viper_add_vm_debug_tests)
@@ -167,7 +167,7 @@ function(viper_add_vm_unit_tests)
   viper_add_ctest(test_vm_many_temps test_vm_many_temps)
 
   viper_add_test_exe(test_vm_addr_of ${VIPER_TESTS_DIR}/unit/test_vm_addr_of.cpp)
-  target_link_libraries(test_vm_addr_of PRIVATE il_io ${VIPER_VM_LIB} il_api)
+  target_link_libraries(test_vm_addr_of PRIVATE viper_il_full ${VIPER_VM_LIB} il_api)
   viper_add_ctest(test_vm_addr_of test_vm_addr_of)
 
   viper_add_test_exe(test_vm_dispatch_handlers ${VIPER_TESTS_DIR}/unit/test_vm_dispatch_handlers.cpp)
@@ -179,7 +179,7 @@ function(viper_add_vm_unit_tests)
   viper_add_ctest(test_vm_opcode_coverage test_vm_opcode_coverage)
 
   viper_add_test_exe(test_vm_opcode_dispatch ${VIPER_TESTS_DIR}/unit/test_vm_opcode_dispatch.cpp)
-  target_link_libraries(test_vm_opcode_dispatch PRIVATE il_io ${VIPER_VM_LIB} il_api)
+  target_link_libraries(test_vm_opcode_dispatch PRIVATE viper_il_full ${VIPER_VM_LIB} il_api)
   viper_add_ctest(test_vm_opcode_dispatch test_vm_opcode_dispatch)
 
   viper_add_test_exe(test_vm_run_loop_helpers ${VIPER_TESTS_DIR}/unit/test_vm_run_loop_helpers.cpp)
