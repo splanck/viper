@@ -18,6 +18,7 @@
 #include <cassert>
 #include <functional>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -393,7 +394,14 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
         std::string_view opText = logicalOperatorDisplayName(b.op);
         std::string message = "unsupported logical operator '";
         message.append(opText);
-        message.append("'; assuming FALSE");
+        message.push_back('\'');
+        if (opText == std::string_view("<logical>"))
+        {
+            message.append(" (enum value ");
+            message.append(std::to_string(static_cast<int>(b.op)));
+            message.push_back(')');
+        }
+        message.append("; assuming FALSE");
         emitter->emit(il::support::Severity::Error,
                       std::string(kDiagUnsupportedLogicalOperator),
                       b.loc,
