@@ -265,7 +265,13 @@ void Lowerer::lowerLet(const LetStmt &stmt)
         if (isArray)
             storeArray(slot, v.value);
         else
+        {
+            if (targetTy.kind == Type::Kind::I1 && v.type.kind != Type::Kind::I1)
+            {
+                v = coerceToBool(std::move(v), stmt.loc);
+            }
             emitStore(targetTy, slot, v.value);
+        }
     }
     else if (auto *arr = dynamic_cast<const ArrayExpr *>(stmt.target.get()))
     {
@@ -610,9 +616,11 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
     builder->addBlock(*func, headLbl);
     builder->addBlock(*func, bodyLbl);
     builder->addBlock(*func, doneLbl);
-    BasicBlock *head = &func->blocks[start];
-    BasicBlock *body = &func->blocks[start + 1];
+    size_t headIdx = start;
+    size_t bodyIdx = start + 1;
     size_t doneIdx = start + 2;
+    BasicBlock *head = &func->blocks[headIdx];
+    BasicBlock *body = &func->blocks[bodyIdx];
     BasicBlock *done = &func->blocks[doneIdx];
 
     ctx.loopState().push(done);
@@ -621,6 +629,7 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
     emitBr(head);
 
     // head
+    head = &func->blocks[headIdx];
     ctx.setCurrent(head);
     RVal cond = lowerExpr(*stmt.cond);
     cond = coerceToBool(std::move(cond), stmt.loc);
@@ -628,6 +637,7 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
     emitCBr(cond.value, body, done);
 
     // body
+    body = &func->blocks[bodyIdx];
     ctx.setCurrent(body);
     lowerLoopBody(stmt.body);
     BasicBlock *current = ctx.current();
@@ -635,6 +645,7 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
     bool term = current && current->terminated;
     if (!term)
     {
+        head = &func->blocks[headIdx];
         curLoc = stmt.loc;
         emitBr(head);
     }

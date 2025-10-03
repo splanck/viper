@@ -45,13 +45,13 @@ L0_FIRST#:
   .loc 1 8 1
   br if_test_0_FIRST#
   .loc 1 9 16
-  %t4 = load i64, %t1
+  %t7 = load i64, %t1
   .loc 1 9 8
-  %t5 = sitofp %t4
+  %t8 = sitofp %t7
   .loc 1 9 8
-  %t6 = call @SECOND#(%t5)
+  %t9 = call @SECOND#(%t8)
   .loc 1 9 8
-  ret %t6
+  ret %t9
 ret_FIRST#:
   ret 0.0
 if_test_0_FIRST#:
@@ -60,7 +60,13 @@ if_test_0_FIRST#:
   .loc 1 8 6
   %t3 = scmp_le %t2, 0
   .loc 1 8 6
-  cbr %t3, if_then_0_FIRST#, if_else_0_FIRST#
+  %t4 = zext1 %t3
+  .loc 1 8 6
+  %t5 = isub.ovf 0, %t4
+  .loc 1 8 1
+  %t6 = trunc1 %t5
+  .loc 1 8 1
+  cbr %t6, if_then_0_FIRST#, if_else_0_FIRST#
 if_then_0_FIRST#:
   .loc 1 8 23
   ret 0.0
@@ -81,17 +87,17 @@ L0_SECOND#:
   .loc 1 12 1
   br if_test_0_SECOND#
   .loc 1 13 15
-  %t5 = load f64, %t1
+  %t8 = load f64, %t1
   .loc 1 13 18
-  %t6 = sitofp 1
+  %t9 = sitofp 1
   .loc 1 13 18
-  %t7 = fsub %t5, %t6
+  %t10 = fsub %t8, %t9
   .loc 1 13 8
-  %t8 = cast.fp_to_si.rte.chk %t7
+  %t11 = cast.fp_to_si.rte.chk %t10
   .loc 1 13 8
-  %t9 = call @FIRST#(%t8)
+  %t12 = call @FIRST#(%t11)
   .loc 1 13 8
-  ret %t9
+  ret %t12
 ret_SECOND#:
   ret 0.0
 if_test_0_SECOND#:
@@ -102,7 +108,13 @@ if_test_0_SECOND#:
   .loc 1 12 7
   %t4 = fcmp_le %t2, %t3
   .loc 1 12 7
-  cbr %t4, if_then_0_SECOND#, if_else_0_SECOND#
+  %t5 = zext1 %t4
+  .loc 1 12 7
+  %t6 = isub.ovf 0, %t5
+  .loc 1 12 1
+  %t7 = trunc1 %t6
+  .loc 1 12 1
+  cbr %t7, if_then_0_SECOND#, if_else_0_SECOND#
 if_then_0_SECOND#:
   .loc 1 12 24
   ret 0.0
