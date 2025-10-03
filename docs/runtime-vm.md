@@ -78,6 +78,25 @@ formatted using `%.17g`. Line endings are normalized to `\n` even on Windows.
 At process start the runtime sets `LC_NUMERIC` to `"C"` to ensure numeric
 parsing and printing stay deterministic regardless of the host locale.
 
+### Deterministic numeric I/O
+
+Locale-sensitive conversions are pinned to the C locale for every VM process.
+The runtime installs `LC_NUMERIC="C"` during initialization so `strtod` and
+`printf`-family entry points always accept and emit a dot (`.`) decimal
+separator. All floating-point values that reach user-visible text funnel
+through [`rt_format_f64`](../src/runtime/rt_format.c), which canonicalises the
+representation:
+
+- Normal numbers are rendered with `%.15g` and a dot decimal separator, even on
+  platforms where the active locale would use a comma.
+- `NaN` prints as `NaN`; positive infinity as `Inf`; negative infinity as `-Inf`.
+- Runtime helpers such as `rt_print_f64`, `rt_f64_to_str`, and BASIC constant
+  folding reuse `rt_format_f64` to keep the output consistent across the
+  interpreter, ahead-of-time front ends, and the C runtime bridge.
+
+The determinism guarantees in this section are covered by
+[`tests/runtime/FloatFormattingTests.cpp`](../tests/runtime/FloatFormattingTests.cpp).
+
 ### Recursion
 
 The interpreter allocates a fresh frame for each call. Recursive functions thus
