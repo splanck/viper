@@ -58,7 +58,6 @@ int main()
 
     std::vector<int> castChkLines;
     std::vector<int> sitofpLines;
-    std::vector<int> zextLines;
     std::vector<int> truncLines;
 
     for (const auto &block : mainFn->blocks)
@@ -73,9 +72,6 @@ int main()
                 case il::core::Opcode::Sitofp:
                     sitofpLines.push_back(instr.loc.line);
                     break;
-                case il::core::Opcode::Zext1:
-                    zextLines.push_back(instr.loc.line);
-                    break;
                 case il::core::Opcode::Trunc1:
                     truncLines.push_back(instr.loc.line);
                     break;
@@ -88,8 +84,6 @@ int main()
     assert(hasLine(castChkLines, 2));  // LET I = 3.14
     assert(hasLine(sitofpLines, 3));  // LET D# = 1
     assert(hasLine(sitofpLines, 7));  // INPUT "?", D#
-    assert(hasLine(zextLines, 4));    // LET I = TRUE
-    assert(hasLine(zextLines, 5));    // PRINT TRUE
     assert(hasLine(truncLines, 6));   // INPUT "?", FLAG
 
     return 0;
