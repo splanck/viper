@@ -72,6 +72,50 @@ function(viper_assert_no_directory_link_libraries dir label)
   endif()
 endfunction()
 
+function(viper_assert_no_archive_link_paths)
+  get_property(_viper_all_targets GLOBAL PROPERTY TARGETS)
+  if(NOT _viper_all_targets)
+    return()
+  endif()
+
+  set(_viper_archive_offenders)
+  foreach(_viper_target IN LISTS _viper_all_targets)
+    foreach(_viper_prop LINK_LIBRARIES INTERFACE_LINK_LIBRARIES)
+      get_target_property(_viper_links "${_viper_target}" "${_viper_prop}")
+      if(NOT _viper_links)
+        continue()
+      endif()
+
+      foreach(_viper_entry IN LISTS _viper_links)
+        if(NOT _viper_entry)
+          continue()
+        endif()
+
+        if(_viper_entry STREQUAL "optimized" OR _viper_entry STREQUAL "debug" OR _viper_entry STREQUAL "general")
+          continue()
+        endif()
+
+        if(_viper_entry MATCHES "^\\$<")
+          continue()
+        endif()
+
+        string(REPLACE "\\" "/" _viper_normalized "${_viper_entry}")
+        if(_viper_normalized MATCHES "/[^/]+\\.a$")
+          list(APPEND _viper_archive_offenders "${_viper_target} -> ${_viper_entry}")
+        endif()
+      endforeach()
+    endforeach()
+  endforeach()
+
+  if(_viper_archive_offenders)
+    list(REMOVE_DUPLICATES _viper_archive_offenders)
+    list(JOIN _viper_archive_offenders "\n  " _viper_archive_message)
+    message(FATAL_ERROR
+      "Targets linked against archive file paths:\n  ${_viper_archive_message}\n"
+      "Link against the producing CMake target or wrap the archive with add_library(IMPORTED).")
+  endif()
+endfunction()
+
 file(GLOB_RECURSE ALL_CXX_SOURCE_FILES
      src/*.cpp src/*.hpp
      src/runtime/*.cpp src/runtime/*.hpp)
@@ -144,6 +188,8 @@ if(VIPER_BUILD_TESTING)
   add_subdirectory(tests)
   viper_assert_no_directory_link_libraries("tests" "tests")
 endif()
+
+viper_assert_no_archive_link_paths()
 
 add_custom_target(distclean
   COMMAND "${CMAKE_COMMAND}" -P "${CMAKE_SOURCE_DIR}/cmake/DistClean.cmake"
