@@ -57,7 +57,7 @@ function(viper_add_runtime_tests)
 
   viper_add_test_exe(test_rt_float_formatting ${VIPER_TESTS_DIR}/runtime/FloatFormattingTests.cpp)
   target_link_libraries(test_rt_float_formatting PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_FloatFormatting test_rt_float_formatting)
+  viper_add_ctest(runtime_FloatFormattingTests test_rt_float_formatting)
 
   viper_add_test_exe(test_rt_error_plumbing ${VIPER_TESTS_DIR}/runtime/RtErrorPlumbingTests.cpp)
   target_link_libraries(test_rt_error_plumbing PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
