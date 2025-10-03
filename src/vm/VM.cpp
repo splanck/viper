@@ -45,9 +45,13 @@ struct ActiveVMGuard
 
 std::string opcodeMnemonic(Opcode op)
 {
-    const auto &info = getOpcodeInfo(op);
-    if (info.name && info.name[0] != '\0')
-        return info.name;
+    const size_t index = static_cast<size_t>(op);
+    if (index < kNumOpcodes)
+    {
+        const auto &info = getOpcodeInfo(op);
+        if (info.name && info.name[0] != '\0')
+            return info.name;
+    }
     return std::string("opcode#") + std::to_string(static_cast<int>(op));
 }
 
@@ -149,7 +153,8 @@ VM::ExecResult VM::executeOpcode(Frame &fr,
                                  size_t &ip)
 {
     const auto &table = getOpcodeHandlers();
-    OpcodeHandler handler = table[static_cast<size_t>(in.op)];
+    const size_t index = static_cast<size_t>(in.op);
+    OpcodeHandler handler = index < table.size() ? table[index] : nullptr;
     if (!handler)
     {
         RuntimeBridge::trap(TrapKind::InvalidOperation,
