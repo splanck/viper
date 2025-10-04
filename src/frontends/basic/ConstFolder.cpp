@@ -8,6 +8,7 @@
 
 #include "frontends/basic/ConstFolder.hpp"
 #include "frontends/basic/ConstFoldHelpers.hpp"
+#include "frontends/basic/ConstFold_Arith.hpp"
 
 extern "C" {
 #include "runtime/rt_format.h"
@@ -26,49 +27,6 @@ namespace il::frontends::basic
 
 namespace detail
 {
-/// @brief Fold numeric arithmetic with lambda callbacks for float and integer operations.
-template <typename FloatOp, typename IntOp>
-ExprPtr foldArithmetic(const Expr &l, const Expr &r, FloatOp fop, IntOp iop)
-{
-    return foldNumericBinary(
-        l,
-        r,
-        [fop, iop](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-        {
-            if (a.isFloat)
-            {
-                double v = fop(a.f, b.f);
-                return Numeric{true, v, static_cast<long long>(v)};
-            }
-            long long v = iop(a.i, b.i);
-            return Numeric{false, static_cast<double>(v), v};
-        });
-}
-
-/// @brief Fold comparisons by dispatching to float and integer comparator callbacks.
-template <typename FloatCmp, typename IntCmp>
-ExprPtr foldCompare(
-    const Expr &l, const Expr &r, FloatCmp fcmp, IntCmp icmp, bool allowFloat)
-{
-    return foldNumericBinary(
-        l,
-        r,
-        [fcmp, icmp, allowFloat](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-        {
-            if (!allowFloat && (a.isFloat || b.isFloat))
-                return std::nullopt;
-            bool res = a.isFloat ? fcmp(a.f, b.f) : icmp(a.i, b.i);
-            long long v = res ? 1 : 0;
-            return Numeric{false, static_cast<double>(v), v};
-        });
-}
-
-/// @brief Invoke a binary string folding callback using the literal payloads.
-template <typename Op> ExprPtr foldString(const StringExpr &l, const StringExpr &r, Op op)
-{
-    return op(l.value, r.value);
-}
-
 /// @brief Interpret expression @p e as a numeric literal.
 /// @param e Expression to inspect.
 /// @return Numeric wrapper if @p e is an IntExpr or FloatExpr; std::nullopt otherwise.
@@ -135,66 +93,8 @@ const BinaryFoldEntry *findBinaryFold(BinaryExpr::Op op)
 }
 } // namespace detail
 
-/// @brief Fold numeric binary expression using callback @p op.
-/// @param l Left operand expression.
-/// @param r Right operand expression.
-/// @param op Callback operating on promoted numerics and returning optional result.
-/// @return Folded literal or nullptr if operands aren't numeric or @p op fails.
-/// @invariant Preserves 64-bit wrap-around semantics for integers.
-template <typename F> ExprPtr detail::foldNumericBinary(const Expr &l, const Expr &r, F op)
-{
-    auto ln = asNumeric(l);
-    auto rn = asNumeric(r);
-    if (!ln || !rn)
-        return nullptr;
-    Numeric a = promote(*ln, *rn);
-    Numeric b = promote(*rn, *ln);
-    auto res = op(a, b);
-    if (!res)
-        return nullptr;
-    if (res->isFloat)
-    {
-        auto out = std::make_unique<FloatExpr>();
-        out->value = res->f;
-        return out;
-    }
-    auto out = std::make_unique<IntExpr>();
-    out->value = res->i;
-    return out;
-}
-
 namespace
 {
-
-/// @brief Add @p a and @p b with 64-bit wrap-around semantics.
-/// @param a Left operand.
-/// @param b Right operand.
-/// @return Sum modulo 2^64.
-/// @invariant Uses unsigned addition to emulate BASIC overflow behavior.
-long long wrapAdd(long long a, long long b)
-{
-    return static_cast<long long>(static_cast<uint64_t>(a) + static_cast<uint64_t>(b));
-}
-
-/// @brief Subtract @p b from @p a with 64-bit wrap-around semantics.
-/// @param a Left operand.
-/// @param b Right operand.
-/// @return Difference modulo 2^64.
-/// @invariant Uses unsigned subtraction to emulate BASIC overflow behavior.
-long long wrapSub(long long a, long long b)
-{
-    return static_cast<long long>(static_cast<uint64_t>(a) - static_cast<uint64_t>(b));
-}
-
-/// @brief Multiply @p a and @p b with 64-bit wrap-around semantics.
-/// @param a Left operand.
-/// @param b Right operand.
-/// @return Product modulo 2^64.
-/// @invariant Uses unsigned multiplication to avoid overflow traps.
-long long wrapMul(long long a, long long b)
-{
-    return static_cast<long long>(static_cast<uint64_t>(a) * static_cast<uint64_t>(b));
-}
 
 /// @brief Check whether expression @p e is a string literal.
 /// @param e Expression to inspect.
@@ -771,174 +671,6 @@ private:
 };
 
 } // namespace
-
-namespace detail
-{
-
-ExprPtr foldNumericAdd(const Expr &l, const Expr &r)
-{
-    return foldNumericBinary(
-        l,
-        r,
-        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-        {
-            Numeric lhs = promote(a, b);
-            Numeric rhs = promote(b, a);
-            if (!lhs.isFloat && !rhs.isFloat)
-            {
-                const auto minI16 = std::numeric_limits<int16_t>::min();
-                const auto maxI16 = std::numeric_limits<int16_t>::max();
-                const bool lhsFitsI16 = lhs.i >= minI16 && lhs.i <= maxI16;
-                const bool rhsFitsI16 = rhs.i >= minI16 && rhs.i <= maxI16;
-                long long sum = wrapAdd(lhs.i, rhs.i);
-                if (lhsFitsI16 && rhsFitsI16 && (sum < minI16 || sum > maxI16))
-                    return std::nullopt;
-                return Numeric{false, static_cast<double>(sum), sum};
-            }
-            double lv = lhs.isFloat ? lhs.f : static_cast<double>(lhs.i);
-            double rv = rhs.isFloat ? rhs.f : static_cast<double>(rhs.i);
-            double result = lv + rv;
-            return Numeric{true, result, static_cast<long long>(result)};
-        });
-}
-
-ExprPtr foldNumericSub(const Expr &l, const Expr &r)
-{
-    return foldArithmetic(
-        l,
-        r,
-        [](double a, double b) { return a - b; },
-        [](long long a, long long b) { return wrapSub(a, b); });
-}
-
-ExprPtr foldNumericMul(const Expr &l, const Expr &r)
-{
-    return foldArithmetic(
-        l,
-        r,
-        [](double a, double b) { return a * b; },
-        [](long long a, long long b) { return wrapMul(a, b); });
-}
-
-ExprPtr foldNumericDiv(const Expr &l, const Expr &r)
-{
-    return foldNumericBinary(
-        l,
-        r,
-        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-        {
-            double rv = b.isFloat ? b.f : static_cast<double>(b.i);
-            if (rv == 0.0)
-                return std::nullopt;
-            double lv = a.isFloat ? a.f : static_cast<double>(a.i);
-            double v = lv / rv;
-            return Numeric{true, v, static_cast<long long>(v)};
-        });
-}
-
-ExprPtr foldNumericIDiv(const Expr &l, const Expr &r)
-{
-    return foldNumericBinary(
-        l,
-        r,
-        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-        {
-            if (a.isFloat || b.isFloat || b.i == 0)
-                return std::nullopt;
-            long long v = a.i / b.i;
-            return Numeric{false, static_cast<double>(v), v};
-        });
-}
-
-ExprPtr foldNumericMod(const Expr &l, const Expr &r)
-{
-    return foldNumericBinary(
-        l,
-        r,
-        [](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
-        {
-            if (a.isFloat || b.isFloat || b.i == 0)
-                return std::nullopt;
-            long long v = a.i % b.i;
-            return Numeric{false, static_cast<double>(v), v};
-        });
-}
-
-ExprPtr foldNumericEq(const Expr &l, const Expr &r)
-{
-    return foldCompare(
-        l,
-        r,
-        [](double a, double b) { return a == b; },
-        [](long long a, long long b) { return a == b; });
-}
-
-ExprPtr foldNumericNe(const Expr &l, const Expr &r)
-{
-    return foldCompare(
-        l,
-        r,
-        [](double a, double b) { return a != b; },
-        [](long long a, long long b) { return a != b; });
-}
-
-ExprPtr foldNumericLt(const Expr &l, const Expr &r)
-{
-    return foldCompare(
-        l,
-        r,
-        [](double a, double b) { return a < b; },
-        [](long long a, long long b) { return a < b; });
-}
-
-ExprPtr foldNumericLe(const Expr &l, const Expr &r)
-{
-    return foldCompare(
-        l,
-        r,
-        [](double a, double b) { return a <= b; },
-        [](long long a, long long b) { return a <= b; });
-}
-
-ExprPtr foldNumericGt(const Expr &l, const Expr &r)
-{
-    return foldCompare(
-        l,
-        r,
-        [](double a, double b) { return a > b; },
-        [](long long a, long long b) { return a > b; });
-}
-
-ExprPtr foldNumericGe(const Expr &l, const Expr &r)
-{
-    return foldCompare(
-        l,
-        r,
-        [](double a, double b) { return a >= b; },
-        [](long long a, long long b) { return a >= b; });
-}
-
-ExprPtr foldNumericAnd(const Expr &l, const Expr &r)
-{
-    return foldCompare(
-        l,
-        r,
-        [](double, double) { return false; },
-        [](long long a, long long b) { return (a != 0 && b != 0); },
-        false);
-}
-
-ExprPtr foldNumericOr(const Expr &l, const Expr &r)
-{
-    return foldCompare(
-        l,
-        r,
-        [](double, double) { return false; },
-        [](long long a, long long b) { return (a != 0 || b != 0); },
-        false);
-}
-
-} // namespace detail
 
 void foldConstants(Program &prog)
 {
