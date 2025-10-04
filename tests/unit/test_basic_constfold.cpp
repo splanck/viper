@@ -75,6 +75,72 @@ int main()
         assert(ie && ie->value == 1);
     }
 
+    // INTEGER overflow prevents folding (32767 + 1)
+    {
+        std::string src = "10 LET X = 32767 + 1\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("overflow.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        foldConstants(*prog);
+        auto *let = dynamic_cast<LetStmt *>(prog->main[0].get());
+        assert(let);
+        auto *bin = dynamic_cast<BinaryExpr *>(let->expr.get());
+        assert(bin && bin->op == BinaryExpr::Op::Add);
+    }
+
+    // LONG + DOUBLE promotes to DOUBLE
+    {
+        std::string src = "10 LET X = 2147483647 + 2#\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("mixed_double.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        foldConstants(*prog);
+        auto *let = dynamic_cast<LetStmt *>(prog->main[0].get());
+        auto *flt = dynamic_cast<FloatExpr *>(let->expr.get());
+        assert(flt && flt->value == 2147483649.0);
+    }
+
+    // SINGLE + INTEGER promotes to floating result
+    {
+        std::string src = "10 LET X = 1! + 2\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("mixed_single.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        foldConstants(*prog);
+        auto *let = dynamic_cast<LetStmt *>(prog->main[0].get());
+        auto *flt = dynamic_cast<FloatExpr *>(let->expr.get());
+        assert(flt && flt->value == 3.0);
+    }
+
+    // Division by zero is not folded
+    {
+        std::string src = "10 LET X = 10 / 0\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("div_zero.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        foldConstants(*prog);
+        auto *let = dynamic_cast<LetStmt *>(prog->main[0].get());
+        auto *bin = dynamic_cast<BinaryExpr *>(let->expr.get());
+        assert(bin && bin->op == BinaryExpr::Op::Div);
+    }
+
+    // Modulo by zero is not folded
+    {
+        std::string src = "10 LET X = 10 MOD 0\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("mod_zero.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        foldConstants(*prog);
+        auto *let = dynamic_cast<LetStmt *>(prog->main[0].get());
+        auto *bin = dynamic_cast<BinaryExpr *>(let->expr.get());
+        assert(bin && bin->op == BinaryExpr::Op::Mod);
+    }
+
     // string comparison
     {
         std::string src = "10 PRINT \"foo\" = \"bar\"\n20 END\n";
