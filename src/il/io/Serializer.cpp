@@ -346,6 +346,98 @@ void printInstr(const Instr &in, std::ostream &os)
 /// then globals and functions by walking their basic blocks and delegating instruction
 /// formatting to @c printInstr.
 /// @returns Nothing; the serialized form is written directly to @p os.
+template <typename T, typename KeyFn>
+std::vector<const T *> sortedView(const std::vector<T> &items, KeyFn key)
+{
+    struct Entry
+    {
+        const T *ptr;
+        size_t index;
+    };
+
+    std::vector<Entry> entries;
+    entries.reserve(items.size());
+    for (size_t idx = 0; idx < items.size(); ++idx)
+    {
+        entries.push_back({&items[idx], idx});
+    }
+
+    std::sort(entries.begin(), entries.end(), [&](const Entry &lhs, const Entry &rhs) {
+        const auto &lkey = key(*lhs.ptr);
+        const auto &rkey = key(*rhs.ptr);
+        if (lkey == rkey)
+            return lhs.index < rhs.index;
+        return lkey < rkey;
+    });
+
+    std::vector<const T *> ordered;
+    ordered.reserve(entries.size());
+    for (const auto &entry : entries)
+        ordered.push_back(entry.ptr);
+    return ordered;
+}
+
+void printFunction(const Function &f, std::ostream &os, Serializer::Mode mode)
+{
+    os << "func @" << f.name << "(";
+    for (size_t i = 0; i < f.params.size(); ++i)
+    {
+        if (i)
+            os << ", ";
+        os << f.params[i].type.toString() << " %" << f.params[i].name;
+    }
+    os << ") -> " << f.retType.toString() << " {\n";
+
+    auto emitBlock = [&](const BasicBlock &bb) {
+        const bool handler = isHandlerBlock(bb);
+        if (handler)
+            os << "handler ^" << bb.label;
+        else
+            os << bb.label;
+        if (!bb.params.empty())
+        {
+            os << '(';
+            for (size_t i = 0; i < bb.params.size(); ++i)
+            {
+                if (i)
+                    os << ", ";
+                os << '%' << bb.params[i].name << ':';
+                if (handler)
+                {
+                    if (bb.params[i].type.kind == Type::Kind::Error)
+                        os << "Error";
+                    else if (bb.params[i].type.kind == Type::Kind::ResumeTok)
+                        os << "ResumeTok";
+                    else
+                        os << bb.params[i].type.toString();
+                }
+                else
+                {
+                    os << bb.params[i].type.toString();
+                }
+            }
+            os << ')';
+        }
+        os << ":\n";
+        for (const auto &in : bb.instructions)
+            printInstr(in, os);
+    };
+
+    if (mode == Serializer::Mode::Canonical)
+    {
+        auto blocks = sortedView(f.blocks, [](const BasicBlock &bb) -> const std::string & { return bb.label; });
+        for (const BasicBlock *bb : blocks)
+            emitBlock(*bb);
+    }
+    else
+    {
+        for (const auto &bb : f.blocks)
+            emitBlock(bb);
+    }
+
+    os << "}\n";
+}
+
 void Serializer::write(const Module &m, std::ostream &os, Mode mode)
 {
     os << "il " << m.version << "\n";
@@ -368,52 +460,16 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode)
         os << "global const " << g.type.toString() << " @" << g.name << " = \"" << g.init << "\"\n";
     }
 
-    for (const auto &f : m.functions)
+    if (mode == Mode::Canonical)
     {
-        os << "func @" << f.name << "(";
-        for (size_t i = 0; i < f.params.size(); ++i)
-        {
-            if (i)
-                os << ", ";
-            os << f.params[i].type.toString() << " %" << f.params[i].name;
-        }
-        os << ") -> " << f.retType.toString() << " {\n";
-        for (const auto &bb : f.blocks)
-        {
-            const bool handler = isHandlerBlock(bb);
-            if (handler)
-                os << "handler ^" << bb.label;
-            else
-                os << bb.label;
-            if (!bb.params.empty())
-            {
-                os << '(';
-                for (size_t i = 0; i < bb.params.size(); ++i)
-                {
-                    if (i)
-                        os << ", ";
-                    os << '%' << bb.params[i].name << ':';
-                    if (handler)
-                    {
-                        if (bb.params[i].type.kind == Type::Kind::Error)
-                            os << "Error";
-                        else if (bb.params[i].type.kind == Type::Kind::ResumeTok)
-                            os << "ResumeTok";
-                        else
-                            os << bb.params[i].type.toString();
-                    }
-                    else
-                    {
-                        os << bb.params[i].type.toString();
-                    }
-                }
-                os << ')';
-            }
-            os << ":\n";
-            for (const auto &in : bb.instructions)
-                printInstr(in, os);
-        }
-        os << "}\n";
+        auto functions = sortedView(m.functions, [](const Function &f) -> const std::string & { return f.name; });
+        for (const Function *fn : functions)
+            printFunction(*fn, os, mode);
+    }
+    else
+    {
+        for (const auto &f : m.functions)
+            printFunction(f, os, mode);
     }
 }
 
