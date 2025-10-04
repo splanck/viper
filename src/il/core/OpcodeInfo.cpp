@@ -68,14 +68,6 @@ std::vector<Opcode> all_opcodes()
     return ops;
 }
 
-std::string opcode_mnemonic(Opcode op)
-{
-    const size_t idx = static_cast<size_t>(op);
-    if (idx >= kOpcodeTable.size())
-        return "";
-    return kOpcodeTable[idx].name;
-}
-
 bool isVariadicOperandCount(uint8_t value)
 {
     return value == kVariadicOperandCount;
@@ -89,15 +81,15 @@ bool isVariadicSuccessorCount(uint8_t value)
 /**
  * @brief Returns the mnemonic associated with the provided opcode.
  *
- * Performs a direct lookup into the opcode metadata table and treats any opcode whose
- * numerical value falls outside the table bounds as invalid.
+ * Delegates to the generated opcode name table and treats out-of-range opcodes
+ * as invalid.
  *
  * @param op Opcode enumeration value to translate into a mnemonic string.
  * @returns The mnemonic string if the opcode is within range; otherwise an empty string.
  */
-std::string toString(Opcode op)
+std::string opcode_mnemonic(Opcode op)
 {
-    return opcode_mnemonic(op);
+    return toString(op);
 }
 
 } // namespace il::core

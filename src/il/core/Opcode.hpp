@@ -6,7 +6,6 @@
 #pragma once
 
 #include <cstddef>
-#include <string>
 
 namespace il::core
 {
@@ -27,6 +26,6 @@ constexpr size_t kNumOpcodes = static_cast<size_t>(Opcode::Count);
 /// @brief Convert opcode @p op to its mnemonic string.
 /// @param op Opcode to stringify.
 /// @return Lowercase mnemonic defined by the IL spec.
-std::string toString(Opcode op);
+const char *toString(Opcode op);
 
 } // namespace il::core
