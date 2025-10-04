@@ -193,6 +193,64 @@ int main()
         assert(ie && ie->value == 1);
     }
 
+    // LEN on literal string
+    {
+        std::string src = "10 PRINT LEN(\"abc\")\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("len.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        foldConstants(*prog);
+        auto *pr = dynamic_cast<PrintStmt *>(prog->main[0].get());
+        auto *ie = dynamic_cast<IntExpr *>(pr->items[0].expr.get());
+        assert(ie && ie->value == 3);
+    }
+
+    // MID$ clamps indices and handles unicode source
+    {
+        std::string src = "10 PRINT MID$(\"AßC\", 0, 5)\n20 PRINT MID$(\"xyz\", 10, 2)\n30 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("mid.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        foldConstants(*prog);
+        auto *first = dynamic_cast<PrintStmt *>(prog->main[0].get());
+        auto *mid1 = dynamic_cast<StringExpr *>(first->items[0].expr.get());
+        assert(mid1 && mid1->value == "AßC");
+        auto *second = dynamic_cast<PrintStmt *>(prog->main[1].get());
+        auto *mid2 = dynamic_cast<StringExpr *>(second->items[0].expr.get());
+        assert(mid2 && mid2->value.empty());
+    }
+
+    // LEFT$ handles empty strings and negative counts
+    {
+        std::string src = "10 PRINT LEFT$(\"abc\", -1)\n20 PRINT LEFT$(\"\", 5)\n30 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("left.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        foldConstants(*prog);
+        auto *first = dynamic_cast<PrintStmt *>(prog->main[0].get());
+        auto *left1 = dynamic_cast<StringExpr *>(first->items[0].expr.get());
+        assert(left1 && left1->value.empty());
+        auto *second = dynamic_cast<PrintStmt *>(prog->main[1].get());
+        auto *left2 = dynamic_cast<StringExpr *>(second->items[0].expr.get());
+        assert(left2 && left2->value.empty());
+    }
+
+    // RIGHT$ trims suffix with unicode characters
+    {
+        std::string src = "10 PRINT RIGHT$(\"ñab\", 2)\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("right.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        foldConstants(*prog);
+        auto *pr = dynamic_cast<PrintStmt *>(prog->main[0].get());
+        auto *se = dynamic_cast<StringExpr *>(pr->items[0].expr.get());
+        assert(se && se->value == "ab");
+    }
+
     // boolean literals stay BOOLEAN after folding
     {
         std::string src =

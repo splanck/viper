@@ -6,6 +6,7 @@
 #pragma once
 
 #include "frontends/basic/AST.hpp"
+#include "frontends/basic/ConstFold_String.hpp"
 #include "frontends/basic/Token.hpp"
 #include <array>
 #include <optional>
@@ -120,21 +121,6 @@ ExprPtr foldNumericAnd(const Expr &l, const Expr &r);
 /// @details Uses foldCompare with a lambda pair that enforces integer-only
 /// truthiness.
 ExprPtr foldNumericOr(const Expr &l, const Expr &r);
-
-/// @brief Fold string concatenation for literal operands.
-/// @details Uses foldString with a lambda that builds a concatenated
-/// StringExpr.
-ExprPtr foldStringConcat(const StringExpr &l, const StringExpr &r);
-
-/// @brief Fold string equality comparison for literal operands.
-/// @details Uses foldString with a lambda that returns an IntExpr representing
-/// equality.
-ExprPtr foldStringEq(const StringExpr &l, const StringExpr &r);
-
-/// @brief Fold string inequality comparison for literal operands.
-/// @details Uses foldString with a lambda that returns an IntExpr representing
-/// inequality.
-ExprPtr foldStringNe(const StringExpr &l, const StringExpr &r);
 
 inline constexpr std::array<BinaryFoldEntry, 16> kBinaryFoldTable = {{
     {BinaryExpr::Op::Add, &foldNumericAdd, &foldStringConcat},

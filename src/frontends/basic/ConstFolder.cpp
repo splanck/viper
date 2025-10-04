@@ -9,6 +9,8 @@
 #include "frontends/basic/ConstFolder.hpp"
 #include "frontends/basic/ConstFoldHelpers.hpp"
 #include "frontends/basic/ConstFold_Arith.hpp"
+#include "frontends/basic/ConstFold_Logic.hpp"
+#include "frontends/basic/ConstFold_String.hpp"
 
 extern "C" {
 #include "runtime/rt_format.h"
@@ -18,7 +20,6 @@ extern "C" {
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #include <limits>
 #include <optional>
 
@@ -52,36 +53,6 @@ Numeric promote(const Numeric &a, const Numeric &b)
     return a;
 }
 
-ExprPtr foldStringConcat(const StringExpr &l, const StringExpr &r)
-{
-    return foldString(l, r, [](const std::string &a, const std::string &b) -> ExprPtr
-                      {
-                          auto out = std::make_unique<StringExpr>();
-                          out->value = a + b;
-                          return out;
-                      });
-}
-
-ExprPtr foldStringEq(const StringExpr &l, const StringExpr &r)
-{
-    return foldString(l, r, [](const std::string &a, const std::string &b) -> ExprPtr
-                      {
-                          auto out = std::make_unique<IntExpr>();
-                          out->value = (a == b) ? 1 : 0;
-                          return out;
-                      });
-}
-
-ExprPtr foldStringNe(const StringExpr &l, const StringExpr &r)
-{
-    return foldString(l, r, [](const std::string &a, const std::string &b) -> ExprPtr
-                      {
-                          auto out = std::make_unique<IntExpr>();
-                          out->value = (a != b) ? 1 : 0;
-                          return out;
-                      });
-}
-
 const BinaryFoldEntry *findBinaryFold(BinaryExpr::Op op)
 {
     for (const auto &entry : kBinaryFoldTable)
@@ -95,21 +66,6 @@ const BinaryFoldEntry *findBinaryFold(BinaryExpr::Op op)
 
 namespace
 {
-
-/// @brief Check whether expression @p e is a string literal.
-/// @param e Expression to inspect.
-/// @param s Output string populated when @p e is a StringExpr.
-/// @return True if @p e is a string literal.
-/// @invariant @p s is assigned only when the function returns true.
-bool isStringLiteral(const Expr &e, std::string &s)
-{
-    if (auto *st = dynamic_cast<const StringExpr *>(&e))
-    {
-        s = st->value;
-        return true;
-    }
-    return false;
-}
 
 class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
 {
@@ -204,61 +160,36 @@ private:
     void visit(UnaryExpr &expr) override
     {
         foldExpr(expr.expr);
-
-        if (auto *b = dynamic_cast<BoolExpr *>(expr.expr.get()))
-        {
-            if (expr.op == UnaryExpr::Op::LogicalNot)
-                replaceWithBool(!b->value, expr.loc);
+        if (expr.op != UnaryExpr::Op::LogicalNot)
             return;
-        }
 
-        auto numeric = detail::asNumeric(*expr.expr);
-        if (numeric && !numeric->isFloat && expr.op == UnaryExpr::Op::LogicalNot)
-            replaceWithInt(numeric->i == 0 ? 1 : 0, expr.loc);
+        if (auto replacement = detail::foldLogicalNot(*expr.expr))
+        {
+            replacement->loc = expr.loc;
+            replaceWithExpr(std::move(replacement));
+        }
     }
 
     void visit(BinaryExpr &expr) override
     {
         foldExpr(expr.lhs);
 
-        if (expr.op == BinaryExpr::Op::LogicalAndShort)
+        if (auto *lhsBool = dynamic_cast<BoolExpr *>(expr.lhs.get()))
         {
-            if (auto *lhsBool = dynamic_cast<BoolExpr *>(expr.lhs.get()))
+            if (auto shortCircuit = detail::tryShortCircuit(expr.op, *lhsBool))
             {
-                if (!lhsBool->value)
-                {
-                    replaceWithBool(false, expr.loc);
-                    return;
-                }
-
-                ExprPtr rhs = std::move(expr.rhs);
-                foldExpr(rhs);
-                if (auto *rhsBool = dynamic_cast<BoolExpr *>(rhs.get()))
-                {
-                    replaceWithBool(rhsBool->value, expr.loc);
-                }
-                else
-                {
-                    replaceWithExpr(std::move(rhs));
-                }
+                replaceWithBool(*shortCircuit, expr.loc);
                 return;
             }
-        }
-        else if (expr.op == BinaryExpr::Op::LogicalOrShort)
-        {
-            if (auto *lhsBool = dynamic_cast<BoolExpr *>(expr.lhs.get()))
-            {
-                if (lhsBool->value)
-                {
-                    replaceWithBool(true, expr.loc);
-                    return;
-                }
 
+            if (detail::isShortCircuitOp(expr.op))
+            {
                 ExprPtr rhs = std::move(expr.rhs);
                 foldExpr(rhs);
-                if (auto *rhsBool = dynamic_cast<BoolExpr *>(rhs.get()))
+                if (auto folded = detail::foldLogicalBinary(*lhsBool, expr.op, *rhs))
                 {
-                    replaceWithBool(rhsBool->value, expr.loc);
+                    folded->loc = expr.loc;
+                    replaceWithExpr(std::move(folded));
                 }
                 else
                 {
@@ -270,24 +201,11 @@ private:
 
         foldExpr(expr.rhs);
 
-        if (auto *lhsBool = dynamic_cast<BoolExpr *>(expr.lhs.get()))
+        if (auto folded = detail::foldLogicalBinary(*expr.lhs, expr.op, *expr.rhs))
         {
-            if (auto *rhsBool = dynamic_cast<BoolExpr *>(expr.rhs.get()))
-            {
-                switch (expr.op)
-                {
-                    case BinaryExpr::Op::LogicalAnd:
-                    case BinaryExpr::Op::LogicalAndShort:
-                        replaceWithBool(lhsBool->value && rhsBool->value, expr.loc);
-                        return;
-                    case BinaryExpr::Op::LogicalOr:
-                    case BinaryExpr::Op::LogicalOrShort:
-                        replaceWithBool(lhsBool->value || rhsBool->value, expr.loc);
-                        return;
-                    default:
-                        break;
-                }
-            }
+            folded->loc = expr.loc;
+            replaceWithExpr(std::move(folded));
+            return;
         }
 
         if (const auto *entry = detail::findBinaryFold(expr.op))
@@ -328,95 +246,116 @@ private:
         {
             case BuiltinCallExpr::Builtin::Len:
             {
-                std::string s;
-                if (expr.args.size() == 1 && expr.args[0] && isStringLiteral(*expr.args[0], s))
-                    replaceWithInt(static_cast<long long>(s.size()), expr.loc);
+                if (expr.args.size() == 1 && expr.args[0])
+                {
+                    if (auto folded = detail::foldLenLiteral(*expr.args[0]))
+                    {
+                        folded->loc = expr.loc;
+                        replaceWithExpr(std::move(folded));
+                    }
+                }
                 break;
             }
             case BuiltinCallExpr::Builtin::Mid:
             {
-                if (expr.args.size() == 3)
+                if (expr.args.size() == 3 && expr.args[0] && expr.args[1] && expr.args[2])
                 {
-                    std::string s;
-                    if (expr.args[0] && isStringLiteral(*expr.args[0], s))
+                    if (auto folded = detail::foldMidLiteral(
+                            *expr.args[0], *expr.args[1], *expr.args[2]))
                     {
-                        auto nStart = detail::asNumeric(*expr.args[1]);
-                        auto nLen = detail::asNumeric(*expr.args[2]);
-                        if (nStart && nLen && !nStart->isFloat && !nLen->isFloat)
-                        {
-                            long long start = nStart->i;
-                            long long len = nLen->i;
-                            if (start < 1)
-                                start = 1;
-                            if (len < 0)
-                                len = 0;
-                            size_t pos = static_cast<size_t>(start - 1);
-                            replaceWithStr(s.substr(pos, static_cast<size_t>(len)), expr.loc);
-                        }
+                        folded->loc = expr.loc;
+                        replaceWithExpr(std::move(folded));
+                    }
+                }
+                break;
+            }
+            case BuiltinCallExpr::Builtin::Left:
+            {
+                if (expr.args.size() == 2 && expr.args[0] && expr.args[1])
+                {
+                    if (auto folded = detail::foldLeftLiteral(*expr.args[0], *expr.args[1]))
+                    {
+                        folded->loc = expr.loc;
+                        replaceWithExpr(std::move(folded));
+                    }
+                }
+                break;
+            }
+            case BuiltinCallExpr::Builtin::Right:
+            {
+                if (expr.args.size() == 2 && expr.args[0] && expr.args[1])
+                {
+                    if (auto folded = detail::foldRightLiteral(*expr.args[0], *expr.args[1]))
+                    {
+                        folded->loc = expr.loc;
+                        replaceWithExpr(std::move(folded));
                     }
                 }
                 break;
             }
             case BuiltinCallExpr::Builtin::Val:
             {
-                std::string s;
-                if (expr.args.size() == 1 && expr.args[0] && isStringLiteral(*expr.args[0], s))
+                if (expr.args.size() == 1 && expr.args[0])
                 {
-                    const char *raw = s.c_str();
-                    while (*raw && std::isspace(static_cast<unsigned char>(*raw)))
-                        ++raw;
-
-                    if (*raw == '\0')
+                    if (auto *literal = dynamic_cast<StringExpr *>(expr.args[0].get()))
                     {
-                        replaceWithFloat(0.0, expr.loc);
-                        break;
-                    }
+                        const std::string &s = literal->value;
+                        const char *raw = s.c_str();
+                        while (*raw && std::isspace(static_cast<unsigned char>(*raw)))
+                            ++raw;
 
-                    auto isDigit = [](char ch) {
-                        return ch >= '0' && ch <= '9';
-                    };
-
-                    if (*raw == '+' || *raw == '-')
-                    {
-                        char next = raw[1];
-                        if (next == '.')
+                        if (*raw == '\0')
                         {
-                            if (!isDigit(raw[2]))
+                            replaceWithFloat(0.0, expr.loc);
+                            break;
+                        }
+
+                        auto isDigit = [](char ch) {
+                            return ch >= '0' && ch <= '9';
+                        };
+
+                        if (*raw == '+' || *raw == '-')
+                        {
+                            char next = raw[1];
+                            if (next == '.')
+                            {
+                                if (!isDigit(raw[2]))
+                                {
+                                    replaceWithFloat(0.0, expr.loc);
+                                    break;
+                                }
+                            }
+                            else if (!isDigit(next))
                             {
                                 replaceWithFloat(0.0, expr.loc);
                                 break;
                             }
                         }
-                        else if (!isDigit(next))
+                        else if (*raw == '.')
+                        {
+                            if (!isDigit(raw[1]))
+                            {
+                                replaceWithFloat(0.0, expr.loc);
+                                break;
+                            }
+                        }
+                        else if (!isDigit(*raw))
                         {
                             replaceWithFloat(0.0, expr.loc);
                             break;
                         }
-                    }
-                    else if (*raw == '.')
-                    {
-                        if (!isDigit(raw[1]))
-                        {
-                            replaceWithFloat(0.0, expr.loc);
-                            break;
-                        }
-                    }
-                    else if (!isDigit(*raw))
-                    {
-                        replaceWithFloat(0.0, expr.loc);
-                        break;
-                    }
 
-                    char *endp = nullptr;
-                    double parsed = std::strtod(raw, &endp);
-                    if (endp == raw)
-                    {
-                        replaceWithFloat(0.0, expr.loc);
-                        break;
+                        char *endp = nullptr;
+                        double parsed = std::strtod(raw, &endp);
+                        if (endp == raw)
+                        {
+                            replaceWithFloat(0.0, expr.loc);
+                            break;
+                        }
+                        if (!std::isfinite(parsed))
+                            break;
+                        replaceWithFloat(parsed, expr.loc);
                     }
-                    if (!std::isfinite(parsed))
-                        break;
-                    replaceWithFloat(parsed, expr.loc);
                 }
                 break;
             }
