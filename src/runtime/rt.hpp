@@ -54,6 +54,8 @@ extern "C" {
     /// @return Pointer to zeroed block or trap on failure.
     void *rt_alloc(int64_t bytes);
 
+    // Terminal control + single-key input
+
     /// @brief Clear the terminal when stdout is a TTY.
     void rt_term_cls(void);
 
