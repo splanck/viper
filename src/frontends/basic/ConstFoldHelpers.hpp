@@ -19,7 +19,22 @@ namespace il::frontends::basic::detail
 /// @return Folded literal or nullptr on mismatch.
 /// @invariant Integer operation must model 64-bit wrap-around semantics when needed.
 template <typename FloatOp, typename IntOp>
-ExprPtr foldArithmetic(const Expr &l, const Expr &r, FloatOp fop, IntOp iop);
+ExprPtr foldArithmetic(const Expr &l, const Expr &r, FloatOp fop, IntOp iop)
+{
+    return foldNumericBinary(
+        l,
+        r,
+        [fop, iop](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+        {
+            if (a.isFloat)
+            {
+                double v = fop(a.f, b.f);
+                return Numeric{true, v, static_cast<long long>(v)};
+            }
+            long long v = iop(a.i, b.i);
+            return Numeric{false, static_cast<double>(v), v};
+        });
+}
 
 /// @brief Apply comparison or logical operation on two literals with promotion.
 /// @param l Left operand expression.
@@ -31,7 +46,20 @@ ExprPtr foldArithmetic(const Expr &l, const Expr &r, FloatOp fop, IntOp iop);
 /// @invariant Result is always integer; 1 for true, 0 for false.
 template <typename FloatCmp, typename IntCmp>
 ExprPtr foldCompare(
-    const Expr &l, const Expr &r, FloatCmp fcmp, IntCmp icmp, bool allowFloat = true);
+    const Expr &l, const Expr &r, FloatCmp fcmp, IntCmp icmp, bool allowFloat = true)
+{
+    return foldNumericBinary(
+        l,
+        r,
+        [fcmp, icmp, allowFloat](const Numeric &a, const Numeric &b) -> std::optional<Numeric>
+        {
+            if (!allowFloat && (a.isFloat || b.isFloat))
+                return std::nullopt;
+            bool res = a.isFloat ? fcmp(a.f, b.f) : icmp(a.i, b.i);
+            long long v = res ? 1 : 0;
+            return Numeric{false, static_cast<double>(v), v};
+        });
+}
 
 /// @brief Apply binary string operation using callback @p op.
 /// @param l Left string operand.
@@ -39,6 +67,31 @@ ExprPtr foldCompare(
 /// @param op Callback operating on string values and returning ExprPtr.
 /// @return Folded literal produced by @p op.
 /// @invariant Caller ensures @p op models BASIC semantics.
-template <typename Op> ExprPtr foldString(const StringExpr &l, const StringExpr &r, Op op);
+template <typename Op> ExprPtr foldString(const StringExpr &l, const StringExpr &r, Op op)
+{
+    return op(l.value, r.value);
+}
+
+template <typename F> ExprPtr foldNumericBinary(const Expr &l, const Expr &r, F op)
+{
+    auto ln = asNumeric(l);
+    auto rn = asNumeric(r);
+    if (!ln || !rn)
+        return nullptr;
+    Numeric a = promote(*ln, *rn);
+    Numeric b = promote(*rn, *ln);
+    auto res = op(a, b);
+    if (!res)
+        return nullptr;
+    if (res->isFloat)
+    {
+        auto out = std::make_unique<FloatExpr>();
+        out->value = res->f;
+        return out;
+    }
+    auto out = std::make_unique<IntExpr>();
+    out->value = res->i;
+    return out;
+}
 
 } // namespace il::frontends::basic::detail
