@@ -7,185 +7,40 @@
 
 #include "frontends/basic/Token.hpp"
 
+#include <cstddef>
+
 namespace il::frontends::basic
 {
+namespace
+{
+constexpr const char *kTokenNames[] = {
+#define TOKEN(K, S) S,
+#include "frontends/basic/TokenKinds.def"
+#undef TOKEN
+};
+
+constexpr std::size_t kTokenNameCount = sizeof(kTokenNames) / sizeof(kTokenNames[0]);
+
+static_assert(kTokenNameCount == static_cast<std::size_t>(TokenKind::Count),
+              "TokenKinds.def and TokenKind are out of sync");
+} // namespace
+
 /**
  * @brief Maps a token kind to its canonical string representation.
  *
- * Each enumerator in TokenKind is handled explicitly. Unrecognized values
- * fall back to a "?" marker. Because the switch has no default case, adding
- * a new TokenKind triggers a compiler warning, providing a completeness
- * guarantee.
+ * Each enumerator in TokenKind is handled via a shared table generated from
+ * TokenKinds.def. Unrecognized values fall back to a "?" marker. The table is
+ * kept in sync with TokenKind via a static assertion to preserve completeness.
  *
  * @param k Token kind to convert.
  * @return Null-terminated string naming @p k, or "?" if no mapping exists.
  */
 const char *tokenKindToString(TokenKind k)
 {
-    switch (k)
+    const auto index = static_cast<std::size_t>(k);
+    if (index < kTokenNameCount)
     {
-        case TokenKind::Unknown:
-            return "?";
-        case TokenKind::EndOfFile:
-            return "eof";
-        case TokenKind::EndOfLine:
-            return "eol";
-        case TokenKind::Number:
-            return "number";
-        case TokenKind::String:
-            return "string";
-        case TokenKind::Identifier:
-            return "ident";
-        case TokenKind::KeywordPrint:
-            return "PRINT";
-        case TokenKind::KeywordLet:
-            return "LET";
-        case TokenKind::KeywordIf:
-            return "IF";
-        case TokenKind::KeywordThen:
-            return "THEN";
-        case TokenKind::KeywordElse:
-            return "ELSE";
-        case TokenKind::KeywordElseIf:
-            return "ELSEIF";
-        case TokenKind::KeywordWhile:
-            return "WHILE";
-        case TokenKind::KeywordWend:
-            return "WEND";
-        case TokenKind::KeywordLoop:
-            return "LOOP";
-        case TokenKind::KeywordFor:
-            return "FOR";
-        case TokenKind::KeywordTo:
-            return "TO";
-        case TokenKind::KeywordStep:
-            return "STEP";
-        case TokenKind::KeywordNext:
-            return "NEXT";
-        case TokenKind::KeywordOn:
-            return "ON";
-        case TokenKind::KeywordError:
-            return "ERROR";
-        case TokenKind::KeywordGoto:
-            return "GOTO";
-        case TokenKind::KeywordEnd:
-            return "END";
-        case TokenKind::KeywordExit:
-            return "EXIT";
-        case TokenKind::KeywordInput:
-            return "INPUT";
-        case TokenKind::KeywordDim:
-            return "DIM";
-        case TokenKind::KeywordDo:
-            return "DO";
-        case TokenKind::KeywordRedim:
-            return "REDIM";
-        case TokenKind::KeywordAs:
-            return "AS";
-        case TokenKind::KeywordRandomize:
-            return "RANDOMIZE";
-        case TokenKind::KeywordAnd:
-            return "AND";
-        case TokenKind::KeywordOr:
-            return "OR";
-        case TokenKind::KeywordNot:
-            return "NOT";
-        case TokenKind::KeywordMod:
-            return "MOD";
-        case TokenKind::KeywordSqr:
-            return "SQR";
-        case TokenKind::KeywordAbs:
-            return "ABS";
-        case TokenKind::KeywordFloor:
-            return "FLOOR";
-        case TokenKind::KeywordCeil:
-            return "CEIL";
-        case TokenKind::KeywordSin:
-            return "SIN";
-        case TokenKind::KeywordCos:
-            return "COS";
-        case TokenKind::KeywordPow:
-            return "POW";
-        case TokenKind::KeywordRnd:
-            return "RND";
-        case TokenKind::KeywordFunction:
-            return "FUNCTION";
-        case TokenKind::KeywordSub:
-            return "SUB";
-        case TokenKind::KeywordResume:
-            return "RESUME";
-        case TokenKind::KeywordReturn:
-            return "RETURN";
-        case TokenKind::KeywordLbound:
-            return "LBOUND";
-        case TokenKind::KeywordUbound:
-            return "UBOUND";
-        case TokenKind::KeywordUntil:
-            return "UNTIL";
-        case TokenKind::KeywordBoolean:
-            return "BOOLEAN";
-        case TokenKind::KeywordTrue:
-            return "TRUE";
-        case TokenKind::KeywordFalse:
-            return "FALSE";
-        case TokenKind::KeywordAndAlso:
-            return "ANDALSO";
-        case TokenKind::KeywordOrElse:
-            return "ORELSE";
-        case TokenKind::KeywordOpen:
-            return "OPEN";
-        case TokenKind::KeywordClose:
-            return "CLOSE";
-        case TokenKind::KeywordOutput:
-            return "OUTPUT";
-        case TokenKind::KeywordAppend:
-            return "APPEND";
-        case TokenKind::KeywordBinary:
-            return "BINARY";
-        case TokenKind::KeywordRandom:
-            return "RANDOM";
-        case TokenKind::KeywordLine:
-            return "LINE";
-        case TokenKind::KeywordEof:
-            return "EOF";
-        case TokenKind::Plus:
-            return "+";
-        case TokenKind::Minus:
-            return "-";
-        case TokenKind::Star:
-            return "*";
-        case TokenKind::Slash:
-            return "/";
-        case TokenKind::Backslash:
-            return "\\";
-        case TokenKind::Caret:
-            return "^";
-        case TokenKind::Equal:
-            return "=";
-        case TokenKind::NotEqual:
-            return "<>";
-        case TokenKind::Less:
-            return "<";
-        case TokenKind::LessEqual:
-            return "<=";
-        case TokenKind::Greater:
-            return ">";
-        case TokenKind::GreaterEqual:
-            return ">=";
-        case TokenKind::LParen:
-            return "(";
-        case TokenKind::RParen:
-            return ")";
-        case TokenKind::Comma:
-            return ",";
-        case TokenKind::Semicolon:
-            return ";";
-        case TokenKind::Colon:
-            return ":";
-        case TokenKind::Hash:
-            return "#";
-        case TokenKind::Count:
-            break;
+        return kTokenNames[index];
     }
     return "?";
 }
