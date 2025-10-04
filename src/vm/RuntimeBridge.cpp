@@ -6,12 +6,14 @@
 // Links: docs/il-guide.md#reference
 
 #include "vm/RuntimeBridge.hpp"
+#include "il/core/Opcode.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "vm/VM.hpp"
 #include "rt_fp.h"
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <span>
 #include <sstream>
 
 using il::support::SourceLoc;
@@ -19,10 +21,16 @@ using il::support::SourceLoc;
 namespace
 {
 using il::core::kindToString;
+using il::core::Opcode;
+using il::vm::FrameInfo;
 using il::vm::RuntimeBridge;
 using il::vm::RuntimeCallContext;
 using il::vm::Slot;
 using il::vm::TrapKind;
+using il::vm::VM;
+using il::vm::VmError;
+using il::vm::vm_format_error;
+using il::vm::vm_raise;
 using il::core::Type;
 using il::runtime::RuntimeHiddenParamKind;
 using il::runtime::RuntimeTrapClass;
@@ -241,6 +249,57 @@ struct ContextGuard
     }
 };
 
+using OpCode = Opcode;
+using Operands = std::span<const Slot>;
+
+struct TrapCtx
+{
+    TrapKind kind;
+    const std::string &message;
+    const SourceLoc &loc;
+    const std::string &function;
+    const std::string &block;
+    VM *vm = nullptr;
+    VmError error{};
+    FrameInfo frame{};
+};
+
+static void finalizeTrap(TrapCtx &ctx)
+{
+    if (ctx.vm)
+    {
+        vm_raise(ctx.kind);
+        return;
+    }
+
+    std::string diagnostic = vm_format_error(ctx.error, ctx.frame);
+    if (!ctx.message.empty())
+    {
+        diagnostic += ": ";
+        diagnostic += ctx.message;
+    }
+    rt_abort(diagnostic.c_str());
+}
+
+static void handleOverflow(TrapCtx &ctx, OpCode opcode, const Operands &operands)
+{
+    (void)opcode;
+    (void)operands;
+    finalizeTrap(ctx);
+}
+
+static void handleDivByZero(TrapCtx &ctx, OpCode opcode, const Operands &operands)
+{
+    (void)opcode;
+    (void)operands;
+    finalizeTrap(ctx);
+}
+
+static void handleGenericTrap(TrapCtx &ctx)
+{
+    finalizeTrap(ctx);
+}
+
 } // namespace
 
 /// @brief Entry point invoked from the C runtime when a trap occurs.
@@ -406,38 +465,46 @@ void RuntimeBridge::trap(TrapKind kind,
                          const std::string &fn,
                          const std::string &block)
 {
-    if (auto *vm = VM::activeInstance())
+    TrapCtx ctx{kind, msg, loc, fn, block};
+    ctx.vm = VM::activeInstance();
+    if (ctx.vm)
     {
         if (loc.isValid())
-            vm->currentContext.loc = loc;
+            ctx.vm->currentContext.loc = loc;
         if (!fn.empty())
-            vm->runtimeContext.function = fn;
+            ctx.vm->runtimeContext.function = fn;
         if (!block.empty())
-            vm->runtimeContext.block = block;
-        vm->runtimeContext.message = msg;
-        vm_raise(kind);
+            ctx.vm->runtimeContext.block = block;
+        ctx.vm->runtimeContext.message = msg;
+    }
+    else
+    {
+        ctx.error.kind = kind;
+        ctx.error.code = 0;
+        ctx.error.ip = 0;
+        ctx.error.line = loc.isValid() ? static_cast<int32_t>(loc.line) : -1;
+
+        ctx.frame.function = fn.empty() ? std::string("<unknown>") : fn;
+        ctx.frame.ip = 0;
+        ctx.frame.line = ctx.error.line;
+        ctx.frame.handlerInstalled = false;
+    }
+
+    constexpr OpCode trapOpcode = OpCode::Trap;
+    const Operands noOperands{};
+
+    switch (kind)
+    {
+    case TrapKind::Overflow:
+        handleOverflow(ctx, trapOpcode, noOperands);
+        return;
+    case TrapKind::DivideByZero:
+        handleDivByZero(ctx, trapOpcode, noOperands);
+        return;
+    default:
+        handleGenericTrap(ctx);
         return;
     }
-
-    VmError error{};
-    error.kind = kind;
-    error.code = 0;
-    error.ip = 0;
-    error.line = loc.isValid() ? static_cast<int32_t>(loc.line) : -1;
-
-    FrameInfo frame{};
-    frame.function = fn.empty() ? std::string("<unknown>") : fn;
-    frame.ip = 0;
-    frame.line = error.line;
-    frame.handlerInstalled = false;
-
-    std::string diagnostic = vm_format_error(error, frame);
-    if (!msg.empty())
-    {
-        diagnostic += ": ";
-        diagnostic += msg;
-    }
-    rt_abort(diagnostic.c_str());
 }
 
 const RuntimeCallContext *RuntimeBridge::activeContext()
