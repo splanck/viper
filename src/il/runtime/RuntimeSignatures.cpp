@@ -500,6 +500,31 @@ std::vector<RuntimeDescriptor> buildRegistry()
                  RtSig::F64ToStr,
                  &DirectHandler<&rt_f64_to_str, rt_string, double>::invoke,
                  feature(RuntimeFeature::F64ToStr));
+    add("rt_term_cls",
+        Kind::Void,
+        {},
+        &DirectHandler<&rt_term_cls, void>::invoke,
+        feature(RuntimeFeature::TermCls));
+    add("rt_term_color_i32",
+        Kind::Void,
+        {Kind::I32, Kind::I32},
+        &DirectHandler<&rt_term_color_i32, void, int32_t, int32_t>::invoke,
+        feature(RuntimeFeature::TermColor));
+    add("rt_term_locate_i32",
+        Kind::Void,
+        {Kind::I32, Kind::I32},
+        &DirectHandler<&rt_term_locate_i32, void, int32_t, int32_t>::invoke,
+        feature(RuntimeFeature::TermLocate));
+    add("rt_getkey_str",
+        Kind::Str,
+        {},
+        &DirectHandler<&rt_getkey_str, rt_string>::invoke,
+        feature(RuntimeFeature::GetKey));
+    add("rt_inkey_str",
+        Kind::Str,
+        {},
+        &DirectHandler<&rt_inkey_str, rt_string>::invoke,
+        feature(RuntimeFeature::InKey));
     addGenerated("rt_str_i16_alloc",
                  RtSig::StrFromI16,
                  &DirectHandler<&rt_str_i16_alloc, rt_string, int16_t>::invoke,
