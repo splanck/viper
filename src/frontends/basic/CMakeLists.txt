@@ -28,6 +28,8 @@ add_library(fe_basic STATIC
   SemanticAnalyzer.Exprs.cpp
   SemanticAnalyzer.Builtins.cpp
   ScopeTracker.cpp
+  ConstFold_Logic.cpp
+  ConstFold_String.cpp
   ConstFold_Arith.cpp
   ConstFolder.cpp
   Intrinsics.cpp
