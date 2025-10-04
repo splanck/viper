@@ -7,12 +7,22 @@
 
 #include "il/core/Type.hpp"
 #include <cstddef>
+#include <optional>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
 
 namespace il::runtime
 {
+
+/// @brief Enumerates runtime signatures covered by the generated registry subset.
+enum class RtSig : std::size_t
+{
+#define SIG(name, type) name,
+#include "il/runtime/RuntimeSigs.def"
+#undef SIG
+    Count,
+};
 
 /// @brief Enumerates optional runtime helpers that lowering may request.
 enum class RuntimeFeature : std::size_t
@@ -75,8 +85,9 @@ enum class RuntimeLoweringKind
 struct RuntimeLowering
 {
     RuntimeLoweringKind kind{RuntimeLoweringKind::Manual}; ///< Dispatch strategy.
-    RuntimeFeature feature{RuntimeFeature::Count};          ///< Feature identifier when @ref kind is Feature.
-    bool ordered{false};                                    ///< Preserve request order when true.
+    RuntimeFeature feature{
+        RuntimeFeature::Count}; ///< Feature identifier when @ref kind is Feature.
+    bool ordered{false};        ///< Preserve request order when true.
 };
 
 /// @brief Handler invocation adapter signature used by the VM bridge.
@@ -93,7 +104,8 @@ enum class RuntimeHiddenParamKind
 /// @brief Hidden runtime argument injected by the VM bridge.
 struct RuntimeHiddenParam
 {
-    RuntimeHiddenParamKind kind{RuntimeHiddenParamKind::None}; ///< Classification for bridge marshalling.
+    RuntimeHiddenParamKind kind{
+        RuntimeHiddenParamKind::None}; ///< Classification for bridge marshalling.
 };
 
 /// @brief Classification guiding runtime trap handling for helper invocations.
@@ -105,19 +117,19 @@ enum class RuntimeTrapClass
 
 struct RuntimeSignature
 {
-    il::core::Type retType;                  ///< Return type of the helper.
-    std::vector<il::core::Type> paramTypes;  ///< Parameter types in declaration order.
+    il::core::Type retType;                       ///< Return type of the helper.
+    std::vector<il::core::Type> paramTypes;       ///< Parameter types in declaration order.
     std::vector<RuntimeHiddenParam> hiddenParams; ///< Hidden arguments appended by the bridge.
-    RuntimeTrapClass trapClass{RuntimeTrapClass::None};          ///< Trap semantics for the helper.
+    RuntimeTrapClass trapClass{RuntimeTrapClass::None}; ///< Trap semantics for the helper.
 };
 
 /// @brief Aggregated descriptor covering signature, handler, and lowering metadata.
 struct RuntimeDescriptor
 {
-    std::string_view name;       ///< Symbol exported by the runtime library.
-    RuntimeSignature signature;  ///< Canonical IL signature for the helper.
-    RuntimeHandler handler;      ///< Adapter that invokes the C implementation.
-    RuntimeLowering lowering;    ///< Lowering metadata controlling declaration.
+    std::string_view name;      ///< Symbol exported by the runtime library.
+    RuntimeSignature signature; ///< Canonical IL signature for the helper.
+    RuntimeHandler handler;     ///< Adapter that invokes the C implementation.
+    RuntimeLowering lowering;   ///< Lowering metadata controlling declaration.
     RuntimeTrapClass trapClass{RuntimeTrapClass::None}; ///< Trap classification for VM bridge.
 };
 
@@ -141,5 +153,15 @@ const std::unordered_map<std::string_view, RuntimeSignature> &runtimeSignatures(
 /// @param name Runtime symbol name, e.g., "rt_print_str".
 /// @return Pointer to the signature when registered; nullptr otherwise.
 const RuntimeSignature *findRuntimeSignature(std::string_view name);
+
+/// @brief Look up the generated runtime signature identifier for a symbol.
+/// @param name Runtime symbol name to query.
+/// @return Runtime signature identifier when tracked, std::nullopt otherwise.
+std::optional<RtSig> findRuntimeSignatureId(std::string_view name);
+
+/// @brief Retrieve signature metadata by generated runtime signature identifier.
+/// @param sig Enumerated runtime signature identifier.
+/// @return Pointer to the signature metadata when defined; nullptr otherwise.
+const RuntimeSignature *findRuntimeSignature(RtSig sig);
 
 } // namespace il::runtime
