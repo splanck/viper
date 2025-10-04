@@ -13,6 +13,7 @@
 #include "il/verify/FunctionVerifier.hpp"
 #include "il/verify/InstructionChecker.hpp"
 #include "il/verify/TypeInference.hpp"
+#include "il/verify/VerifyCtx.hpp"
 
 #include <memory>
 #include <unordered_map>
@@ -23,13 +24,7 @@ namespace il::verify
 {
 using il::support::Expected;
 
-Expected<void> verifyInstruction_E(const Function &fn,
-                                   const BasicBlock &bb,
-                                   const Instr &instr,
-                                   const std::unordered_map<std::string, const Extern *> &externs,
-                                   const std::unordered_map<std::string, const Function *> &funcs,
-                                   TypeInference &types,
-                                   DiagSink &sink);
+Expected<void> verifyInstruction_E(const VerifyCtx &ctx);
 
 namespace
 {
@@ -90,7 +85,8 @@ class DefaultInstructionStrategy final : public FunctionVerifier::InstructionStr
                           DiagSink &sink) const override
     {
         (void)blockMap;
-        return verifyInstruction_E(fn, bb, instr, externs, funcs, types, sink);
+        VerifyCtx ctx{sink, types, externs, funcs, fn, bb, instr};
+        return verifyInstruction_E(ctx);
     }
 };
 

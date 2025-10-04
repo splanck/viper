@@ -15,6 +15,7 @@
 #include "il/verify/DiagFormat.hpp"
 #include "il/verify/DiagSink.hpp"
 #include "il/verify/TypeInference.hpp"
+#include "il/verify/VerifyCtx.hpp"
 #include "il/verify/VerifierTable.hpp"
 #include "support/diag_expected.hpp"
 
@@ -38,19 +39,14 @@ using il::support::Expected;
 using il::support::Severity;
 using il::support::makeError;
 
-Expected<void> checkBinary_E(const Function &fn,
-                             const BasicBlock &bb,
-                             const Instr &instr,
-                             TypeInference &types,
+Expected<void> checkBinary_E(const VerifyCtx &ctx,
                              Type::Kind operandKind,
                              Type resultType);
 
-Expected<void> checkUnary_E(const Function &fn,
-                            const BasicBlock &bb,
-                            const Instr &instr,
-                            TypeInference &types,
+Expected<void> checkUnary_E(const VerifyCtx &ctx,
                             Type::Kind operandKind,
                             Type resultType);
+
 
 std::optional<Type::Kind> kindFromClass(TypeClass typeClass)
 {
@@ -89,11 +85,7 @@ std::optional<Type> typeFromClass(TypeClass typeClass)
     return std::nullopt;
 }
 
-Expected<void> checkWithProps(const Function &fn,
-                              const BasicBlock &bb,
-                              const Instr &instr,
-                              TypeInference &types,
-                              const OpProps &props)
+Expected<void> checkWithProps(const VerifyCtx &ctx, const OpProps &props)
 {
     switch (props.arity)
     {
@@ -102,14 +94,14 @@ Expected<void> checkWithProps(const Function &fn,
             const auto operandKind = kindFromClass(props.operands);
             const auto resultType = typeFromClass(props.result);
             assert(operandKind && resultType);
-            return checkUnary_E(fn, bb, instr, types, *operandKind, *resultType);
+            return checkUnary_E(ctx, *operandKind, *resultType);
         }
         case 2:
         {
             const auto operandKind = kindFromClass(props.operands);
             const auto resultType = typeFromClass(props.result);
             assert(operandKind && resultType);
-            return checkBinary_E(fn, bb, instr, types, *operandKind, *resultType);
+            return checkBinary_E(ctx, *operandKind, *resultType);
         }
         default:
             break;
@@ -430,18 +422,14 @@ Expected<void> verifyOpcodeSignature_impl(const Function &fn,
 /// @param kind Expected operand kind.
 /// @return Empty on success; otherwise an error diagnostic when a mismatch is
 ///         observed.
-Expected<void> expectAllOperandType(const Function &fn,
-                                    const BasicBlock &bb,
-                                    const Instr &instr,
-                                    TypeInference &types,
-                                    Type::Kind kind)
+Expected<void> expectAllOperandType(const VerifyCtx &ctx, Type::Kind kind)
 {
-    for (const auto &op : instr.operands)
+    for (const auto &op : ctx.instr.operands)
     {
-        if (types.valueType(op).kind != kind)
-        {
-            return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "operand type mismatch"))};
-        }
+        if (ctx.types.valueType(op).kind != kind)
+            return Expected<void>{makeError(ctx.instr.loc,
+                                            formatInstrDiag(
+                                                ctx.fn, ctx.block, ctx.instr, "operand type mismatch"))};
     }
     return {};
 }
@@ -454,28 +442,28 @@ Expected<void> expectAllOperandType(const Function &fn,
 /// @param warnings Warning sink for questionable but allowed patterns.
 /// @return Empty on success; otherwise an error diagnostic describing the
 ///         violated constraint.
-Expected<void> checkAlloca_E(const Function &fn,
-                             const BasicBlock &bb,
-                             const Instr &instr,
-                             TypeInference &types,
-                             DiagSink &sink)
+Expected<void> checkAlloca_E(const VerifyCtx &ctx)
 {
+    const Instr &instr = ctx.instr;
     if (instr.operands.empty())
-        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "missing size operand"))};
+        return Expected<void>{makeError(instr.loc,
+                                        formatInstrDiag(ctx.fn, ctx.block, instr, "missing size operand"))};
 
-    if (types.valueType(instr.operands[0]).kind != Type::Kind::I64)
-        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "size must be i64"))};
+    if (ctx.types.valueType(instr.operands[0]).kind != Type::Kind::I64)
+        return Expected<void>{makeError(instr.loc,
+                                        formatInstrDiag(ctx.fn, ctx.block, instr, "size must be i64"))};
 
     if (instr.operands[0].kind == Value::Kind::ConstInt)
     {
         long long sz = instr.operands[0].i64;
         if (sz < 0)
-            return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "negative alloca size"))};
+            return Expected<void>{makeError(instr.loc,
+                                            formatInstrDiag(ctx.fn, ctx.block, instr, "negative alloca size"))};
         if (sz > (1LL << 20))
-            emitWarning(fn, bb, instr, "huge alloca", sink);
+            emitWarning(ctx.fn, ctx.block, instr, "huge alloca", ctx.diags);
     }
 
-    types.recordResult(instr, Type(Type::Kind::Ptr));
+    ctx.types.recordResult(instr, Type(Type::Kind::Ptr));
     return {};
 }
 
@@ -488,20 +476,19 @@ Expected<void> checkAlloca_E(const Function &fn,
 /// @param resultType Result type recorded when validation succeeds.
 /// @return Empty on success; otherwise an error diagnostic describing arity or
 ///         type mismatches.
-Expected<void> checkBinary_E(const Function &fn,
-                             const BasicBlock &bb,
-                             const Instr &instr,
-                             TypeInference &types,
+Expected<void> checkBinary_E(const VerifyCtx &ctx,
                              Type::Kind operandKind,
                              Type resultType)
 {
+    const Instr &instr = ctx.instr;
     if (instr.operands.size() < 2)
-        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "invalid operand count"))};
+        return Expected<void>{makeError(instr.loc,
+                                        formatInstrDiag(ctx.fn, ctx.block, instr, "invalid operand count"))};
 
-    if (auto result = expectAllOperandType(fn, bb, instr, types, operandKind); !result)
+    if (auto result = expectAllOperandType(ctx, operandKind); !result)
         return result;
 
-    types.recordResult(instr, resultType);
+    ctx.types.recordResult(instr, resultType);
     return {};
 }
 
@@ -684,20 +671,20 @@ Expected<void> checkTrapFromErr_E(const Function &fn,
 /// @param resultType Result type recorded when validation succeeds.
 /// @return Empty on success; otherwise an error diagnostic describing arity or
 ///         type mismatches.
-Expected<void> checkUnary_E(const Function &fn,
-                            const BasicBlock &bb,
-                            const Instr &instr,
-                            TypeInference &types,
+Expected<void> checkUnary_E(const VerifyCtx &ctx,
                             Type::Kind operandKind,
                             Type resultType)
 {
+    const Instr &instr = ctx.instr;
     if (instr.operands.empty())
-        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "invalid operand count"))};
+        return Expected<void>{makeError(instr.loc,
+                                        formatInstrDiag(ctx.fn, ctx.block, instr, "invalid operand count"))};
 
-    if (types.valueType(instr.operands[0]).kind != operandKind)
-        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "operand type mismatch"))};
+    if (ctx.types.valueType(instr.operands[0]).kind != operandKind)
+        return Expected<void>{makeError(instr.loc,
+                                        formatInstrDiag(ctx.fn, ctx.block, instr, "operand type mismatch"))};
 
-    types.recordResult(instr, resultType);
+    ctx.types.recordResult(instr, resultType);
     return {};
 }
 
@@ -860,21 +847,20 @@ Expected<void> checkConstNull_E(const Instr &instr, TypeInference &types)
 /// @param types Type inference engine for operand queries and result recording.
 /// @return Empty on success; otherwise an error diagnostic describing missing
 ///         callees, arity mismatches, or argument type violations.
-Expected<void> checkCall_E(const Function &fn,
-                           const BasicBlock &bb,
-                           const Instr &instr,
-                           const std::unordered_map<std::string, const Extern *> &externs,
-                           const std::unordered_map<std::string, const Function *> &funcs,
-                           TypeInference &types)
+Expected<void> checkCall_E(const VerifyCtx &ctx)
 {
-    if (auto result = checkRuntimeArrayCall(fn, bb, instr, types); !result)
+    const Function &fn = ctx.fn;
+    const BasicBlock &bb = ctx.block;
+    const Instr &instr = ctx.instr;
+
+    if (auto result = checkRuntimeArrayCall(fn, bb, instr, ctx.types); !result)
         return result;
 
     const Extern *sig = nullptr;
     const Function *fnSig = nullptr;
-    if (auto it = externs.find(instr.callee); it != externs.end())
+    if (auto it = ctx.externs.find(instr.callee); it != ctx.externs.end())
         sig = it->second;
-    else if (auto itF = funcs.find(instr.callee); itF != funcs.end())
+    else if (auto itF = ctx.functions.find(instr.callee); itF != ctx.functions.end())
         fnSig = itF->second;
 
     if (!sig && !fnSig)
@@ -887,14 +873,14 @@ Expected<void> checkCall_E(const Function &fn,
     for (size_t i = 0; i < paramCount; ++i)
     {
         Type expected = sig ? sig->params[i] : fnSig->params[i].type;
-        if (types.valueType(instr.operands[i]).kind != expected.kind)
+        if (ctx.types.valueType(instr.operands[i]).kind != expected.kind)
             return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "call arg type mismatch"))};
     }
 
     if (instr.result)
     {
         Type ret = sig ? sig->retType : fnSig->retType;
-        types.recordResult(instr, ret);
+        ctx.types.recordResult(instr, ret);
     }
 
     return {};
@@ -920,25 +906,20 @@ Expected<void> checkDefault_E(const Instr &instr, TypeInference &types)
 /// @param sink Diagnostic sink receiving warnings emitted during validation.
 /// @return Empty on success; otherwise an error diagnostic describing the
 ///         violated rule.
-Expected<void> verifyInstruction_impl(const Function &fn,
-                                      const BasicBlock &bb,
-                                      const Instr &instr,
-                                      const std::unordered_map<std::string, const Extern *> &externs,
-                                      const std::unordered_map<std::string, const Function *> &funcs,
-                                      TypeInference &types,
-                                      DiagSink &sink)
+Expected<void> verifyInstruction_impl(const VerifyCtx &ctx)
 {
     const auto rejectUnchecked = [&](std::string_view message) {
-        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, message))};
+        return Expected<void>{makeError(ctx.instr.loc,
+                                        formatInstrDiag(ctx.fn, ctx.block, ctx.instr, message))};
     };
 
-    if (auto props = lookup(instr.op))
-        return checkWithProps(fn, bb, instr, types, *props);
+    if (auto props = lookup(ctx.instr.op))
+        return checkWithProps(ctx, *props);
 
-    switch (instr.op)
+    switch (ctx.instr.op)
     {
         case Opcode::Alloca:
-            return checkAlloca_E(fn, bb, instr, types, sink);
+            return checkAlloca_E(ctx);
         case Opcode::Add:
             return rejectUnchecked("signed integer add must use iadd.ovf (traps on overflow)");
         case Opcode::Sub:
@@ -965,7 +946,7 @@ Expected<void> verifyInstruction_impl(const Function &fn,
         case Opcode::Shl:
         case Opcode::LShr:
         case Opcode::AShr:
-            return checkBinary_E(fn, bb, instr, types, Type::Kind::I64, Type(Type::Kind::I64));
+            return checkBinary_E(ctx, Type::Kind::I64, Type(Type::Kind::I64));
         case Opcode::ICmpEq:
         case Opcode::ICmpNe:
         case Opcode::SCmpLT:
@@ -976,127 +957,130 @@ Expected<void> verifyInstruction_impl(const Function &fn,
         case Opcode::UCmpLE:
         case Opcode::UCmpGT:
         case Opcode::UCmpGE:
-            return checkBinary_E(fn, bb, instr, types, Type::Kind::I64, Type(Type::Kind::I1));
+            return checkBinary_E(ctx, Type::Kind::I64, Type(Type::Kind::I1));
         case Opcode::FCmpEQ:
         case Opcode::FCmpNE:
         case Opcode::FCmpLT:
         case Opcode::FCmpLE:
         case Opcode::FCmpGT:
         case Opcode::FCmpGE:
-            return checkBinary_E(fn, bb, instr, types, Type::Kind::F64, Type(Type::Kind::I1));
+            return checkBinary_E(ctx, Type::Kind::F64, Type(Type::Kind::I1));
         case Opcode::Sitofp:
-            return checkUnary_E(fn, bb, instr, types, Type::Kind::I64, Type(Type::Kind::F64));
+            return checkUnary_E(ctx, Type::Kind::I64, Type(Type::Kind::F64));
         case Opcode::Fptosi:
             return rejectUnchecked(
                 "fp to integer narrowing must use cast.fp_to_si.rte.chk (rounds to nearest-even and traps on overflow)");
         case Opcode::CastFpToSiRteChk:
         case Opcode::CastFpToUiRteChk:
-            return checkUnary_E(fn, bb, instr, types, Type::Kind::F64, Type(Type::Kind::I64));
+            return checkUnary_E(ctx, Type::Kind::F64, Type(Type::Kind::I64));
         case Opcode::CastSiNarrowChk:
         case Opcode::CastUiNarrowChk:
-            return checkUnary_E(fn, bb, instr, types, Type::Kind::I64, Type(Type::Kind::I64));
+            return checkUnary_E(ctx, Type::Kind::I64, Type(Type::Kind::I64));
         case Opcode::IdxChk:
-            return checkIdxChk_E(fn, bb, instr, types);
+            return checkIdxChk_E(ctx.fn, ctx.block, ctx.instr, ctx.types);
         case Opcode::Zext1:
-            return checkUnary_E(fn, bb, instr, types, Type::Kind::I1, Type(Type::Kind::I64));
+            return checkUnary_E(ctx, Type::Kind::I1, Type(Type::Kind::I64));
         case Opcode::Trunc1:
-            return checkUnary_E(fn, bb, instr, types, Type::Kind::I64, Type(Type::Kind::I1));
+            return checkUnary_E(ctx, Type::Kind::I64, Type(Type::Kind::I1));
         case Opcode::GEP:
-            return checkGEP_E(fn, bb, instr, types);
+            return checkGEP_E(ctx.fn, ctx.block, ctx.instr, ctx.types);
         case Opcode::Load:
-            return checkLoad_E(fn, bb, instr, types);
+            return checkLoad_E(ctx.fn, ctx.block, ctx.instr, ctx.types);
         case Opcode::Store:
-            return checkStore_E(fn, bb, instr, types);
+            return checkStore_E(ctx.fn, ctx.block, ctx.instr, ctx.types);
         case Opcode::AddrOf:
-            return checkAddrOf_E(fn, bb, instr, types);
+            return checkAddrOf_E(ctx.fn, ctx.block, ctx.instr, ctx.types);
         case Opcode::ConstStr:
-            return checkConstStr_E(fn, bb, instr, types);
+            return checkConstStr_E(ctx.fn, ctx.block, ctx.instr, ctx.types);
         case Opcode::ConstNull:
-            return checkConstNull_E(instr, types);
+            return checkConstNull_E(ctx.instr, ctx.types);
         case Opcode::Call:
-            return checkCall_E(fn, bb, instr, externs, funcs, types);
+            return checkCall_E(ctx);
         case Opcode::TrapKind:
         {
-            if (!instr.operands.empty())
+            if (!ctx.instr.operands.empty())
             {
-                return Expected<void>{makeError(instr.loc,
-                                                formatInstrDiag(fn,
-                                                                bb,
-                                                                instr,
+                return Expected<void>{makeError(ctx.instr.loc,
+                                                formatInstrDiag(ctx.fn,
+                                                                ctx.block,
+                                                                ctx.instr,
                                                                 "trap.kind takes no operands"))};
             }
-            types.recordResult(instr, Type(Type::Kind::I64));
+            ctx.types.recordResult(ctx.instr, Type(Type::Kind::I64));
             return {};
         }
         case Opcode::TrapFromErr:
-            return checkTrapFromErr_E(fn, bb, instr, types);
+            return checkTrapFromErr_E(ctx.fn, ctx.block, ctx.instr, ctx.types);
         case Opcode::TrapErr:
         {
-            if (instr.operands.size() != 2)
+            if (ctx.instr.operands.size() != 2)
             {
-                return Expected<void>{makeError(instr.loc,
-                                                formatInstrDiag(fn,
-                                                                bb,
-                                                                instr,
+                return Expected<void>{makeError(ctx.instr.loc,
+                                                formatInstrDiag(ctx.fn,
+                                                                ctx.block,
+                                                                ctx.instr,
                                                                 "trap.err expects code and text operands"))};
             }
-            const auto codeType = types.valueType(instr.operands[0]).kind;
+            const auto codeType = ctx.types.valueType(ctx.instr.operands[0]).kind;
             if (codeType != Type::Kind::I32)
             {
-                return Expected<void>{makeError(instr.loc,
-                                                formatInstrDiag(fn,
-                                                                bb,
-                                                                instr,
+                return Expected<void>{makeError(ctx.instr.loc,
+                                                formatInstrDiag(ctx.fn,
+                                                                ctx.block,
+                                                                ctx.instr,
                                                                 "trap.err code must be i32"))};
             }
-            const auto textType = types.valueType(instr.operands[1]).kind;
+            const auto textType = ctx.types.valueType(ctx.instr.operands[1]).kind;
             if (textType != Type::Kind::Str)
             {
-                return Expected<void>{makeError(instr.loc,
-                                                formatInstrDiag(fn,
-                                                                bb,
-                                                                instr,
+                return Expected<void>{makeError(ctx.instr.loc,
+                                                formatInstrDiag(ctx.fn,
+                                                                ctx.block,
+                                                                ctx.instr,
                                                                 "trap.err text must be str"))};
             }
-            types.recordResult(instr, Type(Type::Kind::Error));
+            ctx.types.recordResult(ctx.instr, Type(Type::Kind::Error));
             return {};
         }
         case Opcode::ErrGetKind:
         case Opcode::ErrGetCode:
         case Opcode::ErrGetLine:
         {
-            if (auto result = expectAllOperandType(fn, bb, instr, types, Type::Kind::Error); !result)
+            if (auto result = expectAllOperandType(ctx, Type::Kind::Error); !result)
                 return result;
-            types.recordResult(instr, Type(Type::Kind::I32));
+            ctx.types.recordResult(ctx.instr, Type(Type::Kind::I32));
             return {};
         }
         case Opcode::ErrGetIp:
         {
-            if (auto result = expectAllOperandType(fn, bb, instr, types, Type::Kind::Error); !result)
+            if (auto result = expectAllOperandType(ctx, Type::Kind::Error); !result)
                 return result;
-            types.recordResult(instr, Type(Type::Kind::I64));
+            ctx.types.recordResult(ctx.instr, Type(Type::Kind::I64));
             return {};
         }
         case Opcode::ResumeSame:
         case Opcode::ResumeNext:
         case Opcode::ResumeLabel:
-            return expectAllOperandType(fn, bb, instr, types, Type::Kind::ResumeTok);
+            return expectAllOperandType(ctx, Type::Kind::ResumeTok);
         case Opcode::EhPush:
         case Opcode::EhPop:
         case Opcode::EhEntry:
-            return checkDefault_E(instr, types);
+            return checkDefault_E(ctx.instr, ctx.types);
         default:
-            return checkDefault_E(instr, types);
+            return checkDefault_E(ctx.instr, ctx.types);
     }
 }
 
 } // namespace
 
-Expected<void> verifyOpcodeSignature_E(const Function &fn,
-                                        const BasicBlock &bb,
-                                        const Instr &instr)
+Expected<void> verifyInstruction_E(const VerifyCtx &ctx)
 {
-    return verifyOpcodeSignature_impl(fn, bb, instr);
+    return verifyInstruction_impl(ctx);
+}
+
+Expected<void> verifyOpcodeSignature_E(const VerifyCtx &ctx)
+{
+    return verifyOpcodeSignature_impl(ctx.fn, ctx.block, ctx.instr);
 }
 
 Expected<void> verifyInstruction_E(const Function &fn,
@@ -1107,7 +1091,15 @@ Expected<void> verifyInstruction_E(const Function &fn,
                                     TypeInference &types,
                                     DiagSink &sink)
 {
-    return verifyInstruction_impl(fn, bb, instr, externs, funcs, types, sink);
+    VerifyCtx ctx{sink, types, externs, funcs, fn, bb, instr};
+    return verifyInstruction_impl(ctx);
+}
+
+Expected<void> verifyOpcodeSignature_E(const Function &fn,
+                                       const BasicBlock &bb,
+                                       const Instr &instr)
+{
+    return verifyOpcodeSignature_impl(fn, bb, instr);
 }
 
 bool verifyOpcodeSignature(const Function &fn,
@@ -1153,12 +1145,12 @@ Expected<void> verifyOpcodeSignature_expected(const Function &fn,
 }
 
 Expected<void> verifyInstruction_expected(const Function &fn,
-                                           const BasicBlock &bb,
-                                           const Instr &instr,
-                                           const std::unordered_map<std::string, const Extern *> &externs,
-                                           const std::unordered_map<std::string, const Function *> &funcs,
-                                           TypeInference &types,
-                                           DiagSink &sink)
+                                          const BasicBlock &bb,
+                                          const Instr &instr,
+                                          const std::unordered_map<std::string, const Extern *> &externs,
+                                          const std::unordered_map<std::string, const Function *> &funcs,
+                                          TypeInference &types,
+                                          DiagSink &sink)
 {
     return verifyInstruction_E(fn, bb, instr, externs, funcs, types, sink);
 }
