@@ -54,6 +54,25 @@ extern "C" {
     /// @return Pointer to zeroed block or trap on failure.
     void *rt_alloc(int64_t bytes);
 
+    /// @brief Clear the terminal when stdout is a TTY.
+    void rt_term_cls(void);
+
+    /// @brief Set foreground/background colors using terminal SGR sequences.
+    /// @param fg Foreground color index (-1 to leave unchanged).
+    /// @param bg Background color index (-1 to leave unchanged).
+    void rt_term_color_i32(int32_t fg, int32_t bg);
+
+    /// @brief Move the cursor to 1-based row/column when stdout is a TTY.
+    /// @param row Target row (clamped to >= 1).
+    /// @param col Target column (clamped to >= 1).
+    void rt_term_locate_i32(int32_t row, int32_t col);
+
+    /// @brief Block until a single key is read and return it as a 1-character string.
+    rt_string rt_getkey_str(void);
+
+    /// @brief Return a pending key as a 1-character string or empty string if none available.
+    rt_string rt_inkey_str(void);
+
 #ifdef __cplusplus
 }
 #endif
