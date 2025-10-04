@@ -1,0 +1,98 @@
+// File: src/frontends/basic/TokenKinds.def
+// Purpose: Defines the BASIC token kinds and their string representations.
+// Key invariants: Order matches TokenKind enum for stable values.
+// Ownership/Lifetime: Header-only metadata.
+// Links: frontends/basic/Token.hpp
+#ifndef TOKEN
+#error "TOKEN must be defined before including TokenKinds.def"
+#endif
+TOKEN(Unknown, "?")
+TOKEN(EndOfFile, "eof")
+TOKEN(EndOfLine, "eol")
+
+TOKEN(Number, "number")
+TOKEN(String, "string")
+
+TOKEN(Identifier, "ident")
+
+// Keywords -----------------------------------------------------------------
+TOKEN(KeywordPrint, "PRINT")
+TOKEN(KeywordLet, "LET")
+TOKEN(KeywordIf, "IF")
+TOKEN(KeywordThen, "THEN")
+TOKEN(KeywordElse, "ELSE")
+TOKEN(KeywordElseIf, "ELSEIF")
+TOKEN(KeywordWhile, "WHILE")
+TOKEN(KeywordWend, "WEND")
+TOKEN(KeywordLoop, "LOOP")
+TOKEN(KeywordFor, "FOR")
+TOKEN(KeywordTo, "TO")
+TOKEN(KeywordStep, "STEP")
+TOKEN(KeywordNext, "NEXT")
+TOKEN(KeywordOn, "ON")
+TOKEN(KeywordError, "ERROR")
+TOKEN(KeywordGoto, "GOTO")
+TOKEN(KeywordEnd, "END")
+TOKEN(KeywordExit, "EXIT")
+TOKEN(KeywordInput, "INPUT")
+TOKEN(KeywordDim, "DIM")
+TOKEN(KeywordDo, "DO")
+TOKEN(KeywordRedim, "REDIM")
+TOKEN(KeywordAs, "AS")
+TOKEN(KeywordRandomize, "RANDOMIZE")
+TOKEN(KeywordAnd, "AND")
+TOKEN(KeywordOr, "OR")
+TOKEN(KeywordNot, "NOT")
+TOKEN(KeywordMod, "MOD")
+TOKEN(KeywordSqr, "SQR")
+TOKEN(KeywordAbs, "ABS")
+TOKEN(KeywordFloor, "FLOOR")
+TOKEN(KeywordCeil, "CEIL")
+TOKEN(KeywordSin, "SIN")
+TOKEN(KeywordCos, "COS")
+TOKEN(KeywordPow, "POW")
+TOKEN(KeywordRnd, "RND")
+TOKEN(KeywordFunction, "FUNCTION")
+TOKEN(KeywordSub, "SUB")
+TOKEN(KeywordResume, "RESUME")
+TOKEN(KeywordReturn, "RETURN")
+TOKEN(KeywordLbound, "LBOUND")
+TOKEN(KeywordUbound, "UBOUND")
+TOKEN(KeywordUntil, "UNTIL")
+
+// Operators ----------------------------------------------------------------
+TOKEN(Plus, "+")
+TOKEN(Minus, "-")
+TOKEN(Star, "*")
+TOKEN(Slash, "/")
+TOKEN(Backslash, "\\")
+TOKEN(Caret, "^")
+TOKEN(Equal, "=")
+TOKEN(NotEqual, "<>")
+TOKEN(Less, "<")
+TOKEN(LessEqual, "<=")
+TOKEN(Greater, ">")
+TOKEN(GreaterEqual, ">=")
+
+// Punctuation --------------------------------------------------------------
+TOKEN(LParen, "(")
+TOKEN(RParen, ")")
+TOKEN(Comma, ",")
+TOKEN(Semicolon, ";")
+TOKEN(Colon, ":")
+TOKEN(Hash, "#")
+
+// Additional keywords and literals -----------------------------------------
+TOKEN(KeywordBoolean, "BOOLEAN")
+TOKEN(KeywordTrue, "TRUE")
+TOKEN(KeywordFalse, "FALSE")
+TOKEN(KeywordAndAlso, "ANDALSO")
+TOKEN(KeywordOrElse, "ORELSE")
+TOKEN(KeywordOpen, "OPEN")
+TOKEN(KeywordClose, "CLOSE")
+TOKEN(KeywordOutput, "OUTPUT")
+TOKEN(KeywordAppend, "APPEND")
+TOKEN(KeywordBinary, "BINARY")
+TOKEN(KeywordRandom, "RANDOM")
+TOKEN(KeywordLine, "LINE")
+TOKEN(KeywordEof, "EOF")
