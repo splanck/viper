@@ -55,11 +55,54 @@ class AstPrinter
         Indent push();
     };
 
+    /// @brief Holds formatting preferences for AST emission.
+    struct PrintStyle
+    {
+        /// @brief Create a style bound to @p printer.
+        explicit PrintStyle(Printer &printer);
+
+        /// @brief Emit the opening delimiter for a statement body.
+        void openBody() const;
+
+        /// @brief Emit the closing delimiter for a statement body.
+        void closeBody() const;
+
+        /// @brief Ensure elements printed with @p first are separated.
+        void separate(bool &first) const;
+
+        /// @brief Write a numbered label prefix for a statement.
+        void writeLineNumber(int line) const;
+
+        /// @brief Emit the placeholder used for null optional nodes.
+        void writeNull() const;
+
+        /// @brief Emit the prefix used before channel expressions.
+        void writeChannelPrefix() const;
+
+        /// @brief Emit the prefix used before argument lists.
+        void writeArgsPrefix() const;
+
+        /// @brief Emit the suffix used after argument lists.
+        void writeArgsSuffix() const;
+
+        /// @brief Emit the marker indicating trailing newline suppression.
+        void writeNoNewlineTag() const;
+
+      private:
+        Printer *printer;
+    };
+
     /// @brief Expression visitor producing textual representations.
     struct ExprPrinter;
 
     /// @brief Statement visitor producing textual representations.
     struct StmtPrinter;
+
+    /// @brief Helper invoked by visitors to serialize expressions.
+    static void printExpr(const Expr &expr, Printer &p, PrintStyle &style);
+
+    /// @brief Helper invoked by the dispatcher to serialize statements.
+    static void printStmt(const Stmt &stmt, Printer &p, PrintStyle &style);
 
     /// @brief Dump a statement node to the printer.
     /// @param stmt Statement to serialize.
