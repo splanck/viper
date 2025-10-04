@@ -1,601 +1,66 @@
 // File: src/frontends/basic/AstPrinter.cpp
-// Purpose: Implements BASIC AST printer for debugging.
+// Purpose: Implements BASIC AST printer orchestration and formatting helpers.
 // Key invariants: None.
 // Ownership/Lifetime: Printer does not own AST nodes.
-// Notes: Uses internal Printer helper for consistent formatting.
+// Notes: Delegates expression/statement printing to dedicated translation units.
 // Links: docs/codemap.md
 
 #include "frontends/basic/AstPrinter.hpp"
-#include "frontends/basic/BuiltinRegistry.hpp"
-#include <array>
 #include <sstream>
 
 namespace il::frontends::basic
 {
 
-namespace
-{
+AstPrinter::PrintStyle::PrintStyle(Printer &printer) : printer(&printer) {}
 
-const char *typeToString(Type ty)
+void AstPrinter::PrintStyle::openBody() const
 {
-    switch (ty)
-    {
-        case Type::I64:
-            return "I64";
-        case Type::F64:
-            return "F64";
-        case Type::Str:
-            return "STR";
-        case Type::Bool:
-            return "BOOLEAN";
-    }
-    return "I64";
+    printer->os << " {";
 }
 
-const char *openModeToString(OpenStmt::Mode mode)
+void AstPrinter::PrintStyle::closeBody() const
 {
-    switch (mode)
-    {
-        case OpenStmt::Mode::Input:
-            return "INPUT";
-        case OpenStmt::Mode::Output:
-            return "OUTPUT";
-        case OpenStmt::Mode::Append:
-            return "APPEND";
-        case OpenStmt::Mode::Binary:
-            return "BINARY";
-        case OpenStmt::Mode::Random:
-            return "RANDOM";
-    }
-    return "INPUT";
+    printer->os << "})";
 }
 
-} // namespace
-
-struct AstPrinter::ExprPrinter final : ExprVisitor
+void AstPrinter::PrintStyle::separate(bool &first) const
 {
-    explicit ExprPrinter(Printer &printer) : printer(printer) {}
-
-    void print(const Expr &expr)
+    if (!first)
     {
-        expr.accept(*this);
+        printer->os << ' ';
     }
+    first = false;
+}
 
-    template <typename NodeT> void visit([[maybe_unused]] const NodeT &)
-    {
-        static_assert(sizeof(NodeT) == 0, "Unhandled expression node in AstPrinter::ExprPrinter");
-    }
-
-    void visit(const IntExpr &expr) override
-    {
-        printer.os << expr.value;
-    }
-
-    void visit(const FloatExpr &expr) override
-    {
-        std::ostringstream os;
-        os << expr.value;
-        printer.os << os.str();
-    }
-
-    void visit(const StringExpr &expr) override
-    {
-        printer.os << '"' << expr.value << '"';
-    }
-
-    void visit(const BoolExpr &expr) override
-    {
-        printer.os << (expr.value ? "TRUE" : "FALSE");
-    }
-
-    void visit(const VarExpr &expr) override
-    {
-        printer.os << expr.name;
-    }
-
-    void visit(const ArrayExpr &expr) override
-    {
-        printer.os << expr.name << '(';
-        expr.index->accept(*this);
-        printer.os << ')';
-    }
-
-    void visit(const UnaryExpr &expr) override
-    {
-        printer.os << "(NOT ";
-        expr.expr->accept(*this);
-        printer.os << ')';
-    }
-
-    void visit(const BinaryExpr &expr) override
-    {
-        static constexpr std::array<const char *, 17> ops = {"+",
-                                                             "-",
-                                                             "*",
-                                                             "/",
-                                                             "^",
-                                                             "\\",
-                                                             "MOD",
-                                                             "=",
-                                                             "<>",
-                                                             "<",
-                                                             "<=",
-                                                             ">",
-                                                             ">=",
-                                                             "ANDALSO",
-                                                             "ORELSE",
-                                                             "AND",
-                                                             "OR"};
-        printer.os << '(' << ops[static_cast<size_t>(expr.op)] << ' ';
-        expr.lhs->accept(*this);
-        printer.os << ' ';
-        expr.rhs->accept(*this);
-        printer.os << ')';
-    }
-
-    void visit(const BuiltinCallExpr &expr) override
-    {
-        printer.os << '(' << getBuiltinInfo(expr.builtin).name;
-        for (const auto &arg : expr.args)
-        {
-            printer.os << ' ';
-            arg->accept(*this);
-        }
-        printer.os << ')';
-    }
-
-    void visit(const LBoundExpr &expr) override
-    {
-        printer.os << "(LBOUND " << expr.name << ')';
-    }
-
-    void visit(const UBoundExpr &expr) override
-    {
-        printer.os << "(UBOUND " << expr.name << ')';
-    }
-
-    void visit(const CallExpr &expr) override
-    {
-        printer.os << '(' << expr.callee;
-        for (const auto &arg : expr.args)
-        {
-            printer.os << ' ';
-            arg->accept(*this);
-        }
-        printer.os << ')';
-    }
-
-  private:
-    Printer &printer;
-};
-
-struct AstPrinter::StmtPrinter final : StmtVisitor
+void AstPrinter::PrintStyle::writeLineNumber(int line) const
 {
-    explicit StmtPrinter(Printer &printer) : printer(printer), exprPrinter(printer) {}
+    printer->os << line << ':';
+}
 
-    void print(const Stmt &stmt)
-    {
-        stmt.accept(*this);
-    }
+void AstPrinter::PrintStyle::writeNull() const
+{
+    printer->os << "<null>";
+}
 
-    template <typename NodeT> void visit([[maybe_unused]] const NodeT &)
-    {
-        static_assert(sizeof(NodeT) == 0, "Unhandled statement node in AstPrinter::StmtPrinter");
-    }
+void AstPrinter::PrintStyle::writeChannelPrefix() const
+{
+    printer->os << " channel=#";
+}
 
-    void visit(const PrintStmt &stmt) override
-    {
-        printer.os << "(PRINT";
-        for (const auto &item : stmt.items)
-        {
-            printer.os << ' ';
-            switch (item.kind)
-            {
-                case PrintItem::Kind::Expr:
-                    item.expr->accept(exprPrinter);
-                    break;
-                case PrintItem::Kind::Comma:
-                    printer.os << ',';
-                    break;
-                case PrintItem::Kind::Semicolon:
-                    printer.os << ';';
-                    break;
-            }
-        }
-        printer.os << ')';
-    }
+void AstPrinter::PrintStyle::writeArgsPrefix() const
+{
+    printer->os << " args=[";
+}
 
-    void visit(const PrintChStmt &stmt) override
-    {
-        printer.os << "(PRINT# channel=#";
-        if (stmt.channelExpr)
-        {
-            stmt.channelExpr->accept(exprPrinter);
-        }
-        else
-        {
-            printer.os << "<null>";
-        }
-        printer.os << " args=[";
-        bool first = true;
-        for (const auto &arg : stmt.args)
-        {
-            if (!first)
-                printer.os << ' ';
-            if (arg)
-            {
-                arg->accept(exprPrinter);
-            }
-            else
-            {
-                printer.os << "<null>";
-            }
-            first = false;
-        }
-        printer.os << ']';
-        if (!stmt.trailingNewline)
-            printer.os << " no-newline";
-        printer.os << ')';
-    }
+void AstPrinter::PrintStyle::writeArgsSuffix() const
+{
+    printer->os << ']';
+}
 
-    void visit(const LetStmt &stmt) override
-    {
-        printer.os << "(LET ";
-        stmt.target->accept(exprPrinter);
-        printer.os << ' ';
-        stmt.expr->accept(exprPrinter);
-        printer.os << ')';
-    }
-
-    void visit(const DimStmt &stmt) override
-    {
-        printer.os << "(DIM " << stmt.name;
-        if (stmt.isArray)
-        {
-            if (stmt.size)
-            {
-                printer.os << ' ';
-                stmt.size->accept(exprPrinter);
-            }
-            if (stmt.type != Type::I64)
-                printer.os << " AS " << typeToString(stmt.type);
-        }
-        else
-        {
-            printer.os << " AS " << typeToString(stmt.type);
-        }
-        printer.os << ')';
-    }
-
-    void visit(const ReDimStmt &stmt) override
-    {
-        printer.os << "(REDIM " << stmt.name;
-        if (stmt.size)
-        {
-            printer.os << ' ';
-            stmt.size->accept(exprPrinter);
-        }
-        printer.os << ')';
-    }
-
-    void visit(const RandomizeStmt &stmt) override
-    {
-        printer.os << "(RANDOMIZE ";
-        stmt.seed->accept(exprPrinter);
-        printer.os << ')';
-    }
-
-    void visit(const IfStmt &stmt) override
-    {
-        printer.os << "(IF ";
-        stmt.cond->accept(exprPrinter);
-        printer.os << " THEN ";
-        stmt.then_branch->accept(*this);
-        for (const auto &elseif : stmt.elseifs)
-        {
-            printer.os << " ELSEIF ";
-            elseif.cond->accept(exprPrinter);
-            printer.os << " THEN ";
-            elseif.then_branch->accept(*this);
-        }
-        if (stmt.else_branch)
-        {
-            printer.os << " ELSE ";
-            stmt.else_branch->accept(*this);
-        }
-        printer.os << ')';
-    }
-
-    void visit(const WhileStmt &stmt) override
-    {
-        printer.os << "(WHILE ";
-        stmt.cond->accept(exprPrinter);
-        printer.os << " {";
-        bool first = true;
-        for (const auto &bodyStmt : stmt.body)
-        {
-            if (!first)
-                printer.os << ' ';
-            first = false;
-            printer.os << std::to_string(bodyStmt->line) << ':';
-            bodyStmt->accept(*this);
-        }
-        printer.os << "})";
-    }
-
-    void visit(const DoStmt &stmt) override
-    {
-        printer.os << "(DO "
-                    << (stmt.testPos == DoStmt::TestPos::Pre ? "pre" : "post") << ' ';
-        switch (stmt.condKind)
-        {
-            case DoStmt::CondKind::None:
-                printer.os << "NONE";
-                break;
-            case DoStmt::CondKind::While:
-                printer.os << "WHILE";
-                break;
-            case DoStmt::CondKind::Until:
-                printer.os << "UNTIL";
-                break;
-        }
-        if (stmt.condKind != DoStmt::CondKind::None && stmt.cond)
-        {
-            printer.os << ' ';
-            stmt.cond->accept(exprPrinter);
-        }
-        printer.os << " {";
-        bool first = true;
-        for (const auto &bodyStmt : stmt.body)
-        {
-            if (!first)
-                printer.os << ' ';
-            first = false;
-            printer.os << std::to_string(bodyStmt->line) << ':';
-            bodyStmt->accept(*this);
-        }
-        printer.os << "})";
-    }
-
-    void visit(const ForStmt &stmt) override
-    {
-        printer.os << "(FOR " << stmt.var << " = ";
-        stmt.start->accept(exprPrinter);
-        printer.os << " TO ";
-        stmt.end->accept(exprPrinter);
-        if (stmt.step)
-        {
-            printer.os << " STEP ";
-            stmt.step->accept(exprPrinter);
-        }
-        printer.os << " {";
-        bool first = true;
-        for (const auto &bodyStmt : stmt.body)
-        {
-            if (!first)
-                printer.os << ' ';
-            first = false;
-            printer.os << std::to_string(bodyStmt->line) << ':';
-            bodyStmt->accept(*this);
-        }
-        printer.os << "})";
-    }
-
-    void visit(const NextStmt &stmt) override
-    {
-        printer.os << "(NEXT " << stmt.var << ')';
-    }
-
-    void visit(const ExitStmt &stmt) override
-    {
-        printer.os << "(EXIT ";
-        switch (stmt.kind)
-        {
-            case ExitStmt::LoopKind::For:
-                printer.os << "FOR";
-                break;
-            case ExitStmt::LoopKind::While:
-                printer.os << "WHILE";
-                break;
-            case ExitStmt::LoopKind::Do:
-                printer.os << "DO";
-                break;
-        }
-        printer.os << ')';
-    }
-
-    void visit(const GotoStmt &stmt) override
-    {
-        printer.os << "(GOTO " << stmt.target << ')';
-    }
-
-    void visit(const OpenStmt &stmt) override
-    {
-        printer.os << "(OPEN mode=" << openModeToString(stmt.mode) << '('
-                    << static_cast<int>(stmt.mode) << ") path=";
-        if (stmt.pathExpr)
-        {
-            stmt.pathExpr->accept(exprPrinter);
-        }
-        else
-        {
-            printer.os << "<null>";
-        }
-        printer.os << " channel=#";
-        if (stmt.channelExpr)
-        {
-            stmt.channelExpr->accept(exprPrinter);
-        }
-        else
-        {
-            printer.os << "<null>";
-        }
-        printer.os << ')';
-    }
-
-    void visit(const CloseStmt &stmt) override
-    {
-        printer.os << "(CLOSE channel=#";
-        if (stmt.channelExpr)
-        {
-            stmt.channelExpr->accept(exprPrinter);
-        }
-        else
-        {
-            printer.os << "<null>";
-        }
-        printer.os << ')';
-    }
-
-    void visit(const OnErrorGoto &stmt) override
-    {
-        printer.os << "(ON-ERROR GOTO ";
-        if (stmt.toZero)
-        {
-            printer.os << '0';
-        }
-        else
-        {
-            printer.os << stmt.target;
-        }
-        printer.os << ')';
-    }
-
-    void visit(const Resume &stmt) override
-    {
-        printer.os << "(RESUME";
-        switch (stmt.mode)
-        {
-            case Resume::Mode::Same:
-                break;
-            case Resume::Mode::Next:
-                printer.os << " NEXT";
-                break;
-            case Resume::Mode::Label:
-                printer.os << ' ' << stmt.target;
-                break;
-        }
-        printer.os << ')';
-    }
-
-    void visit(const EndStmt &) override
-    {
-        printer.os << "(END)";
-    }
-
-    void visit(const InputStmt &stmt) override
-    {
-        printer.os << "(INPUT";
-        if (stmt.prompt)
-        {
-            printer.os << ' ';
-            stmt.prompt->accept(exprPrinter);
-            printer.os << ',';
-        }
-        printer.os << ' ' << stmt.var << ')';
-    }
-
-    void visit(const LineInputChStmt &stmt) override
-    {
-        printer.os << "(LINE-INPUT# channel=#";
-        if (stmt.channelExpr)
-        {
-            stmt.channelExpr->accept(exprPrinter);
-        }
-        else
-        {
-            printer.os << "<null>";
-        }
-        printer.os << " target=";
-        if (stmt.targetVar)
-        {
-            stmt.targetVar->accept(exprPrinter);
-        }
-        else
-        {
-            printer.os << "<null>";
-        }
-        printer.os << ')';
-    }
-
-    void visit(const ReturnStmt &stmt) override
-    {
-        printer.os << "(RETURN";
-        if (stmt.value)
-        {
-            printer.os << ' ';
-            stmt.value->accept(exprPrinter);
-        }
-        printer.os << ')';
-    }
-
-    void visit(const FunctionDecl &stmt) override
-    {
-        printer.os << "(FUNCTION " << stmt.name << " RET " << typeToString(stmt.ret) << " (";
-        bool firstParam = true;
-        for (const auto &param : stmt.params)
-        {
-            if (!firstParam)
-                printer.os << ' ';
-            firstParam = false;
-            printer.os << param.name;
-            if (param.is_array)
-                printer.os << "()";
-        }
-        printer.os << ") {";
-        bool firstStmt = true;
-        for (const auto &bodyStmt : stmt.body)
-        {
-            if (!firstStmt)
-                printer.os << ' ';
-            firstStmt = false;
-            printer.os << std::to_string(bodyStmt->line) << ':';
-            bodyStmt->accept(*this);
-        }
-        printer.os << "})";
-    }
-
-    void visit(const SubDecl &stmt) override
-    {
-        printer.os << "(SUB " << stmt.name << " (";
-        bool firstParam = true;
-        for (const auto &param : stmt.params)
-        {
-            if (!firstParam)
-                printer.os << ' ';
-            firstParam = false;
-            printer.os << param.name;
-            if (param.is_array)
-                printer.os << "()";
-        }
-        printer.os << ") {";
-        bool firstStmt = true;
-        for (const auto &bodyStmt : stmt.body)
-        {
-            if (!firstStmt)
-                printer.os << ' ';
-            firstStmt = false;
-            printer.os << std::to_string(bodyStmt->line) << ':';
-            bodyStmt->accept(*this);
-        }
-        printer.os << "})";
-    }
-
-    void visit(const StmtList &stmt) override
-    {
-        printer.os << "(SEQ";
-        for (const auto &subStmt : stmt.stmts)
-        {
-            printer.os << ' ';
-            subStmt->accept(*this);
-        }
-        printer.os << ')';
-    }
-
-  private:
-    Printer &printer;
-    ExprPrinter exprPrinter;
-};
+void AstPrinter::PrintStyle::writeNoNewlineTag() const
+{
+    printer->os << " no-newline";
+}
 
 /// @brief Write a line of text to the underlying stream with current indentation.
 /// @param text Line content to emit.
@@ -652,8 +117,8 @@ std::string AstPrinter::dump(const Program &prog)
 /// @param p Printer receiving the textual form.
 void AstPrinter::dump(const Stmt &stmt, Printer &p)
 {
-    StmtPrinter printer{p};
-    printer.print(stmt);
+    PrintStyle style{p};
+    printStmt(stmt, p, style);
 }
 
 /// @brief Print an expression node to the printer.
@@ -661,8 +126,9 @@ void AstPrinter::dump(const Stmt &stmt, Printer &p)
 /// @param p Printer receiving output.
 void AstPrinter::dump(const Expr &expr, Printer &p)
 {
-    ExprPrinter printer{p};
-    printer.print(expr);
+    PrintStyle style{p};
+    printExpr(expr, p, style);
 }
 
 } // namespace il::frontends::basic
+
