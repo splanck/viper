@@ -125,6 +125,7 @@ add_library(il_vm STATIC
   vm/VMInit.cpp
   vm/VMDebug.cpp
   vm/RuntimeBridge.cpp
+  vm/Marshal.cpp
   vm/OpHandlers.cpp
   vm/OpHandlerUtils.cpp
   vm/Trap.cpp
