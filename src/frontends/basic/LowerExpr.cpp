@@ -9,6 +9,7 @@
 // Requires the consolidated Lowerer interface for expression lowering helpers.
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/BuiltinRegistry.hpp"
+#include "frontends/basic/builtins/StringBuiltins.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "il/core/BasicBlock.hpp"
@@ -876,60 +877,20 @@ Lowerer::RVal Lowerer::ensureF64(RVal v, il::support::SourceLoc loc)
 ///   feature actions.
 Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
 {
-    const auto &rule = getBuiltinLoweringRule(c.builtin);
-
-    if (c.builtin == BuiltinCallExpr::Builtin::Str)
+    const auto &info = getBuiltinInfo(c.builtin);
+    if (const auto *stringSpec = builtins::findBuiltin(info.name))
     {
-        if (c.args.empty() || !c.args[0])
-            return {Value::constInt(0), Type(Type::Kind::Str)};
-
-        RVal argVal = lowerExpr(*c.args[0]);
-        TypeRules::NumericType numericType = classifyNumericType(*c.args[0]);
-        const il::support::SourceLoc argLoc = c.args[0]->loc;
-
-        const char *runtime = nullptr;
-        RuntimeFeature feature = RuntimeFeature::StrFromDouble;
-
-        auto narrowInteger = [&](Type::Kind target) {
-            if (argVal.type.kind != target)
-            {
-                argVal = coerceToI64(std::move(argVal), argLoc);
-                curLoc = argLoc;
-                argVal.value = emitUnary(Opcode::CastSiNarrowChk, Type(target), argVal.value);
-                argVal.type = Type(target);
-            }
-        };
-
-        switch (numericType)
+        const std::size_t argCount = c.args.size();
+        if (argCount >= static_cast<std::size_t>(stringSpec->minArity) &&
+            argCount <= static_cast<std::size_t>(stringSpec->maxArity))
         {
-            case TypeRules::NumericType::Integer:
-                runtime = "rt_str_i16_alloc";
-                feature = RuntimeFeature::StrFromI16;
-                narrowInteger(Type::Kind::I16);
-                break;
-            case TypeRules::NumericType::Long:
-                runtime = "rt_str_i32_alloc";
-                feature = RuntimeFeature::StrFromI32;
-                narrowInteger(Type::Kind::I32);
-                break;
-            case TypeRules::NumericType::Single:
-                runtime = "rt_str_f_alloc";
-                feature = RuntimeFeature::StrFromSingle;
-                argVal = ensureF64(std::move(argVal), argLoc);
-                break;
-            case TypeRules::NumericType::Double:
-            default:
-                runtime = "rt_str_d_alloc";
-                feature = RuntimeFeature::StrFromDouble;
-                argVal = ensureF64(std::move(argVal), argLoc);
-                break;
+            builtins::LowerCtx ctx(*this, c);
+            Value resultValue = stringSpec->fn(ctx, ctx.values());
+            return {resultValue, ctx.resultType()};
         }
-
-        requestHelper(feature);
-        curLoc = c.loc;
-        Value res = emitCallRet(Type(Type::Kind::Str), runtime, {argVal.value});
-        return {res, Type(Type::Kind::Str)};
     }
+
+    const auto &rule = getBuiltinLoweringRule(c.builtin);
 
     std::vector<std::optional<ExprType>> originalTypes(c.args.size());
     std::vector<std::optional<il::support::SourceLoc>> argLocs(c.args.size());
