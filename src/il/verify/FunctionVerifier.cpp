@@ -18,6 +18,7 @@
 #include "il/verify/InstructionChecker.hpp"
 #include "il/verify/InstructionStrategies.hpp"
 #include "il/verify/TypeInference.hpp"
+#include "il/verify/VerifyCtx.hpp"
 
 #include <algorithm>
 #include <optional>
@@ -69,9 +70,7 @@ Expected<void> validateBlockParams_E(const Function &fn,
                                      TypeInference &types,
                                      std::vector<unsigned> &paramIds);
 Expected<void> checkBlockTerminators_E(const Function &fn, const BasicBlock &bb);
-Expected<void> verifyOpcodeSignature_E(const Function &fn,
-                                       const BasicBlock &bb,
-                                       const Instr &instr);
+Expected<void> verifyOpcodeSignature_E(const VerifyCtx &ctx);
 Expected<void> verifyInstruction_E(const Function &fn,
                                    const BasicBlock &bb,
                                    const Instr &instr,
@@ -308,7 +307,8 @@ Expected<void> FunctionVerifier::verifyInstruction(
     TypeInference &types,
     DiagSink &sink)
 {
-    if (auto result = verifyOpcodeSignature_E(fn, bb, instr); !result)
+    VerifyCtx ctx{sink, types, externs_, functionMap_, fn, bb, instr};
+    if (auto result = verifyOpcodeSignature_E(ctx); !result)
         return result;
 
     for (const auto &strategy : strategies_)
