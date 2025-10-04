@@ -15,12 +15,15 @@
 #include "il/verify/DiagFormat.hpp"
 #include "il/verify/DiagSink.hpp"
 #include "il/verify/TypeInference.hpp"
+#include "il/verify/VerifierTable.hpp"
 #include "support/diag_expected.hpp"
 
+#include <cassert>
+#include <limits>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <limits>
 #include <unordered_map>
 #include <vector>
 
@@ -34,6 +37,87 @@ using il::support::Diag;
 using il::support::Expected;
 using il::support::Severity;
 using il::support::makeError;
+
+Expected<void> checkBinary_E(const Function &fn,
+                             const BasicBlock &bb,
+                             const Instr &instr,
+                             TypeInference &types,
+                             Type::Kind operandKind,
+                             Type resultType);
+
+Expected<void> checkUnary_E(const Function &fn,
+                            const BasicBlock &bb,
+                            const Instr &instr,
+                            TypeInference &types,
+                            Type::Kind operandKind,
+                            Type resultType);
+
+std::optional<Type::Kind> kindFromClass(TypeClass typeClass)
+{
+    switch (typeClass)
+    {
+        case TypeClass::Void:
+            return Type::Kind::Void;
+        case TypeClass::I1:
+            return Type::Kind::I1;
+        case TypeClass::I16:
+            return Type::Kind::I16;
+        case TypeClass::I32:
+            return Type::Kind::I32;
+        case TypeClass::I64:
+            return Type::Kind::I64;
+        case TypeClass::F64:
+            return Type::Kind::F64;
+        case TypeClass::Ptr:
+            return Type::Kind::Ptr;
+        case TypeClass::Str:
+            return Type::Kind::Str;
+        case TypeClass::Error:
+            return Type::Kind::Error;
+        case TypeClass::ResumeTok:
+            return Type::Kind::ResumeTok;
+        case TypeClass::None:
+            return std::nullopt;
+    }
+    return std::nullopt;
+}
+
+std::optional<Type> typeFromClass(TypeClass typeClass)
+{
+    if (auto kind = kindFromClass(typeClass))
+        return Type(*kind);
+    return std::nullopt;
+}
+
+Expected<void> checkWithProps(const Function &fn,
+                              const BasicBlock &bb,
+                              const Instr &instr,
+                              TypeInference &types,
+                              const OpProps &props)
+{
+    switch (props.arity)
+    {
+        case 1:
+        {
+            const auto operandKind = kindFromClass(props.operands);
+            const auto resultType = typeFromClass(props.result);
+            assert(operandKind && resultType);
+            return checkUnary_E(fn, bb, instr, types, *operandKind, *resultType);
+        }
+        case 2:
+        {
+            const auto operandKind = kindFromClass(props.operands);
+            const auto resultType = typeFromClass(props.result);
+            assert(operandKind && resultType);
+            return checkBinary_E(fn, bb, instr, types, *operandKind, *resultType);
+        }
+        default:
+            break;
+    }
+
+    assert(false && "unsupported verifier table arity");
+    return {};
+}
 
 enum class RuntimeArrayCallee
 {
@@ -848,6 +932,9 @@ Expected<void> verifyInstruction_impl(const Function &fn,
         return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, message))};
     };
 
+    if (auto props = lookup(instr.op))
+        return checkWithProps(fn, bb, instr, types, *props);
+
     switch (instr.op)
     {
         case Opcode::Alloca:
@@ -869,10 +956,6 @@ Expected<void> verifyInstruction_impl(const Function &fn,
         case Opcode::URem:
             return rejectUnchecked(
                 "unsigned remainder must use urem.chk0 (traps on divide-by-zero; matches BASIC MOD semantics)");
-        case Opcode::IAddOvf:
-        case Opcode::ISubOvf:
-        case Opcode::IMulOvf:
-        case Opcode::SDivChk0:
         case Opcode::UDivChk0:
         case Opcode::SRemChk0:
         case Opcode::URemChk0:
@@ -883,11 +966,6 @@ Expected<void> verifyInstruction_impl(const Function &fn,
         case Opcode::LShr:
         case Opcode::AShr:
             return checkBinary_E(fn, bb, instr, types, Type::Kind::I64, Type(Type::Kind::I64));
-        case Opcode::FAdd:
-        case Opcode::FSub:
-        case Opcode::FMul:
-        case Opcode::FDiv:
-            return checkBinary_E(fn, bb, instr, types, Type::Kind::F64, Type(Type::Kind::F64));
         case Opcode::ICmpEq:
         case Opcode::ICmpNe:
         case Opcode::SCmpLT:
