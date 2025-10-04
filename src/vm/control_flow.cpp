@@ -13,9 +13,9 @@
 #include "il/core/Value.hpp"
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/RuntimeBridge.hpp"
+#include "vm/Marshal.hpp"
 #include "vm/Trap.hpp"
 #include "vm/err_bridge.hpp"
-#include "rt_string.h"
 #include <string>
 #include <algorithm>
 #include <cassert>
@@ -524,7 +524,10 @@ VM::ExecResult OpHandlers::handleTrapErr(VM &vm,
     {
         Slot textSlot = vm.eval(fr, in.operands[1]);
         if (textSlot.str != nullptr)
-            message = rt_string_cstr(textSlot.str);
+        {
+            auto view = fromViperString(textSlot.str);
+            message.assign(view.begin(), view.end());
+        }
     }
 
     VmError *token = vm_acquire_trap_token();

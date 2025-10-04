@@ -13,6 +13,7 @@
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
 #include "vm/RuntimeBridge.hpp"
+#include "vm/Marshal.hpp"
 #include <algorithm>
 #include <exception>
 #include <iostream>
@@ -106,13 +107,13 @@ Slot VM::eval(Frame &fr, const Value &v)
                 return fr.regs[v.id];
             return s;
         case Value::Kind::ConstInt:
-            s.i64 = v.i64;
+            s.i64 = toI64(v);
             return s;
         case Value::Kind::ConstFloat:
-            s.f64 = v.f64;
+            s.f64 = toF64(v);
             return s;
         case Value::Kind::ConstStr:
-            s.str = rt_const_cstr(v.str.c_str());
+            s.str = toViperString(v.str);
             return s;
         case Value::Kind::GlobalAddr:
         {
