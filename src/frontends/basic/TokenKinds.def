@@ -59,6 +59,9 @@ TOKEN(KeywordReturn, "RETURN")
 TOKEN(KeywordLbound, "LBOUND")
 TOKEN(KeywordUbound, "UBOUND")
 TOKEN(KeywordUntil, "UNTIL")
+TOKEN(KeywordCls, "CLS")
+TOKEN(KeywordColor, "COLOR")
+TOKEN(KeywordLocate, "LOCATE")
 
 // Operators ----------------------------------------------------------------
 TOKEN(Plus, "+")
