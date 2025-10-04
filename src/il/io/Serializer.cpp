@@ -368,8 +368,7 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode)
         os << "global const " << g.type.toString() << " @" << g.name << " = \"" << g.init << "\"\n";
     }
 
-    for (const auto &f : m.functions)
-    {
+    const auto emitFunction = [&](const Function &f) {
         os << "func @" << f.name << "(";
         for (size_t i = 0; i < f.params.size(); ++i)
         {
@@ -378,8 +377,8 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode)
             os << f.params[i].type.toString() << " %" << f.params[i].name;
         }
         os << ") -> " << f.retType.toString() << " {\n";
-        for (const auto &bb : f.blocks)
-        {
+
+        const auto emitBlock = [&](const BasicBlock &bb) {
             const bool handler = isHandlerBlock(bb);
             if (handler)
                 os << "handler ^" << bb.label;
@@ -412,8 +411,45 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode)
             os << ":\n";
             for (const auto &in : bb.instructions)
                 printInstr(in, os);
+        };
+
+        if (mode == Mode::Canonical)
+        {
+            std::vector<const BasicBlock *> blocks;
+            blocks.reserve(f.blocks.size());
+            for (const auto &bb : f.blocks)
+                blocks.push_back(&bb);
+            std::sort(blocks.begin(), blocks.end(), [](const BasicBlock *lhs, const BasicBlock *rhs) {
+                return lhs->label < rhs->label;
+            });
+            for (const BasicBlock *bb : blocks)
+                emitBlock(*bb);
         }
+        else
+        {
+            for (const auto &bb : f.blocks)
+                emitBlock(bb);
+        }
+
         os << "}\n";
+    };
+
+    if (mode == Mode::Canonical)
+    {
+        std::vector<const Function *> functions;
+        functions.reserve(m.functions.size());
+        for (const auto &fn : m.functions)
+            functions.push_back(&fn);
+        std::sort(functions.begin(), functions.end(), [](const Function *lhs, const Function *rhs) {
+            return lhs->name < rhs->name;
+        });
+        for (const Function *fn : functions)
+            emitFunction(*fn);
+    }
+    else
+    {
+        for (const auto &f : m.functions)
+            emitFunction(f);
     }
 }
 
