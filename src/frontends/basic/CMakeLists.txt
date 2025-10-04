@@ -3,6 +3,8 @@ add_library(fe_basic STATIC
   Lexer.cpp
   AST.cpp
   AstPrinter.cpp
+  AstPrint_Expr.cpp
+  AstPrint_Stmt.cpp
   Parser.cpp
   Parser_Stmt.cpp
   Parser_Expr.cpp
