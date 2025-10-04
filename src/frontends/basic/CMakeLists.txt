@@ -14,6 +14,7 @@ add_library(fe_basic STATIC
   LoweringContext.cpp
   LoweringPipeline.cpp
   BuiltinRegistry.cpp
+  builtins/MathBuiltins.cpp
   builtins/StringBuiltins.cpp
   Lowerer.cpp
   LowerExpr.cpp
