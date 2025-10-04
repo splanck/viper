@@ -14,6 +14,7 @@ set(RT_SOURCES
   rt_debug.c
   rt_format.c
   rt_int_format.c
+  rt_term.c
 )
 
 set(RT_PUBLIC_HEADERS
@@ -41,6 +42,7 @@ target_include_directories(viper_runtime
 
 if(NOT WIN32)
   target_link_libraries(viper_runtime PUBLIC m)
+  target_compile_definitions(viper_runtime PRIVATE _POSIX_C_SOURCE=200809L)
 endif()
 
 target_compile_definitions(viper_runtime
