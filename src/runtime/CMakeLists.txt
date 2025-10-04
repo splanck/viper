@@ -10,6 +10,7 @@ set(RT_SOURCES
   rt_array.c
   rt_heap.c
   rt_numeric.c
+  rt_numeric_conv.c
   rt_debug.c
   rt_format.c
   rt_int_format.c

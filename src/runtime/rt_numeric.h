@@ -1,5 +1,5 @@
 // File: src/runtime/rt_numeric.h
-// Purpose: Declares numeric conversion helpers enforcing BASIC semantics.
+// Purpose: Declares numeric conversion and formatting helpers enforcing BASIC semantics.
 // Key invariants: Conversions obey banker rounding and report traps via ok flags.
 // Ownership/Lifetime: None.
 // Links: docs/specs/numerics.md
