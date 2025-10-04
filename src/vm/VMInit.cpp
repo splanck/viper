@@ -5,6 +5,7 @@
 // Links: docs/il-guide.md#reference
 
 #include "vm/VM.hpp"
+#include "vm/Marshal.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Global.hpp"
@@ -58,7 +59,7 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
     for (const auto &f : m.functions)
         fnMap[f.name] = &f;
     for (const auto &g : m.globals)
-        strMap[g.name] = rt_const_cstr(g.init.c_str());
+        strMap[g.name] = toViperString(g.init);
 }
 
 /// Initialise a fresh @c Frame for executing function @p fn.
