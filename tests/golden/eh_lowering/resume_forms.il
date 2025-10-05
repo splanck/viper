@@ -28,28 +28,38 @@ L30:
   br L40
 L40:
   .loc 1 4 4
-  br exit
+  eh.pop
+  .loc 1 4 4
+  ret 0
 L100:
   .loc 1 5 5
   br L110
 L110:
   .loc 1 6 5
-  br exit
+  eh.pop
+  .loc 1 6 5
+  ret 0
 L200:
   .loc 1 7 5
   br L210
 L210:
   .loc 1 8 5
-  br exit
+  eh.pop
+  .loc 1 8 5
+  ret 0
 L300:
   .loc 1 9 5
   br L310
 L310:
   .loc 1 10 5
-  br exit
+  eh.pop
+  .loc 1 10 5
+  ret 0
 L400:
   .loc 1 11 5
-  br exit
+  eh.pop
+  .loc 1 11 5
+  ret 0
 exit:
   eh.pop
   ret 0

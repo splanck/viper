@@ -20,7 +20,7 @@ L20:
   br if_test_0
 L30:
   .loc 1 3 4
-  br exit
+  ret 0
 exit:
   ret 0
 if_test_0:

@@ -25,7 +25,9 @@ L20:
   br L30
 L30:
   .loc 1 3 4
-  br exit
+  eh.pop
+  .loc 1 3 4
+  ret 0
 L100:
   .loc 1 4 5
   call @rt_print_i64(2)
@@ -37,7 +39,9 @@ L100:
   br L110
 L110:
   .loc 1 5 5
-  br exit
+  eh.pop
+  .loc 1 5 5
+  ret 0
 exit:
   eh.pop
   ret 0
