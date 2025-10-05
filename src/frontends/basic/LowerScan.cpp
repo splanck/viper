@@ -204,6 +204,22 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
             pop();
     }
 
+    void after(const ClsStmt &)
+    {
+    }
+
+    void after(const ColorStmt &stmt)
+    {
+        discardIf(stmt.bg != nullptr);
+        discardIf(stmt.fg != nullptr);
+    }
+
+    void after(const LocateStmt &stmt)
+    {
+        discardIf(stmt.col != nullptr);
+        discardIf(stmt.row != nullptr);
+    }
+
     void after(const LetStmt &stmt)
     {
         if (stmt.expr)

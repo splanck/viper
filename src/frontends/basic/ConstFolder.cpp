@@ -508,6 +508,20 @@ private:
             foldExpr(arg);
     }
 
+    void visit(ClsStmt &) override {}
+
+    void visit(ColorStmt &stmt) override
+    {
+        foldExpr(stmt.fg);
+        foldExpr(stmt.bg);
+    }
+
+    void visit(LocateStmt &stmt) override
+    {
+        foldExpr(stmt.row);
+        foldExpr(stmt.col);
+    }
+
     void visit(LetStmt &stmt) override
     {
         foldExpr(stmt.target);

@@ -85,6 +85,12 @@ class SemanticAnalyzer
     void analyzePrint(const PrintStmt &s);
     /// @brief Analyze PRINT # statement @p s.
     void analyzePrintCh(const PrintChStmt &s);
+    /// @brief Analyze CLS statement @p s.
+    void analyzeCls(const ClsStmt &s);
+    /// @brief Analyze COLOR statement @p s.
+    void analyzeColor(const ColorStmt &s);
+    /// @brief Analyze LOCATE statement @p s.
+    void analyzeLocate(const LocateStmt &s);
     /// @brief Analyze LET statement @p s.
     void analyzeLet(LetStmt &s);
     /// @brief Analyze OPEN statement @p s.
