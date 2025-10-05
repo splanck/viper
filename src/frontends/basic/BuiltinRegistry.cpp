@@ -31,7 +31,7 @@ using TransformKind = LowerRule::ArgTransform::Kind;
 using Feature = LowerRule::Feature;
 using FeatureAction = LowerRule::Feature::Action;
 
-constexpr std::size_t kBuiltinCount = static_cast<std::size_t>(B::Asc) + 1;
+constexpr std::size_t kBuiltinCount = static_cast<std::size_t>(B::GetKey) + 1;
 
 constexpr std::size_t idx(B b) noexcept
 {
@@ -275,6 +275,8 @@ static const std::array<BuiltinInfo, kBuiltinCount> kBuiltins = [] {
     infos[idx(B::Lcase)] = {"LCASE$", nullptr};
     infos[idx(B::Chr)] = {"CHR$", nullptr};
     infos[idx(B::Asc)] = {"ASC", nullptr};
+    infos[idx(B::InKey)] = {"INKEY$", nullptr};
+    infos[idx(B::GetKey)] = {"GETKEY$", nullptr};
 
     return infos;
 }();
@@ -498,6 +500,7 @@ static const std::unordered_map<std::string_view, B> kByName = {
     {"COS", B::Cos},      {"POW", B::Pow},      {"RND", B::Rnd},    {"INSTR", B::Instr},
     {"LTRIM$", B::Ltrim}, {"RTRIM$", B::Rtrim}, {"TRIM$", B::Trim}, {"UCASE$", B::Ucase},
     {"LCASE$", B::Lcase}, {"CHR$", B::Chr},     {"ASC", B::Asc},
+    {"INKEY$", B::InKey}, {"GETKEY$", B::GetKey},
 };
 } // namespace
 
