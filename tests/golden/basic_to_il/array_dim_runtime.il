@@ -80,9 +80,9 @@ L40:
   .loc 1 4 8
   %t19 = zext1 %t17
   .loc 1 4 8
-  %t20 = iadd.ovf %t18, %t19
+  %t20 = or %t18, %t19
   .loc 1 4 8
-  %t21 = scmp_gt %t20, 0
+  %t21 = icmp_ne %t20, 0
   .loc 1 4 8
   cbr %t21, bc_oob0, bc_ok0
 L50:
@@ -101,9 +101,9 @@ L50:
   .loc 1 5 12
   %t28 = zext1 %t26
   .loc 1 5 12
-  %t29 = iadd.ovf %t27, %t28
+  %t29 = or %t27, %t28
   .loc 1 5 12
-  %t30 = scmp_gt %t29, 0
+  %t30 = icmp_ne %t29, 0
   .loc 1 5 12
   cbr %t30, bc_oob1, bc_ok1
 L60:
