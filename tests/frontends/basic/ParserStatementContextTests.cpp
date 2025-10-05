@@ -63,6 +63,22 @@ int main()
     }
 
     {
+        std::string src = "PRINT 1:: PRINT 2: END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("double_colon.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        assert(prog);
+        assert(prog->main.size() == 1);
+        auto *list = dynamic_cast<StmtList *>(prog->main[0].get());
+        assert(list);
+        assert(list->stmts.size() == 3);
+        assert(dynamic_cast<PrintStmt *>(list->stmts[0].get()));
+        assert(dynamic_cast<PrintStmt *>(list->stmts[1].get()));
+        assert(dynamic_cast<EndStmt *>(list->stmts[2].get()));
+    }
+
+    {
         std::string src = "10 PRINT 1:20 LET X = 5\n30 END\n";
         SourceManager sm;
         uint32_t fid = sm.addFile("line-label.bas");
