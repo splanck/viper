@@ -16,14 +16,29 @@ StatementSequencer::StatementSequencer(Parser &parser) : parser_(parser) {}
 
 void StatementSequencer::skipLeadingSeparator()
 {
-    if (parser_.at(TokenKind::EndOfLine))
+    bool consumedColon = false;
+    bool consumedLineBreak = false;
+
+    while (parser_.at(TokenKind::Colon) || parser_.at(TokenKind::EndOfLine))
     {
-        parser_.consume();
+        if (parser_.at(TokenKind::Colon))
+        {
+            parser_.consume();
+            consumedColon = true;
+        }
+        else
+        {
+            parser_.consume();
+            consumedLineBreak = true;
+        }
+    }
+
+    if (consumedLineBreak)
+    {
         lastSeparator_ = SeparatorKind::LineBreak;
     }
-    else if (parser_.at(TokenKind::Colon))
+    else if (consumedColon)
     {
-        parser_.consume();
         lastSeparator_ = SeparatorKind::Colon;
     }
     else
@@ -47,15 +62,30 @@ bool StatementSequencer::skipLineBreaks()
 
 void StatementSequencer::skipStatementSeparator()
 {
-    if (parser_.at(TokenKind::Colon))
+    bool consumedColon = false;
+    bool consumedLineBreak = false;
+
+    while (parser_.at(TokenKind::Colon) || parser_.at(TokenKind::EndOfLine))
     {
-        parser_.consume();
-        lastSeparator_ = SeparatorKind::Colon;
+        if (parser_.at(TokenKind::Colon))
+        {
+            parser_.consume();
+            consumedColon = true;
+        }
+        else
+        {
+            parser_.consume();
+            consumedLineBreak = true;
+        }
     }
-    else if (parser_.at(TokenKind::EndOfLine))
+
+    if (consumedLineBreak)
     {
-        parser_.consume();
         lastSeparator_ = SeparatorKind::LineBreak;
+    }
+    else if (consumedColon)
+    {
+        lastSeparator_ = SeparatorKind::Colon;
     }
     else
     {
