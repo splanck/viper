@@ -1321,5 +1321,27 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
     return visitor.result();
 }
 
+Lowerer::RVal Lowerer::lowerScalarExpr(const Expr &expr)
+{
+    return lowerScalarExpr(lowerExpr(expr), expr.loc);
+}
+
+Lowerer::RVal Lowerer::lowerScalarExpr(RVal value, il::support::SourceLoc loc)
+{
+    switch (value.type.kind)
+    {
+        case Type::Kind::I1:
+        case Type::Kind::I16:
+        case Type::Kind::I32:
+        case Type::Kind::I64:
+        case Type::Kind::F64:
+            value = coerceToI64(std::move(value), loc);
+            break;
+        default:
+            break;
+    }
+    return value;
+}
+
 } // namespace il::frontends::basic
 
