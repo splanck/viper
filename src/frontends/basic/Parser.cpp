@@ -22,7 +22,7 @@ Parser::Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *emitte
     : lexer_(src, file_id), emitter_(emitter)
 {
     tokens_.push_back(lexer_.next());
-    static constexpr std::array<std::pair<TokenKind, StmtHandler>, 22> kStatementHandlers = {{
+    static constexpr std::array<std::pair<TokenKind, StmtHandler>, 25> kStatementHandlers = {{
         {TokenKind::KeywordPrint, {&Parser::parsePrint, nullptr}},
         {TokenKind::KeywordLet, {&Parser::parseLet, nullptr}},
         {TokenKind::KeywordIf, {nullptr, &Parser::parseIf}},
@@ -34,11 +34,14 @@ Parser::Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *emitte
         {TokenKind::KeywordGoto, {&Parser::parseGoto, nullptr}},
         {TokenKind::KeywordOpen, {&Parser::parseOpen, nullptr}},
         {TokenKind::KeywordClose, {&Parser::parseClose, nullptr}},
+        {TokenKind::KeywordCls, {&Parser::parseCls, nullptr}},
+        {TokenKind::KeywordColor, {&Parser::parseColor, nullptr}},
         {TokenKind::KeywordOn, {&Parser::parseOnErrorGoto, nullptr}},
         {TokenKind::KeywordResume, {&Parser::parseResume, nullptr}},
         {TokenKind::KeywordEnd, {&Parser::parseEnd, nullptr}},
         {TokenKind::KeywordInput, {&Parser::parseInput, nullptr}},
         {TokenKind::KeywordLine, {&Parser::parseLineInput, nullptr}},
+        {TokenKind::KeywordLocate, {&Parser::parseLocate, nullptr}},
         {TokenKind::KeywordDim, {&Parser::parseDim, nullptr}},
         {TokenKind::KeywordRedim, {&Parser::parseReDim, nullptr}},
         {TokenKind::KeywordRandomize, {&Parser::parseRandomize, nullptr}},
