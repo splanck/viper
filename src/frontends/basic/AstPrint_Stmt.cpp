@@ -117,6 +117,53 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         printer.os << ')';
     }
 
+    void visit(const ClsStmt &) override
+    {
+        printer.os << "(CLS)";
+    }
+
+    void visit(const ColorStmt &stmt) override
+    {
+        printer.os << "(COLOR ";
+        if (stmt.fg)
+        {
+            AstPrinter::printExpr(*stmt.fg, printer, style);
+        }
+        else
+        {
+            style.writeNull();
+        }
+        printer.os << ' ';
+        if (stmt.bg)
+        {
+            AstPrinter::printExpr(*stmt.bg, printer, style);
+        }
+        else
+        {
+            style.writeNull();
+        }
+        printer.os << ')';
+    }
+
+    void visit(const LocateStmt &stmt) override
+    {
+        printer.os << "(LOCATE ";
+        if (stmt.row)
+        {
+            AstPrinter::printExpr(*stmt.row, printer, style);
+        }
+        else
+        {
+            style.writeNull();
+        }
+        if (stmt.col)
+        {
+            printer.os << ' ';
+            AstPrinter::printExpr(*stmt.col, printer, style);
+        }
+        printer.os << ')';
+    }
+
     void visit(const LetStmt &stmt) override
     {
         printer.os << "(LET ";

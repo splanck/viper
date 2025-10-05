@@ -29,6 +29,9 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
 
     void visit(PrintStmt &stmt) override { analyzer_.analyzePrint(stmt); }
     void visit(PrintChStmt &stmt) override { analyzer_.analyzePrintCh(stmt); }
+    void visit(ClsStmt &stmt) override { analyzer_.analyzeCls(stmt); }
+    void visit(ColorStmt &stmt) override { analyzer_.analyzeColor(stmt); }
+    void visit(LocateStmt &stmt) override { analyzer_.analyzeLocate(stmt); }
     void visit(LetStmt &stmt) override { analyzer_.analyzeLet(stmt); }
     void visit(DimStmt &stmt) override { analyzer_.analyzeDim(stmt); }
     void visit(ReDimStmt &stmt) override { analyzer_.analyzeReDim(stmt); }
@@ -83,6 +86,27 @@ void SemanticAnalyzer::analyzePrintCh(const PrintChStmt &p)
     for (const auto &arg : p.args)
         if (arg)
             visitExpr(*arg);
+}
+
+void SemanticAnalyzer::analyzeCls(const ClsStmt &)
+{
+    // CLS does not carry expressions to analyze.
+}
+
+void SemanticAnalyzer::analyzeColor(const ColorStmt &stmt)
+{
+    if (stmt.fg)
+        visitExpr(*stmt.fg);
+    if (stmt.bg)
+        visitExpr(*stmt.bg);
+}
+
+void SemanticAnalyzer::analyzeLocate(const LocateStmt &stmt)
+{
+    if (stmt.row)
+        visitExpr(*stmt.row);
+    if (stmt.col)
+        visitExpr(*stmt.col);
 }
 
 void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
