@@ -159,6 +159,18 @@ class Parser
     /// @return RANDOMIZE statement node.
     StmtPtr parseRandomize();
 
+    /// @brief Parse a CLS statement clearing the display.
+    /// @return CLS statement node.
+    StmtPtr parseCls();
+
+    /// @brief Parse a COLOR statement adjusting the palette.
+    /// @return COLOR statement node.
+    StmtPtr parseColor();
+
+    /// @brief Parse a LOCATE statement moving the cursor.
+    /// @return LOCATE statement node.
+    StmtPtr parseLocate();
+
     /// @brief Parse a FUNCTION definition including body.
     /// @return FUNCTION statement node.
     StmtPtr parseFunction();
