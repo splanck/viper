@@ -347,22 +347,20 @@ void Lowerer::lowerPrint(const PrintStmt &stmt)
         {
             case PrintItem::Kind::Expr:
             {
-                RVal v = lowerExpr(*it.expr);
-                if (v.type.kind == Type::Kind::I1)
-                {
-                    v = coerceToI64(std::move(v), stmt.loc);
-                }
-                else if (v.type.kind == Type::Kind::I16 || v.type.kind == Type::Kind::I32)
-                {
-                    v = ensureI64(std::move(v), stmt.loc);
-                }
+                RVal value = lowerExpr(*it.expr);
                 curLoc = stmt.loc;
-                if (v.type.kind == Type::Kind::Str)
-                    emitCall("rt_print_str", {v.value});
-                else if (v.type.kind == Type::Kind::F64)
-                    emitCall("rt_print_f64", {v.value});
-                else
-                    emitCall("rt_print_i64", {v.value});
+                if (value.type.kind == Type::Kind::Str)
+                {
+                    emitCall("rt_print_str", {value.value});
+                    break;
+                }
+                if (value.type.kind == Type::Kind::F64)
+                {
+                    emitCall("rt_print_f64", {value.value});
+                    break;
+                }
+                value = lowerScalarExpr(std::move(value), stmt.loc);
+                emitCall("rt_print_i64", {value.value});
                 break;
             }
             case PrintItem::Kind::Comma:
