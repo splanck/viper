@@ -520,6 +520,12 @@ class Lowerer
 
     void lowerReturn(const ReturnStmt &stmt);
 
+    void visit(const ClsStmt &stmt);
+
+    void visit(const ColorStmt &stmt);
+
+    void visit(const LocateStmt &stmt);
+
     void lowerOpen(const OpenStmt &stmt);
 
     void lowerClose(const CloseStmt &stmt);
