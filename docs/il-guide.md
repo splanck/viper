@@ -576,6 +576,18 @@ The IL runtime provides helper functions used by front ends and tests:
 | `@rt_alloc` | `i64 -> ptr` | allocate bytes; negative size traps |
 | `@rt_free` | `ptr -> void` | deallocate buffer (optional in v0.1.2) |
 
+#### Terminal & Keyboard Features
+
+RuntimeFeature → Symbol
+
+- `TermCls`    → `rt_term_cls`
+- `TermColor`  → `rt_term_color_i32`
+- `TermLocate` → `rt_term_locate_i32`
+- `GetKey`     → `rt_getkey_str`
+- `InKey`      → `rt_inkey_str`
+
+These helpers are gated by feature requests during lowering rather than being emitted unconditionally.
+
 Strings are reference-counted by the runtime implementation.  See [src/runtime/](../src/runtime/) for additional details.
 
 #### Memory Model
