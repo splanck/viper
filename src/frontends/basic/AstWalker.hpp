@@ -245,6 +245,58 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
         callAfter(stmt);
     }
 
+    void visit(const ClsStmt &stmt) override
+    {
+        callBefore(stmt);
+        if (callShouldVisit(stmt))
+        {
+            // CLS has no child expressions.
+        }
+        callAfter(stmt);
+    }
+
+    void visit(const ColorStmt &stmt) override
+    {
+        callBefore(stmt);
+        if (callShouldVisit(stmt))
+        {
+            if (stmt.fg)
+            {
+                callBeforeChild(stmt, *stmt.fg);
+                stmt.fg->accept(*static_cast<Derived *>(this));
+                callAfterChild(stmt, *stmt.fg);
+            }
+            if (stmt.bg)
+            {
+                callBeforeChild(stmt, *stmt.bg);
+                stmt.bg->accept(*static_cast<Derived *>(this));
+                callAfterChild(stmt, *stmt.bg);
+            }
+        }
+        callAfter(stmt);
+    }
+
+    void visit(const LocateStmt &stmt) override
+    {
+        callBefore(stmt);
+        if (callShouldVisit(stmt))
+        {
+            if (stmt.row)
+            {
+                callBeforeChild(stmt, *stmt.row);
+                stmt.row->accept(*static_cast<Derived *>(this));
+                callAfterChild(stmt, *stmt.row);
+            }
+            if (stmt.col)
+            {
+                callBeforeChild(stmt, *stmt.col);
+                stmt.col->accept(*static_cast<Derived *>(this));
+                callAfterChild(stmt, *stmt.col);
+            }
+        }
+        callAfter(stmt);
+    }
+
     void visit(const LetStmt &stmt) override
     {
         callBefore(stmt);

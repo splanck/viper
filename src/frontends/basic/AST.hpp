@@ -29,6 +29,9 @@ struct CallExpr;
 
 struct PrintStmt;
 struct PrintChStmt;
+struct ClsStmt;
+struct ColorStmt;
+struct LocateStmt;
 struct LetStmt;
 struct DimStmt;
 struct ReDimStmt;
@@ -94,6 +97,9 @@ struct StmtVisitor
     virtual ~StmtVisitor() = default;
     virtual void visit(const PrintStmt &) = 0;
     virtual void visit(const PrintChStmt &) = 0;
+    virtual void visit(const ClsStmt &) = 0;
+    virtual void visit(const ColorStmt &) = 0;
+    virtual void visit(const LocateStmt &) = 0;
     virtual void visit(const LetStmt &) = 0;
     virtual void visit(const DimStmt &) = 0;
     virtual void visit(const ReDimStmt &) = 0;
@@ -124,6 +130,9 @@ struct MutStmtVisitor
     virtual ~MutStmtVisitor() = default;
     virtual void visit(PrintStmt &) = 0;
     virtual void visit(PrintChStmt &) = 0;
+    virtual void visit(ClsStmt &) = 0;
+    virtual void visit(ColorStmt &) = 0;
+    virtual void visit(LocateStmt &) = 0;
     virtual void visit(LetStmt &) = 0;
     virtual void visit(DimStmt &) = 0;
     virtual void visit(ReDimStmt &) = 0;
@@ -412,6 +421,48 @@ struct PrintChStmt : Stmt
 
     /// True when a trailing newline should be emitted after printing.
     bool trailingNewline = true;
+
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief CLS statement clearing the screen.
+struct ClsStmt : Stmt
+{
+    /// Source location of the CLS keyword.
+    il::support::SourceLoc loc;
+
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief COLOR statement updating foreground and optional background colors.
+struct ColorStmt : Stmt
+{
+    /// Source location of the COLOR keyword.
+    il::support::SourceLoc loc;
+
+    /// Foreground color expression; owned and non-null.
+    ExprPtr fg;
+
+    /// Optional background color expression; null when color remains unchanged.
+    ExprPtr bg;
+
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief LOCATE statement setting cursor row and optional column.
+struct LocateStmt : Stmt
+{
+    /// Source location of the LOCATE keyword.
+    il::support::SourceLoc loc;
+
+    /// Row expression; owned and non-null.
+    ExprPtr row;
+
+    /// Optional column expression; null defaults to column 1.
+    ExprPtr col;
 
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
