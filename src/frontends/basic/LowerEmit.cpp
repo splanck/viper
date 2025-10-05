@@ -403,6 +403,75 @@ void Lowerer::emitCBr(Value cond, BasicBlock *t, BasicBlock *f)
     block->terminated = true;
 }
 
+/// @brief Lower a boolean expression into a conditional branch with short-circuit support.
+/// @param expr Boolean expression controlling the branch.
+/// @param trueBlk Destination when the expression evaluates to true.
+/// @param falseBlk Destination when the expression evaluates to false.
+/// @param loc Source location used for diagnostics on emitted instructions.
+/// @details Recursively expands `AND`/`OR` expressions into CFG shuttles that
+///          only evaluate the right-hand side when necessary. Non-logical
+///          expressions fall back to scalar evaluation followed by a
+///          conditional branch.
+void Lowerer::lowerCondBranch(const Expr &expr,
+                              BasicBlock *trueBlk,
+                              BasicBlock *falseBlk,
+                              il::support::SourceLoc loc)
+{
+    if (const auto *bin = dynamic_cast<const BinaryExpr *>(&expr))
+    {
+        const bool isAnd = bin->op == BinaryExpr::Op::LogicalAnd;
+        const bool isOr = bin->op == BinaryExpr::Op::LogicalOr;
+        if (isAnd || isOr)
+        {
+            ProcedureContext &ctx = context();
+            Function *func = ctx.function();
+            assert(func && ctx.current());
+
+            auto indexOf = [&](BasicBlock *bb) {
+                assert(bb && "lowerCondBranch requires non-null block");
+                return static_cast<size_t>(bb - &func->blocks[0]);
+            };
+
+            size_t curIdx = indexOf(ctx.current());
+            size_t trueIdx = indexOf(trueBlk);
+            size_t falseIdx = indexOf(falseBlk);
+
+            BlockNamer *blockNamer = ctx.blockNames().namer();
+            std::string hint = isAnd ? "and_rhs" : "or_rhs";
+            std::string midLbl = blockNamer ? blockNamer->generic(hint)
+                                            : mangler.block(hint);
+
+            size_t midIdx = func->blocks.size();
+            builder->addBlock(*func, midLbl);
+
+            func = ctx.function();
+            BasicBlock *mid = &func->blocks[midIdx];
+            BasicBlock *cur = &func->blocks[curIdx];
+            BasicBlock *trueTarget = &func->blocks[trueIdx];
+            BasicBlock *falseTarget = &func->blocks[falseIdx];
+            ctx.setCurrent(cur);
+
+            if (isAnd)
+                lowerCondBranch(*bin->lhs, mid, falseTarget, loc);
+            else
+                lowerCondBranch(*bin->lhs, trueTarget, mid, loc);
+
+            func = ctx.function();
+            mid = &func->blocks[midIdx];
+            trueTarget = &func->blocks[trueIdx];
+            falseTarget = &func->blocks[falseIdx];
+            ctx.setCurrent(mid);
+
+            lowerCondBranch(*bin->rhs, trueTarget, falseTarget, loc);
+            return;
+        }
+    }
+
+    RVal cond = lowerExpr(expr);
+    cond = coerceToBool(std::move(cond), loc);
+    emitCBr(cond.value, trueBlk, falseBlk);
+}
+
 /// @brief Emit a call with no returned value.
 /// @param callee Symbolic callee name.
 /// @param args Operand list passed to the call.

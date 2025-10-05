@@ -141,8 +141,8 @@ class Lowerer
     {
         std::vector<size_t> tests; ///< indexes of test blocks
         std::vector<size_t> thens; ///< indexes of THEN blocks
-        BasicBlock *elseBlk;       ///< pointer to ELSE block
-        BasicBlock *exitBlk;       ///< pointer to common exit
+        size_t elseIdx;            ///< index of ELSE block
+        size_t exitIdx;            ///< index of common exit block
     };
 
     /// @brief Deterministic per-procedure block name generator.
@@ -552,6 +552,10 @@ class Lowerer
                           BasicBlock *thenBlk,
                           BasicBlock *falseBlk,
                           il::support::SourceLoc loc);
+    void lowerCondBranch(const Expr &expr,
+                         BasicBlock *trueBlk,
+                         BasicBlock *falseBlk,
+                         il::support::SourceLoc loc);
 
     /// @brief Lower a THEN/ELSE branch and link to exit.
     /// @return True if branch falls through to @p exitBlk.
