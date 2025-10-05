@@ -93,7 +93,7 @@ L60:
   br L70
 L70:
   .loc 1 7 4
-  br exit
+  ret 0
 exit:
   ret 0
 }

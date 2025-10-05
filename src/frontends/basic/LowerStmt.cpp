@@ -1129,15 +1129,13 @@ void Lowerer::lowerResume(const Resume &stmt)
 
 /// @brief Lower an END statement.
 /// @param stmt END statement closing the program.
-/// @details Emits a branch to the function exit block recorded in @ref fnExit.
-///          The branch uses @ref curLoc for diagnostics and leaves the current
-///          block terminated.
+/// @details Emits a return from the current block so execution does not fall
+///          through to subsequent statements. The return uses @ref curLoc for
+///          diagnostics and leaves the block terminated immediately.
 void Lowerer::lowerEnd(const EndStmt &stmt)
 {
     curLoc = stmt.loc;
-    Function *func = context().function();
-    assert(func && "lowerEnd requires an active function");
-    emitBr(&func->blocks[context().exitIndex()]);
+    emitRet(Value::constInt(0));
 }
 
 /// @brief Lower an INPUT statement.
