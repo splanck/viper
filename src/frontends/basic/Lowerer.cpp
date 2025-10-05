@@ -671,6 +671,17 @@ Lowerer::ProcedureMetadata Lowerer::collectProcedureMetadata(
     return metadata;
 }
 
+int Lowerer::virtualLine(const Stmt &s)
+{
+    auto it = stmtVirtualLines_.find(&s);
+    if (it != stmtVirtualLines_.end())
+        return it->second;
+
+    int line = (s.line != 0) ? s.line : synthLineBase_ + (synthSeq_++);
+    stmtVirtualLines_[&s] = line;
+    return line;
+}
+
 void Lowerer::buildProcedureSkeleton(Function &f,
                                      const std::string &name,
                                      const ProcedureMetadata &metadata)
@@ -684,17 +695,20 @@ void Lowerer::buildProcedureSkeleton(Function &f,
         blockNamer ? blockNamer->entry()
                    : mangler.block("entry_" + name));
 
-    size_t blockIndex = 1;
     auto &lineBlocks = ctx.blockNames().lineBlocks();
     for (const auto *stmt : metadata.bodyStmts)
     {
+        int vLine = virtualLine(*stmt);
+        if (lineBlocks.find(vLine) != lineBlocks.end())
+            continue;
+        size_t blockIdx = f.blocks.size();
         if (blockNamer)
-            builder->addBlock(f, blockNamer->line(stmt->line));
+            builder->addBlock(f, blockNamer->line(vLine));
         else
             builder->addBlock(
                 f,
-                mangler.block("L" + std::to_string(stmt->line) + "_" + name));
-        lineBlocks[stmt->line] = blockIndex++;
+                mangler.block("L" + std::to_string(vLine) + "_" + name));
+        lineBlocks[vLine] = blockIdx;
     }
 
     ctx.setExitIndex(f.blocks.size());
@@ -834,6 +848,8 @@ void Lowerer::resetLoweringState()
 {
     resetSymbolState();
     context().reset();
+    stmtVirtualLines_.clear();
+    synthSeq_ = 0;
 }
 
 /// @brief Allocate stack storage for incoming parameters and record their types.
