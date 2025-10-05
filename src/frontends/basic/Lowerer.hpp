@@ -417,6 +417,8 @@ class Lowerer
     void lowerStmt(const Stmt &stmt);
 
     RVal lowerExpr(const Expr &expr);
+    RVal lowerScalarExpr(const Expr &expr);
+    RVal lowerScalarExpr(RVal value, il::support::SourceLoc loc);
 
     /// @brief Lower a variable reference expression.
     /// @param expr Variable expression node.
