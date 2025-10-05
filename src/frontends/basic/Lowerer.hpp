@@ -378,6 +378,8 @@ class Lowerer
 
     void collectVars(const std::vector<const Stmt *> &stmts);
 
+    int virtualLine(const Stmt &s);
+
     void lowerFunctionDecl(const FunctionDecl &decl);
 
     void lowerSubDecl(const SubDecl &decl);
@@ -672,6 +674,10 @@ class Lowerer
     size_t nextStringId{0};
     size_t nextFallbackBlockId{0};
     std::unordered_map<std::string, ProcedureSignature> procSignatures;
+
+    std::unordered_map<const Stmt *, int> stmtVirtualLines_;
+    int synthLineBase_{-1000000000};
+    int synthSeq_{0};
 
     ProcedureContext context_;
 

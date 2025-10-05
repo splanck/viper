@@ -266,12 +266,14 @@ void StatementLowering::lowerSequence(
     auto *func = ctx.function();
     assert(func && "lowerSequence requires an active function");
     auto &lineBlocks = ctx.blockNames().lineBlocks();
-    lowerer.emitBr(&func->blocks[lineBlocks[stmts.front()->line]]);
+    int firstLine = lowerer.virtualLine(*stmts.front());
+    lowerer.emitBr(&func->blocks[lineBlocks[firstLine]]);
 
     for (size_t i = 0; i < stmts.size(); ++i)
     {
         const Stmt &stmt = *stmts[i];
-        ctx.setCurrent(&func->blocks[lineBlocks[stmt.line]]);
+        int vLine = lowerer.virtualLine(stmt);
+        ctx.setCurrent(&func->blocks[lineBlocks[vLine]]);
         lowerer.lowerStmt(stmt);
         auto *current = ctx.current();
         if (current && current->terminated)
@@ -282,7 +284,7 @@ void StatementLowering::lowerSequence(
         }
         auto *next =
             (i + 1 < stmts.size())
-                ? &func->blocks[lineBlocks[stmts[i + 1]->line]]
+                ? &func->blocks[lineBlocks[lowerer.virtualLine(*stmts[i + 1])]]
                 : &func->blocks[ctx.exitIndex()];
         if (beforeBranch)
             beforeBranch(stmt);
