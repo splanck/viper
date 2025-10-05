@@ -76,7 +76,7 @@ class StatementSequencer
     Parser &parser_;             ///< Underlying parser providing token access.
     int pendingLine_ = -1;       ///< Deferred numeric line label for next statement.
     SeparatorKind lastSeparator_ =
-        SeparatorKind::LineBreak; ///< Default to line break at start of file.
+        SeparatorKind::None; ///< Treat start-of-file as neutral separator state.
 };
 
 } // namespace il::frontends::basic

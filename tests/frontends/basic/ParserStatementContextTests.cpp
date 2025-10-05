@@ -15,6 +15,22 @@ using namespace il::support;
 int main()
 {
     {
+        std::string src = "PRINT 123\nEND\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("single_line.bas");
+        Parser p(src, fid);
+        StatementSequencer seq(p);
+        assert(seq.lastSeparator() == StatementSequencer::SeparatorKind::None);
+        seq.skipLineBreaks();
+        assert(seq.lastSeparator() == StatementSequencer::SeparatorKind::None);
+        auto prog = p.parseProgram();
+        assert(prog);
+        assert(prog->main.size() == 2);
+        assert(dynamic_cast<PrintStmt *>(prog->main[0].get()));
+        assert(dynamic_cast<EndStmt *>(prog->main[1].get()));
+    }
+
+    {
         std::string src = "PRINT 1\nPRINT 2: PRINT 3\nEND\n";
         SourceManager sm;
         uint32_t fid = sm.addFile("multiline.bas");
