@@ -68,9 +68,9 @@ L-999999995:
   .loc 1 6 5
   %t12 = zext1 %t10
   .loc 1 6 5
-  %t13 = iadd.ovf %t11, %t12
+  %t13 = or %t11, %t12
   .loc 1 6 5
-  %t14 = scmp_gt %t13, 0
+  %t14 = icmp_ne %t13, 0
   .loc 1 6 5
   cbr %t14, bc_oob0, bc_ok0
 L-999999994:
@@ -109,9 +109,9 @@ L-999999992:
   .loc 1 9 7
   %t24 = zext1 %t22
   .loc 1 9 7
-  %t25 = iadd.ovf %t23, %t24
+  %t25 = or %t23, %t24
   .loc 1 9 7
-  %t26 = scmp_gt %t25, 0
+  %t26 = icmp_ne %t25, 0
   .loc 1 9 7
   cbr %t26, bc_oob1, bc_ok1
 exit:
