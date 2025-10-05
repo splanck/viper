@@ -94,7 +94,8 @@ class LowererExprVisitor final : public ExprVisitor
 
     void visit(const ArrayExpr &expr) override
     {
-        Lowerer::ArrayAccess access = lowerer_.lowerArrayAccess(expr);
+        Lowerer::ArrayAccess access =
+            lowerer_.lowerArrayAccess(expr, Lowerer::ArrayAccessKind::Load);
         lowerer_.curLoc = expr.loc;
         Value val = lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::I64),
                                          "rt_arr_i32_get",

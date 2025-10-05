@@ -324,7 +324,7 @@ void Lowerer::lowerLet(const LetStmt &stmt)
         {
             v = coerceToI64(std::move(v), stmt.loc);
         }
-        ArrayAccess access = lowerArrayAccess(*arr);
+        ArrayAccess access = lowerArrayAccess(*arr, ArrayAccessKind::Store);
         curLoc = stmt.loc;
         emitCall("rt_arr_i32_set", {access.base, access.index, v.value});
     }
