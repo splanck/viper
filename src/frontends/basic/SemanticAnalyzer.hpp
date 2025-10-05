@@ -79,6 +79,13 @@ class SemanticAnalyzer
     /// @param s Statement node to analyze.
     void visitStmt(Stmt &s);
 
+    /// @brief Perform semantic checks specific to CLS statements.
+    void visit(const ClsStmt &s);
+    /// @brief Perform semantic checks specific to COLOR statements.
+    void visit(const ColorStmt &s);
+    /// @brief Perform semantic checks specific to LOCATE statements.
+    void visit(const LocateStmt &s);
+
     /// @brief Analyze statement list @p s.
     void analyzeStmtList(const StmtList &s);
     /// @brief Analyze PRINT statement @p s.
@@ -237,6 +244,9 @@ class SemanticAnalyzer
     /// @brief Ensure a conditional expression yields a BOOLEAN result.
     /// @param expr Condition expression to analyze.
     void checkConditionExpr(Expr &expr);
+
+    /// @brief Ensure expression @p expr evaluates to a numeric type.
+    void requireNumeric(Expr &expr, std::string_view message);
 
     /// @brief Analyze variable reference.
     Type analyzeVar(VarExpr &v);

@@ -88,25 +88,52 @@ void SemanticAnalyzer::analyzePrintCh(const PrintChStmt &p)
             visitExpr(*arg);
 }
 
-void SemanticAnalyzer::analyzeCls(const ClsStmt &)
+void SemanticAnalyzer::visit(const ClsStmt &s)
 {
-    // CLS does not carry expressions to analyze.
+    (void)s; // nothing to check
+}
+
+void SemanticAnalyzer::visit(const ColorStmt &s)
+{
+    requireNumeric(*s.fg, "COLOR foreground must be numeric");
+    if (s.bg)
+        requireNumeric(*s.bg, "COLOR background must be numeric");
+}
+
+void SemanticAnalyzer::visit(const LocateStmt &s)
+{
+    requireNumeric(*s.row, "LOCATE row must be numeric");
+    if (s.col)
+        requireNumeric(*s.col, "LOCATE column must be numeric");
+}
+
+void SemanticAnalyzer::analyzeCls(const ClsStmt &stmt)
+{
+    visit(stmt);
 }
 
 void SemanticAnalyzer::analyzeColor(const ColorStmt &stmt)
 {
-    if (stmt.fg)
-        visitExpr(*stmt.fg);
-    if (stmt.bg)
-        visitExpr(*stmt.bg);
+    visit(stmt);
 }
 
 void SemanticAnalyzer::analyzeLocate(const LocateStmt &stmt)
 {
-    if (stmt.row)
-        visitExpr(*stmt.row);
-    if (stmt.col)
-        visitExpr(*stmt.col);
+    visit(stmt);
+}
+
+void SemanticAnalyzer::requireNumeric(Expr &expr, std::string_view message)
+{
+    Type exprType = visitExpr(expr);
+    if (exprType == Type::Unknown || exprType == Type::Int || exprType == Type::Float)
+        return;
+
+    std::string msg(message);
+    msg += ", got ";
+    msg += semanticTypeName(exprType);
+    msg += '.';
+
+    de.emit(il::support::Severity::Error, "B2001", expr.loc, 1, std::move(msg));
 }
 
 void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
