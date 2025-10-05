@@ -113,7 +113,7 @@ L80:
   br L90
 L90:
   .loc 1 9 4
-  br exit
+  ret 0
 exit:
   ret 0
 val_ok:
