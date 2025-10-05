@@ -100,6 +100,13 @@ class Lowerer
         Value index; ///< Zero-based element index, coerced to i64.
     };
 
+    /// @brief Classify how an array access will be consumed.
+    enum class ArrayAccessKind
+    {
+        Load,  ///< The caller will read from the computed element.
+        Store, ///< The caller will write to the computed element.
+    };
+
     /// @brief Aggregated metadata for a BASIC symbol.
     struct SymbolInfo
     {
@@ -657,7 +664,7 @@ class Lowerer
 
     std::string nextFallbackBlockLabel();
 
-    ArrayAccess lowerArrayAccess(const ArrayExpr &expr);
+    ArrayAccess lowerArrayAccess(const ArrayExpr &expr, ArrayAccessKind kind);
 
     void emitProgram(const Program &prog);
 
