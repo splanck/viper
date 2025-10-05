@@ -248,6 +248,22 @@ static const std::array<LowerRule, kBuiltinCount> kBuiltinLoweringRules = [] {
                              .features = {Feature{.action = FeatureAction::Request,
                                                   .feature = il::runtime::RuntimeFeature::Asc}}}}};
 
+    rules[idx(B::InKey)] = LowerRule{
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
+        .variants = {Variant{.condition = Condition::Always,
+                             .kind = VariantKind::CallRuntime,
+                             .runtime = "rt_inkey_str",
+                             .features = {Feature{.action = FeatureAction::Request,
+                                                  .feature = il::runtime::RuntimeFeature::InKey}}}}};
+
+    rules[idx(B::GetKey)] = LowerRule{
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
+        .variants = {Variant{.condition = Condition::Always,
+                             .kind = VariantKind::CallRuntime,
+                             .runtime = "rt_getkey_str",
+                             .features = {Feature{.action = FeatureAction::Request,
+                                                  .feature = il::runtime::RuntimeFeature::GetKey}}}}};
+
     return rules;
 }();
 
@@ -485,6 +501,24 @@ static const std::array<BuiltinScanRule, kBuiltinCount> kBuiltinScanRules = [] {
                                                                    il::runtime::RuntimeFeature::Asc,
                                                                    0,
                                                                    Lowerer::ExprType::I64}}};
+
+    rules[idx(B::InKey)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
+                                                                       Lowerer::ExprType::Str,
+                                                                       0},
+                                           BuiltinScanRule::ArgTraversal::Explicit,
+                                           {},
+                                           {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                                                     BuiltinScanRule::Feature::Condition::Always,
+                                                                     il::runtime::RuntimeFeature::InKey}}};
+
+    rules[idx(B::GetKey)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
+                                                                        Lowerer::ExprType::Str,
+                                                                        0},
+                                            BuiltinScanRule::ArgTraversal::Explicit,
+                                            {},
+                                            {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                                                      BuiltinScanRule::Feature::Condition::Always,
+                                                                      il::runtime::RuntimeFeature::GetKey}}};
 
     return rules;
 }();
