@@ -116,9 +116,9 @@ loop_body:
   .loc 1 6 10
   %t24 = zext1 %t22
   .loc 1 6 10
-  %t25 = iadd.ovf %t23, %t24
+  %t25 = or %t23, %t24
   .loc 1 6 10
-  %t26 = scmp_gt %t25, 0
+  %t26 = icmp_ne %t25, 0
   .loc 1 6 10
   cbr %t26, bc_oob0, bc_ok0
 done:
@@ -144,9 +144,9 @@ bc_ok0:
   .loc 1 7 18
   %t34 = zext1 %t32
   .loc 1 7 18
-  %t35 = iadd.ovf %t33, %t34
+  %t35 = or %t33, %t34
   .loc 1 7 18
-  %t36 = scmp_gt %t35, 0
+  %t36 = icmp_ne %t35, 0
   .loc 1 7 18
   cbr %t36, bc_oob1, bc_ok1
 bc_oob0:
