@@ -111,6 +111,11 @@ void lowerIfCondition(const Expr &cond,
                       BasicBlock *thenBlk,
                       BasicBlock *falseBlk,
                       il::support::SourceLoc loc);
+/// @brief Lower a boolean expression directly into a conditional branch.
+void lowerCondBranch(const Expr &expr,
+                     BasicBlock *trueBlk,
+                     BasicBlock *falseBlk,
+                     il::support::SourceLoc loc);
 /// @brief Lower a THEN/ELSE branch and link to exit.
 /// @return True if branch falls through to @p exitBlk.
 bool lowerIfBranch(const Stmt *stmt,

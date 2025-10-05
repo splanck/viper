@@ -509,9 +509,9 @@ Lowerer::IfBlocks Lowerer::emitIfBlocks(size_t conds)
         testIdx[i] = start + 2 * i;
         thenIdx[i] = start + 2 * i + 1;
     }
-    BasicBlock *elseBlk = &func->blocks[start + 2 * conds];
-    BasicBlock *exitBlk = &func->blocks[start + 2 * conds + 1];
-    return {std::move(testIdx), std::move(thenIdx), elseBlk, exitBlk};
+    size_t elseIdx = start + 2 * conds;
+    size_t exitIdx = start + 2 * conds + 1;
+    return {std::move(testIdx), std::move(thenIdx), elseIdx, exitIdx};
 }
 
 /// @brief Lower the conditional branch used by an IF arm.
@@ -531,9 +531,7 @@ void Lowerer::lowerIfCondition(const Expr &cond,
                                il::support::SourceLoc loc)
 {
     context().setCurrent(testBlk);
-    RVal c = lowerExpr(cond);
-    Value condVal = coerceToBool(std::move(c), loc).value;
-    emitCBr(condVal, thenBlk, falseBlk);
+    lowerCondBranch(cond, thenBlk, falseBlk, loc);
 }
 
 /// @brief Lower the body of a single IF or ELSE branch.
@@ -597,24 +595,29 @@ void Lowerer::lowerIf(const IfStmt &stmt)
     {
         BasicBlock *testBlk = &func->blocks[blocks.tests[i]];
         BasicBlock *thenBlk = &func->blocks[blocks.thens[i]];
-        BasicBlock *falseBlk =
-            (i + 1 < conds) ? &func->blocks[blocks.tests[i + 1]] : blocks.elseBlk;
+        BasicBlock *falseBlk = (i + 1 < conds)
+                                   ? &func->blocks[blocks.tests[i + 1]]
+                                   : &func->blocks[blocks.elseIdx];
         lowerIfCondition(*condExprs[i], testBlk, thenBlk, falseBlk, stmt.loc);
-        bool branchFall = lowerIfBranch(thenStmts[i], thenBlk, blocks.exitBlk, stmt.loc);
+        thenBlk = &func->blocks[blocks.thens[i]];
+        BasicBlock *exitBlk = &func->blocks[blocks.exitIdx];
+        bool branchFall = lowerIfBranch(thenStmts[i], thenBlk, exitBlk, stmt.loc);
         fallthrough = fallthrough || branchFall;
     }
 
-    bool elseFall = lowerIfBranch(stmt.else_branch.get(), blocks.elseBlk, blocks.exitBlk, stmt.loc);
+    BasicBlock *elseBlk = &func->blocks[blocks.elseIdx];
+    BasicBlock *exitBlk = &func->blocks[blocks.exitIdx];
+    bool elseFall = lowerIfBranch(stmt.else_branch.get(), elseBlk, exitBlk, stmt.loc);
     fallthrough = fallthrough || elseFall;
 
     if (!fallthrough)
     {
         func->blocks.pop_back();
-        context().setCurrent(blocks.elseBlk);
+        context().setCurrent(&func->blocks[blocks.elseIdx]);
         return;
     }
 
-    context().setCurrent(blocks.exitBlk);
+    context().setCurrent(&func->blocks[blocks.exitIdx]);
 }
 
 /// @brief Lower statements forming a loop body until a terminator is hit.
@@ -674,13 +677,13 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
     // head
     head = &func->blocks[headIdx];
     ctx.setCurrent(head);
-    RVal cond = lowerExpr(*stmt.cond);
-    cond = coerceToBool(std::move(cond), stmt.loc);
     curLoc = stmt.loc;
-    emitCBr(cond.value, body, done);
+    lowerCondBranch(*stmt.cond, body, done, stmt.loc);
+
+    body = &func->blocks[bodyIdx];
+    done = &func->blocks[doneIdx];
 
     // body
-    body = &func->blocks[bodyIdx];
     ctx.setCurrent(body);
     lowerLoopBody(stmt.body);
     BasicBlock *current = ctx.current();
@@ -721,37 +724,28 @@ void Lowerer::lowerDo(const DoStmt &stmt)
 
     ctx.loopState().push(done);
 
-    auto emitConditionBranch = [&](const RVal &condVal) {
-        BasicBlock *body = &func->blocks[bodyIdx];
-        BasicBlock *doneBlk = &func->blocks[doneIdx];
-        if (stmt.condKind == DoStmt::CondKind::While)
-        {
-            curLoc = stmt.loc;
-            emitCBr(condVal.value, body, doneBlk);
-        }
-        else
-        {
-            curLoc = stmt.loc;
-            emitCBr(condVal.value, doneBlk, body);
-        }
-    };
-
     auto emitHead = [&]() {
         func->blocks[headIdx].label = headLbl;
         func->blocks[bodyIdx].label = bodyLbl;
         BasicBlock *head = &func->blocks[headIdx];
-        BasicBlock *body = &func->blocks[bodyIdx];
         ctx.setCurrent(head);
         curLoc = stmt.loc;
         if (stmt.condKind == DoStmt::CondKind::None)
         {
-            emitBr(body);
+            emitBr(&func->blocks[bodyIdx]);
             return;
         }
         assert(stmt.cond && "DO loop missing condition for conditional form");
-        RVal cond = lowerExpr(*stmt.cond);
-        cond = coerceToBool(std::move(cond), stmt.loc);
-        emitConditionBranch(cond);
+        BasicBlock *body = &func->blocks[bodyIdx];
+        BasicBlock *doneBlk = &func->blocks[doneIdx];
+        if (stmt.condKind == DoStmt::CondKind::While)
+        {
+            lowerCondBranch(*stmt.cond, body, doneBlk, stmt.loc);
+        }
+        else
+        {
+            lowerCondBranch(*stmt.cond, doneBlk, body, stmt.loc);
+        }
     };
 
     switch (stmt.testPos)
