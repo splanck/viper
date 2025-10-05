@@ -36,17 +36,11 @@ L20:
   .loc 1 2 10
   %t6 = load i64, %t3
   .loc 1 2 4
-  %t7 = call @rt_arr_i32_new(%t6)
+  %t7 = iadd.ovf %t6, 1
   .loc 1 2 4
-  call @rt_arr_i32_retain(%t7)
+  %t8 = scmp_lt %t7, 0
   .loc 1 2 4
-  %t8 = load ptr, %t2
-  .loc 1 2 4
-  call @rt_arr_i32_release(%t8)
-  .loc 1 2 4
-  store ptr, %t2, %t7
-  .loc 1 2 4
-  br L30
+  cbr %t8, dim_len_fail, dim_len_cont
 L30:
   .loc 1 3 4
   store i64, %t1, 0
@@ -62,116 +56,132 @@ L50:
   br loop_head
 L100:
   .loc 1 10 11
-  %t41 = load i64, %t0
+  %t43 = load i64, %t0
   .loc 1 10 5
-  call @rt_print_i64(%t41)
+  call @rt_print_i64(%t43)
   .loc 1 10 5
-  %t42 = const_str @.L0
+  %t44 = const_str @.L0
   .loc 1 10 5
-  call @rt_print_str(%t42)
+  call @rt_print_str(%t44)
   .loc 1 10 5
   br L110
 L110:
   .loc 1 11 5
   br exit
 exit:
-  %t43 = load ptr, %t2
-  call @rt_arr_i32_release(%t43)
+  %t45 = load ptr, %t2
+  call @rt_arr_i32_release(%t45)
   store ptr, %t2, null
   ret 0
+dim_len_fail:
+  .loc 1 2 4
+  trap
+dim_len_cont:
+  .loc 1 2 4
+  %t9 = call @rt_arr_i32_new(%t7)
+  .loc 1 2 4
+  call @rt_arr_i32_retain(%t9)
+  .loc 1 2 4
+  %t10 = load ptr, %t2
+  .loc 1 2 4
+  call @rt_arr_i32_release(%t10)
+  .loc 1 2 4
+  store ptr, %t2, %t9
+  .loc 1 2 4
+  br L30
 loop_head:
   .loc 1 5 10
-  %t9 = load i64, %t1
+  %t11 = load i64, %t1
   .loc 1 5 14
-  %t10 = load i64, %t3
+  %t12 = load i64, %t3
   .loc 1 5 12
-  %t11 = scmp_lt %t9, %t10
+  %t13 = scmp_lt %t11, %t12
   .loc 1 5 12
-  %t12 = zext1 %t11
+  %t14 = zext1 %t13
   .loc 1 5 12
-  %t13 = isub.ovf 0, %t12
+  %t15 = isub.ovf 0, %t14
   .loc 1 5 4
-  %t14 = trunc1 %t13
+  %t16 = trunc1 %t15
   .loc 1 5 4
-  cbr %t14, loop_body, done
+  cbr %t16, loop_body, done
 loop_body:
   .loc 1 6 17
-  %t15 = load i64, %t1
+  %t17 = load i64, %t1
   .loc 1 6 21
-  %t16 = load i64, %t1
+  %t18 = load i64, %t1
   .loc 1 6 19
-  %t17 = imul.ovf %t15, %t16
+  %t19 = imul.ovf %t17, %t18
   .loc 1 6 19
-  %t18 = load ptr, %t2
+  %t20 = load ptr, %t2
   .loc 1 6 12
-  %t19 = load i64, %t1
+  %t21 = load i64, %t1
   .loc 1 6 10
-  %t20 = call @rt_arr_i32_len(%t18)
+  %t22 = call @rt_arr_i32_len(%t20)
   .loc 1 6 10
-  %t21 = scmp_lt %t19, 0
+  %t23 = scmp_lt %t21, 0
   .loc 1 6 10
-  %t22 = scmp_ge %t19, %t20
+  %t24 = scmp_ge %t21, %t22
   .loc 1 6 10
-  %t23 = zext1 %t21
+  %t25 = zext1 %t23
   .loc 1 6 10
-  %t24 = zext1 %t22
+  %t26 = zext1 %t24
   .loc 1 6 10
-  %t25 = or %t23, %t24
+  %t27 = or %t25, %t26
   .loc 1 6 10
-  %t26 = icmp_ne %t25, 0
+  %t28 = icmp_ne %t27, 0
   .loc 1 6 10
-  cbr %t26, bc_oob0, bc_ok0
+  cbr %t28, bc_oob0, bc_ok0
 done:
   .loc 1 5 4
   br L100
 bc_ok0:
   .loc 1 6 6
-  call @rt_arr_i32_set(%t18, %t19, %t17)
+  call @rt_arr_i32_set(%t20, %t21, %t19)
   .loc 1 7 14
-  %t27 = load i64, %t0
+  %t29 = load i64, %t0
   .loc 1 7 18
-  %t28 = load ptr, %t2
+  %t30 = load ptr, %t2
   .loc 1 7 20
-  %t29 = load i64, %t1
+  %t31 = load i64, %t1
   .loc 1 7 18
-  %t30 = call @rt_arr_i32_len(%t28)
+  %t32 = call @rt_arr_i32_len(%t30)
   .loc 1 7 18
-  %t31 = scmp_lt %t29, 0
+  %t33 = scmp_lt %t31, 0
   .loc 1 7 18
-  %t32 = scmp_ge %t29, %t30
+  %t34 = scmp_ge %t31, %t32
   .loc 1 7 18
-  %t33 = zext1 %t31
+  %t35 = zext1 %t33
   .loc 1 7 18
-  %t34 = zext1 %t32
+  %t36 = zext1 %t34
   .loc 1 7 18
-  %t35 = or %t33, %t34
+  %t37 = or %t35, %t36
   .loc 1 7 18
-  %t36 = icmp_ne %t35, 0
+  %t38 = icmp_ne %t37, 0
   .loc 1 7 18
-  cbr %t36, bc_oob1, bc_ok1
+  cbr %t38, bc_oob1, bc_ok1
 bc_oob0:
   .loc 1 6 10
-  call @rt_arr_oob_panic(%t19, %t20)
+  call @rt_arr_oob_panic(%t21, %t22)
   .loc 1 6 10
   trap
 bc_ok1:
   .loc 1 7 18
-  %t37 = call @rt_arr_i32_get(%t28, %t29)
+  %t39 = call @rt_arr_i32_get(%t30, %t31)
   .loc 1 7 16
-  %t38 = iadd.ovf %t27, %t37
+  %t40 = iadd.ovf %t29, %t39
   .loc 1 7 6
-  store i64, %t0, %t38
+  store i64, %t0, %t40
   .loc 1 8 14
-  %t39 = load i64, %t1
+  %t41 = load i64, %t1
   .loc 1 8 16
-  %t40 = iadd.ovf %t39, 1
+  %t42 = iadd.ovf %t41, 1
   .loc 1 8 6
-  store i64, %t1, %t40
+  store i64, %t1, %t42
   .loc 1 5 4
   br loop_head
 bc_oob1:
   .loc 1 7 18
-  call @rt_arr_oob_panic(%t29, %t30)
+  call @rt_arr_oob_panic(%t31, %t32)
   .loc 1 7 18
   trap
 }

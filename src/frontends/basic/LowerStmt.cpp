@@ -1241,16 +1241,53 @@ void Lowerer::lowerLineInputCh(const LineInputChStmt &stmt)
 ///          remains unchanged.
 void Lowerer::lowerDim(const DimStmt &stmt)
 {
-    RVal sz = lowerExpr(*stmt.size);
+    RVal bound = lowerExpr(*stmt.size);
+    bound = ensureI64(std::move(bound), stmt.loc);
     curLoc = stmt.loc;
-    Value handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_i32_new", {sz.value});
+
+    Value length = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), bound.value, Value::constInt(1));
+
+    ProcedureContext &ctx = context();
+    Function *func = ctx.function();
+    BasicBlock *original = ctx.current();
+    if (func && original)
+    {
+        size_t curIdx = static_cast<size_t>(original - &func->blocks[0]);
+        BlockNamer *blockNamer = ctx.blockNames().namer();
+        std::string failLbl = blockNamer ? blockNamer->generic("dim_len_fail")
+                                         : mangler.block("dim_len_fail");
+        std::string contLbl = blockNamer ? blockNamer->generic("dim_len_cont")
+                                         : mangler.block("dim_len_cont");
+
+        size_t failIdx = func->blocks.size();
+        builder->addBlock(*func, failLbl);
+        size_t contIdx = func->blocks.size();
+        builder->addBlock(*func, contLbl);
+
+        BasicBlock *failBlk = &func->blocks[failIdx];
+        BasicBlock *contBlk = &func->blocks[contIdx];
+
+        ctx.setCurrent(&func->blocks[curIdx]);
+        curLoc = stmt.loc;
+        Value isNeg = emitBinary(Opcode::SCmpLT, ilBoolTy(), length, Value::constInt(0));
+        emitCBr(isNeg, failBlk, contBlk);
+
+        ctx.setCurrent(failBlk);
+        curLoc = stmt.loc;
+        emitTrap();
+
+        ctx.setCurrent(contBlk);
+    }
+
+    curLoc = stmt.loc;
+    Value handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_i32_new", {length});
     const auto *info = findSymbol(stmt.name);
     assert(info && info->slotId);
     storeArray(Value::temp(*info->slotId), handle);
     if (boundsChecks)
     {
         if (info && info->arrayLengthSlot)
-            emitStore(Type(Type::Kind::I64), Value::temp(*info->arrayLengthSlot), sz.value);
+            emitStore(Type(Type::Kind::I64), Value::temp(*info->arrayLengthSlot), length);
     }
 }
 
@@ -1261,16 +1298,53 @@ void Lowerer::lowerDim(const DimStmt &stmt)
 ///          tracked array slot, mirroring DIM lowering semantics.
 void Lowerer::lowerReDim(const ReDimStmt &stmt)
 {
-    RVal sz = lowerExpr(*stmt.size);
+    RVal bound = lowerExpr(*stmt.size);
+    bound = ensureI64(std::move(bound), stmt.loc);
+    curLoc = stmt.loc;
+
+    Value length = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), bound.value, Value::constInt(1));
+
+    ProcedureContext &ctx = context();
+    Function *func = ctx.function();
+    BasicBlock *original = ctx.current();
+    if (func && original)
+    {
+        size_t curIdx = static_cast<size_t>(original - &func->blocks[0]);
+        BlockNamer *blockNamer = ctx.blockNames().namer();
+        std::string failLbl = blockNamer ? blockNamer->generic("redim_len_fail")
+                                         : mangler.block("redim_len_fail");
+        std::string contLbl = blockNamer ? blockNamer->generic("redim_len_cont")
+                                         : mangler.block("redim_len_cont");
+
+        size_t failIdx = func->blocks.size();
+        builder->addBlock(*func, failLbl);
+        size_t contIdx = func->blocks.size();
+        builder->addBlock(*func, contLbl);
+
+        BasicBlock *failBlk = &func->blocks[failIdx];
+        BasicBlock *contBlk = &func->blocks[contIdx];
+
+        ctx.setCurrent(&func->blocks[curIdx]);
+        curLoc = stmt.loc;
+        Value isNeg = emitBinary(Opcode::SCmpLT, ilBoolTy(), length, Value::constInt(0));
+        emitCBr(isNeg, failBlk, contBlk);
+
+        ctx.setCurrent(failBlk);
+        curLoc = stmt.loc;
+        emitTrap();
+
+        ctx.setCurrent(contBlk);
+    }
+
     curLoc = stmt.loc;
     const auto *info = findSymbol(stmt.name);
     assert(info && info->slotId);
     Value slot = Value::temp(*info->slotId);
     Value current = emitLoad(Type(Type::Kind::Ptr), slot);
-    Value resized = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_i32_resize", {current, sz.value});
+    Value resized = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_i32_resize", {current, length});
     storeArray(slot, resized);
     if (boundsChecks && info && info->arrayLengthSlot)
-        emitStore(Type(Type::Kind::I64), Value::temp(*info->arrayLengthSlot), sz.value);
+        emitStore(Type(Type::Kind::I64), Value::temp(*info->arrayLengthSlot), length);
 }
 
 /// @brief Lower a RANDOMIZE seed update.
