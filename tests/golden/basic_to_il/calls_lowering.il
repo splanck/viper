@@ -12,8 +12,8 @@ func @F#(f64 %X#) -> f64 {
 entry_F#:
   %t1 = alloca 8
   store f64, %t1, %t0
-  br L0_F#
-L0_F#:
+  br L-1000000000_F#
+L-1000000000_F#:
   .loc 1 2 8
   %t2 = load f64, %t1
   .loc 1 2 8
@@ -25,8 +25,8 @@ func @ID$(str %S$) -> str {
 entry_ID$:
   %t1 = alloca 8
   store str, %t1, %t0
-  br L0_ID$
-L0_ID$:
+  br L-1000000000_ID$
+L-1000000000_ID$:
   .loc 1 5 8
   %t2 = load str, %t1
   .loc 1 5 8
@@ -39,11 +39,11 @@ func @FIRST#(i64 %N) -> f64 {
 entry_FIRST#:
   %t1 = alloca 8
   store i64, %t1, %t0
-  br L0_FIRST#
-L0_FIRST#:
-L0_FIRST#:
+  br L-1000000000_FIRST#
+L-1000000000_FIRST#:
   .loc 1 8 1
   br if_test_0_FIRST#
+L-999999999_FIRST#:
   .loc 1 9 16
   %t7 = load i64, %t1
   .loc 1 9 8
@@ -75,17 +75,17 @@ if_else_0_FIRST#:
   br if_end_0_FIRST#
 if_end_0_FIRST#:
   .loc 1 8 1
-  br L0_FIRST#
+  br L-999999999_FIRST#
 }
 func @SECOND#(f64 %N#) -> f64 {
 entry_SECOND#:
   %t1 = alloca 8
   store f64, %t1, %t0
-  br L0_SECOND#
-L0_SECOND#:
-L0_SECOND#:
+  br L-1000000000_SECOND#
+L-1000000000_SECOND#:
   .loc 1 12 1
   br if_test_0_SECOND#
+L-999999999_SECOND#:
   .loc 1 13 15
   %t8 = load f64, %t1
   .loc 1 13 18
@@ -123,7 +123,7 @@ if_else_0_SECOND#:
   br if_end_0_SECOND#
 if_end_0_SECOND#:
   .loc 1 12 1
-  br L0_SECOND#
+  br L-999999999_SECOND#
 }
 func @main() -> i64 {
 entry:

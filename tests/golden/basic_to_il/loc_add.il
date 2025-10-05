@@ -8,8 +8,8 @@ global const str @.L0 = "
 "
 func @main() -> i64 {
 entry:
-  br L0
-L0:
+  br L-1000000000
+L-1000000000:
   .loc 1 1 1
   call @rt_print_i64(3)
   .loc 1 1 1
