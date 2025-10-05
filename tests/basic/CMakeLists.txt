@@ -635,6 +635,15 @@ function(viper_add_basic_semantics_golden_tests)
     -DSOURCE_ROOT=${CMAKE_SOURCE_DIR}
     -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_diag.cmake)
 
+  viper_add_ctest(basic_semantics_color_locate_type_errors
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/test_color_locate_type_errors.bas
+    -DDIAG_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/test_color_locate_type_errors.diag
+    -DEXPECT_STATUS=1
+    -DSOURCE_ROOT=${CMAKE_SOURCE_DIR}
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_diag.cmake)
+
   viper_add_ctest(basic_negatives_if_int_condition
     ${CMAKE_COMMAND}
     -DILC=${_VIPER_BASIC_ILC}
