@@ -196,12 +196,12 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     curLoc = expr.loc;
 
     Value len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {base});
-    Value neg = emitBinary(Opcode::SCmpLT, ilBoolTy(), index, Value::constInt(0));
-    Value ge = emitBinary(Opcode::SCmpGE, ilBoolTy(), index, len);
-    Value neg64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), neg);
-    Value ge64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), ge);
-    Value failSum = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), neg64, ge64);
-    Value cond = emitBinary(Opcode::SCmpGT, ilBoolTy(), failSum, Value::constInt(0));
+    Value isNeg = emitBinary(Opcode::SCmpLT, ilBoolTy(), index, Value::constInt(0));
+    Value tooHigh = emitBinary(Opcode::SCmpGE, ilBoolTy(), index, len);
+    Value isNeg64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), isNeg);
+    Value tooHigh64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), tooHigh);
+    Value oobInt = emitBinary(Opcode::Or, Type(Type::Kind::I64), isNeg64, tooHigh64);
+    Value oobCond = emitBinary(Opcode::ICmpNe, ilBoolTy(), oobInt, Value::constInt(0));
 
     Function *func = ctx.function();
     assert(func && ctx.current());
@@ -219,7 +219,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     BasicBlock *ok = &func->blocks[okIdx];
     BasicBlock *oob = &func->blocks[oobIdx];
     ctx.setCurrent(&func->blocks[curIdx]);
-    emitCBr(cond, oob, ok);
+    emitCBr(oobCond, oob, ok);
 
     ctx.setCurrent(oob);
     emitCall("rt_arr_oob_panic", {index, len});
