@@ -178,6 +178,42 @@ void PrintChStmt::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this CLS statement node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void ClsStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void ClsStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+/// @brief Forwards this COLOR statement node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void ColorStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void ColorStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+/// @brief Forwards this LOCATE statement node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void LocateStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void LocateStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
 /// @brief Forwards this let statement node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void LetStmt::accept(StmtVisitor &visitor) const

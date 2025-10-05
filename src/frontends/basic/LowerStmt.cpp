@@ -32,6 +32,12 @@ class LowererStmtVisitor final : public StmtVisitor
 
     void visit(const PrintChStmt &stmt) override { lowerer_.lowerPrintCh(stmt); }
 
+    void visit(const ClsStmt &) override {}
+
+    void visit(const ColorStmt &) override {}
+
+    void visit(const LocateStmt &) override {}
+
     void visit(const LetStmt &stmt) override { lowerer_.lowerLet(stmt); }
 
     void visit(const DimStmt &stmt) override
