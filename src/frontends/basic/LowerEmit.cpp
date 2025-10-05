@@ -354,6 +354,16 @@ Value Lowerer::emitCheckedNeg(Type ty, Value val)
 /// deterministic control-flow stitching.
 void Lowerer::emitBr(BasicBlock *target)
 {
+    BasicBlock *block = context().current();
+    assert(block && "emitBr requires an active block");
+
+    if (block == target)
+    {
+        // Avoid emitting a self-branch when virtual and real lines collapse; the block already
+        // falls through to itself without a terminator.
+        return;
+    }
+
     Instr in;
     in.op = Opcode::Br;
     in.type = Type(Type::Kind::Void);
@@ -361,8 +371,6 @@ void Lowerer::emitBr(BasicBlock *target)
         target->label = nextFallbackBlockLabel();
     in.labels.push_back(target->label);
     in.loc = curLoc;
-    BasicBlock *block = context().current();
-    assert(block && "emitBr requires an active block");
     block->instructions.push_back(in);
     block->terminated = true;
 }
