@@ -176,8 +176,15 @@ Lowerer::IlValue Lowerer::emitBoolFromBranches(const std::function<void(Value)> 
 /// current block identified by @c cur. When bounds checking is active, additional ok/fail blocks
 /// are created through @c builder and named with @c blockNamer (falling back to @c mangler) so the
 /// failing path can trap via the runtime helper before control resumes at the success block.
-Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr)
+Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAccessKind kind)
 {
+    requireArrayI32Len();
+    requireArrayOobPanic();
+    if (kind == ArrayAccessKind::Load)
+        requireArrayI32Get();
+    else
+        requireArrayI32Set();
+
     ProcedureContext &ctx = context();
     const auto *info = findSymbol(expr.name);
     assert(info && info->slotId);

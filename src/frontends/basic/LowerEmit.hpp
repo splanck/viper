@@ -169,5 +169,5 @@ void emitRet(Value v);
 void emitRetVoid();
 std::string getStringLabel(const std::string &s);
 unsigned nextTempId();
-ArrayAccess lowerArrayAccess(const ArrayExpr &expr);
+ArrayAccess lowerArrayAccess(const ArrayExpr &expr, ArrayAccessKind kind);
 void emitProgram(const Program &prog);
