@@ -340,7 +340,9 @@ struct BuiltinCallExpr : Expr
         Ucase,
         Lcase,
         Chr,
-        Asc
+        Asc,
+        InKey,
+        GetKey
     } builtin;
 
     /// Argument expressions passed to the builtin; owned.
