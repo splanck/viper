@@ -29,6 +29,21 @@ This document describes the stable C ABI provided by the runtime library.
 | `@rt_abs_i64` | `i64 -> i64` | absolute value (integer, traps on overflow) |
 | `@rt_abs_f64` | `f64 -> f64` | absolute value (float) |
 
+### Terminal
+
+| Symbol | Signature | Semantics | Feature |
+|--------|-----------|-----------|---------|
+| `@rt_term_cls` | `void -> void` | Clear screen and home the cursor. No-op when stdout is not a TTY. | `TermCls` |
+| `@rt_term_color_i32` | `i32, i32 -> void` | Set foreground/background colors; `-1` leaves the channel unchanged. Values 0–7 map to normal colors, 8–15 to bright colors, and ≥16 use 256-color SGR codes. | `TermColor` |
+| `@rt_term_locate_i32` | `i32, i32 -> void` | Move the cursor to the given 1-based row and column, clamping both to ≥1. | `TermLocate` |
+
+### Keyboard input
+
+| Symbol | Signature | Semantics | Feature |
+|--------|-----------|-----------|---------|
+| `@rt_getkey_str` | `void -> str` | Blocking single-byte key read that returns a 1-character string. | `GetKey` |
+| `@rt_inkey_str` | `void -> str` | Non-blocking single-byte key read that returns `""` when no key is ready. | `InKey` |
+
 ### Random
 
 The runtime exposes a simple deterministic 64-bit linear congruential generator:
