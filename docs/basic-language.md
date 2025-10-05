@@ -100,6 +100,29 @@ Arithmetic operators include `+`, `-`, `*`, `/`, integer division `\\`, and `MOD
 20 PRINT "Hi ", N$
 ```
 
+### Terminal control
+
+**CLS**  
+Clears the screen and moves the cursor to (1, 1). No effect when output is redirected.
+
+**COLOR _fg_[, _bg_]**  
+Sets foreground and optionally background color. Accepts 0–7 (normal), 8–15 (bright), and 16–255 (256‑color SGR). Use `-1` to leave an attribute unchanged.
+
+**LOCATE _row_[, _col_]**  
+Moves the cursor to the 1‑based row/column. Values < 1 clamp to 1.
+
+### Keyboard
+
+**GETKEY$()** → `String`  
+Blocks until a single key byte is available; returns a 1‑character string.
+
+**INKEY$()** → `String`  
+Non-blocking; returns the empty string `""` when no key is available, otherwise a 1‑character string.
+
+> Notes  
+> • On Windows, VT sequences are used when available.  
+> • Arrow/function keys emit multi‑byte sequences; successive calls read successive bytes.
+
 ### Control flow
 
 #### IF / ELSEIF / ELSE / END IF
