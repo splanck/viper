@@ -116,7 +116,7 @@ L70:
   br L80
 L80:
   .loc 1 8 4
-  br exit
+  ret 0
 exit:
   %t40 = load ptr, %t2
   call @rt_arr_i32_release(%t40)

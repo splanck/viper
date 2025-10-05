@@ -29,7 +29,7 @@ L20:
   cbr %t6, redim_len_fail, redim_len_cont
 L30:
   .loc 1 3 4
-  br exit
+  ret 0
 exit:
   %t10 = load ptr, %t0
   call @rt_arr_i32_release(%t10)
