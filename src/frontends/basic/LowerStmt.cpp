@@ -32,11 +32,11 @@ class LowererStmtVisitor final : public StmtVisitor
 
     void visit(const PrintChStmt &stmt) override { lowerer_.lowerPrintCh(stmt); }
 
-    void visit(const ClsStmt &) override {}
+    void visit(const ClsStmt &stmt) override { lowerer_.visit(stmt); }
 
-    void visit(const ColorStmt &) override {}
+    void visit(const ColorStmt &stmt) override { lowerer_.visit(stmt); }
 
-    void visit(const LocateStmt &) override {}
+    void visit(const LocateStmt &stmt) override { lowerer_.visit(stmt); }
 
     void visit(const LetStmt &stmt) override { lowerer_.lowerLet(stmt); }
 
@@ -104,6 +104,45 @@ void Lowerer::lowerStmt(const Stmt &stmt)
     curLoc = stmt.loc;
     LowererStmtVisitor visitor(*this);
     stmt.accept(visitor);
+}
+
+void Lowerer::visit(const ClsStmt &s)
+{
+    curLoc = s.loc;
+    requestHelper(il::runtime::RuntimeFeature::TermCls);
+    emitCallRet(Type(Type::Kind::Void), "rt_term_cls", {});
+}
+
+void Lowerer::visit(const ColorStmt &s)
+{
+    curLoc = s.loc;
+    auto fg = ensureI64(lowerExpr(*s.fg), s.loc);
+    Value bgv = Value::constInt(-1);
+    if (s.bg)
+    {
+        auto bg = ensureI64(lowerExpr(*s.bg), s.loc);
+        bgv = bg.value;
+    }
+    Value fg32 = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), fg.value);
+    Value bg32 = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), bgv);
+    requestHelper(il::runtime::RuntimeFeature::TermColor);
+    emitCallRet(Type(Type::Kind::Void), "rt_term_color_i32", {fg32, bg32});
+}
+
+void Lowerer::visit(const LocateStmt &s)
+{
+    curLoc = s.loc;
+    auto row = ensureI64(lowerExpr(*s.row), s.loc);
+    Value colv = Value::constInt(1);
+    if (s.col)
+    {
+        auto col = ensureI64(lowerExpr(*s.col), s.loc);
+        colv = col.value;
+    }
+    Value row32 = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), row.value);
+    Value col32 = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), colv);
+    requestHelper(il::runtime::RuntimeFeature::TermLocate);
+    emitCallRet(Type(Type::Kind::Void), "rt_term_locate_i32", {row32, col32});
 }
 
 /// @brief Lower each statement within a statement list sequentially.
