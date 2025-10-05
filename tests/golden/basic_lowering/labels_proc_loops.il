@@ -15,7 +15,9 @@ L-999999999_F:
   .loc 1 4 1
   store i64, %t0, 1
   .loc 1 4 1
-  br for_head_1_F
+  %t2 = scmp_ge 1, 0
+  .loc 1 4 1
+  cbr %t2, for_head_pos_0_F, for_head_neg_0_F
 L-999999998_F:
   .loc 1 6 8
   ret 0
@@ -32,25 +34,32 @@ while_body_0_F:
 while_end_0_F:
   .loc 1 2 1
   br L-999999999_F
-for_head_1_F:
+for_head_pos_0_F:
   .loc 1 4 1
-  %t2 = load i64, %t0
+  %t3 = load i64, %t0
   .loc 1 4 1
-  %t3 = scmp_le %t2, 1
+  %t4 = scmp_le %t3, 1
   .loc 1 4 1
-  cbr %t3, for_body_1_F, for_end_1_F
+  cbr %t4, for_body_1_F, for_end_1_F
+for_head_neg_0_F:
+  .loc 1 4 1
+  %t5 = load i64, %t0
+  .loc 1 4 1
+  %t6 = scmp_ge %t5, 1
+  .loc 1 4 1
+  cbr %t6, for_body_1_F, for_end_1_F
 for_body_1_F:
   .loc 1 4 1
   br for_inc_1_F
 for_inc_1_F:
   .loc 1 4 1
-  %t4 = load i64, %t0
+  %t7 = load i64, %t0
   .loc 1 4 1
-  %t5 = iadd.ovf %t4, 1
+  %t8 = iadd.ovf %t7, 1
   .loc 1 4 1
-  store i64, %t0, %t5
+  store i64, %t0, %t8
   .loc 1 4 1
-  br for_head_1_F
+  cbr %t2, for_head_pos_0_F, for_head_neg_0_F
 for_end_1_F:
   .loc 1 4 1
   br L-999999998_F
