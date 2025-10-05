@@ -20,18 +20,14 @@ entry:
   store ptr, %t0, null
   %t1 = alloca 8
   %t2 = alloca 8
-  br L08
-L0:
-L01:
-L02:
-L03:
-L04:
-L05:
-L06:
-L07:
-L08:
+  br L-1000000000
+L-1000000000:
   .loc 1 1 1
-  br L08
+  br L-999999999
+L-999999999:
+  .loc 1 2 1
+  br L-999999998
+L-999999998:
   .loc 1 3 1
   %t3 = call @rt_arr_i32_new(2)
   .loc 1 3 1
@@ -42,12 +38,21 @@ L08:
   call @rt_arr_i32_release(%t4)
   .loc 1 3 1
   store ptr, %t0, %t3
+  .loc 1 3 1
+  br L-999999997
+L-999999997:
   .loc 1 4 15
   %t5 = const_str @.L0
   .loc 1 4 1
   store str, %t2, %t5
+  .loc 1 4 1
+  br L-999999996
+L-999999996:
   .loc 1 5 1
   store i64, %t1, 5
+  .loc 1 5 1
+  br L-999999995
+L-999999995:
   .loc 1 6 17
   %t6 = load i64, %t1
   .loc 1 6 17
@@ -68,6 +73,7 @@ L08:
   %t14 = scmp_gt %t13, 0
   .loc 1 6 5
   cbr %t14, bc_oob0, bc_ok0
+L-999999994:
   .loc 1 7 7
   %t15 = load str, %t2
   .loc 1 7 1
@@ -76,6 +82,9 @@ L08:
   %t16 = const_str @.L1
   .loc 1 7 1
   call @rt_print_str(%t16)
+  .loc 1 7 1
+  br L-999999993
+L-999999993:
   .loc 1 8 7
   %t17 = load i64, %t1
   .loc 1 8 1
@@ -84,6 +93,9 @@ L08:
   %t18 = const_str @.L1
   .loc 1 8 1
   call @rt_print_str(%t18)
+  .loc 1 8 1
+  br L-999999992
+L-999999992:
   .loc 1 9 7
   %t19 = load ptr, %t0
   .loc 1 9 7
@@ -111,7 +123,7 @@ bc_ok0:
   .loc 1 6 1
   call @rt_arr_i32_set(%t7, 0, %t6)
   .loc 1 6 1
-  br L08
+  br L-999999994
 bc_oob0:
   .loc 1 6 5
   call @rt_arr_oob_panic(0, %t8)

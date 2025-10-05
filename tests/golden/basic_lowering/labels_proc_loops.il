@@ -7,16 +7,16 @@ extern @rt_substr(str, i64, i64) -> str
 func @F() -> i64 {
 entry_F:
   %t0 = alloca 8
-  br L0_F
-L0_F:
-L0_F:
-L0_F:
+  br L-1000000000_F
+L-1000000000_F:
   .loc 1 2 1
   br while_head_0_F
+L-999999999_F:
   .loc 1 4 1
   store i64, %t0, 1
   .loc 1 4 1
   br for_head_1_F
+L-999999998_F:
   .loc 1 6 8
   ret 0
 ret_F:
@@ -31,7 +31,7 @@ while_body_0_F:
   br while_head_0_F
 while_end_0_F:
   .loc 1 2 1
-  br L0_F
+  br L-999999999_F
 for_head_1_F:
   .loc 1 4 1
   %t2 = load i64, %t0
@@ -53,7 +53,7 @@ for_inc_1_F:
   br for_head_1_F
 for_end_1_F:
   .loc 1 4 1
-  br L0_F
+  br L-999999998_F
 }
 func @main() -> i64 {
 entry:

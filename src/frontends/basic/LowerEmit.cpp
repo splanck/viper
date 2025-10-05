@@ -45,6 +45,8 @@ void Lowerer::emitProgram(const Program &prog)
     for (const auto &s : prog.main)
         mainStmts.push_back(s.get());
 
+    stmtVirtualLines_.clear();
+    synthSeq_ = 0;
     ctx.blockNames().lineBlocks().clear();
 
     Function &f = b.startFunction("main", Type(Type::Kind::I64), {});
@@ -53,18 +55,18 @@ void Lowerer::emitProgram(const Program &prog)
 
     b.addBlock(f, "entry");
 
-    std::vector<int> lines;
-    lines.reserve(mainStmts.size());
+    auto &lineBlocks = ctx.blockNames().lineBlocks();
     for (const auto *stmt : mainStmts)
     {
-        b.addBlock(f, mangler.block("L" + std::to_string(stmt->line)));
-        lines.push_back(stmt->line);
+        int vLine = virtualLine(*stmt);
+        if (lineBlocks.find(vLine) != lineBlocks.end())
+            continue;
+        size_t blockIdx = f.blocks.size();
+        b.addBlock(f, mangler.block("L" + std::to_string(vLine)));
+        lineBlocks[vLine] = blockIdx;
     }
     ctx.setExitIndex(f.blocks.size());
     b.addBlock(f, mangler.block("exit"));
-
-    for (size_t i = 0; i < lines.size(); ++i)
-        ctx.blockNames().lineBlocks()[lines[i]] = i + 1;
 
     resetSymbolState();
     collectVars(mainStmts);
