@@ -187,7 +187,7 @@ function(viper_add_e2e_vm_suite)
     ${CMAKE_COMMAND}
     -DILC=$<TARGET_FILE:ilc>
     -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/basic_array_oob.bas
-    "-DEXPECT_SUBSTR=rt_arr_i32: index 3 out of bounds (len=3)"
+    "-DEXPECT_SUBSTR=rt_arr_i32: index 4 out of bounds (len=4)"
     -P ${_VIPER_E2E_DIR}/test_basic_array_oob.cmake)
   set_tests_properties(basic_array_oob PROPERTIES LABELS VM)
 
