@@ -1,0 +1,12 @@
+tests/basic/semantics/test_color_locate_type_errors.bas:3:7: error[B2001]: COLOR foreground must be numeric, got STRING.
+COLOR S, S
+      ^
+tests/basic/semantics/test_color_locate_type_errors.bas:3:10: error[B2001]: COLOR background must be numeric, got STRING.
+COLOR S, S
+         ^
+tests/basic/semantics/test_color_locate_type_errors.bas:4:8: error[B2001]: LOCATE row must be numeric, got STRING.
+LOCATE S, S
+       ^
+tests/basic/semantics/test_color_locate_type_errors.bas:4:11: error[B2001]: LOCATE column must be numeric, got STRING.
+LOCATE S, S
+          ^
