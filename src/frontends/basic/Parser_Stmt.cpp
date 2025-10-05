@@ -661,6 +661,48 @@ StmtPtr Parser::parseRandomize()
     return stmt;
 }
 
+/// @brief Parse a CLS statement clearing the screen.
+/// @return ClsStmt node without additional operands.
+StmtPtr Parser::parseCls()
+{
+    auto loc = consume().loc; // CLS
+    auto n = std::make_unique<ClsStmt>();
+    n->loc = loc;
+    return n;
+}
+
+/// @brief Parse a COLOR statement configuring foreground/background colors.
+/// @return ColorStmt capturing optional background expression.
+StmtPtr Parser::parseColor()
+{
+    auto loc = consume().loc; // COLOR
+    auto n = std::make_unique<ColorStmt>();
+    n->loc = loc;
+    n->fg = parseExpression();
+    if (at(TokenKind::Comma))
+    {
+        consume();
+        n->bg = parseExpression();
+    }
+    return n;
+}
+
+/// @brief Parse a LOCATE statement positioning the cursor.
+/// @return LocateStmt capturing row and optional column expressions.
+StmtPtr Parser::parseLocate()
+{
+    auto loc = consume().loc; // LOCATE
+    auto n = std::make_unique<LocateStmt>();
+    n->loc = loc;
+    n->row = parseExpression();
+    if (at(TokenKind::Comma))
+    {
+        consume();
+        n->col = parseExpression();
+    }
+    return n;
+}
+
 /// @brief Derive a BASIC type from an identifier suffix.
 /// @param name Identifier to inspect.
 /// @return Corresponding BASIC type; defaults to I64.
