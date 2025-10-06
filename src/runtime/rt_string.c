@@ -190,20 +190,21 @@ int64_t rt_len(rt_string s)
  */
 rt_string rt_concat(rt_string a, rt_string b)
 {
-    size_t asz = rt_string_len_bytes(a);
-    size_t bsz = rt_string_len_bytes(b);
-    size_t total = asz + bsz;
-    rt_string s = rt_string_alloc(total, total + 1);
-    if (a && a->data && asz > 0)
-        memcpy(s->data, a->data, asz);
-    if (b && b->data && bsz > 0)
-        memcpy(s->data + asz, b->data, bsz);
-    s->data[total] = '\0';
-    if (a)
-        rt_string_unref(a);
-    if (b)
-        rt_string_unref(b);
-    return s;
+    size_t len_a = rt_string_len_bytes(a);
+    size_t len_b = rt_string_len_bytes(b);
+    size_t total = len_a + len_b;
+
+    rt_string out = rt_string_alloc(total, total + 1);
+    if (!out)
+        return NULL;
+
+    if (a && a->data && len_a > 0)
+        memcpy(out->data, a->data, len_a);
+    if (b && b->data && len_b > 0)
+        memcpy(out->data + len_a, b->data, len_b);
+
+    out->data[total] = '\0';
+    return out;
 }
 
 /**
