@@ -61,13 +61,13 @@ class LowerCtx
     LowerCtx(Lowerer &lowerer, const BuiltinCallExpr &call);
 
     /// @brief Retrieve the lowering driver.
-    Lowerer &lowerer() const noexcept { return lowerer_; }
+    Lowerer &lowerer() const noexcept;
 
     /// @brief Access the builtin call AST node.
-    const BuiltinCallExpr &call() const noexcept { return call_; }
+    const BuiltinCallExpr &call() const noexcept;
 
     /// @brief Total number of argument slots recorded on the call.
-    std::size_t argCount() const noexcept { return call_.args.size(); }
+    std::size_t argCount() const noexcept;
 
     /// @brief Check whether argument @p idx is present.
     bool hasArg(std::size_t idx) const noexcept;
@@ -85,10 +85,10 @@ class LowerCtx
     ArrayRef<Value> values() noexcept;
 
     /// @brief Update the result type that the handler will produce.
-    void setResultType(Type ty) noexcept { resultType_ = ty; }
+    void setResultType(Type ty) noexcept;
 
     /// @brief Final result type populated by the handler.
-    Type resultType() const noexcept { return resultType_; }
+    Type resultType() const noexcept;
 
     /// @brief Ensure argument @p idx is materialized as a 64-bit integer.
     Lowerer::RVal &ensureI64(std::size_t idx, il::support::SourceLoc loc);
