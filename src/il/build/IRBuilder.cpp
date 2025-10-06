@@ -192,7 +192,8 @@ Instr &IRBuilder::append(Instr instr)
 bool IRBuilder::isTerminator(Opcode op) const
 {
     return op == Opcode::Br || op == Opcode::CBr || op == Opcode::SwitchI32 || op == Opcode::Ret ||
-           op == Opcode::Trap;
+           op == Opcode::Trap || op == Opcode::ResumeSame || op == Opcode::ResumeNext ||
+           op == Opcode::ResumeLabel;
 }
 
 /// @brief Materialize a string constant by referencing an existing global.
@@ -258,6 +259,37 @@ void IRBuilder::emitRet(const std::optional<Value> &v, il::support::SourceLoc lo
     instr.type = Type(Type::Kind::Void);
     if (v)
         instr.operands.push_back(*v);
+    instr.loc = loc;
+    append(std::move(instr));
+}
+
+void IRBuilder::emitResumeSame(Value token, il::support::SourceLoc loc)
+{
+    Instr instr;
+    instr.op = Opcode::ResumeSame;
+    instr.type = Type(Type::Kind::Void);
+    instr.operands.push_back(token);
+    instr.loc = loc;
+    append(std::move(instr));
+}
+
+void IRBuilder::emitResumeNext(Value token, il::support::SourceLoc loc)
+{
+    Instr instr;
+    instr.op = Opcode::ResumeNext;
+    instr.type = Type(Type::Kind::Void);
+    instr.operands.push_back(token);
+    instr.loc = loc;
+    append(std::move(instr));
+}
+
+void IRBuilder::emitResumeLabel(Value token, BasicBlock &target, il::support::SourceLoc loc)
+{
+    Instr instr;
+    instr.op = Opcode::ResumeLabel;
+    instr.type = Type(Type::Kind::Void);
+    instr.operands.push_back(token);
+    instr.labels.push_back(target.label);
     instr.loc = loc;
     append(std::move(instr));
 }
