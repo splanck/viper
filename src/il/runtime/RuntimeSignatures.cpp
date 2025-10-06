@@ -768,6 +768,16 @@ std::vector<RuntimeDescriptor> buildRegistry()
         {Kind::Ptr},
         &DirectHandler<&rt_const_cstr, rt_string, const char *>::invoke,
         manual());
+    add("rt_str_retain_maybe",
+        Kind::Void,
+        {Kind::Str},
+        &DirectHandler<&rt_str_retain_maybe, void, rt_string>::invoke,
+        manual());
+    add("rt_str_release_maybe",
+        Kind::Void,
+        {Kind::Str},
+        &DirectHandler<&rt_str_release_maybe, void, rt_string>::invoke,
+        manual());
 
     return entries;
 }

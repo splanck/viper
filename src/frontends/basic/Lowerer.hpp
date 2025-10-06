@@ -715,6 +715,8 @@ class Lowerer
         CloseErr,
         PrintlnChErr,
         LineInputChErr,
+        StrRetainMaybe,
+        StrReleaseMaybe,
         Count
     };
 
@@ -744,6 +746,8 @@ class Lowerer
     void requireCloseErr();
     void requirePrintlnChErr();
     void requireLineInputChErr();
+    void requireStrRetainMaybe();
+    void requireStrReleaseMaybe();
     void requestHelper(RuntimeFeature feature);
 
     bool isHelperNeeded(RuntimeFeature feature) const;
