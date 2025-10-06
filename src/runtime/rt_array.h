@@ -17,10 +17,7 @@ extern "C" {
     /// @brief Helper returning the heap header associated with @p payload.
     /// @param payload Array payload pointer (may be NULL).
     /// @return Heap header describing the allocation, or NULL for NULL payloads.
-    static inline rt_heap_hdr_t *rt_arr_i32_hdr(const int32_t *payload)
-    {
-        return payload ? rt_heap_hdr((void *)payload) : NULL;
-    }
+    rt_heap_hdr_t *rt_arr_i32_hdr(const int32_t *payload);
 
 #if defined(__cplusplus)
 #    define RT_ARR_NORETURN [[noreturn]]
