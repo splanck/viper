@@ -161,11 +161,15 @@ void rt_string_unref(rt_string s)
 
 void rt_str_release_maybe(rt_string s)
 {
+    if (!s || !s->data)
+        return;
     rt_string_unref(s);
 }
 
 void rt_str_retain_maybe(rt_string s)
 {
+    if (!s || !s->data)
+        return;
     (void)rt_string_ref(s);
 }
 
