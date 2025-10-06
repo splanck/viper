@@ -16,6 +16,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace il::core
@@ -89,6 +90,8 @@ class DebugCtrl
     void resetLastHit();
 
   private:
+    static std::pair<std::string, std::string> normalizePathWithBase(std::string path);
+
     mutable il::support::StringInterner interner_;   ///< Label interner
     std::unordered_set<il::support::Symbol> breaks_; ///< Registered breakpoints
 

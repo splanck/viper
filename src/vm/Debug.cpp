@@ -36,6 +36,14 @@ std::string DebugCtrl::normalizePath(std::string p)
     return generic;
 }
 
+std::pair<std::string, std::string> DebugCtrl::normalizePathWithBase(std::string path)
+{
+    std::string normFile = normalizePath(std::move(path));
+    size_t pos = normFile.find_last_of('/');
+    std::string base = (pos == std::string::npos) ? normFile : normFile.substr(pos + 1);
+    return {std::move(normFile), std::move(base)};
+}
+
 /// @brief Intern a block label for breakpoint lookup.
 /// @param label Block label to intern.
 /// @return Symbol representing the interned label.
@@ -68,10 +76,8 @@ bool DebugCtrl::shouldBreak(const il::core::BasicBlock &blk) const
 ///          breakpoint can match by either.
 void DebugCtrl::addBreakSrcLine(std::string file, int line)
 {
-    std::string normFile = normalizePath(std::move(file));
-    size_t pos = normFile.find_last_of('/');
-    std::string base = (pos == std::string::npos) ? normFile : normFile.substr(pos + 1);
-    srcLineBPs_.push_back({normFile, base, line});
+    auto [normFile, base] = normalizePathWithBase(std::move(file));
+    srcLineBPs_.push_back({std::move(normFile), std::move(base), line});
 }
 
 /// @brief Check if any source line breakpoints are registered.
@@ -109,9 +115,7 @@ bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
     // Resolve the instruction's source file, normalize the path, and derive its
     // basename. A breakpoint matches if both the line number and either the
     // normalized path or basename are equal.
-    std::string normFile = normalizePath(std::string(sm_->getPath(I.loc.file_id)));
-    size_t pos = normFile.find_last_of('/');
-    std::string base = (pos == std::string::npos) ? normFile : normFile.substr(pos + 1);
+    auto [normFile, base] = normalizePathWithBase(std::string(sm_->getPath(I.loc.file_id)));
     int line = static_cast<int>(I.loc.line);
     for (const auto &bp : srcLineBPs_)
     {
