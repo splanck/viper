@@ -36,6 +36,13 @@ function(viper_add_il_core_tests)
   target_link_libraries(test_irbuilder_call_unknown PRIVATE il_build ${VIPER_IL_CORE_IO_LIBS})
   viper_add_ctest(test_irbuilder_call_unknown test_irbuilder_call_unknown)
 
+  viper_add_test(
+    test_irbuilder_resume_terminators
+    ${_VIPER_IL_UNIT_DIR}/test_irbuilder_resume_terminators.cpp)
+  target_link_libraries(test_irbuilder_resume_terminators PRIVATE il_build ${VIPER_IL_CORE_IO_LIBS})
+  viper_add_ctest(
+    test_irbuilder_resume_terminators test_irbuilder_resume_terminators)
+
   viper_add_test(test_il_roundtrip ${_VIPER_IL_UNIT_DIR}/test_il_roundtrip.cpp)
   target_link_libraries(test_il_roundtrip PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   target_compile_definitions(test_il_roundtrip PRIVATE EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/examples" ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/tests/il/roundtrip")

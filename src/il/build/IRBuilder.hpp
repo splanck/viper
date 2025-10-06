@@ -95,6 +95,22 @@ class IRBuilder
     /// @param v Optional return value.
     void emitRet(const std::optional<Value> &v, il::support::SourceLoc loc);
 
+    /// @brief Emit resume that rethrows the current error within the same handler.
+    /// @param token Resume token supplied by the active handler.
+    /// @param loc Source location for diagnostics.
+    void emitResumeSame(Value token, il::support::SourceLoc loc);
+
+    /// @brief Emit resume that propagates to the next enclosing handler.
+    /// @param token Resume token supplied by the active handler.
+    /// @param loc Source location for diagnostics.
+    void emitResumeNext(Value token, il::support::SourceLoc loc);
+
+    /// @brief Emit resume to a specific handler block label.
+    /// @param token Resume token supplied by the active handler.
+    /// @param target Handler block receiving control.
+    /// @param loc Source location for diagnostics.
+    void emitResumeLabel(Value token, BasicBlock &target, il::support::SourceLoc loc);
+
     /// @brief Reserve the next SSA temporary identifier for the active function.
     /// @return Newly assigned temporary id.
     unsigned reserveTempId();
