@@ -743,6 +743,11 @@ void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNam
         info.slotId = slot.id;
         if (slotInfo.isBoolean)
             emitStore(ilBoolTy(), slot, emitBoolConst(false));
+        else if (slotInfo.type.kind == Type::Kind::Str)
+        {
+            Value empty = emitCallRet(slotInfo.type, "rt_str_empty", {});
+            emitStore(slotInfo.type, slot, empty);
+        }
     }
 
     if (!boundsChecks)
