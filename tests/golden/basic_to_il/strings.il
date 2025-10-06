@@ -8,6 +8,8 @@ extern @rt_left(str, i64) -> str
 extern @rt_right(str, i64) -> str
 extern @rt_mid2(str, i64) -> str
 extern @rt_mid3(str, i64, i64) -> str
+extern @rt_str_retain_maybe(str) -> void
+extern @rt_str_release_maybe(str) -> void
 global const str @.L0 = "HELLO"
 global const str @.L1 = "
 "
@@ -19,76 +21,82 @@ L10:
   .loc 1 1 13
   %t1 = const_str @.L0
   .loc 1 1 4
+  %t2 = load str, %t0
+  .loc 1 1 4
+  call @rt_str_release_maybe(%t2)
+  .loc 1 1 4
+  call @rt_str_retain_maybe(%t1)
+  .loc 1 1 4
   store str, %t0, %t1
   .loc 1 1 4
   br L20
 L20:
   .loc 1 2 14
-  %t2 = load str, %t0
+  %t3 = load str, %t0
   .loc 1 2 10
-  %t3 = call @rt_len(%t2)
+  %t4 = call @rt_len(%t3)
   .loc 1 2 4
-  call @rt_print_i64(%t3)
+  call @rt_print_i64(%t4)
   .loc 1 2 4
-  %t4 = const_str @.L1
+  %t5 = const_str @.L1
   .loc 1 2 4
-  call @rt_print_str(%t4)
+  call @rt_print_str(%t5)
   .loc 1 2 4
   br L30
 L30:
   .loc 1 3 15
-  %t5 = load str, %t0
+  %t6 = load str, %t0
   .loc 1 3 19
-  %t6 = iadd.ovf 2, -1
+  %t7 = iadd.ovf 2, -1
   .loc 1 3 22
-  %t7 = call @rt_mid3(%t5, %t6, 3)
-  .loc 1 3 4
-  call @rt_print_str(%t7)
-  .loc 1 3 4
-  %t8 = const_str @.L1
+  %t8 = call @rt_mid3(%t6, %t7, 3)
   .loc 1 3 4
   call @rt_print_str(%t8)
+  .loc 1 3 4
+  %t9 = const_str @.L1
+  .loc 1 3 4
+  call @rt_print_str(%t9)
   .loc 1 3 4
   br L40
 L40:
   .loc 1 4 15
-  %t9 = load str, %t0
+  %t10 = load str, %t0
   .loc 1 4 19
-  %t10 = iadd.ovf 3, -1
+  %t11 = iadd.ovf 3, -1
   .loc 1 4 10
-  %t11 = call @rt_mid2(%t9, %t10)
-  .loc 1 4 4
-  call @rt_print_str(%t11)
-  .loc 1 4 4
-  %t12 = const_str @.L1
+  %t12 = call @rt_mid2(%t10, %t11)
   .loc 1 4 4
   call @rt_print_str(%t12)
+  .loc 1 4 4
+  %t13 = const_str @.L1
+  .loc 1 4 4
+  call @rt_print_str(%t13)
   .loc 1 4 4
   br L50
 L50:
   .loc 1 5 16
-  %t13 = load str, %t0
+  %t14 = load str, %t0
   .loc 1 5 10
-  %t14 = call @rt_left(%t13, 2)
-  .loc 1 5 4
-  call @rt_print_str(%t14)
-  .loc 1 5 4
-  %t15 = const_str @.L1
+  %t15 = call @rt_left(%t14, 2)
   .loc 1 5 4
   call @rt_print_str(%t15)
+  .loc 1 5 4
+  %t16 = const_str @.L1
+  .loc 1 5 4
+  call @rt_print_str(%t16)
   .loc 1 5 4
   br L60
 L60:
   .loc 1 6 17
-  %t16 = load str, %t0
+  %t17 = load str, %t0
   .loc 1 6 10
-  %t17 = call @rt_right(%t16, 2)
-  .loc 1 6 4
-  call @rt_print_str(%t17)
-  .loc 1 6 4
-  %t18 = const_str @.L1
+  %t18 = call @rt_right(%t17, 2)
   .loc 1 6 4
   call @rt_print_str(%t18)
+  .loc 1 6 4
+  %t19 = const_str @.L1
+  .loc 1 6 4
+  call @rt_print_str(%t19)
   .loc 1 6 4
   br L70
 L70:
