@@ -59,6 +59,14 @@ SemanticAnalyzer::Type numericResult(SemanticAnalyzer::Type lhs,
     return (lhs == Type::Float || rhs == Type::Float) ? Type::Float : Type::Int;
 }
 
+static SemanticAnalyzer::Type addResult(SemanticAnalyzer::Type lhs,
+                                        SemanticAnalyzer::Type rhs) noexcept
+{
+    using T = SemanticAnalyzer::Type;
+    if (lhs == T::String && rhs == T::String) return T::String;
+    return (lhs == T::Float || rhs == T::Float) ? T::Float : T::Int;
+}
+
 SemanticAnalyzer::Type powResult(SemanticAnalyzer::Type,
                                  SemanticAnalyzer::Type) noexcept
 {
@@ -90,7 +98,7 @@ const ExprRule &exprRule(BinaryExpr::Op op)
     static const std::array<ExprRule, exprRuleCount()> rules = {
         {{BinaryExpr::Op::Add,
           &SemanticAnalyzer::validateNumericOperands,
-          &numericResult,
+          &addResult,
           "B2001"},
          {BinaryExpr::Op::Sub,
           &SemanticAnalyzer::validateNumericOperands,
