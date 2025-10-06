@@ -7,6 +7,10 @@
 
 #include "cli.hpp"
 
+#include <charconv>
+#include <string_view>
+#include <system_error>
+
 namespace ilc
 {
 
@@ -41,7 +45,17 @@ SharedOptionParseResult parseSharedOption(int &index,
         {
             return SharedOptionParseResult::Error;
         }
-        opts.maxSteps = std::stoull(argv[++index]);
+        std::string_view value(argv[index + 1]);
+        std::uint64_t parsed = 0;
+        const char *const begin = value.data();
+        const char *const end = begin + value.size();
+        const auto fc = std::from_chars(begin, end, parsed);
+        if (fc.ec != std::errc() || fc.ptr != end)
+        {
+            return SharedOptionParseResult::Error;
+        }
+        ++index;
+        opts.maxSteps = parsed;
         return SharedOptionParseResult::Parsed;
     }
     if (arg == "--bounds-checks")
