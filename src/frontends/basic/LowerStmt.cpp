@@ -315,7 +315,19 @@ void Lowerer::lowerLet(const LetStmt &stmt)
             {
                 v = coerceToBool(std::move(v), stmt.loc);
             }
-            emitStore(targetTy, slot, v.value);
+            if (isStr)
+            {
+                requireStrReleaseMaybe();
+                Value oldValue = emitLoad(targetTy, slot);
+                emitCall("rt_str_release_maybe", {oldValue});
+                requireStrRetainMaybe();
+                emitCall("rt_str_retain_maybe", {v.value});
+                emitStore(targetTy, slot, v.value);
+            }
+            else
+            {
+                emitStore(targetTy, slot, v.value);
+            }
         }
     }
     else if (auto *arr = dynamic_cast<const ArrayExpr *>(stmt.target.get()))

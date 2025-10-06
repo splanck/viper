@@ -241,6 +241,16 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
                     lowerer_.requireArrayI32Retain();
                     lowerer_.requireArrayI32Release();
                 }
+                else
+                {
+                    const auto *symInfo = lowerer_.findSymbol(var->name);
+                    Type symType = symInfo ? symInfo->type : inferAstTypeFromName(var->name);
+                    if (symType == Type::Str)
+                    {
+                        lowerer_.requireStrRetainMaybe();
+                        lowerer_.requireStrReleaseMaybe();
+                    }
+                }
             }
         }
         else if (auto *arr = dynamic_cast<const ArrayExpr *>(stmt.target.get()))

@@ -27,6 +27,14 @@ extern "C" {
     /// @param s String to release; may be NULL.
     void rt_string_unref(rt_string s);
 
+    /// @brief Release @p s when non-null.
+    /// @param s String handle that may be NULL.
+    void rt_str_release_maybe(rt_string s);
+
+    /// @brief Retain @p s when non-null.
+    /// @param s String handle that may be NULL.
+    void rt_str_retain_maybe(rt_string s);
+
     /// @brief Return the number of bytes stored in @p s (excluding the terminator).
     /// @param s String to measure; NULL returns 0.
     /// @return Length in bytes.
