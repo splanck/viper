@@ -36,32 +36,7 @@ enum class ErrCode : int32_t
 /// @brief Map a legacy runtime error code to the corresponding trap kind.
 /// @param err_code Numeric code reported by the runtime.
 /// @return TrapKind describing the semantic category of the error.
-inline TrapKind map_err_to_trap(int err_code)
-{
-    switch (err_code)
-    {
-        case 1:
-            return TrapKind::FileNotFound;
-        case 2:
-            return TrapKind::EOF;
-        case 3:
-            return TrapKind::IOError;
-        case 4:
-            return TrapKind::Overflow;
-        case 5:
-            return TrapKind::InvalidCast;
-        case 6:
-            return TrapKind::DomainError;
-        case 7:
-            return TrapKind::Bounds;
-        case 8:
-            return TrapKind::InvalidOperation;
-        case 9:
-            return TrapKind::RuntimeError;
-        default:
-            return TrapKind::RuntimeError;
-    }
-}
+TrapKind map_err_to_trap(int err_code);
 
 #ifdef IL_VM_ERR_BRIDGE_RESTORE_EOF
 #pragma pop_macro("EOF")
