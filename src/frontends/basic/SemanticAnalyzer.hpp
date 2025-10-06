@@ -269,6 +269,11 @@ class SemanticAnalyzer
                                  Type lhs,
                                  Type rhs,
                                  std::string_view diagId);
+    /// @brief Allows + for numeric+numeric and string+string.
+    void validateAddOperands(const BinaryExpr &expr,
+                             Type lhs,
+                             Type rhs,
+                             std::string_view diagId);
     /// @brief Validate division operands and detect divide-by-zero.
     void validateDivisionOperands(const BinaryExpr &expr,
                                   Type lhs,
