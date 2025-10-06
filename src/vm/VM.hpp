@@ -317,11 +317,11 @@ class VM
 
     struct TrapDispatchSignal : std::exception
     {
-        explicit TrapDispatchSignal(ExecState *targetState) : target(targetState) {}
+        explicit TrapDispatchSignal(ExecState *targetState);
 
         ExecState *target;
 
-        const char *what() const noexcept override { return "trap dispatch"; }
+        const char *what() const noexcept override;
     };
 
     /// @brief Active execution stack for trap unwinding.

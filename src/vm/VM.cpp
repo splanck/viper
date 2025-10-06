@@ -59,6 +59,18 @@ std::string opcodeMnemonic(Opcode op)
 } // namespace
 
 
+/// Construct a trap dispatch signal targeting a specific execution state.
+VM::TrapDispatchSignal::TrapDispatchSignal(ExecState *targetState) : target(targetState)
+{
+}
+
+/// Retrieve the diagnostic message associated with trap dispatch signals.
+const char *VM::TrapDispatchSignal::what() const noexcept
+{
+    return "trap dispatch";
+}
+
+
 /// Locate and execute the module's @c main function.
 ///
 /// The entry point is looked up by name in the cached function map and then
