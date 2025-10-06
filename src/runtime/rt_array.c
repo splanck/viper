@@ -12,6 +12,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+/// @brief Helper returning the heap header associated with @p payload.
+/// @param payload Array payload pointer (may be NULL).
+/// @return Heap header describing the allocation, or NULL for NULL payloads.
+rt_heap_hdr_t *rt_arr_i32_hdr(const int32_t *payload)
+{
+    return payload ? rt_heap_hdr((void *)payload) : NULL;
+}
+
 void rt_arr_oob_panic(size_t idx, size_t len)
 {
     fprintf(stderr, "rt_arr_i32: index %zu out of bounds (len=%zu)\n", idx, len);
