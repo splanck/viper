@@ -12,8 +12,81 @@
 #include <sstream>
 #include <string_view>
 
+#ifdef EOF
+#pragma push_macro("EOF")
+#undef EOF
+#define IL_VM_TRAP_CPP_RESTORE_EOF 1
+#endif
+
 namespace il::vm
 {
+
+std::string_view toString(TrapKind kind)
+{
+    switch (kind)
+    {
+        case TrapKind::DivideByZero:
+            return "DivideByZero";
+        case TrapKind::Overflow:
+            return "Overflow";
+        case TrapKind::InvalidCast:
+            return "InvalidCast";
+        case TrapKind::DomainError:
+            return "DomainError";
+        case TrapKind::Bounds:
+            return "Bounds";
+        case TrapKind::FileNotFound:
+            return "FileNotFound";
+        case TrapKind::EOF:
+            return "EOF";
+        case TrapKind::IOError:
+            return "IOError";
+        case TrapKind::InvalidOperation:
+            return "InvalidOperation";
+        case TrapKind::RuntimeError:
+            return "RuntimeError";
+    }
+
+    // NOTE: Maintain graceful degradation when encountering unexpected enumerators.
+    return "RuntimeError";
+}
+
+TrapKind trapKindFromValue(int32_t value)
+{
+    switch (value)
+    {
+        case static_cast<int32_t>(TrapKind::DivideByZero):
+            return TrapKind::DivideByZero;
+        case static_cast<int32_t>(TrapKind::Overflow):
+            return TrapKind::Overflow;
+        case static_cast<int32_t>(TrapKind::InvalidCast):
+            return TrapKind::InvalidCast;
+        case static_cast<int32_t>(TrapKind::DomainError):
+            return TrapKind::DomainError;
+        case static_cast<int32_t>(TrapKind::Bounds):
+            return TrapKind::Bounds;
+        case static_cast<int32_t>(TrapKind::FileNotFound):
+            return TrapKind::FileNotFound;
+        case static_cast<int32_t>(TrapKind::EOF):
+            return TrapKind::EOF;
+        case static_cast<int32_t>(TrapKind::IOError):
+            return TrapKind::IOError;
+        case static_cast<int32_t>(TrapKind::InvalidOperation):
+            return TrapKind::InvalidOperation;
+        case static_cast<int32_t>(TrapKind::RuntimeError):
+            return TrapKind::RuntimeError;
+        default:
+            break;
+    }
+
+    // NOTE: Legacy IL payloads may encode unexpected values; fall back to RuntimeError.
+    return TrapKind::RuntimeError;
+}
+
+#ifdef IL_VM_TRAP_CPP_RESTORE_EOF
+#pragma pop_macro("EOF")
+#undef IL_VM_TRAP_CPP_RESTORE_EOF
+#endif
 
 namespace
 {
