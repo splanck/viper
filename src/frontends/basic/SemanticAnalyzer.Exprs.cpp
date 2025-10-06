@@ -97,7 +97,7 @@ const ExprRule &exprRule(BinaryExpr::Op op)
 {
     static const std::array<ExprRule, exprRuleCount()> rules = {
         {{BinaryExpr::Op::Add,
-          &SemanticAnalyzer::validateNumericOperands,
+          &SemanticAnalyzer::validateAddOperands,
           &addResult,
           "B2001"},
          {BinaryExpr::Op::Sub,
@@ -324,6 +324,21 @@ void SemanticAnalyzer::validateNumericOperands(const BinaryExpr &expr,
 {
     if (!semantic_analyzer_detail::isNumericType(lhs) ||
         !semantic_analyzer_detail::isNumericType(rhs))
+    {
+        emitOperandTypeMismatch(expr, diagId);
+    }
+}
+
+void SemanticAnalyzer::validateAddOperands(const BinaryExpr &expr,
+                                           Type lhs,
+                                           Type rhs,
+                                           std::string_view diagId)
+{
+    const bool numericOk = semantic_analyzer_detail::isNumericType(lhs) &&
+                           semantic_analyzer_detail::isNumericType(rhs);
+    const bool stringOk = semantic_analyzer_detail::isStringType(lhs) &&
+                          semantic_analyzer_detail::isStringType(rhs);
+    if (!numericOk && !stringOk)
     {
         emitOperandTypeMismatch(expr, diagId);
     }
