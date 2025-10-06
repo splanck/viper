@@ -5,6 +5,7 @@ extern @rt_print_f64(f64) -> void
 extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
 extern @rt_trap(str) -> void
+extern @rt_str_empty() -> str
 extern @rt_arr_i32_new(i64) -> ptr
 extern @rt_arr_i32_len(ptr) -> i64
 extern @rt_arr_i32_get(ptr, i64) -> i64

@@ -4,6 +4,7 @@ extern @rt_print_i64(i64) -> void
 extern @rt_print_f64(f64) -> void
 extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
+extern @rt_str_empty() -> str
 extern @rt_abs_i64(i64) -> i64
 extern @rt_abs_f64(f64) -> f64
 global const str @.L0 = "
