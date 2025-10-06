@@ -7,6 +7,7 @@
 
 #include <cassert>
 #include <string>
+#include <vector>
 
 using viper::tui::text::TextBuffer;
 
@@ -24,6 +25,24 @@ int main()
     assert(buf.lineStart(5) == buf.size());
     assert(buf.lineEnd(5) == buf.size());
 
+    {
+        auto view = buf.lineView(0);
+        std::vector<std::string> segments;
+        view.forEachSegment([&](std::string_view segment) {
+            segments.emplace_back(segment);
+            return true;
+        });
+        assert(segments.size() == 1);
+        assert(segments.front() == "hello");
+
+        std::size_t calls = 0;
+        view.forEachSegment([&](std::string_view) {
+            ++calls;
+            return false;
+        });
+        assert(calls == 1);
+    }
+
     buf.insert(5, ", there\nbeautiful");
     assert(buf.getLine(0) == "hello, there");
     assert(buf.getLine(1) == "beautiful");
@@ -34,6 +53,18 @@ int main()
     assert(buf.lineEnd(2) == buf.lineStart(2) + buf.getLine(2).size());
     assert(buf.lineStart(99) == buf.size());
     assert(buf.lineEnd(99) == buf.size());
+
+    {
+        auto view = buf.lineView(0);
+        std::vector<std::string> segments;
+        view.forEachSegment([&](std::string_view segment) {
+            segments.emplace_back(segment);
+            return true;
+        });
+        assert(segments.size() == 2);
+        assert(segments[0] == "hello");
+        assert(segments[1] == ", there");
+    }
 
     buf.beginTxn();
     buf.erase(0, 5); // remove 'hello'

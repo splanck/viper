@@ -8,9 +8,11 @@
 #include <cstddef>
 #include <functional>
 #include <list>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 
 namespace viper::tui::text
@@ -75,9 +77,44 @@ class PieceTable
     /// @brief Extract text within [pos, pos + len).
     [[nodiscard]] std::string getText(std::size_t pos, std::size_t len) const;
 
+    /// @brief Type-erased visitor used when iterating contiguous segments.
+    class SegmentCallback
+    {
+      public:
+        using Signature = bool(std::string_view);
+
+        SegmentCallback() = delete;
+
+        template <typename Fn>
+        SegmentCallback(Fn &&fn) noexcept
+            : object_(static_cast<const void *>(std::addressof(fn))),
+              callback_(&invoke<std::remove_reference_t<Fn>>)
+        {
+        }
+
+        [[nodiscard]] bool operator()(std::string_view segment) const
+        {
+            return callback_(object_, segment);
+        }
+
+        [[nodiscard]] explicit operator bool() const noexcept
+        {
+            return callback_ != nullptr;
+        }
+
+      private:
+        template <typename Fn>
+        static bool invoke(const void *object, std::string_view segment)
+        {
+            return std::invoke(*static_cast<const Fn *>(object), segment);
+        }
+
+        const void *object_{nullptr};
+        bool (*callback_)(const void *, std::string_view){nullptr};
+    };
+
     /// @brief Iterate contiguous segments covering [pos, pos + len).
-    template <typename Fn>
-    void forEachSegment(std::size_t pos, std::size_t len, Fn &&fn) const;
+    void forEachSegment(std::size_t pos, std::size_t len, SegmentCallback callback) const;
 
     /// @brief Insert text at position returning span callbacks.
     Change insertInternal(std::size_t pos, std::string_view text);
@@ -108,30 +145,3 @@ class PieceTable
     std::size_t size_{};
 };
 } // namespace viper::tui::text
-
-template <typename Fn>
-void viper::tui::text::PieceTable::forEachSegment(std::size_t pos, std::size_t len, Fn &&fn) const
-{
-    std::size_t idx = 0;
-    for (auto it = pieces_.cbegin(); it != pieces_.cend() && len > 0; ++it)
-    {
-        if (pos >= idx + it->length)
-        {
-            idx += it->length;
-            continue;
-        }
-
-        std::size_t start_in_piece = pos > idx ? pos - idx : 0U;
-        std::size_t take = std::min(it->length - start_in_piece, len);
-        const std::string &buf = it->buf == BufferKind::Add ? add_ : original_;
-        std::string_view view(buf.data() + it->start + start_in_piece, take);
-        if (!std::invoke(std::forward<Fn>(fn), view))
-        {
-            break;
-        }
-
-        pos += take;
-        len -= take;
-        idx += it->length;
-    }
-}

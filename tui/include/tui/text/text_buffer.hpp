@@ -36,7 +36,7 @@ class TextBuffer
         template <typename Fn>
         void forEachSegment(Fn &&fn) const
         {
-            table_.forEachSegment(offset_, length_, std::forward<Fn>(fn));
+            table_.forEachSegment(offset_, length_, PieceTable::SegmentCallback(std::forward<Fn>(fn)));
         }
 
       private:

@@ -225,6 +225,41 @@ std::string PieceTable::getText(std::size_t pos, std::size_t len) const
     return out;
 }
 
+/// @brief Iterate contiguous string segments spanning the requested range.
+/// @param pos Starting byte offset within the logical buffer.
+/// @param len Number of bytes to cover from the starting offset.
+/// @param callback Visitor returning true to continue iteration.
+void PieceTable::forEachSegment(std::size_t pos, std::size_t len, SegmentCallback callback) const
+{
+    if (!callback)
+    {
+        return;
+    }
+
+    std::size_t idx = 0;
+    for (auto it = pieces_.cbegin(); it != pieces_.cend() && len > 0; ++it)
+    {
+        if (pos >= idx + it->length)
+        {
+            idx += it->length;
+            continue;
+        }
+
+        const std::size_t start_in_piece = pos > idx ? pos - idx : 0U;
+        const std::size_t take = std::min(it->length - start_in_piece, len);
+        const std::string &buf = it->buf == BufferKind::Add ? add_ : original_;
+        const std::string_view view(buf.data() + it->start + start_in_piece, take);
+        if (!callback(view))
+        {
+            break;
+        }
+
+        pos += take;
+        len -= take;
+        idx += it->length;
+    }
+}
+
 std::list<PieceTable::Piece>::iterator PieceTable::findPiece(std::size_t pos, std::size_t &offset)
 {
     std::size_t idx = 0;
