@@ -6,6 +6,7 @@
 #pragma once
 
 #include "symbol.hpp"
+#include <functional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -40,8 +41,48 @@ class StringInterner
     std::string_view lookup(Symbol sym) const;
 
   private:
+    struct TransparentHash
+    {
+        using is_transparent = void;
+
+        size_t operator()(std::string_view sv) const noexcept
+        {
+            return std::hash<std::string_view>{}(sv);
+        }
+
+        size_t operator()(const std::string &s) const noexcept
+        {
+            return (*this)(std::string_view{s});
+        }
+    };
+
+    struct TransparentEqual
+    {
+        using is_transparent = void;
+
+        bool operator()(std::string_view lhs, std::string_view rhs) const noexcept
+        {
+            return lhs == rhs;
+        }
+
+        bool operator()(const std::string &lhs, const std::string &rhs) const noexcept
+        {
+            return lhs == rhs;
+        }
+
+        bool operator()(const std::string &lhs, std::string_view rhs) const noexcept
+        {
+            return lhs == rhs;
+        }
+
+        bool operator()(std::string_view lhs, const std::string &rhs) const noexcept
+        {
+            return lhs == rhs;
+        }
+    };
+
     /// Maps string content to assigned symbols for O(1) lookup during interning.
-    std::unordered_map<std::string, Symbol> map_;
+    std::unordered_map<std::string, Symbol, TransparentHash, TransparentEqual> map_;
     /// Retains copies of interned strings so lookups return stable views.
     std::vector<std::string> storage_;
 };
