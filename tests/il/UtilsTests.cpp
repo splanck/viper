@@ -48,6 +48,9 @@ int main()
     checkTerm(Opcode::CBr);
     checkTerm(Opcode::Ret);
     checkTerm(Opcode::Trap);
+    checkTerm(Opcode::ResumeSame);
+    checkTerm(Opcode::ResumeNext);
+    checkTerm(Opcode::ResumeLabel);
 
     return 0;
 }
