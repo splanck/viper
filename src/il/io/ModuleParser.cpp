@@ -68,7 +68,7 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st)
         oss << "line " << st.lineNo << ": missing '->'";
         return Expected<void>{makeError({}, oss.str())};
     }
-    std::string name = line.substr(at + 1, lp - at - 1);
+    std::string name = trim(line.substr(at + 1, lp - at - 1));
     std::string paramsStr = line.substr(lp + 1, rp - lp - 1);
     std::vector<Type> params;
     std::stringstream pss(paramsStr);
