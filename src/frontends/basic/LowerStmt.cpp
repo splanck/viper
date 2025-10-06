@@ -960,33 +960,25 @@ void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal st
 
 /// @brief Lower a BASIC FOR statement.
 /// @param stmt Parsed FOR statement containing bounds and optional step.
-/// @details Evaluates the start/end/step expressions, stores the initial value
-///          into the induction slot, and dispatches to either the constant-step
-///          or variable-step lowering path. The helper updates @ref curLoc for
-///          each emitted instruction and leaves @ref cur at the block chosen by
-///          the delegated lowering routine.
+/// @details Evaluates the start/end/step expressions once, stores the initial
+///          value into the induction slot, and forwards to the sign-sensitive
+///          lowering that selects the positive or negative branch at runtime.
+///          The helper updates @ref curLoc for each emitted instruction and
+///          leaves @ref cur at the block chosen by the delegated lowering
+///          routine.
 void Lowerer::lowerFor(const ForStmt &stmt)
 {
-    RVal start = lowerExpr(*stmt.start);
-    RVal end = lowerExpr(*stmt.end);
-    RVal step = stmt.step ? lowerExpr(*stmt.step) : RVal{Value::constInt(1), Type(Type::Kind::I64)};
+    RVal start = lowerScalarExpr(*stmt.start);
+    RVal end = lowerScalarExpr(*stmt.end);
+    RVal step = stmt.step ? lowerScalarExpr(*stmt.step)
+                          : RVal{Value::constInt(1), Type(Type::Kind::I64)};
     const auto *info = findSymbol(stmt.var);
     assert(info && info->slotId);
     Value slot = Value::temp(*info->slotId);
     curLoc = stmt.loc;
     emitStore(Type(Type::Kind::I64), slot, start.value);
 
-    bool constStep = !stmt.step || dynamic_cast<const IntExpr *>(stmt.step.get());
-    int64_t stepConst = 1;
-    if (constStep && stmt.step)
-    {
-        if (auto *ie = dynamic_cast<const IntExpr *>(stmt.step.get()))
-            stepConst = ie->value;
-    }
-    if (constStep)
-        lowerForConstStep(stmt, slot, end, step, stepConst);
-    else
-        lowerForVarStep(stmt, slot, end, step);
+    lowerForVarStep(stmt, slot, end, step);
 }
 
 /// @brief Handle a NEXT marker.
