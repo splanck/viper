@@ -175,6 +175,16 @@ void Lowerer::requireLineInputChErr()
     setManualHelperRequired(ManualRuntimeHelper::LineInputChErr);
 }
 
+void Lowerer::requireStrRetainMaybe()
+{
+    setManualHelperRequired(ManualRuntimeHelper::StrRetainMaybe);
+}
+
+void Lowerer::requireStrReleaseMaybe()
+{
+    setManualHelperRequired(ManualRuntimeHelper::StrReleaseMaybe);
+}
+
 void Lowerer::requestHelper(RuntimeFeature feature)
 {
     runtimeTracker.requestHelper(feature);
@@ -214,6 +224,8 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         {"rt_close_err", ManualRuntimeHelper::CloseErr, &Lowerer::requireCloseErr},
         {"rt_println_ch_err", ManualRuntimeHelper::PrintlnChErr, &Lowerer::requirePrintlnChErr},
         {"rt_line_input_ch_err", ManualRuntimeHelper::LineInputChErr, &Lowerer::requireLineInputChErr},
+        {"rt_str_retain_maybe", ManualRuntimeHelper::StrRetainMaybe, &Lowerer::requireStrRetainMaybe},
+        {"rt_str_release_maybe", ManualRuntimeHelper::StrReleaseMaybe, &Lowerer::requireStrReleaseMaybe},
     }};
 
     auto declareManual = [&](std::string_view name) {

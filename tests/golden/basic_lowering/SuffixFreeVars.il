@@ -11,6 +11,8 @@ extern @rt_arr_i32_set(ptr, i64, i64) -> void
 extern @rt_arr_i32_retain(ptr) -> void
 extern @rt_arr_i32_release(ptr) -> void
 extern @rt_arr_oob_panic(i64, i64) -> void
+extern @rt_str_retain_maybe(str) -> void
+extern @rt_str_release_maybe(str) -> void
 global const str @.L0 = "ok"
 global const str @.L1 = "
 "
@@ -38,6 +40,12 @@ L-999999997:
   .loc 1 4 15
   %t7 = const_str @.L0
   .loc 1 4 1
+  %t8 = load str, %t2
+  .loc 1 4 1
+  call @rt_str_release_maybe(%t8)
+  .loc 1 4 1
+  call @rt_str_retain_maybe(%t7)
+  .loc 1 4 1
   store str, %t2, %t7
   .loc 1 4 1
   br L-999999996
@@ -48,69 +56,69 @@ L-999999996:
   br L-999999995
 L-999999995:
   .loc 1 6 17
-  %t8 = load i64, %t1
+  %t9 = load i64, %t1
   .loc 1 6 17
-  %t9 = load ptr, %t0
+  %t10 = load ptr, %t0
   .loc 1 6 5
-  %t10 = call @rt_arr_i32_len(%t9)
+  %t11 = call @rt_arr_i32_len(%t10)
   .loc 1 6 5
-  %t11 = scmp_lt 0, 0
+  %t12 = scmp_lt 0, 0
   .loc 1 6 5
-  %t12 = scmp_ge 0, %t10
-  .loc 1 6 5
-  %t13 = zext1 %t11
+  %t13 = scmp_ge 0, %t11
   .loc 1 6 5
   %t14 = zext1 %t12
   .loc 1 6 5
-  %t15 = or %t13, %t14
+  %t15 = zext1 %t13
   .loc 1 6 5
-  %t16 = icmp_ne %t15, 0
+  %t16 = or %t14, %t15
   .loc 1 6 5
-  cbr %t16, bc_oob0, bc_ok0
+  %t17 = icmp_ne %t16, 0
+  .loc 1 6 5
+  cbr %t17, bc_oob0, bc_ok0
 L-999999994:
   .loc 1 7 7
-  %t17 = load str, %t2
-  .loc 1 7 1
-  call @rt_print_str(%t17)
-  .loc 1 7 1
-  %t18 = const_str @.L1
+  %t18 = load str, %t2
   .loc 1 7 1
   call @rt_print_str(%t18)
+  .loc 1 7 1
+  %t19 = const_str @.L1
+  .loc 1 7 1
+  call @rt_print_str(%t19)
   .loc 1 7 1
   br L-999999993
 L-999999993:
   .loc 1 8 7
-  %t19 = load i64, %t1
+  %t20 = load i64, %t1
   .loc 1 8 1
-  call @rt_print_i64(%t19)
+  call @rt_print_i64(%t20)
   .loc 1 8 1
-  %t20 = const_str @.L1
+  %t21 = const_str @.L1
   .loc 1 8 1
-  call @rt_print_str(%t20)
+  call @rt_print_str(%t21)
   .loc 1 8 1
   br L-999999992
 L-999999992:
   .loc 1 9 7
-  %t21 = load ptr, %t0
+  %t22 = load ptr, %t0
   .loc 1 9 7
-  %t22 = call @rt_arr_i32_len(%t21)
+  %t23 = call @rt_arr_i32_len(%t22)
   .loc 1 9 7
-  %t23 = scmp_lt 0, 0
+  %t24 = scmp_lt 0, 0
   .loc 1 9 7
-  %t24 = scmp_ge 0, %t22
-  .loc 1 9 7
-  %t25 = zext1 %t23
+  %t25 = scmp_ge 0, %t23
   .loc 1 9 7
   %t26 = zext1 %t24
   .loc 1 9 7
-  %t27 = or %t25, %t26
+  %t27 = zext1 %t25
   .loc 1 9 7
-  %t28 = icmp_ne %t27, 0
+  %t28 = or %t26, %t27
   .loc 1 9 7
-  cbr %t28, bc_oob1, bc_ok1
+  %t29 = icmp_ne %t28, 0
+  .loc 1 9 7
+  cbr %t29, bc_oob1, bc_ok1
 exit:
-  %t31 = load ptr, %t0
-  call @rt_arr_i32_release(%t31)
+  %t32 = load ptr, %t0
+  call @rt_arr_i32_release(%t32)
   store ptr, %t0, null
   ret 0
 dim_len_fail:
@@ -131,28 +139,28 @@ dim_len_cont:
   br L-999999997
 bc_ok0:
   .loc 1 6 1
-  call @rt_arr_i32_set(%t9, 0, %t8)
+  call @rt_arr_i32_set(%t10, 0, %t9)
   .loc 1 6 1
   br L-999999994
 bc_oob0:
   .loc 1 6 5
-  call @rt_arr_oob_panic(0, %t10)
+  call @rt_arr_oob_panic(0, %t11)
   .loc 1 6 5
   trap
 bc_ok1:
   .loc 1 9 7
-  %t29 = call @rt_arr_i32_get(%t21, 0)
+  %t30 = call @rt_arr_i32_get(%t22, 0)
   .loc 1 9 1
-  call @rt_print_i64(%t29)
+  call @rt_print_i64(%t30)
   .loc 1 9 1
-  %t30 = const_str @.L1
+  %t31 = const_str @.L1
   .loc 1 9 1
-  call @rt_print_str(%t30)
+  call @rt_print_str(%t31)
   .loc 1 9 1
   br exit
 bc_oob1:
   .loc 1 9 7
-  call @rt_arr_oob_panic(0, %t22)
+  call @rt_arr_oob_panic(0, %t23)
   .loc 1 9 7
   trap
 }
