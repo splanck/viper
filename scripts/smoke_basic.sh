@@ -45,4 +45,34 @@ for i in "${!cases[@]}"; do
   echo
 done
 
+concat_string_path="${ROOT_DIR}/tests/smoke/basic/concat_string.bas"
+echo "Running tests/smoke/basic/concat_string.bas..."
+if ! output="$(timeout 10s "${ILC_BIN}" front basic -run "${concat_string_path}")"; then
+  echo "ERROR: tests/smoke/basic/concat_string.bas exited with failure" >&2
+  exit 1
+fi
+if ! grep -Fq "Hello, World" <<<"${output}"; then
+  echo "ERROR: tests/smoke/basic/concat_string.bas output missing substring 'Hello, World'" >&2
+  echo "Output was:" >&2
+  echo "${output}" >&2
+  exit 1
+fi
+echo "tests/smoke/basic/concat_string.bas passed"
+echo
+
+concat_input_path="${ROOT_DIR}/tests/smoke/basic/concat_input.bas"
+echo "Running tests/smoke/basic/concat_input.bas..."
+if ! output="$(printf "Alice\n" | timeout 10s "${ILC_BIN}" front basic -run "${concat_input_path}")"; then
+  echo "ERROR: tests/smoke/basic/concat_input.bas exited with failure" >&2
+  exit 1
+fi
+if ! grep -Fq "Alice!" <<<"${output}"; then
+  echo "ERROR: tests/smoke/basic/concat_input.bas output missing substring 'Alice!'" >&2
+  echo "Output was:" >&2
+  echo "${output}" >&2
+  exit 1
+fi
+echo "tests/smoke/basic/concat_input.bas passed"
+echo
+
 echo "All smoke tests passed."
