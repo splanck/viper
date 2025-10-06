@@ -270,6 +270,27 @@ LowerCtx::LowerCtx(Lowerer &lowerer, const BuiltinCallExpr &call)
     }
 }
 
+/// @brief Retrieve the lowering driver powering this context.
+/// @return Reference to the owning lowering driver.
+Lowerer &LowerCtx::lowerer() const noexcept
+{
+    return lowerer_;
+}
+
+/// @brief Access the builtin call node being processed.
+/// @return Immutable reference to the builtin call expression.
+const BuiltinCallExpr &LowerCtx::call() const noexcept
+{
+    return call_;
+}
+
+/// @brief Compute the total number of argument slots available.
+/// @return Number of argument positions recorded on the call.
+std::size_t LowerCtx::argCount() const noexcept
+{
+    return call_.args.size();
+}
+
 bool LowerCtx::hasArg(std::size_t idx) const noexcept
 {
     return idx < hasArg_.size() && hasArg_[idx];
@@ -297,6 +318,20 @@ Value &LowerCtx::argValue(std::size_t idx)
 ArrayRef<Value> LowerCtx::values() noexcept
 {
     return ArrayRef<Value>(argValues_.data(), argValues_.size());
+}
+
+/// @brief Record the result type that the handler will synthesize.
+/// @param ty Result type chosen by the lowering routine.
+void LowerCtx::setResultType(Type ty) noexcept
+{
+    resultType_ = ty;
+}
+
+/// @brief Query the result type previously recorded by the handler.
+/// @return Type reported by the lowering routine.
+Type LowerCtx::resultType() const noexcept
+{
+    return resultType_;
 }
 
 Lowerer::RVal &LowerCtx::ensureI64(std::size_t idx, il::support::SourceLoc loc)
