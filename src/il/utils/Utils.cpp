@@ -77,6 +77,9 @@ bool isTerminator(const Instruction &I)
         case Opcode::SwitchI32:
         case Opcode::Ret:
         case Opcode::Trap:
+        case Opcode::ResumeSame:
+        case Opcode::ResumeNext:
+        case Opcode::ResumeLabel:
             return true;
         default:
             return false;
