@@ -60,19 +60,21 @@ void rt_print_str(rt_string s)
 {
     if (!s || !s->data)
         return;
+
     size_t len = 0;
     if (s->heap)
     {
-        assert(s->heap->kind == RT_HEAP_STRING);
         len = rt_heap_len(s->data);
     }
     else
     {
         len = s->literal_len;
     }
+
     if (len == 0)
         return;
-    fwrite(s->data, 1, len, stdout);
+
+    (void)fwrite(s->data, 1, len, stdout);
 }
 
 /**
