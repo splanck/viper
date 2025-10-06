@@ -4,6 +4,7 @@ extern @rt_print_i64(i64) -> void
 extern @rt_print_f64(f64) -> void
 extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
+extern @rt_str_empty() -> str
 extern @rt_open_err_vstr(str, i32, i32) -> i32
 extern @rt_close_err(i32) -> i32
 global const str @.L0 = "foo.txt"

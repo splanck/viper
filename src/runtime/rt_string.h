@@ -35,6 +35,8 @@ extern "C" {
     /// @param s String handle that may be NULL.
     void rt_str_retain_maybe(rt_string s);
 
+    rt_string rt_str_empty(void);
+
     /// @brief Return the number of bytes stored in @p s (excluding the terminator).
     /// @param s String to measure; NULL returns 0.
     /// @return Length in bytes.
