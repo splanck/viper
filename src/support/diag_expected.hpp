@@ -92,12 +92,6 @@ template <> class Expected<void>
     std::optional<Diag> error_;
 };
 
-namespace detail
-{
-/// @brief Convert diagnostic severity to lowercase string.
-const char *diagSeverityToString(Severity severity);
-} // namespace detail
-
 /// @brief Create an error diagnostic with location and message.
 /// @param loc Optional source location associated with the diagnostic.
 /// @param msg Human-readable diagnostic message.

@@ -63,6 +63,41 @@ constexpr bool isWhitespace(char ch)
     return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r';
 }
 
+/// @brief Obtain a typed pointer to the argument storage at @p index.
+/// @tparam T Argument value type stored at the call site.
+/// @param args Array of pointers to argument slots supplied by the VM.
+/// @param index Index within @p args to read.
+/// @return Pointer to the typed storage or nullptr when unavailable.
+template <typename T> T *argPtr(void **args, std::size_t index)
+{
+    if (!args)
+        return nullptr;
+    return reinterpret_cast<T *>(args[index]);
+}
+
+/// @brief Read the argument stored at @p index with a default fallback.
+/// @tparam T Value type expected at the call site.
+/// @param args Array of argument slot pointers.
+/// @param index Index to load from.
+/// @param defaultValue Value to return when the slot is absent.
+/// @return Copied argument value or @p defaultValue when unavailable.
+template <typename T> T readArg(void **args, std::size_t index, T defaultValue = {})
+{
+    if (auto *ptr = argPtr<T>(args, index))
+        return *ptr;
+    return defaultValue;
+}
+
+/// @brief Write @p value to the result slot when provided by the caller.
+/// @tparam T Result type expected by the caller.
+/// @param result Pointer to result storage provided by the VM.
+/// @param value Value to assign when @p result is non-null.
+template <typename T> void writeResult(void *result, T value)
+{
+    if (result)
+        *reinterpret_cast<T *>(result) = value;
+}
+
 std::string_view trim(std::string_view text)
 {
     while (!text.empty() && isWhitespace(text.front()))
@@ -239,7 +274,7 @@ template <auto Fn, typename Ret, typename... Args> struct DirectHandler
 /// @brief Custom handler that extracts a C string from an rt_string before trapping.
 void trapFromRuntimeString(void **args, void * /*result*/)
 {
-    rt_string str = args ? *reinterpret_cast<rt_string *>(args[0]) : nullptr;
+    rt_string str = readArg<rt_string>(args, 0, nullptr);
     const char *msg = (str && str->data) ? str->data : "trap";
     rt_trap(msg);
 }
@@ -258,144 +293,112 @@ RuntimeLowering makeLowering(RuntimeLoweringKind kind,
 /// @brief Adapter converting IL i64 arguments into size_t for array helpers.
 void invokeRtArrI32New(void **args, void *result)
 {
-    const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[0]) : nullptr;
-    const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
+    const size_t len = static_cast<size_t>(readArg<int64_t>(args, 0, 0));
     int32_t *arr = rt_arr_i32_new(len);
-    if (result)
-        *reinterpret_cast<void **>(result) = arr;
+    writeResult<void *>(result, arr);
 }
 
 /// @brief Adapter converting array handle and index arguments for length queries.
 void invokeRtArrI32Len(void **args, void *result)
 {
-    const auto arrPtr = args ? reinterpret_cast<void *const *>(args[0]) : nullptr;
-    int32_t *arr = arrPtr ? *reinterpret_cast<int32_t *const *>(arrPtr) : nullptr;
+    int32_t *arr = readArg<int32_t *>(args, 0, nullptr);
     const size_t len = rt_arr_i32_len(arr);
-    if (result)
-        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(len);
+    writeResult<int64_t>(result, static_cast<int64_t>(len));
 }
 
 /// @brief Adapter reading array elements and widening i32 results to i64.
 void invokeRtArrI32Get(void **args, void *result)
 {
-    const auto arrPtr = args ? reinterpret_cast<void *const *>(args[0]) : nullptr;
-    const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
-    int32_t *arr = arrPtr ? *reinterpret_cast<int32_t *const *>(arrPtr) : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
+    int32_t *arr = readArg<int32_t *>(args, 0, nullptr);
+    const size_t idx = static_cast<size_t>(readArg<int64_t>(args, 1, 0));
     const int32_t value = rt_arr_i32_get(arr, idx);
-    if (result)
-        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(value);
+    writeResult<int64_t>(result, static_cast<int64_t>(value));
 }
 
 /// @brief Adapter writing array elements with truncation to 32 bits.
 void invokeRtArrI32Set(void **args, void * /*result*/)
 {
-    const auto arrPtr = args ? reinterpret_cast<void **>(args[0]) : nullptr;
-    const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
-    const auto valPtr = args ? reinterpret_cast<const int64_t *>(args[2]) : nullptr;
-    int32_t *arr = arrPtr ? *reinterpret_cast<int32_t **>(arrPtr) : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
-    const int32_t value = valPtr ? static_cast<int32_t>(*valPtr) : 0;
+    int32_t *arr = readArg<int32_t *>(args, 0, nullptr);
+    const size_t idx = static_cast<size_t>(readArg<int64_t>(args, 1, 0));
+    const int32_t value = static_cast<int32_t>(readArg<int64_t>(args, 2, 0));
     rt_arr_i32_set(arr, idx, value);
 }
 
 /// @brief Adapter resizing arrays while converting indices to size_t.
 void invokeRtArrI32Resize(void **args, void *result)
 {
-    const auto arrPtr = args ? reinterpret_cast<void **>(args[0]) : nullptr;
-    const auto newLenPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
-    int32_t *arr = arrPtr ? *reinterpret_cast<int32_t **>(arrPtr) : nullptr;
-    const size_t newLen = newLenPtr ? static_cast<size_t>(*newLenPtr) : 0;
+    int32_t **handle = argPtr<int32_t *>(args, 0);
+    int32_t *arr = handle ? *handle : nullptr;
+    const size_t newLen = static_cast<size_t>(readArg<int64_t>(args, 1, 0));
     int32_t *local = arr;
-    int32_t **handle = arrPtr ? reinterpret_cast<int32_t **>(arrPtr) : &local;
-    int rc = rt_arr_i32_resize(handle, newLen);
-    int32_t *resized = (rc == 0) ? *handle : nullptr;
-    if (arrPtr && rc == 0)
-        *reinterpret_cast<int32_t **>(arrPtr) = resized;
-    if (result)
-        *reinterpret_cast<void **>(result) = resized;
+    int32_t **target = handle ? handle : &local;
+    int rc = rt_arr_i32_resize(target, newLen);
+    int32_t *resized = (rc == 0) ? *target : nullptr;
+    if (handle && rc == 0)
+        *handle = resized;
+    writeResult<void *>(result, resized);
 }
 
 /// @brief Adapter invoking the noreturn out-of-bounds panic helper.
 void invokeRtArrOobPanic(void **args, void * /*result*/)
 {
-    const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[0]) : nullptr;
-    const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
-    const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
+    const size_t idx = static_cast<size_t>(readArg<int64_t>(args, 0, 0));
+    const size_t len = static_cast<size_t>(readArg<int64_t>(args, 1, 0));
     rt_arr_oob_panic(idx, len);
 }
 
 /// @brief Adapter invoking INTEGER conversion while widening to 64-bit storage.
 void invokeRtCintFromDouble(void **args, void *result)
 {
-    const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
-    const auto okPtr = args ? reinterpret_cast<bool *const *>(args[1]) : nullptr;
-    const double x = xPtr ? *xPtr : 0.0;
-    bool *ok = okPtr ? *okPtr : nullptr;
+    const double x = readArg<double>(args, 0, 0.0);
+    bool *ok = readArg<bool *>(args, 1, nullptr);
     const int16_t value = rt_cint_from_double(x, ok);
-    if (result)
-        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(value);
+    writeResult<int64_t>(result, static_cast<int64_t>(value));
 }
 
 /// @brief Adapter invoking LONG conversion while widening to 64-bit storage.
 void invokeRtClngFromDouble(void **args, void *result)
 {
-    const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
-    const auto okPtr = args ? reinterpret_cast<bool *const *>(args[1]) : nullptr;
-    const double x = xPtr ? *xPtr : 0.0;
-    bool *ok = okPtr ? *okPtr : nullptr;
+    const double x = readArg<double>(args, 0, 0.0);
+    bool *ok = readArg<bool *>(args, 1, nullptr);
     const int32_t value = rt_clng_from_double(x, ok);
-    if (result)
-        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(value);
+    writeResult<int64_t>(result, static_cast<int64_t>(value));
 }
 
 /// @brief Adapter invoking SINGLE conversion while widening to double precision.
 void invokeRtCsngFromDouble(void **args, void *result)
 {
-    const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
-    const auto okPtr = args ? reinterpret_cast<bool *const *>(args[1]) : nullptr;
-    const double x = xPtr ? *xPtr : 0.0;
-    bool *ok = okPtr ? *okPtr : nullptr;
+    const double x = readArg<double>(args, 0, 0.0);
+    bool *ok = readArg<bool *>(args, 1, nullptr);
     const float value = rt_csng_from_double(x, ok);
-    if (result)
-        *reinterpret_cast<double *>(result) = static_cast<double>(value);
+    writeResult<double>(result, static_cast<double>(value));
 }
 
 /// @brief Adapter narrowing double arguments to float for STR$ SINGLE formatting.
 void invokeRtStrFAlloc(void **args, void *result)
 {
-    const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
-    const float value = xPtr ? static_cast<float>(*xPtr) : 0.0f;
-    rt_string str = rt_str_f_alloc(value);
-    if (result)
-        *reinterpret_cast<rt_string *>(result) = str;
+    const double x = readArg<double>(args, 0, 0.0);
+    rt_string str = rt_str_f_alloc(static_cast<float>(x));
+    writeResult<rt_string>(result, str);
 }
 
 /// @brief Adapter invoking ROUND with integer digits sourced from 64-bit slots.
 void invokeRtRoundEven(void **args, void *result)
 {
-    const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
-    const auto digitsPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
-    const double x = xPtr ? *xPtr : 0.0;
-    const int ndigits = digitsPtr ? static_cast<int>(*digitsPtr) : 0;
+    const double x = readArg<double>(args, 0, 0.0);
+    const int ndigits = static_cast<int>(readArg<int64_t>(args, 1, 0));
     const double rounded = rt_round_even(x, ndigits);
-    if (result)
-        *reinterpret_cast<double *>(result) = rounded;
+    writeResult<double>(result, rounded);
 }
 
 /// @brief Adapter invoking pow with an injected status pointer for trap classification.
 void invokeRtPowF64Chkdom(void **args, void *result)
 {
-    const auto basePtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
-    const auto expPtr = args ? reinterpret_cast<const double *>(args[1]) : nullptr;
-    const auto okPtrPtr = args ? reinterpret_cast<bool *const *>(args[2]) : nullptr;
-    const double base = basePtr ? *basePtr : 0.0;
-    const double exponent = expPtr ? *expPtr : 0.0;
-    bool *ok = okPtrPtr ? *okPtrPtr : nullptr;
+    const double base = readArg<double>(args, 0, 0.0);
+    const double exponent = readArg<double>(args, 1, 0.0);
+    bool *ok = readArg<bool *>(args, 2, nullptr);
     const double value = rt_pow_f64_chkdom(base, exponent, ok);
-    if (result)
-        *reinterpret_cast<double *>(result) = value;
+    writeResult<double>(result, value);
 }
 
 /// @brief Populate the runtime descriptor registry with known helper declarations.

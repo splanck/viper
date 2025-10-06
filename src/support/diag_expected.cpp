@@ -32,23 +32,6 @@ const Diag &Expected<void>::error() const &
     return *error_;
 }
 
-namespace detail
-{
-const char *diagSeverityToString(Severity severity)
-{
-    switch (severity)
-    {
-        case Severity::Note:
-            return "note";
-        case Severity::Warning:
-            return "warning";
-        case Severity::Error:
-            return "error";
-    }
-    return "";
-}
-} // namespace detail
-
 Diag makeError(SourceLoc loc, std::string msg)
 {
     return Diag{Severity::Error, std::move(msg), loc};
@@ -61,7 +44,7 @@ void printDiag(const Diag &diag, std::ostream &os, const SourceManager *sm)
         auto path = sm->getPath(diag.loc.file_id);
         os << path << ":" << diag.loc.line << ":" << diag.loc.column << ": ";
     }
-    os << detail::diagSeverityToString(diag.severity) << ": " << diag.message
+    os << toString(diag.severity) << ": " << diag.message
        << '\n';
 }
 } // namespace il::support

@@ -24,7 +24,7 @@ void DiagnosticEngine::report(Diagnostic d)
 /// @brief Convert a severity enum to a string.
 /// @param s Severity value to convert.
 /// @return Lowercase string representation of @p s.
-static const char *toString(Severity s)
+const char *toString(Severity s)
 {
     switch (s)
     {

@@ -26,6 +26,9 @@ enum class Severity
     Error
 };
 
+/// @brief Convert a diagnostic severity to its lowercase string form.
+[[nodiscard]] const char *toString(Severity severity);
+
 /// @brief Single diagnostic message with location.
 struct Diagnostic
 {

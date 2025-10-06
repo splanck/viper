@@ -60,24 +60,6 @@ void DiagnosticEmitter::emitExpected(TokenKind got, TokenKind expect, il::suppor
     emit(il::support::Severity::Error, "B0001", loc, 0, std::move(msg));
 }
 
-/// @brief Convert severity enum to human-readable string.
-/// @param s Severity to convert.
-/// @return Null-terminated severity name.
-static const char *toString(il::support::Severity s)
-{
-    using il::support::Severity;
-    switch (s)
-    {
-        case Severity::Note:
-            return "note";
-        case Severity::Warning:
-            return "warning";
-        case Severity::Error:
-            return "error";
-    }
-    return "";
-}
-
 /// @brief Retrieve a specific line from stored source text.
 /// @param fileId Source file identifier.
 /// @param line 1-based line number to fetch.
@@ -110,7 +92,8 @@ void DiagnosticEmitter::printAll(std::ostream &os) const
     for (const auto &e : entries_)
     {
         auto path = sm_.getPath(e.loc.file_id);
-        os << path << ':' << e.loc.line << ':' << e.loc.column << ": " << toString(e.severity)
+        os << path << ':' << e.loc.line << ':' << e.loc.column << ": "
+           << il::support::toString(e.severity)
            << '[' << e.code << "]: " << e.message << '\n';
         std::string line = getLine(e.loc.file_id, e.loc.line);
         if (!line.empty())
