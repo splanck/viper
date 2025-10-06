@@ -4,6 +4,7 @@ extern @rt_print_i64(i64) -> void
 extern @rt_print_f64(f64) -> void
 extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
+extern @rt_str_empty() -> str
 extern @rt_arr_i32_new(i64) -> ptr
 extern @rt_arr_i32_resize(ptr, i64) -> ptr
 extern @rt_arr_i32_retain(ptr) -> void

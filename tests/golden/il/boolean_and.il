@@ -6,6 +6,7 @@ extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
 extern @rt_input_line() -> str
 extern @rt_to_int(str) -> i64
+extern @rt_str_empty() -> str
 global const str @.L0 = "
 "
 func @main() -> i64 {

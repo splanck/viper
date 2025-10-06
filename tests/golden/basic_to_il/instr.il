@@ -6,6 +6,7 @@ extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
 extern @rt_instr2(str, str) -> i64
 extern @rt_instr3(i64, str, str) -> i64
+extern @rt_str_empty() -> str
 extern @rt_str_retain_maybe(str) -> void
 extern @rt_str_release_maybe(str) -> void
 global const str @.L0 = "HELLO"
@@ -16,50 +17,52 @@ global const str @.L3 = "L"
 func @main() -> i64 {
 entry:
   %t0 = alloca 8
+  %t1 = call @rt_str_empty()
+  store str, %t0, %t1
   br L10
 L10:
   .loc 1 1 13
-  %t1 = const_str @.L0
+  %t2 = const_str @.L0
   .loc 1 1 4
-  %t2 = load str, %t0
+  %t3 = load str, %t0
   .loc 1 1 4
-  call @rt_str_release_maybe(%t2)
+  call @rt_str_release_maybe(%t3)
   .loc 1 1 4
-  call @rt_str_retain_maybe(%t1)
+  call @rt_str_retain_maybe(%t2)
   .loc 1 1 4
-  store str, %t0, %t1
+  store str, %t0, %t2
   .loc 1 1 4
   br L20
 L20:
   .loc 1 2 16
-  %t3 = load str, %t0
+  %t4 = load str, %t0
   .loc 1 2 20
-  %t4 = const_str @.L1
+  %t5 = const_str @.L1
   .loc 1 2 20
-  %t5 = call @rt_instr2(%t3, %t4)
+  %t6 = call @rt_instr2(%t4, %t5)
   .loc 1 2 4
-  call @rt_print_i64(%t5)
+  call @rt_print_i64(%t6)
   .loc 1 2 4
-  %t6 = const_str @.L2
+  %t7 = const_str @.L2
   .loc 1 2 4
-  call @rt_print_str(%t6)
+  call @rt_print_str(%t7)
   .loc 1 2 4
   br L30
 L30:
   .loc 1 3 16
-  %t7 = iadd.ovf 3, -1
+  %t8 = iadd.ovf 3, -1
   .loc 1 3 19
-  %t8 = load str, %t0
+  %t9 = load str, %t0
   .loc 1 3 23
-  %t9 = const_str @.L3
+  %t10 = const_str @.L3
   .loc 1 3 23
-  %t10 = call @rt_instr3(%t7, %t8, %t9)
+  %t11 = call @rt_instr3(%t8, %t9, %t10)
   .loc 1 3 4
-  call @rt_print_i64(%t10)
+  call @rt_print_i64(%t11)
   .loc 1 3 4
-  %t11 = const_str @.L2
+  %t12 = const_str @.L2
   .loc 1 3 4
-  call @rt_print_str(%t11)
+  call @rt_print_str(%t12)
   .loc 1 3 4
   br L40
 L40:

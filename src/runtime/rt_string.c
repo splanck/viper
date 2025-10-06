@@ -169,6 +169,11 @@ void rt_str_retain_maybe(rt_string s)
     (void)rt_string_ref(s);
 }
 
+rt_string rt_str_empty(void)
+{
+    return rt_empty_string();
+}
+
 rt_string rt_const_cstr(const char *c)
 {
     if (!c)
