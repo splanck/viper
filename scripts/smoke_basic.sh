@@ -76,3 +76,9 @@ echo "tests/smoke/basic/concat_input.bas passed"
 echo
 
 echo "All smoke tests passed."
+
+# String concat test
+timeout 2 "$BUILD_ROOT/src/tools/ilc/ilc" front basic -run tests/smoke/basic/strings_concat.bas | grep -F "Hello, World"
+
+# String aliasing test
+printf "Stephen\n" | timeout 2 "$BUILD_ROOT/src/tools/ilc/ilc" front basic -run tests/smoke/basic/strings_alias.bas | grep -F "StephenStephen"
