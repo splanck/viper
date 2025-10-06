@@ -4,6 +4,7 @@
 // @ownership TextBuffer owns storage helpers and returns copies for callers.
 #pragma once
 
+#include "tui/support/function_ref.hpp"
 #include "tui/text/EditHistory.hpp"
 #include "tui/text/LineIndex.hpp"
 #include "tui/text/PieceTable.hpp"
@@ -24,6 +25,9 @@ class TextBuffer
     class LineView
     {
       public:
+        /// @brief Callback accepting contiguous line segments.
+        using SegmentVisitor = tui::FunctionRef<bool(std::string_view)>;
+
         LineView(const PieceTable &table, std::size_t offset, std::size_t length);
 
         /// @brief Starting byte offset of the line.
@@ -33,11 +37,7 @@ class TextBuffer
         [[nodiscard]] std::size_t length() const;
 
         /// @brief Iterate contiguous string_view segments composing the line.
-        template <typename Fn>
-        void forEachSegment(Fn &&fn) const
-        {
-            table_.forEachSegment(offset_, length_, std::forward<Fn>(fn));
-        }
+        void forEachSegment(SegmentVisitor fn) const;
 
       private:
         const PieceTable &table_;
@@ -70,19 +70,8 @@ class TextBuffer
     [[nodiscard]] std::string getLine(std::size_t lineNo) const;
 
     /// @brief Visit each indexed line with a lightweight view.
-    template <typename Fn>
-    void forEachLine(Fn &&fn) const
-    {
-        const std::size_t lines = line_index_.count();
-        for (std::size_t line = 0; line < lines; ++line)
-        {
-            LineView view(table_, lineOffset(line), lineLength(line));
-            if (!std::invoke(fn, line, view))
-            {
-                break;
-            }
-        }
-    }
+    using LineVisitor = tui::FunctionRef<bool(std::size_t, const LineView &)>;
+    void forEachLine(LineVisitor fn) const;
 
     /// @brief Number of indexed lines tracked by the line index.
     [[nodiscard]] std::size_t lineCount() const;
