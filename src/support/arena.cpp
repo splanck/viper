@@ -6,6 +6,9 @@
 
 #include "arena.hpp"
 
+#include <cstdint>
+#include <limits>
+
 namespace il::support
 {
 /// @brief Construct an arena with a fixed capacity.
@@ -23,12 +26,38 @@ void *Arena::allocate(size_t size, size_t align)
     if (align == 0 || (align & (align - 1)) != 0)
         return nullptr;
 
-    size_t current = offset_;
-    size_t aligned = (current + align - 1) & ~(align - 1);
-    if (aligned > buffer_.size() || size > buffer_.size() - aligned)
+    const size_t current = offset_;
+    const std::uintptr_t base = reinterpret_cast<std::uintptr_t>(buffer_.data());
+    if (current > std::numeric_limits<std::uintptr_t>::max() - base)
         return nullptr;
-    offset_ = aligned + size;
-    return buffer_.data() + aligned;
+
+    const std::uintptr_t current_ptr = base + current;
+    const std::uintptr_t mask = static_cast<std::uintptr_t>(align - 1);
+
+    if (current_ptr > std::numeric_limits<std::uintptr_t>::max() - mask)
+        return nullptr;
+
+    const std::uintptr_t aligned_ptr = (current_ptr + mask) & ~mask;
+    const size_t adjustment = static_cast<size_t>(aligned_ptr - current_ptr);
+
+    if (adjustment > std::numeric_limits<size_t>::max() - current)
+        return nullptr;
+
+    const size_t aligned_offset = current + adjustment;
+
+    if (size > std::numeric_limits<size_t>::max() - aligned_offset)
+        return nullptr;
+
+    const size_t new_offset = aligned_offset + size;
+
+    if (aligned_offset > buffer_.size() || size > buffer_.size() - aligned_offset)
+        return nullptr;
+
+    if (new_offset > buffer_.size())
+        return nullptr;
+
+    offset_ = new_offset;
+    return buffer_.data() + aligned_offset;
 }
 
 /// @brief Reset the arena, allowing memory to be reused.
