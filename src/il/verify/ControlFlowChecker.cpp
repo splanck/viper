@@ -10,6 +10,7 @@
 #include "il/core/Extern.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
+#include "il/core/OpcodeInfo.hpp"
 #include "il/core/Param.hpp"
 #include "il/verify/BranchVerifier.hpp"
 #include "il/verify/DiagFormat.hpp"
@@ -217,21 +218,7 @@ Expected<void> checkBlockTerminators_E(const Function &fn, const BasicBlock &bb)
 
 bool isTerminator(Opcode op)
 {
-    switch (op)
-    {
-        case Opcode::Br:
-        case Opcode::CBr:
-        case Opcode::SwitchI32:
-        case Opcode::Ret:
-        case Opcode::Trap:
-        case Opcode::TrapFromErr:
-        case Opcode::ResumeSame:
-        case Opcode::ResumeNext:
-        case Opcode::ResumeLabel:
-            return true;
-        default:
-            return false;
-    }
+    return il::core::isTerminatorOpcode(op);
 }
 
 bool validateBlockParams(const Function &fn,

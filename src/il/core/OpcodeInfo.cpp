@@ -92,4 +92,9 @@ std::string opcode_mnemonic(Opcode op)
     return toString(op);
 }
 
+bool isTerminatorOpcode(Opcode op)
+{
+    return getOpcodeInfo(op).isTerminator;
+}
+
 } // namespace il::core

@@ -36,16 +36,7 @@ namespace detail
 {
 const char *diagSeverityToString(Severity severity)
 {
-    switch (severity)
-    {
-        case Severity::Note:
-            return "note";
-        case Severity::Warning:
-            return "warning";
-        case Severity::Error:
-            return "error";
-    }
-    return "";
+    return severityToString(severity);
 }
 } // namespace detail
 

@@ -6,6 +6,7 @@
 // Links: docs/il-guide.md#reference
 
 #include "il/build/IRBuilder.hpp"
+#include "il/core/OpcodeInfo.hpp"
 #include <cassert>
 #include <stdexcept>
 
@@ -177,7 +178,7 @@ void IRBuilder::setInsertPoint(BasicBlock &bb)
 Instr &IRBuilder::append(Instr instr)
 {
     assert(curBlock && "insert point not set");
-    if (isTerminator(instr.op))
+    if (il::core::isTerminatorOpcode(instr.op))
     {
         assert(!curBlock->terminated && "block already terminated");
         curBlock->terminated = true;
@@ -191,8 +192,7 @@ Instr &IRBuilder::append(Instr instr)
 /// @return True when @p op ends the block (branch, conditional branch, return, trap).
 bool IRBuilder::isTerminator(Opcode op) const
 {
-    return op == Opcode::Br || op == Opcode::CBr || op == Opcode::SwitchI32 || op == Opcode::Ret ||
-           op == Opcode::Trap;
+    return il::core::isTerminatorOpcode(op);
 }
 
 /// @brief Materialize a string constant by referencing an existing global.

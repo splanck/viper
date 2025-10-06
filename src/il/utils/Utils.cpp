@@ -8,6 +8,7 @@
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/core/OpcodeInfo.hpp"
 
 namespace viper::il
 {
@@ -55,7 +56,7 @@ Instruction *terminator(Block &B)
         return nullptr;
     }
     Instruction &last = B.instructions.back();
-    return isTerminator(last) ? &last : nullptr;
+    return ::il::core::isTerminatorOpcode(last.op) ? &last : nullptr;
 }
 
 /// @brief Classify whether instruction @p I terminates control flow.
@@ -69,18 +70,7 @@ Instruction *terminator(Block &B)
 /// @invariant @p I.op must be a valid member of `il::core::Opcode`.
 bool isTerminator(const Instruction &I)
 {
-    using ::il::core::Opcode;
-    switch (I.op)
-    {
-        case Opcode::Br:
-        case Opcode::CBr:
-        case Opcode::SwitchI32:
-        case Opcode::Ret:
-        case Opcode::Trap:
-            return true;
-        default:
-            return false;
-    }
+    return ::il::core::isTerminatorOpcode(I.op);
 }
 
 } // namespace viper::il

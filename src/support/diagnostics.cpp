@@ -21,23 +21,6 @@ void DiagnosticEngine::report(Diagnostic d)
     diags_.push_back(std::move(d));
 }
 
-/// @brief Convert a severity enum to a string.
-/// @param s Severity value to convert.
-/// @return Lowercase string representation of @p s.
-static const char *toString(Severity s)
-{
-    switch (s)
-    {
-        case Severity::Note:
-            return "note";
-        case Severity::Warning:
-            return "warning";
-        case Severity::Error:
-            return "error";
-    }
-    return "";
-}
-
 /// @brief Print all recorded diagnostics.
 /// @param os Output stream receiving diagnostic text.
 /// @param sm Optional source manager for resolving locations.
@@ -51,7 +34,7 @@ void DiagnosticEngine::printAll(std::ostream &os, const SourceManager *sm) const
             auto path = sm->getPath(d.loc.file_id);
             os << path << ":" << d.loc.line << ":" << d.loc.column << ": ";
         }
-        os << toString(d.severity) << ": " << d.message << '\n';
+        os << severityToString(d.severity) << ": " << d.message << '\n';
     }
 }
 

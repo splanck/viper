@@ -26,6 +26,21 @@ enum class Severity
     Error
 };
 
+/// @brief Convert severity enum to lowercase string literal.
+constexpr const char *severityToString(Severity severity) noexcept
+{
+    switch (severity)
+    {
+        case Severity::Note:
+            return "note";
+        case Severity::Warning:
+            return "warning";
+        case Severity::Error:
+            return "error";
+    }
+    return "";
+}
+
 /// @brief Single diagnostic message with location.
 struct Diagnostic
 {

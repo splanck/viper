@@ -18,7 +18,7 @@ namespace il::support
 // previous symbol is reused.  Symbol id 0 is reserved and never produced.
 Symbol StringInterner::intern(std::string_view str)
 {
-    auto it = map_.find(std::string(str));
+    auto it = map_.find(str);
     if (it != map_.end())
         return it->second;
     storage_.emplace_back(str);

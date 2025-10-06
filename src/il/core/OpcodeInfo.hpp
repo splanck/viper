@@ -183,6 +183,11 @@ std::vector<Opcode> all_opcodes();
 /// @return Lowercase mnemonic defined by the IL spec, empty if invalid.
 std::string opcode_mnemonic(Opcode op);
 
+/// @brief Determine whether the opcode terminates a block.
+/// @param op Opcode to inspect.
+/// @return True if @p op is marked as a terminator in the opcode table.
+bool isTerminatorOpcode(Opcode op);
+
 /// @brief Determine whether @p value denotes a variadic operand upper bound.
 bool isVariadicOperandCount(uint8_t value);
 
