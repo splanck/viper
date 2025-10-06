@@ -24,6 +24,12 @@ std::size_t TextBuffer::LineView::length() const
     return length_;
 }
 
+/// @copydoc viper::tui::text::TextBuffer::LineView::forEachSegment
+void TextBuffer::LineView::forEachSegment(SegmentVisitor fn) const
+{
+    table_.forEachSegment(offset_, length_, fn);
+}
+
 void TextBuffer::load(std::string text)
 {
     auto change = table_.load(std::move(text));
@@ -184,5 +190,19 @@ std::string TextBuffer::getLine(std::size_t lineNo) const
         end = start;
     }
     return table_.getText(start, end - start);
+}
+
+/// @copydoc viper::tui::text::TextBuffer::forEachLine
+void TextBuffer::forEachLine(LineVisitor fn) const
+{
+    const std::size_t lines = line_index_.count();
+    for (std::size_t line = 0; line < lines; ++line)
+    {
+        LineView view(table_, lineOffset(line), lineLength(line));
+        if (!fn(line, view))
+        {
+            break;
+        }
+    }
 }
 } // namespace viper::tui::text
