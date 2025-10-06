@@ -102,6 +102,7 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
         return Expected<void>{makeError({}, oss.str())};
     }
     std::string name = header.substr(at + 1, lp - at - 1);
+    name = trim(name);
     std::string paramsStr = header.substr(lp + 1, rp - lp - 1);
     std::vector<Param> params;
     std::stringstream pss(paramsStr);

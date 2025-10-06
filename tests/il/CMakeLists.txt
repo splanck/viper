@@ -61,6 +61,12 @@ function(viper_add_il_core_tests)
   target_compile_definitions(test_il_parse_missing_brace PRIVATE PARSE_ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/tests/il/parse-roundtrip")
   viper_add_ctest(test_il_parse_missing_brace test_il_parse_missing_brace)
 
+  viper_add_test(
+    test_il_parse_function_name_trim
+    ${_VIPER_IL_UNIT_DIR}/test_il_parse_function_name_trim.cpp)
+  target_link_libraries(test_il_parse_function_name_trim PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+  viper_add_ctest(test_il_parse_function_name_trim test_il_parse_function_name_trim)
+
   viper_add_test(test_il_parse_duplicate_block ${_VIPER_IL_UNIT_DIR}/test_il_parse_duplicate_block.cpp)
   target_link_libraries(test_il_parse_duplicate_block PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   target_compile_definitions(test_il_parse_duplicate_block PRIVATE PARSE_ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/tests/il/parse-roundtrip")
