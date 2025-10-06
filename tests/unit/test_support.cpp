@@ -3,6 +3,7 @@
 #include "support/source_manager.hpp"
 #include "support/string_interner.hpp"
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <sstream>
@@ -32,6 +33,11 @@ int main()
     (void)p1;
     void *p2 = arena.allocate(sizeof(double), alignof(double));
     assert(reinterpret_cast<uintptr_t>(p2) % alignof(double) == 0);
+    const size_t large_align = alignof(std::max_align_t) << 1;
+    il::support::Arena large_arena(256);
+    void *p3 = large_arena.allocate(16, large_align);
+    assert(p3 != nullptr);
+    assert(reinterpret_cast<uintptr_t>(p3) % large_align == 0);
     assert(arena.allocate(1, 0) == nullptr);
     assert(arena.allocate(1, 3) == nullptr);
     arena.reset();
