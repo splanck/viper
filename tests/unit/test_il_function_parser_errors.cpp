@@ -7,6 +7,7 @@
 #include "il/io/FunctionParser.hpp"
 #include "il/io/ParserState.hpp"
 #include "il/core/Module.hpp"
+#include "support/source_location.hpp"
 
 #include <cassert>
 #include <sstream>
@@ -67,6 +68,34 @@ int main()
         assert(!parseResult);
         const std::string &msg = parseResult.error().message;
         assert(msg.find("instruction outside block") != std::string::npos);
+    }
+
+    // Subsequent functions after a `.loc` should not inherit the previous location.
+    {
+        il::core::Module m;
+        ParserState st{m};
+        std::istringstream module(R"(func @with_loc() -> i32 {
+entry:
+  .loc 1 10 2
+  ret 0
+}
+func @bad() -> i32 {
+entry:
+  bogus
+}
+)");
+
+        std::string header;
+        std::getline(module, header);
+        st.lineNo = 1;
+        auto firstResult = parseFunction(module, header, st);
+        assert(firstResult);
+
+        std::getline(module, header);
+        st.lineNo = 6;
+        auto secondResult = parseFunction(module, header, st);
+        assert(!secondResult);
+        assert(!secondResult.error().loc.isValid());
     }
 
     return 0;
