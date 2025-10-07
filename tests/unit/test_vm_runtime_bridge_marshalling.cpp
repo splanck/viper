@@ -4,11 +4,13 @@
 // Ownership: Uses runtime library helpers; callers release any allocated resources.
 // Links: docs/codemap.md
 
+#include "vm/Marshal.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VM.hpp"
 #include "il/core/Type.hpp"
 #include "rt_array.h"
 #include "rt_internal.h"
+#include "rt_string.h"
 #include <array>
 #include <initializer_list>
 #include <cassert>
@@ -154,6 +156,15 @@ int main()
     assert(zeroResult.i64 == 0);
 
     rt_arr_i32_release(static_cast<int32_t *>(arrSlot.ptr));
+
+    const std::string embeddedLiteral("abc\0def", 7);
+    il::vm::ViperString embedded = il::vm::toViperString(embeddedLiteral);
+    assert(embedded != nullptr);
+    const int64_t runtimeLen = rt_len(embedded);
+    assert(runtimeLen == static_cast<int64_t>(embeddedLiteral.size()));
+    std::string roundTrip(embedded->data, static_cast<size_t>(runtimeLen));
+    assert(roundTrip == embeddedLiteral);
+    rt_string_unref(embedded);
 
     for (bool covered : coveredKinds)
         assert(covered);
