@@ -12,6 +12,7 @@
 #include "il/io/ParserUtil.hpp"
 #include "support/diag_expected.hpp"
 
+#include <sstream>
 #include <string>
 
 namespace il::io::detail
@@ -44,6 +45,12 @@ il::support::Expected<void> Parser::parse(std::istream &is, il::core::Module &m)
             continue;
         if (auto result = detail::parseModuleHeader_E(is, line, st); !result)
             return result;
+    }
+    if (!st.sawVersion)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing 'il' version directive";
+        return il::support::Expected<void>{il::support::makeError({}, oss.str())};
     }
     return {};
 }
