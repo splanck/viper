@@ -6,6 +6,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,6 +37,12 @@ extern "C" {
     void rt_str_retain_maybe(rt_string s);
 
     rt_string rt_str_empty(void);
+
+    /// @brief Allocate a runtime string by copying @p len bytes from @p bytes.
+    /// @param bytes Source buffer; may be NULL when @p len is zero.
+    /// @param len Number of bytes to copy into the new runtime string.
+    /// @return Newly allocated runtime string containing the copied bytes.
+    rt_string rt_string_from_bytes(const char *bytes, size_t len);
 
     /// @brief Return the number of bytes stored in @p s (excluding the terminator).
     /// @param s String to measure; NULL returns 0.
