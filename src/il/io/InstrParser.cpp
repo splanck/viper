@@ -395,14 +395,18 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st)
             annotatedType = ty.value();
         }
         auto [it, inserted] = st.tempIds.emplace(res, st.nextTemp);
-        if (inserted)
+        if (!inserted)
         {
-            if (st.curFn->valueNames.size() <= st.nextTemp)
-                st.curFn->valueNames.resize(st.nextTemp + 1);
-            st.curFn->valueNames[st.nextTemp] = res;
-            st.nextTemp++;
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": duplicate result name '%" << res << "'";
+            return Expected<void>{makeError(in.loc, oss.str())};
         }
-        in.result = it->second;
+
+        if (st.curFn->valueNames.size() <= st.nextTemp)
+            st.curFn->valueNames.resize(st.nextTemp + 1);
+        st.curFn->valueNames[st.nextTemp] = res;
+        in.result = st.nextTemp;
+        st.nextTemp++;
         work = trim(work.substr(eq + 1));
     }
     std::istringstream ss(work);
