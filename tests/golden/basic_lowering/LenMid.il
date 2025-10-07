@@ -10,8 +10,7 @@ extern @rt_str_empty() -> str
 extern @rt_str_retain_maybe(str) -> void
 extern @rt_str_release_maybe(str) -> void
 global const str @.L0 = "HELLO"
-global const str @.L1 = "
-"
+global const str @.L1 = "\n"
 func @main() -> i64 {
 entry:
   %t0 = alloca 8

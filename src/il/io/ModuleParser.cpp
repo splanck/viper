@@ -16,6 +16,7 @@
 
 #include "support/diag_expected.hpp"
 
+#include <cctype>
 #include <sstream>
 #include <utility>
 #include <vector>
@@ -108,6 +109,88 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st)
 /// verbatim. When the `=` delimiter is missing an error diagnostic is emitted;
 /// otherwise the routine creates a UTF-8 string global and appends it to
 /// `ParserState::m.globals`.
+Expected<std::string> decodeEscapes_E(const std::string &literal, size_t lineNo)
+{
+    std::string decoded;
+    decoded.reserve(literal.size());
+
+    auto hexValue = [](char ch) -> int {
+        if (ch >= '0' && ch <= '9')
+            return ch - '0';
+        if (ch >= 'a' && ch <= 'f')
+            return 10 + (ch - 'a');
+        if (ch >= 'A' && ch <= 'F')
+            return 10 + (ch - 'A');
+        return -1;
+    };
+
+    for (size_t i = 0; i < literal.size(); ++i)
+    {
+        char ch = literal[i];
+        if (ch != '\\')
+        {
+            decoded.push_back(ch);
+            continue;
+        }
+
+        if (++i >= literal.size())
+        {
+            std::ostringstream oss;
+            oss << "line " << lineNo << ": incomplete escape sequence";
+            return Expected<std::string>{makeError({}, oss.str())};
+        }
+
+        char esc = literal[i];
+        switch (esc)
+        {
+            case '\"':
+                decoded.push_back('\"');
+                break;
+            case '\\':
+                decoded.push_back('\\');
+                break;
+            case 'n':
+                decoded.push_back('\n');
+                break;
+            case 't':
+                decoded.push_back('\t');
+                break;
+            case 'x':
+            {
+                if (i + 2 >= literal.size())
+                {
+                    std::ostringstream oss;
+                    oss << "line " << lineNo << ": truncated hex escape";
+                    return Expected<std::string>{makeError({}, oss.str())};
+                }
+                char h1 = literal[i + 1];
+                char h2 = literal[i + 2];
+                if (!std::isxdigit(static_cast<unsigned char>(h1)) ||
+                    !std::isxdigit(static_cast<unsigned char>(h2)))
+                {
+                    std::ostringstream oss;
+                    oss << "line " << lineNo << ": invalid hex escape '\\x" << h1
+                        << h2 << "'";
+                    return Expected<std::string>{makeError({}, oss.str())};
+                }
+                int hi = hexValue(h1);
+                int lo = hexValue(h2);
+                decoded.push_back(static_cast<char>((hi << 4) | lo));
+                i += 2;
+                break;
+            }
+            default:
+            {
+                std::ostringstream oss;
+                oss << "line " << lineNo << ": unknown escape '\\" << esc << "'";
+                return Expected<std::string>{makeError({}, oss.str())};
+            }
+        }
+    }
+
+    return Expected<std::string>{decoded};
+}
+
 Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
 {
     size_t at = line.find('@');
@@ -134,7 +217,10 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
     }
     std::string name = trim(line.substr(at + 1, eq - at - 1));
     std::string init = line.substr(q1 + 1, q2 - q1 - 1);
-    st.m.globals.push_back({name, Type(Type::Kind::Str), init});
+    auto decoded = decodeEscapes_E(init, st.lineNo);
+    if (!decoded)
+        return Expected<void>{decoded.error()};
+    st.m.globals.push_back({name, Type(Type::Kind::Str), decoded.value()});
     return {};
 }
 

@@ -13,8 +13,7 @@ extern @rt_arr_i32_set(ptr, i64, i64) -> void
 extern @rt_arr_i32_retain(ptr) -> void
 extern @rt_arr_i32_release(ptr) -> void
 extern @rt_arr_oob_panic(i64, i64) -> void
-global const str @.L0 = "
-"
+global const str @.L0 = "\n"
 func @main() -> i64 {
 entry:
   %t0 = alloca 8

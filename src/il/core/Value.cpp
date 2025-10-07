@@ -14,6 +14,47 @@
 namespace il::core
 {
 
+namespace
+{
+std::string escapeStringLiteral(const std::string &input)
+{
+    std::string escaped;
+    escaped.reserve(input.size());
+    constexpr char hexDigits[] = "0123456789ABCDEF";
+    for (unsigned char ch : input)
+    {
+        switch (ch)
+        {
+            case '"':
+                escaped += "\\\"";
+                break;
+            case '\\':
+                escaped += "\\\\";
+                break;
+            case '\n':
+                escaped += "\\n";
+                break;
+            case '\t':
+                escaped += "\\t";
+                break;
+            default:
+                if (ch < 0x20 || ch >= 0x7F)
+                {
+                    escaped += "\\x";
+                    escaped.push_back(hexDigits[(ch >> 4) & 0xF]);
+                    escaped.push_back(hexDigits[ch & 0xF]);
+                }
+                else
+                {
+                    escaped.push_back(static_cast<char>(ch));
+                }
+                break;
+        }
+    }
+    return escaped;
+}
+} // namespace
+
 Value Value::temp(unsigned t)
 {
     return Value{Kind::Temp, 0, 0.0, t, ""};
@@ -70,7 +111,7 @@ std::string toString(const Value &v)
             return s;
         }
         case Value::Kind::ConstStr:
-            return "\"" + v.str + "\"";
+            return "\"" + escapeStringLiteral(v.str) + "\"";
         case Value::Kind::GlobalAddr:
             return "@" + v.str;
         case Value::Kind::NullPtr:

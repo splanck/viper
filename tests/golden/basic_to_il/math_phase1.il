@@ -10,8 +10,7 @@ extern @rt_abs_f64(f64) -> f64
 extern @rt_floor(f64) -> f64
 extern @rt_ceil(f64) -> f64
 extern @rt_sqrt(f64) -> f64
-global const str @.L0 = "
-"
+global const str @.L0 = "\n"
 func @main() -> i64 {
 entry:
   br L10
