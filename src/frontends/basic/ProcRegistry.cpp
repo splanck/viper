@@ -37,7 +37,7 @@ ProcSignature ProcRegistry::buildSignature(const ProcDescriptor &descriptor)
                     static_cast<uint32_t>(p.name.size()),
                     std::move(msg));
         }
-        if (p.is_array && p.type != Type::I64 && p.type != Type::Str && p.type != Type::Bool)
+        if (p.is_array && p.type != Type::I64 && p.type != Type::Str)
         {
             std::string msg = "array parameter must be i64 or str";
             de.emit(il::support::Severity::Error,
