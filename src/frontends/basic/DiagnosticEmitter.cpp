@@ -84,6 +84,9 @@ static const char *toString(il::support::Severity s)
 /// @return Line contents or empty string if unavailable.
 std::string DiagnosticEmitter::getLine(uint32_t fileId, uint32_t line) const
 {
+    if (line == 0)
+        return {};
+
     auto it = sources_.find(fileId);
     if (it == sources_.end())
         return {};
