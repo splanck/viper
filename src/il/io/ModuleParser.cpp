@@ -178,12 +178,24 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
         std::istringstream ls(line);
         std::string kw;
         ls >> kw;
+        ls >> std::ws;
+        if (ls.peek() != '"')
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": missing quoted target triple";
+            return Expected<void>{makeError({}, oss.str())};
+        }
+
         std::string triple;
         if (ls >> std::quoted(triple))
+        {
             st.m.target = triple;
-        else
-            st.m.target.reset();
-        return {};
+            return {};
+        }
+
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing quoted target triple";
+        return Expected<void>{makeError({}, oss.str())};
     }
     if (line.rfind("extern", 0) == 0)
         return parseExtern_E(line, st);
