@@ -23,8 +23,18 @@ std::size_t KeyChordHash::operator()(const KeyChord &kc) const
 
 void Keymap::registerCommand(CommandId id, std::string name, std::function<void()> action)
 {
-    index_[id] = commands_.size();
+    auto it = index_.find(id);
+    if (it != index_.end())
+    {
+        auto &cmd = commands_[it->second];
+        cmd.name = std::move(name);
+        cmd.action = std::move(action);
+        return;
+    }
+
+    const auto slot = commands_.size();
     commands_.push_back(Command{std::move(id), std::move(name), std::move(action)});
+    index_[commands_[slot].id] = slot;
 }
 
 void Keymap::bindGlobal(const KeyChord &kc, const CommandId &id)
