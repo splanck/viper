@@ -166,6 +166,15 @@ int main()
     assert(roundTrip == embeddedLiteral);
     rt_string_unref(embedded);
 
+    il::vm::StringRef emptyRef{};
+    il::vm::ViperString emptyString = il::vm::toViperString(emptyRef);
+    assert(emptyString != nullptr);
+    assert(rt_len(emptyString) == 0);
+    const char *emptyData = rt_string_cstr(emptyString);
+    assert(emptyData != nullptr);
+    assert(emptyData[0] == '\0');
+    rt_string_unref(emptyString);
+
     for (bool covered : coveredKinds)
         assert(covered);
 
