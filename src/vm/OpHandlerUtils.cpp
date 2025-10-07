@@ -17,9 +17,23 @@ void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val)
 {
     if (!in.result)
         return;
-    if (fr.regs.size() <= *in.result)
-        fr.regs.resize(*in.result + 1);
-    fr.regs[*in.result] = val;
+    const size_t destIndex = *in.result;
+    const bool hadRegister = destIndex < fr.regs.size();
+    if (!hadRegister)
+        fr.regs.resize(destIndex + 1);
+
+    if (in.type.kind == il::core::Type::Kind::Str)
+    {
+        if (hadRegister)
+            rt_str_release_maybe(fr.regs[destIndex].str);
+
+        Slot stored = val;
+        rt_str_retain_maybe(stored.str);
+        fr.regs[destIndex] = stored;
+        return;
+    }
+
+    fr.regs[destIndex] = val;
 }
 } // namespace ops
 } // namespace il::vm::detail
