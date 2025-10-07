@@ -131,18 +131,68 @@ OperandParser::splitCommaSeparated(const std::string &text, const char *context)
     std::string current;
     bool inString = false;
     bool escape = false;
+    size_t depth = 0;
 
-    auto error = [&]() -> Expected<std::vector<std::string>> {
+    auto makeErrorWithMessage = [&](const std::string &message) {
         std::ostringstream oss;
-        oss << "line " << state_.lineNo << ": malformed " << context;
+        oss << "line " << state_.lineNo << ": " << message;
         return Expected<std::vector<std::string>>{makeError(instr_.loc, oss.str())};
     };
 
+    auto malformedError = [&]() {
+        std::ostringstream msg;
+        msg << "malformed " << context;
+        return makeErrorWithMessage(msg.str());
+    };
+
+    const bool textIsWhitespaceOnly = trim(text).empty();
+
     for (char c : text)
     {
-        if (!inString && c == ',')
+        if (inString)
+        {
+            current.push_back(c);
+            if (escape)
+            {
+                escape = false;
+                continue;
+            }
+            if (c == '\\')
+            {
+                escape = true;
+                continue;
+            }
+            if (c == '"')
+                inString = false;
+            continue;
+        }
+
+        if (c == '"')
+        {
+            current.push_back(c);
+            inString = true;
+            continue;
+        }
+
+        if (c == '(')
+        {
+            current.push_back(c);
+            ++depth;
+            continue;
+        }
+        if (c == ')')
+        {
+            if (depth == 0)
+                return makeErrorWithMessage("mismatched ')'");
+            current.push_back(c);
+            --depth;
+            continue;
+        }
+        if (c == ',' && depth == 0)
         {
             std::string trimmed = trim(current);
+            if (trimmed.empty() && !textIsWhitespaceOnly)
+                return malformedError();
             if (!trimmed.empty())
                 tokens.push_back(std::move(trimmed));
             current.clear();
@@ -150,24 +200,12 @@ OperandParser::splitCommaSeparated(const std::string &text, const char *context)
         }
 
         current.push_back(c);
-
-        if (inString)
-        {
-            if (escape)
-                escape = false;
-            else if (c == '\\')
-                escape = true;
-            else if (c == '"')
-                inString = false;
-        }
-        else if (c == '"')
-        {
-            inString = true;
-        }
     }
 
     if (escape || inString)
-        return error();
+        return malformedError();
+    if (depth != 0)
+        return makeErrorWithMessage("mismatched ')'");
 
     std::string trimmed = trim(current);
     if (!trimmed.empty())
@@ -214,19 +252,105 @@ Expected<void> OperandParser::parseBranchTarget(const std::string &segment,
         text = trim(text.substr(6));
     if (!text.empty() && text[0] == '^')
         text = text.substr(1);
-    const size_t lp = text.find('(');
+    size_t lp = std::string::npos;
+    bool inString = false;
+    bool escape = false;
+    for (size_t pos = 0; pos < text.size(); ++pos)
+    {
+        char c = text[pos];
+        if (inString)
+        {
+            if (escape)
+            {
+                escape = false;
+                continue;
+            }
+            if (c == '\\')
+            {
+                escape = true;
+                continue;
+            }
+            if (c == '"')
+                inString = false;
+            continue;
+        }
+        if (c == '"')
+        {
+            inString = true;
+            continue;
+        }
+        if (c == '(')
+        {
+            lp = pos;
+            break;
+        }
+    }
+
     if (lp == std::string::npos)
     {
         label = trim(text);
         return {};
     }
-    const size_t rp = text.find(')', lp);
-    if (rp == std::string::npos)
+
+    size_t rp = std::string::npos;
+    size_t depth = 0;
+    inString = false;
+    escape = false;
+    for (size_t pos = lp; pos < text.size(); ++pos)
+    {
+        char c = text[pos];
+        if (pos == lp)
+        {
+            ++depth;
+            continue;
+        }
+        if (inString)
+        {
+            if (escape)
+            {
+                escape = false;
+                continue;
+            }
+            if (c == '\\')
+            {
+                escape = true;
+                continue;
+            }
+            if (c == '"')
+                inString = false;
+            continue;
+        }
+        if (c == '"')
+        {
+            inString = true;
+            continue;
+        }
+        if (c == '(')
+        {
+            ++depth;
+            continue;
+        }
+        if (c == ')')
+        {
+            if (depth == 0)
+                break;
+            --depth;
+            if (depth == 0)
+            {
+                rp = pos;
+                break;
+            }
+            continue;
+        }
+    }
+
+    if (rp == std::string::npos || depth != 0 || inString)
     {
         std::ostringstream oss;
         oss << "line " << state_.lineNo << ": mismatched ')";
         return Expected<void>{makeError(instr_.loc, oss.str())};
     }
+
     label = trim(text.substr(0, lp));
     std::string argsStr = text.substr(lp + 1, rp - lp - 1);
     auto tokens = splitCommaSeparated(argsStr, mnemonic);
@@ -268,47 +392,20 @@ Expected<void> OperandParser::parseBranchTargets(const std::string &text, size_t
 {
     std::string remaining = trim(text);
     const char *mnemonic = il::core::getOpcodeInfo(instr_.op).name;
-    for (size_t idx = 0; idx < expectedTargets; ++idx)
+    auto segments = splitCommaSeparated(remaining, mnemonic);
+    if (!segments)
+        return Expected<void>{segments.error()};
+
+    const auto &segmentList = segments.value();
+    if (segmentList.size() != expectedTargets)
     {
-        if (remaining.empty())
-        {
-            std::ostringstream oss;
-            oss << "line " << state_.lineNo << ": malformed " << mnemonic;
-            return Expected<void>{makeError(instr_.loc, oss.str())};
-        }
+        std::ostringstream oss;
+        oss << "line " << state_.lineNo << ": malformed " << mnemonic;
+        return Expected<void>{makeError(instr_.loc, oss.str())};
+    }
 
-        size_t split = remaining.size();
-        size_t depth = 0;
-        for (size_t pos = 0; pos < remaining.size(); ++pos)
-        {
-            char c = remaining[pos];
-            if (c == '(')
-                ++depth;
-            else if (c == ')')
-            {
-                if (depth == 0)
-                {
-                    std::ostringstream oss;
-                    oss << "line " << state_.lineNo << ": mismatched ')";
-                    return Expected<void>{makeError(instr_.loc, oss.str())};
-                }
-                --depth;
-            }
-            else if (c == ',' && depth == 0)
-            {
-                split = pos;
-                break;
-            }
-        }
-
-        std::string segment = trim(remaining.substr(0, split));
-        if (segment.empty())
-        {
-            std::ostringstream oss;
-            oss << "line " << state_.lineNo << ": malformed " << mnemonic;
-            return Expected<void>{makeError(instr_.loc, oss.str())};
-        }
-
+    for (const auto &segment : segmentList)
+    {
         std::vector<Value> args;
         std::string label;
         auto parsed = parseBranchTarget(segment, label, args);
@@ -319,18 +416,6 @@ Expected<void> OperandParser::parseBranchTargets(const std::string &text, size_t
         auto check = checkBranchArgCount(label, args.size());
         if (!check)
             return check;
-
-        if (split < remaining.size())
-            remaining = trim(remaining.substr(split + 1));
-        else
-            remaining.clear();
-    }
-
-    if (!trim(remaining).empty())
-    {
-        std::ostringstream oss;
-        oss << "line " << state_.lineNo << ": malformed " << mnemonic;
-        return Expected<void>{makeError(instr_.loc, oss.str())};
     }
 
     instr_.type = il::core::Type(il::core::Type::Kind::Void);
