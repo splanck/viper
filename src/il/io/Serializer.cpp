@@ -16,6 +16,7 @@
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
 #include "il/io/ParserUtil.hpp"
+#include "il/io/StringEscape.hpp"
 #include <algorithm>
 #include <array>
 #include <functional>
@@ -365,7 +366,8 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode)
 
     for (const auto &g : m.globals)
     {
-        os << "global const " << g.type.toString() << " @" << g.name << " = \"" << g.init << "\"\n";
+        os << "global const " << g.type.toString() << " @" << g.name << " = \""
+           << encodeEscapedString(g.init) << "\"\n";
     }
 
     for (const auto &f : m.functions)

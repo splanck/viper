@@ -302,7 +302,16 @@ Token Lexer::lexString()
     std::string s;
     get(); // consume opening quote
     while (!eof() && peek() != '"')
-        s.push_back(get());
+    {
+        char c = get();
+        if (c == '\\' && !eof())
+        {
+            s.push_back(c);
+            s.push_back(get());
+            continue;
+        }
+        s.push_back(c);
+    }
     if (peek() == '"')
         get();
     return {TokenKind::String, s, loc};

@@ -8,8 +8,7 @@ extern @rt_str_empty() -> str
 global const str @.L0 = "A"
 global const str @.L1 = " "
 global const str @.L2 = "B"
-global const str @.L3 = "
-"
+global const str @.L3 = "\n"
 func @main() -> i64 {
 entry:
   br L10

@@ -6,6 +6,7 @@ add_library(viper_il_io STATIC
   Parser.cpp
   ParserState.cpp
   ParserUtil.cpp
+  StringEscape.cpp
   Serializer.cpp
   TypeParser.cpp
 )
