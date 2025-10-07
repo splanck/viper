@@ -1,0 +1,47 @@
+// File: tests/unit/test_il_parse_call_string_comma.cpp
+// Purpose: Ensure call operand parsing preserves commas inside string literals.
+// Key invariants: Parser keeps string arguments intact even when containing delimiters.
+// Ownership/Lifetime: Test constructs modules and parser inputs locally.
+// Links: docs/il-guide.md#reference
+
+#include "il/api/expected_api.hpp"
+#include "il/core/Instr.hpp"
+#include "il/core/Module.hpp"
+#include "il/core/Opcode.hpp"
+
+#include <cassert>
+#include <sstream>
+
+int main()
+{
+    const char *src = R"(il 0.1.2
+extern @print(str) -> void
+func @main() -> void {
+entry:
+  call @print("hello, world")
+  ret
+}
+)";
+
+    std::istringstream in(src);
+    il::core::Module module;
+    auto parse = il::api::v2::parse_text_expected(in, module);
+    assert(parse);
+
+    assert(module.functions.size() == 1);
+    const auto &fn = module.functions[0];
+    assert(fn.blocks.size() == 1);
+
+    const auto &entry = fn.blocks[0];
+    assert(entry.instructions.size() == 2);
+
+    const auto &callInstr = entry.instructions[0];
+    assert(callInstr.op == il::core::Opcode::Call);
+    assert(callInstr.callee == "print");
+    assert(callInstr.operands.size() == 1);
+    assert(callInstr.operands[0].kind == il::core::Value::Kind::ConstStr);
+    assert(callInstr.operands[0].str == "hello, world");
+    assert(callInstr.type.kind == il::core::Type::Kind::Void);
+
+    return 0;
+}
