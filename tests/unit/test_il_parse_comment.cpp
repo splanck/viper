@@ -12,9 +12,13 @@
 int main()
 {
     const char *src = R"(il 0.1.2
-// comment before function
+# hash comment before function
+   # hash comment with leading spaces
+// slash comment before function
 func @main() -> i64 {
 entry:
+  # hash comment inside block
+  // slash comment inside block
   ret 0
 }
 )";
@@ -29,5 +33,7 @@ entry:
     assert(pe);
     assert(diag.str().empty());
     assert(m.functions.size() == 1);
+    assert(m.functions.front().blocks.size() == 1);
+    assert(m.functions.front().blocks.front().instructions.size() == 1);
     return 0;
 }
