@@ -9,6 +9,7 @@
 #include <cctype>
 #include <fstream>
 #include <sstream>
+#include <stdexcept>
 #include <string_view>
 
 namespace viper::tui::config
@@ -87,35 +88,52 @@ term::KeyEvent::Code parse_code(const std::string &name)
         return Code::Delete;
     if (name.size() > 1 && name[0] == 'f')
     {
-        int num = std::stoi(name.substr(1));
-        switch (num)
+        const std::string suffix = name.substr(1);
+        try
         {
-            case 1:
-                return Code::F1;
-            case 2:
-                return Code::F2;
-            case 3:
-                return Code::F3;
-            case 4:
-                return Code::F4;
-            case 5:
-                return Code::F5;
-            case 6:
-                return Code::F6;
-            case 7:
-                return Code::F7;
-            case 8:
-                return Code::F8;
-            case 9:
-                return Code::F9;
-            case 10:
-                return Code::F10;
-            case 11:
-                return Code::F11;
-            case 12:
-                return Code::F12;
-            default:
-                break;
+            size_t parsed = 0;
+            const int num = std::stoi(suffix, &parsed);
+            if (parsed != suffix.size())
+            {
+                return Code::Unknown;
+            }
+            switch (num)
+            {
+                case 1:
+                    return Code::F1;
+                case 2:
+                    return Code::F2;
+                case 3:
+                    return Code::F3;
+                case 4:
+                    return Code::F4;
+                case 5:
+                    return Code::F5;
+                case 6:
+                    return Code::F6;
+                case 7:
+                    return Code::F7;
+                case 8:
+                    return Code::F8;
+                case 9:
+                    return Code::F9;
+                case 10:
+                    return Code::F10;
+                case 11:
+                    return Code::F11;
+                case 12:
+                    return Code::F12;
+                default:
+                    return Code::Unknown;
+            }
+        }
+        catch (const std::invalid_argument &)
+        {
+            return Code::Unknown;
+        }
+        catch (const std::out_of_range &)
+        {
+            return Code::Unknown;
         }
     }
     return Code::Unknown;

@@ -37,5 +37,14 @@ int main()
         }
     }
     assert(found_save);
+
+    Config invalid_cfg;
+    ok = loadFromFile(CONFIG_INVALID_INI, invalid_cfg);
+    assert(ok);
+    assert(!invalid_cfg.keymap_global.empty());
+    const auto &invalid_binding = invalid_cfg.keymap_global.front();
+    assert(invalid_binding.chord.code == KeyEvent::Code::Unknown);
+    assert(invalid_binding.chord.codepoint == 0);
+    assert(invalid_binding.command == "save");
     return 0;
 }
