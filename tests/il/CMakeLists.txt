@@ -101,6 +101,10 @@ function(viper_add_il_core_tests)
   target_link_libraries(test_il_parse_call_ret_type PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   viper_add_ctest(test_il_parse_call_ret_type test_il_parse_call_ret_type)
 
+  viper_add_test(test_il_parse_call_extra_token ${_VIPER_IL_UNIT_DIR}/test_il_parse_call_extra_token.cpp)
+  target_link_libraries(test_il_parse_call_extra_token PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+  viper_add_ctest(test_il_parse_call_extra_token test_il_parse_call_extra_token)
+
   viper_add_test(test_il_parse_negative ${_VIPER_IL_UNIT_DIR}/test_il_parse_negative.cpp)
   target_link_libraries(test_il_parse_negative PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   target_compile_definitions(test_il_parse_negative PRIVATE BAD_DIR="${CMAKE_SOURCE_DIR}/tests/il/parse")

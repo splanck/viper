@@ -132,6 +132,13 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text)
             return Expected<void>{argVal.error()};
         instr_.operands.push_back(std::move(argVal.value()));
     }
+    std::string remainder = trim(text.substr(rp + 1));
+    if (!remainder.empty())
+    {
+        std::ostringstream oss;
+        oss << "line " << state_.lineNo << ": malformed call";
+        return Expected<void>{makeError(instr_.loc, oss.str())};
+    }
     if (!instr_.result)
         instr_.type = il::core::Type(il::core::Type::Kind::Void);
     return {};
