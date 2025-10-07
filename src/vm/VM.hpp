@@ -144,6 +144,14 @@ class VM
        DebugCtrl dbg = {},
        DebugScript *script = nullptr);
 
+    /// @brief Release runtime string handles retained by the VM.
+    ~VM();
+
+    VM(const VM &) = delete;
+    VM &operator=(const VM &) = delete;
+    VM(VM &&) noexcept = default;
+    VM &operator=(VM &&) = delete;
+
     /// @brief Execute the module's entry function.
     /// @return Exit code from @c main or `1` when the entry point is missing.
     int64_t run();
