@@ -72,12 +72,22 @@ static rt_string rt_string_alloc(size_t len, size_t cap)
     return rt_string_wrap(payload);
 }
 
-static rt_string rt_string_from_bytes(const char *bytes, size_t len)
+/**
+ * Purpose: Allocate a runtime string from arbitrary bytes and explicit length.
+ *
+ * Parameters:
+ *   bytes - Pointer to the UTF-8 byte sequence to copy; may be NULL when
+ *           @p len is zero.
+ *   len   - Number of bytes to copy from @p bytes.
+ *
+ * Returns: Newly allocated runtime string containing the copied bytes.
+ */
+rt_string rt_string_from_bytes(const char *bytes, size_t len)
 {
     rt_string s = rt_string_alloc(len, len + 1);
     if (!s)
         return NULL;
-    if (len > 0)
+    if (len > 0 && bytes)
         memcpy(s->data, bytes, len);
     s->data[len] = '\0';
     return s;
