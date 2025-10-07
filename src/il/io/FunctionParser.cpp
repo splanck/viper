@@ -96,6 +96,11 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
         return Expected<void>{makeError({}, oss.str())};
     };
 
+    // Each function begins without a prior source location. Carrying over the
+    // `.loc` directive from a previous function would incorrectly associate
+    // diagnostics with stale locations.
+    st.curLoc = {};
+
     size_t at = header.find('@');
     if (at == std::string::npos)
         return emitMalformedHeader();
@@ -335,6 +340,7 @@ Expected<void> parseFunction(std::istream &is, std::string &header, ParserState 
         {
             st.curFn = nullptr;
             st.curBB = nullptr;
+            st.curLoc = {};
             break;
         }
         if (line.back() == ':')
@@ -381,6 +387,7 @@ Expected<void> parseFunction(std::istream &is, std::string &header, ParserState 
         oss << "line " << st.lineNo << ": unexpected end of file; missing '}'";
         st.curFn = nullptr;
         st.curBB = nullptr;
+        st.curLoc = {};
         return Expected<void>{makeError({}, oss.str())};
     }
     if (!st.pendingBrs.empty())
