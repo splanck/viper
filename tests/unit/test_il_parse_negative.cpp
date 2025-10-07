@@ -5,6 +5,7 @@
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"
+#include "support/diagnostics.hpp"
 #include <cassert>
 #include <fstream>
 #include <sstream>
@@ -19,7 +20,8 @@ int main()
                            BAD_DIR "/bad_float_literal.il",
                            BAD_DIR "/alloca_missing_size.il",
                            BAD_DIR "/target_missing_quotes.il",
-                           BAD_DIR "/block_param_missing_name.il"};
+                           BAD_DIR "/block_param_missing_name.il",
+                           BAD_DIR "/block_param_duplicate_name.il"};
     for (const char *path : files)
     {
         std::ifstream in(path);
@@ -29,6 +31,22 @@ int main()
         il::core::Module m;
         auto parse = il::api::v2::parse_text_expected(buf, m);
         assert(!parse);
+    }
+
+    {
+        std::ifstream in(BAD_DIR "/block_param_duplicate_name.il");
+        std::stringstream buf;
+        buf << in.rdbuf();
+        buf.seekg(0);
+        il::core::Module m;
+        auto parse = il::api::v2::parse_text_expected(buf, m);
+        assert(!parse);
+
+        std::ostringstream diag;
+        il::support::printDiag(parse.error(), diag);
+        const std::string message = diag.str();
+        assert(message.find("duplicate parameter name '%x'") != std::string::npos);
+        assert(message.find("line 3") != std::string::npos);
     }
     return 0;
 }
