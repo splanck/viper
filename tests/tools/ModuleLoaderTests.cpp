@@ -4,9 +4,13 @@
 // Ownership/Lifetime: Test owns constructed modules and diagnostic streams.
 // Links: docs/testing.md
 
+#include "support/source_location.hpp"
+#include "support/source_manager.hpp"
 #include "tools/common/module_loader.hpp"
 
 #include <filesystem>
+#include <algorithm>
+#include <cctype>
 #include <sstream>
 
 namespace
@@ -69,7 +73,10 @@ int main()
 
     il::core::Module verifyModule{};
     std::ostringstream verifyErrors;
-    auto negativeLoad = il::tools::common::loadModuleFromFile((root / "tests/il/negatives/unbalanced_eh.il").string(), verifyModule, verifyErrors);
+    const auto negativePath = (root / "tests/il/negatives/unbalanced_eh.il").string();
+    il::support::SourceManager sm;
+    const auto fileId = sm.addFile(negativePath);
+    auto negativeLoad = il::tools::common::loadModuleFromFile(negativePath, verifyModule, verifyErrors);
     if (!negativeLoad.succeeded())
     {
         return 1;
@@ -78,12 +85,53 @@ int main()
     {
         return 1;
     }
+    if (!verifyModule.functions.empty() && !verifyModule.functions.front().blocks.empty())
+    {
+        auto &entry = verifyModule.functions.front().blocks.front();
+        if (!entry.instructions.empty())
+        {
+            entry.instructions.front().loc = { fileId, 4, 3 };
+            if (entry.instructions.size() > 1)
+            {
+                entry.instructions[1].loc = { fileId, 5, 3 };
+            }
+        }
+    }
     std::ostringstream verifyFail;
-    if (il::tools::common::verifyModule(verifyModule, verifyFail))
+    if (il::tools::common::verifyModule(verifyModule, verifyFail, &sm))
     {
         return 1;
     }
-    if (verifyFail.str().empty())
+    const std::string diag = verifyFail.str();
+    if (diag.empty())
+    {
+        return 1;
+    }
+    const std::string prefix = negativePath + ":";
+    if (diag.rfind(prefix, 0) != 0)
+    {
+        return 1;
+    }
+    const auto lineStart = prefix.size();
+    const auto lineEnd = diag.find(':', lineStart);
+    if (lineEnd == std::string::npos)
+    {
+        return 1;
+    }
+    const auto lineStr = diag.substr(lineStart, lineEnd - lineStart);
+    auto isDigit = [](unsigned char ch) { return std::isdigit(ch) != 0; };
+    if (lineStr.empty() || !std::all_of(lineStr.begin(), lineStr.end(), isDigit))
+    {
+        return 1;
+    }
+    const auto columnStart = lineEnd + 1;
+    const auto columnEnd = diag.find(':', columnStart);
+    if (columnEnd == std::string::npos)
+    {
+        return 1;
+    }
+    const auto columnStr = diag.substr(columnStart, columnEnd - columnStart);
+    if (columnStr.empty() || !std::all_of(columnStr.begin(), columnStr.end(), isDigit))
     {
         return 1;
     }

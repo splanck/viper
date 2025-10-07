@@ -272,7 +272,7 @@ int executeRunIL(const RunILConfig &config)
         return 1;
     }
 
-    if (!il::tools::common::verifyModule(m, std::cerr))
+    if (!il::tools::common::verifyModule(m, std::cerr, &sm))
     {
         return 1;
     }
