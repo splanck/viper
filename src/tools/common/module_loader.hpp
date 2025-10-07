@@ -59,8 +59,11 @@ LoadResult loadModuleFromFile(const std::string &path,
 /// @brief Verify @p module and forward diagnostics to @p err when verification fails.
 /// @param module Module to verify.
 /// @param err Stream receiving diagnostics on error.
+/// @param sm Optional source manager used to resolve diagnostic file paths.
 /// @return True when verification succeeds; false otherwise.
-bool verifyModule(const il::core::Module &module, std::ostream &err);
+bool verifyModule(const il::core::Module &module,
+                  std::ostream &err,
+                  const il::support::SourceManager *sm = nullptr);
 
 } // namespace il::tools::common
 

@@ -5,6 +5,7 @@
 // License: MIT License. See LICENSE for details.
 // Links: docs/codemap.md
 
+#include "support/source_manager.hpp"
 #include "tools/common/module_loader.hpp"
 #include <iostream>
 #include <string>
@@ -32,12 +33,14 @@ int main(int argc, char **argv)
         return 1;
     }
     il::core::Module m;
+    il::support::SourceManager sm;
+    sm.addFile(argv[1]);
     auto load = il::tools::common::loadModuleFromFile(argv[1], m, std::cerr, "cannot open ");
     if (!load.succeeded())
     {
         return 1;
     }
-    if (!il::tools::common::verifyModule(m, std::cerr))
+    if (!il::tools::common::verifyModule(m, std::cerr, &sm))
     {
         return 1;
     }
