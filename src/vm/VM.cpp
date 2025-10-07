@@ -115,9 +115,33 @@ Slot VM::eval(Frame &fr, const Value &v)
     switch (v.kind)
     {
         case Value::Kind::Temp:
+        {
             if (v.id < fr.regs.size())
                 return fr.regs[v.id];
+
+            const std::string fnName = fr.func ? fr.func->name : std::string("<unknown>");
+            const BasicBlock *block = currentContext.block;
+            const std::string blockLabel = block ? block->label : std::string();
+            const auto loc = currentContext.loc;
+
+            std::ostringstream os;
+            os << "temp %" << v.id << " out of range (regs=" << fr.regs.size() << ") in function " << fnName;
+            if (!blockLabel.empty())
+                os << ", block " << blockLabel;
+            if (loc.isValid())
+            {
+                os << ", at line " << loc.line;
+                if (loc.column > 0)
+                    os << ':' << loc.column;
+            }
+            else
+            {
+                os << ", at unknown location";
+            }
+
+            RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), loc, fnName, blockLabel);
             return s;
+        }
         case Value::Kind::ConstInt:
             s.i64 = toI64(v);
             return s;
