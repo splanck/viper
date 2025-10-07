@@ -57,6 +57,20 @@ int main()
         assert(msg.find("bad param") != std::string::npos);
     }
 
+    // Block parameter missing an identifier should report the dedicated diagnostic.
+    {
+        il::core::Module m;
+        ParserState st{m};
+        st.lineNo = 7;
+        auto headerOk = parseFunctionHeader("func @block_missing() -> i32 {", st);
+        assert(headerOk);
+        st.lineNo = 8;
+        auto blockErr = parseBlockHeader("entry(%: i32)", st);
+        assert(!blockErr);
+        const std::string &msg = blockErr.error().message;
+        assert(msg.find("missing parameter name") != std::string::npos);
+    }
+
     // Body without an opening block should surface an instruction-placement error.
     {
         il::core::Module m;
