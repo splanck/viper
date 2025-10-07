@@ -33,6 +33,19 @@ static void rt_arr_i32_assert_header(rt_heap_hdr_t *hdr)
     assert(hdr->elem_kind == RT_ELEM_I32);
 }
 
+static void rt_arr_i32_validate_bounds(int32_t *arr, size_t idx)
+{
+    if (!arr)
+        rt_arr_oob_panic(idx, 0);
+
+    rt_heap_hdr_t *hdr = rt_arr_i32_hdr(arr);
+    rt_arr_i32_assert_header(hdr);
+
+    size_t len = hdr->len;
+    if (idx >= len)
+        rt_arr_oob_panic(idx, len);
+}
+
 static size_t rt_arr_i32_payload_bytes(size_t cap)
 {
     if (cap == 0)
@@ -85,31 +98,13 @@ size_t rt_arr_i32_cap(int32_t *arr)
 
 int32_t rt_arr_i32_get(int32_t *arr, size_t idx)
 {
-    if (!arr)
-        rt_arr_oob_panic(idx, 0);
-
-    rt_heap_hdr_t *hdr = rt_arr_i32_hdr(arr);
-    rt_arr_i32_assert_header(hdr);
-
-    size_t len = hdr->len;
-    if (idx >= len)
-        rt_arr_oob_panic(idx, len);
-
+    rt_arr_i32_validate_bounds(arr, idx);
     return arr[idx];
 }
 
 void rt_arr_i32_set(int32_t *arr, size_t idx, int32_t value)
 {
-    if (!arr)
-        rt_arr_oob_panic(idx, 0);
-
-    rt_heap_hdr_t *hdr = rt_arr_i32_hdr(arr);
-    rt_arr_i32_assert_header(hdr);
-
-    size_t len = hdr->len;
-    if (idx >= len)
-        rt_arr_oob_panic(idx, len);
-
+    rt_arr_i32_validate_bounds(arr, idx);
     arr[idx] = value;
 }
 
