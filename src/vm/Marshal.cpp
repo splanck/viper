@@ -7,6 +7,7 @@
 #include "vm/Marshal.hpp"
 
 #include "rt_string.h"
+#include "vm/RuntimeBridge.hpp"
 
 #include <cassert>
 
@@ -33,7 +34,14 @@ StringRef fromViperString(const ViperString &str)
         return {};
     const int64_t length = rt_len(str);
     if (length < 0)
+    {
+        RuntimeBridge::trap(TrapKind::DomainError,
+                            "rt_string reported negative length",
+                            {},
+                            "",
+                            "");
         return {};
+    }
     return StringRef{data, static_cast<size_t>(length)};
 }
 
