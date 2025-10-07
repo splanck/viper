@@ -85,17 +85,31 @@ size_t rt_arr_i32_cap(int32_t *arr)
 
 int32_t rt_arr_i32_get(int32_t *arr, size_t idx)
 {
+    if (!arr)
+        rt_arr_oob_panic(idx, 0);
+
     rt_heap_hdr_t *hdr = rt_arr_i32_hdr(arr);
     rt_arr_i32_assert_header(hdr);
-    assert(idx < hdr->len);
+
+    size_t len = hdr->len;
+    if (idx >= len)
+        rt_arr_oob_panic(idx, len);
+
     return arr[idx];
 }
 
 void rt_arr_i32_set(int32_t *arr, size_t idx, int32_t value)
 {
+    if (!arr)
+        rt_arr_oob_panic(idx, 0);
+
     rt_heap_hdr_t *hdr = rt_arr_i32_hdr(arr);
     rt_arr_i32_assert_header(hdr);
-    assert(idx < hdr->len);
+
+    size_t len = hdr->len;
+    if (idx >= len)
+        rt_arr_oob_panic(idx, len);
+
     arr[idx] = value;
 }
 
