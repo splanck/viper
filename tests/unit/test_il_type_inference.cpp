@@ -30,6 +30,12 @@ int main()
     Value c = Value::constInt(42);
     assert(types.valueType(c).kind == Type::Kind::I64);
 
+    Value bTrue = Value::constBool(true);
+    assert(types.valueType(bTrue).kind == Type::Kind::I1);
+
+    Value bFalse = Value::constBool(false);
+    assert(types.valueType(bFalse).kind == Type::Kind::I1);
+
     Value missingVal = Value::temp(2);
     bool missing = false;
     Type missingType = types.valueType(missingVal, &missing);
