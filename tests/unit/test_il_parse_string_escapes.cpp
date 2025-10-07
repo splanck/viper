@@ -23,6 +23,11 @@ func @main() -> void {
 entry:
   ret
 }
+func @with_literals() -> str {
+entry:
+  %literal = const_str "line\n\t\"quote\"\\path\x21"
+  ret %literal
+}
 )";
 
     std::istringstream in(source);
@@ -39,11 +44,19 @@ entry:
     assert(values.at("quote") == std::string("quote:\""));
     assert(values.at("mix") == std::string("slashes\\ and hex!"));
 
+    assert(module.functions.size() == 2);
+    const auto &literalInstr = module.functions[1].blocks.front().instructions.front();
+    assert(literalInstr.operands.size() == 1);
+    const auto &literalValue = literalInstr.operands.front();
+    assert(literalValue.kind == il::core::Value::Kind::ConstStr);
+    assert(literalValue.str == std::string("line\n\t\"quote\"\\path!"));
+
     std::string serialized = il::io::Serializer::toString(module);
     assert(serialized.find(R"(@nl = "\n")") != std::string::npos);
     assert(serialized.find(R"(@tab = "tab:\t")") != std::string::npos);
     assert(serialized.find(R"(@quote = "quote:\"")") != std::string::npos);
     assert(serialized.find(R"(@mix = "slashes\\ and hex!")") != std::string::npos);
+    assert(serialized.find("const_str \"line\\n\\t\\\"quote\\\"\\\\path!\"") != std::string::npos);
 
     return 0;
 }
