@@ -11,8 +11,7 @@ extern @rt_str_retain_maybe(str) -> void
 extern @rt_str_release_maybe(str) -> void
 global const str @.L0 = "HELLO"
 global const str @.L1 = "LL"
-global const str @.L2 = "
-"
+global const str @.L2 = "\n"
 global const str @.L3 = "L"
 func @main() -> i64 {
 entry:

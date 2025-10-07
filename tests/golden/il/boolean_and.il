@@ -7,8 +7,7 @@ extern @rt_substr(str, i64, i64) -> str
 extern @rt_input_line() -> str
 extern @rt_to_int(str) -> i64
 extern @rt_str_empty() -> str
-global const str @.L0 = "
-"
+global const str @.L0 = "\n"
 func @main() -> i64 {
 entry:
   %t0 = alloca 1
