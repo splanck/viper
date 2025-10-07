@@ -174,6 +174,12 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
     unsigned idx = 0;
     for (auto &param : params)
     {
+        if (st.tempIds.find(param.name) != st.tempIds.end())
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": duplicate parameter name '%" << param.name << "'";
+            return Expected<void>{makeError({}, oss.str())};
+        }
         param.id = idx;
         st.tempIds[param.name] = idx;
         ++idx;
