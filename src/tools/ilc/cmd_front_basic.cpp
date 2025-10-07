@@ -155,7 +155,7 @@ int runFrontBasic(const FrontBasicConfig &config, const std::string &source,
     auto verification = il::verify::Verifier::verify(module);
     if (!verification)
     {
-        il::support::printDiag(verification.error(), std::cerr);
+        il::support::printDiag(verification.error(), std::cerr, &sm);
         return 1;
     }
 
