@@ -25,6 +25,8 @@ entry(%flag:i1):
   %t2 = const_str "hi"
   %t3 = alloca 8
   store i64, %t3, 42
+  store i64, %t3, 0x2A
+  store i64, %t3, 0b101010
   %t4 = load i64, %t3
   %t5 = zext1 %flag
   cbr %flag, true_bb(%t4), false_bb
@@ -53,7 +55,7 @@ exit(%v:i64):
     assert(fn.blocks.size() == 4);
 
     const auto &entry = fn.blocks[0];
-    assert(entry.instructions.size() == 8);
+    assert(entry.instructions.size() == 10);
 
     const auto &constNull = entry.instructions[0];
     assert(constNull.op == il::core::Opcode::ConstNull);
@@ -79,27 +81,43 @@ exit(%v:i64):
     assert(allocaInstr.operands[0].i64 == 8);
     assert(allocaInstr.type.kind == il::core::Type::Kind::Ptr);
 
-    const auto &storeInstr = entry.instructions[4];
-    assert(storeInstr.op == il::core::Opcode::Store);
-    assert(storeInstr.type.kind == il::core::Type::Kind::I64);
-    assert(storeInstr.operands.size() == 2);
-    assert(storeInstr.operands[0].kind == il::core::Value::Kind::Temp);
-    assert(storeInstr.operands[1].kind == il::core::Value::Kind::ConstInt);
-    assert(storeInstr.operands[1].i64 == 42);
+    const auto &storeDecimal = entry.instructions[4];
+    assert(storeDecimal.op == il::core::Opcode::Store);
+    assert(storeDecimal.type.kind == il::core::Type::Kind::I64);
+    assert(storeDecimal.operands.size() == 2);
+    assert(storeDecimal.operands[0].kind == il::core::Value::Kind::Temp);
+    assert(storeDecimal.operands[1].kind == il::core::Value::Kind::ConstInt);
+    assert(storeDecimal.operands[1].i64 == 42);
 
-    const auto &loadInstr = entry.instructions[5];
+    const auto &storeHex = entry.instructions[5];
+    assert(storeHex.op == il::core::Opcode::Store);
+    assert(storeHex.type.kind == il::core::Type::Kind::I64);
+    assert(storeHex.operands.size() == 2);
+    assert(storeHex.operands[0].kind == il::core::Value::Kind::Temp);
+    assert(storeHex.operands[1].kind == il::core::Value::Kind::ConstInt);
+    assert(storeHex.operands[1].i64 == 42);
+
+    const auto &storeBinary = entry.instructions[6];
+    assert(storeBinary.op == il::core::Opcode::Store);
+    assert(storeBinary.type.kind == il::core::Type::Kind::I64);
+    assert(storeBinary.operands.size() == 2);
+    assert(storeBinary.operands[0].kind == il::core::Value::Kind::Temp);
+    assert(storeBinary.operands[1].kind == il::core::Value::Kind::ConstInt);
+    assert(storeBinary.operands[1].i64 == 42);
+
+    const auto &loadInstr = entry.instructions[7];
     assert(loadInstr.op == il::core::Opcode::Load);
     assert(loadInstr.type.kind == il::core::Type::Kind::I64);
     assert(loadInstr.operands.size() == 1);
     assert(loadInstr.operands[0].kind == il::core::Value::Kind::Temp);
 
-    const auto &zextInstr = entry.instructions[6];
+    const auto &zextInstr = entry.instructions[8];
     assert(zextInstr.op == il::core::Opcode::Zext1);
     assert(zextInstr.operands.size() == 1);
     assert(zextInstr.operands[0].kind == il::core::Value::Kind::Temp);
     assert(zextInstr.type.kind == il::core::Type::Kind::I64);
 
-    const auto &cbrInstr = entry.instructions[7];
+    const auto &cbrInstr = entry.instructions[9];
     assert(cbrInstr.op == il::core::Opcode::CBr);
     assert(cbrInstr.operands.size() == 1);
     assert(cbrInstr.operands[0].kind == il::core::Value::Kind::Temp);
