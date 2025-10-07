@@ -95,6 +95,10 @@ function(viper_add_runtime_tests)
   target_link_libraries(test_rt_instr PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_instr test_rt_instr)
 
+  viper_add_test(test_rt_term_color ${VIPER_TESTS_DIR}/runtime/RTTermColorTests.cpp)
+  target_link_libraries(test_rt_term_color PRIVATE ${VIPER_RUNTIME_TEST_LIBS} util)
+  viper_add_ctest(test_rt_term_color test_rt_term_color)
+
   viper_add_test(test_rt_trim_case ${VIPER_TESTS_DIR}/runtime/RTTrimCaseTests.cpp)
   target_link_libraries(test_rt_trim_case PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_trim_case test_rt_trim_case)
