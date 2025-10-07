@@ -21,7 +21,7 @@ bool Expected<void>::hasValue() const
 }
 
 /// @brief Allow Expected<void> to participate in boolean tests for success.
-Expected<void>::operator bool() const
+[[nodiscard]] Expected<void>::operator bool() const
 {
     return hasValue();
 }

@@ -83,7 +83,7 @@ template <> class Expected<void>
     [[nodiscard]] bool hasValue() const;
 
     /// @brief Allow use in boolean contexts to test success.
-    explicit operator bool() const;
+    [[nodiscard]] explicit operator bool() const;
 
     /// @brief Access the diagnostic describing the failure.
     const Diag &error() const &;
