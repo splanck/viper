@@ -127,6 +127,58 @@ Expected<Value> OperandParser::parseValueToken(const std::string &tok) const
     return Expected<Value>{makeError(state_.curLoc, oss.str())};
 }
 
+Expected<std::vector<std::string>>
+OperandParser::splitCommaSeparated(const std::string &text, const char *context) const
+{
+    std::vector<std::string> tokens;
+    std::string current;
+    bool inString = false;
+    bool escape = false;
+
+    auto error = [&]() -> Expected<std::vector<std::string>> {
+        std::ostringstream oss;
+        oss << "line " << state_.lineNo << ": malformed " << context;
+        return Expected<std::vector<std::string>>{makeError(instr_.loc, oss.str())};
+    };
+
+    for (char c : text)
+    {
+        if (!inString && c == ',')
+        {
+            std::string trimmed = trim(current);
+            if (!trimmed.empty())
+                tokens.push_back(std::move(trimmed));
+            current.clear();
+            continue;
+        }
+
+        current.push_back(c);
+
+        if (inString)
+        {
+            if (escape)
+                escape = false;
+            else if (c == '\\')
+                escape = true;
+            else if (c == '"')
+                inString = false;
+        }
+        else if (c == '"')
+        {
+            inString = true;
+        }
+    }
+
+    if (escape || inString)
+        return error();
+
+    std::string trimmed = trim(current);
+    if (!trimmed.empty())
+        tokens.push_back(std::move(trimmed));
+
+    return Expected<std::vector<std::string>>{std::move(tokens)};
+}
+
 Expected<void> OperandParser::parseCallOperands(const std::string &text)
 {
     const size_t at = text.find('@');
@@ -140,14 +192,12 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text)
     }
     instr_.callee = trim(text.substr(at + 1, lp - at - 1));
     std::string args = text.substr(lp + 1, rp - lp - 1);
-    std::stringstream as(args);
-    std::string a;
-    while (std::getline(as, a, ','))
+    auto tokens = splitCommaSeparated(args, "call");
+    if (!tokens)
+        return Expected<void>{tokens.error()};
+    for (const auto &token : tokens.value())
     {
-        a = trim(a);
-        if (a.empty())
-            continue;
-        auto argVal = parseValueToken(a);
+        auto argVal = parseValueToken(token);
         if (!argVal)
             return Expected<void>{argVal.error()};
         instr_.operands.push_back(std::move(argVal.value()));
@@ -162,6 +212,7 @@ Expected<void> OperandParser::parseBranchTarget(const std::string &segment,
                                                 std::vector<Value> &args) const
 {
     std::string text = trim(segment);
+    const char *mnemonic = il::core::getOpcodeInfo(instr_.op).name;
     if (text.rfind("label ", 0) == 0)
         text = trim(text.substr(6));
     if (!text.empty() && text[0] == '^')
@@ -181,13 +232,11 @@ Expected<void> OperandParser::parseBranchTarget(const std::string &segment,
     }
     label = trim(text.substr(0, lp));
     std::string argsStr = text.substr(lp + 1, rp - lp - 1);
-    std::stringstream as(argsStr);
-    std::string token;
-    while (std::getline(as, token, ','))
+    auto tokens = splitCommaSeparated(argsStr, mnemonic);
+    if (!tokens)
+        return Expected<void>{tokens.error()};
+    for (const auto &token : tokens.value())
     {
-        token = trim(token);
-        if (token.empty())
-            continue;
         auto val = parseValueToken(token);
         if (!val)
             return Expected<void>{val.error()};
