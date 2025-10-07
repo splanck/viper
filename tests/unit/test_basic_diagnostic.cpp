@@ -30,15 +30,21 @@ int main()
     sema.analyze(*prog);
 
     em.emit(Severity::Error, "B9999", SourceLoc{fid, 2, 0}, 0, "zero column test");
+    em.emit(Severity::Error, "B0000", SourceLoc{fid, 0, 0}, 0, "unknown location test");
 
     std::ostringstream oss;
     em.printAll(oss);
     std::string out = oss.str();
-    assert(em.errorCount() == 2);
+    assert(em.errorCount() == 3);
     assert(out.find("error[B1001]") != std::string::npos);
     assert(out.find("unknown variable 'X'") != std::string::npos);
     assert(out.find("zero column test") != std::string::npos);
+    assert(out.find("unknown location test") != std::string::npos);
     assert(out.find("^") != std::string::npos);
     assert(out.find("\n^\n") != std::string::npos);
+    const std::string unknownLocationHeader = "test.bas:0:0: error[B0000]: unknown location test\n";
+    auto headerPos = out.rfind(unknownLocationHeader);
+    assert(headerPos != std::string::npos);
+    assert(headerPos + unknownLocationHeader.size() == out.size());
     return 0;
 }
