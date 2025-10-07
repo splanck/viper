@@ -29,12 +29,16 @@ int main()
     SemanticAnalyzer sema(em);
     sema.analyze(*prog);
 
+    em.emit(Severity::Error, "B9999", SourceLoc{fid, 2, 0}, 0, "zero column test");
+
     std::ostringstream oss;
     em.printAll(oss);
     std::string out = oss.str();
-    assert(em.errorCount() == 1);
+    assert(em.errorCount() == 2);
     assert(out.find("error[B1001]") != std::string::npos);
     assert(out.find("unknown variable 'X'") != std::string::npos);
+    assert(out.find("zero column test") != std::string::npos);
     assert(out.find("^") != std::string::npos);
+    assert(out.find("\n^\n") != std::string::npos);
     return 0;
 }
