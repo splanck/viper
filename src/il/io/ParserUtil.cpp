@@ -90,7 +90,7 @@ bool parseIntegerLiteral(const std::string &token, long long &value)
     try
     {
         size_t idx = 0;
-        long long parsed = std::stoll(token, &idx);
+        long long parsed = std::stoll(token, &idx, 0);
         if (idx != token.size())
             return false;
         value = parsed;
