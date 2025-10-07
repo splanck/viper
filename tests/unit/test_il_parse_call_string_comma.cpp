@@ -19,6 +19,8 @@ extern @print(str) -> void
 func @main() -> void {
 entry:
   call @print("hello, world")
+  br label ^dest("error, detail")
+dest(%msg:str):
   ret
 }
 )";
@@ -30,7 +32,7 @@ entry:
 
     assert(module.functions.size() == 1);
     const auto &fn = module.functions[0];
-    assert(fn.blocks.size() == 1);
+    assert(fn.blocks.size() == 2);
 
     const auto &entry = fn.blocks[0];
     assert(entry.instructions.size() == 2);
@@ -42,6 +44,23 @@ entry:
     assert(callInstr.operands[0].kind == il::core::Value::Kind::ConstStr);
     assert(callInstr.operands[0].str == "hello, world");
     assert(callInstr.type.kind == il::core::Type::Kind::Void);
+
+    const auto &branchInstr = entry.instructions[1];
+    assert(branchInstr.op == il::core::Opcode::Br);
+    assert(branchInstr.labels.size() == 1);
+    assert(branchInstr.labels[0] == "dest");
+    assert(branchInstr.brArgs.size() == 1);
+    assert(branchInstr.brArgs[0].size() == 1);
+    assert(branchInstr.brArgs[0][0].kind == il::core::Value::Kind::ConstStr);
+    assert(branchInstr.brArgs[0][0].str == "error, detail");
+
+    const auto &destBlock = fn.blocks[1];
+    assert(destBlock.label == "dest");
+    assert(destBlock.params.size() == 1);
+    assert(destBlock.params[0].name == "msg");
+    assert(destBlock.params[0].type.kind == il::core::Type::Kind::Str);
+    assert(destBlock.instructions.size() == 1);
+    assert(destBlock.instructions[0].op == il::core::Opcode::Ret);
 
     return 0;
 }
