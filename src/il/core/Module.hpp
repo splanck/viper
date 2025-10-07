@@ -8,6 +8,7 @@
 #include "il/core/Extern.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Global.hpp"
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -22,6 +23,12 @@ struct Module
     /// Defaults to "0.1.2" for newly constructed modules and may be
     /// overwritten by parsers when reading serialized IL.
     std::string version = "0.1.2";
+
+    /// @brief Optional target triple directive associated with the module.
+    ///
+    /// Absent by default; populated when a `target "triple"` directive is
+    /// encountered during parsing or assigned programmatically.
+    std::optional<std::string> target;
 
     /// @brief Declared external functions available to the module.
     ///

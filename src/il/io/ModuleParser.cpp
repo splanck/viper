@@ -16,6 +16,7 @@
 
 #include "support/diag_expected.hpp"
 
+#include <iomanip>
 #include <sstream>
 #include <utility>
 #include <vector>
@@ -161,6 +162,18 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
             st.m.version = ver;
         else
             st.m.version = "0.1.2";
+        return {};
+    }
+    if (line.rfind("target", 0) == 0)
+    {
+        std::istringstream ls(line);
+        std::string kw;
+        ls >> kw;
+        std::string triple;
+        if (ls >> std::quoted(triple))
+            st.m.target = triple;
+        else
+            st.m.target.reset();
         return {};
     }
     if (line.rfind("extern", 0) == 0)
