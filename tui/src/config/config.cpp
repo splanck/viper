@@ -7,7 +7,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <exception>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <string_view>
 
@@ -247,7 +249,23 @@ bool loadFromFile(const std::string &path, Config &out)
         {
             if (lower_key == "tab_width")
             {
-                out.editor.tab_width = static_cast<unsigned>(std::stoul(value));
+                try
+                {
+                    std::size_t consumed = 0;
+                    const unsigned long parsed = std::stoul(value, &consumed);
+                    if (consumed != value.size() || parsed == 0)
+                    {
+                        continue;
+                    }
+                    const unsigned max_width = std::numeric_limits<unsigned>::max();
+                    const unsigned clamped = parsed > max_width ? max_width
+                                                                 : static_cast<unsigned>(parsed);
+                    out.editor.tab_width = clamped;
+                }
+                catch (const std::exception &)
+                {
+                    // Ignore malformed values and keep defaults.
+                }
             }
             else if (lower_key == "soft_wrap")
             {
