@@ -42,5 +42,28 @@ int main()
     assert(ev[3].code == KeyEvent::Code::Backspace);
     assert(ev[4].code == KeyEvent::Code::Enter);
 
+    d.feed("\xC0\xAF");
+    ev = d.drain();
+    assert(ev.size() == 1);
+    assert(ev[0].code == KeyEvent::Code::Unknown);
+    assert(ev[0].codepoint == 0);
+
+    d.feed("\xED\xA0\x80");
+    ev = d.drain();
+    assert(ev.size() == 1);
+    assert(ev[0].code == KeyEvent::Code::Unknown);
+    assert(ev[0].codepoint == 0);
+
+    d.feed("\xF4\x90\x80\x80");
+    ev = d.drain();
+    assert(ev.size() == 1);
+    assert(ev[0].code == KeyEvent::Code::Unknown);
+    assert(ev[0].codepoint == 0);
+
+    d.feed("C");
+    ev = d.drain();
+    assert(ev.size() == 1);
+    assert(ev[0].codepoint == 'C');
+
     return 0;
 }
