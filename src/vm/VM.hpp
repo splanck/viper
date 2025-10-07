@@ -1,6 +1,7 @@
 // File: src/vm/VM.hpp
-// Purpose: Declares stack-based virtual machine executing IL.
-// Key invariants: None.
+// Purpose: Declares stack-based virtual machine executing IL and caching runtime
+//          resources.
+// Key invariants: Inline string literal cache owns one handle per literal.
 // Ownership/Lifetime: VM does not own module or runtime bridge.
 // Links: docs/il-guide.md#reference
 #pragma once
@@ -227,8 +228,12 @@ class VM
     std::unordered_map<std::string, const il::core::Function *> fnMap;
 
     /// @brief Interned runtime strings.
-    /// @ownership Owned by the VM; manages @c rt_string handles.
+    /// @ownership Owned by the VM; manages @c rt_string handles for globals.
     std::unordered_map<std::string, rt_string> strMap;
+
+    /// @brief Cached runtime handles for inline string literals containing embedded NULs.
+    /// @ownership Owned by the VM; stores @c rt_string handles created via @c rt_string_from_bytes.
+    std::unordered_map<std::string, rt_string> inlineLiteralCache;
 
     /// @brief Trap metadata for the currently executing runtime call.
     RuntimeCallContext runtimeContext;

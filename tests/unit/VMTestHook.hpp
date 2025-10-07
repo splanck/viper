@@ -10,6 +10,7 @@
 #include "vm/VM.hpp"
 
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace il::vm
@@ -62,6 +63,19 @@ struct VMTestHook
     static Slot run(VM &vm, const il::core::Function &fn, const std::vector<Slot> &args)
     {
         return vm.execFunction(fn, args);
+    }
+
+    static size_t literalCacheSize(const VM &vm)
+    {
+        return vm.inlineLiteralCache.size();
+    }
+
+    static rt_string literalCacheLookup(const VM &vm, const std::string &literal)
+    {
+        auto it = vm.inlineLiteralCache.find(literal);
+        if (it == vm.inlineLiteralCache.end())
+            return nullptr;
+        return it->second;
     }
 };
 } // namespace il::vm
