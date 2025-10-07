@@ -275,7 +275,14 @@ Expected<void> parseBlockHeader(const std::string &header, ParserState &st)
                 oss << "line " << st.lineNo << ": bad param";
                 return Expected<void>{makeError({}, oss.str())};
             }
-            std::string nm = trim(q.substr(0, col));
+            std::string rawName = trim(q.substr(0, col));
+            if (!rawName.empty() && rawName[0] != '%')
+            {
+                std::ostringstream oss;
+                oss << "line " << st.lineNo << ": parameter name must start with '%'";
+                return Expected<void>{makeError({}, oss.str())};
+            }
+            std::string nm = rawName;
             if (!nm.empty() && nm[0] == '%')
                 nm = nm.substr(1);
             if (nm.empty())
