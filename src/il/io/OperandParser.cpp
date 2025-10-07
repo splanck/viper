@@ -16,6 +16,7 @@
 
 #include <cctype>
 #include <exception>
+#include <limits>
 #include <sstream>
 #include <string_view>
 #include <utility>
@@ -99,6 +100,16 @@ Expected<Value> OperandParser::parseValueToken(const std::string &tok) const
         oss << "Line " << state_.lineNo << ": invalid floating literal '" << tok << "'";
         return Expected<Value>{makeError(state_.curLoc, oss.str())};
     }
+    std::string lower;
+    lower.reserve(tok.size());
+    for (unsigned char ch : tok)
+        lower.push_back(static_cast<char>(std::tolower(ch)));
+    if (lower == "nan")
+        return Value::constFloat(std::numeric_limits<double>::quiet_NaN());
+    if (lower == "inf" || lower == "+inf")
+        return Value::constFloat(std::numeric_limits<double>::infinity());
+    if (lower == "-inf")
+        return Value::constFloat(-std::numeric_limits<double>::infinity());
     long long intValue = 0;
     if (parseIntegerLiteral(tok, intValue))
         return Value::constInt(intValue);
