@@ -14,6 +14,7 @@
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/RuntimeBridge.hpp"
 
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -389,7 +390,7 @@ VM::ExecResult OpHandlers::handleCastFpToUiRteChk(VM &vm,
     const uint64_t rounded = castFpToUiRoundedOrTrap(value.f64, in, fr, bb);
 
     Slot out{};
-    out.i64 = static_cast<int64_t>(rounded);
+    out.i64 = std::bit_cast<int64_t>(rounded);
     ops::storeResult(fr, in, out);
     return {};
 }

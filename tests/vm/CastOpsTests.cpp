@@ -163,12 +163,13 @@ int main()
         assert(runZext1(input) == expected);
     }
 
-    const std::array<std::pair<double, uint64_t>, 5> fpCastCases = {
+    const std::array<std::pair<double, uint64_t>, 6> fpCastCases = {
         {{0.0, UINT64_C(0)},
          {0.5, UINT64_C(0)},
          {1.5, UINT64_C(2)},
          {2.5, UINT64_C(2)},
-         {4294967296.5, UINT64_C(4294967296)}}};
+         {4294967296.5, UINT64_C(4294967296)},
+         {std::ldexp(1.0, 63), UINT64_C(9223372036854775808)}}};
 
     for (const auto &[input, expected] : fpCastCases)
     {
