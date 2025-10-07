@@ -32,7 +32,7 @@ StringRef fromViperString(const ViperString &str)
     if (!data)
         return {};
     const int64_t length = rt_len(str);
-    if (length <= 0)
+    if (length < 0)
         return {};
     return StringRef{data, static_cast<size_t>(length)};
 }

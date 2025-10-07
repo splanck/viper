@@ -173,6 +173,19 @@ int main()
     const char *emptyData = rt_string_cstr(emptyString);
     assert(emptyData != nullptr);
     assert(emptyData[0] == '\0');
+    il::vm::StringRef emptyView = il::vm::fromViperString(emptyString);
+    assert(emptyView.data() == emptyData);
+    assert(emptyView.size() == 0);
+
+    il::vm::ViperString roundTripEmpty = il::vm::toViperString(emptyView);
+    assert(roundTripEmpty != nullptr);
+    assert(rt_len(roundTripEmpty) == 0);
+    const char *roundTripData = rt_string_cstr(roundTripEmpty);
+    assert(roundTripData != nullptr);
+    assert(roundTripData[0] == '\0');
+
+    if (roundTripEmpty != emptyString)
+        rt_string_unref(roundTripEmpty);
     rt_string_unref(emptyString);
 
     for (bool covered : coveredKinds)
