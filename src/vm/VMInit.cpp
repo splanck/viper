@@ -70,6 +70,10 @@ VM::~VM()
     for (auto &entry : strMap)
         rt_str_release_maybe(entry.second);
     strMap.clear();
+
+    for (auto &entry : inlineLiteralCache)
+        rt_str_release_maybe(entry.second);
+    inlineLiteralCache.clear();
 }
 
 /// Initialise a fresh @c Frame for executing function @p fn.

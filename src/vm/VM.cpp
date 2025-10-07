@@ -1,7 +1,8 @@
 // File: src/vm/VM.cpp
 // License: MIT License. See LICENSE in the project root for full license information.
 // Purpose: Implements stack-based virtual machine for IL.
-// Key invariants: None.
+// Key invariants: Inline literal cache retains one runtime handle per embedded-NUL
+//                 string literal.
 // Ownership/Lifetime: VM references module owned externally.
 // Links: docs/il-guide.md#reference
 
@@ -149,8 +150,19 @@ Slot VM::eval(Frame &fr, const Value &v)
             s.f64 = toF64(v);
             return s;
         case Value::Kind::ConstStr:
-            s.str = toViperString(v.str);
+        {
+            if (v.str.find('\0') == std::string::npos)
+            {
+                s.str = rt_const_cstr(v.str.c_str());
+                return s;
+            }
+
+            auto [it, inserted] = inlineLiteralCache.try_emplace(v.str);
+            if (inserted)
+                it->second = rt_string_from_bytes(v.str.data(), v.str.size());
+            s.str = it->second;
             return s;
+        }
         case Value::Kind::GlobalAddr:
         {
             auto it = strMap.find(v.str);
