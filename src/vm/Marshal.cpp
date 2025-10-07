@@ -19,9 +19,7 @@ ViperString toViperString(StringRef text)
         return nullptr;
     if (text.empty())
         return rt_const_cstr("");
-    if (text.find('\0') != StringRef::npos)
-        return rt_string_from_bytes(text.data(), text.size());
-    return rt_const_cstr(text.data());
+    return rt_string_from_bytes(text.data(), text.size());
 }
 
 StringRef fromViperString(const ViperString &str)

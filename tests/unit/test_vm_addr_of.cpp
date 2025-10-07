@@ -33,6 +33,12 @@ int main()
     il::vm::VM vm(m);
     int64_t rv = vm.run();
     rt_string s = reinterpret_cast<rt_string>(static_cast<uintptr_t>(rv));
-    assert(s->data == m.globals.front().init.c_str());
+    assert(s != nullptr);
+    const std::string &globalInit = m.globals.front().init;
+    const int64_t runtimeLen = rt_len(s);
+    assert(runtimeLen == static_cast<int64_t>(globalInit.size()));
+    std::string runtimeText(s->data, static_cast<size_t>(runtimeLen));
+    assert(runtimeText == globalInit);
+    assert(s->data != globalInit.c_str());
     return 0;
 }

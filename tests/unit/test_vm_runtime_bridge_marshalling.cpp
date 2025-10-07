@@ -166,6 +166,32 @@ int main()
     assert(roundTrip == embeddedLiteral);
     rt_string_unref(embedded);
 
+    constexpr const char *transientLiteral = "transient";
+    constexpr size_t transientLength = sizeof("transient") - 1;
+    il::vm::ViperString copiedFromView{};
+    const char *copiedData = nullptr;
+    {
+        std::string transientSource(transientLiteral);
+        il::vm::StringRef view(transientSource);
+        const char *sourceData = view.data();
+        copiedFromView = il::vm::toViperString(view);
+        assert(copiedFromView != nullptr);
+        copiedData = copiedFromView->data;
+        assert(copiedData != nullptr);
+        assert(copiedData != sourceData);
+        const int64_t copiedLen = rt_len(copiedFromView);
+        assert(copiedLen == static_cast<int64_t>(transientLength));
+        std::string copiedText(copiedData, static_cast<size_t>(copiedLen));
+        assert(copiedText == transientSource);
+    }
+    const char *postLifetimeData = copiedFromView->data;
+    assert(postLifetimeData == copiedData);
+    const int64_t persistedLen = rt_len(copiedFromView);
+    assert(persistedLen == static_cast<int64_t>(transientLength));
+    std::string persisted(postLifetimeData, static_cast<size_t>(persistedLen));
+    assert(persisted == transientLiteral);
+    rt_string_unref(copiedFromView);
+
     for (bool covered : coveredKinds)
         assert(covered);
 
