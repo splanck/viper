@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <sstream>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
 
 namespace il::io::detail
@@ -251,6 +252,7 @@ Expected<void> parseBlockHeader(const std::string &header, ParserState &st)
         oss << "line " << st.lineNo << ": duplicate block '" << label << "'";
         return Expected<void>{makeError({}, oss.str())};
     }
+    std::unordered_set<std::string> localNames;
     if (lp != std::string::npos)
     {
         size_t rp = work.find(')', lp);
@@ -298,6 +300,13 @@ Expected<void> parseBlockHeader(const std::string &header, ParserState &st)
             {
                 std::ostringstream oss;
                 oss << "line " << st.lineNo << ": unknown param type";
+                return Expected<void>{makeError({}, oss.str())};
+            }
+            if (!localNames.insert(nm).second)
+            {
+                std::ostringstream oss;
+                oss << "line " << st.lineNo
+                    << ": duplicate parameter name '%" << nm << "'";
                 return Expected<void>{makeError({}, oss.str())};
             }
             bparams.push_back({nm, ty, st.nextTemp});
