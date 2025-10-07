@@ -40,7 +40,7 @@ il::support::Expected<void> Parser::parse(std::istream &is, il::core::Module &m)
     {
         ++st.lineNo;
         line = trim(line);
-        if (line.empty() || line.rfind("//", 0) == 0)
+        if (line.empty() || line.rfind("//", 0) == 0 || (!line.empty() && line[0] == '#'))
             continue;
         if (auto result = detail::parseModuleHeader_E(is, line, st); !result)
             return result;
