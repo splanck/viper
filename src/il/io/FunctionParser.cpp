@@ -239,6 +239,12 @@ Expected<void> parseBlockHeader(const std::string &header, ParserState &st)
     std::string label = lp != std::string::npos ? trim(work.substr(0, lp)) : trim(work);
     if (!label.empty() && label[0] == '^')
         label = label.substr(1);
+    if (label.empty())
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing block label";
+        return Expected<void>{makeError({}, oss.str())};
+    }
     if (st.blockParamCount.find(label) != st.blockParamCount.end())
     {
         std::ostringstream oss;
