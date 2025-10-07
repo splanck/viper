@@ -63,6 +63,11 @@ function(viper_add_il_core_tests)
   target_compile_definitions(test_il_parse_param_prefix PRIVATE PARSE_ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/tests/il/parse-roundtrip")
   viper_add_ctest(test_il_parse_param_prefix test_il_parse_param_prefix)
 
+  viper_add_test(test_il_parse_block_param_prefix ${_VIPER_IL_UNIT_DIR}/test_il_parse_block_param_prefix.cpp)
+  target_link_libraries(test_il_parse_block_param_prefix PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+  target_compile_definitions(test_il_parse_block_param_prefix PRIVATE PARSE_ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/tests/il/parse-roundtrip")
+  viper_add_ctest(test_il_parse_block_param_prefix test_il_parse_block_param_prefix)
+
   viper_add_test(test_il_parse_duplicate_param ${_VIPER_IL_UNIT_DIR}/test_il_parse_duplicate_param.cpp)
   target_link_libraries(test_il_parse_duplicate_param PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   viper_add_ctest(test_il_parse_duplicate_param test_il_parse_duplicate_param)
