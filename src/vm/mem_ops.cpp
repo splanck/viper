@@ -14,10 +14,10 @@
 #include "il/core/Type.hpp"
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/RuntimeBridge.hpp"
-#include <cassert>
 #include <cstddef>
 #include <cstring>
 #include <limits>
+#include <string>
 
 using namespace il::core;
 
@@ -200,8 +200,8 @@ VM::ExecResult OpHandlers::handleAlloca(VM &vm,
 /// Loads a value from memory into a temporary according to the instruction's
 /// type annotation.
 ///
-/// The handler evaluates the source pointer operand, asserting that it is
-/// non-null, and then performs a type-directed `switch` to reinterpret the
+/// The handler evaluates the source pointer operand, trapping when it is
+/// null, and then performs a type-directed `switch` to reinterpret the
 /// pointed-to bytes. Callers must ensure the pointer references a live object
 /// of the declared type; violating this breaks pointer provenance invariants
 /// and is undefined from the VM's perspective.
@@ -217,11 +217,17 @@ VM::ExecResult OpHandlers::handleLoad(VM &vm,
                                       size_t &ip)
 {
     (void)blocks;
-    (void)bb;
     (void)ip;
 
     void *ptr = vm.eval(fr, in.operands[0]).ptr;
-    assert(ptr && "null load");
+    if (!ptr)
+    {
+        const std::string blockLabel = bb ? bb->label : std::string();
+        RuntimeBridge::trap(TrapKind::InvalidOperation, "null load", in.loc, fr.func->name, blockLabel);
+        VM::ExecResult result{};
+        result.returned = true;
+        return result;
+    }
 
     ops::storeResult(fr, in, loadSlotFromPtr(in.type.kind, ptr));
     return {};
@@ -230,8 +236,8 @@ VM::ExecResult OpHandlers::handleLoad(VM &vm,
 /// Stores a value to memory using type-directed semantics and triggers debug
 /// notifications for observable writes.
 ///
-/// The handler evaluates the destination pointer and value operands, asserting
-/// that the pointer is non-null before dispatching on the instruction type. The
+/// The handler evaluates the destination pointer and value operands, trapping
+/// when the pointer is null before dispatching on the instruction type. The
 /// type switch mirrors `handleLoad` to preserve load/store symmetry. After the
 /// write, any named temporaries route through `vm.debug.onStore`, allowing
 /// tracing hooks to observe the operation.
@@ -247,8 +253,15 @@ VM::ExecResult OpHandlers::handleStore(VM &vm,
                                        size_t &ip)
 {
     (void)blocks;
+    const std::string blockLabel = bb ? bb->label : std::string();
     void *ptr = vm.eval(fr, in.operands[0]).ptr;
-    assert(ptr && "null store");
+    if (!ptr)
+    {
+        RuntimeBridge::trap(TrapKind::InvalidOperation, "null store", in.loc, fr.func->name, blockLabel);
+        VM::ExecResult result{};
+        result.returned = true;
+        return result;
+    }
     Slot value = vm.eval(fr, in.operands[1]);
 
     storeSlotToPtr(in.type.kind, ptr, value);
