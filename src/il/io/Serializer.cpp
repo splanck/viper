@@ -368,8 +368,20 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode)
 
     for (const auto &g : m.globals)
     {
-        os << "global const " << g.type.toString() << " @" << g.name << " = \""
-           << encodeEscapedString(g.init) << "\"\n";
+        os << "global ";
+        if (g.isConst)
+            os << "const ";
+        os << g.type.toString() << " @" << g.name << " = ";
+        switch (g.init.kind)
+        {
+            case Value::Kind::ConstStr:
+                os << '"' << encodeEscapedString(g.init.str) << '"';
+                break;
+            default:
+                os << il::core::toString(g.init);
+                break;
+        }
+        os << "\n";
     }
 
     for (const auto &f : m.functions)

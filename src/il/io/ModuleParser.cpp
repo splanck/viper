@@ -28,7 +28,9 @@ namespace il::io::detail
 namespace
 {
 
+using il::core::Global;
 using il::core::Type;
+using il::core::Value;
 using il::support::Expected;
 using il::support::makeError;
 
@@ -103,48 +105,200 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st)
     return {};
 }
 
-/// Parses a global string binding written as `global @name = "literal"`.
+/// Parses a global binding such as `global const str @name = "literal"`.
 ///
-/// The helper validates that an assignment operator is present, trims the name
-/// token to ignore incidental whitespace, and copies the quoted payload
-/// verbatim. When the `=` delimiter is missing an error diagnostic is emitted;
-/// otherwise the routine creates a UTF-8 string global and appends it to
-/// `ParserState::m.globals`.
+/// The helper validates that an assignment operator is present, recognises the
+/// optional `const` modifier and declared type, and resolves the initializer
+/// according to the grammar in docs/il-guide.md. String payloads are decoded via
+/// `decodeEscapedString` while numeric tokens use `parseIntegerLiteral` or
+/// `parseFloatLiteral`. Symbol and `null` initializers map to `Value::global`
+/// and `Value::null` respectively. Type/initializer mismatches produce
+/// diagnostics that cite the offending line and token.
 Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
 {
-    size_t at = line.find('@');
-    size_t eq = line.find('=', at);
+    size_t eq = line.find('=');
     if (eq == std::string::npos)
     {
         std::ostringstream oss;
         oss << "line " << st.lineNo << ": missing '='";
         return Expected<void>{makeError({}, oss.str())};
     }
-    size_t q1 = line.find('"', eq);
-    if (q1 == std::string::npos)
+
+    std::string head = trim(line.substr(0, eq));
+    std::string tail = trim(line.substr(eq + 1));
+    if (tail.empty())
     {
         std::ostringstream oss;
-        oss << "line " << st.lineNo << ": missing opening '\"'";
+        oss << "line " << st.lineNo << ": missing initializer";
         return Expected<void>{makeError({}, oss.str())};
     }
-    size_t q2 = line.rfind('"');
-    if (q2 == std::string::npos || q2 <= q1)
+
+    std::istringstream headStream(head);
+    std::string keyword = readToken(headStream);
+    (void)keyword;
+
+    std::string token = readToken(headStream);
+    if ((token.empty() && !headStream) || token.empty())
     {
         std::ostringstream oss;
-        oss << "line " << st.lineNo << ": missing closing '\"'";
+        oss << "line " << st.lineNo << ": missing type";
         return Expected<void>{makeError({}, oss.str())};
     }
-    std::string name = trim(line.substr(at + 1, eq - at - 1));
-    std::string init = line.substr(q1 + 1, q2 - q1 - 1);
-    std::string decoded;
-    std::string errMsg;
-    if (!il::io::decodeEscapedString(init, decoded, &errMsg))
+
+    bool isConst = false;
+    if (token == "const")
+    {
+        isConst = true;
+        token = readToken(headStream);
+        if ((token.empty() && !headStream) || token.empty())
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": missing type";
+            return Expected<void>{makeError({}, oss.str())};
+        }
+    }
+
+    std::string typeToken = token;
+    bool typeOk = true;
+    Type type = parseType(typeToken, &typeOk);
+    if (!typeOk)
     {
         std::ostringstream oss;
-        oss << "line " << st.lineNo << ": " << errMsg;
+        oss << "line " << st.lineNo << ": unknown type '" << typeToken << "'";
         return Expected<void>{makeError({}, oss.str())};
     }
-    st.m.globals.push_back({name, Type(Type::Kind::Str), decoded});
+
+    std::string nameTok = readToken(headStream);
+    if ((nameTok.empty() && !headStream) || nameTok.empty())
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing global name";
+        return Expected<void>{makeError({}, oss.str())};
+    }
+    nameTok = trim(nameTok);
+    if (!nameTok.empty() && nameTok.front() != '@')
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing '@'";
+        return Expected<void>{makeError({}, oss.str())};
+    }
+    if (!nameTok.empty())
+        nameTok.erase(0, 1);
+    if (nameTok.empty())
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing global name";
+        return Expected<void>{makeError({}, oss.str())};
+    }
+
+    Value initValue = Value::null();
+    std::string initToken = tail;
+    if (!tail.empty() && tail.front() == '"')
+    {
+        size_t q1 = line.find('"', eq);
+        if (q1 == std::string::npos)
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": missing opening '\"'";
+            return Expected<void>{makeError({}, oss.str())};
+        }
+        size_t q2 = line.rfind('"');
+        if (q2 == std::string::npos || q2 <= q1)
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": missing closing '\"'";
+            return Expected<void>{makeError({}, oss.str())};
+        }
+        std::string raw = line.substr(q1 + 1, q2 - q1 - 1);
+        std::string decoded;
+        std::string errMsg;
+        if (!il::io::decodeEscapedString(raw, decoded, &errMsg))
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": " << errMsg;
+            return Expected<void>{makeError({}, oss.str())};
+        }
+        initValue = Value::constStr(decoded);
+    }
+    else if (tail == "null")
+    {
+        initValue = Value::null();
+    }
+    else if (!tail.empty() && tail.front() == '@')
+    {
+        std::string sym = tail.substr(1);
+        if (sym.empty())
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": invalid symbol initializer";
+            return Expected<void>{makeError({}, oss.str())};
+        }
+        initValue = Value::global(sym);
+    }
+    else
+    {
+        long long intValue = 0;
+        if (parseIntegerLiteral(tail, intValue))
+        {
+            initValue = Value::constInt(intValue);
+        }
+        else
+        {
+            double floatValue = 0.0;
+            if (parseFloatLiteral(tail, floatValue))
+            {
+                initValue = Value::constFloat(floatValue);
+            }
+            else
+            {
+                std::ostringstream oss;
+                oss << "line " << st.lineNo << ": invalid initializer '" << tail << "'";
+                return Expected<void>{makeError({}, oss.str())};
+            }
+        }
+    }
+
+    auto mismatch = [&]() -> Expected<void>
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": initializer '" << initToken
+            << "' incompatible with type '" << typeToken << "'";
+        return Expected<void>{makeError({}, oss.str())};
+    };
+
+    switch (type.kind)
+    {
+        case Type::Kind::Str:
+            if (initValue.kind != Value::Kind::ConstStr)
+                return mismatch();
+            break;
+        case Type::Kind::I1:
+        case Type::Kind::I16:
+        case Type::Kind::I32:
+        case Type::Kind::I64:
+            if (initValue.kind != Value::Kind::ConstInt)
+                return mismatch();
+            break;
+        case Type::Kind::F64:
+            if (initValue.kind == Value::Kind::ConstInt)
+                initValue = Value::constFloat(static_cast<double>(initValue.i64));
+            else if (initValue.kind != Value::Kind::ConstFloat)
+                return mismatch();
+            break;
+        case Type::Kind::Ptr:
+            if (initValue.kind != Value::Kind::NullPtr && initValue.kind != Value::Kind::GlobalAddr)
+                return mismatch();
+            break;
+        default:
+            return mismatch();
+    }
+
+    Global g;
+    g.name = nameTok;
+    g.type = type;
+    g.isConst = isConst;
+    g.init = initValue;
+    st.m.globals.push_back(std::move(g));
     return {};
 }
 

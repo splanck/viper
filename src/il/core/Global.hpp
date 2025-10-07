@@ -6,6 +6,7 @@
 #pragma once
 
 #include "il/core/Type.hpp"
+#include "il/core/Value.hpp"
 #include <string>
 
 namespace il::core
@@ -26,10 +27,13 @@ struct Global
     /// @invariant Must match the type of any provided initializer.
     Type type;
 
-    /// @brief Serialized initializer data, if any.
-    /// @invariant Non-empty only for globals with constant values (e.g. UTF-8
-    /// string literals).
-    std::string init;
+    /// @brief Whether the binding is immutable.
+    /// @note Serialisation emits the `const` keyword when this flag is true.
+    bool isConst = false;
+
+    /// @brief Initial value associated with the binding.
+    /// @invariant Kind matches @ref type (e.g. `ConstStr` for `str`).
+    Value init = Value::null();
 };
 
 } // namespace il::core

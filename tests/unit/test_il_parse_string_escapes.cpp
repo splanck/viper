@@ -33,7 +33,10 @@ entry:
     assert(module.globals.size() == 4);
     std::unordered_map<std::string, std::string> values;
     for (const auto &g : module.globals)
-        values[g.name] = g.init;
+    {
+        assert(g.init.kind == il::core::Value::Kind::ConstStr);
+        values[g.name] = g.init.str;
+    }
     assert(values.at("nl") == std::string("\n"));
     assert(values.at("tab") == std::string("tab:\t"));
     assert(values.at("quote") == std::string("quote:\""));
