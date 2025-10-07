@@ -90,12 +90,14 @@ LoadResult loadModuleFromFile(const std::string &path,
 /// @return true when verification succeeds, false otherwise. Verification
 ///         failures emit diagnostics to @p err to aid CLI tools in reporting
 ///         actionable errors.
-bool verifyModule(const il::core::Module &module, std::ostream &err)
+bool verifyModule(const il::core::Module &module,
+                  std::ostream &err,
+                  const il::support::SourceManager *sm)
 {
     auto verified = il::api::v2::verify_module_expected(module);
     if (!verified)
     {
-        il::support::printDiag(verified.error(), err);
+        il::support::printDiag(verified.error(), err, sm);
         return false;
     }
     return true;
