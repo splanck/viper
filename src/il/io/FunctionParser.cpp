@@ -329,7 +329,7 @@ Expected<void> parseFunction(std::istream &is, std::string &header, ParserState 
     {
         ++st.lineNo;
         line = trim(line);
-        if (line.empty() || line.rfind("//", 0) == 0)
+        if (line.empty() || line.rfind("//", 0) == 0 || (!line.empty() && line[0] == '#'))
             continue;
         if (line[0] == '}')
         {
