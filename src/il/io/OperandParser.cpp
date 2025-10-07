@@ -10,12 +10,14 @@
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
 #include "il/io/ParserUtil.hpp"
+#include "il/io/StringEscape.hpp"
 
 #include "support/diag_expected.hpp"
 
 #include <cctype>
 #include <exception>
 #include <sstream>
+#include <string_view>
 #include <utility>
 
 namespace il::io::detail
@@ -72,7 +74,21 @@ Expected<Value> OperandParser::parseValueToken(const std::string &tok) const
     if (tok == "null")
         return Value::null();
     if (tok.size() >= 2 && tok.front() == '"' && tok.back() == '"')
-        return Value::constStr(tok.substr(1, tok.size() - 2));
+    {
+        std::string decoded;
+        std::string errMsg;
+        if (!il::io::decodeEscapedString(std::string_view(tok).substr(1, tok.size() - 2),
+                                         decoded,
+                                         &errMsg))
+        {
+            std::ostringstream oss;
+            oss << "Line " << state_.lineNo << ": invalid string literal '" << tok << "'";
+            if (!errMsg.empty())
+                oss << ": " << errMsg;
+            return Expected<Value>{makeError(state_.curLoc, oss.str())};
+        }
+        return Value::constStr(std::move(decoded));
+    }
     if (tok.find('.') != std::string::npos || tok.find('e') != std::string::npos ||
         tok.find('E') != std::string::npos)
     {
