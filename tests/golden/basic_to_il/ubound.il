@@ -9,8 +9,7 @@ extern @rt_arr_i32_new(i64) -> ptr
 extern @rt_arr_i32_len(ptr) -> i64
 extern @rt_arr_i32_retain(ptr) -> void
 extern @rt_arr_i32_release(ptr) -> void
-global const str @.L0 = "
-"
+global const str @.L0 = "\n"
 func @main() -> i64 {
 entry:
   %t0 = alloca 8

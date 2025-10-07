@@ -7,6 +7,8 @@
 
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Parser.hpp"
+#include "il/io/StringEscape.hpp"
+#include <cstdio>
 #include <cstdlib>
 
 namespace il::frontends::basic
@@ -198,14 +200,33 @@ ExprPtr Parser::parseNumber()
 
 /// @brief Parse a string literal expression from the current token.
 /// @details Implements the BASIC production `string-literal := "..."` by consuming the current
-/// TokenKind::String token. The lexer already handles escape sequences and diagnostics, so this
-/// helper simply copies the lexeme and advances.
+/// TokenKind::String token. Escape sequences such as `\n`, `\t`, `\"`, and `\\` are decoded here so
+/// downstream passes observe the literal characters. Malformed escape sequences produce a
+/// diagnostic when a @c DiagnosticEmitter is available.
 /// @return Newly allocated string literal expression.
 ExprPtr Parser::parseString()
 {
     auto e = std::make_unique<StringExpr>();
     e->loc = peek().loc;
-    e->value = peek().lexeme;
+    std::string decoded;
+    std::string err;
+    if (!il::io::decodeEscapedString(peek().lexeme, decoded, &err))
+    {
+        if (emitter_)
+        {
+            emitter_->emit(il::support::Severity::Error,
+                           "B0003",
+                           peek().loc,
+                           static_cast<uint32_t>(peek().lexeme.size()),
+                           err);
+        }
+        else
+        {
+            std::fprintf(stderr, "%s\n", err.c_str());
+        }
+        decoded = peek().lexeme;
+    }
+    e->value = std::move(decoded);
     consume();
     return e;
 }
