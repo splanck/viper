@@ -14,6 +14,7 @@
 #include "il/transform/PassManager.hpp"
 #include "il/transform/Peephole.hpp"
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -50,6 +51,20 @@ int cmdILOpt(int argc, char **argv)
     bool passesExplicit = false;
     bool noMem2Reg = false;
     bool mem2regStats = false;
+    auto trimToken = [](const std::string &token) {
+        auto begin = token.begin();
+        auto end = token.end();
+        while (begin != end && std::isspace(static_cast<unsigned char>(*begin)))
+        {
+            ++begin;
+        }
+        while (end != begin && std::isspace(static_cast<unsigned char>(*(end - 1))))
+        {
+            --end;
+        }
+        return std::string(begin, end);
+    };
+
     for (int i = 1; i < argc; ++i)
     {
         std::string arg = argv[i];
@@ -65,7 +80,13 @@ int cmdILOpt(int argc, char **argv)
             while (pos != std::string::npos)
             {
                 size_t comma = passes.find(',', pos);
-                passList.push_back(passes.substr(pos, comma - pos));
+                std::string token = trimToken(passes.substr(pos, comma - pos));
+                if (token.empty())
+                {
+                    usage();
+                    return 1;
+                }
+                passList.push_back(std::move(token));
                 if (comma == std::string::npos)
                     break;
                 pos = comma + 1;
