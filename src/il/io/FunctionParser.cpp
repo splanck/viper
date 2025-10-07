@@ -90,17 +90,28 @@ Expected<void> parseInstructionShim_E(const std::string &line, ParserState &st)
 /// header.
 Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
 {
-    size_t at = header.find('@');
-    size_t lp = header.find('(', at);
-    size_t rp = header.find(')', lp);
-    size_t arr = header.find("->", rp);
-    size_t lb = header.find('{', arr);
-    if (arr == std::string::npos || lb == std::string::npos)
-    {
+    const auto emitMalformedHeader = [&]() -> Expected<void> {
         std::ostringstream oss;
         oss << "line " << st.lineNo << ": malformed function header";
         return Expected<void>{makeError({}, oss.str())};
-    }
+    };
+
+    size_t at = header.find('@');
+    if (at == std::string::npos)
+        return emitMalformedHeader();
+
+    size_t lp = header.find('(', at);
+    if (lp == std::string::npos)
+        return emitMalformedHeader();
+
+    size_t rp = header.find(')', lp);
+    if (rp == std::string::npos)
+        return emitMalformedHeader();
+
+    size_t arr = header.find("->", rp);
+    size_t lb = header.find('{', arr);
+    if (arr == std::string::npos || lb == std::string::npos)
+        return emitMalformedHeader();
     std::string name = header.substr(at + 1, lp - at - 1);
     name = trim(name);
     std::string paramsStr = header.substr(lp + 1, rp - lp - 1);

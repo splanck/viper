@@ -8,22 +8,32 @@
 #include "il/core/Module.hpp"
 #include <cassert>
 #include <sstream>
+#include <string>
 
-int main()
+namespace
 {
-    const char *src = R"(il 0.1.2
-func @main() -> i64
-)";
+
+void expectMalformedHeader(const std::string &header)
+{
+    std::string src = "il 0.1.2\n" + header + "\n)";
     std::istringstream in(src);
     il::core::Module m;
     std::ostringstream diag;
     auto pe = il::api::v2::parse_text_expected(in, m);
     if (!pe)
-    {
         il::support::printDiag(pe.error(), diag);
-    }
     assert(!pe);
     std::string msg = diag.str();
     assert(msg.find("malformed function header") != std::string::npos);
+}
+
+} // namespace
+
+int main()
+{
+    expectMalformedHeader("func @main() -> i64");
+    expectMalformedHeader("func main() -> i64");          // Missing '@'
+    expectMalformedHeader("func @main) -> i64");          // Missing '('
+    expectMalformedHeader("func @main( -> i64");          // Missing ')'
     return 0;
 }
