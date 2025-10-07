@@ -7,6 +7,7 @@
 int main()
 {
     il::core::Module m;
+    m.target = std::string("x86_64-unknown-linux-gnu");
     il::build::IRBuilder builder(m);
     builder.addExtern("rt_print_str",
                       il::core::Type(il::core::Type::Kind::Void),
