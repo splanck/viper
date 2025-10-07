@@ -116,7 +116,8 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text)
             return Expected<void>{argVal.error()};
         instr_.operands.push_back(std::move(argVal.value()));
     }
-    instr_.type = il::core::Type(il::core::Type::Kind::Void);
+    if (!instr_.result)
+        instr_.type = il::core::Type(il::core::Type::Kind::Void);
     return {};
 }
 
