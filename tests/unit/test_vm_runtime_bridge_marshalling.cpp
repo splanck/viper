@@ -24,6 +24,7 @@
 #include <cassert>
 #include <cstdlib>
 #include <string>
+#include <string_view>
 #include <vector>
 
 int main()
@@ -196,6 +197,18 @@ int main()
 
     if (roundTripEmpty != emptyString)
         rt_string_unref(roundTripEmpty);
+
+    {
+        std::string backing = "backing";
+        std::string_view nonLiteralEmpty{backing.data(), static_cast<size_t>(0)};
+        assert(nonLiteralEmpty.data() != nullptr);
+        il::vm::ViperString nonLiteralHandle = il::vm::toViperString(nonLiteralEmpty);
+        assert(nonLiteralHandle != nullptr);
+        assert(rt_len(nonLiteralHandle) == 0);
+        assert(nonLiteralHandle != emptyString);
+        rt_string_unref(nonLiteralHandle);
+    }
+
     rt_string_unref(emptyString);
 
     {
