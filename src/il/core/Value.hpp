@@ -34,6 +34,10 @@ struct Value
     /// String payload for string constants and global names.
     std::string str;
 
+    /// @brief Flag set when the integer literal represents an i1 boolean.
+    /// @invariant Only meaningful when kind == Kind::ConstInt.
+    bool isBool{false};
+
     /// @brief Construct a temporary value.
     /// @param t Identifier of the temporary.
     /// @return Value with kind Kind::Temp and id set to t.
@@ -45,6 +49,12 @@ struct Value
     /// @return Value with kind Kind::ConstInt and i64 set to v.
     /// @invariant result.kind == Kind::ConstInt.
     static Value constInt(long long v);
+
+    /// @brief Construct a boolean constant value.
+    /// @param v Boolean literal to encode as an i1 constant.
+    /// @return Value with kind Kind::ConstInt and boolean flag set.
+    /// @invariant result.kind == Kind::ConstInt and result.isBool == true.
+    static Value constBool(bool v);
 
     /// @brief Construct a floating-point constant value.
     /// @param v IEEE-754 double literal.

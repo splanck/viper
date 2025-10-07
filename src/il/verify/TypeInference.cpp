@@ -84,7 +84,7 @@ Type TypeInference::valueType(const Value &value, bool *missing) const
             return Type(Type::Kind::Void);
         }
         case Value::Kind::ConstInt:
-            return Type(Type::Kind::I64);
+            return Type(value.isBool ? Type::Kind::I1 : Type::Kind::I64);
         case Value::Kind::ConstFloat:
             return Type(Type::Kind::F64);
         case Value::Kind::ConstStr:

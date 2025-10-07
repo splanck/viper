@@ -29,6 +29,9 @@ entry(%flag:i1):
   store i64, %t3, 0b101010
   %t4 = load i64, %t3
   %t5 = zext1 %flag
+  %t6 = alloca 1
+  store i1, %t6, true
+  store i1, %t6, FALSE
   cbr %flag, true_bb(%t4), false_bb
 true_bb(%x:i64):
   br exit(%x)
@@ -55,7 +58,7 @@ exit(%v:i64):
     assert(fn.blocks.size() == 4);
 
     const auto &entry = fn.blocks[0];
-    assert(entry.instructions.size() == 10);
+    assert(entry.instructions.size() == 13);
 
     const auto &constNull = entry.instructions[0];
     assert(constNull.op == il::core::Opcode::ConstNull);
@@ -117,7 +120,29 @@ exit(%v:i64):
     assert(zextInstr.operands[0].kind == il::core::Value::Kind::Temp);
     assert(zextInstr.type.kind == il::core::Type::Kind::I64);
 
-    const auto &cbrInstr = entry.instructions[9];
+    const auto &boolAlloca = entry.instructions[9];
+    assert(boolAlloca.op == il::core::Opcode::Alloca);
+    assert(boolAlloca.operands.size() == 1);
+    assert(boolAlloca.operands[0].kind == il::core::Value::Kind::ConstInt);
+    assert(boolAlloca.operands[0].i64 == 1);
+
+    const auto &storeBoolTrue = entry.instructions[10];
+    assert(storeBoolTrue.op == il::core::Opcode::Store);
+    assert(storeBoolTrue.type.kind == il::core::Type::Kind::I1);
+    assert(storeBoolTrue.operands.size() == 2);
+    assert(storeBoolTrue.operands[1].kind == il::core::Value::Kind::ConstInt);
+    assert(storeBoolTrue.operands[1].i64 == 1);
+    assert(storeBoolTrue.operands[1].isBool);
+
+    const auto &storeBoolFalse = entry.instructions[11];
+    assert(storeBoolFalse.op == il::core::Opcode::Store);
+    assert(storeBoolFalse.type.kind == il::core::Type::Kind::I1);
+    assert(storeBoolFalse.operands.size() == 2);
+    assert(storeBoolFalse.operands[1].kind == il::core::Value::Kind::ConstInt);
+    assert(storeBoolFalse.operands[1].i64 == 0);
+    assert(storeBoolFalse.operands[1].isBool);
+
+    const auto &cbrInstr = entry.instructions[12];
     assert(cbrInstr.op == il::core::Opcode::CBr);
     assert(cbrInstr.operands.size() == 1);
     assert(cbrInstr.operands[0].kind == il::core::Value::Kind::Temp);
