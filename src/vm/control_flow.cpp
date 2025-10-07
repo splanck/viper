@@ -84,12 +84,27 @@ VM::ExecResult OpHandlers::branchToTarget(VM &vm,
     auto it = blocks.find(label);
     assert(it != blocks.end() && "invalid branch target");
     const BasicBlock *target = it->second;
+    const BasicBlock *sourceBlock = bb;
+    const std::string sourceLabel = sourceBlock ? sourceBlock->label : std::string{};
+    const std::string functionName = fr.func ? fr.func->name : std::string{};
 
-    if (idx < in.brArgs.size())
+    const size_t expected = target->params.size();
+    const size_t provided = idx < in.brArgs.size() ? in.brArgs[idx].size() : 0;
+    if (provided != expected)
+    {
+        std::ostringstream os;
+        os << "branch argument count mismatch targeting '" << target->label << '\'';
+        if (!sourceLabel.empty())
+            os << " from '" << sourceLabel << '\'';
+        os << ": expected " << expected << ", got " << provided;
+        RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), in.loc, functionName, sourceLabel);
+        return {};
+    }
+
+    if (provided > 0)
     {
         const auto &args = in.brArgs[idx];
-        const size_t limit = std::min(args.size(), target->params.size());
-        for (size_t i = 0; i < limit; ++i)
+        for (size_t i = 0; i < provided; ++i)
         {
             const auto id = target->params[i].id;
             assert(id < fr.params.size());
