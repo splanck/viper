@@ -81,7 +81,7 @@ static void sgr_color(int fg, int bg) {
     if (bg <= 7) {
       n += snprintf(buf + n, sizeof(buf)-n, "%d", 40 + bg);
     } else if (bg <= 15) {
-      n += snprintf(buf + n, sizeof(buf)-n, "48;5;%d", 100 + (bg - 8));
+      n += snprintf(buf + n, sizeof(buf)-n, "%d", 100 + (bg - 8));
     } else {
       n += snprintf(buf + n, sizeof(buf)-n, "48;5;%d", bg);
     }
