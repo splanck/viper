@@ -56,6 +56,9 @@ struct ParserState
     /// @brief Collection of outstanding branch targets to validate later.
     std::vector<PendingBr> pendingBrs;
 
+    /// @brief Tracks whether the module declared its IL version directive.
+    bool sawVersion = false;
+
     /// @brief Construct parser state for the provided module.
     explicit ParserState(il::core::Module &mod);
 };
