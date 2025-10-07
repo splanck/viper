@@ -12,6 +12,7 @@
 #include <cassert>
 #include <fstream>
 #include <sstream>
+#include <string>
 
 #ifndef PARSE_ROUNDTRIP_DIR
 #error "PARSE_ROUNDTRIP_DIR must be defined"
@@ -19,17 +20,20 @@
 
 int main()
 {
-    constexpr std::array<const char *, 8> files = {PARSE_ROUNDTRIP_DIR "/checked-arith.il",
+    constexpr std::array<const char *, 9> files = {PARSE_ROUNDTRIP_DIR "/checked-arith.il",
                                                    PARSE_ROUNDTRIP_DIR "/checked-divrem.il",
                                                    PARSE_ROUNDTRIP_DIR "/cast-checks.il",
                                                    PARSE_ROUNDTRIP_DIR "/errors_eh.il",
                                                    PARSE_ROUNDTRIP_DIR "/idx_chk.il",
                                                    PARSE_ROUNDTRIP_DIR "/err_access.il",
                                                    PARSE_ROUNDTRIP_DIR "/target_directive.il",
+                                                   PARSE_ROUNDTRIP_DIR "/trap_newline.il",
                                                    SWITCH_GOLDEN};
 
     for (const char *path : files)
     {
+        const bool checkNewline = std::string(path).find("trap_newline.il") != std::string::npos;
+
         std::ifstream input(path);
         std::stringstream buffer;
         buffer << input.rdbuf();
@@ -40,12 +44,20 @@ int main()
         assert(parseFirst);
 
         std::string serialized = il::io::Serializer::toString(initial);
+        if (checkNewline)
+        {
+            assert(serialized.find("\"\\n\"") != std::string::npos);
+        }
         std::istringstream second(serialized);
         il::core::Module roundTripped;
         auto parseSecond = il::api::v2::parse_text_expected(second, roundTripped);
         assert(parseSecond);
 
         std::string finalText = il::io::Serializer::toString(roundTripped);
+        if (checkNewline)
+        {
+            assert(finalText.find("\"\\n\"") != std::string::npos);
+        }
         if (!serialized.empty() && serialized.back() == '\n')
             serialized.pop_back();
         if (!finalText.empty() && finalText.back() == '\n')
