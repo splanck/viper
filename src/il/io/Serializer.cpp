@@ -22,6 +22,7 @@
 #include <functional>
 #include <optional>
 #include <sstream>
+#include <string>
 
 namespace il::io
 {
@@ -38,13 +39,20 @@ constexpr size_t toIndex(Opcode op)
     return static_cast<size_t>(op);
 }
 
+std::string formatValue(const Value &value)
+{
+    if (value.kind == Value::Kind::ConstStr)
+        return std::string("\"") + encodeEscapedString(value.str) + "\"";
+    return il::core::toString(value);
+}
+
 void printValueList(std::ostream &os, const std::vector<Value> &values)
 {
     for (size_t i = 0; i < values.size(); ++i)
     {
         if (i)
             os << ", ";
-        os << il::core::toString(values[i]);
+        os << formatValue(values[i]);
     }
 }
 
@@ -69,14 +77,14 @@ void printTrapKindOperand(const Instr &instr, std::ostream &os)
             return;
         }
     }
-    os << ' ' << il::core::toString(operand);
+    os << ' ' << formatValue(operand);
 }
 
 void printTrapFromErrOperands(const Instr &instr, std::ostream &os)
 {
     os << ' ' << instr.type.toString();
     if (!instr.operands.empty())
-        os << ' ' << il::core::toString(instr.operands.front());
+        os << ' ' << formatValue(instr.operands.front());
 }
 
 void printCallOperands(const Instr &instr, std::ostream &os)
@@ -90,14 +98,14 @@ void printRetOperand(const Instr &instr, std::ostream &os)
 {
     if (instr.operands.empty())
         return;
-    os << ' ' << il::core::toString(instr.operands[0]);
+    os << ' ' << formatValue(instr.operands[0]);
 }
 
 void printLoadOperands(const Instr &instr, std::ostream &os)
 {
     os << ' ' << instr.type.toString();
     if (!instr.operands.empty())
-        os << ", " << il::core::toString(instr.operands[0]);
+        os << ", " << formatValue(instr.operands[0]);
 }
 
 void printStoreOperands(const Instr &instr, std::ostream &os)
@@ -105,9 +113,9 @@ void printStoreOperands(const Instr &instr, std::ostream &os)
     os << ' ' << instr.type.toString();
     if (!instr.operands.empty())
     {
-        os << ", " << il::core::toString(instr.operands[0]);
+        os << ", " << formatValue(instr.operands[0]);
         if (instr.operands.size() > 1)
-            os << ", " << il::core::toString(instr.operands[1]);
+            os << ", " << formatValue(instr.operands[1]);
     }
 }
 
@@ -153,7 +161,7 @@ void printCBrOperands(const Instr &instr, std::ostream &os)
         return;
     }
 
-    os << ' ' << il::core::toString(instr.operands[0]);
+    os << ' ' << formatValue(instr.operands[0]);
 
     if (instr.labels.empty())
     {
@@ -180,14 +188,14 @@ void printSwitchI32Operands(const Instr &instr, std::ostream &os)
     if (instr.operands.empty() || instr.labels.empty())
         return;
 
-    os << ' ' << il::core::toString(switchScrutinee(instr));
+    os << ' ' << formatValue(switchScrutinee(instr));
     os << ", ";
     printCaretBranchTarget(instr, 0, os);
 
     const size_t caseCount = switchCaseCount(instr);
     for (size_t idx = 0; idx < caseCount; ++idx)
     {
-        os << ", " << il::core::toString(switchCaseValue(instr, idx)) << " -> ";
+        os << ", " << formatValue(switchCaseValue(instr, idx)) << " -> ";
         printCaretBranchTarget(instr, idx + 1, os);
     }
 }
@@ -230,7 +238,7 @@ const Formatter &formatterFor(Opcode op)
         table[toIndex(Opcode::ResumeLabel)] = [](const Instr &instr, std::ostream &os)
         {
             if (!instr.operands.empty())
-                os << ' ' << il::core::toString(instr.operands[0]);
+                os << ' ' << formatValue(instr.operands[0]);
             if (!instr.labels.empty())
             {
                 os << ", ";
