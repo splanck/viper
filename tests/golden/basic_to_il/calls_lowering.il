@@ -6,8 +6,7 @@ extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
 extern @rt_str_empty() -> str
 global const str @.L0 = ""
-global const str @.L1 = "
-"
+global const str @.L1 = "\n"
 global const str @.L2 = "HI"
 func @F#(f64 %X#) -> f64 {
 entry_F#:

@@ -12,6 +12,7 @@
 
 #include "il/io/FunctionParser.hpp"
 #include "il/io/ParserUtil.hpp"
+#include "il/io/StringEscape.hpp"
 #include "il/io/TypeParser.hpp"
 
 #include "support/diag_expected.hpp"
@@ -135,7 +136,15 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
     }
     std::string name = trim(line.substr(at + 1, eq - at - 1));
     std::string init = line.substr(q1 + 1, q2 - q1 - 1);
-    st.m.globals.push_back({name, Type(Type::Kind::Str), init});
+    std::string decoded;
+    std::string errMsg;
+    if (!il::io::decodeEscapedString(init, decoded, &errMsg))
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": " << errMsg;
+        return Expected<void>{makeError({}, oss.str())};
+    }
+    st.m.globals.push_back({name, Type(Type::Kind::Str), decoded});
     return {};
 }
 

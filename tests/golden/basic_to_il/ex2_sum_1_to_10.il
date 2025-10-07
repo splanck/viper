@@ -6,8 +6,7 @@ extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
 extern @rt_str_empty() -> str
 global const str @.L0 = "SUM"
-global const str @.L1 = "
-"
+global const str @.L1 = "\n"
 global const str @.L2 = "DONE"
 func @main() -> i64 {
 entry:

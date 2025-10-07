@@ -206,6 +206,19 @@ int main()
         assert(ie && ie->value == 3);
     }
 
+    // LEN handles escape sequences decoded to literal characters
+    {
+        std::string src = "10 PRINT LEN(\"\\n\")\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("len_escape.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        foldConstants(*prog);
+        auto *pr = dynamic_cast<PrintStmt *>(prog->main[0].get());
+        auto *ie = dynamic_cast<IntExpr *>(pr->items[0].expr.get());
+        assert(ie && ie->value == 1);
+    }
+
     // MID$ clamps indices and handles unicode source
     {
         std::string src = "10 PRINT MID$(\"AßC\", 0, 5)\n20 PRINT MID$(\"xyz\", 10, 2)\n30 END\n";
