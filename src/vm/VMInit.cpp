@@ -6,6 +6,7 @@
 
 #include "vm/VM.hpp"
 #include "vm/Marshal.hpp"
+#include "vm/RuntimeBridge.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Global.hpp"
@@ -13,6 +14,7 @@
 
 #include <cassert>
 #include <clocale>
+#include <sstream>
 #include <utility>
 
 using namespace il::core;
@@ -103,6 +105,15 @@ Frame VM::setupFrame(const Function &fn,
     if (bb)
     {
         const auto &params = bb->params;
+        if (args.size() != params.size())
+        {
+            std::ostringstream os;
+            os << "argument count mismatch for function " << fn.name << ": expected "
+               << params.size() << " argument" << (params.size() == 1 ? "" : "s")
+               << ", received " << args.size();
+            RuntimeBridge::trap(
+                TrapKind::InvalidOperation, os.str(), {}, fn.name, bb->label);
+        }
         for (size_t i = 0; i < params.size() && i < args.size(); ++i)
         {
             const auto id = params[i].id;
