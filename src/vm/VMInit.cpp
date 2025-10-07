@@ -62,6 +62,14 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
         strMap[g.name] = toViperString(g.init);
 }
 
+/// Release runtime string handles owned by the VM instance.
+VM::~VM()
+{
+    for (auto &entry : strMap)
+        rt_str_release_maybe(entry.second);
+    strMap.clear();
+}
+
 /// Initialise a fresh @c Frame for executing function @p fn.
 ///
 /// Populates a basic-block lookup table, selects the entry block and seeds the
