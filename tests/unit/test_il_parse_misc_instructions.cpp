@@ -9,6 +9,7 @@
 #include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/Value.hpp"
+#include "support/diagnostics.hpp"
 
 #include <cassert>
 #include <sstream>
@@ -54,6 +55,7 @@ exit(%v:i64):
 
     const auto &entry = fn.blocks[0];
     assert(entry.instructions.size() == 8);
+    assert(entry.terminated);
 
     const auto &constNull = entry.instructions[0];
     assert(constNull.op == il::core::Opcode::ConstNull);
@@ -113,6 +115,7 @@ exit(%v:i64):
 
     const auto &trueBB = fn.blocks[1];
     assert(trueBB.instructions.size() == 1);
+    assert(trueBB.terminated);
     const auto &brInstr = trueBB.instructions[0];
     assert(brInstr.op == il::core::Opcode::Br);
     assert(brInstr.labels.size() == 1);
@@ -123,6 +126,7 @@ exit(%v:i64):
 
     const auto &falseBB = fn.blocks[2];
     assert(falseBB.instructions.size() == 2);
+    assert(falseBB.terminated);
     const auto &callInstr = falseBB.instructions[0];
     assert(callInstr.op == il::core::Opcode::Call);
     assert(callInstr.callee == "foo");
@@ -135,11 +139,31 @@ exit(%v:i64):
 
     const auto &exitBB = fn.blocks[3];
     assert(exitBB.instructions.size() == 1);
+    assert(exitBB.terminated);
     const auto &retInstr = exitBB.instructions[0];
     assert(retInstr.op == il::core::Opcode::Ret);
     assert(retInstr.operands.size() == 1);
     assert(retInstr.operands[0].kind == il::core::Value::Kind::Temp);
     assert(retInstr.type.kind == il::core::Type::Kind::Void);
+
+    const char *invalid = R"(il 0.1.2
+func @bad() -> void {
+entry:
+  trap
+  %dead = const_null
+}
+)";
+
+    std::istringstream invalidIn(invalid);
+    il::core::Module invalidModule;
+    auto invalidParse = il::api::v2::parse_text_expected(invalidIn, invalidModule);
+    assert(!invalidParse);
+
+    std::ostringstream diag;
+    il::support::printDiag(invalidParse.error(), diag);
+    const std::string message = diag.str();
+    assert(message.find("line 5") != std::string::npos);
+    assert(message.find("instruction after terminator") != std::string::npos);
 
     return 0;
 }

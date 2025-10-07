@@ -419,7 +419,15 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st)
         oss << "line " << st.lineNo << ": unknown opcode " << op;
         return Expected<void>{makeError(in.loc, oss.str())};
     }
-    auto parsed = parseWithMetadata(it->second, rest, in, st);
+    const Opcode opcode = it->second;
+    const auto &info = getOpcodeInfo(opcode);
+    if (st.curBB != nullptr && st.curBB->terminated)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": instruction after terminator";
+        return Expected<void>{makeError(in.loc, oss.str())};
+    }
+    auto parsed = parseWithMetadata(opcode, rest, in, st);
     if (!parsed)
         return parsed;
     if (annotatedType)
@@ -428,6 +436,8 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st)
     if (!shape)
         return shape;
     st.curBB->instructions.push_back(std::move(in));
+    if (info.isTerminator)
+        st.curBB->terminated = true;
     return {};
 }
 
