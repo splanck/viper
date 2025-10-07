@@ -50,4 +50,12 @@ function(viper_add_tools_tests)
   target_include_directories(test_cli_run_invalid_max_steps PRIVATE ${CMAKE_SOURCE_DIR}/src)
   target_link_libraries(test_cli_run_invalid_max_steps PRIVATE ${VIPER_TOOLS_LIBS})
   viper_add_ctest(test_cli_run_invalid_max_steps test_cli_run_invalid_max_steps)
+
+  viper_add_test(test_cli_il_opt_passes
+    ${VIPER_TESTS_DIR}/unit/test_il_opt_passes.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/ilc/cli.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/ilc/cmd_il_opt.cpp)
+  target_include_directories(test_cli_il_opt_passes PRIVATE ${CMAKE_SOURCE_DIR}/src)
+  target_link_libraries(test_cli_il_opt_passes PRIVATE ${VIPER_TOOLS_LIBS} il_transform)
+  viper_add_ctest(test_cli_il_opt_passes test_cli_il_opt_passes)
 endfunction()
