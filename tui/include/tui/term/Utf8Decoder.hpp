@@ -37,6 +37,7 @@ class Utf8Decoder
   private:
     uint32_t cp_{0};
     unsigned expected_{0};
+    unsigned length_{0};
 };
 
 } // namespace viper::tui::term
