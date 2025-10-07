@@ -6,7 +6,15 @@
 
 #include "vm/Marshal.hpp"
 #include "vm/RuntimeBridge.hpp"
+#include "vm/Trap.hpp"
 #include "vm/VM.hpp"
+#include "VMTestHook.hpp"
+#include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Instr.hpp"
+#include "il/core/Module.hpp"
+#include "il/core/Opcode.hpp"
+#include "il/core/Param.hpp"
 #include "il/core/Type.hpp"
 #include "rt_array.h"
 #include "rt_internal.h"
@@ -22,6 +30,8 @@ int main()
 {
     using il::support::SourceLoc;
     using il::core::Type;
+    using il::core::Value;
+    using il::core::Opcode;
     using il::vm::RuntimeBridge;
     using il::vm::RuntimeCallContext;
     using il::vm::Slot;
@@ -187,6 +197,99 @@ int main()
     if (roundTripEmpty != emptyString)
         rt_string_unref(roundTripEmpty);
     rt_string_unref(emptyString);
+
+    {
+        rt_string_impl bogus{};
+        bogus.data = const_cast<char *>("corrupt");
+        bogus.heap = nullptr;
+        bogus.literal_len = static_cast<size_t>(-1);
+        bogus.literal_refs = 1;
+
+        il::core::Module module;
+        il::core::Function fn;
+        fn.name = "main";
+        fn.retType = Type(Type::Kind::I64);
+        fn.valueNames.resize(4);
+
+        il::core::BasicBlock entry;
+        entry.label = "entry";
+        il::core::Param msgParam;
+        msgParam.name = "msg";
+        msgParam.type = Type(Type::Kind::Str);
+        msgParam.id = 0;
+        entry.params.push_back(msgParam);
+
+        il::core::Instr push;
+        push.op = Opcode::EhPush;
+        push.type = Type(Type::Kind::Void);
+        push.labels.push_back("handler");
+
+        il::core::Instr trapErrInstr;
+        trapErrInstr.result = 1;
+        trapErrInstr.op = Opcode::TrapErr;
+        trapErrInstr.type = Type(Type::Kind::Error);
+        trapErrInstr.operands.push_back(Value::constInt(7));
+        trapErrInstr.operands.push_back(Value::temp(0));
+
+        il::core::Instr pop;
+        pop.op = Opcode::EhPop;
+        pop.type = Type(Type::Kind::Void);
+
+        il::core::Instr retValue;
+        retValue.op = Opcode::Ret;
+        retValue.type = Type(Type::Kind::I64);
+        retValue.operands.push_back(Value::temp(3));
+
+        entry.instructions.push_back(push);
+        entry.instructions.push_back(trapErrInstr);
+        entry.instructions.push_back(pop);
+        entry.instructions.push_back(retValue);
+        entry.terminated = true;
+
+        il::core::BasicBlock handler;
+        handler.label = "handler";
+        il::core::Param errParam;
+        errParam.name = "err";
+        errParam.type = Type(Type::Kind::Error);
+        errParam.id = 1;
+        handler.params.push_back(errParam);
+        il::core::Param tokParam;
+        tokParam.name = "tok";
+        tokParam.type = Type(Type::Kind::ResumeTok);
+        tokParam.id = 2;
+        handler.params.push_back(tokParam);
+
+        il::core::Instr ehEntry;
+        ehEntry.op = Opcode::EhEntry;
+        ehEntry.type = Type(Type::Kind::Void);
+
+        il::core::Instr trapKind;
+        trapKind.result = 3;
+        trapKind.op = Opcode::TrapKind;
+        trapKind.type = Type(Type::Kind::I64);
+
+        il::core::Instr resumeNext;
+        resumeNext.op = Opcode::ResumeNext;
+        resumeNext.type = Type(Type::Kind::Void);
+        resumeNext.operands.push_back(Value::temp(2));
+
+        handler.instructions.push_back(ehEntry);
+        handler.instructions.push_back(trapKind);
+        handler.instructions.push_back(resumeNext);
+        handler.terminated = true;
+
+        fn.blocks.push_back(entry);
+        fn.blocks.push_back(handler);
+        module.functions.push_back(fn);
+
+        il::vm::VM vm(module);
+        std::vector<il::vm::Slot> args(1);
+        args[0].str = reinterpret_cast<rt_string>(&bogus);
+
+        il::vm::Slot vmResult = il::vm::VMTestHook::run(vm, module.functions.front(), args);
+        const int64_t expectedTrap = static_cast<int64_t>(static_cast<int32_t>(il::vm::TrapKind::DomainError));
+        assert(vmResult.i64 == expectedTrap);
+    }
 
     for (bool covered : coveredKinds)
         assert(covered);
