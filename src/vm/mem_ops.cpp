@@ -15,7 +15,9 @@
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include <cassert>
+#include <cstddef>
 #include <cstring>
+#include <limits>
 
 using namespace il::core;
 
@@ -151,6 +153,7 @@ VM::ExecResult OpHandlers::handleAlloca(VM &vm,
     const size_t size = static_cast<size_t>(bytes);
     const size_t addr = fr.sp;
     const size_t stackSize = fr.stack.size();
+    constexpr size_t alignment = alignof(std::max_align_t);
 
     auto trapOverflow = [&]() -> VM::ExecResult {
         RuntimeBridge::trap(TrapKind::Overflow, "stack overflow in alloca", in.loc, fr.func->name, "");
@@ -162,15 +165,34 @@ VM::ExecResult OpHandlers::handleAlloca(VM &vm,
     if (addr > stackSize)
         return trapOverflow();
 
-    const size_t remaining = stackSize - addr;
+    size_t alignedAddr = addr;
+    if (alignment > 1)
+    {
+        const size_t remainder = alignedAddr % alignment;
+        if (remainder != 0U)
+        {
+            const size_t padding = alignment - remainder;
+            if (alignedAddr > std::numeric_limits<size_t>::max() - padding)
+                return trapOverflow();
+            alignedAddr += padding;
+        }
+    }
+
+    if (alignedAddr > stackSize)
+        return trapOverflow();
+
+    if (size > std::numeric_limits<size_t>::max() - alignedAddr)
+        return trapOverflow();
+
+    const size_t remaining = stackSize - alignedAddr;
     if (size > remaining)
         return trapOverflow();
 
-    std::memset(fr.stack.data() + addr, 0, size);
+    std::memset(fr.stack.data() + alignedAddr, 0, size);
 
     Slot out{};
-    out.ptr = fr.stack.data() + addr;
-    fr.sp += size;
+    out.ptr = fr.stack.data() + alignedAddr;
+    fr.sp = alignedAddr + size;
     ops::storeResult(fr, in, out);
     return {};
 }
