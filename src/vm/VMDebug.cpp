@@ -5,6 +5,7 @@
 // Links: docs/il-guide.md#reference
 
 #include "vm/VM.hpp"
+#include "vm/OpHandlerUtils.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -39,7 +40,11 @@ void VM::transferBlockParams(Frame &fr, const BasicBlock &bb)
             continue;
         if (fr.regs.size() <= p.id)
             fr.regs.resize(p.id + 1);
-        fr.regs[p.id] = *pending;
+
+        Instr pseudo;
+        pseudo.result = p.id;
+        pseudo.type = p.type;
+        detail::ops::storeResult(fr, pseudo, *pending);
         debug.onStore(p.name,
                       p.type.kind,
                       fr.regs[p.id].i64,
@@ -47,6 +52,8 @@ void VM::transferBlockParams(Frame &fr, const BasicBlock &bb)
                       fr.func->name,
                       bb.label,
                       0);
+        if (p.type.kind == Type::Kind::Str)
+            rt_str_release_maybe(pending->str);
         pending.reset();
     }
 }
