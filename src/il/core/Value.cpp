@@ -5,6 +5,7 @@
 // Links: docs/il-guide.md#reference
 
 #include "il/core/Value.hpp"
+#include "il/io/StringEscape.hpp"
 
 #include <iomanip>
 #include <limits>
@@ -77,7 +78,7 @@ std::string toString(const Value &v)
             return s;
         }
         case Value::Kind::ConstStr:
-            return "\"" + v.str + "\"";
+            return std::string("\"") + il::io::encodeEscapedString(v.str) + "\"";
         case Value::Kind::GlobalAddr:
             return "@" + v.str;
         case Value::Kind::NullPtr:
