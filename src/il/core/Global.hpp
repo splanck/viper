@@ -6,6 +6,9 @@
 #pragma once
 
 #include "il/core/Type.hpp"
+#include "il/core/Value.hpp"
+
+#include <optional>
 #include <string>
 
 namespace il::core
@@ -26,10 +29,9 @@ struct Global
     /// @invariant Must match the type of any provided initializer.
     Type type;
 
-    /// @brief Serialized initializer data, if any.
-    /// @invariant Non-empty only for globals with constant values (e.g. UTF-8
-    /// string literals).
-    std::string init;
+    /// @brief Optional constant initializer attached to the global.
+    /// @invariant When engaged, the value's kind matches the declared type.
+    std::optional<Value> init;
 };
 
 } // namespace il::core

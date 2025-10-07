@@ -43,7 +43,7 @@ Extern &IRBuilder::addExtern(const std::string &name, Type ret, const std::vecto
 /// @note The global is always recorded with Type::Kind::Str.
 Global &IRBuilder::addGlobalStr(const std::string &name, const std::string &value)
 {
-    mod.globals.push_back({name, Type(Type::Kind::Str), value});
+    mod.globals.push_back({name, Type(Type::Kind::Str), Value::constStr(value)});
     return mod.globals.back();
 }
 

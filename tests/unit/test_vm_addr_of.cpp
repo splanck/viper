@@ -33,6 +33,8 @@ int main()
     il::vm::VM vm(m);
     int64_t rv = vm.run();
     rt_string s = reinterpret_cast<rt_string>(static_cast<uintptr_t>(rv));
-    assert(s->data == m.globals.front().init.c_str());
+    assert(m.globals.front().init);
+    assert(m.globals.front().init->kind == il::core::Value::Kind::ConstStr);
+    assert(s->data == m.globals.front().init->str.c_str());
     return 0;
 }

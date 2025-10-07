@@ -367,7 +367,10 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode)
 
     for (const auto &g : m.globals)
     {
-        os << "global const " << g.type.toString() << " @" << g.name << " = \"" << g.init << "\"\n";
+        os << "global const " << g.type.toString() << " @" << g.name;
+        if (g.init)
+            os << " = " << il::core::toString(*g.init);
+        os << "\n";
     }
 
     for (const auto &f : m.functions)

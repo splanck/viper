@@ -59,7 +59,10 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
     for (const auto &f : m.functions)
         fnMap[f.name] = &f;
     for (const auto &g : m.globals)
-        strMap[g.name] = toViperString(g.init);
+    {
+        if (g.init && g.init->kind == Value::Kind::ConstStr)
+            strMap[g.name] = toViperString(g.init->str);
+    }
 }
 
 /// Initialise a fresh @c Frame for executing function @p fn.

@@ -28,6 +28,7 @@ namespace
 {
 
 using il::core::Type;
+using il::core::Value;
 using il::support::Expected;
 using il::support::makeError;
 
@@ -111,31 +112,145 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st)
 /// `ParserState::m.globals`.
 Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
 {
-    size_t at = line.find('@');
-    size_t eq = line.find('=', at);
+    size_t eq = line.find('=');
     if (eq == std::string::npos)
     {
         std::ostringstream oss;
         oss << "line " << st.lineNo << ": missing '='";
         return Expected<void>{makeError({}, oss.str())};
     }
-    size_t q1 = line.find('"', eq);
-    if (q1 == std::string::npos)
+
+    std::string lhs = trim(line.substr(0, eq));
+    std::istringstream ls(lhs);
+    std::string globalTok;
+    ls >> globalTok; // "global"
+
+    std::string token;
+    if (!(ls >> token))
     {
         std::ostringstream oss;
-        oss << "line " << st.lineNo << ": missing opening '\"'";
+        oss << "line " << st.lineNo << ": missing global declaration";
         return Expected<void>{makeError({}, oss.str())};
     }
-    size_t q2 = line.rfind('"');
-    if (q2 == std::string::npos || q2 <= q1)
+
+    std::string typeTok;
+    std::string nameTok;
+
+    if (token == "const")
+    {
+        if (!(ls >> token))
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": missing type";
+            return Expected<void>{makeError({}, oss.str())};
+        }
+    }
+
+    if (!token.empty() && token[0] == '@')
+    {
+        typeTok = "str";
+        nameTok = token;
+    }
+    else
+    {
+        typeTok = token;
+        if (!(ls >> nameTok))
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": missing global name";
+            return Expected<void>{makeError({}, oss.str())};
+        }
+    }
+
+    nameTok = trim(nameTok);
+    if (nameTok.empty() || nameTok[0] != '@')
     {
         std::ostringstream oss;
-        oss << "line " << st.lineNo << ": missing closing '\"'";
+        oss << "line " << st.lineNo << ": missing '@'";
         return Expected<void>{makeError({}, oss.str())};
     }
-    std::string name = trim(line.substr(at + 1, eq - at - 1));
-    std::string init = line.substr(q1 + 1, q2 - q1 - 1);
-    st.m.globals.push_back({name, Type(Type::Kind::Str), init});
+
+    bool typeOk = true;
+    Type type = parseType(typeTok, &typeOk);
+    if (!typeOk)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": unknown type '" << typeTok << "'";
+        return Expected<void>{makeError({}, oss.str())};
+    }
+
+    std::string name = nameTok.substr(1);
+
+    std::string rhs = trim(line.substr(eq + 1));
+    if (rhs.empty())
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing initializer";
+        return Expected<void>{makeError({}, oss.str())};
+    }
+
+    auto makeLiteralError = [&](const char *msg)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": " << msg;
+        return Expected<void>{makeError({}, oss.str())};
+    };
+
+    Value initValue = Value::null();
+    switch (type.kind)
+    {
+        case Type::Kind::Str:
+        {
+            size_t q1 = line.find('"', eq);
+            if (q1 == std::string::npos)
+                return makeLiteralError("missing opening '\"'");
+            size_t q2 = line.rfind('"');
+            if (q2 == std::string::npos || q2 <= q1)
+                return makeLiteralError("missing closing '\"'");
+            std::string payload = line.substr(q1 + 1, q2 - q1 - 1);
+            initValue = Value::constStr(std::move(payload));
+            break;
+        }
+        case Type::Kind::I1:
+        case Type::Kind::I16:
+        case Type::Kind::I32:
+        case Type::Kind::I64:
+        {
+            long long parsed = 0;
+            if (!parseIntegerLiteral(rhs, parsed))
+                return makeLiteralError("invalid integer literal");
+            initValue = Value::constInt(parsed);
+            break;
+        }
+        case Type::Kind::F64:
+        {
+            double parsed = 0.0;
+            if (!parseFloatLiteral(rhs, parsed))
+                return makeLiteralError("invalid floating literal");
+            initValue = Value::constFloat(parsed);
+            break;
+        }
+        case Type::Kind::Ptr:
+        {
+            if (rhs == "null")
+            {
+                initValue = Value::null();
+            }
+            else if (!rhs.empty() && rhs[0] == '@')
+            {
+                initValue = Value::global(rhs.substr(1));
+            }
+            else
+            {
+                return makeLiteralError("invalid pointer literal");
+            }
+            break;
+        }
+        default:
+            return makeLiteralError("unsupported initializer type");
+    }
+
+    st.m.globals.push_back({name, type, initValue});
     return {};
 }
 

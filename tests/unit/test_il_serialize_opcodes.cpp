@@ -31,7 +31,7 @@ int main()
     Global g;
     g.name = ".Lstr";
     g.type = Type(Type::Kind::Str);
-    g.init = "ops";
+    g.init = Value::constStr("ops");
     m.globals.push_back(g);
 
     Function f;
