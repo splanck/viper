@@ -14,16 +14,18 @@
 
 int main()
 {
-    const char *src = R"(il 0.1.2
+    const char *src = R"IL(il 0.1.2
 extern @print(str) -> void
+extern @foo(str) -> void
 func @main() -> void {
 entry:
   call @print("hello, world")
+  call @foo("Result (ok)")
   br label ^dest("error, detail")
 dest(%msg:str):
   ret
 }
-)";
+)IL";
 
     std::istringstream in(src);
     il::core::Module module;
@@ -35,7 +37,7 @@ dest(%msg:str):
     assert(fn.blocks.size() == 2);
 
     const auto &entry = fn.blocks[0];
-    assert(entry.instructions.size() == 2);
+    assert(entry.instructions.size() == 3);
 
     const auto &callInstr = entry.instructions[0];
     assert(callInstr.op == il::core::Opcode::Call);
@@ -45,7 +47,15 @@ dest(%msg:str):
     assert(callInstr.operands[0].str == "hello, world");
     assert(callInstr.type.kind == il::core::Type::Kind::Void);
 
-    const auto &branchInstr = entry.instructions[1];
+    const auto &callWithParensInstr = entry.instructions[1];
+    assert(callWithParensInstr.op == il::core::Opcode::Call);
+    assert(callWithParensInstr.callee == "foo");
+    assert(callWithParensInstr.operands.size() == 1);
+    assert(callWithParensInstr.operands[0].kind == il::core::Value::Kind::ConstStr);
+    assert(callWithParensInstr.operands[0].str == "Result (ok)");
+    assert(callWithParensInstr.type.kind == il::core::Type::Kind::Void);
+
+    const auto &branchInstr = entry.instructions[2];
     assert(branchInstr.op == il::core::Opcode::Br);
     assert(branchInstr.labels.size() == 1);
     assert(branchInstr.labels[0] == "dest");

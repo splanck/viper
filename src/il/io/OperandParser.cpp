@@ -217,14 +217,110 @@ OperandParser::splitCommaSeparated(const std::string &text, const char *context)
 Expected<void> OperandParser::parseCallOperands(const std::string &text)
 {
     const size_t at = text.find('@');
-    const size_t lp = text.find('(', at);
-    const size_t rp = text.find(')', lp);
-    if (at == std::string::npos || lp == std::string::npos || rp == std::string::npos)
+    if (at == std::string::npos)
     {
         std::ostringstream oss;
         oss << "line " << state_.lineNo << ": malformed call";
         return Expected<void>{makeError(instr_.loc, oss.str())};
     }
+
+    size_t lp = std::string::npos;
+    bool inString = false;
+    bool escape = false;
+    for (size_t pos = at; pos < text.size(); ++pos)
+    {
+        char c = text[pos];
+        if (inString)
+        {
+            if (escape)
+            {
+                escape = false;
+                continue;
+            }
+            if (c == '\\')
+            {
+                escape = true;
+                continue;
+            }
+            if (c == '"')
+                inString = false;
+            continue;
+        }
+
+        if (c == '"')
+        {
+            inString = true;
+            continue;
+        }
+
+        if (c == '(')
+        {
+            lp = pos;
+            break;
+        }
+    }
+
+    if (lp == std::string::npos)
+    {
+        std::ostringstream oss;
+        oss << "line " << state_.lineNo << ": malformed call";
+        return Expected<void>{makeError(instr_.loc, oss.str())};
+    }
+
+    size_t rp = std::string::npos;
+    size_t depth = 1;
+    inString = false;
+    escape = false;
+    for (size_t pos = lp + 1; pos < text.size(); ++pos)
+    {
+        char c = text[pos];
+        if (inString)
+        {
+            if (escape)
+            {
+                escape = false;
+                continue;
+            }
+            if (c == '\\')
+            {
+                escape = true;
+                continue;
+            }
+            if (c == '"')
+                inString = false;
+            continue;
+        }
+
+        if (c == '"')
+        {
+            inString = true;
+            continue;
+        }
+
+        if (c == '(')
+        {
+            ++depth;
+            continue;
+        }
+        if (c == ')')
+        {
+            --depth;
+            if (depth == 0)
+            {
+                rp = pos;
+                break;
+            }
+            continue;
+        }
+    }
+
+    if (rp == std::string::npos || depth != 0 || inString)
+    {
+        std::ostringstream oss;
+        oss << "line " << state_.lineNo << ": malformed call";
+        return Expected<void>{makeError(instr_.loc, oss.str())};
+    }
+
     instr_.callee = trim(text.substr(at + 1, lp - at - 1));
     std::string args = text.substr(lp + 1, rp - lp - 1);
     auto tokens = splitCommaSeparated(args, "call");
