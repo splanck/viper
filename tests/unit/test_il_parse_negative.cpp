@@ -17,7 +17,8 @@ int main()
                            BAD_DIR "/bad_i128.il",
                            BAD_DIR "/bad_int_literal.il",
                            BAD_DIR "/bad_float_literal.il",
-                           BAD_DIR "/alloca_missing_size.il"};
+                           BAD_DIR "/alloca_missing_size.il",
+                           BAD_DIR "/target_missing_quotes.il"};
     for (const char *path : files)
     {
         std::ifstream in(path);
