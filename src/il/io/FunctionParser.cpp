@@ -272,6 +272,12 @@ Expected<void> parseBlockHeader(const std::string &header, ParserState &st)
             std::string nm = trim(q.substr(0, col));
             if (!nm.empty() && nm[0] == '%')
                 nm = nm.substr(1);
+            if (nm.empty())
+            {
+                std::ostringstream oss;
+                oss << "line " << st.lineNo << ": missing parameter name";
+                return Expected<void>{makeError({}, oss.str())};
+            }
             std::string tyStr = trim(q.substr(col + 1));
             bool ok = true;
             Type ty = parseType(tyStr, &ok);
