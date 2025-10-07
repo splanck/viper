@@ -138,6 +138,10 @@ function(viper_add_vm_unit_tests)
   target_link_libraries(test_vm_rt_extra_arg PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_rt_extra_arg test_vm_rt_extra_arg)
 
+  viper_add_test(test_vm_entry_arg_mismatch ${VIPER_TESTS_DIR}/unit/test_vm_entry_arg_mismatch.cpp)
+  target_link_libraries(test_vm_entry_arg_mismatch PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  viper_add_ctest(test_vm_entry_arg_mismatch test_vm_entry_arg_mismatch)
+
   viper_add_test(test_vm_rt_concat_missing_args ${VIPER_TESTS_DIR}/unit/test_vm_rt_concat_missing_args.cpp)
   target_link_libraries(test_vm_rt_concat_missing_args PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_rt_concat_missing_args test_vm_rt_concat_missing_args)
