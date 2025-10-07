@@ -11,6 +11,7 @@
 #include "tui/widgets/command_palette.hpp"
 #include "tui/widgets/label.hpp"
 
+#include <algorithm>
 #include <cassert>
 
 using viper::tui::term::StringTermIO;
@@ -32,11 +33,25 @@ int main()
 
     bool global_fired = false;
     bool widget_fired = false;
+    int save_legacy_calls = 0;
     bool save_fired = false;
 
     km.registerCommand("global", "Global", [&] { global_fired = true; });
     km.registerCommand("widget", "Widget", [&] { widget_fired = true; });
-    km.registerCommand("save", "Save", [&] { save_fired = true; });
+    km.registerCommand("save", "Save", [&] { ++save_legacy_calls; });
+    km.registerCommand("save", "Save Document", [&] { save_fired = true; });
+
+    assert(km.commands().size() == 3);
+    const auto save_count = std::count_if(
+        km.commands().begin(), km.commands().end(), [](const auto &cmd) { return cmd.id == "save"; });
+    assert(save_count == 1);
+    const auto *save_cmd = km.find("save");
+    assert(save_cmd != nullptr);
+    assert(save_cmd->name == "Save Document");
+    assert(km.execute("save"));
+    assert(save_fired);
+    assert(save_legacy_calls == 0);
+    save_fired = false;
 
     KeyChord gkc{KeyEvent::Code::F1, 0, 0};
     km.bindGlobal(gkc, "global");
