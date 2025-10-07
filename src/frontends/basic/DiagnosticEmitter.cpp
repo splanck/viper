@@ -117,7 +117,8 @@ void DiagnosticEmitter::printAll(std::ostream &os) const
         {
             os << line << '\n';
             uint32_t caretLen = e.length == 0 ? 1 : e.length;
-            os << std::string(e.loc.column - 1, ' ') << std::string(caretLen, '^') << '\n';
+            uint32_t indent = e.loc.column > 0 ? e.loc.column - 1 : 0;
+            os << std::string(indent, ' ') << std::string(caretLen, '^') << '\n';
         }
     }
 }
