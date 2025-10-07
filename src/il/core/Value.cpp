@@ -24,6 +24,11 @@ Value Value::constInt(long long v)
     return Value{Kind::ConstInt, v, 0.0, 0, ""};
 }
 
+Value Value::constBool(bool v)
+{
+    return Value{Kind::ConstInt, v ? 1 : 0, 0.0, 0, "", true};
+}
+
 Value Value::constFloat(double v)
 {
     return Value{Kind::ConstFloat, 0, v, 0, ""};
@@ -51,6 +56,8 @@ std::string toString(const Value &v)
         case Value::Kind::Temp:
             return "%t" + std::to_string(v.id);
         case Value::Kind::ConstInt:
+            if (v.isBool)
+                return v.i64 != 0 ? "true" : "false";
             return std::to_string(v.i64);
         case Value::Kind::ConstFloat:
         {

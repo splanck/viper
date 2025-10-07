@@ -15,6 +15,7 @@
 
 #include <cctype>
 #include <exception>
+#include <cstring>
 #include <sstream>
 #include <utility>
 
@@ -32,6 +33,25 @@ Expected<Value> OperandParser::parseValueToken(const std::string &tok) const
 {
     if (tok.empty())
         return Value::constInt(0);
+
+    const auto equalsIgnoreCase = [](const std::string &value, const char *literal) {
+        const size_t len = std::strlen(literal);
+        if (value.size() != len)
+            return false;
+        for (size_t i = 0; i < len; ++i)
+        {
+            const unsigned char lhs = static_cast<unsigned char>(value[i]);
+            const unsigned char rhs = static_cast<unsigned char>(literal[i]);
+            if (std::tolower(lhs) != std::tolower(rhs))
+                return false;
+        }
+        return true;
+    };
+
+    if (equalsIgnoreCase(tok, "true"))
+        return Value::constBool(true);
+    if (equalsIgnoreCase(tok, "false"))
+        return Value::constBool(false);
     if (tok[0] == '%')
     {
         std::string name = tok.substr(1);
