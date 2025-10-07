@@ -22,10 +22,12 @@ int main()
     b.createBlock(fn, "t");
     b.createBlock(fn, "f");
     b.createBlock(fn, "join");
+    b.createBlock(fn, "handler");
     Block &entry = fn.blocks[0];
     Block &t = fn.blocks[1];
     Block &f = fn.blocks[2];
     Block &join = fn.blocks[3];
+    Block &handler = fn.blocks[4];
 
     b.setInsertPoint(entry);
     b.cbr(Value::constInt(1), t, {}, f, {});
@@ -34,7 +36,15 @@ int main()
     b.br(join, {});
 
     b.setInsertPoint(f);
-    b.br(join, {});
+    b.br(handler, {});
+
+    il::core::Instr resume;
+    resume.op = Opcode::ResumeLabel;
+    resume.type = Type(Type::Kind::Void);
+    resume.operands.push_back(Value::temp(0));
+    resume.labels.push_back("join");
+    handler.instructions.push_back(resume);
+    handler.terminated = true;
 
     b.setInsertPoint(join);
     b.emitRet(std::nullopt, {});
@@ -60,7 +70,9 @@ int main()
     auto sT = successors(ctx, t);
     assert(sT.size() == 1 && sT[0] == &join);
     auto sF = successors(ctx, f);
-    assert(sF.size() == 1 && sF[0] == &join);
+    assert(sF.size() == 1 && sF[0] == &handler);
+    auto sHandler = successors(ctx, handler);
+    assert(sHandler.size() == 1 && sHandler[0] == &join);
     auto sJoin = successors(ctx, join);
     assert(sJoin.empty());
 
@@ -71,7 +83,11 @@ int main()
 
     auto pJoin = predecessors(ctx, join);
     assert(pJoin.size() == 2);
-    assert((pJoin[0] == &t && pJoin[1] == &f) || (pJoin[0] == &f && pJoin[1] == &t));
+    assert((pJoin[0] == &t && pJoin[1] == &handler) ||
+           (pJoin[0] == &handler && pJoin[1] == &t));
+
+    auto pHandler = predecessors(ctx, handler);
+    assert(pHandler.size() == 1 && pHandler[0] == &f);
 
     return 0;
 }

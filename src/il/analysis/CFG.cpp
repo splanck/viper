@@ -53,8 +53,20 @@ CFGContext::CFGContext(il::core::Module &module) : module(&module)
                 continue;
 
             const il::core::Instr &term = blk.instructions.back();
-            if (term.op != il::core::Opcode::Br && term.op != il::core::Opcode::CBr &&
-                term.op != il::core::Opcode::SwitchI32)
+            bool isBranchTerminator = false;
+            switch (term.op)
+            {
+            case il::core::Opcode::Br:
+            case il::core::Opcode::CBr:
+            case il::core::Opcode::SwitchI32:
+            case il::core::Opcode::ResumeLabel:
+                isBranchTerminator = true;
+                break;
+            default:
+                break;
+            }
+
+            if (!isBranchTerminator)
                 continue;
 
             for (const auto &lbl : term.labels)
