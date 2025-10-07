@@ -46,6 +46,9 @@ class OperandParser
     il::support::Expected<void> parseSwitchTargets(const std::string &text);
 
   private:
+    il::support::Expected<std::vector<std::string>>
+    splitCommaSeparated(const std::string &text, const char *context) const;
+
     il::support::Expected<void> parseBranchTarget(const std::string &segment,
                                                   std::string &label,
                                                   std::vector<il::core::Value> &args) const;
