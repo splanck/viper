@@ -171,7 +171,14 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
             st.m.version = ver;
         else
             st.m.version = "0.1.2";
+        st.sawVersion = true;
         return {};
+    }
+    if (!st.sawVersion)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing 'il' version directive";
+        return Expected<void>{il::support::makeError({}, oss.str())};
     }
     if (line.rfind("target", 0) == 0)
     {
