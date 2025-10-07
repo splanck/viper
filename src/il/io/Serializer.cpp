@@ -349,6 +349,8 @@ void printInstr(const Instr &in, std::ostream &os)
 void Serializer::write(const Module &m, std::ostream &os, Mode mode)
 {
     os << "il " << m.version << "\n";
+    if (m.target)
+        os << "target \"" << *m.target << "\"\n";
     if (mode == Mode::Canonical)
     {
         std::vector<Extern> ex(m.externs.begin(), m.externs.end());

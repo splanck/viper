@@ -1,4 +1,5 @@
 il 0.1.2
+target "x86_64-unknown-linux-gnu"
 extern @rt_print_str(str) -> void
 global const str @.L0 = "HELLO"
 func @main() -> i64 {
