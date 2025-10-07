@@ -122,6 +122,10 @@ function(viper_add_vm_unit_tests)
     TEST_NAME vm_UnknownOpcodeTests)
   target_link_libraries(test_vm_unknown_opcode PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
 
+  viper_add_test(test_vm_branch_arg_mismatch ${_VIPER_VM_DIR}/BranchArgMismatchTests.cpp)
+  target_link_libraries(test_vm_branch_arg_mismatch PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  viper_add_ctest(test_vm_branch_arg_mismatch test_vm_branch_arg_mismatch)
+
   viper_add_test(test_vm_trap_loc ${VIPER_TESTS_DIR}/unit/test_vm_trap_loc.cpp)
   target_link_libraries(test_vm_trap_loc PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_trap_loc test_vm_trap_loc)
