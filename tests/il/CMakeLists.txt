@@ -130,6 +130,10 @@ function(viper_add_il_core_tests)
   target_link_libraries(test_il_function_parser_errors PRIVATE ${VIPER_IL_CORE_IO_LIBS})
   viper_add_ctest(test_il_function_parser_errors test_il_function_parser_errors)
 
+  viper_add_test(test_il_parse_loc_errors ${_VIPER_IL_UNIT_DIR}/test_il_parse_loc_errors.cpp)
+  target_link_libraries(test_il_parse_loc_errors PRIVATE ${VIPER_IL_CORE_IO_LIBS})
+  viper_add_ctest(test_il_parse_loc_errors test_il_parse_loc_errors)
+
   viper_add_test(test_expected_api_build ${_VIPER_IL_UNIT_DIR}/test_expected_api_build.cpp)
   target_link_libraries(test_expected_api_build PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   viper_add_ctest(test_expected_api_build test_expected_api_build)

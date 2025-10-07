@@ -338,6 +338,19 @@ Expected<void> parseFunction(std::istream &is, std::string &header, ParserState 
             std::istringstream ls(line.substr(4));
             uint32_t fid = 0, ln = 0, col = 0;
             ls >> fid >> ln >> col;
+            if (!ls)
+            {
+                std::ostringstream oss;
+                oss << "line " << st.lineNo << ": malformed .loc directive";
+                return Expected<void>{makeError({}, oss.str())};
+            }
+            ls >> std::ws;
+            if (ls.peek() != std::char_traits<char>::eof())
+            {
+                std::ostringstream oss;
+                oss << "line " << st.lineNo << ": malformed .loc directive";
+                return Expected<void>{makeError({}, oss.str())};
+            }
             st.curLoc = {fid, ln, col};
             continue;
         }
