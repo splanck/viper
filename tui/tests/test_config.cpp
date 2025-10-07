@@ -37,5 +37,12 @@ int main()
         }
     }
     assert(found_save);
+
+    // Invalid tab width should keep default while parsing other values.
+    Config cfg_bad;
+    bool ok_bad = loadFromFile(CONFIG_BAD_TAB_INI, cfg_bad);
+    assert(ok_bad);
+    assert(cfg_bad.editor.tab_width == 4);
+    assert(cfg_bad.editor.soft_wrap);
     return 0;
 }
