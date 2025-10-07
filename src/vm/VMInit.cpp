@@ -62,6 +62,15 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
         strMap[g.name] = toViperString(g.init);
 }
 
+VM::~VM()
+{
+    for (auto &[name, handle] : strMap)
+    {
+        (void)name;
+        rt_string_unref(handle);
+    }
+}
+
 /// Initialise a fresh @c Frame for executing function @p fn.
 ///
 /// Populates a basic-block lookup table, selects the entry block and seeds the

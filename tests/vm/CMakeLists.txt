@@ -154,6 +154,10 @@ function(viper_add_vm_unit_tests)
   target_link_libraries(test_vm_runtime_bridge_marshalling PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_runtime_bridge_marshalling test_vm_runtime_bridge_marshalling)
 
+  viper_add_test(test_vm_const_string_bytes ${VIPER_TESTS_DIR}/unit/test_vm_const_string_bytes.cpp)
+  target_link_libraries(test_vm_const_string_bytes PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  viper_add_ctest(test_vm_const_string_bytes test_vm_const_string_bytes)
+
   viper_add_test(test_vm_alloca_negative ${VIPER_TESTS_DIR}/unit/test_vm_alloca_negative.cpp)
   target_link_libraries(test_vm_alloca_negative PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_alloca_negative test_vm_alloca_negative)

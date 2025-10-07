@@ -144,6 +144,9 @@ class VM
        DebugCtrl dbg = {},
        DebugScript *script = nullptr);
 
+    /// @brief Release runtime resources held by the VM.
+    ~VM();
+
     /// @brief Execute the module's entry function.
     /// @return Exit code from @c main or `1` when the entry point is missing.
     int64_t run();

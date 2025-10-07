@@ -33,6 +33,11 @@ int main()
     il::vm::VM vm(m);
     int64_t rv = vm.run();
     rt_string s = reinterpret_cast<rt_string>(static_cast<uintptr_t>(rv));
-    assert(s->data == m.globals.front().init.c_str());
+    const std::string &init = m.globals.front().init;
+    assert(rt_len(s) == static_cast<int64_t>(init.size()));
+    std::string payload(s->data, static_cast<size_t>(rt_len(s)));
+    assert(payload == init);
+    assert(s->data[rt_len(s)] == '\0');
+    rt_string_unref(s);
     return 0;
 }

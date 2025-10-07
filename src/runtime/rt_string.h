@@ -6,6 +6,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -188,6 +189,12 @@ extern "C" {
     /// @param str Null-terminated literal pointer.
     /// @return Non-owning runtime string view.
     rt_string rt_const_cstr(const char *str);
+
+    /// @brief Allocate a runtime string by copying @p len bytes from @p bytes.
+    /// @param bytes Pointer to the source byte span; may be NULL when @p len is 0.
+    /// @param len Number of bytes to copy into the runtime string.
+    /// @return Newly allocated runtime string containing the copied bytes.
+    rt_string rt_str_from_bytes(const char *bytes, size_t len);
 
 #ifdef __cplusplus
 }

@@ -133,7 +133,7 @@ Slot VM::eval(Frame &fr, const Value &v)
             if (it == strMap.end())
                 RuntimeBridge::trap(TrapKind::DomainError, "unknown global", {}, fr.func->name, "");
             else
-                s.str = it->second;
+                s.str = rt_string_ref(it->second);
             return s;
         }
         case Value::Kind::NullPtr:

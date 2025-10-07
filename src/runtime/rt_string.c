@@ -186,6 +186,13 @@ rt_string rt_const_cstr(const char *c)
     return s;
 }
 
+rt_string rt_str_from_bytes(const char *bytes, size_t len)
+{
+    if (!bytes && len > 0)
+        return NULL;
+    return rt_string_from_bytes(bytes, len);
+}
+
 int64_t rt_len(rt_string s)
 {
     return (int64_t)rt_string_len_bytes(s);
