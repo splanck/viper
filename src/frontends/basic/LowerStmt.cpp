@@ -64,6 +64,8 @@ class LowererStmtVisitor final : public StmtVisitor
 
     void visit(const GotoStmt &stmt) override { lowerer_.lowerGoto(stmt); }
 
+    void visit(const GosubStmt &stmt) override { lowerer_.lowerGosub(stmt); }
+
     void visit(const OpenStmt &stmt) override { lowerer_.lowerOpen(stmt); }
 
     void visit(const CloseStmt &stmt) override { lowerer_.lowerClose(stmt); }
@@ -1033,6 +1035,13 @@ void Lowerer::lowerGoto(const GotoStmt &stmt)
         assert(func && "lowerGoto requires an active function");
         emitBr(&func->blocks[it->second]);
     }
+}
+
+void Lowerer::lowerGosub(const GosubStmt &stmt)
+{
+    (void)stmt;
+    // TODO: Implement GOSUB lowering once subroutine semantics are defined.
+    emitTrap();
 }
 
 void Lowerer::lowerOnErrorGoto(const OnErrorGoto &stmt)

@@ -134,6 +134,7 @@ void emitForStep(Value slot, Value step);
 void lowerNext(const NextStmt &stmt);
 void lowerExit(const ExitStmt &stmt);
 void lowerGoto(const GotoStmt &stmt);
+void lowerGosub(const GosubStmt &stmt);
 void lowerOnErrorGoto(const OnErrorGoto &stmt);
 void lowerResume(const Resume &stmt);
 void lowerEnd(const EndStmt &stmt);

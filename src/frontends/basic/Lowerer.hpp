@@ -588,6 +588,8 @@ class Lowerer
 
     void lowerGoto(const GotoStmt &stmt);
 
+    void lowerGosub(const GosubStmt &stmt);
+
     void lowerOnErrorGoto(const OnErrorGoto &stmt);
 
     void lowerResume(const Resume &stmt);

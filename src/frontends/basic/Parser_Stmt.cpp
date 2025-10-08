@@ -454,6 +454,22 @@ StmtPtr Parser::parseGoto()
     return stmt;
 }
 
+/// @brief Parse a GOSUB statement targeting a numeric line.
+/// @return GosubStmt with destination line number.
+StmtPtr Parser::parseGosub()
+{
+    auto loc = peek().loc;
+    consume(); // GOSUB
+    Token targetTok = expect(TokenKind::Number);
+    int target = 0;
+    if (targetTok.kind == TokenKind::Number)
+        target = std::atoi(targetTok.lexeme.c_str());
+    auto stmt = std::make_unique<GosubStmt>();
+    stmt->loc = loc;
+    stmt->targetLine = target;
+    return stmt;
+}
+
 /// @brief Parse an OPEN statement configuring file I/O channels.
 /// @return OpenStmt capturing path, mode, and channel expressions.
 StmtPtr Parser::parseOpen()

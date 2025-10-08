@@ -582,6 +582,7 @@ private:
     void visit(NextStmt &) override {}
     void visit(ExitStmt &) override {}
     void visit(GotoStmt &) override {}
+    void visit(GosubStmt &) override {}
     void visit(OpenStmt &stmt) override
     {
         if (stmt.pathExpr)
