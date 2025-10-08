@@ -950,6 +950,15 @@ TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
 
     if (const auto *i = dynamic_cast<const IntExpr *>(&expr))
     {
+        switch (i->suffix)
+        {
+            case IntExpr::Suffix::Integer:
+                return NumericType::Integer;
+            case IntExpr::Suffix::Long:
+                return NumericType::Long;
+            case IntExpr::Suffix::None:
+                break;
+        }
         const long long value = i->value;
         if (value >= std::numeric_limits<int16_t>::min() && value <= std::numeric_limits<int16_t>::max())
             return NumericType::Integer;
@@ -959,8 +968,12 @@ TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
         return NumericType::Integer;
     if (dynamic_cast<const StringExpr *>(&expr))
         return NumericType::Double;
-    if (dynamic_cast<const FloatExpr *>(&expr))
+    if (const auto *f = dynamic_cast<const FloatExpr *>(&expr))
+    {
+        if (f->suffix == FloatExpr::Suffix::Single)
+            return NumericType::Single;
         return NumericType::Double;
+    }
     if (const auto *var = dynamic_cast<const VarExpr *>(&expr))
     {
         if (const auto *info = findSymbol(var->name))
@@ -968,8 +981,50 @@ TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
             if (info->hasType)
             {
                 if (info->type == AstType::F64)
+                {
+                    if (!var->name.empty())
+                    {
+                        switch (var->name.back())
+                        {
+                            case '!':
+                                return NumericType::Single;
+                            case '#':
+                                return NumericType::Double;
+                            default:
+                                break;
+                        }
+                    }
                     return NumericType::Double;
+                }
+                if (!var->name.empty())
+                {
+                    switch (var->name.back())
+                    {
+                        case '%':
+                            return NumericType::Integer;
+                        case '&':
+                            return NumericType::Long;
+                        default:
+                            break;
+                    }
+                }
                 return NumericType::Long;
+            }
+        }
+        if (!var->name.empty())
+        {
+            switch (var->name.back())
+            {
+                case '!':
+                    return NumericType::Single;
+                case '#':
+                    return NumericType::Double;
+                case '%':
+                    return NumericType::Integer;
+                case '&':
+                    return NumericType::Long;
+                default:
+                    break;
             }
         }
         AstType astTy = inferAstTypeFromName(var->name);
