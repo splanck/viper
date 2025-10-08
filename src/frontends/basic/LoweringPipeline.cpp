@@ -266,6 +266,27 @@ void StatementLowering::lowerSequence(
     auto *func = ctx.function();
     assert(func && "lowerSequence requires an active function");
     auto &lineBlocks = ctx.blockNames().lineBlocks();
+
+    ctx.gosub().clearContinuations();
+    bool hasGosub = false;
+    for (size_t i = 0; i < stmts.size(); ++i)
+    {
+        const auto *gosubStmt = dynamic_cast<const GosubStmt *>(stmts[i]);
+        if (!gosubStmt)
+            continue;
+
+        hasGosub = true;
+        size_t contIdx = ctx.exitIndex();
+        if (i + 1 < stmts.size())
+        {
+            int nextLine = lowerer.virtualLine(*stmts[i + 1]);
+            contIdx = lineBlocks[nextLine];
+        }
+        ctx.gosub().registerContinuation(gosubStmt, contIdx);
+    }
+
+    if (hasGosub)
+        lowerer.ensureGosubStack();
     int firstLine = lowerer.virtualLine(*stmts.front());
     lowerer.emitBr(&func->blocks[lineBlocks[firstLine]]);
 
