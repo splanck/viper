@@ -271,13 +271,14 @@ Token Lexer::lexNumber()
 /// @brief Lex an identifier or reserved keyword.
 /// @return Identifier or keyword token; identifiers are uppercased for
 ///         keyword comparison.
-/// @details Consumes alphanumeric characters plus optional trailing '$' or '#'
-///         and advances position counters accordingly.
+/// @details Consumes alphanumeric characters and underscores plus an optional
+///         trailing '$', '#', '!', '%', or '&', and advances position counters
+///         accordingly.
 Token Lexer::lexIdentifierOrKeyword()
 {
     il::support::SourceLoc loc{file_id_, line_, column_};
     std::string s;
-    while (std::isalnum(static_cast<unsigned char>(peek())))
+    while (std::isalnum(static_cast<unsigned char>(peek())) || peek() == '_')
         s.push_back(std::toupper(static_cast<unsigned char>(get())));
     if (peek() == '$' || peek() == '#' || peek() == '!' || peek() == '%' || peek() == '&')
         s.push_back(std::toupper(static_cast<unsigned char>(get())));
