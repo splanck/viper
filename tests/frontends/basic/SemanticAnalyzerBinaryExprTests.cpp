@@ -170,6 +170,44 @@ int main()
         assert(result.errors == 0);
     }
 
+    {
+        const std::string src = "10 LET X = 3 + 1.5\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("numeric_promotion_add.bas");
+        DiagnosticEngine de;
+        DiagnosticEmitter emitter(de, sm);
+        emitter.addSource(fid, src);
+        Parser parser(src, fid, &emitter);
+        auto program = parser.parseProgram();
+        assert(program);
+
+        SemanticAnalyzer analyzer(emitter);
+        analyzer.analyze(*program);
+        assert(emitter.errorCount() == 0);
+        auto xType = analyzer.lookupVarType("X");
+        assert(xType.has_value());
+        assert(*xType == SemanticAnalyzer::Type::Float);
+    }
+
+    {
+        const std::string src = "10 LET Y = 2 * (3 + 4.0)\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("numeric_promotion_mul.bas");
+        DiagnosticEngine de;
+        DiagnosticEmitter emitter(de, sm);
+        emitter.addSource(fid, src);
+        Parser parser(src, fid, &emitter);
+        auto program = parser.parseProgram();
+        assert(program);
+
+        SemanticAnalyzer analyzer(emitter);
+        analyzer.analyze(*program);
+        assert(emitter.errorCount() == 0);
+        auto yType = analyzer.lookupVarType("Y");
+        assert(yType.has_value());
+        assert(*yType == SemanticAnalyzer::Type::Float);
+    }
+
     return 0;
 }
 

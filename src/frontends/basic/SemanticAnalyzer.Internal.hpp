@@ -38,6 +38,9 @@ std::string formatLogicalOperandMessage(BinaryExpr::Op op,
                                         SemanticAnalyzer::Type lhs,
                                         SemanticAnalyzer::Type rhs);
 
+SemanticAnalyzer::Type commonNumericType(SemanticAnalyzer::Type lhs,
+                                         SemanticAnalyzer::Type rhs) noexcept;
+
 size_t levenshtein(const std::string &a, const std::string &b);
 SemanticAnalyzer::Type astToSemanticType(::il::frontends::basic::Type ty);
 const char *builtinName(BuiltinCallExpr::Builtin b);

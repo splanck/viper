@@ -52,11 +52,17 @@ constexpr bool isStringType(SemanticAnalyzer::Type type) noexcept
     return type == Type::String || type == Type::Unknown;
 }
 
-SemanticAnalyzer::Type numericResult(SemanticAnalyzer::Type lhs,
-                                     SemanticAnalyzer::Type rhs) noexcept
+SemanticAnalyzer::Type commonNumericType(SemanticAnalyzer::Type lhs,
+                                         SemanticAnalyzer::Type rhs) noexcept
 {
     using Type = SemanticAnalyzer::Type;
     return (lhs == Type::Float || rhs == Type::Float) ? Type::Float : Type::Int;
+}
+
+SemanticAnalyzer::Type numericResult(SemanticAnalyzer::Type lhs,
+                                     SemanticAnalyzer::Type rhs) noexcept
+{
+    return commonNumericType(lhs, rhs);
 }
 
 SemanticAnalyzer::Type divisionResult(SemanticAnalyzer::Type lhs,
@@ -73,7 +79,7 @@ static SemanticAnalyzer::Type addResult(SemanticAnalyzer::Type lhs,
 {
     using T = SemanticAnalyzer::Type;
     if (lhs == T::String && rhs == T::String) return T::String;
-    return (lhs == T::Float || rhs == T::Float) ? T::Float : T::Int;
+    return commonNumericType(lhs, rhs);
 }
 
 SemanticAnalyzer::Type powResult(SemanticAnalyzer::Type,
@@ -294,12 +300,33 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeBinary(const BinaryExpr &b)
         lt = visitExpr(*b.lhs);
     if (b.rhs)
         rt = visitExpr(*b.rhs);
+
+    if (b.op == BinaryExpr::Op::Add || b.op == BinaryExpr::Op::Sub || b.op == BinaryExpr::Op::Mul)
+    {
+        if (semantic_analyzer_detail::isNumericType(lt) &&
+            semantic_analyzer_detail::isNumericType(rt))
+        {
+            Type target = semantic_analyzer_detail::commonNumericType(lt, rt);
+            if (target == Type::Float)
+            {
+                if (b.lhs && lt != Type::Float && lt != Type::Unknown)
+                    markImplicitConversion(*b.lhs, target);
+                if (b.rhs && rt != Type::Float && rt != Type::Unknown)
+                    markImplicitConversion(*b.rhs, target);
+            }
+        }
+    }
     const auto &rule = exprRule(b.op);
     if (rule.validator)
         (this->*(rule.validator))(b, lt, rt, rule.mismatchDiag);
     if (rule.result)
         return rule.result(lt, rt);
     return Type::Unknown;
+}
+
+void SemanticAnalyzer::markImplicitConversion(const Expr &expr, Type targetType)
+{
+    implicitConversions_[&expr] = targetType;
 }
 
 void SemanticAnalyzer::emitOperandTypeMismatch(const BinaryExpr &expr, std::string_view diagId)
