@@ -105,12 +105,32 @@ int main()
         auto prog = p.parseProgram();
         assert(prog);
         assert(prog->main.size() == 2);
-        auto *label = dynamic_cast<LabelStmt *>(prog->main[0].get());
-        assert(label);
-        assert(label->line == 200);
+        auto *list = dynamic_cast<StmtList *>(prog->main[0].get());
+        assert(list);
+        assert(list->line == 200);
+        assert(list->loc.isValid());
+        assert(list->stmts.empty());
         auto *print = dynamic_cast<PrintStmt *>(prog->main[1].get());
         assert(print);
         assert(print->line == 210);
+    }
+
+    {
+        std::string src = "300\n310 PRINT 1\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("blank-line.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        assert(prog);
+        assert(prog->main.size() == 2);
+        auto *list = dynamic_cast<StmtList *>(prog->main[0].get());
+        assert(list);
+        assert(list->line == 300);
+        assert(list->loc.isValid());
+        assert(list->stmts.empty());
+        auto *print = dynamic_cast<PrintStmt *>(prog->main[1].get());
+        assert(print);
+        assert(print->line == 310);
     }
 
     {
