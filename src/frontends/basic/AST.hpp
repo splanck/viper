@@ -769,6 +769,9 @@ struct ReturnStmt : Stmt
 {
     /// Expression whose value is returned; null when no expression is provided.
     ExprPtr value;
+
+    /// True when this RETURN exits a GOSUB (top-level RETURN without a value).
+    bool isGosubReturn = false;
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
 };
