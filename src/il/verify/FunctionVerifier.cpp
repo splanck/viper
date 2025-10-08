@@ -1,4 +1,5 @@
 // File: src/il/verify/FunctionVerifier.cpp
+// License: MIT (see LICENSE for details).
 // Purpose: Implements function-level verification by coordinating block and instruction checks.
 // Key invariants: Functions must start with an entry block, maintain unique labels, and respect
 // call signatures. Ownership/Lifetime: Operates on module-provided data; no allocations persist
@@ -39,11 +40,17 @@ using il::support::makeError;
 namespace
 {
 
+/// @brief Identify whether an opcode is one of the resume-family terminators.
+/// @details The verifier uses this to gate resume usage to handler blocks and
+/// ensure the appropriate %tok parameter is forwarded.
 bool isResumeOpcode(Opcode op)
 {
     return op == Opcode::ResumeSame || op == Opcode::ResumeNext || op == Opcode::ResumeLabel;
 }
 
+/// @brief Detect whether an opcode reads fields from an error value.
+/// @details Helps enforce that error accessors only appear inside handler blocks
+/// where the %tok parameter is in scope.
 bool isErrAccessOpcode(Opcode op)
 {
     switch (op)
@@ -58,6 +65,9 @@ bool isErrAccessOpcode(Opcode op)
     }
 }
 
+/// @brief Recognise calls that release reference-counted runtime arrays.
+/// @details Used to enforce single-release semantics on array handles tracked
+/// by the verifier.
 bool isRuntimeArrayRelease(const Instr &instr)
 {
     return instr.op == Opcode::Call && instr.callee == "rt_arr_i32_release";
@@ -79,11 +89,21 @@ Expected<void> verifyInstruction_E(const Function &fn,
                                    TypeInference &types,
                                    DiagSink &sink);
 
+/// @brief Construct a verifier with knowledge of extern signatures.
+/// @details Caches the provided extern map and initialises the strategy table
+/// so opcode-specific verification logic can be dispatched during analysis.
 FunctionVerifier::FunctionVerifier(const ExternMap &externs)
     : externs_(externs), strategies_(makeDefaultInstructionStrategies())
 {
 }
 
+/// @brief Verify every function in a module for structural correctness.
+/// @details Builds a name→function map to detect duplicates, then iterates each
+/// function invoking @ref verifyFunction. The first failure halts verification
+/// and returns its diagnostic.
+/// @param module Module containing functions to verify.
+/// @param sink Diagnostic sink receiving instruction-level messages.
+/// @return Empty Expected on success or the first failure diagnostic.
 Expected<void> FunctionVerifier::run(const Module &module, DiagSink &sink)
 {
     functionMap_.clear();
@@ -101,6 +121,14 @@ Expected<void> FunctionVerifier::run(const Module &module, DiagSink &sink)
     return {};
 }
 
+/// @brief Validate a single function's blocks, labels, and handler metadata.
+/// @details Confirms the entry block naming convention, enforces extern
+/// signature parity, ensures labels are unique, and delegates block-level checks
+/// to @ref verifyBlock. Handler metadata is cached for later resume validation
+/// and all branch labels are checked for existence.
+/// @param fn Function being verified.
+/// @param sink Diagnostic sink for detailed messages.
+/// @return Success or a diagnostic describing the first failure.
 Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &sink)
 {
     if (fn.blocks.empty())
@@ -175,6 +203,18 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     return {};
 }
 
+/// @brief Run block-level verification including handler semantics.
+/// @details Establishes a type inference context, validates block parameters,
+/// records handler signatures, checks resume and err.* usage, enforces runtime
+/// array lifetime rules, and dispatches instruction-level verification. Control
+/// terminators are validated and temporary definitions introduced by block
+/// parameters are removed once the block is processed.
+/// @param fn Enclosing function definition.
+/// @param bb Block under inspection.
+/// @param blockMap Mapping from labels to block pointers for CFG lookups.
+/// @param temps Table of SSA temporaries and their known types.
+/// @param sink Diagnostic sink receiving instruction-level messages.
+/// @return Success or a diagnostic describing the failure.
 Expected<void> FunctionVerifier::verifyBlock(
     const Function &fn,
     const BasicBlock &bb,
@@ -299,6 +339,17 @@ Expected<void> FunctionVerifier::verifyBlock(
     return {};
 }
 
+/// @brief Dispatch verification logic for a single instruction.
+/// @details Builds a @ref VerifyCtx, checks operand/result type contracts, and
+/// consults the registered strategy list. The first matching strategy performs
+/// opcode-specific validation; if none match, a diagnostic is emitted.
+/// @param fn Function containing the instruction.
+/// @param bb Block containing the instruction.
+/// @param instr Instruction to verify.
+/// @param blockMap Mapping from labels to block pointers for CFG queries.
+/// @param types Type inference state for SSA values.
+/// @param sink Diagnostic sink receiving verification messages.
+/// @return Success or a diagnostic describing the error.
 Expected<void> FunctionVerifier::verifyInstruction(
     const Function &fn,
     const BasicBlock &bb,
@@ -321,6 +372,12 @@ Expected<void> FunctionVerifier::verifyInstruction(
     return Expected<void>{makeError({}, formatFunctionDiag(fn, "no instruction strategy for op"))};
 }
 
+/// @brief Compose a function-scoped diagnostic prefix.
+/// @details Formats the function name and optional suffix message for reuse in
+/// diagnostics that are not tied to a specific instruction.
+/// @param fn Function associated with the diagnostic.
+/// @param message Additional context appended after the name.
+/// @return Human-readable string describing the function context.
 std::string FunctionVerifier::formatFunctionDiag(const Function &fn, std::string_view message) const
 {
     std::ostringstream oss;

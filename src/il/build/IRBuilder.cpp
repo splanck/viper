@@ -263,6 +263,13 @@ void IRBuilder::emitRet(const std::optional<Value> &v, il::support::SourceLoc lo
     append(std::move(instr));
 }
 
+/// @brief Emit a resume-same instruction for structured exception handlers.
+/// @details Creates an @ref Opcode::ResumeSame terminator that rethrows the
+/// current exception token to the innermost handler. The builder appends the
+/// instruction to the current block, marks it terminated, and records the
+/// source location for diagnostics.
+/// @param token SSA value representing the exception token to resume.
+/// @param loc Source location used when formatting verifier diagnostics.
 void IRBuilder::emitResumeSame(Value token, il::support::SourceLoc loc)
 {
     Instr instr;
@@ -273,6 +280,13 @@ void IRBuilder::emitResumeSame(Value token, il::support::SourceLoc loc)
     append(std::move(instr));
 }
 
+/// @brief Emit a resume-next instruction for structured exception handlers.
+/// @details Generates an @ref Opcode::ResumeNext terminator that forwards the
+/// active exception token to the next handler in the stack. Like
+/// @ref emitResumeSame, the helper appends the instruction, marks termination,
+/// and records the provided source location.
+/// @param token SSA value representing the exception token to resume.
+/// @param loc Source location used when formatting verifier diagnostics.
 void IRBuilder::emitResumeNext(Value token, il::support::SourceLoc loc)
 {
     Instr instr;
@@ -283,6 +297,14 @@ void IRBuilder::emitResumeNext(Value token, il::support::SourceLoc loc)
     append(std::move(instr));
 }
 
+/// @brief Emit a resume-label instruction transferring control to @p target.
+/// @details Appends an @ref Opcode::ResumeLabel terminator that jumps to a
+/// specific handler block. The token operand is preserved and the destination
+/// label is recorded to maintain block parameter arity.
+/// @param token SSA value representing the exception token to resume with.
+/// @param target Handler block that receives control once the token is
+/// resumed.
+/// @param loc Source location used when formatting verifier diagnostics.
 void IRBuilder::emitResumeLabel(Value token, BasicBlock &target, il::support::SourceLoc loc)
 {
     Instr instr;
