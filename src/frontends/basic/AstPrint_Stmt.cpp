@@ -305,6 +305,11 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         printer.os << "(GOTO " << stmt.target << ')';
     }
 
+    void visit(const GosubStmt &stmt) override
+    {
+        printer.os << "(GOSUB " << stmt.targetLine << ')';
+    }
+
     void visit(const OpenStmt &stmt) override
     {
         printer.os << "(OPEN mode=" << openModeToString(stmt.mode) << '('

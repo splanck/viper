@@ -18,7 +18,7 @@ using namespace il::support;
 
 int main()
 {
-    std::string src = "10 GOSUB 200: PRINT 5\n20 PRINT 1\n30 END\n";
+    std::string src = "10 FOOBAR 200: PRINT 5\n20 PRINT 1\n30 END\n";
 
     SourceManager sm;
     uint32_t fid = sm.addFile("unknown.bas");
@@ -40,7 +40,7 @@ int main()
     emitter.printAll(oss);
     std::string output = oss.str();
     assert(output.find("error[B0001]") != std::string::npos);
-    assert(output.find("unknown statement 'GOSUB'") != std::string::npos);
+    assert(output.find("unknown statement 'FOOBAR'") != std::string::npos);
 
     return 0;
 }
