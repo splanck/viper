@@ -201,16 +201,16 @@ TypeRules::NumericType TypeRules::resultType(char op,
 
 TypeRules::NumericType TypeRules::unaryResultType(char op, NumericType operand) noexcept
 {
-    if (op != '-')
+    if (op == '-' || op == '+')
     {
+        if (isFloat(operand) || isInteger(operand))
+            return operand;
         // Recoverable path: emit diagnostic and preserve operand type.
-        reportUnsupportedUnaryOperator(op, operand);
+        reportUnsupportedUnaryOperand(op, operand);
         return operand;
     }
-    if (isFloat(operand) || isInteger(operand))
-        return operand;
     // Recoverable path: emit diagnostic and preserve operand type.
-    reportUnsupportedUnaryOperand(op, operand);
+    reportUnsupportedUnaryOperator(op, operand);
     return operand;
 }
 

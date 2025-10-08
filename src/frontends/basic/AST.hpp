@@ -274,13 +274,15 @@ struct UBoundExpr : Expr
     void accept(MutExprVisitor &visitor) override;
 };
 
-/// @brief Unary expression (e.g., NOT).
+/// @brief Unary expression (e.g., NOT, unary plus/minus).
 struct UnaryExpr : Expr
 {
     /// Unary operator applied to @ref expr.
     enum class Op
     {
-        LogicalNot
+        LogicalNot,
+        Plus,
+        Negate,
     } op;
 
     /// Operand expression; owned and non-null.

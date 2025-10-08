@@ -67,7 +67,19 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
 
     void visit(const UnaryExpr &expr) override
     {
-        printer.os << "(NOT ";
+        printer.os << '(';
+        switch (expr.op)
+        {
+            case UnaryExpr::Op::LogicalNot:
+                printer.os << "NOT ";
+                break;
+            case UnaryExpr::Op::Plus:
+                printer.os << "+ ";
+                break;
+            case UnaryExpr::Op::Negate:
+                printer.os << "- ";
+                break;
+        }
         expr.expr->accept(*this);
         printer.os << ')';
     }

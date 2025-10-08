@@ -182,6 +182,33 @@ int main()
     }
 
     {
+        auto result = analyzeSnippet(makeSnippet("-3"));
+        assert(result.errors == 0);
+    }
+
+    {
+        auto result = analyzeSnippet(makeSnippet("+4"));
+        assert(result.errors == 0);
+    }
+
+    {
+        auto result = analyzeSnippet(makeSnippet("-\"A\""));
+        assert(result.errors == 1);
+        assert(result.output.find("error[B2001]") != std::string::npos);
+    }
+
+    {
+        auto result = analyzeSnippet(makeSnippet("+\"A\""));
+        assert(result.errors == 1);
+        assert(result.output.find("error[B2001]") != std::string::npos);
+    }
+
+    {
+        auto result = analyzeSnippet(makeSnippet("-(1.5)"));
+        assert(result.errors == 0);
+    }
+
+    {
         const std::string src = "10 LET X = 3 + 1.5\n20 END\n";
         SourceManager sm;
         uint32_t fid = sm.addFile("numeric_promotion_add.bas");
