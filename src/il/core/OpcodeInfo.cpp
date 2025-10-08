@@ -1,9 +1,12 @@
-// File: src/il/core/OpcodeInfo.cpp
-// Purpose: Defines metadata describing IL opcode signatures and behaviours.
-// Key invariants: Table entries stay in sync with the Opcode enumeration order.
-// Ownership/Lifetime: Static storage duration, read-only access via kOpcodeTable.
-// License: MIT
-// Links: docs/il-guide.md#reference
+/**
+ * @file OpcodeInfo.cpp
+ * @brief Defines metadata describing IL opcode signatures and behaviour.
+ * @copyright
+ *     MIT License. See the LICENSE file in the project root for full terms.
+ * @details
+ *     The opcode table is generated from `Opcode.def` and exposes helpers for
+ *     querying operand categories, parse specifications, and mnemonic strings.
+ */
 
 #include "il/core/OpcodeInfo.hpp"
 
@@ -15,7 +18,18 @@ namespace il::core
 
 namespace
 {
-/// Builds the operand category array for an opcode, defaulting unspecified entries to None.
+/**
+ * @brief Builds the operand category descriptor array for an opcode.
+ *
+ * The helper fills the fixed-size operand category array used by `OpcodeInfo`.
+ * Unspecified entries default to `TypeCategory::None`, ensuring the table has
+ * a consistent size regardless of the opcode's arity.
+ *
+ * @param a Category for the first operand slot.
+ * @param b Category for the second operand slot (optional).
+ * @param c Category for the third operand slot (optional).
+ * @return Array populated with up to three operand categories.
+ */
 constexpr std::array<TypeCategory, kMaxOperandCategories> makeOperands(TypeCategory a,
                                                                         TypeCategory b = TypeCategory::None,
                                                                         TypeCategory c = TypeCategory::None)
@@ -23,14 +37,35 @@ constexpr std::array<TypeCategory, kMaxOperandCategories> makeOperands(TypeCateg
     return {a, b, c};
 }
 
-/// Builds a parser descriptor for a single operand slot.
+/**
+ * @brief Creates a parse specification entry for an operand.
+ *
+ * Parse specifications describe how textual operands should be interpreted when
+ * parsing IL.  Callers typically use the defaults, which correspond to "no
+ * operand".
+ *
+ * @param kind Kind of operand expected at the position.
+ * @param role Optional mnemonic describing the operand's role.
+ * @return Parse specification structure for an operand slot.
+ */
 constexpr OperandParseSpec makeParseSpec(OperandParseKind kind = OperandParseKind::None,
                                          const char *role = nullptr)
 {
     return {kind, role};
 }
 
-/// Builds the operand-parse descriptor array for an opcode definition.
+/**
+ * @brief Aggregates up to four operand parse specifications into an array.
+ *
+ * The helper normalizes missing operands by using the default `makeParseSpec`
+ * values, producing a consistent array size for every opcode definition.
+ *
+ * @param a Parse specification for operand 0.
+ * @param b Parse specification for operand 1.
+ * @param c Parse specification for operand 2.
+ * @param d Parse specification for operand 3.
+ * @return Array containing the provided parse specifications.
+ */
 constexpr std::array<OperandParseSpec, kMaxOperandParseEntries>
 makeParseList(OperandParseSpec a = makeParseSpec(),
               OperandParseSpec b = makeParseSpec(),
@@ -54,11 +89,29 @@ const std::array<OpcodeInfo, kNumOpcodes> kOpcodeTable = {
 
 static_assert(kOpcodeTable.size() == kNumOpcodes, "Opcode table must match enum count");
 
+/**
+ * @brief Retrieves the metadata descriptor for a particular opcode.
+ *
+ * The function indexes the generated table using the opcode's underlying
+ * numeric value.  Callers must ensure the opcode is within range, as the table
+ * lookup does not perform bounds checking in release builds.
+ *
+ * @param op Opcode whose metadata should be returned.
+ * @return Reference to the static `OpcodeInfo` descriptor.
+ */
 const OpcodeInfo &getOpcodeInfo(Opcode op)
 {
     return kOpcodeTable[static_cast<size_t>(op)];
 }
 
+/**
+ * @brief Enumerates every opcode defined in the IL.
+ *
+ * The helper materializes a vector of opcodes in declaration order, which can
+ * be used for iteration in tools or validation passes.
+ *
+ * @return Vector containing each opcode exactly once.
+ */
 std::vector<Opcode> all_opcodes()
 {
     std::vector<Opcode> ops;
@@ -68,11 +121,29 @@ std::vector<Opcode> all_opcodes()
     return ops;
 }
 
+/**
+ * @brief Tests whether a count marker indicates a variadic operand list.
+ *
+ * Some opcodes use the sentinel value `kVariadicOperandCount` to signal that the
+ * operand count is not fixed.  This helper centralizes the comparison.
+ *
+ * @param value Operand count marker to inspect.
+ * @return `true` when @p value denotes a variadic count.
+ */
 bool isVariadicOperandCount(uint8_t value)
 {
     return value == kVariadicOperandCount;
 }
 
+/**
+ * @brief Tests whether a count marker indicates a variadic successor list.
+ *
+ * Control-flow successors reuse the same sentinel as operand counts.  This
+ * helper keeps the logic in one place for clarity.
+ *
+ * @param value Successor count marker to inspect.
+ * @return `true` when @p value denotes a variadic count.
+ */
 bool isVariadicSuccessorCount(uint8_t value)
 {
     return value == kVariadicOperandCount;

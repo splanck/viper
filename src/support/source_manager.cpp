@@ -1,9 +1,13 @@
-// File: src/support/source_manager.cpp
-// Purpose: Implements utilities to manage source buffers.
-// License: MIT License. See LICENSE in the project root for details.
-// Key invariants: None.
-// Ownership/Lifetime: SourceManager owns loaded buffers.
-// Links: docs/codemap.md
+/**
+ * @file source_manager.cpp
+ * @brief Implements the source manager responsible for tracking file paths.
+ * @copyright
+ *     MIT License. See the LICENSE file in the project root for full terms.
+ * @details
+ *     The source manager assigns monotonically increasing identifiers to source
+ *     files and exposes utilities for path lookup used by diagnostics and
+ *     parsing.
+ */
 
 #include "source_manager.hpp"
 
@@ -12,9 +16,16 @@
 namespace il::support
 {
 
-/// @brief Register a new file path and assign it a unique identifier.
-/// @param path Filesystem path to lexically normalize and store.
-/// @return Identifier (>0) representing the stored path.
+/**
+ * @brief Registers a file path and returns its numeric identifier.
+ *
+ * The path is normalized to a portable string representation before being
+ * stored.  Identifiers are 1-based and correspond to the index of the path in
+ * the internal array, making `0` a sentinel for "unknown".
+ *
+ * @param path Path to record.
+ * @return New identifier that can later be used with `getPath`.
+ */
 uint32_t SourceManager::addFile(std::string path)
 {
     std::filesystem::path p(std::move(path));
@@ -22,9 +33,16 @@ uint32_t SourceManager::addFile(std::string path)
     return static_cast<uint32_t>(files_.size());
 }
 
-/// @brief Retrieve the canonical path associated with @p file_id.
-/// @param file_id 1-based identifier previously returned by addFile().
-/// @return Stored path, or empty string view if @p file_id is invalid.
+/**
+ * @brief Resolves a previously registered identifier back to its path.
+ *
+ * The function validates the identifier range and, if valid, returns a view into
+ * the stored canonical string.  Invalid identifiers yield an empty view so that
+ * callers can detect missing entries.
+ *
+ * @param file_id Identifier returned by `addFile`.
+ * @return Canonical string path, or empty when @p file_id is invalid.
+ */
 std::string_view SourceManager::getPath(uint32_t file_id) const
 {
     if (file_id == 0 || file_id > files_.size())
