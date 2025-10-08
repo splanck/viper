@@ -112,8 +112,11 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
 
     void before(const InputStmt &stmt)
     {
-        if (!stmt.var.empty())
-            lowerer_.markSymbolReferenced(stmt.var);
+        for (const auto &name : stmt.vars)
+        {
+            if (!name.empty())
+                lowerer_.markSymbolReferenced(name);
+        }
     }
 
   private:

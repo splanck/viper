@@ -93,7 +93,7 @@ int main()
         auto fnPrompt = std::make_unique<StringExpr>();
         fnPrompt->value = "?";
         fnInput->prompt = std::move(fnPrompt);
-        fnInput->var = "LARGE_FN_INPUT_" + std::to_string(i) + "$";
+        fnInput->vars.push_back("LARGE_FN_INPUT_" + std::to_string(i) + "$");
         fn->body.push_back(std::move(fnInput));
 
         auto fnReturn = std::make_unique<ReturnStmt>();
@@ -137,7 +137,7 @@ int main()
         auto subPrompt = std::make_unique<StringExpr>();
         subPrompt->value = "!";
         subInput->prompt = std::move(subPrompt);
-        subInput->var = "LARGE_SUB_INPUT_" + std::to_string(i) + "$";
+        subInput->vars.push_back("LARGE_SUB_INPUT_" + std::to_string(i) + "$");
         sub->body.push_back(std::move(subInput));
 
         prog->procs.push_back(std::move(sub));

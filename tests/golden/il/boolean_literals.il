@@ -7,6 +7,7 @@ extern @rt_substr(str, i64, i64) -> str
 extern @rt_input_line() -> str
 extern @rt_to_int(str) -> i64
 extern @rt_str_empty() -> str
+extern @rt_str_release_maybe(str) -> void
 global const str @.L0 = "\n"
 func @main() -> i64 {
 entry:
@@ -22,6 +23,8 @@ L10:
   %t4 = call @rt_to_int(%t3)
   .loc 1 1 4
   store i64, %t2, %t4
+  .loc 1 1 4
+  call @rt_str_release_maybe(%t3)
   .loc 1 1 4
   br L20
 L20:

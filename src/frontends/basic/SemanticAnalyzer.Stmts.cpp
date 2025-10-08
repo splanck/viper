@@ -688,24 +688,29 @@ void SemanticAnalyzer::analyzeInput(InputStmt &inp)
 {
     if (inp.prompt)
         visitExpr(*inp.prompt);
-    resolveAndTrackSymbol(inp.var, SymbolKind::InputTarget);
-    bool loopVarMutation = false;
-    for (auto it = forStack_.rbegin(); it != forStack_.rend(); ++it)
+    for (auto &name : inp.vars)
     {
-        if (*it == inp.var)
+        if (name.empty())
+            continue;
+        resolveAndTrackSymbol(name, SymbolKind::InputTarget);
+        bool loopVarMutation = false;
+        for (auto it = forStack_.rbegin(); it != forStack_.rend(); ++it)
         {
-            loopVarMutation = true;
-            break;
+            if (*it == name)
+            {
+                loopVarMutation = true;
+                break;
+            }
         }
-    }
-    if (loopVarMutation)
-    {
-        std::string msg = "cannot assign to loop variable '" + inp.var + "' inside FOR";
-        de.emit(il::support::Severity::Error,
-                "B1010",
-                inp.loc,
-                static_cast<uint32_t>(inp.var.size()),
-                std::move(msg));
+        if (loopVarMutation)
+        {
+            std::string msg = "cannot assign to loop variable '" + name + "' inside FOR";
+            de.emit(il::support::Severity::Error,
+                    "B1010",
+                    inp.loc,
+                    static_cast<uint32_t>(name.size()),
+                    std::move(msg));
+        }
     }
 }
 

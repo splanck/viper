@@ -388,13 +388,29 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
     void visit(const InputStmt &stmt) override
     {
         printer.os << "(INPUT";
+        bool firstItem = true;
+        auto writeItemPrefix = [&] {
+            if (firstItem)
+            {
+                printer.os << ' ';
+                firstItem = false;
+            }
+            else
+            {
+                printer.os << ", ";
+            }
+        };
         if (stmt.prompt)
         {
-            printer.os << ' ';
+            writeItemPrefix();
             AstPrinter::printExpr(*stmt.prompt, printer, style);
-            printer.os << ',';
         }
-        printer.os << ' ' << stmt.var << ')';
+        for (const auto &name : stmt.vars)
+        {
+            writeItemPrefix();
+            printer.os << name;
+        }
+        printer.os << ')';
     }
 
     void visit(const LineInputChStmt &stmt) override

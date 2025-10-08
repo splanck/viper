@@ -14,6 +14,7 @@ extern @rt_arr_i32_set(ptr, i64, i64) -> void
 extern @rt_arr_i32_retain(ptr) -> void
 extern @rt_arr_i32_release(ptr) -> void
 extern @rt_arr_oob_panic(i64, i64) -> void
+extern @rt_str_release_maybe(str) -> void
 global const str @.L0 = "\n"
 func @main() -> i64 {
 entry:
@@ -30,6 +31,8 @@ L10:
   %t5 = call @rt_to_int(%t4)
   .loc 1 1 4
   store i64, %t3, %t5
+  .loc 1 1 4
+  call @rt_str_release_maybe(%t4)
   .loc 1 1 4
   br L20
 L20:
