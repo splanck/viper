@@ -34,9 +34,10 @@ class StatementSequencer
         LineBreak, ///< Line break separated adjacent statements.
     };
 
-    using TerminatorPredicate = std::function<bool(int)>; ///< Identifies terminator tokens.
-    using TerminatorConsumer =
-        std::function<void(int, TerminatorInfo &)>; ///< Consumes terminator tokens.
+    using TerminatorPredicate =
+        std::function<bool(int, il::support::SourceLoc)>; ///< Identifies terminator tokens.
+    using TerminatorConsumer = std::function<void(int, il::support::SourceLoc, TerminatorInfo &)>;
+    ///< Consumes terminator tokens.
 
     /// @brief Construct a sequencer bound to a parser instance.
     explicit StatementSequencer(Parser &parser);
@@ -52,10 +53,10 @@ class StatementSequencer
     void skipStatementSeparator();
 
     /// @brief Invoke @p fn with an optional numeric line label.
-    void withOptionalLineNumber(const std::function<void(int)> &fn);
+    void withOptionalLineNumber(const std::function<void(int, il::support::SourceLoc)> &fn);
 
     /// @brief Remember a pending line label for the next statement.
-    void stashPendingLine(int line);
+    void stashPendingLine(int line, il::support::SourceLoc loc);
 
     /// @brief Inspect the last consumed separator classification.
     SeparatorKind lastSeparator() const;
@@ -75,6 +76,7 @@ class StatementSequencer
   private:
     Parser &parser_;             ///< Underlying parser providing token access.
     int pendingLine_ = -1;       ///< Deferred numeric line label for next statement.
+    il::support::SourceLoc pendingLineLoc_{}; ///< Location of the deferred line label.
     SeparatorKind lastSeparator_ =
         SeparatorKind::None; ///< Treat start-of-file as neutral separator state.
 };
