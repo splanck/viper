@@ -768,6 +768,22 @@ Expected<void> checkStore_E(const Function &fn,
         if (v != 0 && v != 1)
             return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "boolean store expects 0 or 1"))};
     }
+    else if (instr.operands[1].kind == Value::Kind::ConstInt &&
+             (instr.type.kind == Type::Kind::I16 || instr.type.kind == Type::Kind::I32))
+    {
+        long long v = instr.operands[1].i64;
+        long long min = instr.type.kind == Type::Kind::I16 ? std::numeric_limits<int16_t>::min()
+                                                            : std::numeric_limits<int32_t>::min();
+        long long max = instr.type.kind == Type::Kind::I16 ? std::numeric_limits<int16_t>::max()
+                                                            : std::numeric_limits<int32_t>::max();
+        if (v < min || v > max)
+        {
+            return Expected<void>{makeError(instr.loc,
+                                            formatInstrDiag(fn, bb, instr, "value out of range for store type"))};
+        }
+        // Treat the constant as having the narrower integer type for this store.
+        valueTy = instr.type;
+    }
     else if (valueTy.kind != instr.type.kind)
     {
         return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "value type mismatch"))};
