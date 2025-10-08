@@ -576,38 +576,18 @@ StmtPtr Parser::parseInput()
         consume();
         expect(TokenKind::Comma);
     }
-    Token nameTok = expect(TokenKind::Identifier);
-    std::string name = nameTok.lexeme;
     auto stmt = std::make_unique<InputStmt>();
     stmt->loc = loc;
     stmt->prompt = std::move(prompt);
-    stmt->var = name;
 
-    bool emittedExtraDiag = false;
-    auto emitExtraDiag = [&](il::support::SourceLoc extraLoc) {
-        if (emittedExtraDiag)
-            return;
-        emittedExtraDiag = true;
-        if (emitter_)
-        {
-            emitter_->emit(il::support::Severity::Error,
-                           "B0101",
-                           extraLoc,
-                           0,
-                           "INPUT currently supports a single variable; extra items will be ignored");
-        }
-        else
-        {
-            std::fprintf(stderr,
-                         "B0101: INPUT currently supports a single variable; extra items will be ignored\n");
-        }
-    };
+    Token nameTok = expect(TokenKind::Identifier);
+    stmt->vars.push_back(nameTok.lexeme);
 
-    while (!at(TokenKind::EndOfLine) && !at(TokenKind::EndOfFile) && !at(TokenKind::Colon))
+    while (at(TokenKind::Comma))
     {
-        if ((at(TokenKind::Comma) || at(TokenKind::Identifier)))
-            emitExtraDiag(peek().loc);
         consume();
+        Token nextTok = expect(TokenKind::Identifier);
+        stmt->vars.push_back(nextTok.lexeme);
     }
 
     return stmt;

@@ -1,6 +1,6 @@
 // File: tests/frontends/basic/ParserInputExtraArgsTests.cpp
-// Purpose: Verify INPUT parser emits diagnostics for unsupported extra variables.
-// Key invariants: Parser should report B0101 once and continue parsing subsequent statements.
+// Purpose: Verify INPUT parser accepts comma-separated variable lists.
+// Key invariants: Parsed INPUT statement records each variable without diagnostics.
 // Ownership/Lifetime: Test owns parser/emitter instances and inspects AST and diagnostics.
 // Links: docs/codemap.md
 
@@ -10,7 +10,6 @@
 #include "support/source_manager.hpp"
 
 #include <cassert>
-#include <sstream>
 #include <string>
 
 using namespace il::frontends::basic;
@@ -35,14 +34,13 @@ int main()
     assert(dynamic_cast<PrintStmt *>(program->main[1].get()));
     assert(dynamic_cast<EndStmt *>(program->main[2].get()));
 
-    assert(emitter.errorCount() == 1);
+    auto *inputStmt = dynamic_cast<InputStmt *>(program->main[0].get());
+    assert(inputStmt);
+    assert(inputStmt->vars.size() == 2);
+    assert(inputStmt->vars[0] == "A");
+    assert(inputStmt->vars[1] == "B");
 
-    std::ostringstream oss;
-    emitter.printAll(oss);
-    std::string output = oss.str();
-    assert(output.find("error[B0101]") != std::string::npos);
-    assert(output.find(
-               "INPUT currently supports a single variable; extra items will be ignored") != std::string::npos);
+    assert(emitter.errorCount() == 0);
 
     return 0;
 }

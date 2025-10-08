@@ -36,7 +36,7 @@ int main()
         "20 LET A(1) = 5\n"
         "30 OPEN \"out.dat\" FOR OUTPUT AS #1\n"
         "40 PRINT #1, 42\n"
-        "50 INPUT X\n"
+        "50 INPUT X, Y$\n"
         "60 CLOSE #1\n";
 
     Parser parser(src, fid);
@@ -48,6 +48,7 @@ int main()
 
     auto names = collectExternNames(module);
     assert(names.count("rt_arr_i32_set") == 1);
+    assert(names.count("rt_split_fields") == 1);
     assert(names.count("rt_to_int") == 1);
 
     const std::string stringHelpers[] = {

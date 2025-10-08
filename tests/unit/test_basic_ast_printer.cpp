@@ -163,7 +163,7 @@ int main()
     auto input = std::make_unique<InputStmt>();
     input->line = 50;
     input->prompt = makeString("Value?");
-    input->var = "N";
+    input->vars.push_back("N");
     prog.main.push_back(std::move(input));
 
     auto ifStmt = std::make_unique<IfStmt>();

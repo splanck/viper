@@ -745,8 +745,8 @@ struct InputStmt : Stmt
     /// Optional prompt string literal (nullptr if absent).
     ExprPtr prompt;
 
-    /// Target variable name (may end with '$').
-    std::string var;
+    /// Target variable names (each may end with '$').
+    std::vector<std::string> vars;
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
 };
