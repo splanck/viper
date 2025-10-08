@@ -204,6 +204,16 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
             pop();
     }
 
+    void before(const GosubStmt &)
+    {
+        lowerer_.requireTrap();
+    }
+
+    void before(const ReturnStmt &)
+    {
+        lowerer_.requireTrap();
+    }
+
     void after(const ClsStmt &)
     {
     }
