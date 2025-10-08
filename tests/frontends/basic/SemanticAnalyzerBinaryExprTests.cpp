@@ -92,6 +92,12 @@ int main()
     }
 
     {
+        auto result = analyzeSnippet("10 LET A = 1\n20 LET X = A / 0\n30 END\n");
+        assert(result.errors == 1);
+        assert(result.output.find("error[B2002]") != std::string::npos);
+    }
+
+    {
         auto result = analyzeSnippet(makeSnippet("4 \\ 2.5"));
         assert(result.errors == 1);
         assert(result.output.find("error[B2001]") != std::string::npos);
@@ -113,6 +119,11 @@ int main()
         auto result = analyzeSnippet(makeSnippet("4 MOD 0"));
         assert(result.errors == 1);
         assert(result.output.find("error[B2002]") != std::string::npos);
+    }
+
+    {
+        auto result = analyzeSnippet("10 LET A = 0\n20 LET B = A\n30 LET X = 1 / B\n40 END\n");
+        assert(result.errors == 0);
     }
 
     {
