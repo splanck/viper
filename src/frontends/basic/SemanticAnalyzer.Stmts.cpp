@@ -43,6 +43,7 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
     void visit(NextStmt &stmt) override { analyzer_.analyzeNext(stmt); }
     void visit(ExitStmt &stmt) override { analyzer_.analyzeExit(stmt); }
     void visit(GotoStmt &stmt) override { analyzer_.analyzeGoto(stmt); }
+    void visit(GosubStmt &stmt) override { analyzer_.analyzeGosub(stmt); }
     void visit(OpenStmt &stmt) override { analyzer_.analyzeOpen(stmt); }
     void visit(CloseStmt &stmt) override { analyzer_.analyzeClose(stmt); }
     void visit(OnErrorGoto &stmt) override { analyzer_.analyzeOnErrorGoto(stmt); }
@@ -517,6 +518,18 @@ void SemanticAnalyzer::analyzeGoto(const GotoStmt &g)
     {
         std::string msg = "unknown line " + std::to_string(g.target);
         de.emit(il::support::Severity::Error, "B1003", g.loc, 4, std::move(msg));
+    }
+}
+
+void SemanticAnalyzer::analyzeGosub(const GosubStmt &stmt)
+{
+    auto insertResult = labelRefs_.insert(stmt.targetLine);
+    if (insertResult.second && activeProcScope_)
+        activeProcScope_->noteLabelRefInserted(stmt.targetLine);
+    if (!labels_.count(stmt.targetLine))
+    {
+        std::string msg = "unknown line " + std::to_string(stmt.targetLine);
+        de.emit(il::support::Severity::Error, "B1003", stmt.loc, 5, std::move(msg));
     }
 }
 

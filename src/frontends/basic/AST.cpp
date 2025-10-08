@@ -346,6 +346,18 @@ void GotoStmt::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this GOSUB statement node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void GosubStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void GosubStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
 /// @brief Forwards this OPEN statement node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void OpenStmt::accept(StmtVisitor &visitor) const
