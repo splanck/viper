@@ -1,8 +1,18 @@
-// File: src/support/arena.cpp
-// Purpose: Implements bump allocator for short-lived objects.
-// Key invariants: None.
-// Ownership/Lifetime: Arena owns allocated memory until reset.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the bump-pointer arena used throughout Viper's support library.
+// The arena manages a single contiguous buffer and satisfies allocation
+// requests by monotonically advancing an offset.  Callers can request memory
+// with an explicit alignment and the arena will compute the correct aligned
+// address while guarding against overflow.  All allocations remain valid until
+// `reset()` is invoked, at which point the arena reuses the entire buffer.
+//
+//===----------------------------------------------------------------------===//
 
 #include "arena.hpp"
 
@@ -11,15 +21,26 @@
 
 namespace il::support
 {
-/// @brief Construct an arena with a fixed capacity.
-/// @param size Number of bytes reserved for allocations.
+/// @brief Construct an arena that manages a fixed-capacity backing buffer.
+///
+/// The constructor initializes the internal byte vector with @p size elements
+/// and sets the bump pointer to the start of the buffer.  No allocation occurs
+/// beyond reserving the storage owned by the vector.
+///
+/// @param size Number of bytes reserved for subsequent allocation requests.
 Arena::Arena(size_t size) : buffer_(size) {}
 
-/// @brief Allocate memory with a specified alignment.
-/// @param size Number of bytes to allocate.
-/// @param align Alignment in bytes; must be a non-zero power of two.
-/// @return Pointer to aligned memory or nullptr on failure.
-/// @note Fails if alignment is invalid or if remaining capacity is insufficient.
+/// @brief Allocate memory from the arena honoring the requested alignment.
+///
+/// The allocator performs several overflow checks while computing the aligned
+/// pointer to ensure the arithmetic remains within platform limits.  The method
+/// rejects zero or non power-of-two alignments, advances the internal bump
+/// pointer when successful, and returns @c nullptr if the request cannot be
+/// satisfied either because of insufficient capacity or arithmetic overflow.
+///
+/// @param size Number of bytes to allocate from the arena.
+/// @param align Alignment requirement in bytes; must be a non-zero power of two.
+/// @return Pointer to aligned memory on success, or nullptr on failure.
 void *Arena::allocate(size_t size, size_t align)
 {
     // Reject zero or non power-of-two alignments.
@@ -60,8 +81,12 @@ void *Arena::allocate(size_t size, size_t align)
     return buffer_.data() + aligned_offset;
 }
 
-/// @brief Reset the arena, allowing memory to be reused.
-/// @note All previously returned pointers become invalid after this call.
+/// @brief Reset the arena to reuse the entire buffer for future allocations.
+///
+/// Clearing the bump pointer invalidates all outstanding allocations because
+/// subsequent requests will begin writing from the start of the buffer again.
+/// This is intended for short-lived allocations where the caller controls the
+/// lifetime of the data stored in the arena.
 void Arena::reset()
 {
     offset_ = 0;
