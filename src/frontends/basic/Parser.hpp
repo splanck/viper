@@ -202,7 +202,7 @@ class Parser
     std::vector<Param> parseParamList();
 
     /// @brief Determine BASIC type from identifier suffix.
-    /// @param name Identifier possibly carrying a type suffix.
+    /// @param name Identifier possibly carrying a type suffix ($, %, &, !, #).
     /// @return Resolved type.
     Type typeFromSuffix(std::string_view name);
 

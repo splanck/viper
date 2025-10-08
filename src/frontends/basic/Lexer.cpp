@@ -207,7 +207,8 @@ void Lexer::skipWhitespaceAndComments()
             std::toupper(static_cast<unsigned char>(src_[pos_ + 2])) == 'M')
         {
             char after = (pos_ + 3 < src_.size()) ? src_[pos_ + 3] : '\0';
-            if (!std::isalnum(static_cast<unsigned char>(after)) && after != '$' && after != '#')
+            if (!std::isalnum(static_cast<unsigned char>(after)) && after != '$' && after != '#' && after != '!' &&
+                after != '%' && after != '&')
             {
                 get();
                 get();
@@ -223,7 +224,7 @@ void Lexer::skipWhitespaceAndComments()
 }
 
 /// @brief Lex a numeric literal including optional fraction, exponent, and type
-///        suffix <tt>#</tt>.
+///        suffix (<tt>%</tt>, <tt>&</tt>, <tt>!</tt>, <tt>#</tt>).
 /// @return Token of kind Number representing the characters consumed.
 /// @details Advances @p pos_, @p line_, and @p column_ while collecting
 ///         characters. Numeric format is minimally validated.
@@ -233,8 +234,7 @@ Token Lexer::lexNumber()
     std::string s;
     bool seenDot = false;
     bool seenExp = false;
-    bool seenHash = false;
-    bool seenBang = false;
+    char suffix = '\0';
     if (peek() == '.')
     {
         seenDot = true;
@@ -258,20 +258,12 @@ Token Lexer::lexNumber()
         while (std::isdigit(static_cast<unsigned char>(peek())))
             s.push_back(get());
     }
-    if (peek() == '#' || peek() == '!')
-    {
-        char suffix = get();
-        if (suffix == '#')
-            seenHash = true;
-        else if (suffix == '!')
-            seenBang = true;
-    }
+    if (peek() == '#' || peek() == '!' || peek() == '%' || peek() == '&')
+        suffix = get();
     (void)seenDot;
     (void)seenExp;
-    if (seenHash)
-        s.push_back('#');
-    if (seenBang)
-        s.push_back('!');
+    if (suffix != '\0')
+        s.push_back(suffix);
     return {TokenKind::Number, s, loc};
 }
 
@@ -286,7 +278,7 @@ Token Lexer::lexIdentifierOrKeyword()
     std::string s;
     while (std::isalnum(static_cast<unsigned char>(peek())))
         s.push_back(std::toupper(static_cast<unsigned char>(get())));
-    if (peek() == '$' || peek() == '#' || peek() == '!')
+    if (peek() == '$' || peek() == '#' || peek() == '!' || peek() == '%' || peek() == '&')
         s.push_back(std::toupper(static_cast<unsigned char>(get())));
     TokenKind kind = lookupKeyword(s);
     return {kind, s, loc};

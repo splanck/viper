@@ -188,6 +188,13 @@ struct IntExpr : Expr
 {
     /// Literal 64-bit numeric value parsed from the source.
     int64_t value;
+    /// Optional BASIC suffix enforcing INTEGER or LONG semantics.
+    enum class Suffix
+    {
+        None,
+        Integer,
+        Long,
+    } suffix{Suffix::None};
     void accept(ExprVisitor &visitor) const override;
     void accept(MutExprVisitor &visitor) override;
 };
@@ -197,6 +204,13 @@ struct FloatExpr : Expr
 {
     /// Literal double-precision value parsed from the source.
     double value;
+    /// Optional BASIC suffix distinguishing SINGLE from DOUBLE.
+    enum class Suffix
+    {
+        None,
+        Single,
+        Double,
+    } suffix{Suffix::None};
     void accept(ExprVisitor &visitor) const override;
     void accept(MutExprVisitor &visitor) override;
 };
