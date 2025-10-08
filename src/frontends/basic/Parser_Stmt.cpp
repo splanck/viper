@@ -17,7 +17,30 @@ namespace il::frontends::basic
 /// @return Parsed statement node or nullptr for unrecognized statements.
 StmtPtr Parser::parseStatement(int line)
 {
-    const auto kind = peek().kind;
+    const Token &tok = peek();
+    if (tok.kind == TokenKind::Number)
+    {
+        if (emitter_)
+        {
+            emitter_->emit(il::support::Severity::Error,
+                           "B0001",
+                           tok.loc,
+                           static_cast<uint32_t>(tok.lexeme.size()),
+                           "unexpected line number");
+        }
+        else
+        {
+            std::fprintf(stderr, "unexpected line number '%s'\n", tok.lexeme.c_str());
+        }
+
+        while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
+        {
+            consume();
+        }
+        return nullptr;
+    }
+
+    const auto kind = tok.kind;
     const auto index = static_cast<std::size_t>(kind);
     if (index < stmtHandlers_.size())
     {
@@ -27,7 +50,6 @@ StmtPtr Parser::parseStatement(int line)
         if (handler.with_line)
             return (this->*(handler.with_line))(line);
     }
-    const Token &tok = peek();
     if (emitter_)
     {
         std::string msg = std::string("unknown statement '") + tok.lexeme + "'";

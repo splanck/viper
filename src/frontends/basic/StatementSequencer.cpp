@@ -167,6 +167,12 @@ StatementSequencer::TerminatorInfo StatementSequencer::collectStatements(
                     done = true;
                     return;
                 }
+                TokenKind lookaheadKind = parser_.peek().kind;
+                if (lookaheadKind == TokenKind::EndOfLine || lookaheadKind == TokenKind::EndOfFile ||
+                    lookaheadKind == TokenKind::Colon)
+                {
+                    return;
+                }
                 auto stmt = parser_.parseStatement(line);
                 if (stmt)
                 {
