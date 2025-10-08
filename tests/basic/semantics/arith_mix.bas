@@ -1,0 +1,9 @@
+10 LET C = 5 * (2 + 3) - 4 / 2
+20 PRINT C
+30 PRINT 1 / 2
+40 PRINT 1 + 2.5
+50 LET I% = 3.9
+60 PRINT I%
+70 LET L& = -2.2
+80 PRINT L&
+90 END

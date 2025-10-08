@@ -713,6 +713,60 @@ function(viper_add_basic_semantics_golden_tests)
     -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/test_unary_numeric.bas
     -DEXPECT_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/test_unary_numeric.expect
     -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+  viper_add_ctest(basic_semantics_arith_mix
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/arith_mix.bas
+    -DEXPECT_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/arith_mix.expect
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+  viper_add_ctest(basic_semantics_divide_by_zero
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/divide_by_zero.bas
+    -DDIAG_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/divide_by_zero.diag
+    -DEXPECT_STATUS=1
+    -DSOURCE_ROOT=${CMAKE_SOURCE_DIR}
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_diag.cmake)
+
+  set(_VIPER_UNKNOWN_STMT_REGEX "unknown statement 'FROB'")
+  viper_add_ctest(basic_semantics_unknown_statement
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/unknown_statement.bas
+    "-DEXPECT=${_VIPER_UNKNOWN_STMT_REGEX}"
+    -P ${_VIPER_GOLDEN_ERRORS_DIR}/check_error.cmake)
+
+  viper_add_ctest(basic_semantics_gosub_ok
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/gosub_ok.bas
+    -DEXPECT_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/gosub_ok.expect
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+  viper_add_ctest(basic_semantics_gosub_empty_return
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/gosub_empty_return.bas
+    "-DEXPECT=gosub: empty return stack"
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_run_error.cmake)
+
+  viper_add_ctest(basic_semantics_input_single_diag
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/input_single_diag.bas
+    -DSTDIN_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/input_single_diag.stdin
+    "-DEXPECT=INPUT: expected 2 values, got 1"
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_run_error.cmake)
+
+  viper_add_ctest(basic_semantics_input_multi_ok
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/input_single_diag.bas
+    -DSTDIN_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/input_multi_ok.stdin
+    -DEXPECT_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/input_multi_ok.expect
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
 endfunction()
 
 function(viper_add_basic_integration_tests)
