@@ -207,27 +207,159 @@ StmtPtr Parser::parseIf(int line)
     consume(); // IF
     auto cond = parseExpression();
     expect(TokenKind::KeywordThen);
-    auto ctx = statementSequencer();
-    auto thenStmt = parseIfBranchBody(line, ctx);
-    std::vector<IfStmt::ElseIf> elseifs;
-    StmtPtr elseStmt;
-    while (true)
+    auto stmt = std::make_unique<IfStmt>();
+    stmt->loc = loc;
+    stmt->cond = std::move(cond);
+
+    if (at(TokenKind::EndOfLine))
     {
-        skipOptionalLineLabelAfterBreak(ctx, {TokenKind::KeywordElseIf, TokenKind::KeywordElse});
-        if (at(TokenKind::KeywordElseIf))
+        enum class BlockTerminator
         {
-            consume();
+            None,
+            ElseIf,
+            Else,
+            EndIf,
+        };
+
+        auto ctx = statementSequencer();
+
+        auto makeBranchBody = [&](std::vector<StmtPtr> &&stmts) -> StmtPtr
+        {
+            if (stmts.empty())
+                return nullptr;
+            auto list = std::make_unique<StmtList>();
+            list->line = line;
+            il::support::SourceLoc listLoc = loc;
+            for (const auto &bodyStmt : stmts)
+            {
+                if (bodyStmt)
+                {
+                    listLoc = bodyStmt->loc;
+                    break;
+                }
+            }
+            list->loc = listLoc;
+            list->stmts = std::move(stmts);
+            return list;
+        };
+
+        auto collectBranch = [&](bool allowElseBranches)
+            -> std::pair<StmtPtr, BlockTerminator>
+        {
+            std::vector<StmtPtr> stmts;
+            BlockTerminator term = BlockTerminator::None;
+            auto predicate = [&](int) {
+                if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordIf)
+                    return true;
+                if (!allowElseBranches)
+                    return false;
+                if (at(TokenKind::KeywordElseIf))
+                    return true;
+                if (at(TokenKind::KeywordElse))
+                    return true;
+                return false;
+            };
+            auto consumer = [&](int lineNumber, StatementSequencer::TerminatorInfo &info)
+            {
+                info.line = lineNumber;
+                info.loc = peek().loc;
+                if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordIf)
+                {
+                    Token endTok = consume();
+                    info.loc = endTok.loc;
+                    expect(TokenKind::KeywordIf);
+                    term = BlockTerminator::EndIf;
+                    return;
+                }
+                if (!allowElseBranches)
+                    return;
+                if (at(TokenKind::KeywordElseIf))
+                {
+                    term = BlockTerminator::ElseIf;
+                    return;
+                }
+                if (at(TokenKind::KeywordElse))
+                {
+                    if (peek(1).kind == TokenKind::KeywordIf)
+                    {
+                        term = BlockTerminator::ElseIf;
+                    }
+                    else
+                    {
+                        term = BlockTerminator::Else;
+                    }
+                }
+            };
+            ctx.collectStatements(predicate, consumer, stmts);
+            return {makeBranchBody(std::move(stmts)), term};
+        };
+
+        auto [thenBranch, term] = collectBranch(true);
+        stmt->then_branch = std::move(thenBranch);
+        std::vector<IfStmt::ElseIf> elseifs;
+        StmtPtr elseStmt;
+        while (term == BlockTerminator::ElseIf)
+        {
             IfStmt::ElseIf ei;
+            if (at(TokenKind::KeywordElseIf))
+            {
+                consume();
+            }
+            else if (at(TokenKind::KeywordElse))
+            {
+                consume();
+                expect(TokenKind::KeywordIf);
+            }
+            else
+            {
+                break;
+            }
             ei.cond = parseExpression();
             expect(TokenKind::KeywordThen);
-            ei.then_branch = parseIfBranchBody(line, ctx);
+            auto [branchBody, nextTerm] = collectBranch(true);
+            ei.then_branch = std::move(branchBody);
             elseifs.push_back(std::move(ei));
-            continue;
+            term = nextTerm;
         }
-        if (at(TokenKind::KeywordElse))
+
+        if (term == BlockTerminator::Else)
         {
             consume();
-            if (at(TokenKind::KeywordIf))
+            auto [elseBody, endTerm] = collectBranch(false);
+            elseStmt = std::move(elseBody);
+            term = endTerm;
+        }
+
+        if (term != BlockTerminator::EndIf)
+        {
+            if (emitter_)
+            {
+                emitter_->emit(il::support::Severity::Error,
+                               "B0004",
+                               stmt->loc,
+                               2,
+                               "missing END IF");
+            }
+            else
+            {
+                std::fprintf(stderr, "missing END IF\n");
+            }
+            syncToStmtBoundary();
+        }
+
+        stmt->elseifs = std::move(elseifs);
+        stmt->else_branch = std::move(elseStmt);
+    }
+    else
+    {
+        auto ctx = statementSequencer();
+        auto thenStmt = parseIfBranchBody(line, ctx);
+        std::vector<IfStmt::ElseIf> elseifs;
+        StmtPtr elseStmt;
+        while (true)
+        {
+            skipOptionalLineLabelAfterBreak(ctx, {TokenKind::KeywordElseIf, TokenKind::KeywordElse});
+            if (at(TokenKind::KeywordElseIf))
             {
                 consume();
                 IfStmt::ElseIf ei;
@@ -237,21 +369,40 @@ StmtPtr Parser::parseIf(int line)
                 elseifs.push_back(std::move(ei));
                 continue;
             }
-            else
+            if (at(TokenKind::KeywordElse))
             {
-                elseStmt = parseIfBranchBody(line, ctx);
+                consume();
+                if (at(TokenKind::KeywordIf))
+                {
+                    consume();
+                    IfStmt::ElseIf ei;
+                    ei.cond = parseExpression();
+                    expect(TokenKind::KeywordThen);
+                    ei.then_branch = parseIfBranchBody(line, ctx);
+                    elseifs.push_back(std::move(ei));
+                    continue;
+                }
+                else
+                {
+                    elseStmt = parseIfBranchBody(line, ctx);
+                }
             }
+            break;
         }
-        break;
+        stmt->then_branch = std::move(thenStmt);
+        stmt->elseifs = std::move(elseifs);
+        stmt->else_branch = std::move(elseStmt);
     }
-    auto stmt = std::make_unique<IfStmt>();
-    stmt->loc = loc;
-    stmt->cond = std::move(cond);
-    stmt->then_branch = std::move(thenStmt);
-    stmt->elseifs = std::move(elseifs);
-    stmt->else_branch = std::move(elseStmt);
+
     if (stmt->then_branch)
         stmt->then_branch->line = line;
+    for (auto &elseif : stmt->elseifs)
+    {
+        if (elseif.then_branch)
+            elseif.then_branch->line = line;
+    }
+    if (stmt->else_branch)
+        stmt->else_branch->line = line;
     return stmt;
 }
 

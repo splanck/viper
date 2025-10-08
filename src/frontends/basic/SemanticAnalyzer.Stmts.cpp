@@ -429,26 +429,30 @@ void SemanticAnalyzer::analyzeIf(const IfStmt &i)
 {
     if (i.cond)
         checkConditionExpr(*i.cond);
-    if (i.then_branch)
+    auto analyzeBranch = [&](const StmtPtr &branch)
     {
+        if (!branch)
+            return;
         ScopeTracker::ScopedScope scope(scopes_);
-        visitStmt(*i.then_branch);
-    }
+        if (const auto *list = dynamic_cast<const StmtList *>(branch.get()))
+        {
+            for (const auto &child : list->stmts)
+                if (child)
+                    visitStmt(*child);
+        }
+        else
+        {
+            visitStmt(*branch);
+        }
+    };
+    analyzeBranch(i.then_branch);
     for (const auto &e : i.elseifs)
     {
         if (e.cond)
             checkConditionExpr(*e.cond);
-        if (e.then_branch)
-        {
-            ScopeTracker::ScopedScope scope(scopes_);
-            visitStmt(*e.then_branch);
-        }
+        analyzeBranch(e.then_branch);
     }
-    if (i.else_branch)
-    {
-        ScopeTracker::ScopedScope scope(scopes_);
-        visitStmt(*i.else_branch);
-    }
+    analyzeBranch(i.else_branch);
 }
 
 void SemanticAnalyzer::analyzeWhile(const WhileStmt &w)
