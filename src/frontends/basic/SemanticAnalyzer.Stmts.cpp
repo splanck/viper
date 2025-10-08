@@ -189,11 +189,18 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
         {
             if (const auto *bin = dynamic_cast<const BinaryExpr *>(l.expr.get()))
             {
-                if (bin->op == BinaryExpr::Op::Div)
+                const bool hasExplicitIntSuffix =
+                    !v.name.empty() && (v.name.back() == '%' || v.name.back() == '&');
+                switch (bin->op)
                 {
-                    const bool hasExplicitIntSuffix =
-                        !v.name.empty() && (v.name.back() == '%' || v.name.back() == '&');
-                    allowFloatPromotion = !hasExplicitIntSuffix;
+                    case BinaryExpr::Op::Div:
+                    case BinaryExpr::Op::Add:
+                    case BinaryExpr::Op::Sub:
+                    case BinaryExpr::Op::Mul:
+                        allowFloatPromotion = !hasExplicitIntSuffix;
+                        break;
+                    default:
+                        break;
                 }
             }
         }
