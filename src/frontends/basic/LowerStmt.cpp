@@ -28,6 +28,8 @@ class LowererStmtVisitor final : public StmtVisitor
   public:
     explicit LowererStmtVisitor(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
 
+    void visit(const LabelStmt &) override {}
+
     void visit(const PrintStmt &stmt) override { lowerer_.lowerPrint(stmt); }
 
     void visit(const PrintChStmt &stmt) override { lowerer_.lowerPrintCh(stmt); }

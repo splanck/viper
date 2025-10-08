@@ -93,33 +93,42 @@ void StatementSequencer::skipStatementSeparator()
     }
 }
 
-void StatementSequencer::withOptionalLineNumber(const std::function<void(int)> &fn)
+void StatementSequencer::withOptionalLineNumber(
+    const std::function<void(int, il::support::SourceLoc)> &fn)
 {
     int line = 0;
+    il::support::SourceLoc loc{};
     if (pendingLine_ >= 0)
     {
         if (parser_.at(TokenKind::Number))
         {
-            line = std::atoi(parser_.peek().lexeme.c_str());
+            const Token &tok = parser_.peek();
+            line = std::atoi(tok.lexeme.c_str());
+            loc = tok.loc;
             parser_.consume();
         }
         else
         {
             line = pendingLine_;
+            loc = pendingLineLoc_;
             pendingLine_ = -1;
+            pendingLineLoc_ = {};
         }
     }
     else if (parser_.at(TokenKind::Number))
     {
-        line = std::atoi(parser_.peek().lexeme.c_str());
+        const Token &tok = parser_.peek();
+        line = std::atoi(tok.lexeme.c_str());
+        loc = tok.loc;
         parser_.consume();
     }
-    fn(line);
+    fn(line, loc);
 }
 
-void StatementSequencer::stashPendingLine(int line)
+void StatementSequencer::stashPendingLine(int line, il::support::SourceLoc loc)
 {
     pendingLine_ = line;
+    pendingLineLoc_ = loc;
 }
 
 StatementSequencer::SeparatorKind StatementSequencer::lastSeparator() const
@@ -142,13 +151,13 @@ StatementSequencer::TerminatorInfo StatementSequencer::collectStatements(
 
         bool done = false;
         withOptionalLineNumber(
-            [&](int line)
+            [&](int line, il::support::SourceLoc lineLoc)
             {
-                if (isTerminator(line))
+                if (isTerminator(line, lineLoc))
                 {
                     info.line = line;
                     info.loc = parser_.peek().loc;
-                    onTerminator(line, info);
+                    onTerminator(line, lineLoc, info);
                     done = true;
                     return;
                 }
@@ -169,8 +178,8 @@ StatementSequencer::TerminatorInfo StatementSequencer::collectStatements(
 StatementSequencer::TerminatorInfo StatementSequencer::collectStatements(
     TokenKind terminator, std::vector<StmtPtr> &dst)
 {
-    auto predicate = [&](int) { return parser_.at(terminator); };
-    auto consumer = [&](int, TerminatorInfo &) { parser_.consume(); };
+    auto predicate = [&](int, il::support::SourceLoc) { return parser_.at(terminator); };
+    auto consumer = [&](int, il::support::SourceLoc, TerminatorInfo &) { parser_.consume(); };
     return collectStatements(predicate, consumer, dst);
 }
 
@@ -179,46 +188,57 @@ StmtPtr StatementSequencer::parseStatementLine()
     std::vector<StmtPtr> stmts;
     int lineNumber = 0;
     bool haveLine = false;
-    auto predicate = [&](int line)
+    il::support::SourceLoc lineLoc{};
+    auto predicate = [&](int line, il::support::SourceLoc loc)
     {
         if (!haveLine)
         {
             haveLine = true;
             lineNumber = line;
+            lineLoc = loc;
             return false;
         }
 
         if (lastSeparator() == SeparatorKind::LineBreak)
         {
             if (line > 0)
-                stashPendingLine(line);
+                stashPendingLine(line, loc);
             return true;
         }
 
         if (lastSeparator() != SeparatorKind::Colon)
         {
             if (line > 0)
-                stashPendingLine(line);
+                stashPendingLine(line, loc);
             return true;
         }
 
         if (line > 0 && line != lineNumber)
         {
-            stashPendingLine(line);
+            stashPendingLine(line, loc);
             return true;
         }
         return false;
     };
-    auto consumer = [&](int line, TerminatorInfo &)
+    auto consumer = [&](int line, il::support::SourceLoc loc, TerminatorInfo &)
     {
         if (line > 0)
-            stashPendingLine(line);
+            stashPendingLine(line, loc);
     };
 
     collectStatements(predicate, consumer, stmts);
 
     if (stmts.empty())
+    {
+        if (haveLine && lineNumber != 0)
+        {
+            auto label = std::make_unique<LabelStmt>();
+            label->line = lineNumber;
+            label->loc = lineLoc;
+            return label;
+        }
         return nullptr;
+    }
 
     if (!haveLine && !stmts.empty())
         lineNumber = stmts.front()->line;
