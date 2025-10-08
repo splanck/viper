@@ -308,25 +308,60 @@ Lowerer::Value Lowerer::emitBasicLogicalI64(Value b1)
 ///   with the operand's location.
 Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
 {
-    RVal val = lowerExpr(*u.expr);
-    RVal condVal = coerceToBool(std::move(val), u.loc);
-    curLoc = u.loc;
-    Value cond = condVal.value;
-    RVal negated = lowerBoolBranchExpr(
-        cond,
-        u.loc,
-        [&](Value slot) {
+    switch (u.op)
+    {
+        case UnaryExpr::Op::LogicalNot:
+        {
+            RVal val = lowerExpr(*u.expr);
+            RVal condVal = coerceToBool(std::move(val), u.loc);
             curLoc = u.loc;
-            emitStore(ilBoolTy(), slot, emitBoolConst(false));
-        },
-        [&](Value slot) {
-            curLoc = u.loc;
-            emitStore(ilBoolTy(), slot, emitBoolConst(true));
-        });
+            Value cond = condVal.value;
+            RVal negated = lowerBoolBranchExpr(
+                cond,
+                u.loc,
+                [&](Value slot) {
+                    curLoc = u.loc;
+                    emitStore(ilBoolTy(), slot, emitBoolConst(false));
+                },
+                [&](Value slot) {
+                    curLoc = u.loc;
+                    emitStore(ilBoolTy(), slot, emitBoolConst(true));
+                });
 
-    curLoc = u.loc;
-    Value logical = emitBasicLogicalI64(negated.value);
-    return {logical, Type(Type::Kind::I64)};
+            curLoc = u.loc;
+            Value logical = emitBasicLogicalI64(negated.value);
+            return {logical, Type(Type::Kind::I64)};
+        }
+        case UnaryExpr::Op::Plus:
+            return lowerExpr(*u.expr);
+        case UnaryExpr::Op::Negate:
+        {
+            RVal value = lowerExpr(*u.expr);
+            if (value.type.kind == Type::Kind::I1)
+                value = coerceToI64(std::move(value), u.loc);
+            curLoc = u.loc;
+            if (value.type.kind == Type::Kind::F64)
+            {
+                Value neg = emitBinary(Opcode::FSub, Type(Type::Kind::F64), Value::constFloat(0.0), value.value);
+                return {neg, Type(Type::Kind::F64)};
+            }
+            if (value.type.kind == Type::Kind::I16 || value.type.kind == Type::Kind::I32 ||
+                value.type.kind == Type::Kind::I64)
+            {
+                Value neg = emitCheckedNeg(value.type, value.value);
+                return {neg, value.type};
+            }
+            value = coerceToI64(std::move(value), u.loc);
+            if (value.type.kind == Type::Kind::I16 || value.type.kind == Type::Kind::I32 ||
+                value.type.kind == Type::Kind::I64)
+            {
+                Value neg = emitCheckedNeg(value.type, value.value);
+                return {neg, value.type};
+            }
+            return value;
+        }
+    }
+    return lowerExpr(*u.expr);
 }
 
 /// @brief Lower BASIC logical binary expressions, including short-circuiting.

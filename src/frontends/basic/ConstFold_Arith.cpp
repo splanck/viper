@@ -238,6 +238,19 @@ std::optional<Numeric> tryFoldUnaryArith(UnaryExpr::Op op, const Numeric &value)
 {
     switch (op)
     {
+        case UnaryExpr::Op::Plus:
+            return value;
+        case UnaryExpr::Op::Negate:
+            if (value.isFloat)
+            {
+                double neg = -value.f;
+                return Numeric{true, neg, static_cast<long long>(neg)};
+            }
+            else
+            {
+                long long neg = wrapSub(0, value.i);
+                return Numeric{false, static_cast<double>(neg), neg};
+            }
         default:
             break;
     }

@@ -25,5 +25,8 @@ int main()
     assert(TypeRules::resultType('^', NumericType::Single, NumericType::Single) ==
            NumericType::Double);
 
+    assert(TypeRules::unaryResultType('-', NumericType::Integer) == NumericType::Integer);
+    assert(TypeRules::unaryResultType('+', NumericType::Double) == NumericType::Double);
+
     return 0;
 }

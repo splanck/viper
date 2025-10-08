@@ -706,6 +706,13 @@ function(viper_add_basic_semantics_golden_tests)
     -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/test_boolean_constfold.bas
     -DEXPECT_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/test_boolean_constfold.expect
     -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+  viper_add_ctest(basic_semantics_unary_numeric
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/test_unary_numeric.bas
+    -DEXPECT_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/test_unary_numeric.expect
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
 endfunction()
 
 function(viper_add_basic_integration_tests)
