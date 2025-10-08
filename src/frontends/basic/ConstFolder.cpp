@@ -160,13 +160,23 @@ private:
     void visit(UnaryExpr &expr) override
     {
         foldExpr(expr.expr);
-        if (expr.op != UnaryExpr::Op::LogicalNot)
-            return;
-
-        if (auto replacement = detail::foldLogicalNot(*expr.expr))
+        switch (expr.op)
         {
-            replacement->loc = expr.loc;
-            replaceWithExpr(std::move(replacement));
+            case UnaryExpr::Op::LogicalNot:
+                if (auto replacement = detail::foldLogicalNot(*expr.expr))
+                {
+                    replacement->loc = expr.loc;
+                    replaceWithExpr(std::move(replacement));
+                }
+                break;
+            case UnaryExpr::Op::Plus:
+            case UnaryExpr::Op::Negate:
+                if (auto replacement = detail::foldUnaryArith(expr.op, *expr.expr))
+                {
+                    replacement->loc = expr.loc;
+                    replaceWithExpr(std::move(replacement));
+                }
+                break;
         }
     }
 

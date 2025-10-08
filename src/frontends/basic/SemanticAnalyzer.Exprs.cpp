@@ -275,19 +275,36 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeUnary(const UnaryExpr &u)
     Type t = Type::Unknown;
     if (u.expr)
         t = visitExpr(*u.expr);
-    if (u.op == UnaryExpr::Op::LogicalNot)
+    switch (u.op)
     {
-        if (t != Type::Unknown && t != Type::Bool)
-        {
-            std::ostringstream oss;
-            oss << "NOT requires a BOOLEAN operand, got " << semanticTypeName(t) << '.';
-            de.emit(il::support::Severity::Error,
-                    std::string(DiagNonBooleanNotOperand),
-                    u.loc,
-                    3,
-                    oss.str());
-        }
-        return Type::Bool;
+        case UnaryExpr::Op::LogicalNot:
+            if (t != Type::Unknown && t != Type::Bool)
+            {
+                std::ostringstream oss;
+                oss << "NOT requires a BOOLEAN operand, got " << semanticTypeName(t) << '.';
+                de.emit(il::support::Severity::Error,
+                        std::string(DiagNonBooleanNotOperand),
+                        u.loc,
+                        3,
+                        oss.str());
+            }
+            return Type::Bool;
+        case UnaryExpr::Op::Plus:
+        case UnaryExpr::Op::Negate:
+            if (t != Type::Unknown && !semantic_analyzer_detail::isNumericType(t))
+            {
+                std::ostringstream oss;
+                char opChar = (u.op == UnaryExpr::Op::Negate) ? '-' : '+';
+                oss << "unary " << opChar << " requires a NUMERIC operand, got "
+                    << semanticTypeName(t) << '.';
+                de.emit(il::support::Severity::Error,
+                        "B2001",
+                        u.loc,
+                        1,
+                        oss.str());
+                return Type::Unknown;
+            }
+            return t;
     }
     return Type::Unknown;
 }

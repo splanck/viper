@@ -47,7 +47,7 @@ class TypeRules
     static NumericType resultType(char op, NumericType lhs, NumericType rhs) noexcept;
 
     /// @brief Determine the unary operator result type.
-    /// @param op Unary operator (currently only '-').
+    /// @param op Unary operator ("-" or "+").
     /// @param operand Operand numeric type.
     static NumericType unaryResultType(char op, NumericType operand) noexcept;
 
