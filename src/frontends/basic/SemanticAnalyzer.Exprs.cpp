@@ -49,7 +49,7 @@ constexpr bool isBooleanType(SemanticAnalyzer::Type type) noexcept
 constexpr bool isStringType(SemanticAnalyzer::Type type) noexcept
 {
     using Type = SemanticAnalyzer::Type;
-    return type == Type::String || type == Type::Unknown;
+    return type == Type::String;
 }
 
 SemanticAnalyzer::Type commonNumericType(SemanticAnalyzer::Type lhs,
