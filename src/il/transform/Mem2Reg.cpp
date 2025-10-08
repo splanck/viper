@@ -1,4 +1,5 @@
 // File: src/il/transform/Mem2Reg.cpp
+// License: MIT (see LICENSE for details).
 // Purpose: Implement alloca promotion to SSA using block parameters with the
 // seal-and-rename algorithm (mem2reg v3).
 // Key invariants: Handles i64/f64/i1 allocas whose addresses do not escape,

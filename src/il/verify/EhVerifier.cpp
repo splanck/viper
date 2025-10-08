@@ -1,4 +1,5 @@
 // File: src/il/verify/EhVerifier.cpp
+// License: MIT (see LICENSE for details).
 // Purpose: Implements the verifier pass that validates EH stack balance per function.
 // Key invariants: Control-flow is explored to ensure every execution path maintains
 // balanced eh.push/eh.pop pairs, delegating to ExceptionHandlerAnalysis helpers.
@@ -31,6 +32,14 @@ using il::support::Expected;
 namespace
 {
 
+/// @brief Encode a handler stack and resume-token flag into a memoisation key.
+/// @details Concatenates the resume-token bit and block labels separated by
+/// semicolons to build a unique string for the current exploration state. The
+/// key is used to avoid revisiting identical EH configurations during graph
+/// traversal.
+/// @param stack Current handler stack (top at the back).
+/// @param hasResumeToken Whether the in-flight exception owns a resume token.
+/// @return Deterministic key encoding the state.
 std::string encodeStateKey(const std::vector<const BasicBlock *> &stack, bool hasResumeToken)
 {
     std::string key;
@@ -47,6 +56,12 @@ std::string encodeStateKey(const std::vector<const BasicBlock *> &stack, bool ha
     return key;
 }
 
+/// @brief Locate the first terminator instruction within a block.
+/// @details Scans the block's instruction list and returns a pointer to the
+/// first opcode that transfers control. If no terminator exists the function
+/// returns @c nullptr so callers can handle fall-through cases explicitly.
+/// @param bb Block whose terminator should be located.
+/// @return Pointer to the terminator or nullptr when absent.
 const Instr *findTerminator(const BasicBlock &bb)
 {
     for (const auto &instr : bb.instructions)
@@ -57,6 +72,14 @@ const Instr *findTerminator(const BasicBlock &bb)
     return nullptr;
 }
 
+/// @brief Resolve successor blocks referenced by a terminator instruction.
+/// @details Uses @p blockMap to translate successor labels into block pointers
+/// for @c br, @c cbr, @c switch, and resume-label terminators. Unknown labels
+/// are silently skipped so the verifier can surface a dedicated diagnostic
+/// later.
+/// @param terminator Instruction that ends a block.
+/// @param blockMap Mapping from labels to block pointers for the owning function.
+/// @return Vector containing each successor reachable from the terminator.
 std::vector<const BasicBlock *> gatherSuccessors(
     const Instr &terminator, const std::unordered_map<std::string, const BasicBlock *> &blockMap)
 {
@@ -97,6 +120,12 @@ std::vector<const BasicBlock *> gatherSuccessors(
     return successors;
 }
 
+/// @brief Determine whether executing @p op could fault and trigger handlers.
+/// @details Returns false for opcodes that either manipulate the EH stack or
+/// serve as terminators; all other operations are conservatively treated as
+/// potentially faulting so coverage includes their containing block.
+/// @param op Opcode to classify.
+/// @return True when @p op may fault.
 bool isPotentialFaultingOpcode(Opcode op)
 {
     switch (op)
@@ -119,6 +148,14 @@ bool isPotentialFaultingOpcode(Opcode op)
 
 using HandlerCoverage = std::unordered_map<const BasicBlock *, std::unordered_set<const BasicBlock *>>;
 
+/// @brief Map each handler to the blocks it protects within a function.
+/// @details Performs a worklist traversal over the function's CFG, tracking the
+/// active handler stack. Whenever a potentially faulting instruction executes
+/// under a handler, the enclosing block is recorded in the handler's coverage
+/// set. Resume operations pop the stack to model stack unwinding precisely.
+/// @param fn Function whose handlers are analysed.
+/// @param blockMap Mapping from labels to block pointers.
+/// @return Coverage table keyed by handler block pointer.
 HandlerCoverage computeHandlerCoverage(
     const Function &fn, const std::unordered_map<std::string, const BasicBlock *> &blockMap)
 {
@@ -242,6 +279,14 @@ struct PostDomInfo
     std::vector<std::vector<uint8_t>> matrix;
 };
 
+/// @brief Compute a simple post-dominator relation for reachable blocks.
+/// @details Restricts the graph to reachable nodes, assigns each an index, and
+/// iteratively computes a boolean post-dominator matrix via reverse CFG
+/// traversal. Exit blocks form the base cases and each iteration intersects
+/// successor sets until convergence.
+/// @param fn Function being analysed.
+/// @param blockMap Mapping from labels to block pointers.
+/// @return Dense post-dominator summary including index tables.
 PostDomInfo computePostDominators(
     const Function &fn, const std::unordered_map<std::string, const BasicBlock *> &blockMap)
 {
@@ -351,6 +396,13 @@ PostDomInfo computePostDominators(
     return info;
 }
 
+/// @brief Query whether @p candidate post-dominates @p from in @p info.
+/// @details Translates the block pointers into matrix indices and reads the
+/// boolean relation computed by @ref computePostDominators.
+/// @param info Post-dominator summary containing the relation matrix.
+/// @param from Source block to test.
+/// @param candidate Potential post-dominator block.
+/// @return True when @p candidate post-dominates @p from.
 bool isPostDominator(const PostDomInfo &info, const BasicBlock *from, const BasicBlock *candidate)
 {
     if (info.nodes.empty())
@@ -364,6 +416,15 @@ bool isPostDominator(const PostDomInfo &info, const BasicBlock *from, const Basi
     return info.matrix[fromIt->second][candIt->second] != 0;
 }
 
+/// @brief Ensure resume-label targets are valid handlers for the covered blocks.
+/// @details Reuses handler coverage and post-dominator data to confirm that
+/// every @c resume.label terminator jumps to a handler reachable from the fault
+/// site and that the handler post-dominates the faulting block, mirroring the
+/// runtime unwinding model. Emits diagnostics when a target is invalid or
+/// missing.
+/// @param fn Function being verified.
+/// @param blockMap Mapping from labels to block pointers.
+/// @return Success or a diagnostic describing the invalid target.
 Expected<void> verifyResumeLabelTargets(
     const Function &fn, const std::unordered_map<std::string, const BasicBlock *> &blockMap)
 {
@@ -419,6 +480,15 @@ Expected<void> verifyResumeLabelTargets(
 
 } // namespace
 
+/// @brief Analyse each function and ensure its EH regions are structurally sound.
+/// @details Scans for functions containing EH opcodes, builds a label map, and
+/// delegates to helper analyses that check stack balance and resume target
+/// validity. Functions without EH constructs are skipped entirely. Diagnostics
+/// are surfaced through the returned Expected; the sink is currently unused but
+/// retained for future integration.
+/// @param module Module whose functions are verified.
+/// @param sink Diagnostic sink reserved for streaming messages.
+/// @return Empty Expected on success or the first failure diagnostic.
 il::support::Expected<void> EhVerifier::run(const Module &module, DiagSink &sink) const
 {
     (void)sink;
