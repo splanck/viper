@@ -1,4 +1,5 @@
 // File: src/il/core/Global.cpp
+// License: MIT (see LICENSE for details).
 // Purpose: Provides helpers for global variables.
 // Key invariants: None.
 // Ownership/Lifetime: Module owns global declarations.
