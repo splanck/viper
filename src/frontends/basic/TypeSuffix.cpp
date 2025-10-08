@@ -19,9 +19,11 @@ Type inferAstTypeFromName(std::string_view name)
             case '$':
                 return Type::Str;
             case '#':
-                return Type::F64;
             case '!':
                 return Type::F64;
+            case '%':
+            case '&':
+                return Type::I64;
             default:
                 break;
         }

@@ -711,12 +711,19 @@ Type Parser::typeFromSuffix(std::string_view name)
     if (!name.empty())
     {
         char c = name.back();
-        if (c == '#')
-            return Type::F64;
-        if (c == '$')
-            return Type::Str;
-        if (c == '!')
-            return Type::F64;
+        switch (c)
+        {
+            case '#':
+            case '!':
+                return Type::F64;
+            case '$':
+                return Type::Str;
+            case '%':
+            case '&':
+                return Type::I64;
+            default:
+                break;
+        }
     }
     return Type::I64;
 }
