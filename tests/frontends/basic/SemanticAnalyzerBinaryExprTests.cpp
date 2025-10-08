@@ -6,6 +6,7 @@
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "support/source_manager.hpp"
 #include <cassert>
@@ -54,6 +55,13 @@ std::string makeSnippet(const std::string &expr)
 
 int main()
 {
+    {
+        using Type = SemanticAnalyzer::Type;
+        const auto &rule = semantic_analyzer_detail::exprRule(BinaryExpr::Op::Div);
+        assert(rule.result);
+        assert(rule.result(Type::Int, Type::Int) == Type::Float);
+    }
+
     {
         auto result = analyzeSnippet(makeSnippet("1 + \"A\""));
         assert(result.errors == 1);

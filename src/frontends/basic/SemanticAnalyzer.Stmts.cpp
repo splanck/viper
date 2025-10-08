@@ -184,8 +184,34 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
     }
     else if (varTy == Type::Int && exprTy == Type::Float)
     {
-        std::string msg = "operand type mismatch";
-        de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+        bool allowFloatPromotion = false;
+        if (l.expr)
+        {
+            if (const auto *bin = dynamic_cast<const BinaryExpr *>(l.expr.get()))
+            {
+                if (bin->op == BinaryExpr::Op::Div)
+                {
+                    const bool hasExplicitIntSuffix =
+                        !v.name.empty() && (v.name.back() == '%' || v.name.back() == '&');
+                    allowFloatPromotion = !hasExplicitIntSuffix;
+                }
+            }
+        }
+
+        if (allowFloatPromotion)
+        {
+            if (activeProcScope_)
+            {
+                std::optional<Type> previous = varTy;
+                activeProcScope_->noteVarTypeMutation(v.name, previous);
+            }
+            varTypes_[v.name] = Type::Float;
+        }
+        else
+        {
+            std::string msg = "operand type mismatch";
+            de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+        }
     }
     else if (varTy == Type::String && exprTy != Type::Unknown && exprTy != Type::String)
     {
