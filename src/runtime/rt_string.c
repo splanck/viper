@@ -717,7 +717,7 @@ int64_t rt_to_int(rt_string s)
     while (j > i && isspace((unsigned char)p[j - 1]))
         --j;
     if (i == j)
-        rt_trap("rt_to_int: empty");
+        rt_trap("INPUT: expected numeric value");
     size_t sz = j - i;
     char *buf = (char *)rt_alloc(sz + 1);
     memcpy(buf, p + i, sz);
@@ -725,13 +725,33 @@ int64_t rt_to_int(rt_string s)
     errno = 0;
     char *endp = NULL;
     long long v = strtoll(buf, &endp, 10);
-    if (errno == ERANGE || !endp || *endp != '\0')
+    if (errno == ERANGE)
     {
         free(buf);
-        rt_trap("rt_to_int: invalid");
+        rt_trap("INPUT: numeric overflow");
+    }
+    if (!endp || *endp != '\0')
+    {
+        free(buf);
+        rt_trap("INPUT: expected numeric value");
     }
     free(buf);
     return (int64_t)v;
+}
+
+double rt_to_double(rt_string s)
+{
+    if (!s)
+        rt_trap("rt_to_double: null");
+    bool ok = true;
+    double value = rt_val_to_double(s->data, &ok);
+    if (!ok)
+    {
+        if (!isfinite(value))
+            rt_trap("INPUT: numeric overflow");
+        rt_trap("INPUT: expected numeric value");
+    }
+    return value;
 }
 
 /**

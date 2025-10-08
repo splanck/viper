@@ -1330,35 +1330,70 @@ void Lowerer::lowerInput(const InputStmt &stmt)
             emitCall("rt_print_str", {v});
         }
     }
-    Value s = emitCallRet(Type(Type::Kind::Str), "rt_input_line", {});
-    SlotType slotInfo = getSlotType(stmt.var);
-    const auto *info = findSymbol(stmt.var);
-    assert(info && info->slotId);
-    Value target = Value::temp(*info->slotId);
-    if (slotInfo.type.kind == Type::Kind::Str)
-    {
-        emitStore(Type(Type::Kind::Str), target, s);
-    }
-    else
-    {
-        Value n = emitCallRet(Type(Type::Kind::I64), "rt_to_int", {s});
+    if (stmt.vars.empty())
+        return;
+
+    Value line = emitCallRet(Type(Type::Kind::Str), "rt_input_line", {});
+
+    auto storeField = [&](const std::string &name, Value field) {
+        SlotType slotInfo = getSlotType(name);
+        const auto *info = findSymbol(name);
+        assert(info && info->slotId);
+        Value target = Value::temp(*info->slotId);
+        if (slotInfo.type.kind == Type::Kind::Str)
+        {
+            curLoc = stmt.loc;
+            emitStore(Type(Type::Kind::Str), target, field);
+            return;
+        }
+
+        if (slotInfo.type.kind == Type::Kind::F64)
+        {
+            Value f = emitCallRet(Type(Type::Kind::F64), "rt_to_double", {field});
+            curLoc = stmt.loc;
+            emitStore(Type(Type::Kind::F64), target, f);
+            requireStrReleaseMaybe();
+            curLoc = stmt.loc;
+            emitCall("rt_str_release_maybe", {field});
+            return;
+        }
+
+        Value n = emitCallRet(Type(Type::Kind::I64), "rt_to_int", {field});
         if (slotInfo.isBoolean)
         {
             Value b = coerceToBool({n, Type(Type::Kind::I64)}, stmt.loc).value;
             curLoc = stmt.loc;
             emitStore(ilBoolTy(), target, b);
         }
-        else if (slotInfo.type.kind == Type::Kind::F64)
-        {
-            Value f = coerceToF64({n, Type(Type::Kind::I64)}, stmt.loc).value;
-            curLoc = stmt.loc;
-            emitStore(Type(Type::Kind::F64), target, f);
-        }
         else
         {
             curLoc = stmt.loc;
             emitStore(Type(Type::Kind::I64), target, n);
         }
+        requireStrReleaseMaybe();
+        curLoc = stmt.loc;
+        emitCall("rt_str_release_maybe", {field});
+    };
+
+    if (stmt.vars.size() == 1)
+    {
+        storeField(stmt.vars.front(), line);
+        return;
+    }
+
+    const long long fieldCount = static_cast<long long>(stmt.vars.size());
+    Value fields = emitAlloca(static_cast<int>(fieldCount * 8));
+    emitCallRet(Type(Type::Kind::I64), "rt_split_fields", {line, fields, Value::constInt(fieldCount)});
+    requireStrReleaseMaybe();
+    curLoc = stmt.loc;
+    emitCall("rt_str_release_maybe", {line});
+
+    for (std::size_t i = 0; i < stmt.vars.size(); ++i)
+    {
+        long long offset = static_cast<long long>(i * 8);
+        Value slot = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), fields, Value::constInt(offset));
+        Value field = emitLoad(Type(Type::Kind::Str), slot);
+        storeField(stmt.vars[i], field);
     }
 }
 

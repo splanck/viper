@@ -9,6 +9,7 @@
 #include "rt_int_format.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -201,4 +202,82 @@ rt_string rt_input_line(void)
     s->literal_refs = 0;
     free(buf);
     return s;
+}
+
+/**
+ * Split a comma-separated input line into individual fields.
+ *
+ * @param line       Runtime string containing the raw input line.
+ * @param out_fields Destination array receiving up to @p max_fields entries.
+ * @param max_fields Maximum number of fields to populate; negative treated as zero.
+ * @return Total number of fields present in @p line.
+ */
+int64_t rt_split_fields(rt_string line, rt_string *out_fields, int64_t max_fields)
+{
+    if (!out_fields)
+        rt_trap("rt_split_fields: null output");
+    if (max_fields <= 0)
+        return 0;
+
+    const char *data = "";
+    size_t len = 0;
+    if (line && line->data)
+    {
+        data = line->data;
+        if (line->heap)
+            len = rt_heap_len(line->data);
+        else
+            len = line->literal_len;
+    }
+
+    int64_t stored = 0;
+    int64_t total = 0;
+    size_t start = 0;
+    for (size_t i = 0; i <= len; ++i)
+    {
+        bool atComma = (i < len && data[i] == ',');
+        if (i == len || atComma)
+        {
+            size_t field_start = start;
+            size_t field_end = i;
+            while (field_start < field_end && isspace((unsigned char)data[field_start]))
+                ++field_start;
+            while (field_end > field_start && isspace((unsigned char)data[field_end - 1]))
+                --field_end;
+            if (field_end > field_start && data[field_start] == '"' && data[field_end - 1] == '"')
+            {
+                ++field_start;
+                --field_end;
+            }
+
+            if (stored < max_fields)
+            {
+                if (field_end <= field_start)
+                {
+                    out_fields[stored++] = rt_str_empty();
+                }
+                else
+                {
+                    out_fields[stored++] =
+                        rt_string_from_bytes(data + field_start, field_end - field_start);
+                }
+            }
+            ++total;
+            start = i + 1;
+        }
+    }
+
+    if (total < max_fields)
+    {
+        char msg[128];
+        snprintf(msg,
+                 sizeof(msg),
+                 "INPUT: expected %lld value%s, got %lld",
+                 (long long)max_fields,
+                 max_fields == 1 ? "" : "s",
+                 (long long)total);
+        rt_trap(msg);
+    }
+
+    return total;
 }

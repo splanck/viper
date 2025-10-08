@@ -146,6 +146,11 @@ extern "C" {
     /// @return Parsed integer value or 0 when missing.
     int64_t rt_to_int(rt_string s);
 
+    /// @brief Parse decimal floating-point value from @p s.
+    /// @param s Source string.
+    /// @return Parsed double value.
+    double rt_to_double(rt_string s);
+
     /// @brief Convert integer @p v to decimal string.
     /// @param v Value to format.
     /// @return Newly allocated decimal representation.

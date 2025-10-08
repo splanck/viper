@@ -392,21 +392,41 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
     void before(const InputStmt &stmt)
     {
         lowerer_.requestHelper(Lowerer::RuntimeFeature::InputLine);
-        inputVarName_ = stmt.var;
+        if (stmt.vars.size() > 1)
+        {
+            lowerer_.requestHelper(Lowerer::RuntimeFeature::SplitFields);
+            lowerer_.requireStrReleaseMaybe();
+        }
+        inputVarNames_ = stmt.vars;
     }
 
     void after(const InputStmt &stmt)
     {
         discardIf(stmt.prompt != nullptr);
-        if (inputVarName_.empty() || inputVarName_.back() != '$')
-            lowerer_.requestHelper(Lowerer::RuntimeFeature::ToInt);
-        if (!inputVarName_.empty())
+        for (const auto &name : inputVarNames_)
         {
-            const auto *info = lowerer_.findSymbol(inputVarName_);
+            if (name.empty())
+                continue;
+            Type astTy = inferAstTypeFromName(name);
+            switch (astTy)
+            {
+                case Type::Str:
+                    break;
+                case Type::F64:
+                    lowerer_.requestHelper(Lowerer::RuntimeFeature::ToDouble);
+                    lowerer_.requireStrReleaseMaybe();
+                    break;
+                default:
+                    lowerer_.requestHelper(Lowerer::RuntimeFeature::ToInt);
+                    lowerer_.requireStrReleaseMaybe();
+                    break;
+            }
+
+            const auto *info = lowerer_.findSymbol(name);
             if (!info || !info->hasType)
-                lowerer_.setSymbolType(inputVarName_, inferAstTypeFromName(inputVarName_));
+                lowerer_.setSymbolType(name, astTy);
         }
-        inputVarName_.clear();
+        inputVarNames_.clear();
     }
 
     void before(const LineInputChStmt &)
@@ -556,7 +576,7 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
 
     Lowerer &lowerer_;
     std::vector<ExprType> exprStack_;
-    std::string inputVarName_{};
+    std::vector<std::string> inputVarNames_{};
     int lvalueDepth_{0};
 };
 

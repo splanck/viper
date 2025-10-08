@@ -29,7 +29,9 @@ enum class RuntimeFeature : std::size_t
 {
     Concat,
     InputLine,
+    SplitFields,
     ToInt,
+    ToDouble,
     CintFromDouble,
     ClngFromDouble,
     CsngFromDouble,

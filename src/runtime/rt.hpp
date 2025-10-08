@@ -49,6 +49,13 @@ extern "C" {
     /// @return Newly allocated string without trailing newline.
     rt_string rt_input_line(void);
 
+    /// @brief Split comma-separated fields from @p line into @p out_fields.
+    /// @param line Input line to split; may be NULL.
+    /// @param out_fields Destination array receiving at most @p max_fields entries.
+    /// @param max_fields Number of fields expected; must be >= 0.
+    /// @return Total number of fields discovered in @p line.
+    int64_t rt_split_fields(rt_string line, rt_string *out_fields, int64_t max_fields);
+
     /// @brief Allocate @p bytes of zeroed memory.
     /// @param bytes Number of bytes to allocate.
     /// @return Pointer to zeroed block or trap on failure.
