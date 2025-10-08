@@ -759,6 +759,7 @@ class Lowerer
         LineInputChErr,
         StrRetainMaybe,
         StrReleaseMaybe,
+        Trap,
         Count
     };
 
@@ -790,6 +791,7 @@ class Lowerer
     void requireLineInputChErr();
     void requireStrRetainMaybe();
     void requireStrReleaseMaybe();
+    void requireRuntimeTrap();
     void requestHelper(RuntimeFeature feature);
 
     bool isHelperNeeded(RuntimeFeature feature) const;

@@ -286,7 +286,10 @@ void StatementLowering::lowerSequence(
     }
 
     if (hasGosub)
+    {
+        lowerer.requireRuntimeTrap();
         lowerer.ensureGosubStack();
+    }
     int firstLine = lowerer.virtualLine(*stmts.front());
     lowerer.emitBr(&func->blocks[lineBlocks[firstLine]]);
 

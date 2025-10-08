@@ -1074,6 +1074,10 @@ void Lowerer::lowerGosub(const GosubStmt &stmt)
 
     ctx.setCurrent(overflowBlk);
     curLoc = stmt.loc;
+    requireRuntimeTrap();
+    std::string overflowMsgLbl = getStringLabel("gosub: stack overflow");
+    Value overflowMsg = emitConstStr(overflowMsgLbl);
+    emitCall("rt_trap", {overflowMsg});
     emitTrap();
 
     ctx.setCurrent(pushBlk);
@@ -1149,6 +1153,10 @@ void Lowerer::lowerGosubReturn(const ReturnStmt &stmt)
 
     ctx.setCurrent(emptyBlk);
     curLoc = stmt.loc;
+    requireRuntimeTrap();
+    std::string emptyMsgLbl = getStringLabel("gosub: empty return stack");
+    Value emptyMsg = emitConstStr(emptyMsgLbl);
+    emitCall("rt_trap", {emptyMsg});
     emitTrap();
 
     ctx.setCurrent(contBlk);
