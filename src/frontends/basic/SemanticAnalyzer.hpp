@@ -362,6 +362,9 @@ class SemanticAnalyzer
     /// @brief Analyze array access expression.
     Type analyzeArray(ArrayExpr &a);
 
+    /// @brief Record that @p expr should be implicitly converted to @p targetType.
+    void markImplicitConversion(const Expr &expr, Type targetType);
+
     /// @brief Determine if @p stmts guarantees a return value on all control paths.
     bool mustReturn(const std::vector<StmtPtr> &stmts) const;
     /// @brief Determine if single statement @p s guarantees a return value.
@@ -397,6 +400,7 @@ class SemanticAnalyzer
     std::unordered_set<int> labelRefs_;
     std::vector<std::string> forStack_; ///< Active FOR loop variables.
     std::vector<LoopKind> loopStack_;   ///< Active loop constructs for EXIT validation.
+    std::unordered_map<const Expr *, Type> implicitConversions_;
     ProcedureScope *activeProcScope_{nullptr};
     bool errorHandlerActive_{false};
     std::optional<int> errorHandlerTarget_;
