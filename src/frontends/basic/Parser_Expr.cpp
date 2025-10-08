@@ -72,14 +72,31 @@ ExprPtr Parser::parseExpression(int min_prec)
 /// @return Expression node representing the parsed unary or primary expression.
 ExprPtr Parser::parseUnaryExpression()
 {
-    if (at(TokenKind::KeywordNot))
+    if (at(TokenKind::KeywordNot) || at(TokenKind::Plus) || at(TokenKind::Minus))
     {
-        auto loc = peek().loc;
+        auto tok = peek();
         consume();
-        auto operand = parseExpression(precedence(TokenKind::KeywordNot));
+        TokenKind precToken = tok.kind;
+        if (tok.kind == TokenKind::KeywordNot)
+            precToken = TokenKind::KeywordNot;
+        auto operand = parseExpression(precedence(precToken));
         auto u = std::make_unique<UnaryExpr>();
-        u->loc = loc;
-        u->op = UnaryExpr::Op::LogicalNot;
+        u->loc = tok.loc;
+        switch (tok.kind)
+        {
+            case TokenKind::KeywordNot:
+                u->op = UnaryExpr::Op::LogicalNot;
+                break;
+            case TokenKind::Plus:
+                u->op = UnaryExpr::Op::Plus;
+                break;
+            case TokenKind::Minus:
+                u->op = UnaryExpr::Op::Negate;
+                break;
+            default:
+                u->op = UnaryExpr::Op::LogicalNot;
+                break;
+        }
         u->expr = std::move(operand);
         return u;
     }
