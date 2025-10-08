@@ -133,6 +133,7 @@ function(viper_add_golden_suite_tests)
     ${CMAKE_COMMAND}
     -DILC=${BASIC_ILC}
     -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/float_to_int.bas
+    -DEXPECT_EXIT_ZERO=TRUE
     "-DEXPECT=${EXPECT_FLOAT_TO_INT}"
     -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
