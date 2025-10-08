@@ -129,7 +129,7 @@ int main()
 
         auto input = std::make_unique<InputStmt>();
         input->prompt = makeString("?");
-        input->var = "NAME$";
+        input->vars.push_back("NAME$");
         sub->body.push_back(std::move(input));
 
         auto loop = std::make_unique<ForStmt>();
@@ -158,7 +158,8 @@ int main()
         assert(arrDecl->name == "ARR_0");
         assert(nameDecl->name == "NAME$_1");
         assert(iDecl->name == "I_2");
-        assert(inputStmt->var == "NAME$_1");
+        assert(inputStmt->vars.size() == 1);
+        assert(inputStmt->vars[0] == "NAME$_1");
         assert(forStmt->var == "I_2");
     }
 

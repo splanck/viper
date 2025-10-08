@@ -59,6 +59,7 @@ int main()
     std::vector<int> castChkLines;
     std::vector<int> sitofpLines;
     std::vector<int> truncLines;
+    std::vector<int> toDoubleLines;
 
     for (const auto &block : mainFn->blocks)
     {
@@ -75,6 +76,10 @@ int main()
                 case il::core::Opcode::Trunc1:
                     truncLines.push_back(instr.loc.line);
                     break;
+                case il::core::Opcode::Call:
+                    if (instr.callee == "rt_to_double")
+                        toDoubleLines.push_back(instr.loc.line);
+                    break;
                 default:
                     break;
             }
@@ -83,8 +88,8 @@ int main()
 
     assert(hasLine(castChkLines, 2));  // LET I = 3.14
     assert(hasLine(sitofpLines, 3));  // LET D# = 1
-    assert(hasLine(sitofpLines, 7));  // INPUT "?", D#
     assert(hasLine(truncLines, 6));   // INPUT "?", FLAG
+    assert(!toDoubleLines.empty());   // INPUT "?", D# uses rt_to_double
 
     return 0;
 }
