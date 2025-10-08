@@ -14,7 +14,7 @@ namespace il::frontends::basic
 
 /// @brief Parse a single statement based on the current token.
 /// @param line Line number associated with the statement.
-/// @return Parsed statement node or EndStmt for unknown tokens.
+/// @return Parsed statement node or nullptr for unrecognized statements.
 StmtPtr Parser::parseStatement(int line)
 {
     const auto kind = peek().kind;
@@ -27,9 +27,27 @@ StmtPtr Parser::parseStatement(int line)
         if (handler.with_line)
             return (this->*(handler.with_line))(line);
     }
-    auto stmt = std::make_unique<EndStmt>();
-    stmt->loc = peek().loc;
-    return stmt;
+    const Token &tok = peek();
+    if (emitter_)
+    {
+        std::string msg = std::string("unknown statement '") + tok.lexeme + "'";
+        emitter_->emit(il::support::Severity::Error,
+                       "B0001",
+                       tok.loc,
+                       static_cast<uint32_t>(tok.lexeme.size()),
+                       std::move(msg));
+    }
+    else
+    {
+        std::fprintf(stderr, "unknown statement '%s'\n", tok.lexeme.c_str());
+    }
+
+    while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
+    {
+        consume();
+    }
+
+    return nullptr;
 }
 
 /// @brief Check whether @p kind marks the beginning of a statement.
