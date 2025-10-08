@@ -119,6 +119,10 @@ class Parser
     /// @return GOTO statement node.
     StmtPtr parseGoto();
 
+    /// @brief Parse a GOSUB statement.
+    /// @return GOSUB statement node.
+    StmtPtr parseGosub();
+
     /// @brief Parse an OPEN statement configuring file I/O.
     /// @return OPEN statement node.
     StmtPtr parseOpen();

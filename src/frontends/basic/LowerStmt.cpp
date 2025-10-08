@@ -64,6 +64,12 @@ class LowererStmtVisitor final : public StmtVisitor
 
     void visit(const GotoStmt &stmt) override { lowerer_.lowerGoto(stmt); }
 
+    void visit(const GosubStmt &stmt) override
+    {
+        (void)stmt;
+        // TODO: Implement GOSUB lowering once runtime support exists.
+    }
+
     void visit(const OpenStmt &stmt) override { lowerer_.lowerOpen(stmt); }
 
     void visit(const CloseStmt &stmt) override { lowerer_.lowerClose(stmt); }
