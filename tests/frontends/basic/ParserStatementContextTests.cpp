@@ -4,9 +4,12 @@
 // Ownership/Lifetime: Test owns parser/source manager objects and inspects resulting AST.
 // Links: docs/codemap.md
 
+#include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"
+#include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
 #include <cassert>
+#include <sstream>
 #include <string>
 
 using namespace il::frontends::basic;
@@ -125,7 +128,8 @@ int main()
                           "20 PRINT 1\n"
                           "30 ELSE\n"
                           "40 PRINT 2\n"
-                          "50 END\n";
+                          "50 END IF\n"
+                          "60 END\n";
         SourceManager sm;
         uint32_t fid = sm.addFile("ifnewlines.bas");
         Parser p(src, fid);
@@ -135,9 +139,15 @@ int main()
         auto *ifStmt = dynamic_cast<IfStmt *>(prog->main[0].get());
         assert(ifStmt);
         assert(ifStmt->then_branch);
-        assert(dynamic_cast<PrintStmt *>(ifStmt->then_branch.get()));
+        auto *thenList = dynamic_cast<StmtList *>(ifStmt->then_branch.get());
+        assert(thenList);
+        assert(thenList->stmts.size() == 1);
+        assert(dynamic_cast<PrintStmt *>(thenList->stmts[0].get()));
         assert(ifStmt->else_branch);
-        assert(dynamic_cast<PrintStmt *>(ifStmt->else_branch.get()));
+        auto *elseList = dynamic_cast<StmtList *>(ifStmt->else_branch.get());
+        assert(elseList);
+        assert(elseList->stmts.size() == 1);
+        assert(dynamic_cast<PrintStmt *>(elseList->stmts[0].get()));
     }
 
     {
@@ -147,7 +157,8 @@ int main()
                           "40 PRINT 2\n"
                           "50 ELSE\n"
                           "60 PRINT 3\n"
-                          "70 END\n";
+                          "70 END IF\n"
+                          "80 END\n";
         SourceManager sm;
         uint32_t fid = sm.addFile("ifelseif.bas");
         Parser p(src, fid);
@@ -157,15 +168,24 @@ int main()
         auto *ifStmt = dynamic_cast<IfStmt *>(prog->main[0].get());
         assert(ifStmt);
         assert(ifStmt->then_branch);
-        assert(ifStmt->then_branch->line == 10);
-        assert(dynamic_cast<PrintStmt *>(ifStmt->then_branch.get()));
+        auto *block = dynamic_cast<StmtList *>(ifStmt->then_branch.get());
+        assert(block);
+        assert(block->line == 10);
+        assert(block->stmts.size() == 1);
+        assert(dynamic_cast<PrintStmt *>(block->stmts[0].get()));
         assert(ifStmt->elseifs.size() == 1);
         assert(ifStmt->elseifs[0].then_branch);
-        assert(ifStmt->elseifs[0].then_branch->line == 10);
-        assert(dynamic_cast<PrintStmt *>(ifStmt->elseifs[0].then_branch.get()));
+        auto *elseifBlock = dynamic_cast<StmtList *>(ifStmt->elseifs[0].then_branch.get());
+        assert(elseifBlock);
+        assert(elseifBlock->line == 10);
+        assert(elseifBlock->stmts.size() == 1);
+        assert(dynamic_cast<PrintStmt *>(elseifBlock->stmts[0].get()));
         assert(ifStmt->else_branch);
-        assert(ifStmt->else_branch->line == 10);
-        assert(dynamic_cast<PrintStmt *>(ifStmt->else_branch.get()));
+        auto *elseBlock = dynamic_cast<StmtList *>(ifStmt->else_branch.get());
+        assert(elseBlock);
+        assert(elseBlock->line == 10);
+        assert(elseBlock->stmts.size() == 1);
+        assert(dynamic_cast<PrintStmt *>(elseBlock->stmts[0].get()));
     }
 
     {
@@ -202,6 +222,26 @@ int main()
         auto *ifStmt = dynamic_cast<IfStmt *>(list->stmts[0].get());
         assert(ifStmt);
         assert(dynamic_cast<PrintStmt *>(list->stmts[1].get()));
+    }
+
+    {
+        std::string src = "10 IF FLAG THEN\n"
+                          "20 PRINT 1\n"
+                          "30 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("ifendmissing.bas");
+        DiagnosticEngine de;
+        DiagnosticEmitter emitter(de, sm);
+        emitter.addSource(fid, src);
+        Parser p(src, fid, &emitter);
+        auto prog = p.parseProgram();
+        assert(prog);
+        assert(emitter.errorCount() == 1);
+        std::ostringstream oss;
+        emitter.printAll(oss);
+        std::string output = oss.str();
+        assert(output.find("error[B0004]") != std::string::npos);
+        assert(output.find("missing END IF") != std::string::npos);
     }
 
     {
