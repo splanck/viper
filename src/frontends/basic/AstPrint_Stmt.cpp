@@ -424,6 +424,8 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
     void visit(const ReturnStmt &stmt) override
     {
         printer.os << "(RETURN";
+        if (stmt.isGosubReturn)
+            printer.os << " GOSUB";
         if (stmt.value)
         {
             printer.os << ' ';

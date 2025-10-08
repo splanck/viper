@@ -651,7 +651,22 @@ void SemanticAnalyzer::analyzeResume(const Resume &stmt)
 
 void SemanticAnalyzer::analyzeReturn(ReturnStmt &stmt)
 {
-    (void)stmt;
+    if (!activeProcScope_)
+    {
+        if (stmt.value)
+        {
+            std::string msg = "RETURN with value not allowed at top level";
+            de.emit(il::support::Severity::Error,
+                    "B1008",
+                    stmt.loc,
+                    6,
+                    std::move(msg));
+        }
+        else
+        {
+            stmt.isGosubReturn = true;
+        }
+    }
     if (hasActiveErrorHandler())
         clearErrorHandler();
 }
