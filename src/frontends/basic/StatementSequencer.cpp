@@ -98,8 +98,16 @@ void StatementSequencer::withOptionalLineNumber(const std::function<void(int)> &
     int line = 0;
     if (pendingLine_ >= 0)
     {
-        line = pendingLine_;
-        pendingLine_ = -1;
+        if (parser_.at(TokenKind::Number))
+        {
+            line = std::atoi(parser_.peek().lexeme.c_str());
+            parser_.consume();
+        }
+        else
+        {
+            line = pendingLine_;
+            pendingLine_ = -1;
+        }
     }
     else if (parser_.at(TokenKind::Number))
     {
