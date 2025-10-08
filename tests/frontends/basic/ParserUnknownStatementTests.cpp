@@ -31,9 +31,11 @@ int main()
     auto program = parser.parseProgram();
     assert(program);
     assert(program->main.size() == 3);
-    auto *label = dynamic_cast<LabelStmt *>(program->main[0].get());
-    assert(label);
-    assert(label->line == 10);
+    auto *list = dynamic_cast<StmtList *>(program->main[0].get());
+    assert(list);
+    assert(list->line == 10);
+    assert(list->loc.isValid());
+    assert(list->stmts.empty());
     assert(dynamic_cast<PrintStmt *>(program->main[1].get()));
     assert(dynamic_cast<EndStmt *>(program->main[2].get()));
 

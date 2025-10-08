@@ -228,16 +228,19 @@ StmtPtr StatementSequencer::parseStatementLine()
 
     collectStatements(predicate, consumer, stmts);
 
+    il::support::SourceLoc stmtLineLoc = lineLoc;
+    if (!stmtLineLoc.isValid())
+    {
+        stmtLineLoc = parser_.peek().loc;
+    }
+
     if (stmts.empty())
     {
-        if (haveLine && lineNumber != 0)
-        {
-            auto label = std::make_unique<LabelStmt>();
-            label->line = lineNumber;
-            label->loc = lineLoc;
-            return label;
-        }
-        return nullptr;
+        auto list = std::make_unique<StmtList>();
+        list->line = lineNumber;
+        list->loc = stmtLineLoc;
+        list->stmts = std::move(stmts);
+        return list;
     }
 
     if (!haveLine && !stmts.empty())
@@ -257,7 +260,22 @@ StmtPtr StatementSequencer::parseStatementLine()
 
     auto list = std::make_unique<StmtList>();
     list->line = lineNumber;
-    list->loc = stmts.front()->loc;
+
+    il::support::SourceLoc firstLoc{};
+    for (const auto &stmt : stmts)
+    {
+        if (stmt && stmt->loc.isValid())
+        {
+            firstLoc = stmt->loc;
+            break;
+        }
+    }
+    if (!firstLoc.isValid())
+    {
+        firstLoc = stmtLineLoc;
+    }
+
+    list->loc = firstLoc;
     list->stmts = std::move(stmts);
     return list;
 }
