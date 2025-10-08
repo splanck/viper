@@ -502,6 +502,7 @@ private:
     void visit(CallExpr &) override {}
 
     // MutStmtVisitor overrides ----------------------------------------------
+    void visit(LabelStmt &) override {}
     void visit(PrintStmt &stmt) override
     {
         for (auto &item : stmt.items)

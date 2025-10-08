@@ -154,6 +154,18 @@ void CallExpr::accept(MutExprVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this label statement node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void LabelStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void LabelStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
 /// @brief Forwards this print statement node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void PrintStmt::accept(StmtVisitor &visitor) const

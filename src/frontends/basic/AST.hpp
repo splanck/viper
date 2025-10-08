@@ -27,6 +27,7 @@ struct LBoundExpr;
 struct UBoundExpr;
 struct CallExpr;
 
+struct LabelStmt;
 struct PrintStmt;
 struct PrintChStmt;
 struct ClsStmt;
@@ -96,6 +97,7 @@ struct MutExprVisitor
 struct StmtVisitor
 {
     virtual ~StmtVisitor() = default;
+    virtual void visit(const LabelStmt &) = 0;
     virtual void visit(const PrintStmt &) = 0;
     virtual void visit(const PrintChStmt &) = 0;
     virtual void visit(const ClsStmt &) = 0;
@@ -130,6 +132,7 @@ struct StmtVisitor
 struct MutStmtVisitor
 {
     virtual ~MutStmtVisitor() = default;
+    virtual void visit(LabelStmt &) = 0;
     virtual void visit(PrintStmt &) = 0;
     virtual void visit(PrintChStmt &) = 0;
     virtual void visit(ClsStmt &) = 0;
@@ -404,6 +407,13 @@ struct Stmt
 using StmtPtr = std::unique_ptr<Stmt>;
 /// Either FunctionDecl or SubDecl.
 using ProcDecl = StmtPtr;
+
+/// @brief Pseudo statement that only carries a line label.
+struct LabelStmt : Stmt
+{
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
 
 /// @brief Item within a PRINT statement.
 struct PrintItem

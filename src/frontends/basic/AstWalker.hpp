@@ -205,6 +205,12 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
 
     // Statement visitors ---------------------------------------------------
 
+    void visit(const LabelStmt &stmt) override
+    {
+        callBefore(stmt);
+        callAfter(stmt);
+    }
+
     void visit(const PrintStmt &stmt) override
     {
         callBefore(stmt);

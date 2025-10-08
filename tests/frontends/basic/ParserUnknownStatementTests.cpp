@@ -30,9 +30,12 @@ int main()
     Parser parser(src, fid, &emitter);
     auto program = parser.parseProgram();
     assert(program);
-    assert(program->main.size() == 2);
-    assert(dynamic_cast<PrintStmt *>(program->main[0].get()));
-    assert(dynamic_cast<EndStmt *>(program->main[1].get()));
+    assert(program->main.size() == 3);
+    auto *label = dynamic_cast<LabelStmt *>(program->main[0].get());
+    assert(label);
+    assert(label->line == 10);
+    assert(dynamic_cast<PrintStmt *>(program->main[1].get()));
+    assert(dynamic_cast<EndStmt *>(program->main[2].get()));
 
     assert(emitter.errorCount() == 1);
 
