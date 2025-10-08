@@ -1,4 +1,5 @@
 // File: src/il/transform/DCE.cpp
+// License: MIT (see LICENSE for details).
 // Purpose: Implement trivial dead-code elimination and block param cleanup.
 // Key invariants: Simplifications preserve verifier correctness.
 // Ownership/Lifetime: Mutates the module in place.
@@ -17,14 +18,13 @@ using namespace il::core;
 namespace il::transform
 {
 /// \brief Count temporary identifier uses within a function.
+/// \details Builds a dense usage map by seeding block parameters with zero
+/// counts and scanning every instruction operand and branch argument. Each
+/// temporary increments its slot, producing an @c O(n) summary where @c n is
+/// the total operand count. The analysis is purely syntactic—it does not
+/// follow control flow or aliasing—making it ideal for quick dead-temp tests.
 /// \param F Function whose temporaries are inspected.
 /// \return Map from temporary id to number of references.
-/// Algorithm: seeds the map with block parameters then scans every
-/// instruction and branch argument, bumping the count for each temporary
-/// operand encountered.
-/// Data structures: std::unordered_map for the id→count mapping.
-/// Mutations: none; purely analyzes \p F.
-/// Limitations: purely syntactic and only considers temporaries.
 static std::unordered_map<unsigned, size_t> countUses(Function &F)
 {
     std::unordered_map<unsigned, size_t> uses;
@@ -48,17 +48,17 @@ static std::unordered_map<unsigned, size_t> countUses(Function &F)
 }
 
 /// \brief Eliminate trivially dead code from a module.
+/// \details Performs a lightweight sweep over every function:
+///  1. Builds temp-use counts via @ref countUses.
+///  2. Classifies @c alloca destinations and records whether any @c load reads
+///     from them.
+///  3. Deletes loads whose results have zero uses, stores that write to never
+///     loaded allocas, and allocas that are never read.
+///  4. Walks block parameters backwards, pruning unused entries and erasing the
+///     associated operands from incoming branch argument lists.
+/// The routine purposefully ignores side-effect analysis: operations that may
+/// observe or modify memory (calls, volatile loads/stores) are left untouched.
 /// \param M Module simplified in place.
-/// Steps:
-/// 1. Count temp uses via countUses().
-/// 2. Track allocas and whether a load exists for each.
-/// 3. Remove loads with unused results, stores to never-loaded temps, and
-///    allocas never loaded.
-/// 4. Erase block parameters that have zero uses and adjust branch args.
-/// Data structures: unordered maps for temp use counts and load presence.
-/// Mutation: erases instructions and block params within \p M.
-/// Limitations: handles only local, trivially dead loads/stores/allocas and
-/// unused block params; no global or side-effect analysis.
 void dce(Module &M)
 {
     for (auto &F : M.functions)

@@ -56,6 +56,11 @@ const std::vector<bool> &LivenessInfo::SetView::bits() const
     return *bits_;
 }
 
+/// @brief Construct a view over an existing liveness bitset.
+/// @details Stores @p bits without copying so callers can cheaply expose the
+/// analysis results. A null pointer represents an empty view and is treated as
+/// such by query helpers.
+/// @param bits Pointer to the bitset tracked by the analysis manager.
 LivenessInfo::SetView::SetView(const std::vector<bool> *bits) : bits_(bits) {}
 
 /// @brief Retrieve the live-in set for @p block.
@@ -120,6 +125,13 @@ struct BlockInfo
     std::vector<bool> uses;
 };
 
+/// @brief Compute how many SSA value identifiers a function may reference.
+/// @details Scans parameters, block parameters, instruction operands, branch
+/// arguments, and instruction results to find the maximum identifier and return
+/// a size suitable for dense bitsets. The function also considers value name
+/// tables to account for explicit renamings.
+/// @param fn Function whose identifiers are inspected.
+/// @return Capacity large enough to index every referenced temporary.
 std::size_t determineValueCapacity(const core::Function &fn)
 {
     unsigned maxId = 0;
@@ -164,6 +176,11 @@ std::size_t determineValueCapacity(const core::Function &fn)
     return capacity;
 }
 
+/// @brief Mark a specific bit in a liveness vector as true.
+/// @details Performs a bounds assertion in debug builds and writes directly to
+/// the requested slot, leaving other bits untouched.
+/// @param bits Bitset to mutate.
+/// @param id Dense identifier whose liveness should be flagged.
 inline void setBit(std::vector<bool> &bits, unsigned id)
 {
     assert(id < bits.size());
@@ -171,6 +188,12 @@ inline void setBit(std::vector<bool> &bits, unsigned id)
         bits[id] = true;
 }
 
+/// @brief OR the contents of @p src into @p dst bit by bit.
+/// @details Iterates both vectors in lockstep, setting bits in @p dst whenever
+/// the corresponding bit in @p src is true. The function assumes equal-sized
+/// vectors and asserts this contract in debug builds.
+/// @param dst Destination bitset mutated in place.
+/// @param src Source bitset providing bits to merge.
 inline void mergeBits(std::vector<bool> &dst, const std::vector<bool> &src)
 {
     assert(dst.size() == src.size());
@@ -330,6 +353,13 @@ LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFG
     return info;
 }
 
+/// @brief Convenience overload that builds a CFG before computing liveness.
+/// @details Materialises adjacency via @ref buildCFG and forwards to the
+/// primary overload so callers that do not already have CFG information can
+/// still reuse the analysis implementation.
+/// @param module Module owning @p fn (unused beyond CFG construction).
+/// @param fn Function whose liveness should be computed.
+/// @return Fully populated liveness summary for @p fn.
 LivenessInfo computeLiveness(core::Module &module, core::Function &fn)
 {
     CFGInfo cfg = buildCFG(module, fn);

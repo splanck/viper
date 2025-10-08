@@ -1,9 +1,9 @@
 // File: src/il/transform/ConstFold.cpp
+// License: MIT (see LICENSE for details).
 // Purpose: Implements constant folding for integer ops and math intrinsics.
 // Key invariants: Mirrors checked integer semantics and C math for f64.
 // Ownership/Lifetime: Operates in place on the module.
 // Links: docs/codemap.md
-// License: MIT (see LICENSE)
 
 #include "il/transform/ConstFold.hpp"
 #include "il/core/Function.hpp"
