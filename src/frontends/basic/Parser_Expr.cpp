@@ -173,27 +173,59 @@ ExprPtr Parser::parseInfixRhs(ExprPtr left, int min_prec)
 
 /// @brief Parse a numeric literal expression from the current token.
 /// @details Consumes a token classified as TokenKind::Number and constructs the corresponding BASIC
-/// literal node. Presence of a decimal point, exponent, or type-marker suffix determines whether
-/// a FloatExpr or IntExpr is emitted. The lexer guarantees the lexeme conforms to the numeric
-/// grammar, so no diagnostics are produced here; the standard library conversion falls back to
-/// zero on malformed values, matching BASIC's permissive semantics.
+/// literal node. Presence of a decimal point, exponent, or type-marker suffix (%/&/!/ #) determines
+/// whether an IntExpr or FloatExpr is emitted and records explicit suffix intent on the AST node.
+/// The lexer guarantees the lexeme conforms to the numeric grammar, so no diagnostics are produced
+/// here; the standard library conversion falls back to zero on malformed values, matching BASIC's
+/// permissive semantics.
 /// @return Newly allocated numeric literal expression.
 ExprPtr Parser::parseNumber()
 {
     auto loc = peek().loc;
     std::string lex = peek().lexeme;
-    if (lex.find_first_of(".Ee#!") != std::string::npos)
+    char suffix = '\0';
+    if (!lex.empty())
+    {
+        char last = lex.back();
+        switch (last)
+        {
+            case '#':
+            case '!':
+            case '%':
+            case '&':
+                suffix = last;
+                lex.pop_back();
+                break;
+            default:
+                break;
+        }
+    }
+
+    const bool hasDot = lex.find('.') != std::string::npos;
+    const bool hasExp = lex.find_first_of("Ee") != std::string::npos;
+    const bool isFloatLiteral = hasDot || hasExp || suffix == '!' || suffix == '#';
+
+    if (isFloatLiteral)
     {
         auto e = std::make_unique<FloatExpr>();
         e->loc = loc;
         e->value = std::strtod(lex.c_str(), nullptr);
+        if (suffix == '!')
+            e->suffix = FloatExpr::Suffix::Single;
+        else if (suffix == '#')
+            e->suffix = FloatExpr::Suffix::Double;
         consume();
         return e;
     }
+
     int64_t v = std::strtoll(lex.c_str(), nullptr, 10);
     auto e = std::make_unique<IntExpr>();
     e->loc = loc;
     e->value = v;
+    if (suffix == '%')
+        e->suffix = IntExpr::Suffix::Integer;
+    else if (suffix == '&')
+        e->suffix = IntExpr::Suffix::Long;
     consume();
     return e;
 }
