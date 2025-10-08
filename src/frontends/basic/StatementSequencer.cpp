@@ -98,22 +98,16 @@ void StatementSequencer::withOptionalLineNumber(
 {
     int line = 0;
     il::support::SourceLoc loc{};
+    deferredLineOnly_ = false;
     if (pendingLine_ >= 0)
     {
+        line = pendingLine_;
+        loc = pendingLineLoc_;
+        pendingLine_ = -1;
+        pendingLineLoc_ = {};
+
         if (parser_.at(TokenKind::Number))
-        {
-            const Token &tok = parser_.peek();
-            line = std::atoi(tok.lexeme.c_str());
-            loc = tok.loc;
-            parser_.consume();
-        }
-        else
-        {
-            line = pendingLine_;
-            loc = pendingLineLoc_;
-            pendingLine_ = -1;
-            pendingLineLoc_ = {};
-        }
+            deferredLineOnly_ = true;
     }
     else if (parser_.at(TokenKind::Number))
     {
@@ -158,6 +152,18 @@ StatementSequencer::TerminatorInfo StatementSequencer::collectStatements(
                     info.line = line;
                     info.loc = parser_.peek().loc;
                     onTerminator(line, lineLoc, info);
+                    done = true;
+                    return;
+                }
+                if (deferredLineOnly_)
+                {
+                    if (parser_.at(TokenKind::Number))
+                    {
+                        const Token &next = parser_.peek();
+                        int nextLine = std::atoi(next.lexeme.c_str());
+                        stashPendingLine(nextLine, next.loc);
+                        parser_.consume();
+                    }
                     done = true;
                     return;
                 }
@@ -232,6 +238,21 @@ StmtPtr StatementSequencer::parseStatementLine()
     if (!stmtLineLoc.isValid())
     {
         stmtLineLoc = parser_.peek().loc;
+    }
+
+    if (stmts.empty() && haveLine && lineNumber > 0)
+    {
+        auto label = std::make_unique<LabelStmt>();
+        label->line = lineNumber;
+        label->loc = stmtLineLoc;
+
+        if (pendingLine_ == lineNumber)
+        {
+            pendingLine_ = -1;
+            pendingLineLoc_ = {};
+        }
+
+        return label;
     }
 
     if (stmts.empty())

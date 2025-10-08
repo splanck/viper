@@ -105,11 +105,10 @@ int main()
         auto prog = p.parseProgram();
         assert(prog);
         assert(prog->main.size() == 2);
-        auto *list = dynamic_cast<StmtList *>(prog->main[0].get());
-        assert(list);
-        assert(list->line == 200);
-        assert(list->loc.isValid());
-        assert(list->stmts.empty());
+        auto *label = dynamic_cast<LabelStmt *>(prog->main[0].get());
+        assert(label);
+        assert(label->line == 200);
+        assert(label->loc.isValid());
         auto *print = dynamic_cast<PrintStmt *>(prog->main[1].get());
         assert(print);
         assert(print->line == 210);
@@ -123,14 +122,32 @@ int main()
         auto prog = p.parseProgram();
         assert(prog);
         assert(prog->main.size() == 2);
-        auto *list = dynamic_cast<StmtList *>(prog->main[0].get());
-        assert(list);
-        assert(list->line == 300);
-        assert(list->loc.isValid());
-        assert(list->stmts.empty());
+        auto *label = dynamic_cast<LabelStmt *>(prog->main[0].get());
+        assert(label);
+        assert(label->line == 300);
+        assert(label->loc.isValid());
         auto *print = dynamic_cast<PrintStmt *>(prog->main[1].get());
         assert(print);
         assert(print->line == 310);
+    }
+
+    {
+        std::string src = "100 REM a\n110 REM b\n120 PRINT \"ok\"\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("label-chain.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        assert(prog);
+        assert(prog->main.size() == 3);
+        auto *label100 = dynamic_cast<LabelStmt *>(prog->main[0].get());
+        assert(label100);
+        assert(label100->line == 100);
+        auto *label110 = dynamic_cast<LabelStmt *>(prog->main[1].get());
+        assert(label110);
+        assert(label110->line == 110);
+        auto *print = dynamic_cast<PrintStmt *>(prog->main[2].get());
+        assert(print);
+        assert(print->line == 120);
     }
 
     {
