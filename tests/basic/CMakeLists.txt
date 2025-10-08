@@ -122,6 +122,14 @@ function(viper_add_basic_main_tests)
   viper_add_ctest(test_frontends_basic_parse_gosub test_frontends_basic_parse_gosub)
 
   viper_add_test(
+    test_frontends_basic_parse_input_extra_args
+    ${VIPER_TESTS_DIR}/frontends/basic/ParserInputExtraArgsTests.cpp)
+  target_link_libraries(test_frontends_basic_parse_input_extra_args PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(
+    test_frontends_basic_parse_input_extra_args
+    test_frontends_basic_parse_input_extra_args)
+
+  viper_add_test(
     test_frontends_basic_parse_unknown_stmt
     ${VIPER_TESTS_DIR}/frontends/basic/ParserUnknownStatementTests.cpp)
   target_link_libraries(test_frontends_basic_parse_unknown_stmt PRIVATE ${VIPER_BASIC_LIBS})
