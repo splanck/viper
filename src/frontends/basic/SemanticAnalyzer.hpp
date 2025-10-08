@@ -114,6 +114,8 @@ class SemanticAnalyzer
     void analyzeFor(ForStmt &s);
     /// @brief Analyze GOTO statement @p s.
     void analyzeGoto(const GotoStmt &s);
+    /// @brief Analyze GOSUB statement @p s.
+    void analyzeGosub(const GosubStmt &s);
     /// @brief Analyze ON ERROR GOTO statement @p s.
     void analyzeOnErrorGoto(const OnErrorGoto &s);
     /// @brief Analyze NEXT statement @p s.

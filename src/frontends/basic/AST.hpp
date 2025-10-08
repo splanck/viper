@@ -43,6 +43,7 @@ struct ForStmt;
 struct NextStmt;
 struct ExitStmt;
 struct GotoStmt;
+struct GosubStmt;
 struct EndStmt;
 struct OpenStmt;
 struct CloseStmt;
@@ -111,6 +112,7 @@ struct StmtVisitor
     virtual void visit(const NextStmt &) = 0;
     virtual void visit(const ExitStmt &) = 0;
     virtual void visit(const GotoStmt &) = 0;
+    virtual void visit(const GosubStmt &) = 0;
     virtual void visit(const OpenStmt &) = 0;
     virtual void visit(const CloseStmt &) = 0;
     virtual void visit(const OnErrorGoto &) = 0;
@@ -144,6 +146,7 @@ struct MutStmtVisitor
     virtual void visit(NextStmt &) = 0;
     virtual void visit(ExitStmt &) = 0;
     virtual void visit(GotoStmt &) = 0;
+    virtual void visit(GosubStmt &) = 0;
     virtual void visit(OpenStmt &) = 0;
     virtual void visit(CloseStmt &) = 0;
     virtual void visit(OnErrorGoto &) = 0;
@@ -653,6 +656,15 @@ struct GotoStmt : Stmt
 {
     /// Target line number to jump to.
     int target;
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief GOSUB statement invoking a line label as a subroutine.
+struct GosubStmt : Stmt
+{
+    /// Target line number to branch to.
+    int targetLine = 0;
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
 };

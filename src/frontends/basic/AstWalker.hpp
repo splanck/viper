@@ -501,6 +501,12 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
         callAfter(stmt);
     }
 
+    void visit(const GosubStmt &stmt) override
+    {
+        callBefore(stmt);
+        callAfter(stmt);
+    }
+
     void visit(const OpenStmt &stmt) override
     {
         callBefore(stmt);

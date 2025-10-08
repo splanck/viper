@@ -117,6 +117,10 @@ function(viper_add_basic_main_tests)
   target_link_libraries(test_frontends_basic_parse_file_io PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_parse_file_io test_frontends_basic_parse_file_io)
 
+  viper_add_test(test_frontends_basic_parse_gosub ${VIPER_TESTS_DIR}/frontends/basic/ParseGosubTests.cpp)
+  target_link_libraries(test_frontends_basic_parse_gosub PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_frontends_basic_parse_gosub test_frontends_basic_parse_gosub)
+
   viper_add_test(
     test_frontends_basic_parse_unknown_stmt
     ${VIPER_TESTS_DIR}/frontends/basic/ParserUnknownStatementTests.cpp)
@@ -135,6 +139,10 @@ function(viper_add_basic_main_tests)
   viper_add_test(test_frontends_basic_semantic_on_error ${VIPER_TESTS_DIR}/frontends/basic/SemanticAnalyzerOnErrorTests.cpp)
   target_link_libraries(test_frontends_basic_semantic_on_error PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_semantic_on_error test_frontends_basic_semantic_on_error)
+
+  viper_add_test(test_frontends_basic_semantic_gosub ${VIPER_TESTS_DIR}/frontends/basic/SemanticAnalyzerGosubTests.cpp)
+  target_link_libraries(test_frontends_basic_semantic_gosub PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_frontends_basic_semantic_gosub test_frontends_basic_semantic_gosub)
 
   viper_add_test(test_frontends_basic_semantic_file_io ${VIPER_TESTS_DIR}/frontends/basic/SemanticsFileIoTests.cpp)
   target_link_libraries(test_frontends_basic_semantic_file_io PRIVATE ${VIPER_BASIC_LIBS})
