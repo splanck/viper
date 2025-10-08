@@ -36,6 +36,7 @@ void Lowerer::ProcedureContext::reset() noexcept
     blockNames_.reset();
     loopState_.reset();
     errorHandlers_.reset();
+    gosub_.reset();
 }
 
 Function *Lowerer::ProcedureContext::function() const noexcept
@@ -128,6 +129,83 @@ const Lowerer::ProcedureContext::ErrorHandlerState &
 Lowerer::ProcedureContext::errorHandlers() const noexcept
 {
     return errorHandlers_;
+}
+
+Lowerer::ProcedureContext::GosubState &Lowerer::ProcedureContext::gosub() noexcept
+{
+    return gosub_;
+}
+
+const Lowerer::ProcedureContext::GosubState &
+Lowerer::ProcedureContext::gosub() const noexcept
+{
+    return gosub_;
+}
+
+void Lowerer::ProcedureContext::GosubState::reset() noexcept
+{
+    hasPrologue_ = false;
+    spSlot_ = Value{};
+    stackSlot_ = Value{};
+    continuationBlocks_.clear();
+    stmtToIndex_.clear();
+}
+
+void Lowerer::ProcedureContext::GosubState::clearContinuations() noexcept
+{
+    continuationBlocks_.clear();
+    stmtToIndex_.clear();
+}
+
+void Lowerer::ProcedureContext::GosubState::setPrologue(Value spSlot, Value stackSlot) noexcept
+{
+    hasPrologue_ = true;
+    spSlot_ = spSlot;
+    stackSlot_ = stackSlot;
+}
+
+bool Lowerer::ProcedureContext::GosubState::hasPrologue() const noexcept
+{
+    return hasPrologue_;
+}
+
+Value Lowerer::ProcedureContext::GosubState::spSlot() const noexcept
+{
+    return spSlot_;
+}
+
+Value Lowerer::ProcedureContext::GosubState::stackSlot() const noexcept
+{
+    return stackSlot_;
+}
+
+unsigned Lowerer::ProcedureContext::GosubState::registerContinuation(const GosubStmt *stmt,
+                                                                     size_t blockIdx)
+{
+    unsigned idx = static_cast<unsigned>(continuationBlocks_.size());
+    continuationBlocks_.push_back(blockIdx);
+    stmtToIndex_[stmt] = idx;
+    return idx;
+}
+
+std::optional<unsigned> Lowerer::ProcedureContext::GosubState::indexFor(
+    const GosubStmt *stmt) const noexcept
+{
+    auto it = stmtToIndex_.find(stmt);
+    if (it == stmtToIndex_.end())
+        return std::nullopt;
+    return it->second;
+}
+
+size_t Lowerer::ProcedureContext::GosubState::blockIndexFor(unsigned idx) const
+{
+    return continuationBlocks_.at(idx);
+}
+
+const std::vector<size_t> &
+Lowerer::ProcedureContext::GosubState::continuations() const noexcept
+{
+    return continuationBlocks_;
 }
 
 void Lowerer::ProcedureContext::BlockNameState::reset() noexcept
@@ -774,6 +852,33 @@ void Lowerer::lowerStatementSequence(
     const std::function<void(const Stmt &)> &beforeBranch)
 {
     statementLowering->lowerSequence(stmts, stopOnTerminated, beforeBranch);
+}
+
+void Lowerer::ensureGosubStack()
+{
+    ProcedureContext &ctx = context();
+    auto &state = ctx.gosub();
+    if (state.hasPrologue())
+        return;
+
+    Function *func = ctx.function();
+    if (!func)
+        return;
+
+    BasicBlock *savedBlock = ctx.current();
+    BasicBlock *entry = &func->blocks.front();
+    ctx.setCurrent(entry);
+
+    auto savedLoc = curLoc;
+    curLoc = {};
+
+    Value spSlot = emitAlloca(8);
+    Value stackSlot = emitAlloca(kGosubStackDepth * 4);
+    emitStore(Type(Type::Kind::I64), spSlot, Value::constInt(0));
+    state.setPrologue(spSlot, stackSlot);
+
+    curLoc = savedLoc;
+    ctx.setCurrent(savedBlock);
 }
 
 /// @brief Lower a single BASIC procedure using the provided configuration.

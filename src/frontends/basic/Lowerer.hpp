@@ -303,6 +303,36 @@ class Lowerer
             std::unordered_map<size_t, int> handlerTargets_;
         };
 
+        struct GosubState
+        {
+            void reset() noexcept;
+
+            void clearContinuations() noexcept;
+
+            void setPrologue(Value spSlot, Value stackSlot) noexcept;
+
+            [[nodiscard]] bool hasPrologue() const noexcept;
+
+            [[nodiscard]] Value spSlot() const noexcept;
+
+            [[nodiscard]] Value stackSlot() const noexcept;
+
+            unsigned registerContinuation(const GosubStmt *stmt, size_t blockIdx);
+
+            [[nodiscard]] std::optional<unsigned> indexFor(const GosubStmt *stmt) const noexcept;
+
+            [[nodiscard]] size_t blockIndexFor(unsigned idx) const;
+
+            [[nodiscard]] const std::vector<size_t> &continuations() const noexcept;
+
+          private:
+            bool hasPrologue_{false};
+            Value spSlot_{};
+            Value stackSlot_{};
+            std::vector<size_t> continuationBlocks_{};
+            std::unordered_map<const GosubStmt *, unsigned> stmtToIndex_{};
+        };
+
         /// @brief Reset to an empty state ready for a new procedure.
         void reset() noexcept;
 
@@ -341,6 +371,10 @@ class Lowerer
 
         [[nodiscard]] const ErrorHandlerState &errorHandlers() const noexcept;
 
+        [[nodiscard]] GosubState &gosub() noexcept;
+
+        [[nodiscard]] const GosubState &gosub() const noexcept;
+
       private:
         Function *function_{nullptr};
         BasicBlock *current_{nullptr};
@@ -350,6 +384,7 @@ class Lowerer
         BlockNameState blockNames_{};
         LoopState loopState_{};
         ErrorHandlerState errorHandlers_{};
+        GosubState gosub_{};
     };
 
   public:
@@ -588,6 +623,8 @@ class Lowerer
 
     void lowerGoto(const GotoStmt &stmt);
 
+    void lowerGosub(const GosubStmt &stmt);
+
     void lowerOnErrorGoto(const OnErrorGoto &stmt);
 
     void lowerResume(const Resume &stmt);
@@ -674,6 +711,10 @@ class Lowerer
 
     void emitProgram(const Program &prog);
 
+    void ensureGosubStack();
+
+    void lowerGosubReturn(const ReturnStmt &stmt);
+
     std::unique_ptr<ProgramLowering> programLowering;
     std::unique_ptr<ProcedureLowering> procedureLowering;
     std::unique_ptr<StatementLowering> statementLowering;
@@ -684,6 +725,7 @@ class Lowerer
     std::unordered_map<std::string, SymbolInfo> symbols;
     il::support::SourceLoc curLoc{}; ///< current source location for emitted IR
     bool boundsChecks{false};
+    static constexpr int kGosubStackDepth = 128;
     size_t nextStringId{0};
     size_t nextFallbackBlockId{0};
     std::unordered_map<std::string, ProcedureSignature> procSignatures;
