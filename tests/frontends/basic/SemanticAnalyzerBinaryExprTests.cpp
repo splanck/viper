@@ -208,6 +208,32 @@ int main()
         assert(*yType == SemanticAnalyzer::Type::Float);
     }
 
+    {
+        const std::string src = "10 LET A = 1.5\n20 END\n";
+        auto result = analyzeSnippet(src);
+        assert(result.errors == 0);
+        assert(result.warnings == 1);
+        assert(result.output.find("warning[B2002]") != std::string::npos);
+    }
+
+    {
+        const std::string src = "10 LET A = 1.5\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("narrow_float_to_int.bas");
+        DiagnosticEngine de;
+        DiagnosticEmitter emitter(de, sm);
+        emitter.addSource(fid, src);
+        Parser parser(src, fid, &emitter);
+        auto program = parser.parseProgram();
+        assert(program);
+
+        SemanticAnalyzer analyzer(emitter);
+        analyzer.analyze(*program);
+        auto aType = analyzer.lookupVarType("A");
+        assert(aType.has_value());
+        assert(*aType == SemanticAnalyzer::Type::Int);
+    }
+
     return 0;
 }
 
