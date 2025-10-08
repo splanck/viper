@@ -713,6 +713,93 @@ function(viper_add_basic_semantics_golden_tests)
     -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/test_unary_numeric.bas
     -DEXPECT_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/test_unary_numeric.expect
     -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+  viper_add_ctest(basic_semantics_arith_mix
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/arith_mix.bas
+    -DEXPECT_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/arith_mix.expect
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+  viper_add_ctest(basic_semantics_numeric_promotion
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/numeric_promotion.bas
+    -DEXPECT_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/numeric_promotion.expect
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+  viper_add_ctest(basic_semantics_narrowing_assignment
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/narrowing_assignment.bas
+    -DEXPECT_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/narrowing_assignment.expect
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+  viper_add_ctest(basic_semantics_divide_by_zero
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/divide_by_zero.bas
+    -DDIAG_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/divide_by_zero.diag
+    -DEXPECT_STATUS=1
+    -DSOURCE_ROOT=${CMAKE_SOURCE_DIR}
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_diag.cmake)
+
+  viper_add_ctest(basic_semantics_unknown_statement
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/unknown_statement.bas
+    -DDIAG_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/unknown_statement.diag
+    -DEXPECT_STATUS=1
+    -DSOURCE_ROOT=${CMAKE_SOURCE_DIR}
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_diag.cmake)
+
+  viper_add_ctest(basic_semantics_gosub_ok
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/gosub_ok.bas
+    -DEXPECT_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/gosub_ok.expect
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+  viper_add_ctest(basic_semantics_gosub_empty_return
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/gosub_empty_return.bas
+    -DSTDERR_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/gosub_empty_return.stderr
+    -DEXPECT_STATUS=1
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_run.cmake)
+
+  viper_add_ctest(basic_semantics_input_single_diag
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/input_single_diag.bas
+    -DSTDIN_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/input_single_diag.stdin
+    -DSTDERR_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/input_single_diag.stderr
+    -DEXPECT_STATUS=1
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_run.cmake)
+
+  viper_add_ctest(basic_semantics_input_multi_diag
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/input_multi_diag.bas
+    -DSTDIN_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/input_multi_diag.stdin
+    -DSTDERR_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/input_multi_diag.stderr
+    -DEXPECT_STATUS=1
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_run.cmake)
+
+  viper_add_ctest(basic_semantics_input_multi_ok
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/input_multi_ok.bas
+    -DSTDIN_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/input_multi_ok.stdin
+    -DEXPECT_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/input_multi_ok.expect
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_run.cmake)
+
+  viper_add_ctest(basic_semantics_unary_minus_float
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/unary_minus_float.bas
+    -DEXPECT_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/unary_minus_float.expect
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
 endfunction()
 
 function(viper_add_basic_integration_tests)

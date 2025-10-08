@@ -1,0 +1,1 @@
+Trap @main#1 line 2: DomainError (code=0): gosub: empty return stack

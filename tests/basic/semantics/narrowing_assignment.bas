@@ -1,0 +1,5 @@
+10 LET I = 1.5
+20 PRINT I
+30 LET J% = -2.6
+40 PRINT J%
+50 END

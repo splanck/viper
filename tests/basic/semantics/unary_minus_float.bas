@@ -1,0 +1,7 @@
+10 LET X = -5
+20 LET Y = -2.5
+30 PRINT X
+40 PRINT Y
+50 LET Z = -(1 + 2.0)
+60 PRINT Z
+70 END

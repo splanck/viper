@@ -1,0 +1,4 @@
+10 LET C = 5 * (2 + 3) - 4 / 2
+20 PRINT C
+30 PRINT 1 / 2
+40 END

@@ -1,0 +1,3 @@
+tests/basic/semantics/unknown_statement.bas:1:4: error[B0001]: unknown statement 'FOOBAR'
+10 FOOBAR 200: PRINT 5
+   ^^^^^^
