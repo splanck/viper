@@ -59,5 +59,11 @@ int main()
         assert(result.errors == 0);
     }
 
+    {
+        auto result = analyzeSnippet("10 RETURN 42\n20 END\n");
+        assert(result.errors == 1);
+        assert(result.output.find("error[B1008]") != std::string::npos);
+    }
+
     return 0;
 }
