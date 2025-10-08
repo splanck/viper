@@ -798,4 +798,11 @@ function(viper_add_basic_integration_tests)
     -DBAS_FILE=${_VIPER_BASIC_INTEGRATION_DIR}/basic_shortcircuit.bas
     -DEXPECT_FILE=${_VIPER_BASIC_INTEGRATION_DIR}/basic_shortcircuit.expect
     -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+  viper_add_ctest(basic_gosub_label_only
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/gosub_label_only.bas
+    -DEXPECT_FILE=${CMAKE_SOURCE_DIR}/tests/basic/gosub_label_only.out
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
 endfunction()
