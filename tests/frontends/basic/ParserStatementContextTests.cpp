@@ -98,6 +98,19 @@ int main()
     }
 
     {
+        std::string src = "200 REM comment\n210 PRINT X\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("line-break-number.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        assert(prog);
+        assert(prog->main.size() == 1);
+        auto *print = dynamic_cast<PrintStmt *>(prog->main[0].get());
+        assert(print);
+        assert(print->line == 210);
+    }
+
+    {
         std::string src = "10 WHILE FLAG\n"
                           "20 FOR I = 1 TO 3\n"
                           "30 PRINT I: IF I = 2 THEN PRINT 99\n"
