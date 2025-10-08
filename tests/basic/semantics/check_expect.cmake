@@ -9,11 +9,20 @@ endif()
 if(NOT DEFINED EXPECT_FILE)
   message(FATAL_ERROR "EXPECT_FILE not set")
 endif()
-execute_process(
-  COMMAND ${ILC} front basic -run ${BAS_FILE}
-  RESULT_VARIABLE RES
-  OUTPUT_VARIABLE OUT
-  ERROR_VARIABLE ERR)
+if(DEFINED STDIN_FILE)
+  execute_process(
+    COMMAND ${ILC} front basic -run ${BAS_FILE}
+    RESULT_VARIABLE RES
+    OUTPUT_VARIABLE OUT
+    ERROR_VARIABLE ERR
+    INPUT_FILE ${STDIN_FILE})
+else()
+  execute_process(
+    COMMAND ${ILC} front basic -run ${BAS_FILE}
+    RESULT_VARIABLE RES
+    OUTPUT_VARIABLE OUT
+    ERROR_VARIABLE ERR)
+endif()
 if(NOT RES EQUAL 0)
   message(FATAL_ERROR "unexpected exit status: ${RES}. stderr: ${ERR}")
 endif()
