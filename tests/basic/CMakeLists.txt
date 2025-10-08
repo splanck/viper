@@ -586,6 +586,13 @@ function(viper_add_basic_to_il_golden_tests)
     -DBAS_FILE=${_VIPER_BASIC_GOLDENS_DIR}/ReturnNest.bas
     -DGOLDEN=${_VIPER_BASIC_GOLDENS_DIR}/ReturnNest.il
     -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+  viper_add_ctest(basic_to_il_gosub
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/gosub.bas
+    -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/gosub.il
+    -P ${_VIPER_BASIC_TO_IL_CHECK})
 endfunction()
 
 function(viper_add_basic_strings_test)

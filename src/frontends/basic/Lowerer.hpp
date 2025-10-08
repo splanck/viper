@@ -303,6 +303,26 @@ class Lowerer
             std::unordered_map<size_t, int> handlerTargets_;
         };
 
+        struct GosubState
+        {
+            void reset() noexcept;
+
+            [[nodiscard]] bool hasFrame() const noexcept;
+
+            void setSpSlot(unsigned id) noexcept;
+
+            void setStackSlot(unsigned id) noexcept;
+
+            [[nodiscard]] std::optional<unsigned> spSlot() const noexcept;
+
+            [[nodiscard]] std::optional<unsigned> stackSlot() const noexcept;
+
+            std::optional<unsigned> spSlotId{};
+            std::optional<unsigned> stackSlotId{};
+            std::unordered_map<const GosubStmt *, int> continuationIndex;
+            std::vector<size_t> continuationTargets;
+        };
+
         /// @brief Reset to an empty state ready for a new procedure.
         void reset() noexcept;
 
@@ -341,6 +361,10 @@ class Lowerer
 
         [[nodiscard]] const ErrorHandlerState &errorHandlers() const noexcept;
 
+        [[nodiscard]] GosubState &gosubs() noexcept;
+
+        [[nodiscard]] const GosubState &gosubs() const noexcept;
+
       private:
         Function *function_{nullptr};
         BasicBlock *current_{nullptr};
@@ -350,12 +374,15 @@ class Lowerer
         BlockNameState blockNames_{};
         LoopState loopState_{};
         ErrorHandlerState errorHandlers_{};
+        GosubState gosub_{};
     };
 
   public:
     struct ProcedureConfig;
 
   private:
+    static constexpr int kGosubStackDepth = 128;
+
     struct ProcedureMetadata
     {
         std::vector<const Stmt *> bodyStmts;
@@ -390,6 +417,12 @@ class Lowerer
     void lowerFunctionDecl(const FunctionDecl &decl);
 
     void lowerSubDecl(const SubDecl &decl);
+
+    void lowerGosub(const GosubStmt &stmt);
+
+    void lowerGosubReturn(const ReturnStmt &stmt);
+
+    void initializeGosubFrame();
 
   public:
     /// @brief Configuration shared by FUNCTION and SUB lowering.

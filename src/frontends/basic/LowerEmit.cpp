@@ -49,6 +49,8 @@ void Lowerer::emitProgram(const Program &prog)
     synthSeq_ = 0;
     ctx.blockNames().lineBlocks().clear();
 
+    ctx.gosubs().reset();
+
     Function &f = b.startFunction("main", Type(Type::Kind::I64), {});
     ctx.setFunction(&f);
     ctx.setNextTemp(f.valueNames.size());
@@ -75,6 +77,7 @@ void Lowerer::emitProgram(const Program &prog)
     BasicBlock *entry = &f.blocks.front();
     ctx.setCurrent(entry);
     allocateLocalSlots(std::unordered_set<std::string>(), /*includeParams=*/true);
+    initializeGosubFrame();
 
     if (mainStmts.empty())
     {

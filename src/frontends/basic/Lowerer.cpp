@@ -36,6 +36,7 @@ void Lowerer::ProcedureContext::reset() noexcept
     blockNames_.reset();
     loopState_.reset();
     errorHandlers_.reset();
+    gosub_.reset();
 }
 
 Function *Lowerer::ProcedureContext::function() const noexcept
@@ -128,6 +129,17 @@ const Lowerer::ProcedureContext::ErrorHandlerState &
 Lowerer::ProcedureContext::errorHandlers() const noexcept
 {
     return errorHandlers_;
+}
+
+Lowerer::ProcedureContext::GosubState &Lowerer::ProcedureContext::gosubs() noexcept
+{
+    return gosub_;
+}
+
+const Lowerer::ProcedureContext::GosubState &
+Lowerer::ProcedureContext::gosubs() const noexcept
+{
+    return gosub_;
 }
 
 void Lowerer::ProcedureContext::BlockNameState::reset() noexcept
@@ -300,6 +312,39 @@ const std::unordered_map<size_t, int> &
 Lowerer::ProcedureContext::ErrorHandlerState::handlerTargets() const noexcept
 {
     return handlerTargets_;
+}
+
+void Lowerer::ProcedureContext::GosubState::reset() noexcept
+{
+    spSlotId.reset();
+    stackSlotId.reset();
+    continuationIndex.clear();
+    continuationTargets.clear();
+}
+
+bool Lowerer::ProcedureContext::GosubState::hasFrame() const noexcept
+{
+    return spSlotId.has_value() && stackSlotId.has_value();
+}
+
+void Lowerer::ProcedureContext::GosubState::setSpSlot(unsigned id) noexcept
+{
+    spSlotId = id;
+}
+
+void Lowerer::ProcedureContext::GosubState::setStackSlot(unsigned id) noexcept
+{
+    stackSlotId = id;
+}
+
+std::optional<unsigned> Lowerer::ProcedureContext::GosubState::spSlot() const noexcept
+{
+    return spSlotId;
+}
+
+std::optional<unsigned> Lowerer::ProcedureContext::GosubState::stackSlot() const noexcept
+{
+    return stackSlotId;
 }
 
 Lowerer::BlockNamer::BlockNamer(std::string p) : proc(std::move(p)) {}
@@ -895,6 +940,26 @@ void Lowerer::materializeParams(const std::vector<Param> &params)
             emitStore(ty, slot, incoming);
         }
     }
+}
+
+void Lowerer::initializeGosubFrame()
+{
+    ProcedureContext &ctx = context();
+    if (!ctx.function() || !ctx.current())
+        return;
+
+    auto &gosubState = ctx.gosubs();
+    if (gosubState.hasFrame())
+        return;
+
+    auto savedLoc = curLoc;
+    curLoc = {};
+    Value spSlot = emitAlloca(8);
+    Value stackSlot = emitAlloca(kGosubStackDepth * 4);
+    gosubState.setSpSlot(spSlot.id);
+    gosubState.setStackSlot(stackSlot.id);
+    emitStore(Type(Type::Kind::I64), spSlot, Value::constInt(0));
+    curLoc = savedLoc;
 }
 
 /// @brief Collect variable usage for every procedure and the main body.

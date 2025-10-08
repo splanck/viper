@@ -64,11 +64,7 @@ class LowererStmtVisitor final : public StmtVisitor
 
     void visit(const GotoStmt &stmt) override { lowerer_.lowerGoto(stmt); }
 
-    void visit(const GosubStmt &stmt) override
-    {
-        (void)stmt;
-        // TODO: Implement GOSUB lowering once runtime support exists.
-    }
+    void visit(const GosubStmt &stmt) override { lowerer_.lowerGosub(stmt); }
 
     void visit(const OpenStmt &stmt) override { lowerer_.lowerOpen(stmt); }
 
@@ -174,6 +170,12 @@ void Lowerer::lowerStmtList(const StmtList &stmt)
 ///          return terminator, mirroring the legacy dispatch logic.
 void Lowerer::lowerReturn(const ReturnStmt &stmt)
 {
+    if (stmt.isGosubReturn)
+    {
+        lowerGosubReturn(stmt);
+        return;
+    }
+
     if (stmt.value)
     {
         RVal v = lowerExpr(*stmt.value);
@@ -1020,6 +1022,167 @@ void Lowerer::lowerExit(const ExitStmt &stmt)
     }
     emitBr(target);
     ctx.loopState().markTaken();
+}
+
+void Lowerer::lowerGosub(const GosubStmt &stmt)
+{
+    ProcedureContext &ctx = context();
+    Function *func = ctx.function();
+    BasicBlock *current = ctx.current();
+    if (!func || !current)
+        return;
+
+    auto &gosub = ctx.gosubs();
+    if (!gosub.hasFrame())
+        return;
+
+    auto contIt = gosub.continuationIndex.find(&stmt);
+    if (contIt == gosub.continuationIndex.end())
+        return;
+
+    curLoc = stmt.loc;
+    Value spSlot = Value::temp(*gosub.spSlot());
+    Value stackSlot = Value::temp(*gosub.stackSlot());
+    Value sp = emitLoad(Type(Type::Kind::I64), spSlot);
+
+    Value overflow =
+        emitBinary(Opcode::SCmpGE, ilBoolTy(), sp, Value::constInt(kGosubStackDepth));
+
+    size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
+    BlockNamer *blockNamer = ctx.blockNames().namer();
+    std::string trapLabel = blockNamer ? blockNamer->generic("gosub_overflow")
+                                       : mangler.block("gosub_overflow");
+    size_t trapIdx = func->blocks.size();
+    builder->addBlock(*func, trapLabel);
+    std::string contLabel = blockNamer ? blockNamer->generic("gosub_push")
+                                       : mangler.block("gosub_push");
+    size_t contIdx = func->blocks.size();
+    builder->addBlock(*func, contLabel);
+
+    BasicBlock *trapBlock = &func->blocks[trapIdx];
+    BasicBlock *contBlock = &func->blocks[contIdx];
+
+    ctx.setCurrent(&func->blocks[curIdx]);
+    emitCBr(overflow, trapBlock, contBlock);
+
+    ctx.setCurrent(trapBlock);
+    curLoc = stmt.loc;
+    emitTrap();
+
+    ctx.setCurrent(contBlock);
+    curLoc = stmt.loc;
+
+    Value offset = emitBinary(Opcode::Shl, Type(Type::Kind::I64), sp, Value::constInt(2));
+    Value elemPtr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), stackSlot, offset);
+    Value idxValue = emitUnary(Opcode::CastSiNarrowChk,
+                               Type(Type::Kind::I32),
+                               Value::constInt(contIt->second));
+    emitStore(Type(Type::Kind::I32), elemPtr, idxValue);
+
+    Value nextSp = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), sp, Value::constInt(1));
+    emitStore(Type(Type::Kind::I64), spSlot, nextSp);
+
+    auto &lineBlocks = ctx.blockNames().lineBlocks();
+    auto targetIt = lineBlocks.find(stmt.targetLine);
+    if (targetIt != lineBlocks.end())
+    {
+        emitBr(&func->blocks[targetIt->second]);
+    }
+    else
+    {
+        emitTrap();
+    }
+}
+
+void Lowerer::lowerGosubReturn(const ReturnStmt &stmt)
+{
+    ProcedureContext &ctx = context();
+    Function *func = ctx.function();
+    BasicBlock *current = ctx.current();
+    if (!func || !current)
+        return;
+
+    auto &gosub = ctx.gosubs();
+    if (!gosub.hasFrame())
+    {
+        curLoc = stmt.loc;
+        emitTrap();
+        return;
+    }
+
+    curLoc = stmt.loc;
+    Value spSlot = Value::temp(*gosub.spSlot());
+    Value stackSlot = Value::temp(*gosub.stackSlot());
+    Value sp = emitLoad(Type(Type::Kind::I64), spSlot);
+
+    Value isEmpty = emitBinary(Opcode::ICmpEq, ilBoolTy(), sp, Value::constInt(0));
+
+    size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
+    BlockNamer *blockNamer = ctx.blockNames().namer();
+    std::string underflowLabel = blockNamer ? blockNamer->generic("gosub_underflow")
+                                            : mangler.block("gosub_underflow");
+    size_t underflowIdx = func->blocks.size();
+    builder->addBlock(*func, underflowLabel);
+    std::string contLabel = blockNamer ? blockNamer->generic("gosub_return")
+                                       : mangler.block("gosub_return");
+    size_t contIdx = func->blocks.size();
+    builder->addBlock(*func, contLabel);
+
+    BasicBlock *underflowBlock = &func->blocks[underflowIdx];
+    BasicBlock *contBlock = &func->blocks[contIdx];
+
+    ctx.setCurrent(&func->blocks[curIdx]);
+    emitCBr(isEmpty, underflowBlock, contBlock);
+
+    ctx.setCurrent(underflowBlock);
+    curLoc = stmt.loc;
+    std::string msgLabel = getStringLabel("RETURN without GOSUB");
+    Value message = emitConstStr(msgLabel);
+    Value err = emitBinary(Opcode::TrapErr,
+                           Type(Type::Kind::Error),
+                           Value::constInt(8),
+                           message);
+    Value code = emitUnary(Opcode::ErrGetCode, Type(Type::Kind::I32), err);
+    emitTrapFromErr(code);
+
+    ctx.setCurrent(contBlock);
+    curLoc = stmt.loc;
+
+    Value newSp = emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), sp, Value::constInt(1));
+    emitStore(Type(Type::Kind::I64), spSlot, newSp);
+
+    Value offset = emitBinary(Opcode::Shl, Type(Type::Kind::I64), newSp, Value::constInt(2));
+    Value elemPtr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), stackSlot, offset);
+    Value idxValue = emitLoad(Type(Type::Kind::I32), elemPtr);
+
+    std::string badIdxLabel = blockNamer ? blockNamer->generic("gosub_bad_index")
+                                         : mangler.block("gosub_bad_index");
+    size_t badIdxIdx = func->blocks.size();
+    builder->addBlock(*func, badIdxLabel);
+    BasicBlock *badIdxBlock = &func->blocks[badIdxIdx];
+
+    Instr sw;
+    sw.op = Opcode::SwitchI32;
+    sw.type = Type(Type::Kind::Void);
+    sw.loc = stmt.loc;
+    sw.operands.push_back(idxValue);
+    sw.labels.push_back(badIdxLabel);
+    sw.brArgs.emplace_back();
+
+    for (size_t i = 0; i < gosub.continuationTargets.size(); ++i)
+    {
+        sw.operands.push_back(Value::constInt(static_cast<int>(i)));
+        size_t targetIdx = gosub.continuationTargets[i];
+        sw.labels.push_back(func->blocks[targetIdx].label);
+        sw.brArgs.emplace_back();
+    }
+
+    contBlock->instructions.push_back(std::move(sw));
+    contBlock->terminated = true;
+
+    ctx.setCurrent(badIdxBlock);
+    curLoc = stmt.loc;
+    emitTrap();
 }
 
 /// @brief Lower a GOTO jump.

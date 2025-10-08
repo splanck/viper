@@ -38,6 +38,7 @@ il::core::Type coreTypeForAstType(::il::frontends::basic::Type ty)
 } // namespace pipeline_detail
 
 using pipeline_detail::coreTypeForAstType;
+using il::core::BasicBlock;
 
 namespace
 {
@@ -230,6 +231,7 @@ void ProcedureLowering::emit(const std::string &name,
     ctx.setCurrent(&f.blocks.front());
     lowerer.materializeParams(params);
     lowerer.allocateLocalSlots(metadata.paramNames, /*includeParams=*/false);
+    lowerer.initializeGosubFrame();
 
     if (metadata.bodyStmts.empty())
     {
@@ -266,6 +268,36 @@ void StatementLowering::lowerSequence(
     auto *func = ctx.function();
     assert(func && "lowerSequence requires an active function");
     auto &lineBlocks = ctx.blockNames().lineBlocks();
+
+    auto &gosubState = ctx.gosubs();
+    for (size_t i = 0; i < stmts.size(); ++i)
+    {
+        const auto *gosub = dynamic_cast<const GosubStmt *>(stmts[i]);
+        if (!gosub)
+            continue;
+        if (gosubState.continuationIndex.find(gosub) != gosubState.continuationIndex.end())
+            continue;
+
+        BasicBlock *nextBlock = nullptr;
+        if (i + 1 < stmts.size())
+        {
+            int nextLine = lowerer.virtualLine(*stmts[i + 1]);
+            auto nextIt = lineBlocks.find(nextLine);
+            if (nextIt == lineBlocks.end())
+                continue;
+            nextBlock = &func->blocks[nextIt->second];
+        }
+        else
+        {
+            nextBlock = &func->blocks[ctx.exitIndex()];
+        }
+
+        int idx = static_cast<int>(gosubState.continuationTargets.size());
+        gosubState.continuationIndex[gosub] = idx;
+        gosubState.continuationTargets.push_back(
+            static_cast<size_t>(nextBlock - &func->blocks[0]));
+    }
+
     int firstLine = lowerer.virtualLine(*stmts.front());
     lowerer.emitBr(&func->blocks[lineBlocks[firstLine]]);
 
