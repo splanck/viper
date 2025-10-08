@@ -104,8 +104,11 @@ int main()
         Parser p(src, fid);
         auto prog = p.parseProgram();
         assert(prog);
-        assert(prog->main.size() == 1);
-        auto *print = dynamic_cast<PrintStmt *>(prog->main[0].get());
+        assert(prog->main.size() == 2);
+        auto *label = dynamic_cast<LabelStmt *>(prog->main[0].get());
+        assert(label);
+        assert(label->line == 200);
+        auto *print = dynamic_cast<PrintStmt *>(prog->main[1].get());
         assert(print);
         assert(print->line == 210);
     }

@@ -63,6 +63,11 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         static_assert(sizeof(NodeT) == 0, "Unhandled statement node in AstPrinter");
     }
 
+    void visit(const LabelStmt &) override
+    {
+        printer.os << "(LABEL)";
+    }
+
     void visit(const PrintStmt &stmt) override
     {
         printer.os << "(PRINT";

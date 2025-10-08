@@ -248,7 +248,7 @@ StmtPtr Parser::parseIf(int line)
         {
             std::vector<StmtPtr> stmts;
             BlockTerminator term = BlockTerminator::None;
-            auto predicate = [&](int) {
+            auto predicate = [&](int, il::support::SourceLoc) {
                 if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordIf)
                     return true;
                 if (!allowElseBranches)
@@ -259,7 +259,9 @@ StmtPtr Parser::parseIf(int line)
                     return true;
                 return false;
             };
-            auto consumer = [&](int lineNumber, StatementSequencer::TerminatorInfo &info)
+            auto consumer = [&](int lineNumber,
+                                 il::support::SourceLoc,
+                                 StatementSequencer::TerminatorInfo &info)
             {
                 info.line = lineNumber;
                 info.loc = peek().loc;
@@ -509,8 +511,10 @@ StmtPtr Parser::parseFor()
     stmt->end = std::move(end);
     stmt->step = std::move(step);
     auto ctxFor = statementSequencer();
-    ctxFor.collectStatements([&](int) { return at(TokenKind::KeywordNext); },
-                             [&](int, StatementSequencer::TerminatorInfo &)
+    ctxFor.collectStatements([&](int, il::support::SourceLoc) { return at(TokenKind::KeywordNext); },
+                             [&](int,
+                                 il::support::SourceLoc,
+                                 StatementSequencer::TerminatorInfo &)
                              {
                                  consume();
                                  if (at(TokenKind::Identifier))
@@ -1013,8 +1017,9 @@ il::support::SourceLoc Parser::parseProcedureBody(TokenKind endKind, std::vector
 {
     auto ctx = statementSequencer();
     auto info = ctx.collectStatements(
-        [&](int) { return at(TokenKind::KeywordEnd) && peek(1).kind == endKind; },
-        [&](int, StatementSequencer::TerminatorInfo &)
+        [&](int, il::support::SourceLoc)
+        { return at(TokenKind::KeywordEnd) && peek(1).kind == endKind; },
+        [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &)
         {
             consume();
             consume();

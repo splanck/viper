@@ -27,6 +27,7 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
     {
     }
 
+    void visit(LabelStmt &) override {}
     void visit(PrintStmt &stmt) override { analyzer_.analyzePrint(stmt); }
     void visit(PrintChStmt &stmt) override { analyzer_.analyzePrintCh(stmt); }
     void visit(ClsStmt &stmt) override { analyzer_.analyzeCls(stmt); }
