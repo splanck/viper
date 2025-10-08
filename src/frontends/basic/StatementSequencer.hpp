@@ -77,6 +77,7 @@ class StatementSequencer
     Parser &parser_;             ///< Underlying parser providing token access.
     int pendingLine_ = -1;       ///< Deferred numeric line label for next statement.
     il::support::SourceLoc pendingLineLoc_{}; ///< Location of the deferred line label.
+    bool deferredLineOnly_ = false; ///< True when pending line should emit label before reading new tokens.
     SeparatorKind lastSeparator_ =
         SeparatorKind::None; ///< Treat start-of-file as neutral separator state.
 };
