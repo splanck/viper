@@ -745,7 +745,8 @@ class Lowerer
 
     enum class ManualRuntimeHelper : std::size_t
     {
-        ArrayI32New = 0,
+        Trap = 0,
+        ArrayI32New,
         ArrayI32Resize,
         ArrayI32Len,
         ArrayI32Get,
@@ -776,6 +777,7 @@ class Lowerer
     [[nodiscard]] bool isManualHelperRequired(ManualRuntimeHelper helper) const;
     void resetManualHelpers();
 
+    void requireTrap();
     void requireArrayI32New();
     void requireArrayI32Resize();
     void requireArrayI32Len();

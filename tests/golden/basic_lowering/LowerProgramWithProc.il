@@ -5,6 +5,7 @@ extern @rt_print_f64(f64) -> void
 extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
 extern @rt_str_empty() -> str
+extern @rt_trap(str) -> void
 global const str @.L0 = "\n"
 func @F() -> i64 {
 entry_F:
