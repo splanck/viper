@@ -829,6 +829,37 @@ function(viper_add_basic_proc_tests)
     -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
 endfunction()
 
+function(viper_add_basic_call_tests)
+  if(TEST basic_call_stmt_sub)
+    return()
+  endif()
+
+  set(_VIPER_BASIC_ILC $<TARGET_FILE:ilc>)
+  set(_VIPER_BASIC_CALLS_DIR ${VIPER_TESTS_DIR}/basic/calls)
+  set(_VIPER_BASIC_SEMANTICS_DIR ${VIPER_TESTS_DIR}/basic/semantics)
+  set(_VIPER_GOLDEN_ERRORS_DIR ${VIPER_TESTS_DIR}/golden/basic_errors)
+
+  viper_add_ctest(basic_call_stmt_sub
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_CALLS_DIR}/call_stmt_sub.bas
+    -DEXPECT_FILE=${_VIPER_BASIC_CALLS_DIR}/call_stmt_sub.expect
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+  # TODO: remove WILL_FAIL once bare call statements lower without crashing (see
+  # ScanWalker::StackScope assertion).
+  set_tests_properties(basic_call_stmt_sub PROPERTIES WILL_FAIL TRUE)
+
+  file(READ ${_VIPER_BASIC_CALLS_DIR}/bare_call_error.err EXPECT_BARE_CALL_ERROR)
+  string(STRIP "${EXPECT_BARE_CALL_ERROR}" EXPECT_BARE_CALL_ERROR)
+
+  viper_add_ctest(basic_call_bare_call_error
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_CALLS_DIR}/bare_call_error.bas
+    "-DEXPECT=${EXPECT_BARE_CALL_ERROR}"
+    -P ${_VIPER_GOLDEN_ERRORS_DIR}/check_error.cmake)
+endfunction()
+
 function(viper_add_basic_integration_tests)
   if(TEST basic_boolean_andalso_short)
     return()
