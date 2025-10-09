@@ -167,6 +167,10 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
 
     bool shouldVisitChildren(const CallExpr &) { return false; }
 
+    // NOTE: CallExpr always pushes exactly one stack slot in the scan pass.
+    // When a call appears in statement position (CallStmt), we must discard
+    // that slot in `after(const CallStmt&)` to keep the stack balanced.
+    // Do not change one without the other.
     void after(const CallExpr &expr)
     {
         for (const auto &arg : expr.args)
@@ -223,10 +227,12 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
             pop();
     }
 
+    // NOTE: CallExpr always pushes exactly one stack slot in the scan pass.
+    // When a call appears in statement position (CallStmt), we must discard
+    // that slot in `after(const CallStmt&)` to keep the stack balanced.
+    // Do not change one without the other.
     void after(const CallStmt &stmt)
     {
-        // The wrapped CallExpr pushes 1 slot in the scan pass.
-        // Discard it in statement context to keep the stack balanced.
         discardIf(stmt.call != nullptr);
     }
 
