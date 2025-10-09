@@ -52,36 +52,65 @@ StmtPtr Parser::parseStatement(int line)
         if (handler.with_line)
             return (this->*(handler.with_line))(line);
     }
-    if (tok.kind == TokenKind::Identifier && peek(1).kind == TokenKind::LParen)
+    if (tok.kind == TokenKind::Identifier)
     {
-        std::string ident = tokLexeme;
-        auto identLoc = tokLoc;
-        auto expr = parseArrayOrVar();
-        if (auto *callExpr = dynamic_cast<CallExpr *>(expr.get()))
+        if (peek(1).kind == TokenKind::LParen)
         {
-            auto stmt = std::make_unique<CallStmt>();
-            stmt->loc = identLoc;
-            stmt->call.reset(static_cast<CallExpr *>(expr.release()));
-            return stmt;
+            std::string ident = tokLexeme;
+            auto identLoc = tokLoc;
+            auto expr = parseArrayOrVar();
+            if (auto *callExpr = dynamic_cast<CallExpr *>(expr.get()))
+            {
+                auto stmt = std::make_unique<CallStmt>();
+                stmt->loc = identLoc;
+                stmt->call.reset(static_cast<CallExpr *>(expr.release()));
+                return stmt;
+            }
+            if (emitter_)
+            {
+                std::string msg = std::string("unknown statement '") + ident + "'";
+                emitter_->emit(il::support::Severity::Error,
+                               "B0001",
+                               identLoc,
+                               static_cast<uint32_t>(ident.size()),
+                               std::move(msg));
+            }
+            else
+            {
+                std::fprintf(stderr, "unknown statement '%s'\n", ident.c_str());
+            }
+            while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
+            {
+                consume();
+            }
+            return nullptr;
         }
-        if (emitter_)
+
+        if (knownProcedures_.count(tokLexeme) > 0)
         {
-            std::string msg = std::string("unknown statement '") + ident + "'";
-            emitter_->emit(il::support::Severity::Error,
-                           "B0001",
-                           identLoc,
-                           static_cast<uint32_t>(ident.size()),
-                           std::move(msg));
+            const Token &nextTok = peek(1);
+            auto errLoc = nextTok.loc.isValid() ? nextTok.loc : tokLoc;
+            uint32_t errLen = nextTok.loc.isValid()
+                                  ? static_cast<uint32_t>(nextTok.lexeme.size())
+                                  : static_cast<uint32_t>(tokLexeme.size());
+            std::string msg =
+                std::string("expected '('") + " after procedure name '" + tokLexeme + "'";
+            if (emitter_)
+            {
+                emitter_->emit(il::support::Severity::Error, "B0001", errLoc, errLen, std::move(msg));
+            }
+            else
+            {
+                std::fprintf(stderr,
+                             "expected '(' after procedure name '%s'\n",
+                             tokLexeme.c_str());
+            }
+            while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
+            {
+                consume();
+            }
+            return nullptr;
         }
-        else
-        {
-            std::fprintf(stderr, "unknown statement '%s'\n", ident.c_str());
-        }
-        while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
-        {
-            consume();
-        }
-        return nullptr;
     }
     if (emitter_)
     {
@@ -1060,6 +1089,10 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionHeader()
     fn->loc = loc;
     fn->name = nameTok.lexeme;
     fn->ret = typeFromSuffix(nameTok.lexeme);
+    if (nameTok.kind == TokenKind::Identifier)
+    {
+        knownProcedures_.insert(fn->name);
+    }
     fn->params = parseParamList();
     return fn;
 }
@@ -1110,6 +1143,10 @@ StmtPtr Parser::parseSub()
     auto sub = std::make_unique<SubDecl>();
     sub->loc = loc;
     sub->name = nameTok.lexeme;
+    if (nameTok.kind == TokenKind::Identifier)
+    {
+        knownProcedures_.insert(sub->name);
+    }
     sub->params = parseParamList();
     parseProcedureBody(TokenKind::KeywordSub, sub->body);
     return sub;
