@@ -5,10 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Placeholder for out-of-line helpers associated with il::core::Module.  The
-// class currently provides inline definitions, but this file ensures a stable
-// location for future logic coordinating functions, globals, and externs
-// aggregated by a module.
+// Serves as the extension point for il::core::Module.  The class currently
+// implements all behavior inline, yet this translation unit communicates where
+// multi-function helpers, verification glue, or serialization adapters should
+// be added.  Maintaining the stub keeps linkers stable today while giving the
+// team freedom to grow the module abstraction without reorganizing headers.
 //
 //===----------------------------------------------------------------------===//
 
