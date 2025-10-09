@@ -1,9 +1,17 @@
-// File: src/tools/common/module_loader.cpp
-// Purpose: Implement reusable helpers for loading and verifying IL modules in CLI tools.
-// License: MIT License. See LICENSE in the project root for full license information.
-// Key invariants: Diagnostics are emitted exactly once per failure and mirror existing tool messaging.
-// Ownership/Lifetime: Streams and modules are owned by the caller; this file performs transient operations only.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements reusable helpers for CLI tools that need to ingest textual IL.
+// The routines centralise file I/O, parse diagnostics, and verifier plumbing so
+// subcommands can share consistent messaging and error handling. Ownership of
+// modules and streams remains with the caller; this layer only orchestrates
+// transient parsing and verification work.
+//
+//===----------------------------------------------------------------------===//
 
 #include "tools/common/module_loader.hpp"
 
@@ -15,48 +23,54 @@ namespace il::tools::common
 {
 namespace
 {
-/// @brief Create a successful load result without diagnostics.
+/// @brief Build a successful load result with no diagnostics attached.
 ///
-/// @return A LoadResult marked LoadStatus::Success containing no diagnostic,
-///         signalling that parsing and verification succeeded.
+/// This helper keeps the success case consistent across all code paths so the
+/// outer control flow can simply check @ref LoadResult::succeeded.
+///
+/// @return A result with @ref LoadStatus::Success and an empty diagnostic.
 LoadResult makeSuccess()
 {
     return { LoadStatus::Success, std::nullopt };
 }
 
-/// @brief Create a load result for file access failures.
+/// @brief Create a load result describing an I/O failure.
 ///
-/// @return A LoadResult marked LoadStatus::FileError with no diagnostic because
-///         file system errors do not yield IL diagnostics.
+/// File system failures (missing file, permission error, etc.) cannot be
+/// expressed as IL diagnostics, so the helper records the failure kind while
+/// leaving the diagnostic slot empty.
+///
+/// @return Result tagged with @ref LoadStatus::FileError and no diagnostic.
 LoadResult makeFileError()
 {
     return { LoadStatus::FileError, std::nullopt };
 }
 
-/// @brief Create a load result capturing a parse diagnostic.
+/// @brief Create a load result populated with a parser diagnostic.
 ///
-/// @param diag Diagnostic emitted by the parser describing the failure.
-/// @return A LoadResult marked LoadStatus::ParseError carrying the diagnostic
-///         for callers to surface to users.
+/// @param diag Diagnostic emitted by the parser that explains the failure.
+/// @return A result tagged with @ref LoadStatus::ParseError holding @p diag.
 LoadResult makeParseError(const il::support::Diag &diag)
 {
     return { LoadStatus::ParseError, diag };
 }
 } // namespace
 
-/// @brief Load an IL module from disk into an existing module object.
+/// @brief Load and optionally verify a textual IL module.
 ///
-/// Opens @p path for reading, parses the contents into @p module using the
-/// expected-based API, and streams diagnostics to @p err when failures occur.
+/// Steps performed:
+///   1. Attempt to open @p path for reading, printing @p ioErrorPrefix when the
+///      file cannot be accessed.
+///   2. Parse the IL stream into @p module using the Expected-based API so
+///      diagnostics propagate naturally.
+///   3. Print parse diagnostics via @ref il::support::printDiag when parsing
+///      fails, returning a result tagged @ref LoadStatus::ParseError.
 ///
-/// @param path The filesystem location of the IL text to parse.
-/// @param module Module instance that receives parsed definitions on success.
-/// @param err Output stream for human-readable diagnostics.
-/// @param ioErrorPrefix Prefix emitted ahead of file-system error messages.
-/// @return LoadStatus::Success when parsing succeeds; LoadStatus::FileError
-///         when the file cannot be opened; LoadStatus::ParseError when the IL
-///         text fails to parse. Parse errors return a diagnostic alongside the
-///         status so callers can surface structured feedback.
+/// @param path Filesystem path to the IL file.
+/// @param module Module instance receiving parsed content on success.
+/// @param err Stream for human-readable diagnostics.
+/// @param ioErrorPrefix Prefix emitted before file-system error messages.
+/// @return Load status describing success, file errors, or parse failures.
 LoadResult loadModuleFromFile(const std::string &path,
                               il::core::Module &module,
                               std::ostream &err,
@@ -80,16 +94,17 @@ LoadResult loadModuleFromFile(const std::string &path,
     return makeSuccess();
 }
 
-/// @brief Verify IL module invariants and emit diagnostics on failure.
+/// @brief Run the IL verifier and forward diagnostics to the caller.
 ///
-/// Invokes the expected-based verifier and prints diagnostics to @p err when
-/// structural or semantic checks fail.
+/// The helper calls @ref il::api::v2::verify_module_expected and prints any
+/// resulting diagnostics through @ref il::support::printDiag so command-line
+/// tools can keep their verification reporting uniform.
 ///
 /// @param module Module that should satisfy verifier invariants.
 /// @param err Output stream receiving verifier diagnostics.
-/// @return true when verification succeeds, false otherwise. Verification
-///         failures emit diagnostics to @p err to aid CLI tools in reporting
-///         actionable errors.
+/// @param sm Optional source manager providing path lookups for diagnostics.
+/// @return @c true when verification succeeds, otherwise @c false after printing
+///         diagnostics to @p err.
 bool verifyModule(const il::core::Module &module,
                   std::ostream &err,
                   const il::support::SourceManager *sm)

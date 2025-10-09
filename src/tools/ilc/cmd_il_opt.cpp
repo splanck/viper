@@ -1,9 +1,16 @@
-// File: src/tools/ilc/cmd_il_opt.cpp
-// Purpose: Implements IL optimization subcommand.
-// Key invariants: None.
-// Ownership/Lifetime: Tool owns loaded modules.
-// Links: docs/codemap.md
-// License: MIT.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the `ilc il-opt` subcommand. The driver loads a module, configures
+// a pass manager, and emits optimized IL according to user-selected pipelines.
+// The helpers registered here showcase how to compose transformation passes from
+// the public API.
+//
+//===----------------------------------------------------------------------===//
 
 #include "cli.hpp"
 #include "tools/common/module_loader.hpp"
@@ -22,22 +29,24 @@
 
 using namespace il;
 
-/**
- * @brief Optimize an IL module using selected passes.
- * @details Treats the first argument as the input IL path and parses the
- *          remaining options to configure optimization. The `-o <file>` flag
- *          specifies the mandatory output file, `--passes a,b,c` selects an
- *          explicit comma-separated pipeline, `--no-mem2reg` filters the
- *          default pipeline, and `--mem2reg-stats` prints statistics when
- *          promotion runs. After parsing, the function loads the module from
- *          disk, registers the supported passes with a PassManager, executes
- *          the requested sequence, and serializes the canonical IL to the
- *          requested output path.
- *
- * @param argc Number of subcommand arguments (excluding `il-opt`).
- * @param argv Argument list starting with the input IL file.
- * @return Exit status code.
- */
+/// @brief Optimize an IL module using selected passes.
+///
+/// Execution steps:
+///   1. Parse subcommand options, requiring an output file via `-o` and
+///      optionally collecting a custom `--passes` pipeline. Flags such as
+///      `--no-mem2reg` and `--mem2reg-stats` tweak the default pipeline.
+///   2. Load the input module from disk using @ref il::tools::common::loadModuleFromFile.
+///   3. Register transformation passes (`constfold`, `peephole`, `dce`, `mem2reg`)
+///      with a @ref transform::PassManager, wiring lambdas that call the public
+///      pass helpers.
+///   4. Execute either the requested pipeline or the default sequence and write
+///      the canonicalized IL to @p outFile.
+/// The function returns zero on success or one when argument parsing, file I/O,
+/// or pass execution fails.
+///
+/// @param argc Number of subcommand arguments (excluding `il-opt`).
+/// @param argv Argument list starting with the input IL file.
+/// @return Exit status code (zero on success, one on failure).
 int cmdILOpt(int argc, char **argv)
 {
     if (argc < 3)

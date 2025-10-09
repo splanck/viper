@@ -1,9 +1,16 @@
-// File: src/tools/ilc/cmd_front_basic.cpp
-// License: MIT License (see LICENSE).
-// Purpose: BASIC front-end driver for ilc.
-// Key invariants: None.
-// Ownership/Lifetime: Tool owns loaded modules.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the `ilc front basic` subcommand. The driver parses BASIC source,
+// optionally emits IL, or executes the compiled program inside the VM. Argument
+// parsing, source loading, compilation, verification, and execution are staged
+// into helpers so other tools can reuse the same behaviour.
+//
+//===----------------------------------------------------------------------===//
 
 #include "vm/Trace.hpp"
 #include "cli.hpp"
@@ -44,6 +51,19 @@ struct LoadedSource
     uint32_t fileId{0};
 };
 
+/// @brief Parse CLI arguments for the BASIC frontend subcommand.
+///
+/// The routine accepts either `-emit-il <file>` or `-run <file>` plus shared
+/// options reused by other ilc subcommands. The workflow iterates the argument
+/// list, toggling configuration flags and delegating shared option parsing to
+/// @ref ilc::parseSharedOption. Invalid combinations—such as specifying both
+/// modes or omitting the source path—return an error diagnostic packaged inside
+/// @ref il::support::Expected so callers can present consistent messaging.
+///
+/// @param argc Number of subcommand arguments (excluding `front basic`).
+/// @param argv Argument vector pointing at UTF-8 encoded strings.
+/// @return Populated configuration on success; otherwise a diagnostic describing
+///         the parse failure.
 il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **argv)
 {
     FrontBasicConfig config{};
@@ -105,6 +125,17 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
     return il::support::Expected<FrontBasicConfig>(std::move(config));
 }
 
+/// @brief Load BASIC source text and register it with the source manager.
+///
+/// Opens @p path, reads the entire file into memory, stores the contents in a
+/// @ref LoadedSource buffer, and registers the path with @p sm so diagnostics
+/// can resolve the location later. Errors propagate as diagnostics inside an
+/// @ref il::support::Expected value.
+///
+/// @param path Filesystem path to the BASIC source file.
+/// @param sm Source manager tracking file identifiers for diagnostics.
+/// @return Loaded source buffer on success; otherwise a diagnostic describing
+///         the I/O failure.
 il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
                                                      il::support::SourceManager &sm)
 {
@@ -125,6 +156,22 @@ il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
     return il::support::Expected<LoadedSource>(std::move(source));
 }
 
+/// @brief Compile (and optionally execute) BASIC source according to @p config.
+///
+/// Steps performed:
+///   1. Configure the BASIC compiler options (bounds checks, source file ID).
+///   2. Invoke @ref compileBasic and print diagnostics when compilation fails.
+///   3. Either serialize the resulting IL (@c -emit-il) or verify and run it
+///      inside the VM (@c -run), respecting shared CLI options like stdin
+///      redirection, tracing, trap dumps, and maximum step counts.
+///   4. When running the VM, translate trap messages into exit codes following
+///      ilc conventions.
+///
+/// @param config Parsed command-line configuration.
+/// @param source BASIC source buffer to compile.
+/// @param sm Source manager for diagnostic printing and trace source lookup.
+/// @return Zero on success; non-zero when compilation, verification, or
+///         execution fails.
 int runFrontBasic(const FrontBasicConfig &config, const std::string &source,
                   il::support::SourceManager &sm)
 {
@@ -193,13 +240,14 @@ int runFrontBasic(const FrontBasicConfig &config, const std::string &source,
 
 } // namespace
 
-/**
- * @brief Handle BASIC front-end subcommands.
- *
- * The driver now factors argument parsing, source loading, and execution into
- * dedicated helpers to make future reuse easier while preserving the
- * externally observable CLI behaviour.
- */
+/// @brief Handle BASIC front-end subcommands.
+///
+/// Coordinates the high-level workflow:
+///   1. Parse the command-line arguments into a @ref FrontBasicConfig.
+///   2. Load the requested BASIC source and register it with the source manager.
+///   3. Delegate to @ref runFrontBasic to either emit IL or execute the program.
+/// Any failure at these stages results in a non-zero exit status with diagnostics
+/// already printed to stderr, matching the behaviour expected by ilc callers.
 int cmdFrontBasic(int argc, char **argv)
 {
     auto parsed = parseFrontBasicArgs(argc, argv);
