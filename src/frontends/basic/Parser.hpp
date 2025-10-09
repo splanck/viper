@@ -58,7 +58,8 @@ class Parser
     mutable Lexer lexer_;                    ///< Provides tokens from the source buffer.
     mutable std::vector<Token> tokens_;      ///< Lookahead token buffer.
     DiagnosticEmitter *emitter_ = nullptr;   ///< Diagnostic sink; not owned.
-    std::unordered_set<std::string> arrays_; ///< Names of arrays declared via DIM.
+    std::unordered_set<std::string> arrays_;      ///< Names of arrays declared via DIM.
+    std::unordered_set<std::string> procedures_; ///< Names of procedures declared so far.
 
     /// @brief Mapping entry for statement parsers.
     struct StmtHandler

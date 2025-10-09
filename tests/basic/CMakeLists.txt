@@ -121,6 +121,13 @@ function(viper_add_basic_main_tests)
   target_link_libraries(test_frontends_basic_parse_call_stmt PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_parse_call_stmt test_frontends_basic_parse_call_stmt)
 
+  viper_add_test(
+    test_frontends_basic_proc_call_diag
+    ${VIPER_TESTS_DIR}/frontends/basic/ParserProcedureCallDiagnosticsTests.cpp)
+  target_link_libraries(test_frontends_basic_proc_call_diag PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(
+    test_frontends_basic_proc_call_diag test_frontends_basic_proc_call_diag)
+
   viper_add_test(test_frontends_basic_parse_gosub ${VIPER_TESTS_DIR}/frontends/basic/ParseGosubTests.cpp)
   target_link_libraries(test_frontends_basic_parse_gosub PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_parse_gosub test_frontends_basic_parse_gosub)
