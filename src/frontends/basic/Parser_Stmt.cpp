@@ -8,9 +8,20 @@
 #include "frontends/basic/Parser.hpp"
 #include <cstdio>
 #include <cstdlib>
+#include <utility>
 
 namespace il::frontends::basic
 {
+
+void Parser::noteProcedureName(std::string name)
+{
+    knownProcedures_.insert(std::move(name));
+}
+
+bool Parser::isKnownProcedureName(const std::string &name) const
+{
+    return knownProcedures_.find(name) != knownProcedures_.end();
+}
 
 /// @brief Parse a single statement based on the current token.
 /// @param line Line number associated with the statement.
@@ -76,6 +87,34 @@ StmtPtr Parser::parseStatement(int line)
         else
         {
             std::fprintf(stderr, "unknown statement '%s'\n", ident.c_str());
+        }
+        while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
+        {
+            consume();
+        }
+        return nullptr;
+    }
+    if (tok.kind == TokenKind::Identifier && isKnownProcedureName(tokLexeme) &&
+        peek(1).kind != TokenKind::LParen)
+    {
+        std::string ident = tokLexeme;
+        auto nextTok = peek(1);
+        auto diagLoc = nextTok.loc.isValid() ? nextTok.loc : tokLoc;
+        uint32_t length = 1;
+        if (emitter_)
+        {
+            std::string msg = "expected '(' after procedure name '" + ident + "'";
+            emitter_->emit(il::support::Severity::Error,
+                           "B0001",
+                           diagLoc,
+                           length,
+                           std::move(msg));
+        }
+        else
+        {
+            std::fprintf(stderr,
+                         "expected '(' after procedure name '%s'\n",
+                         ident.c_str());
         }
         while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
         {
@@ -1096,6 +1135,7 @@ void Parser::parseFunctionBody(FunctionDecl *fn)
 StmtPtr Parser::parseFunction()
 {
     auto fn = parseFunctionHeader();
+    noteProcedureName(fn->name);
     parseFunctionBody(fn.get());
     return fn;
 }
@@ -1111,6 +1151,7 @@ StmtPtr Parser::parseSub()
     sub->loc = loc;
     sub->name = nameTok.lexeme;
     sub->params = parseParamList();
+    noteProcedureName(sub->name);
     parseProcedureBody(TokenKind::KeywordSub, sub->body);
     return sub;
 }
