@@ -1,4 +1,5 @@
 // File: src/il/verify/DiagSink.cpp
+// License: MIT License. See LICENSE in the project root for full license information.
 // Purpose: Implements diagnostic sink utilities used by verifier components.
 // Key invariants: CollectingDiagSink appends diagnostics in the order received.
 // Ownership/Lifetime: CollectingDiagSink stores diagnostics until cleared.
@@ -10,6 +11,7 @@
 
 namespace
 {
+/// @brief Map a verifier diagnostic code to its string prefix.
 std::string_view diagCodeToPrefix(il::verify::VerifyDiagCode code)
 {
     using il::verify::VerifyDiagCode;
@@ -33,11 +35,13 @@ std::string_view diagCodeToPrefix(il::verify::VerifyDiagCode code)
 namespace il::verify
 {
 
+/// @brief Convert a diagnostic code into its string representation.
 std::string_view toString(VerifyDiagCode code)
 {
     return diagCodeToPrefix(code);
 }
 
+/// @brief Construct a diagnostic value tagged with the verifier namespace.
 il::support::Diag makeVerifierDiag(VerifyDiagCode code,
                                    il::support::Severity severity,
                                    il::support::SourceLoc loc,
@@ -59,6 +63,7 @@ il::support::Diag makeVerifierDiag(VerifyDiagCode code,
     return {severity, std::move(message), loc};
 }
 
+/// @brief Convenience wrapper that always reports an error severity.
 il::support::Diag makeVerifierError(VerifyDiagCode code,
                                     il::support::SourceLoc loc,
                                     std::string message)
@@ -66,21 +71,21 @@ il::support::Diag makeVerifierError(VerifyDiagCode code,
     return makeVerifierDiag(code, il::support::Severity::Error, loc, std::move(message));
 }
 
+/// @brief Append a diagnostic to the collection in arrival order.
 void CollectingDiagSink::report(il::support::Diag diag)
 {
-    // Store diagnostics in arrival order for later inspection.
     diags_.push_back(std::move(diag));
 }
 
+/// @brief Access the accumulated diagnostics without copying.
 const std::vector<il::support::Diag> &CollectingDiagSink::diagnostics() const
 {
-    // Expose immutable access to the stored diagnostics without copying.
     return diags_;
 }
 
+/// @brief Clear all stored diagnostics.
 void CollectingDiagSink::clear()
 {
-    // Remove all stored diagnostics to reset the sink state.
     diags_.clear();
 }
 
