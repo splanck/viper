@@ -562,6 +562,8 @@ class Lowerer
 
     void lowerPrintCh(const PrintChStmt &stmt);
 
+    void lowerCallStmt(const CallStmt &stmt);
+
     void lowerStmtList(const StmtList &stmt);
 
     void lowerReturn(const ReturnStmt &stmt);

@@ -519,6 +519,14 @@ private:
             foldExpr(arg);
     }
 
+    void visit(CallStmt &stmt) override
+    {
+        if (!stmt.call)
+            return;
+        for (auto &arg : stmt.call->args)
+            foldExpr(arg);
+    }
+
     void visit(ClsStmt &) override {}
 
     void visit(ColorStmt &stmt) override

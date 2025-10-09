@@ -122,6 +122,17 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         printer.os << ')';
     }
 
+    void visit(const CallStmt &stmt) override
+    {
+        printer.os << "(CALL";
+        if (stmt.call)
+        {
+            printer.os << ' ';
+            AstPrinter::printExpr(*stmt.call, printer, style);
+        }
+        printer.os << ')';
+    }
+
     void visit(const ClsStmt &) override
     {
         printer.os << "(CLS)";
