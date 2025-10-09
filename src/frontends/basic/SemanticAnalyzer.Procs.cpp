@@ -290,10 +290,17 @@ std::vector<SemanticAnalyzer::Type> SemanticAnalyzer::checkCallArgs(const CallEx
     if (!sig)
         return argTys;
 
-    if (argTys.size() != sig->params.size())
+    if (c.args.size() != sig->params.size())
     {
-        std::string msg = "wrong number of arguments";
-        de.emit(il::support::Severity::Error, "B2005", c.loc, 1, std::move(msg));
+        std::string msg = "argument count mismatch for '" + c.callee + "': expected " +
+                          std::to_string(sig->params.size()) + ", got " +
+                          std::to_string(c.args.size());
+        de.emit(il::support::Severity::Error,
+                "B2008",
+                c.loc,
+                static_cast<uint32_t>(c.callee.size()),
+                std::move(msg));
+        return argTys;
     }
 
     size_t n = std::min(argTys.size(), sig->params.size());
