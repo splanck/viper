@@ -108,5 +108,12 @@ int main()
         t = lex.next();
         assert(t.kind == TokenKind::Identifier && t.lexeme == "GAMMA#");
     }
+    // Accept underscores within identifiers while preserving trailing suffixes.
+    {
+        std::string src = "SQR_INT%\n";
+        Lexer lex(src, fid);
+        Token t = lex.next();
+        assert(t.kind == TokenKind::Identifier && t.lexeme == "SQR_INT%");
+    }
     return 0;
 }
