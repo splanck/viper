@@ -126,9 +126,19 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
     std::string p;
     while (std::getline(pss, p, ','))
     {
+        std::string rawParam = p;
         p = trim(p);
         if (p.empty())
-            continue;
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": malformed parameter";
+            if (!rawParam.empty())
+                oss << " '" << rawParam << "'";
+            else
+                oss << " ''";
+            oss << " (empty entry)";
+            return Expected<void>{makeError({}, oss.str())};
+        }
         std::string ty;
         std::string nm;
         size_t colon = p.find(':');
