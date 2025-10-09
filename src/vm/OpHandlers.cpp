@@ -1,9 +1,17 @@
-// File: src/vm/OpHandlers.cpp
-// Purpose: Build the VM opcode dispatch table from declarative opcode metadata.
-// Key invariants: Table entries align with il/core/Opcode.def definitions.
-// Ownership/Lifetime: Dispatch table is lazily initialised and shared across VMs.
-// License: MIT (see LICENSE file in the project root for terms).
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Builds the VM's opcode → handler dispatch table from the declarative metadata
+// recorded in il/core/Opcode.def.  Keeping the logic centralised ensures that
+// both static and lazily initialised tables honour the same invariants and
+// makes the dependency between handler categories and dispatch pointers
+// explicit.
+//
+//===----------------------------------------------------------------------===//
 
 #include "vm/OpHandlers.hpp"
 
@@ -34,6 +42,15 @@ namespace
 {
 constexpr size_t kNumDispatchKinds = static_cast<size_t>(VMDispatch::Count);
 
+/// @brief Populate an array that maps @ref VMDispatch categories to handler
+///        function pointers.
+///
+/// The constexpr builder iterates the IL opcode table and records the first
+/// handler pointer associated with each dispatch category.  Categories marked
+/// as @c VMDispatch::None remain @c nullptr so opcodes can opt out of the VM
+/// dispatch entirely.
+///
+/// @return Array of handler pointers indexed by @ref VMDispatch enumerators.
 constexpr std::array<VM::OpcodeHandler, kNumDispatchKinds> buildDispatchHandlers()
 {
     std::array<VM::OpcodeHandler, kNumDispatchKinds> handlers{};
@@ -83,6 +100,14 @@ constexpr std::array<VM::OpcodeHandler, kNumDispatchKinds> buildDispatchHandlers
 
 constexpr auto kDispatchHandlers = buildDispatchHandlers();
 
+/// @brief Translate a @ref VMDispatch enumerator into an opcode handler.
+///
+/// Dispatch categories beyond the defined range return @c nullptr so callers
+/// can detect misconfigured metadata without dereferencing invalid pointers.
+///
+/// @param dispatch Dispatch category recorded in the opcode metadata.
+/// @return Handler pointer associated with the category, or @c nullptr when the
+///         category encodes @ref VMDispatch::None or lies out of range.
 constexpr VM::OpcodeHandler handlerForDispatch(VMDispatch dispatch)
 {
     const size_t index = static_cast<size_t>(dispatch);

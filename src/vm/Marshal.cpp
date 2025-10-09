@@ -1,8 +1,16 @@
-// File: src/vm/Marshal.cpp
-// Purpose: Implements helpers for converting between VM and runtime representations.
-// Key invariants: Conversions mirror existing manual code paths to avoid behavior changes.
-// Ownership/Lifetime: Returned string views remain valid only while underlying storage lives.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements helpers that translate between the VM's lightweight string view
+// abstraction and the runtime's reference-counted string handles.  Centralising
+// the conversions keeps the bridge consistent and documents the ownership
+// expectations for the temporary wrappers returned to opcode handlers.
+//
+//===----------------------------------------------------------------------===//
 
 #include "vm/Marshal.hpp"
 
@@ -14,6 +22,16 @@
 namespace il::vm
 {
 
+/// @brief Convert an immutable VM string view into a runtime handle.
+///
+/// The helper preserves the `nullptr` sentinel used throughout the VM to mean
+/// "no string" and reuses the runtime's constant-string fast path when the
+/// input has no embedded NULs.  Otherwise a fresh runtime allocation mirrors
+/// the byte sequence so handlers can safely share the returned handle.
+///
+/// @param text Non-owning reference to the source character range.
+/// @return Runtime handle suitable for passing to C helpers; may be null when
+///         @p text lacks backing storage.
 ViperString toViperString(StringRef text)
 {
     if (text.empty())
@@ -29,6 +47,16 @@ ViperString toViperString(StringRef text)
     return rt_const_cstr(text.data());
 }
 
+/// @brief Convert a runtime string handle back into the VM's view type.
+///
+/// Valid runtime handles expose a contiguous UTF-8 byte sequence and length via
+/// the C ABI helpers.  The returned @ref StringRef borrows that storage without
+/// taking ownership, so callers must ensure the runtime string outlives the
+/// view.  Null or invalid handles produce an empty view.
+///
+/// @param str Runtime string handle to translate.
+/// @return Non-owning view of the runtime string's contents, or an empty view
+///         when the handle is null.
 StringRef fromViperString(const ViperString &str)
 {
     if (!str)
