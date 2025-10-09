@@ -63,12 +63,11 @@ StatementSequencer Parser::statementSequencer()
 
 /// @brief Parse the entire BASIC program.
 /// @return Root program node with separated procedure and main sections.
-/// @note Assumes all procedures appear before the first main statement.
+/// @note Collects procedure declarations regardless of their position.
 std::unique_ptr<Program> Parser::parseProgram()
 {
     auto prog = std::make_unique<Program>();
     prog->loc = peek().loc;
-    bool inMain = false;
     auto seq = statementSequencer();
     while (!at(TokenKind::EndOfFile))
     {
@@ -78,14 +77,12 @@ std::unique_ptr<Program> Parser::parseProgram()
         auto root = seq.parseStatementLine();
         if (!root)
             continue;
-        if (!inMain &&
-            (dynamic_cast<FunctionDecl *>(root.get()) || dynamic_cast<SubDecl *>(root.get())))
+        if (dynamic_cast<FunctionDecl *>(root.get()) || dynamic_cast<SubDecl *>(root.get()))
         {
             prog->procs.push_back(std::move(root));
         }
         else
         {
-            inMain = true;
             prog->main.push_back(std::move(root));
         }
     }
