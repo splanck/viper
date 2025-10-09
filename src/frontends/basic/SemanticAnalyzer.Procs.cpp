@@ -272,7 +272,8 @@ const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c,
     {
         if (expectedKind == ProcSignature::Kind::Function)
         {
-            std::string msg = "subroutine '" + c.callee + "' used in expression";
+            std::string msg = "subroutine '" + c.callee +
+                              "' used in expression; convert to FUNCTION or call as a statement";
             de.emit(il::support::Severity::Error,
                     "B2005",
                     c.loc,
