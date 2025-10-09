@@ -1,9 +1,15 @@
-// File: src/tools/basic-lex-dump/main.cpp
-// License: MIT License. See LICENSE in the project root for full details.
-// Purpose: Command-line tool to dump BASIC tokens for golden tests.
-// Key invariants: None.
-// Ownership/Lifetime: Tool owns loaded source.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the CLI entry point that tokenises BASIC source files and prints
+// their tokens for golden tests. The tool reuses the shared loader utilities so
+// diagnostics match other BASIC tooling.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lexer.hpp"
 #include "frontends/basic/Token.hpp"
@@ -27,6 +33,10 @@ using il::tools::basic::loadBasicSource;
 /// lexeme is included for numbers, strings, and identifiers. If the file is
 /// missing or unreadable, an error message is emitted and the process exits with
 /// a non-zero status.
+///
+/// @param argc Argument count supplied by the C runtime.
+/// @param argv Argument vector supplied by the C runtime.
+/// @return Zero on success, non-zero when the file cannot be loaded.
 int main(int argc, char **argv)
 {
     std::string src;

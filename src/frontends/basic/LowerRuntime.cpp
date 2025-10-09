@@ -1,10 +1,16 @@
-// File: src/frontends/basic/LowerRuntime.cpp
-// License: MIT License. See LICENSE in the project root for full license
-//          information.
-// Purpose: Implements runtime tracking and declaration utilities for BASIC lowering.
-// Key invariants: Runtime declarations are emitted once in deterministic order.
-// Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the bookkeeping that tracks which runtime helpers must be emitted
+// while lowering BASIC programs to IL. The helper collects feature requests, is
+// aware of mandatory descriptors from the runtime registry, and ensures extern
+// declarations are emitted exactly once in a deterministic order.
+//
+//===----------------------------------------------------------------------===//
 
 // Requires the consolidated Lowerer interface for runtime tracking declarations.
 #include "frontends/basic/LowerRuntime.hpp"
@@ -19,11 +25,23 @@
 namespace il::frontends::basic
 {
 
+/// @brief Compute a hash value for a runtime feature flag.
+///
+/// Features are represented as small enums, so hashing simply casts to the
+/// underlying integer value. This keeps the type usable inside unordered
+/// containers without introducing additional dependencies.
+///
+/// @param f Feature to hash.
+/// @return Integer hash suitable for unordered containers.
 std::size_t RuntimeHelperTracker::RuntimeFeatureHash::operator()(RuntimeFeature f) const
 {
     return static_cast<std::size_t>(f);
 }
 
+/// @brief Clear all runtime helper tracking state.
+///
+/// Drops any pending requests, the deduplicated set, and the ordered replay
+/// list so a fresh lowering run can start from a clean slate.
 void RuntimeHelperTracker::reset()
 {
     requested_.reset();
@@ -31,16 +49,37 @@ void RuntimeHelperTracker::reset()
     tracked_.clear();
 }
 
+/// @brief Mark a runtime helper as required.
+///
+/// Records the request in the bitset that tracks optional helpers. The tracker
+/// does not enforce ordering; it simply remembers the request for later when
+/// declarations are emitted.
+///
+/// @param feature Feature whose helper must be available.
 void RuntimeHelperTracker::requestHelper(RuntimeFeature feature)
 {
     requested_.set(static_cast<std::size_t>(feature));
 }
 
+/// @brief Query whether a feature's helper has been requested.
+///
+/// Consults the internal bitset to determine whether `requestHelper` was called
+/// for the given feature.
+///
+/// @param feature Feature whose helper requirement is being checked.
+/// @return True when the helper has been requested.
 bool RuntimeHelperTracker::isHelperNeeded(RuntimeFeature feature) const
 {
     return requested_.test(static_cast<std::size_t>(feature));
 }
 
+/// @brief Record a runtime helper as used and maintain declaration ordering.
+///
+/// Ensures the helper is requested and, if it has not been seen before, appends
+/// it to the ordered replay list. This preserves deterministic extern emission
+/// even when runtime needs arise out of order.
+///
+/// @param feature Feature whose helper was touched during lowering.
 void RuntimeHelperTracker::trackRuntime(RuntimeFeature feature)
 {
     requestHelper(feature);
@@ -51,11 +90,13 @@ void RuntimeHelperTracker::trackRuntime(RuntimeFeature feature)
 namespace
 {
 /// @brief Declare a runtime extern using the canonical signature database.
-/// @details Consults the runtime descriptor registry so declarations, handler
-///          wiring, and lowering metadata remain synchronized.
+///
+/// Centralises the IRBuilder call so declarations pulled from the runtime
+/// registry share a single implementation. Keeping the logic here also ensures
+/// future metadata changes only need to be reflected in one location.
+///
 /// @param b IR builder that will receive the extern declaration.
 /// @param desc Runtime descriptor describing the helper to declare.
-/// @note This helper mutates the builder but leaves the tracker state untouched.
 void declareRuntimeExtern(build::IRBuilder &b, const il::runtime::RuntimeDescriptor &desc)
 {
     b.addExtern(std::string(desc.name), desc.signature.retType, desc.signature.paramTypes);
@@ -63,10 +104,13 @@ void declareRuntimeExtern(build::IRBuilder &b, const il::runtime::RuntimeDescrip
 } // namespace
 
 /// @brief Declare every runtime helper required by the current lowering run.
-/// @details Emits baseline helpers unconditionally and consults tracker state
-///          to determine optional helpers. Ordered helpers are replayed by
-///          iterating the recorded sequence so declarations remain
-///          deterministic.
+///
+/// Walks the runtime descriptor registry, emitting helpers that are always
+/// needed plus those gated behind feature flags or bounds-check settings. It
+/// then replays the ordered feature list captured via `trackRuntime` to ensure
+/// deterministic declaration order for helpers whose descriptors requested
+/// ordered emission.
+///
 /// @param b IR builder used to register extern declarations.
 /// @param boundsChecks Whether array bounds helpers should be declared.
 void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boundsChecks) const
@@ -100,21 +144,42 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
     }
 }
 
+/// @brief Mark a manual runtime helper as required.
+///
+/// Manual helpers are not described in the runtime registry and instead have
+/// dedicated toggles in the lowering pipeline. This function flips the boolean
+/// flag corresponding to the helper so `declareRequiredRuntime` can emit it.
+///
+/// @param helper Manual helper whose declaration should be emitted.
 void Lowerer::setManualHelperRequired(ManualRuntimeHelper helper)
 {
     manualHelperRequirements_[manualRuntimeHelperIndex(helper)] = true;
 }
 
+/// @brief Query whether a manual helper has been requested.
+///
+/// Simply reads the boolean toggle set by `setManualHelperRequired`.
+///
+/// @param helper Manual helper whose requirement is being checked.
+/// @return True when the helper should be emitted.
 bool Lowerer::isManualHelperRequired(ManualRuntimeHelper helper) const
 {
     return manualHelperRequirements_[manualRuntimeHelperIndex(helper)];
 }
 
+/// @brief Clear all manual helper requirements.
+///
+/// Reinitialises the manual helper bitset so a new lowering invocation starts
+/// without stale requirements.
 void Lowerer::resetManualHelpers()
 {
     manualHelperRequirements_.fill(false);
 }
 
+/// @brief Ensure the trap helper is declared when bounds checks are disabled.
+///
+/// When bounds checking is turned off manual trap emission is required for
+/// runtime panic sites. This toggles the trap helper requirement.
 void Lowerer::requireTrap()
 {
     if (boundsChecks)
@@ -122,91 +187,109 @@ void Lowerer::requireTrap()
     setManualHelperRequired(ManualRuntimeHelper::Trap);
 }
 
+/// @brief Request the manual helper that allocates I32 arrays.
 void Lowerer::requireArrayI32New()
 {
     setManualHelperRequired(ManualRuntimeHelper::ArrayI32New);
 }
 
+/// @brief Request the manual helper that resizes I32 arrays.
 void Lowerer::requireArrayI32Resize()
 {
     setManualHelperRequired(ManualRuntimeHelper::ArrayI32Resize);
 }
 
+/// @brief Request the manual helper that reads the length of I32 arrays.
 void Lowerer::requireArrayI32Len()
 {
     setManualHelperRequired(ManualRuntimeHelper::ArrayI32Len);
 }
 
+/// @brief Request the manual helper that loads an element from an I32 array.
 void Lowerer::requireArrayI32Get()
 {
     setManualHelperRequired(ManualRuntimeHelper::ArrayI32Get);
 }
 
+/// @brief Request the manual helper that stores an element into an I32 array.
 void Lowerer::requireArrayI32Set()
 {
     setManualHelperRequired(ManualRuntimeHelper::ArrayI32Set);
 }
 
+/// @brief Request the manual helper that increments an I32 array reference.
 void Lowerer::requireArrayI32Retain()
 {
     setManualHelperRequired(ManualRuntimeHelper::ArrayI32Retain);
 }
 
+/// @brief Request the manual helper that releases an I32 array reference.
 void Lowerer::requireArrayI32Release()
 {
     setManualHelperRequired(ManualRuntimeHelper::ArrayI32Release);
 }
 
+/// @brief Request the helper that reports array out-of-bounds panics.
 void Lowerer::requireArrayOobPanic()
 {
     setManualHelperRequired(ManualRuntimeHelper::ArrayOobPanic);
 }
 
+/// @brief Request the helper that opens a file and reports errors via strings.
 void Lowerer::requireOpenErrVstr()
 {
     setManualHelperRequired(ManualRuntimeHelper::OpenErrVstr);
 }
 
+/// @brief Request the helper that closes a file descriptor and reports errors.
 void Lowerer::requireCloseErr()
 {
     setManualHelperRequired(ManualRuntimeHelper::CloseErr);
 }
 
+/// @brief Request the helper that prints a character with error handling.
 void Lowerer::requirePrintlnChErr()
 {
     setManualHelperRequired(ManualRuntimeHelper::PrintlnChErr);
 }
 
+/// @brief Request the helper that reads a line with error reporting.
 void Lowerer::requireLineInputChErr()
 {
     setManualHelperRequired(ManualRuntimeHelper::LineInputChErr);
 }
 
+/// @brief Request the helper that conditionally retains a string handle.
 void Lowerer::requireStrRetainMaybe()
 {
     setManualHelperRequired(ManualRuntimeHelper::StrRetainMaybe);
 }
 
+/// @brief Request the helper that conditionally releases a string handle.
 void Lowerer::requireStrReleaseMaybe()
 {
     setManualHelperRequired(ManualRuntimeHelper::StrReleaseMaybe);
 }
 
+/// @brief Forward a runtime feature request to the shared tracker.
 void Lowerer::requestHelper(RuntimeFeature feature)
 {
     runtimeTracker.requestHelper(feature);
 }
 
+/// @brief Query whether a runtime feature helper has been requested.
 bool Lowerer::isHelperNeeded(RuntimeFeature feature) const
 {
     return runtimeTracker.isHelperNeeded(feature);
 }
 
+/// @brief Forward runtime usage information to the shared tracker.
 void Lowerer::trackRuntime(RuntimeFeature feature)
 {
     runtimeTracker.trackRuntime(feature);
 }
 
+/// @brief Emit extern declarations for all helpers requested via the tracker or manual toggles.
 void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
 {
     runtimeTracker.declareRequiredRuntime(b, boundsChecks);
