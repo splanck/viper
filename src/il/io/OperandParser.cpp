@@ -1,4 +1,5 @@
 // File: src/il/io/OperandParser.cpp
+// License: MIT License. See LICENSE in the project root for full license information.
 // Purpose: Implements helpers for parsing IL instruction operands.
 // Key invariants: Operates on instructions tied to the current parser state.
 // Ownership/Lifetime: Mutates instructions owned by the parser caller.
@@ -29,8 +30,17 @@ using il::core::Value;
 using il::support::Expected;
 using il::support::makeError;
 
+/// @brief Create an operand parser bound to the current parser state and instruction.
 OperandParser::OperandParser(ParserState &state, Instr &instr) : state_(state), instr_(instr) {}
 
+/// @brief Parse a single operand token into a Value representation.
+///
+/// Handles constants, temporaries, globals, null, and quoted string literals.
+/// When parsing fails an error diagnostic is produced referencing the current
+/// parser line.
+///
+/// @param tok Token extracted from the operand text.
+/// @return Parsed value or an error diagnostic.
 Expected<Value> OperandParser::parseValueToken(const std::string &tok) const
 {
     if (tok.empty())
@@ -124,6 +134,15 @@ Expected<Value> OperandParser::parseValueToken(const std::string &tok) const
     return Expected<Value>{makeError(state_.curLoc, oss.str())};
 }
 
+/// @brief Split a comma-separated operand list while respecting nested constructs.
+///
+/// Tracks string literals, escape sequences, and parenthesis depth so nested
+/// expressions do not break the split.  When malformed input is detected, an
+/// error diagnostic is returned referencing the instruction being parsed.
+///
+/// @param text Raw operand text after the mnemonic.
+/// @param context Human-readable description for error messages.
+/// @return Vector of trimmed tokens or an error diagnostic.
 Expected<std::vector<std::string>>
 OperandParser::splitCommaSeparated(const std::string &text, const char *context) const
 {
@@ -214,6 +233,14 @@ OperandParser::splitCommaSeparated(const std::string &text, const char *context)
     return Expected<std::vector<std::string>>{std::move(tokens)};
 }
 
+/// @brief Parse operands for call-style instructions.
+///
+/// Extracts the callee name, decodes each argument, and appends them to the
+/// instruction.  The function verifies balanced parentheses and reports clear
+/// diagnostics on malformed text.
+///
+/// @param text Operand substring following the mnemonic.
+/// @return Success or an error diagnostic.
 Expected<void> OperandParser::parseCallOperands(const std::string &text)
 {
     const size_t at = text.find('@');
@@ -242,6 +269,17 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text)
     return {};
 }
 
+/// @brief Parse a single branch target segment into a label and argument list.
+///
+/// Supports optional "label" prefixes and nested argument lists.  String
+/// literals and parentheses are tracked to avoid premature splitting.  Parsed
+/// arguments are appended to @p args while the cleaned label is returned via
+/// @p label.
+///
+/// @param segment Text describing one branch destination.
+/// @param label Output parameter receiving the normalized label.
+/// @param args Output parameter receiving decoded argument values.
+/// @return Success or an error diagnostic describing the malformed segment.
 Expected<void> OperandParser::parseBranchTarget(const std::string &segment,
                                                 std::string &label,
                                                 std::vector<Value> &args) const
@@ -366,6 +404,14 @@ Expected<void> OperandParser::parseBranchTarget(const std::string &segment,
     return {};
 }
 
+/// @brief Validate that a branch target supplies the expected number of arguments.
+///
+/// Consults known block parameter counts or records unresolved branches for
+/// later verification when the block is defined.
+///
+/// @param label Target label being checked.
+/// @param argCount Number of arguments supplied with the branch.
+/// @return Success or an error diagnostic when a mismatch is detected.
 Expected<void> OperandParser::checkBranchArgCount(const std::string &label,
                                                   size_t argCount) const
 {
@@ -388,6 +434,14 @@ Expected<void> OperandParser::checkBranchArgCount(const std::string &label,
     return {};
 }
 
+/// @brief Parse all branch targets for a multi-target instruction.
+///
+/// Splits the target list, parses each segment, records labels/arguments on the
+/// instruction, and verifies argument counts against known block signatures.
+///
+/// @param text Textual representation of the branch operand list.
+/// @param expectedTargets Number of targets required by the opcode.
+/// @return Success or an error diagnostic describing the malformed operand list.
 Expected<void> OperandParser::parseBranchTargets(const std::string &text, size_t expectedTargets)
 {
     std::string remaining = trim(text);
@@ -422,6 +476,15 @@ Expected<void> OperandParser::parseBranchTargets(const std::string &text, size_t
     return {};
 }
 
+/// @brief Parse switch-style operands consisting of a default and case list.
+///
+/// Reads the default branch, then iteratively parses `value -> label(args)`
+/// pairs, storing both the case value and target metadata on the instruction.
+/// The function enforces balanced parentheses and emits diagnostics for
+/// malformed specifications.
+///
+/// @param text Raw operand text following the switch mnemonic.
+/// @return Success or an error diagnostic.
 Expected<void> OperandParser::parseSwitchTargets(const std::string &text)
 {
     std::string remaining = trim(text);

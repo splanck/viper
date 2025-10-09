@@ -1,4 +1,5 @@
 // File: src/frontends/basic/ProcRegistry.cpp
+// License: MIT License. See LICENSE in the project root for full license information.
 // Purpose: Implements BASIC procedure registry behaviors and diagnostics.
 // Key invariants: Registry maintains unique procedure names and signatures.
 // Ownership/Lifetime: ProcRegistry borrows SemanticDiagnostics lifetime.
@@ -12,13 +13,23 @@
 namespace il::frontends::basic
 {
 
+/// @brief Construct a registry that records diagnostics through @p d.
 ProcRegistry::ProcRegistry(SemanticDiagnostics &d) : de(d) {}
 
+/// @brief Remove all procedures registered so far.
 void ProcRegistry::clear()
 {
     procs_.clear();
 }
 
+/// @brief Build a canonical signature from a descriptor collected during analysis.
+///
+/// The helper copies declaration metadata into a stable signature, performs
+/// duplicate parameter checks, and validates array parameter types against the
+/// BASIC specification.
+///
+/// @param descriptor Source-level procedure description.
+/// @return Populated signature describing the procedure for later lookup.
 ProcSignature ProcRegistry::buildSignature(const ProcDescriptor &descriptor)
 {
     ProcSignature sig;
@@ -52,6 +63,14 @@ ProcSignature ProcRegistry::buildSignature(const ProcDescriptor &descriptor)
     return sig;
 }
 
+/// @brief Register a procedure using the shared descriptor implementation.
+///
+/// Emits diagnostics when duplicate declarations are discovered; otherwise the
+/// signature is stored for later lookup.
+///
+/// @param name Name of the procedure to register.
+/// @param descriptor Metadata describing the procedure signature.
+/// @param loc Source location of the declaration for diagnostics.
 void ProcRegistry::registerProcImpl(std::string_view name,
                                     const ProcDescriptor &descriptor,
                                     il::support::SourceLoc loc)
@@ -72,6 +91,7 @@ void ProcRegistry::registerProcImpl(std::string_view name,
     procs_.emplace(std::move(nameStr), buildSignature(descriptor));
 }
 
+/// @brief Register a FUNCTION declaration with its return type and parameters.
 void ProcRegistry::registerProc(const FunctionDecl &f)
 {
     const ProcDescriptor descriptor{ProcSignature::Kind::Function,
@@ -81,6 +101,7 @@ void ProcRegistry::registerProc(const FunctionDecl &f)
     registerProcImpl(f.name, descriptor, f.loc);
 }
 
+/// @brief Register a SUB declaration with its parameter list.
 void ProcRegistry::registerProc(const SubDecl &s)
 {
     const ProcDescriptor descriptor{ProcSignature::Kind::Sub,
@@ -90,11 +111,16 @@ void ProcRegistry::registerProc(const SubDecl &s)
     registerProcImpl(s.name, descriptor, s.loc);
 }
 
+/// @brief Access the internal procedure table for iteration.
 const ProcTable &ProcRegistry::procs() const
 {
     return procs_;
 }
 
+/// @brief Look up a registered procedure by name.
+///
+/// @param name Identifier to search for.
+/// @return Pointer to the stored signature when found; otherwise nullptr.
 const ProcSignature *ProcRegistry::lookup(const std::string &name) const
 {
     auto it = procs_.find(name);
