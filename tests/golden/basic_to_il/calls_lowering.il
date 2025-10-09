@@ -10,7 +10,7 @@ global const str @.L0 = ""
 global const str @.L1 = "\n"
 global const str @.L2 = "HI"
 func @F#(f64 %X#) -> f64 {
-entry_F#:
+entry_F#(%X#:f64):
   %t1 = alloca 8
   store f64, %t1, %t0
   br L-1000000000_F#
@@ -23,7 +23,7 @@ ret_F#:
   ret 0.0
 }
 func @ID$(str %S$) -> str {
-entry_ID$:
+entry_ID$(%S$:str):
   %t1 = alloca 8
   store str, %t1, %t0
   br L-1000000000_ID$
@@ -37,7 +37,7 @@ ret_ID$:
   ret %t3
 }
 func @FIRST#(i64 %N) -> f64 {
-entry_FIRST#:
+entry_FIRST#(%N:i64):
   %t1 = alloca 8
   store i64, %t1, %t0
   br L-1000000000_FIRST#
@@ -79,7 +79,7 @@ if_end_0_FIRST#:
   br L-999999999_FIRST#
 }
 func @SECOND#(f64 %N#) -> f64 {
-entry_SECOND#:
+entry_SECOND#(%N#:f64):
   %t1 = alloca 8
   store f64, %t1, %t0
   br L-1000000000_SECOND#
