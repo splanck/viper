@@ -845,9 +845,6 @@ function(viper_add_basic_call_tests)
     -DBAS_FILE=${_VIPER_BASIC_CALLS_DIR}/call_stmt_sub.bas
     -DEXPECT_FILE=${_VIPER_BASIC_CALLS_DIR}/call_stmt_sub.expect
     -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
-  # TODO: remove WILL_FAIL once bare call statements lower without crashing (see
-  # ScanWalker::StackScope assertion).
-  set_tests_properties(basic_call_stmt_sub PROPERTIES WILL_FAIL TRUE)
 
   file(READ ${_VIPER_BASIC_CALLS_DIR}/bare_call_error.err EXPECT_BARE_CALL_ERROR)
   string(STRIP "${EXPECT_BARE_CALL_ERROR}" EXPECT_BARE_CALL_ERROR)

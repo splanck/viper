@@ -204,6 +204,13 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
             pop();
     }
 
+    void after(const CallStmt &stmt)
+    {
+        // The wrapped CallExpr pushes 1 slot in the scan pass.
+        // Discard it in statement context to keep the stack balanced.
+        discardIf(stmt.call != nullptr);
+    }
+
     void before(const GosubStmt &)
     {
         lowerer_.requireTrap();
