@@ -1,9 +1,16 @@
-// File: src/frontends/basic/LoweringContext.cpp
-// Purpose: Implements state used during BASIC-to-IL lowering.
-// Key invariants: None.
-// Ownership/Lifetime: Context references module owned externally.
-// License: MIT (see LICENSE).
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the convenience helpers that manage lowering state while emitting
+// BASIC into IL.  The context caches frequently accessed structures such as
+// stack slot names, string literal identifiers, and lazily created basic blocks
+// so the lowering pipeline can remain declarative.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/LoweringContext.hpp"
 #include "il/build/IRBuilder.hpp"
@@ -13,7 +20,7 @@
 namespace il::frontends::basic
 {
 
-/// Construct a lowering context for a BASIC function.
+/// @brief Construct a lowering context for a BASIC function.
 /// @param builder IR builder used to create blocks and instructions.
 /// @param func Function that will receive lowered IR.
 LoweringContext::LoweringContext(build::IRBuilder &builder, core::Function &func)
@@ -21,9 +28,9 @@ LoweringContext::LoweringContext(build::IRBuilder &builder, core::Function &func
 {
 }
 
-/// Return stack slot name for BASIC variable @p name, creating one if needed.
+/// @brief Retrieve a stack slot name for BASIC variable @p name, creating one if needed.
 /// @param name BASIC variable identifier.
-/// @returns Unique slot label for the variable.
+/// @return Unique slot label for the variable.
 std::string LoweringContext::getOrCreateSlot(const std::string &name)
 {
     auto it = varSlots.find(name);
@@ -34,9 +41,9 @@ std::string LoweringContext::getOrCreateSlot(const std::string &name)
     return slot;
 }
 
-/// Retrieve or create an IR block for BASIC line number @p line.
+/// @brief Retrieve or create an IR block for BASIC line number @p line.
 /// @param line Line number in the source program.
-/// @returns Pointer to the corresponding basic block.
+/// @return Pointer to the corresponding basic block.
 core::BasicBlock *LoweringContext::getOrCreateBlock(int line)
 {
     auto it = blocks.find(line);
@@ -48,13 +55,14 @@ core::BasicBlock *LoweringContext::getOrCreateBlock(int line)
     return &bb;
 }
 
-/// Intern the BASIC string literal @p value and return its IR symbol.
+/// @brief Intern the BASIC string literal @p value and return its IR symbol.
+///
 /// Maintains a mapping from literal text to generated identifiers, reusing
 /// existing entries without consuming new IDs. When a string is first seen it
 /// receives a label derived from an incrementing counter to keep identifiers
 /// stable across the module.
 /// @param value BASIC string literal to intern.
-/// @returns Stable label bound to the string literal.
+/// @return Stable label bound to the string literal.
 std::string LoweringContext::getOrAddString(const std::string &value)
 {
     auto it = strings.find(value);

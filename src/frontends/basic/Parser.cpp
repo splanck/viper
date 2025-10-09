@@ -1,10 +1,17 @@
-// File: src/frontends/basic/Parser.cpp
-// Purpose: Implements program-level orchestration for the BASIC parser,
-//          delegating statement parsing to Parser_Stmt.cpp.
-// Key invariants: Relies on token buffer for lookahead.
-// Ownership/Lifetime: Parser owns tokens produced by lexer.
-// License: MIT (see LICENSE).
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Provides the façade for the BASIC parser.  This translation unit initialises
+// the token buffer, wires statement keywords to their parsing callbacks, and
+// exposes the program-level entry point that produces the AST.  Detailed
+// statement parsing is delegated to Parser_Stmt.cpp; expression parsing lives in
+// Parser_Expr.cpp.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Parser.hpp"
 #include <array>
@@ -56,6 +63,14 @@ Parser::Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *emitte
     }
 }
 
+/// @brief Create a statement sequencer bound to this parser instance.
+///
+/// The sequencer coordinates optional line numbers and separator trivia while
+/// delegating actual statement parsing back to the parser.  Returning a value by
+/// value keeps the API ergonomic and allows callers to compose sequencing steps
+/// without leaking parser internals.
+///
+/// @return Sequencer that shares access to the parser's token stream.
 StatementSequencer Parser::statementSequencer()
 {
     return StatementSequencer(*this);
