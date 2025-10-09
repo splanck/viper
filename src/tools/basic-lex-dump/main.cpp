@@ -26,13 +26,16 @@ using il::tools::basic::loadBasicSource;
 
 /// @brief Tool entry point that dumps BASIC source tokens for golden tests.
 ///
-/// Accepts a single command-line argument naming a BASIC source file. The
-/// execution flow validates the argument count, loads the requested file into
-/// memory, lexes tokens using the BASIC lexer, and prints each token on its own
-/// line using the format `<line>:<column> <token-kind> [<lexeme>]`, where the
-/// lexeme is included for numbers, strings, and identifiers. If the file is
-/// missing or unreadable, an error message is emitted and the process exits with
-/// a non-zero status.
+/// Control flow mirrors the other BASIC developer tools:
+///   1. Validate that a single path argument is supplied.
+///   2. Load the file via @ref il::tools::basic::loadBasicSource so diagnostics
+///      stay consistent with the rest of the toolchain.
+///   3. Run the BASIC lexer until @ref il::frontends::basic::TokenKind::EndOfFile
+///      is encountered.
+///   4. Print each token as `<line>:<column> <token-kind> [<lexeme>]`, emitting
+///      lexemes only for identifiers, literals, and strings.
+/// Any failure to load the source file results in an error message and a
+/// non-zero exit status so the calling scripts can detect the issue.
 ///
 /// @param argc Argument count supplied by the C runtime.
 /// @param argv Argument vector supplied by the C runtime.

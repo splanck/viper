@@ -1,9 +1,16 @@
-// File: src/tools/ilc/main.cpp
-// Purpose: Dispatcher for ilc subcommands.
-// Key invariants: None.
-// Ownership/Lifetime: Tool owns loaded modules.
-// License: MIT.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the top-level `ilc` driver. The executable dispatches to
+// subcommands that run IL programs, compile BASIC, or apply optimizer passes.
+// Shared CLI plumbing lives in cli.cpp; this file wires those helpers into the
+// `main` entry point and prints user-facing usage information.
+//
+//===----------------------------------------------------------------------===//
 
 #include "cli.hpp"
 #include "frontends/basic/Intrinsics.hpp"
@@ -17,6 +24,11 @@ namespace
 
 constexpr std::string_view kIlcVersion = "0.1.0";
 
+/// @brief Print the ilc version banner and runtime configuration summary.
+///
+/// The banner includes the ilc version, current IL version, and whether
+/// deterministic numerics are enabled. The routine is factored out so both
+/// `main` and future subcommands can reuse it when handling `--version` flags.
 void printVersion()
 {
     std::cout << "ilc v" << kIlcVersion << "\n";
@@ -28,14 +40,13 @@ void printVersion()
 } // namespace
 
 /// @brief Print synopsis and option hints for the `ilc` CLI.
-/// @details Lists supported subcommands (`-run`, `front basic`, and `il-opt`)
-///          along with their expected arguments. This function serves as a
-///          reference when no or invalid arguments are provided and mirrors the
-///          capabilities of the associated handlers `cmdRunIL`, `cmdFrontBasic`,
-///          and `cmdILOpt`. Step-by-step summary:
-///          1. Print the tool banner and each usage synopsis line.
-///          2. Emit BASIC-specific guidance.
-///          3. Append the intrinsic name list provided by the BASIC frontend.
+///
+/// Step-by-step summary:
+///   1. Emit the tool banner with version information.
+///   2. Print usage lines for the `-run`, `front basic`, and `il-opt`
+///      subcommands, mirroring the behaviour of their handlers.
+///   3. Provide IL and BASIC specific notes, including intrinsic listings
+///      supplied by the BASIC front end.
 void usage()
 {
     std::cerr
@@ -67,7 +78,7 @@ void usage()
 ///          passes, and `cmdFrontBasic` drives the BASIC front end. Step-by-step
 ///          summary:
 ///          1. Verify that at least one subcommand argument is provided.
-///          2. Parse the subcommand token to determine the execution mode.
+///          2. Handle `--version` by delegating to @ref printVersion.
 ///          3. Dispatch to the matching handler with the remaining arguments.
 ///          4. Fall back to displaying usage when no match exists.
 int main(int argc, char **argv)
