@@ -1,9 +1,18 @@
-// File: src/frontends/basic/AstPrinter.cpp
-// Purpose: Implements BASIC AST printer orchestration and formatting helpers.
-// Key invariants: None.
-// Ownership/Lifetime: Printer does not own AST nodes.
-// Notes: Delegates expression/statement printing to dedicated translation units.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the orchestrating pieces of the BASIC AST printer.  This file ties
+// together the high-level `AstPrinter` façade, the `PrintStyle` helpers that
+// inject punctuation, and the recursive dump entry points that hand work off to
+// the expression/statement printers.  The goal is to keep the public API
+// compact: clients construct an `AstPrinter`, call `dump`, and receive a stable
+// textual representation for diagnostics or golden tests.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/AstPrinter.hpp"
 #include <sstream>
@@ -11,18 +20,40 @@
 namespace il::frontends::basic
 {
 
+/// @brief Create a print style that forwards delimiters to a printer stream.
+///
+/// The style stores a pointer to the owning @ref Printer so helper methods can
+/// emit structural characters directly into the canonical output stream without
+/// copying state.
+///
+/// @param printer Printer that ultimately receives formatted AST text.
 AstPrinter::PrintStyle::PrintStyle(Printer &printer) : printer(&printer) {}
 
+/// @brief Emit the opening delimiter used when printing composite constructs.
+///
+/// Multi-part statements such as PRINT# wrap their payload inside parentheses
+/// for readability.  The helper injects the space before the brace so callers do
+/// not have to manage spacing rules themselves.
 void AstPrinter::PrintStyle::openBody() const
 {
     printer->os << " {";
 }
 
+/// @brief Emit the closing delimiter paired with @ref openBody.
+///
+/// Keeping the implementation centralised prevents mismatched delimiters when
+/// future formatting tweaks are required.
 void AstPrinter::PrintStyle::closeBody() const
 {
     printer->os << "})";
 }
 
+/// @brief Insert a space between list elements on every call after the first.
+///
+/// The @p first flag is toggled by the helper, letting callers express
+/// comma/space separated lists without manual bookkeeping.
+///
+/// @param first Indicates whether an element has already been emitted.
 void AstPrinter::PrintStyle::separate(bool &first) const
 {
     if (!first)
@@ -32,31 +63,39 @@ void AstPrinter::PrintStyle::separate(bool &first) const
     first = false;
 }
 
+/// @brief Write a ``<line>:`` prefix to the output stream.
+///
+/// @param line One-based source line number to render.
 void AstPrinter::PrintStyle::writeLineNumber(int line) const
 {
     printer->os << line << ':';
 }
 
+/// @brief Emit the canonical ``<null>`` marker for missing optional values.
 void AstPrinter::PrintStyle::writeNull() const
 {
     printer->os << "<null>";
 }
 
+/// @brief Emit the `` channel=#`` prefix for PRINT# invocations.
 void AstPrinter::PrintStyle::writeChannelPrefix() const
 {
     printer->os << " channel=#";
 }
 
+/// @brief Emit the opening bracket that precedes argument lists.
 void AstPrinter::PrintStyle::writeArgsPrefix() const
 {
     printer->os << " args=[";
 }
 
+/// @brief Emit the closing bracket that terminates argument lists.
 void AstPrinter::PrintStyle::writeArgsSuffix() const
 {
     printer->os << ']';
 }
 
+/// @brief Append the `` no-newline`` suffix for PRINT# statements without EOL.
 void AstPrinter::PrintStyle::writeNoNewlineTag() const
 {
     printer->os << " no-newline";

@@ -1,9 +1,16 @@
-// File: src/frontends/basic/Parser_Expr.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Expression parsing for BASIC (Pratt parser).
-// Key invariants: Respects operator precedence for correct AST construction.
-// Ownership/Lifetime: Expressions owned by caller via std::unique_ptr.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the Pratt parser responsible for BASIC expression parsing.  The
+// entry points here are invoked by the statement parser whenever an expression
+// production is required.  Operator precedence and associativity are encoded in
+// the helper routines so the AST produced matches the surface language rules.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Parser.hpp"

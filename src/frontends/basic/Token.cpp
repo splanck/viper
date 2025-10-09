@@ -1,9 +1,15 @@
-// File: src/frontends/basic/Token.cpp
-// Purpose: Provides token utilities for BASIC frontend.
-// Key invariants: None.
-// Ownership/Lifetime: Tokens passed by value.
-// License: MIT License. See LICENSE in the project root for full license information.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Provides the string conversion helper for BASIC tokens.  Keeping the
+// implementation here avoids re-parsing the token list in multiple translation
+// units while documenting the invariants around TokenKinds.def.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Token.hpp"
 

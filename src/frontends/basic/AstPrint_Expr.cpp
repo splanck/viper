@@ -1,10 +1,16 @@
-// File: src/frontends/basic/AstPrint_Expr.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Implements expression printing logic for the BASIC AST printer.
-// Key invariants: All expression node kinds must be handled.
-// Ownership/Lifetime: Operates on non-owning AST references.
-// Notes: Uses BuiltinRegistry metadata for builtin call names.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the BASIC AST expression printer.  Each visitor method renders a
+// distinct expression node into a stable, human-readable form that mirrors the
+// surface syntax while remaining precise for debugging and golden tests.  The
+// companion AstPrint_Stmt.cpp handles statement formatting.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/AstPrinter.hpp"
 #include "frontends/basic/BuiltinRegistry.hpp"
@@ -22,9 +28,16 @@ namespace
 struct AstPrinter::ExprPrinter final : ExprVisitor
 {
     /// @brief Construct the visitor with a destination printer.
+    ///
+    /// The style parameter is currently unused but preserved so expression and
+    /// statement visitors share a consistent signature.  Future formatting
+    /// tweaks can opt into style-specific behaviour without changing call sites.
     ExprPrinter(Printer &printer, [[maybe_unused]] PrintStyle &style) : printer(printer) {}
 
     /// @brief Dispatch expression printing through the visitor interface.
+    ///
+    /// The helper simply delegates to @ref Expr::accept, enabling virtual
+    /// dispatch across the node hierarchy.
     void print(const Expr &expr)
     {
         expr.accept(*this);
@@ -43,6 +56,9 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     }
 
     /// @brief Print a floating-point literal expression preserving precision.
+    ///
+    /// The value is streamed through a string stream so the default formatting
+    /// rules apply while avoiding locale-sensitive behaviour.
     void visit(const FloatExpr &expr) override
     {
         std::ostringstream os;
@@ -51,6 +67,9 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     }
 
     /// @brief Print a string literal with surrounding quotes.
+    ///
+    /// Characters are written verbatim because the parser already normalises
+    /// escape sequences.
     void visit(const StringExpr &expr) override
     {
         printer.os << '"' << expr.value << '"';
@@ -77,6 +96,9 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     }
 
     /// @brief Print a unary expression with explicit operator tokens.
+    ///
+    /// Prefix notation avoids ambiguity with chained unary operators and keeps
+    /// the textual output compact.
     void visit(const UnaryExpr &expr) override
     {
         printer.os << '(';
@@ -97,6 +119,9 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     }
 
     /// @brief Print a binary expression using prefix notation.
+    ///
+    /// The operator table mirrors the enum order so the visitor remains data
+    /// driven; prefix notation ensures evaluation order is explicit.
     void visit(const BinaryExpr &expr) override
     {
         static constexpr std::array<const char *, 17> ops = {"+",
@@ -124,6 +149,9 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     }
 
     /// @brief Print a builtin call including the builtin mnemonic and arguments.
+    ///
+    /// Builtin metadata supplies the canonical name used across diagnostics and
+    /// code generation.
     void visit(const BuiltinCallExpr &expr) override
     {
         printer.os << '(' << getBuiltinInfo(expr.builtin).name;
