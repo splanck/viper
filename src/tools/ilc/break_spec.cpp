@@ -20,10 +20,13 @@ namespace ilc
 
 /// @brief Determine whether a breakpoint specification targets a source file.
 ///
-/// Source breakpoints are encoded as `path:line` with a positive integer line
-/// number. The helper confirms the colon is present, all characters after the
-/// colon are digits, and that the portion before the colon resembles a path so
-/// label-style breakpoints are ignored.
+/// The parser accepts breakpoints of the form `path:line`. Validation proceeds
+/// as follows:
+///   1. Ensure a colon delimiter exists and characters follow it.
+///   2. Confirm every character after the colon is a digit, yielding a positive
+///      line number.
+///   3. Require the prefix to resemble a path (contain `/`, `\`, or `.`) to
+///      avoid misclassifying plain label names.
 ///
 /// @param spec Command-line argument to analyse.
 /// @return True when @p spec names a source breakpoint; false otherwise.

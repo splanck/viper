@@ -22,9 +22,12 @@ namespace ilc
 
 /// @brief Parse an ilc global option and update the shared options structure.
 ///
-/// The parser recognises tracing flags, input redirection, execution limits,
-/// and diagnostic controls.  On success the current @p index is advanced past
-/// any consumed arguments so the caller can continue scanning remaining flags.
+/// Recognised options include tracing (`--trace[=mode]`), stdin redirection,
+/// instruction limits, bounds checks, and trap dumping. When the option consumes
+/// an additional argument the helper advances @p index so the caller continues
+/// scanning from the next flag. Failures—such as a missing argument or malformed
+/// numeric value—return @ref SharedOptionParseResult::Error so the caller can
+/// surface usage information.
 ///
 /// @param index Current position in the argv array; advanced when extra tokens
 ///        are consumed (for example by `--stdin-from` or `--max-steps`).

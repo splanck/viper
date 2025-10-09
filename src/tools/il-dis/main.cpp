@@ -1,9 +1,17 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
 //
-// Defines a tiny command-line utility that demonstrates how to build a module
-// using the IRBuilder façade and serialize it to textual IL.  The tool is used
-// during development as a smoke test for the builder and serializer pipelines.
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the miniature `il-dis` sample. The executable constructs a module
+// programmatically using the IRBuilder façade, populates it with a canonical
+// "hello world" style program, and serializes the result to stdout. Besides
+// acting as a developer smoke test for the builder and serializer pipelines, it
+// also documents the minimum amount of plumbing required to generate IL from
+// scratch.
+//
 //===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
@@ -12,13 +20,18 @@
 
 /// @brief Emit IL for a fixed "hello world" style program.
 ///
-/// The utility does not inspect command-line arguments.  Instead it builds a
-/// module in-memory using IRBuilder, declaring the runtime print routine,
-/// materializing a string literal, and emitting the entry function with its
-/// associated block and instructions.  Finally it serializes the finished
-/// module to stdout so the caller can observe the produced IL.
+/// Control flow proceeds as follows:
+///   1. Instantiate a module and IRBuilder.
+///   2. Declare the runtime print intrinsic and a global string literal.
+///   3. Create @c main, append an entry block, and populate it with call/return
+///      instructions.
+///   4. Serialize the resulting module to stdout via @ref il::io::Serializer.
 ///
-/// @return Zero on success after printing the serialized module.
+/// No arguments are consumed; the function always emits the same program and
+/// returns zero unless serialization throws (which it does not in the current
+/// API).
+///
+/// @return Zero after printing the serialized module to stdout.
 int main()
 {
     il::core::Module m;

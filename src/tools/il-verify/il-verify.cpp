@@ -1,25 +1,40 @@
-// File: src/tools/il-verify/il-verify.cpp
-// Purpose: Command-line tool verifying IL modules.
-// Key invariants: None.
-// Ownership/Lifetime: Tool owns parsed module.
-// License: MIT License. See LICENSE for details.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Provides the standalone `il-verify` CLI. The executable accepts a textual IL
+// module, parses it into an in-memory representation, runs the structural
+// verifier, and reports the result to stdout/stderr. The tool is intentionally
+// tiny so it doubles as a sample for embedding the parser and verifier in other
+// utilities. All resources—including the module instance and source manager—are
+// owned locally for the duration of the process.
+//
+//===----------------------------------------------------------------------===//
 
 #include "support/source_manager.hpp"
 #include "tools/common/module_loader.hpp"
 #include <iostream>
 #include <string>
 
-/// @brief CLI entry for verifying IL modules.
-/// Usage:
-///   il-verify <file.il>
-///   il-verify --version
-/// @param argc Number of CLI arguments.
-/// @param argv Argument vector.
-/// Internally handles argument validation, opens the input file, parses the
-/// module, verifies it, and reports any diagnostics to stderr.
-/// @return 0 on successful verification or when displaying the version;
-///         1 on invalid usage, I/O, parse, or verification errors.
+/// @brief Entry point for the `il-verify` binary.
+///
+/// The control flow performs the full verification pipeline:
+///   1. Handle the `--version` flag by printing the IL version banner.
+///   2. Validate the argument count and emit a usage message on mismatch.
+///   3. Parse the IL file into a module using @ref il::tools::common::loadModuleFromFile.
+///   4. Run the verifier via @ref il::tools::common::verifyModule.
+///   5. Print "OK" when verification succeeds or propagate the appropriate
+///      error status when it fails.
+/// The module and source manager are local stack objects so no persistent state
+/// is retained between invocations.
+///
+/// @param argc Number of arguments supplied by the C runtime.
+/// @param argv Argument vector pointing at UTF-8 encoded strings.
+/// @return Zero on success or when printing the version banner; otherwise one
+///         to signal argument, I/O, parse, or verification failures.
 int main(int argc, char **argv)
 {
     if (argc == 2 && std::string(argv[1]) == "--version")

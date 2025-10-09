@@ -1,9 +1,16 @@
-// File: src/tools/basic-ast-dump/main.cpp
-// Purpose: Command-line tool to dump BASIC AST.
-// Key invariants: None.
-// Ownership/Lifetime: Tool owns loaded source.
-// License: MIT License. See LICENSE in the project root for full license information.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the `basic-ast-dump` developer utility. The program loads BASIC
+// source, parses it using the production front-end, and pretty prints the AST.
+// The tool mirrors the diagnostics and file handling of the main compiler so it
+// is suitable for manual experiments and golden test generation.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/AstPrinter.hpp"
 #include "frontends/basic/Parser.hpp"
@@ -18,19 +25,23 @@ using namespace il::frontends::basic;
 using namespace il::support;
 using il::tools::basic::loadBasicSource;
 
-/**
- * @brief Entry point for the BASIC AST dump tool.
- *
- * Expects a single argument: the path to a BASIC source file. The
- * program parses and validates the command-line argument,
- * reads the source file into memory, registers it with the source
- * manager, invokes the BASIC parser to build the AST, and finally
- * prints the AST using the printer to standard output.
- *
- * @return 0 on success.
- * @return 1 if the argument count is incorrect or the file cannot be
- * opened.
- */
+/// @brief Entry point for the BASIC AST dump tool.
+///
+/// Step-by-step execution:
+///   1. Validate the argument count and load the requested BASIC file via
+///      @ref il::tools::basic::loadBasicSource, capturing diagnostics consistent
+///      with the rest of the BASIC toolchain.
+///   2. Register the file with the source manager so future diagnostics resolve
+///      to readable paths.
+///   3. Parse the program into an AST using @ref il::frontends::basic::Parser.
+///   4. Pretty print the AST with @ref il::frontends::basic::AstPrinter and emit
+///      the result to stdout.
+/// The function exits with @c 0 on success or @c 1 when argument validation or
+/// file loading fails, matching the conventions of the other developer tools.
+///
+/// @param argc Argument count supplied by the C runtime.
+/// @param argv Argument vector containing UTF-8 encoded strings.
+/// @return Zero on success; one when argument validation or file loading fails.
 int main(int argc, char **argv)
 {
     std::string src;
