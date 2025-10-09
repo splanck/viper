@@ -573,6 +573,16 @@ private:
         foldStmt(stmt.else_branch);
     }
 
+    void visit(SelectCaseStmt &stmt) override
+    {
+        foldExpr(stmt.selector);
+        for (auto &arm : stmt.arms)
+            for (auto &bodyStmt : arm.body)
+                foldStmt(bodyStmt);
+        for (auto &bodyStmt : stmt.elseBody)
+            foldStmt(bodyStmt);
+    }
+
     void visit(WhileStmt &stmt) override
     {
         foldExpr(stmt.cond);

@@ -196,6 +196,10 @@ function(viper_add_basic_main_tests)
   viper_add_test(test_basic_ast_printer ${_VIPER_BASIC_UNIT_DIR}/test_basic_ast_printer.cpp)
   target_link_libraries(test_basic_ast_printer PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_ast_printer test_basic_ast_printer)
+
+  viper_add_test(test_basic_ast_select_case ${_VIPER_BASIC_UNIT_DIR}/test_basic_ast_select_case.cpp)
+  target_link_libraries(test_basic_ast_select_case PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_basic_ast_select_case test_basic_ast_select_case)
 endfunction()
 
 function(viper_add_basic_ast_golden_tests)

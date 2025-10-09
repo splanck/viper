@@ -54,6 +54,7 @@ struct LineInputChStmt;
 struct ReturnStmt;
 struct OnErrorGoto;
 struct Resume;
+struct SelectCaseStmt;
 struct FunctionDecl;
 struct SubDecl;
 struct StmtList;
@@ -110,6 +111,7 @@ struct StmtVisitor
     virtual void visit(const ReDimStmt &) = 0;
     virtual void visit(const RandomizeStmt &) = 0;
     virtual void visit(const IfStmt &) = 0;
+    virtual void visit(const SelectCaseStmt &) = 0;
     virtual void visit(const WhileStmt &) = 0;
     virtual void visit(const DoStmt &) = 0;
     virtual void visit(const ForStmt &) = 0;
@@ -146,6 +148,7 @@ struct MutStmtVisitor
     virtual void visit(ReDimStmt &) = 0;
     virtual void visit(RandomizeStmt &) = 0;
     virtual void visit(IfStmt &) = 0;
+    virtual void visit(SelectCaseStmt &) = 0;
     virtual void visit(WhileStmt &) = 0;
     virtual void visit(DoStmt &) = 0;
     virtual void visit(ForStmt &) = 0;
@@ -394,6 +397,42 @@ struct CallExpr : Expr
 /// @brief Base class for all BASIC statements.
 struct Stmt
 {
+    /// @brief Discriminator identifying the concrete statement subclass.
+    enum class Kind
+    {
+        Label,
+        Print,
+        PrintCh,
+        Call,
+        Cls,
+        Color,
+        Locate,
+        Let,
+        Dim,
+        ReDim,
+        Randomize,
+        If,
+        SelectCase,
+        While,
+        Do,
+        For,
+        Next,
+        Exit,
+        Goto,
+        Gosub,
+        Open,
+        Close,
+        OnErrorGoto,
+        Resume,
+        End,
+        Input,
+        LineInputCh,
+        Return,
+        FunctionDecl,
+        SubDecl,
+        StmtList,
+    };
+
     /// BASIC line number associated with this statement.
     int line = 0;
 
@@ -401,6 +440,8 @@ struct Stmt
     il::support::SourceLoc loc;
 
     virtual ~Stmt() = default;
+    /// @brief Retrieve the discriminator for this statement.
+    [[nodiscard]] virtual Kind stmtKind() const = 0;
     /// @brief Accept a visitor to process this statement.
     virtual void accept(StmtVisitor &visitor) const = 0;
     /// @brief Accept a mutable visitor to process this statement.
@@ -414,6 +455,7 @@ using ProcDecl = StmtPtr;
 /// @brief Pseudo statement that only carries a line label.
 struct LabelStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::Label; }
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
 };
@@ -438,6 +480,7 @@ struct PrintItem
 /// @invariant items.size() > 0
 struct PrintStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::Print; }
     /// Items printed in order; unless the last item is a semicolon, a newline is appended.
     std::vector<PrintItem> items;
     void accept(StmtVisitor &visitor) const override;
@@ -447,6 +490,7 @@ struct PrintStmt : Stmt
 /// @brief PRINT # statement that outputs to a file channel.
 struct PrintChStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::PrintCh; }
     /// Channel expression evaluated to select the file handle; owned and non-null.
     ExprPtr channelExpr;
 
@@ -463,6 +507,7 @@ struct PrintChStmt : Stmt
 /// @brief CALL statement invoking a user-defined SUB.
 struct CallStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::Call; }
     /// Call expression representing the invoked SUB.
     std::unique_ptr<CallExpr> call;
     void accept(StmtVisitor &visitor) const override;
@@ -472,6 +517,7 @@ struct CallStmt : Stmt
 /// @brief CLS statement clearing the screen.
 struct ClsStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::Cls; }
     /// Source location of the CLS keyword.
     il::support::SourceLoc loc;
 
@@ -482,6 +528,7 @@ struct ClsStmt : Stmt
 /// @brief COLOR statement updating foreground and optional background colors.
 struct ColorStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::Color; }
     /// Source location of the COLOR keyword.
     il::support::SourceLoc loc;
 
@@ -498,6 +545,7 @@ struct ColorStmt : Stmt
 /// @brief LOCATE statement setting cursor row and optional column.
 struct LocateStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::Locate; }
     /// Source location of the LOCATE keyword.
     il::support::SourceLoc loc;
 
@@ -514,6 +562,7 @@ struct LocateStmt : Stmt
 /// @brief Assignment statement to variable or array element.
 struct LetStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::Let; }
     /// Variable or ArrayExpr on the left-hand side; owned.
     ExprPtr target;
 
@@ -526,6 +575,7 @@ struct LetStmt : Stmt
 /// @brief DIM statement allocating array storage.
 struct DimStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::Dim; }
     /// Array name being declared.
     std::string name;
 
@@ -544,6 +594,7 @@ struct DimStmt : Stmt
 /// @brief REDIM statement resizing an existing array.
 struct ReDimStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::ReDim; }
     /// Array name whose storage is being reallocated.
     std::string name;
 
@@ -557,6 +608,7 @@ struct ReDimStmt : Stmt
 /// @brief RANDOMIZE statement seeding the pseudo-random generator.
 struct RandomizeStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::Randomize; }
     /// Numeric seed expression, truncated to i64; owned and non-null.
     ExprPtr seed;
     void accept(StmtVisitor &visitor) const override;
@@ -566,6 +618,7 @@ struct RandomizeStmt : Stmt
 /// @brief IF statement with optional ELSEIF chain and ELSE branch.
 struct IfStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::If; }
     /// @brief ELSEIF arm.
     struct ElseIf
     {
@@ -591,9 +644,44 @@ struct IfStmt : Stmt
     void accept(MutStmtVisitor &visitor) override;
 };
 
+/// @brief Arm within a SELECT CASE statement.
+struct CaseArm
+{
+    /// @brief Literal labels matched by the arm.
+    std::vector<int64_t> labels;
+
+    /// @brief Statements executed when the labels match.
+    std::vector<StmtPtr> body;
+
+    /// @brief Source range covering the CASE keyword and its labels.
+    il::support::SourceRange range;
+};
+
+/// @brief SELECT CASE statement with zero or more CASE arms and optional ELSE body.
+struct SelectCaseStmt : Stmt
+{
+    [[nodiscard]] Kind stmtKind() const override { return Kind::SelectCase; }
+
+    /// @brief Expression whose value selects a CASE arm; owned and non-null.
+    ExprPtr selector;
+
+    /// @brief Ordered CASE arms evaluated sequentially.
+    std::vector<CaseArm> arms;
+
+    /// @brief Statements executed when no CASE label matches; empty when absent.
+    std::vector<StmtPtr> elseBody;
+
+    /// @brief Source range spanning the SELECT CASE header.
+    il::support::SourceRange range;
+
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
 /// @brief WHILE ... WEND loop statement.
 struct WhileStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::While; }
     /// Loop continuation condition; owned and non-null.
     ExprPtr cond;
 
@@ -606,6 +694,7 @@ struct WhileStmt : Stmt
 /// @brief DO ... LOOP statement supporting WHILE and UNTIL tests.
 struct DoStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::Do; }
     /// Condition kind controlling loop continuation.
     enum class CondKind
     {
@@ -633,6 +722,7 @@ struct DoStmt : Stmt
 /// @brief FOR ... NEXT loop statement.
 struct ForStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::For; }
     /// Loop variable name controlling the iteration.
     std::string var;
 
@@ -654,6 +744,7 @@ struct ForStmt : Stmt
 /// @brief NEXT statement closing a FOR.
 struct NextStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::Next; }
     /// Loop variable after NEXT.
     std::string var;
     void accept(StmtVisitor &visitor) const override;
@@ -663,6 +754,7 @@ struct NextStmt : Stmt
 /// @brief EXIT statement leaving the innermost enclosing loop.
 struct ExitStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::Exit; }
     /// Loop type targeted by this EXIT.
     enum class LoopKind
     {
@@ -678,6 +770,7 @@ struct ExitStmt : Stmt
 /// @brief GOTO statement transferring control to a line number.
 struct GotoStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::Goto; }
     /// Target line number to jump to.
     int target;
     void accept(StmtVisitor &visitor) const override;
@@ -687,6 +780,7 @@ struct GotoStmt : Stmt
 /// @brief GOSUB statement invoking a line label as a subroutine.
 struct GosubStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::Gosub; }
     /// Target line number to branch to.
     int targetLine = 0;
     void accept(StmtVisitor &visitor) const override;
@@ -696,6 +790,7 @@ struct GosubStmt : Stmt
 /// @brief OPEN statement configuring a file channel.
 struct OpenStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::Open; }
     /// File path expression.
     ExprPtr pathExpr;
 
@@ -719,6 +814,7 @@ struct OpenStmt : Stmt
 /// @brief CLOSE statement releasing a file channel.
 struct CloseStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::Close; }
     /// Channel number expression that follows the '#'.
     ExprPtr channelExpr;
 
@@ -729,6 +825,7 @@ struct CloseStmt : Stmt
 /// @brief ON ERROR GOTO statement configuring error handler target.
 struct OnErrorGoto : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::OnErrorGoto; }
     /// Destination line for error handler when @ref toZero is false.
     int target = 0;
 
@@ -741,6 +838,7 @@ struct OnErrorGoto : Stmt
 /// @brief RESUME statement controlling error-handler resumption.
 struct Resume : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::Resume; }
     /// Resumption strategy following an error handler.
     enum class Mode
     {
@@ -758,6 +856,7 @@ struct Resume : Stmt
 /// @brief END statement terminating program execution.
 struct EndStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::End; }
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
 };
@@ -766,6 +865,7 @@ struct EndStmt : Stmt
 /// displaying a string literal prompt.
 struct InputStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::Input; }
     /// Optional prompt string literal (nullptr if absent).
     ExprPtr prompt;
 
@@ -778,6 +878,7 @@ struct InputStmt : Stmt
 /// @brief LINE INPUT # statement reading an entire line from a file channel.
 struct LineInputChStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::LineInputCh; }
     /// Channel expression evaluated to select the file handle; owned and non-null.
     ExprPtr channelExpr;
 
@@ -791,6 +892,7 @@ struct LineInputChStmt : Stmt
 /// @brief RETURN statement optionally yielding a value.
 struct ReturnStmt : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::Return; }
     /// Expression whose value is returned; null when no expression is provided.
     ExprPtr value;
 
@@ -819,6 +921,7 @@ struct Param
 /// @brief FUNCTION declaration with optional parameters and return type.
 struct FunctionDecl : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::FunctionDecl; }
     /// Function name including suffix.
     Identifier name;
 
@@ -840,6 +943,7 @@ struct FunctionDecl : Stmt
 /// @brief SUB declaration representing a void procedure.
 struct SubDecl : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::SubDecl; }
     /// Subroutine name including suffix.
     Identifier name;
 
@@ -855,6 +959,7 @@ struct SubDecl : Stmt
 /// @brief Sequence of statements executed left-to-right on one BASIC line.
 struct StmtList : Stmt
 {
+    [[nodiscard]] Kind stmtKind() const override { return Kind::StmtList; }
     /// Ordered statements sharing the same line.
     std::vector<StmtPtr> stmts;
     void accept(StmtVisitor &visitor) const override;

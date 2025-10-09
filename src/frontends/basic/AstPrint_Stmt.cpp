@@ -271,6 +271,29 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         printer.os << ')';
     }
 
+    void visit(const SelectCaseStmt &stmt) override
+    {
+        printer.os << "(SELECT CASE ";
+        if (stmt.selector)
+            AstPrinter::printExpr(*stmt.selector, printer, style);
+        else
+            style.writeNull();
+        for (const auto &arm : stmt.arms)
+        {
+            printer.os << " (CASE";
+            for (auto label : arm.labels)
+                printer.os << ' ' << label;
+            printer.os << ')';
+            printNumberedBody(arm.body);
+        }
+        if (!stmt.elseBody.empty())
+        {
+            printer.os << " (CASE ELSE)";
+            printNumberedBody(stmt.elseBody);
+        }
+        printer.os << ')';
+    }
+
     void visit(const WhileStmt &stmt) override
     {
         printer.os << "(WHILE ";

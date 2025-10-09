@@ -298,6 +298,18 @@ void IfStmt::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this SELECT CASE statement node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void SelectCaseStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void SelectCaseStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
 /// @brief Forwards this while loop node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void WhileStmt::accept(StmtVisitor &visitor) const
