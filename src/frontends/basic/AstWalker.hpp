@@ -420,6 +420,40 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
         callAfter(stmt);
     }
 
+    void visit(const SelectCaseStmt &stmt) override
+    {
+        callBefore(stmt);
+        if (callShouldVisit(stmt))
+        {
+            if (stmt.selector)
+            {
+                callBeforeChild(stmt, *stmt.selector);
+                stmt.selector->accept(*static_cast<Derived *>(this));
+                callAfterChild(stmt, *stmt.selector);
+            }
+            for (const auto &arm : stmt.arms)
+            {
+                for (const auto &armStmt : arm.body)
+                {
+                    if (!armStmt)
+                        continue;
+                    callBeforeChild(stmt, *armStmt);
+                    armStmt->accept(*static_cast<Derived *>(this));
+                    callAfterChild(stmt, *armStmt);
+                }
+            }
+            for (const auto &elseStmt : stmt.elseBody)
+            {
+                if (!elseStmt)
+                    continue;
+                callBeforeChild(stmt, *elseStmt);
+                elseStmt->accept(*static_cast<Derived *>(this));
+                callAfterChild(stmt, *elseStmt);
+            }
+        }
+        callAfter(stmt);
+    }
+
     void visit(const WhileStmt &stmt) override
     {
         callBefore(stmt);

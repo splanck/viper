@@ -108,6 +108,8 @@ class SemanticAnalyzer
     void analyzeClose(CloseStmt &s);
     /// @brief Analyze IF statement @p s.
     void analyzeIf(const IfStmt &s);
+    /// @brief Analyze SELECT CASE statement @p s.
+    void analyzeSelectCase(const SelectCaseStmt &s);
     /// @brief Analyze WHILE statement @p s.
     void analyzeWhile(const WhileStmt &s);
     /// @brief Analyze DO statement @p s.
