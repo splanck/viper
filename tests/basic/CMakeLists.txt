@@ -293,6 +293,20 @@ function(viper_add_basic_lex_golden_tests)
     -DBAS_FILE=${_VIPER_BASIC_LEX_DIR}/test_boolean_tokens.bas
     -DGOLDEN=${_VIPER_BASIC_LEX_DIR}/test_boolean_tokens.expect
     -P ${_VIPER_BASIC_LEX_DIR}/check_tokens.cmake)
+
+  viper_add_ctest(basic_lex_ident_with_underscore
+    ${CMAKE_COMMAND}
+    -DBASIC_LEX_DUMP=${_VIPER_BASIC_LEX_DUMP}
+    -DBAS_FILE=${_VIPER_BASIC_LEX_DIR}/ident_with_underscore.bas
+    -DGOLDEN=${_VIPER_BASIC_LEX_DIR}/ident_with_underscore.expect
+    -P ${_VIPER_BASIC_LEX_DIR}/check_tokens.cmake)
+
+  viper_add_ctest(basic_lex_ident_invalid_suffix
+    ${CMAKE_COMMAND}
+    -DBASIC_LEX_DUMP=${_VIPER_BASIC_LEX_DUMP}
+    -DBAS_FILE=${_VIPER_BASIC_LEX_DIR}/ident_invalid_suffix.bas
+    -DGOLDEN=${_VIPER_BASIC_LEX_DIR}/ident_invalid_suffix.expect
+    -P ${_VIPER_BASIC_LEX_DIR}/check_tokens.cmake)
 endfunction()
 
 function(viper_add_basic_to_il_golden_tests)
@@ -727,6 +741,13 @@ function(viper_add_basic_semantics_golden_tests)
     -DILC=${_VIPER_BASIC_ILC}
     -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/test_boolean_constfold.bas
     -DEXPECT_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/test_boolean_constfold.expect
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+  viper_add_ctest(basic_semantics_ident_with_underscore
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/ident_with_underscore.bas
+    -DEXPECT_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/ident_with_underscore.expect
     -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
 
   viper_add_ctest(basic_semantics_unary_numeric
