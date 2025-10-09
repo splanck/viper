@@ -104,6 +104,24 @@ class Parser
     /// @return SELECT CASE statement node.
     StmtPtr parseSelectCase();
 
+    /// @brief Emit a parser diagnostic or stderr message when no emitter exists.
+    /// @param loc Source location where the issue occurred.
+    /// @param length Highlight length for the diagnostic underline.
+    /// @param message Human-readable diagnostic message.
+    /// @param code Optional diagnostic code; defaults to generic parse error.
+    void emitParseError(il::support::SourceLoc loc,
+                        uint32_t length,
+                        const char *message,
+                        const char *code = "B0001");
+
+    /// @brief Collect statements belonging to a CASE arm or CASE ELSE body.
+    /// @param dst Destination vector receiving parsed statements.
+    void collectSelectCaseBody(std::vector<StmtPtr> &dst);
+
+    /// @brief Parse a CASE arm, including labels and body statements.
+    /// @return Parsed CaseArm with labels and body populated.
+    CaseArm parseCaseArm();
+
     /// @brief Parse a DO ... LOOP statement.
     /// @return DO statement node with optional tests.
     StmtPtr parseDo();

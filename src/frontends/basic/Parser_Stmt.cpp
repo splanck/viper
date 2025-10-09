@@ -23,6 +23,21 @@ bool Parser::isKnownProcedureName(const std::string &name) const
     return knownProcedures_.find(name) != knownProcedures_.end();
 }
 
+void Parser::emitParseError(il::support::SourceLoc loc,
+                            uint32_t length,
+                            const char *message,
+                            const char *code)
+{
+    if (emitter_)
+    {
+        emitter_->emit(il::support::Severity::Error, code, loc, length, message);
+    }
+    else
+    {
+        std::fprintf(stderr, "%s\n", message);
+    }
+}
+
 /// @brief Parse a single statement based on the current token.
 /// @param line Line number associated with the statement.
 /// @return Parsed statement node or nullptr for unrecognized statements.
@@ -518,6 +533,68 @@ StmtPtr Parser::parseWhile()
     return stmt;
 }
 
+void Parser::collectSelectCaseBody(std::vector<StmtPtr> &dst)
+{
+    auto bodyCtx = statementSequencer();
+    auto predicate = [&](int, il::support::SourceLoc)
+    {
+        if (at(TokenKind::KeywordCase))
+            return true;
+        if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordSelect)
+            return true;
+        return false;
+    };
+    auto consumer = [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &)
+    {
+    };
+    bodyCtx.collectStatements(predicate, consumer, dst);
+}
+
+CaseArm Parser::parseCaseArm()
+{
+    CaseArm arm;
+    Token caseTok = expect(TokenKind::KeywordCase);
+    arm.range.begin = caseTok.loc;
+
+    bool haveLabel = false;
+    while (true)
+    {
+        if (!at(TokenKind::Number))
+        {
+            Token bad = peek();
+            if (bad.kind != TokenKind::EndOfLine)
+            {
+                emitParseError(bad.loc,
+                               static_cast<uint32_t>(bad.lexeme.size()),
+                               "SELECT CASE labels must be integer literals");
+            }
+            break;
+        }
+        Token labelTok = consume();
+        long long value = std::strtoll(labelTok.lexeme.c_str(), nullptr, 10);
+        arm.labels.push_back(static_cast<int64_t>(value));
+        haveLabel = true;
+        if (at(TokenKind::Comma))
+        {
+            consume();
+            continue;
+        }
+        break;
+    }
+
+    if (!haveLabel)
+    {
+        emitParseError(caseTok.loc,
+                       static_cast<uint32_t>(caseTok.lexeme.size()),
+                       "CASE arm requires at least one label");
+    }
+
+    Token caseEol = expect(TokenKind::EndOfLine);
+    arm.range.end = caseEol.loc;
+    collectSelectCaseBody(arm.body);
+    return arm;
+}
+
 /// @brief Parse a SELECT CASE statement terminating with END SELECT.
 /// @return SelectCaseStmt containing selector, CASE arms, and optional CASE ELSE.
 StmtPtr Parser::parseSelectCase()
@@ -533,38 +610,6 @@ StmtPtr Parser::parseSelectCase()
     stmt->selector = std::move(selector);
     stmt->range.begin = loc;
     stmt->range.end = headerEnd.loc;
-
-    const auto parseBodyInto = [&](std::vector<StmtPtr> &dst)
-    {
-        auto bodyCtx = statementSequencer();
-        auto predicate = [&](int, il::support::SourceLoc)
-        {
-            if (at(TokenKind::KeywordCase))
-                return true;
-            if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordSelect)
-                return true;
-            return false;
-        };
-        auto consumer = [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &)
-        {
-        };
-        bodyCtx.collectStatements(predicate, consumer, dst);
-    };
-
-    auto diagnose = [&](il::support::SourceLoc diagLoc,
-                        uint32_t length,
-                        const char *message,
-                        const char *code = "B0001")
-    {
-        if (emitter_)
-        {
-            emitter_->emit(il::support::Severity::Error, code, diagLoc, length, message);
-        }
-        else
-        {
-            std::fprintf(stderr, "%s\n", message);
-        }
-    };
 
     bool sawCaseArm = false;
     bool sawCaseElse = false;
@@ -595,8 +640,9 @@ StmtPtr Parser::parseSelectCase()
             stmt->range.end = selectTok.loc;
             if (!sawCaseArm)
             {
-                diagnose(selectTok.loc, static_cast<uint32_t>(selectTok.lexeme.size()),
-                         "SELECT CASE requires at least one CASE arm");
+                emitParseError(selectTok.loc,
+                               static_cast<uint32_t>(selectTok.lexeme.size()),
+                               "SELECT CASE requires at least one CASE arm");
             }
             expectEndSelect = false;
             break;
@@ -605,94 +651,54 @@ StmtPtr Parser::parseSelectCase()
         if (!at(TokenKind::KeywordCase))
         {
             Token unexpected = consume();
-            diagnose(unexpected.loc,
-                     static_cast<uint32_t>(unexpected.lexeme.size()),
-                     "expected CASE or END SELECT in SELECT CASE");
+            emitParseError(unexpected.loc,
+                           static_cast<uint32_t>(unexpected.lexeme.size()),
+                           "expected CASE or END SELECT in SELECT CASE");
             continue;
         }
 
-        Token caseTok = consume();
+        const Token &caseTok = peek();
         il::support::SourceLoc caseLoc = caseTok.loc;
+        TokenKind nextKind = peek(1).kind;
 
-        if (at(TokenKind::KeywordElse))
+        if (nextKind == TokenKind::KeywordElse)
         {
+            consume(); // CASE
             Token elseTok = consume();
             if (sawCaseElse)
             {
-                diagnose(elseTok.loc, static_cast<uint32_t>(elseTok.lexeme.size()),
-                         "duplicate CASE ELSE arm");
+                emitParseError(elseTok.loc,
+                               static_cast<uint32_t>(elseTok.lexeme.size()),
+                               "duplicate CASE ELSE arm");
             }
             if (!sawCaseArm)
             {
-                diagnose(elseTok.loc, static_cast<uint32_t>(elseTok.lexeme.size()),
-                         "CASE ELSE requires a preceding CASE arm");
+                emitParseError(elseTok.loc,
+                               static_cast<uint32_t>(elseTok.lexeme.size()),
+                               "CASE ELSE requires a preceding CASE arm");
             }
             sawCaseElse = true;
             Token elseEol = expect(TokenKind::EndOfLine);
-            if (stmt->elseBody.empty())
-            {
-                parseBodyInto(stmt->elseBody);
-            }
-            else
-            {
-                std::vector<StmtPtr> extra;
-                parseBodyInto(extra);
-                for (auto &node : extra)
-                    stmt->elseBody.push_back(std::move(node));
-            }
+            collectSelectCaseBody(stmt->elseBody);
             stmt->range.end = elseEol.loc;
             continue;
         }
 
         if (sawCaseElse)
         {
-            diagnose(caseLoc, static_cast<uint32_t>(caseTok.lexeme.size()),
-                     "CASE arms must precede CASE ELSE");
+            emitParseError(caseLoc,
+                           static_cast<uint32_t>(caseTok.lexeme.size()),
+                           "CASE arms must precede CASE ELSE");
         }
 
-        CaseArm arm;
-        arm.range.begin = caseLoc;
-        bool haveLabel = false;
-        while (true)
-        {
-            if (!at(TokenKind::Number))
-            {
-                Token bad = peek();
-                if (bad.kind != TokenKind::EndOfLine)
-                {
-                    diagnose(bad.loc, static_cast<uint32_t>(bad.lexeme.size()),
-                             "SELECT CASE labels must be integer literals");
-                }
-                break;
-            }
-            Token labelTok = consume();
-            long long value = std::strtoll(labelTok.lexeme.c_str(), nullptr, 10);
-            arm.labels.push_back(static_cast<int64_t>(value));
-            haveLabel = true;
-            if (at(TokenKind::Comma))
-            {
-                consume();
-                continue;
-            }
-            break;
-        }
-
-        if (!haveLabel)
-        {
-            diagnose(caseLoc, static_cast<uint32_t>(caseTok.lexeme.size()),
-                     "CASE arm requires at least one label");
-        }
-
-        Token caseEol = expect(TokenKind::EndOfLine);
-        arm.range.end = caseEol.loc;
-        parseBodyInto(arm.body);
+        CaseArm arm = parseCaseArm();
         stmt->arms.push_back(std::move(arm));
         sawCaseArm = true;
     }
 
     if (expectEndSelect)
     {
-        diagnose(stmt->loc, 6, "missing END SELECT", "B0004");
+        emitParseError(stmt->loc, 6, "missing END SELECT", "B0004");
     }
 
     return stmt;
