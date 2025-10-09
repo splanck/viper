@@ -812,6 +812,23 @@ function(viper_add_basic_semantics_golden_tests)
     -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
 endfunction()
 
+function(viper_add_basic_proc_tests)
+  if(TEST basic_proc_forward_calls)
+    return()
+  endif()
+
+  set(_VIPER_BASIC_ILC $<TARGET_FILE:ilc>)
+  set(_VIPER_BASIC_PROCS_DIR ${VIPER_TESTS_DIR}/basic/procs)
+  set(_VIPER_BASIC_SEMANTICS_DIR ${VIPER_TESTS_DIR}/basic/semantics)
+
+  viper_add_ctest(basic_proc_forward_calls
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_PROCS_DIR}/forward_calls.bas
+    -DEXPECT_FILE=${_VIPER_BASIC_PROCS_DIR}/forward_calls.expect
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+endfunction()
+
 function(viper_add_basic_integration_tests)
   if(TEST basic_boolean_andalso_short)
     return()
