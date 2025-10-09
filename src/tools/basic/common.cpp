@@ -1,9 +1,16 @@
-// File: src/tools/basic/common.cpp
-// Purpose: Implement shared helpers for BASIC command-line tools.
-// Key invariants: Diagnostics must match legacy tool output exactly.
-// Ownership/Lifetime: Functions operate on caller-provided buffers and managers.
-// License: MIT License. See LICENSE in the project root for full license information.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the small collection of helpers shared by BASIC command-line
+// utilities. Centralising file-loading and diagnostic emission keeps the
+// tool-specific entry points concise while ensuring error handling matches the
+// long-standing behaviour documented for the BASIC frontend.
+//
+//===----------------------------------------------------------------------===//
 
 #include "tools/basic/common.hpp"
 
@@ -26,6 +33,19 @@ constexpr const char *kUsageMessage = VIPER_BASIC_TOOL_USAGE;
 #endif
 } // namespace
 
+/// @brief Load a BASIC source file and register it with a SourceManager.
+///
+/// The helper validates the provided command-line argument, prints usage text
+/// when the argument is missing, and attempts to read the requested file into
+/// @p buffer. Successfully loaded files are registered with the supplied source
+/// manager so downstream lexer or parser stages can resolve diagnostics back to
+/// the original path.
+///
+/// @param path Filesystem path provided on the command line.
+/// @param buffer Destination string that receives the file contents on success.
+/// @param sm Source manager used to allocate a file identifier for the buffer.
+/// @return File identifier when the load succeeds; `std::nullopt` when the
+///         argument is missing or the file could not be opened.
 std::optional<std::uint32_t> loadBasicSource(const char *path,
                                              std::string &buffer,
                                              il::support::SourceManager &sm)

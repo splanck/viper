@@ -1,8 +1,16 @@
-// File: src/il/utils/Utils.cpp
-// Purpose: Implement small IL helper utilities for blocks and instructions.
-// Key invariants: Operates on il_core structures without additional dependencies.
-// Ownership/Lifetime: Non-owning views; caller manages lifetimes.
-// Links: docs/dev/analysis.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements lightweight inspection helpers used across IL analysis and
+// transformation passes. The functions operate on `BasicBlock` and `Instr`
+// structures without introducing additional dependencies, making them safe to
+// include from most layers of the compiler.
+//
+//===----------------------------------------------------------------------===//
 #include "il/utils/Utils.hpp"
 
 #include "il/core/BasicBlock.hpp"
@@ -14,16 +22,14 @@ namespace viper::il
 
 /// @brief Determine whether instruction @p I resides in block @p B.
 ///
-/// Performs a linear scan over @p B's `instructions` list from
-/// `il::core::BasicBlock` and compares addresses for equality. This does
-/// not traverse successor blocks or perform any structural checks beyond
-/// membership.
+/// Performs a linear scan over the block's instruction list and compares raw
+/// addresses for equality. The helper intentionally avoids more expensive IR
+/// queries because callers typically use it in assertion checks or debug-only
+/// validation.
 ///
-/// @param I Instruction to locate (an `il::core::Instr`).
-/// @param B Candidate parent block (an `il::core::BasicBlock`).
-/// @return True if @p I is contained in @p B.instructions; false otherwise.
-/// @invariant The block's `instructions` vector enumerates each instruction
-/// once and owns their storage.
+/// @param I Instruction to locate.
+/// @param B Candidate parent block.
+/// @return True when @p I is one of @p B's instructions; false otherwise.
 bool belongsToBlock(const Instruction &I, const Block &B)
 {
     for (const auto &inst : B.instructions)
@@ -38,16 +44,13 @@ bool belongsToBlock(const Instruction &I, const Block &B)
 
 /// @brief Fetch the terminating instruction of @p B, if any.
 ///
-/// The function examines the final element of @p B.instructions and delegates
-/// to ::viper::il::isTerminator to classify it. Blocks are expected to hold
-/// any terminator as their last instruction, mirroring the layout of
-/// `il::core::BasicBlock`.
+/// Blocks store their terminator, when present, as the final instruction. This
+/// helper checks the last instruction and returns it when `isTerminator`
+/// confirms the opcode category.
 ///
 /// @param B Block to inspect.
-/// @return Pointer to the terminator instruction or nullptr if @p B is empty
-/// or the last instruction is not a terminator.
-/// @invariant If non-null, the returned instruction is exactly the last entry
-/// in @p B.instructions.
+/// @return Pointer to the terminator instruction or nullptr if the block is
+///         empty or the last instruction is non-terminating.
 Instruction *terminator(Block &B)
 {
     if (B.instructions.empty())
@@ -60,13 +63,12 @@ Instruction *terminator(Block &B)
 
 /// @brief Classify whether instruction @p I terminates control flow.
 ///
-/// Recognizes the `Br`, `CBr`, `Ret`, and `Trap` opcodes from
-/// `il::core::Opcode`, which are the only terminators permitted in a
-/// `il::core::BasicBlock` per the IL specification.
+/// Recognises the opcodes that end a basic block according to the IL
+/// specification (branches, returns, traps, and EH resumes). Anything outside
+/// that set is treated as a non-terminator.
 ///
 /// @param I Instruction to inspect.
-/// @return True if @p I.op is one of the terminator opcodes; false otherwise.
-/// @invariant @p I.op must be a valid member of `il::core::Opcode`.
+/// @return True when @p I.op is a terminating opcode; false otherwise.
 bool isTerminator(const Instruction &I)
 {
     using ::il::core::Opcode;
