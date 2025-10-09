@@ -30,5 +30,17 @@ bool SourceLoc::isValid() const
 {
     return file_id != 0;
 }
+
+/// @brief Determine whether the range refers to a concrete span of source.
+///
+/// The range is considered valid when both endpoints identify tracked source
+/// locations. Clients are responsible for ensuring the begin/end ordering when
+/// constructing the range.
+///
+/// @return True when both @ref begin and @ref end carry valid file ids.
+bool SourceRange::isValid() const
+{
+    return begin.isValid() && end.isValid();
+}
 } // namespace il::support
 

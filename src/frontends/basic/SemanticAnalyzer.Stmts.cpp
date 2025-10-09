@@ -39,6 +39,7 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
     void visit(ReDimStmt &stmt) override { analyzer_.analyzeReDim(stmt); }
     void visit(RandomizeStmt &stmt) override { analyzer_.analyzeRandomize(stmt); }
     void visit(IfStmt &stmt) override { analyzer_.analyzeIf(stmt); }
+    void visit(SelectCaseStmt &stmt) override { analyzer_.analyzeSelectCase(stmt); }
     void visit(WhileStmt &stmt) override { analyzer_.analyzeWhile(stmt); }
     void visit(DoStmt &stmt) override { analyzer_.analyzeDo(stmt); }
     void visit(ForStmt &stmt) override { analyzer_.analyzeFor(stmt); }
@@ -463,6 +464,25 @@ void SemanticAnalyzer::analyzeIf(const IfStmt &i)
         analyzeBranch(e.then_branch);
     }
     analyzeBranch(i.else_branch);
+}
+
+void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt)
+{
+    if (stmt.selector)
+        visitExpr(*stmt.selector);
+
+    auto analyzeBody = [&](const std::vector<StmtPtr> &body) {
+        ScopeTracker::ScopedScope scope(scopes_);
+        for (const auto &child : body)
+            if (child)
+                visitStmt(*child);
+    };
+
+    for (const auto &arm : stmt.arms)
+        analyzeBody(arm.body);
+
+    if (!stmt.elseBody.empty())
+        analyzeBody(stmt.elseBody);
 }
 
 void SemanticAnalyzer::analyzeWhile(const WhileStmt &w)
