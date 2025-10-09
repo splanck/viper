@@ -55,10 +55,11 @@ class Parser
     /// @return Parsed statement belonging to the branch body.
     StmtPtr parseIfBranchBody(int line, StatementSequencer &ctx);
 
-    mutable Lexer lexer_;                    ///< Provides tokens from the source buffer.
-    mutable std::vector<Token> tokens_;      ///< Lookahead token buffer.
-    DiagnosticEmitter *emitter_ = nullptr;   ///< Diagnostic sink; not owned.
-    std::unordered_set<std::string> arrays_; ///< Names of arrays declared via DIM.
+    mutable Lexer lexer_;                     ///< Provides tokens from the source buffer.
+    mutable std::vector<Token> tokens_;       ///< Lookahead token buffer.
+    DiagnosticEmitter *emitter_ = nullptr;    ///< Diagnostic sink; not owned.
+    std::unordered_set<std::string> arrays_;  ///< Names of arrays declared via DIM.
+    std::unordered_set<std::string> knownProcedures_; ///< Procedure identifiers seen so far.
 
     /// @brief Mapping entry for statement parsers.
     struct StmtHandler
@@ -192,6 +193,15 @@ class Parser
     /// @param body Destination vector receiving parsed statements.
     /// @return Location of the END keyword; invalid if the keyword is absent.
     il::support::SourceLoc parseProcedureBody(TokenKind endKind, std::vector<StmtPtr> &body);
+
+    /// @brief Remember a procedure name for later diagnostics.
+    /// @param name BASIC identifier of the procedure.
+    void noteProcedureName(std::string name);
+
+    /// @brief Check whether @p name has been seen as a procedure declaration.
+    /// @param name Identifier to test.
+    /// @return True when @p name is a known procedure.
+    bool isKnownProcedureName(const std::string &name) const;
 
     /// @brief Parse a SUB definition including body.
     /// @return SUB statement node.
