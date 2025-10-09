@@ -1,8 +1,15 @@
-// File: src/vm/err_bridge.cpp
-// Purpose: Translation unit for the temporary runtime error bridge helpers.
-// Key invariants: Contains no state; exists to participate in the VM library build.
-// Ownership/Lifetime: Not applicable.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Provides the runtime error bridge that converts legacy BASIC error codes into
+// the VM's structured @ref TrapKind enumeration.  The helper is intentionally
+// simple and stateless.
+//
+//===----------------------------------------------------------------------===//
 
 #include "vm/err_bridge.hpp"
 
@@ -14,7 +21,14 @@
 
 namespace il::vm
 {
-/// @copydoc map_err_to_trap
+/// @brief Translate legacy BASIC error codes into @ref TrapKind enumerators.
+///
+/// Matches the historic runtime error numbers used by the BASIC frontend to the
+/// structured trap categories consumed by the VM.  Unknown codes fall back to
+/// @ref TrapKind::RuntimeError to preserve existing behaviour.
+///
+/// @param err_code Numeric error code originating from the BASIC runtime.
+/// @return Equivalent @ref TrapKind classification.
 TrapKind map_err_to_trap(int err_code)
 {
     switch (err_code)

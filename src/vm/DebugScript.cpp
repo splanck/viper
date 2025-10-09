@@ -1,8 +1,15 @@
-// File: src/vm/DebugScript.cpp
-// Purpose: Implement parsing of debug command scripts for the VM.
-// Key invariants: Unknown lines emit [DEBUG] messages and are skipped.
-// Ownership/Lifetime: Reads from filesystem at construction; no further I/O.
-// Links: docs/dev/vm.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the tiny script loader used by the VM debugger.  Scripts are text
+// files containing imperative commands such as "continue" or "step N" which are
+// fed to the debugger to automate interactive sessions.
+//
+//===----------------------------------------------------------------------===//
 #include "vm/DebugScript.hpp"
 
 #include <fstream>
@@ -11,11 +18,12 @@
 
 namespace il::vm
 {
-/// @brief Construct script by loading actions from a file.
+/// @brief Construct a script by loading actions from a command file.
 ///
-/// Lines with "continue" enqueue a Continue action; lines with
-/// "step" or "step N" enqueue a Step action with the given instruction count.
-/// Unknown or malformed lines emit a [DEBUG] message and are ignored.
+/// Lines containing "continue" enqueue a Continue action; lines with "step" or
+/// "step N" enqueue a Step action with the requested instruction count.  Unknown
+/// commands emit a `[DEBUG]` message and are ignored so partially written scripts
+/// remain usable.
 DebugScript::DebugScript(const std::string &path)
 {
     std::ifstream f(path);
@@ -55,8 +63,8 @@ DebugScript::DebugScript(const std::string &path)
 
 /// @brief Queue a step action for @p count instructions.
 ///
-/// This adds a Step action to be consumed by the debugger, allowing it to
-/// advance execution a fixed number of instructions before pausing again.
+/// Useful for programmatic tooling that wants to append commands after loading
+/// a script file.
 void DebugScript::addStep(uint64_t count)
 {
     actions.push({DebugActionKind::Step, count});
