@@ -77,6 +77,15 @@ StringRef fromViperString(const ViperString &str)
     return StringRef{data, static_cast<size_t>(length)};
 }
 
+/// @brief Extract a 64-bit integer from a constant IL value.
+///
+/// The VM only marshals integer-like values originating from constant operands
+/// when bridging to the runtime.  The helper accepts both integer and floating
+/// constants, truncating the latter to match the VM's semantics.  Null pointers
+/// translate to zero so pointer constants can participate in numeric APIs.
+///
+/// @param value Constant IL value supplied by the runtime bridge.
+/// @return Integer representation of @p value suitable for runtime calls.
 int64_t toI64(const il::core::Value &value)
 {
     using Kind = il::core::Value::Kind;
@@ -94,6 +103,14 @@ int64_t toI64(const il::core::Value &value)
     }
 }
 
+/// @brief Extract a double-precision value from a constant IL operand.
+///
+/// Mirrors @ref toI64 by accepting integer and floating constants while treating
+/// null pointers as zero.  The helper exists so runtime bridges can normalise
+/// values without replicating the `switch` logic over @ref il::core::Value::Kind.
+///
+/// @param value Constant IL value supplied by the runtime bridge.
+/// @return Double representation of @p value suitable for runtime calls.
 double toF64(const il::core::Value &value)
 {
     using Kind = il::core::Value::Kind;

@@ -1,11 +1,15 @@
-// File: src/frontends/basic/builtins/MathBuiltins.cpp
-// Purpose: Implements registration helpers for BASIC math builtins, supplying
-//          metadata consumed by semantic analysis and lowering.
-// Key invariants: Registration populates tables using enum ordinals without
-//                 reallocating storage.
-// Ownership/Lifetime: Tables are owned by the registry; this unit only mutates
-//                     spans passed by the caller.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements helpers that populate descriptor tables for BASIC math builtins.
+// The metadata drives semantic analysis and lowering, mapping high-level calls
+// to runtime intrinsics.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/builtins/MathBuiltins.hpp"
 
@@ -17,6 +21,9 @@ namespace
 {
 using B = BuiltinCallExpr::Builtin;
 
+/// @brief Convert an intrinsic enumerator into an array index.
+/// @param b Builtin enumerator value.
+/// @return Zero-based index used to access descriptor tables.
 constexpr std::size_t idx(B b) noexcept
 {
     return static_cast<std::size_t>(b);
@@ -24,6 +31,12 @@ constexpr std::size_t idx(B b) noexcept
 
 } // namespace
 
+/// @brief Populate the builtin info table with metadata for math functions.
+///
+/// Each slot in @p infos receives the printable name and optional semantic
+/// analysis hook for a corresponding runtime intrinsic.
+///
+/// @param infos Mutable span covering the builtin info array.
 void registerMathBuiltinInfos(std::span<BuiltinInfo> infos)
 {
     infos[idx(B::Int)] = {"INT", nullptr};
@@ -39,6 +52,13 @@ void registerMathBuiltinInfos(std::span<BuiltinInfo> infos)
     infos[idx(B::Rnd)] = {"RND", nullptr};
 }
 
+/// @brief Populate the scan rules that drive builtin argument analysis.
+///
+/// The rules describe result types, traversal strategies, and runtime feature
+/// dependencies so the lowering pipeline can emit appropriate runtime calls and
+/// diagnostics.
+///
+/// @param rules Mutable span covering the builtin scan rule array.
 void registerMathBuiltinScanRules(std::span<BuiltinScanRule> rules)
 {
     using ResultSpec = BuiltinScanRule::ResultSpec;

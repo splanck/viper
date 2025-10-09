@@ -1,8 +1,16 @@
-// File: src/vm/VMInit.cpp
-// Purpose: Implements VM construction and execution state preparation routines.
-// Key invariants: Ensures frames and execution state are initialised consistently.
-// Ownership/Lifetime: VM retains references to module functions and runtime strings.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements construction and initialisation helpers for the VM.  The routines
+// here seed lookup tables, prepare execution frames, and apply debugger settings
+// so that the interpreter loop can focus on opcode execution without worrying
+// about setup and teardown invariants.
+//
+//===----------------------------------------------------------------------===//
 
 #include "vm/VM.hpp"
 #include "vm/Marshal.hpp"
@@ -25,6 +33,7 @@ namespace il::vm
 namespace
 {
 
+/// @brief One-time initialiser that forces the numeric locale to "C".
 struct NumericLocaleInitializer
 {
     NumericLocaleInitializer()
@@ -37,21 +46,25 @@ struct NumericLocaleInitializer
 
 } // namespace
 
-/// Construct a VM instance bound to a specific IL @p Module.
-/// The constructor wires the tracing and debugging subsystems and pre-populates
-/// lookup tables for functions and runtime strings.
+/// @brief Construct a VM instance bound to a specific IL module.
 ///
-/// @param m   Module containing code and globals to execute. It must outlive the VM.
-/// @param tc  Trace configuration used to initialise the @c TraceSink. The contained
-///            source manager is passed to the debug controller so source locations
-///            can be reported in breaks.
-/// @param ms  Optional step limit; execution aborts after this many instructions
-///            have been retired. A value of @c 0 disables the limit.
-/// @param dbg Initial debugger control block describing active breakpoints and
-///            stepping behaviour.
-/// @param script Optional scripted debugger interaction. When provided, scripted
-///            actions drive how pauses are handled; otherwise breaks cause the VM
-///            to return a fixed slot.
+/// The constructor captures pointers to every function and string literal so
+/// that later opcode handlers can resolve them in constant time.  It also wires
+/// the tracing and debugging subsystems together, handing the trace sink's
+/// source manager to the debugger so breakpoints can report file information.
+///
+/// @param m      Module containing code and globals to execute. It must outlive
+///               the VM.
+/// @param tc     Trace configuration used to initialise the trace sink. The
+///               contained source manager is also shared with the debugger.
+/// @param ms     Optional step limit; execution aborts after this many
+///               instructions have been retired. A value of zero disables the
+///               limit.
+/// @param dbg    Initial debugger control block describing active breakpoints
+///               and stepping behaviour.
+/// @param script Optional scripted debugger interaction. When provided,
+///               scripted actions drive how pauses are handled; otherwise
+///               breaks cause the VM to return a fixed slot.
 VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript *script)
     : mod(m), tracer(tc), debug(std::move(dbg)), script(script), maxSteps(ms)
 {
@@ -64,7 +77,7 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
         strMap[g.name] = toViperString(g.init);
 }
 
-/// Release runtime string handles owned by the VM instance.
+/// @brief Release runtime string handles owned by the VM instance.
 VM::~VM()
 {
     for (auto &entry : strMap)
@@ -76,16 +89,17 @@ VM::~VM()
     inlineLiteralCache.clear();
 }
 
-/// Initialise a fresh @c Frame for executing function @p fn.
+/// @brief Initialise a fresh frame for executing a function.
 ///
-/// Populates a basic-block lookup table, selects the entry block and seeds the
-/// register file and any entry parameters. This prepares state for the main
-/// interpreter loop without performing any tracing.
+/// The routine builds a label-to-block lookup table, seeds the register file and
+/// staged parameter slots, verifies the argument count, and stores the entry
+/// block pointer.  This prepares the frame for the interpreter loop without
+/// emitting any trace events.
 ///
 /// @param fn     Function to execute.
 /// @param args   Argument slots for the function's entry block.
 /// @param blocks Output mapping from block labels to blocks for fast branch resolution.
-/// @param bb     Set to the entry basic block of @p fn.
+/// @param bb     Receives the entry basic block of @p fn, or nullptr when none exist.
 /// @return Fully initialised frame ready to run.
 Frame VM::setupFrame(const Function &fn,
                      const std::vector<Slot> &args,
@@ -128,10 +142,12 @@ Frame VM::setupFrame(const Function &fn,
     return fr;
 }
 
-/// Create an initial execution state for running @p fn.
+/// @brief Create an initial execution state for running @p fn.
 ///
-/// This sets up the frame and block map via @c setupFrame, resets debugging
-/// state, and initialises the instruction pointer and stepping flags.
+/// The execution state wraps the freshly prepared frame, resets debugger
+/// book-keeping, primes the trace sink with instruction locations, and starts
+/// execution at the entry block.  The interpreter loop consumes this structure
+/// directly.
 ///
 /// @param fn   Function to execute.
 /// @param args Arguments passed to the function's entry block.
