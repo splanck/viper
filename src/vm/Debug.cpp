@@ -1,10 +1,15 @@
-// File: src/vm/Debug.cpp
-// Purpose: Implement breakpoint control and path normalization for the VM.
-// Key invariants: Interned labels identify block breakpoints; source line
-// breakpoints match when either the normalized file path and line or the
-// basename and line coincide. Ownership/Lifetime: DebugCtrl owns its interner,
-// breakpoint set, and source line list.
-// Links: docs/dev/vm.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the debugger control surface used by the VM to manage breakpoints,
+// watches, and scripted execution.  The helpers normalise file paths, track
+// previously hit locations, and print watch updates in a consistent format.
+//
+//===----------------------------------------------------------------------===//
 #include "vm/Debug.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
@@ -36,6 +41,14 @@ std::string DebugCtrl::normalizePath(std::string p)
     return generic;
 }
 
+/// @brief Normalise a path and return both the canonical path and basename.
+///
+/// Used by source breakpoints so that either fully-qualified paths or file
+/// basenames can match a breakpoint.  The basename is extracted from the
+/// normalised path to keep both variants in sync.
+///
+/// @param path Path to normalise; moved into the result.
+/// @return Pair of {normalised path, basename}.
 std::pair<std::string, std::string> DebugCtrl::normalizePathWithBase(std::string path)
 {
     std::string normFile = normalizePath(std::move(path));

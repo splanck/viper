@@ -1,9 +1,15 @@
-// File: src/tools/ilc/cli.cpp
-// Purpose: Implements shared CLI option parsing for ilc subcommands.
-// Key invariants: None.
-// Ownership/Lifetime: N/A.
-// License: MIT (see LICENSE).
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements shared command-line parsing for the ilc driver.  The helpers here
+// decode the global options that apply to multiple subcommands so individual
+// entry points can focus on their feature-specific flags.
+//
+//===----------------------------------------------------------------------===//
 
 #include "cli.hpp"
 
@@ -14,6 +20,19 @@
 namespace ilc
 {
 
+/// @brief Parse an ilc global option and update the shared options structure.
+///
+/// The parser recognises tracing flags, input redirection, execution limits,
+/// and diagnostic controls.  On success the current @p index is advanced past
+/// any consumed arguments so the caller can continue scanning remaining flags.
+///
+/// @param index Current position in the argv array; advanced when extra tokens
+///        are consumed (for example by `--stdin-from` or `--max-steps`).
+/// @param argc Total argument count for the subcommand.
+/// @param argv Argument vector supplied to the driver.
+/// @param opts Structure receiving parsed option values.
+/// @return Result indicating whether the option was handled, not matched, or
+///         produced a parsing error.
 SharedOptionParseResult parseSharedOption(int &index,
                                          int argc,
                                          char **argv,
