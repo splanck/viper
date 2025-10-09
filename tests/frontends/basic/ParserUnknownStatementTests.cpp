@@ -46,5 +46,33 @@ int main()
     assert(output.find("error[B0001]") != std::string::npos);
     assert(output.find("unknown statement 'FOOBAR'") != std::string::npos);
 
+    {
+        std::string src2 =
+            "10 SUB Greet(name)\n20 PRINT \"hi\"\n30 END SUB\n40 Greet \"Alice\"\n50 END\n";
+
+        SourceManager sm2;
+        uint32_t fid2 = sm2.addFile("missing_paren.bas");
+
+        DiagnosticEngine de2;
+        DiagnosticEmitter emitter2(de2, sm2);
+        emitter2.addSource(fid2, src2);
+
+        Parser parser2(src2, fid2, &emitter2);
+        auto program2 = parser2.parseProgram();
+        assert(program2);
+        assert(emitter2.errorCount() == 1);
+
+        std::ostringstream oss2;
+        emitter2.printAll(oss2);
+        std::string output2 = oss2.str();
+        assert(output2.find("error[B0001]") != std::string::npos);
+        assert(output2.find("expected '(") != std::string::npos);
+        assert(output2.find("procedure name 'GREET'") != std::string::npos);
+        auto linePos = output2.find("40 Greet \"Alice\"");
+        assert(linePos != std::string::npos);
+        auto caretSnippet = output2.find("\"Alice\"\n         ^", linePos);
+        assert(caretSnippet != std::string::npos);
+    }
+
     return 0;
 }
