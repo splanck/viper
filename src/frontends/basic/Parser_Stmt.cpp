@@ -18,6 +18,8 @@ namespace il::frontends::basic
 StmtPtr Parser::parseStatement(int line)
 {
     const Token &tok = peek();
+    std::string tokLexeme = tok.lexeme;
+    auto tokLoc = tok.loc;
     if (tok.kind == TokenKind::Number)
     {
         if (emitter_)
@@ -50,14 +52,45 @@ StmtPtr Parser::parseStatement(int line)
         if (handler.with_line)
             return (this->*(handler.with_line))(line);
     }
+    if (tok.kind == TokenKind::Identifier && peek(1).kind == TokenKind::LParen)
+    {
+        std::string ident = tokLexeme;
+        auto identLoc = tokLoc;
+        auto expr = parseArrayOrVar();
+        if (auto *callExpr = dynamic_cast<CallExpr *>(expr.get()))
+        {
+            auto stmt = std::make_unique<CallStmt>();
+            stmt->loc = identLoc;
+            stmt->call.reset(static_cast<CallExpr *>(expr.release()));
+            return stmt;
+        }
+        if (emitter_)
+        {
+            std::string msg = std::string("unknown statement '") + ident + "'";
+            emitter_->emit(il::support::Severity::Error,
+                           "B0001",
+                           identLoc,
+                           static_cast<uint32_t>(ident.size()),
+                           std::move(msg));
+        }
+        else
+        {
+            std::fprintf(stderr, "unknown statement '%s'\n", ident.c_str());
+        }
+        while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
+        {
+            consume();
+        }
+        return nullptr;
+    }
     if (emitter_)
     {
-        std::string msg = std::string("unknown statement '") + tok.lexeme + "'";
-        emitter_->emit(il::support::Severity::Error,
-                       "B0001",
-                       tok.loc,
-                       static_cast<uint32_t>(tok.lexeme.size()),
-                       std::move(msg));
+            std::string msg = std::string("unknown statement '") + tokLexeme + "'";
+            emitter_->emit(il::support::Severity::Error,
+                           "B0001",
+                           tokLoc,
+                           static_cast<uint32_t>(tokLexeme.size()),
+                           std::move(msg));
     }
     else
     {

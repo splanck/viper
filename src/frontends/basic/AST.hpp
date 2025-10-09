@@ -30,6 +30,7 @@ struct CallExpr;
 struct LabelStmt;
 struct PrintStmt;
 struct PrintChStmt;
+struct CallStmt;
 struct ClsStmt;
 struct ColorStmt;
 struct LocateStmt;
@@ -100,6 +101,7 @@ struct StmtVisitor
     virtual void visit(const LabelStmt &) = 0;
     virtual void visit(const PrintStmt &) = 0;
     virtual void visit(const PrintChStmt &) = 0;
+    virtual void visit(const CallStmt &) = 0;
     virtual void visit(const ClsStmt &) = 0;
     virtual void visit(const ColorStmt &) = 0;
     virtual void visit(const LocateStmt &) = 0;
@@ -135,6 +137,7 @@ struct MutStmtVisitor
     virtual void visit(LabelStmt &) = 0;
     virtual void visit(PrintStmt &) = 0;
     virtual void visit(PrintChStmt &) = 0;
+    virtual void visit(CallStmt &) = 0;
     virtual void visit(ClsStmt &) = 0;
     virtual void visit(ColorStmt &) = 0;
     virtual void visit(LocateStmt &) = 0;
@@ -453,6 +456,15 @@ struct PrintChStmt : Stmt
     /// True when a trailing newline should be emitted after printing.
     bool trailingNewline = true;
 
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief CALL statement invoking a user-defined SUB.
+struct CallStmt : Stmt
+{
+    /// Call expression representing the invoked SUB.
+    std::unique_ptr<CallExpr> call;
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
 };

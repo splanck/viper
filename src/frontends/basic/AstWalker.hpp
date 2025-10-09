@@ -251,6 +251,18 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
         callAfter(stmt);
     }
 
+    void visit(const CallStmt &stmt) override
+    {
+        callBefore(stmt);
+        if (callShouldVisit(stmt) && stmt.call)
+        {
+            callBeforeChild(stmt, *stmt.call);
+            stmt.call->accept(*static_cast<Derived *>(this));
+            callAfterChild(stmt, *stmt.call);
+        }
+        callAfter(stmt);
+    }
+
     void visit(const ClsStmt &stmt) override
     {
         callBefore(stmt);

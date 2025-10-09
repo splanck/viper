@@ -190,6 +190,18 @@ void PrintChStmt::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this CALL statement node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void CallStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void CallStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
 /// @brief Forwards this CLS statement node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void ClsStmt::accept(StmtVisitor &visitor) const
