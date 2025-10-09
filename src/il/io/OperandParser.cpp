@@ -132,6 +132,7 @@ OperandParser::splitCommaSeparated(const std::string &text, const char *context)
     bool inString = false;
     bool escape = false;
     size_t depth = 0;
+    bool lastCommaAtZeroDepth = false;
 
     auto makeErrorWithMessage = [&](const std::string &message) {
         std::ostringstream oss;
@@ -152,6 +153,7 @@ OperandParser::splitCommaSeparated(const std::string &text, const char *context)
         if (inString)
         {
             current.push_back(c);
+            lastCommaAtZeroDepth = false;
             if (escape)
             {
                 escape = false;
@@ -171,11 +173,14 @@ OperandParser::splitCommaSeparated(const std::string &text, const char *context)
         {
             current.push_back(c);
             inString = true;
+            lastCommaAtZeroDepth = false;
             continue;
         }
 
         if (c == '(')
         {
+            if (depth == 0)
+                lastCommaAtZeroDepth = false;
             current.push_back(c);
             ++depth;
             continue;
@@ -186,6 +191,7 @@ OperandParser::splitCommaSeparated(const std::string &text, const char *context)
                 return makeErrorWithMessage("mismatched ')'");
             current.push_back(c);
             --depth;
+            lastCommaAtZeroDepth = false;
             continue;
         }
         if (c == ',' && depth == 0)
@@ -196,10 +202,13 @@ OperandParser::splitCommaSeparated(const std::string &text, const char *context)
             if (!trimmed.empty())
                 tokens.push_back(std::move(trimmed));
             current.clear();
+            lastCommaAtZeroDepth = true;
             continue;
         }
 
         current.push_back(c);
+        if (depth > 0 || !std::isspace(static_cast<unsigned char>(c)))
+            lastCommaAtZeroDepth = false;
     }
 
     if (escape || inString)
@@ -208,7 +217,12 @@ OperandParser::splitCommaSeparated(const std::string &text, const char *context)
         return makeErrorWithMessage("mismatched ')'");
 
     std::string trimmed = trim(current);
-    if (!trimmed.empty())
+    if (trimmed.empty())
+    {
+        if (lastCommaAtZeroDepth && !textIsWhitespaceOnly)
+            return malformedError();
+    }
+    else
         tokens.push_back(std::move(trimmed));
 
     return Expected<std::vector<std::string>>{std::move(tokens)};
