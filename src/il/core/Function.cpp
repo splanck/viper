@@ -5,10 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Placeholder for out-of-line helpers associated with il::core::Function.  The
-// interface currently consists entirely of inline definitions but the file
-// exists to anchor future logic related to function manipulation within the
-// intermediate language.
+// Hosts the out-of-line helpers associated with il::core::Function.  At the
+// moment every routine remains inline in the header, yet keeping this
+// translation unit in the build tree documents where future functionality—such
+// as metadata attachment helpers or verification utilities—should live.  Doing
+// so also prevents churn in downstream code that already expects the file to be
+// part of the core IL library.
 //
 //===----------------------------------------------------------------------===//
 

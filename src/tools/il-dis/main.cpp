@@ -1,27 +1,24 @@
-// File: src/tools/il-dis/main.cpp
-// Purpose: Example tool emitting IL for a simple program.
-// License: MIT License (see LICENSE).
-// Key invariants: None.
-// Ownership/Lifetime: Tool owns constructed module.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+// MIT License. See LICENSE file in the project root for full text.
+//
+// Defines a tiny command-line utility that demonstrates how to build a module
+// using the IRBuilder façade and serialize it to textual IL.  The tool is used
+// during development as a smoke test for the builder and serializer pipelines.
+//===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
 #include "il/io/Serializer.hpp"
 #include <iostream>
 
-/// @brief Emit IL for a sample program.
+/// @brief Emit IL for a fixed "hello world" style program.
 ///
-/// Accepts no command-line arguments. Constructs an in-memory module using the
-/// following steps:
-/// 1. Creates an IRBuilder bound to a fresh module instance.
-/// 2. Adds the extern `rt_print_str` and a global string literal used by the
-///    program.
-/// 3. Emits the `main` function, its entry block, and the call/return
-///    instructions needed to print and exit.
-/// 4. Serializes the populated module to standard output.
+/// The utility does not inspect command-line arguments.  Instead it builds a
+/// module in-memory using IRBuilder, declaring the runtime print routine,
+/// materializing a string literal, and emitting the entry function with its
+/// associated block and instructions.  Finally it serializes the finished
+/// module to stdout so the caller can observe the produced IL.
 ///
-/// @return 0 on success.
-/// @note Side effect: writes serialized IL text to stdout.
+/// @return Zero on success after printing the serialized module.
 int main()
 {
     il::core::Module m;
