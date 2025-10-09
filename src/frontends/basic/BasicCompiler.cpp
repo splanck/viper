@@ -1,4 +1,5 @@
 // File: src/frontends/basic/BasicCompiler.cpp
+// License: MIT License. See LICENSE in the project root for full license information.
 // Purpose: Implements the BASIC front-end pipeline producing IL modules.
 // Key invariants: Diagnostics capture all failures; lowering only runs on valid programs.
 // Ownership/Lifetime: Result owns diagnostics; borrows SourceManager for source mapping.
@@ -14,11 +15,43 @@
 namespace il::frontends::basic
 {
 
+/// @brief Report whether the compilation pipeline produced a valid module.
+///
+/// The compiler front end records every diagnostic through the shared emitter.
+/// A successful compilation therefore requires two conditions: the emitter
+/// must exist (meaning the pipeline reached initialization) and the diagnostic
+/// stream must not contain any errors.  Downstream stages use this helper to
+/// gate lowering so malformed programs never reach IR emission.
+///
+/// @return True when compilation completed without recorded errors; otherwise
+///         false.
 [[nodiscard]] bool BasicCompilerResult::succeeded() const
 {
     return emitter && emitter->errorCount() == 0;
 }
 
+/// @brief Compile BASIC source text into an IL module.
+///
+/// The pipeline performs the following steps:
+///   1. Initialize a @ref DiagnosticEmitter that owns the diagnostic list used
+///      by callers to inspect errors.
+///   2. Ensure the input has an associated file identifier so diagnostics can
+///      reference the correct source location.
+///   3. Parse the BASIC program, aborting early if syntax errors are detected.
+///   4. Run constant folding to simplify obvious literal expressions before
+///      semantic analysis.
+///   5. Perform semantic analysis, recording any type or symbol issues.
+///   6. When all checks succeed, lower the AST to IL using the Lowerer helper
+///      and store the resulting module in the returned structure.
+///
+/// At each phase the intermediate result is validated so the caller receives
+/// as much diagnostic information as possible without attempting to emit IR
+/// from invalid input.
+///
+/// @param input Compilation inputs including source buffer metadata.
+/// @param options Pipeline configuration flags controlling lowering behaviour.
+/// @param sm Source manager used to register synthetic or disk-backed files.
+/// @return Aggregated compilation result containing diagnostics and the module.
 BasicCompilerResult compileBasic(const BasicCompilerInput &input,
                                  const BasicCompilerOptions &options,
                                  il::support::SourceManager &sm)
