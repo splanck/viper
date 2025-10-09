@@ -1,15 +1,35 @@
-// File: src/frontends/basic/TypeSuffix.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Implements helpers for inferring BASIC semantic types from identifier suffixes.
-// Key invariants: BASIC suffix characters map deterministically to AST scalar types.
-// Ownership/Lifetime: Stateless utility functions.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Provides the helper that interprets traditional BASIC type suffix characters
+// (`$`, `%`, `&`, `!`, `#`) and maps them onto the compiler's scalar type
+// enumeration. Keeping the logic out of the header keeps the inline surface
+// small and lets the implementation document the fallbacks used when a name is
+// not suffixed.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/TypeSuffix.hpp"
 
 namespace il::frontends::basic
 {
 
+/// @brief Deduce the BASIC scalar type represented by an identifier suffix.
+///
+/// BASIC allows variable names to end in a sigil that encodes the variable's
+/// type (for example `A$` for strings and `B%` for integers). The lowering
+/// pipeline models those choices through the `Type` enumeration. This helper
+/// inspects the final character of @p name, returning the corresponding
+/// semantic type. Names without a suffix default to `Type::I64`, mirroring the
+/// semantics of classic BASIC dialects.
+///
+/// @param name Identifier to inspect; the view is not stored.
+/// @return The inferred type based on the final character, or `Type::I64` when
+///         no suffix is present.
 Type inferAstTypeFromName(std::string_view name)
 {
     if (!name.empty())
@@ -32,3 +52,4 @@ Type inferAstTypeFromName(std::string_view name)
 }
 
 } // namespace il::frontends::basic
+

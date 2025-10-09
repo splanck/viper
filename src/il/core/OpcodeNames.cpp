@@ -1,8 +1,15 @@
-// File: src/il/core/OpcodeNames.cpp
-// Purpose: Provide lightweight mnemonic lookups for IL opcodes.
-// Key invariants: Table entries align exactly with the order of il::core::Opcode.
-// Ownership/Lifetime: Static storage duration for shared string literals.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Provides the lightweight mapping from opcode enumeration values to their IL
+// mnemonic strings. The generated table is intentionally kept in this source
+// file so translation units only pay for the strings they use.
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/Opcode.hpp"
 
@@ -21,6 +28,15 @@ constexpr std::array<const char *, kNumOpcodes> kOpcodeNames = {
 static_assert(kOpcodeNames.size() == kNumOpcodes, "Opcode name table must match enum count");
 } // namespace
 
+/// @brief Translate an opcode enumeration value into its mnemonic string.
+///
+/// Performs a bounds check before indexing into the generated table so invalid
+/// opcodes gracefully map to an empty string. This mirrors the behaviour of
+/// other diagnostic helpers.
+///
+/// @param op Opcode enumeration value to translate.
+/// @return Pointer to the null-terminated mnemonic or an empty string when
+///         @p op is out of range.
 const char *toString(Opcode op)
 {
     const size_t index = static_cast<size_t>(op);
