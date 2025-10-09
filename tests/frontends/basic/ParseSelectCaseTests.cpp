@@ -1,0 +1,118 @@
+// File: tests/frontends/basic/ParseSelectCaseTests.cpp
+// Purpose: Validate parsing of BASIC SELECT CASE statements and diagnostics.
+// Key invariants: SELECT CASE requires integer labels, unique CASE ELSE, and END SELECT.
+// Ownership/Lifetime: Tests own parser, diagnostic engine, and AST instances.
+// Links: docs/codemap.md
+
+#include "frontends/basic/AstPrinter.hpp"
+#include "frontends/basic/DiagnosticEmitter.hpp"
+#include "frontends/basic/Parser.hpp"
+#include "support/diagnostics.hpp"
+#include "support/source_manager.hpp"
+
+#include <cassert>
+#include <sstream>
+#include <string>
+
+using namespace il::frontends::basic;
+using namespace il::support;
+
+namespace
+{
+std::string dumpProgram(const std::string &src)
+{
+    SourceManager sm;
+    const uint32_t fid = sm.addFile("select_case.bas");
+    Parser parser(src, fid);
+    auto prog = parser.parseProgram();
+    assert(prog);
+    AstPrinter printer;
+    return printer.dump(*prog);
+}
+} // namespace
+
+int main()
+{
+    {
+        const std::string src =
+            "10 SELECT CASE X\n"
+            "20 CASE 1, 2\n"
+            "30 PRINT 1\n"
+            "40 CASE 3\n"
+            "50 PRINT 3\n"
+            "60 CASE ELSE\n"
+            "70 PRINT 0\n"
+            "80 END SELECT\n";
+        const std::string dump = dumpProgram(src);
+        const std::string expected =
+            "10: (SELECT CASE X (CASE 1 2) {30:(PRINT 1)}) (CASE 3) {50:(PRINT 3)}) (CASE ELSE) {70:(PRINT 0)}))\n";
+        assert(dump == expected);
+    }
+
+    {
+        const std::string src =
+            "10 SELECT CASE X\n"
+            "20 CASE A\n"
+            "30 PRINT 1\n"
+            "40 END SELECT\n";
+        SourceManager sm;
+        const uint32_t fid = sm.addFile("bad_label.bas");
+        DiagnosticEngine de;
+        DiagnosticEmitter emitter(de, sm);
+        emitter.addSource(fid, src);
+        Parser parser(src, fid, &emitter);
+        auto prog = parser.parseProgram();
+        assert(prog);
+        assert(emitter.errorCount() >= 1);
+        std::ostringstream oss;
+        emitter.printAll(oss);
+        const std::string output = oss.str();
+        assert(output.find("integer literals") != std::string::npos);
+    }
+
+    {
+        const std::string src =
+            "10 SELECT CASE X\n"
+            "20 CASE 1\n"
+            "30 PRINT 1\n"
+            "40 CASE ELSE\n"
+            "50 PRINT 0\n"
+            "60 CASE ELSE\n"
+            "70 PRINT 2\n"
+            "80 END SELECT\n";
+        SourceManager sm;
+        const uint32_t fid = sm.addFile("dup_else.bas");
+        DiagnosticEngine de;
+        DiagnosticEmitter emitter(de, sm);
+        emitter.addSource(fid, src);
+        Parser parser(src, fid, &emitter);
+        auto prog = parser.parseProgram();
+        assert(prog);
+        std::ostringstream oss;
+        emitter.printAll(oss);
+        const std::string output = oss.str();
+        assert(output.find("duplicate CASE ELSE") != std::string::npos);
+    }
+
+    {
+        const std::string src =
+            "10 SELECT CASE X\n"
+            "20 CASE 1\n"
+            "30 PRINT 1\n";
+        SourceManager sm;
+        const uint32_t fid = sm.addFile("missing_end.bas");
+        DiagnosticEngine de;
+        DiagnosticEmitter emitter(de, sm);
+        emitter.addSource(fid, src);
+        Parser parser(src, fid, &emitter);
+        auto prog = parser.parseProgram();
+        assert(prog);
+        std::ostringstream oss;
+        emitter.printAll(oss);
+        const std::string output = oss.str();
+        assert(output.find("missing END SELECT") != std::string::npos);
+    }
+
+    return 0;
+}
+
