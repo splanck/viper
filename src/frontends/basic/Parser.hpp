@@ -100,6 +100,10 @@ class Parser
     /// @return WHILE statement node.
     StmtPtr parseWhile();
 
+    /// @brief Parse a SELECT CASE statement with optional CASE ELSE.
+    /// @return SELECT CASE statement node.
+    StmtPtr parseSelectCase();
+
     /// @brief Parse a DO ... LOOP statement.
     /// @return DO statement node with optional tests.
     StmtPtr parseDo();

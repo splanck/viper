@@ -29,10 +29,11 @@ Parser::Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *emitte
     : lexer_(src, file_id), emitter_(emitter)
 {
     tokens_.push_back(lexer_.next());
-    static constexpr std::array<std::pair<TokenKind, StmtHandler>, 26> kStatementHandlers = {{
+    static constexpr std::array<std::pair<TokenKind, StmtHandler>, 27> kStatementHandlers = {{
         {TokenKind::KeywordPrint, {&Parser::parsePrint, nullptr}},
         {TokenKind::KeywordLet, {&Parser::parseLet, nullptr}},
         {TokenKind::KeywordIf, {nullptr, &Parser::parseIf}},
+        {TokenKind::KeywordSelect, {&Parser::parseSelectCase, nullptr}},
         {TokenKind::KeywordWhile, {&Parser::parseWhile, nullptr}},
         {TokenKind::KeywordDo, {&Parser::parseDo, nullptr}},
         {TokenKind::KeywordFor, {&Parser::parseFor, nullptr}},
