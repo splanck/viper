@@ -172,7 +172,26 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
         for (const auto &arg : expr.args)
             if (arg)
                 consumeExpr(*arg);
-        push(ExprType::I64);
+        if (const auto *sig = lowerer_.findProcSignature(expr.callee))
+        {
+            using K = il::core::Type::Kind;
+            switch (sig->retType.kind)
+            {
+                case K::F64: push(ExprType::F64); break;
+                case K::Ptr: // arrays decayed to ptr or string runtime handles
+                case K::I1:
+                case K::I16:
+                case K::I32:
+                case K::I64: push(ExprType::I64); break;
+                case K::Str: push(ExprType::Str); break;
+                case K::Void:
+                default:     push(ExprType::I64); break; // SUB in expr is illegal; semantics catches it
+            }
+        }
+        else
+        {
+            push(ExprType::I64);
+        }
     }
 
     // Statement hooks ---------------------------------------------------
