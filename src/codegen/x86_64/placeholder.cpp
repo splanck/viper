@@ -1,17 +1,22 @@
-// File: src/codegen/x86_64/placeholder.cpp
-// Purpose: Stub implementation for x86_64 code generation library.
-// Key invariants: None.
-// Ownership/Lifetime: Not applicable.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+// MIT License. See LICENSE file in the project root for full text.
+//
+// Provides a stubbed entry point for the x86-64 code generation library.  The
+// target backend has not yet been implemented, but exporting a real symbol keeps
+// the build system and downstream link steps functional while development is in
+// progress.
+//===----------------------------------------------------------------------===//
 namespace il::codegen::x86_64
 {
 
-/// @brief Stub entry point for the x86-64 code generator.
+/// @brief Placeholder hook for the unimplemented x86-64 backend.
 ///
-/// Exists solely to anchor the code generation library; it accepts no
-/// parameters and performs no work.
-/// @return Always returns 0.
-/// @invariant This function has no side effects.
+/// The current build needs a concrete symbol to satisfy linkage when the code
+/// generation library is produced as part of the toolchain.  The function
+/// accepts no arguments, performs no work, and returns zero so that callers can
+/// probe library availability without triggering undefined behavior.
+///
+/// @return Always returns 0 to signal "not yet implemented" without failure.
 int placeholder()
 {
     return 0;
