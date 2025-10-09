@@ -34,6 +34,8 @@ class LowererStmtVisitor final : public StmtVisitor
 
     void visit(const PrintChStmt &stmt) override { lowerer_.lowerPrintCh(stmt); }
 
+    void visit(const CallStmt &stmt) override { lowerer_.lowerCallStmt(stmt); }
+
     void visit(const ClsStmt &stmt) override { lowerer_.visit(stmt); }
 
     void visit(const ColorStmt &stmt) override { lowerer_.visit(stmt); }
@@ -167,6 +169,17 @@ void Lowerer::lowerStmtList(const StmtList &stmt)
             break;
         lowerStmt(*child);
     }
+}
+
+/// @brief Lower a CALL statement invoking a SUB.
+/// @param stmt CALL statement node containing the invocation expression.
+/// @details Delegates to expression lowering, discarding any produced value.
+void Lowerer::lowerCallStmt(const CallStmt &stmt)
+{
+    if (!stmt.call)
+        return;
+    curLoc = stmt.loc;
+    lowerExpr(*stmt.call);
 }
 
 /// @brief Lower a RETURN statement optionally yielding a value.

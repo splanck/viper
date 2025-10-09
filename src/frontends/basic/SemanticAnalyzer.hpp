@@ -92,6 +92,8 @@ class SemanticAnalyzer
     void analyzePrint(const PrintStmt &s);
     /// @brief Analyze PRINT # statement @p s.
     void analyzePrintCh(const PrintChStmt &s);
+    /// @brief Analyze CALL statement @p s.
+    void analyzeCallStmt(CallStmt &s);
     /// @brief Analyze CLS statement @p s.
     void analyzeCls(const ClsStmt &s);
     /// @brief Analyze COLOR statement @p s.
@@ -354,7 +356,7 @@ class SemanticAnalyzer
                                      const std::vector<Type> &args,
                                      const BuiltinSignature &signature);
     /// @brief Resolve callee of user-defined call.
-    const ProcSignature *resolveCallee(const CallExpr &c);
+    const ProcSignature *resolveCallee(const CallExpr &c, ProcSignature::Kind expectedKind);
     /// @brief Collect and validate argument types for user-defined call.
     std::vector<Type> checkCallArgs(const CallExpr &c, const ProcSignature *sig);
     /// @brief Infer return type for user-defined call.

@@ -30,6 +30,7 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
     void visit(LabelStmt &) override {}
     void visit(PrintStmt &stmt) override { analyzer_.analyzePrint(stmt); }
     void visit(PrintChStmt &stmt) override { analyzer_.analyzePrintCh(stmt); }
+    void visit(CallStmt &stmt) override { analyzer_.analyzeCallStmt(stmt); }
     void visit(ClsStmt &stmt) override { analyzer_.analyzeCls(stmt); }
     void visit(ColorStmt &stmt) override { analyzer_.analyzeColor(stmt); }
     void visit(LocateStmt &stmt) override { analyzer_.analyzeLocate(stmt); }
@@ -88,6 +89,14 @@ void SemanticAnalyzer::analyzePrintCh(const PrintChStmt &p)
     for (const auto &arg : p.args)
         if (arg)
             visitExpr(*arg);
+}
+
+void SemanticAnalyzer::analyzeCallStmt(CallStmt &stmt)
+{
+    if (!stmt.call)
+        return;
+    const ProcSignature *sig = resolveCallee(*stmt.call, ProcSignature::Kind::Sub);
+    checkCallArgs(*stmt.call, sig);
 }
 
 void SemanticAnalyzer::visit(const ClsStmt &s)

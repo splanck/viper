@@ -254,7 +254,8 @@ void SemanticAnalyzer::analyze(const Program &prog)
             visitStmt(*stmt);
 }
 
-const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c)
+const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c,
+                                                     ProcSignature::Kind expectedKind)
 {
     const ProcSignature *sig = procReg_.lookup(c.callee);
     if (!sig)
@@ -267,14 +268,26 @@ const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c)
                 std::move(msg));
         return nullptr;
     }
-    if (sig->kind == ProcSignature::Kind::Sub)
+    if (sig->kind != expectedKind)
     {
-        std::string msg = "subroutine '" + c.callee + "' used in expression";
-        de.emit(il::support::Severity::Error,
-                "B2005",
-                c.loc,
-                static_cast<uint32_t>(c.callee.size()),
-                std::move(msg));
+        if (expectedKind == ProcSignature::Kind::Function)
+        {
+            std::string msg = "subroutine '" + c.callee + "' used in expression";
+            de.emit(il::support::Severity::Error,
+                    "B2005",
+                    c.loc,
+                    static_cast<uint32_t>(c.callee.size()),
+                    std::move(msg));
+        }
+        else
+        {
+            std::string msg = "function '" + c.callee + "' cannot be called as a statement";
+            de.emit(il::support::Severity::Error,
+                    "B2015",
+                    c.loc,
+                    static_cast<uint32_t>(c.callee.size()),
+                    std::move(msg));
+        }
         return nullptr;
     }
     return sig;
@@ -355,7 +368,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::inferCallType([[maybe_unused]] const Ca
 
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeCall(const CallExpr &c)
 {
-    const ProcSignature *sig = resolveCallee(c);
+    const ProcSignature *sig = resolveCallee(c, ProcSignature::Kind::Function);
     auto argTys [[maybe_unused]] = checkCallArgs(c, sig);
     return inferCallType(c, sig);
 }
