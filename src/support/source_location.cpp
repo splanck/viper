@@ -5,10 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Provides the trivial inline utilities for the SourceLoc value type.  A
+// Provides the minimal out-of-line utilities for the SourceLoc value type.  A
 // location is considered valid when it refers to a registered file identifier
-// and carries 1-based line and column information.  Utilities are implemented
-// out-of-line to keep the header lightweight for inclusion across the project.
+// and carries 1-based line and column information.  Keeping the helper here
+// avoids inlining the check into every translation unit that includes the
+// header while preserving a central explanation of the validity contract.
 //
 //===----------------------------------------------------------------------===//
 
@@ -16,12 +17,13 @@
 
 namespace il::support
 {
-/// @brief Determine whether the location carries a meaningful file reference.
+/// @brief Determine whether the location carries a real source attachment.
 ///
-/// Source identifiers are allocated by SourceManager starting at one.  The
-/// sentinel identifier zero represents an unknown origin.  The helper provides
-/// a convenient way for callers to guard formatting logic on the presence of a
-/// resolved location.
+/// SourceManager dispenses monotonically increasing identifiers for every file
+/// registered with the compiler.  The default-constructed location uses zero to
+/// mark "unknown".  By testing the stored identifier against zero, the helper
+/// distinguishes between genuine, user-authored locations and synthesized
+/// values, enabling diagnostics and serializers to elide missing information.
 ///
 /// @return True when the location originated from a tracked source file.
 bool SourceLoc::isValid() const

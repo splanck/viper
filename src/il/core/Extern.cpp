@@ -1,9 +1,12 @@
-// File: src/il/core/Extern.cpp
-// License: MIT (see LICENSE for details).
-// Purpose: Provides out-of-line helpers for Extern.
-// Key invariants: None.
-// Ownership/Lifetime: Module owns extern declarations.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+// MIT License. See LICENSE file in the project root for full text.
+//
+// Provides the extension point for il::core::Extern.  Extern declarations are
+// currently implemented entirely inline, yet the dedicated translation unit
+// ensures downstream components can gain new behaviors (e.g., verifier hooks or
+// serialization helpers) without forcing wide recompilation due to header
+// changes.
+//===----------------------------------------------------------------------===//
 
 #include "il/core/Extern.hpp"
 
