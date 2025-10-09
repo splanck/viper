@@ -151,6 +151,13 @@ function(viper_add_basic_main_tests)
   target_link_libraries(test_frontends_basic_lexer_file_io PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_lexer_file_io test_frontends_basic_lexer_file_io)
 
+  viper_add_test(
+    test_frontends_basic_lexer_select_case
+    ${VIPER_TESTS_DIR}/frontends/basic/LexerSelectCaseTests.cpp)
+  target_link_libraries(test_frontends_basic_lexer_select_case PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(
+    test_frontends_basic_lexer_select_case test_frontends_basic_lexer_select_case)
+
   viper_add_test(test_frontends_basic_semantic_exprs ${VIPER_TESTS_DIR}/frontends/basic/SemanticAnalyzerBinaryExprTests.cpp)
   target_link_libraries(test_frontends_basic_semantic_exprs PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_semantic_exprs test_frontends_basic_semantic_exprs)
