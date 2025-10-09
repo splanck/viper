@@ -1,9 +1,16 @@
-// File: src/frontends/basic/AstPrint_Stmt.cpp
-// Purpose: Implements statement printing logic for the BASIC AST printer.
-// Key invariants: All statement node kinds must be handled.
-// Ownership/Lifetime: Operates on non-owning AST references.
-// Notes: Relies on PrintStyle to manage spacing and body formatting.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements statement printing for the BASIC AST printer.  The visitor in this
+// file mirrors the surface BASIC syntax closely enough for debugging while
+// remaining explicit about implicit behaviour (for example PRINT# channel
+// handling).  Expression printing is defined in AstPrint_Expr.cpp.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/AstPrinter.hpp"
 
@@ -13,6 +20,13 @@ namespace il::frontends::basic
 namespace
 {
 
+/// @brief Convert a semantic type enum to a human-readable mnemonic.
+///
+/// The AST printer uses short mnemonics to keep dumps compact while still
+/// distinguishing string and boolean types.
+///
+/// @param ty Semantic type recorded on a declaration or expression.
+/// @return Pointer to a static string describing the type.
 const char *typeToString(Type ty)
 {
     switch (ty)
@@ -29,6 +43,12 @@ const char *typeToString(Type ty)
     return "I64";
 }
 
+/// @brief Convert an OPEN statement mode to its textual keyword.
+///
+/// The helper ensures the printer emits canonical casing for each mode.
+///
+/// @param mode Enumerated mode stored on the AST.
+/// @return Pointer to a static keyword string.
 const char *openModeToString(OpenStmt::Mode mode)
 {
     switch (mode)
@@ -51,13 +71,16 @@ const char *openModeToString(OpenStmt::Mode mode)
 
 struct AstPrinter::StmtPrinter final : StmtVisitor
 {
+    /// @brief Construct the visitor bound to a printer and formatting style.
     StmtPrinter(Printer &printer, PrintStyle &style) : printer(printer), style(style) {}
 
+    /// @brief Render a statement by dispatching through the visitor interface.
     void print(const Stmt &stmt)
     {
         stmt.accept(*this);
     }
 
+    /// @brief Catch-all handler to surface missing visitor implementations.
     template <typename NodeT> void visit([[maybe_unused]] const NodeT &)
     {
         static_assert(sizeof(NodeT) == 0, "Unhandled statement node in AstPrinter");

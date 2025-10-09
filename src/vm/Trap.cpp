@@ -1,8 +1,16 @@
-// File: src/vm/Trap.cpp
-// Purpose: Implements VM trap helpers for structured error reporting.
-// Key invariants: Trap formatting uses stable message templates.
-// Ownership/Lifetime: Operates on the active VM instance only.
-// Links: docs/specs/errors.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the runtime trap helpers that translate between VM error objects,
+// trap kinds, and user-facing error messages.  The functions in this translation
+// unit mediate between the interpreter loop and the runtime bridge so both VM
+// and native code paths produce consistent diagnostics.
+//
+//===----------------------------------------------------------------------===//
 
 #include "vm/Trap.hpp"
 
@@ -21,6 +29,7 @@
 namespace il::vm
 {
 
+/// @brief Convert a trap kind enumerator to a human-readable mnemonic.
 std::string_view toString(TrapKind kind)
 {
     switch (kind)
@@ -51,6 +60,7 @@ std::string_view toString(TrapKind kind)
     return "RuntimeError";
 }
 
+/// @brief Map a raw runtime integer value to the corresponding trap kind.
 TrapKind trapKindFromValue(int32_t value)
 {
     switch (value)
@@ -95,6 +105,7 @@ thread_local std::string tlsTrapMessage;
 thread_local bool tlsTrapValid = false;
 } // namespace
 
+/// @brief Acquire a mutable trap token for recording runtime errors.
 VmError *vm_acquire_trap_token()
 {
     if (auto *vm = VM::activeInstance())
@@ -111,6 +122,7 @@ VmError *vm_acquire_trap_token()
     return &tlsTrapError;
 }
 
+/// @brief Retrieve the currently active trap token when one exists.
 const VmError *vm_current_trap_token()
 {
     if (auto *vm = VM::activeInstance())
@@ -124,6 +136,7 @@ const VmError *vm_current_trap_token()
     return &tlsTrapError;
 }
 
+/// @brief Attach a human-readable message to the active trap token.
 void vm_store_trap_token_message(std::string_view text)
 {
     if (auto *vm = VM::activeInstance())
@@ -137,6 +150,7 @@ void vm_store_trap_token_message(std::string_view text)
     tlsTrapValid = true;
 }
 
+/// @brief Fetch the message associated with the current trap token.
 std::string vm_current_trap_message()
 {
     if (auto *vm = VM::activeInstance())
@@ -144,6 +158,7 @@ std::string vm_current_trap_message()
     return tlsTrapMessage;
 }
 
+/// @brief Format a trap error and frame information into a printable string.
 std::string vm_format_error(const VmError &error, const FrameInfo &frame)
 {
     const std::string &function = frame.function.empty() ? std::string("<unknown>") : frame.function;
@@ -156,6 +171,7 @@ std::string vm_format_error(const VmError &error, const FrameInfo &frame)
     return os.str();
 }
 
+/// @brief Raise a trap using the supplied error description.
 void vm_raise_from_error(const VmError &input)
 {
     VmError error = input;
@@ -188,6 +204,7 @@ void vm_raise_from_error(const VmError &input)
         rt_abort(message.c_str());
 }
 
+/// @brief Convenience wrapper that raises a trap from a kind/code pair.
 void vm_raise(TrapKind kind, int32_t code)
 {
     VmError error{};

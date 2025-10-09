@@ -1,8 +1,15 @@
-// File: src/frontends/basic/SemanticDiagnostics.cpp
-// Purpose: Implements semantic diagnostic helpers for BASIC front-end analysis.
-// Key invariants: Diagnostics are forwarded without altering DiagnosticEmitter state.
-// Ownership/Lifetime: Borrows DiagnosticEmitter references; no ownership transfer.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements helper routines for emitting semantic diagnostics during BASIC
+// analysis.  The thin wrapper centralises message formatting utilities and
+// forwards all emissions to a shared DiagnosticEmitter instance.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/SemanticDiagnostics.hpp"
 
@@ -12,8 +19,10 @@
 namespace il::frontends::basic
 {
 
+/// @brief Construct the helper that forwards diagnostics to @p emitter.
 SemanticDiagnostics::SemanticDiagnostics(DiagnosticEmitter &emitter) : emitter_(emitter) {}
 
+/// @brief Emit a diagnostic by delegating to the shared emitter.
 void SemanticDiagnostics::emit(il::support::Severity sev,
                                std::string code,
                                il::support::SourceLoc loc,
@@ -23,16 +32,19 @@ void SemanticDiagnostics::emit(il::support::Severity sev,
     emitter_.emit(sev, std::move(code), loc, length, std::move(message));
 }
 
+/// @brief Retrieve the number of error diagnostics recorded so far.
 size_t SemanticDiagnostics::errorCount() const
 {
     return emitter_.errorCount();
 }
 
+/// @brief Retrieve the number of warning diagnostics recorded so far.
 size_t SemanticDiagnostics::warningCount() const
 {
     return emitter_.warningCount();
 }
 
+/// @brief Produce a formatted error message for a non-boolean conditional expression.
 std::string SemanticDiagnostics::formatNonBooleanCondition(std::string_view typeName,
                                                            std::string_view exprText)
 {
@@ -50,6 +62,7 @@ std::string SemanticDiagnostics::formatNonBooleanCondition(std::string_view type
     return message;
 }
 
+/// @brief Emit a diagnostic indicating that a conditional expression was not boolean.
 void SemanticDiagnostics::emitNonBooleanCondition(std::string code,
                                                   il::support::SourceLoc loc,
                                                   uint32_t length,
@@ -63,6 +76,7 @@ void SemanticDiagnostics::emitNonBooleanCondition(std::string code,
          formatNonBooleanCondition(typeName, exprText));
 }
 
+/// @brief Access the underlying diagnostic emitter.
 DiagnosticEmitter &SemanticDiagnostics::emitter()
 {
     return emitter_;

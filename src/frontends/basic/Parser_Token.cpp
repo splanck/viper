@@ -1,8 +1,16 @@
-// File: src/frontends/basic/Parser_Token.cpp
-// Purpose: Implements token navigation helpers for BASIC parser.
-// Key invariants: Buffer always holds current token.
-// Ownership/Lifetime: Parser owns lexer and token buffer.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Provides the token-buffer utilities used by the BASIC parser.  These helpers
+// encapsulate lookahead, consumption, and error recovery so the parsing logic in
+// Parser.cpp and Parser_Stmt.cpp can focus on grammar production without
+// repeating buffer management code.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"
