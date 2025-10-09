@@ -66,6 +66,31 @@ int main()
     }
 
     {
+        std::string src =
+            "10 PRINT SQRINT%(5)\n"
+            "20 PRINT GREET$(\"Alice\")\n"
+            "30 END\n"
+            "100 FUNCTION SQRINT%(N%)\n"
+            "110 RETURN N% * N%\n"
+            "120 END FUNCTION\n"
+            "200 FUNCTION GREET$(N$)\n"
+            "210 RETURN \"Hi, \" + N$\n"
+            "220 END FUNCTION\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("procs-after-main.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        assert(prog);
+        assert(prog->main.size() == 3);
+        assert(dynamic_cast<PrintStmt *>(prog->main[0].get()));
+        assert(dynamic_cast<PrintStmt *>(prog->main[1].get()));
+        assert(dynamic_cast<EndStmt *>(prog->main[2].get()));
+        assert(prog->procs.size() == 2);
+        assert(dynamic_cast<FunctionDecl *>(prog->procs[0].get()));
+        assert(dynamic_cast<FunctionDecl *>(prog->procs[1].get()));
+    }
+
+    {
         std::string src = "PRINT 1:: PRINT 2: END\n";
         SourceManager sm;
         uint32_t fid = sm.addFile("double_colon.bas");
