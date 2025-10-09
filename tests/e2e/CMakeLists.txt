@@ -213,7 +213,6 @@ function(viper_add_e2e_vm_suite)
     -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/factorial.bas
     -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/e2e/factorial.out
     -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
-  set_tests_properties(basic_factorial PROPERTIES WILL_FAIL TRUE)
 
   viper_add_ctest(basic_fibonacci
     ${CMAKE_COMMAND}
@@ -221,7 +220,6 @@ function(viper_add_e2e_vm_suite)
     -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/fibonacci.bas
     -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/e2e/fibonacci.out
     -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
-  set_tests_properties(basic_fibonacci PROPERTIES WILL_FAIL TRUE)
 
   viper_add_ctest(basic_random_repro
     ${CMAKE_COMMAND}

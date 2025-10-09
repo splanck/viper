@@ -768,10 +768,11 @@ void Lowerer::buildProcedureSkeleton(Function &f,
     ctx.blockNames().setNamer(std::make_unique<BlockNamer>(name));
     BlockNamer *blockNamer = ctx.blockNames().namer();
 
-    builder->addBlock(
+    auto &entry = builder->addBlock(
         f,
         blockNamer ? blockNamer->entry()
                    : mangler.block("entry_" + name));
+    entry.params = f.params;
 
     auto &lineBlocks = ctx.blockNames().lineBlocks();
     for (const auto *stmt : metadata.bodyStmts)
