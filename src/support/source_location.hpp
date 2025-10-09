@@ -28,5 +28,24 @@ struct SourceLoc
     [[nodiscard]] bool isValid() const;
 };
 
+/// @brief Represents a half-open range within a source file.
+/// @invariant When valid, both @ref begin and @ref end originate from the same
+///            file and @ref begin precedes @ref end.
+/// @ownership Value type with no owned resources.
+struct SourceRange
+{
+    /// @brief Starting position of the range; invalid when @ref isValid
+    ///        returns false.
+    SourceLoc begin{};
+
+    /// @brief One-past-the-end location of the range; invalid when
+    ///        @ref isValid returns false.
+    SourceLoc end{};
+
+    /// @brief Check whether both endpoints reference tracked source
+    ///        locations.
+    [[nodiscard]] bool isValid() const;
+};
+
 } // namespace il::support
 

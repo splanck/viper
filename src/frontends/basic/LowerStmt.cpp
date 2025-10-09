@@ -56,6 +56,12 @@ class LowererStmtVisitor final : public StmtVisitor
 
     void visit(const IfStmt &stmt) override { lowerer_.lowerIf(stmt); }
 
+    void visit(const SelectCaseStmt &stmt) override
+    {
+        (void)stmt;
+        // TODO: SELECT CASE lowering will be implemented in a future change.
+    }
+
     void visit(const WhileStmt &stmt) override { lowerer_.lowerWhile(stmt); }
 
     void visit(const DoStmt &stmt) override { lowerer_.lowerDo(stmt); }
