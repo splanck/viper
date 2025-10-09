@@ -1,9 +1,16 @@
-// MIT License. See LICENSE in the project root for full license information.
-// File: src/vm/control_flow.cpp
-// Purpose: Implement VM handlers for branching, calls, and traps.
-// Key invariants: Control-flow handlers maintain block parameters and frame state.
-// Ownership/Lifetime: Handlers mutate the active frame without persisting external state.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the family of opcode handlers responsible for VM control flow,
+// function calls, and trap management.  Grouping the logic in one translation
+// unit keeps the intricate interactions between branch argument propagation,
+// resume tokens, and runtime trap bridging well documented.
+//
+//===----------------------------------------------------------------------===//
 
 #include "vm/OpHandlers.hpp"
 
@@ -29,6 +36,15 @@ namespace il::vm::detail
 {
 namespace
 {
+/// @brief Validate that @p slot references the frame's active resume token.
+///
+/// Resume instructions accept an opaque pointer operand that must refer to the
+/// frame-local @ref Frame::ResumeState.  The helper ensures the pointer matches
+/// the active resume state and that the token is still marked valid.
+///
+/// @param fr Frame owning the authoritative resume state.
+/// @param slot Slot operand supplied to a resume instruction.
+/// @return Pointer to the resume state when valid; otherwise @c nullptr.
 Frame::ResumeState *expectResumeToken(Frame &fr, const Slot &slot)
 {
     auto *token = reinterpret_cast<Frame::ResumeState *>(slot.ptr);
@@ -37,6 +53,16 @@ Frame::ResumeState *expectResumeToken(Frame &fr, const Slot &slot)
     return token;
 }
 
+/// @brief Report an invalid resume operation via @ref RuntimeBridge::trap.
+///
+/// Resume opcodes surface a variety of user errors (missing tokens, stale
+/// handlers, unknown labels).  This helper formats a message and routes it to
+/// the runtime trap mechanism with contextual function/block information.
+///
+/// @param fr Current frame providing function context.
+/// @param in Instruction that triggered the invalid resume attempt.
+/// @param bb Current basic block, if available.
+/// @param detail Human-readable diagnostic describing the failure.
 void trapInvalidResume(Frame &fr,
                        const Instr &in,
                        const BasicBlock *bb,
@@ -47,6 +73,16 @@ void trapInvalidResume(Frame &fr,
     RuntimeBridge::trap(TrapKind::InvalidOperation, detail, in.loc, functionName, blockLabel);
 }
 
+/// @brief Resolve an error token operand to a @ref VmError structure.
+///
+/// The operand may either directly carry a pointer to a @ref VmError, refer to
+/// the thread-local trap token produced by @ref vm_acquire_trap_token, or leave
+/// the error unspecified.  In the latter case the frame's @ref Frame::activeError
+/// acts as the fallback.
+///
+/// @param fr Frame supplying the default active error.
+/// @param slot Operand to interpret as an error token pointer.
+/// @return Pointer to a valid error descriptor for use by err.get handlers.
 const VmError *resolveErrorToken(Frame &fr, const Slot &slot)
 {
     const auto *error = reinterpret_cast<const VmError *>(slot.ptr);
@@ -363,6 +399,11 @@ VM::ExecResult OpHandlers::handleEhPush(VM &vm,
     return {};
 }
 
+/// @brief Pop the most recently pushed exception handler record.
+///
+/// The handler mirrors the semantics of BASIC's `ON ERROR` stack by discarding
+/// the last pushed record if one exists.  All parameters besides @p fr are
+/// unused but retained for signature compatibility with other handlers.
 VM::ExecResult OpHandlers::handleEhPop(VM &vm,
                                        Frame &fr,
                                        const Instr &in,
@@ -380,6 +421,12 @@ VM::ExecResult OpHandlers::handleEhPop(VM &vm,
     return {};
 }
 
+/// @brief Resume execution at the trapping instruction itself.
+///
+/// Validates the resume token operand, ensures the recorded block remains
+/// available, and then jumps back to the faulting instruction so it can be
+/// retried.  The resume token is invalidated after use to mirror the runtime's
+/// single-use semantics.
 VM::ExecResult OpHandlers::handleResumeSame(VM &vm,
                                             Frame &fr,
                                             const Instr &in,
@@ -415,6 +462,11 @@ VM::ExecResult OpHandlers::handleResumeSame(VM &vm,
     return result;
 }
 
+/// @brief Resume execution at the instruction following the trapping site.
+///
+/// Validates the resume token operand and then jumps to the recorded
+/// @ref Frame::ResumeState::nextIp while invalidating the resume token.  Errors
+/// are reported through @ref trapInvalidResume.
 VM::ExecResult OpHandlers::handleResumeNext(VM &vm,
                                             Frame &fr,
                                             const Instr &in,
@@ -450,6 +502,11 @@ VM::ExecResult OpHandlers::handleResumeNext(VM &vm,
     return result;
 }
 
+/// @brief Resume execution at a specific label selected by the instruction.
+///
+/// Checks both the resume token and the requested label name before delegating
+/// to @ref branchToTarget.  Invalid tokens or unknown labels trigger a trap via
+/// @ref trapInvalidResume.
 VM::ExecResult OpHandlers::handleResumeLabel(VM &vm,
                                             Frame &fr,
                                             const Instr &in,
@@ -489,6 +546,12 @@ VM::ExecResult OpHandlers::handleResumeLabel(VM &vm,
     return branchToTarget(vm, fr, in, 0, blocks, bb, ip);
 }
 
+/// @brief Materialise the @ref TrapKind associated with a trap token.
+///
+/// Accepts an optional pointer operand referencing a @ref VmError.  When the
+/// operand is absent the handler falls back to thread-local trap tokens or the
+/// frame's active error.  The resulting trap kind is stored in the destination
+/// register as a signed 64-bit integer.
 VM::ExecResult OpHandlers::handleTrapKind(VM &vm,
                                          Frame &fr,
                                          const Instr &in,
@@ -519,6 +582,11 @@ VM::ExecResult OpHandlers::handleTrapKind(VM &vm,
     return {};
 }
 
+/// @brief Convert an `err` numeric code (and optional message) into a trap token.
+///
+/// Allocates or reuses the thread-local trap token, maps the numeric code to a
+/// @ref TrapKind, stores the optional message for later retrieval, and returns
+/// the token pointer to the caller.
 VM::ExecResult OpHandlers::handleTrapErr(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
@@ -558,6 +626,12 @@ VM::ExecResult OpHandlers::handleTrapErr(VM &vm,
     return {};
 }
 
+/// @brief Implement the legacy `trap` opcodes that raise runtime traps directly.
+///
+/// Depending on the opcode variant the handler either raises a domain error,
+/// maps an @c err code to a trap classification, or falls back to the generic
+/// runtime error trap.  The resulting trap terminates execution; the returned
+/// execution result is marked as having produced a return to satisfy callers.
 VM::ExecResult OpHandlers::handleTrap(VM &vm,
                                       Frame &fr,
                                       const Instr &in,

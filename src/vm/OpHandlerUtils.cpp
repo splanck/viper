@@ -1,9 +1,15 @@
-// File: src/vm/OpHandlerUtils.cpp
-// License: MIT License. See LICENSE in the project root for full details.
-// Purpose: Implement shared helper routines for VM opcode handlers.
-// Key invariants: Helpers operate on VM frames without leaking references.
-// Ownership/Lifetime: Functions mutate frame state in-place without storing globals.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Collects helper routines shared across the opcode handler implementations.
+// The functions encapsulate the common bookkeeping required when writing back
+// to frame registers so individual handlers remain focused on opcode semantics.
+//
+//===----------------------------------------------------------------------===//
 
 #include "vm/OpHandlerUtils.hpp"
 
@@ -13,6 +19,17 @@ namespace il::vm::detail
 {
 namespace ops
 {
+/// @brief Write an opcode result into the destination register while honouring
+///        ownership semantics.
+///
+/// The helper resizes the register file on demand, retains/release runtime
+/// strings when the destination type is @ref il::core::Type::Kind::Str, and
+/// then stores the slot payload.  Handlers delegate here to avoid duplicating
+/// register management logic.
+///
+/// @param fr Frame whose register file receives the result.
+/// @param in Instruction describing the destination register and result type.
+/// @param val Evaluated result slot to copy into the register file.
 void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val)
 {
     if (!in.result)
