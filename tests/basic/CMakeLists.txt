@@ -846,6 +846,13 @@ function(viper_add_basic_call_tests)
     -DEXPECT_FILE=${_VIPER_BASIC_CALLS_DIR}/call_stmt_sub.expect
     -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
 
+  viper_add_ctest(basic_call_stmt_sub_with_builtin
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${_VIPER_BASIC_CALLS_DIR}/call_stmt_sub_with_builtin.bas
+    -DEXPECT_FILE=${_VIPER_BASIC_CALLS_DIR}/call_stmt_sub_with_builtin.expect
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
   file(READ ${_VIPER_BASIC_CALLS_DIR}/bare_call_error.err EXPECT_BARE_CALL_ERROR)
   string(STRIP "${EXPECT_BARE_CALL_ERROR}" EXPECT_BARE_CALL_ERROR)
 
