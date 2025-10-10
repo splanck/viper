@@ -603,6 +603,8 @@ class Lowerer
 
     void lowerIf(const IfStmt &stmt);
 
+    void lowerSelectCase(const SelectCaseStmt &stmt);
+
     void lowerWhile(const WhileStmt &stmt);
 
     void lowerDo(const DoStmt &stmt);

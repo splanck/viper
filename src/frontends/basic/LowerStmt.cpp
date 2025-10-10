@@ -56,11 +56,7 @@ class LowererStmtVisitor final : public StmtVisitor
 
     void visit(const IfStmt &stmt) override { lowerer_.lowerIf(stmt); }
 
-    void visit(const SelectCaseStmt &stmt) override
-    {
-        (void)stmt;
-        // TODO: SELECT CASE lowering will be implemented in a future change.
-    }
+    void visit(const SelectCaseStmt &stmt) override { lowerer_.lowerSelectCase(stmt); }
 
     void visit(const WhileStmt &stmt) override { lowerer_.lowerWhile(stmt); }
 
@@ -662,6 +658,125 @@ void Lowerer::lowerIf(const IfStmt &stmt)
     }
 
     context().setCurrent(&func->blocks[blocks.exitIdx]);
+}
+
+/// @brief Lower a SELECT CASE statement into a switch-based control flow graph.
+/// @param stmt SELECT CASE statement containing selector and CASE bodies.
+/// @details Evaluates the selector into an i32 SSA value, emits a SwitchI32 in the
+///          current block, and appends one block per CASE arm plus a default
+///          continuation for CASE ELSE (or fall-through when absent). Each arm
+///          body is lowered in its dedicated block, which jumps to the common
+///          exit when the body does not terminate.
+void Lowerer::lowerSelectCase(const SelectCaseStmt &stmt)
+{
+    if (!stmt.selector)
+        return;
+
+    ProcedureContext &ctx = context();
+    Function *func = ctx.function();
+    BasicBlock *current = ctx.current();
+    if (!func || !current)
+        return;
+
+    curLoc = stmt.selector->loc;
+    RVal selector = lowerExpr(*stmt.selector);
+    selector = ensureI64(std::move(selector), stmt.selector->loc);
+    curLoc = stmt.selector->loc;
+    Value sel = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), selector.value);
+
+    func = ctx.function();
+    current = ctx.current();
+    if (!func || !current)
+        return;
+
+    size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
+
+    BlockNamer *blockNamer = ctx.blockNames().namer();
+    size_t startIdx = func->blocks.size();
+
+    std::vector<size_t> armIdx(stmt.arms.size());
+    for (size_t i = 0; i < stmt.arms.size(); ++i)
+    {
+        std::string label =
+            blockNamer ? blockNamer->generic("select_arm") : mangler.block("select_arm_" + std::to_string(i));
+        builder->addBlock(*func, label);
+    }
+
+    std::string defaultLabel =
+        blockNamer ? blockNamer->generic("select_default") : mangler.block("select_default");
+    builder->addBlock(*func, defaultLabel);
+
+    std::string endLabel = blockNamer ? blockNamer->generic("select_end") : mangler.block("select_end");
+    builder->addBlock(*func, endLabel);
+
+    func = ctx.function();
+    current = &func->blocks[curIdx];
+    ctx.setCurrent(current);
+
+    for (size_t i = 0; i < stmt.arms.size(); ++i)
+        armIdx[i] = startIdx + i;
+    size_t defaultIdx = startIdx + stmt.arms.size();
+    size_t endIdx = defaultIdx + 1;
+
+    BasicBlock *defaultBlk = &func->blocks[defaultIdx];
+    BasicBlock *endBlk = &func->blocks[endIdx];
+
+    Instr sw;
+    sw.op = Opcode::SwitchI32;
+    sw.type = Type(Type::Kind::Void);
+    sw.operands.push_back(sel);
+    if (defaultBlk->label.empty())
+        defaultBlk->label = nextFallbackBlockLabel();
+    sw.labels.push_back(defaultBlk->label);
+    sw.brArgs.emplace_back();
+
+    for (size_t i = 0; i < stmt.arms.size(); ++i)
+    {
+        BasicBlock *armBlk = &func->blocks[armIdx[i]];
+        if (armBlk->label.empty())
+            armBlk->label = nextFallbackBlockLabel();
+        for (int64_t rawLabel : stmt.arms[i].labels)
+        {
+            int32_t narrowed = static_cast<int32_t>(rawLabel);
+            sw.operands.push_back(Value::constInt(static_cast<long long>(narrowed)));
+            sw.labels.push_back(armBlk->label);
+            sw.brArgs.emplace_back();
+        }
+    }
+    sw.loc = stmt.loc;
+    current->instructions.push_back(std::move(sw));
+    current->terminated = true;
+
+    auto lowerBodyToEnd = [&](BasicBlock *block,
+                              const std::vector<StmtPtr> &body,
+                              il::support::SourceLoc loc) {
+        ctx.setCurrent(block);
+        for (const auto &node : body)
+        {
+            if (!node)
+                continue;
+            lowerStmt(*node);
+            BasicBlock *bodyCur = ctx.current();
+            if (!bodyCur || bodyCur->terminated)
+                break;
+        }
+        BasicBlock *bodyCur = ctx.current();
+        if (bodyCur && !bodyCur->terminated)
+        {
+            curLoc = loc;
+            emitBr(endBlk);
+        }
+    };
+
+    for (size_t i = 0; i < stmt.arms.size(); ++i)
+    {
+        BasicBlock *armBlk = &func->blocks[armIdx[i]];
+        lowerBodyToEnd(armBlk, stmt.arms[i].body, stmt.arms[i].range.begin);
+    }
+
+    lowerBodyToEnd(defaultBlk, stmt.elseBody, stmt.range.end);
+
+    ctx.setCurrent(endBlk);
 }
 
 /// @brief Lower statements forming a loop body until a terminator is hit.
