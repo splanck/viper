@@ -17,6 +17,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace il::frontends::basic
@@ -107,6 +108,11 @@ class Parser
     /// @brief Parse a CASE arm including label list and statement body.
     /// @return Parsed CASE arm.
     CaseArm parseCaseArm();
+
+    /// @brief Parse the CASE ELSE body until END SELECT.
+    /// @return Statements contained within CASE ELSE and the location of the
+    ///         terminating end-of-line.
+    std::pair<std::vector<StmtPtr>, il::support::SourceLoc> parseCaseElseBody();
 
     /// @brief Parse a DO ... LOOP statement.
     /// @return DO statement node with optional tests.

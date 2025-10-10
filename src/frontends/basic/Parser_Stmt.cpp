@@ -534,23 +534,6 @@ StmtPtr Parser::parseSelectCase()
     stmt->range.begin = loc;
     stmt->range.end = headerEnd.loc;
 
-    const auto parseBodyInto = [&](std::vector<StmtPtr> &dst)
-    {
-        auto bodyCtx = statementSequencer();
-        auto predicate = [&](int, il::support::SourceLoc)
-        {
-            if (at(TokenKind::KeywordCase))
-                return true;
-            if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordSelect)
-                return true;
-            return false;
-        };
-        auto consumer = [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &)
-        {
-        };
-        bodyCtx.collectStatements(predicate, consumer, dst);
-    };
-
     auto diagnose = [&](il::support::SourceLoc diagLoc,
                         uint32_t length,
                         const char *message,
@@ -616,32 +599,27 @@ StmtPtr Parser::parseSelectCase()
 
         if (peek(1).kind == TokenKind::KeywordElse)
         {
-            consume();
-            Token elseTok = consume();
+            const Token elseTok = peek(1);
             if (sawCaseElse)
             {
-                diagnose(elseTok.loc, static_cast<uint32_t>(elseTok.lexeme.size()),
+                diagnose(elseTok.loc,
+                         static_cast<uint32_t>(elseTok.lexeme.size()),
                          "duplicate CASE ELSE arm");
             }
             if (!sawCaseArm)
             {
-                diagnose(elseTok.loc, static_cast<uint32_t>(elseTok.lexeme.size()),
+                diagnose(elseTok.loc,
+                         static_cast<uint32_t>(elseTok.lexeme.size()),
                          "CASE ELSE requires a preceding CASE arm");
             }
+
+            auto [elseBody, elseEnd] = parseCaseElseBody();
+            if (!sawCaseElse)
+            {
+                stmt->elseBody = std::move(elseBody);
+                stmt->range.end = elseEnd;
+            }
             sawCaseElse = true;
-            Token elseEol = expect(TokenKind::EndOfLine);
-            if (stmt->elseBody.empty())
-            {
-                parseBodyInto(stmt->elseBody);
-            }
-            else
-            {
-                std::vector<StmtPtr> extra;
-                parseBodyInto(extra);
-                for (auto &node : extra)
-                    stmt->elseBody.push_back(std::move(node));
-            }
-            stmt->range.end = elseEol.loc;
             continue;
         }
 
@@ -666,6 +644,30 @@ StmtPtr Parser::parseSelectCase()
     }
 
     return stmt;
+}
+
+std::pair<std::vector<StmtPtr>, il::support::SourceLoc> Parser::parseCaseElseBody()
+{
+    expect(TokenKind::KeywordCase);
+    expect(TokenKind::KeywordElse);
+    Token elseEol = expect(TokenKind::EndOfLine);
+
+    std::vector<StmtPtr> body;
+    auto bodyCtx = statementSequencer();
+    auto predicate = [&](int, il::support::SourceLoc)
+    {
+        if (at(TokenKind::KeywordCase))
+            return true;
+        if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordSelect)
+            return true;
+        return false;
+    };
+    auto consumer = [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &)
+    {
+    };
+    bodyCtx.collectStatements(predicate, consumer, body);
+
+    return {std::move(body), elseEol.loc};
 }
 
 CaseArm Parser::parseCaseArm()
