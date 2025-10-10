@@ -991,7 +991,17 @@ Expected<void> verifyInstruction_impl(const VerifyCtx &ctx)
             return checkUnary_E(ctx, Type::Kind::F64, Type(Type::Kind::I64));
         case Opcode::CastSiNarrowChk:
         case Opcode::CastUiNarrowChk:
-            return checkUnary_E(ctx, Type::Kind::I64, Type(Type::Kind::I64));
+        {
+            if (ctx.instr.type.kind != Type::Kind::I16 && ctx.instr.type.kind != Type::Kind::I32)
+            {
+                return Expected<void>{makeError(ctx.instr.loc,
+                                                formatInstrDiag(ctx.fn,
+                                                                ctx.block,
+                                                                ctx.instr,
+                                                                "narrowing cast result must be i16 or i32"))};
+            }
+            return checkUnary_E(ctx, Type::Kind::I64, ctx.instr.type);
+        }
         case Opcode::IdxChk:
             return checkIdxChk_E(ctx.fn, ctx.block, ctx.instr, ctx.types);
         case Opcode::Zext1:
