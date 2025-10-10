@@ -106,6 +106,25 @@ int main()
 
     {
         const std::string src =
+            "10 LET X = 0\n"
+            "20 SELECT CASE X\n"
+            "30 CASE 1\n"
+            "40 PRINT \"a\"\n"
+            "50 CASE 1\n"
+            "60 PRINT \"b\"\n"
+            "70 END SELECT\n"
+            "80 END\n";
+        auto result = analyzeSnippet(src);
+        assert(result.errors == 1);
+        const std::string expected =
+            "select_case.bas:5:4: error[ERR_SelectCase_DuplicateLabel]: Duplicate CASE label: 1\n"
+            "50 CASE 1\n"
+            "   ^\n";
+        assert(result.output == expected);
+    }
+
+    {
+        const std::string src =
             "10 SELECT CASE 0\n"
             "20 CASE 0\n"
             "30 PRINT 1\n"
