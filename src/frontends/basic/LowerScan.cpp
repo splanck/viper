@@ -368,6 +368,11 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
             pop();
     }
 
+    void after(const SelectCaseStmt &stmt)
+    {
+        discardIf(stmt.selector != nullptr);
+    }
+
     void after(const WhileStmt &stmt)
     {
         discardIf(stmt.cond != nullptr);
