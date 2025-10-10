@@ -13,6 +13,7 @@
 #include "il/core/Instr.hpp"
 #include <cassert>
 #include <cstdint>
+#include <optional>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -702,9 +703,15 @@ void Lowerer::lowerSelectCase(const SelectCaseStmt &stmt)
         builder->addBlock(*func, label);
     }
 
-    std::string defaultLabel =
-        blockNamer ? blockNamer->generic("select_default") : mangler.block("select_default");
-    builder->addBlock(*func, defaultLabel);
+    bool hasCaseElse = !stmt.elseBody.empty();
+    std::optional<size_t> elseIdx;
+    if (hasCaseElse)
+    {
+        std::string defaultLabel =
+            blockNamer ? blockNamer->generic("select_default") : mangler.block("select_default");
+        builder->addBlock(*func, defaultLabel);
+        elseIdx = startIdx + stmt.arms.size();
+    }
 
     std::string endLabel = blockNamer ? blockNamer->generic("select_end") : mangler.block("select_end");
     builder->addBlock(*func, endLabel);
@@ -715,20 +722,16 @@ void Lowerer::lowerSelectCase(const SelectCaseStmt &stmt)
 
     for (size_t i = 0; i < stmt.arms.size(); ++i)
         armIdx[i] = startIdx + i;
-    size_t defaultIdx = startIdx + stmt.arms.size();
-    size_t endIdx = defaultIdx + 1;
+    size_t endIdx = startIdx + stmt.arms.size() + (hasCaseElse ? 1 : 0);
 
-    BasicBlock *defaultBlk = &func->blocks[defaultIdx];
     BasicBlock *endBlk = &func->blocks[endIdx];
+    BasicBlock *caseElseBlk = hasCaseElse ? &func->blocks[*elseIdx] : nullptr;
 
-    Instr sw;
-    sw.op = Opcode::SwitchI32;
-    sw.type = Type(Type::Kind::Void);
-    sw.operands.push_back(sel);
-    if (defaultBlk->label.empty())
-        defaultBlk->label = nextFallbackBlockLabel();
-    sw.labels.push_back(defaultBlk->label);
-    sw.brArgs.emplace_back();
+    std::vector<std::pair<int32_t, BasicBlock *>> caseTargets;
+    size_t labelCount = 0;
+    for (const auto &arm : stmt.arms)
+        labelCount += arm.labels.size();
+    caseTargets.reserve(labelCount);
 
     for (size_t i = 0; i < stmt.arms.size(); ++i)
     {
@@ -738,10 +741,28 @@ void Lowerer::lowerSelectCase(const SelectCaseStmt &stmt)
         for (int64_t rawLabel : stmt.arms[i].labels)
         {
             int32_t narrowed = static_cast<int32_t>(rawLabel);
-            sw.operands.push_back(Value::constInt(static_cast<long long>(narrowed)));
-            sw.labels.push_back(armBlk->label);
-            sw.brArgs.emplace_back();
+            caseTargets.emplace_back(narrowed, armBlk);
         }
+    }
+
+    Instr sw;
+    sw.op = Opcode::SwitchI32;
+    sw.type = Type(Type::Kind::Void);
+    sw.operands.push_back(sel);
+
+    BasicBlock *defaultTarget = hasCaseElse ? caseElseBlk : endBlk;
+    if (defaultTarget->label.empty())
+        defaultTarget->label = nextFallbackBlockLabel();
+    sw.labels.push_back(defaultTarget->label);
+    sw.brArgs.emplace_back();
+
+    for (const auto &[value, target] : caseTargets)
+    {
+        if (target->label.empty())
+            target->label = nextFallbackBlockLabel();
+        sw.operands.push_back(Value::constInt(static_cast<long long>(value)));
+        sw.labels.push_back(target->label);
+        sw.brArgs.emplace_back();
     }
     sw.loc = stmt.loc;
     current->instructions.push_back(std::move(sw));
@@ -774,7 +795,8 @@ void Lowerer::lowerSelectCase(const SelectCaseStmt &stmt)
         lowerBodyToEnd(armBlk, stmt.arms[i].body, stmt.arms[i].range.begin);
     }
 
-    lowerBodyToEnd(defaultBlk, stmt.elseBody, stmt.range.end);
+    if (hasCaseElse)
+        lowerBodyToEnd(caseElseBlk, stmt.elseBody, stmt.range.end);
 
     ctx.setCurrent(endBlk);
 }
