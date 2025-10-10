@@ -182,6 +182,13 @@ function(viper_add_basic_main_tests)
   viper_add_ctest(
     test_frontends_basic_semantic_call_stmt test_frontends_basic_semantic_call_stmt)
 
+  viper_add_test(
+    test_frontends_basic_semantic_select_case
+    ${VIPER_TESTS_DIR}/frontends/basic/SemanticAnalyzerSelectCaseTests.cpp)
+  target_link_libraries(test_frontends_basic_semantic_select_case PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(
+    test_frontends_basic_semantic_select_case test_frontends_basic_semantic_select_case)
+
   viper_add_test(test_frontends_basic_semantic_gosub ${VIPER_TESTS_DIR}/frontends/basic/SemanticAnalyzerGosubTests.cpp)
   target_link_libraries(test_frontends_basic_semantic_gosub PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_semantic_gosub test_frontends_basic_semantic_gosub)
