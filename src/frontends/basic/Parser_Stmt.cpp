@@ -6,8 +6,11 @@
 // Links: docs/codemap.md
 
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include <cstdio>
 #include <cstdlib>
+#include <string>
+#include <string_view>
 #include <utility>
 
 namespace il::frontends::basic
@@ -536,16 +539,20 @@ StmtPtr Parser::parseSelectCase()
 
     auto diagnose = [&](il::support::SourceLoc diagLoc,
                         uint32_t length,
-                        const char *message,
-                        const char *code = "B0001")
+                        std::string_view message,
+                        std::string_view code = "B0001")
     {
         if (emitter_)
         {
-            emitter_->emit(il::support::Severity::Error, code, diagLoc, length, message);
+            emitter_->emit(il::support::Severity::Error,
+                           std::string(code),
+                           diagLoc,
+                           length,
+                           std::string(message));
         }
         else
         {
-            std::fprintf(stderr, "%s\n", message);
+            std::fprintf(stderr, "%.*s\n", static_cast<int>(message.size()), message.data());
         }
     };
 
@@ -604,7 +611,8 @@ StmtPtr Parser::parseSelectCase()
             {
                 diagnose(elseTok.loc,
                          static_cast<uint32_t>(elseTok.lexeme.size()),
-                         "duplicate CASE ELSE arm");
+                         diag::ERR_SelectCase_DuplicateElse.text,
+                         diag::ERR_SelectCase_DuplicateElse.id);
             }
             if (!sawCaseArm)
             {
@@ -640,7 +648,10 @@ StmtPtr Parser::parseSelectCase()
 
     if (expectEndSelect)
     {
-        diagnose(stmt->loc, 6, "missing END SELECT", "B0004");
+        diagnose(stmt->loc,
+                 6,
+                 diag::ERR_SelectCase_MissingEndSelect.text,
+                 diag::ERR_SelectCase_MissingEndSelect.id);
     }
 
     return stmt;
@@ -719,14 +730,15 @@ CaseArm Parser::parseCaseArm()
         if (emitter_)
         {
             emitter_->emit(il::support::Severity::Error,
-                           "B0001",
+                           std::string(diag::ERR_Case_EmptyLabelList.id),
                            caseTok.loc,
                            static_cast<uint32_t>(caseTok.lexeme.size()),
-                           "CASE arm requires at least one label");
+                           std::string(diag::ERR_Case_EmptyLabelList.text));
         }
         else
         {
-            std::fprintf(stderr, "CASE arm requires at least one label\n");
+            const std::string msg(diag::ERR_Case_EmptyLabelList.text);
+            std::fprintf(stderr, "%s\n", msg.c_str());
         }
     }
 
