@@ -36,6 +36,45 @@ int main()
     {
         const std::string src =
             "10 SELECT CASE X\n"
+            "20 CASE 1\n"
+            "30 END SELECT\n";
+        SourceManager sm;
+        const uint32_t fid = sm.addFile("single_label.bas");
+        Parser parser(src, fid);
+        auto prog = parser.parseProgram();
+        assert(prog);
+        assert(prog->main.size() == 1);
+        auto *select = dynamic_cast<SelectCaseStmt *>(prog->main[0].get());
+        assert(select);
+        assert(select->arms.size() == 1);
+        assert(select->arms[0].labels.size() == 1);
+        assert(select->arms[0].labels[0] == 1);
+        assert(select->arms[0].body.empty());
+    }
+
+    {
+        const std::string src =
+            "10 SELECT CASE X\n"
+            "20 CASE 1, 2, 3\n"
+            "30 END SELECT\n";
+        SourceManager sm;
+        const uint32_t fid = sm.addFile("multi_label.bas");
+        Parser parser(src, fid);
+        auto prog = parser.parseProgram();
+        assert(prog);
+        assert(prog->main.size() == 1);
+        auto *select = dynamic_cast<SelectCaseStmt *>(prog->main[0].get());
+        assert(select);
+        assert(select->arms.size() == 1);
+        assert(select->arms[0].labels.size() == 3);
+        assert(select->arms[0].labels[0] == 1);
+        assert(select->arms[0].labels[1] == 2);
+        assert(select->arms[0].labels[2] == 3);
+    }
+
+    {
+        const std::string src =
+            "10 SELECT CASE X\n"
             "20 CASE 1, 2\n"
             "30 PRINT 1\n"
             "40 CASE 3\n"
@@ -64,6 +103,44 @@ int main()
         auto prog = parser.parseProgram();
         assert(prog);
         assert(emitter.errorCount() >= 1);
+        std::ostringstream oss;
+        emitter.printAll(oss);
+        const std::string output = oss.str();
+        assert(output.find("integer literals") != std::string::npos);
+    }
+
+    {
+        const std::string src =
+            "10 SELECT CASE X\n"
+            "20 CASE\n"
+            "30 END SELECT\n";
+        SourceManager sm;
+        const uint32_t fid = sm.addFile("missing_label.bas");
+        DiagnosticEngine de;
+        DiagnosticEmitter emitter(de, sm);
+        emitter.addSource(fid, src);
+        Parser parser(src, fid, &emitter);
+        auto prog = parser.parseProgram();
+        assert(prog);
+        std::ostringstream oss;
+        emitter.printAll(oss);
+        const std::string output = oss.str();
+        assert(output.find("requires at least one label") != std::string::npos);
+    }
+
+    {
+        const std::string src =
+            "10 SELECT CASE X\n"
+            "20 CASE 1, \"x\"\n"
+            "30 END SELECT\n";
+        SourceManager sm;
+        const uint32_t fid = sm.addFile("mixed_label.bas");
+        DiagnosticEngine de;
+        DiagnosticEmitter emitter(de, sm);
+        emitter.addSource(fid, src);
+        Parser parser(src, fid, &emitter);
+        auto prog = parser.parseProgram();
+        assert(prog);
         std::ostringstream oss;
         emitter.printAll(oss);
         const std::string output = oss.str();
