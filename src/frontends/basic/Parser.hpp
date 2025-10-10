@@ -104,6 +104,10 @@ class Parser
     /// @return SELECT CASE statement node.
     StmtPtr parseSelectCase();
 
+    /// @brief Parse a CASE arm including label list and statement body.
+    /// @return Parsed CASE arm.
+    CaseArm parseCaseArm();
+
     /// @brief Parse a DO ... LOOP statement.
     /// @return DO statement node with optional tests.
     StmtPtr parseDo();

@@ -611,11 +611,12 @@ StmtPtr Parser::parseSelectCase()
             continue;
         }
 
-        Token caseTok = consume();
+        Token caseTok = peek();
         il::support::SourceLoc caseLoc = caseTok.loc;
 
-        if (at(TokenKind::KeywordElse))
+        if (peek(1).kind == TokenKind::KeywordElse)
         {
+            consume();
             Token elseTok = consume();
             if (sawCaseElse)
             {
@@ -650,43 +651,12 @@ StmtPtr Parser::parseSelectCase()
                      "CASE arms must precede CASE ELSE");
         }
 
-        CaseArm arm;
-        arm.range.begin = caseLoc;
-        bool haveLabel = false;
-        while (true)
-        {
-            if (!at(TokenKind::Number))
-            {
-                Token bad = peek();
-                if (bad.kind != TokenKind::EndOfLine)
-                {
-                    diagnose(bad.loc, static_cast<uint32_t>(bad.lexeme.size()),
-                             "SELECT CASE labels must be integer literals");
-                }
-                break;
-            }
-            Token labelTok = consume();
-            long long value = std::strtoll(labelTok.lexeme.c_str(), nullptr, 10);
-            arm.labels.push_back(static_cast<int64_t>(value));
-            haveLabel = true;
-            if (at(TokenKind::Comma))
-            {
-                consume();
-                continue;
-            }
-            break;
-        }
-
-        if (!haveLabel)
-        {
-            diagnose(caseLoc, static_cast<uint32_t>(caseTok.lexeme.size()),
-                     "CASE arm requires at least one label");
-        }
-
-        Token caseEol = expect(TokenKind::EndOfLine);
-        arm.range.end = caseEol.loc;
-        parseBodyInto(arm.body);
+        CaseArm arm = parseCaseArm();
         stmt->arms.push_back(std::move(arm));
+        if (!stmt->arms.empty())
+        {
+            stmt->range.end = stmt->arms.back().range.end;
+        }
         sawCaseArm = true;
     }
 
@@ -696,6 +666,86 @@ StmtPtr Parser::parseSelectCase()
     }
 
     return stmt;
+}
+
+CaseArm Parser::parseCaseArm()
+{
+    Token caseTok = expect(TokenKind::KeywordCase);
+    CaseArm arm;
+    arm.range.begin = caseTok.loc;
+
+    bool haveLabel = false;
+    while (true)
+    {
+        if (!at(TokenKind::Number))
+        {
+            Token bad = peek();
+            if (bad.kind != TokenKind::EndOfLine)
+            {
+                if (emitter_)
+                {
+                    emitter_->emit(il::support::Severity::Error,
+                                   "B0001",
+                                   bad.loc,
+                                   static_cast<uint32_t>(bad.lexeme.size()),
+                                   "SELECT CASE labels must be integer literals");
+                }
+                else
+                {
+                    std::fprintf(stderr,
+                                 "SELECT CASE labels must be integer literals\n");
+                }
+            }
+            break;
+        }
+
+        Token labelTok = consume();
+        long long value = std::strtoll(labelTok.lexeme.c_str(), nullptr, 10);
+        arm.labels.push_back(static_cast<int64_t>(value));
+        haveLabel = true;
+
+        if (at(TokenKind::Comma))
+        {
+            consume();
+            continue;
+        }
+        break;
+    }
+
+    if (!haveLabel)
+    {
+        if (emitter_)
+        {
+            emitter_->emit(il::support::Severity::Error,
+                           "B0001",
+                           caseTok.loc,
+                           static_cast<uint32_t>(caseTok.lexeme.size()),
+                           "CASE arm requires at least one label");
+        }
+        else
+        {
+            std::fprintf(stderr, "CASE arm requires at least one label\n");
+        }
+    }
+
+    Token caseEol = expect(TokenKind::EndOfLine);
+    arm.range.end = caseEol.loc;
+
+    auto bodyCtx = statementSequencer();
+    auto predicate = [&](int, il::support::SourceLoc)
+    {
+        if (at(TokenKind::KeywordCase))
+            return true;
+        if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordSelect)
+            return true;
+        return false;
+    };
+    auto consumer = [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &)
+    {
+    };
+    bodyCtx.collectStatements(predicate, consumer, arm.body);
+
+    return arm;
 }
 
 /// @brief Parse a DO ... LOOP statement with optional pre/post conditions.
