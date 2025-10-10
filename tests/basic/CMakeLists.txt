@@ -306,6 +306,7 @@ function(viper_add_basic_lex_golden_tests)
 
   set(_VIPER_BASIC_LEX_DIR ${VIPER_TESTS_DIR}/basic/lex)
   set(_VIPER_BASIC_LEX_DUMP $<TARGET_FILE:basic-lex-dump>)
+  set(_VIPER_BASIC_LEXER_DIR ${VIPER_TESTS_DIR}/lexer/basic)
 
   viper_add_ctest(basic_lex_comments
     ${CMAKE_COMMAND}
@@ -333,6 +334,13 @@ function(viper_add_basic_lex_golden_tests)
     -DBASIC_LEX_DUMP=${_VIPER_BASIC_LEX_DUMP}
     -DBAS_FILE=${_VIPER_BASIC_LEX_DIR}/ident_invalid_suffix.bas
     -DGOLDEN=${_VIPER_BASIC_LEX_DIR}/ident_invalid_suffix.expect
+    -P ${_VIPER_BASIC_LEX_DIR}/check_tokens.cmake)
+
+  viper_add_ctest(basic_lex_select_case
+    ${CMAKE_COMMAND}
+    -DBASIC_LEX_DUMP=${_VIPER_BASIC_LEX_DUMP}
+    -DBAS_FILE=${_VIPER_BASIC_LEXER_DIR}/select_case.bas
+    -DGOLDEN=${_VIPER_BASIC_LEXER_DIR}/select_case.tokens
     -P ${_VIPER_BASIC_LEX_DIR}/check_tokens.cmake)
 endfunction()
 
