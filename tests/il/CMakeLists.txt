@@ -481,4 +481,8 @@ function(viper_add_il_liveness_tests)
   viper_add_test(test_il_pass_manager ${_VIPER_IL_UNIT_DIR}/test_il_pass_manager.cpp)
   target_link_libraries(test_il_pass_manager PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_transform il_api)
   viper_add_ctest(test_il_pass_manager test_il_pass_manager)
+
+  viper_add_test(test_il_switch_i32 ${_VIPER_IL_UNIT_DIR}/test_il_switch_i32.cpp)
+  target_link_libraries(test_il_switch_i32 PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_transform il_api)
+  viper_add_ctest(test_il_switch_i32 test_il_switch_i32)
 endfunction()
