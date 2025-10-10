@@ -50,6 +50,18 @@ class SemanticAnalyzer
     /// @brief Diagnostic code for non-boolean NOT operand.
     static constexpr std::string_view DiagNonBooleanNotOperand = "E1003";
 
+    /// @brief Diagnostic code for SELECT CASE selector type mismatches.
+    static constexpr std::string_view DiagSelectCaseSelectorType = "B2009";
+
+    /// @brief Diagnostic code for duplicate CASE labels within SELECT CASE.
+    static constexpr std::string_view DiagSelectCaseDuplicateLabel = "B2010";
+
+    /// @brief Diagnostic code when SELECT CASE has multiple CASE ELSE clauses.
+    static constexpr std::string_view DiagSelectCaseMultipleElse = "B2011";
+
+    /// @brief Diagnostic code for CASE labels that exceed the 32-bit signed range.
+    static constexpr std::string_view DiagSelectCaseLabelRange = "B2012";
+
     /// @brief Create analyzer reporting to @p emitter.
     explicit SemanticAnalyzer(DiagnosticEmitter &emitter);
 

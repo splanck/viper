@@ -12,6 +12,9 @@
 
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 
+#include <limits>
+#include <unordered_set>
+
 namespace il::frontends::basic
 {
 
@@ -468,8 +471,26 @@ void SemanticAnalyzer::analyzeIf(const IfStmt &i)
 
 void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt)
 {
+    constexpr int64_t kCaseLabelMin = static_cast<int64_t>(std::numeric_limits<int32_t>::min());
+    constexpr int64_t kCaseLabelMax = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+
     if (stmt.selector)
-        visitExpr(*stmt.selector);
+    {
+        Type selectorType = visitExpr(*stmt.selector);
+        if (selectorType == Type::Int)
+        {
+            markImplicitConversion(*stmt.selector, Type::Int);
+        }
+        else if (selectorType != Type::Unknown)
+        {
+            std::string msg = "SELECT CASE selector must be integer-compatible";
+            de.emit(il::support::Severity::Error,
+                    std::string(DiagSelectCaseSelectorType),
+                    stmt.selector->loc,
+                    1,
+                    std::move(msg));
+        }
+    }
 
     auto analyzeBody = [&](const std::vector<StmtPtr> &body) {
         ScopeTracker::ScopedScope scope(scopes_);
@@ -478,8 +499,58 @@ void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt)
                 visitStmt(*child);
     };
 
+    std::unordered_set<int32_t> seenLabels;
+    bool sawCaseElse = !stmt.elseBody.empty();
+
     for (const auto &arm : stmt.arms)
+    {
+        if (arm.labels.empty())
+        {
+            if (sawCaseElse)
+            {
+                std::string msg = "Multiple CASE ELSE clauses";
+                de.emit(il::support::Severity::Error,
+                        std::string(DiagSelectCaseMultipleElse),
+                        arm.range.begin,
+                        1,
+                        std::move(msg));
+            }
+            else
+            {
+                sawCaseElse = true;
+            }
+        }
+
+        for (int64_t rawLabel : arm.labels)
+        {
+            if (rawLabel < kCaseLabelMin || rawLabel > kCaseLabelMax)
+            {
+                std::string msg = "CASE label ";
+                msg += std::to_string(rawLabel);
+                msg += " is outside 32-bit signed range";
+                de.emit(il::support::Severity::Error,
+                        std::string(DiagSelectCaseLabelRange),
+                        arm.range.begin,
+                        1,
+                        std::move(msg));
+                continue;
+            }
+
+            const int32_t label = static_cast<int32_t>(rawLabel);
+            if (!seenLabels.insert(label).second)
+            {
+                std::string msg = "Duplicate CASE label: ";
+                msg += std::to_string(rawLabel);
+                de.emit(il::support::Severity::Error,
+                        std::string(DiagSelectCaseDuplicateLabel),
+                        arm.range.begin,
+                        1,
+                        std::move(msg));
+            }
+        }
+
         analyzeBody(arm.body);
+    }
 
     if (!stmt.elseBody.empty())
         analyzeBody(stmt.elseBody);
