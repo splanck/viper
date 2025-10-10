@@ -321,6 +321,13 @@ function(viper_add_basic_lex_golden_tests)
     -DGOLDEN=${_VIPER_BASIC_LEX_DIR}/test_boolean_tokens.expect
     -P ${_VIPER_BASIC_LEX_DIR}/check_tokens.cmake)
 
+  viper_add_ctest(basic_lex_select_case
+    ${CMAKE_COMMAND}
+    -DBASIC_LEX_DUMP=${_VIPER_BASIC_LEX_DUMP}
+    -DBAS_FILE=${_VIPER_BASIC_LEX_DIR}/select_case.bas
+    -DGOLDEN=${_VIPER_BASIC_LEX_DIR}/select_case.tokens
+    -P ${_VIPER_BASIC_LEX_DIR}/check_tokens.cmake)
+
   viper_add_ctest(basic_lex_ident_with_underscore
     ${CMAKE_COMMAND}
     -DBASIC_LEX_DUMP=${_VIPER_BASIC_LEX_DUMP}
