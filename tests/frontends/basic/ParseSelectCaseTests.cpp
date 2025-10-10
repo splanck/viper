@@ -154,6 +154,35 @@ int main()
     {
         const std::string src =
             "10 SELECT CASE X\n"
+            "20 CASE \"A\"\n"
+            "30 PRINT \"x\"\n"
+            "40 END SELECT\n";
+        SourceManager sm;
+        const uint32_t fid = sm.addFile("non_integer_label.bas");
+        DiagnosticEngine de;
+        DiagnosticEmitter emitter(de, sm);
+        emitter.addSource(fid, src);
+        Parser parser(src, fid, &emitter);
+        auto prog = parser.parseProgram();
+        assert(prog);
+        std::ostringstream oss;
+        emitter.printAll(oss);
+        const std::string expected =
+            "non_integer_label.bas:2:9: error[B0001]: SELECT CASE labels must be integer literals\n"
+            "20 CASE \"A\"\n"
+            "        ^\n"
+            "non_integer_label.bas:2:4: error[ERR_Case_EmptyLabelList]: CASE arm requires at least one label\n"
+            "20 CASE \"A\"\n"
+            "   ^^^^\n"
+            "non_integer_label.bas:2:9: error[B0001]: expected eol, got string\n"
+            "20 CASE \"A\"\n"
+            "        ^\n";
+        assert(oss.str() == expected);
+    }
+
+    {
+        const std::string src =
+            "10 SELECT CASE X\n"
             "20 CASE 1\n"
             "30 PRINT 1\n"
             "40 CASE ELSE\n"
@@ -251,6 +280,36 @@ int main()
         auto *select = dynamic_cast<SelectCaseStmt *>(prog->main[0].get());
         assert(select);
         assert(select->elseBody.size() == 1);
+    }
+
+    {
+        const std::string src =
+            "10 SELECT CASE X\n"
+            "20 CASE 1\n"
+            "30 CASE ELSE: PRINT \"a\"\n"
+            "40 CASE ELSE: PRINT \"b\"\n"
+            "50 END SELECT\n";
+        SourceManager sm;
+        const uint32_t fid = sm.addFile("duplicate_case_else.bas");
+        DiagnosticEngine de;
+        DiagnosticEmitter emitter(de, sm);
+        emitter.addSource(fid, src);
+        Parser parser(src, fid, &emitter);
+        auto prog = parser.parseProgram();
+        assert(prog);
+        std::ostringstream oss;
+        emitter.printAll(oss);
+        const std::string expected =
+            "duplicate_case_else.bas:3:13: error[B0001]: expected eol, got :\n"
+            "30 CASE ELSE: PRINT \"a\"\n"
+            "            ^\n"
+            "duplicate_case_else.bas:4:9: error[ERR_SelectCase_DuplicateElse]: Duplicate CASE ELSE arm\n"
+            "40 CASE ELSE: PRINT \"b\"\n"
+            "        ^^^^\n"
+            "duplicate_case_else.bas:4:13: error[B0001]: expected eol, got :\n"
+            "40 CASE ELSE: PRINT \"b\"\n"
+            "            ^\n";
+        assert(oss.str() == expected);
     }
 
     return 0;
