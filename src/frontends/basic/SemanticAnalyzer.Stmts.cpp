@@ -11,7 +11,9 @@
 // Links: docs/codemap.md
 
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
+#include "frontends/basic/BasicDiagnosticMessages.hpp"
 
+#include <string>
 #include <limits>
 #include <unordered_set>
 
@@ -483,9 +485,9 @@ void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt)
         }
         else if (selectorType != Type::Unknown)
         {
-            std::string msg = "SELECT CASE selector must be integer-compatible";
+            std::string msg(diag::ERR_SelectCase_NonIntegerSelector.text);
             de.emit(il::support::Severity::Error,
-                    std::string(DiagSelectCaseSelectorType),
+                    std::string(diag::ERR_SelectCase_NonIntegerSelector.id),
                     stmt.selector->loc,
                     1,
                     std::move(msg));
@@ -508,9 +510,9 @@ void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt)
         {
             if (sawCaseElse)
             {
-                std::string msg = "Multiple CASE ELSE clauses";
+                std::string msg(diag::ERR_SelectCase_DuplicateElse.text);
                 de.emit(il::support::Severity::Error,
-                        std::string(DiagSelectCaseMultipleElse),
+                        std::string(diag::ERR_SelectCase_DuplicateElse.id),
                         arm.range.begin,
                         1,
                         std::move(msg));
@@ -539,10 +541,11 @@ void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt)
             const int32_t label = static_cast<int32_t>(rawLabel);
             if (!seenLabels.insert(label).second)
             {
-                std::string msg = "Duplicate CASE label: ";
+                std::string msg(diag::ERR_SelectCase_DuplicateLabel.text);
+                msg += ": ";
                 msg += std::to_string(rawLabel);
                 de.emit(il::support::Severity::Error,
-                        std::string(DiagSelectCaseDuplicateLabel),
+                        std::string(diag::ERR_SelectCase_DuplicateLabel.id),
                         arm.range.begin,
                         1,
                         std::move(msg));

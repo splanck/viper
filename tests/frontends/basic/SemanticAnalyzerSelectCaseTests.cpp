@@ -66,9 +66,11 @@ int main()
             "50 END\n";
         auto result = analyzeSnippet(src);
         assert(result.errors == 1);
-        assert(result.output.find("error[B2009]") != std::string::npos);
-        assert(result.output.find("SELECT CASE selector must be integer-compatible") !=
-               std::string::npos);
+        const std::string expected =
+            "select_case.bas:1:16: error[ERR_SelectCase_NonIntegerSelector]: SELECT CASE selector must be integer-compatible\n"
+            "10 SELECT CASE \"foo\"\n"
+            "               ^\n";
+        assert(result.output == expected);
     }
 
     {
@@ -95,8 +97,11 @@ int main()
             "70 END\n";
         auto result = analyzeSnippet(src);
         assert(result.errors == 1);
-        assert(result.output.find("error[B2010]") != std::string::npos);
-        assert(result.output.find("Duplicate CASE label: 1") != std::string::npos);
+        const std::string expected =
+            "select_case.bas:4:4: error[ERR_SelectCase_DuplicateLabel]: Duplicate CASE label: 1\n"
+            "40 CASE 1\n"
+            "   ^\n";
+        assert(result.output == expected);
     }
 
     {
@@ -121,8 +126,11 @@ int main()
         });
 
         assert(result.errors == 1);
-        assert(result.output.find("error[B2011]") != std::string::npos);
-        assert(result.output.find("Multiple CASE ELSE clauses") != std::string::npos);
+        const std::string expected =
+            "select_case.bas:1:4: error[ERR_SelectCase_DuplicateElse]: Duplicate CASE ELSE arm\n"
+            "10 SELECT CASE 0\n"
+            "   ^\n";
+        assert(result.output == expected);
     }
 
     return 0;

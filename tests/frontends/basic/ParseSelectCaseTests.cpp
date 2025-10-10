@@ -125,7 +125,11 @@ int main()
         std::ostringstream oss;
         emitter.printAll(oss);
         const std::string output = oss.str();
-        assert(output.find("requires at least one label") != std::string::npos);
+        const std::string expected =
+            "missing_label.bas:2:4: error[ERR_Case_EmptyLabelList]: CASE arm requires at least one label\n"
+            "20 CASE\n"
+            "   ^^^^\n";
+        assert(output == expected);
     }
 
     {
@@ -168,7 +172,11 @@ int main()
         std::ostringstream oss;
         emitter.printAll(oss);
         const std::string output = oss.str();
-        assert(output.find("duplicate CASE ELSE") != std::string::npos);
+        const std::string expected =
+            "dup_else.bas:6:9: error[ERR_SelectCase_DuplicateElse]: Duplicate CASE ELSE arm\n"
+            "60 CASE ELSE\n"
+            "        ^^^^\n";
+        assert(output == expected);
     }
 
     {
@@ -187,7 +195,11 @@ int main()
         std::ostringstream oss;
         emitter.printAll(oss);
         const std::string output = oss.str();
-        assert(output.find("missing END SELECT") != std::string::npos);
+        const std::string expected =
+            "missing_end.bas:1:4: error[ERR_SelectCase_MissingEndSelect]: SELECT CASE missing END SELECT terminator\n"
+            "10 SELECT CASE X\n"
+            "   ^^^^^^\n";
+        assert(output == expected);
     }
 
     {
@@ -231,7 +243,11 @@ int main()
         std::ostringstream oss;
         emitter.printAll(oss);
         const std::string output = oss.str();
-        assert(output.find("duplicate CASE ELSE") != std::string::npos);
+        const std::string expected =
+            "dup_else_body.bas:6:9: error[ERR_SelectCase_DuplicateElse]: Duplicate CASE ELSE arm\n"
+            "60 CASE ELSE\n"
+            "        ^^^^\n";
+        assert(output == expected);
         auto *select = dynamic_cast<SelectCaseStmt *>(prog->main[0].get());
         assert(select);
         assert(select->elseBody.size() == 1);
