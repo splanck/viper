@@ -69,12 +69,28 @@ CFGContext::CFGContext(il::core::Module &module) : module(&module)
             if (!isBranchTerminator)
                 continue;
 
-            for (const auto &lbl : term.labels)
+            auto appendLabel = [&](const std::string &label)
             {
-                auto it = labelMap.find(lbl);
+                auto it = labelMap.find(label);
                 if (it == labelMap.end())
-                    continue;
+                    return;
                 succ.push_back(it->second);
+            };
+
+            if (term.op == il::core::Opcode::SwitchI32)
+            {
+                if (!term.labels.empty())
+                {
+                    appendLabel(il::core::switchDefaultLabel(term));
+                    const std::size_t caseCount = il::core::switchCaseCount(term);
+                    for (std::size_t idx = 0; idx < caseCount; ++idx)
+                        appendLabel(il::core::switchCaseLabel(term, idx));
+                }
+            }
+            else
+            {
+                for (const auto &lbl : term.labels)
+                    appendLabel(lbl);
             }
 
             std::unordered_set<il::core::Block *> recorded;
