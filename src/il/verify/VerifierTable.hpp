@@ -6,7 +6,9 @@
 #pragma once
 
 #include "il/core/Opcode.hpp"
+#include "il/core/OpcodeInfo.hpp"
 
+#include <array>
 #include <cstdint>
 #include <optional>
 
@@ -39,10 +41,25 @@ struct OpProps
     bool canTrap;      ///< Whether the opcode may trap at runtime.
 };
 
+/// @brief Specification of operand and result constraints for opcode verification.
+struct OpCheckSpec
+{
+    uint8_t numOperandsMin;                                                 ///< Minimum number of operands accepted.
+    uint8_t numOperandsMax;                                                 ///< Maximum number of operands accepted; may be variadic.
+    std::array<TypeClass, il::core::kMaxOperandCategories> operandTypes;    ///< Per-operand type constraints.
+    TypeClass result;                                                       ///< Result type constraint; InstrType refers to instruction type.
+    bool hasSideEffects;                                                    ///< Whether the opcode performs side effects.
+};
+
 /// @brief Look up verification properties for supported arithmetic opcodes.
 /// @param opcode Opcode to query.
 /// @return Populated properties when @p opcode is described by the table; empty otherwise.
 std::optional<OpProps> lookup(il::core::Opcode opcode);
+
+/// @brief Look up detailed operand/result constraints for an opcode.
+/// @param opcode Opcode to query.
+/// @return Populated specification when @p opcode is described by the table; empty otherwise.
+std::optional<OpCheckSpec> lookupSpec(il::core::Opcode opcode);
 
 } // namespace il::verify
 
