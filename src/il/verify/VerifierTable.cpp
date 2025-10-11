@@ -49,5 +49,65 @@ std::optional<OpProps> lookup(Opcode opcode)
     return kTable[index];
 }
 
+namespace
+{
+
+constexpr TypeClass mapCategory(il::core::TypeCategory category)
+{
+    using il::core::TypeCategory;
+    switch (category)
+    {
+    case TypeCategory::I1:
+        return TypeClass::I1;
+    case TypeCategory::I16:
+        return TypeClass::I16;
+    case TypeCategory::I32:
+        return TypeClass::I32;
+    case TypeCategory::I64:
+        return TypeClass::I64;
+    case TypeCategory::F64:
+        return TypeClass::F64;
+    case TypeCategory::Ptr:
+        return TypeClass::Ptr;
+    case TypeCategory::Str:
+        return TypeClass::Str;
+    case TypeCategory::Error:
+        return TypeClass::Error;
+    case TypeCategory::ResumeTok:
+        return TypeClass::ResumeTok;
+    case TypeCategory::InstrType:
+        return TypeClass::InstrType;
+    case TypeCategory::Void:
+        return TypeClass::Void;
+    case TypeCategory::None:
+    case TypeCategory::Any:
+    case TypeCategory::Dynamic:
+        return TypeClass::None;
+    default:
+        return TypeClass::None;
+    }
+}
+
+} // namespace
+
+std::optional<OpCheckSpec> lookupSpec(Opcode opcode)
+{
+    const size_t index = static_cast<size_t>(opcode);
+    if (index >= il::core::kNumOpcodes)
+        return std::nullopt;
+
+    const auto &info = il::core::getOpcodeInfo(opcode);
+
+    OpCheckSpec spec{};
+    spec.numOperandsMin = info.numOperandsMin;
+    spec.numOperandsMax = info.numOperandsMax;
+    for (size_t i = 0; i < il::core::kMaxOperandCategories; ++i)
+        spec.operandTypes[i] = mapCategory(info.operandTypes[i]);
+    spec.result = mapCategory(info.resultType);
+    spec.hasSideEffects = info.hasSideEffects;
+
+    return spec;
+}
+
 } // namespace il::verify
 
