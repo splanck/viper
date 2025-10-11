@@ -110,6 +110,31 @@ To execute IL with the interpreter:
 build/src/tools/ilc/ilc -run examples/il/ex1_hello_cond.il
 ```
 
+### SELECT CASE example
+
+The BASIC frontend also supports `SELECT CASE` dispatch. The `examples/basic/select_case.bas`
+program demonstrates multiple case arms and a `CASE ELSE` fallback:
+
+```basic
+10 FOR ROLL = 1 TO 6
+20   SELECT CASE ROLL
+30     CASE 1
+40       PRINT "Rolled a one"
+50     CASE 2, 3, 4
+60       PRINT "Mid-range roll "; ROLL
+70     CASE 5, 6
+80       PRINT "High roll "; ROLL
+90     CASE ELSE
+100      PRINT "Unexpected value"
+110  END SELECT
+```
+
+Run it with the BASIC frontend after building:
+
+```bash
+build/src/tools/ilc/ilc front basic -run examples/basic/select_case.bas
+```
+
 ### Arrays, aliasing, and diagnostics
 
 Arrays in Viper are reference types. Assigning one array variable to another shares the handle and bumps the reference count. When a resize occurs on a shared handle the runtime performs copy-on-resize so the caller observes an isolated buffer:
