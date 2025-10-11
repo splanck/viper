@@ -26,7 +26,8 @@ enum class TypeClass : uint8_t
     Ptr,       ///< Pointer type.
     Str,       ///< Runtime string handle type.
     Error,     ///< Error object type.
-    ResumeTok  ///< Resume token type.
+    ResumeTok, ///< Resume token type.
+    InstrType  ///< Use the instruction's declared type.
 };
 
 /// @brief Verification properties describing a simple arithmetic opcode.
