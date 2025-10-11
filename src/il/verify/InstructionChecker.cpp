@@ -74,12 +74,16 @@ std::optional<Type::Kind> kindFromClass(TypeClass typeClass)
             return Type::Kind::ResumeTok;
         case TypeClass::None:
             return std::nullopt;
+        case TypeClass::InstrType:
+            return std::nullopt;
     }
     return std::nullopt;
 }
 
 std::optional<Type> typeFromClass(TypeClass typeClass)
 {
+    if (typeClass == TypeClass::InstrType)
+        return std::nullopt;
     if (auto kind = kindFromClass(typeClass))
         return Type(*kind);
     return std::nullopt;
