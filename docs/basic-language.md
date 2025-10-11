@@ -32,6 +32,11 @@ Programs can include top-level statements and user-defined procedures. Procedure
 90 END FUNCTION
 ```
 
+### Keywords
+The following reserved words are case-insensitive and cannot be used as identifiers:
+
+`ABS`, `AND`, `ANDALSO`, `APPEND`, `AS`, `BINARY`, `BOOLEAN`, `CASE`, `CEIL`, `CLOSE`, `CLS`, `COLOR`, `COS`, `DIM`, `DO`, `ELSE`, `ELSEIF`, `END`, `EOF`, `ERROR`, `EXIT`, `FALSE`, `FLOOR`, `FOR`, `FUNCTION`, `GOSUB`, `GOTO`, `IF`, `INPUT`, `LBOUND`, `LET`, `LINE`, `LOCATE`, `LOOP`, `MOD`, `NEXT`, `NOT`, `ON`, `OPEN`, `OR`, `ORELSE`, `OUTPUT`, `POW`, `PRINT`, `RANDOM`, `RANDOMIZE`, `REDIM`, `RESUME`, `RETURN`, `RND`, `SELECT`, `SIN`, `SQR`, `STEP`, `SUB`, `THEN`, `TO`, `TRUE`, `UBOUND`, `UNTIL`, `WEND`, `WHILE`.
+
 ### Data types
 * Integers are 64-bit by default.
 * Floating-point variables use the `#` suffix and are `f64`.
@@ -192,6 +197,42 @@ the loop's `LOOP` terminator.
 The loop variable is immutable inside the body. Attempting to reassign it (for
 example, `I = I + 1`) is rejected during semantic analysis with an error such as
 `error: FOR loop variable 'I' cannot be reassigned inside the loop`.
+
+#### SELECT CASE / END SELECT
+`SELECT CASE` performs multi-way branching on an integer selector.
+
+```ebnf
+select_case ::= "SELECT" "CASE" expression NEWLINE case_arm+ [case_else] "END" "SELECT"
+case_arm    ::= "CASE" integer_literal ("," integer_literal)* NEWLINE statement_list
+case_else   ::= "CASE" "ELSE" NEWLINE statement_list
+```
+
+Semantics:
+
+* The selector expression must be integer-compatible; it is evaluated once and
+  compared against each arm's labels in order.
+* Each `CASE` arm contains one or more unique integer labels. Duplicate labels
+  are rejected.
+* At most one `CASE ELSE` arm may appear, and it runs when no preceding `CASE`
+  labels match.
+* Control transfers directly into the matching arm's statements; there is no
+  fallthrough between arms.
+
+> **Note:** Version 1 only accepts integer literal labels. Ranges (`CASE 1 TO
+> 5`) and relational forms (`CASE > 10`) are not yet supported.
+
+Example:
+
+```basic
+10 SELECT CASE N
+20   CASE 0, 1
+30     PRINT "small"
+40   CASE 2
+50     PRINT "medium"
+60   CASE ELSE
+70     PRINT "large"
+80 END SELECT
+```
 
 #### EXIT statements
 `EXIT FOR`, `EXIT WHILE`, and `EXIT DO` terminate the innermost loop of the
