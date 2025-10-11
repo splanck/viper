@@ -4,11 +4,14 @@
 // Ownership/Lifetime: Test owns parsed module and mutates it locally.
 // Links: docs/il-guide.md#reference
 
+#include "il/analysis/CFG.hpp"
+#include "il/analysis/Dominators.hpp"
 #include "il/api/expected_api.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/OpcodeInfo.hpp"
 #include "il/transform/DCE.hpp"
+#include "il/transform/Mem2Reg.hpp"
 #include "il/transform/PassManager.hpp"
 
 #include <algorithm>
@@ -67,6 +70,17 @@ int main()
     assert(core::switchCaseCount(switchInstr) == 2);
     assert(core::switchDefaultLabel(switchInstr) == "default");
 
+    viper::analysis::CFGContext directCtx(module);
+    auto directSucc = viper::analysis::successors(directCtx, entry);
+    assert(directSucc.size() == 3);
+    auto rpo = viper::analysis::reversePostOrder(directCtx, fn);
+    assert(rpo.size() == fn.blocks.size());
+    assert(!rpo.empty() && rpo.front() == &entry);
+    viper::analysis::DomTree dt = viper::analysis::computeDominatorTree(directCtx, fn);
+    assert(dt.immediateDominator(&fn.blocks[0]) == nullptr);
+    for (std::size_t idx = 1; idx < fn.blocks.size(); ++idx)
+        assert(dt.immediateDominator(&fn.blocks[idx]) == &fn.blocks[0]);
+
     transform::PassManager pm;
     bool checkedCfg = false;
     pm.registerFunctionPass(
@@ -97,6 +111,7 @@ int main()
     assert(pipelineRan);
     assert(checkedCfg);
 
+    viper::passes::mem2reg(module);
     transform::dce(module);
 
     core::BasicBlock &entryAfter = module.functions[0].blocks[0];
