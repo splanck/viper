@@ -955,13 +955,16 @@ Expected<void> checkStore_E(const Function &fn,
     if (instr.operands.size() < 2)
         return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "invalid operand count"))};
 
-    if (instr.type.kind == Type::Kind::Void)
-        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "void store type"))};
-
-    if (types.valueType(instr.operands[0]).kind != Type::Kind::Ptr)
+    bool pointerMissing = false;
+    const Type pointerTy = types.valueType(instr.operands[0], &pointerMissing);
+    if (pointerMissing)
+    {
+        return Expected<void>{makeError(instr.loc,
+                                        formatInstrDiag(fn, bb, instr, "pointer operand type is unknown"))};
+    }
+    if (pointerTy.kind != Type::Kind::Ptr)
         return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "pointer type mismatch"))};
 
-    Type valueTy = types.valueType(instr.operands[1]);
     bool isBoolConst = instr.type.kind == Type::Kind::I1 && instr.operands[1].kind == Value::Kind::ConstInt;
     if (isBoolConst)
     {
@@ -982,15 +985,7 @@ Expected<void> checkStore_E(const Function &fn,
             return Expected<void>{makeError(instr.loc,
                                             formatInstrDiag(fn, bb, instr, "value out of range for store type"))};
         }
-        // Treat the constant as having the narrower integer type for this store.
-        valueTy = instr.type;
     }
-    else if (valueTy.kind != instr.type.kind)
-    {
-        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "value type mismatch"))};
-    }
-
-    [[maybe_unused]] size_t sz = TypeInference::typeSize(instr.type.kind);
     return {};
 }
 
