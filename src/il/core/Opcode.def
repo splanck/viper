@@ -112,7 +112,7 @@ IL_OPCODE(EhPop, "eh.pop", ResultArity::None, TypeCategory::None, 0, 0, TypeCate
 IL_OPCODE(ResumeSame, "resume.same", ResultArity::None, TypeCategory::None, 1, 1, TypeCategory::ResumeTok, TypeCategory::None, TypeCategory::None, true, 0, true, VM_DISPATCH(ResumeSame), makeParseSpec(OperandParseKind::Value, "token"), makeParseSpec(), makeParseSpec(), makeParseSpec())
 IL_OPCODE(ResumeNext, "resume.next", ResultArity::None, TypeCategory::None, 1, 1, TypeCategory::ResumeTok, TypeCategory::None, TypeCategory::None, true, 0, true, VM_DISPATCH(ResumeNext), makeParseSpec(OperandParseKind::Value, "token"), makeParseSpec(), makeParseSpec(), makeParseSpec())
 IL_OPCODE(ResumeLabel, "resume.label", ResultArity::None, TypeCategory::None, 1, 1, TypeCategory::ResumeTok, TypeCategory::None, TypeCategory::None, true, 1, true, VM_DISPATCH(ResumeLabel), makeParseSpec(OperandParseKind::Value, "token"), makeParseSpec(OperandParseKind::BranchTarget), makeParseSpec(), makeParseSpec())
-IL_OPCODE(EhEntry, "eh.entry", ResultArity::None, TypeCategory::None, 0, 0, TypeCategory::None, TypeCategory::None, TypeCategory::None, false, 0, false, VM_DISPATCH(EhEntry), makeParseSpec(), makeParseSpec(), makeParseSpec(), makeParseSpec())
+IL_OPCODE(EhEntry, "eh.entry", ResultArity::None, TypeCategory::None, 0, 0, TypeCategory::None, TypeCategory::None, TypeCategory::None, true, 0, false, VM_DISPATCH(EhEntry), makeParseSpec(), makeParseSpec(), makeParseSpec(), makeParseSpec())
 IL_OPCODE(Trap, "trap", ResultArity::None, TypeCategory::None, 0, 0, TypeCategory::None, TypeCategory::None, TypeCategory::None, true, 0, true, VM_DISPATCH(Trap), makeParseSpec(), makeParseSpec(), makeParseSpec(), makeParseSpec())
 
 #undef IL_OPCODE
