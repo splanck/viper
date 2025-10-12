@@ -280,7 +280,7 @@ Expected<void> checkWithInfo(const VerifyCtx &ctx, const il::core::OpcodeInfo &i
 
     if (info.resultType == TypeCategory::InstrType)
     {
-        if (instr.type.kind == Type::Kind::Void)
+        if (instr.op != Opcode::IdxChk && instr.type.kind == Type::Kind::Void)
         {
             return Expected<void>{makeError(instr.loc,
                                             formatInstrDiag(ctx.fn, ctx.block, instr, "instruction type must be non-void"))};
