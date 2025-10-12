@@ -1,8 +1,16 @@
-// File: src/il/verify/Verifier.cpp
-// Purpose: Coordinates module verification passes for externs, globals, and functions.
-// Key invariants: Passes run sequentially and halt on the first structural or typing error.
-// Ownership/Lifetime: Operates on caller-owned modules; diagnostic sinks manage their own storage.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Coordinates the IL verifier pipeline.  The driver runs the extern, global,
+// function, and exception-handler verifiers in sequence, collecting diagnostics
+// and combining them into a single @c Expected<void> result so callers receive a
+// consolidated failure summary.
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/verify/Verifier.hpp"
 
@@ -26,6 +34,17 @@ namespace
 using il::support::Diag;
 using il::support::Expected;
 
+/// @brief Combine a failing verification result with accumulated warnings.
+///
+/// @details When verification fails, diagnostics may already have been emitted
+/// as warnings.  This helper prints each stored warning into a single message,
+/// appends the original error diagnostic, and returns a new @c Expected<void>
+/// that carries the aggregated text so callers can surface a consolidated
+/// report.
+///
+/// @param failure Verification result that already represents an error.
+/// @param sink Diagnostic sink containing any emitted warnings.
+/// @return Updated failure result with warnings appended to the error message.
 Expected<void> appendWarnings(Expected<void> failure, const CollectingDiagSink &sink)
 {
     if (sink.diagnostics().empty())
@@ -43,6 +62,15 @@ Expected<void> appendWarnings(Expected<void> failure, const CollectingDiagSink &
 
 } // namespace
 
+/// @brief Run the full IL verifier pipeline over a module.
+///
+/// @details Executes the extern, global, function, and exception-handler
+/// verifiers in sequence, stopping at the first failure.  Diagnostics are
+/// captured via @c CollectingDiagSink so warnings can be appended to any error
+/// returned to the caller.
+///
+/// @param m Module to verify.
+/// @return @c Expected success on clean modules; otherwise an aggregated error diagnostic.
 Expected<void> Verifier::verify(const Module &m)
 {
     CollectingDiagSink sink;
