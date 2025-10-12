@@ -907,12 +907,6 @@ Expected<void> checkGEP_E(const Function &fn,
     if (instr.operands.size() < 2)
         return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "invalid operand count"))};
 
-    if (types.valueType(instr.operands[0]).kind != Type::Kind::Ptr ||
-        types.valueType(instr.operands[1]).kind != Type::Kind::I64)
-    {
-        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "operand type mismatch"))};
-    }
-
     types.recordResult(instr, Type(Type::Kind::Ptr));
     return {};
 }
