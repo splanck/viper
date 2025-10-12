@@ -930,10 +930,7 @@ Expected<void> checkLoad_E(const Function &fn,
                            TypeInference &types)
 {
     if (instr.operands.empty())
-        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "invalid operand count"))};
-
-    if (instr.type.kind == Type::Kind::Void)
-        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "void load type"))};
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "missing operand"))};
 
     if (types.valueType(instr.operands[0]).kind != Type::Kind::Ptr)
         return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "pointer type mismatch"))};
