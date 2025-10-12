@@ -1,9 +1,18 @@
-// File: src/il/transform/DCE.cpp
-// License: MIT (see LICENSE for details).
-// Purpose: Implement trivial dead-code elimination and block param cleanup.
-// Key invariants: Simplifications preserve verifier correctness.
-// Ownership/Lifetime: Mutates the module in place.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the trivial dead-code elimination pass used by the IL optimizer.
+// The pass performs syntactic use counting, removes instructions whose results
+// are never consumed, and prunes unused block parameters together with their
+// corresponding branch arguments.  All mutations happen in place so callers can
+// run DCE over a fully materialised module without rebuilding auxiliary data
+// structures.
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/transform/DCE.hpp"
 #include "il/core/Function.hpp"
@@ -17,14 +26,18 @@ using namespace il::core;
 
 namespace il::transform
 {
-/// \brief Count temporary identifier uses within a function.
-/// \details Builds a dense usage map by seeding block parameters with zero
-/// counts and scanning every instruction operand and branch argument. Each
-/// temporary increments its slot, producing an @c O(n) summary where @c n is
-/// the total operand count. The analysis is purely syntactic—it does not
-/// follow control flow or aliasing—making it ideal for quick dead-temp tests.
-/// \param F Function whose temporaries are inspected.
-/// \return Map from temporary id to number of references.
+/// @brief Count how many times each temporary identifier is referenced.
+///
+/// @details The pass seeds the map with entries for block parameters so they
+/// receive a zero count when unused, then walks every operand and branch
+/// argument inside @p F.  Each encounter with a temporary identifier bumps the
+/// associated slot, yielding an @c O(n) summary where @c n equals the total
+/// number of operands scanned.  No control-flow reasoning is performed; the
+/// counts purely reflect syntactic uses, which is sufficient for pruning dead
+/// temporaries and block parameters later in the pass.
+///
+/// @param F Function whose temporaries are inspected.
+/// @return Map from temporary id to number of references.
 static std::unordered_map<unsigned, size_t> countUses(Function &F)
 {
     std::unordered_map<unsigned, size_t> uses;
@@ -47,18 +60,21 @@ static std::unordered_map<unsigned, size_t> countUses(Function &F)
     return uses;
 }
 
-/// \brief Eliminate trivially dead code from a module.
-/// \details Performs a lightweight sweep over every function:
-///  1. Builds temp-use counts via @ref countUses.
-///  2. Classifies @c alloca destinations and records whether any @c load reads
-///     from them.
-///  3. Deletes loads whose results have zero uses, stores that write to never
-///     loaded allocas, and allocas that are never read.
-///  4. Walks block parameters backwards, pruning unused entries and erasing the
-///     associated operands from incoming branch argument lists.
-/// The routine purposefully ignores side-effect analysis: operations that may
-/// observe or modify memory (calls, volatile loads/stores) are left untouched.
-/// \param M Module simplified in place.
+/// @brief Eliminate trivially dead instructions and block parameters.
+///
+/// @details The transformation iterates over every function in @p M and:
+///   1. Builds use counts for temporaries via @ref countUses.
+///   2. Records which @c alloca results are observed by @c load instructions.
+///   3. Deletes loads whose results have zero uses, stores that write to never
+///      loaded allocas, and allocas that are never read.
+///   4. Walks block parameters in reverse order, removing unused entries and
+///      erasing the corresponding operands from predecessor branch argument
+///      lists.
+/// Instructions that may observe side effects (for example calls) are
+/// intentionally untouched; the pass focuses solely on obvious dead temporaries
+/// to keep compilation fast and predictable.
+///
+/// @param M Module simplified in place.
 void dce(Module &M)
 {
     for (auto &F : M.functions)
