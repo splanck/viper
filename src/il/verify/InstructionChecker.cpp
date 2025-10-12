@@ -39,6 +39,25 @@ using il::support::Expected;
 using il::support::Severity;
 using il::support::makeError;
 
+bool fitsInIntegerKind(long long value, Type::Kind kind)
+{
+    switch (kind)
+    {
+        case Type::Kind::I1:
+            return value == 0 || value == 1;
+        case Type::Kind::I16:
+            return value >= std::numeric_limits<int16_t>::min() &&
+                   value <= std::numeric_limits<int16_t>::max();
+        case Type::Kind::I32:
+            return value >= std::numeric_limits<int32_t>::min() &&
+                   value <= std::numeric_limits<int32_t>::max();
+        case Type::Kind::I64:
+            return true;
+        default:
+            return false;
+    }
+}
+
 Expected<void> checkBinary_E(const VerifyCtx &ctx,
                              Type::Kind operandKind,
                              Type resultType);
@@ -122,7 +141,7 @@ std::optional<Type::Kind> kindFromCategory(TypeCategory category)
     return std::nullopt;
 }
 
-[[maybe_unused]] Expected<void> checkWithInfo(const VerifyCtx &ctx, const il::core::OpcodeInfo &info)
+Expected<void> checkWithInfo(const VerifyCtx &ctx, const il::core::OpcodeInfo &info)
 {
     const Instr &instr = ctx.instr;
 
@@ -179,8 +198,45 @@ std::optional<Type::Kind> kindFromCategory(TypeCategory category)
             continue;
         }
 
+        const Value &operand = instr.operands[index];
+        if (operand.kind == Value::Kind::ConstInt)
+        {
+            switch (expectedKind)
+            {
+                case Type::Kind::I1:
+                    if (!fitsInIntegerKind(operand.i64, expectedKind))
+                    {
+                        std::ostringstream ss;
+                        ss << "operand " << index << " constant out of range for i1";
+                        return Expected<void>{makeError(instr.loc,
+                                                        formatInstrDiag(ctx.fn,
+                                                                        ctx.block,
+                                                                        instr,
+                                                                        ss.str()))};
+                    }
+                    continue;
+                case Type::Kind::I16:
+                case Type::Kind::I32:
+                case Type::Kind::I64:
+                    if (!fitsInIntegerKind(operand.i64, expectedKind))
+                    {
+                        std::ostringstream ss;
+                        ss << "operand " << index << " constant out of range for "
+                           << kindToString(expectedKind);
+                        return Expected<void>{makeError(instr.loc,
+                                                        formatInstrDiag(ctx.fn,
+                                                                        ctx.block,
+                                                                        instr,
+                                                                        ss.str()))};
+                    }
+                    continue;
+                default:
+                    break;
+            }
+        }
+
         bool missing = false;
-        const Type actual = ctx.types.valueType(instr.operands[index], &missing);
+        const Type actual = ctx.types.valueType(operand, &missing);
         if (missing)
         {
             std::ostringstream ss;
@@ -191,7 +247,14 @@ std::optional<Type::Kind> kindFromCategory(TypeCategory category)
         if (actual.kind != expectedKind)
         {
             std::ostringstream ss;
-            ss << "operand " << index << " must be " << kindToString(expectedKind);
+            if (expectedKind == Type::Kind::Ptr)
+            {
+                ss << "pointer type mismatch";
+            }
+            else
+            {
+                ss << "operand " << index << " must be " << kindToString(expectedKind);
+            }
             return Expected<void>{makeError(instr.loc, formatInstrDiag(ctx.fn, ctx.block, instr, ss.str()))};
         }
     }
@@ -225,7 +288,11 @@ std::optional<Type::Kind> kindFromCategory(TypeCategory category)
     }
     else if (auto expectedKind = kindFromCategory(info.resultType))
     {
-        if (instr.type.kind != *expectedKind)
+        const bool skipResultTypeCheck =
+            ctx.instr.op == Opcode::CastFpToSiRteChk || ctx.instr.op == Opcode::CastFpToUiRteChk ||
+            ctx.instr.op == Opcode::CastSiNarrowChk || ctx.instr.op == Opcode::CastUiNarrowChk;
+
+        if (!skipResultTypeCheck && instr.type.kind != *expectedKind)
         {
             std::ostringstream ss;
             ss << "result type must be " << kindToString(*expectedKind);
@@ -658,20 +725,6 @@ Expected<void> checkIdxChk_E(const Function &fn,
     if (instr.operands.size() != 3)
         return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, "invalid operand count"))};
 
-    auto fitsInKind = [](long long value, Type::Kind kind) {
-        switch (kind)
-        {
-            case Type::Kind::I16:
-                return value >= std::numeric_limits<int16_t>::min() &&
-                       value <= std::numeric_limits<int16_t>::max();
-            case Type::Kind::I32:
-                return value >= std::numeric_limits<int32_t>::min() &&
-                       value <= std::numeric_limits<int32_t>::max();
-            default:
-                return false;
-        }
-    };
-
     Type::Kind expectedKind = Type::Kind::Void;
     if (instr.type.kind == Type::Kind::I16 || instr.type.kind == Type::Kind::I32)
         expectedKind = instr.type.kind;
@@ -692,9 +745,9 @@ Expected<void> checkIdxChk_E(const Function &fn,
         {
             if (expectedKind == Type::Kind::Void)
             {
-                if (fitsInKind(value.i64, Type::Kind::I16))
+                if (fitsInIntegerKind(value.i64, Type::Kind::I16))
                     return Type::Kind::I16;
-                if (fitsInKind(value.i64, Type::Kind::I32))
+                if (fitsInIntegerKind(value.i64, Type::Kind::I32))
                     return Type::Kind::I32;
                 return Expected<Type::Kind>{makeError(instr.loc,
                                                       formatInstrDiag(fn,
@@ -702,7 +755,7 @@ Expected<void> checkIdxChk_E(const Function &fn,
                                                                       instr,
                                                                       "constant out of range for idx.chk"))};
             }
-            if (!fitsInKind(value.i64, expectedKind))
+            if (!fitsInIntegerKind(value.i64, expectedKind))
             {
                 return Expected<Type::Kind>{makeError(instr.loc,
                                                       formatInstrDiag(fn,
@@ -1083,6 +1136,12 @@ Expected<void> verifyInstruction_impl(const VerifyCtx &ctx)
     if (auto props = lookup(ctx.instr.op))
         return checkWithProps(ctx, *props);
 
+    {
+        const auto &info = il::core::getOpcodeInfo(ctx.instr.op);
+        if (auto result = checkWithInfo(ctx, info); !result)
+            return result;
+    }
+
     switch (ctx.instr.op)
     {
         case Opcode::Alloca:
@@ -1139,7 +1198,18 @@ Expected<void> verifyInstruction_impl(const VerifyCtx &ctx)
                 "fp to integer narrowing must use cast.fp_to_si.rte.chk (rounds to nearest-even and traps on overflow)");
         case Opcode::CastFpToSiRteChk:
         case Opcode::CastFpToUiRteChk:
-            return checkUnary_E(ctx, Type::Kind::F64, Type(Type::Kind::I64));
+        {
+            if (ctx.instr.type.kind != Type::Kind::I16 && ctx.instr.type.kind != Type::Kind::I32 &&
+                ctx.instr.type.kind != Type::Kind::I64)
+            {
+                return Expected<void>{makeError(ctx.instr.loc,
+                                                formatInstrDiag(ctx.fn,
+                                                                ctx.block,
+                                                                ctx.instr,
+                                                                "cast result must be i16, i32, or i64"))};
+            }
+            return checkUnary_E(ctx, Type::Kind::F64, ctx.instr.type);
+        }
         case Opcode::CastSiNarrowChk:
         case Opcode::CastUiNarrowChk:
         {
