@@ -1,9 +1,17 @@
-// File: src/il/io/ModuleParser.cpp
-// Purpose: Implements parsing of module-level IL directives.
-// Key invariants: ParserState remains at module scope when invoked.
-// Ownership/Lifetime: Directly mutates the module referenced by ParserState.
-// License: MIT (see LICENSE for details).
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements parsing of module-level IL directives such as version banners,
+// extern declarations, globals, and function definitions.  The helpers consume
+// textual lines provided by @c ParserState and populate the owning module in
+// place, returning structured diagnostics when malformed directives are
+// encountered.
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/io/ModuleParser.hpp"
 #include "il/core/Function.hpp"
@@ -32,14 +40,13 @@ using il::core::Type;
 using il::support::Expected;
 using il::support::makeError;
 
-/// Parses an extern declaration in the form `extern @name(param, ...) -> type`.
+/// @brief Parse an extern declaration in the form `extern @name(param, ...) -> type`.
 ///
-/// Whitespace around parameter tokens and the return type is normalized via
-/// `trim`, and each type token is resolved with `parseType`, so failures are
-/// reported when an unknown type name is encountered. When the syntax omits the
-/// required `->` arrow the function returns an error diagnostic describing the
-/// missing token. On success, the fully parsed signature is appended to
-/// `ParserState::m.externs`.
+/// @details Whitespace around parameter tokens and the return type is normalised
+/// with @ref trim, and each type token is resolved using @ref parseType.  When
+/// the syntax omits required punctuation such as the `->` arrow, the helper
+/// returns a diagnostic describing the missing token.  Successful parses append
+/// the signature to @c ParserState::m.externs.
 Expected<void> parseExtern_E(const std::string &line, ParserState &st)
 {
     size_t at = line.find('@');
@@ -103,13 +110,13 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st)
     return {};
 }
 
-/// Parses a global string binding written as `global @name = "literal"`.
+/// @brief Parse a global string binding written as `global @name = "literal"`.
 ///
-/// The helper validates that an assignment operator is present, trims the name
-/// token to ignore incidental whitespace, and copies the quoted payload
-/// verbatim. When the `=` delimiter is missing an error diagnostic is emitted;
-/// otherwise the routine creates a UTF-8 string global and appends it to
-/// `ParserState::m.globals`.
+/// @details Validates that an assignment operator is present, trims the name
+/// token to ignore incidental whitespace, and copies the quoted payload after
+/// decoding escape sequences with @ref il::io::decodeEscapedString.  Missing
+/// delimiters or invalid escapes produce diagnostics; otherwise a UTF-8 string
+/// global is appended to @c ParserState::m.globals.
 Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
 {
     size_t at = line.find('@');
@@ -150,15 +157,13 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
 
 } // namespace
 
-/// Dispatches module-header directives such as `il`, `extern`, `global`, and
-/// `func`.
+/// @brief Dispatch module-header directives such as `il`, `extern`, `global`, and `func`.
 ///
-/// An initial `il` line optionally supplies a version number; when omitted the
-/// module defaults to version `0.1.2`. Extern directives are parsed via
-/// `parseExtern_E`, thereby leveraging `trim` and `parseType` to normalize type
-/// tokens, while globals and functions forward to their respective helpers. Any
-/// unrecognized directive results in an error diagnostic that cites the current
-/// line number; otherwise the appropriate portion of `ParserState` is updated.
+/// @details Handles the leading `il` version directive (defaulting to `0.1.2`
+/// when omitted), parses target triples, and forwards externs/globals/functions
+/// to their specialised helpers.  Unrecognised directives return diagnostics
+/// that include the current line number so the caller can surface precise
+/// feedback.
 Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserState &st)
 {
     if (line.rfind("il", 0) == 0)
@@ -215,6 +220,17 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
     return Expected<void>{makeError({}, oss.str())};
 }
 
+/// @brief Parse a single module header line and emit user-facing diagnostics.
+///
+/// @details Invokes @ref parseModuleHeader_E to produce structured diagnostics
+/// and prints any failures to @p err so command-line tools can mirror the IL
+/// parser's messaging.  Success leaves @p st updated and returns @c true.
+///
+/// @param is Stream supplying additional lines for nested parsers (for example functions).
+/// @param line Current header line to interpret.
+/// @param st Parser state accumulating module contents.
+/// @param err Output stream receiving diagnostic text when parsing fails.
+/// @return @c true on success, @c false when a diagnostic was emitted.
 bool parseModuleHeader(std::istream &is, std::string &line, ParserState &st, std::ostream &err)
 {
     auto result = parseModuleHeader_E(is, line, st);
