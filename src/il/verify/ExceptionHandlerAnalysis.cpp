@@ -1,8 +1,18 @@
-// File: src/il/verify/ExceptionHandlerAnalysis.cpp
-// Purpose: Implement helpers that analyse exception-handling blocks and EH stack usage.
-// Key invariants: Handler entry must appear first with (%err:Error, %tok:ResumeTok) signature; EH
-// pushes/pops balance. Ownership/Lifetime: Operates on caller-provided IR structures without
-// retaining ownership. Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the analyses that validate exception-handling constructs within IL
+// functions.  The helpers verify handler block signatures, ensure that eh.push
+// and eh.pop instructions are balanced, and check that resume operations only
+// occur when a resume token is active.  The analysis walks the control-flow
+// graph without mutating it and reports precise diagnostics when invariants are
+// broken.
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/verify/ExceptionHandlerAnalysis.hpp"
 
@@ -35,6 +45,15 @@ namespace
 
 using HandlerInfo = std::pair<unsigned, unsigned>;
 
+/// @brief Identify whether an opcode terminates the search for EH state.
+///
+/// The EH analysis needs to stop scanning a block once it reaches a terminator
+/// so that successor handling can perform the appropriate stack propagation.
+/// This helper centralises the list of terminators that are relevant for
+/// exception handling.
+///
+/// @param op Opcode to classify.
+/// @return `true` when @p op ends the block for EH purposes.
 bool isTerminatorForEh(Opcode op)
 {
     switch (op)
@@ -62,6 +81,15 @@ struct EhState
     int parent = -1;
 };
 
+/// @brief Encode the EH analysis state for visited-set bookkeeping.
+///
+/// Serialises the handler stack and the resume-token flag into a compact string
+/// so the BFS can avoid revisiting states that would not produce new
+/// information.
+///
+/// @param stack Current stack of active handlers (top at the back).
+/// @param hasResumeToken Whether the current state holds an active resume token.
+/// @return Canonical key string for deduplicating states.
 std::string encodeStateKey(const std::vector<const BasicBlock *> &stack, bool hasResumeToken)
 {
     std::string key;
@@ -78,6 +106,15 @@ std::string encodeStateKey(const std::vector<const BasicBlock *> &stack, bool ha
     return key;
 }
 
+/// @brief Resolve the successor blocks referenced by a terminator.
+///
+/// Looks up the labels attached to a terminator in the provided block map and
+/// returns the subset that exist.  Only control-flow opcodes relevant to
+/// exception analysis are considered.
+///
+/// @param terminator Terminator instruction whose successors are required.
+/// @param blockMap Mapping from block labels to block pointers.
+/// @return Sequence of successor blocks reachable from @p terminator.
 std::vector<const BasicBlock *> gatherSuccessors(
     const Instr &terminator, const std::unordered_map<std::string, const BasicBlock *> &blockMap)
 {
@@ -118,6 +155,15 @@ std::vector<const BasicBlock *> gatherSuccessors(
     return successors;
 }
 
+/// @brief Reconstruct the CFG path that led to a recorded EH state.
+///
+/// Walks the parent links stored in the BFS state vector to produce a
+/// human-readable list of blocks, which is then used to contextualise emitted
+/// diagnostics.
+///
+/// @param states All states accumulated during BFS.
+/// @param index Index of the state whose ancestry is required.
+/// @return Sequence of blocks from function entry to the chosen state.
 std::vector<const BasicBlock *> buildPath(const std::vector<EhState> &states, int index)
 {
     std::vector<const BasicBlock *> path;
@@ -127,6 +173,13 @@ std::vector<const BasicBlock *> buildPath(const std::vector<EhState> &states, in
     return path;
 }
 
+/// @brief Convert a CFG path into a printable arrow-separated string.
+///
+/// Used by diagnostics to show the path that triggered an invariant violation.
+/// Each block label is appended in order with `->` separators.
+///
+/// @param path Sequence of blocks to serialise.
+/// @return String representation of @p path suitable for diagnostics.
 std::string formatPathString(const std::vector<const BasicBlock *> &path)
 {
     std::ostringstream oss;
@@ -141,6 +194,17 @@ std::string formatPathString(const std::vector<const BasicBlock *> &path)
 
 } // namespace
 
+/// @brief Validate the signature and placement of an exception handler block.
+///
+/// Checks that the block begins with `eh.entry`, exposes the required
+/// `%err:Error` and `%tok:ResumeTok` parameters, and uses the canonical
+/// parameter names.  When the block is not a handler the function returns an
+/// empty optional, otherwise it returns the identifier pair for the parameters.
+///
+/// @param fn Function that owns the block (used for diagnostics).
+/// @param bb Block under inspection.
+/// @return Handler signature when @p bb is a handler, empty optional when not,
+///         or an error diagnostic if invariants are violated.
 Expected<std::optional<HandlerSignature>> analyzeHandlerBlock(const Function &fn,
                                                               const BasicBlock &bb)
 {
@@ -184,6 +248,16 @@ Expected<std::optional<HandlerSignature>> analyzeHandlerBlock(const Function &fn
     return std::optional<HandlerSignature>{sig};
 }
 
+/// @brief Ensure eh.push/eh.pop usage forms a balanced stack across the CFG.
+///
+/// Performs a breadth-first exploration of the function while tracking the
+/// active handler stack and whether a resume token is available.  The analysis
+/// reports underflows, leaks, and resume instructions without an active token,
+/// emitting diagnostic paths that show how the invalid state was reached.
+///
+/// @param fn Function to analyse.
+/// @param blockMap Mapping from block labels to block pointers for successor lookup.
+/// @return Success when the EH stack is well behaved, otherwise a diagnostic.
 Expected<void> checkEhStackBalance(
     const Function &fn, const std::unordered_map<std::string, const BasicBlock *> &blockMap)
 {

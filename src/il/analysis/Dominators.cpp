@@ -1,22 +1,38 @@
-// File: src/il/analysis/Dominators.cpp
-// Purpose: Implement dominator tree construction using the Cooper et al. algorithm.
-// Key invariants: Tree is built once per function; no incremental updates or caches.
-// Ownership/Lifetime: Relies on IL blocks owned by the caller.
-// Links: docs/dev/analysis.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements dominator tree construction using the Cooper–Harvey–Kennedy
+// algorithm.  The helper builds the immediate-dominator relation for every
+// block in a function, caches the relationship for quick dominance queries, and
+// synthesizes child lists so consumers can traverse the dominator tree without
+// recomputing fixpoints.  All data structures operate directly on the IL owned
+// by the caller; no additional copies of the control-flow graph are created.
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/analysis/Dominators.hpp"
 #include "il/analysis/CFG.hpp"
+
 #include <cstddef>
+#include <unordered_map>
 
 namespace viper::analysis
 {
 
-/// @brief Return the immediate dominator for a block.
+/// @brief Retrieve the parent of a block within the dominator tree.
 ///
-/// Queries the dominator tree for the unique immediate dominator of
-/// the provided block.
+/// The lookup is performed against the cached immediate-dominator mapping that
+/// `computeDominatorTree()` constructs.  A null pointer is returned when the
+/// queried block is the function entry (which has no predecessor in the tree)
+/// or when the block was never inserted into the map because the dominator tree
+/// has not been fully computed yet.
+///
 /// @param B Block whose immediate dominator is sought.
-/// @return Immediate dominator of @p B or `nullptr` if @p B is the entry block.
+/// @return Immediate dominator of @p B, or `nullptr` when no parent exists.
 /// @invariant The dominator tree has been previously computed for the
 /// containing function.
 il::core::Block *DomTree::immediateDominator(il::core::Block *B) const
@@ -25,10 +41,15 @@ il::core::Block *DomTree::immediateDominator(il::core::Block *B) const
     return it == idom.end() ? nullptr : it->second;
 }
 
-/// @brief Check whether one block dominates another.
+/// @brief Determine whether a candidate block dominates another block.
 ///
-/// Walks up the dominator tree from the candidate dominated block to see
-/// if the potential dominator is encountered.
+/// The routine climbs the dominator chain starting at @p B and repeatedly
+/// follows immediate-dominator links until either the chain reaches @p A or the
+/// root of the tree.  Encountering @p A proves dominance; reaching the root
+/// without seeing @p A demonstrates that @p A does not dominate @p B.  Null
+/// arguments are treated as non-dominating so callers can short-circuit on
+/// malformed IR.
+///
 /// @param A Potential dominator.
 /// @param B Block being tested for domination.
 /// @return `true` if @p A dominates @p B, otherwise `false`.
@@ -40,6 +61,7 @@ bool DomTree::dominates(il::core::Block *A, il::core::Block *B) const
         return false;
     if (A == B)
         return true;
+
     while (B)
     {
         auto it = idom.find(B);
@@ -49,13 +71,20 @@ bool DomTree::dominates(il::core::Block *A, il::core::Block *B) const
         if (B == A)
             return true;
     }
+
     return false;
 }
 
-/// @brief Construct the dominator tree for a function.
+/// @brief Construct the dominator tree for a function using CHK iteration.
 ///
-/// Implements the Cooper–Harvey–Kennedy algorithm to derive immediate
-/// dominators for every block in the function.
+/// The algorithm first gathers the reverse post-order (RPO) over the function's
+/// reachable blocks, assigns each block an RPO index, and then iteratively
+/// refines the immediate-dominator relation by intersecting predecessor chains.
+/// The fixpoint computation mirrors Cooper–Harvey–Kennedy and typically
+/// converges in a small number of passes.  Once the mapping is stable the tree
+/// is reified into both parent and child adjacency to support downstream
+/// analyses.
+///
 /// @param ctx CFG context used to access traversal helpers.
 /// @param F Function whose dominator relationships are computed.
 /// @return A fully populated dominator tree with parent and child links.
@@ -136,3 +165,4 @@ DomTree computeDominatorTree(const CFGContext &ctx, il::core::Function &F)
 }
 
 } // namespace viper::analysis
+

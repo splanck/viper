@@ -1,8 +1,17 @@
-// File: src/il/verify/ExternVerifier.cpp
-// Purpose: Implements verification of module extern declarations and builds lookup tables.
-// Key invariants: Extern signatures remain stable during verification; duplicate names are rejected.
-// Ownership/Lifetime: Stores pointers to module-owned extern declarations.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements verification for module-level extern declarations.  The verifier
+// ensures that extern names are unique, signatures match any known runtime
+// definitions, and provides a lookup table used by later verification passes.
+// The logic operates directly on the caller-owned Module without taking
+// ownership of the declarations themselves.
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/verify/ExternVerifier.hpp"
 
@@ -21,6 +30,14 @@ namespace
 using il::support::Expected;
 using il::support::makeError;
 
+/// @brief Compare two extern declarations for signature equivalence.
+///
+/// Checks both the return type and the parameter kinds; parameter names are
+/// ignored because they have no semantic meaning for extern matching.
+///
+/// @param lhs First extern declaration.
+/// @param rhs Second extern declaration.
+/// @return `true` when the signatures are identical.
 bool signaturesMatch(const Extern &lhs, const Extern &rhs)
 {
     if (lhs.retType.kind != rhs.retType.kind || lhs.params.size() != rhs.params.size())
@@ -31,6 +48,15 @@ bool signaturesMatch(const Extern &lhs, const Extern &rhs)
     return true;
 }
 
+/// @brief Check a module extern declaration against the runtime ABI description.
+///
+/// Ensures that the module definition agrees with the runtime-supplied
+/// signature so that calls dispatched through the runtime trampoline remain
+/// well-typed.
+///
+/// @param decl Module extern declaration.
+/// @param runtime Runtime ABI signature for the same symbol.
+/// @return `true` when both signatures agree.
 bool signaturesMatch(const Extern &decl, const il::runtime::RuntimeSignature &runtime)
 {
     if (decl.retType.kind != runtime.retType.kind || decl.params.size() != runtime.paramTypes.size())
@@ -43,11 +69,26 @@ bool signaturesMatch(const Extern &decl, const il::runtime::RuntimeSignature &ru
 
 } // namespace
 
+/// @brief Access the verified extern lookup table.
+///
+/// The map associates extern names with the declarations owned by the module
+/// passed to `run()`.
+///
+/// @return Reference to the internal extern map.
 [[nodiscard]] const ExternVerifier::ExternMap &ExternVerifier::externs() const
 {
     return externs_;
 }
 
+/// @brief Validate extern declarations and populate the lookup map.
+///
+/// Walks all extern declarations, reporting duplicates and mismatched runtime
+/// signatures.  When verification succeeds the map contains every extern keyed
+/// by name for use by downstream passes.
+///
+/// @param module Module providing the extern declarations.
+/// @param sink Diagnostic sink (unused because all diagnostics are returned as errors).
+/// @return Success when all externs are valid, otherwise a diagnostic.
 Expected<void> ExternVerifier::run(const Module &module, DiagSink &)
 {
     externs_.clear();
