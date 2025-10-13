@@ -1119,15 +1119,11 @@ Expected<void> verifyInstruction_impl(const VerifyCtx &ctx)
                                         formatInstrDiag(ctx.fn, ctx.block, ctx.instr, message))};
     };
 
-    const auto props = lookup(ctx.instr.op);
-    if (!props)
-    {
-        const auto &info = il::core::getOpcodeInfo(ctx.instr.op);
-        if (auto result = checkWithInfo(ctx, info); !result)
-            return result;
-    }
+    const auto &info = il::core::getOpcodeInfo(ctx.instr.op);
+    if (auto result = checkWithInfo(ctx, info); !result)
+        return result;
 
-    if (props)
+    if (const auto props = lookup(ctx.instr.op))
         return checkWithProps(ctx, *props);
 
     switch (ctx.instr.op)
