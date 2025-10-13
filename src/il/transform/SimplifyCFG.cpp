@@ -27,6 +27,7 @@
 #include <deque>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #if defined(__has_include)
@@ -276,6 +277,98 @@ static bool isEHSensitive(const BasicBlock &B)
 static bool hasSideEffects(const Instr &I)
 {
     return il::core::getOpcodeInfo(I.op).hasSideEffects;
+}
+
+static bool isEntryLabel(const std::string &label)
+{
+    return label == "entry" || label.rfind("entry_", 0) == 0;
+}
+
+[[maybe_unused]] static bool isEmptyForwardingBlock(const BasicBlock &B)
+{
+    if (isEntryLabel(B.label))
+        return false;
+
+    if (isEHSensitive(B))
+        return false;
+
+    if (B.instructions.empty())
+        return false;
+
+    const Instr *terminator = findTerminator(B);
+    if (!terminator)
+        return false;
+
+    if (terminator->op != Opcode::Br)
+        return false;
+
+    if (terminator->labels.size() != 1)
+        return false;
+
+    if (&B.instructions.back() != terminator)
+        return false;
+
+    std::unordered_set<unsigned> definedTemps;
+    for (const auto &instr : B.instructions)
+    {
+        if (instr.result)
+            definedTemps.insert(*instr.result);
+    }
+
+    for (const auto &instr : B.instructions)
+    {
+        if (&instr == terminator)
+            break;
+
+        if (hasSideEffects(instr))
+            return false;
+    }
+
+    if (!terminator->brArgs.empty())
+    {
+        if (terminator->brArgs.size() != 1)
+            return false;
+
+        for (const auto &value : terminator->brArgs.front())
+        {
+            if (value.kind == Value::Kind::Temp && definedTemps.count(value.id))
+                return false;
+        }
+    }
+
+    return true;
+}
+
+struct [[maybe_unused]] SoleSuccessor
+{
+    const std::string *label = nullptr;
+    const std::vector<Value> *args = nullptr;
+};
+
+[[maybe_unused]] static SoleSuccessor getSoleSuccessor(const BasicBlock &B)
+{
+    SoleSuccessor info;
+    const Instr *terminator = findTerminator(B);
+    if (!terminator)
+        return info;
+
+    if (terminator->op != Opcode::Br)
+        return info;
+
+    if (terminator->labels.size() != 1)
+        return info;
+
+    info.label = &terminator->labels.front();
+    if (!terminator->brArgs.empty())
+    {
+        if (terminator->brArgs.size() != 1)
+        {
+            info.label = nullptr;
+            return info;
+        }
+        info.args = &terminator->brArgs.front();
+    }
+    return info;
 }
 
 } // namespace
