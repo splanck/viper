@@ -66,5 +66,13 @@ std::optional<OpCheckSpec> lookupSpec(il::core::Opcode opcode);
 /// @return True when @p opcode has side effects; false otherwise.
 bool hasSideEffects(il::core::Opcode opcode);
 
+/// @brief Determine whether an opcode is pure (side-effect free).
+/// @param opcode Opcode to query.
+/// @return True when @p opcode has no side effects; false otherwise.
+inline bool isPure(il::core::Opcode opcode)
+{
+    return !hasSideEffects(opcode);
+}
+
 } // namespace il::verify
 
