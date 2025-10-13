@@ -14,6 +14,7 @@
 // Links: docs/codemap.md
 
 #include "il/transform/PassManager.hpp"
+#include "il/transform/SimplifyCFG.hpp"
 
 #include "il/analysis/CFG.hpp"
 #include "il/analysis/Dominators.hpp"
@@ -798,6 +799,24 @@ void PassManager::registerFunctionPass(const std::string &id,
                              fn(function);
                              return PreservedAnalyses::none();
                          });
+}
+
+/// @brief Register the CFG simplification function pass.
+/// @details Uses @ref SimplifyCFG to canonicalise every function in the module
+/// when the pass executes. The pass reports all analyses preserved when no
+/// changes occur so cached results remain valid.
+/// @param aggressive Enable more aggressive simplifications when true.
+void PassManager::addSimplifyCFG(bool aggressive)
+{
+    registerFunctionPass(
+        "simplify-cfg",
+        [aggressive](core::Function &function, AnalysisManager &analysis)
+        {
+            (void)analysis;
+            SimplifyCFG pass(aggressive);
+            bool changed = pass.run(function, nullptr);
+            return changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
+        });
 }
 
 /// @brief Register a reusable ordered list of pass identifiers.
