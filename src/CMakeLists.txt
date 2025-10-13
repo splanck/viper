@@ -95,7 +95,8 @@ add_library(il_transform STATIC
   il/transform/Peephole.cpp
   il/transform/ConstFold.cpp
   il/transform/DCE.cpp
-  il/transform/Mem2Reg.cpp)
+  il/transform/Mem2Reg.cpp
+  il/transform/SimplifyCFG.cpp)
 target_link_libraries(il_transform
   PUBLIC
     viper_il_core
