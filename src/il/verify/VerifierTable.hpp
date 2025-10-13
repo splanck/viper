@@ -61,5 +61,10 @@ std::optional<OpProps> lookup(il::core::Opcode opcode);
 /// @return Populated specification when @p opcode is described by the table; empty otherwise.
 std::optional<OpCheckSpec> lookupSpec(il::core::Opcode opcode);
 
+/// @brief Determine whether an opcode performs side effects observable by the verifier.
+/// @param opcode Opcode to query.
+/// @return True when @p opcode has side effects; false otherwise.
+bool hasSideEffects(il::core::Opcode opcode);
+
 } // namespace il::verify
 
