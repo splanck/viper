@@ -22,6 +22,8 @@
 namespace il::transform
 {
 
+struct SimplifyCFG;
+
 /// @brief Cached control-flow information for a function.
 struct CFGInfo
 {
@@ -280,6 +282,14 @@ class PassManager
     void registerFunctionPass(const std::string &id, FunctionPassCallback callback);
     void registerFunctionPass(const std::string &id,
                               const std::function<void(core::Function &)> &fn);
+
+    /// @brief Register and expose the CFG simplification function pass.
+    /// @details Installs a function-level pass under the `simplify-cfg`
+    /// identifier that constructs @ref SimplifyCFG with the provided
+    /// aggressiveness and executes it for every function in a module. The pass
+    /// is automatically available to pipelines via the registered identifier.
+    /// @param aggressive Enable more aggressive canonicalisations when true.
+    void addSimplifyCFG(bool aggressive = true);
 
     void registerPipeline(const std::string &id, Pipeline pipeline);
     const Pipeline *getPipeline(const std::string &id) const;
