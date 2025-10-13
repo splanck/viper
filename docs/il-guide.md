@@ -454,6 +454,9 @@ entry:
 #### Instructions
 Each non-terminator instruction optionally assigns to a `%temp` and produces a result.  Below, `x` and `y` denote operands.
 
+> _Opcode table note:_ An `InstrType` sentinel means the result or operand type
+> is taken from the instruction's declared type.
+
 ##### Integer Arithmetic
 | Instr | Form | Result |
 |-------|------|--------|
@@ -602,6 +605,10 @@ IL v0.1.2 is single-threaded.  Pointers are plain addresses with no aliasing rul
 ```
 
 #### Verifier Rules
+Operand and result type checks are now table-driven from `OpcodeInfo`. The
+verifier still has bespoke handlers for `idxchk`, calls, and the handful of ops
+wired directly to runtime contracts. Passes can also observe the
+`hasSideEffects` flag directly via the shared verifier table.
 * First block is `entry` and every block ends with exactly one terminator.
 * All referenced labels exist in the same function.
 * Operand and result types match instruction signatures.
