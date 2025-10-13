@@ -14,18 +14,47 @@
 
 #include "il/transform/SimplifyCFG.hpp"
 
+#include "il/verify/Verifier.hpp"
+
+#include <cassert>
+
+namespace
+{
+
+#ifndef NDEBUG
+void verifyPreconditions(const il::core::Module *module)
+{
+    if (!module)
+        return;
+
+    auto verified = il::verify::Verifier::verify(*module);
+    assert(verified && "SimplifyCFG precondition verification failed");
+    (void)verified;
+}
+#else
+void verifyPreconditions(const il::core::Module *) {}
+#endif
+
+} // namespace
+
 namespace il::transform
 {
 
 bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
 {
-    if (outStats)
-        *outStats = Stats{};
+    verifyPreconditions(module_);
+
+    Stats stats{};
+    bool changed = false;
 
     (void)F;
     // TODO: Implement CFG simplifications covering branch folding, block merging,
     // and unreachable elimination once the design is finalised.
-    return false;
+
+    if (outStats)
+        *outStats = stats;
+
+    return changed;
 }
 
 } // namespace il::transform
