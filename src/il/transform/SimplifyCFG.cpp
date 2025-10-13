@@ -27,6 +27,7 @@
 #include <deque>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #if defined(__has_include)
 #if __has_include("llvm_like/ADT/BitVector.hpp")
@@ -221,9 +222,52 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
     Stats stats{};
     bool changed = false;
 
-    (void)F;
-    // TODO: Implement CFG simplifications covering branch folding, block merging,
-    // and unreachable elimination once the design is finalised.
+    llvm_like::BitVector reachable = markReachable(F);
+
+    std::vector<size_t> unreachableBlocks;
+    unreachableBlocks.reserve(F.blocks.size());
+    for (size_t index = 1; index < F.blocks.size(); ++index)
+    {
+        if (!reachable.test(index))
+            unreachableBlocks.push_back(index);
+    }
+
+    for (auto it = unreachableBlocks.rbegin(); it != unreachableBlocks.rend(); ++it)
+    {
+        const size_t blockIndex = *it;
+        if (blockIndex >= F.blocks.size())
+            continue;
+
+        const std::string label = F.blocks[blockIndex].label;
+
+        for (auto &block : F.blocks)
+        {
+            for (auto &instr : block.instructions)
+            {
+                if (instr.labels.empty())
+                    continue;
+
+                for (size_t idx = 0; idx < instr.labels.size();)
+                {
+                    if (instr.labels[idx] == label)
+                    {
+                        instr.labels.erase(instr.labels.begin() + idx);
+                        if (idx < instr.brArgs.size())
+                            instr.brArgs.erase(instr.brArgs.begin() + idx);
+                    }
+                    else
+                    {
+                        ++idx;
+                    }
+                }
+            }
+        }
+
+        F.blocks.erase(F.blocks.begin() + static_cast<std::ptrdiff_t>(blockIndex));
+        ++stats.unreachableRemoved;
+    }
+
+    changed = stats.unreachableRemoved > 0;
 
     if (outStats)
         *outStats = stats;
