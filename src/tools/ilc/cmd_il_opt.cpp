@@ -127,6 +127,7 @@ int cmdILOpt(int argc, char **argv)
         return 1;
     }
     transform::PassManager pm;
+    pm.addSimplifyCFG();
     pm.registerModulePass(
         "constfold",
         [](core::Module &mod, transform::AnalysisManager &)
@@ -161,7 +162,10 @@ int cmdILOpt(int argc, char **argv)
             }
             return transform::PreservedAnalyses::none();
         });
-    pm.registerPipeline("default", {"mem2reg", "constfold", "peephole", "dce"});
+    pm.addSimplifyCFG();
+    pm.registerPipeline(
+        "default",
+        {"simplify-cfg", "mem2reg", "simplify-cfg", "constfold", "peephole", "dce"});
     if (!passesExplicit)
     {
         if (const auto *pipeline = pm.getPipeline("default"))
