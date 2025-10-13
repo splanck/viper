@@ -203,6 +203,10 @@ function(viper_add_il_core_tests)
   target_link_libraries(test_il_verify_release_lifetime PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   viper_add_ctest(test_il_verify_release_lifetime test_il_verify_release_lifetime)
 
+  viper_add_test(test_il_verify_table_memory_ok ${_VIPER_IL_UNIT_DIR}/test_il_verify_table_memory_ok.cpp)
+  target_link_libraries(test_il_verify_table_memory_ok PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+  viper_add_ctest(test_il_verify_table_memory_ok test_il_verify_table_memory_ok)
+
   viper_add_test(test_il_type_inference ${_VIPER_IL_UNIT_DIR}/test_il_type_inference.cpp)
   target_link_libraries(test_il_type_inference PRIVATE ${VIPER_IL_CORE_IO_LIBS})
   viper_add_ctest(test_il_type_inference test_il_type_inference)
