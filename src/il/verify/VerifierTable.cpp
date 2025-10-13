@@ -109,5 +109,12 @@ std::optional<OpCheckSpec> lookupSpec(Opcode opcode)
     return spec;
 }
 
+bool hasSideEffects(Opcode opcode)
+{
+    if (const auto spec = lookupSpec(opcode); spec.has_value())
+        return spec->hasSideEffects;
+    return il::core::getOpcodeInfo(opcode).hasSideEffects;
+}
+
 } // namespace il::verify
 
