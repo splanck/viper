@@ -211,6 +211,13 @@ function(viper_add_il_core_tests)
   target_link_libraries(test_il_verify_table_mismatch PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   viper_add_ctest(test_il_verify_table_mismatch test_il_verify_table_mismatch)
 
+  viper_add_test(
+    test_il_verify_calls_table_interop
+    ${_VIPER_IL_UNIT_DIR}/test_il_verify_calls_table_interop.cpp)
+  target_link_libraries(test_il_verify_calls_table_interop PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+  viper_add_ctest(
+    test_il_verify_calls_table_interop test_il_verify_calls_table_interop)
+
   viper_add_test(test_il_verify_eh_table ${_VIPER_IL_UNIT_DIR}/test_il_verify_eh_table.cpp)
   target_link_libraries(test_il_verify_eh_table PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   viper_add_ctest(test_il_verify_eh_table test_il_verify_eh_table)
