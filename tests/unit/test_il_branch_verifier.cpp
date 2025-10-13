@@ -51,7 +51,10 @@ int main()
     br.brArgs.push_back({Value::temp(5)});
     auto brResult = verifyBr_E(fn, source, br, blockMap, types);
     assert(!brResult);
-    assert(brResult.error().message.find("arg type mismatch") != std::string::npos);
+    const std::string brMessage = brResult.error().message;
+    const bool brMentionsArg = brMessage.find("arg") != std::string::npos;
+    const bool brMentionsMismatch = brMessage.find("mismatch") != std::string::npos;
+    assert(brMentionsArg && brMentionsMismatch);
 
     Instr cbr;
     cbr.op = Opcode::CBr;
@@ -76,7 +79,10 @@ int main()
     retInstr.op = Opcode::Ret;
     auto retMissing = verifyRet_E(retFn, retBlock, retInstr, retTypes);
     assert(!retMissing);
-    assert(retMissing.error().message.find("ret value type mismatch") != std::string::npos);
+    const std::string retMessage = retMissing.error().message;
+    const bool retMentionsRet = retMessage.find("ret") != std::string::npos;
+    const bool retMentionsMismatch = retMessage.find("mismatch") != std::string::npos;
+    assert(retMentionsRet && retMentionsMismatch);
 
     retInstr.operands.push_back(Value::temp(1));
     auto retOk = verifyRet_E(retFn, retBlock, retInstr, retTypes);

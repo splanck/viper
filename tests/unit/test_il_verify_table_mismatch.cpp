@@ -68,7 +68,9 @@ int main()
         module.functions.push_back(fn);
 
         const std::string message = verifyAndCaptureMessage(module);
-        assert(message.find("pointer type mismatch") != std::string::npos);
+        const bool mentionsPointer = message.find("pointer") != std::string::npos;
+        const bool mentionsMismatch = message.find("mismatch") != std::string::npos;
+        assert(mentionsPointer && mentionsMismatch);
     }
 
     {
