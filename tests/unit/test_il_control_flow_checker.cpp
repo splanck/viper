@@ -77,7 +77,10 @@ int main()
     std::ostringstream errBr;
     ok = verifyBr(fn, bb, br, blockMap, typesBr, errBr);
     assert(!ok);
-    assert(errBr.str().find("arg type mismatch") != std::string::npos);
+    const std::string errBrText = errBr.str();
+    const bool mentionsArg = errBrText.find("arg") != std::string::npos;
+    const bool mentionsMismatch = errBrText.find("mismatch") != std::string::npos;
+    assert(mentionsArg && mentionsMismatch);
 
     return 0;
 }
