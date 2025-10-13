@@ -1119,14 +1119,17 @@ Expected<void> verifyInstruction_impl(const VerifyCtx &ctx)
                                         formatInstrDiag(ctx.fn, ctx.block, ctx.instr, message))};
     };
 
-    const auto &info = il::core::getOpcodeInfo(ctx.instr.op);
-    if (auto result = checkWithInfo(ctx, info); !result)
-        return result;
-
     const auto props = lookup(ctx.instr.op);
     const bool hasLegacyArithmeticProps =
         props && props->arity > 0 && props->arity <= 2 && kindFromClass(props->operands).has_value() &&
         typeFromClass(props->result).has_value();
+
+    if (!hasLegacyArithmeticProps)
+    {
+        const auto &info = il::core::getOpcodeInfo(ctx.instr.op);
+        if (auto result = checkWithInfo(ctx, info); !result)
+            return result;
+    }
 
     if (hasLegacyArithmeticProps)
         return checkWithProps(ctx, *props);
