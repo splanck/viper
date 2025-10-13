@@ -234,6 +234,9 @@ class AnalysisManager
     void invalidateAfterModulePass(const PreservedAnalyses &preserved);
     void invalidateAfterFunctionPass(const PreservedAnalyses &preserved, core::Function &fn);
 
+    core::Module &module() { return module_; }
+    const core::Module &module() const { return module_; }
+
   private:
     core::Module &module_;
     const ModuleAnalysisMap *moduleAnalyses_;

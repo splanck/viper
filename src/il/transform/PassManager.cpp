@@ -812,10 +812,15 @@ void PassManager::addSimplifyCFG(bool aggressive)
         "simplify-cfg",
         [aggressive](core::Function &function, AnalysisManager &analysis)
         {
-            (void)analysis;
             SimplifyCFG pass(aggressive);
+            pass.setModule(&analysis.module());
             bool changed = pass.run(function, nullptr);
-            return changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
+            if (!changed)
+                return PreservedAnalyses::all();
+
+            PreservedAnalyses preserved;
+            preserved.preserveAllModules();
+            return preserved;
         });
 }
 
