@@ -77,14 +77,82 @@ void verifyPreconditions(const il::core::Module *module)
     assert(verified && "SimplifyCFG precondition verification failed");
     (void)verified;
 }
+
+void verifyPostconditions(const il::core::Module *module)
+{
+    if (!module)
+        return;
+
+    auto verified = il::verify::Verifier::verify(*module);
+    assert(verified && "SimplifyCFG postcondition verification failed");
+    (void)verified;
+}
 #else
 void verifyPreconditions(const il::core::Module *) {}
+void verifyPostconditions(const il::core::Module *) {}
 #endif
 
 using il::core::BasicBlock;
 using il::core::Function;
 using il::core::Instr;
 using il::core::Opcode;
+using il::core::Value;
+
+bool valuesEqual(const Value &lhs, const Value &rhs)
+{
+    if (lhs.kind != rhs.kind)
+        return false;
+
+    switch (lhs.kind)
+    {
+        case Value::Kind::Temp:
+            return lhs.id == rhs.id;
+        case Value::Kind::ConstInt:
+            return lhs.i64 == rhs.i64 && lhs.isBool == rhs.isBool;
+        case Value::Kind::ConstFloat:
+            return lhs.f64 == rhs.f64;
+        case Value::Kind::ConstStr:
+        case Value::Kind::GlobalAddr:
+            return lhs.str == rhs.str;
+        case Value::Kind::NullPtr:
+            return true;
+    }
+    return false;
+}
+
+bool valueVectorsEqual(const std::vector<Value> &lhs, const std::vector<Value> &rhs)
+{
+    if (lhs.size() != rhs.size())
+        return false;
+
+    for (size_t index = 0; index < lhs.size(); ++index)
+    {
+        if (!valuesEqual(lhs[index], rhs[index]))
+            return false;
+    }
+
+    return true;
+}
+
+void rewriteToUnconditionalBranch(Instr &instr, size_t successorIndex)
+{
+    assert(successorIndex < instr.labels.size());
+    const std::string target = instr.labels[successorIndex];
+    instr.op = Opcode::Br;
+    instr.operands.clear();
+    instr.labels.clear();
+    instr.labels.push_back(target);
+
+    if (instr.brArgs.empty())
+    {
+        return;
+    }
+
+    std::vector<std::vector<Value>> newArgs;
+    if (successorIndex < instr.brArgs.size())
+        newArgs.push_back(instr.brArgs[successorIndex]);
+    instr.brArgs = std::move(newArgs);
+}
 
 const Instr *findTerminator(const BasicBlock &block)
 {
@@ -222,6 +290,59 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
     Stats stats{};
     bool changed = false;
 
+    for (auto &block : F.blocks)
+    {
+        for (auto &instr : block.instructions)
+        {
+            if (instr.op != Opcode::CBr)
+                continue;
+
+            bool simplified = false;
+
+            if (!instr.operands.empty())
+            {
+                const Value &cond = instr.operands.front();
+                if (cond.kind == Value::Kind::ConstInt && cond.isBool)
+                {
+                    const bool takeTrue = cond.i64 != 0;
+                    const size_t successorIndex = takeTrue ? 0 : 1;
+                    if (successorIndex < instr.labels.size())
+                    {
+                        rewriteToUnconditionalBranch(instr, successorIndex);
+                        simplified = true;
+                    }
+                }
+            }
+
+            if (!simplified && instr.labels.size() >= 2 && instr.labels[0] == instr.labels[1])
+            {
+                const std::vector<Value> *trueArgs = instr.brArgs.size() > 0 ? &instr.brArgs[0] : nullptr;
+                const std::vector<Value> *falseArgs = instr.brArgs.size() > 1 ? &instr.brArgs[1] : nullptr;
+                bool argsMatch = false;
+                if (!trueArgs && !falseArgs)
+                {
+                    argsMatch = true;
+                }
+                else if (trueArgs && falseArgs)
+                {
+                    argsMatch = valueVectorsEqual(*trueArgs, *falseArgs);
+                }
+
+                if (argsMatch)
+                {
+                    rewriteToUnconditionalBranch(instr, 0);
+                    simplified = true;
+                }
+            }
+
+            if (simplified)
+            {
+                ++stats.cbrToBr;
+                changed = true;
+            }
+        }
+    }
+
     llvm_like::BitVector reachable = markReachable(F);
 
     std::vector<size_t> unreachableBlocks;
@@ -267,7 +388,10 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
         ++stats.unreachableRemoved;
     }
 
-    changed = stats.unreachableRemoved > 0;
+    changed |= stats.unreachableRemoved > 0;
+
+    if (changed)
+        verifyPostconditions(module_);
 
     if (outStats)
         *outStats = stats;
