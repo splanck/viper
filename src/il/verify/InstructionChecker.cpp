@@ -329,6 +329,24 @@ Expected<void> checkWithProps(const VerifyCtx &ctx, const OpProps &props)
     return {};
 }
 
+bool isLegacyArithmeticOpcode(Opcode opcode)
+{
+    switch (opcode)
+    {
+        case Opcode::IAddOvf:
+        case Opcode::ISubOvf:
+        case Opcode::IMulOvf:
+        case Opcode::SDivChk0:
+        case Opcode::FAdd:
+        case Opcode::FSub:
+        case Opcode::FMul:
+        case Opcode::FDiv:
+            return true;
+        default:
+            return false;
+    }
+}
+
 enum class RuntimeArrayCallee
 {
     None,
@@ -1120,14 +1138,11 @@ Expected<void> verifyInstruction_impl(const VerifyCtx &ctx)
     };
 
     const auto props = lookup(ctx.instr.op);
-    if (!props)
-    {
-        const auto &info = il::core::getOpcodeInfo(ctx.instr.op);
-        if (auto result = checkWithInfo(ctx, info); !result)
-            return result;
-    }
+    const auto &info = il::core::getOpcodeInfo(ctx.instr.op);
+    if (auto result = checkWithInfo(ctx, info); !result)
+        return result;
 
-    if (props)
+    if (props && isLegacyArithmeticOpcode(ctx.instr.op))
         return checkWithProps(ctx, *props);
 
     switch (ctx.instr.op)
