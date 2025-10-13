@@ -34,6 +34,10 @@ struct SimplifyCFG
     /// \param aggressive Enable more aggressive canonicalisations when true.
     explicit SimplifyCFG(bool aggressive = true) : aggressive(aggressive) {}
 
+    /// \brief Provide the module containing functions processed by this pass.
+    /// \param module Pointer to the parent module; may be null when unavailable.
+    void setModule(const il::core::Module *module) { module_ = module; }
+
     /// \brief Run the simplification pass on a single function.
     /// \param F Function mutated in place.
     /// \param outStats Optional pointer populated with pass statistics.
@@ -42,6 +46,7 @@ struct SimplifyCFG
 
   private:
     bool aggressive; ///< Controls heuristic aggressiveness.
+    const il::core::Module *module_ = nullptr; ///< Parent module used for verification.
 };
 
 } // namespace il::transform
