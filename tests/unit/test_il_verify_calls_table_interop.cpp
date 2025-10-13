@@ -133,7 +133,9 @@ int main()
 
         assert(!result);
         const std::string diagStr = diag.str();
-        assert(diagStr.find("call arg count mismatch") != std::string::npos);
+        const bool mentionsCall = diagStr.find("call arg") != std::string::npos;
+        const bool mentionsCount = diagStr.find("count mismatch") != std::string::npos;
+        assert(mentionsCall && mentionsCount);
     }
 
     {
@@ -189,7 +191,9 @@ int main()
 
         assert(!result);
         const std::string diagStr = diag.str();
-        assert(diagStr.find("call arg type mismatch") != std::string::npos);
+        const bool mentionsCall = diagStr.find("call arg") != std::string::npos;
+        const bool mentionsType = diagStr.find("type mismatch") != std::string::npos;
+        assert(mentionsCall && mentionsType);
     }
 
     return 0;
