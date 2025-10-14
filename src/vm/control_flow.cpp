@@ -18,6 +18,7 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Value.hpp"
+#include "vm/control_flow.hpp"
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/Marshal.hpp"
@@ -27,6 +28,9 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <iterator>
+#include <type_traits>
+#include <utility>
 #include <vector>
 #include <sstream>
 
@@ -93,6 +97,143 @@ const VmError *resolveErrorToken(Frame &fr, const Slot &slot)
         return token;
 
     return &fr.activeError;
+}
+} // namespace
+
+namespace
+{
+using viper::vm::DenseJumpTable;
+using viper::vm::HashedCases;
+using viper::vm::SortedCases;
+using viper::vm::SwitchCache;
+using viper::vm::SwitchCacheEntry;
+
+SwitchCacheEntry buildSwitchCacheEntry(const Instr &in)
+{
+    SwitchCacheEntry entry{};
+    entry.defaultIdx = !in.labels.empty() ? 0 : -1;
+
+    const size_t caseCount = switchCaseCount(in);
+    std::vector<std::pair<int32_t, int32_t>> cases;
+    cases.reserve(caseCount);
+    for (size_t idx = 0; idx < caseCount; ++idx)
+    {
+        const Value &value = switchCaseValue(in, idx);
+        assert(value.kind == Value::Kind::ConstInt && "switch case requires integer literal");
+        const int32_t key = static_cast<int32_t>(value.i64);
+        cases.emplace_back(key, static_cast<int32_t>(idx + 1));
+    }
+
+    if (cases.empty())
+    {
+        SortedCases sorted{};
+        entry.backend = std::move(sorted);
+        entry.kind = SwitchCacheEntry::Sorted;
+        return entry;
+    }
+
+    auto cmp = [](const auto &lhs, const auto &rhs) {
+        if (lhs.first != rhs.first)
+            return lhs.first < rhs.first;
+        return lhs.second < rhs.second;
+    };
+    const auto [minIt, maxIt] = std::minmax_element(cases.begin(), cases.end(), cmp);
+    const int32_t minValue = minIt->first;
+    const int32_t maxValue = maxIt->first;
+    const int64_t range = static_cast<int64_t>(maxValue) - static_cast<int64_t>(minValue) + 1;
+
+    if (range > 0 && range <= static_cast<int64_t>(caseCount) * 2)
+    {
+        DenseJumpTable table{};
+        table.base = minValue;
+        table.targets.assign(static_cast<size_t>(range), -1);
+        for (const auto &[value, targetIdx] : cases)
+        {
+            const size_t offset = static_cast<size_t>(static_cast<int64_t>(value) - minValue);
+            if (table.targets[offset] < 0)
+                table.targets[offset] = targetIdx;
+        }
+        entry.kind = SwitchCacheEntry::Dense;
+        entry.backend = std::move(table);
+        return entry;
+    }
+
+    if (cases.size() <= 8)
+    {
+        std::sort(cases.begin(), cases.end(), cmp);
+        SortedCases sorted{};
+        sorted.keys.reserve(cases.size());
+        sorted.targetIdx.reserve(cases.size());
+        for (const auto &[value, targetIdx] : cases)
+        {
+            sorted.keys.push_back(value);
+            sorted.targetIdx.push_back(targetIdx);
+        }
+        entry.kind = SwitchCacheEntry::Sorted;
+        entry.backend = std::move(sorted);
+        return entry;
+    }
+
+    HashedCases hashed{};
+    hashed.map.reserve(cases.size());
+    for (const auto &[value, targetIdx] : cases)
+        hashed.map.emplace(value, targetIdx);
+    entry.kind = SwitchCacheEntry::Hashed;
+    entry.backend = std::move(hashed);
+    return entry;
+}
+
+const SwitchCacheEntry &lookupSwitchCacheEntry(SwitchCache &cache, const Instr &in)
+{
+    const void *key = static_cast<const void *>(&in);
+    auto it = cache.entries.find(key);
+    if (it != cache.entries.end())
+        return it->second;
+
+    SwitchCacheEntry entry = buildSwitchCacheEntry(in);
+    auto [insertedIt, _] = cache.entries.emplace(key, std::move(entry));
+    return insertedIt->second;
+}
+
+int32_t dispatchSwitch(const SwitchCacheEntry &entry, int32_t scrutinee)
+{
+    int32_t targetIdx = entry.defaultIdx;
+    std::visit(
+        [&](const auto &backend) {
+            using BackendT = std::decay_t<decltype(backend)>;
+            if constexpr (std::is_same_v<BackendT, DenseJumpTable>)
+            {
+                const int64_t offset = static_cast<int64_t>(scrutinee) - backend.base;
+                if (offset >= 0 && offset < static_cast<int64_t>(backend.targets.size()))
+                {
+                    const int32_t candidate = backend.targets[static_cast<size_t>(offset)];
+                    if (candidate >= 0)
+                        targetIdx = candidate;
+                }
+            }
+            else if constexpr (std::is_same_v<BackendT, SortedCases>)
+            {
+                auto it = std::lower_bound(backend.keys.begin(), backend.keys.end(), scrutinee);
+                if (it != backend.keys.end() && *it == scrutinee)
+                {
+                    const size_t idx = static_cast<size_t>(std::distance(backend.keys.begin(), it));
+                    const int32_t candidate = backend.targetIdx[idx];
+                    if (candidate >= 0)
+                        targetIdx = candidate;
+                }
+            }
+            else if constexpr (std::is_same_v<BackendT, HashedCases>)
+            {
+                auto it = backend.map.find(scrutinee);
+                if (it != backend.map.end())
+                    targetIdx = it->second;
+            }
+        },
+        entry.backend);
+
+    if (targetIdx < 0)
+        targetIdx = entry.defaultIdx >= 0 ? entry.defaultIdx : 0;
+    return targetIdx;
 }
 } // namespace
 
@@ -209,8 +350,8 @@ VM::ExecResult OpHandlers::handleCBr(VM &vm,
 /// @param ip Output instruction index reset to the beginning of the successor.
 /// @return Execution result indicating a taken jump to the matching successor.
 /// @note Invariant: verifier guarantees a well-formed default label and
-///       monotonically sized argument tables. Case matching performs a linear
-///       scan and defaults to the first label when no value matches.
+///       monotonically sized argument tables. Dispatch consults a cached case
+///       table and defaults to the first label when no value matches.
 VM::ExecResult OpHandlers::handleSwitchI32(VM &vm,
                                            Frame &fr,
                                            const Instr &in,
@@ -220,17 +361,13 @@ VM::ExecResult OpHandlers::handleSwitchI32(VM &vm,
 {
     const Slot scrutineeSlot = vm.eval(fr, switchScrutinee(in));
     const int32_t scrutinee = static_cast<int32_t>(scrutineeSlot.i64);
-
-    const size_t caseCount = switchCaseCount(in);
-    for (size_t idx = 0; idx < caseCount; ++idx)
-    {
-        const Slot caseSlot = vm.eval(fr, switchCaseValue(in, idx));
-        if (static_cast<int32_t>(caseSlot.i64) == scrutinee)
-            return branchToTarget(vm, fr, in, idx + 1, blocks, bb, ip);
-    }
+    const viper::vm::SwitchCacheEntry &entry = lookupSwitchCacheEntry(vm.switchCache_, in);
+    const int32_t resolved = dispatchSwitch(entry, scrutinee);
+    const size_t targetIdx = resolved >= 0 ? static_cast<size_t>(resolved) : 0;
 
     assert(!in.labels.empty() && "switch must have a default successor");
-    return branchToTarget(vm, fr, in, 0, blocks, bb, ip);
+    assert(targetIdx < in.labels.size() && "switch dispatch resolved invalid target");
+    return branchToTarget(vm, fr, in, targetIdx, blocks, bb, ip);
 }
 
 /// @brief Handle a `ret` terminator by yielding control to the caller.
