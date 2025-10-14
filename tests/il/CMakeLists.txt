@@ -299,6 +299,23 @@ function(viper_add_il_analysis_tests)
   viper_add_ctest(test_analysis_acyclic test_analysis_acyclic)
 endfunction()
 
+function(viper_add_il_transform_tests)
+  if(TARGET test_il_transform_simplifycfg_cbr_fold)
+    return()
+  endif()
+
+  set(_VIPER_IL_TRANSFORM_DIR ${VIPER_TESTS_DIR}/il/transform)
+
+  viper_add_test(
+    test_il_transform_simplifycfg_cbr_fold
+    ${_VIPER_IL_TRANSFORM_DIR}/simplifycfg_cbr_fold.cpp)
+  target_link_libraries(
+    test_il_transform_simplifycfg_cbr_fold
+    PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_transform)
+  viper_add_ctest(
+    test_il_transform_simplifycfg_cbr_fold test_il_transform_simplifycfg_cbr_fold)
+endfunction()
+
 function(viper_add_il_verify_examples)
   if(TEST il_verify_ex1)
     return()
