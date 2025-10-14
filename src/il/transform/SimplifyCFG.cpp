@@ -402,6 +402,122 @@ static void redirectPredecessor(BasicBlock &Pred, BasicBlock &Dead, BasicBlock &
     }
 }
 
+static bool shrinkParamsEqualAcrossPreds(BasicBlock &B)
+{
+    if (!activeFunction)
+        return false;
+
+    bool removedAny = false;
+
+    while (true)
+    {
+        bool removedThisIteration = false;
+
+        for (size_t paramIdx = 0; paramIdx < B.params.size();)
+        {
+            const unsigned paramId = B.params[paramIdx].id;
+            Value commonValue{};
+            bool hasCommonValue = false;
+            bool mismatch = false;
+
+            for (auto &pred : activeFunction->blocks)
+            {
+                Instr *term = findTerminator(pred);
+                if (!term)
+                    continue;
+
+                for (size_t edgeIdx = 0; edgeIdx < term->labels.size(); ++edgeIdx)
+                {
+                    if (term->labels[edgeIdx] != B.label)
+                        continue;
+
+                    if (term->brArgs.size() <= edgeIdx)
+                    {
+                        mismatch = true;
+                        break;
+                    }
+
+                    const auto &args = term->brArgs[edgeIdx];
+                    if (args.size() != B.params.size())
+                    {
+                        mismatch = true;
+                        break;
+                    }
+
+                    const Value &incoming = args[paramIdx];
+                    if (!hasCommonValue)
+                    {
+                        commonValue = incoming;
+                        hasCommonValue = true;
+                    }
+                    else if (!valuesEqual(incoming, commonValue))
+                    {
+                        mismatch = true;
+                        break;
+                    }
+                }
+
+                if (mismatch)
+                    break;
+            }
+
+            if (!hasCommonValue || mismatch)
+            {
+                ++paramIdx;
+                continue;
+            }
+
+            auto replaceUses = [&](Value &val) {
+                if (val.kind == Value::Kind::Temp && val.id == paramId)
+                    val = commonValue;
+            };
+
+            for (auto &instr : B.instructions)
+            {
+                for (auto &operand : instr.operands)
+                    replaceUses(operand);
+
+                for (auto &argList : instr.brArgs)
+                {
+                    for (auto &val : argList)
+                        replaceUses(val);
+                }
+            }
+
+            for (auto &pred : activeFunction->blocks)
+            {
+                Instr *term = findTerminator(pred);
+                if (!term)
+                    continue;
+
+                for (size_t edgeIdx = 0; edgeIdx < term->labels.size(); ++edgeIdx)
+                {
+                    if (term->labels[edgeIdx] != B.label)
+                        continue;
+
+                    if (term->brArgs.size() <= edgeIdx)
+                        continue;
+
+                    auto &args = term->brArgs[edgeIdx];
+                    if (paramIdx < args.size())
+                    {
+                        args.erase(args.begin() + static_cast<std::ptrdiff_t>(paramIdx));
+                    }
+                }
+            }
+
+            B.params.erase(B.params.begin() + static_cast<std::ptrdiff_t>(paramIdx));
+            removedThisIteration = true;
+            removedAny = true;
+        }
+
+        if (!removedThisIteration)
+            break;
+    }
+
+    return removedAny;
+}
+
 size_t lookupBlockIndex(const std::unordered_map<std::string, size_t> &labelToIndex,
                         const std::string &label)
 {
@@ -630,6 +746,21 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
             continue;
         }
         ++blockIndex;
+    }
+
+    for (auto &block : F.blocks)
+    {
+        const size_t beforeParams = block.params.size();
+        if (beforeParams == 0)
+            continue;
+
+        if (shrinkParamsEqualAcrossPreds(block))
+        {
+            const size_t removed = beforeParams - block.params.size();
+            stats.paramsShrunk += removed;
+            if (removed > 0)
+                changed = true;
+        }
     }
     activeFunction = nullptr;
 
