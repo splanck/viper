@@ -33,6 +33,7 @@
 #include <utility>
 #include <vector>
 #include <sstream>
+#include <unordered_set>
 
 using namespace il::core;
 
@@ -108,21 +109,55 @@ using viper::vm::SortedCases;
 using viper::vm::SwitchCache;
 using viper::vm::SwitchCacheEntry;
 
-SwitchCacheEntry buildSwitchCacheEntry(const Instr &in)
+struct SwitchMeta
 {
-    SwitchCacheEntry entry{};
-    entry.defaultIdx = !in.labels.empty() ? 0 : -1;
+    const void *key = nullptr;
+    std::vector<int32_t> values;
+    std::vector<int32_t> succIdx;
+    int32_t defaultIdx = -1;
+};
+
+static SwitchMeta collectSwitchMeta(const Instr &in)
+{
+    assert(in.op == Opcode::SwitchI32 && "expected switch.i32 instruction");
+
+    SwitchMeta meta{};
+    meta.key = static_cast<const void *>(&in);
+    meta.defaultIdx = !in.labels.empty() ? 0 : -1;
 
     const size_t caseCount = switchCaseCount(in);
-    std::vector<std::pair<int32_t, int32_t>> cases;
-    cases.reserve(caseCount);
+    meta.values.reserve(caseCount);
+    meta.succIdx.reserve(caseCount);
+
+    std::unordered_set<int32_t> seenValues;
+    seenValues.reserve(caseCount);
+
     for (size_t idx = 0; idx < caseCount; ++idx)
     {
         const Value &value = switchCaseValue(in, idx);
         assert(value.kind == Value::Kind::ConstInt && "switch case requires integer literal");
-        const int32_t key = static_cast<int32_t>(value.i64);
-        cases.emplace_back(key, static_cast<int32_t>(idx + 1));
+        const int32_t caseValue = static_cast<int32_t>(value.i64);
+        const auto [_, inserted] = seenValues.insert(caseValue);
+        if (!inserted)
+            continue;
+        meta.values.push_back(caseValue);
+        meta.succIdx.push_back(static_cast<int32_t>(idx + 1));
     }
+
+    assert(meta.values.size() == meta.succIdx.size());
+    return meta;
+}
+
+SwitchCacheEntry buildSwitchCacheEntry(const Instr &in)
+{
+    SwitchCacheEntry entry{};
+    SwitchMeta meta = collectSwitchMeta(in);
+    entry.defaultIdx = meta.defaultIdx;
+
+    std::vector<std::pair<int32_t, int32_t>> cases;
+    cases.reserve(meta.values.size());
+    for (size_t idx = 0; idx < meta.values.size(); ++idx)
+        cases.emplace_back(meta.values[idx], meta.succIdx[idx]);
 
     if (cases.empty())
     {
@@ -142,7 +177,7 @@ SwitchCacheEntry buildSwitchCacheEntry(const Instr &in)
     const int32_t maxValue = maxIt->first;
     const int64_t range = static_cast<int64_t>(maxValue) - static_cast<int64_t>(minValue) + 1;
 
-    if (range > 0 && range <= static_cast<int64_t>(caseCount) * 2)
+    if (range > 0 && range <= static_cast<int64_t>(cases.size()) * 2)
     {
         DenseJumpTable table{};
         table.base = minValue;
