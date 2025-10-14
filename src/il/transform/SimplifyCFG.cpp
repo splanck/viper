@@ -116,6 +116,7 @@ using il::core::Opcode;
 using il::core::Value;
 
 Function *activeFunction = nullptr;
+il::transform::SimplifyCFG::Stats *activeStats = nullptr;
 
 static bool isEHSensitive(const BasicBlock &B);
 Instr *findTerminator(BasicBlock &block);
@@ -855,58 +856,9 @@ struct [[maybe_unused]] SoleSuccessor
     return info;
 }
 
-} // namespace
-
-namespace il::transform
+static bool foldTrivialCbrToBr(Function &F)
 {
-
-bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
-{
-    verifyPreconditions(module_);
-
-    Stats stats{};
     bool changed = false;
-
-    activeFunction = &F;
-    size_t blockIndex = 0;
-    while (blockIndex < F.blocks.size())
-    {
-        if (mergeSinglePred(F.blocks[blockIndex]))
-        {
-            changed = true;
-            ++stats.blocksMerged;
-            continue;
-        }
-        ++blockIndex;
-    }
-
-    for (auto &block : F.blocks)
-    {
-        if (block.params.empty())
-            continue;
-
-        const size_t beforeShrink = block.params.size();
-        if (shrinkParamsEqualAcrossPreds(block))
-        {
-            const size_t removed = beforeShrink - block.params.size();
-            stats.paramsShrunk += removed;
-            if (removed > 0)
-                changed = true;
-        }
-
-        if (block.params.empty())
-            continue;
-
-        const size_t beforeDrop = block.params.size();
-        if (dropUnusedParams(block))
-        {
-            const size_t removed = beforeDrop - block.params.size();
-            stats.paramsShrunk += removed;
-            if (removed > 0)
-                changed = true;
-        }
-    }
-    activeFunction = nullptr;
 
     for (auto &block : F.blocks)
     {
@@ -932,7 +884,8 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
                 }
             }
 
-            if (!simplified && instr.labels.size() >= 2 && instr.labels[0] == instr.labels[1])
+            if (!simplified && instr.labels.size() >= 2 &&
+                instr.labels[0] == instr.labels[1])
             {
                 const std::vector<Value> *trueArgs =
                     instr.brArgs.size() > 0 ? &instr.brArgs[0] : nullptr;
@@ -957,11 +910,86 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
 
             if (simplified)
             {
-                ++stats.cbrToBr;
                 changed = true;
+                if (activeStats)
+                    ++activeStats->cbrToBr;
             }
         }
     }
+
+    return changed;
+}
+
+static bool mergeSinglePredBlocks(Function &F)
+{
+    Function *previousFunction = activeFunction;
+    activeFunction = &F;
+
+    bool changed = false;
+    size_t blockIndex = 0;
+    while (blockIndex < F.blocks.size())
+    {
+        if (mergeSinglePred(F.blocks[blockIndex]))
+        {
+            changed = true;
+            if (activeStats)
+                ++activeStats->blocksMerged;
+            continue;
+        }
+        ++blockIndex;
+    }
+
+    activeFunction = previousFunction;
+    return changed;
+}
+
+static bool canonicalizeParamsAndArgs(Function &F)
+{
+    Function *previousFunction = activeFunction;
+    activeFunction = &F;
+
+    bool changed = false;
+
+    for (auto &block : F.blocks)
+    {
+        if (block.params.empty())
+            continue;
+
+        const size_t beforeShrink = block.params.size();
+        if (shrinkParamsEqualAcrossPreds(block))
+        {
+            const size_t removed = beforeShrink - block.params.size();
+            if (removed > 0)
+            {
+                changed = true;
+                if (activeStats)
+                    activeStats->paramsShrunk += removed;
+            }
+        }
+
+        if (block.params.empty())
+            continue;
+
+        const size_t beforeDrop = block.params.size();
+        if (dropUnusedParams(block))
+        {
+            const size_t removed = beforeDrop - block.params.size();
+            if (removed > 0)
+            {
+                changed = true;
+                if (activeStats)
+                    activeStats->paramsShrunk += removed;
+            }
+        }
+    }
+
+    activeFunction = previousFunction;
+    return changed;
+}
+
+static bool removeEmptyForwarders(Function &F)
+{
+    bool changed = false;
 
     std::vector<std::string> forwardingBlocks;
     forwardingBlocks.reserve(F.blocks.size());
@@ -971,11 +999,14 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
             forwardingBlocks.push_back(block.label);
     }
 
+    size_t removedBlocks = 0;
+
     for (const auto &deadLabel : forwardingBlocks)
     {
-        auto deadIt = std::find_if(F.blocks.begin(),
-                                   F.blocks.end(),
-                                   [&](const BasicBlock &B) { return B.label == deadLabel; });
+        auto deadIt = std::find_if(
+            F.blocks.begin(),
+            F.blocks.end(),
+            [&](const BasicBlock &B) { return B.label == deadLabel; });
         if (deadIt == F.blocks.end())
             continue;
 
@@ -988,9 +1019,9 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
         if (succLabel == dead.label)
             continue;
 
-        auto succIt = std::find_if(F.blocks.begin(),
-                                   F.blocks.end(),
-                                   [&](const BasicBlock &B) { return B.label == succLabel; });
+        auto succIt = std::find_if(
+            F.blocks.begin(), F.blocks.end(),
+            [&](const BasicBlock &B) { return B.label == succLabel; });
         if (succIt == F.blocks.end())
             continue;
 
@@ -1023,7 +1054,8 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
         if (redirected > 0)
         {
             changed = true;
-            stats.predsMerged += redirected;
+            if (activeStats)
+                activeStats->predsMerged += redirected;
         }
 
         bool hasPreds = false;
@@ -1049,11 +1081,23 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
         if (hasPreds)
             continue;
 
-        F.blocks.erase(F.blocks.begin() + std::distance(F.blocks.begin(), deadIt));
-        ++stats.emptyBlocksRemoved;
-        changed = true;
+        F.blocks.erase(F.blocks.begin() +
+                        std::distance(F.blocks.begin(), deadIt));
+        ++removedBlocks;
     }
 
+    if (removedBlocks > 0)
+    {
+        changed = true;
+        if (activeStats)
+            activeStats->emptyBlocksRemoved += removedBlocks;
+    }
+
+    return changed;
+}
+
+static bool removeUnreachable(Function &F)
+{
     llvm_like::BitVector reachable = markReachable(F);
 
     std::vector<size_t> unreachableBlocks;
@@ -1063,6 +1107,8 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
         if (!reachable.test(index))
             unreachableBlocks.push_back(index);
     }
+
+    size_t removedBlocks = 0;
 
     for (auto it = unreachableBlocks.rbegin(); it != unreachableBlocks.rend(); ++it)
     {
@@ -1095,19 +1141,67 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
             }
         }
 
-        F.blocks.erase(F.blocks.begin() + static_cast<std::ptrdiff_t>(blockIndex));
-        ++stats.unreachableRemoved;
+        F.blocks.erase(F.blocks.begin() +
+                        static_cast<std::ptrdiff_t>(blockIndex));
+        ++removedBlocks;
     }
 
-    changed |= stats.unreachableRemoved > 0;
+    if (removedBlocks > 0)
+    {
+        if (activeStats)
+            activeStats->unreachableRemoved += removedBlocks;
+        return true;
+    }
 
-    if (changed)
+    return false;
+}
+
+static void invalidateCFGAndDominators(Function &F)
+{
+    static_cast<void>(F);
+    // TODO: Hook into analysis invalidation once caches are connected.
+}
+
+} // namespace
+
+namespace il::transform
+{
+
+bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
+{
+    verifyPreconditions(module_);
+
+    Stats stats{};
+    auto *previousStats = activeStats;
+    activeStats = &stats;
+
+    bool changedAny = false;
+
+    for (int iter = 0; iter < 8; ++iter)
+    {
+        bool changed = false;
+        changed |= foldTrivialCbrToBr(F);
+        changed |= removeEmptyForwarders(F);
+        changed |= mergeSinglePredBlocks(F);
+        changed |= removeUnreachable(F);
+        changed |= canonicalizeParamsAndArgs(F);
+        if (!changed)
+            break;
+        changedAny = true;
+    }
+
+    activeStats = previousStats;
+
+    if (changedAny)
+    {
         verifyPostconditions(module_);
+        invalidateCFGAndDominators(F);
+    }
 
     if (outStats)
         *outStats = stats;
 
-    return changed;
+    return changedAny;
 }
 
 } // namespace il::transform
