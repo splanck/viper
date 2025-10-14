@@ -22,9 +22,11 @@
 #include "il/verify/ControlFlowChecker.hpp"
 #include "il/verify/Verifier.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <deque>
+#include <iterator>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -47,15 +49,28 @@ class BitVector
 {
   public:
     BitVector() = default;
+
     explicit BitVector(size_t count, bool value = false) : bits_(count, value) {}
 
-    void resize(size_t count, bool value = false) { bits_.assign(count, value); }
+    void resize(size_t count, bool value = false)
+    {
+        bits_.assign(count, value);
+    }
 
-    bool test(size_t index) const { return bits_.at(index); }
+    bool test(size_t index) const
+    {
+        return bits_.at(index);
+    }
 
-    void set(size_t index) { bits_.at(index) = true; }
+    void set(size_t index)
+    {
+        bits_.at(index) = true;
+    }
 
-    size_t size() const { return bits_.size(); }
+    size_t size() const
+    {
+        return bits_.size();
+    }
 
   private:
     std::vector<bool> bits_;
@@ -90,6 +105,7 @@ void verifyPostconditions(const il::core::Module *module)
 }
 #else
 void verifyPreconditions(const il::core::Module *) {}
+
 void verifyPostconditions(const il::core::Module *) {}
 #endif
 
@@ -290,9 +306,8 @@ static llvm_like::BitVector markReachable(Function &F)
         if (!terminator)
             continue;
 
-        auto addLabel = [&](const std::string &label) {
-            enqueueSuccessor(reachable, worklist, lookupBlockIndex(labelToIndex, label));
-        };
+        auto addLabel = [&](const std::string &label)
+        { enqueueSuccessor(reachable, worklist, lookupBlockIndex(labelToIndex, label)); };
 
         switch (terminator->op)
         {
@@ -488,8 +503,10 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
 
             if (!simplified && instr.labels.size() >= 2 && instr.labels[0] == instr.labels[1])
             {
-                const std::vector<Value> *trueArgs = instr.brArgs.size() > 0 ? &instr.brArgs[0] : nullptr;
-                const std::vector<Value> *falseArgs = instr.brArgs.size() > 1 ? &instr.brArgs[1] : nullptr;
+                const std::vector<Value> *trueArgs =
+                    instr.brArgs.size() > 0 ? &instr.brArgs[0] : nullptr;
+                const std::vector<Value> *falseArgs =
+                    instr.brArgs.size() > 1 ? &instr.brArgs[1] : nullptr;
                 bool argsMatch = false;
                 if (!trueArgs && !falseArgs)
                 {
@@ -515,91 +532,95 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
         }
     }
 
-    bool removedForwarders = true;
-    while (removedForwarders)
+    std::vector<std::string> forwardingBlocks;
+    forwardingBlocks.reserve(F.blocks.size());
+    for (const auto &block : F.blocks)
     {
-        removedForwarders = false;
-        for (size_t index = 0; index < F.blocks.size(); ++index)
+        if (isEmptyForwardingBlock(block))
+            forwardingBlocks.push_back(block.label);
+    }
+
+    for (const auto &deadLabel : forwardingBlocks)
+    {
+        auto deadIt = std::find_if(F.blocks.begin(),
+                                   F.blocks.end(),
+                                   [&](const BasicBlock &B) { return B.label == deadLabel; });
+        if (deadIt == F.blocks.end())
+            continue;
+
+        BasicBlock &dead = *deadIt;
+        Instr *deadTerm = findTerminator(dead);
+        if (!deadTerm || deadTerm->labels.size() != 1)
+            continue;
+
+        const std::string &succLabel = deadTerm->labels.front();
+        if (succLabel == dead.label)
+            continue;
+
+        auto succIt = std::find_if(F.blocks.begin(),
+                                   F.blocks.end(),
+                                   [&](const BasicBlock &B) { return B.label == succLabel; });
+        if (succIt == F.blocks.end())
+            continue;
+
+        BasicBlock &succ = *succIt;
+
+        size_t redirected = 0;
+        for (auto &pred : F.blocks)
         {
-            BasicBlock &candidate = F.blocks[index];
-            if (!isEmptyForwardingBlock(candidate))
+            Instr *predTerm = findTerminator(pred);
+            if (!predTerm)
                 continue;
 
-            Instr *terminator = findTerminator(candidate);
-            if (!terminator)
-                continue;
-
-            const std::string &succLabel = terminator->labels.front();
-            size_t succIndex = static_cast<size_t>(-1);
-            for (size_t idx = 0; idx < F.blocks.size(); ++idx)
+            bool touchesDead = false;
+            for (const auto &label : predTerm->labels)
             {
-                if (F.blocks[idx].label == succLabel)
+                if (label == dead.label)
                 {
-                    succIndex = idx;
+                    touchesDead = true;
                     break;
                 }
             }
 
-            if (succIndex == static_cast<size_t>(-1) || succIndex == index)
+            if (!touchesDead)
                 continue;
 
-            const std::string deadLabel = candidate.label;
-            for (size_t predIndex = 0; predIndex < F.blocks.size(); ++predIndex)
+            redirectPredecessor(pred, dead, succ);
+            ++redirected;
+        }
+
+        if (redirected > 0)
+        {
+            changed = true;
+            stats.predsMerged += redirected;
+        }
+
+        bool hasPreds = false;
+        for (const auto &pred : F.blocks)
+        {
+            const Instr *predTerm = findTerminator(pred);
+            if (!predTerm)
+                continue;
+
+            for (const auto &label : predTerm->labels)
             {
-                if (predIndex == index)
-                    continue;
-
-                BasicBlock &pred = F.blocks[predIndex];
-                Instr *predTerm = findTerminator(pred);
-                if (!predTerm)
-                    continue;
-
-                bool touchesDead = false;
-                for (const auto &label : predTerm->labels)
+                if (label == dead.label)
                 {
-                    if (label == deadLabel)
-                    {
-                        touchesDead = true;
-                        break;
-                    }
-                }
-
-                if (touchesDead)
-                    redirectPredecessor(pred, candidate, F.blocks[succIndex]);
-            }
-
-            bool hasPreds = false;
-            for (size_t predIndex = 0; predIndex < F.blocks.size(); ++predIndex)
-            {
-                if (predIndex == index)
-                    continue;
-
-                Instr *predTerm = findTerminator(F.blocks[predIndex]);
-                if (!predTerm)
-                    continue;
-
-                for (const auto &label : predTerm->labels)
-                {
-                    if (label == deadLabel)
-                    {
-                        hasPreds = true;
-                        break;
-                    }
-                }
-
-                if (hasPreds)
+                    hasPreds = true;
                     break;
+                }
             }
 
             if (hasPreds)
-                continue;
-
-            F.blocks.erase(F.blocks.begin() + static_cast<std::ptrdiff_t>(index));
-            ++stats.emptyBlocksRemoved;
-            changed = true;
-            removedForwarders = true;
-            break;
+                break;
         }
+
+        if (hasPreds)
+            continue;
+
+        F.blocks.erase(F.blocks.begin() + std::distance(F.blocks.begin(), deadIt));
+        ++stats.emptyBlocksRemoved;
+        changed = true;
     }
 
     llvm_like::BitVector reachable = markReachable(F);
