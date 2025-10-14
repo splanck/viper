@@ -271,6 +271,14 @@ function(viper_add_il_utils_test)
     test_il_simplifycfg_cbr_fold test_il_simplifycfg_cbr_fold)
 
   viper_add_test(
+    test_il_simplifycfg_merge_single_pred
+    ${_VIPER_IL_DIR}/transform/simplifycfg_merge_single_pred.cpp)
+  target_link_libraries(
+    test_il_simplifycfg_merge_single_pred PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+  viper_add_ctest(
+    test_il_simplifycfg_merge_single_pred test_il_simplifycfg_merge_single_pred)
+
+  viper_add_test(
     test_il_simplifycfg_shrink_params
     ${_VIPER_IL_DIR}/transform/simplifycfg_shrink_params.cpp)
   target_link_libraries(
