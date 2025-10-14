@@ -13,8 +13,12 @@ endif()
 if(NOT DEFINED ROOT)
   message(FATAL_ERROR "ROOT not set")
 endif()
+if(NOT DEFINED OUT_DIR)
+  set(OUT_DIR ${ROOT})
+endif()
+file(MAKE_DIRECTORY ${OUT_DIR})
 get_filename_component(SRC_NAME ${SRC_FILE} NAME)
-set(BREAK_FILE ${ROOT}/break.txt)
+set(BREAK_FILE ${OUT_DIR}/${SRC_NAME}.break.txt)
 
 execute_process(COMMAND ${ILC} -run ${SRC_FILE} --break ${SRC_FILE}:${LINE}
                 ERROR_FILE ${BREAK_FILE}
@@ -43,4 +47,6 @@ string(REPLACE "\\" "/" OUT "${OUT}")
 if(NOT OUT STREQUAL EXP)
   message(FATAL_ERROR "break output mismatch (basename)")
 endif()
+
+file(REMOVE ${BREAK_FILE})
 

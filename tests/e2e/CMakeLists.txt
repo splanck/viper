@@ -84,6 +84,7 @@ function(viper_add_e2e_vm_suite)
     -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/break_src_exact.out
     -DLINE=1
     -DROOT=${CMAKE_SOURCE_DIR}
+    -DOUT_DIR=${CMAKE_CURRENT_BINARY_DIR}
     -P ${_VIPER_E2E_DIR}/test_break_src_exact.cmake)
   set_tests_properties(vm_break_src_exact PROPERTIES LABELS VM DISABLED TRUE)
 
@@ -94,6 +95,7 @@ function(viper_add_e2e_vm_suite)
     -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/golden/break_src_coalesce.out
     -DLINE=1
     -DROOT=${CMAKE_SOURCE_DIR}
+    -DOUT_DIR=${CMAKE_CURRENT_BINARY_DIR}
     -P ${_VIPER_E2E_DIR}/test_break_src_exact.cmake)
   set_tests_properties(vm_break_src_coalesce PROPERTIES LABELS VM)
 
