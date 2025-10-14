@@ -7,6 +7,7 @@
 #pragma once
 
 #include "vm/Debug.hpp"
+#include "vm/control_flow.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/Trace.hpp"
 #include "vm/Trap.hpp"
@@ -234,6 +235,9 @@ class VM
     /// @brief Cached runtime handles for inline string literals containing embedded NULs.
     /// @ownership Owned by the VM; stores @c rt_string handles created via @c rt_string_from_bytes.
     std::unordered_map<std::string, rt_string> inlineLiteralCache;
+
+    /// @brief Memoized switch dispatch tables keyed by instruction identity.
+    viper::vm::SwitchCache switchCache_;
 
     /// @brief Trap metadata for the currently executing runtime call.
     RuntimeCallContext runtimeContext;
