@@ -155,7 +155,7 @@ void rewriteToUnconditionalBranch(Instr &instr, size_t successorIndex)
     instr.brArgs = std::move(newArgs);
 }
 
-const Instr *findTerminator(const BasicBlock &block)
+Instr *findTerminator(BasicBlock &block)
 {
     for (auto it = block.instructions.rbegin(); it != block.instructions.rend(); ++it)
     {
@@ -163,6 +163,85 @@ const Instr *findTerminator(const BasicBlock &block)
             return &*it;
     }
     return nullptr;
+}
+
+const Instr *findTerminator(const BasicBlock &block)
+{
+    return findTerminator(const_cast<BasicBlock &>(block));
+}
+
+Value substituteValue(const Value &value, const std::unordered_map<unsigned, Value> &mapping)
+{
+    if (value.kind != Value::Kind::Temp)
+        return value;
+
+    if (auto it = mapping.find(value.id); it != mapping.end())
+        return it->second;
+
+    return value;
+}
+
+static void redirectPredecessor(BasicBlock &Pred, BasicBlock &Dead, BasicBlock &Succ)
+{
+    Instr *predTerm = findTerminator(Pred);
+    if (!predTerm)
+        return;
+
+    bool referencesDead = false;
+    for (const auto &label : predTerm->labels)
+    {
+        if (label == Dead.label)
+        {
+            referencesDead = true;
+            break;
+        }
+    }
+
+    if (!referencesDead)
+        return;
+
+    Instr *deadTerm = findTerminator(Dead);
+    assert(deadTerm && deadTerm->op == Opcode::Br);
+    assert(deadTerm->labels.size() == 1);
+
+    const std::vector<Value> *deadArgs = nullptr;
+    if (!deadTerm->brArgs.empty())
+    {
+        assert(deadTerm->brArgs.size() == 1);
+        deadArgs = &deadTerm->brArgs.front();
+    }
+
+    std::unordered_map<unsigned, Value> substitution;
+    substitution.reserve(Dead.params.size());
+
+    for (size_t idx = 0; idx < predTerm->labels.size(); ++idx)
+    {
+        if (predTerm->labels[idx] != Dead.label)
+            continue;
+
+        std::vector<Value> incomingArgs;
+        if (idx < predTerm->brArgs.size())
+            incomingArgs = predTerm->brArgs[idx];
+
+        assert(incomingArgs.size() == Dead.params.size());
+
+        substitution.clear();
+        for (size_t paramIdx = 0; paramIdx < Dead.params.size(); ++paramIdx)
+            substitution.emplace(Dead.params[paramIdx].id, incomingArgs[paramIdx]);
+
+        std::vector<Value> newArgs;
+        if (deadArgs)
+        {
+            newArgs.reserve(deadArgs->size());
+            for (const auto &value : *deadArgs)
+                newArgs.push_back(substituteValue(value, substitution));
+        }
+
+        predTerm->labels[idx] = Succ.label;
+        if (predTerm->brArgs.size() <= idx)
+            predTerm->brArgs.resize(idx + 1);
+        predTerm->brArgs[idx] = std::move(newArgs);
+    }
 }
 
 size_t lookupBlockIndex(const std::unordered_map<std::string, size_t> &labelToIndex,
@@ -433,6 +512,93 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
                 ++stats.cbrToBr;
                 changed = true;
             }
+        }
+    }
+
+    bool removedForwarders = true;
+    while (removedForwarders)
+    {
+        removedForwarders = false;
+        for (size_t index = 0; index < F.blocks.size(); ++index)
+        {
+            BasicBlock &candidate = F.blocks[index];
+            if (!isEmptyForwardingBlock(candidate))
+                continue;
+
+            Instr *terminator = findTerminator(candidate);
+            if (!terminator)
+                continue;
+
+            const std::string &succLabel = terminator->labels.front();
+            size_t succIndex = static_cast<size_t>(-1);
+            for (size_t idx = 0; idx < F.blocks.size(); ++idx)
+            {
+                if (F.blocks[idx].label == succLabel)
+                {
+                    succIndex = idx;
+                    break;
+                }
+            }
+
+            if (succIndex == static_cast<size_t>(-1) || succIndex == index)
+                continue;
+
+            const std::string deadLabel = candidate.label;
+            for (size_t predIndex = 0; predIndex < F.blocks.size(); ++predIndex)
+            {
+                if (predIndex == index)
+                    continue;
+
+                BasicBlock &pred = F.blocks[predIndex];
+                Instr *predTerm = findTerminator(pred);
+                if (!predTerm)
+                    continue;
+
+                bool touchesDead = false;
+                for (const auto &label : predTerm->labels)
+                {
+                    if (label == deadLabel)
+                    {
+                        touchesDead = true;
+                        break;
+                    }
+                }
+
+                if (touchesDead)
+                    redirectPredecessor(pred, candidate, F.blocks[succIndex]);
+            }
+
+            bool hasPreds = false;
+            for (size_t predIndex = 0; predIndex < F.blocks.size(); ++predIndex)
+            {
+                if (predIndex == index)
+                    continue;
+
+                Instr *predTerm = findTerminator(F.blocks[predIndex]);
+                if (!predTerm)
+                    continue;
+
+                for (const auto &label : predTerm->labels)
+                {
+                    if (label == deadLabel)
+                    {
+                        hasPreds = true;
+                        break;
+                    }
+                }
+
+                if (hasPreds)
+                    break;
+            }
+
+            if (hasPreds)
+                continue;
+
+            F.blocks.erase(F.blocks.begin() + static_cast<std::ptrdiff_t>(index));
+            ++stats.emptyBlocksRemoved;
+            changed = true;
+            removedForwarders = true;
+            break;
         }
     }
 
