@@ -118,6 +118,47 @@ using il::core::Value;
 Function *activeFunction = nullptr;
 
 static bool isEHSensitive(const BasicBlock &B);
+Instr *findTerminator(BasicBlock &block);
+
+static void realignBranchArgs(BasicBlock &B)
+{
+    if (!activeFunction)
+        return;
+
+    for (auto &pred : activeFunction->blocks)
+    {
+        Instr *term = findTerminator(pred);
+        if (!term)
+            continue;
+
+        for (size_t edgeIdx = 0; edgeIdx < term->labels.size(); ++edgeIdx)
+        {
+            if (term->labels[edgeIdx] != B.label)
+                continue;
+
+            if (term->brArgs.size() <= edgeIdx)
+            {
+                assert(B.params.empty() &&
+                       "missing branch args for block parameters");
+                continue;
+            }
+
+            auto &args = term->brArgs[edgeIdx];
+
+            if (B.params.empty())
+            {
+                args.clear();
+                continue;
+            }
+
+            if (args.size() > B.params.size())
+                args.resize(B.params.size());
+
+            assert(args.size() == B.params.size() &&
+                   "mismatched branch argument count after parameter update");
+        }
+    }
+}
 
 bool valuesEqual(const Value &lhs, const Value &rhs)
 {
@@ -515,6 +556,9 @@ static bool shrinkParamsEqualAcrossPreds(BasicBlock &B)
             break;
     }
 
+    if (removedAny)
+        realignBranchArgs(B);
+
     return removedAny;
 }
 
@@ -599,6 +643,9 @@ static bool dropUnusedParams(BasicBlock &B)
         B.params.erase(B.params.begin() + static_cast<std::ptrdiff_t>(paramIdx));
         removedAny = true;
     }
+
+    if (removedAny)
+        realignBranchArgs(B);
 
     return removedAny;
 }
