@@ -115,6 +115,10 @@ using il::core::Instr;
 using il::core::Opcode;
 using il::core::Value;
 
+Function *activeFunction = nullptr;
+
+static bool isEHSensitive(const BasicBlock &B);
+
 bool valuesEqual(const Value &lhs, const Value &rhs)
 {
     if (lhs.kind != rhs.kind)
@@ -195,6 +199,144 @@ Value substituteValue(const Value &value, const std::unordered_map<unsigned, Val
         return it->second;
 
     return value;
+}
+
+static bool mergeSinglePred(BasicBlock &B)
+{
+    if (!activeFunction)
+        return false;
+
+    Function &F = *activeFunction;
+
+    auto blockIt = std::find_if(
+        F.blocks.begin(), F.blocks.end(),
+        [&](BasicBlock &blk) { return &blk == &B; });
+    if (blockIt == F.blocks.end())
+        return false;
+
+    if (isEHSensitive(B))
+        return false;
+
+    BasicBlock *predBlock = nullptr;
+    Instr *predTerm = nullptr;
+    size_t predecessorEdges = 0;
+
+    for (auto &candidate : F.blocks)
+    {
+        if (&candidate == &B)
+            continue;
+
+        Instr *term = findTerminator(candidate);
+        if (!term)
+            continue;
+
+        for (size_t idx = 0; idx < term->labels.size(); ++idx)
+        {
+            if (term->labels[idx] != B.label)
+                continue;
+
+            ++predecessorEdges;
+            if (predecessorEdges == 1)
+            {
+                predBlock = &candidate;
+                predTerm = term;
+            }
+        }
+    }
+
+    if (predecessorEdges != 1)
+        return false;
+
+    if (!predBlock || !predTerm)
+        return false;
+
+    if (predTerm->op != Opcode::Br)
+        return false;
+
+    if (predTerm->labels.size() != 1)
+        return false;
+
+    if (predTerm->labels.front() != B.label)
+        return false;
+
+    Instr *blockTerm = findTerminator(B);
+    if (!blockTerm)
+        return false;
+
+    std::vector<Value> incomingArgs;
+    if (!predTerm->brArgs.empty())
+    {
+        if (predTerm->brArgs.size() != 1)
+            return false;
+        incomingArgs = predTerm->brArgs.front();
+    }
+
+    if (B.params.size() != incomingArgs.size())
+        return false;
+
+    std::unordered_map<unsigned, Value> substitution;
+    substitution.reserve(B.params.size());
+
+    for (size_t idx = 0; idx < B.params.size(); ++idx)
+        substitution.emplace(B.params[idx].id, incomingArgs[idx]);
+
+    if (!substitution.empty())
+    {
+        for (auto &instr : B.instructions)
+        {
+            for (auto &operand : instr.operands)
+                operand = substituteValue(operand, substitution);
+
+            for (auto &argList : instr.brArgs)
+            {
+                for (auto &val : argList)
+                    val = substituteValue(val, substitution);
+            }
+        }
+    }
+
+    auto &predInstrs = predBlock->instructions;
+    auto predTermIt = std::find_if(
+        predInstrs.begin(), predInstrs.end(),
+        [&](Instr &instr) { return &instr == predTerm; });
+    if (predTermIt == predInstrs.end())
+        return false;
+
+    auto &blockInstrs = B.instructions;
+    auto blockTermIt = std::find_if(
+        blockInstrs.begin(), blockInstrs.end(),
+        [&](Instr &instr) { return &instr == blockTerm; });
+    if (blockTermIt == blockInstrs.end())
+        return false;
+
+    std::vector<Instr> movedInstrs;
+    movedInstrs.reserve(blockInstrs.size() > 0 ? blockInstrs.size() - 1 : 0);
+    for (auto it = blockInstrs.begin(); it != blockInstrs.end(); ++it)
+    {
+        if (it == blockTermIt)
+            continue;
+        movedInstrs.push_back(std::move(*it));
+    }
+
+    Instr newTerm = std::move(*blockTermIt);
+    for (auto &label : newTerm.labels)
+    {
+        if (label == B.label)
+            label = predBlock->label;
+    }
+
+    predInstrs.erase(predTermIt);
+
+    for (auto &instr : movedInstrs)
+        predInstrs.push_back(std::move(instr));
+
+    predInstrs.push_back(std::move(newTerm));
+    predBlock->terminated = true;
+
+    size_t blockIndex = static_cast<size_t>(std::distance(F.blocks.begin(), blockIt));
+    F.blocks.erase(F.blocks.begin() + static_cast<std::ptrdiff_t>(blockIndex));
+
+    return true;
 }
 
 static void redirectPredecessor(BasicBlock &Pred, BasicBlock &Dead, BasicBlock &Succ)
@@ -476,6 +618,20 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
 
     Stats stats{};
     bool changed = false;
+
+    activeFunction = &F;
+    size_t blockIndex = 0;
+    while (blockIndex < F.blocks.size())
+    {
+        if (mergeSinglePred(F.blocks[blockIndex]))
+        {
+            changed = true;
+            ++stats.blocksMerged;
+            continue;
+        }
+        ++blockIndex;
+    }
+    activeFunction = nullptr;
 
     for (auto &block : F.blocks)
     {
