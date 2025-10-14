@@ -28,6 +28,7 @@ struct SimplifyCFG
         size_t paramsShrunk = 0;       ///< Block parameter reductions.
         size_t blocksMerged = 0;       ///< Adjacent block merges.
         size_t unreachableRemoved = 0; ///< Unreachable block removals.
+        size_t switchToBr = 0;         ///< Switches rewritten to unconditional branches.
     };
 
     /// \brief Create a CFG simplifier.
