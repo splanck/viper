@@ -518,6 +518,91 @@ static bool shrinkParamsEqualAcrossPreds(BasicBlock &B)
     return removedAny;
 }
 
+static bool dropUnusedParams(BasicBlock &B)
+{
+    if (!activeFunction)
+        return false;
+
+    bool removedAny = false;
+
+    for (size_t paramIdx = 0; paramIdx < B.params.size();)
+    {
+        const unsigned paramId = B.params[paramIdx].id;
+        bool used = false;
+
+        for (const auto &instr : B.instructions)
+        {
+            auto checkValue = [&](const Value &value) {
+                return value.kind == Value::Kind::Temp && value.id == paramId;
+            };
+
+            for (const auto &operand : instr.operands)
+            {
+                if (checkValue(operand))
+                {
+                    used = true;
+                    break;
+                }
+            }
+
+            if (used)
+                break;
+
+            for (const auto &argList : instr.brArgs)
+            {
+                for (const auto &value : argList)
+                {
+                    if (checkValue(value))
+                    {
+                        used = true;
+                        break;
+                    }
+                }
+
+                if (used)
+                    break;
+            }
+
+            if (used)
+                break;
+        }
+
+        if (used)
+        {
+            ++paramIdx;
+            continue;
+        }
+
+        for (auto &pred : activeFunction->blocks)
+        {
+            Instr *term = findTerminator(pred);
+            if (!term)
+                continue;
+
+            for (size_t edgeIdx = 0; edgeIdx < term->labels.size(); ++edgeIdx)
+            {
+                if (term->labels[edgeIdx] != B.label)
+                    continue;
+
+                if (term->brArgs.size() <= edgeIdx)
+                    continue;
+
+                auto &args = term->brArgs[edgeIdx];
+                if (paramIdx < args.size())
+                {
+                    args.erase(args.begin() +
+                               static_cast<std::ptrdiff_t>(paramIdx));
+                }
+            }
+        }
+
+        B.params.erase(B.params.begin() + static_cast<std::ptrdiff_t>(paramIdx));
+        removedAny = true;
+    }
+
+    return removedAny;
+}
+
 size_t lookupBlockIndex(const std::unordered_map<std::string, size_t> &labelToIndex,
                         const std::string &label)
 {
@@ -750,13 +835,25 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
 
     for (auto &block : F.blocks)
     {
-        const size_t beforeParams = block.params.size();
-        if (beforeParams == 0)
+        if (block.params.empty())
             continue;
 
+        const size_t beforeShrink = block.params.size();
         if (shrinkParamsEqualAcrossPreds(block))
         {
-            const size_t removed = beforeParams - block.params.size();
+            const size_t removed = beforeShrink - block.params.size();
+            stats.paramsShrunk += removed;
+            if (removed > 0)
+                changed = true;
+        }
+
+        if (block.params.empty())
+            continue;
+
+        const size_t beforeDrop = block.params.size();
+        if (dropUnusedParams(block))
+        {
+            const size_t removed = beforeDrop - block.params.size();
             stats.paramsShrunk += removed;
             if (removed > 0)
                 changed = true;
