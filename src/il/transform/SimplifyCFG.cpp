@@ -856,6 +856,56 @@ struct [[maybe_unused]] SoleSuccessor
     return info;
 }
 
+static bool foldTrivialSwitchToBr(Function &F)
+{
+    bool changed = false;
+
+    for (auto &block : F.blocks)
+    {
+        if (isEHSensitive(block))
+            continue;
+
+        for (auto &instr : block.instructions)
+        {
+            if (instr.op != Opcode::SwitchI32)
+                continue;
+
+            bool simplified = false;
+            const size_t caseCount = il::core::switchCaseCount(instr);
+
+            if (caseCount == 0)
+            {
+                rewriteToUnconditionalBranch(instr, 0);
+                simplified = true;
+            }
+            else if (caseCount == 1)
+            {
+                const std::string &defaultLabel = il::core::switchDefaultLabel(instr);
+                const std::string &caseLabel = il::core::switchCaseLabel(instr, 0);
+                if (defaultLabel == caseLabel)
+                {
+                    const auto &defaultArgs = il::core::switchDefaultArgs(instr);
+                    const auto &caseArgs = il::core::switchCaseArgs(instr, 0);
+                    if (valueVectorsEqual(defaultArgs, caseArgs))
+                    {
+                        rewriteToUnconditionalBranch(instr, 0);
+                        simplified = true;
+                    }
+                }
+            }
+
+            if (simplified)
+            {
+                changed = true;
+                if (activeStats)
+                    ++activeStats->switchToBr;
+            }
+        }
+    }
+
+    return changed;
+}
+
 static bool foldTrivialCbrToBr(Function &F)
 {
     bool changed = false;
@@ -1190,6 +1240,8 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
     for (int iter = 0; iter < 8; ++iter)
     {
         bool changed = false;
+        if (aggressive)
+            changed |= foldTrivialSwitchToBr(F);
         changed |= foldTrivialCbrToBr(F);
         changed |= removeEmptyForwarders(F);
         changed |= mergeSinglePredBlocks(F);
