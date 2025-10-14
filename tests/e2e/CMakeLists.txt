@@ -261,6 +261,14 @@ function(viper_add_e2e_vm_suite)
     -DIL_FILE=${CMAKE_SOURCE_DIR}/tests/golden/il_opt/e2e.in.il
     -P ${_VIPER_E2E_DIR}/test_il_opt_equiv.cmake)
 
+  viper_add_ctest(simplifycfg_smoke
+    ${CMAKE_COMMAND}
+    -DILC=$<TARGET_FILE:ilc>
+    -DIL_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/simplifycfg_smoke.il
+    -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/simplifycfg_smoke.out
+    -P ${_VIPER_E2E_DIR}/test_simplifycfg_smoke.cmake)
+  set_tests_properties(simplifycfg_smoke PROPERTIES LABELS ILOpt)
+
   viper_add_ctest(constfold_equiv
     ${CMAKE_COMMAND}
     -DILC=$<TARGET_FILE:ilc>
