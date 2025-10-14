@@ -862,6 +862,9 @@ static bool foldTrivialCbrToBr(Function &F)
 
     for (auto &block : F.blocks)
     {
+        if (isEHSensitive(block))
+            continue;
+
         for (auto &instr : block.instructions)
         {
             if (instr.op != Opcode::CBr)
@@ -952,6 +955,9 @@ static bool canonicalizeParamsAndArgs(Function &F)
 
     for (auto &block : F.blocks)
     {
+        if (isEHSensitive(block))
+            continue;
+
         if (block.params.empty())
             continue;
 
@@ -1116,7 +1122,11 @@ static bool removeUnreachable(Function &F)
         if (blockIndex >= F.blocks.size())
             continue;
 
-        const std::string label = F.blocks[blockIndex].label;
+        BasicBlock &candidate = F.blocks[blockIndex];
+        if (isEHSensitive(candidate))
+            continue;
+
+        const std::string label = candidate.label;
 
         for (auto &block : F.blocks)
         {
