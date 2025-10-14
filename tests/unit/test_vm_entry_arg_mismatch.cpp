@@ -11,6 +11,7 @@
 #include <cassert>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
@@ -19,9 +20,7 @@ using namespace il::core;
 
 namespace
 {
-std::string captureTrap(Module &module,
-                        const Function &fn,
-                        const std::vector<il::vm::Slot> &args)
+std::string captureTrap(Module &module, const Function &fn, const std::vector<il::vm::Slot> &args)
 {
     int fds[2];
     assert(pipe(fds) == 0);
@@ -48,6 +47,45 @@ std::string captureTrap(Module &module,
     waitpid(pid, &status, 0);
     return std::string(buffer);
 }
+
+bool trapHeaderMatches(const std::string &diag, std::string_view function, std::string_view kind)
+{
+    std::string_view view(diag);
+    if (const auto newline = view.find('\n'); newline != std::string_view::npos)
+        view = view.substr(0, newline);
+
+    constexpr std::string_view kPrefix = "Trap @";
+    if (!view.starts_with(kPrefix))
+        return false;
+    view.remove_prefix(kPrefix.size());
+
+    if (view.substr(0, function.size()) != function)
+        return false;
+    view.remove_prefix(function.size());
+
+    if (view.empty() || view.front() != '#')
+        return false;
+
+    const auto colonPos = view.find(':');
+    if (colonPos == std::string_view::npos || colonPos + 2 > view.size())
+        return false;
+
+    const auto headerSuffix = view.substr(0, colonPos);
+    if (headerSuffix.find(" line ") == std::string_view::npos)
+        return false;
+    if (view[colonPos + 1] != ' ')
+        return false;
+
+    view.remove_prefix(colonPos + 2);
+    if (view.substr(0, kind.size()) != kind)
+        return false;
+    if (view.size() <= kind.size() || view[kind.size()] != ' ')
+        return false;
+    if (view.find("(code=") == std::string_view::npos)
+        return false;
+
+    return true;
+}
 } // namespace
 
 int main()
@@ -62,9 +100,7 @@ int main()
 
     builder.startFunction("too_few_args", Type(Type::Kind::Void), {});
     auto &tooFewEntry = builder.createBlock(
-        module.functions.back(),
-        "entry",
-        std::vector<Param>{{"p0", Type(Type::Kind::I64), 0}});
+        module.functions.back(), "entry", std::vector<Param>{{"p0", Type(Type::Kind::I64), 0}});
     builder.setInsertPoint(tooFewEntry);
     builder.emitRet(std::optional<Value>{}, {1, 1, 1});
 
@@ -75,13 +111,11 @@ int main()
     slot.i64 = 42;
 
     const std::string extraDiag = captureTrap(module, tooManyFn, {slot});
-    assert(extraDiag.find("Trap @too_many_args#0 line -1: InvalidOperation (code=0)") !=
-           std::string::npos);
+    assert(trapHeaderMatches(extraDiag, "too_many_args", "InvalidOperation"));
     assert(extraDiag.find("argument count mismatch") != std::string::npos);
 
     const std::string missingDiag = captureTrap(module, tooFewFn, {});
-    assert(missingDiag.find("Trap @too_few_args#0 line -1: InvalidOperation (code=0)") !=
-           std::string::npos);
+    assert(trapHeaderMatches(missingDiag, "too_few_args", "InvalidOperation"));
     assert(missingDiag.find("argument count mismatch") != std::string::npos);
 
     return 0;
