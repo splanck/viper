@@ -361,7 +361,19 @@ VM::ExecResult OpHandlers::handleSwitchI32(VM &vm,
 {
     const Slot scrutineeSlot = vm.eval(fr, switchScrutinee(in));
     const int32_t scrutinee = static_cast<int32_t>(scrutineeSlot.i64);
-    const viper::vm::SwitchCacheEntry &entry = lookupSwitchCacheEntry(vm.switchCache_, in);
+    VM::ExecState *activeState = nullptr;
+    if (!vm.execStack.empty())
+        activeState = vm.execStack.back();
+    assert(activeState != nullptr && "switch handler missing execution state");
+    viper::vm::SwitchCache *cache = nullptr;
+    if (activeState != nullptr)
+        cache = &activeState->switchCache;
+    else
+    {
+        static thread_local viper::vm::SwitchCache fallbackCache;
+        cache = &fallbackCache;
+    }
+    const viper::vm::SwitchCacheEntry &entry = lookupSwitchCacheEntry(*cache, in);
     const int32_t resolved = dispatchSwitch(entry, scrutinee);
     const size_t targetIdx = resolved >= 0 ? static_cast<size_t>(resolved) : 0;
 
