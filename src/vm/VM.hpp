@@ -236,9 +236,6 @@ class VM
     /// @ownership Owned by the VM; stores @c rt_string handles created via @c rt_string_from_bytes.
     std::unordered_map<std::string, rt_string> inlineLiteralCache;
 
-    /// @brief Memoized switch dispatch tables keyed by instruction identity.
-    viper::vm::SwitchCache switchCache_;
-
     /// @brief Trap metadata for the currently executing runtime call.
     RuntimeCallContext runtimeContext;
 
@@ -327,6 +324,7 @@ class VM
         const il::core::BasicBlock *callSiteBlock = nullptr; ///< Block of the call that entered this frame
         size_t callSiteIp = 0;                                ///< Instruction index of the call in the caller
         il::support::SourceLoc callSiteLoc{};                 ///< Source location of the call site
+        viper::vm::SwitchCache switchCache{};                 ///< Memoized switch dispatch data for this frame
     };
 
     bool prepareTrap(VmError &error);

@@ -138,12 +138,13 @@ Frame VM::setupFrame(const Function &fn,
 /// @return Fully initialised execution state ready for the interpreter loop.
 VM::ExecState VM::prepareExecution(const Function &fn, const std::vector<Slot> &args)
 {
-    ExecState st;
+    ExecState st{};
     st.fr = setupFrame(fn, args, st.blocks, st.bb);
     tracer.onFramePrepared(st.fr);
     debug.resetLastHit();
     st.ip = 0;
     st.skipBreakOnce = false;
+    st.switchCache.clear();
     return st;
 }
 
