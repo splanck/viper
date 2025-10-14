@@ -25,9 +25,12 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <cstdio>
+#include <cstdlib>
 #include <deque>
 #include <iterator>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -103,10 +106,22 @@ void verifyPostconditions(const il::core::Module *module)
     assert(verified && "SimplifyCFG postcondition verification failed");
     (void)verified;
 }
+
+void verifyIntermediateState(const il::core::Module *module)
+{
+    if (!module)
+        return;
+
+    auto verified = il::verify::Verifier::verify(*module);
+    assert(verified && "SimplifyCFG verification failed after transformation batch");
+    (void)verified;
+}
 #else
 void verifyPreconditions(const il::core::Module *) {}
 
 void verifyPostconditions(const il::core::Module *) {}
+
+void verifyIntermediateState(const il::core::Module *) {}
 #endif
 
 using il::core::BasicBlock;
@@ -117,6 +132,26 @@ using il::core::Value;
 
 Function *activeFunction = nullptr;
 il::transform::SimplifyCFG::Stats *activeStats = nullptr;
+
+bool isDebugLoggingEnabled()
+{
+    static const bool enabled = [] {
+        if (const char *flag = std::getenv("VIPER_DEBUG_PASSES"))
+            return flag[0] != '\0';
+        return false;
+    }();
+    return enabled;
+}
+
+void logPassDebug(const Function *fn, std::string_view message)
+{
+    if (!isDebugLoggingEnabled())
+        return;
+
+    const char *name = fn ? fn->name.c_str() : "<unknown>";
+    std::fprintf(stderr, "[DEBUG][SimplifyCFG] %s: %.*s\n", name,
+                 static_cast<int>(message.size()), message.data());
+}
 
 static bool isEHSensitive(const BasicBlock &B);
 Instr *findTerminator(BasicBlock &block);
@@ -899,6 +934,11 @@ static bool foldTrivialSwitchToBr(Function &F)
                 changed = true;
                 if (activeStats)
                     ++activeStats->switchToBr;
+                if (isDebugLoggingEnabled())
+                {
+                    std::string message = "folded trivial switch in block '" + block.label + "'";
+                    logPassDebug(&F, message);
+                }
             }
         }
     }
@@ -966,6 +1006,11 @@ static bool foldTrivialCbrToBr(Function &F)
                 changed = true;
                 if (activeStats)
                     ++activeStats->cbrToBr;
+                if (isDebugLoggingEnabled())
+                {
+                    std::string message = "simplified conditional branch in block '" + block.label + "'";
+                    logPassDebug(&F, message);
+                }
             }
         }
     }
@@ -982,11 +1027,21 @@ static bool mergeSinglePredBlocks(Function &F)
     size_t blockIndex = 0;
     while (blockIndex < F.blocks.size())
     {
+        const bool debugEnabled = isDebugLoggingEnabled();
+        std::string mergedLabel;
+        if (debugEnabled)
+            mergedLabel = F.blocks[blockIndex].label;
+
         if (mergeSinglePred(F.blocks[blockIndex]))
         {
             changed = true;
             if (activeStats)
                 ++activeStats->blocksMerged;
+            if (debugEnabled)
+            {
+                std::string message = "merged block '" + mergedLabel + "' into its predecessor";
+                logPassDebug(&F, message);
+            }
             continue;
         }
         ++blockIndex;
@@ -1020,6 +1075,12 @@ static bool canonicalizeParamsAndArgs(Function &F)
                 changed = true;
                 if (activeStats)
                     activeStats->paramsShrunk += removed;
+                if (isDebugLoggingEnabled())
+                {
+                    std::string message = "replaced duplicated params in block '" + block.label + "', removed " +
+                                          std::to_string(removed);
+                    logPassDebug(&F, message);
+                }
             }
         }
 
@@ -1035,6 +1096,12 @@ static bool canonicalizeParamsAndArgs(Function &F)
                 changed = true;
                 if (activeStats)
                     activeStats->paramsShrunk += removed;
+                if (isDebugLoggingEnabled())
+                {
+                    std::string message = "dropped unused params in block '" + block.label + "', removed " +
+                                          std::to_string(removed);
+                    logPassDebug(&F, message);
+                }
             }
         }
     }
@@ -1112,6 +1179,12 @@ static bool removeEmptyForwarders(Function &F)
             changed = true;
             if (activeStats)
                 activeStats->predsMerged += redirected;
+            if (isDebugLoggingEnabled())
+            {
+                std::string message = "redirected " + std::to_string(redirected) +
+                                      " predecessor edges around block '" + dead.label + "'";
+                logPassDebug(&F, message);
+            }
         }
 
         bool hasPreds = false;
@@ -1147,6 +1220,13 @@ static bool removeEmptyForwarders(Function &F)
         changed = true;
         if (activeStats)
             activeStats->emptyBlocksRemoved += removedBlocks;
+        if (isDebugLoggingEnabled())
+        {
+            std::string message =
+                "removed " + std::to_string(removedBlocks) + " empty forwarding block" +
+                (removedBlocks == 1 ? "" : "s");
+            logPassDebug(&F, message);
+        }
     }
 
     return changed;
@@ -1210,6 +1290,13 @@ static bool removeUnreachable(Function &F)
     {
         if (activeStats)
             activeStats->unreachableRemoved += removedBlocks;
+        if (isDebugLoggingEnabled())
+        {
+            std::string message =
+                "erased " + std::to_string(removedBlocks) + " unreachable block" +
+                (removedBlocks == 1 ? "" : "s");
+            logPassDebug(&F, message);
+        }
         return true;
     }
 
@@ -1250,6 +1337,7 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
         if (!changed)
             break;
         changedAny = true;
+        verifyIntermediateState(module_);
     }
 
     activeStats = previousStats;
