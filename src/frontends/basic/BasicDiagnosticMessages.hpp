@@ -40,7 +40,7 @@ inline constexpr Message ERR_SelectCase_OverlappingRange{
 /// @brief Multiple CASE ELSE arms were found in the same SELECT CASE.
 inline constexpr Message ERR_SelectCase_DuplicateElse{
     "ERR_SelectCase_DuplicateElse",
-    "Duplicate CASE ELSE arm"};
+    "duplicate CASE ELSE"};
 
 /// @brief SELECT CASE statement was not terminated by END SELECT.
 inline constexpr Message ERR_SelectCase_MissingEndSelect{
@@ -60,7 +60,7 @@ inline constexpr Message ERR_SelectCase_StringLabelSelector{
 /// @brief Numeric and string CASE labels may not be mixed within a SELECT CASE.
 inline constexpr Message ERR_SelectCase_MixedLabelTypes{
     "ERR_SelectCase_MixedLabelTypes",
-    "SELECT CASE cannot mix numeric and string CASE labels"};
+    "mixed-type SELECT CASE"};
 
 /// @brief CASE statement lacked any labels before the body.
 inline constexpr Message ERR_Case_EmptyLabelList{
