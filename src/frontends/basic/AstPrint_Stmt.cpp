@@ -115,7 +115,14 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
 
     void visit(const PrintChStmt &stmt) override
     {
-        printer.os << "(PRINT#";
+        if (stmt.mode == PrintChStmt::Mode::Write)
+        {
+            printer.os << "(WRITE#";
+        }
+        else
+        {
+            printer.os << "(PRINT#";
+        }
         style.writeChannelPrefix();
         if (stmt.channelExpr)
         {

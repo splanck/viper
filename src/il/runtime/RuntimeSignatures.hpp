@@ -28,6 +28,7 @@ enum class RtSig : std::size_t
 enum class RuntimeFeature : std::size_t
 {
     Concat,
+    CsvQuote,
     InputLine,
     SplitFields,
     ToInt,

@@ -191,6 +191,7 @@ StmtPtr Parser::parsePrint()
         consume();
         auto stmt = std::make_unique<PrintChStmt>();
         stmt->loc = loc;
+        stmt->mode = PrintChStmt::Mode::Print;
         stmt->channelExpr = parseExpression();
         stmt->trailingNewline = true;
         if (at(TokenKind::Comma))
@@ -230,6 +231,29 @@ StmtPtr Parser::parsePrint()
             continue;
         }
         stmt->items.push_back(PrintItem{PrintItem::Kind::Expr, parseExpression()});
+    }
+    return stmt;
+}
+
+/// @brief Parse a WRITE # statement producing comma-separated output records.
+/// @return WRITE statement node lowering to file channel operations.
+StmtPtr Parser::parseWrite()
+{
+    auto loc = peek().loc;
+    consume(); // WRITE
+    expect(TokenKind::Hash);
+    auto stmt = std::make_unique<PrintChStmt>();
+    stmt->loc = loc;
+    stmt->mode = PrintChStmt::Mode::Write;
+    stmt->trailingNewline = true;
+    stmt->channelExpr = parseExpression();
+    expect(TokenKind::Comma);
+    while (true)
+    {
+        stmt->args.push_back(parseExpression());
+        if (!at(TokenKind::Comma))
+            break;
+        consume();
     }
     return stmt;
 }
