@@ -149,6 +149,30 @@ static SwitchMeta collectSwitchMeta(const Instr &in)
     return meta;
 }
 
+static int32_t lookupDense(const DenseJumpTable &T, int32_t sel, int32_t defIdx)
+{
+    const int64_t off = static_cast<int64_t>(sel) - static_cast<int64_t>(T.base);
+    if (off < 0 || off >= static_cast<int64_t>(T.targets.size()))
+        return defIdx;
+    const int32_t t = T.targets[static_cast<size_t>(off)];
+    return (t < 0) ? defIdx : t;
+}
+
+static int32_t lookupSorted(const SortedCases &S, int32_t sel, int32_t defIdx)
+{
+    auto it = std::lower_bound(S.keys.begin(), S.keys.end(), sel);
+    if (it == S.keys.end() || *it != sel)
+        return defIdx;
+    const size_t idx = static_cast<size_t>(it - S.keys.begin());
+    return S.targetIdx[idx];
+}
+
+static int32_t lookupHashed(const HashedCases &H, int32_t sel, int32_t defIdx)
+{
+    auto it = H.map.find(sel);
+    return (it == H.map.end()) ? defIdx : it->second;
+}
+
 /// @brief Select the most appropriate switch cache backend for @p M.
 ///
 /// Dense tables perform best when the case value distribution is tightly
@@ -255,36 +279,26 @@ const SwitchCacheEntry &lookupSwitchCacheEntry(SwitchCache &cache, const Instr &
 
 int32_t dispatchSwitch(const SwitchCacheEntry &entry, int32_t scrutinee)
 {
-    int32_t targetIdx = entry.defaultIdx;
-    std::visit(
-        [&](const auto &backend) {
+    const int32_t defIdx = entry.defaultIdx;
+    int32_t targetIdx = std::visit(
+        [&](const auto &backend) -> int32_t {
             using BackendT = std::decay_t<decltype(backend)>;
             if constexpr (std::is_same_v<BackendT, DenseJumpTable>)
             {
-                const int64_t offset = static_cast<int64_t>(scrutinee) - backend.base;
-                if (offset >= 0 && offset < static_cast<int64_t>(backend.targets.size()))
-                {
-                    const int32_t candidate = backend.targets[static_cast<size_t>(offset)];
-                    if (candidate >= 0)
-                        targetIdx = candidate;
-                }
+                return lookupDense(backend, scrutinee, defIdx);
             }
             else if constexpr (std::is_same_v<BackendT, SortedCases>)
             {
-                auto it = std::lower_bound(backend.keys.begin(), backend.keys.end(), scrutinee);
-                if (it != backend.keys.end() && *it == scrutinee)
-                {
-                    const size_t idx = static_cast<size_t>(std::distance(backend.keys.begin(), it));
-                    const int32_t candidate = backend.targetIdx[idx];
-                    if (candidate >= 0)
-                        targetIdx = candidate;
-                }
+                return lookupSorted(backend, scrutinee, defIdx);
             }
             else if constexpr (std::is_same_v<BackendT, HashedCases>)
             {
-                auto it = backend.map.find(scrutinee);
-                if (it != backend.map.end())
-                    targetIdx = it->second;
+                return lookupHashed(backend, scrutinee, defIdx);
+            }
+            else
+            {
+                static_assert(std::is_same_v<BackendT, void>, "Unhandled switch backend");
+                return defIdx;
             }
         },
         entry.backend);
