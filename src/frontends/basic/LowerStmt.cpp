@@ -1832,13 +1832,53 @@ void Lowerer::lowerInputCh(const InputChStmt &stmt)
     curLoc = stmt.loc;
     Value field = emitLoad(Type(Type::Kind::Str), fieldSlot);
 
+    SlotType slotInfo = getSlotType(stmt.target.name);
     const auto *info = findSymbol(stmt.target.name);
     if (!info || !info->slotId)
         return;
 
     Value slot = Value::temp(*info->slotId);
+    if (slotInfo.type.kind == Type::Kind::Str)
+    {
+        curLoc = stmt.loc;
+        emitStore(Type(Type::Kind::Str), slot, field);
+        return;
+    }
+
     curLoc = stmt.loc;
-    emitStore(Type(Type::Kind::Str), slot, field);
+    Value fieldCstr = emitCallRet(Type(Type::Kind::Ptr), "rt_string_cstr", {field});
+
+    curLoc = stmt.loc;
+    Value parsedSlot = emitAlloca(8);
+
+    if (slotInfo.type.kind == Type::Kind::F64)
+    {
+        Value err = emitCallRet(Type(Type::Kind::I32), "rt_parse_double", {fieldCstr, parsedSlot});
+        emitRuntimeErrCheck(err, stmt.loc, "inputch_parse", [&](Value code) { emitTrapFromErr(code); });
+        Value parsed = emitLoad(Type(Type::Kind::F64), parsedSlot);
+        curLoc = stmt.loc;
+        emitStore(Type(Type::Kind::F64), slot, parsed);
+    }
+    else
+    {
+        Value err = emitCallRet(Type(Type::Kind::I32), "rt_parse_int64", {fieldCstr, parsedSlot});
+        emitRuntimeErrCheck(err, stmt.loc, "inputch_parse", [&](Value code) { emitTrapFromErr(code); });
+        Value parsed = emitLoad(Type(Type::Kind::I64), parsedSlot);
+        if (slotInfo.isBoolean)
+        {
+            Value b = coerceToBool({parsed, Type(Type::Kind::I64)}, stmt.loc).value;
+            curLoc = stmt.loc;
+            emitStore(ilBoolTy(), slot, b);
+        }
+        else
+        {
+            curLoc = stmt.loc;
+            emitStore(Type(Type::Kind::I64), slot, parsed);
+        }
+    }
+
+    curLoc = stmt.loc;
+    emitCall("rt_str_release_maybe", {field});
 }
 
 void Lowerer::lowerLineInputCh(const LineInputChStmt &stmt)

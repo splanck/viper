@@ -480,6 +480,19 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
             return;
 
         Type astTy = inferAstTypeFromName(name);
+        switch (astTy)
+        {
+            case Type::Str:
+                break;
+            case Type::F64:
+                lowerer_.requestHelper(Lowerer::RuntimeFeature::ParseDouble);
+                lowerer_.requestHelper(Lowerer::RuntimeFeature::Val);
+                break;
+            default:
+                lowerer_.requestHelper(Lowerer::RuntimeFeature::ParseInt64);
+                lowerer_.requestHelper(Lowerer::RuntimeFeature::Val);
+                break;
+        }
         const auto *info = lowerer_.findSymbol(name);
         if (!info || !info->hasType)
             lowerer_.setSymbolType(name, astTy);
