@@ -327,6 +327,8 @@ class VM
         il::support::SourceLoc callSiteLoc{};                 ///< Source location of the call site
         viper::vm::SwitchCache switchCache{};                 ///< Memoized switch dispatch data for this frame
         std::optional<Slot> pendingResult{};                  ///< Result staged by threaded interpreter
+        const il::core::Instr *currentInstr = nullptr;        ///< Instruction under execution for inline dispatch
+        bool exitRequested = false;                           ///< Whether the active loop should exit
     };
 
     bool prepareTrap(VmError &error);
@@ -368,10 +370,24 @@ class VM
     /// @brief Handle a trap dispatch signal raised during interpretation.
     bool handleTrapDispatch(const TrapDispatchSignal &signal, ExecState &st);
 
+    /// @brief Fetch the next opcode for switch-based dispatch.
+    il::core::Opcode fetchOpcode(ExecState &st);
+
+    /// @brief Process the result of an inline opcode handler.
+    void handleInlineResult(ExecState &st, const ExecResult &exec);
+
+    /// @brief Trap when no handler implementation exists for @p op.
+    [[noreturn]] void trapUnimplemented(il::core::Opcode op);
+
     /// @brief Run the main interpreter loop.
     /// @param st Prepared execution state.
     /// @return Return value slot.
     Slot runFunctionLoop(ExecState &st);
+
+    /// @brief Execute the interpreter loop using switch-based dispatch.
+    /// @param st Prepared execution state.
+    /// @return True when a result was stored in @p st.pendingResult.
+    bool runLoopSwitch(ExecState &st);
 
 #if VIPER_THREADING_SUPPORTED
     /// @brief Execute the interpreter loop using a direct-threaded dispatch path.
@@ -379,6 +395,28 @@ class VM
     /// @return True when a result was produced by the threaded loop.
     bool runLoopThreaded(ExecState &st);
 #endif
+
+#define IL_OPCODE(NAME,                                                                            \
+                  MNEMONIC,                                                                        \
+                  RES_ARITY,                                                                       \
+                  RES_TYPE,                                                                        \
+                  MIN_OPS,                                                                         \
+                  MAX_OPS,                                                                         \
+                  OP0,                                                                             \
+                  OP1,                                                                             \
+                  OP2,                                                                             \
+                  SIDE_EFFECTS,                                                                    \
+                  SUCCESSORS,                                                                      \
+                  TERMINATOR,                                                                      \
+                  DISPATCH,                                                                        \
+                  PARSE0,                                                                          \
+                  PARSE1,                                                                          \
+                  PARSE2,                                                                          \
+                  PARSE3)                                                                          \
+    void inline_handle_##NAME(ExecState &st);
+
+#include "il/core/Opcode.def"
+#undef IL_OPCODE
 
   public:
     /// @brief Return executed instruction count.
