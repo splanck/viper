@@ -417,14 +417,8 @@ VM::ExecResult OpHandlers::handleAdd(VM &vm,
                                      const BasicBlock *&bb,
                                      size_t &ip)
 {
-    (void)blocks;
-    (void)bb;
-    (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            { out.i64 = lhsVal.i64 + rhsVal.i64; });
+    auto state = makeLegacyState(vm, fr, blocks, bb, ip);
+    return handleAddInline(vm, state, in);
 }
 
 /// @brief Interpret the `sub` opcode for 64-bit integers.
@@ -437,14 +431,8 @@ VM::ExecResult OpHandlers::handleSub(VM &vm,
                                      const BasicBlock *&bb,
                                      size_t &ip)
 {
-    (void)blocks;
-    (void)bb;
-    (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            { out.i64 = lhsVal.i64 - rhsVal.i64; });
+    auto state = makeLegacyState(vm, fr, blocks, bb, ip);
+    return handleSubInline(vm, state, in);
 }
 
 /// @brief Interpret the `isub` opcode for 64-bit integers.
@@ -471,14 +459,8 @@ VM::ExecResult OpHandlers::handleMul(VM &vm,
                                      const BasicBlock *&bb,
                                      size_t &ip)
 {
-    (void)blocks;
-    (void)bb;
-    (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            { out.i64 = lhsVal.i64 * rhsVal.i64; });
+    auto state = makeLegacyState(vm, fr, blocks, bb, ip);
+    return handleMulInline(vm, state, in);
 }
 
 /// @brief Interpret the `iadd.ovf` opcode, trapping on signed overflow.
