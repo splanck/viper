@@ -27,6 +27,16 @@ inline constexpr Message ERR_SelectCase_DuplicateLabel{
     "ERR_SelectCase_DuplicateLabel",
     "Duplicate CASE label"};
 
+/// @brief CASE range lower bound exceeds its upper bound.
+inline constexpr Message ERR_SelectCase_InvalidRange{
+    "ERR_SelectCase_InvalidRange",
+    "CASE range lower bound must be <= upper bound"};
+
+/// @brief CASE range overlaps an existing CASE label or range.
+inline constexpr Message ERR_SelectCase_OverlappingRange{
+    "ERR_SelectCase_OverlappingRange",
+    "CASE range overlaps existing CASE labels or ranges"};
+
 /// @brief Multiple CASE ELSE arms were found in the same SELECT CASE.
 inline constexpr Message ERR_SelectCase_DuplicateElse{
     "ERR_SelectCase_DuplicateElse",
