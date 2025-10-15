@@ -8,6 +8,7 @@
 
 #include "vm/VM.hpp"
 #include "vm/VMConfig.hpp"
+#include "vm/OpHandlers.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
@@ -313,6 +314,105 @@ bool VM::handleTrapDispatch(const TrapDispatchSignal &signal, ExecState &st)
     return true;
 }
 
+Opcode VM::fetchOpcode(ExecState &st)
+{
+    st.exitRequested = false;
+    st.pendingResult.reset();
+
+    if (!st.bb || st.ip >= st.bb->instructions.size())
+    {
+        clearCurrentContext();
+        Slot zero{};
+        zero.i64 = 0;
+        st.pendingResult = zero;
+        st.exitRequested = true;
+        st.currentInstr = nullptr;
+        return Opcode::Trap;
+    }
+
+    st.currentInstr = &st.bb->instructions[st.ip];
+    setCurrentContext(st.fr, st.bb, st.ip, *st.currentInstr);
+
+    if (auto pause = shouldPause(st, st.currentInstr, false))
+    {
+        st.pendingResult = *pause;
+        st.exitRequested = true;
+        return st.currentInstr->op;
+    }
+
+    tracer.onStep(*st.currentInstr, st.fr);
+    ++instrCount;
+    return st.currentInstr->op;
+}
+
+void VM::handleInlineResult(ExecState &st, const ExecResult &exec)
+{
+    if (exec.returned)
+    {
+        st.pendingResult = exec.value;
+        st.exitRequested = true;
+        return;
+    }
+
+    if (exec.jumped)
+        debug.resetLastHit();
+    else
+        ++st.ip;
+
+    if (auto pause = shouldPause(st, nullptr, true))
+    {
+        st.pendingResult = *pause;
+        st.exitRequested = true;
+        return;
+    }
+
+    st.pendingResult.reset();
+    st.exitRequested = false;
+}
+
+[[noreturn]] void VM::trapUnimplemented(Opcode op)
+{
+    const std::string funcName = currentContext.function ? currentContext.function->name : std::string("<unknown>");
+    const std::string blockLabel = currentContext.block ? currentContext.block->label : std::string();
+    RuntimeBridge::trap(TrapKind::InvalidOperation,
+                        "unimplemented opcode: " + opcodeMnemonic(op),
+                        currentContext.loc,
+                        funcName,
+                        blockLabel);
+    std::terminate();
+}
+
+bool VM::runLoopSwitch(ExecState &st)
+{
+    st.currentInstr = nullptr;
+
+    while (true)
+    {
+        const Opcode op = fetchOpcode(st);
+        if (st.exitRequested)
+            return st.pendingResult.has_value();
+
+        switch (op)
+        {
+#define OP_SWITCH(NAME, ...)                                                                                       \
+    case Opcode::NAME:                                                                                              \
+    {                                                                                                               \
+        inline_handle_##NAME(st);                                                                                   \
+        break;                                                                                                      \
+    }
+#define IL_OPCODE(NAME, ...) OP_SWITCH(NAME, __VA_ARGS__)
+#include "il/core/Opcode.def"
+#undef IL_OPCODE
+#undef OP_SWITCH
+        default:
+            trapUnimplemented(op);
+        }
+
+        if (st.exitRequested)
+            return st.pendingResult.has_value();
+    }
+}
+
 /// Main interpreter loop for executing a function.
 ///
 /// Iterates over instructions in the current basic block, invokes tracing,
@@ -344,13 +444,13 @@ Slot VM::runFunctionLoop(ExecState &st)
         clearCurrentContext();
         try
         {
-            while (true)
+            if (runLoopSwitch(st))
             {
-                if (auto result = stepOnce(st))
-                {
-                    st.pendingResult = *result;
-                    return *result;
-                }
+                if (st.pendingResult)
+                    return *st.pendingResult;
+                Slot zero{};
+                zero.i64 = 0;
+                return zero;
             }
         }
         catch (const TrapDispatchSignal &signal)
@@ -365,6 +465,8 @@ Slot VM::runFunctionLoop(ExecState &st)
 bool VM::runLoopThreaded(ExecState &st)
 {
     st.pendingResult.reset();
+    st.exitRequested = false;
+    st.currentInstr = nullptr;
 
     const Instr *currentInstr = nullptr;
     Opcode op = Opcode::Trap;
@@ -388,6 +490,7 @@ bool VM::runLoopThreaded(ExecState &st)
             }
 
             currentInstr = &st.bb->instructions[st.ip];
+            st.currentInstr = currentInstr;
             setCurrentContext(st.fr, st.bb, st.ip, *currentInstr);
 
             if (auto pause = shouldPause(st, currentInstr, false))
@@ -478,6 +581,48 @@ bool VM::runLoopThreaded(ExecState &st)
     return st.pendingResult.has_value();
 }
 #endif
+
+#define VM_DISPATCH_IMPL(DISPATCH, HANDLER_EXPR) HANDLER_EXPR
+#define VM_DISPATCH(NAME) VM_DISPATCH_IMPL(NAME, &detail::OpHandlers::handle##NAME)
+#define VM_DISPATCH_ALT(DISPATCH, HANDLER_EXPR) VM_DISPATCH_IMPL(DISPATCH, HANDLER_EXPR)
+#define IL_OPCODE(NAME,                                                                            \
+                  MNEMONIC,                                                                        \
+                  RES_ARITY,                                                                       \
+                  RES_TYPE,                                                                        \
+                  MIN_OPS,                                                                         \
+                  MAX_OPS,                                                                         \
+                  OP0,                                                                             \
+                  OP1,                                                                             \
+                  OP2,                                                                             \
+                  SIDE_EFFECTS,                                                                    \
+                  SUCCESSORS,                                                                      \
+                  TERMINATOR,                                                                      \
+                  DISPATCH,                                                                        \
+                  PARSE0,                                                                          \
+                  PARSE1,                                                                          \
+                  PARSE2,                                                                          \
+                  PARSE3)                                                                          \
+    void VM::inline_handle_##NAME(ExecState &st)                                                   \
+    {                                                                                              \
+        const Instr *instr = st.currentInstr;                                                      \
+        if (!instr)                                                                                \
+        {                                                                                          \
+            trapUnimplemented(Opcode::NAME);                                                       \
+        }                                                                                          \
+        auto handler = DISPATCH;                                                                   \
+        if (!handler)                                                                              \
+        {                                                                                          \
+            trapUnimplemented(Opcode::NAME);                                                       \
+        }                                                                                          \
+        ExecResult exec = handler(*this, st.fr, *instr, st.blocks, st.bb, st.ip);                  \
+        handleInlineResult(st, exec);                                                              \
+    }
+
+#include "il/core/Opcode.def"
+#undef IL_OPCODE
+#undef VM_DISPATCH_ALT
+#undef VM_DISPATCH
+#undef VM_DISPATCH_IMPL
 
 /// Execute function @p fn with optional arguments.
 ///
