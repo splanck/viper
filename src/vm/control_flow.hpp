@@ -15,6 +15,22 @@
 namespace viper::vm
 {
 
+/// @brief Enumerates dispatch strategies available for switch instructions.
+enum class SwitchMode
+{
+    Auto,   ///< Allow heuristics to select the backend.
+    Dense,  ///< Force dense jump table construction.
+    Sorted, ///< Force sorted case list construction.
+    Hashed, ///< Force hashed case mapping construction.
+    Linear  ///< Bypass caching and perform a linear scan.
+};
+
+/// @brief Query the global switch dispatch mode override.
+SwitchMode getSwitchMode();
+
+/// @brief Set the global switch dispatch mode override.
+void setSwitchMode(SwitchMode mode);
+
 /// @brief Dense jump table backing switch dispatch.
 struct DenseJumpTable
 {
@@ -36,7 +52,7 @@ struct HashedCases
 };
 
 /// @brief Variant selecting which backend implementation to use for an instruction.
-using SwitchBackend = std::variant<DenseJumpTable, SortedCases, HashedCases>;
+using SwitchBackend = std::variant<std::monostate, DenseJumpTable, SortedCases, HashedCases>;
 
 /// @brief Cached dispatch metadata for a single switch instruction.
 struct SwitchCacheEntry
@@ -47,6 +63,7 @@ struct SwitchCacheEntry
     /// @brief Enumerates which backend was materialised for diagnostics.
     enum Kind
     {
+        Linear,
         Dense,
         Sorted,
         Hashed
