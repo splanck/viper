@@ -13,6 +13,7 @@
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
 
+#include <algorithm>
 #include <string>
 #include <limits>
 #include <unordered_set>
@@ -476,6 +477,69 @@ void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt)
     constexpr int64_t kCaseLabelMin = static_cast<int64_t>(std::numeric_limits<int32_t>::min());
     constexpr int64_t kCaseLabelMax = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
 
+    struct RelInterval
+    {
+        bool hasLo = false;
+        int64_t lo = 0;
+        bool hasHi = false;
+        int64_t hi = 0;
+    };
+
+    auto makeRangeInterval = [](int32_t lo, int32_t hi) {
+        RelInterval interval;
+        interval.hasLo = true;
+        interval.lo = static_cast<int64_t>(lo);
+        interval.hasHi = true;
+        interval.hi = static_cast<int64_t>(hi);
+        return interval;
+    };
+
+    auto makeRelInterval = [](CaseArm::CaseRel::Op op, int32_t rhs) {
+        RelInterval interval;
+        switch (op)
+        {
+            case CaseArm::CaseRel::Op::LT:
+                interval.hasHi = true;
+                interval.hi = static_cast<int64_t>(rhs) - 1;
+                break;
+            case CaseArm::CaseRel::Op::LE:
+                interval.hasHi = true;
+                interval.hi = static_cast<int64_t>(rhs);
+                break;
+            case CaseArm::CaseRel::Op::EQ:
+                interval.hasLo = true;
+                interval.lo = static_cast<int64_t>(rhs);
+                interval.hasHi = true;
+                interval.hi = static_cast<int64_t>(rhs);
+                break;
+            case CaseArm::CaseRel::Op::GE:
+                interval.hasLo = true;
+                interval.lo = static_cast<int64_t>(rhs);
+                break;
+            case CaseArm::CaseRel::Op::GT:
+                interval.hasLo = true;
+                interval.lo = static_cast<int64_t>(rhs) + 1;
+                break;
+        }
+        return interval;
+    };
+
+    auto intervalsOverlap = [](const RelInterval &lhs, const RelInterval &rhs) {
+        const int64_t lo = std::max(lhs.hasLo ? lhs.lo : std::numeric_limits<int64_t>::min(),
+                                    rhs.hasLo ? rhs.lo : std::numeric_limits<int64_t>::min());
+        const int64_t hi = std::min(lhs.hasHi ? lhs.hi : std::numeric_limits<int64_t>::max(),
+                                    rhs.hasHi ? rhs.hi : std::numeric_limits<int64_t>::max());
+        return lo <= hi;
+    };
+
+    auto intervalContains = [](const RelInterval &interval, int32_t value) {
+        if (interval.hasLo && static_cast<int64_t>(value) < interval.lo)
+            return false;
+        if (interval.hasHi && static_cast<int64_t>(value) > interval.hi)
+            return false;
+        return true;
+    };
+
     if (stmt.selector)
     {
         Type selectorType = visitExpr(*stmt.selector);
@@ -503,11 +567,12 @@ void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt)
 
     std::unordered_set<int32_t> seenLabels;
     std::vector<std::pair<int32_t, int32_t>> seenRanges;
+    std::vector<RelInterval> seenRelIntervals;
     bool sawCaseElse = !stmt.elseBody.empty();
 
     for (const auto &arm : stmt.arms)
     {
-        if (arm.labels.empty() && arm.ranges.empty())
+        if (arm.labels.empty() && arm.ranges.empty() && arm.rels.empty())
         {
             if (sawCaseElse)
             {
@@ -604,6 +669,25 @@ void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt)
             }
 
             if (!overlaps)
+            {
+                RelInterval interval = makeRangeInterval(lo, hi);
+                for (const auto &seenRel : seenRelIntervals)
+                {
+                    if (intervalsOverlap(interval, seenRel))
+                    {
+                        std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
+                        de.emit(il::support::Severity::Error,
+                                std::string(diag::ERR_SelectCase_OverlappingRange.id),
+                                arm.range.begin,
+                                1,
+                                std::move(msg));
+                        overlaps = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!overlaps)
                 seenRanges.emplace_back(lo, hi);
         }
 
@@ -642,6 +726,25 @@ void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt)
             if (overlapsRange)
                 continue;
 
+            bool overlapsRel = false;
+            for (const auto &seenRel : seenRelIntervals)
+            {
+                if (intervalContains(seenRel, label))
+                {
+                    std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
+                    de.emit(il::support::Severity::Error,
+                            std::string(diag::ERR_SelectCase_OverlappingRange.id),
+                            arm.range.begin,
+                            1,
+                            std::move(msg));
+                    overlapsRel = true;
+                    break;
+                }
+            }
+
+            if (overlapsRel)
+                continue;
+
             if (!seenLabels.insert(label).second)
             {
                 std::string msg(diag::ERR_SelectCase_DuplicateLabel.text);
@@ -653,6 +756,134 @@ void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt)
                         1,
                         std::move(msg));
             }
+        }
+
+        for (const auto &rel : arm.rels)
+        {
+            if (rel.rhs < kCaseLabelMin || rel.rhs > kCaseLabelMax)
+            {
+                std::string msg = "CASE label ";
+                msg += std::to_string(rel.rhs);
+                msg += " is outside 32-bit signed range";
+                de.emit(il::support::Severity::Error,
+                        std::string(DiagSelectCaseLabelRange),
+                        arm.range.begin,
+                        1,
+                        std::move(msg));
+                continue;
+            }
+
+            const int32_t rhs = static_cast<int32_t>(rel.rhs);
+            if (rel.op == CaseArm::CaseRel::Op::EQ)
+            {
+                bool overlapsRange = false;
+                for (const auto &[seenLo, seenHi] : seenRanges)
+                {
+                    if (rhs >= seenLo && rhs <= seenHi)
+                    {
+                        std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
+                        de.emit(il::support::Severity::Error,
+                                std::string(diag::ERR_SelectCase_OverlappingRange.id),
+                                arm.range.begin,
+                                1,
+                                std::move(msg));
+                        overlapsRange = true;
+                        break;
+                    }
+                }
+
+                if (overlapsRange)
+                    continue;
+
+                bool overlapsRel = false;
+                for (const auto &seenRel : seenRelIntervals)
+                {
+                    if (intervalContains(seenRel, rhs))
+                    {
+                        std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
+                        de.emit(il::support::Severity::Error,
+                                std::string(diag::ERR_SelectCase_OverlappingRange.id),
+                                arm.range.begin,
+                                1,
+                                std::move(msg));
+                        overlapsRel = true;
+                        break;
+                    }
+                }
+
+                if (overlapsRel)
+                    continue;
+
+                if (!seenLabels.insert(rhs).second)
+                {
+                    std::string msg(diag::ERR_SelectCase_DuplicateLabel.text);
+                    msg += ": ";
+                    msg += std::to_string(rel.rhs);
+                    de.emit(il::support::Severity::Error,
+                            std::string(diag::ERR_SelectCase_DuplicateLabel.id),
+                            arm.range.begin,
+                            1,
+                            std::move(msg));
+                }
+                continue;
+            }
+
+            RelInterval interval = makeRelInterval(rel.op, rhs);
+            bool overlaps = false;
+
+            for (const auto &[seenLo, seenHi] : seenRanges)
+            {
+                if (intervalsOverlap(interval, makeRangeInterval(seenLo, seenHi)))
+                {
+                    std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
+                    de.emit(il::support::Severity::Error,
+                            std::string(diag::ERR_SelectCase_OverlappingRange.id),
+                            arm.range.begin,
+                            1,
+                            std::move(msg));
+                    overlaps = true;
+                    break;
+                }
+            }
+
+            if (!overlaps)
+            {
+                for (int32_t label : seenLabels)
+                {
+                    if (intervalContains(interval, label))
+                    {
+                        std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
+                        de.emit(il::support::Severity::Error,
+                                std::string(diag::ERR_SelectCase_OverlappingRange.id),
+                                arm.range.begin,
+                                1,
+                                std::move(msg));
+                        overlaps = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!overlaps)
+            {
+                for (const auto &seenRel : seenRelIntervals)
+                {
+                    if (intervalsOverlap(interval, seenRel))
+                    {
+                        std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
+                        de.emit(il::support::Severity::Error,
+                                std::string(diag::ERR_SelectCase_OverlappingRange.id),
+                                arm.range.begin,
+                                1,
+                                std::move(msg));
+                        overlaps = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!overlaps)
+                seenRelIntervals.push_back(interval);
         }
 
         analyzeBody(arm.body);

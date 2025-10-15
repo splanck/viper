@@ -1,0 +1,3 @@
+neg
+zero
+pos
