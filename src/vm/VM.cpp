@@ -406,7 +406,7 @@ bool VM::runLoopSwitch(ExecState &st)
     {
         const Opcode op = fetchOpcode(st);
         if (st.exitRequested)
-            return st.pendingResult.has_value();
+            return true;
 
         switch (op)
         {
@@ -426,7 +426,7 @@ bool VM::runLoopSwitch(ExecState &st)
         }
 
         if (st.exitRequested)
-            return st.pendingResult.has_value();
+            return true;
     }
 }
 
@@ -565,7 +565,7 @@ bool VM::runLoopThreaded(ExecState &st)
         {
             op = fetchNextOpcode();
             if (exitRequested)
-                return st.pendingResult.has_value();
+                return true;
             DISPATCH_TO(op);
 
 #define OP_CASE(name, ...)                                                                                   \
@@ -589,7 +589,7 @@ bool VM::runLoopThreaded(ExecState &st)
         }                                                                                                     \
         op = fetchNextOpcode();                                                                               \
         if (exitRequested)                                                                                    \
-            return st.pendingResult.has_value();                                                              \
+            return true;                                                                                      \
         DISPATCH_TO(op);                                                                                      \
     }
 
