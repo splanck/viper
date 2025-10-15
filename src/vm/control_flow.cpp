@@ -35,6 +35,7 @@
 #include <vector>
 #include <sstream>
 #include <unordered_set>
+#include <variant>
 
 using namespace il::core;
 
@@ -272,41 +273,6 @@ static SwitchCacheEntry &getOrBuildSwitchCache(SwitchCache &cache, const Instr &
     return pos->second;
 }
 
-const SwitchCacheEntry &lookupSwitchCacheEntry(SwitchCache &cache, const Instr &in)
-{
-    return getOrBuildSwitchCache(cache, in);
-}
-
-int32_t dispatchSwitch(const SwitchCacheEntry &entry, int32_t scrutinee)
-{
-    const int32_t defIdx = entry.defaultIdx;
-    int32_t targetIdx = std::visit(
-        [&](const auto &backend) -> int32_t {
-            using BackendT = std::decay_t<decltype(backend)>;
-            if constexpr (std::is_same_v<BackendT, DenseJumpTable>)
-            {
-                return lookupDense(backend, scrutinee, defIdx);
-            }
-            else if constexpr (std::is_same_v<BackendT, SortedCases>)
-            {
-                return lookupSorted(backend, scrutinee, defIdx);
-            }
-            else if constexpr (std::is_same_v<BackendT, HashedCases>)
-            {
-                return lookupHashed(backend, scrutinee, defIdx);
-            }
-            else
-            {
-                static_assert(std::is_same_v<BackendT, void>, "Unhandled switch backend");
-                return defIdx;
-            }
-        },
-        entry.backend);
-
-    if (targetIdx < 0)
-        targetIdx = entry.defaultIdx >= 0 ? entry.defaultIdx : 0;
-    return targetIdx;
-}
 } // namespace
 
 /// @brief Transfer control to a branch target and seed its parameter slots.
@@ -431,23 +397,60 @@ VM::ExecResult OpHandlers::handleSwitchI32(VM &vm,
                                            const BasicBlock *&bb,
                                            size_t &ip)
 {
-    const Slot scrutineeSlot = vm.eval(fr, switchScrutinee(in));
-    const int32_t scrutinee = static_cast<int32_t>(scrutineeSlot.i64);
-    VM::ExecState *activeState = nullptr;
+    const Instr &I = in;
+    const Slot scrutineeSlot = vm.eval(fr, switchScrutinee(I));
+    const int32_t sel = static_cast<int32_t>(scrutineeSlot.i64);
+
+    VM::ExecState *state = nullptr;
     if (!vm.execStack.empty())
-        activeState = vm.execStack.back();
-    assert(activeState != nullptr && "switch handler missing execution state");
+        state = vm.execStack.back();
+    assert(state != nullptr && "switch handler missing execution state");
+
     viper::vm::SwitchCache *cache = nullptr;
-    if (activeState != nullptr)
-        cache = &activeState->switchCache;
+    if (state != nullptr)
+    {
+        cache = &state->switchCache;
+    }
     else
     {
         static thread_local viper::vm::SwitchCache fallbackCache;
         cache = &fallbackCache;
     }
-    const viper::vm::SwitchCacheEntry &entry = lookupSwitchCacheEntry(*cache, in);
-    const int32_t resolved = dispatchSwitch(entry, scrutinee);
-    const size_t targetIdx = resolved >= 0 ? static_cast<size_t>(resolved) : 0;
+
+    auto &entry = getOrBuildSwitchCache(*cache, I);
+
+    int32_t idx = entry.defaultIdx;
+
+#if defined(VIPER_VM_DEBUG_SWITCH_LINEAR)
+    const size_t caseCount = switchCaseCount(I);
+    for (size_t caseIdx = 0; caseIdx < caseCount; ++caseIdx)
+    {
+        const Value &caseValue = switchCaseValue(I, caseIdx);
+        const int32_t caseSel = static_cast<int32_t>(caseValue.i64);
+        if (caseSel == sel)
+        {
+            idx = static_cast<int32_t>(caseIdx + 1);
+            break;
+        }
+    }
+#else
+    std::visit(
+        [&](auto &backend) {
+            using T = std::decay_t<decltype(backend)>;
+            if constexpr (std::is_same_v<T, DenseJumpTable>)
+                idx = lookupDense(backend, sel, entry.defaultIdx);
+            else if constexpr (std::is_same_v<T, SortedCases>)
+                idx = lookupSorted(backend, sel, entry.defaultIdx);
+            else
+                idx = lookupHashed(backend, sel, entry.defaultIdx);
+        },
+        entry.backend);
+#endif
+
+    if (idx < 0)
+        idx = entry.defaultIdx >= 0 ? entry.defaultIdx : 0;
+
+    const size_t targetIdx = static_cast<size_t>(idx);
 
     assert(!in.labels.empty() && "switch must have a default successor");
     assert(targetIdx < in.labels.size() && "switch dispatch resolved invalid target");
