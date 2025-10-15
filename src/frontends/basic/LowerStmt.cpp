@@ -682,6 +682,7 @@ void Lowerer::lowerSelectCase(const SelectCaseStmt &stmt)
     curLoc = stmt.selector->loc;
     RVal selector = lowerExpr(*stmt.selector);
     selector = ensureI64(std::move(selector), stmt.selector->loc);
+    Value selWide = selector.value;
     curLoc = stmt.selector->loc;
     Value sel = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), selector.value);
 
@@ -693,6 +694,18 @@ void Lowerer::lowerSelectCase(const SelectCaseStmt &stmt)
     size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
 
     BlockNamer *blockNamer = ctx.blockNames().namer();
+
+    bool hasRanges = false;
+    size_t totalRangeCount = 0;
+    for (const auto &arm : stmt.arms)
+    {
+        if (!arm.ranges.empty())
+        {
+            hasRanges = true;
+            totalRangeCount += arm.ranges.size();
+        }
+    }
+
     size_t startIdx = func->blocks.size();
 
     std::vector<size_t> armIdx(stmt.arms.size());
@@ -713,6 +726,15 @@ void Lowerer::lowerSelectCase(const SelectCaseStmt &stmt)
         elseIdx = startIdx + stmt.arms.size();
     }
 
+    size_t switchIdx = curIdx;
+    if (hasRanges)
+    {
+        std::string dispatchLabel =
+            blockNamer ? blockNamer->generic("select_dispatch") : mangler.block("select_dispatch");
+        builder->addBlock(*func, dispatchLabel);
+        switchIdx = startIdx + stmt.arms.size() + (hasCaseElse ? 1 : 0);
+    }
+
     std::string endLabel = blockNamer ? blockNamer->generic("select_end") : mangler.block("select_end");
     builder->addBlock(*func, endLabel);
 
@@ -722,10 +744,78 @@ void Lowerer::lowerSelectCase(const SelectCaseStmt &stmt)
 
     for (size_t i = 0; i < stmt.arms.size(); ++i)
         armIdx[i] = startIdx + i;
-    size_t endIdx = startIdx + stmt.arms.size() + (hasCaseElse ? 1 : 0);
+    size_t endIdx = startIdx + stmt.arms.size() + (hasCaseElse ? 1 : 0) + (hasRanges ? 1 : 0);
 
     BasicBlock *endBlk = &func->blocks[endIdx];
     BasicBlock *caseElseBlk = hasCaseElse ? &func->blocks[*elseIdx] : nullptr;
+
+    struct RangeCheck
+    {
+        int32_t lo;
+        int32_t hi;
+        size_t armIndex;
+    };
+    std::vector<RangeCheck> rangeChecks;
+    rangeChecks.reserve(totalRangeCount);
+    for (size_t i = 0; i < stmt.arms.size(); ++i)
+    {
+        for (const auto &range : stmt.arms[i].ranges)
+        {
+            rangeChecks.push_back(RangeCheck{static_cast<int32_t>(range.first),
+                                             static_cast<int32_t>(range.second),
+                                             i});
+        }
+    }
+
+    size_t rangeBlockIdx = curIdx;
+    for (size_t idx = 0; idx < rangeChecks.size(); ++idx)
+    {
+        func = ctx.function();
+        const RangeCheck &check = rangeChecks[idx];
+        BasicBlock *rangeBlk = &func->blocks[rangeBlockIdx];
+        BasicBlock *trueTarget = &func->blocks[armIdx[check.armIndex]];
+        if (trueTarget->label.empty())
+            trueTarget->label = nextFallbackBlockLabel();
+
+        size_t nextIdx;
+        if (idx + 1 < rangeChecks.size())
+        {
+            std::string label =
+                blockNamer ? blockNamer->generic("select_range") : mangler.block("select_range");
+            builder->addBlock(*func, label);
+            func = ctx.function();
+            nextIdx = func->blocks.size() - 1;
+        }
+        else
+        {
+            nextIdx = switchIdx;
+        }
+
+        BasicBlock *nextBlk = &func->blocks[nextIdx];
+        if (nextBlk->label.empty())
+            nextBlk->label = nextFallbackBlockLabel();
+
+        ctx.setCurrent(rangeBlk);
+        curLoc = stmt.arms[check.armIndex].range.begin;
+        Value ge = emitBinary(Opcode::SCmpGE,
+                              ilBoolTy(),
+                              selWide,
+                              Value::constInt(static_cast<long long>(check.lo)));
+        Value le = emitBinary(Opcode::SCmpLE,
+                              ilBoolTy(),
+                              selWide,
+                              Value::constInt(static_cast<long long>(check.hi)));
+        Value cond = emitBinary(Opcode::And, ilBoolTy(), ge, le);
+        emitCBr(cond, trueTarget, nextBlk);
+
+        rangeBlockIdx = nextIdx;
+    }
+
+    if (hasRanges)
+    {
+        ctx.setCurrent(&ctx.function()->blocks[switchIdx]);
+        current = ctx.current();
+    }
 
     std::vector<std::pair<int32_t, BasicBlock *>> caseTargets;
     size_t labelCount = 0;

@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace il::frontends::basic
@@ -649,6 +650,9 @@ struct CaseArm
 {
     /// @brief Literal labels matched by the arm.
     std::vector<int64_t> labels;
+
+    /// @brief Inclusive integer ranges matched by the arm.
+    std::vector<std::pair<int64_t, int64_t>> ranges;
 
     /// @brief Statements executed when the labels match.
     std::vector<StmtPtr> body;
