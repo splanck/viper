@@ -926,6 +926,60 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
         }
     }
 
+    if (c.builtin == BuiltinCallExpr::Builtin::Eof)
+    {
+        requireEofCh();
+        if (c.args.empty() || !c.args[0])
+            return {Value::constInt(0), Type(Type::Kind::I64)};
+
+        RVal channel = lowerExpr(*c.args[0]);
+        channel = normalizeChannelToI32(std::move(channel), c.loc);
+
+        curLoc = c.loc;
+        Value raw = emitCallRet(Type(Type::Kind::I32), "rt_eof_ch", {channel.value});
+
+        ProcedureContext &ctx = context();
+        Function *func = ctx.function();
+        BasicBlock *origin = ctx.current();
+        if (func && origin)
+        {
+            std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
+            BlockNamer *blockNamer = ctx.blockNames().namer();
+            std::string failLbl = blockNamer ? blockNamer->generic("eof_err")
+                                             : mangler.block("eof_err");
+            std::string contLbl = blockNamer ? blockNamer->generic("eof_cont")
+                                             : mangler.block("eof_cont");
+
+            std::size_t failIdx = func->blocks.size();
+            builder->addBlock(*func, failLbl);
+            std::size_t contIdx = func->blocks.size();
+            builder->addBlock(*func, contLbl);
+
+            BasicBlock *failBlk = &func->blocks[failIdx];
+            BasicBlock *contBlk = &func->blocks[contIdx];
+
+            ctx.setCurrent(&func->blocks[originIdx]);
+            curLoc = c.loc;
+            Value zero = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), Value::constInt(0));
+            Value negOne = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), Value::constInt(-1));
+            Value nonZero = emitBinary(Opcode::ICmpNe, ilBoolTy(), raw, zero);
+            Value notNegOne = emitBinary(Opcode::ICmpNe, ilBoolTy(), raw, negOne);
+            Value isError = emitBinary(Opcode::And, ilBoolTy(), nonZero, notNegOne);
+            emitCBr(isError, failBlk, contBlk);
+
+            ctx.setCurrent(failBlk);
+            curLoc = c.loc;
+            emitTrapFromErr(raw);
+
+            ctx.setCurrent(contBlk);
+        }
+
+        curLoc = c.loc;
+        RVal widened{raw, Type(Type::Kind::I32)};
+        widened = ensureI64(std::move(widened), c.loc);
+        return widened;
+    }
+
     const auto &rule = getBuiltinLoweringRule(c.builtin);
 
     std::vector<std::optional<ExprType>> originalTypes(c.args.size());

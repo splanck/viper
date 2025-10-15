@@ -56,6 +56,11 @@ extern "C" {
     /// @return Total number of fields discovered in @p line.
     int64_t rt_split_fields(rt_string line, rt_string *out_fields, int64_t max_fields);
 
+    /// @brief Report EOF status for the specified channel.
+    /// @param ch Numeric channel identifier previously passed to OPEN.
+    /// @return -1 when the next read would hit EOF, 0 otherwise, or an error code on failure.
+    int rt_eof_ch(int ch);
+
     /// @brief Allocate @p bytes of zeroed memory.
     /// @param bytes Number of bytes to allocate.
     /// @return Pointer to zeroed block or trap on failure.
