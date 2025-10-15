@@ -399,57 +399,6 @@ VM::ExecResult handleCastNarrowChkImpl(const Slot &value,
 }
 } // namespace
 
-/// @brief Interpret the `add` opcode for 64-bit integers.
-/// @param vm Active VM used to evaluate operand values.
-/// @param fr Execution frame mutated to hold the result.
-/// @param in Instruction carrying operand descriptors and destination register.
-/// @param blocks Unused lookup table for this opcode (required by signature).
-/// @param bb Unused basic block pointer for this opcode.
-/// @param ip Unused instruction index for this opcode.
-/// @return Normal execution result without control transfer.
-/// @note Operands are summed as signed 64-bit values with two's complement
-///       wrap-around, matching docs/il-guide.md#reference §Integer Arithmetic and the
-///       `i64` type rules in §Types.
-VM::ExecResult OpHandlers::handleAdd(VM &vm,
-                                     Frame &fr,
-                                     const Instr &in,
-                                     const VM::BlockMap &blocks,
-                                     const BasicBlock *&bb,
-                                     size_t &ip)
-{
-    (void)blocks;
-    (void)bb;
-    (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            { out.i64 = lhsVal.i64 + rhsVal.i64; });
-}
-
-/// @brief Interpret the `sub` opcode for 64-bit integers.
-/// @note Operand evaluation and frame updates mirror @ref OpHandlers::handleAdd, with subtraction
-///       obeying two's complement wrap semantics per docs/il-guide.md#reference §Integer Arithmetic.
-VM::ExecResult OpHandlers::handleSub(VM &vm,
-                                     Frame &fr,
-                                     const Instr &in,
-                                     const VM::BlockMap &blocks,
-                                     const BasicBlock *&bb,
-                                     size_t &ip)
-{
-    (void)blocks;
-    (void)bb;
-    (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            { out.i64 = lhsVal.i64 - rhsVal.i64; });
-}
-
-/// @brief Interpret the `isub` opcode for 64-bit integers.
-/// @note Routes to @ref OpHandlers::handleSub to share two's complement semantics with
-///       the general subtraction handler.
 VM::ExecResult OpHandlers::handleISub(VM &vm,
                                       Frame &fr,
                                       const Instr &in,
@@ -458,27 +407,6 @@ VM::ExecResult OpHandlers::handleISub(VM &vm,
                                       size_t &ip)
 {
     return handleSub(vm, fr, in, blocks, bb, ip);
-}
-
-/// @brief Interpret the `mul` opcode for 64-bit integers.
-/// @note Multiplication uses the same operand handling helpers as addition, wraps
-///       modulo 2^64 per docs/il-guide.md#reference §Integer Arithmetic, and stores the
-///       result back into the destination register.
-VM::ExecResult OpHandlers::handleMul(VM &vm,
-                                     Frame &fr,
-                                     const Instr &in,
-                                     const VM::BlockMap &blocks,
-                                     const BasicBlock *&bb,
-                                     size_t &ip)
-{
-    (void)blocks;
-    (void)bb;
-    (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            { out.i64 = lhsVal.i64 * rhsVal.i64; });
 }
 
 /// @brief Interpret the `iadd.ovf` opcode, trapping on signed overflow.
