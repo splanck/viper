@@ -80,6 +80,8 @@ class LowererStmtVisitor final : public StmtVisitor
 
     void visit(const CloseStmt &stmt) override { lowerer_.lowerClose(stmt); }
 
+    void visit(const SeekStmt &stmt) override { lowerer_.lowerSeek(stmt); }
+
     void visit(const OnErrorGoto &stmt) override { lowerer_.lowerOnErrorGoto(stmt); }
 
     void visit(const Resume &stmt) override { lowerer_.lowerResume(stmt); }
@@ -296,6 +298,27 @@ void Lowerer::lowerClose(const CloseStmt &stmt)
     Value err = emitCallRet(Type(Type::Kind::I32), "rt_close_err", {channel.value});
 
     emitRuntimeErrCheck(err, stmt.loc, "close", [&](Value code) {
+        emitTrapFromErr(code);
+    });
+}
+
+void Lowerer::lowerSeek(const SeekStmt &stmt)
+{
+    if (!stmt.channelExpr || !stmt.positionExpr)
+        return;
+
+    RVal channel = lowerExpr(*stmt.channelExpr);
+    channel = normalizeChannelToI32(std::move(channel), stmt.loc);
+
+    RVal position = lowerExpr(*stmt.positionExpr);
+    position = ensureI64(std::move(position), stmt.loc);
+
+    curLoc = stmt.loc;
+    Value err = emitCallRet(Type(Type::Kind::I32),
+                            "rt_seek_ch_err",
+                            {channel.value, position.value});
+
+    emitRuntimeErrCheck(err, stmt.loc, "seek", [&](Value code) {
         emitTrapFromErr(code);
     });
 }

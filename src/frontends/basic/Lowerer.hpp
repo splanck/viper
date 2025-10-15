@@ -578,6 +578,8 @@ class Lowerer
 
     void lowerClose(const CloseStmt &stmt);
 
+    void lowerSeek(const SeekStmt &stmt);
+
     /// @brief Emit blocks for an IF/ELSEIF chain.
     /// @param conds Number of conditions (IF + ELSEIFs).
     /// @return Indices for test/then blocks and ELSE/exit blocks.
@@ -762,10 +764,12 @@ class Lowerer
         ArrayOobPanic,
         OpenErrVstr,
         CloseErr,
+        SeekChErr,
         PrintlnChErr,
         LineInputChErr,
         EofCh,
         LofCh,
+        LocCh,
         StrRetainMaybe,
         StrReleaseMaybe,
         Count
@@ -796,10 +800,12 @@ class Lowerer
     void requireArrayOobPanic();
     void requireOpenErrVstr();
     void requireCloseErr();
+    void requireSeekChErr();
     void requirePrintlnChErr();
     void requireLineInputChErr();
     void requireEofCh();
     void requireLofCh();
+    void requireLocCh();
     void requireStrRetainMaybe();
     void requireStrReleaseMaybe();
     void requestHelper(RuntimeFeature feature);

@@ -624,6 +624,13 @@ private:
         if (stmt.channelExpr)
             foldExpr(stmt.channelExpr);
     }
+    void visit(SeekStmt &stmt) override
+    {
+        if (stmt.channelExpr)
+            foldExpr(stmt.channelExpr);
+        if (stmt.positionExpr)
+            foldExpr(stmt.positionExpr);
+    }
     void visit(OnErrorGoto &) override {}
     void visit(Resume &) override {}
     void visit(EndStmt &) override {}
