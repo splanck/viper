@@ -577,16 +577,46 @@ void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt)
     std::vector<std::pair<int32_t, int32_t>> seenRanges;
     std::vector<RelInterval> seenRelIntervals;
     std::unordered_set<std::string> seenStringLabels;
-    bool sawStringLabels = false;
-    bool sawNumericLabels = false;
+    enum class CaseArmLabelKind
+    {
+        None,
+        Numeric,
+        String,
+    };
+    CaseArmLabelKind seenArmLabelKind = CaseArmLabelKind::None;
     bool reportedMixedLabelTypes = false;
-    bool sawCaseElse = !stmt.elseBody.empty();
+    int caseElseCount = stmt.elseBody.empty() ? 0 : 1;
+
+    auto reportMixedLabelTypes = [&](const CaseArm &arm) {
+        if (reportedMixedLabelTypes)
+            return;
+        std::string msg(diag::ERR_SelectCase_MixedLabelTypes.text);
+        de.emit(il::support::Severity::Error,
+                std::string(diag::ERR_SelectCase_MixedLabelTypes.id),
+                arm.range.begin,
+                1,
+                std::move(msg));
+        reportedMixedLabelTypes = true;
+    };
+
+    auto trackArmLabelKind = [&](CaseArmLabelKind kind, const CaseArm &arm) {
+        if (kind == CaseArmLabelKind::None || reportedMixedLabelTypes)
+            return;
+        if (seenArmLabelKind == CaseArmLabelKind::None)
+        {
+            seenArmLabelKind = kind;
+            return;
+        }
+        if (seenArmLabelKind != kind)
+            reportMixedLabelTypes(arm);
+    };
 
     for (const auto &arm : stmt.arms)
     {
         if (arm.labels.empty() && arm.ranges.empty() && arm.rels.empty() && arm.str_labels.empty())
         {
-            if (sawCaseElse)
+            ++caseElseCount;
+            if (caseElseCount > 1)
             {
                 std::string msg(diag::ERR_SelectCase_DuplicateElse.text);
                 de.emit(il::support::Severity::Error,
@@ -595,25 +625,13 @@ void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt)
                         1,
                         std::move(msg));
             }
-            else
-            {
-                sawCaseElse = true;
-            }
         }
 
         const bool armHasString = !arm.str_labels.empty();
         const bool armHasNumeric = !arm.labels.empty() || !arm.ranges.empty() || !arm.rels.empty();
 
-        if (armHasString && armHasNumeric && !reportedMixedLabelTypes)
-        {
-            std::string msg(diag::ERR_SelectCase_MixedLabelTypes.text);
-            de.emit(il::support::Severity::Error,
-                    std::string(diag::ERR_SelectCase_MixedLabelTypes.id),
-                    arm.range.begin,
-                    1,
-                    std::move(msg));
-            reportedMixedLabelTypes = true;
-        }
+        if (armHasString && armHasNumeric)
+            reportMixedLabelTypes(arm);
 
         if (armHasString)
         {
@@ -626,17 +644,7 @@ void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt)
                         1,
                         std::move(msg));
             }
-            if (sawNumericLabels && !reportedMixedLabelTypes)
-            {
-                std::string msg(diag::ERR_SelectCase_MixedLabelTypes.text);
-                de.emit(il::support::Severity::Error,
-                        std::string(diag::ERR_SelectCase_MixedLabelTypes.id),
-                        arm.range.begin,
-                        1,
-                        std::move(msg));
-                reportedMixedLabelTypes = true;
-            }
-            sawStringLabels = true;
+            trackArmLabelKind(CaseArmLabelKind::String, arm);
             for (const auto &label : arm.str_labels)
             {
                 if (!seenStringLabels.insert(label).second)
@@ -665,17 +673,7 @@ void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt)
                         1,
                         std::move(msg));
             }
-            if (sawStringLabels && !reportedMixedLabelTypes)
-            {
-                std::string msg(diag::ERR_SelectCase_MixedLabelTypes.text);
-                de.emit(il::support::Severity::Error,
-                        std::string(diag::ERR_SelectCase_MixedLabelTypes.id),
-                        arm.range.begin,
-                        1,
-                        std::move(msg));
-                reportedMixedLabelTypes = true;
-            }
-            sawNumericLabels = true;
+            trackArmLabelKind(CaseArmLabelKind::Numeric, arm);
 
             for (const auto &[rawLo, rawHi] : arm.ranges)
             {
