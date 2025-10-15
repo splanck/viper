@@ -371,6 +371,14 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
     void after(const SelectCaseStmt &stmt)
     {
         discardIf(stmt.selector != nullptr);
+        for (const auto &arm : stmt.arms)
+        {
+            if (!arm.str_labels.empty())
+            {
+                lowerer_.requestHelper(Lowerer::RuntimeFeature::StrEq);
+                break;
+            }
+        }
     }
 
     void after(const WhileStmt &stmt)

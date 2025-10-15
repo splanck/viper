@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/AstPrinter.hpp"
+#include <iomanip>
 
 namespace il::frontends::basic
 {
@@ -283,6 +284,8 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
             printer.os << " (CASE";
             for (auto label : arm.labels)
                 printer.os << ' ' << label;
+            for (const auto &label : arm.str_labels)
+                printer.os << ' ' << std::quoted(label);
             printer.os << ')';
             printNumberedBody(arm.body);
         }

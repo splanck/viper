@@ -540,14 +540,15 @@ void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt)
         return true;
     };
 
+    Type selectorType = Type::Unknown;
     if (stmt.selector)
     {
-        Type selectorType = visitExpr(*stmt.selector);
+        selectorType = visitExpr(*stmt.selector);
         if (selectorType == Type::Int)
         {
             markImplicitConversion(*stmt.selector, Type::Int);
         }
-        else if (selectorType != Type::Unknown)
+        else if (selectorType != Type::Unknown && selectorType != Type::String)
         {
             std::string msg(diag::ERR_SelectCase_NonIntegerSelector.text);
             de.emit(il::support::Severity::Error,
@@ -568,11 +569,32 @@ void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt)
     std::unordered_set<int32_t> seenLabels;
     std::vector<std::pair<int32_t, int32_t>> seenRanges;
     std::vector<RelInterval> seenRelIntervals;
+    std::unordered_set<std::string> seenStringLabels;
     bool sawCaseElse = !stmt.elseBody.empty();
+    bool sawStringLabelArm = false;
+    bool sawNumericLabelArm = false;
+    std::optional<il::support::SourceLoc> firstStringArmLoc;
+    std::optional<il::support::SourceLoc> firstNumericArmLoc;
 
     for (const auto &arm : stmt.arms)
     {
-        if (arm.labels.empty() && arm.ranges.empty() && arm.rels.empty())
+        const bool hasStringEntries = !arm.str_labels.empty();
+        const bool hasNumericEntries = !arm.labels.empty() || !arm.ranges.empty() || !arm.rels.empty();
+
+        if (hasStringEntries)
+        {
+            sawStringLabelArm = true;
+            if (!firstStringArmLoc)
+                firstStringArmLoc = arm.range.begin;
+        }
+        if (hasNumericEntries)
+        {
+            sawNumericLabelArm = true;
+            if (!firstNumericArmLoc)
+                firstNumericArmLoc = arm.range.begin;
+        }
+
+        if (!hasStringEntries && !hasNumericEntries)
         {
             if (sawCaseElse)
             {
@@ -587,6 +609,48 @@ void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt)
             {
                 sawCaseElse = true;
             }
+        }
+
+        if (selectorType == Type::String)
+        {
+            if (hasNumericEntries)
+            {
+                std::string msg(diag::ERR_SelectCase_MixedLabelTypes.text);
+                de.emit(il::support::Severity::Error,
+                        std::string(diag::ERR_SelectCase_MixedLabelTypes.id),
+                        arm.range.begin,
+                        1,
+                        std::move(msg));
+            }
+
+            for (const auto &label : arm.str_labels)
+            {
+                if (!seenStringLabels.insert(label).second)
+                {
+                    std::string msg(diag::ERR_SelectCase_DuplicateLabel.text);
+                    msg += ": \"";
+                    msg += label;
+                    msg += "\"";
+                    de.emit(il::support::Severity::Error,
+                            std::string(diag::ERR_SelectCase_DuplicateLabel.id),
+                            arm.range.begin,
+                            1,
+                            std::move(msg));
+                }
+            }
+
+            analyzeBody(arm.body);
+            continue;
+        }
+
+        if (hasStringEntries)
+        {
+            std::string msg(diag::ERR_SelectCase_MixedLabelTypes.text);
+            de.emit(il::support::Severity::Error,
+                    std::string(diag::ERR_SelectCase_MixedLabelTypes.id),
+                    arm.range.begin,
+                    1,
+                    std::move(msg));
         }
 
         for (const auto &[rawLo, rawHi] : arm.ranges)
@@ -887,6 +951,17 @@ void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt)
         }
 
         analyzeBody(arm.body);
+    }
+
+    if (selectorType == Type::Unknown && sawStringLabelArm && sawNumericLabelArm)
+    {
+        il::support::SourceLoc loc = firstStringArmLoc.value_or(firstNumericArmLoc.value_or(stmt.range.begin));
+        std::string msg(diag::ERR_SelectCase_MixedLabelTypes.text);
+        de.emit(il::support::Severity::Error,
+                std::string(diag::ERR_SelectCase_MixedLabelTypes.id),
+                loc,
+                1,
+                std::move(msg));
     }
 
     if (!stmt.elseBody.empty())

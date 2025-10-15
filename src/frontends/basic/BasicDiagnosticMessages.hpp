@@ -47,6 +47,11 @@ inline constexpr Message ERR_SelectCase_MissingEndSelect{
     "ERR_SelectCase_MissingEndSelect",
     "SELECT CASE missing END SELECT terminator"};
 
+/// @brief SELECT CASE arms mixed string and numeric labels.
+inline constexpr Message ERR_SelectCase_MixedLabelTypes{
+    "ERR_SelectCase_MixedLabelTypes",
+    "SELECT CASE cannot mix string and numeric CASE labels"};
+
 /// @brief CASE statement lacked any labels before the body.
 inline constexpr Message ERR_Case_EmptyLabelList{
     "ERR_Case_EmptyLabelList",

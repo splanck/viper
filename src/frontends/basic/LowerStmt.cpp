@@ -681,6 +681,167 @@ void Lowerer::lowerSelectCase(const SelectCaseStmt &stmt)
 
     curLoc = stmt.selector->loc;
     RVal selector = lowerExpr(*stmt.selector);
+
+    auto lowerStringSelect = [&](RVal selVal) {
+        Function *funcLocal = ctx.function();
+        BasicBlock *currentLocal = ctx.current();
+        if (!funcLocal || !currentLocal)
+            return;
+
+        size_t curIdxLocal = static_cast<size_t>(currentLocal - &funcLocal->blocks[0]);
+        BlockNamer *blockNamerLocal = ctx.blockNames().namer();
+
+
+        size_t startIdxLocal = funcLocal->blocks.size();
+        std::vector<size_t> armIdxLocal(stmt.arms.size());
+        for (size_t i = 0; i < stmt.arms.size(); ++i)
+        {
+            std::string label = blockNamerLocal ? blockNamerLocal->generic("select_arm")
+                                                : mangler.block("select_arm_" + std::to_string(i));
+            builder->addBlock(*funcLocal, label);
+        }
+
+        bool hasCaseElseLocal = !stmt.elseBody.empty();
+        std::optional<size_t> elseIdxLocal;
+        if (hasCaseElseLocal)
+        {
+            std::string defaultLabel = blockNamerLocal ? blockNamerLocal->generic("select_default")
+                                                       : mangler.block("select_default");
+            builder->addBlock(*funcLocal, defaultLabel);
+            elseIdxLocal = startIdxLocal + stmt.arms.size();
+        }
+
+        std::string endLabelLocal = blockNamerLocal ? blockNamerLocal->generic("select_end")
+                                                    : mangler.block("select_end");
+        builder->addBlock(*funcLocal, endLabelLocal);
+
+        funcLocal = ctx.function();
+        currentLocal = &funcLocal->blocks[curIdxLocal];
+        ctx.setCurrent(currentLocal);
+
+        for (size_t i = 0; i < stmt.arms.size(); ++i)
+            armIdxLocal[i] = startIdxLocal + i;
+        size_t endIdxLocal = startIdxLocal + stmt.arms.size() + (hasCaseElseLocal ? 1 : 0);
+
+        struct StrCaseEntry
+        {
+            size_t armIndex;
+            std::string label;
+        };
+
+        size_t totalLabels = 0;
+        for (const auto &arm : stmt.arms)
+            totalLabels += arm.str_labels.size();
+        std::vector<StrCaseEntry> entries;
+        entries.reserve(totalLabels);
+        for (size_t i = 0; i < stmt.arms.size(); ++i)
+        {
+            for (const auto &label : stmt.arms[i].str_labels)
+                entries.push_back(StrCaseEntry{i, label});
+        }
+
+        funcLocal = ctx.function();
+        size_t defaultIdx = hasCaseElseLocal ? *elseIdxLocal : endIdxLocal;
+        BasicBlock *caseElseBlkLocal = hasCaseElseLocal ? &funcLocal->blocks[*elseIdxLocal] : nullptr;
+        BasicBlock *endBlkLocal = &funcLocal->blocks[endIdxLocal];
+        BasicBlock *defaultTarget = &funcLocal->blocks[defaultIdx];
+        if (defaultTarget->label.empty())
+            defaultTarget->label = nextFallbackBlockLabel();
+
+        size_t compareIdx = curIdxLocal;
+        for (size_t idx = 0; idx < entries.size(); ++idx)
+        {
+            funcLocal = ctx.function();
+            BasicBlock *compareBlk = &funcLocal->blocks[compareIdx];
+            BasicBlock *trueTarget = &funcLocal->blocks[armIdxLocal[entries[idx].armIndex]];
+            if (trueTarget->label.empty())
+                trueTarget->label = nextFallbackBlockLabel();
+
+            size_t nextIdx;
+            if (idx + 1 < entries.size())
+            {
+                std::string dispatchLabel = blockNamerLocal ? blockNamerLocal->generic("select_str_dispatch")
+                                                            : mangler.block("select_str_dispatch");
+                builder->addBlock(*funcLocal, dispatchLabel);
+                funcLocal = ctx.function();
+                nextIdx = funcLocal->blocks.size() - 1;
+            }
+            else
+            {
+                nextIdx = hasCaseElseLocal ? *elseIdxLocal : endIdxLocal;
+            }
+
+            funcLocal = ctx.function();
+            BasicBlock *nextBlk = &funcLocal->blocks[nextIdx];
+            if (nextBlk->label.empty())
+                nextBlk->label = nextFallbackBlockLabel();
+
+            ctx.setCurrent(compareBlk);
+            curLoc = stmt.arms[entries[idx].armIndex].range.begin;
+            std::string lbl = getStringLabel(entries[idx].label);
+            Value literal = emitConstStr(lbl);
+            Value cond = emitCallRet(ilBoolTy(), "rt_str_eq", {selVal.value, literal});
+            emitCBr(cond, trueTarget, nextBlk);
+
+            compareIdx = nextIdx;
+            ctx.setCurrent(nextBlk);
+        }
+
+        if (entries.empty())
+        {
+            funcLocal = ctx.function();
+            currentLocal = &funcLocal->blocks[curIdxLocal];
+            ctx.setCurrent(currentLocal);
+            curLoc = stmt.loc;
+            BasicBlock *defaultBlk = &funcLocal->blocks[defaultIdx];
+            if (defaultBlk->label.empty())
+                defaultBlk->label = nextFallbackBlockLabel();
+            emitBr(defaultBlk);
+        }
+
+        funcLocal = ctx.function();
+        caseElseBlkLocal = hasCaseElseLocal ? &funcLocal->blocks[*elseIdxLocal] : nullptr;
+        endBlkLocal = &funcLocal->blocks[endIdxLocal];
+
+        auto lowerBodyToEnd = [&](BasicBlock *block,
+                                  const std::vector<StmtPtr> &body,
+                                  il::support::SourceLoc loc) {
+            ctx.setCurrent(block);
+            for (const auto &node : body)
+            {
+                if (!node)
+                    continue;
+                lowerStmt(*node);
+                BasicBlock *bodyCur = ctx.current();
+                if (!bodyCur || bodyCur->terminated)
+                    break;
+            }
+            BasicBlock *bodyCur = ctx.current();
+            if (bodyCur && !bodyCur->terminated)
+            {
+                curLoc = loc;
+                emitBr(endBlkLocal);
+            }
+        };
+
+        for (size_t i = 0; i < stmt.arms.size(); ++i)
+        {
+            BasicBlock *armBlk = &ctx.function()->blocks[armIdxLocal[i]];
+            lowerBodyToEnd(armBlk, stmt.arms[i].body, stmt.arms[i].range.begin);
+        }
+
+        if (hasCaseElseLocal)
+            lowerBodyToEnd(caseElseBlkLocal, stmt.elseBody, stmt.range.end);
+
+        ctx.setCurrent(endBlkLocal);
+    };
+
+    if (selector.type.kind == Type::Kind::Str)
+    {
+        lowerStringSelect(std::move(selector));
+        return;
+    }
+
     selector = ensureI64(std::move(selector), stmt.selector->loc);
     Value selWide = selector.value;
     curLoc = stmt.selector->loc;

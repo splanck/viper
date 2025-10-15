@@ -7,6 +7,7 @@
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
+#include "il/io/StringEscape.hpp"
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -811,6 +812,30 @@ CaseArm Parser::parseCaseArm()
                 arm.labels.push_back(lo);
                 haveEntry = true;
             }
+        }
+        else if (at(TokenKind::String))
+        {
+            Token strTok = consume();
+            std::string decoded;
+            std::string err;
+            if (!il::io::decodeEscapedString(strTok.lexeme, decoded, &err))
+            {
+                if (emitter_)
+                {
+                    emitter_->emit(il::support::Severity::Error,
+                                   "B0003",
+                                   strTok.loc,
+                                   static_cast<uint32_t>(strTok.lexeme.size()),
+                                   err);
+                }
+                else
+                {
+                    std::fprintf(stderr, "%s\n", err.c_str());
+                }
+                decoded = strTok.lexeme;
+            }
+            arm.str_labels.push_back(std::move(decoded));
+            haveEntry = true;
         }
         else
         {

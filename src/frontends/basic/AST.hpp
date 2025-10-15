@@ -668,8 +668,11 @@ struct CaseArm
         int64_t rhs = 0;
     };
 
-    /// @brief Literal labels matched by the arm.
+    /// @brief Literal integer labels matched by the arm.
     std::vector<int64_t> labels;
+
+    /// @brief Literal string labels matched by the arm.
+    std::vector<std::string> str_labels;
 
     /// @brief Inclusive integer ranges matched by the arm.
     std::vector<std::pair<int64_t, int64_t>> ranges;

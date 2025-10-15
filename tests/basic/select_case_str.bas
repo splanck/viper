@@ -1,0 +1,17 @@
+10 DIM S$
+20 LET S$ = "cat"
+30 GOSUB 200
+40 LET S$ = "dog"
+50 GOSUB 200
+60 LET S$ = "emu"
+70 GOSUB 200
+80 END
+200 SELECT CASE S$
+210   CASE "cat"
+220     PRINT "meow"
+230   CASE "dog"
+240     PRINT "woof"
+250   CASE ELSE
+260     PRINT "???"
+270 END SELECT
+280 RETURN
