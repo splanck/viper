@@ -497,6 +497,11 @@ struct PrintStmt : Stmt
 struct PrintChStmt : Stmt
 {
     [[nodiscard]] Kind stmtKind() const override { return Kind::PrintCh; }
+    enum class Mode
+    {
+        Print,
+        Write,
+    } mode{Mode::Print};
     /// Channel expression evaluated to select the file handle; owned and non-null.
     ExprPtr channelExpr;
 
