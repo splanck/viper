@@ -765,6 +765,7 @@ class Lowerer
         PrintlnChErr,
         LineInputChErr,
         EofCh,
+        LofCh,
         StrRetainMaybe,
         StrReleaseMaybe,
         Count
@@ -798,6 +799,7 @@ class Lowerer
     void requirePrintlnChErr();
     void requireLineInputChErr();
     void requireEofCh();
+    void requireLofCh();
     void requireStrRetainMaybe();
     void requireStrReleaseMaybe();
     void requestHelper(RuntimeFeature feature);

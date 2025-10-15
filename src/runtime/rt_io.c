@@ -18,6 +18,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 /**
  * Terminate the program immediately due to a fatal runtime error.
@@ -328,4 +330,47 @@ int rt_eof_ch(int ch)
 
     rt_file_channel_set_eof(ch, false);
     return (int32_t)Err_IOError;
+}
+
+int64_t rt_lof_ch(int ch)
+{
+    int fd = -1;
+    int32_t status = rt_file_channel_fd(ch, &fd);
+    if (status != 0)
+        return -(int64_t)status;
+
+    struct stat st;
+    if (fstat(fd, &st) == 0)
+    {
+        if (S_ISREG(st.st_mode) || S_ISBLK(st.st_mode))
+        {
+            if (st.st_size >= 0)
+                return (int64_t)st.st_size;
+            return 0;
+        }
+    }
+
+    errno = 0;
+    off_t cur = lseek(fd, 0, SEEK_CUR);
+    if (cur < 0)
+    {
+        if (errno == ESPIPE || errno == EINVAL)
+            return -(int64_t)Err_InvalidOperation;
+        return -(int64_t)Err_IOError;
+    }
+
+    off_t end = lseek(fd, 0, SEEK_END);
+    if (end < 0)
+    {
+        (void)lseek(fd, cur, SEEK_SET);
+        return -(int64_t)Err_IOError;
+    }
+
+    if (lseek(fd, cur, SEEK_SET) < 0)
+        return -(int64_t)Err_IOError;
+
+    if (end < 0)
+        return 0;
+
+    return (int64_t)end;
 }

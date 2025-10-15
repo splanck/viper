@@ -265,6 +265,12 @@ void Lowerer::requireEofCh()
     setManualHelperRequired(ManualRuntimeHelper::EofCh);
 }
 
+/// @brief Request the helper that computes the length of a file channel.
+void Lowerer::requireLofCh()
+{
+    setManualHelperRequired(ManualRuntimeHelper::LofCh);
+}
+
 /// @brief Request the helper that conditionally retains a string handle.
 void Lowerer::requireStrRetainMaybe()
 {
@@ -322,6 +328,7 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         {"rt_println_ch_err", ManualRuntimeHelper::PrintlnChErr, &Lowerer::requirePrintlnChErr},
         {"rt_line_input_ch_err", ManualRuntimeHelper::LineInputChErr, &Lowerer::requireLineInputChErr},
         {"rt_eof_ch", ManualRuntimeHelper::EofCh, &Lowerer::requireEofCh},
+        {"rt_lof_ch", ManualRuntimeHelper::LofCh, &Lowerer::requireLofCh},
         {"rt_str_retain_maybe", ManualRuntimeHelper::StrRetainMaybe, &Lowerer::requireStrRetainMaybe},
         {"rt_str_release_maybe", ManualRuntimeHelper::StrReleaseMaybe, &Lowerer::requireStrReleaseMaybe},
     }};
