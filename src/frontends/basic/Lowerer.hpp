@@ -637,6 +637,8 @@ class Lowerer
 
     void lowerInput(const InputStmt &stmt);
 
+    void lowerInputCh(const InputChStmt &stmt);
+
     void lowerLineInputCh(const LineInputChStmt &stmt);
 
     void lowerDim(const DimStmt &stmt);

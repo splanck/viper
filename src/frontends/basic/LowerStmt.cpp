@@ -88,6 +88,8 @@ class LowererStmtVisitor final : public StmtVisitor
 
     void visit(const InputStmt &stmt) override { lowerer_.lowerInput(stmt); }
 
+    void visit(const InputChStmt &stmt) override { lowerer_.lowerInputCh(stmt); }
+
     void visit(const LineInputChStmt &stmt) override { lowerer_.lowerLineInputCh(stmt); }
 
     void visit(const ReturnStmt &stmt) override { lowerer_.lowerReturn(stmt); }
@@ -1801,6 +1803,42 @@ void Lowerer::lowerInput(const InputStmt &stmt)
         Value field = emitLoad(Type(Type::Kind::Str), slot);
         storeField(stmt.vars[i], field);
     }
+}
+
+void Lowerer::lowerInputCh(const InputChStmt &stmt)
+{
+    curLoc = stmt.loc;
+    Value outSlot = emitAlloca(8);
+    emitStore(Type(Type::Kind::Ptr), outSlot, Value::null());
+
+    RVal channel{Value::constInt(stmt.channel), Type(Type::Kind::I64)};
+    channel = normalizeChannelToI32(std::move(channel), stmt.loc);
+
+    Value err =
+        emitCallRet(Type(Type::Kind::I32), "rt_line_input_ch_err", {channel.value, outSlot});
+
+    emitRuntimeErrCheck(err, stmt.loc, "lineinputch", [&](Value code) { emitTrapFromErr(code); });
+
+    curLoc = stmt.loc;
+    Value line = emitLoad(Type(Type::Kind::Str), outSlot);
+
+    Value fieldSlot = emitAlloca(8);
+    emitStore(Type(Type::Kind::Ptr), fieldSlot, Value::null());
+    emitCallRet(Type(Type::Kind::I64), "rt_split_fields", {line, fieldSlot, Value::constInt(1)});
+    requireStrReleaseMaybe();
+    curLoc = stmt.loc;
+    emitCall("rt_str_release_maybe", {line});
+
+    curLoc = stmt.loc;
+    Value field = emitLoad(Type(Type::Kind::Str), fieldSlot);
+
+    const auto *info = findSymbol(stmt.target.name);
+    if (!info || !info->slotId)
+        return;
+
+    Value slot = Value::temp(*info->slotId);
+    curLoc = stmt.loc;
+    emitStore(Type(Type::Kind::Str), slot, field);
 }
 
 void Lowerer::lowerLineInputCh(const LineInputChStmt &stmt)
