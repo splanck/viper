@@ -914,6 +914,7 @@ function(viper_add_basic_integration_tests)
   set(_VIPER_BASIC_ILC $<TARGET_FILE:ilc>)
   set(_VIPER_BASIC_INTEGRATION_DIR ${VIPER_TESTS_DIR}/integration)
   set(_VIPER_BASIC_SEMANTICS_DIR ${VIPER_TESTS_DIR}/basic/semantics)
+  set(_VIPER_GOLDEN_ERRORS_DIR ${VIPER_TESTS_DIR}/golden/basic_errors)
 
   viper_add_ctest(basic_boolean_andalso_short
     ${CMAKE_COMMAND}
@@ -949,4 +950,24 @@ function(viper_add_basic_integration_tests)
     -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/select_case_relop.bas
     -DEXPECT_FILE=${CMAKE_SOURCE_DIR}/tests/basic/select_case_relop.expect
     -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+  file(READ ${CMAKE_SOURCE_DIR}/tests/basic/select_case_mixed_types.err EXPECT_SELECT_CASE_MIXED_TYPES)
+  string(STRIP "${EXPECT_SELECT_CASE_MIXED_TYPES}" EXPECT_SELECT_CASE_MIXED_TYPES)
+
+  viper_add_ctest(basic_select_case_mixed_types
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/select_case_mixed_types.bas
+    "-DEXPECT=${EXPECT_SELECT_CASE_MIXED_TYPES}"
+    -P ${_VIPER_GOLDEN_ERRORS_DIR}/check_error.cmake)
+
+  file(READ ${CMAKE_SOURCE_DIR}/tests/basic/select_case_double_else.err EXPECT_SELECT_CASE_DOUBLE_ELSE)
+  string(STRIP "${EXPECT_SELECT_CASE_DOUBLE_ELSE}" EXPECT_SELECT_CASE_DOUBLE_ELSE)
+
+  viper_add_ctest(basic_select_case_double_else
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/select_case_double_else.bas
+    "-DEXPECT=${EXPECT_SELECT_CASE_DOUBLE_ELSE}"
+    -P ${_VIPER_GOLDEN_ERRORS_DIR}/check_error.cmake)
 endfunction()

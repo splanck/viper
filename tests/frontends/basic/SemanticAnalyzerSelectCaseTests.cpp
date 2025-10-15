@@ -100,7 +100,7 @@ int main()
         auto result = analyzeSnippet(src);
         assert(result.errors == 2);
         const std::string expected =
-            "select_case.bas:2:4: error[ERR_SelectCase_MixedLabelTypes]: SELECT CASE cannot mix numeric and string CASE labels\n"
+            "select_case.bas:2:4: error[ERR_SelectCase_MixedLabelTypes]: mixed-type SELECT CASE\n"
             "20 CASE 1, \"foo\"\n"
             "   ^\n"
             "select_case.bas:2:4: error[ERR_SelectCase_StringLabelSelector]: String CASE labels require a string SELECT CASE selector\n"
@@ -182,7 +182,7 @@ int main()
 
         assert(result.errors == 1);
         const std::string expected =
-            "select_case.bas:1:4: error[ERR_SelectCase_DuplicateElse]: Duplicate CASE ELSE arm\n"
+            "select_case.bas:1:4: error[ERR_SelectCase_DuplicateElse]: duplicate CASE ELSE\n"
             "10 SELECT CASE 0\n"
             "   ^\n";
         assert(result.output == expected);
