@@ -466,6 +466,18 @@ void InputStmt::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this INPUT # statement node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void InputChStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void InputChStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
 /// @brief Forwards this LINE INPUT # statement node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void LineInputChStmt::accept(StmtVisitor &visitor) const

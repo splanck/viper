@@ -622,6 +622,12 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
         callAfter(stmt);
     }
 
+    void visit(const InputChStmt &stmt) override
+    {
+        callBefore(stmt);
+        callAfter(stmt);
+    }
+
     void visit(const LineInputChStmt &stmt) override
     {
         callBefore(stmt);

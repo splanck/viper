@@ -1204,6 +1204,42 @@ StmtPtr Parser::parseInput()
 {
     auto loc = peek().loc;
     consume(); // INPUT
+    if (at(TokenKind::Hash))
+    {
+        consume();
+        Token channelTok = expect(TokenKind::Number);
+        int channel = std::atoi(channelTok.lexeme.c_str());
+        expect(TokenKind::Comma);
+        Token targetTok = expect(TokenKind::Identifier);
+        auto stmt = std::make_unique<InputChStmt>();
+        stmt->loc = loc;
+        stmt->channel = channel;
+        stmt->target.name = targetTok.lexeme;
+        stmt->target.loc = targetTok.loc;
+
+        if (at(TokenKind::Comma))
+        {
+            Token extra = peek();
+            if (emitter_)
+            {
+                emitter_->emit(il::support::Severity::Error,
+                               "B0001",
+                               extra.loc,
+                               1,
+                               "INPUT # with multiple targets not yet supported");
+            }
+            else
+            {
+                std::fprintf(stderr, "INPUT # with multiple targets not yet supported\n");
+            }
+            while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine) && !at(TokenKind::Colon))
+            {
+                consume();
+            }
+        }
+
+        return stmt;
+    }
     ExprPtr prompt;
     if (at(TokenKind::String))
     {
