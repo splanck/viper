@@ -88,6 +88,10 @@ class Parser
     /// @return PRINT statement node.
     StmtPtr parsePrint();
 
+    /// @brief Parse a WRITE # statement.
+    /// @return WRITE statement node targeting a file channel.
+    StmtPtr parseWrite();
+
     /// @brief Parse a LET assignment statement.
     /// @return LET statement node.
     StmtPtr parseLet();

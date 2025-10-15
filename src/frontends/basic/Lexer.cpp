@@ -25,7 +25,7 @@ struct KeywordEntry
     TokenKind kind;
 };
 
-constexpr std::array<KeywordEntry, 62> kKeywordTable{{
+constexpr std::array<KeywordEntry, 63> kKeywordTable{{
     {"ABS", TokenKind::KeywordAbs},
     {"AND", TokenKind::KeywordAnd},
     {"ANDALSO", TokenKind::KeywordAndAlso},
@@ -88,6 +88,7 @@ constexpr std::array<KeywordEntry, 62> kKeywordTable{{
     {"UNTIL", TokenKind::KeywordUntil},
     {"WEND", TokenKind::KeywordWend},
     {"WHILE", TokenKind::KeywordWhile},
+    {"WRITE", TokenKind::KeywordWrite},
 }};
 
 constexpr bool isKeywordTableSorted()

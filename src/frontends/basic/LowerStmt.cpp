@@ -437,9 +437,16 @@ void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
     RVal channel = lowerExpr(*stmt.channelExpr);
     channel = normalizeChannelToI32(std::move(channel), stmt.loc);
 
-    auto lowerArgToString = [&](const Expr &expr, RVal value) -> Value {
+    auto lowerArgToString = [&](const Expr &expr, RVal value, bool quoteStrings) -> Value {
         if (value.type.kind == Type::Kind::Str)
-            return value.value;
+        {
+            if (!quoteStrings)
+                return value.value;
+
+            requestHelper(RuntimeFeature::CsvQuote);
+            curLoc = expr.loc;
+            return emitCallRet(Type(Type::Kind::Str), "rt_csv_quote_alloc", {value.value});
+        }
 
         TypeRules::NumericType numericType = classifyNumericType(expr);
         const char *runtime = nullptr;
@@ -482,18 +489,58 @@ void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
         return emitCallRet(Type(Type::Kind::Str), runtime, {value.value});
     };
 
+    bool isWrite = stmt.mode == PrintChStmt::Mode::Write;
+
     if (stmt.args.empty())
     {
-        if (stmt.trailingNewline)
+        if (stmt.trailingNewline || isWrite)
         {
             std::string emptyLbl = getStringLabel("");
             Value empty = emitConstStr(emptyLbl);
             curLoc = stmt.loc;
             Value err = emitCallRet(Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, empty});
-            emitRuntimeErrCheck(err, stmt.loc, "printch", [&](Value code) {
+            const char *context = isWrite ? "write" : "printch";
+            emitRuntimeErrCheck(err, stmt.loc, context, [&](Value code) {
                 emitTrapFromErr(code);
             });
         }
+        return;
+    }
+
+    if (isWrite)
+    {
+        Value record{};
+        bool hasRecord = false;
+        std::string commaLbl = getStringLabel(",");
+        Value comma = emitConstStr(commaLbl);
+        for (const auto &arg : stmt.args)
+        {
+            if (!arg)
+                continue;
+            RVal value = lowerExpr(*arg);
+            Value text = lowerArgToString(*arg, std::move(value), true);
+            if (!hasRecord)
+            {
+                record = text;
+                hasRecord = true;
+            }
+            else
+            {
+                curLoc = arg->loc;
+                record = emitCallRet(Type(Type::Kind::Str), "rt_concat", {record, comma});
+                record = emitCallRet(Type(Type::Kind::Str), "rt_concat", {record, text});
+            }
+        }
+        if (!hasRecord)
+        {
+            std::string emptyLbl = getStringLabel("");
+            record = emitConstStr(emptyLbl);
+        }
+        curLoc = stmt.loc;
+        Value err = emitCallRet(Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, record});
+        emitRuntimeErrCheck(err, stmt.loc, "write", [&](Value code) {
+            emitTrapFromErr(code);
+        });
         return;
     }
 
@@ -502,7 +549,7 @@ void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
         if (!arg)
             continue;
         RVal value = lowerExpr(*arg);
-        Value text = lowerArgToString(*arg, std::move(value));
+        Value text = lowerArgToString(*arg, std::move(value), false);
         curLoc = arg->loc;
         Value err = emitCallRet(Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, text});
         emitRuntimeErrCheck(err, arg->loc, "printch", [&](Value code) {
