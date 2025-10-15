@@ -648,11 +648,34 @@ struct IfStmt : Stmt
 /// @brief Arm within a SELECT CASE statement.
 struct CaseArm
 {
+    /// @brief Relational guard matched by the arm.
+    struct CaseRel
+    {
+        /// @brief Relational operation kind.
+        enum Op
+        {
+            LT, ///< Selector must be less than rhs.
+            LE, ///< Selector must be less than or equal to rhs.
+            EQ, ///< Selector must equal rhs.
+            GE, ///< Selector must be greater than or equal to rhs.
+            GT  ///< Selector must be greater than rhs.
+        };
+
+        /// @brief Relational operator applied to the selector.
+        Op op{EQ};
+
+        /// @brief Right-hand-side integer operand compared against the selector.
+        int64_t rhs = 0;
+    };
+
     /// @brief Literal labels matched by the arm.
     std::vector<int64_t> labels;
 
     /// @brief Inclusive integer ranges matched by the arm.
     std::vector<std::pair<int64_t, int64_t>> ranges;
+
+    /// @brief Relational comparisons matched by the arm.
+    std::vector<CaseRel> rels;
 
     /// @brief Statements executed when the labels match.
     std::vector<StmtPtr> body;

@@ -942,4 +942,11 @@ function(viper_add_basic_integration_tests)
     -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/gosub_label_only.bas
     -DEXPECT_FILE=${CMAKE_SOURCE_DIR}/tests/basic/gosub_label_only.out
     -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+  viper_add_ctest(basic_select_case_relop
+    ${CMAKE_COMMAND}
+    -DILC=${_VIPER_BASIC_ILC}
+    -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/select_case_relop.bas
+    -DEXPECT_FILE=${CMAKE_SOURCE_DIR}/tests/basic/select_case_relop.expect
+    -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
 endfunction()
