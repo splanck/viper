@@ -7,6 +7,7 @@
 // Links: docs/il-guide.md#reference
 
 #include "vm/VM.hpp"
+#include "vm/VMConfig.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
@@ -58,6 +59,22 @@ std::string opcodeMnemonic(Opcode op)
 }
 
 } // namespace
+
+#if VIPER_THREADING_SUPPORTED
+namespace
+{
+#define OP_LABEL(name, ...) &&LBL_##name,
+#define IL_OPCODE(name, ...) OP_LABEL(name, __VA_ARGS__)
+static void *kOpLabels[] = {
+#include "il/core/Opcode.def"
+    &&LBL_UNIMPL,
+};
+#undef IL_OPCODE
+#undef OP_LABEL
+
+static constexpr size_t kOpLabelCount = sizeof(kOpLabels) / sizeof(kOpLabels[0]);
+} // namespace
+#endif
 
 
 /// Construct a trap dispatch signal targeting a specific execution state.
@@ -312,6 +329,16 @@ bool VM::handleTrapDispatch(const TrapDispatchSignal &signal, ExecState &st)
 /// @return Return value of the function or special slot from debug control.
 Slot VM::runFunctionLoop(ExecState &st)
 {
+#if VIPER_THREADING_SUPPORTED
+    if (runLoopThreaded(st))
+    {
+        if (st.pendingResult)
+            return *st.pendingResult;
+        Slot zero{};
+        zero.i64 = 0;
+        return zero;
+    }
+#endif
     for (;;)
     {
         clearCurrentContext();
@@ -320,7 +347,10 @@ Slot VM::runFunctionLoop(ExecState &st)
             while (true)
             {
                 if (auto result = stepOnce(st))
+                {
+                    st.pendingResult = *result;
                     return *result;
+                }
             }
         }
         catch (const TrapDispatchSignal &signal)
@@ -330,6 +360,124 @@ Slot VM::runFunctionLoop(ExecState &st)
         }
     }
 }
+
+#if VIPER_THREADING_SUPPORTED
+bool VM::runLoopThreaded(ExecState &st)
+{
+    st.pendingResult.reset();
+
+    const Instr *currentInstr = nullptr;
+    Opcode op = Opcode::Trap;
+    bool exitRequested = false;
+
+    auto storeResultAndExit = [&](const Slot &slot) {
+        st.pendingResult = slot;
+        exitRequested = true;
+    };
+
+    auto fetchNextOpcode = [&]() -> Opcode {
+        while (true)
+        {
+            if (!st.bb || st.ip >= st.bb->instructions.size())
+            {
+                clearCurrentContext();
+                Slot zero{};
+                zero.i64 = 0;
+                storeResultAndExit(zero);
+                return Opcode::Trap;
+            }
+
+            currentInstr = &st.bb->instructions[st.ip];
+            setCurrentContext(st.fr, st.bb, st.ip, *currentInstr);
+
+            if (auto pause = shouldPause(st, currentInstr, false))
+            {
+                storeResultAndExit(*pause);
+                return currentInstr->op;
+            }
+
+            exitRequested = false;
+            return currentInstr->op;
+        }
+    };
+
+#define DISPATCH_TO(OPCODE_VALUE)                                                                          \
+    do                                                                                                      \
+    {                                                                                                       \
+        size_t dispatchIndex = static_cast<size_t>(OPCODE_VALUE);                                           \
+        if (dispatchIndex >= kOpLabelCount - 1)                                                             \
+            dispatchIndex = kOpLabelCount - 1;                                                              \
+        goto *kOpLabels[dispatchIndex];                                                                     \
+    } while (false)
+
+    for (;;)
+    {
+        clearCurrentContext();
+        try
+        {
+            op = fetchNextOpcode();
+            if (exitRequested)
+                return st.pendingResult.has_value();
+
+            tracer.onStep(*currentInstr, st.fr);
+            ++instrCount;
+            DISPATCH_TO(op);
+
+#define OP_CASE(name, ...)                                                                                   \
+    LBL_##name:                                                                                               \
+    {                                                                                                         \
+        auto execResult = executeOpcode(st.fr, *currentInstr, st.blocks, st.bb, st.ip);                       \
+        if (execResult.returned)                                                                              \
+        {                                                                                                     \
+            st.pendingResult = execResult.value;                                                              \
+            return true;                                                                                      \
+        }                                                                                                     \
+        if (execResult.jumped)                                                                               \
+            debug.resetLastHit();                                                                             \
+        else                                                                                                  \
+            ++st.ip;                                                                                          \
+        if (auto pause = shouldPause(st, nullptr, true))                                                      \
+        {                                                                                                     \
+            st.pendingResult = *pause;                                                                        \
+            return true;                                                                                      \
+        }                                                                                                     \
+        op = fetchNextOpcode();                                                                               \
+        if (exitRequested)                                                                                    \
+            return st.pendingResult.has_value();                                                              \
+        tracer.onStep(*currentInstr, st.fr);                                                                  \
+        ++instrCount;                                                                                         \
+        DISPATCH_TO(op);                                                                                      \
+    }
+
+#define IL_OPCODE(name, ...) OP_CASE(name, __VA_ARGS__)
+#include "il/core/Opcode.def"
+#undef IL_OPCODE
+
+#undef OP_CASE
+
+        LBL_UNIMPL:
+        {
+            const std::string funcName = st.fr.func ? st.fr.func->name : std::string("<unknown>");
+            RuntimeBridge::trap(TrapKind::InvalidOperation,
+                                "unimplemented opcode in threaded dispatch",
+                                {},
+                                funcName,
+                                "");
+            return false;
+        }
+    }
+    catch (const TrapDispatchSignal &signal)
+    {
+        if (!handleTrapDispatch(signal, st))
+            throw;
+    }
+    }
+
+#undef DISPATCH_TO
+
+    return st.pendingResult.has_value();
+}
+#endif
 
 /// Execute function @p fn with optional arguments.
 ///

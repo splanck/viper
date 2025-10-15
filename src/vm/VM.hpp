@@ -7,6 +7,7 @@
 #pragma once
 
 #include "vm/Debug.hpp"
+#include "vm/VMConfig.hpp"
 #include "vm/control_flow.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/Trace.hpp"
@@ -325,6 +326,7 @@ class VM
         size_t callSiteIp = 0;                                ///< Instruction index of the call in the caller
         il::support::SourceLoc callSiteLoc{};                 ///< Source location of the call site
         viper::vm::SwitchCache switchCache{};                 ///< Memoized switch dispatch data for this frame
+        std::optional<Slot> pendingResult{};                  ///< Result staged by threaded interpreter
     };
 
     bool prepareTrap(VmError &error);
@@ -370,6 +372,13 @@ class VM
     /// @param st Prepared execution state.
     /// @return Return value slot.
     Slot runFunctionLoop(ExecState &st);
+
+#if VIPER_THREADING_SUPPORTED
+    /// @brief Execute the interpreter loop using a direct-threaded dispatch path.
+    /// @param st Prepared execution state.
+    /// @return True when a result was produced by the threaded loop.
+    bool runLoopThreaded(ExecState &st);
+#endif
 
   public:
     /// @brief Return executed instruction count.
