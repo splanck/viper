@@ -7,6 +7,7 @@ include(CMakePackageConfigHelpers)
 
 option(VIPER_INSTALL_TUI "Install TUI apps/libraries" OFF)
 option(VIPER_BUILD_TESTING "Enable CTest-based tests" ON)
+option(VIPER_VM_THREADED "Enable threaded VM dispatch" OFF)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
