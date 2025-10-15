@@ -191,6 +191,17 @@ static DenseJumpTable buildDense(const SwitchMeta &M)
     return T;
 }
 
+static HashedCases buildHashed(const SwitchMeta &M)
+{
+    HashedCases H;
+    H.map.reserve(M.values.size() * 2);
+    for (size_t i = 0; i < M.values.size(); ++i)
+    {
+        H.map.emplace(M.values[i], M.succIdx[i]);
+    }
+    return H;
+}
+
 static SortedCases buildSorted(const SwitchMeta &M)
 {
     std::vector<size_t> idx(M.values.size());
@@ -215,12 +226,7 @@ SwitchCacheEntry buildSwitchCacheEntry(const Instr &in)
     SwitchMeta meta = collectSwitchMeta(in);
     entry.defaultIdx = meta.defaultIdx;
 
-    std::vector<std::pair<int32_t, int32_t>> cases;
-    cases.reserve(meta.values.size());
-    for (size_t idx = 0; idx < meta.values.size(); ++idx)
-        cases.emplace_back(meta.values[idx], meta.succIdx[idx]);
-
-    if (cases.empty())
+    if (meta.values.empty())
     {
         SortedCases sorted{};
         entry.backend = std::move(sorted);
@@ -240,10 +246,7 @@ SwitchCacheEntry buildSwitchCacheEntry(const Instr &in)
 
     if (backendKind == SwitchCacheEntry::Hashed)
     {
-        HashedCases hashed{};
-        hashed.map.reserve(cases.size());
-        for (const auto &[value, targetIdx] : cases)
-            hashed.map.emplace(value, targetIdx);
+        HashedCases hashed = buildHashed(meta);
         entry.kind = SwitchCacheEntry::Hashed;
         entry.backend = std::move(hashed);
         return entry;
