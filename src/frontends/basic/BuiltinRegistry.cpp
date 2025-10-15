@@ -31,7 +31,7 @@ using TransformKind = LowerRule::ArgTransform::Kind;
 using Feature = LowerRule::Feature;
 using FeatureAction = LowerRule::Feature::Action;
 
-constexpr std::size_t kBuiltinCount = static_cast<std::size_t>(B::GetKey) + 1;
+constexpr std::size_t kBuiltinCount = static_cast<std::size_t>(B::Eof) + 1;
 
 constexpr std::size_t idx(B b) noexcept
 {
@@ -264,6 +264,14 @@ static const std::array<LowerRule, kBuiltinCount> kBuiltinLoweringRules = [] {
                              .features = {Feature{.action = FeatureAction::Request,
                                                   .feature = il::runtime::RuntimeFeature::GetKey}}}}};
 
+    rules[idx(B::Eof)] = LowerRule{
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::I64},
+        .variants = {Variant{.condition = Condition::Always,
+                             .kind = VariantKind::CallRuntime,
+                             .runtime = "rt_eof_ch",
+                             .arguments = {Argument{.index = 0,
+                                                    .transforms = {Transform{.kind = TransformKind::EnsureI32}}}}}}};
+
     return rules;
 }();
 
@@ -293,6 +301,7 @@ static const std::array<BuiltinInfo, kBuiltinCount> kBuiltins = [] {
     infos[idx(B::Asc)] = {"ASC", nullptr};
     infos[idx(B::InKey)] = {"INKEY$", nullptr};
     infos[idx(B::GetKey)] = {"GETKEY$", nullptr};
+    infos[idx(B::Eof)] = {"EOF", nullptr};
 
     return infos;
 }();
@@ -520,6 +529,13 @@ static const std::array<BuiltinScanRule, kBuiltinCount> kBuiltinScanRules = [] {
                                                                       BuiltinScanRule::Feature::Condition::Always,
                                                                       il::runtime::RuntimeFeature::GetKey}}};
 
+    rules[idx(B::Eof)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
+                                                                     Lowerer::ExprType::I64,
+                                                                     0},
+                                         BuiltinScanRule::ArgTraversal::Explicit,
+                                         {0},
+                                         {}};
+
     return rules;
 }();
 
@@ -534,7 +550,7 @@ static const std::unordered_map<std::string_view, B> kByName = {
     {"COS", B::Cos},      {"POW", B::Pow},      {"RND", B::Rnd},    {"INSTR", B::Instr},
     {"LTRIM$", B::Ltrim}, {"RTRIM$", B::Rtrim}, {"TRIM$", B::Trim}, {"UCASE$", B::Ucase},
     {"LCASE$", B::Lcase}, {"CHR$", B::Chr},     {"ASC", B::Asc},
-    {"INKEY$", B::InKey}, {"GETKEY$", B::GetKey},
+    {"INKEY$", B::InKey}, {"GETKEY$", B::GetKey}, {"EOF", B::Eof},
 };
 } // namespace
 

@@ -110,6 +110,24 @@ extern "C" {
     /// @return 0 on success; error code aligned with @ref Err otherwise.
     int32_t rt_line_input_ch_err(int32_t channel, ViperString **out);
 
+    /// @brief Query the file descriptor associated with @p channel.
+    /// @param channel Numeric channel identifier previously passed to OPEN.
+    /// @param out_fd Receives the file descriptor on success.
+    /// @return 0 on success; error code aligned with @ref Err otherwise.
+    int32_t rt_file_channel_fd(int32_t channel, int *out_fd);
+
+    /// @brief Read the cached EOF flag for @p channel.
+    /// @param channel Numeric channel identifier previously passed to OPEN.
+    /// @param out_at_eof Receives the cached EOF state on success.
+    /// @return 0 on success; error code aligned with @ref Err otherwise.
+    int32_t rt_file_channel_get_eof(int32_t channel, bool *out_at_eof);
+
+    /// @brief Update the cached EOF flag for @p channel.
+    /// @param channel Numeric channel identifier previously passed to OPEN.
+    /// @param at_eof New EOF state to record.
+    /// @return 0 on success; error code aligned with @ref Err otherwise.
+    int32_t rt_file_channel_set_eof(int32_t channel, bool at_eof);
+
 #ifdef __cplusplus
 }
 #endif
