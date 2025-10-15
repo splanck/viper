@@ -82,6 +82,35 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
     }
     viper::vm::setSwitchMode(mode);
 
+    DispatchKind defaultDispatch = DispatchKind::Switch;
+#if VIPER_THREADING_SUPPORTED
+    defaultDispatch = DispatchKind::Threaded;
+#endif
+    DispatchKind selectedDispatch = defaultDispatch;
+
+    if (const char *dispatchEnv = std::getenv("VIPER_DISPATCH"))
+    {
+        std::string rawDispatch{dispatchEnv};
+        std::transform(rawDispatch.begin(), rawDispatch.end(), rawDispatch.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+
+        if (rawDispatch == "table")
+            selectedDispatch = DispatchKind::FnTable;
+        else if (rawDispatch == "switch")
+            selectedDispatch = DispatchKind::Switch;
+        else if (rawDispatch == "threaded")
+        {
+#if VIPER_THREADING_SUPPORTED
+            selectedDispatch = DispatchKind::Threaded;
+#else
+            selectedDispatch = DispatchKind::Switch;
+#endif
+        }
+    }
+
+    dispatchKind = selectedDispatch;
+
     debug.setSourceManager(tc.sm);
     // Cache function pointers and constant strings for fast lookup during
     // execution and for resolving runtime bridge requests such as ConstStr.
