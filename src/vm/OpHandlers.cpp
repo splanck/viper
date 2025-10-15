@@ -117,6 +117,94 @@ constexpr VM::OpcodeHandler handlerForDispatch(VMDispatch dispatch)
 }
 } // namespace
 
+VM::ExecResult OpHandlers::handleLoad(VM &vm,
+                                      Frame &fr,
+                                      const Instr &in,
+                                      const VM::BlockMap &blocks,
+                                      const BasicBlock *&bb,
+                                      size_t &ip)
+{
+    VM::ExecState *state = vm.execStack.empty() ? nullptr : vm.execStack.back();
+    return handleLoadImpl(vm, state, fr, in, blocks, bb, ip);
+}
+
+VM::ExecResult OpHandlers::handleStore(VM &vm,
+                                       Frame &fr,
+                                       const Instr &in,
+                                       const VM::BlockMap &blocks,
+                                       const BasicBlock *&bb,
+                                       size_t &ip)
+{
+    VM::ExecState *state = vm.execStack.empty() ? nullptr : vm.execStack.back();
+    return handleStoreImpl(vm, state, fr, in, blocks, bb, ip);
+}
+
+VM::ExecResult OpHandlers::handleAdd(VM &vm,
+                                     Frame &fr,
+                                     const Instr &in,
+                                     const VM::BlockMap &blocks,
+                                     const BasicBlock *&bb,
+                                     size_t &ip)
+{
+    VM::ExecState *state = vm.execStack.empty() ? nullptr : vm.execStack.back();
+    return handleAddImpl(vm, state, fr, in, blocks, bb, ip);
+}
+
+VM::ExecResult OpHandlers::handleSub(VM &vm,
+                                     Frame &fr,
+                                     const Instr &in,
+                                     const VM::BlockMap &blocks,
+                                     const BasicBlock *&bb,
+                                     size_t &ip)
+{
+    VM::ExecState *state = vm.execStack.empty() ? nullptr : vm.execStack.back();
+    return handleSubImpl(vm, state, fr, in, blocks, bb, ip);
+}
+
+VM::ExecResult OpHandlers::handleMul(VM &vm,
+                                     Frame &fr,
+                                     const Instr &in,
+                                     const VM::BlockMap &blocks,
+                                     const BasicBlock *&bb,
+                                     size_t &ip)
+{
+    VM::ExecState *state = vm.execStack.empty() ? nullptr : vm.execStack.back();
+    return handleMulImpl(vm, state, fr, in, blocks, bb, ip);
+}
+
+VM::ExecResult OpHandlers::handleBr(VM &vm,
+                                    Frame &fr,
+                                    const Instr &in,
+                                    const VM::BlockMap &blocks,
+                                    const BasicBlock *&bb,
+                                    size_t &ip)
+{
+    VM::ExecState *state = vm.execStack.empty() ? nullptr : vm.execStack.back();
+    return handleBrImpl(vm, state, fr, in, blocks, bb, ip);
+}
+
+VM::ExecResult OpHandlers::handleCBr(VM &vm,
+                                     Frame &fr,
+                                     const Instr &in,
+                                     const VM::BlockMap &blocks,
+                                     const BasicBlock *&bb,
+                                     size_t &ip)
+{
+    VM::ExecState *state = vm.execStack.empty() ? nullptr : vm.execStack.back();
+    return handleCBrImpl(vm, state, fr, in, blocks, bb, ip);
+}
+
+VM::ExecResult OpHandlers::handleSwitchI32(VM &vm,
+                                           Frame &fr,
+                                           const Instr &in,
+                                           const VM::BlockMap &blocks,
+                                           const BasicBlock *&bb,
+                                           size_t &ip)
+{
+    VM::ExecState *state = vm.execStack.empty() ? nullptr : vm.execStack.back();
+    return handleSwitchI32Impl(vm, state, fr, in, blocks, bb, ip);
+}
+
 /// @brief Builds and caches the opcode dispatch table from the declarative IL
 /// opcode list.
 /// @details A function-local static initialises the table exactly once by
