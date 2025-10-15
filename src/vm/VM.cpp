@@ -429,22 +429,32 @@ bool VM::runLoopSwitch(ExecState &st)
 /// @return Return value of the function or special slot from debug control.
 Slot VM::runFunctionLoop(ExecState &st)
 {
-#if VIPER_THREADING_SUPPORTED
-    if (runLoopThreaded(st))
-    {
-        if (st.pendingResult)
-            return *st.pendingResult;
-        Slot zero{};
-        zero.i64 = 0;
-        return zero;
-    }
-#endif
     for (;;)
     {
         clearCurrentContext();
         try
         {
-            if (runLoopSwitch(st))
+            bool finished = false;
+            switch (dispatchKind)
+            {
+                case DispatchKind::FnTable:
+                    finished = runLoopFnTable(st);
+                    break;
+                case DispatchKind::Switch:
+                    finished = runLoopSwitch(st);
+                    break;
+                case DispatchKind::Threaded:
+                {
+#if VIPER_THREADING_SUPPORTED
+                    finished = runLoopThreaded(st);
+#else
+                    finished = runLoopSwitch(st);
+#endif
+                    break;
+                }
+            }
+
+            if (finished)
             {
                 if (st.pendingResult)
                     return *st.pendingResult;
@@ -457,6 +467,24 @@ Slot VM::runFunctionLoop(ExecState &st)
         {
             if (!handleTrapDispatch(signal, st))
                 throw;
+        }
+    }
+}
+
+bool VM::runLoopFnTable(ExecState &st)
+{
+    st.pendingResult.reset();
+    st.exitRequested = false;
+    st.currentInstr = nullptr;
+
+    while (true)
+    {
+        auto result = stepOnce(st);
+        if (result.has_value())
+        {
+            st.pendingResult = *result;
+            st.exitRequested = true;
+            return true;
         }
     }
 }

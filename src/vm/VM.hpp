@@ -110,6 +110,14 @@ struct Frame
 class VM
 {
   public:
+    /// @brief Dispatch strategy for executing the interpreter loop.
+    enum DispatchKind
+    {
+        FnTable,  ///< Use function-table based dispatch through executeOpcode.
+        Switch,   ///< Use switch-based inline dispatch.
+        Threaded, ///< Use computed goto threaded dispatch when supported.
+    };
+
     friend struct detail::OpHandlers; ///< Allow opcode handlers to access internals
     friend struct detail::ops::OperandDispatcher; ///< Allow shared helpers to evaluate operands
     friend class RuntimeBridge; ///< Runtime bridge accesses trap formatting helpers
@@ -217,6 +225,9 @@ class VM
 
     /// @brief Step limit; @c 0 means unlimited.
     uint64_t maxSteps;
+
+    /// @brief Interpreter dispatch strategy selected at construction.
+    DispatchKind dispatchKind = FnTable;
 
     /// @brief Executed instruction count.
     /// @invariant Monotonically increases during execution.
@@ -383,6 +394,11 @@ class VM
     /// @param st Prepared execution state.
     /// @return Return value slot.
     Slot runFunctionLoop(ExecState &st);
+
+    /// @brief Execute the interpreter loop using table-based dispatch.
+    /// @param st Prepared execution state.
+    /// @return True when the loop produced a result in @p st.pendingResult.
+    bool runLoopFnTable(ExecState &st);
 
     /// @brief Execute the interpreter loop using switch-based dispatch.
     /// @param st Prepared execution state.
