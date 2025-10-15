@@ -145,10 +145,14 @@ int main()
         Parser parser(src, fid, &emitter);
         auto prog = parser.parseProgram();
         assert(prog);
-        std::ostringstream oss;
-        emitter.printAll(oss);
-        const std::string output = oss.str();
-        assert(output.find("integer literals") != std::string::npos);
+        assert(emitter.errorCount() == 0);
+        auto *select = dynamic_cast<SelectCaseStmt *>(prog->main[0].get());
+        assert(select);
+        assert(select->arms.size() == 1);
+        assert(select->arms[0].labels.size() == 1);
+        assert(select->arms[0].labels[0] == 1);
+        assert(select->arms[0].str_labels.size() == 1);
+        assert(select->arms[0].str_labels[0] == "x");
     }
 
     {
@@ -165,19 +169,13 @@ int main()
         Parser parser(src, fid, &emitter);
         auto prog = parser.parseProgram();
         assert(prog);
-        std::ostringstream oss;
-        emitter.printAll(oss);
-        const std::string expected =
-            "non_integer_label.bas:2:9: error[B0001]: SELECT CASE labels must be integer literals\n"
-            "20 CASE \"A\"\n"
-            "        ^\n"
-            "non_integer_label.bas:2:4: error[ERR_Case_EmptyLabelList]: CASE arm requires at least one label\n"
-            "20 CASE \"A\"\n"
-            "   ^^^^\n"
-            "non_integer_label.bas:2:9: error[B0001]: expected eol, got string\n"
-            "20 CASE \"A\"\n"
-            "        ^\n";
-        assert(oss.str() == expected);
+        assert(emitter.errorCount() == 0);
+        auto *select = dynamic_cast<SelectCaseStmt *>(prog->main[0].get());
+        assert(select);
+        assert(select->arms.size() == 1);
+        assert(select->arms[0].labels.empty());
+        assert(select->arms[0].str_labels.size() == 1);
+        assert(select->arms[0].str_labels[0] == "A");
     }
 
     {

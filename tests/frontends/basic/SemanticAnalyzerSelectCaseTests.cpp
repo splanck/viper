@@ -67,9 +67,45 @@ int main()
         auto result = analyzeSnippet(src);
         assert(result.errors == 1);
         const std::string expected =
-            "select_case.bas:1:16: error[ERR_SelectCase_NonIntegerSelector]: SELECT CASE selector must be integer-compatible\n"
-            "10 SELECT CASE \"foo\"\n"
-            "               ^\n";
+            "select_case.bas:2:4: error[ERR_SelectCase_StringSelectorLabels]: SELECT CASE on a string selector requires string litera"
+            "l CASE labels\n"
+            "20 CASE 1\n"
+            "   ^\n";
+        assert(result.output == expected);
+    }
+
+    {
+        const std::string src =
+            "10 SELECT CASE 0\n"
+            "20 CASE \"foo\"\n"
+            "30 PRINT 1\n"
+            "40 END SELECT\n"
+            "50 END\n";
+        auto result = analyzeSnippet(src);
+        assert(result.errors == 1);
+        const std::string expected =
+            "select_case.bas:2:4: error[ERR_SelectCase_StringLabelSelector]: String CASE labels require a string SELECT CASE selector\n"
+            "20 CASE \"foo\"\n"
+            "   ^\n";
+        assert(result.output == expected);
+    }
+
+    {
+        const std::string src =
+            "10 SELECT CASE 0\n"
+            "20 CASE 1, \"foo\"\n"
+            "30 PRINT 1\n"
+            "40 END SELECT\n"
+            "50 END\n";
+        auto result = analyzeSnippet(src);
+        assert(result.errors == 2);
+        const std::string expected =
+            "select_case.bas:2:4: error[ERR_SelectCase_MixedLabelTypes]: SELECT CASE cannot mix numeric and string CASE labels\n"
+            "20 CASE 1, \"foo\"\n"
+            "   ^\n"
+            "select_case.bas:2:4: error[ERR_SelectCase_StringLabelSelector]: String CASE labels require a string SELECT CASE selector\n"
+            "20 CASE 1, \"foo\"\n"
+            "   ^\n";
         assert(result.output == expected);
     }
 

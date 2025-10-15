@@ -20,7 +20,7 @@ struct Message
 /// @brief SELECT CASE selector must be integer-compatible.
 inline constexpr Message ERR_SelectCase_NonIntegerSelector{
     "ERR_SelectCase_NonIntegerSelector",
-    "SELECT CASE selector must be integer-compatible"};
+    "SELECT CASE selector must be numeric or string"};
 
 /// @brief Duplicate CASE label encountered inside a SELECT CASE.
 inline constexpr Message ERR_SelectCase_DuplicateLabel{
@@ -46,6 +46,21 @@ inline constexpr Message ERR_SelectCase_DuplicateElse{
 inline constexpr Message ERR_SelectCase_MissingEndSelect{
     "ERR_SelectCase_MissingEndSelect",
     "SELECT CASE missing END SELECT terminator"};
+
+/// @brief String selector requires CASE labels to be string literals.
+inline constexpr Message ERR_SelectCase_StringSelectorLabels{
+    "ERR_SelectCase_StringSelectorLabels",
+    "SELECT CASE on a string selector requires string literal CASE labels"};
+
+/// @brief String CASE labels require a string selector.
+inline constexpr Message ERR_SelectCase_StringLabelSelector{
+    "ERR_SelectCase_StringLabelSelector",
+    "String CASE labels require a string SELECT CASE selector"};
+
+/// @brief Numeric and string CASE labels may not be mixed within a SELECT CASE.
+inline constexpr Message ERR_SelectCase_MixedLabelTypes{
+    "ERR_SelectCase_MixedLabelTypes",
+    "SELECT CASE cannot mix numeric and string CASE labels"};
 
 /// @brief CASE statement lacked any labels before the body.
 inline constexpr Message ERR_Case_EmptyLabelList{
