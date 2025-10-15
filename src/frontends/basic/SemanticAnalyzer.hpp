@@ -109,6 +109,8 @@ class SemanticAnalyzer
     void analyzeOpen(OpenStmt &s);
     /// @brief Analyze CLOSE statement @p s.
     void analyzeClose(CloseStmt &s);
+    /// @brief Analyze SEEK statement @p s.
+    void analyzeSeek(SeekStmt &s);
     /// @brief Analyze IF statement @p s.
     void analyzeIf(const IfStmt &s);
     /// @brief Analyze SELECT CASE statement @p s.

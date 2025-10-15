@@ -508,6 +508,21 @@ ExprPtr Parser::parsePrimary()
         call->args.push_back(std::move(channel));
         return call;
     }
+    if (at(TokenKind::KeywordLoc))
+    {
+        auto loc = peek().loc;
+        consume();
+        expect(TokenKind::LParen);
+        expect(TokenKind::Hash);
+        auto channel = parseExpression();
+        expect(TokenKind::RParen);
+        auto call = std::make_unique<BuiltinCallExpr>();
+        call->loc = loc;
+        call->Expr::loc = loc;
+        call->builtin = BuiltinCallExpr::Builtin::Loc;
+        call->args.push_back(std::move(channel));
+        return call;
+    }
     if (!at(TokenKind::Identifier))
     {
         if (auto b = lookupBuiltin(peek().lexeme))

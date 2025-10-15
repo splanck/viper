@@ -418,6 +418,18 @@ void CloseStmt::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this SEEK statement node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void SeekStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void SeekStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
 /// @brief Forward this ON ERROR GOTO statement node to the visitor.
 /// @param visitor Receives the node; ownership remains with the AST.
 void OnErrorGoto::accept(StmtVisitor &visitor) const

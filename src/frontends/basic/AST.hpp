@@ -50,6 +50,7 @@ struct GosubStmt;
 struct EndStmt;
 struct OpenStmt;
 struct CloseStmt;
+struct SeekStmt;
 struct InputStmt;
 struct InputChStmt;
 struct LineInputChStmt;
@@ -123,6 +124,7 @@ struct StmtVisitor
     virtual void visit(const GosubStmt &) = 0;
     virtual void visit(const OpenStmt &) = 0;
     virtual void visit(const CloseStmt &) = 0;
+    virtual void visit(const SeekStmt &) = 0;
     virtual void visit(const OnErrorGoto &) = 0;
     virtual void visit(const Resume &) = 0;
     virtual void visit(const EndStmt &) = 0;
@@ -161,6 +163,7 @@ struct MutStmtVisitor
     virtual void visit(GosubStmt &) = 0;
     virtual void visit(OpenStmt &) = 0;
     virtual void visit(CloseStmt &) = 0;
+    virtual void visit(SeekStmt &) = 0;
     virtual void visit(OnErrorGoto &) = 0;
     virtual void visit(Resume &) = 0;
     virtual void visit(EndStmt &) = 0;
@@ -376,7 +379,8 @@ struct BuiltinCallExpr : Expr
         InKey,
         GetKey,
         Eof,
-        Lof
+        Lof,
+        Loc
     } builtin;
 
     /// Argument expressions passed to the builtin; owned.
@@ -428,6 +432,7 @@ struct Stmt
         Gosub,
         Open,
         Close,
+        Seek,
         OnErrorGoto,
         Resume,
         End,
@@ -858,6 +863,20 @@ struct CloseStmt : Stmt
     [[nodiscard]] Kind stmtKind() const override { return Kind::Close; }
     /// Channel number expression that follows the '#'.
     ExprPtr channelExpr;
+
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief SEEK statement repositioning a file channel.
+struct SeekStmt : Stmt
+{
+    [[nodiscard]] Kind stmtKind() const override { return Kind::Seek; }
+    /// Channel number expression after '#'.
+    ExprPtr channelExpr;
+
+    /// Absolute file position expression.
+    ExprPtr positionExpr;
 
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
