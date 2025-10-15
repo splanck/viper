@@ -176,6 +176,20 @@ static SwitchCacheEntry::Kind chooseBackend(const SwitchMeta &M)
     return SwitchCacheEntry::Sorted;
 }
 
+static DenseJumpTable buildDense(const SwitchMeta &M)
+{
+    int32_t minv = *std::min_element(M.values.begin(), M.values.end());
+    int32_t maxv = *std::max_element(M.values.begin(), M.values.end());
+    DenseJumpTable T;
+    T.base = minv;
+    T.targets.assign(maxv - minv + 1, -1);
+    for (size_t i = 0; i < M.values.size(); ++i)
+    {
+        T.targets[M.values[i] - minv] = M.succIdx[i];
+    }
+    return T;
+}
+
 SwitchCacheEntry buildSwitchCacheEntry(const Instr &in)
 {
     SwitchCacheEntry entry{};
@@ -204,22 +218,7 @@ SwitchCacheEntry buildSwitchCacheEntry(const Instr &in)
 
     if (backendKind == SwitchCacheEntry::Dense)
     {
-        const auto [minIt, maxIt] = std::minmax_element(meta.values.begin(), meta.values.end());
-        const int32_t minValue = *minIt;
-        const int32_t maxValue = *maxIt;
-        const int64_t range = static_cast<int64_t>(maxValue) - static_cast<int64_t>(minValue) + 1;
-
-        DenseJumpTable table{};
-        table.base = minValue;
-        table.targets.assign(static_cast<size_t>(range), -1);
-        for (size_t idx = 0; idx < meta.values.size(); ++idx)
-        {
-            const auto value = meta.values[idx];
-            const auto targetIdx = meta.succIdx[idx];
-            const size_t offset = static_cast<size_t>(static_cast<int64_t>(value) - minValue);
-            if (table.targets[offset] < 0)
-                table.targets[offset] = targetIdx;
-        }
+        DenseJumpTable table = buildDense(meta);
         entry.kind = SwitchCacheEntry::Dense;
         entry.backend = std::move(table);
         return entry;
