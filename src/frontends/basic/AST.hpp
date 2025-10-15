@@ -371,7 +371,8 @@ struct BuiltinCallExpr : Expr
         Chr,
         Asc,
         InKey,
-        GetKey
+        GetKey,
+        Eof
     } builtin;
 
     /// Argument expressions passed to the builtin; owned.

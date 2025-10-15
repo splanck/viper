@@ -26,6 +26,7 @@ typedef struct RtFileChannelEntry
     int32_t channel;
     RtFile file;
     bool in_use;
+    bool at_eof;
 } RtFileChannelEntry;
 
 static RtFileChannelEntry *g_channel_entries = NULL;
@@ -72,6 +73,7 @@ static RtFileChannelEntry *rt_file_prepare_channel(int32_t channel)
         {
             new_entries[i].channel = 0;
             new_entries[i].in_use = false;
+            new_entries[i].at_eof = false;
             rt_file_init(&new_entries[i].file);
         }
         g_channel_entries = new_entries;
@@ -81,6 +83,7 @@ static RtFileChannelEntry *rt_file_prepare_channel(int32_t channel)
     entry = &g_channel_entries[g_channel_count++];
     entry->channel = channel;
     entry->in_use = false;
+    entry->at_eof = false;
     rt_file_init(&entry->file);
     return entry;
 }
@@ -500,6 +503,7 @@ int32_t rt_open_err_vstr(ViperString *path, int32_t mode, int32_t channel)
     }
 
     entry->in_use = true;
+    entry->at_eof = false;
     return 0;
 }
 
@@ -515,11 +519,13 @@ int32_t rt_close_err(int32_t channel)
     if (!rt_file_close(&entry->file, &err))
     {
         entry->in_use = false;
+        entry->at_eof = false;
         rt_file_init(&entry->file);
         return (int32_t)err.kind;
     }
 
     entry->in_use = false;
+    entry->at_eof = false;
     rt_file_init(&entry->file);
     return 0;
 }
@@ -567,9 +573,47 @@ int32_t rt_line_input_ch_err(int32_t channel, ViperString **out)
     rt_string line = NULL;
     RtError err = RT_ERROR_NONE;
     if (!rt_file_read_line(&entry->file, &line, &err))
+    {
+        if (err.kind == Err_EOF)
+            entry->at_eof = true;
         return (int32_t)err.kind;
+    }
+
+    entry->at_eof = false;
 
     *out = line;
+    return 0;
+}
+
+int32_t rt_file_channel_fd(int32_t channel, int *out_fd)
+{
+    RtFileChannelEntry *entry = NULL;
+    int32_t status = rt_file_resolve_channel(channel, &entry);
+    if (status != 0)
+        return status;
+    if (out_fd)
+        *out_fd = entry->file.fd;
+    return 0;
+}
+
+int32_t rt_file_channel_get_eof(int32_t channel, bool *out_at_eof)
+{
+    RtFileChannelEntry *entry = NULL;
+    int32_t status = rt_file_resolve_channel(channel, &entry);
+    if (status != 0)
+        return status;
+    if (out_at_eof)
+        *out_at_eof = entry->at_eof;
+    return 0;
+}
+
+int32_t rt_file_channel_set_eof(int32_t channel, bool at_eof)
+{
+    RtFileChannelEntry *entry = NULL;
+    int32_t status = rt_file_resolve_channel(channel, &entry);
+    if (status != 0)
+        return status;
+    entry->at_eof = at_eof;
     return 0;
 }
 

@@ -97,12 +97,18 @@ static constexpr std::array<SemanticType, 1> kStringType{{SemanticType::String}}
 static constexpr std::array<SemanticType, 2> kNumericTypes{{SemanticType::Int,
                                                             SemanticType::Float}};
 
+static constexpr std::array<SemanticType, 1> kIntType{{SemanticType::Int}};
+
 static constexpr std::array<BuiltinArgSpec, 1> kSingleStringArg{{
     BuiltinArgSpec{false, kStringType.data(), kStringType.size()},
 }};
 
 static constexpr std::array<BuiltinArgSpec, 1> kSingleNumericArg{{
     BuiltinArgSpec{false, kNumericTypes.data(), kNumericTypes.size()},
+}};
+
+static constexpr std::array<BuiltinArgSpec, 1> kSingleIntArg{{
+    BuiltinArgSpec{false, kIntType.data(), kIntType.size()},
 }};
 
 static constexpr std::array<BuiltinArgSpec, 2> kStringNumericArgs{{
@@ -132,7 +138,7 @@ static constexpr std::array<BuiltinArgSpec, 3> kInstrArgs{{
     BuiltinArgSpec{false, kStringType.data(), kStringType.size()},
 }};
 
-static constexpr std::array<BuiltinSignature, 29> kBuiltinSignatures{{
+static constexpr std::array<BuiltinSignature, 32> kBuiltinSignatures{{
     BuiltinSignature{1, 0, kSingleStringArg.data(), kSingleStringArg.size(),
                      SemanticType::Int},
     BuiltinSignature{2, 1, kMidArgs.data(), kMidArgs.size(), SemanticType::String},
@@ -186,6 +192,10 @@ static constexpr std::array<BuiltinSignature, 29> kBuiltinSignatures{{
     BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(),
                      SemanticType::String},
     BuiltinSignature{1, 0, kSingleStringArg.data(), kSingleStringArg.size(),
+                     SemanticType::Int},
+    BuiltinSignature{0, 0, nullptr, 0, SemanticType::String},
+    BuiltinSignature{0, 0, nullptr, 0, SemanticType::String},
+    BuiltinSignature{1, 0, kSingleIntArg.data(), kSingleIntArg.size(),
                      SemanticType::Int},
 }};
 
