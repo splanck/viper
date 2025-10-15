@@ -200,7 +200,7 @@ int main()
         emitter.printAll(oss);
         const std::string output = oss.str();
         const std::string expected =
-            "dup_else.bas:6:9: error[ERR_SelectCase_DuplicateElse]: Duplicate CASE ELSE arm\n"
+            "dup_else.bas:6:9: error[ERR_SelectCase_DuplicateElse]: duplicate CASE ELSE\n"
             "60 CASE ELSE\n"
             "        ^^^^\n";
         assert(output == expected);
@@ -271,7 +271,7 @@ int main()
         emitter.printAll(oss);
         const std::string output = oss.str();
         const std::string expected =
-            "dup_else_body.bas:6:9: error[ERR_SelectCase_DuplicateElse]: Duplicate CASE ELSE arm\n"
+            "dup_else_body.bas:6:9: error[ERR_SelectCase_DuplicateElse]: duplicate CASE ELSE\n"
             "60 CASE ELSE\n"
             "        ^^^^\n";
         assert(output == expected);
@@ -301,7 +301,7 @@ int main()
             "duplicate_case_else.bas:3:13: error[B0001]: expected eol, got :\n"
             "30 CASE ELSE: PRINT \"a\"\n"
             "            ^\n"
-            "duplicate_case_else.bas:4:9: error[ERR_SelectCase_DuplicateElse]: Duplicate CASE ELSE arm\n"
+            "duplicate_case_else.bas:4:9: error[ERR_SelectCase_DuplicateElse]: duplicate CASE ELSE\n"
             "40 CASE ELSE: PRINT \"b\"\n"
             "        ^^^^\n"
             "duplicate_case_else.bas:4:13: error[B0001]: expected eol, got :\n"
