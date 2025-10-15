@@ -88,6 +88,18 @@ extern "C" {
     /// @param out_err Optional error record receiving Err_None on success.
     void rt_str_from_i16(int16_t x, char *out, size_t cap, RtError *out_err);
 
+    /// @brief Parse signed 64-bit integer from trimmed C string @p text.
+    /// @param text Null-terminated ASCII string; may contain leading/trailing whitespace.
+    /// @param out_value Destination for parsed result; must not be NULL.
+    /// @return Err_None on success, otherwise an appropriate runtime error code.
+    int32_t rt_parse_int64(const char *text, int64_t *out_value);
+
+    /// @brief Parse double-precision floating point from trimmed C string @p text.
+    /// @param text Null-terminated ASCII string; may contain leading/trailing whitespace.
+    /// @param out_value Destination for parsed result; must not be NULL.
+    /// @return Err_None on success, otherwise an appropriate runtime error code.
+    int32_t rt_parse_double(const char *text, double *out_value);
+
 #ifdef __cplusplus
 }
 #endif

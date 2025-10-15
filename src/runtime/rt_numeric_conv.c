@@ -11,8 +11,16 @@
 #include "rt_numeric.h"
 #include "rt.hpp"
 
+#include <ctype.h>
+#include <errno.h>
 #include <limits.h>
 #include <math.h>
+#include <stdlib.h>
+#include <locale.h>
+
+#if defined(__APPLE__)
+#include <xlocale.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -144,6 +152,87 @@ extern "C" {
 
         const double rounded = rt_round_nearest_even(scaled);
         return rounded / factor;
+    }
+
+    static inline const unsigned char *rt_skip_ascii_space(const unsigned char *cursor)
+    {
+        while (*cursor && isspace(*cursor))
+            ++cursor;
+        return cursor;
+    }
+
+    int32_t rt_parse_int64(const char *text, int64_t *out_value)
+    {
+        if (!text || !out_value)
+            return (int32_t)Err_InvalidOperation;
+
+        const unsigned char *cursor = rt_skip_ascii_space((const unsigned char *)text);
+        if (*cursor == '\0')
+            return (int32_t)Err_InvalidCast;
+
+        errno = 0;
+        char *endptr = NULL;
+        long long parsed = strtoll((const char *)cursor, &endptr, 10);
+        if (errno == ERANGE)
+            return (int32_t)Err_Overflow;
+
+        if (!endptr || endptr == (const char *)cursor)
+            return (int32_t)Err_InvalidCast;
+
+        const unsigned char *rest = (const unsigned char *)endptr;
+        rest = rt_skip_ascii_space(rest);
+        if (*rest != '\0')
+            return (int32_t)Err_InvalidCast;
+
+        *out_value = (int64_t)parsed;
+        return (int32_t)Err_None;
+    }
+
+    static int32_t rt_parse_double_impl(const char *text, double *out_value)
+    {
+        const unsigned char *cursor = rt_skip_ascii_space((const unsigned char *)text);
+        if (*cursor == '\0')
+            return (int32_t)Err_InvalidCast;
+
+        errno = 0;
+        char *endptr = NULL;
+        double value = 0.0;
+
+#if defined(_WIN32)
+        _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
+        if (!c_locale)
+            return (int32_t)Err_RuntimeError;
+        value = _strtod_l((const char *)cursor, &endptr, c_locale);
+        _free_locale(c_locale);
+#else
+        locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
+        if (!c_locale)
+            return (int32_t)Err_RuntimeError;
+        locale_t previous = uselocale(c_locale);
+        value = strtod((const char *)cursor, &endptr);
+        uselocale(previous);
+        freelocale(c_locale);
+#endif
+
+        if (endptr == (const char *)cursor)
+            return (int32_t)Err_InvalidCast;
+
+        if (errno == ERANGE || !isfinite(value))
+            return (int32_t)Err_Overflow;
+
+        const unsigned char *rest = rt_skip_ascii_space((const unsigned char *)endptr);
+        if (*rest != '\0')
+            return (int32_t)Err_InvalidCast;
+
+        *out_value = value;
+        return (int32_t)Err_None;
+    }
+
+    int32_t rt_parse_double(const char *text, double *out_value)
+    {
+        if (!text || !out_value)
+            return (int32_t)Err_InvalidOperation;
+        return rt_parse_double_impl(text, out_value);
     }
 
 #ifdef __cplusplus
