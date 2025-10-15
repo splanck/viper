@@ -374,3 +374,52 @@ int64_t rt_lof_ch(int ch)
 
     return (int64_t)end;
 }
+
+int64_t rt_loc_ch(int ch)
+{
+    int fd = -1;
+    int32_t status = rt_file_channel_fd(ch, &fd);
+    if (status != 0)
+        return -(int64_t)status;
+
+    errno = 0;
+    off_t cur = lseek(fd, 0, SEEK_CUR);
+    if (cur < 0)
+    {
+        if (errno == ESPIPE || errno == EINVAL)
+            return -(int64_t)Err_InvalidOperation;
+        return -(int64_t)Err_IOError;
+    }
+
+    if (cur < 0)
+        return 0;
+
+    return (int64_t)cur;
+}
+
+int32_t rt_seek_ch_err(int ch, int64_t pos)
+{
+    if (pos < 0)
+        return (int32_t)Err_InvalidOperation;
+
+    int fd = -1;
+    int32_t status = rt_file_channel_fd(ch, &fd);
+    if (status != 0)
+        return status;
+
+    errno = 0;
+    off_t target = (off_t)pos;
+    if (target < 0)
+        return (int32_t)Err_InvalidOperation;
+
+    off_t res = lseek(fd, target, SEEK_SET);
+    if (res == (off_t)-1)
+    {
+        if (errno == ESPIPE || errno == EINVAL)
+            return (int32_t)Err_InvalidOperation;
+        return (int32_t)Err_IOError;
+    }
+
+    (void)rt_file_channel_set_eof(ch, false);
+    return 0;
+}

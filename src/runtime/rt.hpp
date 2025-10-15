@@ -67,6 +67,17 @@ extern "C" {
     /// @return Non-negative byte length on success or -Err_* on failure.
     int64_t rt_lof_ch(int ch);
 
+    /// @brief Report the current file position for channel @p ch.
+    /// @param ch Numeric channel identifier previously passed to OPEN.
+    /// @return Non-negative offset on success or -Err_* on failure.
+    int64_t rt_loc_ch(int ch);
+
+    /// @brief Reposition channel @p ch to absolute byte offset @p pos.
+    /// @param ch Numeric channel identifier previously passed to OPEN.
+    /// @param pos Non-negative byte offset from start of file.
+    /// @return 0 on success or Err_* code on failure.
+    int32_t rt_seek_ch_err(int ch, int64_t pos);
+
     /// @brief Allocate @p bytes of zeroed memory.
     /// @param bytes Number of bytes to allocate.
     /// @return Pointer to zeroed block or trap on failure.
