@@ -169,30 +169,6 @@ static SwitchMeta collectSwitchMeta(const Instr &in)
     return meta;
 }
 
-static int32_t lookupDense(const DenseJumpTable &T, int32_t sel, int32_t defIdx)
-{
-    const int64_t off = static_cast<int64_t>(sel) - static_cast<int64_t>(T.base);
-    if (off < 0 || off >= static_cast<int64_t>(T.targets.size()))
-        return defIdx;
-    const int32_t t = T.targets[static_cast<size_t>(off)];
-    return (t < 0) ? defIdx : t;
-}
-
-static int32_t lookupSorted(const SortedCases &S, int32_t sel, int32_t defIdx)
-{
-    auto it = std::lower_bound(S.keys.begin(), S.keys.end(), sel);
-    if (it == S.keys.end() || *it != sel)
-        return defIdx;
-    const size_t idx = static_cast<size_t>(it - S.keys.begin());
-    return S.targetIdx[idx];
-}
-
-static int32_t lookupHashed(const HashedCases &H, int32_t sel, int32_t defIdx)
-{
-    auto it = H.map.find(sel);
-    return (it == H.map.end()) ? defIdx : it->second;
-}
-
 /// @brief Select the most appropriate switch cache backend for @p M.
 ///
 /// Dense tables perform best when the case value distribution is tightly
@@ -325,6 +301,11 @@ static SwitchCacheEntry &getOrBuildSwitchCache(SwitchCache &cache, const Instr &
 
 } // namespace
 
+SwitchCacheEntry &OpHandlers::ensureSwitchCacheEntry(viper::vm::SwitchCache &cache, const Instr &in)
+{
+    return getOrBuildSwitchCache(cache, in);
+}
+
 /// @brief Transfer control to a branch target and seed its parameter slots.
 /// @param vm Active VM used to evaluate branch argument values.
 /// @param fr Current frame receiving parameter updates for the successor block.
@@ -345,43 +326,8 @@ VM::ExecResult OpHandlers::branchToTarget(VM &vm,
                                           const BasicBlock *&bb,
                                           size_t &ip)
 {
-    const auto &label = in.labels[idx];
-    auto it = blocks.find(label);
-    assert(it != blocks.end() && "invalid branch target");
-    const BasicBlock *target = it->second;
-    const BasicBlock *sourceBlock = bb;
-    const std::string sourceLabel = sourceBlock ? sourceBlock->label : std::string{};
-    const std::string functionName = fr.func ? fr.func->name : std::string{};
-
-    const size_t expected = target->params.size();
-    const size_t provided = idx < in.brArgs.size() ? in.brArgs[idx].size() : 0;
-    if (provided != expected)
-    {
-        std::ostringstream os;
-        os << "branch argument count mismatch targeting '" << target->label << '\'';
-        if (!sourceLabel.empty())
-            os << " from '" << sourceLabel << '\'';
-        os << ": expected " << expected << ", got " << provided;
-        RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), in.loc, functionName, sourceLabel);
-        return {};
-    }
-
-    if (provided > 0)
-    {
-        const auto &args = in.brArgs[idx];
-        for (size_t i = 0; i < provided; ++i)
-        {
-            const auto id = target->params[i].id;
-            assert(id < fr.params.size());
-            fr.params[id] = vm.eval(fr, args[i]);
-        }
-    }
-
-    bb = target;
-    ip = 0;
-    VM::ExecResult result{};
-    result.jumped = true;
-    return result;
+    auto state = makeLegacyState(vm, fr, blocks, bb, ip);
+    return branchToTargetInline(vm, state, in, idx);
 }
 
 /// @brief Handle an unconditional `br` terminator by taking the sole successor.
@@ -402,7 +348,8 @@ VM::ExecResult OpHandlers::handleBr(VM &vm,
                                     const BasicBlock *&bb,
                                     size_t &ip)
 {
-    return branchToTarget(vm, fr, in, 0, blocks, bb, ip);
+    auto state = makeLegacyState(vm, fr, blocks, bb, ip);
+    return handleBrInline(vm, state, in);
 }
 
 /// @brief Handle a conditional `cbr` terminator by selecting between two successors.
@@ -423,9 +370,8 @@ VM::ExecResult OpHandlers::handleCBr(VM &vm,
                                      const BasicBlock *&bb,
                                      size_t &ip)
 {
-    Slot cond = vm.eval(fr, in.operands[0]);
-    const size_t targetIdx = (cond.i64 != 0) ? 0 : 1;
-    return branchToTarget(vm, fr, in, targetIdx, blocks, bb, ip);
+    auto state = makeLegacyState(vm, fr, blocks, bb, ip);
+    return handleCBrInline(vm, state, in);
 }
 
 /// @brief Handle a `switch.i32` terminator by selecting a successor based on the
@@ -447,86 +393,8 @@ VM::ExecResult OpHandlers::handleSwitchI32(VM &vm,
                                            const BasicBlock *&bb,
                                            size_t &ip)
 {
-    const Instr &I = in;
-    const Slot scrutineeSlot = vm.eval(fr, switchScrutinee(I));
-    const int32_t sel = static_cast<int32_t>(scrutineeSlot.i64);
-
-    VM::ExecState *state = nullptr;
-    if (!vm.execStack.empty())
-        state = vm.execStack.back();
-    assert(state != nullptr && "switch handler missing execution state");
-
-    viper::vm::SwitchCache *cache = nullptr;
-    if (state != nullptr)
-    {
-        cache = &state->switchCache;
-    }
-    else
-    {
-        static thread_local viper::vm::SwitchCache fallbackCache;
-        cache = &fallbackCache;
-    }
-
-    auto &entry = getOrBuildSwitchCache(*cache, I);
-
-    int32_t idx = entry.defaultIdx;
-
-    const bool forceLinear = (entry.kind == SwitchCacheEntry::Linear);
-
-#if defined(VIPER_VM_DEBUG_SWITCH_LINEAR)
-    (void)forceLinear;
-    const size_t caseCount = switchCaseCount(I);
-    for (size_t caseIdx = 0; caseIdx < caseCount; ++caseIdx)
-    {
-        const Value &caseValue = switchCaseValue(I, caseIdx);
-        const int32_t caseSel = static_cast<int32_t>(caseValue.i64);
-        if (caseSel == sel)
-        {
-            idx = static_cast<int32_t>(caseIdx + 1);
-            break;
-        }
-    }
-#else
-    if (forceLinear)
-    {
-        const size_t caseCount = switchCaseCount(I);
-        for (size_t caseIdx = 0; caseIdx < caseCount; ++caseIdx)
-        {
-            const Value &caseValue = switchCaseValue(I, caseIdx);
-            const int32_t caseSel = static_cast<int32_t>(caseValue.i64);
-            if (caseSel == sel)
-            {
-                idx = static_cast<int32_t>(caseIdx + 1);
-                break;
-            }
-        }
-    }
-    else
-    {
-        std::visit(
-            [&](auto &backend) {
-                using T = std::decay_t<decltype(backend)>;
-                if constexpr (std::is_same_v<T, DenseJumpTable>)
-                    idx = lookupDense(backend, sel, entry.defaultIdx);
-                else if constexpr (std::is_same_v<T, SortedCases>)
-                    idx = lookupSorted(backend, sel, entry.defaultIdx);
-                else if constexpr (std::is_same_v<T, HashedCases>)
-                    idx = lookupHashed(backend, sel, entry.defaultIdx);
-                else
-                    idx = entry.defaultIdx;
-            },
-            entry.backend);
-    }
-#endif
-
-    if (idx < 0)
-        idx = entry.defaultIdx >= 0 ? entry.defaultIdx : 0;
-
-    const size_t targetIdx = static_cast<size_t>(idx);
-
-    assert(!in.labels.empty() && "switch must have a default successor");
-    assert(targetIdx < in.labels.size() && "switch dispatch resolved invalid target");
-    return branchToTarget(vm, fr, in, targetIdx, blocks, bb, ip);
+    auto state = makeLegacyState(vm, fr, blocks, bb, ip);
+    return handleSwitchI32Inline(vm, state, in);
 }
 
 /// @brief Handle a `ret` terminator by yielding control to the caller.
