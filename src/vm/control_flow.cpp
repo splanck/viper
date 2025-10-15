@@ -29,6 +29,7 @@
 #include <cassert>
 #include <cstdint>
 #include <iterator>
+#include <numeric>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -190,6 +191,24 @@ static DenseJumpTable buildDense(const SwitchMeta &M)
     return T;
 }
 
+static SortedCases buildSorted(const SwitchMeta &M)
+{
+    std::vector<size_t> idx(M.values.size());
+    std::iota(idx.begin(), idx.end(), 0);
+    std::sort(idx.begin(), idx.end(), [&](size_t a, size_t b) {
+        return M.values[a] < M.values[b];
+    });
+    SortedCases S;
+    S.keys.reserve(idx.size());
+    S.targetIdx.reserve(idx.size());
+    for (size_t i : idx)
+    {
+        S.keys.push_back(M.values[i]);
+        S.targetIdx.push_back(M.succIdx[i]);
+    }
+    return S;
+}
+
 SwitchCacheEntry buildSwitchCacheEntry(const Instr &in)
 {
     SwitchCacheEntry entry{};
@@ -209,11 +228,6 @@ SwitchCacheEntry buildSwitchCacheEntry(const Instr &in)
         return entry;
     }
 
-    auto cmp = [](const auto &lhs, const auto &rhs) {
-        if (lhs.first != rhs.first)
-            return lhs.first < rhs.first;
-        return lhs.second < rhs.second;
-    };
     const auto backendKind = chooseBackend(meta);
 
     if (backendKind == SwitchCacheEntry::Dense)
@@ -235,15 +249,7 @@ SwitchCacheEntry buildSwitchCacheEntry(const Instr &in)
         return entry;
     }
 
-    std::sort(cases.begin(), cases.end(), cmp);
-    SortedCases sorted{};
-    sorted.keys.reserve(cases.size());
-    sorted.targetIdx.reserve(cases.size());
-    for (const auto &[value, targetIdx] : cases)
-    {
-        sorted.keys.push_back(value);
-        sorted.targetIdx.push_back(targetIdx);
-    }
+    SortedCases sorted = buildSorted(meta);
     entry.kind = SwitchCacheEntry::Sorted;
     entry.backend = std::move(sorted);
     return entry;
