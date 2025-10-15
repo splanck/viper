@@ -62,6 +62,11 @@ extern "C" {
     /// @return -1 when the next read would hit EOF, 0 otherwise, or an error code on failure.
     int rt_eof_ch(int ch);
 
+    /// @brief Compute the length in bytes of the file associated with @p ch.
+    /// @param ch Numeric channel identifier previously passed to OPEN.
+    /// @return Non-negative byte length on success or -Err_* on failure.
+    int64_t rt_lof_ch(int ch);
+
     /// @brief Allocate @p bytes of zeroed memory.
     /// @param bytes Number of bytes to allocate.
     /// @return Pointer to zeroed block or trap on failure.
