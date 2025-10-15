@@ -253,6 +253,12 @@ void Lowerer::requirePrintlnChErr()
     setManualHelperRequired(ManualRuntimeHelper::PrintlnChErr);
 }
 
+/// @brief Request the helper that widens i32 error codes to i64.
+void Lowerer::requireErrI32ToI64()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ErrI32ToI64);
+}
+
 /// @brief Request the helper that reads a line with error reporting.
 void Lowerer::requireLineInputChErr()
 {
@@ -320,6 +326,7 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         {"rt_open_err_vstr", ManualRuntimeHelper::OpenErrVstr, &Lowerer::requireOpenErrVstr},
         {"rt_close_err", ManualRuntimeHelper::CloseErr, &Lowerer::requireCloseErr},
         {"rt_println_ch_err", ManualRuntimeHelper::PrintlnChErr, &Lowerer::requirePrintlnChErr},
+        {"rt_err_i32_to_i64", ManualRuntimeHelper::ErrI32ToI64, &Lowerer::requireErrI32ToI64},
         {"rt_line_input_ch_err", ManualRuntimeHelper::LineInputChErr, &Lowerer::requireLineInputChErr},
         {"rt_eof_ch", ManualRuntimeHelper::EofCh, &Lowerer::requireEofCh},
         {"rt_str_retain_maybe", ManualRuntimeHelper::StrRetainMaybe, &Lowerer::requireStrRetainMaybe},

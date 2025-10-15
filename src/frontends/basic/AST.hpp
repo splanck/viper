@@ -51,6 +51,7 @@ struct EndStmt;
 struct OpenStmt;
 struct CloseStmt;
 struct InputStmt;
+struct InputChStmt;
 struct LineInputChStmt;
 struct ReturnStmt;
 struct OnErrorGoto;
@@ -126,6 +127,7 @@ struct StmtVisitor
     virtual void visit(const Resume &) = 0;
     virtual void visit(const EndStmt &) = 0;
     virtual void visit(const InputStmt &) = 0;
+    virtual void visit(const InputChStmt &) = 0;
     virtual void visit(const LineInputChStmt &) = 0;
     virtual void visit(const ReturnStmt &) = 0;
     virtual void visit(const FunctionDecl &) = 0;
@@ -163,6 +165,7 @@ struct MutStmtVisitor
     virtual void visit(Resume &) = 0;
     virtual void visit(EndStmt &) = 0;
     virtual void visit(InputStmt &) = 0;
+    virtual void visit(InputChStmt &) = 0;
     virtual void visit(LineInputChStmt &) = 0;
     virtual void visit(ReturnStmt &) = 0;
     virtual void visit(FunctionDecl &) = 0;
@@ -186,6 +189,16 @@ using ExprPtr = std::unique_ptr<Expr>;
 using LValuePtr = ExprPtr;
 
 using Identifier = std::string;
+
+/// @brief Reference to a named entity capturing its lexeme and location.
+struct NameRef
+{
+    /// Referenced identifier including any suffix.
+    Identifier name;
+
+    /// Source location where the identifier appeared.
+    il::support::SourceLoc loc;
+};
 
 /// @brief BASIC primitive types.
 enum class Type
@@ -428,6 +441,7 @@ struct Stmt
         Resume,
         End,
         Input,
+        InputCh,
         LineInputCh,
         Return,
         FunctionDecl,
@@ -902,6 +916,20 @@ struct InputStmt : Stmt
 
     /// Target variable names (each may end with '$').
     std::vector<std::string> vars;
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief INPUT # statement reading a field from a file channel.
+struct InputChStmt : Stmt
+{
+    [[nodiscard]] Kind stmtKind() const override { return Kind::InputCh; }
+    /// File channel number to read from.
+    int channel = 0;
+
+    /// Destination variable receiving the parsed field.
+    NameRef target;
+
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
 };

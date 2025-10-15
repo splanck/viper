@@ -633,6 +633,8 @@ private:
             foldExpr(stmt.prompt);
     }
 
+    void visit(InputChStmt &) override {}
+
     void visit(LineInputChStmt &stmt) override
     {
         foldExpr(stmt.channelExpr);

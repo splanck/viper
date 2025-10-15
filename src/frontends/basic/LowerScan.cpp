@@ -212,6 +212,7 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
     void before(const PrintChStmt &)
     {
         lowerer_.requirePrintlnChErr();
+        lowerer_.requireErrI32ToI64();
     }
 
     void after(const PrintChStmt &stmt)
@@ -406,6 +407,7 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
     void before(const OpenStmt &)
     {
         lowerer_.requireOpenErrVstr();
+        lowerer_.requireErrI32ToI64();
     }
 
     void after(const OpenStmt &stmt)
@@ -419,6 +421,7 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
     void before(const CloseStmt &)
     {
         lowerer_.requireCloseErr();
+        lowerer_.requireErrI32ToI64();
     }
 
     void after(const CloseStmt &stmt)
@@ -466,9 +469,29 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
         inputVarNames_.clear();
     }
 
+    void before(const InputChStmt &)
+    {
+        lowerer_.requireLineInputChErr();
+        lowerer_.requireErrI32ToI64();
+        lowerer_.requestHelper(Lowerer::RuntimeFeature::SplitFields);
+        lowerer_.requireStrReleaseMaybe();
+    }
+
+    void after(const InputChStmt &stmt)
+    {
+        const std::string &name = stmt.target.name;
+        if (name.empty())
+            return;
+
+        const auto *info = lowerer_.findSymbol(name);
+        if (!info || !info->hasType)
+            lowerer_.setSymbolType(name, Type::Str);
+    }
+
     void before(const LineInputChStmt &)
     {
         lowerer_.requireLineInputChErr();
+        lowerer_.requireErrI32ToI64();
     }
 
     void after(const LineInputChStmt &stmt)

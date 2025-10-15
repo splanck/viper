@@ -88,6 +88,8 @@ class LowererStmtVisitor final : public StmtVisitor
 
     void visit(const InputStmt &stmt) override { lowerer_.lowerInput(stmt); }
 
+    void visit(const InputChStmt &stmt) override { lowerer_.lowerInputCh(stmt); }
+
     void visit(const LineInputChStmt &stmt) override { lowerer_.lowerLineInputCh(stmt); }
 
     void visit(const ReturnStmt &stmt) override { lowerer_.lowerReturn(stmt); }
@@ -249,7 +251,9 @@ void Lowerer::emitRuntimeErrCheck(Value err,
 
     ctx.setCurrent(&func->blocks[curIdx]);
     curLoc = loc;
-    Value isFail = emitBinary(Opcode::ICmpNe, ilBoolTy(), err, Value::constInt(0));
+    requireErrI32ToI64();
+    Value errWide = emitCallRet(Type(Type::Kind::I64), "rt_err_i32_to_i64", {err});
+    Value isFail = coerceToBool({errWide, Type(Type::Kind::I64)}, loc).value;
     emitCBr(isFail, failBlk, contBlk);
 
     ctx.setCurrent(failBlk);
@@ -1801,6 +1805,44 @@ void Lowerer::lowerInput(const InputStmt &stmt)
         Value field = emitLoad(Type(Type::Kind::Str), slot);
         storeField(stmt.vars[i], field);
     }
+}
+
+void Lowerer::lowerInputCh(const InputChStmt &stmt)
+{
+    curLoc = stmt.loc;
+
+    Value outSlot = emitAlloca(8);
+    emitStore(Type(Type::Kind::Ptr), outSlot, Value::null());
+
+    RVal channel{Value::constInt(stmt.channel), Type(Type::Kind::I64)};
+    channel = normalizeChannelToI32(std::move(channel), stmt.loc);
+
+    Value err = emitCallRet(Type(Type::Kind::I32), "rt_line_input_ch_err", {channel.value, outSlot});
+
+    emitRuntimeErrCheck(err, stmt.loc, "inputch", [&](Value code) {
+        emitTrapFromErr(code);
+    });
+
+    curLoc = stmt.loc;
+    Value line = emitLoad(Type(Type::Kind::Str), outSlot);
+
+    Value fields = emitAlloca(8);
+    emitCallRet(Type(Type::Kind::I64), "rt_split_fields", {line, fields, Value::constInt(1)});
+
+    requireStrReleaseMaybe();
+    curLoc = stmt.loc;
+    emitCall("rt_str_release_maybe", {line});
+
+    Value field = emitLoad(Type(Type::Kind::Str), fields);
+
+    const auto *info = findSymbol(stmt.target.name);
+    if (!info || !info->slotId)
+        return;
+
+    Value slot = Value::temp(*info->slotId);
+    il::support::SourceLoc loc = stmt.target.loc.isValid() ? stmt.target.loc : stmt.loc;
+    curLoc = loc;
+    emitStore(Type(Type::Kind::Str), slot, field);
 }
 
 void Lowerer::lowerLineInputCh(const LineInputChStmt &stmt)

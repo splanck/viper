@@ -45,6 +45,11 @@ extern "C" {
     /// @brief Constant representing a successful runtime operation.
     extern const RtError RT_ERROR_NONE;
 
+    /// @brief Widen a 32-bit runtime error code to 64 bits preserving sign.
+    /// @param code Error code produced by helpers returning `int32_t` status.
+    /// @return The sign-extended 64-bit representation of @p code.
+    int64_t rt_err_i32_to_i64(int32_t code);
+
 #ifdef __cplusplus
 }
 #endif

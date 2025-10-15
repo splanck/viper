@@ -637,6 +637,8 @@ class Lowerer
 
     void lowerInput(const InputStmt &stmt);
 
+    void lowerInputCh(const InputChStmt &stmt);
+
     void lowerLineInputCh(const LineInputChStmt &stmt);
 
     void lowerDim(const DimStmt &stmt);
@@ -761,6 +763,7 @@ class Lowerer
         OpenErrVstr,
         CloseErr,
         PrintlnChErr,
+        ErrI32ToI64,
         LineInputChErr,
         EofCh,
         StrRetainMaybe,
@@ -794,6 +797,7 @@ class Lowerer
     void requireOpenErrVstr();
     void requireCloseErr();
     void requirePrintlnChErr();
+    void requireErrI32ToI64();
     void requireLineInputChErr();
     void requireEofCh();
     void requireStrRetainMaybe();

@@ -768,6 +768,11 @@ std::vector<RuntimeDescriptor> buildRegistry()
         {Kind::I32, Kind::Str},
         &DirectHandler<&rt_println_ch_err, int32_t, int32_t, ViperString *>::invoke,
         manual());
+    add("rt_err_i32_to_i64",
+        Kind::I64,
+        {Kind::I32},
+        &DirectHandler<&rt_err_i32_to_i64, int64_t, int32_t>::invoke,
+        manual());
     add("rt_line_input_ch_err",
         Kind::I32,
         {Kind::I32, Kind::Ptr},
