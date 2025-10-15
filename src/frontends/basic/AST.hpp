@@ -671,6 +671,9 @@ struct CaseArm
     /// @brief Literal labels matched by the arm.
     std::vector<int64_t> labels;
 
+    /// @brief String literal labels matched by the arm when the selector is a string.
+    std::vector<std::string> str_labels;
+
     /// @brief Inclusive integer ranges matched by the arm.
     std::vector<std::pair<int64_t, int64_t>> ranges;
 
