@@ -488,6 +488,11 @@ std::vector<RuntimeDescriptor> buildRegistry()
                  RtSig::Concat,
                  &DirectHandler<&rt_concat, rt_string, rt_string, rt_string>::invoke,
                  feature(RuntimeFeature::Concat));
+    add("rt_csv_quote_alloc",
+        Kind::Str,
+        {Kind::Str},
+        &DirectHandler<&rt_csv_quote_alloc, rt_string, rt_string>::invoke,
+        feature(RuntimeFeature::CsvQuote));
     addGenerated("rt_input_line",
                  RtSig::InputLine,
                  &DirectHandler<&rt_input_line, rt_string>::invoke,

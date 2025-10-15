@@ -17,6 +17,7 @@ TOKEN(Identifier, "ident")
 
 // Keywords -----------------------------------------------------------------
 TOKEN(KeywordPrint, "PRINT")
+TOKEN(KeywordWrite, "WRITE")
 TOKEN(KeywordLet, "LET")
 TOKEN(KeywordIf, "IF")
 TOKEN(KeywordThen, "THEN")

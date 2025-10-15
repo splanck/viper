@@ -221,7 +221,11 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
             if (!*it)
                 continue;
             ExprType ty = pop();
-            handlePrintChArg(**it, ty);
+            handlePrintChArg(**it, ty, stmt.mode);
+        }
+        if (stmt.mode == PrintChStmt::Mode::Write && stmt.args.size() > 1)
+        {
+            lowerer_.requestHelper(Lowerer::RuntimeFeature::Concat);
         }
         if (stmt.channelExpr)
             pop();
@@ -595,10 +599,14 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
         return ExprType::I64;
     }
 
-    void handlePrintChArg(const Expr &expr, ExprType ty)
+    void handlePrintChArg(const Expr &expr, ExprType ty, PrintChStmt::Mode mode)
     {
         if (ty == ExprType::Str)
+        {
+            if (mode == PrintChStmt::Mode::Write)
+                lowerer_.requestHelper(Lowerer::RuntimeFeature::CsvQuote);
             return;
+        }
         TypeRules::NumericType numericType = lowerer_.classifyNumericType(expr);
         using Feature = Lowerer::RuntimeFeature;
         switch (numericType)

@@ -10,6 +10,7 @@
 #include <locale.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static void rt_format_write(const char *text, char *buffer, size_t capacity)
@@ -73,5 +74,46 @@ void rt_format_f64(double value, char *buffer, size_t capacity)
     const char *decimal_point = info ? info->decimal_point : NULL;
     if (decimal_point)
         rt_format_normalize_decimal(buffer, decimal_point);
+}
+
+rt_string rt_csv_quote_alloc(rt_string value)
+{
+    const char *data = "";
+    size_t len = 0;
+    if (value)
+    {
+        data = rt_string_cstr(value);
+        len = (size_t)rt_len(value);
+    }
+
+    size_t extra = 0;
+    for (size_t i = 0; i < len; ++i)
+    {
+        if (data[i] == '"')
+            ++extra;
+    }
+
+    size_t total = len + extra + 2; // leading and trailing quotes
+    char *buffer = (char *)malloc(total + 1);
+    if (!buffer)
+        rt_trap("rt_csv_quote_alloc: out of memory");
+
+    size_t pos = 0;
+    buffer[pos++] = '"';
+    for (size_t i = 0; i < len; ++i)
+    {
+        char ch = data[i];
+        buffer[pos++] = ch;
+        if (ch == '"')
+        {
+            buffer[pos++] = '"';
+        }
+    }
+    buffer[pos++] = '"';
+    buffer[pos] = '\0';
+
+    rt_string result = rt_string_from_bytes(buffer, total);
+    free(buffer);
+    return result;
 }
 
