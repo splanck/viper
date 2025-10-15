@@ -746,9 +746,6 @@ void Lowerer::lowerSelectCase(const SelectCaseStmt &stmt)
         armIdx[i] = startIdx + i;
     size_t endIdx = startIdx + stmt.arms.size() + (hasCaseElse ? 1 : 0) + (hasRanges ? 1 : 0);
 
-    BasicBlock *endBlk = &func->blocks[endIdx];
-    BasicBlock *caseElseBlk = hasCaseElse ? &func->blocks[*elseIdx] : nullptr;
-
     struct RangeCheck
     {
         int32_t lo;
@@ -767,7 +764,73 @@ void Lowerer::lowerSelectCase(const SelectCaseStmt &stmt)
         }
     }
 
-    size_t rangeBlockIdx = curIdx;
+    struct RelCheck
+    {
+        const CaseArm::CaseRel *rel;
+        size_t armIndex;
+    };
+    std::vector<RelCheck> relChecks;
+    for (size_t i = 0; i < stmt.arms.size(); ++i)
+    {
+        for (const auto &rel : stmt.arms[i].rels)
+            relChecks.push_back(RelCheck{&rel, i});
+    }
+
+    size_t afterRelIdx = curIdx;
+    if (!relChecks.empty())
+    {
+        size_t checkIdx = curIdx;
+        for (const auto &check : relChecks)
+        {
+            func = ctx.function();
+            BasicBlock *checkBlk = &func->blocks[checkIdx];
+            std::string label = blockNamer ? blockNamer->generic("select_rel") : mangler.block("select_rel");
+            builder->addBlock(*func, label);
+            func = ctx.function();
+            size_t nextIdx = func->blocks.size() - 1;
+            checkBlk = &func->blocks[checkIdx];
+            BasicBlock *trueTarget = &func->blocks[armIdx[check.armIndex]];
+            if (trueTarget->label.empty())
+                trueTarget->label = nextFallbackBlockLabel();
+            BasicBlock *nextBlk = &func->blocks[nextIdx];
+            if (nextBlk->label.empty())
+                nextBlk->label = nextFallbackBlockLabel();
+            ctx.setCurrent(checkBlk);
+            curLoc = stmt.arms[check.armIndex].range.begin;
+            Opcode cmpOp = Opcode::ICmpEq;
+            switch (check.rel->op)
+            {
+                case CaseArm::CaseRel::Op::LT:
+                    cmpOp = Opcode::SCmpLT;
+                    break;
+                case CaseArm::CaseRel::Op::LE:
+                    cmpOp = Opcode::SCmpLE;
+                    break;
+                case CaseArm::CaseRel::Op::EQ:
+                    cmpOp = Opcode::ICmpEq;
+                    break;
+                case CaseArm::CaseRel::Op::GE:
+                    cmpOp = Opcode::SCmpGE;
+                    break;
+                case CaseArm::CaseRel::Op::GT:
+                    cmpOp = Opcode::SCmpGT;
+                    break;
+            }
+            Value rhs = Value::constInt(static_cast<long long>(check.rel->rhs));
+            Value cond = emitBinary(cmpOp, ilBoolTy(), selWide, rhs);
+            emitCBr(cond, trueTarget, nextBlk);
+            checkIdx = nextIdx;
+        }
+        afterRelIdx = checkIdx;
+    }
+
+    ctx.setCurrent(&ctx.function()->blocks[afterRelIdx]);
+    current = ctx.current();
+
+    if (!hasRanges)
+        switchIdx = afterRelIdx;
+
+    size_t rangeBlockIdx = afterRelIdx;
     for (size_t idx = 0; idx < rangeChecks.size(); ++idx)
     {
         func = ctx.function();
@@ -816,6 +879,10 @@ void Lowerer::lowerSelectCase(const SelectCaseStmt &stmt)
         ctx.setCurrent(&ctx.function()->blocks[switchIdx]);
         current = ctx.current();
     }
+
+    func = ctx.function();
+    BasicBlock *caseElseBlk = hasCaseElse ? &func->blocks[*elseIdx] : nullptr;
+    BasicBlock *endBlk = &func->blocks[endIdx];
 
     std::vector<std::pair<int32_t, BasicBlock *>> caseTargets;
     size_t labelCount = 0;
