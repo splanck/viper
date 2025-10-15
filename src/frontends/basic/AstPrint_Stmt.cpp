@@ -475,6 +475,14 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         printer.os << ')';
     }
 
+    void visit(const InputChStmt &stmt) override
+    {
+        printer.os << "(INPUT#";
+        style.writeChannelPrefix();
+        printer.os << stmt.channel;
+        printer.os << " target=" << stmt.target.name << ')';
+    }
+
     void visit(const LineInputChStmt &stmt) override
     {
         printer.os << "(LINE-INPUT#";

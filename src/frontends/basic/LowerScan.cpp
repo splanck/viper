@@ -466,6 +466,25 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
         inputVarNames_.clear();
     }
 
+    void before(const InputChStmt &)
+    {
+        lowerer_.requireLineInputChErr();
+        lowerer_.requestHelper(Lowerer::RuntimeFeature::SplitFields);
+        lowerer_.requireStrReleaseMaybe();
+    }
+
+    void after(const InputChStmt &stmt)
+    {
+        const auto &name = stmt.target.name;
+        if (name.empty())
+            return;
+
+        Type astTy = inferAstTypeFromName(name);
+        const auto *info = lowerer_.findSymbol(name);
+        if (!info || !info->hasType)
+            lowerer_.setSymbolType(name, astTy);
+    }
+
     void before(const LineInputChStmt &)
     {
         lowerer_.requireLineInputChErr();

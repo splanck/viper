@@ -139,6 +139,8 @@ class SemanticAnalyzer
     void analyzeRandomize(const RandomizeStmt &s);
     /// @brief Analyze INPUT statement @p s.
     void analyzeInput(InputStmt &s);
+    /// @brief Analyze INPUT # statement @p s.
+    void analyzeInputCh(InputChStmt &s);
     /// @brief Analyze LINE INPUT # statement @p s.
     void analyzeLineInputCh(LineInputChStmt &s);
     /// @brief Analyze DIM statement @p s.

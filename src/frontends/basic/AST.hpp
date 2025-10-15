@@ -51,6 +51,7 @@ struct EndStmt;
 struct OpenStmt;
 struct CloseStmt;
 struct InputStmt;
+struct InputChStmt;
 struct LineInputChStmt;
 struct ReturnStmt;
 struct OnErrorGoto;
@@ -126,6 +127,7 @@ struct StmtVisitor
     virtual void visit(const Resume &) = 0;
     virtual void visit(const EndStmt &) = 0;
     virtual void visit(const InputStmt &) = 0;
+    virtual void visit(const InputChStmt &) = 0;
     virtual void visit(const LineInputChStmt &) = 0;
     virtual void visit(const ReturnStmt &) = 0;
     virtual void visit(const FunctionDecl &) = 0;
@@ -163,6 +165,7 @@ struct MutStmtVisitor
     virtual void visit(Resume &) = 0;
     virtual void visit(EndStmt &) = 0;
     virtual void visit(InputStmt &) = 0;
+    virtual void visit(InputChStmt &) = 0;
     virtual void visit(LineInputChStmt &) = 0;
     virtual void visit(ReturnStmt &) = 0;
     virtual void visit(FunctionDecl &) = 0;
@@ -428,6 +431,7 @@ struct Stmt
         Resume,
         End,
         Input,
+        InputCh,
         LineInputCh,
         Return,
         FunctionDecl,
@@ -892,6 +896,16 @@ struct EndStmt : Stmt
     void accept(MutStmtVisitor &visitor) override;
 };
 
+/// @brief Reference to a BASIC identifier together with its source location.
+struct NameRef
+{
+    /// Identifier text, including optional type suffix.
+    Identifier name;
+
+    /// Source location where the identifier appeared.
+    il::support::SourceLoc loc;
+};
+
 /// @brief INPUT statement to read from stdin into a variable, optionally
 /// displaying a string literal prompt.
 struct InputStmt : Stmt
@@ -902,6 +916,21 @@ struct InputStmt : Stmt
 
     /// Target variable names (each may end with '$').
     std::vector<std::string> vars;
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief INPUT # statement reading a field from a file channel.
+struct InputChStmt : Stmt
+{
+    [[nodiscard]] Kind stmtKind() const override { return Kind::InputCh; }
+
+    /// Numeric file channel identifier following '#'.
+    int channel = 0;
+
+    /// Variable receiving the parsed field.
+    NameRef target;
+
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
 };

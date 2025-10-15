@@ -58,6 +58,7 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
     void visit(OnErrorGoto &stmt) override { analyzer_.analyzeOnErrorGoto(stmt); }
     void visit(EndStmt &stmt) override { analyzer_.analyzeEnd(stmt); }
     void visit(InputStmt &stmt) override { analyzer_.analyzeInput(stmt); }
+    void visit(InputChStmt &stmt) override { analyzer_.analyzeInputCh(stmt); }
     void visit(LineInputChStmt &stmt) override { analyzer_.analyzeLineInputCh(stmt); }
     void visit(Resume &stmt) override { analyzer_.analyzeResume(stmt); }
     void visit(ReturnStmt &stmt) override { analyzer_.analyzeReturn(stmt); }
@@ -1242,6 +1243,33 @@ void SemanticAnalyzer::analyzeInput(InputStmt &inp)
                     static_cast<uint32_t>(name.size()),
                     std::move(msg));
         }
+    }
+}
+
+void SemanticAnalyzer::analyzeInputCh(InputChStmt &inp)
+{
+    auto &name = inp.target.name;
+    if (name.empty())
+        return;
+
+    resolveAndTrackSymbol(name, SymbolKind::InputTarget);
+    bool loopVarMutation = false;
+    for (auto it = forStack_.rbegin(); it != forStack_.rend(); ++it)
+    {
+        if (*it == name)
+        {
+            loopVarMutation = true;
+            break;
+        }
+    }
+    if (loopVarMutation)
+    {
+        std::string msg = "cannot assign to loop variable '" + name + "' inside FOR";
+        de.emit(il::support::Severity::Error,
+                "B1010",
+                inp.loc,
+                static_cast<uint32_t>(name.size()),
+                std::move(msg));
     }
 }
 
