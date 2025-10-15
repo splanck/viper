@@ -7,6 +7,7 @@
 #include "vm/VM.hpp"
 #include "vm/Marshal.hpp"
 #include "vm/RuntimeBridge.hpp"
+#include "vm/control_flow.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Global.hpp"
@@ -14,8 +15,12 @@
 
 #include <cassert>
 #include <clocale>
+#include <cctype>
+#include <cstdlib>
+#include <algorithm>
 #include <sstream>
 #include <utility>
+#include <string>
 
 using namespace il::core;
 
@@ -55,6 +60,28 @@ struct NumericLocaleInitializer
 VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript *script)
     : mod(m), tracer(tc), debug(std::move(dbg)), script(script), maxSteps(ms)
 {
+    const char *switchModeEnv = std::getenv("VIPER_SWITCH_MODE");
+    viper::vm::SwitchMode mode = viper::vm::SwitchMode::Auto;
+    if (switchModeEnv != nullptr)
+    {
+        std::string rawMode{switchModeEnv};
+        std::transform(rawMode.begin(), rawMode.end(), rawMode.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+
+        if (rawMode == "dense")
+            mode = viper::vm::SwitchMode::Dense;
+        else if (rawMode == "sorted")
+            mode = viper::vm::SwitchMode::Sorted;
+        else if (rawMode == "hashed")
+            mode = viper::vm::SwitchMode::Hashed;
+        else if (rawMode == "linear")
+            mode = viper::vm::SwitchMode::Linear;
+        else
+            mode = viper::vm::SwitchMode::Auto;
+    }
+    viper::vm::setSwitchMode(mode);
+
     debug.setSourceManager(tc.sm);
     // Cache function pointers and constant strings for fast lookup during
     // execution and for resolving runtime bridge requests such as ConstStr.

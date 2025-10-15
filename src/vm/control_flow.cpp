@@ -39,6 +39,24 @@
 
 using namespace il::core;
 
+namespace
+{
+static viper::vm::SwitchMode g_switchMode = viper::vm::SwitchMode::Auto;
+} // namespace
+
+namespace viper::vm
+{
+SwitchMode getSwitchMode()
+{
+    return g_switchMode;
+}
+
+void setSwitchMode(SwitchMode mode)
+{
+    g_switchMode = mode;
+}
+} // namespace viper::vm
+
 namespace il::vm::detail
 {
 namespace
@@ -110,6 +128,7 @@ using viper::vm::HashedCases;
 using viper::vm::SortedCases;
 using viper::vm::SwitchCache;
 using viper::vm::SwitchCacheEntry;
+using viper::vm::SwitchMode;
 
 struct SwitchMeta
 {
@@ -252,21 +271,52 @@ static SwitchCacheEntry &getOrBuildSwitchCache(SwitchCache &cache, const Instr &
     if (it != cache.entries.end())
         return it->second;
 
-    SwitchCacheEntry::Kind kind = chooseBackend(meta);
     SwitchCacheEntry entry{};
     entry.defaultIdx = meta.defaultIdx;
-    entry.kind = kind;
-    switch (kind)
+    const SwitchMode mode = viper::vm::getSwitchMode();
+    if (mode != SwitchMode::Auto)
     {
-        case SwitchCacheEntry::Dense:
-            entry.backend = buildDense(meta);
-            break;
-        case SwitchCacheEntry::Sorted:
-            entry.backend = buildSorted(meta);
-            break;
-        case SwitchCacheEntry::Hashed:
-            entry.backend = buildHashed(meta);
-            break;
+        switch (mode)
+        {
+            case SwitchMode::Dense:
+                entry.kind = SwitchCacheEntry::Dense;
+                entry.backend = buildDense(meta);
+                break;
+            case SwitchMode::Sorted:
+                entry.kind = SwitchCacheEntry::Sorted;
+                entry.backend = buildSorted(meta);
+                break;
+            case SwitchMode::Hashed:
+                entry.kind = SwitchCacheEntry::Hashed;
+                entry.backend = buildHashed(meta);
+                break;
+            case SwitchMode::Linear:
+                entry.kind = SwitchCacheEntry::Linear;
+                entry.backend = std::monostate{};
+                break;
+            case SwitchMode::Auto:
+                break;
+        }
+    }
+    else
+    {
+        SwitchCacheEntry::Kind kind = chooseBackend(meta);
+        entry.kind = kind;
+        switch (kind)
+        {
+            case SwitchCacheEntry::Dense:
+                entry.backend = buildDense(meta);
+                break;
+            case SwitchCacheEntry::Sorted:
+                entry.backend = buildSorted(meta);
+                break;
+            case SwitchCacheEntry::Hashed:
+                entry.backend = buildHashed(meta);
+                break;
+            case SwitchCacheEntry::Linear:
+                entry.backend = std::monostate{};
+                break;
+        }
     }
 
     auto [pos, _] = cache.entries.emplace(meta.key, std::move(entry));
@@ -421,7 +471,10 @@ VM::ExecResult OpHandlers::handleSwitchI32(VM &vm,
 
     int32_t idx = entry.defaultIdx;
 
+    const bool forceLinear = (entry.kind == SwitchCacheEntry::Linear);
+
 #if defined(VIPER_VM_DEBUG_SWITCH_LINEAR)
+    (void)forceLinear;
     const size_t caseCount = switchCaseCount(I);
     for (size_t caseIdx = 0; caseIdx < caseCount; ++caseIdx)
     {
@@ -434,17 +487,36 @@ VM::ExecResult OpHandlers::handleSwitchI32(VM &vm,
         }
     }
 #else
-    std::visit(
-        [&](auto &backend) {
-            using T = std::decay_t<decltype(backend)>;
-            if constexpr (std::is_same_v<T, DenseJumpTable>)
-                idx = lookupDense(backend, sel, entry.defaultIdx);
-            else if constexpr (std::is_same_v<T, SortedCases>)
-                idx = lookupSorted(backend, sel, entry.defaultIdx);
-            else
-                idx = lookupHashed(backend, sel, entry.defaultIdx);
-        },
-        entry.backend);
+    if (forceLinear)
+    {
+        const size_t caseCount = switchCaseCount(I);
+        for (size_t caseIdx = 0; caseIdx < caseCount; ++caseIdx)
+        {
+            const Value &caseValue = switchCaseValue(I, caseIdx);
+            const int32_t caseSel = static_cast<int32_t>(caseValue.i64);
+            if (caseSel == sel)
+            {
+                idx = static_cast<int32_t>(caseIdx + 1);
+                break;
+            }
+        }
+    }
+    else
+    {
+        std::visit(
+            [&](auto &backend) {
+                using T = std::decay_t<decltype(backend)>;
+                if constexpr (std::is_same_v<T, DenseJumpTable>)
+                    idx = lookupDense(backend, sel, entry.defaultIdx);
+                else if constexpr (std::is_same_v<T, SortedCases>)
+                    idx = lookupSorted(backend, sel, entry.defaultIdx);
+                else if constexpr (std::is_same_v<T, HashedCases>)
+                    idx = lookupHashed(backend, sel, entry.defaultIdx);
+                else
+                    idx = entry.defaultIdx;
+            },
+            entry.backend);
+    }
 #endif
 
     if (idx < 0)
