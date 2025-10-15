@@ -793,6 +793,11 @@ std::vector<RuntimeDescriptor> buildRegistry()
         {Kind::I32},
         &DirectHandler<&rt_eof_ch, int32_t, int32_t>::invoke,
         manual());
+    add("rt_lof_ch",
+        Kind::I64,
+        {Kind::I32},
+        &DirectHandler<&rt_lof_ch, int64_t, int32_t>::invoke,
+        manual());
     add("rt_str_empty",
         Kind::Str,
         {},

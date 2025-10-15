@@ -94,5 +94,10 @@ int main()
         assert(tok.kind == TokenKind::KeywordEof);
     }
 
+    {
+        Token tok = nextToken("LOF");
+        assert(tok.kind == TokenKind::KeywordLof);
+    }
+
     return 0;
 }
