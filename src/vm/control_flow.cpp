@@ -148,6 +148,34 @@ static SwitchMeta collectSwitchMeta(const Instr &in)
     return meta;
 }
 
+/// @brief Select the most appropriate switch cache backend for @p M.
+///
+/// Dense tables perform best when the case value distribution is tightly
+/// packed, hashed dispatch excels when the key set is sparse, and sorted
+/// searches are the general-purpose fallback.  The heuristic balances range
+/// coverage against the number of explicit cases to maintain predictable
+/// performance across workloads.
+///
+/// @param M Metadata describing the switch instruction being cached.
+/// @return Preferred backend kind based on case density and range size.
+static SwitchCacheEntry::Kind chooseBackend(const SwitchMeta &M)
+{
+    if (M.values.empty())
+        return SwitchCacheEntry::Sorted;
+
+    const auto [minIt, maxIt] = std::minmax_element(M.values.begin(), M.values.end());
+    const int64_t minv = *minIt;
+    const int64_t maxv = *maxIt;
+    const int64_t range = maxv - minv + 1;
+    const double density = static_cast<double>(M.values.size()) / static_cast<double>(range);
+
+    if (range <= 4096 && density >= 0.60)
+        return SwitchCacheEntry::Dense;
+    if (M.values.size() >= 64 && density < 0.15)
+        return SwitchCacheEntry::Hashed;
+    return SwitchCacheEntry::Sorted;
+}
+
 SwitchCacheEntry buildSwitchCacheEntry(const Instr &in)
 {
     SwitchCacheEntry entry{};
@@ -172,18 +200,22 @@ SwitchCacheEntry buildSwitchCacheEntry(const Instr &in)
             return lhs.first < rhs.first;
         return lhs.second < rhs.second;
     };
-    const auto [minIt, maxIt] = std::minmax_element(cases.begin(), cases.end(), cmp);
-    const int32_t minValue = minIt->first;
-    const int32_t maxValue = maxIt->first;
-    const int64_t range = static_cast<int64_t>(maxValue) - static_cast<int64_t>(minValue) + 1;
+    const auto backendKind = chooseBackend(meta);
 
-    if (range > 0 && range <= static_cast<int64_t>(cases.size()) * 2)
+    if (backendKind == SwitchCacheEntry::Dense)
     {
+        const auto [minIt, maxIt] = std::minmax_element(meta.values.begin(), meta.values.end());
+        const int32_t minValue = *minIt;
+        const int32_t maxValue = *maxIt;
+        const int64_t range = static_cast<int64_t>(maxValue) - static_cast<int64_t>(minValue) + 1;
+
         DenseJumpTable table{};
         table.base = minValue;
         table.targets.assign(static_cast<size_t>(range), -1);
-        for (const auto &[value, targetIdx] : cases)
+        for (size_t idx = 0; idx < meta.values.size(); ++idx)
         {
+            const auto value = meta.values[idx];
+            const auto targetIdx = meta.succIdx[idx];
             const size_t offset = static_cast<size_t>(static_cast<int64_t>(value) - minValue);
             if (table.targets[offset] < 0)
                 table.targets[offset] = targetIdx;
@@ -193,28 +225,28 @@ SwitchCacheEntry buildSwitchCacheEntry(const Instr &in)
         return entry;
     }
 
-    if (cases.size() <= 8)
+    if (backendKind == SwitchCacheEntry::Hashed)
     {
-        std::sort(cases.begin(), cases.end(), cmp);
-        SortedCases sorted{};
-        sorted.keys.reserve(cases.size());
-        sorted.targetIdx.reserve(cases.size());
+        HashedCases hashed{};
+        hashed.map.reserve(cases.size());
         for (const auto &[value, targetIdx] : cases)
-        {
-            sorted.keys.push_back(value);
-            sorted.targetIdx.push_back(targetIdx);
-        }
-        entry.kind = SwitchCacheEntry::Sorted;
-        entry.backend = std::move(sorted);
+            hashed.map.emplace(value, targetIdx);
+        entry.kind = SwitchCacheEntry::Hashed;
+        entry.backend = std::move(hashed);
         return entry;
     }
 
-    HashedCases hashed{};
-    hashed.map.reserve(cases.size());
+    std::sort(cases.begin(), cases.end(), cmp);
+    SortedCases sorted{};
+    sorted.keys.reserve(cases.size());
+    sorted.targetIdx.reserve(cases.size());
     for (const auto &[value, targetIdx] : cases)
-        hashed.map.emplace(value, targetIdx);
-    entry.kind = SwitchCacheEntry::Hashed;
-    entry.backend = std::move(hashed);
+    {
+        sorted.keys.push_back(value);
+        sorted.targetIdx.push_back(targetIdx);
+    }
+    entry.kind = SwitchCacheEntry::Sorted;
+    entry.backend = std::move(sorted);
     return entry;
 }
 
