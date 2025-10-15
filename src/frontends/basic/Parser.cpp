@@ -29,7 +29,7 @@ Parser::Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *emitte
     : lexer_(src, file_id), emitter_(emitter)
 {
     tokens_.push_back(lexer_.next());
-    static constexpr std::array<std::pair<TokenKind, StmtHandler>, 28> kStatementHandlers = {{
+    static constexpr std::array<std::pair<TokenKind, StmtHandler>, 29> kStatementHandlers = {{
         {TokenKind::KeywordPrint, {&Parser::parsePrint, nullptr}},
         {TokenKind::KeywordWrite, {&Parser::parseWrite, nullptr}},
         {TokenKind::KeywordLet, {&Parser::parseLet, nullptr}},
@@ -44,6 +44,7 @@ Parser::Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *emitte
         {TokenKind::KeywordGosub, {&Parser::parseGosub, nullptr}},
         {TokenKind::KeywordOpen, {&Parser::parseOpen, nullptr}},
         {TokenKind::KeywordClose, {&Parser::parseClose, nullptr}},
+        {TokenKind::KeywordSeek, {&Parser::parseSeek, nullptr}},
         {TokenKind::KeywordCls, {&Parser::parseCls, nullptr}},
         {TokenKind::KeywordColor, {&Parser::parseColor, nullptr}},
         {TokenKind::KeywordOn, {&Parser::parseOnErrorGoto, nullptr}},

@@ -55,6 +55,7 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
     void visit(GosubStmt &stmt) override { analyzer_.analyzeGosub(stmt); }
     void visit(OpenStmt &stmt) override { analyzer_.analyzeOpen(stmt); }
     void visit(CloseStmt &stmt) override { analyzer_.analyzeClose(stmt); }
+    void visit(SeekStmt &stmt) override { analyzer_.analyzeSeek(stmt); }
     void visit(OnErrorGoto &stmt) override { analyzer_.analyzeOnErrorGoto(stmt); }
     void visit(EndStmt &stmt) override { analyzer_.analyzeEnd(stmt); }
     void visit(InputStmt &stmt) override { analyzer_.analyzeInput(stmt); }
@@ -413,6 +414,33 @@ void SemanticAnalyzer::analyzeClose(CloseStmt &stmt)
             if (activeProcScope_)
                 activeProcScope_->noteChannelMutation(channel, true);
             openChannels_.erase(channel);
+        }
+    }
+}
+
+void SemanticAnalyzer::analyzeSeek(SeekStmt &stmt)
+{
+    if (stmt.channelExpr)
+    {
+        Type channelTy = visitExpr(*stmt.channelExpr);
+        if (channelTy != Type::Unknown && channelTy != Type::Int)
+        {
+            std::string msg = "SEEK channel expression must be INTEGER, got ";
+            msg += semanticTypeName(channelTy);
+            msg += '.';
+            de.emit(il::support::Severity::Error, "B2001", stmt.channelExpr->loc, 1, std::move(msg));
+        }
+    }
+
+    if (stmt.positionExpr)
+    {
+        Type posTy = visitExpr(*stmt.positionExpr);
+        if (posTy != Type::Unknown && posTy != Type::Int)
+        {
+            std::string msg = "SEEK position expression must be INTEGER, got ";
+            msg += semanticTypeName(posTy);
+            msg += '.';
+            de.emit(il::support::Severity::Error, "B2001", stmt.positionExpr->loc, 1, std::move(msg));
         }
     }
 }

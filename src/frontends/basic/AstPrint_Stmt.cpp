@@ -418,6 +418,30 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         printer.os << ')';
     }
 
+    void visit(const SeekStmt &stmt) override
+    {
+        printer.os << "(SEEK";
+        style.writeChannelPrefix();
+        if (stmt.channelExpr)
+        {
+            AstPrinter::printExpr(*stmt.channelExpr, printer, style);
+        }
+        else
+        {
+            style.writeNull();
+        }
+        printer.os << " pos=";
+        if (stmt.positionExpr)
+        {
+            AstPrinter::printExpr(*stmt.positionExpr, printer, style);
+        }
+        else
+        {
+            style.writeNull();
+        }
+        printer.os << ')';
+    }
+
     void visit(const OnErrorGoto &stmt) override
     {
         printer.os << "(ON-ERROR GOTO ";

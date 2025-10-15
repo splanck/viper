@@ -1192,6 +1192,21 @@ StmtPtr Parser::parseClose()
     return stmt;
 }
 
+/// @brief Parse a SEEK statement repositioning a file channel.
+/// @return SeekStmt describing channel and target position.
+StmtPtr Parser::parseSeek()
+{
+    auto loc = peek().loc;
+    consume(); // SEEK
+    auto stmt = std::make_unique<SeekStmt>();
+    stmt->loc = loc;
+    expect(TokenKind::Hash);
+    stmt->channelExpr = parseExpression();
+    expect(TokenKind::Comma);
+    stmt->positionExpr = parseExpression();
+    return stmt;
+}
+
 /// @brief Parse an ON ERROR GOTO statement that configures error handling.
 /// @return OnErrorGoto node describing the handler target or reset.
 StmtPtr Parser::parseOnErrorGoto()

@@ -150,6 +150,10 @@ class Parser
     /// @return CLOSE statement node.
     StmtPtr parseClose();
 
+    /// @brief Parse a SEEK statement repositioning a channel.
+    /// @return SEEK statement node.
+    StmtPtr parseSeek();
+
     /// @brief Parse an ON ERROR GOTO statement.
     /// @return ON ERROR statement node.
     StmtPtr parseOnErrorGoto();

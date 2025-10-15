@@ -1029,6 +1029,56 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
         widened = ensureI64(std::move(widened), c.loc);
         return widened;
     }
+    if (c.builtin == BuiltinCallExpr::Builtin::Loc)
+    {
+        requireLocCh();
+        if (c.args.empty() || !c.args[0])
+            return {Value::constInt(0), Type(Type::Kind::I64)};
+
+        RVal channel = lowerExpr(*c.args[0]);
+        channel = normalizeChannelToI32(std::move(channel), c.loc);
+
+        curLoc = c.loc;
+        Value raw = emitCallRet(Type(Type::Kind::I64), "rt_loc_ch", {channel.value});
+
+        Value isError = emitBinary(Opcode::SCmpLT, ilBoolTy(), raw, Value::constInt(0));
+
+        ProcedureContext &ctx = context();
+        Function *func = ctx.function();
+        BasicBlock *origin = ctx.current();
+        if (func && origin)
+        {
+            std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
+            BlockNamer *blockNamer = ctx.blockNames().namer();
+            std::string failLbl = blockNamer ? blockNamer->generic("loc_err")
+                                             : mangler.block("loc_err");
+            std::string contLbl = blockNamer ? blockNamer->generic("loc_cont")
+                                             : mangler.block("loc_cont");
+
+            std::size_t failIdx = func->blocks.size();
+            builder->addBlock(*func, failLbl);
+            std::size_t contIdx = func->blocks.size();
+            builder->addBlock(*func, contLbl);
+
+            BasicBlock *failBlk = &func->blocks[failIdx];
+            BasicBlock *contBlk = &func->blocks[contIdx];
+
+            ctx.setCurrent(&func->blocks[originIdx]);
+            curLoc = c.loc;
+            emitCBr(isError, failBlk, contBlk);
+
+            ctx.setCurrent(failBlk);
+            curLoc = c.loc;
+            Value negCode = emitBinary(Opcode::Sub, Type(Type::Kind::I64), Value::constInt(0), raw);
+            Value err32 = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), negCode);
+            emitTrapFromErr(err32);
+
+            ctx.setCurrent(contBlk);
+        }
+
+        curLoc = c.loc;
+        return {raw, Type(Type::Kind::I64)};
+    }
 
     const auto &rule = getBuiltinLoweringRule(c.builtin);
 

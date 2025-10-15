@@ -247,6 +247,12 @@ void Lowerer::requireCloseErr()
     setManualHelperRequired(ManualRuntimeHelper::CloseErr);
 }
 
+/// @brief Request the helper that repositions a channel with error reporting.
+void Lowerer::requireSeekChErr()
+{
+    setManualHelperRequired(ManualRuntimeHelper::SeekChErr);
+}
+
 /// @brief Request the helper that prints a character with error handling.
 void Lowerer::requirePrintlnChErr()
 {
@@ -269,6 +275,12 @@ void Lowerer::requireEofCh()
 void Lowerer::requireLofCh()
 {
     setManualHelperRequired(ManualRuntimeHelper::LofCh);
+}
+
+/// @brief Request the helper that reports the current position of a channel.
+void Lowerer::requireLocCh()
+{
+    setManualHelperRequired(ManualRuntimeHelper::LocCh);
 }
 
 /// @brief Request the helper that conditionally retains a string handle.
@@ -325,10 +337,12 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         {"rt_arr_oob_panic", ManualRuntimeHelper::ArrayOobPanic, &Lowerer::requireArrayOobPanic},
         {"rt_open_err_vstr", ManualRuntimeHelper::OpenErrVstr, &Lowerer::requireOpenErrVstr},
         {"rt_close_err", ManualRuntimeHelper::CloseErr, &Lowerer::requireCloseErr},
+        {"rt_seek_ch_err", ManualRuntimeHelper::SeekChErr, &Lowerer::requireSeekChErr},
         {"rt_println_ch_err", ManualRuntimeHelper::PrintlnChErr, &Lowerer::requirePrintlnChErr},
         {"rt_line_input_ch_err", ManualRuntimeHelper::LineInputChErr, &Lowerer::requireLineInputChErr},
         {"rt_eof_ch", ManualRuntimeHelper::EofCh, &Lowerer::requireEofCh},
         {"rt_lof_ch", ManualRuntimeHelper::LofCh, &Lowerer::requireLofCh},
+        {"rt_loc_ch", ManualRuntimeHelper::LocCh, &Lowerer::requireLocCh},
         {"rt_str_retain_maybe", ManualRuntimeHelper::StrRetainMaybe, &Lowerer::requireStrRetainMaybe},
         {"rt_str_release_maybe", ManualRuntimeHelper::StrReleaseMaybe, &Lowerer::requireStrReleaseMaybe},
     }};

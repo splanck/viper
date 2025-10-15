@@ -430,6 +430,17 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
         discardIf(stmt.channelExpr != nullptr);
     }
 
+    void before(const SeekStmt &)
+    {
+        lowerer_.requireSeekChErr();
+    }
+
+    void after(const SeekStmt &stmt)
+    {
+        discardIf(stmt.positionExpr != nullptr);
+        discardIf(stmt.channelExpr != nullptr);
+    }
+
     void before(const InputStmt &stmt)
     {
         lowerer_.requestHelper(Lowerer::RuntimeFeature::InputLine);
