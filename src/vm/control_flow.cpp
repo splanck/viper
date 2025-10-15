@@ -220,54 +220,37 @@ static SortedCases buildSorted(const SwitchMeta &M)
     return S;
 }
 
-SwitchCacheEntry buildSwitchCacheEntry(const Instr &in)
+static SwitchCacheEntry &getOrBuildSwitchCache(SwitchCache &cache, const Instr &in)
 {
-    SwitchCacheEntry entry{};
     SwitchMeta meta = collectSwitchMeta(in);
+    auto it = cache.entries.find(meta.key);
+    if (it != cache.entries.end())
+        return it->second;
+
+    SwitchCacheEntry::Kind kind = chooseBackend(meta);
+    SwitchCacheEntry entry{};
     entry.defaultIdx = meta.defaultIdx;
-
-    if (meta.values.empty())
+    entry.kind = kind;
+    switch (kind)
     {
-        SortedCases sorted{};
-        entry.backend = std::move(sorted);
-        entry.kind = SwitchCacheEntry::Sorted;
-        return entry;
+        case SwitchCacheEntry::Dense:
+            entry.backend = buildDense(meta);
+            break;
+        case SwitchCacheEntry::Sorted:
+            entry.backend = buildSorted(meta);
+            break;
+        case SwitchCacheEntry::Hashed:
+            entry.backend = buildHashed(meta);
+            break;
     }
 
-    const auto backendKind = chooseBackend(meta);
-
-    if (backendKind == SwitchCacheEntry::Dense)
-    {
-        DenseJumpTable table = buildDense(meta);
-        entry.kind = SwitchCacheEntry::Dense;
-        entry.backend = std::move(table);
-        return entry;
-    }
-
-    if (backendKind == SwitchCacheEntry::Hashed)
-    {
-        HashedCases hashed = buildHashed(meta);
-        entry.kind = SwitchCacheEntry::Hashed;
-        entry.backend = std::move(hashed);
-        return entry;
-    }
-
-    SortedCases sorted = buildSorted(meta);
-    entry.kind = SwitchCacheEntry::Sorted;
-    entry.backend = std::move(sorted);
-    return entry;
+    auto [pos, _] = cache.entries.emplace(meta.key, std::move(entry));
+    return pos->second;
 }
 
 const SwitchCacheEntry &lookupSwitchCacheEntry(SwitchCache &cache, const Instr &in)
 {
-    const void *key = static_cast<const void *>(&in);
-    auto it = cache.entries.find(key);
-    if (it != cache.entries.end())
-        return it->second;
-
-    SwitchCacheEntry entry = buildSwitchCacheEntry(in);
-    auto [insertedIt, _] = cache.entries.emplace(key, std::move(entry));
-    return insertedIt->second;
+    return getOrBuildSwitchCache(cache, in);
 }
 
 int32_t dispatchSwitch(const SwitchCacheEntry &entry, int32_t scrutinee)
