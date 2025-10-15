@@ -59,6 +59,12 @@ std::string opcodeMnemonic(Opcode op)
     return std::string("opcode#") + std::to_string(static_cast<int>(op));
 }
 
+#if defined(VIPER_VM_TRACE)
+constexpr bool kTraceHookEnabled = VIPER_VM_TRACE != 0;
+#else
+constexpr bool kTraceHookEnabled = true;
+#endif
+
 } // namespace
 
 #if VIPER_THREADING_SUPPORTED
@@ -340,8 +346,6 @@ Opcode VM::fetchOpcode(ExecState &st)
         return st.currentInstr->op;
     }
 
-    tracer.onStep(*st.currentInstr, st.fr);
-    ++instrCount;
     return st.currentInstr->op;
 }
 
@@ -386,6 +390,18 @@ bool VM::runLoopSwitch(ExecState &st)
 {
     st.currentInstr = nullptr;
 
+#define TRACE_STEP(INSTR_PTR)                                                                                     \
+    do                                                                                                            \
+    {                                                                                                             \
+        const auto *_traceInstr = (INSTR_PTR);                                                                    \
+        if (_traceInstr)                                                                                          \
+        {                                                                                                         \
+            ++instrCount;                                                                                         \
+            if constexpr (kTraceHookEnabled)                                                                      \
+                tracer.onStep(*_traceInstr, st.fr);                                                               \
+        }                                                                                                         \
+    } while (false)
+
     while (true)
     {
         const Opcode op = fetchOpcode(st);
@@ -397,6 +413,7 @@ bool VM::runLoopSwitch(ExecState &st)
 #define OP_SWITCH(NAME, ...)                                                                                       \
     case Opcode::NAME:                                                                                              \
     {                                                                                                               \
+        TRACE_STEP(st.currentInstr);                                                                                \
         inline_handle_##NAME(st);                                                                                   \
         break;                                                                                                      \
     }
@@ -549,14 +566,12 @@ bool VM::runLoopThreaded(ExecState &st)
             op = fetchNextOpcode();
             if (exitRequested)
                 return st.pendingResult.has_value();
-
-            tracer.onStep(*currentInstr, st.fr);
-            ++instrCount;
             DISPATCH_TO(op);
 
 #define OP_CASE(name, ...)                                                                                   \
     LBL_##name:                                                                                               \
     {                                                                                                         \
+        TRACE_STEP(currentInstr);                                                                             \
         auto execResult = executeOpcode(st.fr, *currentInstr, st.blocks, st.bb, st.ip);                       \
         if (execResult.returned)                                                                              \
         {                                                                                                     \
@@ -575,8 +590,6 @@ bool VM::runLoopThreaded(ExecState &st)
         op = fetchNextOpcode();                                                                               \
         if (exitRequested)                                                                                    \
             return st.pendingResult.has_value();                                                              \
-        tracer.onStep(*currentInstr, st.fr);                                                                  \
-        ++instrCount;                                                                                         \
         DISPATCH_TO(op);                                                                                      \
     }
 
@@ -609,6 +622,8 @@ bool VM::runLoopThreaded(ExecState &st)
     return st.pendingResult.has_value();
 }
 #endif
+
+#undef TRACE_STEP
 
 #define VM_DISPATCH_IMPL(DISPATCH, HANDLER_EXPR) HANDLER_EXPR
 #define VM_DISPATCH(NAME) VM_DISPATCH_IMPL(NAME, &detail::OpHandlers::handle##NAME)
