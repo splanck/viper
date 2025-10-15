@@ -32,6 +32,8 @@ enum class RuntimeFeature : std::size_t
     SplitFields,
     ToInt,
     ToDouble,
+    ParseInt64,
+    ParseDouble,
     CintFromDouble,
     ClngFromDouble,
     CsngFromDouble,

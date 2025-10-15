@@ -49,6 +49,8 @@ constexpr std::array<std::string_view, kRtSigCount> kRtSigSymbolNames = {
     "rt_split_fields",
     "rt_to_int",
     "rt_to_double",
+    "rt_parse_int64",
+    "rt_parse_double",
     "rt_int_to_str",
     "rt_f64_to_str",
     "rt_str_i16_alloc",
@@ -502,6 +504,14 @@ std::vector<RuntimeDescriptor> buildRegistry()
                  RtSig::ToDouble,
                  &DirectHandler<&rt_to_double, double, rt_string>::invoke,
                  feature(RuntimeFeature::ToDouble));
+    addGenerated("rt_parse_int64",
+                 RtSig::ParseInt64,
+                 &DirectHandler<&rt_parse_int64, int32_t, const char *, int64_t *>::invoke,
+                 feature(RuntimeFeature::ParseInt64));
+    addGenerated("rt_parse_double",
+                 RtSig::ParseDouble,
+                 &DirectHandler<&rt_parse_double, int32_t, const char *, double *>::invoke,
+                 feature(RuntimeFeature::ParseDouble));
     addGenerated("rt_int_to_str",
                  RtSig::IntToStr,
                  &DirectHandler<&rt_int_to_str, rt_string, int64_t>::invoke,
