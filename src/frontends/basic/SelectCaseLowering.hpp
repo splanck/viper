@@ -9,6 +9,7 @@
 
 #include "support/source_location.hpp"
 
+#include <cstdint>
 #include <optional>
 #include <vector>
 
@@ -44,15 +45,54 @@ class SelectCaseLowering
         size_t endIdx{};
     };
 
+    struct NumericDispatchState
+    {
+        struct RangeCheck
+        {
+            int32_t lo{};
+            int32_t hi{};
+            size_t armIndex{};
+        };
+
+        struct RelCheck
+        {
+            const CaseArm::CaseRel *rel{};
+            size_t armIndex{};
+        };
+
+        std::vector<RangeCheck> rangeChecks;
+        std::vector<RelCheck> relChecks;
+        size_t afterRelIdx{};
+        size_t switchIdx{};
+    };
+
     Blocks prepareBlocks(const SelectCaseStmt &stmt, bool hasCaseElse, bool needsDispatch);
 
-    void lowerStringArms(const SelectCaseStmt &stmt, const Blocks &blocks, il::core::Value stringSelector);
+    void lowerStringArms(const SelectCaseStmt &stmt,
+                         const Blocks &blocks,
+                         il::core::Value stringSelector);
 
-    size_t lowerNumericDispatch(const SelectCaseStmt &stmt,
-                                const Blocks &blocks,
-                                il::core::Value selWide,
-                                bool hasRanges,
-                                size_t totalRangeCount);
+    void lowerNumericDispatch(const SelectCaseStmt &stmt,
+                              const Blocks &blocks,
+                              il::core::Value selWide,
+                              il::core::Value selector,
+                              bool hasRanges,
+                              size_t totalRangeCount);
+
+    void emitRelationalChecks(const SelectCaseStmt &stmt,
+                              const Blocks &blocks,
+                              il::core::Value selWide,
+                              NumericDispatchState &state);
+
+    void emitRangeChecks(const SelectCaseStmt &stmt,
+                         const Blocks &blocks,
+                         il::core::Value selWide,
+                         NumericDispatchState &state);
+
+    void emitSwitchJumpTable(const SelectCaseStmt &stmt,
+                             const Blocks &blocks,
+                             il::core::Value selector,
+                             NumericDispatchState &state);
 
     void emitArmBody(const std::vector<StmtPtr> &body,
                      il::core::BasicBlock *entry,
