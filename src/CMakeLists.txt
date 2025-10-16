@@ -18,7 +18,9 @@ target_include_directories(viper_il_core PUBLIC
 )
 target_link_libraries(viper_il_core PRIVATE viper_support)
 
-add_library(il_runtime STATIC il/runtime/RuntimeSignatures.cpp)
+add_library(il_runtime STATIC
+  il/runtime/RuntimeSignatures.cpp
+  il/runtime/RuntimeSignatureParser.cpp)
 target_link_libraries(il_runtime PUBLIC viper_il_core viper_runtime)
 target_include_directories(il_runtime PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
