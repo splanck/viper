@@ -67,23 +67,6 @@ constexpr bool kTraceHookEnabled = true;
 
 } // namespace
 
-#if VIPER_THREADING_SUPPORTED
-namespace
-{
-#define OP_LABEL(name, ...) &&LBL_##name,
-#define IL_OPCODE(name, ...) OP_LABEL(name, __VA_ARGS__)
-static void *kOpLabels[] = {
-#include "il/core/Opcode.def"
-    &&LBL_UNIMPL,
-};
-#undef IL_OPCODE
-#undef OP_LABEL
-
-static constexpr size_t kOpLabelCount = sizeof(kOpLabels) / sizeof(kOpLabels[0]);
-} // namespace
-#endif
-
-
 /// Construct a trap dispatch signal targeting a specific execution state.
 VM::TrapDispatchSignal::TrapDispatchSignal(ExecState *targetState) : target(targetState)
 {
@@ -548,6 +531,17 @@ bool VM::runLoopThreaded(ExecState &st)
             return currentInstr->op;
         }
     };
+
+#define OP_LABEL(name, ...) &&LBL_##name,
+#define IL_OPCODE(name, ...) OP_LABEL(name, __VA_ARGS__)
+    static void *kOpLabels[] = {
+#include "il/core/Opcode.def"
+        &&LBL_UNIMPL,
+    };
+#undef IL_OPCODE
+#undef OP_LABEL
+
+    static constexpr size_t kOpLabelCount = sizeof(kOpLabels) / sizeof(kOpLabels[0]);
 
 #define DISPATCH_TO(OPCODE_VALUE)                                                                          \
     do                                                                                                      \
