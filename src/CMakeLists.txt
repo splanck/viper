@@ -100,7 +100,14 @@ add_library(il_transform STATIC
   il/transform/ConstFold.cpp
   il/transform/DCE.cpp
   il/transform/Mem2Reg.cpp
-  il/transform/SimplifyCFG.cpp)
+  il/transform/SimplifyCFG.cpp
+  il/transform/SimplifyCFG/BlockMerging.cpp
+  il/transform/SimplifyCFG/BranchFolding.cpp
+  il/transform/SimplifyCFG/ForwardingElimination.cpp
+  il/transform/SimplifyCFG/ParamCanonicalization.cpp
+  il/transform/SimplifyCFG/PassContext.cpp
+  il/transform/SimplifyCFG/ReachabilityCleanup.cpp
+  il/transform/SimplifyCFG/Utils.cpp)
 target_link_libraries(il_transform
   PUBLIC
     viper_il_core
