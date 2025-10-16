@@ -5,9 +5,12 @@
 // Links: docs/codemap.md
 #pragma once
 
-#include "il/core/Module.hpp"
+#include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
+#include "il/core/Module.hpp"
 #include "il/transform/PassManager.hpp"
+
+#include <string_view>
 
 namespace il::transform
 {
@@ -29,6 +32,25 @@ struct SimplifyCFG
         size_t blocksMerged = 0;       ///< Adjacent block merges.
         size_t unreachableRemoved = 0; ///< Unreachable block removals.
         size_t switchToBr = 0;         ///< Switches rewritten to unconditional branches.
+    };
+
+    /// \brief Per-run context shared across helper routines.
+    struct SimplifyCFGPassContext
+    {
+        SimplifyCFGPassContext(il::core::Function &function,
+                               const il::core::Module *module,
+                               Stats &stats);
+
+        il::core::Function &function;     ///< Function currently being simplified.
+        const il::core::Module *module;   ///< Parent module, may be null.
+        Stats &stats;                     ///< Mutable statistics for the run.
+
+        bool isDebugLoggingEnabled() const;
+        void logDebug(std::string_view message) const;
+        bool isEHSensitive(const il::core::BasicBlock &block) const;
+
+      private:
+        bool debugLoggingEnabled_ = false; ///< Cached debug logging flag.
     };
 
     /// \brief Create a CFG simplifier.
