@@ -14,6 +14,10 @@
 #include "il/core/OpcodeInfo.hpp"
 #include "il/verify/DiagFormat.hpp"
 #include "il/verify/DiagSink.hpp"
+#include "il/verify/InstructionCheckUtils.hpp"
+#include "il/verify/OperandCountChecker.hpp"
+#include "il/verify/OperandTypeChecker.hpp"
+#include "il/verify/ResultTypeChecker.hpp"
 #include "il/verify/TypeInference.hpp"
 #include "il/verify/VerifyCtx.hpp"
 #include "il/verify/VerifierTable.hpp"
@@ -38,25 +42,7 @@ using il::support::Diag;
 using il::support::Expected;
 using il::support::Severity;
 using il::support::makeError;
-
-bool fitsInIntegerKind(long long value, Type::Kind kind)
-{
-    switch (kind)
-    {
-        case Type::Kind::I1:
-            return value == 0 || value == 1;
-        case Type::Kind::I16:
-            return value >= std::numeric_limits<int16_t>::min() &&
-                   value <= std::numeric_limits<int16_t>::max();
-        case Type::Kind::I32:
-            return value >= std::numeric_limits<int32_t>::min() &&
-                   value <= std::numeric_limits<int32_t>::max();
-        case Type::Kind::I64:
-            return true;
-        default:
-            return false;
-    }
-}
+using il::verify::detail::fitsInIntegerKind;
 
 Expected<void> checkBinary_E(const VerifyCtx &ctx,
                              Type::Kind operandKind,
@@ -108,199 +94,19 @@ std::optional<Type> typeFromClass(TypeClass typeClass)
     return std::nullopt;
 }
 
-std::optional<Type::Kind> kindFromCategory(TypeCategory category)
-{
-    switch (category)
-    {
-        case TypeCategory::Void:
-            return Type::Kind::Void;
-        case TypeCategory::I1:
-            return Type::Kind::I1;
-        case TypeCategory::I16:
-            return Type::Kind::I16;
-        case TypeCategory::I32:
-            return Type::Kind::I32;
-        case TypeCategory::I64:
-            return Type::Kind::I64;
-        case TypeCategory::F64:
-            return Type::Kind::F64;
-        case TypeCategory::Ptr:
-            return Type::Kind::Ptr;
-        case TypeCategory::Str:
-            return Type::Kind::Str;
-        case TypeCategory::Error:
-            return Type::Kind::Error;
-        case TypeCategory::ResumeTok:
-            return Type::Kind::ResumeTok;
-        case TypeCategory::None:
-        case TypeCategory::Any:
-        case TypeCategory::InstrType:
-        case TypeCategory::Dynamic:
-            return std::nullopt;
-    }
-    return std::nullopt;
-}
 
 Expected<void> checkWithInfo(const VerifyCtx &ctx, const il::core::OpcodeInfo &info)
 {
-    const Instr &instr = ctx.instr;
+    detail::OperandCountChecker countChecker(ctx, info);
+    if (auto countResult = countChecker.run(); !countResult)
+        return countResult;
 
-    const size_t operandCount = instr.operands.size();
-    const bool variadicOperands = il::core::isVariadicOperandCount(info.numOperandsMax);
-    if (operandCount < info.numOperandsMin || (!variadicOperands && operandCount > info.numOperandsMax))
-    {
-        std::ostringstream ss;
-        if (info.numOperandsMin == info.numOperandsMax && !variadicOperands)
-        {
-            ss << "expected " << static_cast<unsigned>(info.numOperandsMin) << " operand";
-            if (info.numOperandsMin != 1)
-                ss << 's';
-        }
-        else if (variadicOperands)
-        {
-            ss << "expected at least " << static_cast<unsigned>(info.numOperandsMin) << " operand";
-            if (info.numOperandsMin != 1)
-                ss << 's';
-        }
-        else
-        {
-            ss << "expected between " << static_cast<unsigned>(info.numOperandsMin) << " and "
-               << static_cast<unsigned>(info.numOperandsMax) << " operands";
-        }
-        return Expected<void>{makeError(instr.loc, formatInstrDiag(ctx.fn, ctx.block, instr, ss.str()))};
-    }
+    detail::OperandTypeChecker typeChecker(ctx, info);
+    if (auto typeResult = typeChecker.run(); !typeResult)
+        return typeResult;
 
-    for (size_t index = 0; index < instr.operands.size() && index < info.operandTypes.size(); ++index)
-    {
-        const TypeCategory category = info.operandTypes[index];
-        if (category == TypeCategory::None || category == TypeCategory::Any || category == TypeCategory::Dynamic)
-            continue;
-
-        Type::Kind expectedKind;
-        if (category == TypeCategory::InstrType)
-        {
-            if (instr.type.kind == Type::Kind::Void)
-            {
-                return Expected<void>{makeError(instr.loc,
-                                                formatInstrDiag(ctx.fn,
-                                                                ctx.block,
-                                                                instr,
-                                                                "instruction type must be non-void"))};
-            }
-            expectedKind = instr.type.kind;
-        }
-        else if (auto mapped = kindFromCategory(category))
-        {
-            expectedKind = *mapped;
-        }
-        else
-        {
-            continue;
-        }
-
-        const Value &operand = instr.operands[index];
-        if (operand.kind == Value::Kind::ConstInt)
-        {
-            switch (expectedKind)
-            {
-                case Type::Kind::I1:
-                    if (!fitsInIntegerKind(operand.i64, expectedKind))
-                    {
-                        std::ostringstream ss;
-                        ss << "operand " << index << " constant out of range for i1";
-                        return Expected<void>{makeError(instr.loc,
-                                                        formatInstrDiag(ctx.fn,
-                                                                        ctx.block,
-                                                                        instr,
-                                                                        ss.str()))};
-                    }
-                    continue;
-                case Type::Kind::I16:
-                case Type::Kind::I32:
-                case Type::Kind::I64:
-                    if (!fitsInIntegerKind(operand.i64, expectedKind))
-                    {
-                        std::ostringstream ss;
-                        ss << "operand " << index << " constant out of range for "
-                           << kindToString(expectedKind);
-                        return Expected<void>{makeError(instr.loc,
-                                                        formatInstrDiag(ctx.fn,
-                                                                        ctx.block,
-                                                                        instr,
-                                                                        ss.str()))};
-                    }
-                    continue;
-                default:
-                    break;
-            }
-        }
-
-        bool missing = false;
-        const Type actual = ctx.types.valueType(operand, &missing);
-        if (missing)
-        {
-            std::ostringstream ss;
-            ss << "operand " << index << " type is unknown";
-            return Expected<void>{makeError(instr.loc, formatInstrDiag(ctx.fn, ctx.block, instr, ss.str()))};
-        }
-
-        if (actual.kind != expectedKind)
-        {
-            std::ostringstream ss;
-            if (expectedKind == Type::Kind::Ptr)
-            {
-                ss << "pointer type mismatch";
-            }
-            else
-            {
-                ss << "operand " << index << " must be " << kindToString(expectedKind);
-            }
-            return Expected<void>{makeError(instr.loc, formatInstrDiag(ctx.fn, ctx.block, instr, ss.str()))};
-        }
-    }
-
-    const bool hasResult = instr.result.has_value();
-    switch (info.resultArity)
-    {
-        case ResultArity::None:
-            if (hasResult)
-                return Expected<void>{makeError(instr.loc,
-                                                formatInstrDiag(ctx.fn, ctx.block, instr, "unexpected result"))};
-            return {};
-        case ResultArity::One:
-            if (!hasResult)
-                return Expected<void>{makeError(instr.loc,
-                                                formatInstrDiag(ctx.fn, ctx.block, instr, "missing result"))};
-            break;
-        case ResultArity::Optional:
-            if (!hasResult)
-                return {};
-            break;
-    }
-
-    if (info.resultType == TypeCategory::InstrType)
-    {
-        if (instr.op != Opcode::IdxChk && instr.type.kind == Type::Kind::Void)
-        {
-            return Expected<void>{makeError(instr.loc,
-                                            formatInstrDiag(ctx.fn, ctx.block, instr, "instruction type must be non-void"))};
-        }
-    }
-    else if (auto expectedKind = kindFromCategory(info.resultType))
-    {
-        const bool skipResultTypeCheck =
-            ctx.instr.op == Opcode::CastFpToSiRteChk || ctx.instr.op == Opcode::CastFpToUiRteChk ||
-            ctx.instr.op == Opcode::CastSiNarrowChk || ctx.instr.op == Opcode::CastUiNarrowChk;
-
-        if (!skipResultTypeCheck && instr.type.kind != *expectedKind)
-        {
-            std::ostringstream ss;
-            ss << "result type must be " << kindToString(*expectedKind);
-            return Expected<void>{makeError(instr.loc, formatInstrDiag(ctx.fn, ctx.block, instr, ss.str()))};
-        }
-    }
-
-    return {};
+    detail::ResultTypeChecker resultChecker(ctx, info);
+    return resultChecker.run();
 }
 
 Expected<void> checkWithProps(const VerifyCtx &ctx, const OpProps &props)
