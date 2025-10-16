@@ -19,6 +19,9 @@ add_library(fe_basic STATIC
   builtins/MathBuiltins.cpp
   builtins/StringBuiltins.cpp
   Lowerer.cpp
+  LowerExprLogical.cpp
+  LowerExprNumeric.cpp
+  LowerExprBuiltin.cpp
   LowerExpr.cpp
   LowerStmt.cpp
   LowerRuntime.cpp
