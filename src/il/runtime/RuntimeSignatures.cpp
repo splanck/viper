@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <initializer_list>
 #include <optional>
+#include <span>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
@@ -63,7 +64,7 @@ const std::unordered_map<std::string_view, RtSig> &generatedSigIndex()
 }
 
 /// @brief Construct a runtime signature from the provided type kinds.
-RuntimeSignature makeSignature(Kind ret, std::initializer_list<Kind> params)
+RuntimeSignature makeSignature(Kind ret, std::span<const Kind> params)
 {
     RuntimeSignature sig;
     sig.retType = il::core::Type(ret);
@@ -73,12 +74,10 @@ RuntimeSignature makeSignature(Kind ret, std::initializer_list<Kind> params)
     return sig;
 }
 
-/// @brief Build a hidden parameter descriptor for runtime bridge injection.
-RuntimeHiddenParam makeHiddenParam(RuntimeHiddenParamKind kind)
+/// @brief Construct a runtime signature from an initializer list of type kinds.
+RuntimeSignature makeSignature(Kind ret, std::initializer_list<Kind> params)
 {
-    RuntimeHiddenParam param;
-    param.kind = kind;
-    return param;
+    return makeSignature(ret, std::span<const Kind>(params.begin(), params.size()));
 }
 
 /// @brief Generic adapter that invokes a runtime function with direct mapping.
@@ -113,15 +112,11 @@ void trapFromRuntimeString(void **args, void * /*result*/)
     rt_trap(msg);
 }
 
-RuntimeLowering makeLowering(RuntimeLoweringKind kind,
-                             RuntimeFeature feature = RuntimeFeature::Count,
-                             bool ordered = false)
+constexpr RuntimeLowering makeLowering(RuntimeLoweringKind kind,
+                                       RuntimeFeature feature = RuntimeFeature::Count,
+                                       bool ordered = false)
 {
-    RuntimeLowering lowering;
-    lowering.kind = kind;
-    lowering.feature = feature;
-    lowering.ordered = ordered;
-    return lowering;
+    return RuntimeLowering{kind, feature, ordered};
 }
 
 /// @brief Adapter converting IL i64 arguments into size_t for array helpers.
@@ -268,434 +263,597 @@ void invokeRtPowF64Chkdom(void **args, void *result)
 }
 
 /// @brief Populate the runtime descriptor registry with known helper declarations.
+struct ManualDescriptorSpec
+{
+    std::string_view name;
+    Kind ret;
+    std::span<const Kind> params;
+    RuntimeHandler handler;
+    RuntimeLowering lowering;
+    std::span<const RuntimeHiddenParam> hidden = {};
+    RuntimeTrapClass trapClass = RuntimeTrapClass::None;
+};
+
+struct GeneratedDescriptorSpec
+{
+    std::string_view name;
+    RtSig signatureId;
+    RuntimeHandler handler;
+    RuntimeLowering lowering;
+    std::span<const RuntimeHiddenParam> hidden = {};
+    RuntimeTrapClass trapClass = RuntimeTrapClass::None;
+};
+
+RuntimeDescriptor finalizeDescriptor(std::string_view name,
+                                     RuntimeSignature signature,
+                                     RuntimeHandler handler,
+                                     RuntimeLowering lowering,
+                                     std::span<const RuntimeHiddenParam> hidden,
+                                     RuntimeTrapClass trapClass)
+{
+    signature.hiddenParams.assign(hidden.begin(), hidden.end());
+    signature.trapClass = trapClass;
+
+    RuntimeDescriptor descriptor;
+    descriptor.name = name;
+    descriptor.signature = std::move(signature);
+    descriptor.handler = handler;
+    descriptor.lowering = lowering;
+    descriptor.trapClass = trapClass;
+    return descriptor;
+}
+
+RuntimeDescriptor makeDescriptor(const ManualDescriptorSpec &spec)
+{
+    return finalizeDescriptor(spec.name,
+                              makeSignature(spec.ret, spec.params),
+                              spec.handler,
+                              spec.lowering,
+                              spec.hidden,
+                              spec.trapClass);
+}
+
+RuntimeDescriptor makeDescriptor(const GeneratedDescriptorSpec &spec)
+{
+    RuntimeSignature signature = signatureFor(spec.signatureId);
+    return finalizeDescriptor(spec.name,
+                              std::move(signature),
+                              spec.handler,
+                              spec.lowering,
+                              spec.hidden,
+                              spec.trapClass);
+}
+
+template <typename Container>
+void appendManualDescriptors(std::vector<RuntimeDescriptor> &entries, const Container &specs)
+{
+    for (const auto &spec : specs)
+        entries.push_back(makeDescriptor(spec));
+}
+
+template <typename Container>
+void appendGeneratedDescriptors(std::vector<RuntimeDescriptor> &entries, const Container &specs)
+{
+    for (const auto &spec : specs)
+        entries.push_back(makeDescriptor(spec));
+}
+
+constexpr RuntimeLowering kAlwaysLowering = makeLowering(RuntimeLoweringKind::Always);
+constexpr RuntimeLowering kBoundsCheckedLowering = makeLowering(RuntimeLoweringKind::BoundsChecked);
+constexpr RuntimeLowering kManualLowering = makeLowering(RuntimeLoweringKind::Manual);
+
+constexpr RuntimeLowering featureLowering(RuntimeFeature feature, bool ordered = false)
+{
+    return makeLowering(RuntimeLoweringKind::Feature, feature, ordered);
+}
+
+constexpr std::array<RuntimeHiddenParam, 1> kPowHidden{
+    RuntimeHiddenParam{RuntimeHiddenParamKind::PowStatusPointer}};
+
+constexpr std::array<Kind, 0> kParamsNone{};
+constexpr std::array<Kind, 1> kParamsPtr{Kind::Ptr};
+constexpr std::array<Kind, 1> kParamsStr{Kind::Str};
+constexpr std::array<Kind, 1> kParamsI32{Kind::I32};
+constexpr std::array<Kind, 1> kParamsI64{Kind::I64};
+constexpr std::array<Kind, 1> kParamsF64{Kind::F64};
+constexpr std::array<Kind, 2> kParamsStrI64{Kind::Str, Kind::I64};
+constexpr std::array<Kind, 2> kParamsF64I32{Kind::F64, Kind::I32};
+constexpr std::array<Kind, 2> kParamsF64Ptr{Kind::F64, Kind::Ptr};
+constexpr std::array<Kind, 2> kParamsStrStr{Kind::Str, Kind::Str};
+constexpr std::array<Kind, 2> kParamsI32I32{Kind::I32, Kind::I32};
+constexpr std::array<Kind, 2> kParamsI32Str{Kind::I32, Kind::Str};
+constexpr std::array<Kind, 2> kParamsI32Ptr{Kind::I32, Kind::Ptr};
+constexpr std::array<Kind, 2> kParamsPtrPtr{Kind::Ptr, Kind::Ptr};
+constexpr std::array<Kind, 2> kParamsPtrI64{Kind::Ptr, Kind::I64};
+constexpr std::array<Kind, 2> kParamsI64I64{Kind::I64, Kind::I64};
+constexpr std::array<Kind, 2> kParamsF64F64{Kind::F64, Kind::F64};
+constexpr std::array<Kind, 2> kParamsI32I64{Kind::I32, Kind::I64};
+constexpr std::array<Kind, 3> kParamsStrI64I64{Kind::Str, Kind::I64, Kind::I64};
+constexpr std::array<Kind, 3> kParamsI64StrStr{Kind::I64, Kind::Str, Kind::Str};
+constexpr std::array<Kind, 3> kParamsPtrI64I64{Kind::Ptr, Kind::I64, Kind::I64};
+constexpr std::array<Kind, 3> kParamsStrI32I32{Kind::Str, Kind::I32, Kind::I32};
+
+constexpr std::array<GeneratedDescriptorSpec, 3> kGeneratedPrintDescriptors{{
+    {"rt_print_str",
+     RtSig::PrintS,
+     &DirectHandler<&rt_print_str, void, rt_string>::invoke,
+     kAlwaysLowering},
+    {"rt_print_i64",
+     RtSig::PrintI,
+     &DirectHandler<&rt_print_i64, void, int64_t>::invoke,
+     kAlwaysLowering},
+    {"rt_print_f64",
+     RtSig::PrintF,
+     &DirectHandler<&rt_print_f64, void, double>::invoke,
+     kAlwaysLowering},
+}};
+
+constexpr std::array<ManualDescriptorSpec, 2> kManualPrintDescriptors{{
+    {"rt_println_i32",
+     Kind::Void,
+     std::span<const Kind>{kParamsI32},
+     &DirectHandler<&rt_println_i32, void, int32_t>::invoke,
+     kManualLowering},
+    {"rt_println_str",
+     Kind::Void,
+     std::span<const Kind>{kParamsPtr},
+     &DirectHandler<&rt_println_str, void, const char *>::invoke,
+     kManualLowering},
+}};
+
+constexpr std::array<GeneratedDescriptorSpec, 4> kGeneratedStringCoreDescriptors{{
+    {"rt_len",
+     RtSig::Len,
+     &DirectHandler<&rt_len, int64_t, rt_string>::invoke,
+     kAlwaysLowering},
+    {"rt_substr",
+     RtSig::Substr,
+     &DirectHandler<&rt_substr, rt_string, rt_string, int64_t, int64_t>::invoke,
+     kAlwaysLowering},
+    {"rt_trap", RtSig::Trap, &trapFromRuntimeString, kBoundsCheckedLowering},
+    {"rt_concat",
+     RtSig::Concat,
+     &DirectHandler<&rt_concat, rt_string, rt_string, rt_string>::invoke,
+     featureLowering(RuntimeFeature::Concat)},
+}};
+
+constexpr std::array<ManualDescriptorSpec, 1> kManualStringIoDescriptors{{
+    {"rt_csv_quote_alloc",
+     Kind::Str,
+     std::span<const Kind>{kParamsStr},
+     &DirectHandler<&rt_csv_quote_alloc, rt_string, rt_string>::invoke,
+     featureLowering(RuntimeFeature::CsvQuote)},
+}};
+
+constexpr std::array<GeneratedDescriptorSpec, 8> kGeneratedInputDescriptors{{
+    {"rt_input_line",
+     RtSig::InputLine,
+     &DirectHandler<&rt_input_line, rt_string>::invoke,
+     featureLowering(RuntimeFeature::InputLine)},
+    {"rt_split_fields",
+     RtSig::SplitFields,
+     &DirectHandler<&rt_split_fields, int64_t, rt_string, rt_string *, int64_t>::invoke,
+     featureLowering(RuntimeFeature::SplitFields)},
+    {"rt_to_int",
+     RtSig::ToInt,
+     &DirectHandler<&rt_to_int, int64_t, rt_string>::invoke,
+     featureLowering(RuntimeFeature::ToInt)},
+    {"rt_to_double",
+     RtSig::ToDouble,
+     &DirectHandler<&rt_to_double, double, rt_string>::invoke,
+     featureLowering(RuntimeFeature::ToDouble)},
+    {"rt_parse_int64",
+     RtSig::ParseInt64,
+     &DirectHandler<&rt_parse_int64, int32_t, const char *, int64_t *>::invoke,
+     featureLowering(RuntimeFeature::ParseInt64)},
+    {"rt_parse_double",
+     RtSig::ParseDouble,
+     &DirectHandler<&rt_parse_double, int32_t, const char *, double *>::invoke,
+     featureLowering(RuntimeFeature::ParseDouble)},
+    {"rt_int_to_str",
+     RtSig::IntToStr,
+     &DirectHandler<&rt_int_to_str, rt_string, int64_t>::invoke,
+     featureLowering(RuntimeFeature::IntToStr)},
+    {"rt_f64_to_str",
+     RtSig::F64ToStr,
+     &DirectHandler<&rt_f64_to_str, rt_string, double>::invoke,
+     featureLowering(RuntimeFeature::F64ToStr)},
+}};
+
+constexpr std::array<ManualDescriptorSpec, 5> kManualTermDescriptors{{
+    {"rt_term_cls",
+     Kind::Void,
+     std::span<const Kind>{kParamsNone},
+     &DirectHandler<&rt_term_cls, void>::invoke,
+     featureLowering(RuntimeFeature::TermCls)},
+    {"rt_term_color_i32",
+     Kind::Void,
+     std::span<const Kind>{kParamsI32I32},
+     &DirectHandler<&rt_term_color_i32, void, int32_t, int32_t>::invoke,
+     featureLowering(RuntimeFeature::TermColor)},
+    {"rt_term_locate_i32",
+     Kind::Void,
+     std::span<const Kind>{kParamsI32I32},
+     &DirectHandler<&rt_term_locate_i32, void, int32_t, int32_t>::invoke,
+     featureLowering(RuntimeFeature::TermLocate)},
+    {"rt_getkey_str",
+     Kind::Str,
+     std::span<const Kind>{kParamsNone},
+     &DirectHandler<&rt_getkey_str, rt_string>::invoke,
+     featureLowering(RuntimeFeature::GetKey)},
+    {"rt_inkey_str",
+     Kind::Str,
+     std::span<const Kind>{kParamsNone},
+     &DirectHandler<&rt_inkey_str, rt_string>::invoke,
+     featureLowering(RuntimeFeature::InKey)},
+}};
+
+constexpr std::array<GeneratedDescriptorSpec, 4> kGeneratedStringAllocDescriptors{{
+    {"rt_str_i16_alloc",
+     RtSig::StrFromI16,
+     &DirectHandler<&rt_str_i16_alloc, rt_string, int16_t>::invoke,
+     featureLowering(RuntimeFeature::StrFromI16)},
+    {"rt_str_i32_alloc",
+     RtSig::StrFromI32,
+     &DirectHandler<&rt_str_i32_alloc, rt_string, int32_t>::invoke,
+     featureLowering(RuntimeFeature::StrFromI32)},
+    {"rt_str_f_alloc",
+     RtSig::StrFromSingle,
+     &invokeRtStrFAlloc,
+     featureLowering(RuntimeFeature::StrFromSingle)},
+    {"rt_str_d_alloc",
+     RtSig::StrFromDouble,
+     &DirectHandler<&rt_str_d_alloc, rt_string, double>::invoke,
+     featureLowering(RuntimeFeature::StrFromDouble)},
+}};
+
+constexpr std::array<ManualDescriptorSpec, 7> kManualConversionDescriptors{{
+    {"rt_cint_from_double",
+     Kind::I64,
+     std::span<const Kind>{kParamsF64Ptr},
+     &invokeRtCintFromDouble,
+     featureLowering(RuntimeFeature::CintFromDouble)},
+    {"rt_clng_from_double",
+     Kind::I64,
+     std::span<const Kind>{kParamsF64Ptr},
+     &invokeRtClngFromDouble,
+     featureLowering(RuntimeFeature::ClngFromDouble)},
+    {"rt_csng_from_double",
+     Kind::F64,
+     std::span<const Kind>{kParamsF64Ptr},
+     &invokeRtCsngFromDouble,
+     featureLowering(RuntimeFeature::CsngFromDouble)},
+    {"rt_cdbl_from_any",
+     Kind::F64,
+     std::span<const Kind>{kParamsF64},
+     &DirectHandler<&rt_cdbl_from_any, double, double>::invoke,
+     featureLowering(RuntimeFeature::CdblFromAny)},
+    {"rt_int_floor",
+     Kind::F64,
+     std::span<const Kind>{kParamsF64},
+     &DirectHandler<&rt_int_floor, double, double>::invoke,
+     featureLowering(RuntimeFeature::IntFloor)},
+    {"rt_fix_trunc",
+     Kind::F64,
+     std::span<const Kind>{kParamsF64},
+     &DirectHandler<&rt_fix_trunc, double, double>::invoke,
+     featureLowering(RuntimeFeature::FixTrunc)},
+    {"rt_round_even",
+     Kind::F64,
+     std::span<const Kind>{kParamsF64I32},
+     &invokeRtRoundEven,
+     featureLowering(RuntimeFeature::RoundEven)},
+}};
+
+constexpr std::array<ManualDescriptorSpec, 1> kManualMemoryDescriptors{{
+    {"rt_alloc",
+     Kind::Ptr,
+     std::span<const Kind>{kParamsI64},
+     &DirectHandler<&rt_alloc, void *, int64_t>::invoke,
+     featureLowering(RuntimeFeature::Alloc)},
+}};
+
+constexpr std::array<ManualDescriptorSpec, 8> kManualArrayDescriptors{{
+    {"rt_arr_i32_new",
+     Kind::Ptr,
+     std::span<const Kind>{kParamsI64},
+     &invokeRtArrI32New,
+     kManualLowering},
+    {"rt_arr_i32_retain",
+     Kind::Void,
+     std::span<const Kind>{kParamsPtr},
+     &DirectHandler<&rt_arr_i32_retain, void, int32_t *>::invoke,
+     kManualLowering},
+    {"rt_arr_i32_release",
+     Kind::Void,
+     std::span<const Kind>{kParamsPtr},
+     &DirectHandler<&rt_arr_i32_release, void, int32_t *>::invoke,
+     kManualLowering},
+    {"rt_arr_i32_len",
+     Kind::I64,
+     std::span<const Kind>{kParamsPtr},
+     &invokeRtArrI32Len,
+     kManualLowering},
+    {"rt_arr_i32_get",
+     Kind::I64,
+     std::span<const Kind>{kParamsPtrI64},
+     &invokeRtArrI32Get,
+     kManualLowering},
+    {"rt_arr_i32_set",
+     Kind::Void,
+     std::span<const Kind>{kParamsPtrI64I64},
+     &invokeRtArrI32Set,
+     kManualLowering},
+    {"rt_arr_i32_resize",
+     Kind::Ptr,
+     std::span<const Kind>{kParamsPtrI64},
+     &invokeRtArrI32Resize,
+     kManualLowering},
+    {"rt_arr_oob_panic",
+     Kind::Void,
+     std::span<const Kind>{kParamsI64I64},
+     &invokeRtArrOobPanic,
+     kManualLowering},
+}};
+
+constexpr std::array<ManualDescriptorSpec, 17> kManualStringManipDescriptors{{
+    {"rt_left",
+     Kind::Str,
+     std::span<const Kind>{kParamsStrI64},
+     &DirectHandler<&rt_left, rt_string, rt_string, int64_t>::invoke,
+     featureLowering(RuntimeFeature::Left)},
+    {"rt_right",
+     Kind::Str,
+     std::span<const Kind>{kParamsStrI64},
+     &DirectHandler<&rt_right, rt_string, rt_string, int64_t>::invoke,
+     featureLowering(RuntimeFeature::Right)},
+    {"rt_mid2",
+     Kind::Str,
+     std::span<const Kind>{kParamsStrI64},
+     &DirectHandler<&rt_mid2, rt_string, rt_string, int64_t>::invoke,
+     featureLowering(RuntimeFeature::Mid2)},
+    {"rt_mid3",
+     Kind::Str,
+     std::span<const Kind>{kParamsStrI64I64},
+     &DirectHandler<&rt_mid3, rt_string, rt_string, int64_t, int64_t>::invoke,
+     featureLowering(RuntimeFeature::Mid3)},
+    {"rt_instr2",
+     Kind::I64,
+     std::span<const Kind>{kParamsStrStr},
+     &DirectHandler<&rt_instr2, int64_t, rt_string, rt_string>::invoke,
+     featureLowering(RuntimeFeature::Instr2)},
+    {"rt_instr3",
+     Kind::I64,
+     std::span<const Kind>{kParamsI64StrStr},
+     &DirectHandler<&rt_instr3, int64_t, int64_t, rt_string, rt_string>::invoke,
+     featureLowering(RuntimeFeature::Instr3)},
+    {"rt_ltrim",
+     Kind::Str,
+     std::span<const Kind>{kParamsStr},
+     &DirectHandler<&rt_ltrim, rt_string, rt_string>::invoke,
+     featureLowering(RuntimeFeature::Ltrim)},
+    {"rt_rtrim",
+     Kind::Str,
+     std::span<const Kind>{kParamsStr},
+     &DirectHandler<&rt_rtrim, rt_string, rt_string>::invoke,
+     featureLowering(RuntimeFeature::Rtrim)},
+    {"rt_trim",
+     Kind::Str,
+     std::span<const Kind>{kParamsStr},
+     &DirectHandler<&rt_trim, rt_string, rt_string>::invoke,
+     featureLowering(RuntimeFeature::Trim)},
+    {"rt_ucase",
+     Kind::Str,
+     std::span<const Kind>{kParamsStr},
+     &DirectHandler<&rt_ucase, rt_string, rt_string>::invoke,
+     featureLowering(RuntimeFeature::Ucase)},
+    {"rt_lcase",
+     Kind::Str,
+     std::span<const Kind>{kParamsStr},
+     &DirectHandler<&rt_lcase, rt_string, rt_string>::invoke,
+     featureLowering(RuntimeFeature::Lcase)},
+    {"rt_chr",
+     Kind::Str,
+     std::span<const Kind>{kParamsI64},
+     &DirectHandler<&rt_chr, rt_string, int64_t>::invoke,
+     featureLowering(RuntimeFeature::Chr)},
+    {"rt_asc",
+     Kind::I64,
+     std::span<const Kind>{kParamsStr},
+     &DirectHandler<&rt_asc, int64_t, rt_string>::invoke,
+     featureLowering(RuntimeFeature::Asc)},
+    {"rt_str_eq",
+     Kind::I1,
+     std::span<const Kind>{kParamsStrStr},
+     &DirectHandler<&rt_str_eq, int64_t, rt_string, rt_string>::invoke,
+     featureLowering(RuntimeFeature::StrEq)},
+    {"rt_val",
+     Kind::F64,
+     std::span<const Kind>{kParamsStr},
+     &DirectHandler<&rt_val, double, rt_string>::invoke,
+     featureLowering(RuntimeFeature::Val)},
+    {"rt_val_to_double",
+     Kind::F64,
+     std::span<const Kind>{kParamsPtrPtr},
+     &DirectHandler<&rt_val_to_double, double, const char *, bool *>::invoke,
+     featureLowering(RuntimeFeature::Val)},
+    {"rt_string_cstr",
+     Kind::Ptr,
+     std::span<const Kind>{kParamsStr},
+     &DirectHandler<&rt_string_cstr, const char *, rt_string>::invoke,
+     featureLowering(RuntimeFeature::Val)},
+}};
+
+constexpr std::array<ManualDescriptorSpec, 9> kManualMathDescriptors{{
+    {"rt_sqrt",
+     Kind::F64,
+     std::span<const Kind>{kParamsF64},
+     &DirectHandler<&rt_sqrt, double, double>::invoke,
+     featureLowering(RuntimeFeature::Sqrt, true)},
+    {"rt_abs_i64",
+     Kind::I64,
+     std::span<const Kind>{kParamsI64},
+     &DirectHandler<&rt_abs_i64, long long, long long>::invoke,
+     featureLowering(RuntimeFeature::AbsI64, true)},
+    {"rt_abs_f64",
+     Kind::F64,
+     std::span<const Kind>{kParamsF64},
+     &DirectHandler<&rt_abs_f64, double, double>::invoke,
+     featureLowering(RuntimeFeature::AbsF64, true)},
+    {"rt_floor",
+     Kind::F64,
+     std::span<const Kind>{kParamsF64},
+     &DirectHandler<&rt_floor, double, double>::invoke,
+     featureLowering(RuntimeFeature::Floor, true)},
+    {"rt_ceil",
+     Kind::F64,
+     std::span<const Kind>{kParamsF64},
+     &DirectHandler<&rt_ceil, double, double>::invoke,
+     featureLowering(RuntimeFeature::Ceil, true)},
+    {"rt_sin",
+     Kind::F64,
+     std::span<const Kind>{kParamsF64},
+     &DirectHandler<&rt_sin, double, double>::invoke,
+     featureLowering(RuntimeFeature::Sin, true)},
+    {"rt_cos",
+     Kind::F64,
+     std::span<const Kind>{kParamsF64},
+     &DirectHandler<&rt_cos, double, double>::invoke,
+     featureLowering(RuntimeFeature::Cos, true)},
+    {"rt_pow_f64_chkdom",
+     Kind::F64,
+     std::span<const Kind>{kParamsF64F64},
+     &invokeRtPowF64Chkdom,
+     featureLowering(RuntimeFeature::Pow, true),
+     std::span<const RuntimeHiddenParam>{kPowHidden},
+     RuntimeTrapClass::PowDomainOverflow},
+    {"rt_randomize_i64",
+     Kind::Void,
+     std::span<const Kind>{kParamsI64},
+     &DirectHandler<&rt_randomize_i64, void, long long>::invoke,
+     featureLowering(RuntimeFeature::RandomizeI64, true)},
+}};
+
+constexpr std::array<ManualDescriptorSpec, 1> kManualRandomDescriptors{{
+    {"rt_rnd",
+     Kind::F64,
+     std::span<const Kind>{kParamsNone},
+     &DirectHandler<&rt_rnd, double>::invoke,
+     featureLowering(RuntimeFeature::Rnd, true)},
+}};
+
+constexpr std::array<ManualDescriptorSpec, 9> kManualFileDescriptors{{
+    {"rt_open_err_vstr",
+     Kind::I32,
+     std::span<const Kind>{kParamsStrI32I32},
+     &DirectHandler<&rt_open_err_vstr, int32_t, ViperString *, int32_t, int32_t>::invoke,
+     kManualLowering},
+    {"rt_close_err",
+     Kind::I32,
+     std::span<const Kind>{kParamsI32},
+     &DirectHandler<&rt_close_err, int32_t, int32_t>::invoke,
+     kManualLowering},
+    {"rt_write_ch_err",
+     Kind::I32,
+     std::span<const Kind>{kParamsI32Str},
+     &DirectHandler<&rt_write_ch_err, int32_t, int32_t, ViperString *>::invoke,
+     kManualLowering},
+    {"rt_println_ch_err",
+     Kind::I32,
+     std::span<const Kind>{kParamsI32Str},
+     &DirectHandler<&rt_println_ch_err, int32_t, int32_t, ViperString *>::invoke,
+     kManualLowering},
+    {"rt_line_input_ch_err",
+     Kind::I32,
+     std::span<const Kind>{kParamsI32Ptr},
+     &DirectHandler<&rt_line_input_ch_err, int32_t, int32_t, ViperString **>::invoke,
+     kManualLowering},
+    {"rt_eof_ch",
+     Kind::I32,
+     std::span<const Kind>{kParamsI32},
+     &DirectHandler<&rt_eof_ch, int32_t, int32_t>::invoke,
+     kManualLowering},
+    {"rt_lof_ch",
+     Kind::I64,
+     std::span<const Kind>{kParamsI32},
+     &DirectHandler<&rt_lof_ch, int64_t, int32_t>::invoke,
+     kManualLowering},
+    {"rt_loc_ch",
+     Kind::I64,
+     std::span<const Kind>{kParamsI32},
+     &DirectHandler<&rt_loc_ch, int64_t, int32_t>::invoke,
+     kManualLowering},
+    {"rt_seek_ch_err",
+     Kind::I32,
+     std::span<const Kind>{kParamsI32I64},
+     &DirectHandler<&rt_seek_ch_err, int32_t, int32_t, int64_t>::invoke,
+     kManualLowering},
+}};
+
+constexpr std::array<ManualDescriptorSpec, 4> kManualLifetimeDescriptors{{
+    {"rt_str_empty",
+     Kind::Str,
+     std::span<const Kind>{kParamsNone},
+     &DirectHandler<&rt_str_empty, rt_string>::invoke,
+     kAlwaysLowering},
+    {"rt_const_cstr",
+     Kind::Str,
+     std::span<const Kind>{kParamsPtr},
+     &DirectHandler<&rt_const_cstr, rt_string, const char *>::invoke,
+     kManualLowering},
+    {"rt_str_retain_maybe",
+     Kind::Void,
+     std::span<const Kind>{kParamsStr},
+     &DirectHandler<&rt_str_retain_maybe, void, rt_string>::invoke,
+     kManualLowering},
+    {"rt_str_release_maybe",
+     Kind::Void,
+     std::span<const Kind>{kParamsStr},
+     &DirectHandler<&rt_str_release_maybe, void, rt_string>::invoke,
+     kManualLowering},
+}};
+
+RuntimeDescriptor makeAbortDescriptor()
+{
+    return finalizeDescriptor("rt_abort",
+                              makeSignature(Kind::Void, std::span<const Kind>{kParamsPtr}),
+                              &DirectHandler<&rt_abort, void, const char *>::invoke,
+                              kManualLowering,
+                              {},
+                              RuntimeTrapClass::None);
+}
+
 std::vector<RuntimeDescriptor> buildRegistry()
 {
     std::vector<RuntimeDescriptor> entries;
-    entries.reserve(50);
-    auto add = [&](std::string_view name,
-                   Kind ret,
-                   std::initializer_list<Kind> params,
-                   RuntimeHandler handler,
-                   RuntimeLowering lowering,
-                   std::initializer_list<RuntimeHiddenParam> hidden = {},
-                   RuntimeTrapClass trapClass = RuntimeTrapClass::None)
-    {
-        RuntimeDescriptor desc;
-        desc.name = name;
-        desc.signature = makeSignature(ret, params);
-        desc.handler = handler;
-        desc.lowering = lowering;
-        desc.signature.hiddenParams.assign(hidden.begin(), hidden.end());
-        desc.signature.trapClass = trapClass;
-        desc.trapClass = trapClass;
-        entries.push_back(std::move(desc));
-    };
+    entries.reserve(1 + kGeneratedPrintDescriptors.size() + kManualPrintDescriptors.size() +
+                    kGeneratedStringCoreDescriptors.size() + kManualStringIoDescriptors.size() +
+                    kGeneratedInputDescriptors.size() + kManualTermDescriptors.size() +
+                    kGeneratedStringAllocDescriptors.size() + kManualConversionDescriptors.size() +
+                    kManualMemoryDescriptors.size() + kManualArrayDescriptors.size() +
+                    kManualStringManipDescriptors.size() + kManualMathDescriptors.size() +
+                    kManualRandomDescriptors.size() + kManualFileDescriptors.size() +
+                    kManualLifetimeDescriptors.size());
 
-    auto addGenerated = [&](std::string_view name,
-                            RtSig sig,
-                            RuntimeHandler handler,
-                            RuntimeLowering lowering,
-                            std::initializer_list<RuntimeHiddenParam> hidden = {},
-                            RuntimeTrapClass trapClass = RuntimeTrapClass::None)
-    {
-        RuntimeDescriptor desc;
-        desc.name = name;
-        desc.signature = signatureFor(sig);
-        desc.handler = handler;
-        desc.lowering = lowering;
-        desc.signature.hiddenParams.assign(hidden.begin(), hidden.end());
-        desc.signature.trapClass = trapClass;
-        desc.trapClass = trapClass;
-        entries.push_back(std::move(desc));
-    };
-
-    const auto always = [] { return makeLowering(RuntimeLoweringKind::Always); };
-    const auto bounds = [] { return makeLowering(RuntimeLoweringKind::BoundsChecked); };
-    const auto manual = [] { return makeLowering(RuntimeLoweringKind::Manual); };
-    const auto feature = [](RuntimeFeature f, bool ordered = false)
-    { return makeLowering(RuntimeLoweringKind::Feature, f, ordered); };
-
-    add("rt_abort",
-        Kind::Void,
-        {Kind::Ptr},
-        &DirectHandler<&rt_abort, void, const char *>::invoke,
-        manual());
-    addGenerated("rt_print_str",
-                 RtSig::PrintS,
-                 &DirectHandler<&rt_print_str, void, rt_string>::invoke,
-                 always());
-    addGenerated("rt_print_i64",
-                 RtSig::PrintI,
-                 &DirectHandler<&rt_print_i64, void, int64_t>::invoke,
-                 always());
-    addGenerated("rt_print_f64",
-                 RtSig::PrintF,
-                 &DirectHandler<&rt_print_f64, void, double>::invoke,
-                 always());
-    add("rt_println_i32",
-        Kind::Void,
-        {Kind::I32},
-        &DirectHandler<&rt_println_i32, void, int32_t>::invoke,
-        manual());
-    add("rt_println_str",
-        Kind::Void,
-        {Kind::Ptr},
-        &DirectHandler<&rt_println_str, void, const char *>::invoke,
-        manual());
-    addGenerated(
-        "rt_len", RtSig::Len, &DirectHandler<&rt_len, int64_t, rt_string>::invoke, always());
-    addGenerated("rt_substr",
-                 RtSig::Substr,
-                 &DirectHandler<&rt_substr, rt_string, rt_string, int64_t, int64_t>::invoke,
-                 always());
-    addGenerated("rt_trap", RtSig::Trap, &trapFromRuntimeString, bounds());
-    addGenerated("rt_concat",
-                 RtSig::Concat,
-                 &DirectHandler<&rt_concat, rt_string, rt_string, rt_string>::invoke,
-                 feature(RuntimeFeature::Concat));
-    add("rt_csv_quote_alloc",
-        Kind::Str,
-        {Kind::Str},
-        &DirectHandler<&rt_csv_quote_alloc, rt_string, rt_string>::invoke,
-        feature(RuntimeFeature::CsvQuote));
-    addGenerated("rt_input_line",
-                 RtSig::InputLine,
-                 &DirectHandler<&rt_input_line, rt_string>::invoke,
-                 feature(RuntimeFeature::InputLine));
-    addGenerated("rt_split_fields",
-                 RtSig::SplitFields,
-                 &DirectHandler<&rt_split_fields, int64_t, rt_string, rt_string *, int64_t>::invoke,
-                 feature(RuntimeFeature::SplitFields));
-    addGenerated("rt_to_int",
-                 RtSig::ToInt,
-                 &DirectHandler<&rt_to_int, int64_t, rt_string>::invoke,
-                 feature(RuntimeFeature::ToInt));
-    addGenerated("rt_to_double",
-                 RtSig::ToDouble,
-                 &DirectHandler<&rt_to_double, double, rt_string>::invoke,
-                 feature(RuntimeFeature::ToDouble));
-    addGenerated("rt_parse_int64",
-                 RtSig::ParseInt64,
-                 &DirectHandler<&rt_parse_int64, int32_t, const char *, int64_t *>::invoke,
-                 feature(RuntimeFeature::ParseInt64));
-    addGenerated("rt_parse_double",
-                 RtSig::ParseDouble,
-                 &DirectHandler<&rt_parse_double, int32_t, const char *, double *>::invoke,
-                 feature(RuntimeFeature::ParseDouble));
-    addGenerated("rt_int_to_str",
-                 RtSig::IntToStr,
-                 &DirectHandler<&rt_int_to_str, rt_string, int64_t>::invoke,
-                 feature(RuntimeFeature::IntToStr));
-    addGenerated("rt_f64_to_str",
-                 RtSig::F64ToStr,
-                 &DirectHandler<&rt_f64_to_str, rt_string, double>::invoke,
-                 feature(RuntimeFeature::F64ToStr));
-    add("rt_term_cls",
-        Kind::Void,
-        {},
-        &DirectHandler<&rt_term_cls, void>::invoke,
-        feature(RuntimeFeature::TermCls));
-    add("rt_term_color_i32",
-        Kind::Void,
-        {Kind::I32, Kind::I32},
-        &DirectHandler<&rt_term_color_i32, void, int32_t, int32_t>::invoke,
-        feature(RuntimeFeature::TermColor));
-    add("rt_term_locate_i32",
-        Kind::Void,
-        {Kind::I32, Kind::I32},
-        &DirectHandler<&rt_term_locate_i32, void, int32_t, int32_t>::invoke,
-        feature(RuntimeFeature::TermLocate));
-    add("rt_getkey_str",
-        Kind::Str,
-        {},
-        &DirectHandler<&rt_getkey_str, rt_string>::invoke,
-        feature(RuntimeFeature::GetKey));
-    add("rt_inkey_str",
-        Kind::Str,
-        {},
-        &DirectHandler<&rt_inkey_str, rt_string>::invoke,
-        feature(RuntimeFeature::InKey));
-    addGenerated("rt_str_i16_alloc",
-                 RtSig::StrFromI16,
-                 &DirectHandler<&rt_str_i16_alloc, rt_string, int16_t>::invoke,
-                 feature(RuntimeFeature::StrFromI16));
-    addGenerated("rt_str_i32_alloc",
-                 RtSig::StrFromI32,
-                 &DirectHandler<&rt_str_i32_alloc, rt_string, int32_t>::invoke,
-                 feature(RuntimeFeature::StrFromI32));
-    addGenerated("rt_str_f_alloc",
-                 RtSig::StrFromSingle,
-                 &invokeRtStrFAlloc,
-                 feature(RuntimeFeature::StrFromSingle));
-    addGenerated("rt_str_d_alloc",
-                 RtSig::StrFromDouble,
-                 &DirectHandler<&rt_str_d_alloc, rt_string, double>::invoke,
-                 feature(RuntimeFeature::StrFromDouble));
-    add("rt_cint_from_double",
-        Kind::I64,
-        {Kind::F64, Kind::Ptr},
-        &invokeRtCintFromDouble,
-        feature(RuntimeFeature::CintFromDouble));
-    add("rt_clng_from_double",
-        Kind::I64,
-        {Kind::F64, Kind::Ptr},
-        &invokeRtClngFromDouble,
-        feature(RuntimeFeature::ClngFromDouble));
-    add("rt_csng_from_double",
-        Kind::F64,
-        {Kind::F64, Kind::Ptr},
-        &invokeRtCsngFromDouble,
-        feature(RuntimeFeature::CsngFromDouble));
-    add("rt_cdbl_from_any",
-        Kind::F64,
-        {Kind::F64},
-        &DirectHandler<&rt_cdbl_from_any, double, double>::invoke,
-        feature(RuntimeFeature::CdblFromAny));
-    add("rt_int_floor",
-        Kind::F64,
-        {Kind::F64},
-        &DirectHandler<&rt_int_floor, double, double>::invoke,
-        feature(RuntimeFeature::IntFloor));
-    add("rt_fix_trunc",
-        Kind::F64,
-        {Kind::F64},
-        &DirectHandler<&rt_fix_trunc, double, double>::invoke,
-        feature(RuntimeFeature::FixTrunc));
-    add("rt_round_even",
-        Kind::F64,
-        {Kind::F64, Kind::I32},
-        &invokeRtRoundEven,
-        feature(RuntimeFeature::RoundEven));
-    add("rt_alloc",
-        Kind::Ptr,
-        {Kind::I64},
-        &DirectHandler<&rt_alloc, void *, int64_t>::invoke,
-        feature(RuntimeFeature::Alloc));
-    add("rt_arr_i32_new", Kind::Ptr, {Kind::I64}, &invokeRtArrI32New, manual());
-    add("rt_arr_i32_retain",
-        Kind::Void,
-        {Kind::Ptr},
-        &DirectHandler<&rt_arr_i32_retain, void, int32_t *>::invoke,
-        manual());
-    add("rt_arr_i32_release",
-        Kind::Void,
-        {Kind::Ptr},
-        &DirectHandler<&rt_arr_i32_release, void, int32_t *>::invoke,
-        manual());
-    add("rt_arr_i32_len", Kind::I64, {Kind::Ptr}, &invokeRtArrI32Len, manual());
-    add("rt_arr_i32_get", Kind::I64, {Kind::Ptr, Kind::I64}, &invokeRtArrI32Get, manual());
-    add("rt_arr_i32_set",
-        Kind::Void,
-        {Kind::Ptr, Kind::I64, Kind::I64},
-        &invokeRtArrI32Set,
-        manual());
-    add("rt_arr_i32_resize", Kind::Ptr, {Kind::Ptr, Kind::I64}, &invokeRtArrI32Resize, manual());
-    add("rt_arr_oob_panic", Kind::Void, {Kind::I64, Kind::I64}, &invokeRtArrOobPanic, manual());
-    add("rt_left",
-        Kind::Str,
-        {Kind::Str, Kind::I64},
-        &DirectHandler<&rt_left, rt_string, rt_string, int64_t>::invoke,
-        feature(RuntimeFeature::Left));
-    add("rt_right",
-        Kind::Str,
-        {Kind::Str, Kind::I64},
-        &DirectHandler<&rt_right, rt_string, rt_string, int64_t>::invoke,
-        feature(RuntimeFeature::Right));
-    add("rt_mid2",
-        Kind::Str,
-        {Kind::Str, Kind::I64},
-        &DirectHandler<&rt_mid2, rt_string, rt_string, int64_t>::invoke,
-        feature(RuntimeFeature::Mid2));
-    add("rt_mid3",
-        Kind::Str,
-        {Kind::Str, Kind::I64, Kind::I64},
-        &DirectHandler<&rt_mid3, rt_string, rt_string, int64_t, int64_t>::invoke,
-        feature(RuntimeFeature::Mid3));
-    add("rt_instr2",
-        Kind::I64,
-        {Kind::Str, Kind::Str},
-        &DirectHandler<&rt_instr2, int64_t, rt_string, rt_string>::invoke,
-        feature(RuntimeFeature::Instr2));
-    add("rt_instr3",
-        Kind::I64,
-        {Kind::I64, Kind::Str, Kind::Str},
-        &DirectHandler<&rt_instr3, int64_t, int64_t, rt_string, rt_string>::invoke,
-        feature(RuntimeFeature::Instr3));
-    add("rt_ltrim",
-        Kind::Str,
-        {Kind::Str},
-        &DirectHandler<&rt_ltrim, rt_string, rt_string>::invoke,
-        feature(RuntimeFeature::Ltrim));
-    add("rt_rtrim",
-        Kind::Str,
-        {Kind::Str},
-        &DirectHandler<&rt_rtrim, rt_string, rt_string>::invoke,
-        feature(RuntimeFeature::Rtrim));
-    add("rt_trim",
-        Kind::Str,
-        {Kind::Str},
-        &DirectHandler<&rt_trim, rt_string, rt_string>::invoke,
-        feature(RuntimeFeature::Trim));
-    add("rt_ucase",
-        Kind::Str,
-        {Kind::Str},
-        &DirectHandler<&rt_ucase, rt_string, rt_string>::invoke,
-        feature(RuntimeFeature::Ucase));
-    add("rt_lcase",
-        Kind::Str,
-        {Kind::Str},
-        &DirectHandler<&rt_lcase, rt_string, rt_string>::invoke,
-        feature(RuntimeFeature::Lcase));
-    add("rt_chr",
-        Kind::Str,
-        {Kind::I64},
-        &DirectHandler<&rt_chr, rt_string, int64_t>::invoke,
-        feature(RuntimeFeature::Chr));
-    add("rt_asc",
-        Kind::I64,
-        {Kind::Str},
-        &DirectHandler<&rt_asc, int64_t, rt_string>::invoke,
-        feature(RuntimeFeature::Asc));
-    add("rt_str_eq",
-        Kind::I1,
-        {Kind::Str, Kind::Str},
-        &DirectHandler<&rt_str_eq, int64_t, rt_string, rt_string>::invoke,
-        feature(RuntimeFeature::StrEq));
-    add("rt_val",
-        Kind::F64,
-        {Kind::Str},
-        &DirectHandler<&rt_val, double, rt_string>::invoke,
-        feature(RuntimeFeature::Val));
-    add("rt_val_to_double",
-        Kind::F64,
-        {Kind::Ptr, Kind::Ptr},
-        &DirectHandler<&rt_val_to_double, double, const char *, bool *>::invoke,
-        feature(RuntimeFeature::Val));
-    add("rt_string_cstr",
-        Kind::Ptr,
-        {Kind::Str},
-        &DirectHandler<&rt_string_cstr, const char *, rt_string>::invoke,
-        feature(RuntimeFeature::Val));
-    add("rt_sqrt",
-        Kind::F64,
-        {Kind::F64},
-        &DirectHandler<&rt_sqrt, double, double>::invoke,
-        feature(RuntimeFeature::Sqrt, true));
-    add("rt_abs_i64",
-        Kind::I64,
-        {Kind::I64},
-        &DirectHandler<&rt_abs_i64, long long, long long>::invoke,
-        feature(RuntimeFeature::AbsI64, true));
-    add("rt_abs_f64",
-        Kind::F64,
-        {Kind::F64},
-        &DirectHandler<&rt_abs_f64, double, double>::invoke,
-        feature(RuntimeFeature::AbsF64, true));
-    add("rt_floor",
-        Kind::F64,
-        {Kind::F64},
-        &DirectHandler<&rt_floor, double, double>::invoke,
-        feature(RuntimeFeature::Floor, true));
-    add("rt_ceil",
-        Kind::F64,
-        {Kind::F64},
-        &DirectHandler<&rt_ceil, double, double>::invoke,
-        feature(RuntimeFeature::Ceil, true));
-    add("rt_sin",
-        Kind::F64,
-        {Kind::F64},
-        &DirectHandler<&rt_sin, double, double>::invoke,
-        feature(RuntimeFeature::Sin, true));
-    add("rt_cos",
-        Kind::F64,
-        {Kind::F64},
-        &DirectHandler<&rt_cos, double, double>::invoke,
-        feature(RuntimeFeature::Cos, true));
-    add("rt_pow_f64_chkdom",
-        Kind::F64,
-        {Kind::F64, Kind::F64},
-        &invokeRtPowF64Chkdom,
-        feature(RuntimeFeature::Pow, true),
-        {makeHiddenParam(RuntimeHiddenParamKind::PowStatusPointer)},
-        RuntimeTrapClass::PowDomainOverflow);
-    add("rt_randomize_i64",
-        Kind::Void,
-        {Kind::I64},
-        &DirectHandler<&rt_randomize_i64, void, long long>::invoke,
-        feature(RuntimeFeature::RandomizeI64, true));
-    add("rt_rnd",
-        Kind::F64,
-        {},
-        &DirectHandler<&rt_rnd, double>::invoke,
-        feature(RuntimeFeature::Rnd, true));
-    add("rt_open_err_vstr",
-        Kind::I32,
-        {Kind::Str, Kind::I32, Kind::I32},
-        &DirectHandler<&rt_open_err_vstr, int32_t, ViperString *, int32_t, int32_t>::invoke,
-        manual());
-    add("rt_close_err",
-        Kind::I32,
-        {Kind::I32},
-        &DirectHandler<&rt_close_err, int32_t, int32_t>::invoke,
-        manual());
-    add("rt_write_ch_err",
-        Kind::I32,
-        {Kind::I32, Kind::Str},
-        &DirectHandler<&rt_write_ch_err, int32_t, int32_t, ViperString *>::invoke,
-        manual());
-    add("rt_println_ch_err",
-        Kind::I32,
-        {Kind::I32, Kind::Str},
-        &DirectHandler<&rt_println_ch_err, int32_t, int32_t, ViperString *>::invoke,
-        manual());
-    add("rt_line_input_ch_err",
-        Kind::I32,
-        {Kind::I32, Kind::Ptr},
-        &DirectHandler<&rt_line_input_ch_err, int32_t, int32_t, ViperString **>::invoke,
-        manual());
-    add("rt_eof_ch",
-        Kind::I32,
-        {Kind::I32},
-        &DirectHandler<&rt_eof_ch, int32_t, int32_t>::invoke,
-        manual());
-    add("rt_lof_ch",
-        Kind::I64,
-        {Kind::I32},
-        &DirectHandler<&rt_lof_ch, int64_t, int32_t>::invoke,
-        manual());
-    add("rt_loc_ch",
-        Kind::I64,
-        {Kind::I32},
-        &DirectHandler<&rt_loc_ch, int64_t, int32_t>::invoke,
-        manual());
-    add("rt_seek_ch_err",
-        Kind::I32,
-        {Kind::I32, Kind::I64},
-        &DirectHandler<&rt_seek_ch_err, int32_t, int32_t, int64_t>::invoke,
-        manual());
-    add("rt_str_empty",
-        Kind::Str,
-        {},
-        &DirectHandler<&rt_str_empty, rt_string>::invoke,
-        always());
-    add("rt_const_cstr",
-        Kind::Str,
-        {Kind::Ptr},
-        &DirectHandler<&rt_const_cstr, rt_string, const char *>::invoke,
-        manual());
-    add("rt_str_retain_maybe",
-        Kind::Void,
-        {Kind::Str},
-        &DirectHandler<&rt_str_retain_maybe, void, rt_string>::invoke,
-        manual());
-    add("rt_str_release_maybe",
-        Kind::Void,
-        {Kind::Str},
-        &DirectHandler<&rt_str_release_maybe, void, rt_string>::invoke,
-        manual());
-
+    entries.push_back(makeAbortDescriptor());
+    appendGeneratedDescriptors(entries, kGeneratedPrintDescriptors);
+    appendManualDescriptors(entries, kManualPrintDescriptors);
+    appendGeneratedDescriptors(entries, kGeneratedStringCoreDescriptors);
+    appendManualDescriptors(entries, kManualStringIoDescriptors);
+    appendGeneratedDescriptors(entries, kGeneratedInputDescriptors);
+    appendManualDescriptors(entries, kManualTermDescriptors);
+    appendGeneratedDescriptors(entries, kGeneratedStringAllocDescriptors);
+    appendManualDescriptors(entries, kManualConversionDescriptors);
+    appendManualDescriptors(entries, kManualMemoryDescriptors);
+    appendManualDescriptors(entries, kManualArrayDescriptors);
+    appendManualDescriptors(entries, kManualStringManipDescriptors);
+    appendManualDescriptors(entries, kManualMathDescriptors);
+    appendManualDescriptors(entries, kManualRandomDescriptors);
+    appendManualDescriptors(entries, kManualFileDescriptors);
+    appendManualDescriptors(entries, kManualLifetimeDescriptors);
     return entries;
 }
+
 
 } // namespace
 
