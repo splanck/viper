@@ -15,6 +15,7 @@
 extern "C" {
 #include "runtime/rt_format.h"
 }
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstdint>
@@ -141,6 +142,270 @@ private:
         exprSlot() = std::move(replacement);
     }
 
+    std::optional<double> getFiniteDouble(const ExprPtr &expr) const
+    {
+        if (!expr)
+            return std::nullopt;
+        auto numeric = detail::asNumeric(*expr);
+        if (!numeric)
+            return std::nullopt;
+        double value = numeric->isFloat ? numeric->f : static_cast<double>(numeric->i);
+        if (!std::isfinite(value))
+            return std::nullopt;
+        return value;
+    }
+
+    std::optional<int> getRoundedDigits(const ExprPtr &expr) const
+    {
+        auto value = getFiniteDouble(expr);
+        if (!value)
+            return std::nullopt;
+        double rounded = std::nearbyint(*value);
+        if (!std::isfinite(rounded))
+            return std::nullopt;
+        if (rounded < static_cast<double>(std::numeric_limits<int32_t>::min()) ||
+            rounded > static_cast<double>(std::numeric_limits<int32_t>::max()))
+            return std::nullopt;
+        return static_cast<int>(rounded);
+    }
+
+    std::optional<double> roundToDigits(double value, int digits) const
+    {
+        if (!std::isfinite(value))
+            return std::nullopt;
+
+        if (digits == 0)
+        {
+            double rounded = std::nearbyint(value);
+            if (!std::isfinite(rounded))
+                return std::nullopt;
+            return rounded;
+        }
+
+        double scaleExponent = static_cast<double>(std::abs(digits));
+        double scale = std::pow(10.0, scaleExponent);
+        if (!std::isfinite(scale) || scale == 0.0)
+            return std::nullopt;
+
+        double scaled = digits > 0 ? value * scale : value / scale;
+        if (!std::isfinite(scaled))
+            return std::nullopt;
+
+        double rounded = std::nearbyint(scaled);
+        if (!std::isfinite(rounded))
+            return std::nullopt;
+
+        double result = digits > 0 ? rounded / scale : rounded * scale;
+        if (!std::isfinite(result))
+            return std::nullopt;
+        return result;
+    }
+
+    std::optional<double> parseValLiteral(const StringExpr &expr) const
+    {
+        const std::string &s = expr.value;
+        const char *raw = s.c_str();
+        while (*raw && std::isspace(static_cast<unsigned char>(*raw)))
+            ++raw;
+
+        if (*raw == '\0')
+            return 0.0;
+
+        auto isDigit = [](char ch) {
+            return ch >= '0' && ch <= '9';
+        };
+
+        if (*raw == '+' || *raw == '-')
+        {
+            char next = raw[1];
+            if (next == '.')
+            {
+                if (!isDigit(raw[2]))
+                    return 0.0;
+            }
+            else if (!isDigit(next))
+            {
+                return 0.0;
+            }
+        }
+        else if (*raw == '.')
+        {
+            if (!isDigit(raw[1]))
+                return 0.0;
+        }
+        else if (!isDigit(*raw))
+        {
+            return 0.0;
+        }
+
+        char *endp = nullptr;
+        double parsed = std::strtod(raw, &endp);
+        if (endp == raw)
+            return 0.0;
+        if (!std::isfinite(parsed))
+            return std::nullopt;
+        return parsed;
+    }
+
+    bool tryFoldLen(BuiltinCallExpr &expr)
+    {
+        if (expr.args.size() != 1 || !expr.args[0])
+            return false;
+        if (auto folded = detail::foldLenLiteral(*expr.args[0]))
+        {
+            folded->loc = expr.loc;
+            replaceWithExpr(std::move(folded));
+            return true;
+        }
+        return false;
+    }
+
+    bool tryFoldMid(BuiltinCallExpr &expr)
+    {
+        if (expr.args.size() != 3 || !expr.args[0] || !expr.args[1] || !expr.args[2])
+            return false;
+        if (auto folded = detail::foldMidLiteral(*expr.args[0], *expr.args[1], *expr.args[2]))
+        {
+            folded->loc = expr.loc;
+            replaceWithExpr(std::move(folded));
+            return true;
+        }
+        return false;
+    }
+
+    bool tryFoldLeft(BuiltinCallExpr &expr)
+    {
+        if (expr.args.size() != 2 || !expr.args[0] || !expr.args[1])
+            return false;
+        if (auto folded = detail::foldLeftLiteral(*expr.args[0], *expr.args[1]))
+        {
+            folded->loc = expr.loc;
+            replaceWithExpr(std::move(folded));
+            return true;
+        }
+        return false;
+    }
+
+    bool tryFoldRight(BuiltinCallExpr &expr)
+    {
+        if (expr.args.size() != 2 || !expr.args[0] || !expr.args[1])
+            return false;
+        if (auto folded = detail::foldRightLiteral(*expr.args[0], *expr.args[1]))
+        {
+            folded->loc = expr.loc;
+            replaceWithExpr(std::move(folded));
+            return true;
+        }
+        return false;
+    }
+
+    bool tryFoldVal(BuiltinCallExpr &expr)
+    {
+        if (expr.args.size() != 1 || !expr.args[0])
+            return false;
+        if (auto *literal = dynamic_cast<StringExpr *>(expr.args[0].get()))
+        {
+            auto parsed = parseValLiteral(*literal);
+            if (!parsed)
+                return false;
+            replaceWithFloat(*parsed, expr.loc);
+            return true;
+        }
+        return false;
+    }
+
+    bool tryFoldInt(BuiltinCallExpr &expr)
+    {
+        if (expr.args.size() != 1)
+            return false;
+        auto value = getFiniteDouble(expr.args[0]);
+        if (!value)
+            return false;
+        double floored = std::floor(*value);
+        if (!std::isfinite(floored))
+            return false;
+        replaceWithFloat(floored, expr.loc);
+        return true;
+    }
+
+    bool tryFoldFix(BuiltinCallExpr &expr)
+    {
+        if (expr.args.size() != 1)
+            return false;
+        auto value = getFiniteDouble(expr.args[0]);
+        if (!value)
+            return false;
+        double truncated = std::trunc(*value);
+        if (!std::isfinite(truncated))
+            return false;
+        replaceWithFloat(truncated, expr.loc);
+        return true;
+    }
+
+    bool tryFoldRound(BuiltinCallExpr &expr)
+    {
+        if (expr.args.empty() || !expr.args[0])
+            return false;
+
+        auto value = getFiniteDouble(expr.args[0]);
+        if (!value)
+            return false;
+
+        int digits = 0;
+        if (expr.args.size() >= 2 && expr.args[1])
+        {
+            auto parsedDigits = getRoundedDigits(expr.args[1]);
+            if (!parsedDigits)
+                return false;
+            digits = *parsedDigits;
+        }
+
+        auto result = roundToDigits(*value, digits);
+        if (!result)
+            return false;
+        replaceWithFloat(*result, expr.loc);
+        return true;
+    }
+
+    bool tryFoldStr(BuiltinCallExpr &expr)
+    {
+        if (expr.args.size() != 1)
+            return false;
+        auto numeric = detail::asNumeric(*expr.args[0]);
+        if (!numeric)
+            return false;
+
+        char buf[64];
+        if (numeric->isFloat)
+        {
+            rt_format_f64(numeric->f, buf, sizeof(buf));
+        }
+        else
+        {
+            snprintf(buf, sizeof(buf), "%lld", numeric->i);
+        }
+        replaceWithStr(buf, expr.loc);
+        return true;
+    }
+
+    struct BuiltinDispatchEntry
+    {
+        BuiltinCallExpr::Builtin builtin;
+        bool (ConstFolderPass::*folder)(BuiltinCallExpr &);
+    };
+
+    static constexpr std::array<BuiltinDispatchEntry, 9> kBuiltinDispatch{{
+        {BuiltinCallExpr::Builtin::Len, &ConstFolderPass::tryFoldLen},
+        {BuiltinCallExpr::Builtin::Mid, &ConstFolderPass::tryFoldMid},
+        {BuiltinCallExpr::Builtin::Left, &ConstFolderPass::tryFoldLeft},
+        {BuiltinCallExpr::Builtin::Right, &ConstFolderPass::tryFoldRight},
+        {BuiltinCallExpr::Builtin::Val, &ConstFolderPass::tryFoldVal},
+        {BuiltinCallExpr::Builtin::Int, &ConstFolderPass::tryFoldInt},
+        {BuiltinCallExpr::Builtin::Fix, &ConstFolderPass::tryFoldFix},
+        {BuiltinCallExpr::Builtin::Round, &ConstFolderPass::tryFoldRound},
+        {BuiltinCallExpr::Builtin::Str, &ConstFolderPass::tryFoldStr},
+    }};
+
     // MutExprVisitor overrides ----------------------------------------------
     void visit(IntExpr &) override {}
     void visit(FloatExpr &) override {}
@@ -252,250 +517,14 @@ private:
         for (auto &arg : expr.args)
             foldExpr(arg);
 
-        switch (expr.builtin)
+        for (const auto &entry : kBuiltinDispatch)
         {
-            case BuiltinCallExpr::Builtin::Len:
+            if (entry.builtin == expr.builtin)
             {
-                if (expr.args.size() == 1 && expr.args[0])
-                {
-                    if (auto folded = detail::foldLenLiteral(*expr.args[0]))
-                    {
-                        folded->loc = expr.loc;
-                        replaceWithExpr(std::move(folded));
-                    }
-                }
+                if ((this->*entry.folder)(expr))
+                    return;
                 break;
             }
-            case BuiltinCallExpr::Builtin::Mid:
-            {
-                if (expr.args.size() == 3 && expr.args[0] && expr.args[1] && expr.args[2])
-                {
-                    if (auto folded = detail::foldMidLiteral(
-                            *expr.args[0], *expr.args[1], *expr.args[2]))
-                    {
-                        folded->loc = expr.loc;
-                        replaceWithExpr(std::move(folded));
-                    }
-                }
-                break;
-            }
-            case BuiltinCallExpr::Builtin::Left:
-            {
-                if (expr.args.size() == 2 && expr.args[0] && expr.args[1])
-                {
-                    if (auto folded = detail::foldLeftLiteral(*expr.args[0], *expr.args[1]))
-                    {
-                        folded->loc = expr.loc;
-                        replaceWithExpr(std::move(folded));
-                    }
-                }
-                break;
-            }
-            case BuiltinCallExpr::Builtin::Right:
-            {
-                if (expr.args.size() == 2 && expr.args[0] && expr.args[1])
-                {
-                    if (auto folded = detail::foldRightLiteral(*expr.args[0], *expr.args[1]))
-                    {
-                        folded->loc = expr.loc;
-                        replaceWithExpr(std::move(folded));
-                    }
-                }
-                break;
-            }
-            case BuiltinCallExpr::Builtin::Val:
-            {
-                if (expr.args.size() == 1 && expr.args[0])
-                {
-                    if (auto *literal = dynamic_cast<StringExpr *>(expr.args[0].get()))
-                    {
-                        const std::string &s = literal->value;
-                        const char *raw = s.c_str();
-                        while (*raw && std::isspace(static_cast<unsigned char>(*raw)))
-                            ++raw;
-
-                        if (*raw == '\0')
-                        {
-                            replaceWithFloat(0.0, expr.loc);
-                            break;
-                        }
-
-                        auto isDigit = [](char ch) {
-                            return ch >= '0' && ch <= '9';
-                        };
-
-                        if (*raw == '+' || *raw == '-')
-                        {
-                            char next = raw[1];
-                            if (next == '.')
-                            {
-                                if (!isDigit(raw[2]))
-                                {
-                                    replaceWithFloat(0.0, expr.loc);
-                                    break;
-                                }
-                            }
-                            else if (!isDigit(next))
-                            {
-                                replaceWithFloat(0.0, expr.loc);
-                                break;
-                            }
-                        }
-                        else if (*raw == '.')
-                        {
-                            if (!isDigit(raw[1]))
-                            {
-                                replaceWithFloat(0.0, expr.loc);
-                                break;
-                            }
-                        }
-                        else if (!isDigit(*raw))
-                        {
-                            replaceWithFloat(0.0, expr.loc);
-                            break;
-                        }
-
-                        char *endp = nullptr;
-                        double parsed = std::strtod(raw, &endp);
-                        if (endp == raw)
-                        {
-                            replaceWithFloat(0.0, expr.loc);
-                            break;
-                        }
-                        if (!std::isfinite(parsed))
-                            break;
-                        replaceWithFloat(parsed, expr.loc);
-                    }
-                }
-                break;
-            }
-            case BuiltinCallExpr::Builtin::Int:
-            {
-                if (expr.args.size() == 1)
-                {
-                    auto n = detail::asNumeric(*expr.args[0]);
-                    if (n)
-                    {
-                        double operand = n->isFloat ? n->f : static_cast<double>(n->i);
-                        if (!std::isfinite(operand))
-                            break;
-                        double floored = std::floor(operand);
-                        if (!std::isfinite(floored))
-                            break;
-                        replaceWithFloat(floored, expr.loc);
-                    }
-                }
-                break;
-            }
-            case BuiltinCallExpr::Builtin::Fix:
-            {
-                if (expr.args.size() == 1)
-                {
-                    auto n = detail::asNumeric(*expr.args[0]);
-                    if (n)
-                    {
-                        double operand = n->isFloat ? n->f : static_cast<double>(n->i);
-                        if (!std::isfinite(operand))
-                            break;
-                        double truncated = std::trunc(operand);
-                        if (!std::isfinite(truncated))
-                            break;
-                        replaceWithFloat(truncated, expr.loc);
-                    }
-                }
-                break;
-            }
-            case BuiltinCallExpr::Builtin::Round:
-            {
-                if (!expr.args.empty())
-                {
-                    auto first = detail::asNumeric(*expr.args[0]);
-                    if (!first)
-                        break;
-                    double value = first->isFloat ? first->f : static_cast<double>(first->i);
-                    if (!std::isfinite(value))
-                        break;
-                    int digits = 0;
-                    if (expr.args.size() >= 2 && expr.args[1])
-                    {
-                        if (auto second = detail::asNumeric(*expr.args[1]))
-                        {
-                            double raw = second->isFloat ? second->f : static_cast<double>(second->i);
-                            double rounded = std::nearbyint(raw);
-                            if (!std::isfinite(rounded))
-                                break;
-                            if (rounded < static_cast<double>(std::numeric_limits<int32_t>::min()) ||
-                                rounded > static_cast<double>(std::numeric_limits<int32_t>::max()))
-                                break;
-                            digits = static_cast<int>(rounded);
-                        }
-                        else
-                        {
-                            break;
-                        }
-                    }
-
-                    double result = value;
-                    if (digits > 0)
-                    {
-                        double scale = std::pow(10.0, static_cast<double>(digits));
-                        if (!std::isfinite(scale) || scale == 0.0)
-                            break;
-                        double scaled = value * scale;
-                        if (!std::isfinite(scaled))
-                            break;
-                        double rounded = std::nearbyint(scaled);
-                        if (!std::isfinite(rounded))
-                            break;
-                        result = rounded / scale;
-                    }
-                    else if (digits < 0)
-                    {
-                        double scale = std::pow(10.0, static_cast<double>(-digits));
-                        if (!std::isfinite(scale) || scale == 0.0)
-                            break;
-                        double scaled = value / scale;
-                        if (!std::isfinite(scaled))
-                            break;
-                        double rounded = std::nearbyint(scaled);
-                        if (!std::isfinite(rounded))
-                            break;
-                        result = rounded * scale;
-                    }
-                    else
-                    {
-                        result = std::nearbyint(value);
-                    }
-
-                    if (!std::isfinite(result))
-                        break;
-                    replaceWithFloat(result, expr.loc);
-                }
-                break;
-            }
-            case BuiltinCallExpr::Builtin::Str:
-            {
-                if (expr.args.size() == 1)
-                {
-                    auto n = detail::asNumeric(*expr.args[0]);
-                    if (n)
-                    {
-                        char buf[64];
-                        if (n->isFloat)
-                        {
-                            rt_format_f64(n->f, buf, sizeof(buf));
-                        }
-                        else
-                        {
-                            snprintf(buf, sizeof(buf), "%lld", n->i);
-                        }
-                        replaceWithStr(buf, expr.loc);
-                    }
-                }
-                break;
-            }
-            default:
-                break;
         }
     }
 
