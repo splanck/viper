@@ -62,15 +62,39 @@ class Parser
     std::unordered_set<std::string> arrays_;  ///< Names of arrays declared via DIM.
     std::unordered_set<std::string> knownProcedures_; ///< Procedure identifiers seen so far.
 
-    /// @brief Mapping entry for statement parsers.
-    struct StmtHandler
+    /// @brief Registry that maps statement-leading tokens to parser callbacks.
+    class StatementParserRegistry
     {
-        StmtPtr (Parser::*no_arg)() = nullptr;       ///< Handler without line parameter.
-        StmtPtr (Parser::*with_line)(int) = nullptr; ///< Handler requiring line number.
+      public:
+        using NoArgHandler = StmtPtr (Parser::*)();
+        using WithLineHandler = StmtPtr (Parser::*)(int);
+
+        /// @brief Register handler without an explicit line parameter.
+        void registerHandler(TokenKind kind, NoArgHandler handler);
+
+        /// @brief Register handler that requires the originating line number.
+        void registerHandler(TokenKind kind, WithLineHandler handler);
+
+        /// @brief Lookup registered handler for @p kind.
+        /// @return Pointer pair containing callbacks if present.
+        [[nodiscard]] std::pair<NoArgHandler, WithLineHandler>
+        lookup(TokenKind kind) const;
+
+        /// @brief Check whether @p kind begins a statement according to the registry.
+        [[nodiscard]] bool contains(TokenKind kind) const;
+
+      private:
+        std::array<std::pair<NoArgHandler, WithLineHandler>,
+                   static_cast<std::size_t>(TokenKind::Count)>
+            entries_{};
     };
 
-    std::array<StmtHandler, static_cast<std::size_t>(TokenKind::Count)>
-        stmtHandlers_{}; ///< Token to parser mapping.
+    static const StatementParserRegistry &statementRegistry();
+    static StatementParserRegistry buildStatementRegistry();
+    static void registerControlFlowParsers(StatementParserRegistry &registry);
+    static void registerRuntimeParsers(StatementParserRegistry &registry);
+    static void registerIoParsers(StatementParserRegistry &registry);
+    static void registerCoreParsers(StatementParserRegistry &registry);
 
 #include "frontends/basic/Parser_Token.hpp"
 
@@ -86,28 +110,28 @@ class Parser
 
     /// @brief Parse a PRINT statement.
     /// @return PRINT statement node.
-    StmtPtr parsePrint();
+    StmtPtr parsePrintStatement();
 
     /// @brief Parse a WRITE # statement.
     /// @return WRITE statement node targeting a file channel.
-    StmtPtr parseWrite();
+    StmtPtr parseWriteStatement();
 
     /// @brief Parse a LET assignment statement.
     /// @return LET statement node.
-    StmtPtr parseLet();
+    StmtPtr parseLetStatement();
 
     /// @brief Parse an IF statement starting at @p line.
     /// @param line Line number of the IF keyword.
     /// @return IF statement node.
-    StmtPtr parseIf(int line);
+    StmtPtr parseIfStatement(int line);
 
     /// @brief Parse a WHILE loop.
     /// @return WHILE statement node.
-    StmtPtr parseWhile();
+    StmtPtr parseWhileStatement();
 
     /// @brief Parse a SELECT CASE statement with optional CASE ELSE.
     /// @return SELECT CASE statement node.
-    StmtPtr parseSelectCase();
+    StmtPtr parseSelectCaseStatement();
 
     /// @brief Parse a CASE arm including label list and statement body.
     /// @return Parsed CASE arm.
@@ -120,87 +144,87 @@ class Parser
 
     /// @brief Parse a DO ... LOOP statement.
     /// @return DO statement node with optional tests.
-    StmtPtr parseDo();
+    StmtPtr parseDoStatement();
 
     /// @brief Parse a FOR loop.
     /// @return FOR statement node.
-    StmtPtr parseFor();
+    StmtPtr parseForStatement();
 
     /// @brief Parse a NEXT statement closing a loop.
     /// @return NEXT statement node.
-    StmtPtr parseNext();
+    StmtPtr parseNextStatement();
 
     /// @brief Parse an EXIT statement identifying the loop kind.
     /// @return EXIT statement node.
-    StmtPtr parseExit();
+    StmtPtr parseExitStatement();
 
     /// @brief Parse a GOTO statement.
     /// @return GOTO statement node.
-    StmtPtr parseGoto();
+    StmtPtr parseGotoStatement();
 
     /// @brief Parse a GOSUB statement.
     /// @return GOSUB statement node.
-    StmtPtr parseGosub();
+    StmtPtr parseGosubStatement();
 
     /// @brief Parse an OPEN statement configuring file I/O.
     /// @return OPEN statement node.
-    StmtPtr parseOpen();
+    StmtPtr parseOpenStatement();
 
     /// @brief Parse a CLOSE statement releasing a channel.
     /// @return CLOSE statement node.
-    StmtPtr parseClose();
+    StmtPtr parseCloseStatement();
 
     /// @brief Parse a SEEK statement repositioning a channel.
     /// @return SEEK statement node.
-    StmtPtr parseSeek();
+    StmtPtr parseSeekStatement();
 
     /// @brief Parse an ON ERROR GOTO statement.
     /// @return ON ERROR statement node.
-    StmtPtr parseOnErrorGoto();
+    StmtPtr parseOnErrorGotoStatement();
 
     /// @brief Parse an END statement.
     /// @return END statement node.
-    StmtPtr parseEnd();
+    StmtPtr parseEndStatement();
 
     /// @brief Parse an INPUT statement.
     /// @return INPUT statement node.
-    StmtPtr parseInput();
+    StmtPtr parseInputStatement();
 
     /// @brief Parse a LINE INPUT # statement.
     /// @return LINE INPUT statement node.
-    StmtPtr parseLineInput();
+    StmtPtr parseLineInputStatement();
 
     /// @brief Parse a RESUME statement.
     /// @return RESUME statement node.
-    StmtPtr parseResume();
+    StmtPtr parseResumeStatement();
 
     /// @brief Parse a DIM statement defining arrays.
     /// @return DIM statement node.
-    StmtPtr parseDim();
+    StmtPtr parseDimStatement();
 
     /// @brief Parse a REDIM statement resizing arrays.
     /// @return REDIM statement node.
-    StmtPtr parseReDim();
+    StmtPtr parseReDimStatement();
 
     /// @brief Parse a RANDOMIZE statement.
     /// @return RANDOMIZE statement node.
-    StmtPtr parseRandomize();
+    StmtPtr parseRandomizeStatement();
 
     /// @brief Parse a CLS statement clearing the display.
     /// @return CLS statement node.
-    StmtPtr parseCls();
+    StmtPtr parseClsStatement();
 
     /// @brief Parse a COLOR statement adjusting the palette.
     /// @return COLOR statement node.
-    StmtPtr parseColor();
+    StmtPtr parseColorStatement();
 
     /// @brief Parse a LOCATE statement moving the cursor.
     /// @return LOCATE statement node.
-    StmtPtr parseLocate();
+    StmtPtr parseLocateStatement();
 
     /// @brief Parse a FUNCTION definition including body.
     /// @return FUNCTION statement node.
-    StmtPtr parseFunction();
+    StmtPtr parseFunctionStatement();
 
     /// @brief Parse the header of a FUNCTION without its body.
     /// @return Newly allocated function declaration.
@@ -227,11 +251,11 @@ class Parser
 
     /// @brief Parse a SUB definition including body.
     /// @return SUB statement node.
-    StmtPtr parseSub();
+    StmtPtr parseSubStatement();
 
     /// @brief Parse a RETURN statement.
     /// @return RETURN statement node.
-    StmtPtr parseReturn();
+    StmtPtr parseReturnStatement();
 
     /// @brief Parse a comma-separated parameter list inside parentheses.
     /// @return Vector of parsed parameters.
