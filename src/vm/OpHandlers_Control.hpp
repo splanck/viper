@@ -121,9 +121,12 @@ inline viper::vm::SwitchCacheEntry::Kind chooseBackend(const SwitchMeta &meta)
 
 inline viper::vm::DenseJumpTable buildDense(const SwitchMeta &meta)
 {
+    viper::vm::DenseJumpTable table;
+    if (meta.values.empty())
+        return table;
+
     const int32_t minv = *std::min_element(meta.values.begin(), meta.values.end());
     const int32_t maxv = *std::max_element(meta.values.begin(), meta.values.end());
-    viper::vm::DenseJumpTable table;
     table.base = minv;
     table.targets.assign(static_cast<size_t>(maxv - minv + 1), -1);
     for (size_t i = 0; i < meta.values.size(); ++i)
