@@ -56,6 +56,14 @@ class OperandParser
     il::support::Expected<void> checkBranchArgCount(const std::string &label,
                                                     size_t argCount) const;
 
+    il::support::Expected<void> parseDefaultTarget(const std::string &segment);
+
+    il::support::Expected<void> parseCaseSegment(const std::string &segment,
+                                                 const char *mnemonic);
+
+    il::support::Expected<void> validateCaseArity(std::string label,
+                                                  std::vector<il::core::Value> args);
+
     ParserState &state_;
     il::core::Instr &instr_;
 };
