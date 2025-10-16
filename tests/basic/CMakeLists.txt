@@ -125,6 +125,13 @@ function(viper_add_basic_main_tests)
   target_link_libraries(test_frontends_basic_parse_call_stmt PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_parse_call_stmt test_frontends_basic_parse_call_stmt)
 
+  viper_add_test(
+    test_frontends_basic_lowerer_select_case
+    ${VIPER_TESTS_DIR}/frontends/basic/LowererSelectCaseTests.cpp)
+  target_link_libraries(test_frontends_basic_lowerer_select_case PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(
+    test_frontends_basic_lowerer_select_case test_frontends_basic_lowerer_select_case)
+
   viper_add_test(test_frontends_basic_parse_gosub ${VIPER_TESTS_DIR}/frontends/basic/ParseGosubTests.cpp)
   target_link_libraries(test_frontends_basic_parse_gosub PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_parse_gosub test_frontends_basic_parse_gosub)
