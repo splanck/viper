@@ -92,41 +92,22 @@ void SemanticAnalyzer::analyzeIf(const IfStmt &i)
     analyzeBranch(i.else_branch);
 }
 
-namespace
+struct SemanticAnalyzer::SelectCaseSelectorInfo
 {
-class SelectCaseArmValidator
+    bool selectorIsString = false;
+    bool selectorIsNumeric = false;
+    bool fatal = false;
+};
+
+struct SemanticAnalyzer::SelectCaseArmContext
 {
-  public:
-    SelectCaseArmValidator(SemanticDiagnostics &emitter,
-                           bool selectorIsString,
-                           bool selectorIsNumeric,
-                           bool hasElseBody)
-        : de_(emitter),
-          selectorIsString_(selectorIsString),
-          selectorIsNumeric_(selectorIsNumeric),
-          caseElseCount_(hasElseBody ? 1 : 0)
+    enum class LabelKind
     {
-    }
+        None,
+        Numeric,
+        String,
+    };
 
-    void analyzeArm(const CaseArm &arm)
-    {
-        if (isCaseElseArm(arm))
-            noteCaseElse(arm);
-
-        const bool armHasString = !arm.str_labels.empty();
-        const bool armHasNumeric = !arm.labels.empty() || !arm.ranges.empty() || !arm.rels.empty();
-
-        if (armHasString && armHasNumeric)
-            reportMixedLabelTypes(arm);
-
-        if (armHasString)
-            validateStringCaseArm(arm);
-
-        if (armHasNumeric)
-            validateNumericCaseArm(arm);
-    }
-
-  private:
     struct RelInterval
     {
         bool hasLo = false;
@@ -135,297 +116,422 @@ class SelectCaseArmValidator
         int64_t hi = 0;
     };
 
-    enum class CaseArmLabelKind
+    SelectCaseArmContext(SemanticDiagnostics &diagnostics,
+                         bool selectorIsStringIn,
+                         bool selectorIsNumericIn,
+                         bool hasElseBody) noexcept
+        : de(diagnostics),
+          selectorIsString(selectorIsStringIn),
+          selectorIsNumeric(selectorIsNumericIn),
+          caseElseCount(hasElseBody ? 1 : 0)
     {
-        None,
-        Numeric,
-        String,
-    };
-
-    static constexpr int64_t kCaseLabelMin = static_cast<int64_t>(std::numeric_limits<int32_t>::min());
-    static constexpr int64_t kCaseLabelMax = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
-
-    static bool isCaseElseArm(const CaseArm &arm)
-    {
-        return arm.labels.empty() && arm.ranges.empty() && arm.rels.empty() && arm.str_labels.empty();
     }
 
-    static RelInterval makeRangeInterval(int32_t lo, int32_t hi)
+    SemanticDiagnostics &de;
+    bool selectorIsString = false;
+    bool selectorIsNumeric = false;
+    int caseElseCount = 0;
+    LabelKind seenArmLabelKind = LabelKind::None;
+    bool reportedMixedLabelTypes = false;
+    std::unordered_set<int32_t> seenLabels;
+    std::vector<std::pair<int32_t, int32_t>> seenRanges;
+    std::vector<RelInterval> seenRelIntervals;
+    std::unordered_set<std::string> seenStringLabels;
+};
+
+namespace
+{
+constexpr int64_t kCaseLabelMin = static_cast<int64_t>(std::numeric_limits<int32_t>::min());
+constexpr int64_t kCaseLabelMax = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+
+bool isCaseElseArm(const CaseArm &arm)
+{
+    return arm.labels.empty() && arm.ranges.empty() && arm.rels.empty() && arm.str_labels.empty();
+}
+
+SemanticAnalyzer::SelectCaseArmContext::RelInterval makeRangeInterval(int32_t lo, int32_t hi)
+{
+    SemanticAnalyzer::SelectCaseArmContext::RelInterval interval;
+    interval.hasLo = true;
+    interval.lo = static_cast<int64_t>(lo);
+    interval.hasHi = true;
+    interval.hi = static_cast<int64_t>(hi);
+    return interval;
+}
+
+SemanticAnalyzer::SelectCaseArmContext::RelInterval makeRelInterval(CaseArm::CaseRel::Op op, int32_t rhs)
+{
+    SemanticAnalyzer::SelectCaseArmContext::RelInterval interval;
+    switch (op)
     {
-        RelInterval interval;
-        interval.hasLo = true;
-        interval.lo = static_cast<int64_t>(lo);
-        interval.hasHi = true;
-        interval.hi = static_cast<int64_t>(hi);
-        return interval;
+        case CaseArm::CaseRel::Op::LT:
+            interval.hasHi = true;
+            interval.hi = static_cast<int64_t>(rhs) - 1;
+            break;
+        case CaseArm::CaseRel::Op::LE:
+            interval.hasHi = true;
+            interval.hi = static_cast<int64_t>(rhs);
+            break;
+        case CaseArm::CaseRel::Op::EQ:
+            interval.hasLo = true;
+            interval.lo = static_cast<int64_t>(rhs);
+            interval.hasHi = true;
+            interval.hi = static_cast<int64_t>(rhs);
+            break;
+        case CaseArm::CaseRel::Op::GE:
+            interval.hasLo = true;
+            interval.lo = static_cast<int64_t>(rhs);
+            break;
+        case CaseArm::CaseRel::Op::GT:
+            interval.hasLo = true;
+            interval.lo = static_cast<int64_t>(rhs) + 1;
+            break;
+    }
+    return interval;
+}
+
+bool intervalsOverlap(const SemanticAnalyzer::SelectCaseArmContext::RelInterval &lhs,
+                      const SemanticAnalyzer::SelectCaseArmContext::RelInterval &rhs)
+{
+    const int64_t lo = std::max(lhs.hasLo ? lhs.lo : std::numeric_limits<int64_t>::min(),
+                                rhs.hasLo ? rhs.lo : std::numeric_limits<int64_t>::min());
+    const int64_t hi = std::min(lhs.hasHi ? lhs.hi : std::numeric_limits<int64_t>::max(),
+                                rhs.hasHi ? rhs.hi : std::numeric_limits<int64_t>::max());
+    return lo <= hi;
+}
+
+bool intervalContains(const SemanticAnalyzer::SelectCaseArmContext::RelInterval &interval,
+                      int32_t value)
+{
+    if (interval.hasLo && static_cast<int64_t>(value) < interval.lo)
+        return false;
+    if (interval.hasHi && static_cast<int64_t>(value) > interval.hi)
+        return false;
+    return true;
+}
+
+void noteCaseElse(SemanticAnalyzer::SelectCaseArmContext &ctx, const CaseArm &arm)
+{
+    ++ctx.caseElseCount;
+    if (ctx.caseElseCount > 1)
+    {
+        std::string msg(diag::ERR_SelectCase_DuplicateElse.text);
+        ctx.de.emit(il::support::Severity::Error,
+                    std::string(diag::ERR_SelectCase_DuplicateElse.id),
+                    arm.range.begin,
+                    1,
+                    std::move(msg));
+    }
+}
+
+void reportMixedLabelTypes(SemanticAnalyzer::SelectCaseArmContext &ctx, const CaseArm &arm)
+{
+    if (ctx.reportedMixedLabelTypes)
+        return;
+    std::string msg(diag::ERR_SelectCase_MixedLabelTypes.text);
+    ctx.de.emit(il::support::Severity::Error,
+                std::string(diag::ERR_SelectCase_MixedLabelTypes.id),
+                arm.range.begin,
+                1,
+                std::move(msg));
+    ctx.reportedMixedLabelTypes = true;
+}
+
+void trackArmLabelKind(SemanticAnalyzer::SelectCaseArmContext &ctx,
+                       SemanticAnalyzer::SelectCaseArmContext::LabelKind kind,
+                       const CaseArm &arm)
+{
+    if (kind == SemanticAnalyzer::SelectCaseArmContext::LabelKind::None || ctx.reportedMixedLabelTypes)
+        return;
+    if (ctx.seenArmLabelKind == SemanticAnalyzer::SelectCaseArmContext::LabelKind::None)
+    {
+        ctx.seenArmLabelKind = kind;
+        return;
+    }
+    if (ctx.seenArmLabelKind != kind)
+        reportMixedLabelTypes(ctx, arm);
+}
+} // namespace
+
+SemanticAnalyzer::SelectCaseSelectorInfo
+SemanticAnalyzer::classifySelectCaseSelector(const SelectCaseStmt &stmt)
+{
+    SelectCaseSelectorInfo info;
+    if (!stmt.selector)
+        return info;
+
+    Type selectorType = visitExpr(*stmt.selector);
+    if (selectorType == Type::Int)
+    {
+        markImplicitConversion(*stmt.selector, Type::Int);
+        info.selectorIsNumeric = true;
+    }
+    else if (selectorType == Type::String)
+    {
+        info.selectorIsString = true;
+    }
+    else if (selectorType != Type::Unknown)
+    {
+        std::string msg(diag::ERR_SelectCase_NonIntegerSelector.text);
+        de.emit(il::support::Severity::Error,
+                std::string(diag::ERR_SelectCase_NonIntegerSelector.id),
+                stmt.selector->loc,
+                1,
+                std::move(msg));
+        info.fatal = true;
     }
 
-    static RelInterval makeRelInterval(CaseArm::CaseRel::Op op, int32_t rhs)
+    return info;
+}
+
+bool SemanticAnalyzer::validateSelectCaseStringArm(const CaseArm &arm, SelectCaseArmContext &ctx)
+{
+    if (ctx.selectorIsNumeric)
     {
-        RelInterval interval;
-        switch (op)
+        std::string msg(diag::ERR_SelectCase_StringLabelSelector.text);
+        ctx.de.emit(il::support::Severity::Error,
+                    std::string(diag::ERR_SelectCase_StringLabelSelector.id),
+                    arm.range.begin,
+                    1,
+                    std::move(msg));
+    }
+
+    trackArmLabelKind(ctx, SelectCaseArmContext::LabelKind::String, arm);
+
+    for (const auto &label : arm.str_labels)
+    {
+        if (!ctx.seenStringLabels.insert(label).second)
         {
-            case CaseArm::CaseRel::Op::LT:
-                interval.hasHi = true;
-                interval.hi = static_cast<int64_t>(rhs) - 1;
-                break;
-            case CaseArm::CaseRel::Op::LE:
-                interval.hasHi = true;
-                interval.hi = static_cast<int64_t>(rhs);
-                break;
-            case CaseArm::CaseRel::Op::EQ:
-                interval.hasLo = true;
-                interval.lo = static_cast<int64_t>(rhs);
-                interval.hasHi = true;
-                interval.hi = static_cast<int64_t>(rhs);
-                break;
-            case CaseArm::CaseRel::Op::GE:
-                interval.hasLo = true;
-                interval.lo = static_cast<int64_t>(rhs);
-                break;
-            case CaseArm::CaseRel::Op::GT:
-                interval.hasLo = true;
-                interval.lo = static_cast<int64_t>(rhs) + 1;
-                break;
+            std::string msg(diag::ERR_SelectCase_DuplicateLabel.text);
+            msg += ": \"";
+            msg += label;
+            msg += '"';
+            ctx.de.emit(il::support::Severity::Error,
+                        std::string(diag::ERR_SelectCase_DuplicateLabel.id),
+                        arm.range.begin,
+                        1,
+                        std::move(msg));
         }
-        return interval;
     }
 
-    static bool intervalsOverlap(const RelInterval &lhs, const RelInterval &rhs)
+    return true;
+}
+
+bool SemanticAnalyzer::validateSelectCaseNumericArm(const CaseArm &arm, SelectCaseArmContext &ctx)
+{
+    if (ctx.selectorIsString)
     {
-        const int64_t lo = std::max(lhs.hasLo ? lhs.lo : std::numeric_limits<int64_t>::min(),
-                                    rhs.hasLo ? rhs.lo : std::numeric_limits<int64_t>::min());
-        const int64_t hi = std::min(lhs.hasHi ? lhs.hi : std::numeric_limits<int64_t>::max(),
-                                    rhs.hasHi ? rhs.hi : std::numeric_limits<int64_t>::max());
-        return lo <= hi;
+        std::string msg(diag::ERR_SelectCase_StringSelectorLabels.text);
+        ctx.de.emit(il::support::Severity::Error,
+                    std::string(diag::ERR_SelectCase_StringSelectorLabels.id),
+                    arm.range.begin,
+                    1,
+                    std::move(msg));
     }
 
-    static bool intervalContains(const RelInterval &interval, int32_t value)
-    {
-        if (interval.hasLo && static_cast<int64_t>(value) < interval.lo)
-            return false;
-        if (interval.hasHi && static_cast<int64_t>(value) > interval.hi)
-            return false;
-        return true;
-    }
+    trackArmLabelKind(ctx, SelectCaseArmContext::LabelKind::Numeric, arm);
 
-    void noteCaseElse(const CaseArm &arm)
+    for (const auto &[rawLo, rawHi] : arm.ranges)
     {
-        ++caseElseCount_;
-        if (caseElseCount_ > 1)
+        bool valid = true;
+        if (rawLo < kCaseLabelMin || rawLo > kCaseLabelMax)
         {
-            std::string msg(diag::ERR_SelectCase_DuplicateElse.text);
-            de_.emit(il::support::Severity::Error,
-                     std::string(diag::ERR_SelectCase_DuplicateElse.id),
-                     arm.range.begin,
-                     1,
-                     std::move(msg));
+            std::string msg = "CASE range lower bound ";
+            msg += std::to_string(rawLo);
+            msg += " is outside 32-bit signed range";
+            ctx.de.emit(il::support::Severity::Error,
+                        std::string(SemanticAnalyzer::DiagSelectCaseLabelRange),
+                        arm.range.begin,
+                        1,
+                        std::move(msg));
+            valid = false;
         }
-    }
-
-    void reportMixedLabelTypes(const CaseArm &arm)
-    {
-        if (reportedMixedLabelTypes_)
-            return;
-        std::string msg(diag::ERR_SelectCase_MixedLabelTypes.text);
-        de_.emit(il::support::Severity::Error,
-                 std::string(diag::ERR_SelectCase_MixedLabelTypes.id),
-                 arm.range.begin,
-                 1,
-                 std::move(msg));
-        reportedMixedLabelTypes_ = true;
-    }
-
-    void trackArmLabelKind(CaseArmLabelKind kind, const CaseArm &arm)
-    {
-        if (kind == CaseArmLabelKind::None || reportedMixedLabelTypes_)
-            return;
-        if (seenArmLabelKind_ == CaseArmLabelKind::None)
+        if (rawHi < kCaseLabelMin || rawHi > kCaseLabelMax)
         {
-            seenArmLabelKind_ = kind;
-            return;
-        }
-        if (seenArmLabelKind_ != kind)
-            reportMixedLabelTypes(arm);
-    }
-
-    void validateStringCaseArm(const CaseArm &arm)
-    {
-        if (selectorIsNumeric_)
-        {
-            std::string msg(diag::ERR_SelectCase_StringLabelSelector.text);
-            de_.emit(il::support::Severity::Error,
-                     std::string(diag::ERR_SelectCase_StringLabelSelector.id),
-                     arm.range.begin,
-                     1,
-                     std::move(msg));
+            std::string msg = "CASE range upper bound ";
+            msg += std::to_string(rawHi);
+            msg += " is outside 32-bit signed range";
+            ctx.de.emit(il::support::Severity::Error,
+                        std::string(SemanticAnalyzer::DiagSelectCaseLabelRange),
+                        arm.range.begin,
+                        1,
+                        std::move(msg));
+            valid = false;
         }
 
-        trackArmLabelKind(CaseArmLabelKind::String, arm);
-
-        for (const auto &label : arm.str_labels)
+        if (rawLo > rawHi)
         {
-            if (!seenStringLabels_.insert(label).second)
+            std::string msg(diag::ERR_SelectCase_InvalidRange.text);
+            ctx.de.emit(il::support::Severity::Error,
+                        std::string(diag::ERR_SelectCase_InvalidRange.id),
+                        arm.range.begin,
+                        1,
+                        std::move(msg));
+            valid = false;
+        }
+
+        if (!valid)
+            continue;
+
+        const int32_t lo = static_cast<int32_t>(rawLo);
+        const int32_t hi = static_cast<int32_t>(rawHi);
+
+        bool overlaps = false;
+        for (int32_t label : ctx.seenLabels)
+        {
+            if (label >= lo && label <= hi)
             {
-                std::string msg(diag::ERR_SelectCase_DuplicateLabel.text);
-                msg += ": \"";
-                msg += label;
-                msg += '"';
-                de_.emit(il::support::Severity::Error,
-                         std::string(diag::ERR_SelectCase_DuplicateLabel.id),
-                         arm.range.begin,
-                         1,
-                         std::move(msg));
+                std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
+                ctx.de.emit(il::support::Severity::Error,
+                            std::string(diag::ERR_SelectCase_OverlappingRange.id),
+                            arm.range.begin,
+                            1,
+                            std::move(msg));
+                overlaps = true;
+                break;
             }
         }
-    }
 
-    void validateNumericCaseArm(const CaseArm &arm)
-    {
-        if (selectorIsString_)
+        if (!overlaps)
         {
-            std::string msg(diag::ERR_SelectCase_StringSelectorLabels.text);
-            de_.emit(il::support::Severity::Error,
-                     std::string(diag::ERR_SelectCase_StringSelectorLabels.id),
-                     arm.range.begin,
-                     1,
-                     std::move(msg));
-        }
-
-        trackArmLabelKind(CaseArmLabelKind::Numeric, arm);
-
-        for (const auto &[rawLo, rawHi] : arm.ranges)
-        {
-            bool valid = true;
-            if (rawLo < kCaseLabelMin || rawLo > kCaseLabelMax)
+            for (const auto &[seenLo, seenHi] : ctx.seenRanges)
             {
-                std::string msg = "CASE range lower bound ";
-                msg += std::to_string(rawLo);
-                msg += " is outside 32-bit signed range";
-                de_.emit(il::support::Severity::Error,
-                         std::string(SemanticAnalyzer::DiagSelectCaseLabelRange),
-                         arm.range.begin,
-                         1,
-                         std::move(msg));
-                valid = false;
-            }
-            if (rawHi < kCaseLabelMin || rawHi > kCaseLabelMax)
-            {
-                std::string msg = "CASE range upper bound ";
-                msg += std::to_string(rawHi);
-                msg += " is outside 32-bit signed range";
-                de_.emit(il::support::Severity::Error,
-                         std::string(SemanticAnalyzer::DiagSelectCaseLabelRange),
-                         arm.range.begin,
-                         1,
-                         std::move(msg));
-                valid = false;
-            }
-
-            if (rawLo > rawHi)
-            {
-                std::string msg(diag::ERR_SelectCase_InvalidRange.text);
-                de_.emit(il::support::Severity::Error,
-                         std::string(diag::ERR_SelectCase_InvalidRange.id),
-                         arm.range.begin,
-                         1,
-                         std::move(msg));
-                valid = false;
-            }
-
-            if (!valid)
-                continue;
-
-            const int32_t lo = static_cast<int32_t>(rawLo);
-            const int32_t hi = static_cast<int32_t>(rawHi);
-
-            bool overlaps = false;
-            for (int32_t label : seenLabels_)
-            {
-                if (label >= lo && label <= hi)
+                if (!(hi < seenLo || lo > seenHi))
                 {
                     std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
-                    de_.emit(il::support::Severity::Error,
-                             std::string(diag::ERR_SelectCase_OverlappingRange.id),
-                             arm.range.begin,
-                             1,
-                             std::move(msg));
+                    ctx.de.emit(il::support::Severity::Error,
+                                std::string(diag::ERR_SelectCase_OverlappingRange.id),
+                                arm.range.begin,
+                                1,
+                                std::move(msg));
                     overlaps = true;
                     break;
                 }
             }
-
-            if (!overlaps)
-            {
-                for (const auto &[seenLo, seenHi] : seenRanges_)
-                {
-                    if (!(hi < seenLo || lo > seenHi))
-                    {
-                        std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
-                        de_.emit(il::support::Severity::Error,
-                                 std::string(diag::ERR_SelectCase_OverlappingRange.id),
-                                 arm.range.begin,
-                                 1,
-                                 std::move(msg));
-                        overlaps = true;
-                        break;
-                    }
-                }
-            }
-
-            if (!overlaps)
-            {
-                RelInterval interval = makeRangeInterval(lo, hi);
-                for (const auto &seenRel : seenRelIntervals_)
-                {
-                    if (intervalsOverlap(interval, seenRel))
-                    {
-                        std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
-                        de_.emit(il::support::Severity::Error,
-                                 std::string(diag::ERR_SelectCase_OverlappingRange.id),
-                                 arm.range.begin,
-                                 1,
-                                 std::move(msg));
-                        overlaps = true;
-                        break;
-                    }
-                }
-            }
-
-            if (overlaps)
-                continue;
-
-            seenRanges_.emplace_back(lo, hi);
         }
 
-        for (int64_t rawLabel : arm.labels)
+        if (!overlaps)
         {
-            if (rawLabel < kCaseLabelMin || rawLabel > kCaseLabelMax)
+        SelectCaseArmContext::RelInterval interval = makeRangeInterval(lo, hi);
+            for (const auto &seenRel : ctx.seenRelIntervals)
             {
-                std::string msg = "CASE label ";
-                msg += std::to_string(rawLabel);
-                msg += " is outside 32-bit signed range";
-                de_.emit(il::support::Severity::Error,
-                         std::string(SemanticAnalyzer::DiagSelectCaseLabelRange),
-                         arm.range.begin,
-                         1,
-                         std::move(msg));
-                continue;
-            }
-
-            const int32_t label = static_cast<int32_t>(rawLabel);
-
-            bool overlapsRange = false;
-            for (const auto &[seenLo, seenHi] : seenRanges_)
-            {
-                if (label >= seenLo && label <= seenHi)
+                if (intervalsOverlap(interval, seenRel))
                 {
                     std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
-                    de_.emit(il::support::Severity::Error,
-                             std::string(diag::ERR_SelectCase_OverlappingRange.id),
-                             arm.range.begin,
-                             1,
-                             std::move(msg));
+                    ctx.de.emit(il::support::Severity::Error,
+                                std::string(diag::ERR_SelectCase_OverlappingRange.id),
+                                arm.range.begin,
+                                1,
+                                std::move(msg));
+                    overlaps = true;
+                    break;
+                }
+            }
+        }
+
+        if (overlaps)
+            continue;
+
+        ctx.seenRanges.emplace_back(lo, hi);
+    }
+
+    for (int64_t rawLabel : arm.labels)
+    {
+        if (rawLabel < kCaseLabelMin || rawLabel > kCaseLabelMax)
+        {
+            std::string msg = "CASE label ";
+            msg += std::to_string(rawLabel);
+            msg += " is outside 32-bit signed range";
+            ctx.de.emit(il::support::Severity::Error,
+                        std::string(SemanticAnalyzer::DiagSelectCaseLabelRange),
+                        arm.range.begin,
+                        1,
+                        std::move(msg));
+            continue;
+        }
+
+        const int32_t label = static_cast<int32_t>(rawLabel);
+
+        bool overlapsRange = false;
+        for (const auto &[seenLo, seenHi] : ctx.seenRanges)
+        {
+            if (label >= seenLo && label <= seenHi)
+            {
+                std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
+                ctx.de.emit(il::support::Severity::Error,
+                            std::string(diag::ERR_SelectCase_OverlappingRange.id),
+                            arm.range.begin,
+                            1,
+                            std::move(msg));
+                overlapsRange = true;
+                break;
+            }
+        }
+
+        if (overlapsRange)
+            continue;
+
+        bool overlapsRel = false;
+        for (const auto &seenRel : ctx.seenRelIntervals)
+        {
+            if (intervalContains(seenRel, label))
+            {
+                std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
+                ctx.de.emit(il::support::Severity::Error,
+                            std::string(diag::ERR_SelectCase_OverlappingRange.id),
+                            arm.range.begin,
+                            1,
+                            std::move(msg));
+                overlapsRel = true;
+                break;
+            }
+        }
+
+        if (overlapsRel)
+            continue;
+
+        if (!ctx.seenLabels.insert(label).second)
+        {
+            std::string msg(diag::ERR_SelectCase_DuplicateLabel.text);
+            msg += ": ";
+            msg += std::to_string(rawLabel);
+            ctx.de.emit(il::support::Severity::Error,
+                        std::string(diag::ERR_SelectCase_DuplicateLabel.id),
+                        arm.range.begin,
+                        1,
+                        std::move(msg));
+        }
+    }
+
+    for (const auto &rel : arm.rels)
+    {
+        if (rel.rhs < kCaseLabelMin || rel.rhs > kCaseLabelMax)
+        {
+            std::string msg = "CASE label ";
+            msg += std::to_string(rel.rhs);
+            msg += " is outside 32-bit signed range";
+            ctx.de.emit(il::support::Severity::Error,
+                        std::string(SemanticAnalyzer::DiagSelectCaseLabelRange),
+                        arm.range.begin,
+                        1,
+                        std::move(msg));
+            continue;
+        }
+
+        const int32_t rhs = static_cast<int32_t>(rel.rhs);
+        if (rel.op == CaseArm::CaseRel::Op::EQ)
+        {
+            bool overlapsRange = false;
+            for (const auto &[seenLo, seenHi] : ctx.seenRanges)
+            {
+                if (rhs >= seenLo && rhs <= seenHi)
+                {
+                    std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
+                    ctx.de.emit(il::support::Severity::Error,
+                                std::string(diag::ERR_SelectCase_OverlappingRange.id),
+                                arm.range.begin,
+                                1,
+                                std::move(msg));
                     overlapsRange = true;
                     break;
                 }
@@ -435,16 +541,16 @@ class SelectCaseArmValidator
                 continue;
 
             bool overlapsRel = false;
-            for (const auto &seenRel : seenRelIntervals_)
+            for (const auto &seenRel : ctx.seenRelIntervals)
             {
-                if (intervalContains(seenRel, label))
+                if (intervalContains(seenRel, rhs))
                 {
                     std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
-                    de_.emit(il::support::Severity::Error,
-                             std::string(diag::ERR_SelectCase_OverlappingRange.id),
-                             arm.range.begin,
-                             1,
-                             std::move(msg));
+                    ctx.de.emit(il::support::Severity::Error,
+                                std::string(diag::ERR_SelectCase_OverlappingRange.id),
+                                arm.range.begin,
+                                1,
+                                std::move(msg));
                     overlapsRel = true;
                     break;
                 }
@@ -453,196 +559,119 @@ class SelectCaseArmValidator
             if (overlapsRel)
                 continue;
 
-            if (!seenLabels_.insert(label).second)
+            if (!ctx.seenLabels.insert(rhs).second)
             {
                 std::string msg(diag::ERR_SelectCase_DuplicateLabel.text);
                 msg += ": ";
-                msg += std::to_string(rawLabel);
-                de_.emit(il::support::Severity::Error,
-                         std::string(diag::ERR_SelectCase_DuplicateLabel.id),
-                         arm.range.begin,
-                         1,
-                         std::move(msg));
+                msg += std::to_string(rel.rhs);
+                ctx.de.emit(il::support::Severity::Error,
+                            std::string(diag::ERR_SelectCase_DuplicateLabel.id),
+                            arm.range.begin,
+                            1,
+                            std::move(msg));
+            }
+            continue;
+        }
+
+        SelectCaseArmContext::RelInterval interval = makeRelInterval(rel.op, rhs);
+        bool overlaps = false;
+
+        for (const auto &[seenLo, seenHi] : ctx.seenRanges)
+        {
+            if (intervalsOverlap(interval, makeRangeInterval(seenLo, seenHi)))
+            {
+                std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
+                ctx.de.emit(il::support::Severity::Error,
+                            std::string(diag::ERR_SelectCase_OverlappingRange.id),
+                            arm.range.begin,
+                            1,
+                            std::move(msg));
+                overlaps = true;
+                break;
             }
         }
 
-        for (const auto &rel : arm.rels)
+        if (!overlaps)
         {
-            if (rel.rhs < kCaseLabelMin || rel.rhs > kCaseLabelMax)
+            for (int32_t label : ctx.seenLabels)
             {
-                std::string msg = "CASE label ";
-                msg += std::to_string(rel.rhs);
-                msg += " is outside 32-bit signed range";
-                de_.emit(il::support::Severity::Error,
-                         std::string(SemanticAnalyzer::DiagSelectCaseLabelRange),
-                         arm.range.begin,
-                         1,
-                         std::move(msg));
-                continue;
-            }
-
-            const int32_t rhs = static_cast<int32_t>(rel.rhs);
-            if (rel.op == CaseArm::CaseRel::Op::EQ)
-            {
-                bool overlapsRange = false;
-                for (const auto &[seenLo, seenHi] : seenRanges_)
-                {
-                    if (rhs >= seenLo && rhs <= seenHi)
-                    {
-                        std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
-                        de_.emit(il::support::Severity::Error,
-                                 std::string(diag::ERR_SelectCase_OverlappingRange.id),
-                                 arm.range.begin,
-                                 1,
-                                 std::move(msg));
-                        overlapsRange = true;
-                        break;
-                    }
-                }
-
-                if (overlapsRange)
-                    continue;
-
-                bool overlapsRel = false;
-                for (const auto &seenRel : seenRelIntervals_)
-                {
-                    if (intervalContains(seenRel, rhs))
-                    {
-                        std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
-                        de_.emit(il::support::Severity::Error,
-                                 std::string(diag::ERR_SelectCase_OverlappingRange.id),
-                                 arm.range.begin,
-                                 1,
-                                 std::move(msg));
-                        overlapsRel = true;
-                        break;
-                    }
-                }
-
-                if (overlapsRel)
-                    continue;
-
-                if (!seenLabels_.insert(rhs).second)
-                {
-                    std::string msg(diag::ERR_SelectCase_DuplicateLabel.text);
-                    msg += ": ";
-                    msg += std::to_string(rel.rhs);
-                    de_.emit(il::support::Severity::Error,
-                             std::string(diag::ERR_SelectCase_DuplicateLabel.id),
-                             arm.range.begin,
-                             1,
-                             std::move(msg));
-                }
-                continue;
-            }
-
-            RelInterval interval = makeRelInterval(rel.op, rhs);
-            bool overlaps = false;
-
-            for (const auto &[seenLo, seenHi] : seenRanges_)
-            {
-                if (intervalsOverlap(interval, makeRangeInterval(seenLo, seenHi)))
+                if (intervalContains(interval, label))
                 {
                     std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
-                    de_.emit(il::support::Severity::Error,
-                             std::string(diag::ERR_SelectCase_OverlappingRange.id),
-                             arm.range.begin,
-                             1,
-                             std::move(msg));
+                    ctx.de.emit(il::support::Severity::Error,
+                                std::string(diag::ERR_SelectCase_OverlappingRange.id),
+                                arm.range.begin,
+                                1,
+                                std::move(msg));
+                    overlaps = true;
+                    break;
+                }
+            }
+        }
+
+        if (!overlaps)
+        {
+            for (const auto &seenRel : ctx.seenRelIntervals)
+            {
+                if (intervalsOverlap(interval, seenRel))
+                {
+                    std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
+                    ctx.de.emit(il::support::Severity::Error,
+                                std::string(diag::ERR_SelectCase_OverlappingRange.id),
+                                arm.range.begin,
+                                1,
+                                std::move(msg));
                     overlaps = true;
                     break;
                 }
             }
 
             if (!overlaps)
-            {
-                for (int32_t label : seenLabels_)
-                {
-                    if (intervalContains(interval, label))
-                    {
-                        std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
-                        de_.emit(il::support::Severity::Error,
-                                 std::string(diag::ERR_SelectCase_OverlappingRange.id),
-                                 arm.range.begin,
-                                 1,
-                                 std::move(msg));
-                        overlaps = true;
-                        break;
-                    }
-                }
-            }
-
-            if (!overlaps)
-            {
-                for (const auto &seenRel : seenRelIntervals_)
-                {
-                    if (intervalsOverlap(interval, seenRel))
-                    {
-                        std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
-                        de_.emit(il::support::Severity::Error,
-                                 std::string(diag::ERR_SelectCase_OverlappingRange.id),
-                                 arm.range.begin,
-                                 1,
-                                 std::move(msg));
-                        overlaps = true;
-                        break;
-                    }
-                }
-
-                if (!overlaps)
-                    seenRelIntervals_.push_back(interval);
-            }
+                ctx.seenRelIntervals.push_back(interval);
         }
     }
 
-    SemanticDiagnostics &de_;
-    bool selectorIsString_ = false;
-    bool selectorIsNumeric_ = false;
-    int caseElseCount_ = 0;
-    CaseArmLabelKind seenArmLabelKind_ = CaseArmLabelKind::None;
-    bool reportedMixedLabelTypes_ = false;
-    std::unordered_set<int32_t> seenLabels_;
-    std::vector<std::pair<int32_t, int32_t>> seenRanges_;
-    std::vector<RelInterval> seenRelIntervals_;
-    std::unordered_set<std::string> seenStringLabels_;
-};
-} // namespace
+    return true;
+}
+
+bool SemanticAnalyzer::validateSelectCaseArm(const CaseArm &arm, SelectCaseArmContext &ctx)
+{
+    if (isCaseElseArm(arm))
+    {
+        noteCaseElse(ctx, arm);
+        return true;
+    }
+
+    const bool armHasString = !arm.str_labels.empty();
+    const bool armHasNumeric = !arm.labels.empty() || !arm.ranges.empty() || !arm.rels.empty();
+
+    if (armHasString && armHasNumeric)
+        reportMixedLabelTypes(ctx, arm);
+
+    bool ok = true;
+    if (armHasString)
+        ok = validateSelectCaseStringArm(arm, ctx) && ok;
+    if (armHasNumeric)
+        ok = validateSelectCaseNumericArm(arm, ctx) && ok;
+
+    return ok;
+}
 
 void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt)
 {
-    Type selectorType = Type::Unknown;
-    bool selectorIsString = false;
-    bool selectorIsNumeric = false;
-    if (stmt.selector)
-    {
-        selectorType = visitExpr(*stmt.selector);
-        if (selectorType == Type::Int)
-        {
-            markImplicitConversion(*stmt.selector, Type::Int);
-            selectorIsNumeric = true;
-        }
-        else if (selectorType == Type::String)
-        {
-            selectorIsString = true;
-        }
-        else if (selectorType != Type::Unknown)
-        {
-            std::string msg(diag::ERR_SelectCase_NonIntegerSelector.text);
-            de.emit(il::support::Severity::Error,
-                    std::string(diag::ERR_SelectCase_NonIntegerSelector.id),
-                    stmt.selector->loc,
-                    1,
-                    std::move(msg));
-        }
-    }
-    SelectCaseArmValidator validator(de,
-                                     selectorIsString,
-                                     selectorIsNumeric,
-                                     !stmt.elseBody.empty());
+    const SelectCaseSelectorInfo selectorInfo = classifySelectCaseSelector(stmt);
+    if (selectorInfo.fatal)
+        return;
+
+    SelectCaseArmContext context(de,
+                                 selectorInfo.selectorIsString,
+                                 selectorInfo.selectorIsNumeric,
+                                 !stmt.elseBody.empty());
 
     for (const auto &arm : stmt.arms)
     {
-        validator.analyzeArm(arm);
+        if (!validateSelectCaseArm(arm, context))
+            return;
         analyzeSelectCaseBody(arm.body);
     }
 
