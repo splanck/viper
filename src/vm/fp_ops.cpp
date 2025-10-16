@@ -6,7 +6,7 @@
 // Assumptions: Host doubles implement IEEE-754 binary64 semantics and frames mutate only via ops::storeResult.
 // Links: docs/il-guide.md#reference
 
-#include "vm/OpHandlers.hpp"
+#include "vm/OpHandlers_Float.hpp"
 
 #include "il/core/Function.hpp"
 #include "il/core/BasicBlock.hpp"
@@ -20,7 +20,7 @@
 
 using namespace il::core;
 
-namespace il::vm::detail
+namespace il::vm::detail::floating
 {
 namespace
 {
@@ -82,7 +82,7 @@ constexpr double kUint64Boundary = 18446744073709551616.0; ///< 2^64, sentinel f
 /// @brief Add two floating-point values and store the IEEE-754 sum.
 /// @details Relies on host binary64 addition so NaNs propagate and infinities behave per IEEE-754.
 /// The handler mutates the frame only by writing the result slot via ops::storeResult.
-VM::ExecResult OpHandlers::handleFAdd(VM &vm,
+VM::ExecResult handleFAdd(VM &vm,
                                       Frame &fr,
                                       const Instr &in,
                                       const VM::BlockMap &blocks,
@@ -102,7 +102,7 @@ VM::ExecResult OpHandlers::handleFAdd(VM &vm,
 /// @brief Subtract two floating-point values and store the IEEE-754 difference.
 /// @details Host subtraction governs NaN propagation and signed zero handling; the frame mutation
 /// is restricted to storing the result slot.
-VM::ExecResult OpHandlers::handleFSub(VM &vm,
+VM::ExecResult handleFSub(VM &vm,
                                       Frame &fr,
                                       const Instr &in,
                                       const VM::BlockMap &blocks,
@@ -122,7 +122,7 @@ VM::ExecResult OpHandlers::handleFSub(VM &vm,
 /// @brief Multiply two floating-point values and store the IEEE-754 product.
 /// @details NaNs and infinities follow host multiplication rules, and the frame is only modified
 /// through ops::storeResult.
-VM::ExecResult OpHandlers::handleFMul(VM &vm,
+VM::ExecResult handleFMul(VM &vm,
                                       Frame &fr,
                                       const Instr &in,
                                       const VM::BlockMap &blocks,
@@ -142,7 +142,7 @@ VM::ExecResult OpHandlers::handleFMul(VM &vm,
 /// @brief Divide two floating-point values and store the IEEE-754 quotient.
 /// @details Host division semantics provide handling for NaNs, infinities, and division by zero,
 /// and the only frame mutation is storing the destination slot.
-VM::ExecResult OpHandlers::handleFDiv(VM &vm,
+VM::ExecResult handleFDiv(VM &vm,
                                       Frame &fr,
                                       const Instr &in,
                                       const VM::BlockMap &blocks,
@@ -162,7 +162,7 @@ VM::ExecResult OpHandlers::handleFDiv(VM &vm,
 /// @brief Compare two floating-point values for equality and store 1 when they are equal.
 /// @details Follows host IEEE-754 equality: any NaN operand yields false (0), while signed zeros
 /// compare equal. Only the destination slot is written in the frame.
-VM::ExecResult OpHandlers::handleFCmpEQ(VM &vm,
+VM::ExecResult handleFCmpEQ(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -182,7 +182,7 @@ VM::ExecResult OpHandlers::handleFCmpEQ(VM &vm,
 /// @brief Compare two floating-point values for inequality and store 1 when they differ.
 /// @details Uses host IEEE-754 semantics where NaN operands cause the predicate to succeed,
 /// yielding 1; otherwise, equality produces 0. The frame mutation is limited to the result slot.
-VM::ExecResult OpHandlers::handleFCmpNE(VM &vm,
+VM::ExecResult handleFCmpNE(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -202,7 +202,7 @@ VM::ExecResult OpHandlers::handleFCmpNE(VM &vm,
 /// @brief Compare two floating-point values and store 1 when lhs > rhs under IEEE-754 ordering.
 /// @details If either operand is NaN the predicate is false and 0 is stored; only the destination
 /// slot in the frame is mutated.
-VM::ExecResult OpHandlers::handleFCmpGT(VM &vm,
+VM::ExecResult handleFCmpGT(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -222,7 +222,7 @@ VM::ExecResult OpHandlers::handleFCmpGT(VM &vm,
 /// @brief Compare two floating-point values and store 1 when lhs < rhs under IEEE-754 ordering.
 /// @details NaN operands force the predicate to false (0). Frame mutation is restricted to the
 /// destination slot.
-VM::ExecResult OpHandlers::handleFCmpLT(VM &vm,
+VM::ExecResult handleFCmpLT(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -242,7 +242,7 @@ VM::ExecResult OpHandlers::handleFCmpLT(VM &vm,
 /// @brief Compare two floating-point values and store 1 when lhs <= rhs.
 /// @details Host IEEE-754 semantics mean NaN operands yield 0, while signed zeros compare as equal;
 /// only the result slot is modified in the frame.
-VM::ExecResult OpHandlers::handleFCmpLE(VM &vm,
+VM::ExecResult handleFCmpLE(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -262,7 +262,7 @@ VM::ExecResult OpHandlers::handleFCmpLE(VM &vm,
 /// @brief Compare two floating-point values and store 1 when lhs >= rhs.
 /// @details NaN operands make the predicate false (0). The handler touches the frame solely via
 /// ops::storeResult.
-VM::ExecResult OpHandlers::handleFCmpGE(VM &vm,
+VM::ExecResult handleFCmpGE(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -282,7 +282,7 @@ VM::ExecResult OpHandlers::handleFCmpGE(VM &vm,
 /// @brief Convert a signed 64-bit integer to an IEEE-754 binary64 value.
 /// @details Relies on host conversion semantics; large magnitudes round according to IEEE-754 and
 /// the frame is mutated only when storing the result slot.
-VM::ExecResult OpHandlers::handleSitofp(VM &vm,
+VM::ExecResult handleSitofp(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -292,7 +292,7 @@ VM::ExecResult OpHandlers::handleSitofp(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot value = vm.eval(fr, in.operands[0]);
+    Slot value = VMAccess::eval(vm, fr, in.operands[0]);
     Slot out{};
     out.f64 = static_cast<double>(value.i64);
     ops::storeResult(fr, in, out);
@@ -303,7 +303,7 @@ VM::ExecResult OpHandlers::handleSitofp(VM &vm,
 /// @details Assumes the source is a finite value representable in int64_t; NaNs or out-of-range
 /// values exhibit host-defined (potentially undefined) behaviour. The handler mutates the frame
 /// solely by storing the result slot.
-VM::ExecResult OpHandlers::handleFptosi(VM &vm,
+VM::ExecResult handleFptosi(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -313,7 +313,7 @@ VM::ExecResult OpHandlers::handleFptosi(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot value = vm.eval(fr, in.operands[0]);
+    Slot value = VMAccess::eval(vm, fr, in.operands[0]);
     Slot out{};
     out.i64 = static_cast<int64_t>(value.f64);
     ops::storeResult(fr, in, out);
@@ -324,7 +324,7 @@ VM::ExecResult OpHandlers::handleFptosi(VM &vm,
 /// @details Traps via RuntimeBridge when the operand is non-finite or the rounded result lies
 /// outside the signed 64-bit range. Rounding obeys IEEE-754 round-to-nearest, ties-to-even via
 /// std::nearbyint operating under the default FE_TONEAREST mode.
-VM::ExecResult OpHandlers::handleCastFpToSiRteChk(VM &vm,
+VM::ExecResult handleCastFpToSiRteChk(VM &vm,
                                                   Frame &fr,
                                                   const Instr &in,
                                                   const VM::BlockMap &blocks,
@@ -333,7 +333,7 @@ VM::ExecResult OpHandlers::handleCastFpToSiRteChk(VM &vm,
 {
     (void)blocks;
     (void)ip;
-    const Slot value = vm.eval(fr, in.operands[0]);
+    const Slot value = VMAccess::eval(vm, fr, in.operands[0]);
     const double operand = value.f64;
     if (!std::isfinite(operand))
     {
@@ -376,7 +376,7 @@ VM::ExecResult OpHandlers::handleCastFpToSiRteChk(VM &vm,
 /// falls outside the unsigned 64-bit range by trapping with TrapKind::Overflow. Rounding uses the
 /// banker’s rule (ties to even) implemented via castFpToUiRoundedOrTrap to maintain deterministic
 /// behaviour across platforms.
-VM::ExecResult OpHandlers::handleCastFpToUiRteChk(VM &vm,
+VM::ExecResult handleCastFpToUiRteChk(VM &vm,
                                                   Frame &fr,
                                                   const Instr &in,
                                                   const VM::BlockMap &blocks,
@@ -385,7 +385,7 @@ VM::ExecResult OpHandlers::handleCastFpToUiRteChk(VM &vm,
 {
     (void)blocks;
     (void)ip;
-    const Slot value = vm.eval(fr, in.operands[0]);
+    const Slot value = VMAccess::eval(vm, fr, in.operands[0]);
     const uint64_t rounded = castFpToUiRoundedOrTrap(value.f64, in, fr, bb);
 
     Slot out{};
@@ -394,5 +394,5 @@ VM::ExecResult OpHandlers::handleCastFpToUiRteChk(VM &vm,
     return {};
 }
 
-} // namespace il::vm::detail
+} // namespace il::vm::detail::floating
 

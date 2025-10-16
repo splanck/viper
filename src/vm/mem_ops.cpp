@@ -6,7 +6,7 @@
 // Ownership/Lifetime: Handlers mutate the active frame without retaining state.
 // Links: docs/il-guide.md#reference
 
-#include "vm/OpHandlers.hpp"
+#include "vm/OpHandlers_Memory.hpp"
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -21,7 +21,7 @@
 
 using namespace il::core;
 
-namespace il::vm::detail
+namespace il::vm::detail::memory
 {
 
 
@@ -38,7 +38,7 @@ namespace il::vm::detail
 /// @param fr   Active frame whose stack pointer is advanced.
 /// @param in   IL instruction supplying the allocation size and destination.
 /// @return ExecResult indicating whether execution should continue or unwind.
-VM::ExecResult OpHandlers::handleAlloca(VM &vm,
+VM::ExecResult handleAlloca(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -56,7 +56,7 @@ VM::ExecResult OpHandlers::handleAlloca(VM &vm,
         return result;
     }
 
-    int64_t bytes = vm.eval(fr, in.operands[0]).i64;
+    int64_t bytes = VMAccess::eval(vm, fr, in.operands[0]).i64;
     if (bytes < 0)
     {
         RuntimeBridge::trap(TrapKind::DomainError, "negative allocation", in.loc, fr.func->name, "");
@@ -123,7 +123,7 @@ VM::ExecResult OpHandlers::handleAlloca(VM &vm,
 /// @param vm Virtual machine used for operand evaluation.
 /// @param fr Active frame that stores the computed pointer.
 /// @param in Instruction providing the base pointer and offset.
-VM::ExecResult OpHandlers::handleGEP(VM &vm,
+VM::ExecResult handleGEP(VM &vm,
                                      Frame &fr,
                                      const Instr &in,
                                      const VM::BlockMap &blocks,
@@ -133,8 +133,8 @@ VM::ExecResult OpHandlers::handleGEP(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot base = vm.eval(fr, in.operands[0]);
-    Slot offset = vm.eval(fr, in.operands[1]);
+    Slot base = VMAccess::eval(vm, fr, in.operands[0]);
+    Slot offset = VMAccess::eval(vm, fr, in.operands[1]);
     Slot out{};
     out.ptr = static_cast<char *>(base.ptr) + offset.i64;
     ops::storeResult(fr, in, out);
@@ -151,7 +151,7 @@ VM::ExecResult OpHandlers::handleGEP(VM &vm,
 /// @param vm Virtual machine context.
 /// @param fr Frame receiving the pointer value.
 /// @param in Instruction referencing the source string slot.
-VM::ExecResult OpHandlers::handleAddrOf(VM &vm,
+VM::ExecResult handleAddrOf(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -161,7 +161,7 @@ VM::ExecResult OpHandlers::handleAddrOf(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot tmp = vm.eval(fr, in.operands[0]);
+    Slot tmp = VMAccess::eval(vm, fr, in.operands[0]);
     Slot out{};
     out.ptr = tmp.str;
     ops::storeResult(fr, in, out);
@@ -177,7 +177,7 @@ VM::ExecResult OpHandlers::handleAddrOf(VM &vm,
 /// @param vm Virtual machine context.
 /// @param fr Frame storing the resulting slot.
 /// @param in Instruction whose first operand encodes the constant string.
-VM::ExecResult OpHandlers::handleConstStr(VM &vm,
+VM::ExecResult handleConstStr(VM &vm,
                                           Frame &fr,
                                           const Instr &in,
                                           const VM::BlockMap &blocks,
@@ -187,7 +187,7 @@ VM::ExecResult OpHandlers::handleConstStr(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot out = vm.eval(fr, in.operands[0]);
+    Slot out = VMAccess::eval(vm, fr, in.operands[0]);
     ops::storeResult(fr, in, out);
     return {};
 }
@@ -199,7 +199,7 @@ VM::ExecResult OpHandlers::handleConstStr(VM &vm,
 /// use the generic pointer field, while string handles clear the runtime
 /// string slot. Other kinds fall back to the pointer field to preserve the
 /// historical behaviour for mis-specified instructions.
-VM::ExecResult OpHandlers::handleConstNull(VM &vm,
+VM::ExecResult handleConstNull(VM &vm,
                                            Frame &fr,
                                            const Instr &in,
                                            const VM::BlockMap &blocks,
@@ -231,5 +231,5 @@ VM::ExecResult OpHandlers::handleConstNull(VM &vm,
     return {};
 }
 
-} // namespace il::vm::detail
+} // namespace il::vm::detail::memory
 
