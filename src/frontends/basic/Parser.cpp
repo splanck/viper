@@ -29,41 +29,6 @@ Parser::Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *emitte
     : lexer_(src, file_id), emitter_(emitter)
 {
     tokens_.push_back(lexer_.next());
-    static constexpr std::array<std::pair<TokenKind, StmtHandler>, 29> kStatementHandlers = {{
-        {TokenKind::KeywordPrint, {&Parser::parsePrint, nullptr}},
-        {TokenKind::KeywordWrite, {&Parser::parseWrite, nullptr}},
-        {TokenKind::KeywordLet, {&Parser::parseLet, nullptr}},
-        {TokenKind::KeywordIf, {nullptr, &Parser::parseIf}},
-        {TokenKind::KeywordSelect, {&Parser::parseSelectCase, nullptr}},
-        {TokenKind::KeywordWhile, {&Parser::parseWhile, nullptr}},
-        {TokenKind::KeywordDo, {&Parser::parseDo, nullptr}},
-        {TokenKind::KeywordFor, {&Parser::parseFor, nullptr}},
-        {TokenKind::KeywordNext, {&Parser::parseNext, nullptr}},
-        {TokenKind::KeywordExit, {&Parser::parseExit, nullptr}},
-        {TokenKind::KeywordGoto, {&Parser::parseGoto, nullptr}},
-        {TokenKind::KeywordGosub, {&Parser::parseGosub, nullptr}},
-        {TokenKind::KeywordOpen, {&Parser::parseOpen, nullptr}},
-        {TokenKind::KeywordClose, {&Parser::parseClose, nullptr}},
-        {TokenKind::KeywordSeek, {&Parser::parseSeek, nullptr}},
-        {TokenKind::KeywordCls, {&Parser::parseCls, nullptr}},
-        {TokenKind::KeywordColor, {&Parser::parseColor, nullptr}},
-        {TokenKind::KeywordOn, {&Parser::parseOnErrorGoto, nullptr}},
-        {TokenKind::KeywordResume, {&Parser::parseResume, nullptr}},
-        {TokenKind::KeywordEnd, {&Parser::parseEnd, nullptr}},
-        {TokenKind::KeywordInput, {&Parser::parseInput, nullptr}},
-        {TokenKind::KeywordLine, {&Parser::parseLineInput, nullptr}},
-        {TokenKind::KeywordLocate, {&Parser::parseLocate, nullptr}},
-        {TokenKind::KeywordDim, {&Parser::parseDim, nullptr}},
-        {TokenKind::KeywordRedim, {&Parser::parseReDim, nullptr}},
-        {TokenKind::KeywordRandomize, {&Parser::parseRandomize, nullptr}},
-        {TokenKind::KeywordFunction, {&Parser::parseFunction, nullptr}},
-        {TokenKind::KeywordSub, {&Parser::parseSub, nullptr}},
-        {TokenKind::KeywordReturn, {&Parser::parseReturn, nullptr}},
-    }};
-    for (const auto &[kind, handler] : kStatementHandlers)
-    {
-        stmtHandlers_[static_cast<std::size_t>(kind)] = handler;
-    }
 }
 
 /// @brief Create a statement sequencer bound to this parser instance.
@@ -77,6 +42,50 @@ Parser::Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *emitte
 StatementSequencer Parser::statementSequencer()
 {
     return StatementSequencer(*this);
+}
+
+Parser::StatementParserRegistry Parser::buildStatementRegistry()
+{
+    StatementParserRegistry registry;
+    registerCoreParsers(registry);
+    registerControlFlowParsers(registry);
+    registerRuntimeParsers(registry);
+    registerIoParsers(registry);
+    return registry;
+}
+
+const Parser::StatementParserRegistry &Parser::statementRegistry()
+{
+    static StatementParserRegistry registry = buildStatementRegistry();
+    return registry;
+}
+
+void Parser::StatementParserRegistry::registerHandler(TokenKind kind,
+                                                      NoArgHandler handler)
+{
+    entries_[static_cast<std::size_t>(kind)].first = handler;
+}
+
+void Parser::StatementParserRegistry::registerHandler(TokenKind kind,
+                                                      WithLineHandler handler)
+{
+    entries_[static_cast<std::size_t>(kind)].second = handler;
+}
+
+std::pair<Parser::StatementParserRegistry::NoArgHandler,
+          Parser::StatementParserRegistry::WithLineHandler>
+Parser::StatementParserRegistry::lookup(TokenKind kind) const
+{
+    const auto index = static_cast<std::size_t>(kind);
+    if (index >= entries_.size())
+        return {nullptr, nullptr};
+    return entries_[index];
+}
+
+bool Parser::StatementParserRegistry::contains(TokenKind kind) const
+{
+    const auto [noArg, withLine] = lookup(kind);
+    return noArg != nullptr || withLine != nullptr;
 }
 
 /// @brief Parse the entire BASIC program.
