@@ -23,6 +23,25 @@ using namespace il::core;
 using IlType = il::core::Type;
 using IlKind = IlType::Kind;
 
+namespace
+{
+
+bool isIntegerKind(IlKind kind)
+{
+    return kind == IlKind::I16 || kind == IlKind::I32 || kind == IlKind::I64;
+}
+
+IlType integerArithmeticType(IlKind lhsKind, IlKind rhsKind)
+{
+    if (lhsKind == IlKind::I16 && rhsKind == IlKind::I16)
+        return IlType(IlKind::I16);
+    if (lhsKind == IlKind::I32 && rhsKind == IlKind::I32)
+        return IlType(IlKind::I32);
+    return IlType(IlKind::I64);
+}
+
+} // namespace
+
 NumericExprLowering::NumericExprLowering(Lowerer &lowerer) noexcept : lowerer_(&lowerer) {}
 
 Lowerer::RVal NumericExprLowering::lowerDivOrMod(const BinaryExpr &expr)
@@ -123,20 +142,195 @@ Lowerer::RVal NumericExprLowering::lowerDivOrMod(const BinaryExpr &expr)
     return {res, resultTy};
 }
 
+NumericExprLowering::NumericOpConfig NumericExprLowering::normalizeNumericOperands(
+    const BinaryExpr &expr,
+    Lowerer::RVal &lhs,
+    Lowerer::RVal &rhs)
+{
+    Lowerer &lowerer = *lowerer_;
+    NumericOpConfig config;
+
+    const bool requiresFloat =
+        expr.op == BinaryExpr::Op::Div || expr.op == BinaryExpr::Op::Pow;
+    if (requiresFloat)
+    {
+        auto promoteToF64 = [&](Lowerer::RVal &value, const Expr *node)
+        {
+            if (value.type.kind == IlKind::F64)
+                return;
+            il::support::SourceLoc loc = node ? node->loc : expr.loc;
+            if (expr.op == BinaryExpr::Op::Div)
+            {
+                value = lowerer.coerceToI64(std::move(value), loc);
+                lowerer.curLoc = loc;
+                value.value =
+                    lowerer.emitUnary(Opcode::CastSiToFp, IlType(IlKind::F64), value.value);
+                value.type = IlType(IlKind::F64);
+            }
+            else
+            {
+                value = lowerer.ensureF64(std::move(value), loc);
+            }
+        };
+
+        promoteToF64(lhs, expr.lhs.get());
+        promoteToF64(rhs, expr.rhs.get());
+        config.isFloat = true;
+        config.arithmeticType = IlType(IlKind::F64);
+        config.resultType = IlType(IlKind::F64);
+        return config;
+    }
+
+    if (lhs.type.kind == IlKind::F64 || rhs.type.kind == IlKind::F64)
+    {
+        lhs = lowerer.coerceToF64(std::move(lhs), expr.loc);
+        rhs = lowerer.coerceToF64(std::move(rhs), expr.loc);
+        config.isFloat = true;
+        config.arithmeticType = IlType(IlKind::F64);
+        config.resultType = IlType(IlKind::F64);
+        return config;
+    }
+
+    config.isFloat = false;
+    config.arithmeticType = integerArithmeticType(lhs.type.kind, rhs.type.kind);
+    config.resultType = config.arithmeticType;
+
+    const auto *lhsInt = dynamic_cast<const IntExpr *>(expr.lhs.get());
+    const auto *rhsInt = dynamic_cast<const IntExpr *>(expr.rhs.get());
+    if (lhsInt && rhsInt)
+    {
+        const auto fits16 = [](long long v)
+        {
+            return v >= std::numeric_limits<int16_t>::min() &&
+                   v <= std::numeric_limits<int16_t>::max();
+        };
+        const auto fits32 = [](long long v)
+        {
+            return v >= std::numeric_limits<int32_t>::min() &&
+                   v <= std::numeric_limits<int32_t>::max();
+        };
+        if (fits16(lhsInt->value) && fits16(rhsInt->value))
+        {
+            config.arithmeticType = IlType(IlKind::I16);
+            config.resultType = config.arithmeticType;
+        }
+        else if (fits32(lhsInt->value) && fits32(rhsInt->value))
+        {
+            config.arithmeticType = IlType(IlKind::I32);
+            config.resultType = config.arithmeticType;
+        }
+    }
+
+    return config;
+}
+
+std::optional<Lowerer::RVal> NumericExprLowering::applySpecialConstantPatterns(
+    const BinaryExpr &expr,
+    Lowerer::RVal &lhs,
+    Lowerer::RVal &rhs,
+    const NumericOpConfig &config)
+{
+    (void)lhs;
+    if (expr.op != BinaryExpr::Op::Sub || config.isFloat)
+        return std::nullopt;
+
+    const auto *lhsInt = dynamic_cast<const IntExpr *>(expr.lhs.get());
+    if (!lhsInt || lhsInt->value != 0)
+        return std::nullopt;
+
+    if (!isIntegerKind(rhs.type.kind))
+        return std::nullopt;
+
+    if (rhs.type.kind != IlKind::I16 && rhs.type.kind != IlKind::I32)
+        return std::nullopt;
+
+    Lowerer &lowerer = *lowerer_;
+    lowerer.curLoc = expr.loc;
+    Value neg = lowerer.emitCheckedNeg(rhs.type, rhs.value);
+    return Lowerer::RVal{neg, rhs.type};
+}
+
+NumericExprLowering::OpcodeSelection NumericExprLowering::selectNumericOpcode(
+    BinaryExpr::Op op,
+    const NumericOpConfig &config)
+{
+    Lowerer &lowerer = *lowerer_;
+    OpcodeSelection selection;
+    selection.resultType = config.arithmeticType;
+
+    switch (op)
+    {
+        case BinaryExpr::Op::Add:
+            selection.opcode = config.isFloat ? Opcode::FAdd : Opcode::IAddOvf;
+            break;
+        case BinaryExpr::Op::Sub:
+            selection.opcode = config.isFloat ? Opcode::FSub : Opcode::ISubOvf;
+            break;
+        case BinaryExpr::Op::Mul:
+            selection.opcode = config.isFloat ? Opcode::FMul : Opcode::IMulOvf;
+            break;
+        case BinaryExpr::Op::Div:
+            if (config.isFloat)
+            {
+                selection.opcode = Opcode::FDiv;
+                selection.resultType = config.arithmeticType;
+            }
+            else
+            {
+                selection.opcode = Opcode::SDivChk0;
+                selection.resultType = IlType(IlKind::I64);
+            }
+            break;
+        case BinaryExpr::Op::Eq:
+            selection.opcode = config.isFloat ? Opcode::FCmpEQ : Opcode::ICmpEq;
+            selection.resultType = lowerer.ilBoolTy();
+            selection.promoteBoolToI64 = true;
+            break;
+        case BinaryExpr::Op::Ne:
+            selection.opcode = config.isFloat ? Opcode::FCmpNE : Opcode::ICmpNe;
+            selection.resultType = lowerer.ilBoolTy();
+            selection.promoteBoolToI64 = true;
+            break;
+        case BinaryExpr::Op::Lt:
+            selection.opcode = config.isFloat ? Opcode::FCmpLT : Opcode::SCmpLT;
+            selection.resultType = lowerer.ilBoolTy();
+            selection.promoteBoolToI64 = true;
+            break;
+        case BinaryExpr::Op::Le:
+            selection.opcode = config.isFloat ? Opcode::FCmpLE : Opcode::SCmpLE;
+            selection.resultType = lowerer.ilBoolTy();
+            selection.promoteBoolToI64 = true;
+            break;
+        case BinaryExpr::Op::Gt:
+            selection.opcode = config.isFloat ? Opcode::FCmpGT : Opcode::SCmpGT;
+            selection.resultType = lowerer.ilBoolTy();
+            selection.promoteBoolToI64 = true;
+            break;
+        case BinaryExpr::Op::Ge:
+            selection.opcode = config.isFloat ? Opcode::FCmpGE : Opcode::SCmpGE;
+            selection.resultType = lowerer.ilBoolTy();
+            selection.promoteBoolToI64 = true;
+            break;
+        default:
+            break;
+    }
+
+    return selection;
+}
+
 Lowerer::RVal NumericExprLowering::lowerPowBinary(const BinaryExpr &expr,
                                                   Lowerer::RVal lhs,
                                                   Lowerer::RVal rhs)
 {
-    il::support::SourceLoc lhsLoc = expr.lhs ? expr.lhs->loc : expr.loc;
-    il::support::SourceLoc rhsLoc = expr.rhs ? expr.rhs->loc : expr.loc;
     Lowerer &lowerer = *lowerer_;
-    lhs = lowerer.ensureF64(std::move(lhs), lhsLoc);
-    rhs = lowerer.ensureF64(std::move(rhs), rhsLoc);
+    NumericOpConfig config = normalizeNumericOperands(expr, lhs, rhs);
     lowerer.trackRuntime(Lowerer::RuntimeFeature::Pow);
     lowerer.curLoc = expr.loc;
-    Value res =
-        lowerer.emitCallRet(IlType(IlKind::F64), "rt_pow_f64_chkdom", {lhs.value, rhs.value});
-    return {res, IlType(IlKind::F64)};
+    Value res = lowerer.emitCallRet(
+        IlType(IlKind::F64), "rt_pow_f64_chkdom", {lhs.value, rhs.value});
+    IlType resultType =
+        (config.resultType.kind == IlKind::Void) ? IlType(IlKind::F64) : config.resultType;
+    return {res, resultType};
 }
 
 Lowerer::RVal NumericExprLowering::lowerStringBinary(const BinaryExpr &expr,
@@ -167,143 +361,21 @@ Lowerer::RVal NumericExprLowering::lowerNumericBinary(const BinaryExpr &expr,
                                                       Lowerer::RVal rhs)
 {
     Lowerer &lowerer = *lowerer_;
+    NumericOpConfig config = normalizeNumericOperands(expr, lhs, rhs);
+
+    if (auto special = applySpecialConstantPatterns(expr, lhs, rhs, config))
+        return *special;
+
+    OpcodeSelection selection = selectNumericOpcode(expr.op, config);
     lowerer.curLoc = expr.loc;
-    if (expr.op == BinaryExpr::Op::Div)
-    {
-        auto promoteToF64 = [&](Lowerer::RVal value, const Expr &node)
-        {
-            if (value.type.kind == IlKind::F64)
-                return value;
-            value = lowerer.coerceToI64(std::move(value), node.loc);
-            lowerer.curLoc = node.loc;
-            value.value = lowerer.emitUnary(Opcode::CastSiToFp, IlType(IlKind::F64), value.value);
-            value.type = IlType(IlKind::F64);
-            return value;
-        };
-
-        if (expr.lhs)
-            lhs = promoteToF64(std::move(lhs), *expr.lhs);
-        else
-            lhs = promoteToF64(std::move(lhs), expr);
-        if (expr.rhs)
-            rhs = promoteToF64(std::move(rhs), *expr.rhs);
-        else
-            rhs = promoteToF64(std::move(rhs), expr);
-
-        lowerer.curLoc = expr.loc;
-        Value res = lowerer.emitBinary(Opcode::FDiv, IlType(IlKind::F64), lhs.value, rhs.value);
-        return {res, IlType(IlKind::F64)};
-    }
-
-    if (lhs.type.kind == IlKind::I64 && rhs.type.kind == IlKind::F64)
-    {
-        lhs = lowerer.coerceToF64(std::move(lhs), expr.loc);
-    }
-    else if (lhs.type.kind == IlKind::F64 && rhs.type.kind == IlKind::I64)
-    {
-        rhs = lowerer.coerceToF64(std::move(rhs), expr.loc);
-    }
-    auto isIntegerKind = [](IlKind kind)
-    { return kind == IlKind::I16 || kind == IlKind::I32 || kind == IlKind::I64; };
-    bool isFloat = lhs.type.kind == IlKind::F64;
-    if (!isFloat && expr.op == BinaryExpr::Op::Sub)
-    {
-        if (const auto *lhsInt = dynamic_cast<const IntExpr *>(expr.lhs.get());
-            lhsInt && lhsInt->value == 0 && isIntegerKind(rhs.type.kind) &&
-            (rhs.type.kind == IlKind::I16 || rhs.type.kind == IlKind::I32))
-        {
-            Value neg = lowerer.emitCheckedNeg(rhs.type, rhs.value);
-            return {neg, rhs.type};
-        }
-    }
-    auto integerArithmeticType = [](IlKind lhsKind, IlKind rhsKind)
-    {
-        if (lhsKind == IlKind::I16 && rhsKind == IlKind::I16)
-            return IlType(IlKind::I16);
-        if (lhsKind == IlKind::I32 && rhsKind == IlKind::I32)
-            return IlType(IlKind::I32);
-        return IlType(IlKind::I64);
-    };
-    Opcode op = Opcode::IAddOvf;
-    IlType arithTy =
-        isFloat ? IlType(IlKind::F64) : integerArithmeticType(lhs.type.kind, rhs.type.kind);
-    if (!isFloat)
-    {
-        const auto *lhsInt = dynamic_cast<const IntExpr *>(expr.lhs.get());
-        const auto *rhsInt = dynamic_cast<const IntExpr *>(expr.rhs.get());
-        if (lhsInt && rhsInt)
-        {
-            const auto fits16 = [](long long v)
-            {
-                return v >= std::numeric_limits<int16_t>::min() &&
-                       v <= std::numeric_limits<int16_t>::max();
-            };
-            const auto fits32 = [](long long v)
-            {
-                return v >= std::numeric_limits<int32_t>::min() &&
-                       v <= std::numeric_limits<int32_t>::max();
-            };
-            if (fits16(lhsInt->value) && fits16(rhsInt->value))
-            {
-                arithTy = IlType(IlKind::I16);
-            }
-            else if (fits32(lhsInt->value) && fits32(rhsInt->value))
-            {
-                arithTy = IlType(IlKind::I32);
-            }
-        }
-    }
-    IlType ty = arithTy;
-    switch (expr.op)
-    {
-        case BinaryExpr::Op::Add:
-            op = isFloat ? Opcode::FAdd : Opcode::IAddOvf;
-            break;
-        case BinaryExpr::Op::Sub:
-            op = isFloat ? Opcode::FSub : Opcode::ISubOvf;
-            break;
-        case BinaryExpr::Op::Mul:
-            op = isFloat ? Opcode::FMul : Opcode::IMulOvf;
-            break;
-        case BinaryExpr::Op::Div:
-            op = isFloat ? Opcode::FDiv : Opcode::SDivChk0;
-            ty = isFloat ? arithTy : IlType(IlKind::I64);
-            break;
-        case BinaryExpr::Op::Eq:
-            op = isFloat ? Opcode::FCmpEQ : Opcode::ICmpEq;
-            ty = lowerer.ilBoolTy();
-            break;
-        case BinaryExpr::Op::Ne:
-            op = isFloat ? Opcode::FCmpNE : Opcode::ICmpNe;
-            ty = lowerer.ilBoolTy();
-            break;
-        case BinaryExpr::Op::Lt:
-            op = isFloat ? Opcode::FCmpLT : Opcode::SCmpLT;
-            ty = lowerer.ilBoolTy();
-            break;
-        case BinaryExpr::Op::Le:
-            op = isFloat ? Opcode::FCmpLE : Opcode::SCmpLE;
-            ty = lowerer.ilBoolTy();
-            break;
-        case BinaryExpr::Op::Gt:
-            op = isFloat ? Opcode::FCmpGT : Opcode::SCmpGT;
-            ty = lowerer.ilBoolTy();
-            break;
-        case BinaryExpr::Op::Ge:
-            op = isFloat ? Opcode::FCmpGE : Opcode::SCmpGE;
-            ty = lowerer.ilBoolTy();
-            break;
-        default:
-            break;
-    }
-    Value res = lowerer.emitBinary(op, ty, lhs.value, rhs.value);
-    if (ty.kind == IlKind::I1)
+    Value res = lowerer.emitBinary(selection.opcode, selection.resultType, lhs.value, rhs.value);
+    if (selection.promoteBoolToI64)
     {
         lowerer.curLoc = expr.loc;
         Value logical = lowerer.emitBasicLogicalI64(res);
         return {logical, IlType(IlKind::I64)};
     }
-    return {res, ty};
+    return {res, selection.resultType};
 }
 
 Lowerer::RVal Lowerer::lowerDivOrMod(const BinaryExpr &expr)
