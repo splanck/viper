@@ -21,6 +21,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 using namespace il::core;
@@ -156,13 +157,56 @@ using HandlerCoverage = std::unordered_map<const BasicBlock *, std::unordered_se
 /// @param fn Function whose handlers are analysed.
 /// @param blockMap Mapping from labels to block pointers.
 /// @return Coverage table keyed by handler block pointer.
-HandlerCoverage computeHandlerCoverage(
-    const Function &fn, const std::unordered_map<std::string, const BasicBlock *> &blockMap)
+class HandlerCoverageTraversal
 {
-    HandlerCoverage coverage;
-    if (fn.blocks.empty())
-        return coverage;
+public:
+    HandlerCoverageTraversal(
+        const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+        HandlerCoverage &coverage)
+        : blockMap(blockMap), coverage(coverage)
+    {
+    }
 
+    void compute(const Function &fn)
+    {
+        if (fn.blocks.empty())
+            return;
+
+        std::deque<State> worklist;
+        State entryState;
+        entryState.block = &fn.blocks.front();
+        enqueueState(std::move(entryState), worklist);
+
+        while (!worklist.empty())
+        {
+            State state = std::move(worklist.front());
+            worklist.pop_front();
+
+            const BasicBlock &bb = *state.block;
+            State frame = state;
+
+            const Instr *terminator = nullptr;
+            for (const auto &instr : bb.instructions)
+            {
+                terminator = processEhInstruction(instr, bb, frame);
+                if (terminator)
+                    break;
+            }
+
+            if (!terminator)
+                continue;
+
+            if (terminator->op == Opcode::Trap || terminator->op == Opcode::TrapFromErr)
+            {
+                handleTrapTerminator(bb, frame, worklist);
+                continue;
+            }
+
+            enqueueSuccessors(*terminator, frame, worklist);
+        }
+    }
+
+private:
     struct State
     {
         const BasicBlock *block = nullptr;
@@ -170,105 +214,99 @@ HandlerCoverage computeHandlerCoverage(
         bool hasResumeToken = false;
     };
 
-    std::deque<State> worklist;
-    std::unordered_map<const BasicBlock *, std::unordered_set<std::string>> visited;
-
-    State entryState;
-    entryState.block = &fn.blocks.front();
-    worklist.push_back(entryState);
-    visited[entryState.block].insert(encodeStateKey(entryState.handlerStack, entryState.hasResumeToken));
-
-    while (!worklist.empty())
+    const Instr *processEhInstruction(const Instr &instr, const BasicBlock &bb, State &state)
     {
-        State state = worklist.front();
-        worklist.pop_front();
-
-        const BasicBlock &bb = *state.block;
-        std::vector<const BasicBlock *> handlerStack = state.handlerStack;
-        bool hasResumeToken = state.hasResumeToken;
-
-        const Instr *terminator = nullptr;
-        for (const auto &instr : bb.instructions)
+        if (!state.hasResumeToken && !state.handlerStack.empty() &&
+            isPotentialFaultingOpcode(instr.op))
         {
-            if (!hasResumeToken && !handlerStack.empty() && isPotentialFaultingOpcode(instr.op))
-            {
-                const BasicBlock *handlerBlock = handlerStack.back();
-                if (handlerBlock)
-                    coverage[handlerBlock].insert(&bb);
-            }
-
-            if (instr.op == Opcode::EhPush)
-            {
-                const BasicBlock *handlerBlock = nullptr;
-                if (!instr.labels.empty())
-                {
-                    if (auto it = blockMap.find(instr.labels[0]); it != blockMap.end())
-                        handlerBlock = it->second;
-                }
-                handlerStack.push_back(handlerBlock);
-            }
-            else if (instr.op == Opcode::EhPop)
-            {
-                if (!handlerStack.empty())
-                    handlerStack.pop_back();
-            }
-            else if (instr.op == Opcode::ResumeSame || instr.op == Opcode::ResumeNext ||
-                     instr.op == Opcode::ResumeLabel)
-            {
-                if (!handlerStack.empty())
-                    handlerStack.pop_back();
-                hasResumeToken = false;
-            }
-
-            if (isTerminator(instr.op))
-            {
-                terminator = &instr;
-                break;
-            }
+            const BasicBlock *handlerBlock = state.handlerStack.back();
+            if (handlerBlock)
+                coverage[handlerBlock].insert(&bb);
         }
 
-        if (!terminator)
-            continue;
-
-        if (terminator->op == Opcode::Trap || terminator->op == Opcode::TrapFromErr)
+        if (instr.op == Opcode::EhPush)
         {
-            if (!handlerStack.empty())
+            const BasicBlock *handlerBlock = nullptr;
+            if (!instr.labels.empty())
             {
-                const BasicBlock *handlerBlock = handlerStack.back();
-                if (handlerBlock)
-                {
-                    coverage[handlerBlock].insert(&bb);
-
-                    State nextState;
-                    nextState.block = handlerBlock;
-                    nextState.handlerStack = handlerStack;
-                    nextState.hasResumeToken = true;
-                    const std::string key =
-                        encodeStateKey(nextState.handlerStack, nextState.hasResumeToken);
-                    if (visited[handlerBlock].insert(key).second)
-                        worklist.push_back(std::move(nextState));
-                }
+                if (auto it = blockMap.find(instr.labels[0]); it != blockMap.end())
+                    handlerBlock = it->second;
             }
-            continue;
+            state.handlerStack.push_back(handlerBlock);
+        }
+        else if (instr.op == Opcode::EhPop)
+        {
+            if (!state.handlerStack.empty())
+                state.handlerStack.pop_back();
+        }
+        else if (instr.op == Opcode::ResumeSame || instr.op == Opcode::ResumeNext ||
+                 instr.op == Opcode::ResumeLabel)
+        {
+            if (!state.handlerStack.empty())
+                state.handlerStack.pop_back();
+            state.hasResumeToken = false;
         }
 
-        const std::vector<const BasicBlock *> successors = gatherSuccessors(*terminator, blockMap);
+        if (isTerminator(instr.op))
+            return &instr;
+
+        return nullptr;
+    }
+
+    void handleTrapTerminator(const BasicBlock &bb, const State &state, std::deque<State> &worklist)
+    {
+        if (state.handlerStack.empty())
+            return;
+
+        const BasicBlock *handlerBlock = state.handlerStack.back();
+        if (!handlerBlock)
+            return;
+
+        coverage[handlerBlock].insert(&bb);
+
+        State nextState;
+        nextState.block = handlerBlock;
+        nextState.handlerStack = state.handlerStack;
+        nextState.hasResumeToken = true;
+        enqueueState(std::move(nextState), worklist);
+    }
+
+    void enqueueSuccessors(const Instr &terminator, const State &state, std::deque<State> &worklist)
+    {
+        const std::vector<const BasicBlock *> successors = gatherSuccessors(terminator, blockMap);
         for (const BasicBlock *succ : successors)
         {
-            State nextState;
+            State nextState = state;
             nextState.block = succ;
-            nextState.handlerStack = handlerStack;
-            nextState.hasResumeToken =
-                terminator->op == Opcode::ResumeLabel ? false : hasResumeToken;
-
-            const std::string key =
-                encodeStateKey(nextState.handlerStack, nextState.hasResumeToken);
-            if (!visited[succ].insert(key).second)
-                continue;
-            worklist.push_back(std::move(nextState));
+            if (terminator.op == Opcode::ResumeLabel)
+                nextState.hasResumeToken = false;
+            enqueueState(std::move(nextState), worklist);
         }
     }
 
+    void enqueueState(State state, std::deque<State> &worklist)
+    {
+        if (!state.block)
+            return;
+
+        const std::string key = encodeStateKey(state.handlerStack, state.hasResumeToken);
+        if (!visited[state.block].insert(key).second)
+            return;
+
+        worklist.push_back(std::move(state));
+    }
+
+    const std::unordered_map<std::string, const BasicBlock *> &blockMap;
+    HandlerCoverage &coverage;
+    std::unordered_map<const BasicBlock *, std::unordered_set<std::string>> visited;
+};
+
+HandlerCoverage computeHandlerCoverage(
+    const Function &fn, const std::unordered_map<std::string, const BasicBlock *> &blockMap)
+{
+    HandlerCoverage coverage;
+    HandlerCoverageTraversal traversal(blockMap, coverage);
+    traversal.compute(fn);
     return coverage;
 }
 
