@@ -614,7 +614,7 @@ bool VM::runLoopThreaded(ExecState &st)
 #undef TRACE_STEP
 
 #define VM_DISPATCH_IMPL(DISPATCH, HANDLER_EXPR) HANDLER_EXPR
-#define VM_DISPATCH(NAME) VM_DISPATCH_IMPL(NAME, &detail::OpHandlers::handle##NAME)
+#define VM_DISPATCH(NAME) VM_DISPATCH_IMPL(NAME, &detail::handle##NAME)
 #define VM_DISPATCH_ALT(DISPATCH, HANDLER_EXPR) VM_DISPATCH_IMPL(DISPATCH, HANDLER_EXPR)
 #define IL_OPCODE(NAME,                                                                            \
                   MNEMONIC,                                                                        \
