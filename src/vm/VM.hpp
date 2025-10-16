@@ -19,6 +19,7 @@
 #include "rt.hpp"
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -28,6 +29,9 @@
 namespace il::vm
 {
 
+class VMContext;
+class DispatchStrategy; ///< Forward declaration of interpreter dispatch strategy.
+
 namespace detail
 {
 struct VMAccess; ///< Forward declaration of helper granting opcode handlers internal access
@@ -35,6 +39,9 @@ namespace ops
 {
 struct OperandDispatcher; ///< Forward declaration of operand evaluation helper
 } // namespace ops
+class FnTableDispatchStrategy;
+class SwitchDispatchStrategy;
+class ThreadedDispatchStrategy;
 } // namespace detail
 
 /// @brief Scripted debug actions.
@@ -118,6 +125,13 @@ class VM
         Threaded, ///< Use computed goto threaded dispatch when supported.
     };
 
+    friend class VMContext; ///< Allow context helpers access to internals
+    friend class DispatchStrategy; ///< Allow dispatch strategies to access internals
+    friend class detail::FnTableDispatchStrategy;
+    friend class detail::SwitchDispatchStrategy;
+#if VIPER_THREADING_SUPPORTED
+    friend class detail::ThreadedDispatchStrategy;
+#endif
     friend struct detail::VMAccess; ///< Allow opcode handlers to access internals via helper
     friend struct detail::ops::OperandDispatcher; ///< Allow shared helpers to evaluate operands
     friend class RuntimeBridge; ///< Runtime bridge accesses trap formatting helpers
@@ -228,6 +242,9 @@ class VM
 
     /// @brief Interpreter dispatch strategy selected at construction.
     DispatchKind dispatchKind = FnTable;
+
+    /// @brief Strategy object implementing the selected dispatch mechanism.
+    std::unique_ptr<DispatchStrategy> dispatchStrategy;
 
     /// @brief Executed instruction count.
     /// @invariant Monotonically increases during execution.
@@ -394,23 +411,6 @@ class VM
     /// @param st Prepared execution state.
     /// @return Return value slot.
     Slot runFunctionLoop(ExecState &st);
-
-    /// @brief Execute the interpreter loop using table-based dispatch.
-    /// @param st Prepared execution state.
-    /// @return True when the loop produced a result in @p st.pendingResult.
-    bool runLoopFnTable(ExecState &st);
-
-    /// @brief Execute the interpreter loop using switch-based dispatch.
-    /// @param st Prepared execution state.
-    /// @return True when a result was stored in @p st.pendingResult.
-    bool runLoopSwitch(ExecState &st);
-
-#if VIPER_THREADING_SUPPORTED
-    /// @brief Execute the interpreter loop using a direct-threaded dispatch path.
-    /// @param st Prepared execution state.
-    /// @return True when a result was produced by the threaded loop.
-    bool runLoopThreaded(ExecState &st);
-#endif
 
 #define IL_OPCODE(NAME,                                                                            \
                   MNEMONIC,                                                                        \
