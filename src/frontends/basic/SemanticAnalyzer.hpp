@@ -54,6 +54,9 @@ class SemanticAnalyzer
     /// @brief Diagnostic code for CASE labels that exceed the 32-bit signed range.
     static constexpr std::string_view DiagSelectCaseLabelRange = "B2012";
 
+    struct SelectCaseSelectorInfo;
+    struct SelectCaseArmContext;
+
     /// @brief Create analyzer reporting to @p emitter.
     explicit SemanticAnalyzer(DiagnosticEmitter &emitter);
 
@@ -119,6 +122,10 @@ class SemanticAnalyzer
     void analyzeSelectCase(const SelectCaseStmt &s);
     /// @brief Analyze the statements contained within a CASE arm or ELSE body.
     void analyzeSelectCaseBody(const std::vector<StmtPtr> &body);
+    SelectCaseSelectorInfo classifySelectCaseSelector(const SelectCaseStmt &s);
+    bool validateSelectCaseArm(const CaseArm &arm, SelectCaseArmContext &ctx);
+    bool validateSelectCaseStringArm(const CaseArm &arm, SelectCaseArmContext &ctx);
+    bool validateSelectCaseNumericArm(const CaseArm &arm, SelectCaseArmContext &ctx);
     /// @brief Analyze WHILE statement @p s.
     void analyzeWhile(const WhileStmt &s);
     /// @brief Analyze DO statement @p s.
