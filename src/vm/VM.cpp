@@ -7,8 +7,9 @@
 // Links: docs/il-guide.md#reference
 
 #include "vm/VM.hpp"
-#include "vm/VMConfig.hpp"
 #include "vm/OpHandlers.hpp"
+#include "vm/VMContext.hpp"
+#include "vm/dispatch/DispatchStrategy.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
@@ -16,11 +17,8 @@
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
 #include "vm/RuntimeBridge.hpp"
-#include "vm/Marshal.hpp"
 #include <algorithm>
-#include <exception>
 #include <iostream>
-#include <sstream>
 #include <string>
 
 using namespace il::core;
@@ -29,24 +27,6 @@ namespace il::vm
 {
 namespace
 {
-thread_local VM *tlsActiveVM = nullptr; ///< Active VM for trap formatting.
-
-/// @brief Manage thread-local active VM pointer for trap reporting.
-struct ActiveVMGuard
-{
-    VM *previous = nullptr;
-
-    explicit ActiveVMGuard(VM *vm) : previous(tlsActiveVM)
-    {
-        tlsActiveVM = vm;
-    }
-
-    ~ActiveVMGuard()
-    {
-        tlsActiveVM = previous;
-    }
-};
-
 std::string opcodeMnemonic(Opcode op)
 {
     const size_t index = static_cast<size_t>(op);
@@ -58,12 +38,6 @@ std::string opcodeMnemonic(Opcode op)
     }
     return std::string("opcode#") + std::to_string(static_cast<int>(op));
 }
-
-#if defined(VIPER_VM_TRACE)
-constexpr bool kTraceHookEnabled = VIPER_VM_TRACE != 0;
-#else
-constexpr bool kTraceHookEnabled = true;
-#endif
 
 } // namespace
 
@@ -100,90 +74,6 @@ int64_t VM::run()
         return 1;
     }
     return execFunction(*it->second, {}).i64;
-}
-
-/// Materialise an IL @p Value into a runtime @c Slot within a given frame.
-///
-/// The evaluator reads temporaries from the frame's register file and converts
-/// constant operands into the appropriate slot representation. Global addresses
-/// and constant strings are resolved through the VM's string pool, which bridges
-/// to the runtime's string handling.
-///
-/// Workflow: dispatch on the value kind, pull temporaries from @p fr.regs,
-/// translate constants into the matching slot field, resolve globals via
-/// @c strMap, and return the populated slot (or default slot if absent).
-///
-/// @param fr Active call frame supplying registers and pending parameters.
-/// @param v  IL value to evaluate.
-/// @returns A @c Slot containing the realised value; when the value is unknown,
-///          a default-initialised slot is returned.
-Slot VM::eval(Frame &fr, const Value &v)
-{
-    Slot s{};
-    switch (v.kind)
-    {
-        case Value::Kind::Temp:
-        {
-            if (v.id < fr.regs.size())
-                return fr.regs[v.id];
-
-            const std::string fnName = fr.func ? fr.func->name : std::string("<unknown>");
-            const BasicBlock *block = currentContext.block;
-            const std::string blockLabel = block ? block->label : std::string();
-            const auto loc = currentContext.loc;
-
-            std::ostringstream os;
-            os << "temp %" << v.id << " out of range (regs=" << fr.regs.size() << ") in function " << fnName;
-            if (!blockLabel.empty())
-                os << ", block " << blockLabel;
-            if (loc.isValid())
-            {
-                os << ", at line " << loc.line;
-                if (loc.column > 0)
-                    os << ':' << loc.column;
-            }
-            else
-            {
-                os << ", at unknown location";
-            }
-
-            RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), loc, fnName, blockLabel);
-            return s;
-        }
-        case Value::Kind::ConstInt:
-            s.i64 = toI64(v);
-            return s;
-        case Value::Kind::ConstFloat:
-            s.f64 = toF64(v);
-            return s;
-        case Value::Kind::ConstStr:
-        {
-            if (v.str.find('\0') == std::string::npos)
-            {
-                s.str = rt_const_cstr(v.str.c_str());
-                return s;
-            }
-
-            auto [it, inserted] = inlineLiteralCache.try_emplace(v.str);
-            if (inserted)
-                it->second = rt_string_from_bytes(v.str.data(), v.str.size());
-            s.str = it->second;
-            return s;
-        }
-        case Value::Kind::GlobalAddr:
-        {
-            auto it = strMap.find(v.str);
-            if (it == strMap.end())
-                RuntimeBridge::trap(TrapKind::DomainError, "unknown global", {}, fr.func->name, "");
-            else
-                s.str = it->second;
-            return s;
-        }
-        case Value::Kind::NullPtr:
-            s.ptr = nullptr;
-            return s;
-    }
-    return s;
 }
 
 /// Dispatch and execute a single IL instruction.
@@ -241,218 +131,18 @@ std::optional<Slot> VM::shouldPause(ExecState &st, const Instr *in, bool postExe
     return processDebugControl(st, in, postExec);
 }
 
-/// Advance the interpreter by a single instruction and report early exits.
-///
-/// Performs debug checks, tracing, opcode dispatch, and post-step bookkeeping
-/// once before returning either a pause sentinel or the function's return
-/// value. When no instructions remain the default zero slot is produced to
-/// mirror falling off the end of the function body.
-///
-/// @param st Current execution state for the active frame.
-/// @return Optional slot when execution should stop; @c std::nullopt otherwise.
-std::optional<Slot> VM::stepOnce(ExecState &st)
-{
-    if (!st.bb || st.ip >= st.bb->instructions.size())
-    {
-        clearCurrentContext();
-        Slot s{};
-        s.i64 = 0;
-        return s;
-    }
-
-    const Instr &in = st.bb->instructions[st.ip];
-    setCurrentContext(st.fr, st.bb, st.ip, in);
-
-    if (auto pause = shouldPause(st, &in, false))
-        return pause;
-
-    tracer.onStep(in, st.fr);
-    ++instrCount;
-    auto res = executeOpcode(st.fr, in, st.blocks, st.bb, st.ip);
-
-    if (res.returned)
-        return res.value;
-
-    if (res.jumped)
-        debug.resetLastHit();
-    else
-        ++st.ip;
-
-    if (auto pause = shouldPause(st, nullptr, true))
-        return pause;
-
-    return std::nullopt;
-}
-
-/// Handle a trap dispatch request raised while executing an instruction.
-///
-/// Trap dispatch re-enters the interpreter via exceptions, so this helper keeps
-/// the catch-site in @c runFunctionLoop concise. When the signal targets the
-/// current execution state the current context is cleared and the interpreter
-/// restarts; otherwise the caller must rethrow to propagate the trap outward.
-///
-/// @param signal Raised dispatch request.
-/// @param st     Active execution state to compare against the signal target.
-/// @return @c true when handled for @p st; @c false when the signal targets a
-///         different frame.
-bool VM::handleTrapDispatch(const TrapDispatchSignal &signal, ExecState &st)
-{
-    if (signal.target != &st)
-        return false;
-    clearCurrentContext();
-    return true;
-}
-
-Opcode VM::fetchOpcode(ExecState &st)
-{
-    st.exitRequested = false;
-    st.pendingResult.reset();
-
-    if (!st.bb || st.ip >= st.bb->instructions.size())
-    {
-        clearCurrentContext();
-        Slot zero{};
-        zero.i64 = 0;
-        st.pendingResult = zero;
-        st.exitRequested = true;
-        st.currentInstr = nullptr;
-        return Opcode::Trap;
-    }
-
-    st.currentInstr = &st.bb->instructions[st.ip];
-    setCurrentContext(st.fr, st.bb, st.ip, *st.currentInstr);
-
-    if (auto pause = shouldPause(st, st.currentInstr, false))
-    {
-        st.pendingResult = *pause;
-        st.exitRequested = true;
-        return st.currentInstr->op;
-    }
-
-    return st.currentInstr->op;
-}
-
-void VM::handleInlineResult(ExecState &st, const ExecResult &exec)
-{
-    if (exec.returned)
-    {
-        st.pendingResult = exec.value;
-        st.exitRequested = true;
-        return;
-    }
-
-    if (exec.jumped)
-        debug.resetLastHit();
-    else
-        ++st.ip;
-
-    if (auto pause = shouldPause(st, nullptr, true))
-    {
-        st.pendingResult = *pause;
-        st.exitRequested = true;
-        return;
-    }
-
-    st.pendingResult.reset();
-    st.exitRequested = false;
-}
-
-[[noreturn]] void VM::trapUnimplemented(Opcode op)
-{
-    const std::string funcName = currentContext.function ? currentContext.function->name : std::string("<unknown>");
-    const std::string blockLabel = currentContext.block ? currentContext.block->label : std::string();
-    RuntimeBridge::trap(TrapKind::InvalidOperation,
-                        "unimplemented opcode: " + opcodeMnemonic(op),
-                        currentContext.loc,
-                        funcName,
-                        blockLabel);
-    std::terminate();
-}
-
-bool VM::runLoopSwitch(ExecState &st)
-{
-    st.currentInstr = nullptr;
-
-#define TRACE_STEP(INSTR_PTR)                                                                                     \
-    do                                                                                                            \
-    {                                                                                                             \
-        const auto *_traceInstr = (INSTR_PTR);                                                                    \
-        if (_traceInstr)                                                                                          \
-        {                                                                                                         \
-            ++instrCount;                                                                                         \
-            if constexpr (kTraceHookEnabled)                                                                      \
-                tracer.onStep(*_traceInstr, st.fr);                                                               \
-        }                                                                                                         \
-    } while (false)
-
-    while (true)
-    {
-        const Opcode op = fetchOpcode(st);
-        if (st.exitRequested)
-            return true;
-
-        switch (op)
-        {
-#define OP_SWITCH(NAME, ...)                                                                                       \
-    case Opcode::NAME:                                                                                              \
-    {                                                                                                               \
-        TRACE_STEP(st.currentInstr);                                                                                \
-        inline_handle_##NAME(st);                                                                                   \
-        break;                                                                                                      \
-    }
-#define IL_OPCODE(NAME, ...) OP_SWITCH(NAME, __VA_ARGS__)
-#include "il/core/Opcode.def"
-#undef IL_OPCODE
-#undef OP_SWITCH
-        default:
-            trapUnimplemented(op);
-        }
-
-        if (st.exitRequested)
-            return true;
-    }
-}
-
-/// Main interpreter loop for executing a function.
-///
-/// Iterates over instructions in the current basic block, invokes tracing,
-/// dispatches opcodes via @c executeOpcode, and checks debug controls before and
-/// after each step. The loop exits when a return is executed or a debug pause is
-/// requested.
-///
-/// Workflow: while instructions remain, consult debug controls pre-step, trace
-/// and count the instruction, execute it via @c executeOpcode, react to the
-/// resulting control-flow signal (return/jump/advance), and finally re-check
-/// debug controls before continuing.
-///
-/// @param st Mutable execution state containing frame and control flow info.
-/// @return Return value of the function or special slot from debug control.
 Slot VM::runFunctionLoop(ExecState &st)
 {
+    VMContext context(*this);
     for (;;)
     {
         clearCurrentContext();
         try
         {
-            bool finished = false;
-            switch (dispatchKind)
-            {
-                case DispatchKind::FnTable:
-                    finished = runLoopFnTable(st);
-                    break;
-                case DispatchKind::Switch:
-                    finished = runLoopSwitch(st);
-                    break;
-                case DispatchKind::Threaded:
-                {
-#if VIPER_THREADING_SUPPORTED
-                    finished = runLoopThreaded(st);
-#else
-                    finished = runLoopSwitch(st);
-#endif
-                    break;
-                }
-            }
+            if (!dispatchStrategy)
+                dispatchStrategy = createDispatchStrategy(dispatchKind);
+
+            const bool finished = dispatchStrategy ? dispatchStrategy->run(context, st) : false;
 
             if (finished)
             {
@@ -465,154 +155,11 @@ Slot VM::runFunctionLoop(ExecState &st)
         }
         catch (const TrapDispatchSignal &signal)
         {
-            if (!handleTrapDispatch(signal, st))
+            if (!context.handleTrapDispatch(signal, st))
                 throw;
         }
     }
 }
-
-bool VM::runLoopFnTable(ExecState &st)
-{
-    st.pendingResult.reset();
-    st.exitRequested = false;
-    st.currentInstr = nullptr;
-
-    while (true)
-    {
-        auto result = stepOnce(st);
-        if (result.has_value())
-        {
-            st.pendingResult = *result;
-            st.exitRequested = true;
-            return true;
-        }
-    }
-}
-
-#if VIPER_THREADING_SUPPORTED
-bool VM::runLoopThreaded(ExecState &st)
-{
-    st.pendingResult.reset();
-    st.exitRequested = false;
-    st.currentInstr = nullptr;
-
-    const Instr *currentInstr = nullptr;
-    Opcode op = Opcode::Trap;
-    bool exitRequested = false;
-
-    auto storeResultAndExit = [&](const Slot &slot) {
-        st.pendingResult = slot;
-        exitRequested = true;
-    };
-
-    auto fetchNextOpcode = [&]() -> Opcode {
-        while (true)
-        {
-            if (!st.bb || st.ip >= st.bb->instructions.size())
-            {
-                clearCurrentContext();
-                Slot zero{};
-                zero.i64 = 0;
-                storeResultAndExit(zero);
-                return Opcode::Trap;
-            }
-
-            currentInstr = &st.bb->instructions[st.ip];
-            st.currentInstr = currentInstr;
-            setCurrentContext(st.fr, st.bb, st.ip, *currentInstr);
-
-            if (auto pause = shouldPause(st, currentInstr, false))
-            {
-                storeResultAndExit(*pause);
-                return currentInstr->op;
-            }
-
-            exitRequested = false;
-            return currentInstr->op;
-        }
-    };
-
-#define OP_LABEL(name, ...) &&LBL_##name,
-#define IL_OPCODE(name, ...) OP_LABEL(name, __VA_ARGS__)
-    static void *kOpLabels[] = {
-#include "il/core/Opcode.def"
-        &&LBL_UNIMPL,
-    };
-#undef IL_OPCODE
-#undef OP_LABEL
-
-    static constexpr size_t kOpLabelCount = sizeof(kOpLabels) / sizeof(kOpLabels[0]);
-
-#define DISPATCH_TO(OPCODE_VALUE)                                                                          \
-    do                                                                                                      \
-    {                                                                                                       \
-        size_t dispatchIndex = static_cast<size_t>(OPCODE_VALUE);                                           \
-        if (dispatchIndex >= kOpLabelCount - 1)                                                             \
-            dispatchIndex = kOpLabelCount - 1;                                                              \
-        goto *kOpLabels[dispatchIndex];                                                                     \
-    } while (false)
-
-    for (;;)
-    {
-        clearCurrentContext();
-        try
-        {
-            op = fetchNextOpcode();
-            if (exitRequested)
-                return true;
-            DISPATCH_TO(op);
-
-#define OP_CASE(name, ...)                                                                                   \
-    LBL_##name:                                                                                               \
-    {                                                                                                         \
-        TRACE_STEP(currentInstr);                                                                             \
-        auto execResult = executeOpcode(st.fr, *currentInstr, st.blocks, st.bb, st.ip);                       \
-        if (execResult.returned)                                                                              \
-        {                                                                                                     \
-            st.pendingResult = execResult.value;                                                              \
-            return true;                                                                                      \
-        }                                                                                                     \
-        if (execResult.jumped)                                                                               \
-            debug.resetLastHit();                                                                             \
-        else                                                                                                  \
-            ++st.ip;                                                                                          \
-        if (auto pause = shouldPause(st, nullptr, true))                                                      \
-        {                                                                                                     \
-            st.pendingResult = *pause;                                                                        \
-            return true;                                                                                      \
-        }                                                                                                     \
-        op = fetchNextOpcode();                                                                               \
-        if (exitRequested)                                                                                    \
-            return true;                                                                                      \
-        DISPATCH_TO(op);                                                                                      \
-    }
-
-#define IL_OPCODE(name, ...) OP_CASE(name, __VA_ARGS__)
-#include "il/core/Opcode.def"
-#undef IL_OPCODE
-
-#undef OP_CASE
-
-        LBL_UNIMPL:
-        {
-            trapUnimplemented(op);
-        }
-    }
-    catch (const TrapDispatchSignal &signal)
-    {
-        if (!handleTrapDispatch(signal, st))
-            throw;
-    }
-    }
-
-#undef DISPATCH_TO
-
-    return st.pendingResult.has_value();
-}
-#endif
-
-#undef TRACE_STEP
-
 #define VM_DISPATCH_IMPL(DISPATCH, HANDLER_EXPR) HANDLER_EXPR
 #define VM_DISPATCH(NAME) VM_DISPATCH_IMPL(NAME, &detail::handle##NAME)
 #define VM_DISPATCH_ALT(DISPATCH, HANDLER_EXPR) VM_DISPATCH_IMPL(DISPATCH, HANDLER_EXPR)
@@ -767,11 +314,6 @@ std::string VM::recordTrap(const VmError &error, const FrameInfo &frame)
         runtimeContext.message.clear();
     }
     return lastTrap.message;
-}
-
-VM *VM::activeInstance()
-{
-    return tlsActiveVM;
 }
 
 bool VM::prepareTrap(VmError &error)
