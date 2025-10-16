@@ -7,53 +7,25 @@
 // Links: docs/codemap.md
 
 // Requires the consolidated Lowerer interface for expression lowering helpers.
+#include "frontends/basic/LowerExprBuiltin.hpp"
+#include "frontends/basic/LowerExprLogical.hpp"
+#include "frontends/basic/LowerExprNumeric.hpp"
 #include "frontends/basic/Lowerer.hpp"
-#include "frontends/basic/BuiltinRegistry.hpp"
-#include "frontends/basic/builtins/StringBuiltins.hpp"
-#include "frontends/basic/TypeSuffix.hpp"
-#include "frontends/basic/DiagnosticEmitter.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include <algorithm>
 #include <cassert>
-#include <functional>
 #include <cstdint>
-#include <optional>
+#include <functional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
-#include <limits>
 
 using namespace il::core;
 
 namespace il::frontends::basic
 {
-
-namespace
-{
-std::string_view logicalOperatorDisplayName(BinaryExpr::Op op) noexcept
-{
-    switch (op)
-    {
-        case BinaryExpr::Op::LogicalAndShort:
-            return "ANDALSO";
-        case BinaryExpr::Op::LogicalOrShort:
-            return "ORELSE";
-        case BinaryExpr::Op::LogicalAnd:
-            return "AND";
-        case BinaryExpr::Op::LogicalOr:
-            return "OR";
-        default:
-            break;
-    }
-    return "<logical>";
-}
-
-constexpr std::string_view kDiagUnsupportedLogicalOperator = "B4002";
-constexpr std::string_view kDiagUnsupportedCustomBuiltinVariant = "B4003";
-} // namespace
 
 /// @brief Expression visitor that lowers nodes via Lowerer helpers.
 class LowererExprVisitor final : public ExprVisitor
@@ -64,15 +36,15 @@ class LowererExprVisitor final : public ExprVisitor
     void visit(const IntExpr &expr) override
     {
         lowerer_.curLoc = expr.loc;
-        result_ = Lowerer::RVal{Value::constInt(expr.value),
-                                il::core::Type(il::core::Type::Kind::I64)};
+        result_ =
+            Lowerer::RVal{Value::constInt(expr.value), il::core::Type(il::core::Type::Kind::I64)};
     }
 
     void visit(const FloatExpr &expr) override
     {
         lowerer_.curLoc = expr.loc;
-        result_ = Lowerer::RVal{Value::constFloat(expr.value),
-                                il::core::Type(il::core::Type::Kind::F64)};
+        result_ =
+            Lowerer::RVal{Value::constFloat(expr.value), il::core::Type(il::core::Type::Kind::F64)};
     }
 
     void visit(const StringExpr &expr) override
@@ -90,7 +62,10 @@ class LowererExprVisitor final : public ExprVisitor
         result_ = Lowerer::RVal{logical, il::core::Type(il::core::Type::Kind::I64)};
     }
 
-    void visit(const VarExpr &expr) override { result_ = lowerer_.lowerVarExpr(expr); }
+    void visit(const VarExpr &expr) override
+    {
+        result_ = lowerer_.lowerVarExpr(expr);
+    }
 
     void visit(const ArrayExpr &expr) override
     {
@@ -103,13 +78,19 @@ class LowererExprVisitor final : public ExprVisitor
         result_ = Lowerer::RVal{val, il::core::Type(il::core::Type::Kind::I64)};
     }
 
-    void visit(const UnaryExpr &expr) override { result_ = lowerer_.lowerUnaryExpr(expr); }
+    void visit(const UnaryExpr &expr) override
+    {
+        result_ = lowerer_.lowerUnaryExpr(expr);
+    }
 
-    void visit(const BinaryExpr &expr) override { result_ = lowerer_.lowerBinaryExpr(expr); }
+    void visit(const BinaryExpr &expr) override
+    {
+        result_ = lowerer_.lowerBinaryExpr(expr);
+    }
 
     void visit(const BuiltinCallExpr &expr) override
     {
-        result_ = lowerer_.lowerBuiltinCall(expr);
+        result_ = lowerBuiltinCall(lowerer_, expr);
     }
 
     void visit(const LBoundExpr &expr) override
@@ -154,17 +135,18 @@ class LowererExprVisitor final : public ExprVisitor
         else
         {
             lowerer_.emitCall(expr.callee, args);
-            result_ = Lowerer::RVal{Value::constInt(0),
-                                    il::core::Type(il::core::Type::Kind::I64)};
+            result_ = Lowerer::RVal{Value::constInt(0), il::core::Type(il::core::Type::Kind::I64)};
         }
     }
 
-    [[nodiscard]] Lowerer::RVal result() const noexcept { return result_; }
+    [[nodiscard]] Lowerer::RVal result() const noexcept
+    {
+        return result_;
+    }
 
   private:
     Lowerer &lowerer_;
-    Lowerer::RVal result_{Value::constInt(0),
-                          il::core::Type(il::core::Type::Kind::I64)};
+    Lowerer::RVal result_{Value::constInt(0), il::core::Type(il::core::Type::Kind::I64)};
 };
 
 /// @brief Lower a BASIC variable reference into an IL value.
@@ -235,16 +217,21 @@ Lowerer::RVal Lowerer::lowerBoolBranchExpr(Value cond,
     BasicBlock *thenBlk = nullptr;
     BasicBlock *elseBlk = nullptr;
 
-    std::string_view thenBase = thenLabelBase.empty() ? std::string_view("bool_then") : thenLabelBase;
-    std::string_view elseBase = elseLabelBase.empty() ? std::string_view("bool_else") : elseLabelBase;
-    std::string_view joinBase = joinLabelBase.empty() ? std::string_view("bool_join") : joinLabelBase;
+    std::string_view thenBase =
+        thenLabelBase.empty() ? std::string_view("bool_then") : thenLabelBase;
+    std::string_view elseBase =
+        elseLabelBase.empty() ? std::string_view("bool_else") : elseLabelBase;
+    std::string_view joinBase =
+        joinLabelBase.empty() ? std::string_view("bool_join") : joinLabelBase;
 
     IlValue result = emitBoolFromBranches(
-        [&](Value slot) {
+        [&](Value slot)
+        {
             thenBlk = ctx.current();
             emitThen(slot);
         },
-        [&](Value slot) {
+        [&](Value slot)
+        {
             elseBlk = ctx.current();
             emitElse(slot);
         },
@@ -319,11 +306,13 @@ Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
             RVal negated = lowerBoolBranchExpr(
                 cond,
                 u.loc,
-                [&](Value slot) {
+                [&](Value slot)
+                {
                     curLoc = u.loc;
                     emitStore(ilBoolTy(), slot, emitBoolConst(false));
                 },
-                [&](Value slot) {
+                [&](Value slot)
+                {
                     curLoc = u.loc;
                     emitStore(ilBoolTy(), slot, emitBoolConst(true));
                 });
@@ -342,7 +331,8 @@ Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
             curLoc = u.loc;
             if (value.type.kind == Type::Kind::F64)
             {
-                Value neg = emitBinary(Opcode::FSub, Type(Type::Kind::F64), Value::constFloat(0.0), value.value);
+                Value neg = emitBinary(
+                    Opcode::FSub, Type(Type::Kind::F64), Value::constFloat(0.0), value.value);
                 return {neg, Type(Type::Kind::F64)};
             }
             if (value.type.kind == Type::Kind::I16 || value.type.kind == Type::Kind::I32 ||
@@ -378,419 +368,6 @@ Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
 ///   conditional branch wiring.
 /// - Side effects: Updates @ref curLoc for each emitted instruction and may
 ///   recursively call @ref lowerExpr on child expressions.
-Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &b)
-{
-    RVal lhs = lowerExpr(*b.lhs);
-    curLoc = b.loc;
-
-    auto toBool = [&](RVal val) {
-        return coerceToBool(std::move(val), b.loc).value;
-    };
-
-    if (b.op == BinaryExpr::Op::LogicalAndShort)
-    {
-        Value cond = toBool(lhs);
-        RVal andResult = lowerBoolBranchExpr(
-            cond,
-            b.loc,
-            [&](Value slot) {
-                RVal rhs = lowerExpr(*b.rhs);
-                Value rhsBool = toBool(rhs);
-                curLoc = b.loc;
-                emitStore(ilBoolTy(), slot, rhsBool);
-            },
-            [&](Value slot) {
-                curLoc = b.loc;
-                emitStore(ilBoolTy(), slot, emitBoolConst(false));
-            },
-            "and_rhs",
-            "and_false",
-            "and_done");
-
-        curLoc = b.loc;
-        Value logical = emitBasicLogicalI64(andResult.value);
-        return {logical, Type(Type::Kind::I64)};
-    }
-
-    if (b.op == BinaryExpr::Op::LogicalOrShort)
-    {
-        Value cond = toBool(lhs);
-        RVal orResult = lowerBoolBranchExpr(
-            cond,
-            b.loc,
-            [&](Value slot) {
-                curLoc = b.loc;
-                emitStore(ilBoolTy(), slot, emitBoolConst(true));
-            },
-            [&](Value slot) {
-                RVal rhs = lowerExpr(*b.rhs);
-                Value rhsBool = toBool(rhs);
-                curLoc = b.loc;
-                emitStore(ilBoolTy(), slot, rhsBool);
-            },
-            "or_true",
-            "or_rhs",
-            "or_done");
-
-        curLoc = b.loc;
-        Value logical = emitBasicLogicalI64(orResult.value);
-        return {logical, Type(Type::Kind::I64)};
-    }
-
-    if (b.op == BinaryExpr::Op::LogicalAnd)
-    {
-        Value lhsBool = toBool(lhs);
-        RVal rhs = lowerExpr(*b.rhs);
-        Value rhsBool = toBool(rhs);
-        curLoc = b.loc;
-        Value lhsLogical = emitBasicLogicalI64(lhsBool);
-        curLoc = b.loc;
-        Value rhsLogical = emitBasicLogicalI64(rhsBool);
-        curLoc = b.loc;
-        Value res = emitBinary(Opcode::And, Type(Type::Kind::I64), lhsLogical, rhsLogical);
-        return {res, Type(Type::Kind::I64)};
-    }
-
-    if (b.op == BinaryExpr::Op::LogicalOr)
-    {
-        Value lhsBool = toBool(lhs);
-        RVal rhs = lowerExpr(*b.rhs);
-        Value rhsBool = toBool(rhs);
-        curLoc = b.loc;
-        Value lhsLogical = emitBasicLogicalI64(lhsBool);
-        curLoc = b.loc;
-        Value rhsLogical = emitBasicLogicalI64(rhsBool);
-        curLoc = b.loc;
-        Value res = emitBinary(Opcode::Or, Type(Type::Kind::I64), lhsLogical, rhsLogical);
-        return {res, Type(Type::Kind::I64)};
-    }
-
-    if (auto *emitter = diagnosticEmitter())
-    {
-        std::string_view opText = logicalOperatorDisplayName(b.op);
-        std::string message = "unsupported logical operator '";
-        message.append(opText);
-        message.push_back('\'');
-        if (opText == std::string_view("<logical>"))
-        {
-            message.append(" (enum value ");
-            message.append(std::to_string(static_cast<int>(b.op)));
-            message.push_back(')');
-        }
-        message.append("; assuming FALSE");
-        emitter->emit(il::support::Severity::Error,
-                      std::string(kDiagUnsupportedLogicalOperator),
-                      b.loc,
-                      0,
-                      std::move(message));
-    }
-
-    curLoc = b.loc;
-    Value logicalFalse = emitBoolConst(false);
-    curLoc = b.loc;
-    Value logicalWord = emitBasicLogicalI64(logicalFalse);
-    return {logicalWord, Type(Type::Kind::I64)};
-}
-
-/// @brief Lower integer division and modulo with width-aware narrowing.
-/// @param b Binary expression describing the operation.
-/// @return Resulting integer value alongside its IL type.
-/// @details
-/// - Control flow: Runs linearly in the current block, relying on the
-///   checked `sdiv`/`srem` opcodes for divide-by-zero and overflow traps.
-/// - Emitted IL: Classifies the operand ranks using AST hints and narrows the
-///   values to either `i16` or `i32` with `cast.si_narrow.chk` before issuing
-///   the selected arithmetic instruction.
-/// - Side effects: Updates @ref curLoc for each emitted narrowing so traps are
-///   attributed to the original expression location.
-Lowerer::RVal Lowerer::lowerDivOrMod(const BinaryExpr &b)
-{
-    RVal lhs = lowerExpr(*b.lhs);
-    RVal rhs = lowerExpr(*b.rhs);
-
-    std::function<std::optional<Type::Kind>(const Expr &, const RVal &)> classifyIntegerRank;
-    classifyIntegerRank = [&](const Expr &expr, const RVal &val) -> std::optional<Type::Kind> {
-        using Kind = Type::Kind;
-        switch (val.type.kind)
-        {
-            case Kind::I16:
-                return Kind::I16;
-            case Kind::I32:
-                return Kind::I32;
-            case Kind::F64:
-            case Kind::Str:
-            case Kind::Ptr:
-            case Kind::I1:
-            case Kind::Error:
-            case Kind::ResumeTok:
-            case Kind::Void:
-                return std::nullopt;
-            case Kind::I64:
-                break;
-        }
-
-        if (const auto *intLit = dynamic_cast<const IntExpr *>(&expr))
-        {
-            if (intLit->value >= std::numeric_limits<int16_t>::min() &&
-                intLit->value <= std::numeric_limits<int16_t>::max())
-                return Kind::I16;
-            if (intLit->value >= std::numeric_limits<int32_t>::min() &&
-                intLit->value <= std::numeric_limits<int32_t>::max())
-                return Kind::I32;
-            return std::nullopt;
-        }
-        if (const auto *var = dynamic_cast<const VarExpr *>(&expr))
-        {
-            if (const auto *info = findSymbol(var->name))
-            {
-                if (info->hasType)
-                {
-                    if (info->type == AstType::F64)
-                        return std::nullopt;
-                }
-            }
-            AstType astTy = inferAstTypeFromName(var->name);
-            if (astTy == AstType::F64)
-                return std::nullopt;
-            return Kind::I16;
-        }
-        if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expr))
-        {
-            if (unary->expr)
-                return classifyIntegerRank(*unary->expr, val);
-        }
-        return std::nullopt;
-    };
-
-    auto narrowTo = [&](const Expr &expr, RVal v, Type target) {
-        if (v.type.kind == target.kind)
-            return v;
-        v = coerceToI64(std::move(v), expr.loc);
-        curLoc = expr.loc;
-        v.value = emitUnary(Opcode::CastSiNarrowChk, target, v.value);
-        v.type = target;
-        return v;
-    };
-
-    std::optional<Type::Kind> lhsRank = classifyIntegerRank(*b.lhs, lhs);
-    std::optional<Type::Kind> rhsRank = classifyIntegerRank(*b.rhs, rhs);
-
-    Opcode op = (b.op == BinaryExpr::Op::IDiv) ? Opcode::SDivChk0 : Opcode::SRemChk0;
-    Type resultTy(Type::Kind::I64);
-
-    if (lhsRank && rhsRank)
-    {
-        Type::Kind promoted = (*lhsRank == Type::Kind::I32 || *rhsRank == Type::Kind::I32)
-                                  ? Type::Kind::I32
-                                  : Type::Kind::I16;
-        resultTy = Type(promoted);
-        lhs = narrowTo(*b.lhs, std::move(lhs), resultTy);
-        rhs = narrowTo(*b.rhs, std::move(rhs), resultTy);
-    }
-    else
-    {
-        lhs = coerceToI64(std::move(lhs), b.loc);
-        rhs = coerceToI64(std::move(rhs), b.loc);
-        resultTy = Type(Type::Kind::I64);
-    }
-
-    curLoc = b.loc;
-    Value res = emitBinary(op, resultTy, lhs.value, rhs.value);
-    return {res, resultTy};
-}
-
-/// @brief Lower string binary operations, mapping to runtime helpers.
-/// @param b Binary expression describing a string operator.
-/// @param lhs Left-hand operand already lowered to IL.
-/// @param rhs Right-hand operand already lowered to IL.
-/// @return Lowered value with either string or boolean type.
-/// @details
-/// - Control flow: Runs linearly within the current block with no new
-///   branches.
-/// - Emitted IL: Invokes runtime routines such as `rt_concat` and
-///   `rt_str_eq`, including boolean negation when handling inequality.
-/// - Side effects: Updates @ref curLoc prior to the call so string helper
-///   diagnostics report the proper source span.
-Lowerer::RVal Lowerer::lowerStringBinary(const BinaryExpr &b, RVal lhs, RVal rhs)
-{
-    curLoc = b.loc;
-    if (b.op == BinaryExpr::Op::Add)
-    {
-        Value res = emitCallRet(Type(Type::Kind::Str), "rt_concat", {lhs.value, rhs.value});
-        return {res, Type(Type::Kind::Str)};
-    }
-    Value eq = emitCallRet(ilBoolTy(), "rt_str_eq", {lhs.value, rhs.value});
-    Value eqLogical = emitBasicLogicalI64(eq);
-    if (b.op == BinaryExpr::Op::Ne)
-    {
-        curLoc = b.loc;
-        Value res = emitBinary(Opcode::Xor, Type(Type::Kind::I64), eqLogical, emitConstI64(-1));
-        return {res, Type(Type::Kind::I64)};
-    }
-    return {eqLogical, Type(Type::Kind::I64)};
-}
-
-Lowerer::RVal Lowerer::lowerPowBinary(const BinaryExpr &b, RVal lhs, RVal rhs)
-{
-    il::support::SourceLoc lhsLoc = b.lhs ? b.lhs->loc : b.loc;
-    il::support::SourceLoc rhsLoc = b.rhs ? b.rhs->loc : b.loc;
-    lhs = ensureF64(std::move(lhs), lhsLoc);
-    rhs = ensureF64(std::move(rhs), rhsLoc);
-    trackRuntime(RuntimeFeature::Pow);
-    curLoc = b.loc;
-    Value res = emitCallRet(Type(Type::Kind::F64), "rt_pow_f64_chkdom", {lhs.value, rhs.value});
-    return {res, Type(Type::Kind::F64)};
-}
-
-/// @brief Lower numeric binary expressions, promoting operands as needed.
-/// @param b Arithmetic or comparison expression to translate.
-/// @param lhs Lowered left-hand operand.
-/// @param rhs Lowered right-hand operand.
-/// @return Result of the operation with either numeric or boolean type.
-/// @details
-/// - Control flow: Executes in a straight line without creating additional
-///   blocks.
-/// - Emitted IL: Inserts integer-to-float conversions when operand types
-///   differ and chooses among arithmetic or comparison opcodes before issuing
-///   a single binary instruction.
-/// - Side effects: Updates @ref curLoc and mutates the temporary
-///   @ref Lowerer::RVal structures to reflect promotions.
-Lowerer::RVal Lowerer::lowerNumericBinary(const BinaryExpr &b, RVal lhs, RVal rhs)
-{
-    curLoc = b.loc;
-    if (b.op == BinaryExpr::Op::Div)
-    {
-        auto promoteToF64 = [&](RVal value, const Expr &expr) {
-            if (value.type.kind == Type::Kind::F64)
-                return value;
-            value = coerceToI64(std::move(value), expr.loc);
-            curLoc = expr.loc;
-            value.value = emitUnary(Opcode::CastSiToFp, Type(Type::Kind::F64), value.value);
-            value.type = Type(Type::Kind::F64);
-            return value;
-        };
-
-        if (b.lhs)
-            lhs = promoteToF64(std::move(lhs), *b.lhs);
-        else
-            lhs = promoteToF64(std::move(lhs), b);
-        if (b.rhs)
-            rhs = promoteToF64(std::move(rhs), *b.rhs);
-        else
-            rhs = promoteToF64(std::move(rhs), b);
-
-        curLoc = b.loc;
-        Value res = emitBinary(Opcode::FDiv, Type(Type::Kind::F64), lhs.value, rhs.value);
-        return {res, Type(Type::Kind::F64)};
-    }
-
-    if (lhs.type.kind == Type::Kind::I64 && rhs.type.kind == Type::Kind::F64)
-    {
-        lhs = coerceToF64(std::move(lhs), b.loc);
-    }
-    else if (lhs.type.kind == Type::Kind::F64 && rhs.type.kind == Type::Kind::I64)
-    {
-        rhs = coerceToF64(std::move(rhs), b.loc);
-    }
-    auto isIntegerKind = [](Type::Kind kind) {
-        return kind == Type::Kind::I16 || kind == Type::Kind::I32 || kind == Type::Kind::I64;
-    };
-    bool isFloat = lhs.type.kind == Type::Kind::F64;
-    if (!isFloat && b.op == BinaryExpr::Op::Sub)
-    {
-        if (const auto *lhsInt = dynamic_cast<const IntExpr *>(b.lhs.get());
-            lhsInt && lhsInt->value == 0 && isIntegerKind(rhs.type.kind) &&
-            (rhs.type.kind == Type::Kind::I16 || rhs.type.kind == Type::Kind::I32))
-        {
-            Value neg = emitCheckedNeg(rhs.type, rhs.value);
-            return {neg, rhs.type};
-        }
-    }
-    auto integerArithmeticType = [](Type::Kind lhsKind, Type::Kind rhsKind) {
-        if (lhsKind == Type::Kind::I16 && rhsKind == Type::Kind::I16)
-            return Type(Type::Kind::I16);
-        if (lhsKind == Type::Kind::I32 && rhsKind == Type::Kind::I32)
-            return Type(Type::Kind::I32);
-        return Type(Type::Kind::I64);
-    };
-    Opcode op = Opcode::IAddOvf;
-    Type arithTy = isFloat ? Type(Type::Kind::F64)
-                           : integerArithmeticType(lhs.type.kind, rhs.type.kind);
-    if (!isFloat)
-    {
-        const auto *lhsInt = dynamic_cast<const IntExpr *>(b.lhs.get());
-        const auto *rhsInt = dynamic_cast<const IntExpr *>(b.rhs.get());
-        if (lhsInt && rhsInt)
-        {
-            const auto fits16 = [](long long v) {
-                return v >= std::numeric_limits<int16_t>::min() && v <= std::numeric_limits<int16_t>::max();
-            };
-            const auto fits32 = [](long long v) {
-                return v >= std::numeric_limits<int32_t>::min() && v <= std::numeric_limits<int32_t>::max();
-            };
-            if (fits16(lhsInt->value) && fits16(rhsInt->value))
-            {
-                arithTy = Type(Type::Kind::I16);
-            }
-            else if (fits32(lhsInt->value) && fits32(rhsInt->value))
-            {
-                arithTy = Type(Type::Kind::I32);
-            }
-        }
-    }
-    Type ty = arithTy;
-    switch (b.op)
-    {
-        case BinaryExpr::Op::Add:
-            op = isFloat ? Opcode::FAdd : Opcode::IAddOvf;
-            break;
-        case BinaryExpr::Op::Sub:
-            op = isFloat ? Opcode::FSub : Opcode::ISubOvf;
-            break;
-        case BinaryExpr::Op::Mul:
-            op = isFloat ? Opcode::FMul : Opcode::IMulOvf;
-            break;
-        case BinaryExpr::Op::Div:
-            op = isFloat ? Opcode::FDiv : Opcode::SDivChk0;
-            ty = isFloat ? arithTy : Type(Type::Kind::I64);
-            break;
-        case BinaryExpr::Op::Eq:
-            op = isFloat ? Opcode::FCmpEQ : Opcode::ICmpEq;
-            ty = ilBoolTy();
-            break;
-        case BinaryExpr::Op::Ne:
-            op = isFloat ? Opcode::FCmpNE : Opcode::ICmpNe;
-            ty = ilBoolTy();
-            break;
-        case BinaryExpr::Op::Lt:
-            op = isFloat ? Opcode::FCmpLT : Opcode::SCmpLT;
-            ty = ilBoolTy();
-            break;
-        case BinaryExpr::Op::Le:
-            op = isFloat ? Opcode::FCmpLE : Opcode::SCmpLE;
-            ty = ilBoolTy();
-            break;
-        case BinaryExpr::Op::Gt:
-            op = isFloat ? Opcode::FCmpGT : Opcode::SCmpGT;
-            ty = ilBoolTy();
-            break;
-        case BinaryExpr::Op::Ge:
-            op = isFloat ? Opcode::FCmpGE : Opcode::SCmpGE;
-            ty = ilBoolTy();
-            break;
-        default:
-            break; // other ops handled elsewhere
-    }
-    Value res = emitBinary(op, ty, lhs.value, rhs.value);
-    if (ty.kind == Type::Kind::I1)
-    {
-        curLoc = b.loc;
-        Value logical = emitBasicLogicalI64(res);
-        return {logical, Type(Type::Kind::I64)};
-    }
-    return {res, ty};
-}
-
 /// @brief Dispatch lowering for all BASIC binary expressions.
 /// @param b Binary AST node to translate.
 /// @return Lowered value alongside its IL type.
@@ -870,8 +447,8 @@ Lowerer::RVal Lowerer::coerceToBool(RVal v, il::support::SourceLoc loc)
 {
     if (v.type.kind == Type::Kind::I1)
         return v;
-    if (v.type.kind == Type::Kind::F64 || v.type.kind == Type::Kind::I16 || v.type.kind == Type::Kind::I32 ||
-        v.type.kind == Type::Kind::I64)
+    if (v.type.kind == Type::Kind::F64 || v.type.kind == Type::Kind::I16 ||
+        v.type.kind == Type::Kind::I32 || v.type.kind == Type::Kind::I64)
         v = coerceToI64(std::move(v), loc);
     if (v.type.kind != Type::Kind::I1)
     {
@@ -898,598 +475,6 @@ Lowerer::RVal Lowerer::ensureI64(RVal v, il::support::SourceLoc loc)
 Lowerer::RVal Lowerer::ensureF64(RVal v, il::support::SourceLoc loc)
 {
     return coerceToF64(std::move(v), loc);
-}
-
-/// @brief Lower a BASIC builtin call using declarative metadata.
-/// @param c Builtin call AST node to translate.
-/// @return Lowered value and its IL type.
-/// @details
-/// - Control flow: Follows the first matching metadata variant, which may emit
-///   straight-line code or runtime calls depending on argument presence and
-///   types.
-/// - Emitted IL: Applies argument transforms (coercions, adjustments) prior to
-///   issuing runtime calls or unary conversions.
-/// - Side effects: Records runtime helper usage according to the variant's
-///   feature actions.
-Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &c)
-{
-    const auto &info = getBuiltinInfo(c.builtin);
-    if (const auto *stringSpec = builtins::findBuiltin(info.name))
-    {
-        const std::size_t argCount = c.args.size();
-        if (argCount >= static_cast<std::size_t>(stringSpec->minArity) &&
-            argCount <= static_cast<std::size_t>(stringSpec->maxArity))
-        {
-            builtins::LowerCtx ctx(*this, c);
-            Value resultValue = stringSpec->fn(ctx, ctx.values());
-            return {resultValue, ctx.resultType()};
-        }
-    }
-
-    if (c.builtin == BuiltinCallExpr::Builtin::Lof)
-    {
-        requireLofCh();
-        if (c.args.empty() || !c.args[0])
-            return {Value::constInt(0), Type(Type::Kind::I64)};
-
-        RVal channel = lowerExpr(*c.args[0]);
-        channel = normalizeChannelToI32(std::move(channel), c.loc);
-
-        curLoc = c.loc;
-        Value raw = emitCallRet(Type(Type::Kind::I64), "rt_lof_ch", {channel.value});
-
-        Value isError = emitBinary(Opcode::SCmpLT, ilBoolTy(), raw, Value::constInt(0));
-
-        ProcedureContext &ctx = context();
-        Function *func = ctx.function();
-        BasicBlock *origin = ctx.current();
-        if (func && origin)
-        {
-            std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
-            BlockNamer *blockNamer = ctx.blockNames().namer();
-            std::string failLbl = blockNamer ? blockNamer->generic("lof_err")
-                                             : mangler.block("lof_err");
-            std::string contLbl = blockNamer ? blockNamer->generic("lof_cont")
-                                             : mangler.block("lof_cont");
-
-            std::size_t failIdx = func->blocks.size();
-            builder->addBlock(*func, failLbl);
-            std::size_t contIdx = func->blocks.size();
-            builder->addBlock(*func, contLbl);
-
-            BasicBlock *failBlk = &func->blocks[failIdx];
-            BasicBlock *contBlk = &func->blocks[contIdx];
-
-            ctx.setCurrent(&func->blocks[originIdx]);
-            curLoc = c.loc;
-            emitCBr(isError, failBlk, contBlk);
-
-            ctx.setCurrent(failBlk);
-            curLoc = c.loc;
-            Value negCode = emitBinary(Opcode::Sub, Type(Type::Kind::I64), Value::constInt(0), raw);
-            Value err32 = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), negCode);
-            emitTrapFromErr(err32);
-
-            ctx.setCurrent(contBlk);
-        }
-
-        curLoc = c.loc;
-        return {raw, Type(Type::Kind::I64)};
-    }
-    if (c.builtin == BuiltinCallExpr::Builtin::Eof)
-    {
-        requireEofCh();
-        if (c.args.empty() || !c.args[0])
-            return {Value::constInt(0), Type(Type::Kind::I64)};
-
-        RVal channel = lowerExpr(*c.args[0]);
-        channel = normalizeChannelToI32(std::move(channel), c.loc);
-
-        curLoc = c.loc;
-        Value raw = emitCallRet(Type(Type::Kind::I32), "rt_eof_ch", {channel.value});
-
-        ProcedureContext &ctx = context();
-        Function *func = ctx.function();
-        BasicBlock *origin = ctx.current();
-        if (func && origin)
-        {
-            std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
-            BlockNamer *blockNamer = ctx.blockNames().namer();
-            std::string failLbl = blockNamer ? blockNamer->generic("eof_err")
-                                             : mangler.block("eof_err");
-            std::string contLbl = blockNamer ? blockNamer->generic("eof_cont")
-                                             : mangler.block("eof_cont");
-
-            std::size_t failIdx = func->blocks.size();
-            builder->addBlock(*func, failLbl);
-            std::size_t contIdx = func->blocks.size();
-            builder->addBlock(*func, contLbl);
-
-            BasicBlock *failBlk = &func->blocks[failIdx];
-            BasicBlock *contBlk = &func->blocks[contIdx];
-
-            ctx.setCurrent(&func->blocks[originIdx]);
-            curLoc = c.loc;
-            Value zero = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), Value::constInt(0));
-            Value negOne = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), Value::constInt(-1));
-            Value nonZero = emitBinary(Opcode::ICmpNe, ilBoolTy(), raw, zero);
-            Value notNegOne = emitBinary(Opcode::ICmpNe, ilBoolTy(), raw, negOne);
-            Value isError = emitBinary(Opcode::And, ilBoolTy(), nonZero, notNegOne);
-            emitCBr(isError, failBlk, contBlk);
-
-            ctx.setCurrent(failBlk);
-            curLoc = c.loc;
-            emitTrapFromErr(raw);
-
-            ctx.setCurrent(contBlk);
-        }
-
-        curLoc = c.loc;
-        RVal widened{raw, Type(Type::Kind::I32)};
-        widened = ensureI64(std::move(widened), c.loc);
-        return widened;
-    }
-    if (c.builtin == BuiltinCallExpr::Builtin::Loc)
-    {
-        requireLocCh();
-        if (c.args.empty() || !c.args[0])
-            return {Value::constInt(0), Type(Type::Kind::I64)};
-
-        RVal channel = lowerExpr(*c.args[0]);
-        channel = normalizeChannelToI32(std::move(channel), c.loc);
-
-        curLoc = c.loc;
-        Value raw = emitCallRet(Type(Type::Kind::I64), "rt_loc_ch", {channel.value});
-
-        Value isError = emitBinary(Opcode::SCmpLT, ilBoolTy(), raw, Value::constInt(0));
-
-        ProcedureContext &ctx = context();
-        Function *func = ctx.function();
-        BasicBlock *origin = ctx.current();
-        if (func && origin)
-        {
-            std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
-            BlockNamer *blockNamer = ctx.blockNames().namer();
-            std::string failLbl = blockNamer ? blockNamer->generic("loc_err")
-                                             : mangler.block("loc_err");
-            std::string contLbl = blockNamer ? blockNamer->generic("loc_cont")
-                                             : mangler.block("loc_cont");
-
-            std::size_t failIdx = func->blocks.size();
-            builder->addBlock(*func, failLbl);
-            std::size_t contIdx = func->blocks.size();
-            builder->addBlock(*func, contLbl);
-
-            BasicBlock *failBlk = &func->blocks[failIdx];
-            BasicBlock *contBlk = &func->blocks[contIdx];
-
-            ctx.setCurrent(&func->blocks[originIdx]);
-            curLoc = c.loc;
-            emitCBr(isError, failBlk, contBlk);
-
-            ctx.setCurrent(failBlk);
-            curLoc = c.loc;
-            Value negCode = emitBinary(Opcode::Sub, Type(Type::Kind::I64), Value::constInt(0), raw);
-            Value err32 = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), negCode);
-            emitTrapFromErr(err32);
-
-            ctx.setCurrent(contBlk);
-        }
-
-        curLoc = c.loc;
-        return {raw, Type(Type::Kind::I64)};
-    }
-
-    const auto &rule = getBuiltinLoweringRule(c.builtin);
-
-    std::vector<std::optional<ExprType>> originalTypes(c.args.size());
-    std::vector<std::optional<il::support::SourceLoc>> argLocs(c.args.size());
-    for (std::size_t i = 0; i < c.args.size(); ++i)
-    {
-        const auto &arg = c.args[i];
-        if (!arg)
-            continue;
-        argLocs[i] = arg->loc;
-        originalTypes[i] = scanExpr(*arg);
-    }
-
-    auto hasArg = [&](std::size_t idx) -> bool {
-        return idx < c.args.size() && c.args[idx] != nullptr;
-    };
-
-    std::vector<std::optional<RVal>> loweredArgs(c.args.size());
-    std::vector<RVal> syntheticArgs;
-
-    const auto *variant = static_cast<const BuiltinLoweringRule::Variant *>(nullptr);
-    for (const auto &candidate : rule.variants)
-    {
-        bool matches = false;
-        switch (candidate.condition)
-        {
-            case BuiltinLoweringRule::Variant::Condition::Always:
-                matches = true;
-                break;
-            case BuiltinLoweringRule::Variant::Condition::IfArgPresent:
-                matches = hasArg(candidate.conditionArg);
-                break;
-            case BuiltinLoweringRule::Variant::Condition::IfArgMissing:
-                matches = !hasArg(candidate.conditionArg);
-                break;
-            case BuiltinLoweringRule::Variant::Condition::IfArgTypeIs:
-                if (hasArg(candidate.conditionArg) && originalTypes[candidate.conditionArg])
-                    matches = *originalTypes[candidate.conditionArg] == candidate.conditionType;
-                break;
-            case BuiltinLoweringRule::Variant::Condition::IfArgTypeIsNot:
-                if (hasArg(candidate.conditionArg) && originalTypes[candidate.conditionArg])
-                    matches = *originalTypes[candidate.conditionArg] != candidate.conditionType;
-                break;
-        }
-        if (matches)
-        {
-            variant = &candidate;
-            break;
-        }
-    }
-
-    if (!variant && !rule.variants.empty())
-        variant = &rule.variants.front();
-    if (!variant)
-        return {Value::constInt(0), Type(Type::Kind::I64)};
-
-    auto ensureLoweredIndex = [&](std::size_t idx) -> RVal & {
-        assert(hasArg(idx) && "builtin lowering referenced missing argument");
-        auto &slot = loweredArgs[idx];
-        if (!slot)
-            slot = lowerExpr(*c.args[idx]);
-        return *slot;
-    };
-
-    auto typeFromExpr = [&](ExprType expr) -> Type {
-        switch (expr)
-        {
-            case ExprType::F64:
-                return Type(Type::Kind::F64);
-            case ExprType::Str:
-                return Type(Type::Kind::Str);
-            case ExprType::Bool:
-                return ilBoolTy();
-            case ExprType::I64:
-            default:
-                return Type(Type::Kind::I64);
-        }
-    };
-
-    auto resolveResultType = [&]() -> Type {
-        switch (rule.result.kind)
-        {
-            case BuiltinLoweringRule::ResultSpec::Kind::Fixed:
-                return typeFromExpr(rule.result.type);
-            case BuiltinLoweringRule::ResultSpec::Kind::FromArg:
-            {
-                std::size_t idx = rule.result.argIndex;
-                if (hasArg(idx))
-                    return ensureLoweredIndex(idx).type;
-                return typeFromExpr(rule.result.type);
-            }
-        }
-        return Type(Type::Kind::I64);
-    };
-
-    auto ensureLoweredArgument = [&](const BuiltinLoweringRule::Argument &argSpec) -> RVal & {
-        std::size_t idx = argSpec.index;
-        if (idx < c.args.size() && c.args[idx])
-            return ensureLoweredIndex(idx);
-        if (argSpec.defaultValue)
-        {
-            const auto &def = *argSpec.defaultValue;
-            RVal value{Value::constInt(def.i64), Type(Type::Kind::I64)};
-            switch (def.type)
-            {
-                case ExprType::F64:
-                    value = RVal{Value::constFloat(def.f64), Type(Type::Kind::F64)};
-                    break;
-                case ExprType::Str:
-                    assert(false && "string default values are not supported");
-                    break;
-                case ExprType::Bool:
-                    value = RVal{emitBoolConst(def.i64 != 0), ilBoolTy()};
-                    break;
-                case ExprType::I64:
-                default:
-                    value = RVal{Value::constInt(def.i64), Type(Type::Kind::I64)};
-                    break;
-            }
-            syntheticArgs.push_back(value);
-            return syntheticArgs.back();
-        }
-        assert(false && "builtin lowering referenced missing argument without default");
-        syntheticArgs.emplace_back(Value::constInt(0), Type(Type::Kind::I64));
-        return syntheticArgs.back();
-    };
-
-    auto selectArgLoc = [&](const BuiltinLoweringRule::Argument &argSpec) -> il::support::SourceLoc {
-        if (argSpec.index < argLocs.size() && argLocs[argSpec.index])
-            return *argLocs[argSpec.index];
-        return c.loc;
-    };
-
-    auto applyTransforms = [&](const BuiltinLoweringRule::Argument &argSpec,
-                               const std::vector<BuiltinLoweringRule::ArgTransform> &transforms) -> RVal & {
-        RVal &slot = ensureLoweredArgument(argSpec);
-        il::support::SourceLoc loc = selectArgLoc(argSpec);
-        for (const auto &transform : transforms)
-        {
-            switch (transform.kind)
-            {
-                case BuiltinLoweringRule::ArgTransform::Kind::EnsureI64:
-                    slot = ensureI64(std::move(slot), loc);
-                    break;
-                case BuiltinLoweringRule::ArgTransform::Kind::EnsureF64:
-                    slot = ensureF64(std::move(slot), loc);
-                    break;
-                case BuiltinLoweringRule::ArgTransform::Kind::EnsureI32:
-                    slot = ensureI64(std::move(slot), loc);
-                    if (slot.type.kind != Type::Kind::I32)
-                    {
-                        curLoc = loc;
-                        slot.value = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), slot.value);
-                        slot.type = Type(Type::Kind::I32);
-                    }
-                    break;
-                case BuiltinLoweringRule::ArgTransform::Kind::CoerceI64:
-                    slot = coerceToI64(std::move(slot), loc);
-                    break;
-                case BuiltinLoweringRule::ArgTransform::Kind::CoerceF64:
-                    slot = coerceToF64(std::move(slot), loc);
-                    break;
-                case BuiltinLoweringRule::ArgTransform::Kind::CoerceBool:
-                    slot = coerceToBool(std::move(slot), loc);
-                    break;
-                case BuiltinLoweringRule::ArgTransform::Kind::AddConst:
-                    curLoc = loc;
-                    slot.value = emitBinary(
-                        Opcode::IAddOvf, Type(Type::Kind::I64), slot.value, Value::constInt(transform.immediate));
-                    slot.type = Type(Type::Kind::I64);
-                    break;
-            }
-        }
-        return slot;
-    };
-
-    auto selectCallLoc = [&](const std::optional<std::size_t> &idx) -> il::support::SourceLoc {
-        if (idx && *idx < argLocs.size() && argLocs[*idx])
-        {
-            return *argLocs[*idx];
-        }
-        return c.loc;
-    };
-
-    Value resultValue = Value::constInt(0);
-    Type resultType = Type(Type::Kind::I64);
-
-    switch (variant->kind)
-    {
-        case BuiltinLoweringRule::Variant::Kind::CallRuntime:
-        {
-            std::vector<Value> callArgs;
-            callArgs.reserve(variant->arguments.size());
-            for (const auto &argSpec : variant->arguments)
-            {
-                RVal &argVal = applyTransforms(argSpec, argSpec.transforms);
-                callArgs.push_back(argVal.value);
-            }
-            resultType = resolveResultType();
-            curLoc = selectCallLoc(variant->callLocArg);
-            resultValue = emitCallRet(resultType, variant->runtime, callArgs);
-            break;
-        }
-        case BuiltinLoweringRule::Variant::Kind::EmitUnary:
-        {
-            assert(!variant->arguments.empty() && "unary builtin requires an operand");
-            const auto &argSpec = variant->arguments.front();
-            RVal &argVal = applyTransforms(argSpec, argSpec.transforms);
-            resultType = resolveResultType();
-            curLoc = selectCallLoc(variant->callLocArg);
-            resultValue = emitUnary(variant->opcode, resultType, argVal.value);
-            break;
-        }
-        case BuiltinLoweringRule::Variant::Kind::Custom:
-        {
-            assert(!variant->arguments.empty() && "custom builtin requires an operand");
-            const auto &argSpec = variant->arguments.front();
-            RVal &argVal = applyTransforms(argSpec, argSpec.transforms);
-            il::support::SourceLoc callLoc = selectCallLoc(variant->callLocArg);
-
-            auto handleConversion = [&](Type resultTy) {
-                Value okSlot = emitAlloca(1);
-                std::vector<Value> callArgs{argVal.value, okSlot};
-                resultType = resultTy;
-                curLoc = callLoc;
-                Value callRes = emitCallRet(resultType, variant->runtime, callArgs);
-
-                curLoc = callLoc;
-                Value okVal = emitLoad(ilBoolTy(), okSlot);
-                ProcedureContext &ctx = context();
-                Function *func = ctx.function();
-                assert(func && "conversion lowering requires active function");
-                BasicBlock *origin = ctx.current();
-                assert(origin && "conversion lowering requires active block");
-                std::string originLabel = origin->label;
-                BlockNamer *blockNamer = ctx.blockNames().namer();
-                std::string contLabel = blockNamer ? blockNamer->generic("conv_ok")
-                                                   : mangler.block("conv_ok");
-                std::string trapLabel = blockNamer ? blockNamer->generic("conv_trap")
-                                                   : mangler.block("conv_trap");
-                BasicBlock *contBlk = &builder->addBlock(*func, contLabel);
-                BasicBlock *trapBlk = &builder->addBlock(*func, trapLabel);
-                auto originIt = std::find_if(
-                    func->blocks.begin(), func->blocks.end(), [&](const BasicBlock &bb) {
-                        return bb.label == originLabel;
-                    });
-                assert(originIt != func->blocks.end());
-                origin = &*originIt;
-                ctx.setCurrent(origin);
-                emitCBr(okVal, contBlk, trapBlk);
-
-                ctx.setCurrent(trapBlk);
-                curLoc = callLoc;
-                Value sentinel = emitUnary(Opcode::CastFpToSiRteChk,
-                                           Type(Type::Kind::I64),
-                                           Value::constFloat(std::numeric_limits<double>::quiet_NaN()));
-                (void)sentinel;
-                emitTrap();
-
-                ctx.setCurrent(contBlk);
-                resultValue = callRes;
-            };
-
-            switch (c.builtin)
-            {
-                case BuiltinCallExpr::Builtin::Cint:
-                    handleConversion(Type(Type::Kind::I64));
-                    break;
-                case BuiltinCallExpr::Builtin::Clng:
-                    handleConversion(Type(Type::Kind::I64));
-                    break;
-                case BuiltinCallExpr::Builtin::Csng:
-                    handleConversion(Type(Type::Kind::F64));
-                    break;
-                case BuiltinCallExpr::Builtin::Val:
-                {
-                    il::support::SourceLoc callLoc = selectCallLoc(variant->callLocArg);
-                    curLoc = callLoc;
-                    Value cstr = emitCallRet(Type(Type::Kind::Ptr), "rt_string_cstr", {argVal.value});
-
-                    Value okSlot = emitAlloca(1);
-                    std::vector<Value> callArgs{cstr, okSlot};
-                    resultType = resolveResultType();
-                    curLoc = callLoc;
-                    Value callRes = emitCallRet(resultType, variant->runtime, callArgs);
-
-                    curLoc = callLoc;
-                    Value okVal = emitLoad(ilBoolTy(), okSlot);
-
-                    ProcedureContext &ctx = context();
-                    Function *func = ctx.function();
-                    assert(func && "VAL lowering requires active function");
-                    BasicBlock *origin = ctx.current();
-                    assert(origin && "VAL lowering requires active block");
-                    std::string originLabel = origin->label;
-                    BlockNamer *blockNamer = ctx.blockNames().namer();
-                    auto labelFor = [&](const char *hint) {
-                        if (blockNamer)
-                            return blockNamer->generic(hint);
-                        return mangler.block(std::string(hint));
-                    };
-                    std::string contLabel = labelFor("val_ok");
-                    std::string trapLabel = labelFor("val_fail");
-                    std::string nanLabel = labelFor("val_nan");
-                    std::string overflowLabel = labelFor("val_over");
-                    builder->addBlock(*func, contLabel);
-                    builder->addBlock(*func, trapLabel);
-                    builder->addBlock(*func, nanLabel);
-                    builder->addBlock(*func, overflowLabel);
-
-                    auto originIt = std::find_if(func->blocks.begin(), func->blocks.end(), [&](const BasicBlock &bb) {
-                        return bb.label == originLabel;
-                    });
-                    assert(originIt != func->blocks.end());
-                    origin = &*originIt;
-                    auto findBlock = [&](const std::string &label) {
-                        auto it = std::find_if(func->blocks.begin(), func->blocks.end(), [&](const BasicBlock &bb) {
-                            return bb.label == label;
-                        });
-                        assert(it != func->blocks.end());
-                        return &*it;
-                    };
-                    BasicBlock *contBlk = findBlock(contLabel);
-                    BasicBlock *trapBlk = findBlock(trapLabel);
-                    BasicBlock *nanBlk = findBlock(nanLabel);
-                    BasicBlock *overflowBlk = findBlock(overflowLabel);
-                    ctx.setCurrent(origin);
-                    curLoc = callLoc;
-                    emitCBr(okVal, contBlk, trapBlk);
-
-                    ctx.setCurrent(trapBlk);
-                    curLoc = callLoc;
-                    Value isNan = emitBinary(Opcode::FCmpNE, ilBoolTy(), callRes, callRes);
-                    emitCBr(isNan, nanBlk, overflowBlk);
-
-                    ctx.setCurrent(nanBlk);
-                    curLoc = callLoc;
-                    Value invalidSentinel = emitUnary(Opcode::CastFpToSiRteChk,
-                                                       Type(Type::Kind::I64),
-                                                       Value::constFloat(std::numeric_limits<double>::quiet_NaN()));
-                    (void)invalidSentinel;
-                    emitTrap();
-
-                    ctx.setCurrent(overflowBlk);
-                    curLoc = callLoc;
-                    Value overflowSentinel = emitUnary(Opcode::CastFpToSiRteChk,
-                                                        Type(Type::Kind::I64),
-                                                        Value::constFloat(std::numeric_limits<double>::max()));
-                    (void)overflowSentinel;
-                    emitTrap();
-
-                    ctx.setCurrent(contBlk);
-                    resultValue = callRes;
-                    break;
-                }
-                default:
-                    assert(false && "unsupported custom builtin conversion");
-                    return {Value::constInt(0), Type(Type::Kind::I64)};
-            }
-            break;
-        }
-        default:
-        {
-            auto variantKindName = [&]() -> std::string {
-                switch (variant->kind)
-                {
-                    case BuiltinLoweringRule::Variant::Kind::CallRuntime:
-                        return "CallRuntime";
-                    case BuiltinLoweringRule::Variant::Kind::EmitUnary:
-                        return "EmitUnary";
-                    case BuiltinLoweringRule::Variant::Kind::Custom:
-                        return "Custom";
-                }
-                std::string unknown = "<unknown (";
-                unknown.append(std::to_string(static_cast<int>(variant->kind)));
-                unknown.push_back(')');
-                return unknown;
-            };
-
-            if (auto *emitter = diagnosticEmitter())
-            {
-                std::string message = "custom builtin lowering variant is not supported: ";
-                message.append(variantKindName());
-                emitter->emit(il::support::Severity::Error,
-                              std::string(kDiagUnsupportedCustomBuiltinVariant),
-                              selectCallLoc(variant->callLocArg),
-                              0,
-                              std::move(message));
-            }
-
-            resultValue = Value::constInt(0);
-            resultType = Type(Type::Kind::I64);
-            break;
-        }
-    }
-
-    for (const auto &feature : variant->features)
-    {
-        switch (feature.action)
-        {
-            case BuiltinLoweringRule::Feature::Action::Request:
-                requestHelper(feature.feature);
-                break;
-            case BuiltinLoweringRule::Feature::Action::Track:
-                trackRuntime(feature.feature);
-                break;
-        }
-    }
-
-    return {resultValue, resultType};
 }
 
 /// @brief Entry point for lowering BASIC expressions to IL.
@@ -1533,4 +518,3 @@ Lowerer::RVal Lowerer::lowerScalarExpr(RVal value, il::support::SourceLoc loc)
 }
 
 } // namespace il::frontends::basic
-
