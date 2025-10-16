@@ -11,6 +11,7 @@
 #include "frontends/basic/Lexer.hpp"
 #include "frontends/basic/StatementSequencer.hpp"
 #include <array>
+#include <cstdint>
 #include <functional>
 #include <initializer_list>
 #include <memory>
@@ -185,6 +186,28 @@ class Parser
     /// @return Statements contained within CASE ELSE and the location of the
     ///         terminating end-of-line.
     std::pair<std::vector<StmtPtr>, il::support::SourceLoc> parseCaseElseBody();
+
+    /// @brief Parse a numeric CASE label or range and append it to @p arm.
+    /// @param arm CASE arm receiving the parsed label or range.
+    /// @return True when a label or range was successfully recorded.
+    bool parseNumericLabel(CaseArm &arm);
+
+    /// @brief Parse the upper bound of a CASE range following TO.
+    /// @param arm CASE arm receiving the parsed range.
+    /// @param lowerBound Lower bound already parsed for the range.
+    /// @return True when the upper bound was valid and recorded.
+    bool parseRangeLabel(CaseArm &arm, int64_t lowerBound);
+
+    /// @brief Parse a string CASE label and append it to @p arm.
+    /// @param arm CASE arm receiving the decoded string label.
+    /// @return True when the label was successfully consumed.
+    bool parseStringLabel(CaseArm &arm);
+
+    /// @brief Emit a diagnostic for SELECT CASE parsing without duplicating boilerplate.
+    /// @param tok Token highlighting the diagnostic location.
+    /// @param message Message text describing the issue.
+    /// @param code Diagnostic identifier reported to the user.
+    void emitCaseDiagnostic(const Token &tok, std::string_view message, std::string_view code);
 
     /// @brief Parse a DO ... LOOP statement.
     /// @return DO statement node with optional tests.

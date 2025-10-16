@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -215,6 +216,78 @@ std::pair<std::vector<StmtPtr>, il::support::SourceLoc> Parser::parseCaseElseBod
     return {std::move(body), elseEol.loc};
 }
 
+void Parser::emitCaseDiagnostic(const Token &tok,
+                                std::string_view message,
+                                std::string_view code)
+{
+    if (emitter_)
+    {
+        emitter_->emit(il::support::Severity::Error,
+                       std::string(code),
+                       tok.loc,
+                       static_cast<uint32_t>(tok.lexeme.size()),
+                       std::string(message));
+    }
+    else
+    {
+        std::fprintf(stderr,
+                     "%.*s\n",
+                     static_cast<int>(message.size()),
+                     message.data());
+    }
+}
+
+bool Parser::parseStringLabel(CaseArm &arm)
+{
+    const Token stringTok = peek();
+    std::string decoded;
+    std::string err;
+    if (!il::io::decodeEscapedString(stringTok.lexeme, decoded, &err))
+    {
+        emitCaseDiagnostic(stringTok, err, "B0003");
+        decoded = stringTok.lexeme;
+    }
+    consume();
+    arm.str_labels.push_back(std::move(decoded));
+    return true;
+}
+
+bool Parser::parseRangeLabel(CaseArm &arm, int64_t lowerBound)
+{
+    if (!at(TokenKind::Number))
+    {
+        Token bad = peek();
+        if (bad.kind != TokenKind::EndOfLine)
+        {
+            emitCaseDiagnostic(bad,
+                               "SELECT CASE labels must be integer literals",
+                               "B0001");
+        }
+        return false;
+    }
+
+    Token hiTok = consume();
+    long long hiValue = std::strtoll(hiTok.lexeme.c_str(), nullptr, 10);
+    arm.ranges.emplace_back(lowerBound, static_cast<int64_t>(hiValue));
+    return true;
+}
+
+bool Parser::parseNumericLabel(CaseArm &arm)
+{
+    Token labelTok = consume();
+    long long value = std::strtoll(labelTok.lexeme.c_str(), nullptr, 10);
+    int64_t lo = static_cast<int64_t>(value);
+
+    if (at(TokenKind::KeywordTo))
+    {
+        consume();
+        return parseRangeLabel(arm, lo);
+    }
+
+    arm.labels.push_back(lo);
+    return true;
+}
+
 CaseArm Parser::parseCaseArm()
 {
     Token caseTok = expect(TokenKind::KeywordCase);
@@ -222,7 +295,8 @@ CaseArm Parser::parseCaseArm()
     arm.range.begin = caseTok.loc;
 
     bool haveEntry = false;
-    while (true)
+    bool encounteredError = false;
+    while (!encounteredError)
     {
         if (at(TokenKind::Identifier) && peek().lexeme == "IS")
         {
@@ -250,21 +324,17 @@ CaseArm Parser::parseCaseArm()
                 {
                     if (opTok.kind != TokenKind::EndOfLine)
                     {
-                        if (emitter_)
-                        {
-                            emitter_->emit(il::support::Severity::Error,
-                                           "B0001",
-                                           opTok.loc,
-                                           static_cast<uint32_t>(opTok.lexeme.size()),
-                                           "CASE IS requires a relational operator");
-                        }
-                        else
-                        {
-                            std::fprintf(stderr, "CASE IS requires a relational operator\n");
-                        }
+                        emitCaseDiagnostic(opTok,
+                                           "CASE IS requires a relational operator",
+                                           "B0001");
                     }
-                    goto exitCaseEntries;
+                    encounteredError = true;
+                    break;
                 }
+            }
+            if (encounteredError)
+            {
+                break;
             }
             consume();
 
@@ -280,20 +350,12 @@ CaseArm Parser::parseCaseArm()
                 Token bad = peek();
                 if (bad.kind != TokenKind::EndOfLine)
                 {
-                    if (emitter_)
-                    {
-                        emitter_->emit(il::support::Severity::Error,
-                                       "B0001",
-                                       bad.loc,
-                                       static_cast<uint32_t>(bad.lexeme.size()),
-                                       "SELECT CASE labels must be integer literals");
-                    }
-                    else
-                    {
-                        std::fprintf(stderr, "SELECT CASE labels must be integer literals\n");
-                    }
+                    emitCaseDiagnostic(bad,
+                                       "SELECT CASE labels must be integer literals",
+                                       "B0001");
                 }
-                goto exitCaseEntries;
+                encounteredError = true;
+                break;
             }
 
             Token valueTok = consume();
@@ -304,67 +366,19 @@ CaseArm Parser::parseCaseArm()
         }
         else if (at(TokenKind::String))
         {
-            const Token stringTok = peek();
-            std::string decoded;
-            std::string err;
-            if (!il::io::decodeEscapedString(stringTok.lexeme, decoded, &err))
+            if (parseStringLabel(arm))
             {
-                if (emitter_)
-                {
-                    emitter_->emit(il::support::Severity::Error,
-                                   "B0003",
-                                   stringTok.loc,
-                                   static_cast<uint32_t>(stringTok.lexeme.size()),
-                                   err);
-                }
-                else
-                {
-                    std::fprintf(stderr, "%s\n", err.c_str());
-                }
-                decoded = stringTok.lexeme;
+                haveEntry = true;
             }
-            consume();
-            arm.str_labels.push_back(std::move(decoded));
-            haveEntry = true;
         }
         else if (at(TokenKind::Number))
         {
-            Token labelTok = consume();
-            long long value = std::strtoll(labelTok.lexeme.c_str(), nullptr, 10);
-            int64_t lo = static_cast<int64_t>(value);
-
-            if (at(TokenKind::KeywordTo))
+            if (!parseNumericLabel(arm))
             {
-                consume();
-                if (!at(TokenKind::Number))
-                {
-                    Token bad = peek();
-                    if (bad.kind != TokenKind::EndOfLine)
-                    {
-                        if (emitter_)
-                        {
-                            emitter_->emit(il::support::Severity::Error,
-                                           "B0001",
-                                           bad.loc,
-                                           static_cast<uint32_t>(bad.lexeme.size()),
-                                           "SELECT CASE labels must be integer literals");
-                        }
-                        else
-                        {
-                            std::fprintf(stderr, "SELECT CASE labels must be integer literals\n");
-                        }
-                    }
-                    goto exitCaseEntries;
-                }
-
-                Token hiTok = consume();
-                long long hiValue = std::strtoll(hiTok.lexeme.c_str(), nullptr, 10);
-                arm.ranges.emplace_back(lo, static_cast<int64_t>(hiValue));
-                haveEntry = true;
+                encounteredError = true;
             }
             else
             {
-                arm.labels.push_back(lo);
                 haveEntry = true;
             }
         }
@@ -373,19 +387,15 @@ CaseArm Parser::parseCaseArm()
             Token bad = peek();
             if (bad.kind != TokenKind::EndOfLine)
             {
-                if (emitter_)
-                {
-                    emitter_->emit(il::support::Severity::Error,
-                                   "B0001",
-                                   bad.loc,
-                                   static_cast<uint32_t>(bad.lexeme.size()),
-                                   "SELECT CASE labels must be integer literals");
-                }
-                else
-                {
-                    std::fprintf(stderr, "SELECT CASE labels must be integer literals\n");
-                }
+                emitCaseDiagnostic(bad,
+                                   "SELECT CASE labels must be integer literals",
+                                   "B0001");
             }
+            break;
+        }
+
+        if (encounteredError)
+        {
             break;
         }
 
@@ -397,23 +407,11 @@ CaseArm Parser::parseCaseArm()
         break;
     }
 
-exitCaseEntries:
-
     if (!haveEntry)
     {
-        if (emitter_)
-        {
-            emitter_->emit(il::support::Severity::Error,
-                           std::string(diag::ERR_Case_EmptyLabelList.id),
-                           caseTok.loc,
-                           static_cast<uint32_t>(caseTok.lexeme.size()),
-                           std::string(diag::ERR_Case_EmptyLabelList.text));
-        }
-        else
-        {
-            const std::string msg(diag::ERR_Case_EmptyLabelList.text);
-            std::fprintf(stderr, "%s\n", msg.c_str());
-        }
+        emitCaseDiagnostic(caseTok,
+                           std::string_view(diag::ERR_Case_EmptyLabelList.text),
+                           std::string_view(diag::ERR_Case_EmptyLabelList.id));
     }
 
     Token caseEol = expect(TokenKind::EndOfLine);
