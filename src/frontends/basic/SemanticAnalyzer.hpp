@@ -30,6 +30,7 @@ class SemanticAnalyzerStmtVisitor;
 namespace semantic_analyzer_detail
 {
 struct ExprRule;
+class StmtShared;
 const ExprRule &exprRule(BinaryExpr::Op op);
 }
 
@@ -77,6 +78,7 @@ class SemanticAnalyzer
     friend class SemanticAnalyzerStmtVisitor;
     friend const semantic_analyzer_detail::ExprRule &
     semantic_analyzer_detail::exprRule(BinaryExpr::Op op);
+    friend class semantic_analyzer_detail::StmtShared;
 
     /// @brief Record symbols and labels from a statement.
     /// @param s Statement node to analyze.
@@ -389,6 +391,17 @@ class SemanticAnalyzer
     void clearErrorHandler();
     /// @brief Whether an error handler is currently active.
     bool hasActiveErrorHandler() const noexcept;
+
+    /// @brief Push @p kind onto the loop stack for EXIT validation.
+    void pushLoop(LoopKind kind);
+    /// @brief Pop the most recent loop kind from the loop stack.
+    void popLoop();
+    /// @brief Track @p name as the active FOR loop variable.
+    void pushForVariable(std::string name);
+    /// @brief Remove the most recently tracked FOR loop variable.
+    void popForVariable();
+    /// @brief Determine if @p name is currently an active FOR loop variable.
+    bool isLoopVariableActive(std::string_view name) const noexcept;
 
     /// @brief Shared setup/teardown for analyzing procedures.
     template <typename Proc, typename BodyCallback>
