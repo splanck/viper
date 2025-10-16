@@ -19,21 +19,8 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
-/// @brief Emit the IR entry point for a BASIC program.
-/// @param prog Parsed program containing the main statements and nested declarations.
-/// @details The shared IR @c builder creates the @c main function, adds explicit entry and
-/// exit blocks, and establishes deterministic line blocks so @c lineBlocks maps statement line
-/// numbers to block indices. The entry block becomes @c cur to ensure stack allocations for
-/// scalars, arrays, and bookkeeping temporaries are emitted before control flow jumps to the
-/// first numbered statement. Control flow either branches from the entry block to the first
-/// numbered block or returns immediately when the program body is empty, and each lowered line
-/// emits an explicit branch to the subsequent block or the synthetic exit recorded in @c fnExit.
-void Lowerer::emitProgram(const Program &prog)
+Lowerer::ProgramEmitContext Lowerer::collectProgramDeclarations(const Program &prog)
 {
-    build::IRBuilder &b = *builder;
-    ProcedureContext &ctx = context();
-
-    std::vector<const Stmt *> mainStmts;
     collectProcedureSignatures(prog);
     for (const auto &s : prog.procs)
     {
@@ -42,21 +29,32 @@ void Lowerer::emitProgram(const Program &prog)
         else if (auto *sub = dynamic_cast<const SubDecl *>(s.get()))
             lowerSubDecl(*sub);
     }
-    for (const auto &s : prog.main)
-        mainStmts.push_back(s.get());
+
+    ProgramEmitContext state;
+    state.mainStmts.reserve(prog.main.size());
+    for (const auto &stmt : prog.main)
+        state.mainStmts.push_back(stmt.get());
+    return state;
+}
+
+void Lowerer::buildMainFunctionSkeleton(ProgramEmitContext &state)
+{
+    build::IRBuilder &b = *builder;
+    ProcedureContext &ctx = context();
 
     stmtVirtualLines_.clear();
     synthSeq_ = 0;
     ctx.blockNames().lineBlocks().clear();
 
     Function &f = b.startFunction("main", Type(Type::Kind::I64), {});
+    state.function = &f;
     ctx.setFunction(&f);
     ctx.setNextTemp(f.valueNames.size());
 
     b.addBlock(f, "entry");
 
     auto &lineBlocks = ctx.blockNames().lineBlocks();
-    for (const auto *stmt : mainStmts)
+    for (const auto *stmt : state.mainStmts)
     {
         int vLine = virtualLine(*stmt);
         if (lineBlocks.find(vLine) != lineBlocks.end())
@@ -68,33 +66,66 @@ void Lowerer::emitProgram(const Program &prog)
     ctx.setExitIndex(f.blocks.size());
     b.addBlock(f, mangler.block("exit"));
 
+    state.entry = &f.blocks.front();
+}
+
+void Lowerer::collectMainVariables(ProgramEmitContext &state)
+{
     resetSymbolState();
-    collectVars(mainStmts);
+    collectVars(state.mainStmts);
+}
 
-    // allocate slots in entry
-    BasicBlock *entry = &f.blocks.front();
-    ctx.setCurrent(entry);
+void Lowerer::allocateMainLocals(ProgramEmitContext &state)
+{
+    ProcedureContext &ctx = context();
+    assert(state.entry && "buildMainFunctionSkeleton must run before allocateMainLocals");
+    ctx.setCurrent(state.entry);
     allocateLocalSlots(std::unordered_set<std::string>(), /*includeParams=*/true);
+}
 
-    if (mainStmts.empty())
+void Lowerer::emitMainBodyAndEpilogue(ProgramEmitContext &state)
+{
+    ProcedureContext &ctx = context();
+    assert(state.function && "buildMainFunctionSkeleton must populate function");
+
+    if (state.mainStmts.empty())
     {
         curLoc = {};
         emitRet(Value::constInt(0));
     }
     else
     {
+        ctx.setCurrent(state.entry);
         lowerStatementSequence(
-            mainStmts,
+            state.mainStmts,
             /*stopOnTerminated=*/false,
             [&](const Stmt &stmt) { curLoc = stmt.loc; });
     }
 
-    ctx.setCurrent(&f.blocks[ctx.exitIndex()]);
+    ctx.setCurrent(&state.function->blocks[ctx.exitIndex()]);
     curLoc = {};
     releaseArrayLocals(std::unordered_set<std::string>{});
     releaseArrayParams(std::unordered_set<std::string>{});
     curLoc = {};
     emitRet(Value::constInt(0));
+}
+
+/// @brief Emit the IR entry point for a BASIC program.
+/// @param prog Parsed program containing the main statements and nested declarations.
+/// @details The shared IR @c builder creates the @c main function, adds explicit entry and
+/// exit blocks, and establishes deterministic line blocks so @c lineBlocks maps statement line
+/// numbers to block indices. The entry block becomes @c cur to ensure stack allocations for
+/// scalars, arrays, and bookkeeping temporaries are emitted before control flow jumps to the
+/// first numbered statement. Control flow either branches from the entry block to the first
+/// numbered block or returns immediately when the program body is empty, and each lowered line
+/// emits an explicit branch to the subsequent block or the synthetic exit recorded in @c fnExit.
+void Lowerer::emitProgram(const Program &prog)
+{
+    ProgramEmitContext state = collectProgramDeclarations(prog);
+    buildMainFunctionSkeleton(state);
+    collectMainVariables(state);
+    allocateMainLocals(state);
+    emitMainBodyAndEpilogue(state);
 }
 
 /// @brief Return the canonical IL boolean type used by the BASIC front end.
