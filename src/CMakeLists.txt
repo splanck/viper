@@ -48,6 +48,9 @@ add_library(viper_il_verify STATIC
   il/verify/FunctionVerifier.cpp
   il/verify/InstructionCheckUtils.cpp
   il/verify/InstructionChecker.cpp
+  il/verify/InstructionChecker_Arithmetic.cpp
+  il/verify/InstructionChecker_Memory.cpp
+  il/verify/InstructionChecker_Runtime.cpp
   il/verify/OperandCountChecker.cpp
   il/verify/OperandTypeChecker.cpp
   il/verify/ResultTypeChecker.cpp
