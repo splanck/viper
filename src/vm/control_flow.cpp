@@ -28,6 +28,8 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <iterator>
 #include <numeric>
 #include <type_traits>
@@ -129,6 +131,32 @@ using viper::vm::SortedCases;
 using viper::vm::SwitchCache;
 using viper::vm::SwitchCacheEntry;
 using viper::vm::SwitchMode;
+
+bool isVmDebugLoggingEnabled()
+{
+    static const bool enabled = [] {
+        if (const char *flag = std::getenv("VIPER_DEBUG_VM"))
+            return flag[0] != '\0';
+        return false;
+    }();
+    return enabled;
+}
+
+const char *switchCacheKindName(SwitchCacheEntry::Kind kind)
+{
+    switch (kind)
+    {
+        case SwitchCacheEntry::Dense:
+            return "Dense";
+        case SwitchCacheEntry::Sorted:
+            return "Sorted";
+        case SwitchCacheEntry::Hashed:
+            return "Hashed";
+        case SwitchCacheEntry::Linear:
+            return "Linear";
+    }
+    return "Unknown";
+}
 
 struct SwitchMeta
 {
@@ -274,6 +302,7 @@ static SwitchCacheEntry &getOrBuildSwitchCache(SwitchCache &cache, const Instr &
     SwitchCacheEntry entry{};
     entry.defaultIdx = meta.defaultIdx;
     const SwitchMode mode = viper::vm::getSwitchMode();
+    const char *selectedKindName = nullptr;
     if (mode != SwitchMode::Auto)
     {
         switch (mode)
@@ -281,18 +310,22 @@ static SwitchCacheEntry &getOrBuildSwitchCache(SwitchCache &cache, const Instr &
             case SwitchMode::Dense:
                 entry.kind = SwitchCacheEntry::Dense;
                 entry.backend = buildDense(meta);
+                selectedKindName = switchCacheKindName(entry.kind);
                 break;
             case SwitchMode::Sorted:
                 entry.kind = SwitchCacheEntry::Sorted;
                 entry.backend = buildSorted(meta);
+                selectedKindName = switchCacheKindName(entry.kind);
                 break;
             case SwitchMode::Hashed:
                 entry.kind = SwitchCacheEntry::Hashed;
                 entry.backend = buildHashed(meta);
+                selectedKindName = switchCacheKindName(entry.kind);
                 break;
             case SwitchMode::Linear:
                 entry.kind = SwitchCacheEntry::Linear;
                 entry.backend = std::monostate{};
+                selectedKindName = switchCacheKindName(entry.kind);
                 break;
             case SwitchMode::Auto:
                 break;
@@ -302,6 +335,7 @@ static SwitchCacheEntry &getOrBuildSwitchCache(SwitchCache &cache, const Instr &
     {
         SwitchCacheEntry::Kind kind = chooseBackend(meta);
         entry.kind = kind;
+        selectedKindName = switchCacheKindName(kind);
         switch (kind)
         {
             case SwitchCacheEntry::Dense:
@@ -317,6 +351,14 @@ static SwitchCacheEntry &getOrBuildSwitchCache(SwitchCache &cache, const Instr &
                 entry.backend = std::monostate{};
                 break;
         }
+    }
+
+    if (isVmDebugLoggingEnabled() && selectedKindName)
+    {
+        std::fprintf(stderr,
+                     "[DEBUG][VM] switch backend: %s (cases=%zu)\n",
+                     selectedKindName,
+                     meta.values.size());
     }
 
     auto [pos, _] = cache.entries.emplace(meta.key, std::move(entry));

@@ -17,6 +17,7 @@
 #include <clocale>
 #include <cctype>
 #include <cstdlib>
+#include <cstdio>
 #include <algorithm>
 #include <sstream>
 #include <utility>
@@ -39,6 +40,30 @@ struct NumericLocaleInitializer
 };
 
 [[maybe_unused]] const NumericLocaleInitializer kNumericLocaleInitializer{};
+
+bool isVmDebugLoggingEnabled()
+{
+    static const bool enabled = [] {
+        if (const char *flag = std::getenv("VIPER_DEBUG_VM"))
+            return flag[0] != '\0';
+        return false;
+    }();
+    return enabled;
+}
+
+const char *dispatchKindName(VM::DispatchKind kind)
+{
+    switch (kind)
+    {
+        case VM::DispatchKind::FnTable:
+            return "FnTable";
+        case VM::DispatchKind::Switch:
+            return "Switch";
+        case VM::DispatchKind::Threaded:
+            return "Threaded";
+    }
+    return "Unknown";
+}
 
 } // namespace
 
@@ -110,6 +135,11 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
     }
 
     dispatchKind = selectedDispatch;
+
+    if (isVmDebugLoggingEnabled())
+    {
+        std::fprintf(stderr, "[DEBUG][VM] dispatch kind: %s\n", dispatchKindName(dispatchKind));
+    }
 
     debug.setSourceManager(tc.sm);
     // Cache function pointers and constant strings for fast lookup during
