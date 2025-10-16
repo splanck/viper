@@ -14,6 +14,11 @@
 #include <string>
 #include <string_view>
 
+#include "frontends/basic/SemanticAnalyzer.Stmts.Shared.hpp"
+#include "frontends/basic/SemanticAnalyzer.Stmts.Control.hpp"
+#include "frontends/basic/SemanticAnalyzer.Stmts.IO.hpp"
+#include "frontends/basic/SemanticAnalyzer.Stmts.Runtime.hpp"
+
 namespace il::frontends::basic::semantic_analyzer_detail
 {
 
