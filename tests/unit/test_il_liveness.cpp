@@ -6,7 +6,7 @@
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"
-#include "il/transform/PassManager.hpp"
+#include "il/transform/analysis/Liveness.hpp"
 
 #include <cassert>
 #include <iostream>
