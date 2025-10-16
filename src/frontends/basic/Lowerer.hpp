@@ -553,110 +553,18 @@ class Lowerer
 
     RVal ensureF64(RVal v, il::support::SourceLoc loc);
 
-    RVal normalizeChannelToI32(RVal channel, il::support::SourceLoc loc);
+#include "frontends/basic/LowerStmt_Core.hpp"
 
-    /// @brief Emit a runtime error branch skeleton with trap handling.
-    /// @param err Error code value returned from the runtime helper.
-    /// @param loc Source location used for diagnostics.
-    /// @param labelStem Base string for fail/cont block labels.
-    /// @param onFailure Callback executed after positioning at the fail block.
-    void emitRuntimeErrCheck(Value err,
-                             il::support::SourceLoc loc,
-                             std::string_view labelStem,
-                             const std::function<void(Value)> &onFailure);
+#include "frontends/basic/LowerStmt_Runtime.hpp"
 
-    void lowerLet(const LetStmt &stmt);
-
-    void lowerPrint(const PrintStmt &stmt);
-
-    void lowerPrintCh(const PrintChStmt &stmt);
-
-    void lowerCallStmt(const CallStmt &stmt);
-
-    void lowerStmtList(const StmtList &stmt);
-
-    void lowerReturn(const ReturnStmt &stmt);
-
-    void visit(const ClsStmt &stmt);
-
-    void visit(const ColorStmt &stmt);
-
-    void visit(const LocateStmt &stmt);
-
-    void lowerOpen(const OpenStmt &stmt);
-
-    void lowerClose(const CloseStmt &stmt);
-
-    void lowerSeek(const SeekStmt &stmt);
+#include "frontends/basic/LowerStmt_IO.hpp"
 
     /// @brief Emit blocks for an IF/ELSEIF chain.
     /// @param conds Number of conditions (IF + ELSEIFs).
     /// @return Indices for test/then blocks and ELSE/exit blocks.
-    IfBlocks emitIfBlocks(size_t conds);
-
-    /// @brief Evaluate @p cond and branch to @p thenBlk or @p falseBlk.
-    void lowerIfCondition(const Expr &cond,
-                          BasicBlock *testBlk,
-                          BasicBlock *thenBlk,
-                          BasicBlock *falseBlk,
-                          il::support::SourceLoc loc);
-    void lowerCondBranch(const Expr &expr,
-                         BasicBlock *trueBlk,
-                         BasicBlock *falseBlk,
-                         il::support::SourceLoc loc);
-
-    /// @brief Lower a THEN/ELSE branch and link to exit.
-    /// @return True if branch falls through to @p exitBlk.
-    bool lowerIfBranch(const Stmt *stmt,
-                       BasicBlock *thenBlk,
-                       BasicBlock *exitBlk,
-                       il::support::SourceLoc loc);
-
-    void lowerIf(const IfStmt &stmt);
+#include "frontends/basic/LowerStmt_Control.hpp"
 
     void lowerSelectCase(const SelectCaseStmt &stmt);
-
-    void lowerWhile(const WhileStmt &stmt);
-
-    void lowerDo(const DoStmt &stmt);
-
-    void lowerLoopBody(const std::vector<StmtPtr> &body);
-
-    void lowerFor(const ForStmt &stmt);
-
-    void lowerForConstStep(const ForStmt &stmt, Value slot, RVal end, RVal step, int64_t stepConst);
-
-    void lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal step);
-
-    ForBlocks setupForBlocks(bool varStep);
-
-    void emitForStep(Value slot, Value step);
-
-    void lowerNext(const NextStmt &stmt);
-
-    void lowerExit(const ExitStmt &stmt);
-
-    void lowerGoto(const GotoStmt &stmt);
-
-    void lowerGosub(const GosubStmt &stmt);
-
-    void lowerOnErrorGoto(const OnErrorGoto &stmt);
-
-    void lowerResume(const Resume &stmt);
-
-    void lowerEnd(const EndStmt &stmt);
-
-    void lowerInput(const InputStmt &stmt);
-
-    void lowerInputCh(const InputChStmt &stmt);
-
-    void lowerLineInputCh(const LineInputChStmt &stmt);
-
-    void lowerDim(const DimStmt &stmt);
-
-    void lowerReDim(const ReDimStmt &stmt);
-
-    void lowerRandomize(const RandomizeStmt &stmt);
 
     // helpers
     IlType ilBoolTy();
@@ -729,8 +637,6 @@ class Lowerer
     void emitProgram(const Program &prog);
 
     void ensureGosubStack();
-
-    void lowerGosubReturn(const ReturnStmt &stmt);
 
     std::unique_ptr<ProgramLowering> programLowering;
     std::unique_ptr<ProcedureLowering> procedureLowering;

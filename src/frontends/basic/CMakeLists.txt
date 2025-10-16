@@ -28,6 +28,9 @@ add_library(fe_basic STATIC
   LowerExprBuiltin.cpp
   LowerExpr.cpp
   LowerStmt.cpp
+  LowerStmt_Control.cpp
+  LowerStmt_IO.cpp
+  LowerStmt_Runtime.cpp
   LowerRuntime.cpp
   LowerScan.cpp
   LowerEmit.cpp
