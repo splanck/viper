@@ -465,11 +465,9 @@ Expected<void> OperandParser::parseBranchTargets(const std::string &text, size_t
         auto parsed = parseBranchTarget(segment, label, args);
         if (!parsed)
             return parsed;
-        instr_.labels.push_back(label);
-        instr_.brArgs.push_back(args);
-        auto check = checkBranchArgCount(label, args.size());
-        if (!check)
-            return check;
+        auto validated = validateCaseArity(std::move(label), std::move(args));
+        if (!validated)
+            return validated;
     }
 
     instr_.type = il::core::Type(il::core::Type::Kind::Void);
@@ -489,12 +487,14 @@ Expected<void> OperandParser::parseSwitchTargets(const std::string &text)
 {
     std::string remaining = trim(text);
     const char *mnemonic = il::core::getOpcodeInfo(instr_.op).name;
-    if (remaining.empty())
-    {
+    auto malformedSwitch = [&]() {
         std::ostringstream oss;
         oss << "line " << state_.lineNo << ": malformed " << mnemonic;
         return Expected<void>{makeError(instr_.loc, oss.str())};
-    }
+    };
+
+    if (remaining.empty())
+        return malformedSwitch();
 
     bool parsingDefault = true;
     while (!remaining.empty())
@@ -526,60 +526,21 @@ Expected<void> OperandParser::parseSwitchTargets(const std::string &text)
         std::string segment = trim(remaining.substr(0, split));
         if (segment.empty())
         {
-            std::ostringstream oss;
-            oss << "line " << state_.lineNo << ": malformed " << mnemonic;
-            return Expected<void>{makeError(instr_.loc, oss.str())};
+            return malformedSwitch();
         }
 
         if (parsingDefault)
         {
-            std::vector<Value> args;
-            std::string label;
-            auto parsed = parseBranchTarget(segment, label, args);
+            auto parsed = parseDefaultTarget(segment);
             if (!parsed)
                 return parsed;
-            size_t argCount = args.size();
-            instr_.labels.push_back(label);
-            instr_.brArgs.push_back(std::move(args));
-            auto check = checkBranchArgCount(label, argCount);
-            if (!check)
-                return check;
             parsingDefault = false;
         }
         else
         {
-            const size_t arrow = segment.find("->");
-            if (arrow == std::string::npos)
-            {
-                std::ostringstream oss;
-                oss << "line " << state_.lineNo << ": malformed " << mnemonic;
-                return Expected<void>{makeError(instr_.loc, oss.str())};
-            }
-            std::string valueText = trim(segment.substr(0, arrow));
-            std::string targetText = trim(segment.substr(arrow + 2));
-            if (valueText.empty() || targetText.empty())
-            {
-                std::ostringstream oss;
-                oss << "line " << state_.lineNo << ": malformed " << mnemonic;
-                return Expected<void>{makeError(instr_.loc, oss.str())};
-            }
-
-            auto caseValue = parseValueToken(valueText);
-            if (!caseValue)
-                return Expected<void>{caseValue.error()};
-            instr_.operands.push_back(std::move(caseValue.value()));
-
-            std::vector<Value> args;
-            std::string label;
-            auto parsed = parseBranchTarget(targetText, label, args);
+            auto parsed = parseCaseSegment(segment, mnemonic);
             if (!parsed)
                 return parsed;
-            size_t argCount = args.size();
-            instr_.labels.push_back(label);
-            instr_.brArgs.push_back(std::move(args));
-            auto check = checkBranchArgCount(label, argCount);
-            if (!check)
-                return check;
         }
 
         if (split < remaining.size())
@@ -590,12 +551,64 @@ Expected<void> OperandParser::parseSwitchTargets(const std::string &text)
 
     if (parsingDefault)
     {
+        return malformedSwitch();
+    }
+
+    instr_.type = il::core::Type(il::core::Type::Kind::Void);
+    return {};
+}
+
+Expected<void> OperandParser::parseDefaultTarget(const std::string &segment)
+{
+    std::vector<Value> args;
+    std::string label;
+    auto parsed = parseBranchTarget(segment, label, args);
+    if (!parsed)
+        return parsed;
+    return validateCaseArity(std::move(label), std::move(args));
+}
+
+Expected<void> OperandParser::parseCaseSegment(const std::string &segment, const char *mnemonic)
+{
+    const size_t arrow = segment.find("->");
+    if (arrow == std::string::npos)
+    {
         std::ostringstream oss;
         oss << "line " << state_.lineNo << ": malformed " << mnemonic;
         return Expected<void>{makeError(instr_.loc, oss.str())};
     }
 
-    instr_.type = il::core::Type(il::core::Type::Kind::Void);
+    std::string valueText = trim(segment.substr(0, arrow));
+    std::string targetText = trim(segment.substr(arrow + 2));
+    if (valueText.empty() || targetText.empty())
+    {
+        std::ostringstream oss;
+        oss << "line " << state_.lineNo << ": malformed " << mnemonic;
+        return Expected<void>{makeError(instr_.loc, oss.str())};
+    }
+
+    auto caseValue = parseValueToken(valueText);
+    if (!caseValue)
+        return Expected<void>{caseValue.error()};
+    instr_.operands.push_back(std::move(caseValue.value()));
+
+    std::vector<Value> args;
+    std::string label;
+    auto parsed = parseBranchTarget(targetText, label, args);
+    if (!parsed)
+        return parsed;
+
+    return validateCaseArity(std::move(label), std::move(args));
+}
+
+Expected<void> OperandParser::validateCaseArity(std::string label, std::vector<Value> args)
+{
+    const size_t argCount = args.size();
+    instr_.labels.push_back(std::move(label));
+    instr_.brArgs.push_back(std::move(args));
+    auto check = checkBranchArgCount(instr_.labels.back(), argCount);
+    if (!check)
+        return check;
     return {};
 }
 
