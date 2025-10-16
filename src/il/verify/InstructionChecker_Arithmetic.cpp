@@ -1,0 +1,160 @@
+// File: src/il/verify/InstructionChecker_Arithmetic.cpp
+// Purpose: Implements arithmetic-focused instruction verification helpers.
+// Key invariants: Operands are validated against inferred types before recording results.
+// Ownership/Lifetime: Operates on VerifyCtx without taking ownership of operands or diagnostics.
+// Links: docs/il-guide.md#reference
+
+#include "il/verify/InstructionCheckerShared.hpp"
+#include "il/verify/InstructionCheckUtils.hpp"
+
+#include "il/core/Instr.hpp"
+#include "il/verify/TypeInference.hpp"
+
+namespace il::verify::checker
+{
+
+using il::core::Type;
+using il::core::Value;
+using il::support::Expected;
+
+std::optional<Type::Kind> kindFromClass(TypeClass typeClass)
+{
+    switch (typeClass)
+    {
+        case TypeClass::Void:
+            return Type::Kind::Void;
+        case TypeClass::I1:
+            return Type::Kind::I1;
+        case TypeClass::I16:
+            return Type::Kind::I16;
+        case TypeClass::I32:
+            return Type::Kind::I32;
+        case TypeClass::I64:
+            return Type::Kind::I64;
+        case TypeClass::F64:
+            return Type::Kind::F64;
+        case TypeClass::Ptr:
+            return Type::Kind::Ptr;
+        case TypeClass::Str:
+            return Type::Kind::Str;
+        case TypeClass::Error:
+            return Type::Kind::Error;
+        case TypeClass::ResumeTok:
+            return Type::Kind::ResumeTok;
+        case TypeClass::None:
+        case TypeClass::InstrType:
+            return std::nullopt;
+    }
+    return std::nullopt;
+}
+
+std::optional<Type> typeFromClass(TypeClass typeClass)
+{
+    if (typeClass == TypeClass::InstrType)
+        return std::nullopt;
+    if (auto kind = kindFromClass(typeClass))
+        return Type(*kind);
+    return std::nullopt;
+}
+
+Expected<void> expectAllOperandType(const VerifyCtx &ctx, Type::Kind kind)
+{
+    for (const auto &op : ctx.instr.operands)
+    {
+        if (ctx.types.valueType(op).kind != kind)
+            return fail(ctx, "operand type mismatch");
+    }
+    return {};
+}
+
+Expected<void> checkBinary(const VerifyCtx &ctx, Type::Kind operandKind, Type resultType)
+{
+    if (ctx.instr.operands.size() < 2)
+        return fail(ctx, "invalid operand count");
+
+    if (auto result = expectAllOperandType(ctx, operandKind); !result)
+        return result;
+
+    ctx.types.recordResult(ctx.instr, resultType);
+    return {};
+}
+
+Expected<void> checkUnary(const VerifyCtx &ctx, Type::Kind operandKind, Type resultType)
+{
+    if (ctx.instr.operands.empty())
+        return fail(ctx, "invalid operand count");
+
+    if (ctx.types.valueType(ctx.instr.operands[0]).kind != operandKind)
+        return fail(ctx, "operand type mismatch");
+
+    ctx.types.recordResult(ctx.instr, resultType);
+    return {};
+}
+
+Expected<void> checkIdxChk(const VerifyCtx &ctx)
+{
+    if (ctx.instr.operands.size() != 3)
+        return fail(ctx, "invalid operand count");
+
+    Type::Kind expectedKind = Type::Kind::Void;
+    if (ctx.instr.type.kind == Type::Kind::I16 || ctx.instr.type.kind == Type::Kind::I32)
+        expectedKind = ctx.instr.type.kind;
+
+    const auto classifyOperand = [&](const Value &value) -> Expected<Type::Kind> {
+        if (value.kind == Value::Kind::Temp)
+        {
+            const Type::Kind kind = ctx.types.valueType(value).kind;
+            if (kind == Type::Kind::Void)
+                return failWith<Type::Kind>(ctx, "unknown temp in idx.chk");
+            return kind;
+        }
+        if (value.kind == Value::Kind::ConstInt)
+        {
+            if (expectedKind == Type::Kind::Void)
+            {
+                if (detail::fitsInIntegerKind(value.i64, Type::Kind::I16))
+                    return Type::Kind::I16;
+                if (detail::fitsInIntegerKind(value.i64, Type::Kind::I32))
+                    return Type::Kind::I32;
+                return failWith<Type::Kind>(ctx, "constant out of range for idx.chk");
+            }
+            if (!detail::fitsInIntegerKind(value.i64, expectedKind))
+                return failWith<Type::Kind>(ctx, "constant out of range for idx.chk");
+            return expectedKind;
+        }
+        return failWith<Type::Kind>(ctx, "operands must be i16 or i32");
+    };
+
+    for (const auto &operand : ctx.instr.operands)
+    {
+        auto kindResult = classifyOperand(operand);
+        if (!kindResult)
+            return Expected<void>(kindResult.error());
+
+        const Type::Kind operandKind = kindResult.value();
+        if (operandKind != Type::Kind::I16 && operandKind != Type::Kind::I32)
+            return fail(ctx, "operands must be i16 or i32");
+
+        if (expectedKind == Type::Kind::Void)
+            expectedKind = operandKind;
+        else if (operandKind != expectedKind)
+            return fail(ctx, "operands must share i16/i32 width");
+    }
+
+    if (expectedKind != Type::Kind::I16 && expectedKind != Type::Kind::I32)
+        return fail(ctx, "operands must be i16 or i32");
+
+    if (ctx.instr.type.kind != Type::Kind::Void && ctx.instr.type.kind != expectedKind)
+        return fail(ctx, "result type annotation must match operand width");
+
+    ctx.types.recordResult(ctx.instr, Type(expectedKind));
+    return {};
+}
+
+Expected<void> checkDefault(const VerifyCtx &ctx)
+{
+    ctx.types.recordResult(ctx.instr, ctx.instr.type);
+    return {};
+}
+
+} // namespace il::verify::checker
