@@ -56,7 +56,7 @@ constexpr std::array<VM::OpcodeHandler, kNumDispatchKinds> buildDispatchHandlers
     std::array<VM::OpcodeHandler, kNumDispatchKinds> handlers{};
 
 #define VM_DISPATCH_IMPL(DISPATCH, HANDLER_EXPR) (VMDispatch::DISPATCH, HANDLER_EXPR)
-#define VM_DISPATCH(NAME) VM_DISPATCH_IMPL(NAME, &OpHandlers::handle##NAME)
+#define VM_DISPATCH(NAME) VM_DISPATCH_IMPL(NAME, &handle##NAME)
 #define VM_DISPATCH_ALT(DISPATCH, HANDLER_EXPR) VM_DISPATCH_IMPL(DISPATCH, HANDLER_EXPR)
 #define IL_OPCODE(NAME,                                                                            \
                   MNEMONIC,                                                                        \
@@ -117,93 +117,102 @@ constexpr VM::OpcodeHandler handlerForDispatch(VMDispatch dispatch)
 }
 } // namespace
 
-VM::ExecResult OpHandlers::handleLoad(VM &vm,
-                                      Frame &fr,
-                                      const Instr &in,
-                                      const VM::BlockMap &blocks,
-                                      const BasicBlock *&bb,
-                                      size_t &ip)
+namespace memory
 {
-    VM::ExecState *state = vm.execStack.empty() ? nullptr : vm.execStack.back();
+VM::ExecResult handleLoad(VM &vm,
+                          Frame &fr,
+                          const Instr &in,
+                          const VM::BlockMap &blocks,
+                          const BasicBlock *&bb,
+                          size_t &ip)
+{
+    VMAccess::ExecState *state = VMAccess::currentExecState(vm);
     return handleLoadImpl(vm, state, fr, in, blocks, bb, ip);
 }
 
-VM::ExecResult OpHandlers::handleStore(VM &vm,
-                                       Frame &fr,
-                                       const Instr &in,
-                                       const VM::BlockMap &blocks,
-                                       const BasicBlock *&bb,
-                                       size_t &ip)
+VM::ExecResult handleStore(VM &vm,
+                           Frame &fr,
+                           const Instr &in,
+                           const VM::BlockMap &blocks,
+                           const BasicBlock *&bb,
+                           size_t &ip)
 {
-    VM::ExecState *state = vm.execStack.empty() ? nullptr : vm.execStack.back();
+    VMAccess::ExecState *state = VMAccess::currentExecState(vm);
     return handleStoreImpl(vm, state, fr, in, blocks, bb, ip);
 }
+} // namespace memory
 
-VM::ExecResult OpHandlers::handleAdd(VM &vm,
-                                     Frame &fr,
-                                     const Instr &in,
-                                     const VM::BlockMap &blocks,
-                                     const BasicBlock *&bb,
-                                     size_t &ip)
+namespace integer
 {
-    VM::ExecState *state = vm.execStack.empty() ? nullptr : vm.execStack.back();
+VM::ExecResult handleAdd(VM &vm,
+                         Frame &fr,
+                         const Instr &in,
+                         const VM::BlockMap &blocks,
+                         const BasicBlock *&bb,
+                         size_t &ip)
+{
+    VMAccess::ExecState *state = VMAccess::currentExecState(vm);
     return handleAddImpl(vm, state, fr, in, blocks, bb, ip);
 }
 
-VM::ExecResult OpHandlers::handleSub(VM &vm,
-                                     Frame &fr,
-                                     const Instr &in,
-                                     const VM::BlockMap &blocks,
-                                     const BasicBlock *&bb,
-                                     size_t &ip)
+VM::ExecResult handleSub(VM &vm,
+                         Frame &fr,
+                         const Instr &in,
+                         const VM::BlockMap &blocks,
+                         const BasicBlock *&bb,
+                         size_t &ip)
 {
-    VM::ExecState *state = vm.execStack.empty() ? nullptr : vm.execStack.back();
+    VMAccess::ExecState *state = VMAccess::currentExecState(vm);
     return handleSubImpl(vm, state, fr, in, blocks, bb, ip);
 }
 
-VM::ExecResult OpHandlers::handleMul(VM &vm,
-                                     Frame &fr,
-                                     const Instr &in,
-                                     const VM::BlockMap &blocks,
-                                     const BasicBlock *&bb,
-                                     size_t &ip)
+VM::ExecResult handleMul(VM &vm,
+                         Frame &fr,
+                         const Instr &in,
+                         const VM::BlockMap &blocks,
+                         const BasicBlock *&bb,
+                         size_t &ip)
 {
-    VM::ExecState *state = vm.execStack.empty() ? nullptr : vm.execStack.back();
+    VMAccess::ExecState *state = VMAccess::currentExecState(vm);
     return handleMulImpl(vm, state, fr, in, blocks, bb, ip);
 }
+} // namespace integer
 
-VM::ExecResult OpHandlers::handleBr(VM &vm,
-                                    Frame &fr,
-                                    const Instr &in,
-                                    const VM::BlockMap &blocks,
-                                    const BasicBlock *&bb,
-                                    size_t &ip)
+namespace control
 {
-    VM::ExecState *state = vm.execStack.empty() ? nullptr : vm.execStack.back();
+VM::ExecResult handleBr(VM &vm,
+                        Frame &fr,
+                        const Instr &in,
+                        const VM::BlockMap &blocks,
+                        const BasicBlock *&bb,
+                        size_t &ip)
+{
+    VMAccess::ExecState *state = VMAccess::currentExecState(vm);
     return handleBrImpl(vm, state, fr, in, blocks, bb, ip);
 }
 
-VM::ExecResult OpHandlers::handleCBr(VM &vm,
-                                     Frame &fr,
-                                     const Instr &in,
-                                     const VM::BlockMap &blocks,
-                                     const BasicBlock *&bb,
-                                     size_t &ip)
+VM::ExecResult handleCBr(VM &vm,
+                         Frame &fr,
+                         const Instr &in,
+                         const VM::BlockMap &blocks,
+                         const BasicBlock *&bb,
+                         size_t &ip)
 {
-    VM::ExecState *state = vm.execStack.empty() ? nullptr : vm.execStack.back();
+    VMAccess::ExecState *state = VMAccess::currentExecState(vm);
     return handleCBrImpl(vm, state, fr, in, blocks, bb, ip);
 }
 
-VM::ExecResult OpHandlers::handleSwitchI32(VM &vm,
-                                           Frame &fr,
-                                           const Instr &in,
-                                           const VM::BlockMap &blocks,
-                                           const BasicBlock *&bb,
-                                           size_t &ip)
+VM::ExecResult handleSwitchI32(VM &vm,
+                               Frame &fr,
+                               const Instr &in,
+                               const VM::BlockMap &blocks,
+                               const BasicBlock *&bb,
+                               size_t &ip)
 {
-    VM::ExecState *state = vm.execStack.empty() ? nullptr : vm.execStack.back();
+    VMAccess::ExecState *state = VMAccess::currentExecState(vm);
     return handleSwitchI32Impl(vm, state, fr, in, blocks, bb, ip);
 }
+} // namespace control
 
 /// @brief Builds and caches the opcode dispatch table from the declarative IL
 /// opcode list.
