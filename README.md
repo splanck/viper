@@ -20,6 +20,21 @@ After building, the tool binaries reside under `build/src/tools`. Utilities such
 `build/src/tools/ilc/ilc`, `build/src/tools/il-dis/il-dis`, and
 `build/src/tools/il-verify/il-verify` can compile, run, and inspect IL programs.
 
+### Interpreter configuration
+
+The VM supports multiple dispatch loops. Choose one at runtime by setting
+`VIPER_DISPATCH` before launching a tool:
+
+- `table` – portable function-pointer dispatch.
+- `switch` – `switch`-based dispatch that lets compilers build jump tables.
+- `threaded` – direct-threaded dispatch. Requires building with
+  `-DVIPER_VM_THREADED=ON` and compiling with GCC or Clang so labels-as-values
+  are available. Falls back to `switch` when the extension is unavailable.
+
+Leaving `VIPER_DISPATCH` unset selects `switch` dispatch by default. When the
+binary is compiled with `VIPER_VM_THREADED=ON`, the VM upgrades the default to
+direct-threaded dispatch automatically.
+
 ## Example
 
 ### BASIC
