@@ -8,6 +8,8 @@
 
 #include "frontends/basic/Lowerer.hpp"
 
+#include <optional>
+
 namespace il::frontends::basic
 {
 
@@ -30,6 +32,33 @@ struct NumericExprLowering
                                                    Lowerer::RVal rhs);
 
   private:
+    struct NumericOpConfig
+    {
+        bool isFloat{false};
+        il::core::Type arithmeticType{};
+        il::core::Type resultType{};
+    };
+
+    struct OpcodeSelection
+    {
+        il::core::Opcode opcode{il::core::Opcode::IAddOvf};
+        il::core::Type resultType{};
+        bool promoteBoolToI64{false};
+    };
+
+    [[nodiscard]] NumericOpConfig normalizeNumericOperands(const BinaryExpr &expr,
+                                                           Lowerer::RVal &lhs,
+                                                           Lowerer::RVal &rhs);
+
+    [[nodiscard]] std::optional<Lowerer::RVal> applySpecialConstantPatterns(
+        const BinaryExpr &expr,
+        Lowerer::RVal &lhs,
+        Lowerer::RVal &rhs,
+        const NumericOpConfig &config);
+
+    [[nodiscard]] OpcodeSelection selectNumericOpcode(BinaryExpr::Op op,
+                                                      const NumericOpConfig &config);
+
     Lowerer *lowerer_{nullptr};
 };
 
