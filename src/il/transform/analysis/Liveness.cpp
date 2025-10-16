@@ -1,0 +1,294 @@
+// File: src/il/transform/analysis/Liveness.cpp
+// License: MIT License. See LICENSE in the project root for details.
+// Purpose: Implement CFG synthesis and backwards liveness data-flow analysis.
+// Key invariants: Bitsets are sized to the maximum dense SSA identifier referenced by the function.
+// Ownership/Lifetime: Summaries borrow module-owned basic blocks and store copies of bitsets.
+// Links: docs/codemap.md
+
+#include "il/transform/analysis/Liveness.hpp"
+
+#include "il/analysis/CFG.hpp"
+#include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Instr.hpp"
+#include "il/core/Module.hpp"
+#include "il/core/Opcode.hpp"
+#include "il/core/Value.hpp"
+
+#include <algorithm>
+#include <cassert>
+#include <unordered_map>
+#include <utility>
+
+using namespace il::core;
+
+namespace il::transform
+{
+
+bool LivenessInfo::SetView::contains(unsigned valueId) const
+{
+    return bits_ != nullptr && valueId < bits_->size() && (*bits_)[valueId];
+}
+
+bool LivenessInfo::SetView::empty() const
+{
+    return bits_ == nullptr ||
+           std::none_of(bits_->begin(), bits_->end(), [](bool bit) { return bit; });
+}
+
+const std::vector<bool> &LivenessInfo::SetView::bits() const
+{
+    assert(bits_ && "liveness set view is empty");
+    return *bits_;
+}
+
+LivenessInfo::SetView::SetView(const std::vector<bool> *bits) : bits_(bits) {}
+
+LivenessInfo::SetView LivenessInfo::liveIn(const core::BasicBlock &block) const
+{
+    return liveIn(&block);
+}
+
+LivenessInfo::SetView LivenessInfo::liveIn(const core::BasicBlock *block) const
+{
+    if (!block)
+        return SetView();
+    auto it = liveInBits_.find(block);
+    if (it == liveInBits_.end())
+        return SetView();
+    return SetView(&it->second);
+}
+
+LivenessInfo::SetView LivenessInfo::liveOut(const core::BasicBlock &block) const
+{
+    return liveOut(&block);
+}
+
+LivenessInfo::SetView LivenessInfo::liveOut(const core::BasicBlock *block) const
+{
+    if (!block)
+        return SetView();
+    auto it = liveOutBits_.find(block);
+    if (it == liveOutBits_.end())
+        return SetView();
+    return SetView(&it->second);
+}
+
+std::size_t LivenessInfo::valueCount() const
+{
+    return valueCount_;
+}
+
+namespace
+{
+struct BlockInfo
+{
+    explicit BlockInfo(std::size_t valueCount = 0)
+        : defs(valueCount, false), uses(valueCount, false)
+    {
+    }
+
+    std::vector<bool> defs;
+    std::vector<bool> uses;
+};
+
+std::size_t determineValueCapacity(const core::Function &fn)
+{
+    unsigned maxId = 0;
+    bool sawId = false;
+    auto noteId = [&](unsigned id)
+    {
+        maxId = std::max(maxId, id);
+        sawId = true;
+    };
+
+    for (const auto &param : fn.params)
+        noteId(param.id);
+
+    for (const auto &block : fn.blocks)
+    {
+        for (const auto &param : block.params)
+            noteId(param.id);
+
+        for (const auto &instr : block.instructions)
+        {
+            for (const auto &operand : instr.operands)
+            {
+                if (operand.kind == Value::Kind::Temp)
+                    noteId(operand.id);
+            }
+            for (const auto &argList : instr.brArgs)
+            {
+                for (const auto &arg : argList)
+                {
+                    if (arg.kind == Value::Kind::Temp)
+                        noteId(arg.id);
+                }
+            }
+            if (instr.result)
+                noteId(*instr.result);
+        }
+    }
+
+    std::size_t capacity = sawId ? static_cast<std::size_t>(maxId) + 1 : 0;
+    if (fn.valueNames.size() > capacity)
+        capacity = fn.valueNames.size();
+    return capacity;
+}
+
+inline void setBit(std::vector<bool> &bits, unsigned id)
+{
+    assert(id < bits.size());
+    if (id < bits.size())
+        bits[id] = true;
+}
+
+inline void mergeBits(std::vector<bool> &dst, const std::vector<bool> &src)
+{
+    assert(dst.size() == src.size());
+    for (std::size_t idx = 0; idx < dst.size(); ++idx)
+    {
+        if (src[idx])
+            dst[idx] = true;
+    }
+}
+
+} // namespace
+
+CFGInfo buildCFG(core::Module &module, core::Function &fn)
+{
+    CFGInfo info;
+    viper::analysis::CFGContext ctx(module);
+
+    for (auto &block : fn.blocks)
+    {
+        auto &succ = info.successors[&block];
+        auto succBlocks = viper::analysis::successors(ctx, block);
+        succ.reserve(succBlocks.size());
+        for (auto *succBlock : succBlocks)
+            succ.push_back(succBlock);
+    }
+
+    for (auto &block : fn.blocks)
+    {
+        auto &pred = info.predecessors[&block];
+        auto predBlocks = viper::analysis::predecessors(ctx, block);
+        pred.reserve(predBlocks.size());
+        for (auto *predBlock : predBlocks)
+            pred.push_back(predBlock);
+    }
+
+    return info;
+}
+
+LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFGInfo &cfg)
+{
+    static_cast<void>(module);
+    const std::size_t valueCount = determineValueCapacity(fn);
+
+    std::unordered_map<const BasicBlock *, BlockInfo> blockInfo;
+    blockInfo.reserve(fn.blocks.size());
+
+    LivenessInfo info;
+    info.valueCount_ = valueCount;
+
+    for (auto &block : fn.blocks)
+    {
+        BlockInfo state(valueCount);
+
+        for (const auto &param : block.params)
+            setBit(state.defs, param.id);
+
+        for (const auto &instr : block.instructions)
+        {
+            for (const auto &operand : instr.operands)
+            {
+                if (operand.kind != Value::Kind::Temp)
+                    continue;
+                const unsigned id = operand.id;
+                if (id >= valueCount)
+                    continue;
+                if (!state.defs[id])
+                    state.uses[id] = true;
+            }
+            for (const auto &argList : instr.brArgs)
+            {
+                for (const auto &arg : argList)
+                {
+                    if (arg.kind != Value::Kind::Temp)
+                        continue;
+                    const unsigned id = arg.id;
+                    if (id >= valueCount)
+                        continue;
+                    if (!state.defs[id])
+                        state.uses[id] = true;
+                }
+            }
+            if (instr.result)
+                setBit(state.defs, *instr.result);
+        }
+
+        blockInfo.emplace(&block, std::move(state));
+        info.liveInBits_.emplace(&block, std::vector<bool>(valueCount, false));
+        info.liveOutBits_.emplace(&block, std::vector<bool>(valueCount, false));
+    }
+
+    std::vector<bool> scratchOut(valueCount, false);
+    std::vector<bool> scratchIn(valueCount, false);
+
+    bool changed = true;
+    while (changed)
+    {
+        changed = false;
+        for (auto it = fn.blocks.rbegin(); it != fn.blocks.rend(); ++it)
+        {
+            const BasicBlock *block = &*it;
+            auto stateIt = blockInfo.find(block);
+            assert(stateIt != blockInfo.end());
+            BlockInfo &state = stateIt->second;
+
+            auto &liveOut = info.liveOutBits_[block];
+            std::fill(scratchOut.begin(), scratchOut.end(), false);
+            auto succIt = cfg.successors.find(block);
+            if (succIt != cfg.successors.end())
+            {
+                for (const BasicBlock *succ : succIt->second)
+                {
+                    auto liveInIt = info.liveInBits_.find(succ);
+                    if (liveInIt == info.liveInBits_.end())
+                        continue;
+                    mergeBits(scratchOut, liveInIt->second);
+                }
+            }
+            if (scratchOut != liveOut)
+            {
+                liveOut = scratchOut;
+                changed = true;
+            }
+
+            scratchIn = state.uses;
+            for (std::size_t idx = 0; idx < valueCount; ++idx)
+            {
+                if (liveOut[idx] && !state.defs[idx])
+                    scratchIn[idx] = true;
+            }
+            auto &liveIn = info.liveInBits_[block];
+            if (scratchIn != liveIn)
+            {
+                liveIn = scratchIn;
+                changed = true;
+            }
+        }
+    }
+
+    return info;
+}
+
+LivenessInfo computeLiveness(core::Module &module, core::Function &fn)
+{
+    CFGInfo cfg = buildCFG(module, fn);
+    return computeLiveness(module, fn, cfg);
+}
+
+} // namespace il::transform
+
