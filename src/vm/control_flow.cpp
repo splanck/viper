@@ -12,7 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "vm/OpHandlers.hpp"
+#include "vm/OpHandlers_Control.hpp"
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -59,7 +59,7 @@ void setSwitchMode(SwitchMode mode)
 }
 } // namespace viper::vm
 
-namespace il::vm::detail
+namespace il::vm::detail::control
 {
 namespace
 {
@@ -379,7 +379,7 @@ static SwitchCacheEntry &getOrBuildSwitchCache(SwitchCache &cache, const Instr &
 /// @note Invariant: the branch target must exist in @p blocks; malformed IL would have
 ///       been rejected earlier by verification. When present, branch arguments are
 ///       evaluated and copied into the target block parameters before control moves.
-VM::ExecResult OpHandlers::branchToTarget(VM &vm,
+VM::ExecResult branchToTarget(VM &vm,
                                           Frame &fr,
                                           const Instr &in,
                                           size_t idx,
@@ -415,7 +415,7 @@ VM::ExecResult OpHandlers::branchToTarget(VM &vm,
         {
             const auto id = target->params[i].id;
             assert(id < fr.params.size());
-            fr.params[id] = vm.eval(fr, args[i]);
+            fr.params[id] = VMAccess::eval(vm, fr, args[i]);
         }
     }
 
@@ -437,7 +437,7 @@ VM::ExecResult OpHandlers::branchToTarget(VM &vm,
 /// @note Invariant: when a return operand exists it is evaluated exactly once and the
 ///       resulting slot is stored in the execution result; control never touches
 ///       subsequent instructions within the block.
-VM::ExecResult OpHandlers::handleRet(VM &vm,
+VM::ExecResult handleRet(VM &vm,
                                      Frame &fr,
                                      const Instr &in,
                                      const VM::BlockMap &blocks,
@@ -449,7 +449,7 @@ VM::ExecResult OpHandlers::handleRet(VM &vm,
     (void)ip;
     VM::ExecResult result{};
     if (!in.operands.empty())
-        result.value = vm.eval(fr, in.operands[0]);
+        result.value = VMAccess::eval(vm, fr, in.operands[0]);
     result.returned = true;
     return result;
 }
@@ -463,10 +463,10 @@ VM::ExecResult OpHandlers::handleRet(VM &vm,
 /// @param ip Unused instruction pointer reference for this opcode.
 /// @return Execution result representing normal fallthrough.
 /// @note Invariant: all operand slots are evaluated prior to dispatch. If the callee
-///       exists in @p vm.fnMap, the VM executes it natively; otherwise
+///       exists in the VM's function map, the VM executes it natively; otherwise
 ///       @ref RuntimeBridge routes the call to the runtime. Any produced value is
 ///       stored via @ref ops::storeResult, ensuring the destination slot is updated.
-VM::ExecResult OpHandlers::handleCall(VM &vm,
+VM::ExecResult handleCall(VM &vm,
                                       Frame &fr,
                                       const Instr &in,
                                       const VM::BlockMap &blocks,
@@ -479,14 +479,15 @@ VM::ExecResult OpHandlers::handleCall(VM &vm,
     std::vector<Slot> args;
     args.reserve(in.operands.size());
     for (const auto &op : in.operands)
-        args.push_back(vm.eval(fr, op));
+        args.push_back(VMAccess::eval(vm, fr, op));
 
     Slot out{};
-    auto it = vm.fnMap.find(in.callee);
-    if (it != vm.fnMap.end())
-        out = vm.execFunction(*it->second, args);
+    const auto &fnMap = VMAccess::functionMap(vm);
+    auto it = fnMap.find(in.callee);
+    if (it != fnMap.end())
+        out = VMAccess::callFunction(vm, *it->second, args);
     else
-        out = RuntimeBridge::call(vm.runtimeContext, in.callee, args, in.loc, fr.func->name, bb->label);
+        out = RuntimeBridge::call(VMAccess::runtimeContext(vm), in.callee, args, in.loc, fr.func->name, bb->label);
     ops::storeResult(fr, in, out);
     return {};
 }
@@ -499,7 +500,7 @@ VM::ExecResult OpHandlers::handleCall(VM &vm,
 /// @param bb Unused current block reference required by the dispatch signature.
 /// @param ip Unused instruction index reference required by the dispatch signature.
 /// @return Execution result indicating normal continuation.
-VM::ExecResult OpHandlers::handleErrGet(VM &vm,
+VM::ExecResult handleErrGet(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -512,7 +513,7 @@ VM::ExecResult OpHandlers::handleErrGet(VM &vm,
 
     Slot operandSlot{};
     if (!in.operands.empty())
-        operandSlot = vm.eval(fr, in.operands[0]);
+        operandSlot = VMAccess::eval(vm, fr, in.operands[0]);
 
     const VmError *error = resolveErrorToken(fr, operandSlot);
 
@@ -548,7 +549,7 @@ VM::ExecResult OpHandlers::handleErrGet(VM &vm,
 /// @param bb Current block pointer (unused) provided for signature parity.
 /// @param ip Instruction pointer (unused) supplied for signature parity.
 /// @return Execution result indicating normal fallthrough.
-VM::ExecResult OpHandlers::handleEhEntry(VM &vm,
+VM::ExecResult handleEhEntry(VM &vm,
                                          Frame &fr,
                                          const Instr &in,
                                          const VM::BlockMap &blocks,
@@ -572,7 +573,7 @@ VM::ExecResult OpHandlers::handleEhEntry(VM &vm,
 /// @param bb Current block pointer (unused) retained for signature compatibility.
 /// @param ip Instruction pointer snapshot recorded for resume.same semantics.
 /// @return Execution result indicating normal fallthrough.
-VM::ExecResult OpHandlers::handleEhPush(VM &vm,
+VM::ExecResult handleEhPush(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -597,7 +598,7 @@ VM::ExecResult OpHandlers::handleEhPush(VM &vm,
 /// The handler mirrors the semantics of BASIC's `ON ERROR` stack by discarding
 /// the last pushed record if one exists.  All parameters besides @p fr are
 /// unused but retained for signature compatibility with other handlers.
-VM::ExecResult OpHandlers::handleEhPop(VM &vm,
+VM::ExecResult handleEhPop(VM &vm,
                                        Frame &fr,
                                        const Instr &in,
                                        const VM::BlockMap &blocks,
@@ -620,7 +621,7 @@ VM::ExecResult OpHandlers::handleEhPop(VM &vm,
 /// available, and then jumps back to the faulting instruction so it can be
 /// retried.  The resume token is invalidated after use to mirror the runtime's
 /// single-use semantics.
-VM::ExecResult OpHandlers::handleResumeSame(VM &vm,
+VM::ExecResult handleResumeSame(VM &vm,
                                             Frame &fr,
                                             const Instr &in,
                                             const VM::BlockMap &blocks,
@@ -635,7 +636,7 @@ VM::ExecResult OpHandlers::handleResumeSame(VM &vm,
         return {};
     }
 
-    Slot tokSlot = vm.eval(fr, in.operands[0]);
+    Slot tokSlot = VMAccess::eval(vm, fr, in.operands[0]);
     Frame::ResumeState *token = expectResumeToken(fr, tokSlot);
     if (!token)
     {
@@ -660,7 +661,7 @@ VM::ExecResult OpHandlers::handleResumeSame(VM &vm,
 /// Validates the resume token operand and then jumps to the recorded
 /// @ref Frame::ResumeState::nextIp while invalidating the resume token.  Errors
 /// are reported through @ref trapInvalidResume.
-VM::ExecResult OpHandlers::handleResumeNext(VM &vm,
+VM::ExecResult handleResumeNext(VM &vm,
                                             Frame &fr,
                                             const Instr &in,
                                             const VM::BlockMap &blocks,
@@ -675,7 +676,7 @@ VM::ExecResult OpHandlers::handleResumeNext(VM &vm,
         return {};
     }
 
-    Slot tokSlot = vm.eval(fr, in.operands[0]);
+    Slot tokSlot = VMAccess::eval(vm, fr, in.operands[0]);
     Frame::ResumeState *token = expectResumeToken(fr, tokSlot);
     if (!token)
     {
@@ -700,7 +701,7 @@ VM::ExecResult OpHandlers::handleResumeNext(VM &vm,
 /// Checks both the resume token and the requested label name before delegating
 /// to @ref branchToTarget.  Invalid tokens or unknown labels trigger a trap via
 /// @ref trapInvalidResume.
-VM::ExecResult OpHandlers::handleResumeLabel(VM &vm,
+VM::ExecResult handleResumeLabel(VM &vm,
                                             Frame &fr,
                                             const Instr &in,
                                             const VM::BlockMap &blocks,
@@ -713,7 +714,7 @@ VM::ExecResult OpHandlers::handleResumeLabel(VM &vm,
         return {};
     }
 
-    Slot tokSlot = vm.eval(fr, in.operands[0]);
+    Slot tokSlot = VMAccess::eval(vm, fr, in.operands[0]);
     Frame::ResumeState *token = expectResumeToken(fr, tokSlot);
     if (!token)
     {
@@ -745,7 +746,7 @@ VM::ExecResult OpHandlers::handleResumeLabel(VM &vm,
 /// operand is absent the handler falls back to thread-local trap tokens or the
 /// frame's active error.  The resulting trap kind is stored in the destination
 /// register as a signed 64-bit integer.
-VM::ExecResult OpHandlers::handleTrapKind(VM &vm,
+VM::ExecResult handleTrapKind(VM &vm,
                                          Frame &fr,
                                          const Instr &in,
                                          const VM::BlockMap &blocks,
@@ -759,7 +760,7 @@ VM::ExecResult OpHandlers::handleTrapKind(VM &vm,
     const VmError *error = nullptr;
     if (!in.operands.empty())
     {
-        Slot errorSlot = vm.eval(fr, in.operands[0]);
+        Slot errorSlot = VMAccess::eval(vm, fr, in.operands[0]);
         error = reinterpret_cast<const VmError *>(errorSlot.ptr);
     }
 
@@ -780,7 +781,7 @@ VM::ExecResult OpHandlers::handleTrapKind(VM &vm,
 /// Allocates or reuses the thread-local trap token, maps the numeric code to a
 /// @ref TrapKind, stores the optional message for later retrieval, and returns
 /// the token pointer to the caller.
-VM::ExecResult OpHandlers::handleTrapErr(VM &vm,
+VM::ExecResult handleTrapErr(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -792,13 +793,13 @@ VM::ExecResult OpHandlers::handleTrapErr(VM &vm,
     (void)ip;
     (void)fr;
 
-    Slot codeSlot = vm.eval(fr, in.operands[0]);
+    Slot codeSlot = VMAccess::eval(vm, fr, in.operands[0]);
     const int32_t code = static_cast<int32_t>(codeSlot.i64);
 
     std::string message;
     if (in.operands.size() > 1)
     {
-        Slot textSlot = vm.eval(fr, in.operands[1]);
+        Slot textSlot = VMAccess::eval(vm, fr, in.operands[1]);
         if (textSlot.str != nullptr)
         {
             auto view = fromViperString(textSlot.str);
@@ -825,7 +826,7 @@ VM::ExecResult OpHandlers::handleTrapErr(VM &vm,
 /// maps an @c err code to a trap classification, or falls back to the generic
 /// runtime error trap.  The resulting trap terminates execution; the returned
 /// execution result is marked as having produced a return to satisfy callers.
-VM::ExecResult OpHandlers::handleTrap(VM &vm,
+VM::ExecResult handleTrap(VM &vm,
                                       Frame &fr,
                                       const Instr &in,
                                       const VM::BlockMap &blocks,
@@ -843,7 +844,7 @@ VM::ExecResult OpHandlers::handleTrap(VM &vm,
             break;
         case Opcode::TrapFromErr:
         {
-            Slot codeSlot = vm.eval(fr, in.operands[0]);
+            Slot codeSlot = VMAccess::eval(vm, fr, in.operands[0]);
             const auto trapKind = map_err_to_trap(static_cast<int32_t>(codeSlot.i64));
             vm_raise(trapKind, static_cast<int32_t>(codeSlot.i64));
             break;
@@ -857,5 +858,5 @@ VM::ExecResult OpHandlers::handleTrap(VM &vm,
     return result;
 }
 
-} // namespace il::vm::detail
+} // namespace il::vm::detail::control
 

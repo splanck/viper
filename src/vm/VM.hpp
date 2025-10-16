@@ -30,7 +30,7 @@ namespace il::vm
 
 namespace detail
 {
-struct OpHandlers; ///< Forward declaration of opcode handler collection
+struct VMAccess; ///< Forward declaration of helper granting opcode handlers internal access
 namespace ops
 {
 struct OperandDispatcher; ///< Forward declaration of operand evaluation helper
@@ -118,7 +118,7 @@ class VM
         Threaded, ///< Use computed goto threaded dispatch when supported.
     };
 
-    friend struct detail::OpHandlers; ///< Allow opcode handlers to access internals
+    friend struct detail::VMAccess; ///< Allow opcode handlers to access internals via helper
     friend struct detail::ops::OperandDispatcher; ///< Allow shared helpers to evaluate operands
     friend class RuntimeBridge; ///< Runtime bridge accesses trap formatting helpers
     friend void vm_raise(TrapKind kind, int32_t code);

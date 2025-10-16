@@ -7,7 +7,7 @@
 // Links: docs/il-guide.md#reference §Integer Arithmetic, §Bitwise and Shifts, §Comparisons,
 //        §Conversions
 
-#include "vm/OpHandlers.hpp"
+#include "vm/OpHandlers_Int.hpp"
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -22,7 +22,7 @@
 
 using namespace il::core;
 
-namespace il::vm::detail
+namespace il::vm::detail::integer
 {
 namespace
 {
@@ -399,7 +399,7 @@ VM::ExecResult handleCastNarrowChkImpl(const Slot &value,
 }
 } // namespace
 
-VM::ExecResult OpHandlers::handleISub(VM &vm,
+VM::ExecResult handleISub(VM &vm,
                                       Frame &fr,
                                       const Instr &in,
                                       const VM::BlockMap &blocks,
@@ -410,7 +410,7 @@ VM::ExecResult OpHandlers::handleISub(VM &vm,
 }
 
 /// @brief Interpret the `iadd.ovf` opcode, trapping on signed overflow.
-VM::ExecResult OpHandlers::handleIAddOvf(VM &vm,
+VM::ExecResult handleIAddOvf(VM &vm,
                                          Frame &fr,
                                          const Instr &in,
                                          const VM::BlockMap &blocks,
@@ -438,7 +438,7 @@ VM::ExecResult OpHandlers::handleIAddOvf(VM &vm,
 }
 
 /// @brief Interpret the `isub.ovf` opcode, trapping on signed overflow.
-VM::ExecResult OpHandlers::handleISubOvf(VM &vm,
+VM::ExecResult handleISubOvf(VM &vm,
                                          Frame &fr,
                                          const Instr &in,
                                          const VM::BlockMap &blocks,
@@ -466,7 +466,7 @@ VM::ExecResult OpHandlers::handleISubOvf(VM &vm,
 }
 
 /// @brief Interpret the `imul.ovf` opcode, trapping on signed overflow.
-VM::ExecResult OpHandlers::handleIMulOvf(VM &vm,
+VM::ExecResult handleIMulOvf(VM &vm,
                                          Frame &fr,
                                          const Instr &in,
                                          const VM::BlockMap &blocks,
@@ -494,7 +494,7 @@ VM::ExecResult OpHandlers::handleIMulOvf(VM &vm,
 }
 
 /// @brief Interpret the `sdiv` opcode with divide-by-zero and overflow trapping.
-VM::ExecResult OpHandlers::handleSDiv(VM &vm,
+VM::ExecResult handleSDiv(VM &vm,
                                       Frame &fr,
                                       const Instr &in,
                                       const VM::BlockMap &blocks,
@@ -516,7 +516,7 @@ VM::ExecResult OpHandlers::handleSDiv(VM &vm,
 }
 
 /// @brief Interpret the `udiv` opcode with divide-by-zero trapping.
-VM::ExecResult OpHandlers::handleUDiv(VM &vm,
+VM::ExecResult handleUDiv(VM &vm,
                                       Frame &fr,
                                       const Instr &in,
                                       const VM::BlockMap &blocks,
@@ -544,7 +544,7 @@ VM::ExecResult OpHandlers::handleUDiv(VM &vm,
 }
 
 /// @brief Interpret the `srem` opcode with divide-by-zero trapping.
-VM::ExecResult OpHandlers::handleSRem(VM &vm,
+VM::ExecResult handleSRem(VM &vm,
                                       Frame &fr,
                                       const Instr &in,
                                       const VM::BlockMap &blocks,
@@ -566,7 +566,7 @@ VM::ExecResult OpHandlers::handleSRem(VM &vm,
 }
 
 /// @brief Interpret the `urem` opcode with divide-by-zero trapping.
-VM::ExecResult OpHandlers::handleURem(VM &vm,
+VM::ExecResult handleURem(VM &vm,
                                       Frame &fr,
                                       const Instr &in,
                                       const VM::BlockMap &blocks,
@@ -594,7 +594,7 @@ VM::ExecResult OpHandlers::handleURem(VM &vm,
 }
 
 /// @brief Interpret the `sdiv.chk0` opcode with divide-by-zero and overflow trapping.
-VM::ExecResult OpHandlers::handleSDivChk0(VM &vm,
+VM::ExecResult handleSDivChk0(VM &vm,
                                           Frame &fr,
                                           const Instr &in,
                                           const VM::BlockMap &blocks,
@@ -616,7 +616,7 @@ VM::ExecResult OpHandlers::handleSDivChk0(VM &vm,
 }
 
 /// @brief Interpret the `udiv.chk0` opcode with divide-by-zero trapping.
-VM::ExecResult OpHandlers::handleUDivChk0(VM &vm,
+VM::ExecResult handleUDivChk0(VM &vm,
                                           Frame &fr,
                                           const Instr &in,
                                           const VM::BlockMap &blocks,
@@ -644,7 +644,7 @@ VM::ExecResult OpHandlers::handleUDivChk0(VM &vm,
 }
 
 /// @brief Interpret the `srem.chk0` opcode with divide-by-zero and overflow trapping.
-VM::ExecResult OpHandlers::handleSRemChk0(VM &vm,
+VM::ExecResult handleSRemChk0(VM &vm,
                                           Frame &fr,
                                           const Instr &in,
                                           const VM::BlockMap &blocks,
@@ -666,7 +666,7 @@ VM::ExecResult OpHandlers::handleSRemChk0(VM &vm,
 }
 
 /// @brief Interpret the `urem.chk0` opcode with divide-by-zero trapping.
-VM::ExecResult OpHandlers::handleURemChk0(VM &vm,
+VM::ExecResult handleURemChk0(VM &vm,
                                           Frame &fr,
                                           const Instr &in,
                                           const VM::BlockMap &blocks,
@@ -694,7 +694,7 @@ VM::ExecResult OpHandlers::handleURemChk0(VM &vm,
 }
 
 /// @brief Interpret the `idx.chk` opcode, trapping when the index leaves the inclusive range.
-VM::ExecResult OpHandlers::handleIdxChk(VM &vm,
+VM::ExecResult handleIdxChk(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -705,9 +705,9 @@ VM::ExecResult OpHandlers::handleIdxChk(VM &vm,
     (void)bb;
     (void)ip;
 
-    const Slot idxSlot = vm.eval(fr, in.operands[0]);
-    const Slot loSlot = vm.eval(fr, in.operands[1]);
-    const Slot hiSlot = vm.eval(fr, in.operands[2]);
+    const Slot idxSlot = VMAccess::eval(vm, fr, in.operands[0]);
+    const Slot loSlot = VMAccess::eval(vm, fr, in.operands[1]);
+    const Slot hiSlot = VMAccess::eval(vm, fr, in.operands[2]);
 
     auto trapBounds = []()
     {
@@ -760,7 +760,7 @@ VM::ExecResult OpHandlers::handleIdxChk(VM &vm,
 }
 
 /// @brief Interpret the `cast.si_narrow.chk` opcode with range checking for signed integers.
-VM::ExecResult OpHandlers::handleCastSiNarrowChk(VM &vm,
+VM::ExecResult handleCastSiNarrowChk(VM &vm,
                                                  Frame &fr,
                                                  const Instr &in,
                                                  const VM::BlockMap &blocks,
@@ -769,12 +769,12 @@ VM::ExecResult OpHandlers::handleCastSiNarrowChk(VM &vm,
 {
     (void)blocks;
     (void)ip;
-    const Slot value = vm.eval(fr, in.operands[0]);
+    const Slot value = VMAccess::eval(vm, fr, in.operands[0]);
     return handleCastNarrowChkImpl<SignedNarrowCastTraits>(value, fr, in, bb);
 }
 
 /// @brief Interpret the `cast.ui_narrow.chk` opcode with range checking for unsigned integers.
-VM::ExecResult OpHandlers::handleCastUiNarrowChk(VM &vm,
+VM::ExecResult handleCastUiNarrowChk(VM &vm,
                                                  Frame &fr,
                                                  const Instr &in,
                                                  const VM::BlockMap &blocks,
@@ -783,12 +783,12 @@ VM::ExecResult OpHandlers::handleCastUiNarrowChk(VM &vm,
 {
     (void)blocks;
     (void)ip;
-    const Slot value = vm.eval(fr, in.operands[0]);
+    const Slot value = VMAccess::eval(vm, fr, in.operands[0]);
     return handleCastNarrowChkImpl<UnsignedNarrowCastTraits>(value, fr, in, bb);
 }
 
 /// @brief Interpret the `cast.si_to_fp` opcode converting signed integers to double.
-VM::ExecResult OpHandlers::handleCastSiToFp(VM &vm,
+VM::ExecResult handleCastSiToFp(VM &vm,
                                             Frame &fr,
                                             const Instr &in,
                                             const VM::BlockMap &blocks,
@@ -798,7 +798,7 @@ VM::ExecResult OpHandlers::handleCastSiToFp(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    const Slot value = vm.eval(fr, in.operands[0]);
+    const Slot value = VMAccess::eval(vm, fr, in.operands[0]);
     Slot out{};
     out.f64 = static_cast<double>(value.i64);
     ops::storeResult(fr, in, out);
@@ -806,7 +806,7 @@ VM::ExecResult OpHandlers::handleCastSiToFp(VM &vm,
 }
 
 /// @brief Interpret the `cast.ui_to_fp` opcode converting unsigned integers to double.
-VM::ExecResult OpHandlers::handleCastUiToFp(VM &vm,
+VM::ExecResult handleCastUiToFp(VM &vm,
                                             Frame &fr,
                                             const Instr &in,
                                             const VM::BlockMap &blocks,
@@ -816,7 +816,7 @@ VM::ExecResult OpHandlers::handleCastUiToFp(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    const Slot value = vm.eval(fr, in.operands[0]);
+    const Slot value = VMAccess::eval(vm, fr, in.operands[0]);
     const uint64_t operand = static_cast<uint64_t>(value.i64);
     Slot out{};
     out.f64 = static_cast<double>(operand);
@@ -827,7 +827,7 @@ VM::ExecResult OpHandlers::handleCastUiToFp(VM &vm,
 /// @brief Interpret the `and` opcode for 64-bit integers.
 /// @note Applies bitwise conjunction on canonical 64-bit operands and writes the
 ///       result to the destination register, as specified in docs/il-guide.md#reference.
-VM::ExecResult OpHandlers::handleAnd(VM &vm,
+VM::ExecResult handleAnd(VM &vm,
                                      Frame &fr,
                                      const Instr &in,
                                      const VM::BlockMap &blocks,
@@ -847,7 +847,7 @@ VM::ExecResult OpHandlers::handleAnd(VM &vm,
 /// @brief Interpret the `or` opcode for 64-bit integers.
 /// @note Applies bitwise disjunction on canonical 64-bit operands and writes the
 ///       result to the destination register, following docs/il-guide.md#reference.
-VM::ExecResult OpHandlers::handleOr(VM &vm,
+VM::ExecResult handleOr(VM &vm,
                                     Frame &fr,
                                     const Instr &in,
                                     const VM::BlockMap &blocks,
@@ -865,9 +865,9 @@ VM::ExecResult OpHandlers::handleOr(VM &vm,
 }
 
 /// @brief Interpret the `xor` opcode for 64-bit integers.
-/// @note Operands are evaluated via @c vm.eval and the bitwise result is stored back
+/// @note Operands are evaluated via VMAccess::eval and the bitwise result is stored back
 ///       into the destination register, matching docs/il-guide.md#reference §Bitwise and Shifts.
-VM::ExecResult OpHandlers::handleXor(VM &vm,
+VM::ExecResult handleXor(VM &vm,
                                      Frame &fr,
                                      const Instr &in,
                                      const VM::BlockMap &blocks,
@@ -888,7 +888,7 @@ VM::ExecResult OpHandlers::handleXor(VM &vm,
 /// @note The shift count is taken from the second operand; well-formed IL keeps it within
 ///       [0, 63] so the host operation remains defined, and the result is written back
 ///       to the frame (docs/il-guide.md#reference §Bitwise and Shifts).
-VM::ExecResult OpHandlers::handleShl(VM &vm,
+VM::ExecResult handleShl(VM &vm,
                                      Frame &fr,
                                      const Instr &in,
                                      const VM::BlockMap &blocks,
@@ -909,7 +909,7 @@ VM::ExecResult OpHandlers::handleShl(VM &vm,
 /// @note Shift counts are masked to the canonical 0-63 range and the operation
 ///       zero-extends the vacated bits, per docs/il-guide.md#reference
 ///       §Bitwise and Shifts.
-VM::ExecResult OpHandlers::handleLShr(VM &vm,
+VM::ExecResult handleLShr(VM &vm,
                                       Frame &fr,
                                       const Instr &in,
                                       const VM::BlockMap &blocks,
@@ -934,7 +934,7 @@ VM::ExecResult OpHandlers::handleLShr(VM &vm,
 /// @note Shift counts are masked to the canonical 0-63 range and sign bits are
 ///       preserved for negative operands, matching docs/il-guide.md#reference
 ///       §Bitwise and Shifts.
-VM::ExecResult OpHandlers::handleAShr(VM &vm,
+VM::ExecResult handleAShr(VM &vm,
                                       Frame &fr,
                                       const Instr &in,
                                       const VM::BlockMap &blocks,
@@ -971,7 +971,7 @@ VM::ExecResult OpHandlers::handleAShr(VM &vm,
 /// @brief Interpret the `icmp_eq` opcode for integer equality comparisons.
 /// @note Produces a canonical `i1` value (0 or 1) stored via @c ops::storeResult,
 ///       following docs/il-guide.md#reference §Comparisons.
-VM::ExecResult OpHandlers::handleICmpEq(VM &vm,
+VM::ExecResult handleICmpEq(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -989,8 +989,8 @@ VM::ExecResult OpHandlers::handleICmpEq(VM &vm,
 }
 
 /// @brief Interpret the `icmp_ne` opcode for integer inequality comparisons.
-/// @note Semantics mirror @ref OpHandlers::handleICmpEq with negated predicate per docs/il-guide.md#reference §Comparisons.
-VM::ExecResult OpHandlers::handleICmpNe(VM &vm,
+/// @note Semantics mirror @ref handleICmpEq with negated predicate per docs/il-guide.md#reference §Comparisons.
+VM::ExecResult handleICmpNe(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -1010,7 +1010,7 @@ VM::ExecResult OpHandlers::handleICmpNe(VM &vm,
 /// @brief Interpret the `scmp_gt` opcode for signed greater-than comparisons.
 /// @note Reads both operands as signed 64-bit integers and stores a canonical `i1`
 ///       result, consistent with docs/il-guide.md#reference §Comparisons.
-VM::ExecResult OpHandlers::handleSCmpGT(VM &vm,
+VM::ExecResult handleSCmpGT(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -1030,7 +1030,7 @@ VM::ExecResult OpHandlers::handleSCmpGT(VM &vm,
 /// @brief Interpret the `scmp_lt` opcode for signed less-than comparisons.
 /// @note Shares operand evaluation and storage behaviour with other comparison handlers,
 ///       producing canonical booleans per docs/il-guide.md#reference §Comparisons.
-VM::ExecResult OpHandlers::handleSCmpLT(VM &vm,
+VM::ExecResult handleSCmpLT(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -1050,7 +1050,7 @@ VM::ExecResult OpHandlers::handleSCmpLT(VM &vm,
 /// @brief Interpret the `scmp_le` opcode for signed less-or-equal comparisons.
 /// @note Uses signed ordering per docs/il-guide.md#reference §Comparisons and returns a
 ///       canonical `i1` result written into the destination register.
-VM::ExecResult OpHandlers::handleSCmpLE(VM &vm,
+VM::ExecResult handleSCmpLE(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -1070,7 +1070,7 @@ VM::ExecResult OpHandlers::handleSCmpLE(VM &vm,
 /// @brief Interpret the `scmp_ge` opcode for signed greater-or-equal comparisons.
 /// @note Completes the signed comparison set defined in docs/il-guide.md#reference §Comparisons
 ///       by writing 0 or 1 into the destination register.
-VM::ExecResult OpHandlers::handleSCmpGE(VM &vm,
+VM::ExecResult handleSCmpGE(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -1091,7 +1091,7 @@ VM::ExecResult OpHandlers::handleSCmpGE(VM &vm,
 /// @note Operands are reinterpreted as unsigned 64-bit values per
 ///       docs/il-guide.md#reference §Comparisons, and the result is stored as a
 ///       canonical boolean.
-VM::ExecResult OpHandlers::handleUCmpLT(VM &vm,
+VM::ExecResult handleUCmpLT(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -1114,7 +1114,7 @@ VM::ExecResult OpHandlers::handleUCmpLT(VM &vm,
 /// @brief Interpret the `ucmp_le` opcode for unsigned less-or-equal comparisons.
 /// @note Reuses unsigned ordering semantics and returns 0 or 1 in the
 ///       destination register.
-VM::ExecResult OpHandlers::handleUCmpLE(VM &vm,
+VM::ExecResult handleUCmpLE(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -1135,9 +1135,9 @@ VM::ExecResult OpHandlers::handleUCmpLE(VM &vm,
 }
 
 /// @brief Interpret the `ucmp_gt` opcode for unsigned greater-than comparisons.
-/// @note Mirrors @ref OpHandlers::handleUCmpLT with inverted predicate while
+/// @note Mirrors @ref handleUCmpLT with inverted predicate while
 ///       maintaining canonical boolean storage.
-VM::ExecResult OpHandlers::handleUCmpGT(VM &vm,
+VM::ExecResult handleUCmpGT(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -1160,7 +1160,7 @@ VM::ExecResult OpHandlers::handleUCmpGT(VM &vm,
 /// @brief Interpret the `ucmp_ge` opcode for unsigned greater-or-equal comparisons.
 /// @note Completes the unsigned comparison family with canonical boolean
 ///       results.
-VM::ExecResult OpHandlers::handleUCmpGE(VM &vm,
+VM::ExecResult handleUCmpGE(VM &vm,
                                         Frame &fr,
                                         const Instr &in,
                                         const VM::BlockMap &blocks,
@@ -1183,7 +1183,7 @@ VM::ExecResult OpHandlers::handleUCmpGE(VM &vm,
 /// @brief Interpret the `trunc1`/`zext1` opcodes that normalise between `i1` and `i64`.
 /// @note Non-zero inputs are canonicalised to `1` while zero becomes `0`, matching
 ///       docs/il-guide.md#reference §Conversions for both truncation and extension.
-VM::ExecResult OpHandlers::handleTruncOrZext1(VM &vm,
+VM::ExecResult handleTruncOrZext1(VM &vm,
                                               Frame &fr,
                                               const Instr &in,
                                               const VM::BlockMap &blocks,
@@ -1193,7 +1193,7 @@ VM::ExecResult OpHandlers::handleTruncOrZext1(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    Slot operand = vm.eval(fr, in.operands[0]);
+    Slot operand = VMAccess::eval(vm, fr, in.operands[0]);
     const bool truthy = operand.i64 != 0;
 
     Slot result{};
@@ -1212,5 +1212,5 @@ VM::ExecResult OpHandlers::handleTruncOrZext1(VM &vm,
     return {};
 }
 
-} // namespace il::vm::detail
+} // namespace il::vm::detail::integer
 
