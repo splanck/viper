@@ -733,13 +733,318 @@ void Lowerer::lowerIf(const IfStmt &stmt)
     context().setCurrent(&func->blocks[blocks.exitIdx]);
 }
 
+Lowerer::SelectCaseBlocks Lowerer::prepareSelectCaseBlocks(const SelectCaseStmt &stmt,
+                                                           bool hasCaseElse,
+                                                           bool needsDispatch)
+{
+    ProcedureContext &ctx = context();
+    Function *func = ctx.function();
+    BasicBlock *current = ctx.current();
+    assert(func && current);
+
+    size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
+    BlockNamer *blockNamer = ctx.blockNames().namer();
+    size_t startIdx = func->blocks.size();
+
+    SelectCaseBlocks blocks{};
+    blocks.currentIdx = curIdx;
+    blocks.switchIdx = curIdx;
+    blocks.armIdx.resize(stmt.arms.size());
+
+    for (size_t i = 0; i < stmt.arms.size(); ++i)
+    {
+        std::string label =
+            blockNamer ? blockNamer->generic("select_arm") : mangler.block("select_arm_" + std::to_string(i));
+        builder->addBlock(*func, label);
+    }
+
+    if (hasCaseElse)
+    {
+        std::string defaultLabel =
+            blockNamer ? blockNamer->generic("select_default") : mangler.block("select_default");
+        builder->addBlock(*func, defaultLabel);
+        blocks.elseIdx = startIdx + stmt.arms.size();
+    }
+
+    if (needsDispatch)
+    {
+        std::string dispatchLabel =
+            blockNamer ? blockNamer->generic("select_dispatch") : mangler.block("select_dispatch");
+        builder->addBlock(*func, dispatchLabel);
+        blocks.switchIdx = startIdx + stmt.arms.size() + (hasCaseElse ? 1 : 0);
+    }
+
+    std::string endLabel = blockNamer ? blockNamer->generic("select_end") : mangler.block("select_end");
+    builder->addBlock(*func, endLabel);
+    blocks.endIdx = startIdx + stmt.arms.size() + (hasCaseElse ? 1 : 0) + (needsDispatch ? 1 : 0);
+
+    func = ctx.function();
+    current = &func->blocks[curIdx];
+    ctx.setCurrent(current);
+
+    for (size_t i = 0; i < stmt.arms.size(); ++i)
+        blocks.armIdx[i] = startIdx + i;
+
+    return blocks;
+}
+
+void Lowerer::lowerSelectCaseStringArms(const SelectCaseStmt &stmt,
+                                        const SelectCaseBlocks &blocks,
+                                        Value stringSelector)
+{
+    ProcedureContext &ctx = context();
+    Function *func = ctx.function();
+    BlockNamer *blockNamer = ctx.blockNames().namer();
+
+    BasicBlock *defaultBlk = blocks.elseIdx ? &func->blocks[*blocks.elseIdx] : &func->blocks[blocks.endIdx];
+    if (defaultBlk->label.empty())
+        defaultBlk->label = nextFallbackBlockLabel();
+
+    size_t checkIdx = blocks.currentIdx;
+    ctx.setCurrent(&func->blocks[checkIdx]);
+    bool emittedComparison = false;
+
+    for (size_t i = 0; i < stmt.arms.size(); ++i)
+    {
+        const auto &labels = stmt.arms[i].str_labels;
+        if (labels.empty())
+            continue;
+
+        func = ctx.function();
+        BasicBlock *armBlk = &func->blocks[blocks.armIdx[i]];
+        if (armBlk->label.empty())
+            armBlk->label = nextFallbackBlockLabel();
+
+        for (size_t j = 0; j < labels.size(); ++j)
+        {
+            bool moreComparisons = (j + 1 < labels.size());
+            if (!moreComparisons)
+            {
+                for (size_t k = i + 1; k < stmt.arms.size(); ++k)
+                {
+                    if (!stmt.arms[k].str_labels.empty())
+                    {
+                        moreComparisons = true;
+                        break;
+                    }
+                }
+            }
+
+            size_t nextIdx;
+            if (moreComparisons)
+            {
+                std::string checkLabel =
+                    blockNamer ? blockNamer->generic("select_check") : mangler.block("select_check");
+                builder->addBlock(*func, checkLabel);
+                func = ctx.function();
+                nextIdx = func->blocks.size() - 1;
+            }
+            else
+            {
+                nextIdx = blocks.elseIdx ? *blocks.elseIdx : blocks.endIdx;
+            }
+
+            func = ctx.function();
+            BasicBlock *checkBlk = &func->blocks[checkIdx];
+            BasicBlock *trueTarget = &func->blocks[blocks.armIdx[i]];
+            if (trueTarget->label.empty())
+                trueTarget->label = nextFallbackBlockLabel();
+            BasicBlock *nextBlk = &func->blocks[nextIdx];
+            if (nextBlk->label.empty())
+                nextBlk->label = nextFallbackBlockLabel();
+
+            ctx.setCurrent(checkBlk);
+            curLoc = stmt.arms[i].range.begin;
+            Value labelValue = emitConstStr(getStringLabel(labels[j]));
+            Value cond = emitCallRet(ilBoolTy(), "rt_str_eq", {stringSelector, labelValue});
+            emitCBr(cond, trueTarget, nextBlk);
+
+            checkIdx = nextIdx;
+            emittedComparison = true;
+        }
+    }
+
+    if (!emittedComparison)
+    {
+        ctx.setCurrent(&func->blocks[blocks.currentIdx]);
+        emitBr(defaultBlk);
+        checkIdx = blocks.elseIdx ? *blocks.elseIdx : blocks.endIdx;
+    }
+
+    ctx.setCurrent(&ctx.function()->blocks[checkIdx]);
+}
+
+size_t Lowerer::lowerSelectCaseNumericDispatch(const SelectCaseStmt &stmt,
+                                               const SelectCaseBlocks &blocks,
+                                               Value selWide,
+                                               bool hasRanges,
+                                               size_t totalRangeCount)
+{
+    ProcedureContext &ctx = context();
+    Function *func = ctx.function();
+    BlockNamer *blockNamer = ctx.blockNames().namer();
+
+    struct RangeCheck
+    {
+        int32_t lo;
+        int32_t hi;
+        size_t armIndex;
+    };
+    std::vector<RangeCheck> rangeChecks;
+    rangeChecks.reserve(totalRangeCount);
+    for (size_t i = 0; i < stmt.arms.size(); ++i)
+    {
+        for (const auto &range : stmt.arms[i].ranges)
+        {
+            rangeChecks.push_back(RangeCheck{static_cast<int32_t>(range.first),
+                                             static_cast<int32_t>(range.second),
+                                             i});
+        }
+    }
+
+    struct RelCheck
+    {
+        const CaseArm::CaseRel *rel;
+        size_t armIndex;
+    };
+    std::vector<RelCheck> relChecks;
+    for (size_t i = 0; i < stmt.arms.size(); ++i)
+    {
+        for (const auto &rel : stmt.arms[i].rels)
+            relChecks.push_back(RelCheck{&rel, i});
+    }
+
+    size_t switchIdx = blocks.switchIdx;
+    size_t afterRelIdx = blocks.currentIdx;
+    if (!relChecks.empty())
+    {
+        size_t checkIdx = blocks.currentIdx;
+        for (const auto &check : relChecks)
+        {
+            func = ctx.function();
+            BasicBlock *checkBlk = &func->blocks[checkIdx];
+            std::string label = blockNamer ? blockNamer->generic("select_rel") : mangler.block("select_rel");
+            builder->addBlock(*func, label);
+            func = ctx.function();
+            size_t nextIdx = func->blocks.size() - 1;
+            checkBlk = &func->blocks[checkIdx];
+            BasicBlock *trueTarget = &func->blocks[blocks.armIdx[check.armIndex]];
+            if (trueTarget->label.empty())
+                trueTarget->label = nextFallbackBlockLabel();
+            BasicBlock *nextBlk = &func->blocks[nextIdx];
+            if (nextBlk->label.empty())
+                nextBlk->label = nextFallbackBlockLabel();
+            ctx.setCurrent(checkBlk);
+            curLoc = stmt.arms[check.armIndex].range.begin;
+            Opcode cmpOp = Opcode::ICmpEq;
+            switch (check.rel->op)
+            {
+                case CaseArm::CaseRel::Op::LT:
+                    cmpOp = Opcode::SCmpLT;
+                    break;
+                case CaseArm::CaseRel::Op::LE:
+                    cmpOp = Opcode::SCmpLE;
+                    break;
+                case CaseArm::CaseRel::Op::EQ:
+                    cmpOp = Opcode::ICmpEq;
+                    break;
+                case CaseArm::CaseRel::Op::GE:
+                    cmpOp = Opcode::SCmpGE;
+                    break;
+                case CaseArm::CaseRel::Op::GT:
+                    cmpOp = Opcode::SCmpGT;
+                    break;
+            }
+            Value rhs = Value::constInt(static_cast<long long>(check.rel->rhs));
+            Value cond = emitBinary(cmpOp, ilBoolTy(), selWide, rhs);
+            emitCBr(cond, trueTarget, nextBlk);
+            checkIdx = nextIdx;
+        }
+        afterRelIdx = checkIdx;
+    }
+
+    ctx.setCurrent(&ctx.function()->blocks[afterRelIdx]);
+
+    if (!hasRanges)
+        switchIdx = afterRelIdx;
+
+    size_t rangeBlockIdx = afterRelIdx;
+    for (size_t idx = 0; idx < rangeChecks.size(); ++idx)
+    {
+        func = ctx.function();
+        const RangeCheck &check = rangeChecks[idx];
+        BasicBlock *rangeBlk = &func->blocks[rangeBlockIdx];
+        BasicBlock *trueTarget = &func->blocks[blocks.armIdx[check.armIndex]];
+        if (trueTarget->label.empty())
+            trueTarget->label = nextFallbackBlockLabel();
+
+        size_t nextIdx;
+        if (idx + 1 < rangeChecks.size())
+        {
+            std::string label = blockNamer ? blockNamer->generic("select_range") : mangler.block("select_range");
+            builder->addBlock(*func, label);
+            func = ctx.function();
+            nextIdx = func->blocks.size() - 1;
+        }
+        else
+        {
+            nextIdx = switchIdx;
+        }
+
+        BasicBlock *nextBlk = &func->blocks[nextIdx];
+        if (nextBlk->label.empty())
+            nextBlk->label = nextFallbackBlockLabel();
+
+        ctx.setCurrent(rangeBlk);
+        curLoc = stmt.arms[check.armIndex].range.begin;
+        Value ge = emitBinary(Opcode::SCmpGE,
+                              ilBoolTy(),
+                              selWide,
+                              Value::constInt(static_cast<long long>(check.lo)));
+        Value le = emitBinary(Opcode::SCmpLE,
+                              ilBoolTy(),
+                              selWide,
+                              Value::constInt(static_cast<long long>(check.hi)));
+        Value cond = emitBinary(Opcode::And, ilBoolTy(), ge, le);
+        emitCBr(cond, trueTarget, nextBlk);
+
+        rangeBlockIdx = nextIdx;
+    }
+
+    ctx.setCurrent(&ctx.function()->blocks[switchIdx]);
+    return switchIdx;
+}
+
+void Lowerer::lowerSelectCaseBody(const std::vector<StmtPtr> &body,
+                                  BasicBlock *entry,
+                                  il::support::SourceLoc loc,
+                                  BasicBlock *endBlk)
+{
+    ProcedureContext &ctx = context();
+    ctx.setCurrent(entry);
+    for (const auto &node : body)
+    {
+        if (!node)
+            continue;
+        lowerStmt(*node);
+        BasicBlock *bodyCur = ctx.current();
+        if (!bodyCur || bodyCur->terminated)
+            break;
+    }
+
+    BasicBlock *bodyCur = ctx.current();
+    if (bodyCur && !bodyCur->terminated)
+    {
+        curLoc = loc;
+        emitBr(endBlk);
+    }
+}
+
 /// @brief Lower a SELECT CASE statement into a switch-based control flow graph.
 /// @param stmt SELECT CASE statement containing selector and CASE bodies.
-/// @details Evaluates the selector into an i32 SSA value, emits a SwitchI32 in the
-///          current block, and appends one block per CASE arm plus a default
-///          continuation for CASE ELSE (or fall-through when absent). Each arm
-///          body is lowered in its dedicated block, which jumps to the common
-///          exit when the body does not terminate.
+/// @details Evaluates the selector into an SSA value, allocates dedicated blocks for
+///          each CASE arm, emits string comparison chains or numeric dispatch, and
+///          funnels fall-through control into a shared exit block.
 void Lowerer::lowerSelectCase(const SelectCaseStmt &stmt)
 {
     if (!stmt.selector)
@@ -770,10 +1075,6 @@ void Lowerer::lowerSelectCase(const SelectCaseStmt &stmt)
     if (!func || !current)
         return;
 
-    size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
-
-    BlockNamer *blockNamer = ctx.blockNames().namer();
-
     bool hasRanges = false;
     size_t totalRangeCount = 0;
     for (const auto &arm : stmt.arms)
@@ -785,338 +1086,76 @@ void Lowerer::lowerSelectCase(const SelectCaseStmt &stmt)
         }
     }
 
-    size_t startIdx = func->blocks.size();
-
-    std::vector<size_t> armIdx(stmt.arms.size());
-    for (size_t i = 0; i < stmt.arms.size(); ++i)
-    {
-        std::string label =
-            blockNamer ? blockNamer->generic("select_arm") : mangler.block("select_arm_" + std::to_string(i));
-        builder->addBlock(*func, label);
-    }
-
     bool hasCaseElse = !stmt.elseBody.empty();
-    std::optional<size_t> elseIdx;
-    if (hasCaseElse)
-    {
-        std::string defaultLabel =
-            blockNamer ? blockNamer->generic("select_default") : mangler.block("select_default");
-        builder->addBlock(*func, defaultLabel);
-        elseIdx = startIdx + stmt.arms.size();
-    }
-
-    size_t switchIdx = curIdx;
-    if (hasRanges)
-    {
-        std::string dispatchLabel =
-            blockNamer ? blockNamer->generic("select_dispatch") : mangler.block("select_dispatch");
-        builder->addBlock(*func, dispatchLabel);
-        switchIdx = startIdx + stmt.arms.size() + (hasCaseElse ? 1 : 0);
-    }
-
-    std::string endLabel = blockNamer ? blockNamer->generic("select_end") : mangler.block("select_end");
-    builder->addBlock(*func, endLabel);
-
-    func = ctx.function();
-    current = &func->blocks[curIdx];
-    ctx.setCurrent(current);
-
-    for (size_t i = 0; i < stmt.arms.size(); ++i)
-        armIdx[i] = startIdx + i;
-    size_t endIdx = startIdx + stmt.arms.size() + (hasCaseElse ? 1 : 0) + (hasRanges ? 1 : 0);
+    SelectCaseBlocks blocks = prepareSelectCaseBlocks(stmt, hasCaseElse, hasRanges);
 
     if (selectorIsString)
     {
-        func = ctx.function();
-        BasicBlock *defaultBlk = hasCaseElse ? &func->blocks[*elseIdx] : &func->blocks[endIdx];
-        if (defaultBlk->label.empty())
-            defaultBlk->label = nextFallbackBlockLabel();
-
-        size_t checkIdx = curIdx;
-        ctx.setCurrent(&func->blocks[checkIdx]);
-        bool emittedComparison = false;
-
-        for (size_t i = 0; i < stmt.arms.size(); ++i)
-        {
-            const auto &labels = stmt.arms[i].str_labels;
-            if (labels.empty())
-                continue;
-
-            BasicBlock *armBlk = &func->blocks[armIdx[i]];
-            if (armBlk->label.empty())
-                armBlk->label = nextFallbackBlockLabel();
-
-            for (size_t j = 0; j < labels.size(); ++j)
-            {
-                bool moreComparisons = (j + 1 < labels.size());
-                if (!moreComparisons)
-                {
-                    for (size_t k = i + 1; k < stmt.arms.size(); ++k)
-                    {
-                        if (!stmt.arms[k].str_labels.empty())
-                        {
-                            moreComparisons = true;
-                            break;
-                        }
-                    }
-                }
-
-                size_t nextIdx;
-                if (moreComparisons)
-                {
-                    std::string checkLabel =
-                        blockNamer ? blockNamer->generic("select_check") : mangler.block("select_check");
-                    builder->addBlock(*func, checkLabel);
-                    func = ctx.function();
-                    nextIdx = func->blocks.size() - 1;
-                }
-                else
-                {
-                    nextIdx = hasCaseElse ? *elseIdx : endIdx;
-                }
-
-                BasicBlock *checkBlk = &func->blocks[checkIdx];
-                BasicBlock *trueTarget = &func->blocks[armIdx[i]];
-                if (trueTarget->label.empty())
-                    trueTarget->label = nextFallbackBlockLabel();
-                BasicBlock *nextBlk = &func->blocks[nextIdx];
-                if (nextBlk->label.empty())
-                    nextBlk->label = nextFallbackBlockLabel();
-
-                ctx.setCurrent(checkBlk);
-                curLoc = stmt.arms[i].range.begin;
-                Value labelValue = emitConstStr(getStringLabel(labels[j]));
-                Value cond = emitCallRet(ilBoolTy(), "rt_str_eq", {stringSelector, labelValue});
-                emitCBr(cond, trueTarget, nextBlk);
-
-                checkIdx = nextIdx;
-                emittedComparison = true;
-            }
-        }
-
-        if (!emittedComparison)
-        {
-            ctx.setCurrent(&func->blocks[curIdx]);
-            emitBr(defaultBlk);
-            checkIdx = hasCaseElse ? *elseIdx : endIdx;
-        }
-
-        ctx.setCurrent(&func->blocks[checkIdx]);
+        lowerSelectCaseStringArms(stmt, blocks, stringSelector);
     }
     else
     {
-        struct RangeCheck
-        {
-            int32_t lo;
-            int32_t hi;
-            size_t armIndex;
-        };
-        std::vector<RangeCheck> rangeChecks;
-        rangeChecks.reserve(totalRangeCount);
-        for (size_t i = 0; i < stmt.arms.size(); ++i)
-        {
-            for (const auto &range : stmt.arms[i].ranges)
-            {
-                rangeChecks.push_back(RangeCheck{static_cast<int32_t>(range.first),
-                                                 static_cast<int32_t>(range.second),
-                                                 i});
-            }
-        }
-
-        struct RelCheck
-        {
-            const CaseArm::CaseRel *rel;
-            size_t armIndex;
-        };
-        std::vector<RelCheck> relChecks;
-        for (size_t i = 0; i < stmt.arms.size(); ++i)
-        {
-            for (const auto &rel : stmt.arms[i].rels)
-                relChecks.push_back(RelCheck{&rel, i});
-        }
-
-        size_t afterRelIdx = curIdx;
-        if (!relChecks.empty())
-        {
-            size_t checkIdx = curIdx;
-            for (const auto &check : relChecks)
-            {
-                func = ctx.function();
-                BasicBlock *checkBlk = &func->blocks[checkIdx];
-                std::string label = blockNamer ? blockNamer->generic("select_rel") : mangler.block("select_rel");
-                builder->addBlock(*func, label);
-                func = ctx.function();
-                size_t nextIdx = func->blocks.size() - 1;
-                checkBlk = &func->blocks[checkIdx];
-                BasicBlock *trueTarget = &func->blocks[armIdx[check.armIndex]];
-                if (trueTarget->label.empty())
-                    trueTarget->label = nextFallbackBlockLabel();
-                BasicBlock *nextBlk = &func->blocks[nextIdx];
-                if (nextBlk->label.empty())
-                    nextBlk->label = nextFallbackBlockLabel();
-                ctx.setCurrent(checkBlk);
-                curLoc = stmt.arms[check.armIndex].range.begin;
-                Opcode cmpOp = Opcode::ICmpEq;
-                switch (check.rel->op)
-                {
-                    case CaseArm::CaseRel::Op::LT:
-                        cmpOp = Opcode::SCmpLT;
-                        break;
-                    case CaseArm::CaseRel::Op::LE:
-                        cmpOp = Opcode::SCmpLE;
-                        break;
-                    case CaseArm::CaseRel::Op::EQ:
-                        cmpOp = Opcode::ICmpEq;
-                        break;
-                    case CaseArm::CaseRel::Op::GE:
-                        cmpOp = Opcode::SCmpGE;
-                        break;
-                    case CaseArm::CaseRel::Op::GT:
-                        cmpOp = Opcode::SCmpGT;
-                        break;
-                }
-                Value rhs = Value::constInt(static_cast<long long>(check.rel->rhs));
-                Value cond = emitBinary(cmpOp, ilBoolTy(), selWide, rhs);
-                emitCBr(cond, trueTarget, nextBlk);
-                checkIdx = nextIdx;
-            }
-            afterRelIdx = checkIdx;
-        }
-
-        ctx.setCurrent(&ctx.function()->blocks[afterRelIdx]);
+        size_t switchIdx = lowerSelectCaseNumericDispatch(stmt, blocks, selWide, hasRanges, totalRangeCount);
+        func = ctx.function();
+        ctx.setCurrent(&func->blocks[switchIdx]);
         current = ctx.current();
 
-        if (!hasRanges)
-            switchIdx = afterRelIdx;
+        std::vector<std::pair<int32_t, BasicBlock *>> caseTargets;
+        size_t labelCount = 0;
+        for (const auto &arm : stmt.arms)
+            labelCount += arm.labels.size();
+        caseTargets.reserve(labelCount);
 
-        size_t rangeBlockIdx = afterRelIdx;
-        for (size_t idx = 0; idx < rangeChecks.size(); ++idx)
+        for (size_t i = 0; i < stmt.arms.size(); ++i)
         {
-            func = ctx.function();
-            const RangeCheck &check = rangeChecks[idx];
-            BasicBlock *rangeBlk = &func->blocks[rangeBlockIdx];
-            BasicBlock *trueTarget = &func->blocks[armIdx[check.armIndex]];
-            if (trueTarget->label.empty())
-                trueTarget->label = nextFallbackBlockLabel();
-
-            size_t nextIdx;
-            if (idx + 1 < rangeChecks.size())
+            BasicBlock *armBlk = &func->blocks[blocks.armIdx[i]];
+            if (armBlk->label.empty())
+                armBlk->label = nextFallbackBlockLabel();
+            for (int64_t rawLabel : stmt.arms[i].labels)
             {
-                std::string label =
-                    blockNamer ? blockNamer->generic("select_range") : mangler.block("select_range");
-                builder->addBlock(*func, label);
-                func = ctx.function();
-                nextIdx = func->blocks.size() - 1;
+                int32_t narrowed = static_cast<int32_t>(rawLabel);
+                caseTargets.emplace_back(narrowed, armBlk);
             }
-            else
-            {
-                nextIdx = switchIdx;
-            }
-
-            BasicBlock *nextBlk = &func->blocks[nextIdx];
-            if (nextBlk->label.empty())
-                nextBlk->label = nextFallbackBlockLabel();
-
-            ctx.setCurrent(rangeBlk);
-            curLoc = stmt.arms[check.armIndex].range.begin;
-            Value ge = emitBinary(Opcode::SCmpGE,
-                                  ilBoolTy(),
-                                  selWide,
-                                  Value::constInt(static_cast<long long>(check.lo)));
-            Value le = emitBinary(Opcode::SCmpLE,
-                                  ilBoolTy(),
-                                  selWide,
-                                  Value::constInt(static_cast<long long>(check.hi)));
-            Value cond = emitBinary(Opcode::And, ilBoolTy(), ge, le);
-            emitCBr(cond, trueTarget, nextBlk);
-
-            rangeBlockIdx = nextIdx;
         }
 
-        if (hasRanges)
+        Instr sw;
+        sw.op = Opcode::SwitchI32;
+        sw.type = Type(Type::Kind::Void);
+        sw.operands.push_back(sel);
+
+        BasicBlock *caseElseBlk = hasCaseElse ? &func->blocks[*blocks.elseIdx] : &func->blocks[blocks.endIdx];
+        if (caseElseBlk->label.empty())
+            caseElseBlk->label = nextFallbackBlockLabel();
+        sw.labels.push_back(caseElseBlk->label);
+        sw.brArgs.emplace_back();
+
+        for (const auto &[value, target] : caseTargets)
         {
-            ctx.setCurrent(&ctx.function()->blocks[switchIdx]);
-            current = ctx.current();
+            if (target->label.empty())
+                target->label = nextFallbackBlockLabel();
+            sw.operands.push_back(Value::constInt(static_cast<long long>(value)));
+            sw.labels.push_back(target->label);
+            sw.brArgs.emplace_back();
         }
+        sw.loc = stmt.loc;
+        current->instructions.push_back(std::move(sw));
+        current->terminated = true;
     }
 
     func = ctx.function();
-    BasicBlock *caseElseBlk = hasCaseElse ? &func->blocks[*elseIdx] : nullptr;
-    BasicBlock *endBlk = &func->blocks[endIdx];
-
-    if (!selectorIsString)
-    {
-            std::vector<std::pair<int32_t, BasicBlock *>> caseTargets;
-            size_t labelCount = 0;
-            for (const auto &arm : stmt.arms)
-                labelCount += arm.labels.size();
-            caseTargets.reserve(labelCount);
-
-            for (size_t i = 0; i < stmt.arms.size(); ++i)
-            {
-                BasicBlock *armBlk = &func->blocks[armIdx[i]];
-                if (armBlk->label.empty())
-                    armBlk->label = nextFallbackBlockLabel();
-                for (int64_t rawLabel : stmt.arms[i].labels)
-                {
-                    int32_t narrowed = static_cast<int32_t>(rawLabel);
-                    caseTargets.emplace_back(narrowed, armBlk);
-                }
-            }
-
-            Instr sw;
-            sw.op = Opcode::SwitchI32;
-            sw.type = Type(Type::Kind::Void);
-            sw.operands.push_back(sel);
-
-            BasicBlock *defaultTarget = hasCaseElse ? caseElseBlk : endBlk;
-            if (defaultTarget->label.empty())
-                defaultTarget->label = nextFallbackBlockLabel();
-            sw.labels.push_back(defaultTarget->label);
-            sw.brArgs.emplace_back();
-
-            for (const auto &[value, target] : caseTargets)
-            {
-                if (target->label.empty())
-                    target->label = nextFallbackBlockLabel();
-                sw.operands.push_back(Value::constInt(static_cast<long long>(value)));
-                sw.labels.push_back(target->label);
-                sw.brArgs.emplace_back();
-            }
-            sw.loc = stmt.loc;
-            current->instructions.push_back(std::move(sw));
-            current->terminated = true;
-    }
-
-    auto lowerBodyToEnd = [&](BasicBlock *block,
-                              const std::vector<StmtPtr> &body,
-                              il::support::SourceLoc loc) {
-        ctx.setCurrent(block);
-        for (const auto &node : body)
-        {
-            if (!node)
-                continue;
-            lowerStmt(*node);
-            BasicBlock *bodyCur = ctx.current();
-            if (!bodyCur || bodyCur->terminated)
-                break;
-        }
-        BasicBlock *bodyCur = ctx.current();
-        if (bodyCur && !bodyCur->terminated)
-        {
-            curLoc = loc;
-            emitBr(endBlk);
-        }
-    };
+    BasicBlock *endBlk = &func->blocks[blocks.endIdx];
 
     for (size_t i = 0; i < stmt.arms.size(); ++i)
     {
-        BasicBlock *armBlk = &func->blocks[armIdx[i]];
-        lowerBodyToEnd(armBlk, stmt.arms[i].body, stmt.arms[i].range.begin);
+        BasicBlock *armBlk = &func->blocks[blocks.armIdx[i]];
+        lowerSelectCaseBody(stmt.arms[i].body, armBlk, stmt.arms[i].range.begin, endBlk);
     }
 
     if (hasCaseElse)
-        lowerBodyToEnd(caseElseBlk, stmt.elseBody, stmt.range.end);
+    {
+        BasicBlock *caseElseBlk = &func->blocks[*blocks.elseIdx];
+        lowerSelectCaseBody(stmt.elseBody, caseElseBlk, stmt.range.end, endBlk);
+    }
 
     ctx.setCurrent(endBlk);
 }
