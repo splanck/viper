@@ -1,22 +1,18 @@
 // File: src/il/transform/PassManager.hpp
-// Purpose: Declare a modular IL pass manager with analysis caching and pipelines.
-// Key invariants: Pass registration IDs are unique; analysis caches respect preservation info.
-// Ownership/Lifetime: PassManager stores factories and analysis descriptors with static lifetime.
+// Purpose: Declare the IL pass manager responsible for orchestrating pipelines.
+// Key invariants: Pipelines execute registered passes in order with consistent verification semantics.
+// Ownership/Lifetime: PassManager owns pass/analysis registries and borrows modules during execution.
 // Links: docs/codemap.md
 #pragma once
 
 #include "il/core/fwd.hpp"
+#include "il/transform/AnalysisManager.hpp"
+#include "il/transform/PassRegistry.hpp"
 
-#include <any>
-#include <cassert>
-#include <cstddef>
 #include <functional>
-#include <memory>
 #include <string>
-#include <string_view>
-#include <typeindex>
 #include <unordered_map>
-#include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace il::transform
@@ -24,274 +20,65 @@ namespace il::transform
 
 struct SimplifyCFG;
 
-/// @brief Cached control-flow information for a function.
-struct CFGInfo
-{
-    std::unordered_map<const core::BasicBlock *, std::vector<const core::BasicBlock *>> successors;
-    std::unordered_map<const core::BasicBlock *, std::vector<const core::BasicBlock *>>
-        predecessors;
-};
+class PipelineExecutor;
 
-/// @brief Cached liveness sets (live-in/live-out) for each block.
-class LivenessInfo
-{
-  public:
-    /// @brief Lightweight view over the live value bitset for a block edge.
-    class SetView
-    {
-      public:
-        SetView() = default;
-
-        /// @brief Query whether a value identifier is marked live.
-        /// @param valueId Dense identifier for the SSA value.
-        /// @return True when the identifier is within range and flagged live.
-        bool contains(unsigned valueId) const;
-
-        /// @brief Visit every live value identifier in the set.
-        /// @tparam Fn Callable invoked with each live value identifier.
-        template <typename Fn> void forEach(Fn &&fn) const
-        {
-            if (!bits_)
-                return;
-            for (unsigned id = 0; id < bits_->size(); ++id)
-            {
-                if ((*bits_)[id])
-                    fn(id);
-            }
-        }
-
-        /// @brief Check whether the set contains any live values.
-        /// @return True when no value bits are set.
-        bool empty() const;
-
-        /// @brief Access the underlying bitset for integration tests or debugging.
-        /// @return Reference to the immutable bitset representation.
-        const std::vector<bool> &bits() const;
-
-      private:
-        explicit SetView(const std::vector<bool> *bits);
-
-        const std::vector<bool> *bits_ = nullptr;
-
-        friend class LivenessInfo;
-    };
-
-    /// @brief Retrieve the live-in set for @p block.
-    /// @param block Basic block whose entry set is requested.
-    /// @return Lightweight view over the live-in values.
-    SetView liveIn(const core::BasicBlock &block) const;
-
-    /// @brief Retrieve the live-in set for @p block.
-    /// @param block Basic block pointer whose entry set is requested.
-    /// @return Lightweight view over the live-in values.
-    SetView liveIn(const core::BasicBlock *block) const;
-
-    /// @brief Retrieve the live-out set for @p block.
-    /// @param block Basic block whose exit set is requested.
-    /// @return Lightweight view over the live-out values.
-    SetView liveOut(const core::BasicBlock &block) const;
-
-    /// @brief Retrieve the live-out set for @p block pointer.
-    /// @param block Basic block pointer whose exit set is requested.
-    /// @return Lightweight view over the live-out values.
-    SetView liveOut(const core::BasicBlock *block) const;
-
-    /// @brief Number of dense SSA value slots tracked by this liveness summary.
-    /// @return Count of bits allocated per block.
-    std::size_t valueCount() const;
-
-  private:
-    using BitSet = std::vector<bool>;
-
-    std::size_t valueCount_{0};
-    std::unordered_map<const core::BasicBlock *, BitSet> liveInBits_;
-    std::unordered_map<const core::BasicBlock *, BitSet> liveOutBits_;
-
-    friend LivenessInfo computeLiveness(core::Module &module, core::Function &fn);
-    friend LivenessInfo computeLiveness(core::Module &module,
-                                        core::Function &fn,
-                                        const CFGInfo &cfg);
-};
-
-LivenessInfo computeLiveness(core::Module &module, core::Function &fn);
-LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFGInfo &cfg);
-
-/// @brief Tracks which analyses remain valid after a pass executes.
-class PreservedAnalyses
-{
-  public:
-    static PreservedAnalyses all();
-    static PreservedAnalyses none();
-
-    PreservedAnalyses &preserveModule(const std::string &id);
-    PreservedAnalyses &preserveFunction(const std::string &id);
-    PreservedAnalyses &preserveAllModules();
-    PreservedAnalyses &preserveAllFunctions();
-
-    bool preservesAllModuleAnalyses() const;
-    bool preservesAllFunctionAnalyses() const;
-    bool isModulePreserved(const std::string &id) const;
-    bool isFunctionPreserved(const std::string &id) const;
-    bool hasModulePreservations() const;
-    bool hasFunctionPreservations() const;
-
-  private:
-    bool preserveAllModules_ = false;
-    bool preserveAllFunctions_ = false;
-    std::unordered_set<std::string> moduleAnalyses_;
-    std::unordered_set<std::string> functionAnalyses_;
-};
-
-class AnalysisManager;
-
-/// @brief Abstract base class for module-level passes.
-class ModulePass
-{
-  public:
-    virtual ~ModulePass() = default;
-    virtual std::string_view id() const = 0;
-    virtual PreservedAnalyses run(core::Module &module, AnalysisManager &analysis) = 0;
-};
-
-/// @brief Abstract base class for function-level passes executed per function.
-class FunctionPass
-{
-  public:
-    virtual ~FunctionPass() = default;
-    virtual std::string_view id() const = 0;
-    virtual PreservedAnalyses run(core::Function &function, AnalysisManager &analysis) = 0;
-};
-
-namespace detail
-{
-struct ModuleAnalysisRecord
-{
-    std::function<std::any(core::Module &)> compute;
-    std::type_index type{typeid(void)};
-};
-
-struct FunctionAnalysisRecord
-{
-    std::function<std::any(core::Module &, core::Function &)> compute;
-    std::type_index type{typeid(void)};
-};
-
-enum class PassKind
-{
-    Module,
-    Function
-};
-
-struct PassFactory
-{
-    PassKind kind;
-    std::function<std::unique_ptr<ModulePass>()> makeModule;
-    std::function<std::unique_ptr<FunctionPass>()> makeFunction;
-};
-} // namespace detail
-
-using ModuleAnalysisMap = std::unordered_map<std::string, detail::ModuleAnalysisRecord>;
-using FunctionAnalysisMap = std::unordered_map<std::string, detail::FunctionAnalysisRecord>;
-
-/// @brief Provides access to registered analyses with caching.
-class AnalysisManager
-{
-  public:
-    AnalysisManager(core::Module &module,
-                    const ModuleAnalysisMap &moduleAnalyses,
-                    const FunctionAnalysisMap &functionAnalyses);
-
-    template <typename Result> Result &getModuleResult(const std::string &id)
-    {
-        assert(moduleAnalyses_ && "no module analyses registered");
-        auto it = moduleAnalyses_->find(id);
-        assert(it != moduleAnalyses_->end() && "unknown module analysis");
-        std::any &cache = moduleCache_[id];
-        if (!cache.has_value())
-            cache = it->second.compute(module_);
-        assert(it->second.type == std::type_index(typeid(Result)) &&
-               "analysis result type mismatch");
-        auto *value = std::any_cast<Result>(&cache);
-        assert(value && "analysis result cast failed");
-        return *value;
-    }
-
-    template <typename Result> Result &getFunctionResult(const std::string &id, core::Function &fn)
-    {
-        assert(functionAnalyses_ && "no function analyses registered");
-        auto it = functionAnalyses_->find(id);
-        assert(it != functionAnalyses_->end() && "unknown function analysis");
-        std::any &cache = functionCache_[id][&fn];
-        if (!cache.has_value())
-            cache = it->second.compute(module_, fn);
-        assert(it->second.type == std::type_index(typeid(Result)) &&
-               "analysis result type mismatch");
-        auto *value = std::any_cast<Result>(&cache);
-        assert(value && "analysis result cast failed");
-        return *value;
-    }
-
-    void invalidateAfterModulePass(const PreservedAnalyses &preserved);
-    void invalidateAfterFunctionPass(const PreservedAnalyses &preserved, core::Function &fn);
-
-    core::Module &module() { return module_; }
-    const core::Module &module() const { return module_; }
-
-  private:
-    core::Module &module_;
-    const ModuleAnalysisMap *moduleAnalyses_;
-    const FunctionAnalysisMap *functionAnalyses_;
-    std::unordered_map<std::string, std::any> moduleCache_;
-    std::unordered_map<std::string, std::unordered_map<const core::Function *, std::any>>
-        functionCache_;
-};
-
-/// @brief Coordinates pass execution, analysis caching, and pipelines.
 class PassManager
 {
   public:
     using Pipeline = std::vector<std::string>;
-    using ModulePassFactory = std::function<std::unique_ptr<ModulePass>()>;
-    using FunctionPassFactory = std::function<std::unique_ptr<FunctionPass>()>;
-    using ModulePassCallback = std::function<PreservedAnalyses(core::Module &, AnalysisManager &)>;
-    using FunctionPassCallback =
-        std::function<PreservedAnalyses(core::Function &, AnalysisManager &)>;
 
     PassManager();
+
+    PassRegistry &passes() { return passRegistry_; }
+    const PassRegistry &passes() const { return passRegistry_; }
+
+    AnalysisRegistry &analyses() { return analysisRegistry_; }
+    const AnalysisRegistry &analyses() const { return analysisRegistry_; }
 
     template <typename Result>
     void registerModuleAnalysis(const std::string &id, std::function<Result(core::Module &)> fn)
     {
-        moduleAnalyses_[id] = detail::ModuleAnalysisRecord{
-            [fn = std::move(fn)](core::Module &module) -> std::any { return fn(module); },
-            std::type_index(typeid(Result))};
+        analysisRegistry_.registerModuleAnalysis<Result>(id, std::move(fn));
     }
 
     template <typename Result>
     void registerFunctionAnalysis(const std::string &id,
                                   std::function<Result(core::Module &, core::Function &)> fn)
     {
-        functionAnalyses_[id] = detail::FunctionAnalysisRecord{
-            [fn = std::move(fn)](core::Module &module, core::Function &fnRef) -> std::any
-            { return fn(module, fnRef); },
-            std::type_index(typeid(Result))};
+        analysisRegistry_.registerFunctionAnalysis<Result>(id, std::move(fn));
     }
 
-    void registerModulePass(const std::string &id, ModulePassFactory factory);
-    void registerModulePass(const std::string &id, ModulePassCallback callback);
-    void registerModulePass(const std::string &id, const std::function<void(core::Module &)> &fn);
+    void registerModulePass(const std::string &id, PassRegistry::ModulePassFactory factory)
+    {
+        passRegistry_.registerModulePass(id, std::move(factory));
+    }
 
-    void registerFunctionPass(const std::string &id, FunctionPassFactory factory);
-    void registerFunctionPass(const std::string &id, FunctionPassCallback callback);
+    void registerModulePass(const std::string &id, PassRegistry::ModulePassCallback callback)
+    {
+        passRegistry_.registerModulePass(id, std::move(callback));
+    }
+
+    void registerModulePass(const std::string &id, const std::function<void(core::Module &)> &fn)
+    {
+        passRegistry_.registerModulePass(id, fn);
+    }
+
+    void registerFunctionPass(const std::string &id, PassRegistry::FunctionPassFactory factory)
+    {
+        passRegistry_.registerFunctionPass(id, std::move(factory));
+    }
+
+    void registerFunctionPass(const std::string &id, PassRegistry::FunctionPassCallback callback)
+    {
+        passRegistry_.registerFunctionPass(id, std::move(callback));
+    }
+
     void registerFunctionPass(const std::string &id,
-                              const std::function<void(core::Function &)> &fn);
+                              const std::function<void(core::Function &)> &fn)
+    {
+        passRegistry_.registerFunctionPass(id, fn);
+    }
 
-    /// @brief Register and expose the CFG simplification function pass.
-    /// @details Installs a function-level pass under the `simplify-cfg`
-    /// identifier that constructs @ref SimplifyCFG with the provided
-    /// aggressiveness and executes it for every function in a module. The pass
-    /// is automatically available to pipelines via the registered identifier.
-    /// @param aggressive Enable more aggressive canonicalisations when true.
     void addSimplifyCFG(bool aggressive = true);
 
     void registerPipeline(const std::string &id, Pipeline pipeline);
@@ -303,11 +90,11 @@ class PassManager
     bool runPipeline(core::Module &module, const std::string &pipelineId) const;
 
   private:
-    ModuleAnalysisMap moduleAnalyses_;
-    FunctionAnalysisMap functionAnalyses_;
-    std::unordered_map<std::string, detail::PassFactory> passRegistry_;
+    AnalysisRegistry analysisRegistry_;
+    PassRegistry passRegistry_;
     std::unordered_map<std::string, Pipeline> pipelines_;
-    bool verifyBetweenPasses_;
+    bool verifyBetweenPasses_ = false;
 };
 
 } // namespace il::transform
+

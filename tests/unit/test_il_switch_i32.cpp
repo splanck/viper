@@ -13,6 +13,7 @@
 #include "il/transform/DCE.hpp"
 #include "il/transform/Mem2Reg.hpp"
 #include "il/transform/PassManager.hpp"
+#include "il/transform/analysis/Liveness.hpp"
 
 #include <algorithm>
 #include <cassert>

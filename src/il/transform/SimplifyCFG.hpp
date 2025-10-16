@@ -8,7 +8,6 @@
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Module.hpp"
-#include "il/transform/PassManager.hpp"
 
 #include <string_view>
 
