@@ -35,6 +35,10 @@ struct ProcedureLowering;
 struct StatementLowering;
 class DiagnosticEmitter;
 
+struct LogicalExprLowering;
+struct NumericExprLowering;
+struct BuiltinExprLowering;
+
 namespace builtins
 {
 class LowerCtx;
@@ -74,6 +78,9 @@ class Lowerer
     friend struct ProgramLowering;
     friend struct ProcedureLowering;
     friend struct StatementLowering;
+    friend struct LogicalExprLowering;
+    friend struct NumericExprLowering;
+    friend struct BuiltinExprLowering;
     friend class builtins::LowerCtx;
 
     using Module = il::core::Module;
@@ -110,14 +117,15 @@ class Lowerer
     /// @brief Aggregated metadata for a BASIC symbol.
     struct SymbolInfo
     {
-        AstType type{AstType::I64};      ///< BASIC type derived from declarations or suffixes.
-        bool hasType{false};             ///< True when @ref type was explicitly recorded.
-        bool isArray{false};             ///< True when symbol refers to an array.
-        bool isBoolean{false};           ///< True when scalar bool storage is required.
-        bool referenced{false};          ///< Tracks whether lowering observed the symbol.
-        std::optional<unsigned> slotId;  ///< Stack slot id for the variable when materialized.
-        std::optional<unsigned> arrayLengthSlot; ///< Optional slot for array length (bounds checks).
-        std::string stringLabel;         ///< Cached label for deduplicated string literals.
+        AstType type{AstType::I64};     ///< BASIC type derived from declarations or suffixes.
+        bool hasType{false};            ///< True when @ref type was explicitly recorded.
+        bool isArray{false};            ///< True when symbol refers to an array.
+        bool isBoolean{false};          ///< True when scalar bool storage is required.
+        bool referenced{false};         ///< Tracks whether lowering observed the symbol.
+        std::optional<unsigned> slotId; ///< Stack slot id for the variable when materialized.
+        std::optional<unsigned>
+            arrayLengthSlot;     ///< Optional slot for array length (bounds checks).
+        std::string stringLabel; ///< Cached label for deduplicated string literals.
     };
 
   private:
@@ -131,8 +139,8 @@ class Lowerer
     /// @brief Cached signature for a user-defined procedure.
     struct ProcedureSignature
     {
-        Type retType{Type(Type::Kind::I64)};           ///< Declared return type.
-        std::vector<Type> paramTypes;                  ///< Declared parameter types.
+        Type retType{Type(Type::Kind::I64)}; ///< Declared return type.
+        std::vector<Type> paramTypes;        ///< Declared parameter types.
     };
 
   private:
@@ -417,8 +425,7 @@ class Lowerer
                                 const std::string &name,
                                 const ProcedureMetadata &metadata);
 
-    void allocateLocalSlots(const std::unordered_set<std::string> &paramNames,
-                            bool includeParams);
+    void allocateLocalSlots(const std::unordered_set<std::string> &paramNames, bool includeParams);
 
     void lowerStatementSequence(const std::vector<const Stmt *> &stmts,
                                 bool stopOnTerminated,
@@ -440,10 +447,10 @@ class Lowerer
     /// @brief Configuration shared by FUNCTION and SUB lowering.
     struct ProcedureConfig
     {
-        Type retType{Type(Type::Kind::Void)};          ///< IL return type for the procedure.
-        std::function<void()> postCollect;             ///< Hook after variable discovery.
-        std::function<void()> emitEmptyBody;           ///< Emit return path for empty bodies.
-        std::function<void()> emitFinalReturn;         ///< Emit return in the synthetic exit block.
+        Type retType{Type(Type::Kind::Void)};  ///< IL return type for the procedure.
+        std::function<void()> postCollect;     ///< Hook after variable discovery.
+        std::function<void()> emitEmptyBody;   ///< Emit return path for empty bodies.
+        std::function<void()> emitFinalReturn; ///< Emit return in the synthetic exit block.
     };
 
   private:
