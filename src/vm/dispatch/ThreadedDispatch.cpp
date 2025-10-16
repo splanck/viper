@@ -13,6 +13,49 @@ namespace detail
 {
 
 #if VIPER_THREADING_SUPPORTED
+namespace
+{
+struct ThreadedLoopState
+{
+    VMContext &context;
+    VM::ExecState &state;
+    const il::core::Instr *currentInstr = nullptr;
+    il::core::Opcode opcode = il::core::Opcode::Trap;
+};
+
+il::core::Opcode fetchThreadedOpcode(ThreadedLoopState &loopState)
+{
+    const il::core::Opcode next = loopState.context.fetchOpcode(loopState.state);
+    loopState.currentInstr = loopState.state.currentInstr;
+    loopState.opcode = next;
+    return next;
+}
+
+VM::ExecResult dispatchThreadedOp(ThreadedLoopState &loopState)
+{
+    return loopState.context.executeOpcode(loopState.state.fr,
+                                           *loopState.currentInstr,
+                                           loopState.state.blocks,
+                                           loopState.state.bb,
+                                           loopState.state.ip);
+}
+
+bool handleThreadedResult(ThreadedLoopState &loopState, const VM::ExecResult &result)
+{
+    loopState.context.handleInlineResult(loopState.state, result);
+    loopState.opcode = il::core::Opcode::Trap;
+    return loopState.state.exitRequested;
+}
+
+void *selectThreadedLabel(void *const *labels, size_t labelCount, il::core::Opcode opcode)
+{
+    size_t dispatchIndex = static_cast<size_t>(opcode);
+    if (dispatchIndex >= labelCount - 1)
+        dispatchIndex = labelCount - 1;
+    return labels[dispatchIndex];
+}
+} // namespace
+
 class ThreadedDispatchStrategy final : public DispatchStrategy
 {
   public:
@@ -22,34 +65,26 @@ class ThreadedDispatchStrategy final : public DispatchStrategy
         state.exitRequested = false;
         state.currentInstr = nullptr;
 
-        const il::core::Instr *currentInstr = nullptr;
-        il::core::Opcode opcode = il::core::Opcode::Trap;
+        ThreadedLoopState loopState{context, state};
 
-        auto fetchNextOpcode = [&]() -> il::core::Opcode {
-            const il::core::Opcode next = context.fetchOpcode(state);
-            currentInstr = state.currentInstr;
-            return next;
+        struct DispatchTable
+        {
+            void **labels;
+            size_t count;
         };
 
+        const DispatchTable dispatch = []() -> DispatchTable {
 #define OP_LABEL(name, ...) &&LBL_##name,
 #define IL_OPCODE(name, ...) OP_LABEL(name, __VA_ARGS__)
-        static void *kOpLabels[] = {
+            static void *labels[] = {
 #include "il/core/Opcode.def"
-            &&LBL_UNIMPL,
-        };
+                &&LBL_UNIMPL,
+            };
 #undef IL_OPCODE
 #undef OP_LABEL
-
-        static constexpr size_t kOpLabelCount = sizeof(kOpLabels) / sizeof(kOpLabels[0]);
-
-#define DISPATCH_TO(OPCODE_VALUE)                                                                           \
-    do                                                                                                      \
-    {                                                                                                       \
-        size_t dispatchIndex = static_cast<size_t>(OPCODE_VALUE);                                           \
-        if (dispatchIndex >= kOpLabelCount - 1)                                                             \
-            dispatchIndex = kOpLabelCount - 1;                                                              \
-        goto *kOpLabels[dispatchIndex];                                                                     \
-    } while (false)
+            static constexpr size_t labelCount = sizeof(labels) / sizeof(labels[0]);
+            return DispatchTable{labels, labelCount};
+        }();
 
 #define TRACE_STEP(INSTR_PTR)                                                                                \
     do                                                                                                       \
@@ -64,23 +99,22 @@ class ThreadedDispatchStrategy final : public DispatchStrategy
             context.clearCurrentContext();
             try
             {
-                opcode = fetchNextOpcode();
+                fetchThreadedOpcode(loopState);
                 if (state.exitRequested)
                     return true;
-                DISPATCH_TO(opcode);
+                goto *selectThreadedLabel(dispatch.labels, dispatch.count, loopState.opcode);
 
 #define OP_CASE(name, ...)                                                                                    \
     LBL_##name:                                                                                               \
     {                                                                                                         \
-        TRACE_STEP(currentInstr);                                                                             \
-        auto execResult = context.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);   \
-        context.handleInlineResult(state, execResult);                                                        \
+        TRACE_STEP(loopState.currentInstr);                                                                   \
+        auto execResult = dispatchThreadedOp(loopState);                                                      \
+        if (handleThreadedResult(loopState, execResult))                                                      \
+            return true;                                                                                      \
+        fetchThreadedOpcode(loopState);                                                                       \
         if (state.exitRequested)                                                                              \
             return true;                                                                                      \
-        opcode = fetchNextOpcode();                                                                           \
-        if (state.exitRequested)                                                                              \
-            return true;                                                                                      \
-        DISPATCH_TO(opcode);                                                                                  \
+        goto *selectThreadedLabel(dispatch.labels, dispatch.count, loopState.opcode);                        \
     }
 
 #define IL_OPCODE(name, ...) OP_CASE(name, __VA_ARGS__)
@@ -91,7 +125,7 @@ class ThreadedDispatchStrategy final : public DispatchStrategy
 
                 LBL_UNIMPL:
                 {
-                    context.trapUnimplemented(opcode);
+                    context.trapUnimplemented(loopState.opcode);
                 }
             }
             catch (const VM::TrapDispatchSignal &signal)
@@ -102,7 +136,6 @@ class ThreadedDispatchStrategy final : public DispatchStrategy
         }
 
 #undef TRACE_STEP
-#undef DISPATCH_TO
 
         return state.pendingResult.has_value();
     }
