@@ -98,7 +98,10 @@ target_include_directories(il_analysis PUBLIC
 )
 
 add_library(il_transform STATIC
+  il/transform/AnalysisManager.cpp
   il/transform/PassManager.cpp
+  il/transform/PassRegistry.cpp
+  il/transform/PipelineExecutor.cpp
   il/transform/Peephole.cpp
   il/transform/ConstFold.cpp
   il/transform/DCE.cpp
@@ -110,7 +113,8 @@ add_library(il_transform STATIC
   il/transform/SimplifyCFG/ParamCanonicalization.cpp
   il/transform/SimplifyCFG/PassContext.cpp
   il/transform/SimplifyCFG/ReachabilityCleanup.cpp
-  il/transform/SimplifyCFG/Utils.cpp)
+  il/transform/SimplifyCFG/Utils.cpp
+  il/transform/analysis/Liveness.cpp)
 target_link_libraries(il_transform
   PUBLIC
     viper_il_core
