@@ -595,13 +595,7 @@ bool VM::runLoopThreaded(ExecState &st)
 
         LBL_UNIMPL:
         {
-            const std::string funcName = st.fr.func ? st.fr.func->name : std::string("<unknown>");
-            RuntimeBridge::trap(TrapKind::InvalidOperation,
-                                "unimplemented opcode in threaded dispatch",
-                                {},
-                                funcName,
-                                "");
-            return false;
+            trapUnimplemented(op);
         }
     }
     catch (const TrapDispatchSignal &signal)
