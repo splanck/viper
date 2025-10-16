@@ -209,6 +209,26 @@ int main()
     {
         const std::string src =
             "10 SELECT CASE X\n"
+            "20 CASE ELSE\n"
+            "30 PRINT 0\n"
+            "40 END SELECT\n";
+        SourceManager sm;
+        const uint32_t fid = sm.addFile("else_without_case.bas");
+        DiagnosticEngine de;
+        DiagnosticEmitter emitter(de, sm);
+        emitter.addSource(fid, src);
+        Parser parser(src, fid, &emitter);
+        auto prog = parser.parseProgram();
+        assert(prog);
+        std::ostringstream oss;
+        emitter.printAll(oss);
+        const std::string output = oss.str();
+        assert(output.find("CASE ELSE requires a preceding CASE arm") != std::string::npos);
+    }
+
+    {
+        const std::string src =
+            "10 SELECT CASE X\n"
             "20 CASE 1\n"
             "30 PRINT 1\n";
         SourceManager sm;
