@@ -17,6 +17,7 @@ jobs:
       - name: Run basic string tests
         run: ctest --test-dir build --output-on-failure -R basic_strings
   build:
+    name: build (${{ matrix.os }}-${{ matrix.cc }}-threaded-${{ matrix.threaded }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -27,10 +28,17 @@ jobs:
             cc: clang
             cxx: clang++
             exclude_label: ""
+            threaded: OFF
+          - os: ubuntu-latest
+            cc: clang
+            cxx: clang++
+            exclude_label: ""
+            threaded: ON
           - os: ubuntu-latest
             cc: gcc
             cxx: g++
             exclude_label: ""
+            threaded: OFF
     env:
       CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}
@@ -44,7 +52,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest' && matrix.cc == 'clang'
         run: sudo apt-get install -y clang lld
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DIL_WARN_AS_ERROR=ON -DIL_USE_LLD=ON
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DIL_WARN_AS_ERROR=ON -DIL_USE_LLD=ON -DVIPER_VM_THREADED=${{ matrix.threaded }}
       - name: Build
         run: cmake --build build -j2
       - name: Test
