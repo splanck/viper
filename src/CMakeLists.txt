@@ -154,7 +154,9 @@ add_library(il_vm STATIC
   vm/DebugScript.cpp
   vm/Trace.cpp
   vm/mem_ops.cpp
-  vm/int_ops.cpp
+  vm/int_ops_arith.cpp
+  vm/int_ops_cmp.cpp
+  vm/int_ops_convert.cpp
   vm/fp_ops.cpp
   vm/control_flow.cpp)
 target_include_directories(il_vm PUBLIC

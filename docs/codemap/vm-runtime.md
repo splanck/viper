@@ -24,9 +24,9 @@
 
   Contains the VM’s floating-point arithmetic and comparison handlers, factoring operand evaluation into templated helpers that write back through `ops::storeResult`. Each opcode relies on host IEEE-754 semantics for doubles, ensuring NaNs and infinities propagate while comparisons return canonical 0/1 truth values. The helpers isolate frame mutation so arithmetic handlers remain side-effect free aside from updating the destination slot. Dependencies include `vm/OpHandlers.hpp`, `vm/OpHandlerUtils.hpp`, and IL instruction metadata.
 
-- **src/vm/int_ops.cpp**
+- **src/vm/int_ops_arith.cpp**, **src/vm/int_ops_cmp.cpp**, **src/vm/int_ops_convert.cpp**
 
-  Provides the integer arithmetic, bitwise, shift, and comparison handlers executed by the VM. Shared helpers evaluate operands once and encode the arithmetic or predicate rule, guaranteeing two’s complement wrap-around semantics align with the IL reference. Comparison results are normalized to IL booleans and stored via `ops::storeResult`, preserving invariants expected by later opcodes. Dependencies include `vm/OpHandlers.hpp`, `vm/OpHandlerUtils.hpp`, and IL instruction definitions.
+  Split integer opcode handlers into domain-specific translation units. Arithmetic covers addition, subtraction, multiplication, division, bitwise logic, and index guards, sharing overflow/divide-by-zero helpers via `IntOpSupport.hpp`. Comparison logic resides alongside predicate helpers while conversions handle range-checked casts, boolean normalisation, and integer-to-float operations. All variants reuse `ops::storeResult` and the shared support templates to preserve two’s complement semantics and trap behaviour.
 
 - **src/vm/mem_ops.cpp**
 
