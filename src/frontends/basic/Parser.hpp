@@ -133,6 +133,50 @@ class Parser
     /// @return SELECT CASE statement node.
     StmtPtr parseSelectCaseStatement();
 
+    /// @brief Status information returned by CASE parsing helpers.
+    struct SelectHandlerResult
+    {
+        bool handled = false;             ///< True when helper consumed tokens.
+        bool emittedDiagnostic = false;   ///< True when helper reported errors.
+    };
+
+    /// @brief Aggregates CASE body collection results.
+    struct SelectBodyResult
+    {
+        std::vector<StmtPtr> body;                    ///< Statements collected.
+        StatementSequencer::TerminatorInfo terminator; ///< Terminator metadata.
+        bool emittedDiagnostic = false;               ///< Diagnostics emitted.
+    };
+
+    using SelectDiagnoseFn =
+        std::function<void(il::support::SourceLoc, uint32_t, std::string_view, std::string_view)>;
+
+    /// @brief Collect a CASE/CASE ELSE body until the next arm or END SELECT.
+    /// @return Aggregated statements and terminator metadata.
+    SelectBodyResult collectSelectBody();
+
+    /// @brief Handle END SELECT terminator encountered while parsing.
+    /// @param stmt Statement under construction whose range gets extended.
+    /// @param sawCaseArm Whether a CASE arm has been parsed so far.
+    /// @param expectEndSelect Flag tracking whether END SELECT is still required.
+    /// @param diagnose Diagnostic callback mirroring parser emission.
+    /// @return Helper status describing token consumption and diagnostics.
+    SelectHandlerResult handleEndSelect(SelectCaseStmt &stmt,
+                                        bool sawCaseArm,
+                                        bool &expectEndSelect,
+                                        const SelectDiagnoseFn &diagnose);
+
+    /// @brief Parse CASE ELSE arm when encountered at the current position.
+    /// @param stmt Statement receiving the CASE ELSE body.
+    /// @param sawCaseArm Whether at least one CASE arm preceded the ELSE.
+    /// @param sawCaseElse Tracks whether a CASE ELSE has already appeared.
+    /// @param diagnose Diagnostic callback mirroring parser emission.
+    /// @return Helper status describing token consumption and diagnostics.
+    SelectHandlerResult consumeCaseElse(SelectCaseStmt &stmt,
+                                        bool sawCaseArm,
+                                        bool &sawCaseElse,
+                                        const SelectDiagnoseFn &diagnose);
+
     /// @brief Parse a CASE arm including label list and statement body.
     /// @return Parsed CASE arm.
     CaseArm parseCaseArm();
