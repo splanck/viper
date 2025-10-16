@@ -145,6 +145,7 @@ target_include_directories(il_tools_common PUBLIC
 add_library(il_vm STATIC
   vm/VM.cpp
   vm/VMInit.cpp
+  vm/VMContext.cpp
   vm/VMDebug.cpp
   vm/RuntimeBridge.cpp
   vm/Marshal.cpp
@@ -155,6 +156,10 @@ add_library(il_vm STATIC
   vm/Debug.cpp
   vm/DebugScript.cpp
   vm/Trace.cpp
+  vm/dispatch/DispatchStrategy.cpp
+  vm/dispatch/FnTableDispatch.cpp
+  vm/dispatch/SwitchDispatch.cpp
+  vm/dispatch/ThreadedDispatch.cpp
   vm/mem_ops.cpp
   vm/int_ops_arith.cpp
   vm/int_ops_cmp.cpp

@@ -7,6 +7,7 @@
 #include "vm/VM.hpp"
 #include "vm/Marshal.hpp"
 #include "vm/RuntimeBridge.hpp"
+#include "vm/dispatch/DispatchStrategy.hpp"
 #include "vm/control_flow.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -135,6 +136,7 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
     }
 
     dispatchKind = selectedDispatch;
+    dispatchStrategy = createDispatchStrategy(dispatchKind);
 
     if (isVmDebugLoggingEnabled())
     {
