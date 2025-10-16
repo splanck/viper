@@ -6,16 +6,11 @@
 #pragma once
 
 #include "vm/OpHandlerAccess.hpp"
-#include "vm/VM.hpp"
 #include "vm/OpHandlerUtils.hpp"
-#include "vm/RuntimeBridge.hpp"
+#include "vm/VM.hpp"
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
-#include "il/core/Type.hpp"
-#include "il/core/Value.hpp"
-
-#include <cstdint>
 
 namespace il::vm::detail::integer
 {
@@ -36,9 +31,8 @@ inline VM::ExecResult handleAddImpl(VM &vm,
     return ops::applyBinary(vm,
                             fr,
                             in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal) {
-                                out.i64 = lhsVal.i64 + rhsVal.i64;
-                            });
+                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            { out.i64 = lhsVal.i64 + rhsVal.i64; });
 }
 
 inline VM::ExecResult handleSubImpl(VM &vm,
@@ -56,9 +50,8 @@ inline VM::ExecResult handleSubImpl(VM &vm,
     return ops::applyBinary(vm,
                             fr,
                             in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal) {
-                                out.i64 = lhsVal.i64 - rhsVal.i64;
-                            });
+                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            { out.i64 = lhsVal.i64 - rhsVal.i64; });
 }
 
 inline VM::ExecResult handleMulImpl(VM &vm,
@@ -76,9 +69,8 @@ inline VM::ExecResult handleMulImpl(VM &vm,
     return ops::applyBinary(vm,
                             fr,
                             in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal) {
-                                out.i64 = lhsVal.i64 * rhsVal.i64;
-                            });
+                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
+                            { out.i64 = lhsVal.i64 * rhsVal.i64; });
 }
 
 VM::ExecResult handleAdd(VM &vm,
@@ -341,4 +333,3 @@ VM::ExecResult handleUCmpGE(VM &vm,
                             size_t &ip);
 
 } // namespace il::vm::detail::integer
-
