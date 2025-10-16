@@ -129,39 +129,21 @@ using il::core::Function;
 using il::core::Instr;
 using il::core::Opcode;
 using il::core::Value;
+using SimplifyContext = il::transform::SimplifyCFG::SimplifyCFGPassContext;
 
-Function *activeFunction = nullptr;
-il::transform::SimplifyCFG::Stats *activeStats = nullptr;
-
-bool isDebugLoggingEnabled()
+bool readDebugFlagFromEnv()
 {
-    static const bool enabled = [] {
-        if (const char *flag = std::getenv("VIPER_DEBUG_PASSES"))
-            return flag[0] != '\0';
-        return false;
-    }();
-    return enabled;
+    if (const char *flag = std::getenv("VIPER_DEBUG_PASSES"))
+        return flag[0] != '\0';
+    return false;
 }
 
-void logPassDebug(const Function *fn, std::string_view message)
-{
-    if (!isDebugLoggingEnabled())
-        return;
-
-    const char *name = fn ? fn->name.c_str() : "<unknown>";
-    std::fprintf(stderr, "[DEBUG][SimplifyCFG] %s: %.*s\n", name,
-                 static_cast<int>(message.size()), message.data());
-}
-
-static bool isEHSensitive(const BasicBlock &B);
+static bool isEHSensitiveImpl(const BasicBlock &B);
 Instr *findTerminator(BasicBlock &block);
 
-static void realignBranchArgs(BasicBlock &B)
+static void realignBranchArgs(SimplifyContext &ctx, BasicBlock &B)
 {
-    if (!activeFunction)
-        return;
-
-    for (auto &pred : activeFunction->blocks)
+    for (auto &pred : ctx.function.blocks)
     {
         Instr *term = findTerminator(pred);
         if (!term)
@@ -278,12 +260,9 @@ Value substituteValue(const Value &value, const std::unordered_map<unsigned, Val
     return value;
 }
 
-static bool mergeSinglePred(BasicBlock &B)
+static bool mergeSinglePred(SimplifyContext &ctx, BasicBlock &B)
 {
-    if (!activeFunction)
-        return false;
-
-    Function &F = *activeFunction;
+    Function &F = ctx.function;
 
     auto blockIt = std::find_if(
         F.blocks.begin(), F.blocks.end(),
@@ -291,7 +270,7 @@ static bool mergeSinglePred(BasicBlock &B)
     if (blockIt == F.blocks.end())
         return false;
 
-    if (isEHSensitive(B))
+    if (ctx.isEHSensitive(B))
         return false;
 
     BasicBlock *predBlock = nullptr;
@@ -479,11 +458,8 @@ static void redirectPredecessor(BasicBlock &Pred, BasicBlock &Dead, BasicBlock &
     }
 }
 
-static bool shrinkParamsEqualAcrossPreds(BasicBlock &B)
+static bool shrinkParamsEqualAcrossPreds(SimplifyContext &ctx, BasicBlock &B)
 {
-    if (!activeFunction)
-        return false;
-
     bool removedAny = false;
 
     while (true)
@@ -497,7 +473,7 @@ static bool shrinkParamsEqualAcrossPreds(BasicBlock &B)
             bool hasCommonValue = false;
             bool mismatch = false;
 
-            for (auto &pred : activeFunction->blocks)
+            for (auto &pred : ctx.function.blocks)
             {
                 Instr *term = findTerminator(pred);
                 if (!term)
@@ -561,7 +537,7 @@ static bool shrinkParamsEqualAcrossPreds(BasicBlock &B)
                 }
             }
 
-            for (auto &pred : activeFunction->blocks)
+            for (auto &pred : ctx.function.blocks)
             {
                 Instr *term = findTerminator(pred);
                 if (!term)
@@ -593,16 +569,13 @@ static bool shrinkParamsEqualAcrossPreds(BasicBlock &B)
     }
 
     if (removedAny)
-        realignBranchArgs(B);
+        realignBranchArgs(ctx, B);
 
     return removedAny;
 }
 
-static bool dropUnusedParams(BasicBlock &B)
+static bool dropUnusedParams(SimplifyContext &ctx, BasicBlock &B)
 {
-    if (!activeFunction)
-        return false;
-
     bool removedAny = false;
 
     for (size_t paramIdx = 0; paramIdx < B.params.size();)
@@ -653,7 +626,7 @@ static bool dropUnusedParams(BasicBlock &B)
             continue;
         }
 
-        for (auto &pred : activeFunction->blocks)
+        for (auto &pred : ctx.function.blocks)
         {
             Instr *term = findTerminator(pred);
             if (!term)
@@ -681,7 +654,7 @@ static bool dropUnusedParams(BasicBlock &B)
     }
 
     if (removedAny)
-        realignBranchArgs(B);
+        realignBranchArgs(ctx, B);
 
     return removedAny;
 }
@@ -776,7 +749,7 @@ bool isEhStructuralOpcode(Opcode op)
     }
 }
 
-static bool isEHSensitive(const BasicBlock &B)
+static bool isEHSensitiveImpl(const BasicBlock &B)
 {
     if (B.instructions.empty())
         return false;
@@ -804,12 +777,12 @@ static bool isEntryLabel(const std::string &label)
     return label == "entry" || label.rfind("entry_", 0) == 0;
 }
 
-[[maybe_unused]] static bool isEmptyForwardingBlock(const BasicBlock &B)
+[[maybe_unused]] static bool isEmptyForwardingBlock(SimplifyContext &ctx, const BasicBlock &B)
 {
     if (isEntryLabel(B.label))
         return false;
 
-    if (isEHSensitive(B))
+    if (ctx.isEHSensitive(B))
         return false;
 
     if (B.instructions.empty())
@@ -891,13 +864,14 @@ struct [[maybe_unused]] SoleSuccessor
     return info;
 }
 
-static bool foldTrivialSwitchToBr(Function &F)
+static bool foldTrivialSwitchToBr(SimplifyContext &ctx)
 {
+    Function &F = ctx.function;
     bool changed = false;
 
     for (auto &block : F.blocks)
     {
-        if (isEHSensitive(block))
+        if (ctx.isEHSensitive(block))
             continue;
 
         for (auto &instr : block.instructions)
@@ -932,12 +906,11 @@ static bool foldTrivialSwitchToBr(Function &F)
             if (simplified)
             {
                 changed = true;
-                if (activeStats)
-                    ++activeStats->switchToBr;
-                if (isDebugLoggingEnabled())
+                ++ctx.stats.switchToBr;
+                if (ctx.isDebugLoggingEnabled())
                 {
                     std::string message = "folded trivial switch in block '" + block.label + "'";
-                    logPassDebug(&F, message);
+                    ctx.logDebug(message);
                 }
             }
         }
@@ -946,13 +919,14 @@ static bool foldTrivialSwitchToBr(Function &F)
     return changed;
 }
 
-static bool foldTrivialCbrToBr(Function &F)
+static bool foldTrivialCbrToBr(SimplifyContext &ctx)
 {
+    Function &F = ctx.function;
     bool changed = false;
 
     for (auto &block : F.blocks)
     {
-        if (isEHSensitive(block))
+        if (ctx.isEHSensitive(block))
             continue;
 
         for (auto &instr : block.instructions)
@@ -1004,12 +978,11 @@ static bool foldTrivialCbrToBr(Function &F)
             if (simplified)
             {
                 changed = true;
-                if (activeStats)
-                    ++activeStats->cbrToBr;
-                if (isDebugLoggingEnabled())
+                ++ctx.stats.cbrToBr;
+                if (ctx.isDebugLoggingEnabled())
                 {
                     std::string message = "simplified conditional branch in block '" + block.label + "'";
-                    logPassDebug(&F, message);
+                    ctx.logDebug(message);
                 }
             }
         }
@@ -1018,68 +991,63 @@ static bool foldTrivialCbrToBr(Function &F)
     return changed;
 }
 
-static bool mergeSinglePredBlocks(Function &F)
+static bool mergeSinglePredBlocks(SimplifyContext &ctx)
 {
-    Function *previousFunction = activeFunction;
-    activeFunction = &F;
+    Function &F = ctx.function;
 
     bool changed = false;
     size_t blockIndex = 0;
     while (blockIndex < F.blocks.size())
     {
-        const bool debugEnabled = isDebugLoggingEnabled();
+        const bool debugEnabled = ctx.isDebugLoggingEnabled();
         std::string mergedLabel;
         if (debugEnabled)
             mergedLabel = F.blocks[blockIndex].label;
 
-        if (mergeSinglePred(F.blocks[blockIndex]))
+        if (mergeSinglePred(ctx, F.blocks[blockIndex]))
         {
             changed = true;
-            if (activeStats)
-                ++activeStats->blocksMerged;
+            ++ctx.stats.blocksMerged;
             if (debugEnabled)
             {
                 std::string message = "merged block '" + mergedLabel + "' into its predecessor";
-                logPassDebug(&F, message);
+                ctx.logDebug(message);
             }
             continue;
         }
         ++blockIndex;
     }
 
-    activeFunction = previousFunction;
     return changed;
 }
 
-static bool canonicalizeParamsAndArgs(Function &F)
+static bool canonicalizeParamsAndArgs(SimplifyContext &ctx)
 {
-    Function *previousFunction = activeFunction;
-    activeFunction = &F;
+    Function &F = ctx.function;
 
     bool changed = false;
 
     for (auto &block : F.blocks)
     {
-        if (isEHSensitive(block))
+        if (ctx.isEHSensitive(block))
             continue;
 
         if (block.params.empty())
             continue;
 
         const size_t beforeShrink = block.params.size();
-        if (shrinkParamsEqualAcrossPreds(block))
+        if (shrinkParamsEqualAcrossPreds(ctx, block))
         {
             const size_t removed = beforeShrink - block.params.size();
             if (removed > 0)
             {
                 changed = true;
-                if (activeStats)
-                    activeStats->paramsShrunk += removed;
-                if (isDebugLoggingEnabled())
+                ctx.stats.paramsShrunk += removed;
+                if (ctx.isDebugLoggingEnabled())
                 {
                     std::string message = "replaced duplicated params in block '" + block.label + "', removed " +
                                           std::to_string(removed);
-                    logPassDebug(&F, message);
+                    ctx.logDebug(message);
                 }
             }
         }
@@ -1088,37 +1056,36 @@ static bool canonicalizeParamsAndArgs(Function &F)
             continue;
 
         const size_t beforeDrop = block.params.size();
-        if (dropUnusedParams(block))
+        if (dropUnusedParams(ctx, block))
         {
             const size_t removed = beforeDrop - block.params.size();
             if (removed > 0)
             {
                 changed = true;
-                if (activeStats)
-                    activeStats->paramsShrunk += removed;
-                if (isDebugLoggingEnabled())
+                ctx.stats.paramsShrunk += removed;
+                if (ctx.isDebugLoggingEnabled())
                 {
                     std::string message = "dropped unused params in block '" + block.label + "', removed " +
                                           std::to_string(removed);
-                    logPassDebug(&F, message);
+                    ctx.logDebug(message);
                 }
             }
         }
     }
 
-    activeFunction = previousFunction;
     return changed;
 }
 
-static bool removeEmptyForwarders(Function &F)
+static bool removeEmptyForwarders(SimplifyContext &ctx)
 {
+    Function &F = ctx.function;
     bool changed = false;
 
     std::vector<std::string> forwardingBlocks;
     forwardingBlocks.reserve(F.blocks.size());
     for (const auto &block : F.blocks)
     {
-        if (isEmptyForwardingBlock(block))
+        if (isEmptyForwardingBlock(ctx, block))
             forwardingBlocks.push_back(block.label);
     }
 
@@ -1177,13 +1144,12 @@ static bool removeEmptyForwarders(Function &F)
         if (redirected > 0)
         {
             changed = true;
-            if (activeStats)
-                activeStats->predsMerged += redirected;
-            if (isDebugLoggingEnabled())
+            ctx.stats.predsMerged += redirected;
+            if (ctx.isDebugLoggingEnabled())
             {
                 std::string message = "redirected " + std::to_string(redirected) +
                                       " predecessor edges around block '" + dead.label + "'";
-                logPassDebug(&F, message);
+                ctx.logDebug(message);
             }
         }
 
@@ -1218,22 +1184,22 @@ static bool removeEmptyForwarders(Function &F)
     if (removedBlocks > 0)
     {
         changed = true;
-        if (activeStats)
-            activeStats->emptyBlocksRemoved += removedBlocks;
-        if (isDebugLoggingEnabled())
+        ctx.stats.emptyBlocksRemoved += removedBlocks;
+        if (ctx.isDebugLoggingEnabled())
         {
             std::string message =
                 "removed " + std::to_string(removedBlocks) + " empty forwarding block" +
                 (removedBlocks == 1 ? "" : "s");
-            logPassDebug(&F, message);
+            ctx.logDebug(message);
         }
     }
 
     return changed;
 }
 
-static bool removeUnreachable(Function &F)
+static bool removeUnreachable(SimplifyContext &ctx)
 {
+    Function &F = ctx.function;
     llvm_like::BitVector reachable = markReachable(F);
 
     std::vector<size_t> unreachableBlocks;
@@ -1253,7 +1219,7 @@ static bool removeUnreachable(Function &F)
             continue;
 
         BasicBlock &candidate = F.blocks[blockIndex];
-        if (isEHSensitive(candidate))
+        if (ctx.isEHSensitive(candidate))
             continue;
 
         const std::string label = candidate.label;
@@ -1288,14 +1254,13 @@ static bool removeUnreachable(Function &F)
 
     if (removedBlocks > 0)
     {
-        if (activeStats)
-            activeStats->unreachableRemoved += removedBlocks;
-        if (isDebugLoggingEnabled())
+        ctx.stats.unreachableRemoved += removedBlocks;
+        if (ctx.isDebugLoggingEnabled())
         {
             std::string message =
                 "erased " + std::to_string(removedBlocks) + " unreachable block" +
                 (removedBlocks == 1 ? "" : "s");
-            logPassDebug(&F, message);
+            ctx.logDebug(message);
         }
         return true;
     }
@@ -1314,13 +1279,40 @@ static void invalidateCFGAndDominators(Function &F)
 namespace il::transform
 {
 
+SimplifyCFG::SimplifyCFGPassContext::SimplifyCFGPassContext(il::core::Function &function,
+                                                            const il::core::Module *module,
+                                                            Stats &stats)
+    : function(function), module(module), stats(stats),
+      debugLoggingEnabled_(readDebugFlagFromEnv())
+{
+}
+
+bool SimplifyCFG::SimplifyCFGPassContext::isDebugLoggingEnabled() const
+{
+    return debugLoggingEnabled_;
+}
+
+void SimplifyCFG::SimplifyCFGPassContext::logDebug(std::string_view message) const
+{
+    if (!isDebugLoggingEnabled())
+        return;
+
+    const char *name = function.name.c_str();
+    std::fprintf(stderr, "[DEBUG][SimplifyCFG] %s: %.*s\n", name,
+                 static_cast<int>(message.size()), message.data());
+}
+
+bool SimplifyCFG::SimplifyCFGPassContext::isEHSensitive(const il::core::BasicBlock &block) const
+{
+    return isEHSensitiveImpl(block);
+}
+
 bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
 {
     verifyPreconditions(module_);
 
     Stats stats{};
-    auto *previousStats = activeStats;
-    activeStats = &stats;
+    SimplifyCFGPassContext ctx(F, module_, stats);
 
     bool changedAny = false;
 
@@ -1328,19 +1320,17 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
     {
         bool changed = false;
         if (aggressive)
-            changed |= foldTrivialSwitchToBr(F);
-        changed |= foldTrivialCbrToBr(F);
-        changed |= removeEmptyForwarders(F);
-        changed |= mergeSinglePredBlocks(F);
-        changed |= removeUnreachable(F);
-        changed |= canonicalizeParamsAndArgs(F);
+            changed |= foldTrivialSwitchToBr(ctx);
+        changed |= foldTrivialCbrToBr(ctx);
+        changed |= removeEmptyForwarders(ctx);
+        changed |= mergeSinglePredBlocks(ctx);
+        changed |= removeUnreachable(ctx);
+        changed |= canonicalizeParamsAndArgs(ctx);
         if (!changed)
             break;
         changedAny = true;
         verifyIntermediateState(module_);
     }
-
-    activeStats = previousStats;
 
     if (changedAny)
     {
