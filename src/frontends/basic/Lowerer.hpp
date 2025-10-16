@@ -145,6 +145,16 @@ class Lowerer
         size_t exitIdx;            ///< index of common exit block
     };
 
+    /// @brief Summary of blocks allocated for SELECT CASE lowering.
+    struct SelectCaseBlocks
+    {
+        size_t currentIdx{};                 ///< Index of the block containing the selector.
+        std::vector<size_t> armIdx;          ///< Block indices for each CASE arm body.
+        std::optional<size_t> elseIdx;       ///< Optional CASE ELSE block index.
+        size_t switchIdx{};                  ///< Block index that will host the numeric switch.
+        size_t endIdx{};                     ///< Common block index used after all CASE arms.
+    };
+
     /// @brief Deterministic per-procedure block name generator.
     /// @invariant `k` starts at 0 per procedure and increases monotonically.
     ///            WHILE, FOR, and synthetic call continuations share the same
@@ -584,6 +594,29 @@ class Lowerer
     /// @param conds Number of conditions (IF + ELSEIFs).
     /// @return Indices for test/then blocks and ELSE/exit blocks.
     IfBlocks emitIfBlocks(size_t conds);
+
+    /// @brief Allocate and name blocks required for SELECT CASE lowering.
+    SelectCaseBlocks prepareSelectCaseBlocks(const SelectCaseStmt &stmt,
+                                             bool hasCaseElse,
+                                             bool needsDispatch);
+
+    /// @brief Lower string CASE arms by emitting comparison chains.
+    void lowerSelectCaseStringArms(const SelectCaseStmt &stmt,
+                                   const SelectCaseBlocks &blocks,
+                                   Value stringSelector);
+
+    /// @brief Emit relational and range dispatch for numeric CASE arms.
+    size_t lowerSelectCaseNumericDispatch(const SelectCaseStmt &stmt,
+                                          const SelectCaseBlocks &blocks,
+                                          Value selWide,
+                                          bool hasRanges,
+                                          size_t totalRangeCount);
+
+    /// @brief Lower a CASE arm body and branch to the exit when needed.
+    void lowerSelectCaseBody(const std::vector<StmtPtr> &body,
+                             BasicBlock *entry,
+                             il::support::SourceLoc loc,
+                             BasicBlock *endBlk);
 
     /// @brief Evaluate @p cond and branch to @p thenBlk or @p falseBlk.
     void lowerIfCondition(const Expr &cond,
