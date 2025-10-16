@@ -131,6 +131,14 @@ class Lowerer
     };
 
   private:
+    /// @brief Aggregates state shared across helper stages of program lowering.
+    struct ProgramEmitContext
+    {
+        std::vector<const Stmt *> mainStmts;
+        Function *function{nullptr};
+        BasicBlock *entry{nullptr};
+    };
+
     struct SlotType
     {
         Type type{Type(Type::Kind::I64)};
@@ -212,6 +220,21 @@ class Lowerer
                         const std::vector<Param> &params,
                         const std::vector<StmtPtr> &body,
                         const ProcedureConfig &config);
+
+    /// @brief Collect declarations and cache main statement pointers.
+    ProgramEmitContext collectProgramDeclarations(const Program &prog);
+
+    /// @brief Create the main function skeleton and block mappings.
+    void buildMainFunctionSkeleton(ProgramEmitContext &state);
+
+    /// @brief Discover global variables referenced by the main body.
+    void collectMainVariables(ProgramEmitContext &state);
+
+    /// @brief Materialise stack storage for main locals and bookkeeping.
+    void allocateMainLocals(ProgramEmitContext &state);
+
+    /// @brief Emit the main body along with epilogue clean-up.
+    void emitMainBodyAndEpilogue(ProgramEmitContext &state);
 
     /// @brief Stack-allocate parameters and seed local map.
     void materializeParams(const std::vector<Param> &params);
