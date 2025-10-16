@@ -15,6 +15,7 @@
 #include <cmath>
 #include <span>
 #include <sstream>
+#include <vector>
 
 using il::support::SourceLoc;
 
@@ -34,6 +35,8 @@ using il::vm::vm_raise;
 using il::core::Type;
 using il::runtime::RuntimeHiddenParamKind;
 using il::runtime::RuntimeTrapClass;
+using il::runtime::RuntimeDescriptor;
+using il::runtime::RuntimeSignature;
 
 /// @brief Thread-local pointer to the runtime call context for active trap reporting.
 thread_local RuntimeCallContext *tlsContext = nullptr;
@@ -45,6 +48,13 @@ struct ResultBuffers
     double f64 = 0.0;      ///< Storage for floating-point results.
     rt_string str = nullptr; ///< Storage for runtime string results.
     void *ptr = nullptr;   ///< Storage for pointer results.
+};
+
+struct PowStatus
+{
+    bool active{false};
+    bool ok{true};
+    bool *ptr{nullptr};
 };
 
 /// @brief Table entry describing how a particular @ref Type::Kind maps to Slot and
@@ -226,6 +236,111 @@ void assignResult(Slot &slot, Type::Kind kind, const ResultBuffers &buffers)
     entry.assignResult(slot, buffers);
 }
 
+static bool validateArgumentCount(const RuntimeDescriptor &desc,
+                                  const std::string &name,
+                                  const std::vector<Slot> &args,
+                                  const SourceLoc &loc,
+                                  const std::string &fn,
+                                  const std::string &block)
+{
+    const auto expected = desc.signature.paramTypes.size();
+    if (args.size() == expected)
+        return true;
+
+    std::ostringstream os;
+    os << name << ": expected " << expected << " argument(s), got " << args.size();
+    if (args.size() > expected)
+        os << " (excess runtime operands)";
+    RuntimeBridge::trap(TrapKind::DomainError, os.str(), loc, fn, block);
+    return false;
+}
+
+static std::vector<void *> marshalArguments(const RuntimeDescriptor &desc,
+                                            const std::vector<Slot> &args,
+                                            PowStatus &powStatus)
+{
+    const RuntimeSignature &sig = desc.signature;
+    std::vector<void *> rawArgs(sig.paramTypes.size() + sig.hiddenParams.size());
+
+    for (size_t i = 0; i < sig.paramTypes.size(); ++i)
+    {
+        auto kind = sig.paramTypes[i].kind;
+        Slot &slot = const_cast<Slot &>(args[i]);
+        rawArgs[i] = slotToArgPointer(slot, kind);
+    }
+
+    size_t hiddenIndex = sig.paramTypes.size();
+    for (const auto &hidden : sig.hiddenParams)
+    {
+        switch (hidden.kind)
+        {
+        case RuntimeHiddenParamKind::None:
+            rawArgs[hiddenIndex++] = nullptr;
+            break;
+        case RuntimeHiddenParamKind::PowStatusPointer:
+            powStatus.active = true;
+            powStatus.ok = true;
+            powStatus.ptr = &powStatus.ok;
+            rawArgs[hiddenIndex++] = &powStatus.ptr;
+            break;
+        }
+    }
+
+    return rawArgs;
+}
+
+static bool handlePowTrap(const RuntimeDescriptor &desc,
+                          const PowStatus &powStatus,
+                          const std::vector<Slot> &args,
+                          const ResultBuffers &buffers,
+                          const SourceLoc &loc,
+                          const std::string &fn,
+                          const std::string &block)
+{
+    if (desc.trapClass != RuntimeTrapClass::PowDomainOverflow || !powStatus.active)
+        return false;
+
+    const RuntimeSignature &sig = desc.signature;
+
+    if (!powStatus.ok)
+    {
+        const double base = !args.empty() ? args[0].f64 : 0.0;
+        const double exp = (args.size() > 1) ? args[1].f64 : 0.0;
+        const bool expIntegral = std::isfinite(exp) && (exp == std::trunc(exp));
+        const bool domainError = (base < 0.0) && !expIntegral;
+
+        std::ostringstream os;
+        if (domainError)
+        {
+            os << "rt_pow_f64_chkdom: negative base with fractional exponent";
+            RuntimeBridge::trap(TrapKind::DomainError, os.str(), loc, fn, block);
+        }
+        else
+        {
+            os << "rt_pow_f64_chkdom: overflow";
+            RuntimeBridge::trap(TrapKind::Overflow, os.str(), loc, fn, block);
+        }
+        return true;
+    }
+
+    if (sig.retType.kind == Type::Kind::F64 && !std::isfinite(buffers.f64))
+    {
+        std::ostringstream os;
+        os << "rt_pow_f64_chkdom: overflow";
+        RuntimeBridge::trap(TrapKind::Overflow, os.str(), loc, fn, block);
+        return true;
+    }
+
+    return false;
+}
+
+static void assignCallResult(Slot &destination,
+                             const RuntimeSignature &signature,
+                             const ResultBuffers &buffers)
+{
+    assignResult(destination, signature.retType.kind, buffers);
+}
+
 struct ContextGuard
 {
     RuntimeCallContext *previous;
@@ -343,19 +458,6 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
     ctx.block = block;
     ContextGuard guard(ctx);
     Slot res{};
-    auto checkArgs = [&](size_t count)
-    {
-        if (args.size() != count)
-        {
-            std::ostringstream os;
-            os << name << ": expected " << count << " argument(s), got " << args.size();
-            if (args.size() > count)
-                os << " (excess runtime operands)";
-            RuntimeBridge::trap(TrapKind::DomainError, os.str(), loc, fn, block);
-            return false;
-        }
-        return true;
-    };
     const auto *desc = il::runtime::findRuntimeDescriptor(name);
     if (!desc)
     {
@@ -364,89 +466,21 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
         RuntimeBridge::trap(TrapKind::DomainError, os.str(), loc, fn, block);
         return res;
     }
-    if (checkArgs(desc->signature.paramTypes.size()))
-    {
-        const auto &sig = desc->signature;
-        std::vector<void *> rawArgs(sig.paramTypes.size() + sig.hiddenParams.size());
-        for (size_t i = 0; i < sig.paramTypes.size(); ++i)
-        {
-            auto kind = sig.paramTypes[i].kind;
-            Slot &slot = const_cast<Slot &>(args[i]);
-            rawArgs[i] = slotToArgPointer(slot, kind);
-        }
+    if (!validateArgumentCount(*desc, name, args, loc, fn, block))
+        return res;
 
-        struct PowStatus
-        {
-            bool active{false};
-            bool ok{true};
-            bool *ptr{nullptr};
-        };
+    PowStatus powStatus;
+    auto rawArgs = marshalArguments(*desc, args, powStatus);
 
-        PowStatus powStatus;
+    ResultBuffers buffers;
+    void *resultPtr = resultBufferFor(desc->signature.retType.kind, buffers);
 
-        size_t hiddenIndex = sig.paramTypes.size();
-        for (const auto &hidden : sig.hiddenParams)
-        {
-            switch (hidden.kind)
-            {
-            case RuntimeHiddenParamKind::None:
-                rawArgs[hiddenIndex++] = nullptr;
-                break;
-            case RuntimeHiddenParamKind::PowStatusPointer:
-                powStatus.active = true;
-                powStatus.ok = true;
-                powStatus.ptr = &powStatus.ok;
-                rawArgs[hiddenIndex++] = &powStatus.ptr;
-                break;
-            }
-        }
+    desc->handler(rawArgs.empty() ? nullptr : rawArgs.data(), resultPtr);
 
-        ResultBuffers buffers;
-        void *resultPtr = resultBufferFor(sig.retType.kind, buffers);
+    if (handlePowTrap(*desc, powStatus, args, buffers, loc, fn, block))
+        return res;
 
-        desc->handler(rawArgs.empty() ? nullptr : rawArgs.data(), resultPtr);
-
-        auto handlePowTrap = [&]() -> bool {
-            if (desc->trapClass != RuntimeTrapClass::PowDomainOverflow || !powStatus.active)
-                return false;
-
-            if (!powStatus.ok)
-            {
-                const double base = !args.empty() ? args[0].f64 : 0.0;
-                const double exp = (args.size() > 1) ? args[1].f64 : 0.0;
-                const bool expIntegral = std::isfinite(exp) && (exp == std::trunc(exp));
-                const bool domainError = (base < 0.0) && !expIntegral;
-
-                std::ostringstream os;
-                if (domainError)
-                {
-                    os << "rt_pow_f64_chkdom: negative base with fractional exponent";
-                    RuntimeBridge::trap(TrapKind::DomainError, os.str(), loc, fn, block);
-                }
-                else
-                {
-                    os << "rt_pow_f64_chkdom: overflow";
-                    RuntimeBridge::trap(TrapKind::Overflow, os.str(), loc, fn, block);
-                }
-                return true;
-            }
-
-            if (sig.retType.kind == Type::Kind::F64 && !std::isfinite(buffers.f64))
-            {
-                std::ostringstream os;
-                os << "rt_pow_f64_chkdom: overflow";
-                RuntimeBridge::trap(TrapKind::Overflow, os.str(), loc, fn, block);
-                return true;
-            }
-
-            return false;
-        };
-
-        if (handlePowTrap())
-            return res;
-
-        assignResult(res, sig.retType.kind, buffers);
-    }
+    assignCallResult(res, desc->signature, buffers);
     return res;
 }
 
