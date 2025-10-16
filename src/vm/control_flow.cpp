@@ -251,9 +251,12 @@ static SwitchCacheEntry::Kind chooseBackend(const SwitchMeta &M)
 
 static DenseJumpTable buildDense(const SwitchMeta &M)
 {
+    DenseJumpTable T;
+    if (M.values.empty())
+        return T;
+
     int32_t minv = *std::min_element(M.values.begin(), M.values.end());
     int32_t maxv = *std::max_element(M.values.begin(), M.values.end());
-    DenseJumpTable T;
     T.base = minv;
     T.targets.assign(maxv - minv + 1, -1);
     for (size_t i = 0; i < M.values.size(); ++i)
