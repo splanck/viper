@@ -67,23 +67,6 @@ constexpr bool kTraceHookEnabled = true;
 
 } // namespace
 
-#if VIPER_THREADING_SUPPORTED
-namespace
-{
-#define OP_LABEL(name, ...) &&LBL_##name,
-#define IL_OPCODE(name, ...) OP_LABEL(name, __VA_ARGS__)
-static void *kOpLabels[] = {
-#include "il/core/Opcode.def"
-    &&LBL_UNIMPL,
-};
-#undef IL_OPCODE
-#undef OP_LABEL
-
-static constexpr size_t kOpLabelCount = sizeof(kOpLabels) / sizeof(kOpLabels[0]);
-} // namespace
-#endif
-
-
 /// Construct a trap dispatch signal targeting a specific execution state.
 VM::TrapDispatchSignal::TrapDispatchSignal(ExecState *targetState) : target(targetState)
 {
@@ -549,6 +532,17 @@ bool VM::runLoopThreaded(ExecState &st)
         }
     };
 
+#define OP_LABEL(name, ...) &&LBL_##name,
+#define IL_OPCODE(name, ...) OP_LABEL(name, __VA_ARGS__)
+    static void *kOpLabels[] = {
+#include "il/core/Opcode.def"
+        &&LBL_UNIMPL,
+    };
+#undef IL_OPCODE
+#undef OP_LABEL
+
+    static constexpr size_t kOpLabelCount = sizeof(kOpLabels) / sizeof(kOpLabels[0]);
+
 #define DISPATCH_TO(OPCODE_VALUE)                                                                          \
     do                                                                                                      \
     {                                                                                                       \
@@ -601,13 +595,7 @@ bool VM::runLoopThreaded(ExecState &st)
 
         LBL_UNIMPL:
         {
-            const std::string funcName = st.fr.func ? st.fr.func->name : std::string("<unknown>");
-            RuntimeBridge::trap(TrapKind::InvalidOperation,
-                                "unimplemented opcode in threaded dispatch",
-                                {},
-                                funcName,
-                                "");
-            return false;
+            trapUnimplemented(op);
         }
     }
     catch (const TrapDispatchSignal &signal)
