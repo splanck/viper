@@ -17,7 +17,9 @@ add_library(fe_basic STATIC
   TypeSuffix.cpp
   TypeRules.cpp
   LoweringContext.cpp
-  LoweringPipeline.cpp
+  Lowerer.Program.cpp
+  Lowerer.Procedure.cpp
+  Lowerer.Statement.cpp
   BuiltinRegistry.cpp
   builtins/MathBuiltins.cpp
   builtins/StringBuiltins.cpp
