@@ -43,6 +43,10 @@ add_library(fe_basic STATIC
   SemanticAnalyzer.cpp
   SemanticAnalyzer.Procs.cpp
   SemanticAnalyzer.Stmts.cpp
+  SemanticAnalyzer.Stmts.Shared.cpp
+  SemanticAnalyzer.Stmts.Control.cpp
+  SemanticAnalyzer.Stmts.IO.cpp
+  SemanticAnalyzer.Stmts.Runtime.cpp
   SemanticAnalyzer.Exprs.cpp
   SemanticAnalyzer.Builtins.cpp
   ScopeTracker.cpp
