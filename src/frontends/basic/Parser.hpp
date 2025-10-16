@@ -23,6 +23,19 @@
 namespace il::frontends::basic
 {
 
+class StatementParseDriver;
+
+namespace control_flow
+{
+StmtPtr parseIf(class Parser &parser, int line);
+StmtPtr parseSelectCase(class Parser &parser);
+CaseArm parseCaseArm(class Parser &parser);
+std::pair<std::vector<StmtPtr>, il::support::SourceLoc> parseCaseElseBody(class Parser &parser);
+StmtPtr parseWhile(class Parser &parser);
+StmtPtr parseDo(class Parser &parser);
+StmtPtr parseFor(class Parser &parser);
+} // namespace control_flow
+
 class Parser
 {
   public:
@@ -38,6 +51,15 @@ class Parser
 
   private:
     friend class StatementSequencer;
+    friend class StatementParseDriver;
+    friend StmtPtr control_flow::parseIf(Parser &parser, int line);
+    friend StmtPtr control_flow::parseSelectCase(Parser &parser);
+    friend CaseArm control_flow::parseCaseArm(Parser &parser);
+    friend std::pair<std::vector<StmtPtr>, il::support::SourceLoc>
+        control_flow::parseCaseElseBody(Parser &parser);
+    friend StmtPtr control_flow::parseWhile(Parser &parser);
+    friend StmtPtr control_flow::parseDo(Parser &parser);
+    friend StmtPtr control_flow::parseFor(Parser &parser);
 
     /// @brief Create a statement sequencer bound to this parser instance.
     /// @return StatementSequencer referencing the parser's token stream.
@@ -49,12 +71,6 @@ class Parser
     ///        subsequent token is one of the specified kinds.
     void skipOptionalLineLabelAfterBreak(StatementSequencer &ctx,
                                          std::initializer_list<TokenKind> followerKinds = {});
-
-    /// @brief Parse the body of a single IF-related branch.
-    /// @param line Line number propagated to the branch statement.
-    /// @param ctx Statement sequencer for separator management.
-    /// @return Parsed statement belonging to the branch body.
-    StmtPtr parseIfBranchBody(int line, StatementSequencer &ctx);
 
     mutable Lexer lexer_;                     ///< Provides tokens from the source buffer.
     mutable std::vector<Token> tokens_;       ///< Lookahead token buffer.

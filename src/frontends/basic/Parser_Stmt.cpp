@@ -33,32 +33,35 @@ bool Parser::isKnownProcedureName(const std::string &name) const
 StmtPtr Parser::parseStatement(int line)
 {
     const Token &tok = peek();
-    std::string tokLexeme = tok.lexeme;
-    auto tokLoc = tok.loc;
-    if (tok.kind == TokenKind::Number)
+    auto reportError = [&](il::support::SourceLoc loc, uint32_t length, std::string msg)
     {
         if (emitter_)
         {
             emitter_->emit(il::support::Severity::Error,
                            "B0001",
-                           tok.loc,
-                           static_cast<uint32_t>(tok.lexeme.size()),
-                           "unexpected line number");
+                           loc,
+                           length,
+                           std::move(msg));
         }
         else
         {
-            std::fprintf(stderr, "unexpected line number '%s'\n", tok.lexeme.c_str());
+            std::fprintf(stderr, "%s\n", msg.c_str());
         }
-
-        while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
-        {
-            consume();
-        }
+    };
+    auto bail = [&]() -> StmtPtr
+    {
+        syncToStmtBoundary();
         return nullptr;
+    };
+
+    if (tok.kind == TokenKind::Number)
+    {
+        std::string message = "unexpected line number '" + tok.lexeme + "'";
+        reportError(tok.loc, static_cast<uint32_t>(tok.lexeme.size()), std::move(message));
+        return bail();
     }
 
-    const auto kind = tok.kind;
-    const auto index = static_cast<std::size_t>(kind);
+    const auto index = static_cast<std::size_t>(tok.kind);
     if (index < stmtHandlers_.size())
     {
         const auto &handler = stmtHandlers_[index];
@@ -67,10 +70,10 @@ StmtPtr Parser::parseStatement(int line)
         if (handler.with_line)
             return (this->*(handler.with_line))(line);
     }
+
     if (tok.kind == TokenKind::Identifier && peek(1).kind == TokenKind::LParen)
     {
-        std::string ident = tokLexeme;
-        auto identLoc = tokLoc;
+        auto identLoc = tok.loc;
         auto expr = parseArrayOrVar();
         if (auto *callExpr = dynamic_cast<CallExpr *>(expr.get()))
         {
@@ -79,73 +82,25 @@ StmtPtr Parser::parseStatement(int line)
             stmt->call.reset(static_cast<CallExpr *>(expr.release()));
             return stmt;
         }
-        if (emitter_)
-        {
-            std::string msg = std::string("unknown statement '") + ident + "'";
-            emitter_->emit(il::support::Severity::Error,
-                           "B0001",
-                           identLoc,
-                           static_cast<uint32_t>(ident.size()),
-                           std::move(msg));
-        }
-        else
-        {
-            std::fprintf(stderr, "unknown statement '%s'\n", ident.c_str());
-        }
-        while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
-        {
-            consume();
-        }
-        return nullptr;
+        std::string msg = "unknown statement '" + tok.lexeme + "'";
+        reportError(identLoc, static_cast<uint32_t>(tok.lexeme.size()), std::move(msg));
+        return bail();
     }
-    if (tok.kind == TokenKind::Identifier && isKnownProcedureName(tokLexeme) &&
+
+    if (tok.kind == TokenKind::Identifier && isKnownProcedureName(tok.lexeme) &&
         peek(1).kind != TokenKind::LParen)
     {
-        std::string ident = tokLexeme;
         auto nextTok = peek(1);
-        auto diagLoc = nextTok.loc.isValid() ? nextTok.loc : tokLoc;
-        uint32_t length = 1;
-        if (emitter_)
-        {
-            std::string msg = "expected '(' after procedure name '" + ident + "'";
-            emitter_->emit(il::support::Severity::Error,
-                           "B0001",
-                           diagLoc,
-                           length,
-                           std::move(msg));
-        }
-        else
-        {
-            std::fprintf(stderr,
-                         "expected '(' after procedure name '%s'\n",
-                         ident.c_str());
-        }
-        while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
-        {
-            consume();
-        }
-        return nullptr;
-    }
-    if (emitter_)
-    {
-            std::string msg = std::string("unknown statement '") + tokLexeme + "'";
-            emitter_->emit(il::support::Severity::Error,
-                           "B0001",
-                           tokLoc,
-                           static_cast<uint32_t>(tokLexeme.size()),
-                           std::move(msg));
-    }
-    else
-    {
-        std::fprintf(stderr, "unknown statement '%s'\n", tok.lexeme.c_str());
+        auto diagLoc = nextTok.loc.isValid() ? nextTok.loc : tok.loc;
+        std::string msg = "expected '(' after procedure name '" + tok.lexeme + "'";
+        reportError(diagLoc, static_cast<uint32_t>(nextTok.lexeme.empty() ? 1 : nextTok.lexeme.size()),
+                    std::move(msg));
+        return bail();
     }
 
-    while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
-    {
-        consume();
-    }
-
-    return nullptr;
+    std::string msg = "unknown statement '" + tok.lexeme + "'";
+    reportError(tok.loc, static_cast<uint32_t>(tok.lexeme.size()), std::move(msg));
+    return bail();
 }
 
 /// @brief Check whether @p kind marks the beginning of a statement.
@@ -306,228 +261,13 @@ void Parser::skipOptionalLineLabelAfterBreak(StatementSequencer &ctx,
     }
 }
 
-/// @brief Parse the body of a single IF branch while preserving separators.
-/// @param line Line number propagated to nested statements.
-/// @param ctx Statement sequencer providing separator helpers.
-/// @return Parsed statement representing the branch body.
-StmtPtr Parser::parseIfBranchBody(int line, StatementSequencer &ctx)
-{
-    skipOptionalLineLabelAfterBreak(ctx);
-    auto stmt = parseStatement(line);
-    if (stmt)
-        stmt->line = line;
-    return stmt;
-}
-
 /// @brief Parse an IF/THEN[/ELSEIF/ELSE] statement.
 /// @param line Line number propagated to nested statements.
 /// @return IfStmt with condition and branch nodes.
 /// @note THEN branch shares the same line number as the IF keyword.
 StmtPtr Parser::parseIf(int line)
 {
-    auto loc = peek().loc;
-    consume(); // IF
-    auto cond = parseExpression();
-    expect(TokenKind::KeywordThen);
-    auto stmt = std::make_unique<IfStmt>();
-    stmt->loc = loc;
-    stmt->cond = std::move(cond);
-
-    if (at(TokenKind::EndOfLine))
-    {
-        enum class BlockTerminator
-        {
-            None,
-            ElseIf,
-            Else,
-            EndIf,
-        };
-
-        auto ctx = statementSequencer();
-
-        auto makeBranchBody = [&](std::vector<StmtPtr> &&stmts) -> StmtPtr
-        {
-            if (stmts.empty())
-                return nullptr;
-            auto list = std::make_unique<StmtList>();
-            list->line = line;
-            il::support::SourceLoc listLoc = loc;
-            for (const auto &bodyStmt : stmts)
-            {
-                if (bodyStmt)
-                {
-                    listLoc = bodyStmt->loc;
-                    break;
-                }
-            }
-            list->loc = listLoc;
-            list->stmts = std::move(stmts);
-            return list;
-        };
-
-        auto collectBranch = [&](bool allowElseBranches)
-            -> std::pair<StmtPtr, BlockTerminator>
-        {
-            std::vector<StmtPtr> stmts;
-            BlockTerminator term = BlockTerminator::None;
-            auto predicate = [&](int, il::support::SourceLoc) {
-                if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordIf)
-                    return true;
-                if (!allowElseBranches)
-                    return false;
-                if (at(TokenKind::KeywordElseIf))
-                    return true;
-                if (at(TokenKind::KeywordElse))
-                    return true;
-                return false;
-            };
-            auto consumer = [&](int lineNumber,
-                                 il::support::SourceLoc,
-                                 StatementSequencer::TerminatorInfo &info)
-            {
-                info.line = lineNumber;
-                info.loc = peek().loc;
-                if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordIf)
-                {
-                    Token endTok = consume();
-                    info.loc = endTok.loc;
-                    expect(TokenKind::KeywordIf);
-                    term = BlockTerminator::EndIf;
-                    return;
-                }
-                if (!allowElseBranches)
-                    return;
-                if (at(TokenKind::KeywordElseIf))
-                {
-                    term = BlockTerminator::ElseIf;
-                    return;
-                }
-                if (at(TokenKind::KeywordElse))
-                {
-                    if (peek(1).kind == TokenKind::KeywordIf)
-                    {
-                        term = BlockTerminator::ElseIf;
-                    }
-                    else
-                    {
-                        term = BlockTerminator::Else;
-                    }
-                }
-            };
-            ctx.collectStatements(predicate, consumer, stmts);
-            return {makeBranchBody(std::move(stmts)), term};
-        };
-
-        auto [thenBranch, term] = collectBranch(true);
-        stmt->then_branch = std::move(thenBranch);
-        std::vector<IfStmt::ElseIf> elseifs;
-        StmtPtr elseStmt;
-        while (term == BlockTerminator::ElseIf)
-        {
-            IfStmt::ElseIf ei;
-            if (at(TokenKind::KeywordElseIf))
-            {
-                consume();
-            }
-            else if (at(TokenKind::KeywordElse))
-            {
-                consume();
-                expect(TokenKind::KeywordIf);
-            }
-            else
-            {
-                break;
-            }
-            ei.cond = parseExpression();
-            expect(TokenKind::KeywordThen);
-            auto [branchBody, nextTerm] = collectBranch(true);
-            ei.then_branch = std::move(branchBody);
-            elseifs.push_back(std::move(ei));
-            term = nextTerm;
-        }
-
-        if (term == BlockTerminator::Else)
-        {
-            consume();
-            auto [elseBody, endTerm] = collectBranch(false);
-            elseStmt = std::move(elseBody);
-            term = endTerm;
-        }
-
-        if (term != BlockTerminator::EndIf)
-        {
-            if (emitter_)
-            {
-                emitter_->emit(il::support::Severity::Error,
-                               "B0004",
-                               stmt->loc,
-                               2,
-                               "missing END IF");
-            }
-            else
-            {
-                std::fprintf(stderr, "missing END IF\n");
-            }
-            syncToStmtBoundary();
-        }
-
-        stmt->elseifs = std::move(elseifs);
-        stmt->else_branch = std::move(elseStmt);
-    }
-    else
-    {
-        auto ctx = statementSequencer();
-        auto thenStmt = parseIfBranchBody(line, ctx);
-        std::vector<IfStmt::ElseIf> elseifs;
-        StmtPtr elseStmt;
-        while (true)
-        {
-            skipOptionalLineLabelAfterBreak(ctx, {TokenKind::KeywordElseIf, TokenKind::KeywordElse});
-            if (at(TokenKind::KeywordElseIf))
-            {
-                consume();
-                IfStmt::ElseIf ei;
-                ei.cond = parseExpression();
-                expect(TokenKind::KeywordThen);
-                ei.then_branch = parseIfBranchBody(line, ctx);
-                elseifs.push_back(std::move(ei));
-                continue;
-            }
-            if (at(TokenKind::KeywordElse))
-            {
-                consume();
-                if (at(TokenKind::KeywordIf))
-                {
-                    consume();
-                    IfStmt::ElseIf ei;
-                    ei.cond = parseExpression();
-                    expect(TokenKind::KeywordThen);
-                    ei.then_branch = parseIfBranchBody(line, ctx);
-                    elseifs.push_back(std::move(ei));
-                    continue;
-                }
-                else
-                {
-                    elseStmt = parseIfBranchBody(line, ctx);
-                }
-            }
-            break;
-        }
-        stmt->then_branch = std::move(thenStmt);
-        stmt->elseifs = std::move(elseifs);
-        stmt->else_branch = std::move(elseStmt);
-    }
-
-    if (stmt->then_branch)
-        stmt->then_branch->line = line;
-    for (auto &elseif : stmt->elseifs)
-    {
-        if (elseif.then_branch)
-            elseif.then_branch->line = line;
-    }
-    if (stmt->else_branch)
-        stmt->else_branch->line = line;
-    return stmt;
+    return control_flow::parseIf(*this, line);
 }
 
 /// @brief Parse a WHILE loop terminated by WEND.
@@ -535,461 +275,31 @@ StmtPtr Parser::parseIf(int line)
 /// @note Consumes statements until a matching WEND token.
 StmtPtr Parser::parseWhile()
 {
-    auto loc = peek().loc;
-    consume(); // WHILE
-    auto cond = parseExpression();
-    auto stmt = std::make_unique<WhileStmt>();
-    stmt->loc = loc;
-    stmt->cond = std::move(cond);
-    auto ctxWhile = statementSequencer();
-    ctxWhile.collectStatements(TokenKind::KeywordWend, stmt->body);
-    return stmt;
+    return control_flow::parseWhile(*this);
 }
 
 /// @brief Parse a SELECT CASE statement terminating with END SELECT.
 /// @return SelectCaseStmt containing selector, CASE arms, and optional CASE ELSE.
 StmtPtr Parser::parseSelectCase()
 {
-    auto loc = peek().loc;
-    consume(); // SELECT
-    expect(TokenKind::KeywordCase);
-    auto selector = parseExpression();
-    Token headerEnd = expect(TokenKind::EndOfLine);
-
-    auto stmt = std::make_unique<SelectCaseStmt>();
-    stmt->loc = loc;
-    stmt->selector = std::move(selector);
-    stmt->range.begin = loc;
-    stmt->range.end = headerEnd.loc;
-
-    auto diagnose = [&](il::support::SourceLoc diagLoc,
-                        uint32_t length,
-                        std::string_view message,
-                        std::string_view code = "B0001")
-    {
-        if (emitter_)
-        {
-            emitter_->emit(il::support::Severity::Error,
-                           std::string(code),
-                           diagLoc,
-                           length,
-                           std::string(message));
-        }
-        else
-        {
-            std::fprintf(stderr, "%.*s\n", static_cast<int>(message.size()), message.data());
-        }
-    };
-
-    bool sawCaseArm = false;
-    bool sawCaseElse = false;
-    bool expectEndSelect = true;
-
-    while (!at(TokenKind::EndOfFile))
-    {
-        while (at(TokenKind::EndOfLine))
-            consume();
-
-        if (at(TokenKind::EndOfFile))
-            break;
-
-        if (at(TokenKind::Number))
-        {
-            TokenKind next = peek(1).kind;
-            if (next == TokenKind::KeywordCase ||
-                (next == TokenKind::KeywordEnd && peek(2).kind == TokenKind::KeywordSelect))
-            {
-                consume();
-            }
-        }
-
-        if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordSelect)
-        {
-            consume();
-            Token selectTok = expect(TokenKind::KeywordSelect);
-            stmt->range.end = selectTok.loc;
-            if (!sawCaseArm)
-            {
-                diagnose(selectTok.loc, static_cast<uint32_t>(selectTok.lexeme.size()),
-                         "SELECT CASE requires at least one CASE arm");
-            }
-            expectEndSelect = false;
-            break;
-        }
-
-        if (!at(TokenKind::KeywordCase))
-        {
-            Token unexpected = consume();
-            diagnose(unexpected.loc,
-                     static_cast<uint32_t>(unexpected.lexeme.size()),
-                     "expected CASE or END SELECT in SELECT CASE");
-            continue;
-        }
-
-        Token caseTok = peek();
-        il::support::SourceLoc caseLoc = caseTok.loc;
-
-        if (peek(1).kind == TokenKind::KeywordElse)
-        {
-            const Token elseTok = peek(1);
-            if (sawCaseElse)
-            {
-                diagnose(elseTok.loc,
-                         static_cast<uint32_t>(elseTok.lexeme.size()),
-                         diag::ERR_SelectCase_DuplicateElse.text,
-                         diag::ERR_SelectCase_DuplicateElse.id);
-            }
-            if (!sawCaseArm)
-            {
-                diagnose(elseTok.loc,
-                         static_cast<uint32_t>(elseTok.lexeme.size()),
-                         "CASE ELSE requires a preceding CASE arm");
-            }
-
-            auto [elseBody, elseEnd] = parseCaseElseBody();
-            if (!sawCaseElse)
-            {
-                stmt->elseBody = std::move(elseBody);
-                stmt->range.end = elseEnd;
-            }
-            sawCaseElse = true;
-            continue;
-        }
-
-        if (sawCaseElse)
-        {
-            diagnose(caseLoc, static_cast<uint32_t>(caseTok.lexeme.size()),
-                     "CASE arms must precede CASE ELSE");
-        }
-
-        CaseArm arm = parseCaseArm();
-        stmt->arms.push_back(std::move(arm));
-        if (!stmt->arms.empty())
-        {
-            stmt->range.end = stmt->arms.back().range.end;
-        }
-        sawCaseArm = true;
-    }
-
-    if (expectEndSelect)
-    {
-        diagnose(stmt->loc,
-                 6,
-                 diag::ERR_SelectCase_MissingEndSelect.text,
-                 diag::ERR_SelectCase_MissingEndSelect.id);
-    }
-
-    return stmt;
+    return control_flow::parseSelectCase(*this);
 }
 
 std::pair<std::vector<StmtPtr>, il::support::SourceLoc> Parser::parseCaseElseBody()
 {
-    expect(TokenKind::KeywordCase);
-    expect(TokenKind::KeywordElse);
-    Token elseEol = expect(TokenKind::EndOfLine);
-
-    std::vector<StmtPtr> body;
-    auto bodyCtx = statementSequencer();
-    auto predicate = [&](int, il::support::SourceLoc)
-    {
-        if (at(TokenKind::KeywordCase))
-            return true;
-        if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordSelect)
-            return true;
-        return false;
-    };
-    auto consumer = [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &)
-    {
-    };
-    bodyCtx.collectStatements(predicate, consumer, body);
-
-    return {std::move(body), elseEol.loc};
+    return control_flow::parseCaseElseBody(*this);
 }
 
 CaseArm Parser::parseCaseArm()
 {
-    Token caseTok = expect(TokenKind::KeywordCase);
-    CaseArm arm;
-    arm.range.begin = caseTok.loc;
-
-    bool haveEntry = false;
-    while (true)
-    {
-        if (at(TokenKind::Identifier) && peek().lexeme == "IS")
-        {
-            consume(); // IS
-            CaseArm::CaseRel rel;
-            Token opTok = peek();
-            switch (opTok.kind)
-            {
-                case TokenKind::Less:
-                    rel.op = CaseArm::CaseRel::Op::LT;
-                    break;
-                case TokenKind::LessEqual:
-                    rel.op = CaseArm::CaseRel::Op::LE;
-                    break;
-                case TokenKind::Equal:
-                    rel.op = CaseArm::CaseRel::Op::EQ;
-                    break;
-                case TokenKind::GreaterEqual:
-                    rel.op = CaseArm::CaseRel::Op::GE;
-                    break;
-                case TokenKind::Greater:
-                    rel.op = CaseArm::CaseRel::Op::GT;
-                    break;
-                default:
-                {
-                    if (opTok.kind != TokenKind::EndOfLine)
-                    {
-                        if (emitter_)
-                        {
-                            emitter_->emit(il::support::Severity::Error,
-                                           "B0001",
-                                           opTok.loc,
-                                           static_cast<uint32_t>(opTok.lexeme.size()),
-                                           "CASE IS requires a relational operator");
-                        }
-                        else
-                        {
-                            std::fprintf(stderr,
-                                         "CASE IS requires a relational operator\n");
-                        }
-                    }
-                    goto exitCaseEntries;
-                }
-            }
-            consume();
-
-            int sign = 1;
-            if (at(TokenKind::Plus) || at(TokenKind::Minus))
-            {
-                sign = at(TokenKind::Minus) ? -1 : 1;
-                consume();
-            }
-
-            if (!at(TokenKind::Number))
-            {
-                Token bad = peek();
-                if (bad.kind != TokenKind::EndOfLine)
-                {
-                    if (emitter_)
-                    {
-                        emitter_->emit(il::support::Severity::Error,
-                                       "B0001",
-                                       bad.loc,
-                                       static_cast<uint32_t>(bad.lexeme.size()),
-                                       "SELECT CASE labels must be integer literals");
-                    }
-                    else
-                    {
-                        std::fprintf(stderr,
-                                     "SELECT CASE labels must be integer literals\n");
-                    }
-                }
-                goto exitCaseEntries;
-            }
-
-            Token valueTok = consume();
-            long long value = std::strtoll(valueTok.lexeme.c_str(), nullptr, 10);
-            rel.rhs = static_cast<int64_t>(sign * value);
-            arm.rels.push_back(rel);
-            haveEntry = true;
-        }
-        else if (at(TokenKind::String))
-        {
-            const Token stringTok = peek();
-            std::string decoded;
-            std::string err;
-            if (!il::io::decodeEscapedString(stringTok.lexeme, decoded, &err))
-            {
-                if (emitter_)
-                {
-                    emitter_->emit(il::support::Severity::Error,
-                                   "B0003",
-                                   stringTok.loc,
-                                   static_cast<uint32_t>(stringTok.lexeme.size()),
-                                   err);
-                }
-                else
-                {
-                    std::fprintf(stderr, "%s\n", err.c_str());
-                }
-                decoded = stringTok.lexeme;
-            }
-            consume();
-            arm.str_labels.push_back(std::move(decoded));
-            haveEntry = true;
-        }
-        else if (at(TokenKind::Number))
-        {
-            Token labelTok = consume();
-            long long value = std::strtoll(labelTok.lexeme.c_str(), nullptr, 10);
-            int64_t lo = static_cast<int64_t>(value);
-
-            if (at(TokenKind::KeywordTo))
-            {
-                consume();
-                if (!at(TokenKind::Number))
-                {
-                    Token bad = peek();
-                    if (bad.kind != TokenKind::EndOfLine)
-                    {
-                        if (emitter_)
-                        {
-                            emitter_->emit(il::support::Severity::Error,
-                                           "B0001",
-                                           bad.loc,
-                                           static_cast<uint32_t>(bad.lexeme.size()),
-                                           "SELECT CASE labels must be integer literals");
-                        }
-                        else
-                        {
-                            std::fprintf(stderr,
-                                         "SELECT CASE labels must be integer literals\n");
-                        }
-                    }
-                    break;
-                }
-
-                Token hiTok = consume();
-                long long hiValue = std::strtoll(hiTok.lexeme.c_str(), nullptr, 10);
-                arm.ranges.emplace_back(lo, static_cast<int64_t>(hiValue));
-                haveEntry = true;
-            }
-            else
-            {
-                arm.labels.push_back(lo);
-                haveEntry = true;
-            }
-        }
-        else
-        {
-            Token bad = peek();
-            if (bad.kind != TokenKind::EndOfLine)
-            {
-                if (emitter_)
-                {
-                    emitter_->emit(il::support::Severity::Error,
-                                   "B0001",
-                                   bad.loc,
-                                   static_cast<uint32_t>(bad.lexeme.size()),
-                                   "SELECT CASE labels must be integer literals");
-                }
-                else
-                {
-                    std::fprintf(stderr,
-                                 "SELECT CASE labels must be integer literals\n");
-                }
-            }
-            break;
-        }
-
-        if (at(TokenKind::Comma))
-        {
-            consume();
-            continue;
-        }
-        break;
-    }
-
-exitCaseEntries:
-
-    if (!haveEntry)
-    {
-        if (emitter_)
-        {
-            emitter_->emit(il::support::Severity::Error,
-                           std::string(diag::ERR_Case_EmptyLabelList.id),
-                           caseTok.loc,
-                           static_cast<uint32_t>(caseTok.lexeme.size()),
-                           std::string(diag::ERR_Case_EmptyLabelList.text));
-        }
-        else
-        {
-            const std::string msg(diag::ERR_Case_EmptyLabelList.text);
-            std::fprintf(stderr, "%s\n", msg.c_str());
-        }
-    }
-
-    Token caseEol = expect(TokenKind::EndOfLine);
-    arm.range.end = caseEol.loc;
-
-    auto bodyCtx = statementSequencer();
-    auto predicate = [&](int, il::support::SourceLoc)
-    {
-        if (at(TokenKind::KeywordCase))
-            return true;
-        if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordSelect)
-            return true;
-        return false;
-    };
-    auto consumer = [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &)
-    {
-    };
-    bodyCtx.collectStatements(predicate, consumer, arm.body);
-
-    return arm;
+    return control_flow::parseCaseArm(*this);
 }
 
 /// @brief Parse a DO ... LOOP statement with optional pre/post conditions.
 /// @return DoStmt capturing condition position and body statements.
 StmtPtr Parser::parseDo()
 {
-    auto loc = peek().loc;
-    consume(); // DO
-    auto stmt = std::make_unique<DoStmt>();
-    stmt->loc = loc;
-
-    bool hasPreTest = false;
-    if (at(TokenKind::KeywordWhile) || at(TokenKind::KeywordUntil))
-    {
-        hasPreTest = true;
-        Token testTok = consume();
-        stmt->testPos = DoStmt::TestPos::Pre;
-        stmt->condKind = testTok.kind == TokenKind::KeywordWhile ? DoStmt::CondKind::While
-                                                                 : DoStmt::CondKind::Until;
-        stmt->cond = parseExpression();
-    }
-
-    auto ctxDo = statementSequencer();
-    ctxDo.collectStatements(TokenKind::KeywordLoop, stmt->body);
-
-    bool hasPostTest = false;
-    Token postTok{};
-    DoStmt::CondKind postKind = DoStmt::CondKind::None;
-    ExprPtr postCond;
-    if (at(TokenKind::KeywordWhile) || at(TokenKind::KeywordUntil))
-    {
-        postTok = consume();
-        hasPostTest = true;
-        postKind = postTok.kind == TokenKind::KeywordWhile ? DoStmt::CondKind::While
-                                                           : DoStmt::CondKind::Until;
-        postCond = parseExpression();
-    }
-
-    if (hasPreTest && hasPostTest)
-    {
-        if (emitter_)
-        {
-            emitter_->emit(il::support::Severity::Error,
-                           "B0001",
-                           postTok.loc,
-                           static_cast<uint32_t>(postTok.lexeme.size()),
-                           "multiple DO loop tests");
-        }
-        else
-        {
-            std::fprintf(stderr, "multiple DO loop tests\n");
-        }
-    }
-    else if (hasPostTest)
-    {
-        stmt->testPos = DoStmt::TestPos::Post;
-        stmt->condKind = postKind;
-        stmt->cond = std::move(postCond);
-    }
-
-    return stmt;
+    return control_flow::parseDo(*this);
 }
 
 /// @brief Parse a FOR loop terminated by NEXT.
@@ -997,38 +307,7 @@ StmtPtr Parser::parseDo()
 /// @note Optional STEP expression is supported.
 StmtPtr Parser::parseFor()
 {
-    auto loc = peek().loc;
-    consume(); // FOR
-    std::string var = peek().lexeme;
-    expect(TokenKind::Identifier);
-    expect(TokenKind::Equal);
-    auto start = parseExpression();
-    expect(TokenKind::KeywordTo);
-    auto end = parseExpression();
-    ExprPtr step;
-    if (at(TokenKind::KeywordStep))
-    {
-        consume();
-        step = parseExpression();
-    }
-    auto stmt = std::make_unique<ForStmt>();
-    stmt->loc = loc;
-    stmt->var = var;
-    stmt->start = std::move(start);
-    stmt->end = std::move(end);
-    stmt->step = std::move(step);
-    auto ctxFor = statementSequencer();
-    ctxFor.collectStatements([&](int, il::support::SourceLoc) { return at(TokenKind::KeywordNext); },
-                             [&](int,
-                                 il::support::SourceLoc,
-                                 StatementSequencer::TerminatorInfo &)
-                             {
-                                 consume();
-                                 if (at(TokenKind::Identifier))
-                                     consume();
-                             },
-                             stmt->body);
-    return stmt;
+    return control_flow::parseFor(*this);
 }
 
 /// @brief Parse a NEXT statement advancing a FOR loop.

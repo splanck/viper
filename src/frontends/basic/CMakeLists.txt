@@ -7,6 +7,7 @@ add_library(fe_basic STATIC
   AstPrint_Stmt.cpp
   Parser.cpp
   Parser_Stmt.cpp
+  Parser_StmtControlFlow.cpp
   Parser_Expr.cpp
   Parser_Token.cpp
   StatementSequencer.cpp
