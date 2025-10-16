@@ -11,6 +11,37 @@ scan each case linearly on every dispatch. The interpreter now memoizes dispatch
 metadata per instruction and selects the fastest backend for the observed case
 values.
 
+## Interpreter dispatch loops
+
+Viper ships three interpreter dispatch loops. They trade off portability and
+peak performance and can be toggled without recompiling the VM runtime.
+
+- **Function-pointer table** – maximally portable because it only depends on
+  standard C++. The VM keeps an array of opcode handlers and performs an
+  indirect call for every instruction retirement.
+- **`switch` dispatch** – compiles each opcode handler into a `switch`
+  statement. Modern compilers lower this to jump tables for dense opcode
+  ranges and fall back to binary searches otherwise.
+- **Direct-threaded dispatch** – uses GCC/Clang’s labels-as-values extension to
+  compute the next instruction address without a branch. This yields the best
+  branch prediction behaviour but requires enabling the extension explicitly.
+
+The interpreter chooses the dispatch loop at process start. Set the
+`VIPER_DISPATCH` environment variable to override the default:
+
+| Value | Selected loop | Notes |
+|-------|----------------|-------|
+| _unset_ | `switch` (or direct-threaded when available) | Default at startup. |
+| `table` | Function-pointer table | Always available. |
+| `switch` | `switch` dispatch | Portable and optimisation-friendly. |
+| `threaded` | Direct-threaded dispatch | Requires building with threaded dispatch support; otherwise falls back to `switch`. |
+
+Direct-threaded dispatch is gated by the `VIPER_VM_THREADED` CMake option. Pass
+`-DVIPER_VM_THREADED=ON` when configuring CMake to emit the threaded loop.
+Because the implementation relies on labels-as-values, only GCC and Clang can
+compile this configuration today. Other compilers automatically retain the
+`switch` implementation even if the option is requested.
+
 ## Backend selection heuristic
 
 When the VM first executes a `switch.i32`, it collects the scrutinee constants

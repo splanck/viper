@@ -1,5 +1,8 @@
 # Changelog
 
+## 2025-09-24T00:00Z
+VM: Added direct-threaded and switch-based dispatch loops; retained function-pointer dispatch for portability.
+
 ## 2025-09-23T00:00Z
 VM: SwitchI32 now uses memoized dense/sorted/hashed dispatch instead of linear scan.
 
