@@ -117,6 +117,8 @@ class SemanticAnalyzer
     void analyzeIf(const IfStmt &s);
     /// @brief Analyze SELECT CASE statement @p s.
     void analyzeSelectCase(const SelectCaseStmt &s);
+    /// @brief Analyze the statements contained within a CASE arm or ELSE body.
+    void analyzeSelectCaseBody(const std::vector<StmtPtr> &body);
     /// @brief Analyze WHILE statement @p s.
     void analyzeWhile(const WhileStmt &s);
     /// @brief Analyze DO statement @p s.
