@@ -1,0 +1,246 @@
+// File: src/frontends/basic/LowerStmt_Runtime.cpp
+// License: MIT License. See LICENSE in the project root for full license information.
+// Purpose: Implements runtime-oriented BASIC statement lowering helpers such as
+//          assignment, array management, and terminal control statements.
+// Key invariants: Helpers reuse Lowerer's active context to manage string
+//                 ownership, runtime feature requests, and diagnostics.
+// Ownership/Lifetime: Operates on Lowerer without owning AST nodes or IL data.
+// Links: docs/codemap.md
+
+#include "frontends/basic/Lowerer.hpp"
+
+#include <cassert>
+
+using namespace il::core;
+
+namespace il::frontends::basic
+{
+
+void Lowerer::visit(const ClsStmt &s)
+{
+    curLoc = s.loc;
+    requestHelper(il::runtime::RuntimeFeature::TermCls);
+    emitCallRet(Type(Type::Kind::Void), "rt_term_cls", {});
+}
+
+void Lowerer::visit(const ColorStmt &s)
+{
+    curLoc = s.loc;
+    auto fg = ensureI64(lowerExpr(*s.fg), s.loc);
+    Value bgv = Value::constInt(-1);
+    if (s.bg)
+    {
+        auto bg = ensureI64(lowerExpr(*s.bg), s.loc);
+        bgv = bg.value;
+    }
+    Value fg32 = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), fg.value);
+    Value bg32 = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), bgv);
+    requestHelper(il::runtime::RuntimeFeature::TermColor);
+    emitCallRet(Type(Type::Kind::Void), "rt_term_color_i32", {fg32, bg32});
+}
+
+void Lowerer::visit(const LocateStmt &s)
+{
+    curLoc = s.loc;
+    auto row = ensureI64(lowerExpr(*s.row), s.loc);
+    Value colv = Value::constInt(1);
+    if (s.col)
+    {
+        auto col = ensureI64(lowerExpr(*s.col), s.loc);
+        colv = col.value;
+    }
+    Value row32 = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), row.value);
+    Value col32 = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), colv);
+    requestHelper(il::runtime::RuntimeFeature::TermLocate);
+    emitCallRet(Type(Type::Kind::Void), "rt_term_locate_i32", {row32, col32});
+}
+
+void Lowerer::lowerLet(const LetStmt &stmt)
+{
+    RVal v = lowerExpr(*stmt.expr);
+    if (auto *var = dynamic_cast<const VarExpr *>(stmt.target.get()))
+    {
+        const auto *info = findSymbol(var->name);
+        assert(info && info->slotId);
+        SlotType slotInfo = getSlotType(var->name);
+        Type targetTy = slotInfo.type;
+        bool isArray = slotInfo.isArray;
+        bool isStr = targetTy.kind == Type::Kind::Str;
+        bool isF64 = targetTy.kind == Type::Kind::F64;
+        bool isBool = slotInfo.isBoolean;
+        if (!isArray)
+        {
+            if (!isStr && !isF64 && !isBool && v.type.kind == Type::Kind::I1)
+            {
+                v = coerceToI64(std::move(v), stmt.loc);
+            }
+            if (isF64 && v.type.kind == Type::Kind::I64)
+            {
+                v = coerceToF64(std::move(v), stmt.loc);
+            }
+            else if (!isStr && !isF64 && !isBool && v.type.kind == Type::Kind::F64)
+            {
+                v = coerceToI64(std::move(v), stmt.loc);
+            }
+        }
+        Value slot = Value::temp(*info->slotId);
+        curLoc = stmt.loc;
+        if (isArray)
+            storeArray(slot, v.value);
+        else
+        {
+            if (targetTy.kind == Type::Kind::I1 && v.type.kind != Type::Kind::I1)
+            {
+                v = coerceToBool(std::move(v), stmt.loc);
+            }
+            if (isStr)
+            {
+                requireStrReleaseMaybe();
+                Value oldValue = emitLoad(targetTy, slot);
+                emitCall("rt_str_release_maybe", {oldValue});
+                requireStrRetainMaybe();
+                emitCall("rt_str_retain_maybe", {v.value});
+                emitStore(targetTy, slot, v.value);
+            }
+            else
+            {
+                emitStore(targetTy, slot, v.value);
+            }
+        }
+    }
+    else if (auto *arr = dynamic_cast<const ArrayExpr *>(stmt.target.get()))
+    {
+        if (v.type.kind == Type::Kind::I1)
+        {
+            v = coerceToI64(std::move(v), stmt.loc);
+        }
+        ArrayAccess access = lowerArrayAccess(*arr, ArrayAccessKind::Store);
+        curLoc = stmt.loc;
+        emitCall("rt_arr_i32_set", {access.base, access.index, v.value});
+    }
+}
+
+void Lowerer::lowerDim(const DimStmt &stmt)
+{
+    RVal bound = lowerExpr(*stmt.size);
+    bound = ensureI64(std::move(bound), stmt.loc);
+    curLoc = stmt.loc;
+
+    Value length = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), bound.value, Value::constInt(1));
+
+    ProcedureContext &ctx = context();
+    Function *func = ctx.function();
+    BasicBlock *original = ctx.current();
+    if (func && original)
+    {
+        size_t curIdx = static_cast<size_t>(original - &func->blocks[0]);
+        BlockNamer *blockNamer = ctx.blockNames().namer();
+        std::string failLbl = blockNamer ? blockNamer->generic("dim_len_fail")
+                                         : mangler.block("dim_len_fail");
+        std::string contLbl = blockNamer ? blockNamer->generic("dim_len_cont")
+                                         : mangler.block("dim_len_cont");
+
+        size_t failIdx = func->blocks.size();
+        builder->addBlock(*func, failLbl);
+        size_t contIdx = func->blocks.size();
+        builder->addBlock(*func, contLbl);
+
+        BasicBlock *failBlk = &func->blocks[failIdx];
+        BasicBlock *contBlk = &func->blocks[contIdx];
+
+        ctx.setCurrent(&func->blocks[curIdx]);
+        curLoc = stmt.loc;
+        Value isNeg = emitBinary(Opcode::SCmpLT, ilBoolTy(), length, Value::constInt(0));
+        emitCBr(isNeg, failBlk, contBlk);
+
+        ctx.setCurrent(failBlk);
+        curLoc = stmt.loc;
+        emitTrap();
+
+        ctx.setCurrent(contBlk);
+    }
+
+    curLoc = stmt.loc;
+    Value handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_i32_new", {length});
+    const auto *info = findSymbol(stmt.name);
+    assert(info && info->slotId);
+    storeArray(Value::temp(*info->slotId), handle);
+    if (boundsChecks)
+    {
+        if (info && info->arrayLengthSlot)
+            emitStore(Type(Type::Kind::I64), Value::temp(*info->arrayLengthSlot), length);
+    }
+}
+
+/// @brief Lower a REDIM array reallocation.
+/// @param stmt REDIM statement describing the new size.
+/// @details Re-evaluates the target length, invokes @c rt_arr_i32_resize to
+///          adjust the array storage, and stores the returned handle into the
+///          tracked array slot, mirroring DIM lowering semantics.
+void Lowerer::lowerReDim(const ReDimStmt &stmt)
+{
+    RVal bound = lowerExpr(*stmt.size);
+    bound = ensureI64(std::move(bound), stmt.loc);
+    curLoc = stmt.loc;
+
+    Value length = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), bound.value, Value::constInt(1));
+
+    ProcedureContext &ctx = context();
+    Function *func = ctx.function();
+    BasicBlock *original = ctx.current();
+    if (func && original)
+    {
+        size_t curIdx = static_cast<size_t>(original - &func->blocks[0]);
+        BlockNamer *blockNamer = ctx.blockNames().namer();
+        std::string failLbl = blockNamer ? blockNamer->generic("redim_len_fail")
+                                         : mangler.block("redim_len_fail");
+        std::string contLbl = blockNamer ? blockNamer->generic("redim_len_cont")
+                                         : mangler.block("redim_len_cont");
+
+        size_t failIdx = func->blocks.size();
+        builder->addBlock(*func, failLbl);
+        size_t contIdx = func->blocks.size();
+        builder->addBlock(*func, contLbl);
+
+        BasicBlock *failBlk = &func->blocks[failIdx];
+        BasicBlock *contBlk = &func->blocks[contIdx];
+
+        ctx.setCurrent(&func->blocks[curIdx]);
+        curLoc = stmt.loc;
+        Value isNeg = emitBinary(Opcode::SCmpLT, ilBoolTy(), length, Value::constInt(0));
+        emitCBr(isNeg, failBlk, contBlk);
+
+        ctx.setCurrent(failBlk);
+        curLoc = stmt.loc;
+        emitTrap();
+
+        ctx.setCurrent(contBlk);
+    }
+
+    curLoc = stmt.loc;
+    const auto *info = findSymbol(stmt.name);
+    assert(info && info->slotId);
+    Value slot = Value::temp(*info->slotId);
+    Value current = emitLoad(Type(Type::Kind::Ptr), slot);
+    Value resized = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_i32_resize", {current, length});
+    storeArray(slot, resized);
+    if (boundsChecks && info && info->arrayLengthSlot)
+        emitStore(Type(Type::Kind::I64), Value::temp(*info->arrayLengthSlot), length);
+}
+
+/// @brief Lower a RANDOMIZE seed update.
+/// @param stmt RANDOMIZE statement carrying the seed expression.
+/// @details Converts the seed expression to a 64-bit integer when necessary and
+///          invokes the runtime @c rt_randomize_i64 helper. @ref curLoc is
+///          updated to associate diagnostics with the statement while leaving
+///          @ref cur unchanged.
+void Lowerer::lowerRandomize(const RandomizeStmt &stmt)
+{
+    RVal s = lowerExpr(*stmt.seed);
+    Value seed = coerceToI64(std::move(s), stmt.loc).value;
+    curLoc = stmt.loc;
+    emitCall("rt_randomize_i64", {seed});
+}
+
+} // namespace il::frontends::basic
+
