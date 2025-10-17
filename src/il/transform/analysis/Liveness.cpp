@@ -1,9 +1,16 @@
-// File: src/il/transform/analysis/Liveness.cpp
-// License: MIT License. See LICENSE in the project root for details.
-// Purpose: Implement CFG synthesis and backwards liveness data-flow analysis.
-// Key invariants: Bitsets are sized to the maximum dense SSA identifier referenced by the function.
-// Ownership/Lifetime: Summaries borrow module-owned basic blocks and store copies of bitsets.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the backwards data-flow analysis used to compute SSA liveness for
+// IL functions.  The helpers construct a compact CFG summary, determine the
+// register universe, and iterate until fixed point to determine live-in/live-out
+// sets per block.
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/transform/analysis/Liveness.hpp"
 
@@ -25,30 +32,53 @@ using namespace il::core;
 namespace il::transform
 {
 
+/// @brief Test whether a value identifier appears in the tracked set.
+///
+/// @param valueId Dense SSA identifier to query.
+/// @return @c true when the bitset contains the identifier.
 bool LivenessInfo::SetView::contains(unsigned valueId) const
 {
     return bits_ != nullptr && valueId < bits_->size() && (*bits_)[valueId];
 }
 
+/// @brief Determine whether the view represents an empty set.
+///
+/// @return @c true when no bitset is attached or every bit is clear.
 bool LivenessInfo::SetView::empty() const
 {
     return bits_ == nullptr ||
            std::none_of(bits_->begin(), bits_->end(), [](bool bit) { return bit; });
 }
 
+/// @brief Access the underlying bitset describing the view.
+///
+/// @return Reference to the underlying bitset.
+/// @throws Assertion failure when the view is empty.
 const std::vector<bool> &LivenessInfo::SetView::bits() const
 {
     assert(bits_ && "liveness set view is empty");
     return *bits_;
 }
 
+/// @brief Construct a view over an existing bitset pointer.
+///
+/// @param bits Pointer to the bitset describing the set; may be @c nullptr to
+///             represent an empty view.
 LivenessInfo::SetView::SetView(const std::vector<bool> *bits) : bits_(bits) {}
 
+/// @brief Retrieve the live-in set for a block.
+///
+/// @param block Block whose live-in values are requested.
+/// @return View over the block's live-in bitset.
 LivenessInfo::SetView LivenessInfo::liveIn(const core::BasicBlock &block) const
 {
     return liveIn(&block);
 }
 
+/// @brief Retrieve the live-in set for an optional block pointer.
+///
+/// @param block Block pointer or @c nullptr.
+/// @return View over the block's live-in bitset or an empty view when @p block is null.
 LivenessInfo::SetView LivenessInfo::liveIn(const core::BasicBlock *block) const
 {
     if (!block)
@@ -59,11 +89,19 @@ LivenessInfo::SetView LivenessInfo::liveIn(const core::BasicBlock *block) const
     return SetView(&it->second);
 }
 
+/// @brief Retrieve the live-out set for a block.
+///
+/// @param block Block whose live-out values are requested.
+/// @return View over the block's live-out bitset.
 LivenessInfo::SetView LivenessInfo::liveOut(const core::BasicBlock &block) const
 {
     return liveOut(&block);
 }
 
+/// @brief Retrieve the live-out set for an optional block pointer.
+///
+/// @param block Block pointer or @c nullptr.
+/// @return View over the block's live-out bitset or an empty view when @p block is null.
 LivenessInfo::SetView LivenessInfo::liveOut(const core::BasicBlock *block) const
 {
     if (!block)
@@ -74,6 +112,9 @@ LivenessInfo::SetView LivenessInfo::liveOut(const core::BasicBlock *block) const
     return SetView(&it->second);
 }
 
+/// @brief Report the number of dense SSA identifiers tracked by the analysis.
+///
+/// @return Value identifier capacity discovered during analysis.
 std::size_t LivenessInfo::valueCount() const
 {
     return valueCount_;
@@ -83,6 +124,7 @@ namespace
 {
 struct BlockInfo
 {
+    /// @brief Prepare per-block definition/use bitsets sized to @p valueCount.
     explicit BlockInfo(std::size_t valueCount = 0)
         : defs(valueCount, false), uses(valueCount, false)
     {
@@ -92,6 +134,13 @@ struct BlockInfo
     std::vector<bool> uses;
 };
 
+/// @brief Determine how many dense SSA identifiers the function may reference.
+///
+/// Scans function arguments, block parameters, instruction operands, branch
+/// arguments, and instruction results to compute the maximum identifier used.
+///
+/// @param fn Function being analysed.
+/// @return Capacity large enough to index every identifier observed in @p fn.
 std::size_t determineValueCapacity(const core::Function &fn)
 {
     unsigned maxId = 0;
@@ -136,6 +185,7 @@ std::size_t determineValueCapacity(const core::Function &fn)
     return capacity;
 }
 
+/// @brief Mark a bit corresponding to @p id when it falls inside the bitset.
 inline void setBit(std::vector<bool> &bits, unsigned id)
 {
     assert(id < bits.size());
@@ -143,6 +193,7 @@ inline void setBit(std::vector<bool> &bits, unsigned id)
         bits[id] = true;
 }
 
+/// @brief Merge set bits from @p src into @p dst.
 inline void mergeBits(std::vector<bool> &dst, const std::vector<bool> &src)
 {
     assert(dst.size() == src.size());
@@ -155,6 +206,14 @@ inline void mergeBits(std::vector<bool> &dst, const std::vector<bool> &src)
 
 } // namespace
 
+/// @brief Build a lightweight CFG summary for the function.
+///
+/// Populates predecessor/successor relationships using the shared CFG helpers so
+/// the liveness analysis can avoid full context recomputation.
+///
+/// @param module Module containing the function.
+/// @param fn Function whose CFG summary should be constructed.
+/// @return Populated CFG information ready for data-flow analysis.
 CFGInfo buildCFG(core::Module &module, core::Function &fn)
 {
     CFGInfo info;
@@ -181,6 +240,12 @@ CFGInfo buildCFG(core::Module &module, core::Function &fn)
     return info;
 }
 
+/// @brief Compute backwards liveness for @p fn using an existing CFG summary.
+///
+/// @param module Module owning the function (unused but kept for symmetry).
+/// @param fn Function being analysed.
+/// @param cfg Precomputed CFG summary for @p fn.
+/// @return Populated liveness information including live-in/live-out bitsets.
 LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFGInfo &cfg)
 {
     static_cast<void>(module);
@@ -284,6 +349,11 @@ LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFG
     return info;
 }
 
+/// @brief Compute backwards liveness for @p fn, constructing a CFG summary on demand.
+///
+/// @param module Module containing the function.
+/// @param fn Function being analysed.
+/// @return Populated liveness information including live-in/live-out bitsets.
 LivenessInfo computeLiveness(core::Module &module, core::Function &fn)
 {
     CFGInfo cfg = buildCFG(module, fn);
