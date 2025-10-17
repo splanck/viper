@@ -55,68 +55,83 @@ void Lowerer::visit(const LocateStmt &s)
     emitCallRet(Type(Type::Kind::Void), "rt_term_locate_i32", {row32, col32});
 }
 
+void Lowerer::assignScalarSlot(const SlotType &slotInfo,
+                               Value slot,
+                               RVal value,
+                               il::support::SourceLoc loc)
+{
+    Type targetTy = slotInfo.type;
+    bool isStr = targetTy.kind == Type::Kind::Str;
+    bool isF64 = targetTy.kind == Type::Kind::F64;
+    bool isBool = slotInfo.isBoolean;
+
+    if (!isStr && !isF64 && !isBool && value.type.kind == Type::Kind::I1)
+    {
+        value = coerceToI64(std::move(value), loc);
+    }
+    if (isF64 && value.type.kind == Type::Kind::I64)
+    {
+        value = coerceToF64(std::move(value), loc);
+    }
+    else if (!isStr && !isF64 && !isBool && value.type.kind == Type::Kind::F64)
+    {
+        value = coerceToI64(std::move(value), loc);
+    }
+
+    if (targetTy.kind == Type::Kind::I1 && value.type.kind != Type::Kind::I1)
+    {
+        value = coerceToBool(std::move(value), loc);
+    }
+
+    curLoc = loc;
+    if (isStr)
+    {
+        requireStrReleaseMaybe();
+        Value oldValue = emitLoad(targetTy, slot);
+        emitCall("rt_str_release_maybe", {oldValue});
+        requireStrRetainMaybe();
+        emitCall("rt_str_retain_maybe", {value.value});
+    }
+
+    emitStore(targetTy, slot, value.value);
+}
+
+void Lowerer::assignArrayElement(const ArrayExpr &target,
+                                 RVal value,
+                                 il::support::SourceLoc loc)
+{
+    if (value.type.kind == Type::Kind::I1)
+    {
+        value = coerceToI64(std::move(value), loc);
+    }
+
+    ArrayAccess access = lowerArrayAccess(target, ArrayAccessKind::Store);
+    curLoc = loc;
+    emitCall("rt_arr_i32_set", {access.base, access.index, value.value});
+}
+
 void Lowerer::lowerLet(const LetStmt &stmt)
 {
-    RVal v = lowerExpr(*stmt.expr);
+    RVal value = lowerExpr(*stmt.expr);
     if (auto *var = dynamic_cast<const VarExpr *>(stmt.target.get()))
     {
         const auto *info = findSymbol(var->name);
         assert(info && info->slotId);
         SlotType slotInfo = getSlotType(var->name);
-        Type targetTy = slotInfo.type;
-        bool isArray = slotInfo.isArray;
-        bool isStr = targetTy.kind == Type::Kind::Str;
-        bool isF64 = targetTy.kind == Type::Kind::F64;
-        bool isBool = slotInfo.isBoolean;
-        if (!isArray)
-        {
-            if (!isStr && !isF64 && !isBool && v.type.kind == Type::Kind::I1)
-            {
-                v = coerceToI64(std::move(v), stmt.loc);
-            }
-            if (isF64 && v.type.kind == Type::Kind::I64)
-            {
-                v = coerceToF64(std::move(v), stmt.loc);
-            }
-            else if (!isStr && !isF64 && !isBool && v.type.kind == Type::Kind::F64)
-            {
-                v = coerceToI64(std::move(v), stmt.loc);
-            }
-        }
         Value slot = Value::temp(*info->slotId);
-        curLoc = stmt.loc;
-        if (isArray)
-            storeArray(slot, v.value);
+        if (slotInfo.isArray)
+        {
+            curLoc = stmt.loc;
+            storeArray(slot, value.value);
+        }
         else
         {
-            if (targetTy.kind == Type::Kind::I1 && v.type.kind != Type::Kind::I1)
-            {
-                v = coerceToBool(std::move(v), stmt.loc);
-            }
-            if (isStr)
-            {
-                requireStrReleaseMaybe();
-                Value oldValue = emitLoad(targetTy, slot);
-                emitCall("rt_str_release_maybe", {oldValue});
-                requireStrRetainMaybe();
-                emitCall("rt_str_retain_maybe", {v.value});
-                emitStore(targetTy, slot, v.value);
-            }
-            else
-            {
-                emitStore(targetTy, slot, v.value);
-            }
+            assignScalarSlot(slotInfo, slot, std::move(value), stmt.loc);
         }
     }
     else if (auto *arr = dynamic_cast<const ArrayExpr *>(stmt.target.get()))
     {
-        if (v.type.kind == Type::Kind::I1)
-        {
-            v = coerceToI64(std::move(v), stmt.loc);
-        }
-        ArrayAccess access = lowerArrayAccess(*arr, ArrayAccessKind::Store);
-        curLoc = stmt.loc;
-        emitCall("rt_arr_i32_set", {access.base, access.index, v.value});
+        assignArrayElement(*arr, std::move(value), stmt.loc);
     }
 }
 
