@@ -1,8 +1,16 @@
-// File: src/il/verify/ResultTypeChecker.cpp
-// Purpose: Implements a helper that validates result presence and types against opcode metadata.
-// Key invariants: Operates on the verification context for a single instruction.
-// Ownership/Lifetime: Non-owning references to verification data structures.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the checker that ensures instructions produce results in the
+// manner described by their opcode metadata.  The helper mirrors the
+// information recorded in il/core/Opcode.def so verification stays consistent
+// with the interpreter and code generation pipelines.
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/verify/ResultTypeChecker.hpp"
 
@@ -22,11 +30,23 @@ using il::core::kindToString;
 namespace il::verify::detail
 {
 
+/// @brief Construct a checker bound to a specific instruction context and
+///        opcode descriptor.
+///
+/// The context supplies instruction operands and diagnostic plumbing while the
+/// descriptor conveys the expected result arity and category.
 ResultTypeChecker::ResultTypeChecker(const VerifyCtx &ctx, const il::core::OpcodeInfo &info)
     : ctx_(ctx), info_(info)
 {
 }
 
+/// @brief Perform the result validation for the instruction described by @c ctx_.
+///
+/// The checker enforces result presence/absence, validates type categories, and
+/// applies opcode-specific exceptions (such as narrow casts that may vary the
+/// concrete result kind).  Diagnostics are emitted through @ref report.
+///
+/// @return Empty Expected on success or a diagnostic payload on failure.
 Expected<void> ResultTypeChecker::run() const
 {
     const auto &instr = ctx_.instr;
@@ -72,6 +92,10 @@ Expected<void> ResultTypeChecker::run() const
     return {};
 }
 
+/// @brief Emit a diagnostic anchored to the instruction currently being checked.
+///
+/// @param message Human-readable explanation of the violation.
+/// @return Expected containing the constructed diagnostic.
 Expected<void> ResultTypeChecker::report(std::string_view message) const
 {
     return Expected<void>{makeError(ctx_.instr.loc, formatInstrDiag(ctx_.fn, ctx_.block, ctx_.instr, message))};

@@ -20,10 +20,11 @@ namespace il::vm
 {
 /// @brief Construct a script by loading actions from a command file.
 ///
-/// Lines containing "continue" enqueue a Continue action; lines with "step" or
-/// "step N" enqueue a Step action with the requested instruction count.  Unknown
-/// commands emit a `[DEBUG]` message and are ignored so partially written scripts
-/// remain usable.
+/// Each non-empty line is interpreted as a debugger command.  Lines containing
+/// "continue" enqueue a Continue action; "step" without an argument steps once;
+/// "step N" repeats stepping @p N times when the integer parse succeeds.  Any
+/// other text triggers a diagnostic but leaves script processing active so work
+/// in progress files can be reused.
 DebugScript::DebugScript(const std::string &path)
 {
     std::ifstream f(path);

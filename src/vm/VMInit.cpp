@@ -1,8 +1,16 @@
-// File: src/vm/VMInit.cpp
-// Purpose: Implements VM construction and execution state preparation routines.
-// Key invariants: Ensures frames and execution state are initialised consistently.
-// Ownership/Lifetime: VM retains references to module functions and runtime strings.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Houses the construction and initialisation routines for the Viper VM.  The
+// helpers here wire tracing, debugging, and dispatch mode selection before
+// producing the frame and execution-state structures consumed by the main
+// interpreter loop.
+//
+//===----------------------------------------------------------------------===//
 
 #include "vm/VM.hpp"
 #include "vm/Marshal.hpp"
@@ -31,6 +39,8 @@ namespace il::vm
 namespace
 {
 
+/// @brief RAII helper that forces the C locale to use "C" for numeric
+///        formatting.
 struct NumericLocaleInitializer
 {
     NumericLocaleInitializer()
@@ -41,6 +51,12 @@ struct NumericLocaleInitializer
 
 [[maybe_unused]] const NumericLocaleInitializer kNumericLocaleInitializer{};
 
+/// @brief Determine whether verbose VM logging is enabled via environment.
+///
+/// Reads the `VIPER_DEBUG_VM` environment variable once and caches the boolean
+/// result so subsequent checks are cheap.
+///
+/// @return True when debugging output should be printed.
 bool isVmDebugLoggingEnabled()
 {
     static const bool enabled = [] {
@@ -51,6 +67,10 @@ bool isVmDebugLoggingEnabled()
     return enabled;
 }
 
+/// @brief Map a dispatch strategy enumerator to a descriptive name.
+///
+/// @param kind Dispatch strategy selected for this VM instance.
+/// @return String literal describing @p kind.
 const char *dispatchKindName(VM::DispatchKind kind)
 {
     switch (kind)
@@ -67,21 +87,24 @@ const char *dispatchKindName(VM::DispatchKind kind)
 
 } // namespace
 
-/// Construct a VM instance bound to a specific IL @p Module.
-/// The constructor wires the tracing and debugging subsystems and pre-populates
-/// lookup tables for functions and runtime strings.
+/// @brief Construct a VM instance bound to a specific IL @p Module.
 ///
-/// @param m   Module containing code and globals to execute. It must outlive the VM.
-/// @param tc  Trace configuration used to initialise the @c TraceSink. The contained
-///            source manager is passed to the debug controller so source locations
-///            can be reported in breaks.
-/// @param ms  Optional step limit; execution aborts after this many instructions
-///            have been retired. A value of @c 0 disables the limit.
-/// @param dbg Initial debugger control block describing active breakpoints and
-///            stepping behaviour.
+/// The constructor wires tracing, debugging, and dispatch strategy selection
+/// before caching module globals for quick lookup.  Environment variables
+/// control optional debug logging (`VIPER_DEBUG_VM`) and dispatch strategy
+/// (`VIPER_DISPATCH`).
+///
+/// @param m      Module containing code and globals to execute. It must outlive the VM.
+/// @param tc     Trace configuration used to initialise the @c TraceSink. The contained
+///               source manager is passed to the debug controller so source locations
+///               can be reported in breaks.
+/// @param ms     Optional step limit; execution aborts after this many instructions
+///               have been retired. A value of @c 0 disables the limit.
+/// @param dbg    Initial debugger control block describing active breakpoints and
+///               stepping behaviour.
 /// @param script Optional scripted debugger interaction. When provided, scripted
-///            actions drive how pauses are handled; otherwise breaks cause the VM
-///            to return a fixed slot.
+///               actions drive how pauses are handled; otherwise breaks cause the VM
+///               to return a fixed slot.
 VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript *script)
     : mod(m), tracer(tc), debug(std::move(dbg)), script(script), maxSteps(ms)
 {
@@ -150,7 +173,7 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
         strMap[g.name] = toViperString(g.init);
 }
 
-/// Initialise a fresh @c Frame for executing function @p fn.
+/// @brief Initialise a fresh @c Frame for executing function @p fn.
 ///
 /// Populates a basic-block lookup table, selects the entry block and seeds the
 /// register file and any entry parameters. This prepares state for the main
@@ -202,7 +225,7 @@ Frame VM::setupFrame(const Function &fn,
     return fr;
 }
 
-/// Create an initial execution state for running @p fn.
+/// @brief Create an initial execution state for running @p fn.
 ///
 /// This sets up the frame and block map via @c setupFrame, resets debugging
 /// state, and initialises the instruction pointer and stepping flags.

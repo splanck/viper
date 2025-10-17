@@ -1,8 +1,16 @@
-// File: src/vm/VMDebug.cpp
-// Purpose: Implements debugging helpers for VM breakpoint and step handling.
-// Key invariants: Debug hooks respect configured breakpoints and step limits.
-// Ownership/Lifetime: Operates on VM-owned frames without assuming external lifetime.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the debugging helpers used by the VM to manage breakpoints,
+// watches, and scripted stepping.  The routines centralise the interaction
+// between execution state, the DebugCtrl facade, and optional DebugScript
+// automation so all dispatch strategies observe the same debugging semantics.
+//
+//===----------------------------------------------------------------------===//
 
 #include "vm/VM.hpp"
 #include "vm/OpHandlerUtils.hpp"
@@ -22,7 +30,7 @@ using namespace il::core;
 namespace il::vm
 {
 
-/// Apply pending block parameter transfers for the given block.
+/// @brief Apply pending block parameter transfers for the given block.
 ///
 /// Any arguments staged by a predecessor terminator are copied into the frame's
 /// register file and announced to the debug controller. Parameters are cleared
@@ -58,7 +66,8 @@ void VM::transferBlockParams(Frame &fr, const BasicBlock &bb)
     }
 }
 
-/// Manage a potential debug break before or after executing an instruction.
+/// @brief Manage a potential debug break before or after executing an
+///        instruction.
 ///
 /// Checks label and source line breakpoints using @c DebugCtrl. When a break is
 /// hit the optional @c DebugScript controls stepping; otherwise a fixed slot is
@@ -107,14 +116,15 @@ std::optional<Slot> VM::handleDebugBreak(
     return std::nullopt;
 }
 
-/// Handle debugging-related bookkeeping before or after an instruction executes.
+/// @brief Handle debugging-related bookkeeping before or after an instruction
+///        executes.
 ///
 /// Enforces the global step limit, performs breakpoint checks via
-/// @c handleDebugBreak, and manages the single-step budget. When a pause is
+/// @ref handleDebugBreak, and manages the single-step budget. When a pause is
 /// requested, a special slot is returned to signal the interpreter loop.
 ///
-/// @param st      Current execution state.
-/// @param in      Instruction being processed, if any.
+/// @param st       Current execution state.
+/// @param in       Instruction being processed, if any.
 /// @param postExec Set to true when invoked after executing @p in.
 /// @return Optional slot causing execution to pause; @c std::nullopt otherwise.
 std::optional<Slot> VM::processDebugControl(ExecState &st, const Instr *in, bool postExec)

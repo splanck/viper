@@ -1,9 +1,17 @@
-// File: src/vm/Trace.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Implement deterministic tracing for IL VM steps.
-// Key invariants: Each executed instruction produces at most one flushed line.
-// Ownership/Lifetime: Uses external streams; no resource ownership.
-// Links: docs/dev/vm.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements deterministic tracing for VM execution.  The trace sink prints a
+// stable text record for each executed instruction, optionally correlating the
+// output with source lines when a source manager is available.  Keeping the
+// logic here ensures debugging features such as `--trace=il` and
+// `--trace=src` share the same formatting and caching behaviour.
+//
+//===----------------------------------------------------------------------===//
 #include "vm/Trace.hpp"
 
 #include "il/core/BasicBlock.hpp"

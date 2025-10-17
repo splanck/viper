@@ -1,8 +1,17 @@
-// File: src/il/verify/InstructionChecker_Runtime.cpp
-// Purpose: Implements runtime and call-related instruction verification helpers.
-// Key invariants: Ensures extern signatures and runtime helper usage obey operand/result typing rules.
-// Ownership/Lifetime: Operates on VerifyCtx without capturing external ownership.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the verifier utilities that validate runtime helper invocations
+// and generic call instructions.  The routines codify the operand counts,
+// operand types, and result requirements for helpers declared in
+// RuntimeSignatures.hpp so front-end generated IL is checked against the same
+// ABI used by the VM and native code paths.
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/verify/InstructionCheckerShared.hpp"
 
@@ -27,6 +36,8 @@ using il::support::Expected;
 namespace
 {
 
+/// @brief Enumerates the runtime array helper routines understood by the
+///        verifier.
 enum class RuntimeArrayCallee
 {
     None,
@@ -39,6 +50,10 @@ enum class RuntimeArrayCallee
     Release,
 };
 
+/// @brief Translate a callee name into a @ref RuntimeArrayCallee enumerator.
+///
+/// @param callee Name referenced by the call instruction.
+/// @return Matching enumerator or RuntimeArrayCallee::None when unrecognised.
 RuntimeArrayCallee classifyRuntimeArrayCallee(std::string_view callee)
 {
     if (callee == "rt_arr_i32_new")
@@ -58,6 +73,16 @@ RuntimeArrayCallee classifyRuntimeArrayCallee(std::string_view callee)
     return RuntimeArrayCallee::None;
 }
 
+/// @brief Validate that a runtime array helper call obeys the expected ABI.
+///
+/// The helper inspects the callee name, checks operand counts and types, and
+/// enforces result presence/absence according to the runtime signature.  When
+/// the callee is not a recognised runtime helper the function succeeds without
+/// performing further validation, deferring to generic call checking instead.
+///
+/// @param ctx Verification context describing the instruction under review.
+/// @return Successful Expected when the call conforms to the ABI; otherwise a
+///         diagnostic explaining the mismatch.
 Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
 {
     const RuntimeArrayCallee calleeKind = classifyRuntimeArrayCallee(ctx.instr.callee);
@@ -201,6 +226,16 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
 
 } // namespace
 
+/// @brief Verify operand and result types for a generic call instruction.
+///
+/// Runtime helper calls are validated separately by
+/// @ref checkRuntimeArrayCall.  For remaining calls the verifier resolves the
+/// callee to either an extern declaration or function definition, checks the
+/// operand count, compares operand types, and records the result type when the
+/// instruction produces a value.
+///
+/// @param ctx Verification context for the call instruction.
+/// @return Empty Expected on success or a diagnostic on mismatch.
 Expected<void> checkCall(const VerifyCtx &ctx)
 {
     if (auto result = checkRuntimeArrayCall(ctx); !result)
@@ -237,6 +272,13 @@ Expected<void> checkCall(const VerifyCtx &ctx)
     return {};
 }
 
+/// @brief Validate the `trap.kind` helper which materialises a runtime trap
+///        enumerator.
+///
+/// Ensures no operands are supplied and records the i64 result type mandated by
+/// the helper.
+///
+/// @param ctx Verification context describing the instruction.
 Expected<void> checkTrapKind(const VerifyCtx &ctx)
 {
     if (!ctx.instr.operands.empty())
@@ -246,6 +288,12 @@ Expected<void> checkTrapKind(const VerifyCtx &ctx)
     return {};
 }
 
+/// @brief Validate the `trap.err` helper that constructs an error payload.
+///
+/// The helper enforces two operands (an i32 error code and str message) and
+/// records an error-typed result.
+///
+/// @param ctx Verification context describing the instruction.
 Expected<void> checkTrapErr(const VerifyCtx &ctx)
 {
     if (ctx.instr.operands.size() != 2)
@@ -263,6 +311,13 @@ Expected<void> checkTrapErr(const VerifyCtx &ctx)
     return {};
 }
 
+/// @brief Validate conversion from legacy BASIC error codes to trap values.
+///
+/// Accepts either a temporary or constant integer operand, ensuring it fits
+/// within the 32-bit range expected by the runtime.  The instruction must be
+/// typed as i32 so downstream passes know the resulting trap code width.
+///
+/// @param ctx Verification context describing the instruction.
 Expected<void> checkTrapFromErr(const VerifyCtx &ctx)
 {
     if (ctx.instr.operands.size() != 1)
