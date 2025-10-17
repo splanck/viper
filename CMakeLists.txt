@@ -8,6 +8,7 @@ include(CMakePackageConfigHelpers)
 option(VIPER_INSTALL_TUI "Install TUI apps/libraries" OFF)
 option(VIPER_BUILD_TESTING "Enable CTest-based tests" ON)
 option(VIPER_VM_THREADED "Enable threaded VM dispatch" OFF)
+option(VIPER_ENABLE_OOP "Enable experimental BASIC OOP (classes/objects)" OFF)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -49,6 +50,10 @@ if(IL_USE_LLD)
   if(IL_HAS_LLD)
     list(APPEND IL_LINK_FLAGS -fuse-ld=lld)
   endif()
+endif()
+
+if(VIPER_ENABLE_OOP)
+  add_compile_definitions(VIPER_ENABLE_OOP=1)
 endif()
 
 if(IL_USE_LIBCXX AND CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT APPLE)
