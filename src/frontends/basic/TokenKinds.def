@@ -67,6 +67,15 @@ TOKEN(KeywordColor, "COLOR")
 TOKEN(KeywordLocate, "LOCATE")
 TOKEN(KeywordLoc, "LOC")
 TOKEN(KeywordCase, "CASE")
+#if VIPER_ENABLE_OOP
+TOKEN(Dot, ".")
+TOKEN(KeywordClass, "CLASS")
+TOKEN(KeywordType, "TYPE")
+TOKEN(KeywordDestructor, "DESTRUCTOR")
+TOKEN(KeywordNew, "NEW")
+TOKEN(KeywordDelete, "DELETE")
+TOKEN(KeywordMe, "ME")
+#endif
 
 // Operators ----------------------------------------------------------------
 TOKEN(Plus, "+")
