@@ -154,6 +154,48 @@ void CallExpr::accept(MutExprVisitor &visitor)
     visitor.visit(*this);
 }
 
+#if VIPER_ENABLE_OOP
+void NewExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void NewExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+void MeExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void MeExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+void MemberAccessExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void MemberAccessExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+void MethodCallExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void MethodCallExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+#endif
+
 /// @brief Forwards this label statement node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void LabelStmt::accept(StmtVisitor &visitor) const
@@ -549,4 +591,68 @@ void StmtList::accept(MutStmtVisitor &visitor)
 {
     visitor.visit(*this);
 }
+
+#if VIPER_ENABLE_OOP
+
+void DeleteStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void DeleteStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+void ConstructorDecl::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void ConstructorDecl::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+void DestructorDecl::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void DestructorDecl::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+void MethodDecl::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void MethodDecl::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+void ClassDecl::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void ClassDecl::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+void TypeDecl::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+void TypeDecl::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+#endif
 } // namespace il::frontends::basic
