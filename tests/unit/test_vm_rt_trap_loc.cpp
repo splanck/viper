@@ -5,13 +5,17 @@
 // Links: docs/codemap.md
 
 #include "il/build/IRBuilder.hpp"
+#include "support/source_location.hpp"
 #include "vm/VM.hpp"
 #include <cassert>
 #include <string>
 #include <sys/wait.h>
 #include <unistd.h>
 
-int main()
+namespace
+{
+
+std::string captureRuntimeTrap(bool attachLoc)
 {
     using namespace il::core;
     Module m;
@@ -22,7 +26,8 @@ int main()
     auto &bb = b.addBlock(fn, "entry");
     b.setInsertPoint(bb);
     Value s = b.emitConstStr("g", {1, 1, 1});
-    b.emitCall("rt_to_int", {s}, std::optional<Value>{}, {1, 1, 1});
+    const il::support::SourceLoc callLoc = attachLoc ? il::support::SourceLoc{1, 1, 1} : il::support::SourceLoc{};
+    b.emitCall("rt_to_int", {s}, std::optional<Value>{}, callLoc);
     b.emitRet(std::optional<Value>{}, {1, 1, 1});
 
     int fds[2];
@@ -46,8 +51,20 @@ int main()
         buf[0] = '\0';
     int status = 0;
     waitpid(pid, &status, 0);
-    std::string out(buf);
-    bool ok = out.find("Trap @main#1 line 1: DomainError (code=0)") != std::string::npos;
-    assert(ok);
+    return std::string(buf);
+}
+
+} // namespace
+
+int main()
+{
+    const std::string withLoc = captureRuntimeTrap(true);
+    const bool precise = withLoc.find("Trap @main#1 line 1: DomainError (code=0)") != std::string::npos;
+    assert(precise);
+
+    const std::string withoutLoc = captureRuntimeTrap(false);
+    const bool cleared = withoutLoc.find("line -1") != std::string::npos;
+    const bool reusedOldLine = withoutLoc.find("line 1") != std::string::npos;
+    assert(cleared && !reusedOldLine);
     return 0;
 }
