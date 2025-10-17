@@ -189,6 +189,8 @@ rt_string rt_input_line(void)
         }
         buf[len++] = (char)ch;
     }
+    if (len > 0 && buf[len - 1] == '\r')
+        len--;
     buf[len] = '\0';
     rt_string s = (rt_string)rt_alloc(sizeof(*s));
     char *payload = (char *)rt_heap_alloc(RT_HEAP_STRING, RT_ELEM_NONE, 1, len, len + 1);
