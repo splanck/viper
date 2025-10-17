@@ -6,6 +6,7 @@
 
 #include "il/runtime/RuntimeSignatures.hpp"
 #include <cassert>
+#include <initializer_list>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -35,6 +36,31 @@ int main()
                 assert(byFeature == it->second && "descriptor lookup by feature mismatch");
         }
     }
+
+    auto expectTermDescriptor = [](il::runtime::RuntimeFeature feature,
+                                   std::string_view expectedName,
+                                   std::initializer_list<il::core::Type::Kind> paramKinds) {
+        const auto *descriptor = il::runtime::findRuntimeDescriptor(feature);
+        assert(descriptor && "terminal runtime descriptor missing");
+        assert(descriptor->name == expectedName && "terminal runtime descriptor name mismatch");
+        assert(descriptor->signature.retType.kind == il::core::Type::Kind::Void &&
+               "terminal runtime descriptor return type mismatch");
+        assert(descriptor->signature.paramTypes.size() == paramKinds.size() &&
+               "terminal runtime descriptor arity mismatch");
+        auto kindIt = paramKinds.begin();
+        for (const auto &param : descriptor->signature.paramTypes)
+        {
+            assert(param.kind == *kindIt++ && "terminal runtime descriptor parameter mismatch");
+        }
+    };
+
+    expectTermDescriptor(il::runtime::RuntimeFeature::TermCls, "rt_term_cls", {});
+    expectTermDescriptor(il::runtime::RuntimeFeature::TermColor,
+                         "rt_term_color_i32",
+                         {il::core::Type::Kind::I32, il::core::Type::Kind::I32});
+    expectTermDescriptor(il::runtime::RuntimeFeature::TermLocate,
+                         "rt_term_locate_i32",
+                         {il::core::Type::Kind::I32, il::core::Type::Kind::I32});
 
     const auto &signatureMap = il::runtime::runtimeSignatures();
     assert(signatureMap.size() == registry.size());
