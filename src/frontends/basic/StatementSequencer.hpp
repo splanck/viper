@@ -74,6 +74,28 @@ class StatementSequencer
     StmtPtr parseStatementLine();
 
   private:
+    /// @brief Status returned when deciding how to handle the current line context.
+    enum class LineAction
+    {
+        Continue, ///< Proceed with parsing the statement body.
+        Defer,     ///< Defer parsing until additional input arrives.
+        Terminate, ///< Stop collection because a terminator was encountered.
+    };
+
+    /// @brief Local state threaded through statement collection iterations.
+    struct CollectionState
+    {
+        SeparatorKind separatorBefore = SeparatorKind::None; ///< Separator preceding the current line.
+        bool hadPendingLine = false; ///< True when a pending line label exists before processing.
+        TerminatorInfo info;         ///< Populated once a terminator is observed.
+    };
+
+    LineAction evaluateLineAction(int line,
+                                  il::support::SourceLoc lineLoc,
+                                  const TerminatorPredicate &isTerminator,
+                                  const TerminatorConsumer &onTerminator,
+                                  CollectionState &state);
+
     Parser &parser_;             ///< Underlying parser providing token access.
     int pendingLine_ = -1;       ///< Deferred numeric line label for next statement.
     il::support::SourceLoc pendingLineLoc_{}; ///< Location of the deferred line label.
