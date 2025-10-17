@@ -44,7 +44,7 @@ Module buildIdxChkPassModule()
     return module;
 }
 
-Module buildIdxChkTrapModule(Opcode getter)
+Module buildIdxChkTrapModule(int64_t idxValue, int64_t loValue, int64_t hiValue, Opcode getter)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -77,9 +77,9 @@ Module buildIdxChkTrapModule(Opcode getter)
     chk.result = builder.reserveTempId();
     chk.op = Opcode::IdxChk;
     chk.type = Type(Type::Kind::I32);
-    chk.operands.push_back(Value::constInt(99));
-    chk.operands.push_back(Value::constInt(0));
-    chk.operands.push_back(Value::constInt(10));
+    chk.operands.push_back(Value::constInt(idxValue));
+    chk.operands.push_back(Value::constInt(loValue));
+    chk.operands.push_back(Value::constInt(hiValue));
     chk.loc = {1, 42, 0};
     body.instructions.push_back(chk);
 
@@ -111,9 +111,9 @@ Module buildIdxChkTrapModule(Opcode getter)
     return module;
 }
 
-int64_t runBoundsGetter(Opcode getter)
+int64_t runBoundsGetter(int64_t idxValue, int64_t loValue, int64_t hiValue, Opcode getter)
 {
-    Module module = buildIdxChkTrapModule(getter);
+    Module module = buildIdxChkTrapModule(idxValue, loValue, hiValue, getter);
     il::vm::VM vm(module);
     return vm.run();
 }
@@ -128,23 +128,28 @@ int main()
     }
 
     {
-        const int64_t kind = runBoundsGetter(Opcode::ErrGetKind);
+        const int64_t kind = runBoundsGetter(99, 0, 10, Opcode::ErrGetKind);
         assert(kind == static_cast<int64_t>(static_cast<int32_t>(il::vm::TrapKind::Bounds)));
     }
 
     {
-        const int64_t code = runBoundsGetter(Opcode::ErrGetCode);
+        const int64_t code = runBoundsGetter(99, 0, 10, Opcode::ErrGetCode);
         assert(code == 0);
     }
 
     {
-        const int64_t ip = runBoundsGetter(Opcode::ErrGetIp);
+        const int64_t ip = runBoundsGetter(99, 0, 10, Opcode::ErrGetIp);
         assert(ip == 0);
     }
 
     {
-        const int64_t line = runBoundsGetter(Opcode::ErrGetLine);
+        const int64_t line = runBoundsGetter(99, 0, 10, Opcode::ErrGetLine);
         assert(line == 42);
+    }
+
+    {
+        const int64_t kind = runBoundsGetter(10, 0, 10, Opcode::ErrGetKind);
+        assert(kind == static_cast<int64_t>(static_cast<int32_t>(il::vm::TrapKind::Bounds)));
     }
 
     return 0;
