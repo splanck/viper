@@ -488,6 +488,34 @@ constexpr std::array<ManualDescriptorSpec, 5> kManualTermDescriptors{{
      featureLowering(RuntimeFeature::InKey)},
 }};
 
+template <std::size_t ParamCount>
+constexpr bool hasManualTermDescriptor(std::string_view symbol,
+                                       Kind ret,
+                                       const std::array<Kind, ParamCount> &expectedParams)
+{
+    for (const auto &spec : kManualTermDescriptors)
+    {
+        if (spec.name != symbol)
+            continue;
+        if (spec.ret != ret || spec.params.size() != expectedParams.size())
+            return false;
+        for (std::size_t i = 0; i < ParamCount; ++i)
+        {
+            if (spec.params[i] != expectedParams[i])
+                return false;
+        }
+        return true;
+    }
+    return false;
+}
+
+static_assert(hasManualTermDescriptor("rt_term_cls", Kind::Void, kParamsNone),
+              "Terminal clear helper must be registered as void().");
+static_assert(hasManualTermDescriptor("rt_term_color_i32", Kind::Void, kParamsI32I32),
+              "Terminal color helper must be registered as void(i32, i32).");
+static_assert(hasManualTermDescriptor("rt_term_locate_i32", Kind::Void, kParamsI32I32),
+              "Terminal locate helper must be registered as void(i32, i32).");
+
 constexpr std::array<GeneratedDescriptorSpec, 4> kGeneratedStringAllocDescriptors{{
     {"rt_str_i16_alloc",
      RtSig::StrFromI16,
