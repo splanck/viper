@@ -123,6 +123,99 @@ void Lowerer::lowerPrint(const PrintStmt &stmt)
     }
 }
 
+Lowerer::PrintChArgString Lowerer::lowerPrintChArgToString(const Expr &expr,
+                                                           RVal value,
+                                                           bool quoteStrings)
+{
+    if (value.type.kind == Type::Kind::Str)
+    {
+        if (!quoteStrings)
+            return {value.value, std::nullopt};
+
+        curLoc = expr.loc;
+        Value quoted = emitCallRet(Type(Type::Kind::Str), "rt_csv_quote_alloc", {value.value});
+        return {quoted, il::runtime::RuntimeFeature::CsvQuote};
+    }
+
+    TypeRules::NumericType numericType = classifyNumericType(expr);
+    const char *runtime = nullptr;
+    il::runtime::RuntimeFeature feature = il::runtime::RuntimeFeature::StrFromDouble;
+
+    auto narrowInteger = [&](Type::Kind target) {
+        value = ensureI64(std::move(value), expr.loc);
+        curLoc = expr.loc;
+        value.value = emitUnary(Opcode::CastSiNarrowChk, Type(target), value.value);
+        value.type = Type(target);
+    };
+
+    switch (numericType)
+    {
+        case TypeRules::NumericType::Integer:
+            runtime = "rt_str_i16_alloc";
+            feature = il::runtime::RuntimeFeature::StrFromI16;
+            narrowInteger(Type::Kind::I16);
+            break;
+        case TypeRules::NumericType::Long:
+            runtime = "rt_str_i32_alloc";
+            feature = il::runtime::RuntimeFeature::StrFromI32;
+            narrowInteger(Type::Kind::I32);
+            break;
+        case TypeRules::NumericType::Single:
+            runtime = "rt_str_f_alloc";
+            feature = il::runtime::RuntimeFeature::StrFromSingle;
+            value = ensureF64(std::move(value), expr.loc);
+            break;
+        case TypeRules::NumericType::Double:
+        default:
+            runtime = "rt_str_d_alloc";
+            feature = il::runtime::RuntimeFeature::StrFromDouble;
+            value = ensureF64(std::move(value), expr.loc);
+            break;
+    }
+
+    curLoc = expr.loc;
+    Value text = emitCallRet(Type(Type::Kind::Str), runtime, {value.value});
+    return {text, feature};
+}
+
+Value Lowerer::buildPrintChWriteRecord(const PrintChStmt &stmt)
+{
+    Value record{};
+    bool hasRecord = false;
+    std::string commaLbl = getStringLabel(",");
+    Value comma = emitConstStr(commaLbl);
+
+    for (const auto &arg : stmt.args)
+    {
+        if (!arg)
+            continue;
+
+        RVal value = lowerExpr(*arg);
+        PrintChArgString lowered = lowerPrintChArgToString(*arg, std::move(value), true);
+        if (lowered.feature)
+            requestHelper(*lowered.feature);
+
+        if (!hasRecord)
+        {
+            record = lowered.text;
+            hasRecord = true;
+            continue;
+        }
+
+        curLoc = arg->loc;
+        record = emitCallRet(Type(Type::Kind::Str), "rt_concat", {record, comma});
+        record = emitCallRet(Type(Type::Kind::Str), "rt_concat", {record, lowered.text});
+    }
+
+    if (!hasRecord)
+    {
+        std::string emptyLbl = getStringLabel("");
+        record = emitConstStr(emptyLbl);
+    }
+
+    return record;
+}
+
 void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
 {
     if (!stmt.channelExpr)
@@ -130,58 +223,6 @@ void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
 
     RVal channel = lowerExpr(*stmt.channelExpr);
     channel = normalizeChannelToI32(std::move(channel), stmt.loc);
-
-    auto lowerArgToString = [&](const Expr &expr, RVal value, bool quoteStrings) -> Value {
-        if (value.type.kind == Type::Kind::Str)
-        {
-            if (!quoteStrings)
-                return value.value;
-
-            requestHelper(RuntimeFeature::CsvQuote);
-            curLoc = expr.loc;
-            return emitCallRet(Type(Type::Kind::Str), "rt_csv_quote_alloc", {value.value});
-        }
-
-        TypeRules::NumericType numericType = classifyNumericType(expr);
-        const char *runtime = nullptr;
-        RuntimeFeature feature = RuntimeFeature::StrFromDouble;
-
-        auto narrowInteger = [&](Type::Kind target) {
-            value = ensureI64(std::move(value), expr.loc);
-            curLoc = expr.loc;
-            value.value = emitUnary(Opcode::CastSiNarrowChk, Type(target), value.value);
-            value.type = Type(target);
-        };
-
-        switch (numericType)
-        {
-            case TypeRules::NumericType::Integer:
-                runtime = "rt_str_i16_alloc";
-                feature = RuntimeFeature::StrFromI16;
-                narrowInteger(Type::Kind::I16);
-                break;
-            case TypeRules::NumericType::Long:
-                runtime = "rt_str_i32_alloc";
-                feature = RuntimeFeature::StrFromI32;
-                narrowInteger(Type::Kind::I32);
-                break;
-            case TypeRules::NumericType::Single:
-                runtime = "rt_str_f_alloc";
-                feature = RuntimeFeature::StrFromSingle;
-                value = ensureF64(std::move(value), expr.loc);
-                break;
-            case TypeRules::NumericType::Double:
-            default:
-                runtime = "rt_str_d_alloc";
-                feature = RuntimeFeature::StrFromDouble;
-                value = ensureF64(std::move(value), expr.loc);
-                break;
-        }
-
-        requestHelper(feature);
-        curLoc = expr.loc;
-        return emitCallRet(Type(Type::Kind::Str), runtime, {value.value});
-    };
 
     bool isWrite = stmt.mode == PrintChStmt::Mode::Write;
 
@@ -203,33 +244,7 @@ void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
 
     if (isWrite)
     {
-        Value record{};
-        bool hasRecord = false;
-        std::string commaLbl = getStringLabel(",");
-        Value comma = emitConstStr(commaLbl);
-        for (const auto &arg : stmt.args)
-        {
-            if (!arg)
-                continue;
-            RVal value = lowerExpr(*arg);
-            Value text = lowerArgToString(*arg, std::move(value), true);
-            if (!hasRecord)
-            {
-                record = text;
-                hasRecord = true;
-            }
-            else
-            {
-                curLoc = arg->loc;
-                record = emitCallRet(Type(Type::Kind::Str), "rt_concat", {record, comma});
-                record = emitCallRet(Type(Type::Kind::Str), "rt_concat", {record, text});
-            }
-        }
-        if (!hasRecord)
-        {
-            std::string emptyLbl = getStringLabel("");
-            record = emitConstStr(emptyLbl);
-        }
+        Value record = buildPrintChWriteRecord(stmt);
         curLoc = stmt.loc;
         Value err = emitCallRet(Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, record});
         emitRuntimeErrCheck(err, stmt.loc, "write", [&](Value code) {
@@ -243,9 +258,11 @@ void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
         if (!arg)
             continue;
         RVal value = lowerExpr(*arg);
-        Value text = lowerArgToString(*arg, std::move(value), false);
+        PrintChArgString lowered = lowerPrintChArgToString(*arg, std::move(value), false);
+        if (lowered.feature)
+            requestHelper(*lowered.feature);
         curLoc = arg->loc;
-        Value err = emitCallRet(Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, text});
+        Value err = emitCallRet(Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, lowered.text});
         emitRuntimeErrCheck(err, arg->loc, "printch", [&](Value code) {
             emitTrapFromErr(code);
         });
