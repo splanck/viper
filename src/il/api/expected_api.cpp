@@ -1,9 +1,24 @@
-// File: src/il/api/expected_api.cpp
-// License: MIT (see LICENSE for details).
-// Purpose: Provide Expected-based implementations for IL parsing and verification wrappers.
-// Key invariants: Mirrors legacy bool-returning APIs while emitting diagnostics through Expected.
-// Ownership/Lifetime: Callers retain ownership of modules and streams passed by reference.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Provides the thin façade that exposes the Expected-returning parsing and
+// verification entry points.  The legacy public API returned booleans while
+// writing diagnostics to out-parameters; this translation unit keeps that API
+// surface available while modernising the implementation to use
+// il::support::Expected for richer error reporting.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Expected-based wrappers for IL parsing and verification helpers.
+/// @details These free functions forward directly to the canonical parser and
+///          verifier implementations but translate their diagnostics into
+///          Expected payloads.  Embedders can therefore opt into structured
+///          error handling without changing the underlying parsing pipeline.
 
 #include "il/api/expected_api.hpp"
 

@@ -1,9 +1,22 @@
-// File: src/il/io/Parser.cpp
-// Purpose: Implements the façade parser entry point for textual IL.
-// Key invariants: Delegates work to module/function/instruction helpers.
-// Ownership/Lifetime: Operates on external module references without owning them.
-// License: MIT (see LICENSE).
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the façade entry point that wires together the IL text parser.
+// The heavy lifting lives in dedicated module/function/instruction helpers;
+// this translation unit coordinates them while keeping the public header light.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Top-level textual IL parser implementation.
+/// @details Provides the @ref il::io::Parser::parse method used by command-line
+///          tools and embedders.  The function streams line-by-line, delegates to
+///          specialised helpers, and validates required directives like the
+///          module version banner.
 
 #include "il/io/Parser.hpp"
 #include "il/core/Module.hpp"
@@ -24,15 +37,17 @@ il::support::Expected<void> parseModuleHeader_E(std::istream &is, std::string &l
 namespace il::io
 {
 
-/**
- * @brief Parse a textual IL module from a stream.
- * @details Constructs a ParserState for the target module and iterates over
- * each input line until EOF. Every iteration bumps the tracked line number,
- * trims leading/trailing whitespace, skips empty lines or lines beginning with
- * "//", and otherwise delegates to detail::parseModuleHeader_E. Any error
- * produced by parseModuleHeader_E is surfaced directly to the caller without
- * further handling.
- */
+/// @brief Parse a textual IL module from a stream.
+/// @details Creates a @ref ParserState bound to the destination module, then
+///          pulls the source stream line-by-line.  Each iteration increments the
+///          current line counter, strips comments and preprocessor directives,
+///          and defers to @ref detail::parseModuleHeader_E for directive and
+///          instruction handling.  Any diagnostic returned by the helper is
+///          propagated verbatim, ensuring callers observe the first failure.
+/// @param is Stream providing textual IL.
+/// @param m Module populated with parsed definitions.
+/// @return Empty Expected when parsing succeeds or the diagnostic describing the
+///         first encountered error.
 il::support::Expected<void> Parser::parse(std::istream &is, il::core::Module &m)
 {
     detail::ParserState st{m};

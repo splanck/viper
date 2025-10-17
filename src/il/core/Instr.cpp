@@ -1,9 +1,21 @@
-// File: src/il/core/Instr.cpp
-// Purpose: Provides helper methods for IL instructions.
-// Key invariants: Switch helpers assert opcode correctness.
-// Ownership/Lifetime: Instructions stored by value in blocks.
-// License: MIT
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Provides helper methods for inspecting and manipulating IL instructions,
+// particularly the switch instruction helpers that appear in multiple passes.
+// Keeping the implementation here reduces header churn while documenting shared
+// invariants.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Instruction helper functions for the IL core library.
+/// @details Supplies routines for inspecting switch operands and associated
+///          metadata, providing a single source of truth for operand layout.
 
 #include "il/core/Instr.hpp"
 

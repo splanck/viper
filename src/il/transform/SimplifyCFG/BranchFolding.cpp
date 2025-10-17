@@ -1,9 +1,20 @@
-// File: src/il/transform/SimplifyCFG/BranchFolding.cpp
-// License: MIT (see LICENSE for details).
-// Purpose: Implements folding of trivial conditional and switch branches.
-// Key invariants: Rewrites branches only when successor/argument equivalence holds.
-// Ownership/Lifetime: Mutates IL instructions in place without reallocating blocks.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the branch folding transformations that collapse trivial switch
+// and conditional branches.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Branch folding utilities for SimplifyCFG.
+/// @details Contains helpers that turn redundant switch and conditional branches
+///          into unconditional jumps when their successors and arguments are
+///          equivalent.
 
 #include "il/transform/SimplifyCFG/BranchFolding.hpp"
 
@@ -21,6 +32,11 @@ namespace il::transform::simplify_cfg
 namespace
 {
 
+/// @brief Convert a conditional/switch terminator into an unconditional branch.
+/// @details Rewrites @p instr in place to jump to the selected successor and
+///          prunes branch arguments to match the single remaining edge.
+/// @param instr Instruction to rewrite.
+/// @param successorIndex Index of the successor to retain.
 void rewriteToUnconditionalBranch(il::core::Instr &instr, size_t successorIndex)
 {
     assert(successorIndex < instr.labels.size());
@@ -41,6 +57,12 @@ void rewriteToUnconditionalBranch(il::core::Instr &instr, size_t successorIndex)
 
 } // namespace
 
+/// @brief Fold switches that devolve into a single unconditional branch.
+/// @details Detects switches with zero or redundant cases and rewrites them
+///          using @ref rewriteToUnconditionalBranch, updating statistics and
+///          debug logging along the way.
+/// @param ctx SimplifyCFG context providing EH sensitivity checks and logging.
+/// @return True when any switch was simplified.
 bool foldTrivialSwitches(SimplifyCFG::SimplifyCFGPassContext &ctx)
 {
     il::core::Function &F = ctx.function;
@@ -96,6 +118,12 @@ bool foldTrivialSwitches(SimplifyCFG::SimplifyCFGPassContext &ctx)
     return changed;
 }
 
+/// @brief Fold conditional branches when both arms lead to the same successor.
+/// @details Also handles constant conditions by directly selecting the known
+///          successor.  Uses @ref rewriteToUnconditionalBranch to perform the
+///          mutation and updates pass statistics/logging.
+/// @param ctx SimplifyCFG context providing EH sensitivity checks and logging.
+/// @return True when any conditional branch was simplified.
 bool foldTrivialConditionalBranches(SimplifyCFG::SimplifyCFGPassContext &ctx)
 {
     il::core::Function &F = ctx.function;
