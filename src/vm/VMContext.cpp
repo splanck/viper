@@ -126,34 +126,16 @@ Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
 
 std::optional<Slot> VMContext::stepOnce(VM::ExecState &state) const
 {
-    if (!state.bb || state.ip >= state.bb->instructions.size())
-    {
-        vmInstance->clearCurrentContext();
-        Slot slot{};
-        slot.i64 = 0;
-        return slot;
-    }
+    vmInstance->beginDispatch(state);
 
-    const il::core::Instr &instr = state.bb->instructions[state.ip];
-    vmInstance->setCurrentContext(state.fr, state.bb, state.ip, instr);
+    const il::core::Instr *instr = nullptr;
+    if (!vmInstance->selectInstruction(state, instr))
+        return state.pendingResult;
 
-    if (auto pause = vmInstance->shouldPause(state, &instr, false))
-        return pause;
-
-    vmInstance->tracer.onStep(instr, state.fr);
-    ++vmInstance->instrCount;
-    auto result = vmInstance->executeOpcode(state.fr, instr, state.blocks, state.bb, state.ip);
-
-    if (result.returned)
-        return result.value;
-
-    if (result.jumped)
-        vmInstance->debug.resetLastHit();
-    else
-        ++state.ip;
-
-    if (auto pause = vmInstance->shouldPause(state, nullptr, true))
-        return pause;
+    vmInstance->traceInstruction(*instr, state.fr);
+    auto result = vmInstance->executeOpcode(state.fr, *instr, state.blocks, state.bb, state.ip);
+    if (vmInstance->finalizeDispatch(state, result))
+        return state.pendingResult;
 
     return std::nullopt;
 }
@@ -168,56 +150,18 @@ bool VMContext::handleTrapDispatch(const VM::TrapDispatchSignal &signal, VM::Exe
 
 il::core::Opcode VMContext::fetchOpcode(VM::ExecState &state) const
 {
-    state.exitRequested = false;
-    state.pendingResult.reset();
+    vmInstance->beginDispatch(state);
 
-    if (!state.bb || state.ip >= state.bb->instructions.size())
-    {
-        vmInstance->clearCurrentContext();
-        Slot zero{};
-        zero.i64 = 0;
-        state.pendingResult = zero;
-        state.exitRequested = true;
-        state.currentInstr = nullptr;
-        return il::core::Opcode::Trap;
-    }
+    const il::core::Instr *instr = nullptr;
+    if (!vmInstance->selectInstruction(state, instr))
+        return instr ? instr->op : il::core::Opcode::Trap;
 
-    state.currentInstr = &state.bb->instructions[state.ip];
-    vmInstance->setCurrentContext(state.fr, state.bb, state.ip, *state.currentInstr);
-
-    if (auto pause = vmInstance->shouldPause(state, state.currentInstr, false))
-    {
-        state.pendingResult = *pause;
-        state.exitRequested = true;
-        return state.currentInstr->op;
-    }
-
-    return state.currentInstr->op;
+    return instr->op;
 }
 
 void VMContext::handleInlineResult(VM::ExecState &state, const VM::ExecResult &exec) const
 {
-    if (exec.returned)
-    {
-        state.pendingResult = exec.value;
-        state.exitRequested = true;
-        return;
-    }
-
-    if (exec.jumped)
-        vmInstance->debug.resetLastHit();
-    else
-        ++state.ip;
-
-    if (auto pause = vmInstance->shouldPause(state, nullptr, true))
-    {
-        state.pendingResult = *pause;
-        state.exitRequested = true;
-        return;
-    }
-
-    state.pendingResult.reset();
-    state.exitRequested = false;
+    vmInstance->finalizeDispatch(state, exec);
 }
 
 [[noreturn]] void VMContext::trapUnimplemented(il::core::Opcode opcode) const
@@ -234,10 +178,7 @@ void VMContext::handleInlineResult(VM::ExecState &state, const VM::ExecResult &e
 
 void VMContext::traceStep(const il::core::Instr &instr, Frame &frame) const
 {
-    ++vmInstance->instrCount;
-#if !defined(VIPER_VM_TRACE) || VIPER_VM_TRACE
-    vmInstance->tracer.onStep(instr, frame);
-#endif
+    vmInstance->traceInstruction(instr, frame);
 }
 
 VM::ExecResult VMContext::executeOpcode(Frame &frame,

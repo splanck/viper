@@ -9,7 +9,6 @@
 #include "vm/VM.hpp"
 #include "vm/OpHandlers.hpp"
 #include "vm/VMContext.hpp"
-#include "vm/dispatch/DispatchStrategy.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
@@ -40,6 +39,164 @@ std::string opcodeMnemonic(Opcode op)
 }
 
 } // namespace
+
+struct VM::DispatchDriver
+{
+    virtual ~DispatchDriver() = default;
+    virtual bool run(VM &vm, VMContext &context, ExecState &state) = 0;
+};
+
+void VM::DispatchDriverDeleter::operator()(DispatchDriver *driver) const
+{
+    delete driver;
+}
+
+namespace detail
+{
+
+class FnTableDispatchDriver final : public VM::DispatchDriver
+{
+  public:
+    bool run(VM &vm, VMContext &, VM::ExecState &state) override
+    {
+        while (true)
+        {
+            vm.beginDispatch(state);
+
+            const il::core::Instr *instr = nullptr;
+            if (!vm.selectInstruction(state, instr))
+                return state.exitRequested;
+
+            vm.traceInstruction(*instr, state.fr);
+            auto exec = vm.executeOpcode(state.fr, *instr, state.blocks, state.bb, state.ip);
+            if (vm.finalizeDispatch(state, exec))
+                return true;
+        }
+    }
+};
+
+class SwitchDispatchDriver final : public VM::DispatchDriver
+{
+  public:
+    bool run(VM &vm, VMContext &, VM::ExecState &state) override
+    {
+        while (true)
+        {
+            vm.beginDispatch(state);
+
+            const il::core::Instr *instr = nullptr;
+            if (!vm.selectInstruction(state, instr))
+                return state.exitRequested;
+
+            switch (instr->op)
+            {
+#define OP_SWITCH(NAME, ...)                                                                                  \
+    case il::core::Opcode::NAME:                                                                              \
+    {                                                                                                         \
+        vm.traceInstruction(*instr, state.fr);                                                                \
+        vm.inline_handle_##NAME(state);                                                                       \
+        break;                                                                                                \
+    }
+#define IL_OPCODE(NAME, ...) OP_SWITCH(NAME, __VA_ARGS__)
+#include "il/core/Opcode.def"
+#undef IL_OPCODE
+#undef OP_SWITCH
+                default:
+                    vm.trapUnimplemented(instr->op);
+            }
+
+            if (state.exitRequested)
+                return true;
+        }
+    }
+};
+
+#if VIPER_THREADING_SUPPORTED
+class ThreadedDispatchDriver final : public VM::DispatchDriver
+{
+  public:
+    bool run(VM &vm, VMContext &context, VM::ExecState &state) override
+    {
+        const il::core::Instr *currentInstr = nullptr;
+
+        auto fetchNext = [&]() -> il::core::Opcode {
+            vm.beginDispatch(state);
+
+            const il::core::Instr *instr = nullptr;
+            const bool hasInstr = vm.selectInstruction(state, instr);
+            currentInstr = instr;
+            if (!hasInstr)
+                return instr ? instr->op : il::core::Opcode::Trap;
+            return instr->op;
+        };
+
+#define OP_LABEL(name, ...) &&LBL_##name,
+#define IL_OPCODE(name, ...) OP_LABEL(name, __VA_ARGS__)
+        static void *kOpLabels[] = {
+#include "il/core/Opcode.def"
+            &&LBL_UNIMPL,
+        };
+#undef IL_OPCODE
+#undef OP_LABEL
+
+        static constexpr size_t kOpLabelCount = sizeof(kOpLabels) / sizeof(kOpLabels[0]);
+
+#define DISPATCH_TO(OPCODE_VALUE)                                                                             \
+    do                                                                                                      \
+    {                                                                                                       \
+        size_t index = static_cast<size_t>(OPCODE_VALUE);                                                   \
+        if (index >= kOpLabelCount - 1)                                                                     \
+            index = kOpLabelCount - 1;                                                                      \
+        goto *kOpLabels[index];                                                                             \
+    } while (false)
+
+        for (;;)
+        {
+            vm.clearCurrentContext();
+            try
+            {
+                il::core::Opcode opcode = fetchNext();
+                if (state.exitRequested)
+                    return true;
+                DISPATCH_TO(opcode);
+
+#define OP_CASE(name, ...)                                                                                    \
+    LBL_##name:                                                                                               \
+    {                                                                                                         \
+        vm.traceInstruction(*currentInstr, state.fr);                                                         \
+        auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);               \
+        if (vm.finalizeDispatch(state, exec))                                                                  \
+            return true;                                                                                       \
+        opcode = fetchNext();                                                                                  \
+        if (state.exitRequested)                                                                               \
+            return true;                                                                                       \
+        DISPATCH_TO(opcode);                                                                                    \
+    }
+
+#define IL_OPCODE(name, ...) OP_CASE(name, __VA_ARGS__)
+#include "il/core/Opcode.def"
+#undef IL_OPCODE
+#undef OP_CASE
+
+                LBL_UNIMPL:
+                {
+                    vm.trapUnimplemented(opcode);
+                }
+            }
+            catch (const VM::TrapDispatchSignal &signal)
+            {
+                if (!context.handleTrapDispatch(signal, state))
+                    throw;
+            }
+        }
+
+#undef DISPATCH_TO
+        return false; // Unreachable but placates control-flow analysis.
+    }
+};
+#endif // VIPER_THREADING_SUPPORTED
+
+} // namespace detail
 
 /// Construct a trap dispatch signal targeting a specific execution state.
 VM::TrapDispatchSignal::TrapDispatchSignal(ExecState *targetState) : target(targetState)
@@ -131,6 +288,94 @@ std::optional<Slot> VM::shouldPause(ExecState &st, const Instr *in, bool postExe
     return processDebugControl(st, in, postExec);
 }
 
+void VM::beginDispatch(ExecState &state)
+{
+    state.exitRequested = false;
+    state.pendingResult.reset();
+    state.currentInstr = nullptr;
+}
+
+bool VM::selectInstruction(ExecState &state, const Instr *&instr)
+{
+    if (!state.bb || state.ip >= state.bb->instructions.size())
+    {
+        clearCurrentContext();
+        Slot zero{};
+        zero.i64 = 0;
+        state.pendingResult = zero;
+        state.exitRequested = true;
+        state.currentInstr = nullptr;
+        return false;
+    }
+
+    state.currentInstr = &state.bb->instructions[state.ip];
+    instr = state.currentInstr;
+    setCurrentContext(state.fr, state.bb, state.ip, *state.currentInstr);
+
+    if (auto pause = shouldPause(state, state.currentInstr, false))
+    {
+        state.pendingResult = *pause;
+        state.exitRequested = true;
+        return false;
+    }
+
+    return true;
+}
+
+void VM::traceInstruction(const Instr &instr, Frame &frame)
+{
+    ++instrCount;
+#if !defined(VIPER_VM_TRACE) || VIPER_VM_TRACE
+    tracer.onStep(instr, frame);
+#else
+    (void)frame;
+#endif
+}
+
+bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
+{
+    if (exec.returned)
+    {
+        state.pendingResult = exec.value;
+        state.exitRequested = true;
+        return true;
+    }
+
+    if (exec.jumped)
+        debug.resetLastHit();
+    else
+        ++state.ip;
+
+    if (auto pause = shouldPause(state, nullptr, true))
+    {
+        state.pendingResult = *pause;
+        state.exitRequested = true;
+        return true;
+    }
+
+    state.pendingResult.reset();
+    state.exitRequested = false;
+    return false;
+}
+
+std::unique_ptr<VM::DispatchDriver, VM::DispatchDriverDeleter> VM::makeDispatchDriver(DispatchKind kind)
+{
+    switch (kind)
+    {
+        case DispatchKind::FnTable:
+            return std::unique_ptr<DispatchDriver, DispatchDriverDeleter>(new detail::FnTableDispatchDriver());
+        case DispatchKind::Switch:
+            return std::unique_ptr<DispatchDriver, DispatchDriverDeleter>(new detail::SwitchDispatchDriver());
+        case DispatchKind::Threaded:
+#if VIPER_THREADING_SUPPORTED
+            return std::unique_ptr<DispatchDriver, DispatchDriverDeleter>(new detail::ThreadedDispatchDriver());
+#else
+            return std::unique_ptr<DispatchDriver, DispatchDriverDeleter>(new detail::SwitchDispatchDriver());
+#endif
+    }
+    return std::unique_ptr<DispatchDriver, DispatchDriverDeleter>(new detail::SwitchDispatchDriver());
+}
+
 Slot VM::runFunctionLoop(ExecState &st)
 {
     VMContext context(*this);
@@ -139,10 +384,10 @@ Slot VM::runFunctionLoop(ExecState &st)
         clearCurrentContext();
         try
         {
-            if (!dispatchStrategy)
-                dispatchStrategy = createDispatchStrategy(dispatchKind);
+            if (!dispatchDriver)
+                dispatchDriver = makeDispatchDriver(dispatchKind);
 
-            const bool finished = dispatchStrategy ? dispatchStrategy->run(context, st) : false;
+            const bool finished = dispatchDriver ? dispatchDriver->run(*this, context, st) : false;
 
             if (finished)
             {
@@ -159,6 +404,17 @@ Slot VM::runFunctionLoop(ExecState &st)
                 throw;
         }
     }
+}
+
+VM::~VM()
+{
+    for (auto &entry : strMap)
+        rt_str_release_maybe(entry.second);
+    strMap.clear();
+
+    for (auto &entry : inlineLiteralCache)
+        rt_str_release_maybe(entry.second);
+    inlineLiteralCache.clear();
 }
 #define VM_DISPATCH_IMPL(DISPATCH, HANDLER_EXPR) HANDLER_EXPR
 #define VM_DISPATCH(NAME) VM_DISPATCH_IMPL(NAME, &detail::handle##NAME)
