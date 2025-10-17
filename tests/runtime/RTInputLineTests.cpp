@@ -4,36 +4,58 @@
 // trailing newline. Ownership: Uses runtime library. Links: docs/runtime-vm.md#runtime-abi
 #include "rt_internal.h"
 #include <cassert>
+#include <cstdio>
 #include <cstring>
 #include <string>
 #include <unistd.h>
 
-static void feed_and_check(size_t len, bool with_newline)
+static rt_string read_line(const std::string &data)
 {
-    std::string input(len, 'x');
     int fds[2];
     assert(pipe(fds) == 0);
-    if (with_newline)
-    {
-        std::string data = input + "\n";
+    if (!data.empty())
         (void)write(fds[1], data.data(), data.size());
-    }
-    else
-    {
-        (void)write(fds[1], input.data(), input.size());
-    }
     close(fds[1]);
     dup2(fds[0], 0);
     close(fds[0]);
-    rt_string s = rt_input_line();
+    clearerr(stdin);
+    return rt_input_line();
+}
+
+static void feed_and_check(size_t len, bool with_newline)
+{
+    std::string input(len, 'x');
+    std::string data = with_newline ? input + "\n" : input;
+    rt_string s = read_line(data);
     assert(s);
     assert(rt_len(s) == (int64_t)input.size());
     assert(std::memcmp(s->data, input.data(), input.size()) == 0);
+}
+
+static void feed_crlf_and_check(size_t len)
+{
+    std::string input(len, 'x');
+    std::string data = input + "\r\n";
+    rt_string s = read_line(data);
+    assert(s);
+    assert(rt_len(s) == (int64_t)input.size());
+    assert(std::memcmp(s->data, input.data(), input.size()) == 0);
+    assert(std::memchr(s->data, '\r', input.size()) == nullptr);
+}
+
+static void feed_empty_newline_returns_empty_string()
+{
+    rt_string s = read_line("\n");
+    assert(s);
+    assert(rt_len(s) == 0);
+    assert(s->data[0] == '\0');
 }
 
 int main()
 {
     feed_and_check(1500, true);
     feed_and_check(1500, false);
+    feed_crlf_and_check(16);
+    feed_empty_newline_returns_empty_string();
     return 0;
 }
