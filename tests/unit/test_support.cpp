@@ -1,4 +1,5 @@
 #include "support/arena.hpp"
+#include "support/diag_expected.hpp"
 #include "support/diagnostics.hpp"
 #include "support/result.hpp"
 #include "support/source_manager.hpp"
@@ -8,6 +9,7 @@
 #include <cstdint>
 #include <limits>
 #include <sstream>
+#include <utility>
 
 int main()
 {
@@ -27,6 +29,20 @@ int main()
     de.printAll(oss, &sm);
     assert(oss.str().find("error: oops") != std::string::npos);
     assert(oss.str().find("test:1:1") != std::string::npos);
+
+    // Expected<Diag> success versus error disambiguation
+    std::string diagValueMessage = "value diag";
+    il::support::Diag diagValue = il::support::makeError({}, diagValueMessage);
+    il::support::Expected<il::support::Diag> ok(il::support::kSuccessDiag,
+                                                std::move(diagValue));
+    assert(ok.hasValue());
+    assert(ok.value().message == diagValueMessage);
+
+    std::string diagErrorMessage = "error diag";
+    il::support::Diag diagError = il::support::makeError({}, diagErrorMessage);
+    il::support::Expected<il::support::Diag> err(diagError);
+    assert(!err.hasValue());
+    assert(err.error().message == diagErrorMessage);
 
     // Arena alignment
     il::support::Arena arena(64);
