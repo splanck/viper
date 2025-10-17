@@ -5,12 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Coordinates the IL verifier pipeline.  The driver runs the extern, global,
-// function, and exception-handler verifiers in sequence, collecting diagnostics
-// and combining them into a single @c Expected<void> result so callers receive a
-// consolidated failure summary.
+// File: src/il/verify/Verifier.cpp
+// Purpose: Drive the multi-stage IL verifier and collate diagnostics into a
+//          single Expected result.
+// Links: docs/il-guide.md#verification
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements the top-level IL verifier orchestration logic.
+/// @details The verifier coordinates subsystem checks for externs, globals,
+///          functions, and exception handlers before returning a consolidated
+///          diagnostic outcome to tooling.
 
 #include "il/verify/Verifier.hpp"
 

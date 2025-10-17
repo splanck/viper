@@ -5,10 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the Cooper–Harvey–Kennedy dominator tree construction algorithm
-// and exposes basic queries such as dominance checks and immediate dominators.
+// File: src/il/analysis/Dominators.cpp
+// Purpose: Implement the Cooper–Harvey–Kennedy dominator tree algorithm and
+//          expose dominance queries for IL CFGs.
+// Links: docs/architecture.md#analysis
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements dominator tree construction and query helpers.
+/// @details Provides an out-of-line home for the algorithm so the header can
+///          remain lightweight while documenting how dominance intersections are
+///          computed and cached.
 
 #include "il/analysis/Dominators.hpp"
 #include "il/analysis/CFG.hpp"
@@ -18,9 +26,10 @@ namespace viper::analysis
 {
 
 /// @brief Return the immediate dominator for a block.
-///
-/// Queries the dominator tree for the unique immediate dominator of
-/// the provided block.
+/// @details Performs a map lookup against the cached immediate dominator table.
+///          Entry blocks are stored with null dominators and therefore produce
+///          `nullptr` results.  The tree must have been previously computed via
+///          @ref computeDominatorTree.
 /// @param B Block whose immediate dominator is sought.
 /// @return Immediate dominator of @p B or `nullptr` if @p B is the entry block.
 /// @invariant The dominator tree has been previously computed for the
@@ -32,9 +41,10 @@ il::core::Block *DomTree::immediateDominator(il::core::Block *B) const
 }
 
 /// @brief Check whether one block dominates another.
-///
-/// Walks up the dominator tree from the candidate dominated block to see
-/// if the potential dominator is encountered.
+/// @details Walks up the dominator chain from @p B until reaching the entry or
+///          encountering @p A.  Missing dominator entries terminate the search
+///          early, signalling that the tree was not fully populated for the
+///          block (such as unreachable regions).
 /// @param A Potential dominator.
 /// @param B Block being tested for domination.
 /// @return `true` if @p A dominates @p B, otherwise `false`.
@@ -59,9 +69,11 @@ bool DomTree::dominates(il::core::Block *A, il::core::Block *B) const
 }
 
 /// @brief Construct the dominator tree for a function.
-///
-/// Implements the Cooper–Harvey–Kennedy algorithm to derive immediate
-/// dominators for every block in the function.
+/// @details Implements the Cooper–Harvey–Kennedy algorithm to derive immediate
+///          dominators for every reachable block.  Builds a reverse-postorder
+///          traversal, iteratively refines the immediate dominator map using the
+///          standard intersection routine, and finally populates child lists for
+///          convenience.
 /// @param ctx CFG context used to access traversal helpers.
 /// @param F Function whose dominator relationships are computed.
 /// @return A fully populated dominator tree with parent and child links.
