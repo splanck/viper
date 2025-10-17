@@ -90,6 +90,39 @@ static void ensure_read_line_reports_eof(void)
     unlink(path);
 }
 
+static void ensure_read_line_trims_crlf(void)
+{
+    char path[] = "/tmp/viper_io_crlfXXXXXX";
+    int fd = mkstemp(path);
+    assert(fd >= 0);
+
+    const char payload[] = "hello world\r\n";
+    ssize_t written = write(fd, payload, sizeof(payload) - 1);
+    assert(written == (ssize_t)(sizeof(payload) - 1));
+    int rc = close(fd);
+    assert(rc == 0);
+
+    RtFile file;
+    rt_file_init(&file);
+    RtError err = { Err_None, 0 };
+    bool ok = rt_file_open(&file, path, "r", &err);
+    assert(ok);
+
+    rt_string line = NULL;
+    ok = rt_file_read_line(&file, &line, &err);
+    assert(ok);
+    assert(line != NULL);
+    const char *cstr = rt_string_cstr(line);
+    assert(strcmp(cstr, "hello world") == 0);
+    assert(rt_len(line) == (int64_t)strlen("hello world"));
+
+    rt_string_unref(line);
+
+    ok = rt_file_close(&file, &err);
+    assert(ok);
+    unlink(path);
+}
+
 static void ensure_invalid_handle_surfaces_ioerror(void)
 {
     RtFile file;
@@ -108,6 +141,7 @@ int main(void)
     ensure_missing_open_sets_file_not_found();
     ensure_read_byte_reports_eof();
     ensure_read_line_reports_eof();
+    ensure_read_line_trims_crlf();
     ensure_invalid_handle_surfaces_ioerror();
     return 0;
 }
