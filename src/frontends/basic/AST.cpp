@@ -155,6 +155,8 @@ void CallExpr::accept(MutExprVisitor &visitor)
 }
 
 #if VIPER_ENABLE_OOP
+/// @brief Forwards this NEW expression node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
 void NewExpr::accept(ExprVisitor &visitor) const
 {
     visitor.visit(*this);
@@ -165,6 +167,8 @@ void NewExpr::accept(MutExprVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this ME expression node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
 void MeExpr::accept(ExprVisitor &visitor) const
 {
     visitor.visit(*this);
@@ -175,6 +179,8 @@ void MeExpr::accept(MutExprVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this member access expression node to the visitor.
+/// @param visitor Receives the node; ownership remains with the AST.
 void MemberAccessExpr::accept(ExprVisitor &visitor) const
 {
     visitor.visit(*this);
@@ -185,6 +191,8 @@ void MemberAccessExpr::accept(MutExprVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this method call expression node to the visitor.
+/// @param visitor Receives the node; ownership remains with the AST.
 void MethodCallExpr::accept(ExprVisitor &visitor) const
 {
     visitor.visit(*this);
@@ -594,6 +602,8 @@ void StmtList::accept(MutStmtVisitor &visitor)
 
 #if VIPER_ENABLE_OOP
 
+/// @brief Forwards this DELETE statement node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
 void DeleteStmt::accept(StmtVisitor &visitor) const
 {
     visitor.visit(*this);
@@ -604,6 +614,8 @@ void DeleteStmt::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this constructor declaration node to the visitor.
+/// @param visitor Receives the node; ownership remains with the AST.
 void ConstructorDecl::accept(StmtVisitor &visitor) const
 {
     visitor.visit(*this);
@@ -614,6 +626,8 @@ void ConstructorDecl::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this destructor declaration node to the visitor.
+/// @param visitor Receives the node; ownership remains with the AST.
 void DestructorDecl::accept(StmtVisitor &visitor) const
 {
     visitor.visit(*this);
@@ -624,6 +638,8 @@ void DestructorDecl::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this method declaration node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
 void MethodDecl::accept(StmtVisitor &visitor) const
 {
     visitor.visit(*this);
@@ -634,6 +650,8 @@ void MethodDecl::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this CLASS declaration node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
 void ClassDecl::accept(StmtVisitor &visitor) const
 {
     visitor.visit(*this);
@@ -644,6 +662,8 @@ void ClassDecl::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this TYPE declaration node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
 void TypeDecl::accept(StmtVisitor &visitor) const
 {
     visitor.visit(*this);
