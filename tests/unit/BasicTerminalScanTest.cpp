@@ -13,9 +13,11 @@
 #include "frontends/basic/BasicCompiler.hpp"
 #include "il/core/Extern.hpp"
 #include "il/core/Module.hpp"
+#include "il/io/Serializer.hpp"
 #include "support/source_manager.hpp"
 
 #include <algorithm>
+#include <string>
 #include <string_view>
 
 namespace
@@ -50,6 +52,23 @@ TEST(BasicTerminalScanTest, DeclaresRequiredExterns)
     EXPECT_TRUE(hasExtern(module, "rt_term_cls"));
     EXPECT_TRUE(hasExtern(module, "rt_term_color_i32"));
     EXPECT_TRUE(hasExtern(module, "rt_term_locate_i32"));
+}
+
+TEST(BasicTerminalScanTest, EmitsTerminalExternsInILText)
+{
+    il::support::SourceManager sourceManager;
+    il::frontends::basic::BasicCompilerInput input{kSrc, "terminal.bas"};
+    il::frontends::basic::BasicCompilerOptions options{};
+
+    auto result = il::frontends::basic::compileBasic(input, options, sourceManager);
+    ASSERT_TRUE(result.succeeded());
+
+    const std::string ilText = il::io::Serializer::toString(result.module);
+
+    EXPECT_NE(ilText.find("extern @rt_term_cls"), std::string::npos);
+    EXPECT_NE(ilText.find("extern @rt_term_color_i32"), std::string::npos);
+    EXPECT_NE(ilText.find("extern @rt_term_locate_i32"), std::string::npos);
+    EXPECT_TRUE(ilText.find("unknown callee") == std::string::npos);
 }
 
 int main(int argc, char **argv)
