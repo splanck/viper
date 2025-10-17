@@ -5,11 +5,21 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Provides the lightweight mapping from opcode enumeration values to their IL
-// mnemonic strings. The generated table is intentionally kept in this source
-// file so translation units only pay for the strings they use.
+// File: src/il/core/OpcodeNames.cpp
+// Purpose: Provide a compact mapping between opcode enumeration values and
+//          their textual mnemonics for diagnostics and serialization.
+// Key invariants: Table size always matches the opcode enumeration count.
+// Links: docs/il-guide.md#opcodes
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements mnemonic lookups for IL opcode enumerators.
+/// @details The generated string table lives in this translation unit to avoid
+///          forcing every include site to materialize the mnemonics.  A static
+///          assertion guards against drift between the enum definition and the
+///          generated table so tooling surfaces mismatches promptly during
+///          compilation.
 
 #include "il/core/Opcode.hpp"
 

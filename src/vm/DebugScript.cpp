@@ -5,11 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the tiny script loader used by the VM debugger.  Scripts are text
-// files containing imperative commands such as "continue" or "step N" which are
-// fed to the debugger to automate interactive sessions.
+// File: src/vm/DebugScript.cpp
+// Purpose: Implement the queue-based script loader that drives the interactive
+//          VM debugger.
+// Links: docs/runtime-vm.md#debugger
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Parses debugger command scripts into queued actions.
+/// @details Keeps I/O and parsing logic out of the header so the debugger can
+///          include lightweight declarations while the implementation handles
+///          error messaging and command expansion.
 #include "vm/DebugScript.hpp"
 
 #include <fstream>
@@ -19,11 +26,11 @@
 namespace il::vm
 {
 /// @brief Construct a script by loading actions from a command file.
-///
-/// Lines containing "continue" enqueue a Continue action; lines with "step" or
-/// "step N" enqueue a Step action with the requested instruction count.  Unknown
-/// commands emit a `[DEBUG]` message and are ignored so partially written scripts
-/// remain usable.
+/// @details Reads the file line-by-line, interpreting recognised commands into
+///          queued actions.  "continue" lines enqueue a Continue action while
+///          "step" and "step N" emit Step actions with appropriate counts.
+///          Unknown lines emit `[DEBUG]` messages to stderr but do not abort
+///          parsing, allowing iterative script development.
 DebugScript::DebugScript(const std::string &path)
 {
     std::ifstream f(path);
@@ -62,19 +69,19 @@ DebugScript::DebugScript(const std::string &path)
 }
 
 /// @brief Queue a step action for @p count instructions.
-///
-/// Useful for programmatic tooling that wants to append commands after loading
-/// a script file.
+/// @details Allows tooling to append scripted actions after construction without
+///          re-reading a file.  Actions are enqueued in FIFO order so appended
+///          steps execute after any previously loaded commands.
 void DebugScript::addStep(uint64_t count)
 {
     actions.push({DebugActionKind::Step, count});
 }
 
 /// @brief Retrieve the next queued action.
-///
-/// If no actions remain, a Continue action is returned to resume normal
-/// execution. Otherwise, the next action is removed from the queue and
-/// returned to the caller.
+/// @details Pops the next action from the queue, defaulting to a Continue action
+///          when the queue is empty.  Returning a Continue action in the empty
+///          case lets the debugger resume execution naturally without checking
+///          for null results.
 DebugAction DebugScript::nextAction()
 {
     if (actions.empty())
@@ -85,8 +92,8 @@ DebugAction DebugScript::nextAction()
 }
 
 /// @brief Determine whether all actions have been consumed.
-///
-/// @return True if no actions remain in the queue, false otherwise.
+/// @details Exposes the queue emptiness predicate so driver code can decide when
+///          to re-read scripts or fall back to interactive mode.
 bool DebugScript::empty() const
 {
     return actions.empty();

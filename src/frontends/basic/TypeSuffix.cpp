@@ -5,13 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Provides the helper that interprets traditional BASIC type suffix characters
-// (`$`, `%`, `&`, `!`, `#`) and maps them onto the compiler's scalar type
-// enumeration. Keeping the logic out of the header keeps the inline surface
-// small and lets the implementation document the fallbacks used when a name is
-// not suffixed.
+// File: src/frontends/basic/TypeSuffix.cpp
+// Purpose: Provide the BASIC identifier suffix parser that converts sigils into
+//          semantic types used by the lowering pipeline.
+// Key invariants: Missing suffixes default to the integer type to match legacy
+//                 BASIC semantics.
+// Links: docs/basic-language.md#types
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements the mapping between BASIC type suffixes and semantic types.
+/// @details Consolidating the logic here avoids exposing parsing helpers in the
+///          public header while clearly documenting the defaulting rules applied
+///          when a suffix is absent.
 
 #include "frontends/basic/TypeSuffix.hpp"
 

@@ -5,11 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Provides the string conversion helper for BASIC tokens.  Keeping the
-// implementation here avoids re-parsing the token list in multiple translation
-// units while documenting the invariants around TokenKinds.def.
+// File: src/frontends/basic/Token.cpp
+// Purpose: Implement token-to-string conversion helpers used by diagnostics and
+//          debugging tools in the BASIC front end.
+// Key invariants: The generated table always matches TokenKind::Count.
+// Links: docs/basic-language.md#lexical-structure
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Houses the lookup table that maps token kinds to display strings.
+/// @details The mapping is generated from TokenKinds.def so that token spelling
+///          updates propagate automatically.  Centralising the implementation
+///          avoids duplicating the table across translation units.
 
 #include "frontends/basic/Token.hpp"
 
@@ -31,16 +39,13 @@ static_assert(kTokenNameCount == static_cast<std::size_t>(TokenKind::Count),
               "TokenKinds.def and TokenKind are out of sync");
 } // namespace
 
-/**
- * @brief Maps a token kind to its canonical string representation.
- *
- * Each enumerator in TokenKind is handled via a shared table generated from
- * TokenKinds.def. Unrecognized values fall back to a "?" marker. The table is
- * kept in sync with TokenKind via a static assertion to preserve completeness.
- *
- * @param k Token kind to convert.
- * @return Null-terminated string naming @p k, or "?" if no mapping exists.
- */
+/// @brief Maps a token kind to its canonical string representation.
+/// @details Each enumerator in TokenKind is handled via a shared table generated
+///          from TokenKinds.def.  Unrecognized values fall back to a "?" marker.
+///          A static assertion keeps the table aligned with the enum so missing
+///          entries surface during compilation.
+/// @param k Token kind to convert.
+/// @return Null-terminated string naming @p k, or "?" if no mapping exists.
 const char *tokenKindToString(TokenKind k)
 {
     const auto index = static_cast<std::size_t>(k);
