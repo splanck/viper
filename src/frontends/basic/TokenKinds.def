@@ -106,3 +106,12 @@ TOKEN(KeywordLine, "LINE")
 TOKEN(KeywordSeek, "SEEK")
 TOKEN(KeywordLof, "LOF")
 TOKEN(KeywordEof, "EOF")
+#if VIPER_ENABLE_OOP
+TOKEN(Dot, ".")
+TOKEN(KeywordClass, "CLASS")
+TOKEN(KeywordType, "TYPE")
+TOKEN(KeywordDestructor, "DESTRUCTOR")
+TOKEN(KeywordNew, "NEW")
+TOKEN(KeywordDelete, "DELETE")
+TOKEN(KeywordMe, "ME")
+#endif
