@@ -5,12 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Defines metadata describing IL opcode signatures and behaviours. The generated
-// tables provide compact access to operand counts, parsing strategies, and other
-// properties used by the parser, verifier, and tools when reasoning about IL
-// programs.
+// File: src/il/core/OpcodeInfo.cpp
+// Purpose: Define metadata tables describing IL opcode signatures and helper
+//          routines for querying them.
+// Links: docs/il-guide.md#opcodes
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements helpers that expose opcode metadata to the rest of the IL stack.
+/// @details Houses generated tables and lightweight query wrappers so that tools
+///          can retrieve operand counts, parse specifications, and mnemonics from
+///          a single source of truth.
 
 #include "il/core/OpcodeInfo.hpp"
 
@@ -23,10 +29,8 @@ namespace il::core
 namespace
 {
 /// @brief Build the operand category array for an opcode definition.
-///
-/// Provides a constexpr helper so the generated table entries stay concise and
-/// default unspecified slots to `TypeCategory::None`.
-///
+/// @details Provides a constexpr helper so the generated table entries stay
+///          concise and default unspecified slots to @ref TypeCategory::None.
 /// @param a First operand category.
 /// @param b Second operand category (optional).
 /// @param c Third operand category (optional).
@@ -39,10 +43,9 @@ constexpr std::array<TypeCategory, kMaxOperandCategories> makeOperands(TypeCateg
 }
 
 /// @brief Build a parser descriptor for a single operand slot.
-///
-/// Captures both the parse kind and an optional role string describing the
-/// operand to diagnostics.
-///
+/// @details Captures both the parse kind and an optional role string describing
+///          the operand to diagnostics so that opcode metadata remains compact
+///          yet expressive.
 /// @param kind Operand parsing strategy.
 /// @param role Optional semantic role name.
 /// @return Operand parse descriptor.
@@ -53,10 +56,9 @@ constexpr OperandParseSpec makeParseSpec(OperandParseKind kind = OperandParseKin
 }
 
 /// @brief Build the operand-parse descriptor array for an opcode definition.
-///
-/// Accepts up to four operand parse specs and defaults the remainder so the
-/// table entries remain terse.
-///
+/// @details Accepts up to four operand parse specs and defaults the remainder so
+///          the table entries remain terse while still covering the maximum
+///          operand count supported by the IL.
 /// @param a First operand parse descriptor.
 /// @param b Second operand parse descriptor.
 /// @param c Third operand parse descriptor.
@@ -86,9 +88,9 @@ const std::array<OpcodeInfo, kNumOpcodes> kOpcodeTable = {
 static_assert(kOpcodeTable.size() == kNumOpcodes, "Opcode table must match enum count");
 
 /// @brief Retrieve the metadata describing a specific opcode.
-///
-/// Performs a direct index into the generated opcode table.
-///
+/// @details Performs a direct index into the generated opcode table and returns
+///          a reference so callers can read fields without copying.  The table
+///          size is guarded by a static assertion to catch enum/table drift.
 /// @param op Opcode whose metadata is required.
 /// @return Reference to the immutable opcode descriptor.
 const OpcodeInfo &getOpcodeInfo(Opcode op)
@@ -97,10 +99,9 @@ const OpcodeInfo &getOpcodeInfo(Opcode op)
 }
 
 /// @brief Enumerate every opcode in declaration order.
-///
-/// Materialises a vector containing each opcode enumeration value, primarily
-/// used by tools that need to iterate over all opcodes.
-///
+/// @details Materialises a vector containing each opcode enumeration value,
+///          primarily used by tools that need to iterate over all opcodes in a
+///          stable order for reporting or analysis.
 /// @return Vector populated with every opcode value.
 std::vector<Opcode> all_opcodes()
 {
@@ -112,7 +113,9 @@ std::vector<Opcode> all_opcodes()
 }
 
 /// @brief Check whether an operand count field encodes the variadic sentinel.
-///
+/// @details Metadata tables use a sentinel value to represent "variadic"
+///          operand counts.  This helper hides the comparison so callers remain
+///          agnostic of the exact encoding.
 /// @param value Encoded operand count.
 /// @return True when @p value represents a variadic operand count.
 bool isVariadicOperandCount(uint8_t value)
@@ -121,7 +124,8 @@ bool isVariadicOperandCount(uint8_t value)
 }
 
 /// @brief Check whether a successor count field encodes the variadic sentinel.
-///
+/// @details Mirrors @ref isVariadicOperandCount for successor metadata so tools
+///          can detect branch fan-out encoded as variadic.
 /// @param value Encoded successor count.
 /// @return True when @p value represents a variadic successor count.
 bool isVariadicSuccessorCount(uint8_t value)
@@ -130,10 +134,9 @@ bool isVariadicSuccessorCount(uint8_t value)
 }
 
 /// @brief Return the mnemonic associated with the provided opcode.
-///
-/// Delegates to the generated opcode name table and treats out-of-range opcodes
-/// as invalid.
-///
+/// @details Delegates to the generated opcode name table and treats out-of-range
+///          opcodes as invalid by returning an empty string.  Consumers typically
+///          use this for diagnostics and serialization.
 /// @param op Opcode enumeration value to translate into a mnemonic string.
 /// @return Mnemonic string if the opcode is within range; otherwise an empty string.
 std::string opcode_mnemonic(Opcode op)

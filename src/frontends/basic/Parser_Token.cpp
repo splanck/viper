@@ -5,12 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Provides the token-buffer utilities used by the BASIC parser.  These helpers
-// encapsulate lookahead, consumption, and error recovery so the parsing logic in
-// Parser.cpp and Parser_Stmt.cpp can focus on grammar production without
-// repeating buffer management code.
+// File: src/frontends/basic/Parser_Token.cpp
+// Purpose: Implement token buffer management utilities for the BASIC parser.
+// Links: docs/basic-language.md#parser
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Provides lookahead, consumption, and error recovery helpers for the BASIC parser.
+/// @details Keeping the token-buffer mechanics here keeps the main parser
+///          translation units focused on grammar productions while centralising
+///          boundary synchronisation policies.
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"
@@ -23,18 +28,23 @@ namespace il::frontends::basic
 // -----------------------------------------------------------------------------
 
 /// @brief Check if the next buffered token matches the expected kind.
+/// @details Uses @ref peek to ensure the buffer contains at least one token and
+///          then compares its kind against @p k without consuming it.  Provides a
+///          lightweight predicate used throughout the parser to guard optional
+///          productions.
 /// @param k Token kind to test against the next token.
 /// @return True when the buffered token is of kind @p k; false otherwise.
-/// @note Uses peek to populate the buffer without consuming tokens.
 bool Parser::at(TokenKind k) const
 {
     return peek().kind == k;
 }
 
 /// @brief Provide lookahead into the token stream without consuming tokens.
+/// @details Extends the buffered window by repeatedly querying the lexer until
+///          the requested lookahead index exists.  Tokens remain in the buffer so
+///          subsequent calls can reuse them.
 /// @param n Lookahead distance, where 0 refers to the current token.
 /// @return Reference to the token at position @p n.
-/// @note Extends the buffer by reading from the lexer as needed.
 const Token &Parser::peek(int n) const
 {
     while (tokens_.size() <= static_cast<size_t>(n))
@@ -45,8 +55,10 @@ const Token &Parser::peek(int n) const
 }
 
 /// @brief Remove and return the current token.
+/// @details Fetches the token via @ref peek to ensure the buffer contains a
+///          value, then erases it from the front so subsequent reads observe the
+///          next token.
 /// @return The token currently at the front of the buffer.
-/// @note Fetches the token via peek before erasing it to advance the buffer.
 Token Parser::consume()
 {
     Token t = peek();
@@ -54,17 +66,13 @@ Token Parser::consume()
     return t;
 }
 
-/**
- * Consume the next token when its kind matches the expected value.
- *
- * If the current token does not have kind @p k, a diagnostic is emitted (or an
- * error message is printed when no emitter is available).  Tokens are then
- * discarded until the next statement boundary so that parsing can resume
- * in a stable state.  In this error case the offending token is returned.
- *
- * @param k Expected token kind.
- * @return The matched token on success; otherwise the offending token.
- */
+/// @brief Consume the next token when its kind matches the expected value.
+/// @details When the lookahead token does not match @p k, the helper emits a
+///          diagnostic (or logs a fallback message) and then calls
+///          @ref syncToStmtBoundary to recover.  The offending token is returned
+///          so callers can decide how to proceed.
+/// @param k Expected token kind.
+/// @return The matched token on success; otherwise the offending token.
 Token Parser::expect(TokenKind k)
 {
     if (!at(k))
@@ -85,13 +93,11 @@ Token Parser::expect(TokenKind k)
     return consume();
 }
 
-/**
- * Discard buffered tokens until a statement boundary is found.
- *
- * Used during error recovery, this helper consumes tokens until an end-of-line,
- * colon, or end-of-file is encountered.  It does not emit diagnostics itself
- * but allows parsing to resume at the next stable location.
- */
+/// @brief Discard buffered tokens until a statement boundary is found.
+/// @details Used during error recovery, the method consumes tokens until it
+///          encounters an end-of-line, colon, or end-of-file token.  It avoids
+///          emitting additional diagnostics so callers remain in control of
+///          messaging while ensuring the parser resumes at a stable location.
 void Parser::syncToStmtBoundary()
 {
     while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine) && !at(TokenKind::Colon))
