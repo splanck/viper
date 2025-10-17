@@ -9,6 +9,7 @@ set(RT_SOURCES
   rt_random.c
   rt_array.c
   rt_heap.c
+  rt_object.c
   rt_numeric.c
   rt_numeric_conv.c
   rt_debug.c
@@ -38,6 +39,8 @@ target_include_directories(viper_runtime
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/runtime>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper_runtime>
+  PRIVATE
+    ${PROJECT_SOURCE_DIR}/src
 )
 
 if(NOT WIN32)
