@@ -11,6 +11,13 @@
 #pragma once
 
 void lowerLet(const LetStmt &stmt);
+void assignScalarSlot(const SlotType &slotInfo,
+                      Value slot,
+                      RVal value,
+                      il::support::SourceLoc loc);
+void assignArrayElement(const ArrayExpr &target,
+                        RVal value,
+                        il::support::SourceLoc loc);
 void lowerDim(const DimStmt &stmt);
 void lowerReDim(const ReDimStmt &stmt);
 void lowerRandomize(const RandomizeStmt &stmt);
