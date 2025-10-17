@@ -189,6 +189,37 @@ StatementSequencer::SeparatorKind StatementSequencer::lastSeparator() const
     return lastSeparator_;
 }
 
+StatementSequencer::LineAction StatementSequencer::evaluateLineAction(
+    int line,
+    il::support::SourceLoc lineLoc,
+    const TerminatorPredicate &isTerminator,
+    const TerminatorConsumer &onTerminator,
+    CollectionState &state)
+{
+    if (isTerminator(line, lineLoc))
+    {
+        state.info.line = line;
+        state.info.loc = parser_.peek().loc;
+        onTerminator(line, lineLoc, state.info);
+        return LineAction::Terminate;
+    }
+
+    if (deferredLineOnly_)
+    {
+        if (parser_.at(TokenKind::Number))
+        {
+            const Token &next = parser_.peek();
+            int nextLine = std::atoi(next.lexeme.c_str());
+            stashPendingLine(nextLine, next.loc);
+            parser_.consume();
+            state.hadPendingLine = true;
+        }
+        return LineAction::Defer;
+    }
+
+    return LineAction::Continue;
+}
+
 /// @brief Collect consecutive statements until a terminator predicate fires.
 ///
 /// The sequencer repeatedly parses statements, forwarding them into @p dst, and
@@ -208,7 +239,7 @@ StatementSequencer::TerminatorInfo StatementSequencer::collectStatements(
     const TerminatorConsumer &onTerminator,
     std::vector<StmtPtr> &dst)
 {
-    TerminatorInfo info;
+    CollectionState state;
     skipLeadingSeparator();
     while (!parser_.at(TokenKind::EndOfFile))
     {
@@ -216,48 +247,38 @@ StatementSequencer::TerminatorInfo StatementSequencer::collectStatements(
         if (parser_.at(TokenKind::EndOfFile))
             break;
 
-        bool done = false;
-        withOptionalLineNumber(
-            [&](int line, il::support::SourceLoc lineLoc)
-            {
-                if (isTerminator(line, lineLoc))
-                {
-                    info.line = line;
-                    info.loc = parser_.peek().loc;
-                    onTerminator(line, lineLoc, info);
-                    done = true;
-                    return;
-                }
-                if (deferredLineOnly_)
-                {
-                    if (parser_.at(TokenKind::Number))
-                    {
-                        const Token &next = parser_.peek();
-                        int nextLine = std::atoi(next.lexeme.c_str());
-                        stashPendingLine(nextLine, next.loc);
-                        parser_.consume();
-                    }
-                    done = true;
-                    return;
-                }
-                TokenKind lookaheadKind = parser_.peek().kind;
-                if (lookaheadKind == TokenKind::EndOfLine || lookaheadKind == TokenKind::EndOfFile ||
-                    lookaheadKind == TokenKind::Colon)
-                {
-                    return;
-                }
-                auto stmt = parser_.parseStatement(line);
-                if (stmt)
-                {
-                    stmt->line = line;
-                    dst.push_back(std::move(stmt));
-                }
-            });
-        if (done)
+        state.separatorBefore = lastSeparator_;
+        state.hadPendingLine = (pendingLine_ >= 0);
+
+        int line = 0;
+        il::support::SourceLoc lineLoc{};
+        withOptionalLineNumber([
+                                  &line, &lineLoc
+                              ](int currentLine, il::support::SourceLoc currentLoc)
+                              {
+                                  line = currentLine;
+                                  lineLoc = currentLoc;
+                              });
+
+        LineAction action = evaluateLineAction(line, lineLoc, isTerminator, onTerminator, state);
+        if (action == LineAction::Terminate || action == LineAction::Defer)
             break;
+
+        TokenKind lookaheadKind = parser_.peek().kind;
+        if (lookaheadKind != TokenKind::EndOfLine && lookaheadKind != TokenKind::EndOfFile &&
+            lookaheadKind != TokenKind::Colon)
+        {
+            auto stmt = parser_.parseStatement(line);
+            if (stmt)
+            {
+                stmt->line = line;
+                dst.push_back(std::move(stmt));
+            }
+        }
+
         skipStatementSeparator();
     }
-    return info;
+    return state.info;
 }
 
 /// @brief Convenience overload collecting until a specific token appears.
