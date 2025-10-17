@@ -1,8 +1,18 @@
-// File: src/il/verify/InstructionChecker_Arithmetic.cpp
-// Purpose: Implements arithmetic-focused instruction verification helpers.
-// Key invariants: Operands are validated against inferred types before recording results.
-// Ownership/Lifetime: Operates on VerifyCtx without taking ownership of operands or diagnostics.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the arithmetic instruction verification helpers.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Arithmetic instruction verification helpers.
+/// @details Provides functions for ensuring arithmetic instructions obey type
+///          rules and for recording result types when checks succeed.
 
 #include "il/verify/InstructionCheckerShared.hpp"
 #include "il/verify/InstructionCheckUtils.hpp"
@@ -17,6 +27,9 @@ using il::core::Type;
 using il::core::Value;
 using il::support::Expected;
 
+/// @brief Translate a verifier type class into a concrete IL type kind.
+/// @param typeClass Abstract type class derived from opcode metadata.
+/// @return Matching IL type kind when available; otherwise empty optional.
 std::optional<Type::Kind> kindFromClass(TypeClass typeClass)
 {
     switch (typeClass)
@@ -48,6 +61,9 @@ std::optional<Type::Kind> kindFromClass(TypeClass typeClass)
     return std::nullopt;
 }
 
+/// @brief Translate a type class into a full @ref Type when possible.
+/// @param typeClass Class to translate.
+/// @return Concrete type or empty optional for dynamic cases.
 std::optional<Type> typeFromClass(TypeClass typeClass)
 {
     if (typeClass == TypeClass::InstrType)
@@ -57,6 +73,11 @@ std::optional<Type> typeFromClass(TypeClass typeClass)
     return std::nullopt;
 }
 
+/// @brief Ensure every operand matches the expected type kind.
+/// @details Iterates through operands and reports an error if any operand has a
+///          mismatched type.
+/// @param ctx Verification context containing operands.
+/// @param kind Expected operand type kind.
 Expected<void> expectAllOperandType(const VerifyCtx &ctx, Type::Kind kind)
 {
     for (const auto &op : ctx.instr.operands)
@@ -67,6 +88,9 @@ Expected<void> expectAllOperandType(const VerifyCtx &ctx, Type::Kind kind)
     return {};
 }
 
+/// @brief Verify a binary arithmetic instruction.
+/// @details Checks operand count, ensures both operands match @p operandKind,
+///          and records the provided @p resultType on success.
 Expected<void> checkBinary(const VerifyCtx &ctx, Type::Kind operandKind, Type resultType)
 {
     if (ctx.instr.operands.size() < 2)
@@ -79,6 +103,9 @@ Expected<void> checkBinary(const VerifyCtx &ctx, Type::Kind operandKind, Type re
     return {};
 }
 
+/// @brief Verify a unary arithmetic instruction.
+/// @details Requires exactly one operand of @p operandKind and records the
+///          result type when validation passes.
 Expected<void> checkUnary(const VerifyCtx &ctx, Type::Kind operandKind, Type resultType)
 {
     if (ctx.instr.operands.empty())
@@ -91,6 +118,10 @@ Expected<void> checkUnary(const VerifyCtx &ctx, Type::Kind operandKind, Type res
     return {};
 }
 
+/// @brief Verify the specialised @c idx.chk instruction used for bounds checks.
+/// @details Ensures operand counts and types are consistent (either all i16 or
+///          all i32), validates constants for range, and records the resulting
+///          integer type when the optional result annotation is present.
 Expected<void> checkIdxChk(const VerifyCtx &ctx)
 {
     if (ctx.instr.operands.size() != 3)
@@ -151,6 +182,8 @@ Expected<void> checkIdxChk(const VerifyCtx &ctx)
     return {};
 }
 
+/// @brief Fallback verification path that simply records the instruction type.
+/// @details Used when no specialised checks are required.
 Expected<void> checkDefault(const VerifyCtx &ctx)
 {
     ctx.types.recordResult(ctx.instr, ctx.instr.type);

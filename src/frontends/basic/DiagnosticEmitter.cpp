@@ -1,9 +1,19 @@
-// File: src/frontends/basic/DiagnosticEmitter.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Implements BASIC diagnostic formatting with codes and carets.
-// Key invariants: Diagnostics printed in emission order.
-// Ownership/Lifetime: Holds copies of source text; borrows engine and manager.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the BASIC front-end diagnostic emitter responsible for capturing,
+// formatting, and printing diagnostics with caret annotations and codes.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Diagnostic emitter used by the BASIC front end.
+/// @details Wraps @ref il::support::DiagnosticEngine to capture diagnostics,
+///          store full source text, and later print caret-highlighted output.
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include <algorithm>
@@ -13,9 +23,10 @@ namespace il::frontends::basic
 {
 
 /// @brief Initialize an emitter bound to a diagnostic engine and source manager.
+/// @details Stores references to the engine and manager so later emissions can
+///          print caret information without additional wiring.
 /// @param de Engine used to report diagnostics immediately.
 /// @param sm Manager providing file path lookups for caret output.
-/// Stores references to the engine and manager for later emissions.
 DiagnosticEmitter::DiagnosticEmitter(il::support::DiagnosticEngine &de,
                                      const il::support::SourceManager &sm)
     : de_(de), sm_(sm)
@@ -23,21 +34,24 @@ DiagnosticEmitter::DiagnosticEmitter(il::support::DiagnosticEngine &de,
 }
 
 /// @brief Register full source text for a file identifier.
+/// @details Caches the provided buffer so caret printing can fetch the
+///          surrounding line quickly.
 /// @param fileId Key used by diagnostics to reference this source.
 /// @param source Contents of the file to enable caret printing.
-/// Caches the source so later diagnostics can display relevant lines.
 void DiagnosticEmitter::addSource(uint32_t fileId, std::string source)
 {
     sources_[fileId] = std::move(source);
 }
 
 /// @brief Report a diagnostic and store it for later printing.
+/// @details Immediately forwards the diagnostic to the underlying engine and
+///          records a copy so caret-formatted output can be produced in order of
+///          emission.
 /// @param sev Severity level of the diagnostic.
 /// @param code Project-defined diagnostic code.
 /// @param loc Source location associated with the issue.
 /// @param length Highlight length; zero defaults to one caret.
 /// @param message Human-readable explanation of the problem.
-/// Sends the diagnostic to the engine and records it internally.
 void DiagnosticEmitter::emit(il::support::Severity sev,
                              std::string code,
                              il::support::SourceLoc loc,
@@ -52,7 +66,8 @@ void DiagnosticEmitter::emit(il::support::Severity sev,
 /// @param got Token actually observed.
 /// @param expect Token that was required.
 /// @param loc Source location of the unexpected token.
-/// Reports error B0001 describing the mismatch.
+/// @details Formats diagnostic B0001, describing the mismatch between expected
+///          and observed tokens.
 void DiagnosticEmitter::emitExpected(TokenKind got, TokenKind expect, il::support::SourceLoc loc)
 {
     std::string msg =
@@ -61,6 +76,8 @@ void DiagnosticEmitter::emitExpected(TokenKind got, TokenKind expect, il::suppor
 }
 
 /// @brief Convert severity enum to human-readable string.
+/// @details Used when printing diagnostics so the textual level appears alongside
+///          the code and message.
 /// @param s Severity to convert.
 /// @return Null-terminated severity name.
 static const char *toString(il::support::Severity s)
@@ -79,6 +96,9 @@ static const char *toString(il::support::Severity s)
 }
 
 /// @brief Retrieve a specific line from stored source text.
+/// @details Performs a linear scan through the cached buffer to extract the
+///          requested 1-based line, returning an empty string when the file or
+///          line number is unknown.
 /// @param fileId Source file identifier.
 /// @param line 1-based line number to fetch.
 /// @return Line contents or empty string if unavailable.
@@ -106,8 +126,10 @@ std::string DiagnosticEmitter::getLine(uint32_t fileId, uint32_t line) const
 }
 
 /// @brief Print all collected diagnostics with caret markers.
+/// @details Streams each stored entry to @p os, including file/line metadata and
+///          a caret underline that spans @ref DiagnosticEntry::length
+///          characters.
 /// @param os Output stream receiving formatted diagnostics.
-/// Writes each stored entry and highlights its source span.
 void DiagnosticEmitter::printAll(std::ostream &os) const
 {
     for (const auto &e : entries_)
@@ -127,6 +149,8 @@ void DiagnosticEmitter::printAll(std::ostream &os) const
 }
 
 /// @brief Retrieve the number of errors emitted so far.
+/// @details Forwards to the underlying diagnostic engine so callers can decide
+///          whether the compilation pipeline should continue.
 /// @return Count of error-severity diagnostics from the underlying engine.
 size_t DiagnosticEmitter::errorCount() const
 {
@@ -134,6 +158,7 @@ size_t DiagnosticEmitter::errorCount() const
 }
 
 /// @brief Retrieve the number of warnings emitted so far.
+/// @details Mirrors @ref errorCount but for warning-severity diagnostics.
 /// @return Count of warning-severity diagnostics from the underlying engine.
 size_t DiagnosticEmitter::warningCount() const
 {

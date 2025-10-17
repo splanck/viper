@@ -1,8 +1,21 @@
-// File: src/il/verify/OperandTypeChecker.cpp
-// Purpose: Implements a helper that validates operand types against opcode metadata.
-// Key invariants: Operates on the verification context for a single instruction.
-// Ownership/Lifetime: Non-owning references to verification data structures.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the helper that cross-checks instruction operand types against the
+// metadata published by @ref il::core::OpcodeInfo.  The checker feeds the
+// verifier diagnostic sink when mismatches are detected.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Operand type checking helper for the IL verifier.
+/// @details Encapsulates the logic required to compare inferred operand types
+///          against opcode metadata, handling integer range checks and
+///          instruction-type-dependent operands.
 
 #include "il/verify/OperandTypeChecker.hpp"
 
@@ -23,11 +36,24 @@ using il::core::kindToString;
 namespace il::verify::detail
 {
 
+/// @brief Construct an operand checker bound to a verification context.
+/// @details Stores references to the current @ref VerifyCtx and opcode metadata
+///          so later calls to @ref run can validate operands without additional
+///          lookups.
+/// @param ctx Verification context for the instruction under inspection.
+/// @param info Opcode metadata describing operand expectations.
 OperandTypeChecker::OperandTypeChecker(const VerifyCtx &ctx, const il::core::OpcodeInfo &info)
     : ctx_(ctx), info_(info)
 {
 }
 
+/// @brief Validate each operand against the opcode's type requirements.
+/// @details Iterates over the instruction operands, mapping opcode categories to
+///          concrete kinds and comparing them with the inferred types.  Integer
+///          literals are range-checked to avoid silent truncation, and missing
+///          type information results in diagnostics.  Success returns an empty
+///          Expected; failures propagate the diagnostic produced by @ref report.
+/// @return Empty Expected on success or the emitted diagnostic on failure.
 Expected<void> OperandTypeChecker::run() const
 {
     const auto &instr = ctx_.instr;
@@ -112,6 +138,11 @@ Expected<void> OperandTypeChecker::run() const
     return {};
 }
 
+/// @brief Emit a formatted diagnostic describing a type mismatch.
+/// @details Wraps @ref makeError with instruction-specific context so callers
+///          receive actionable feedback.
+/// @param message Human-readable description of the violation.
+/// @return Expected containing the emitted diagnostic for chaining.
 Expected<void> OperandTypeChecker::report(std::string_view message) const
 {
     return Expected<void>{makeError(ctx_.instr.loc, formatInstrDiag(ctx_.fn, ctx_.block, ctx_.instr, message))};
