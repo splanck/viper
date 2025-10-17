@@ -247,7 +247,27 @@ StmtPtr Parser::parseLineInputStatement()
     stmt->loc = loc;
     stmt->channelExpr = parseExpression();
     expect(TokenKind::Comma);
-    stmt->targetVar = parsePrimary();
+    auto target = parseArrayOrVar();
+    Expr *rawTarget = target.get();
+    if (rawTarget && !dynamic_cast<VarExpr *>(rawTarget) && !dynamic_cast<ArrayExpr *>(rawTarget))
+    {
+        il::support::SourceLoc diagLoc = rawTarget->loc.isValid() ? rawTarget->loc : loc;
+        if (emitter_)
+        {
+            emitter_->emit(il::support::Severity::Error,
+                           "B0001",
+                           diagLoc,
+                           1,
+                           "expected variable");
+        }
+        auto fallback = std::make_unique<VarExpr>();
+        fallback->loc = diagLoc;
+        stmt->targetVar = std::move(fallback);
+    }
+    else
+    {
+        stmt->targetVar = std::move(target);
+    }
     return stmt;
 }
 
