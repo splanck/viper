@@ -158,6 +158,14 @@ function(viper_add_basic_main_tests)
     test_frontends_basic_parse_input_extra_args)
 
   viper_add_test(
+    test_frontends_basic_parse_input_prompt_escape
+    ${VIPER_TESTS_DIR}/frontends/basic/ParserInputPromptEscapeTests.cpp)
+  target_link_libraries(test_frontends_basic_parse_input_prompt_escape PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(
+    test_frontends_basic_parse_input_prompt_escape
+    test_frontends_basic_parse_input_prompt_escape)
+
+  viper_add_test(
     test_frontends_basic_parse_unknown_stmt
     ${VIPER_TESTS_DIR}/frontends/basic/ParserUnknownStatementTests.cpp)
   target_link_libraries(test_frontends_basic_parse_unknown_stmt PRIVATE ${VIPER_BASIC_LIBS})

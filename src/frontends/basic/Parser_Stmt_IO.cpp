@@ -213,11 +213,7 @@ StmtPtr Parser::parseInputStatement()
     ExprPtr prompt;
     if (at(TokenKind::String))
     {
-        auto s = std::make_unique<StringExpr>();
-        s->loc = peek().loc;
-        s->value = peek().lexeme;
-        prompt = std::move(s);
-        consume();
+        prompt = parseString();
         expect(TokenKind::Comma);
     }
     auto stmt = std::make_unique<InputStmt>();
