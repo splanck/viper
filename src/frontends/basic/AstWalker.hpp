@@ -203,6 +203,60 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
         callAfter(expr);
     }
 
+#if VIPER_ENABLE_OOP
+    void visit(const NewExpr &expr) override
+    {
+        callBefore(expr);
+        if (callShouldVisit(expr))
+        {
+            for (const auto &arg : expr.args)
+            {
+                if (!arg)
+                    continue;
+                callBeforeChild(expr, *arg);
+                arg->accept(*static_cast<Derived *>(this));
+                callAfterChild(expr, *arg);
+            }
+        }
+        callAfter(expr);
+    }
+
+    void visit(const MemberAccessExpr &expr) override
+    {
+        callBefore(expr);
+        if (callShouldVisit(expr) && expr.base)
+        {
+            callBeforeChild(expr, *expr.base);
+            expr.base->accept(*static_cast<Derived *>(this));
+            callAfterChild(expr, *expr.base);
+        }
+        callAfter(expr);
+    }
+
+    void visit(const MethodCallExpr &expr) override
+    {
+        callBefore(expr);
+        if (callShouldVisit(expr))
+        {
+            if (expr.base)
+            {
+                callBeforeChild(expr, *expr.base);
+                expr.base->accept(*static_cast<Derived *>(this));
+                callAfterChild(expr, *expr.base);
+            }
+            for (const auto &arg : expr.args)
+            {
+                if (!arg)
+                    continue;
+                callBeforeChild(expr, *arg);
+                arg->accept(*static_cast<Derived *>(this));
+                callAfterChild(expr, *arg);
+            }
+        }
+        callAfter(expr);
+    }
+#endif
+
     // Statement visitors ---------------------------------------------------
 
     void visit(const LabelStmt &stmt) override
@@ -715,6 +769,108 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
         }
         callAfter(stmt);
     }
+
+#if VIPER_ENABLE_OOP
+    void visit(const DeleteStmt &stmt) override
+    {
+        callBefore(stmt);
+        if (callShouldVisit(stmt) && stmt.target)
+        {
+            callBeforeChild(stmt, *stmt.target);
+            stmt.target->accept(*static_cast<Derived *>(this));
+            callAfterChild(stmt, *stmt.target);
+        }
+        callAfter(stmt);
+    }
+
+    void visit(const ConstructorDecl &stmt) override
+    {
+        callBefore(stmt);
+        if (callShouldVisit(stmt))
+        {
+            for (const auto &param : stmt.params)
+            {
+                callBeforeChild(stmt, param);
+                callAfterChild(stmt, param);
+            }
+            for (const auto &bodyStmt : stmt.body)
+            {
+                if (!bodyStmt)
+                    continue;
+                callBeforeChild(stmt, *bodyStmt);
+                bodyStmt->accept(*static_cast<Derived *>(this));
+                callAfterChild(stmt, *bodyStmt);
+            }
+        }
+        callAfter(stmt);
+    }
+
+    void visit(const DestructorDecl &stmt) override
+    {
+        callBefore(stmt);
+        if (callShouldVisit(stmt))
+        {
+            for (const auto &bodyStmt : stmt.body)
+            {
+                if (!bodyStmt)
+                    continue;
+                callBeforeChild(stmt, *bodyStmt);
+                bodyStmt->accept(*static_cast<Derived *>(this));
+                callAfterChild(stmt, *bodyStmt);
+            }
+        }
+        callAfter(stmt);
+    }
+
+    void visit(const MethodDecl &stmt) override
+    {
+        callBefore(stmt);
+        if (callShouldVisit(stmt))
+        {
+            for (const auto &param : stmt.params)
+            {
+                callBeforeChild(stmt, param);
+                callAfterChild(stmt, param);
+            }
+            for (const auto &bodyStmt : stmt.body)
+            {
+                if (!bodyStmt)
+                    continue;
+                callBeforeChild(stmt, *bodyStmt);
+                bodyStmt->accept(*static_cast<Derived *>(this));
+                callAfterChild(stmt, *bodyStmt);
+            }
+        }
+        callAfter(stmt);
+    }
+
+    void visit(const ClassDecl &stmt) override
+    {
+        callBefore(stmt);
+        if (callShouldVisit(stmt))
+        {
+            for (const auto &member : stmt.members)
+            {
+                if (!member)
+                    continue;
+                callBeforeChild(stmt, *member);
+                member->accept(*static_cast<Derived *>(this));
+                callAfterChild(stmt, *member);
+            }
+        }
+        callAfter(stmt);
+    }
+
+    void visit(const TypeDecl &stmt) override
+    {
+        callBefore(stmt);
+        if (callShouldVisit(stmt))
+        {
+            // TYPE fields are simple declarations without nested AST nodes.
+        }
+        callAfter(stmt);
+    }
+#endif
 
     void visit(const StmtList &stmt) override
     {
