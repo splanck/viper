@@ -120,13 +120,13 @@ void Lowerer::lowerLet(const LetStmt &stmt)
     }
 }
 
-void Lowerer::lowerDim(const DimStmt &stmt)
+Value Lowerer::emitArrayLengthCheck(Value bound,
+                                    il::support::SourceLoc loc,
+                                    std::string_view labelBase)
 {
-    RVal bound = lowerExpr(*stmt.size);
-    bound = ensureI64(std::move(bound), stmt.loc);
-    curLoc = stmt.loc;
-
-    Value length = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), bound.value, Value::constInt(1));
+    curLoc = loc;
+    Value length =
+        emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), bound, Value::constInt(1));
 
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
@@ -135,10 +135,15 @@ void Lowerer::lowerDim(const DimStmt &stmt)
     {
         size_t curIdx = static_cast<size_t>(original - &func->blocks[0]);
         BlockNamer *blockNamer = ctx.blockNames().namer();
-        std::string failLbl = blockNamer ? blockNamer->generic("dim_len_fail")
-                                         : mangler.block("dim_len_fail");
-        std::string contLbl = blockNamer ? blockNamer->generic("dim_len_cont")
-                                         : mangler.block("dim_len_cont");
+
+        std::string base(labelBase);
+        std::string failName = base.empty() ? "arr_len_fail" : base + "_fail";
+        std::string contName = base.empty() ? "arr_len_cont" : base + "_cont";
+
+        std::string failLbl = blockNamer ? blockNamer->generic(failName)
+                                         : mangler.block(failName);
+        std::string contLbl = blockNamer ? blockNamer->generic(contName)
+                                         : mangler.block(contName);
 
         size_t failIdx = func->blocks.size();
         builder->addBlock(*func, failLbl);
@@ -149,17 +154,25 @@ void Lowerer::lowerDim(const DimStmt &stmt)
         BasicBlock *contBlk = &func->blocks[contIdx];
 
         ctx.setCurrent(&func->blocks[curIdx]);
-        curLoc = stmt.loc;
+        curLoc = loc;
         Value isNeg = emitBinary(Opcode::SCmpLT, ilBoolTy(), length, Value::constInt(0));
         emitCBr(isNeg, failBlk, contBlk);
 
         ctx.setCurrent(failBlk);
-        curLoc = stmt.loc;
+        curLoc = loc;
         emitTrap();
 
         ctx.setCurrent(contBlk);
     }
 
+    return length;
+}
+
+void Lowerer::lowerDim(const DimStmt &stmt)
+{
+    RVal bound = lowerExpr(*stmt.size);
+    bound = ensureI64(std::move(bound), stmt.loc);
+    Value length = emitArrayLengthCheck(bound.value, stmt.loc, "dim_len");
     curLoc = stmt.loc;
     Value handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_i32_new", {length});
     const auto *info = findSymbol(stmt.name);
@@ -181,42 +194,7 @@ void Lowerer::lowerReDim(const ReDimStmt &stmt)
 {
     RVal bound = lowerExpr(*stmt.size);
     bound = ensureI64(std::move(bound), stmt.loc);
-    curLoc = stmt.loc;
-
-    Value length = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), bound.value, Value::constInt(1));
-
-    ProcedureContext &ctx = context();
-    Function *func = ctx.function();
-    BasicBlock *original = ctx.current();
-    if (func && original)
-    {
-        size_t curIdx = static_cast<size_t>(original - &func->blocks[0]);
-        BlockNamer *blockNamer = ctx.blockNames().namer();
-        std::string failLbl = blockNamer ? blockNamer->generic("redim_len_fail")
-                                         : mangler.block("redim_len_fail");
-        std::string contLbl = blockNamer ? blockNamer->generic("redim_len_cont")
-                                         : mangler.block("redim_len_cont");
-
-        size_t failIdx = func->blocks.size();
-        builder->addBlock(*func, failLbl);
-        size_t contIdx = func->blocks.size();
-        builder->addBlock(*func, contLbl);
-
-        BasicBlock *failBlk = &func->blocks[failIdx];
-        BasicBlock *contBlk = &func->blocks[contIdx];
-
-        ctx.setCurrent(&func->blocks[curIdx]);
-        curLoc = stmt.loc;
-        Value isNeg = emitBinary(Opcode::SCmpLT, ilBoolTy(), length, Value::constInt(0));
-        emitCBr(isNeg, failBlk, contBlk);
-
-        ctx.setCurrent(failBlk);
-        curLoc = stmt.loc;
-        emitTrap();
-
-        ctx.setCurrent(contBlk);
-    }
-
+    Value length = emitArrayLengthCheck(bound.value, stmt.loc, "redim_len");
     curLoc = stmt.loc;
     const auto *info = findSymbol(stmt.name);
     assert(info && info->slotId);
