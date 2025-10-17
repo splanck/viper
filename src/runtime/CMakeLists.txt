@@ -9,6 +9,7 @@ set(RT_SOURCES
   rt_random.c
   rt_array.c
   rt_heap.c
+  rt_object.c
   rt_numeric.c
   rt_numeric_conv.c
   rt_debug.c
@@ -27,6 +28,7 @@ set(RT_PUBLIC_HEADERS
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_string.h
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_array.h
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_heap.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/rt_object.h
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_debug.h
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_file.h
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_format.h
@@ -38,6 +40,8 @@ target_include_directories(viper_runtime
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/runtime>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper_runtime>
+  PRIVATE
+    ${PROJECT_SOURCE_DIR}/src
 )
 
 if(NOT WIN32)
