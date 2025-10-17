@@ -841,6 +841,31 @@ constexpr std::array<ManualDescriptorSpec, 4> kManualLifetimeDescriptors{{
      kManualLowering},
 }};
 
+#if VIPER_ENABLE_OOP
+constexpr std::array<ManualDescriptorSpec, 4> kManualObjectDescriptors{{
+    {"rt_obj_new_i64",
+     Kind::Ptr,
+     std::span<const Kind>{kParamsI64I64},
+     &DirectHandler<&rt_obj_new_i64, void *, int64_t, int64_t>::invoke,
+     featureLowering(RuntimeFeature::ObjNew)},
+    {"rt_obj_retain_maybe",
+     Kind::Void,
+     std::span<const Kind>{kParamsPtr},
+     &DirectHandler<&rt_obj_retain_maybe, void, void *>::invoke,
+     featureLowering(RuntimeFeature::ObjRetainMaybe)},
+    {"rt_obj_release_check0",
+     Kind::I1,
+     std::span<const Kind>{kParamsPtr},
+     &DirectHandler<&rt_obj_release_check0, int32_t, void *>::invoke,
+     featureLowering(RuntimeFeature::ObjReleaseChk0)},
+    {"rt_obj_free",
+     Kind::Void,
+     std::span<const Kind>{kParamsPtr},
+     &DirectHandler<&rt_obj_free, void, void *>::invoke,
+     featureLowering(RuntimeFeature::ObjFree)},
+}};
+#endif
+
 RuntimeDescriptor makeAbortDescriptor()
 {
     return finalizeDescriptor("rt_abort",
@@ -861,7 +886,11 @@ std::vector<RuntimeDescriptor> buildRegistry()
                     kManualMemoryDescriptors.size() + kManualArrayDescriptors.size() +
                     kManualStringManipDescriptors.size() + kManualMathDescriptors.size() +
                     kManualRandomDescriptors.size() + kManualFileDescriptors.size() +
-                    kManualLifetimeDescriptors.size());
+                    kManualLifetimeDescriptors.size()
+#if VIPER_ENABLE_OOP
+                    + kManualObjectDescriptors.size()
+#endif
+    );
 
     entries.push_back(makeAbortDescriptor());
     appendGeneratedDescriptors(entries, kGeneratedPrintDescriptors);
@@ -879,6 +908,9 @@ std::vector<RuntimeDescriptor> buildRegistry()
     appendManualDescriptors(entries, kManualRandomDescriptors);
     appendManualDescriptors(entries, kManualFileDescriptors);
     appendManualDescriptors(entries, kManualLifetimeDescriptors);
+#if VIPER_ENABLE_OOP
+    appendManualDescriptors(entries, kManualObjectDescriptors);
+#endif
     return entries;
 }
 
