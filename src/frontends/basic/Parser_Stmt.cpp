@@ -364,4 +364,62 @@ StmtPtr Parser::parseSubStatement()
     parseProcedureBody(TokenKind::KeywordSub, sub->body);
     return sub;
 }
+
+#if VIPER_ENABLE_OOP
+StmtPtr Parser::parseTypeDecl()
+{
+    auto loc = peek().loc;
+    consume(); // TYPE
+
+    Token nameTok = expect(TokenKind::Identifier);
+    auto decl = std::make_unique<TypeDecl>();
+    decl->loc = loc;
+    decl->name = nameTok.lexeme;
+
+    if (at(TokenKind::EndOfLine))
+    {
+        consume();
+    }
+    else if (!(at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordType))
+    {
+        expect(TokenKind::EndOfLine);
+    }
+
+    while (!at(TokenKind::EndOfFile))
+    {
+        if (at(TokenKind::EndOfLine))
+        {
+            consume();
+            continue;
+        }
+
+        if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordType)
+        {
+            break;
+        }
+
+        Token fieldNameTok = expect(TokenKind::Identifier);
+        TypeDecl::Field field;
+        field.name = fieldNameTok.lexeme;
+
+        expect(TokenKind::KeywordAs);
+        field.type = parseTypeKeyword();
+
+        if (at(TokenKind::EndOfLine))
+        {
+            consume();
+        }
+        else if (!(at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordType))
+        {
+            expect(TokenKind::EndOfLine);
+        }
+
+        decl->fields.push_back(std::move(field));
+    }
+
+    expect(TokenKind::KeywordEnd);
+    expect(TokenKind::KeywordType);
+    return decl;
+}
+#endif
 } // namespace il::frontends::basic
