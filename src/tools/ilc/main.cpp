@@ -12,6 +12,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Entry point and usage utilities for the `ilc` driver.
+/// @details The translation unit owns only user-interface glue; heavy lifting
+///          such as pass management or VM execution is delegated to subcommands.
+
 #include "cli.hpp"
 #include "frontends/basic/Intrinsics.hpp"
 #include "il/core/Module.hpp"
@@ -26,9 +31,10 @@ constexpr std::string_view kIlcVersion = "0.1.0";
 
 /// @brief Print the ilc version banner and runtime configuration summary.
 ///
-/// The banner includes the ilc version, current IL version, and whether
-/// deterministic numerics are enabled. The routine is factored out so both
-/// `main` and future subcommands can reuse it when handling `--version` flags.
+/// @details The banner includes the ilc version, current IL version, and whether
+///          deterministic numerics are enabled. The routine is factored out so
+///          both `main` and future subcommands can reuse it when handling
+///          `--version` flags.
 void printVersion()
 {
     std::cout << "ilc v" << kIlcVersion << "\n";
@@ -41,12 +47,12 @@ void printVersion()
 
 /// @brief Print synopsis and option hints for the `ilc` CLI.
 ///
-/// Step-by-step summary:
-///   1. Emit the tool banner with version information.
-///   2. Print usage lines for the `-run`, `front basic`, and `il-opt`
-///      subcommands, mirroring the behaviour of their handlers.
-///   3. Provide IL and BASIC specific notes, including intrinsic listings
-///      supplied by the BASIC front end.
+/// @details Step-by-step summary:
+///          1. Emit the tool banner with version information.
+///          2. Print usage lines for the `-run`, `front basic`, and `il-opt`
+///             subcommands, mirroring the behaviour of their handlers.
+///          3. Provide IL and BASIC specific notes, including intrinsic listings
+///             supplied by the BASIC front end.
 void usage()
 {
     std::cerr
@@ -70,6 +76,7 @@ void usage()
 }
 
 /// @brief Program entry for the `ilc` command-line tool.
+///
 /// @param argc Number of command-line arguments.
 /// @param argv Array of argument strings.
 /// @return Exit status of the selected subcommand or `1` on error.

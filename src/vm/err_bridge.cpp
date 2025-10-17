@@ -11,6 +11,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Maps BASIC runtime error numbers onto VM trap categories.
+/// @details The BASIC front end still emits historical error codes in a few
+///          places.  This bridge keeps the mapping consolidated so the VM can
+///          expose a modern trap classification without leaking old codes.
+
 #include "vm/err_bridge.hpp"
 
 #ifdef EOF
@@ -23,9 +29,10 @@ namespace il::vm
 {
 /// @brief Translate legacy BASIC error codes into @ref TrapKind enumerators.
 ///
-/// Matches the historic runtime error numbers used by the BASIC frontend to the
-/// structured trap categories consumed by the VM.  Unknown codes fall back to
-/// @ref TrapKind::RuntimeError to preserve existing behaviour.
+/// @details Matches the historic runtime error numbers used by the BASIC
+///          frontend to the structured trap categories consumed by the VM.
+///          Unknown codes fall back to @ref TrapKind::RuntimeError to preserve
+///          existing behaviour so tooling never encounters an unmapped trap.
 ///
 /// @param err_code Numeric error code originating from the BASIC runtime.
 /// @return Equivalent @ref TrapKind classification.

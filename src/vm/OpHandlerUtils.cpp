@@ -11,6 +11,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Implements shared utilities for opcode handlers in the VM.
+/// @details Most opcode handlers delegate register writes to these helpers so
+///          string reference counting and register resizing logic live in one
+///          well-documented location.
+
 #include "vm/OpHandlerUtils.hpp"
 
 #include "il/core/Instr.hpp"
@@ -22,10 +28,13 @@ namespace ops
 /// @brief Write an opcode result into the destination register while honouring
 ///        ownership semantics.
 ///
-/// The helper resizes the register file on demand, retains/release runtime
-/// strings when the destination type is @ref il::core::Type::Kind::Str, and
-/// then stores the slot payload.  Handlers delegate here to avoid duplicating
-/// register management logic.
+/// @details The helper resizes the register file on demand, retains/releases
+///          runtime strings when the destination type is
+///          @ref il::core::Type::Kind::Str, and then stores the slot payload.
+///          Handlers delegate here to avoid duplicating register management
+///          logic or forgetting to balance string reference counts.  When the
+///          instruction lacks a result operand the function simply returns,
+///          allowing opcode implementations to call it unconditionally.
 ///
 /// @param fr Frame whose register file receives the result.
 /// @param in Instruction describing the destination register and result type.
