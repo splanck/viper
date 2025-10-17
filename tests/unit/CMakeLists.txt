@@ -17,6 +17,12 @@ function(viper_add_unit_support_tests)
   viper_add_ctest(test_support test_support)
 endfunction()
 
+if(NOT TARGET test_basic_terminal_scan)
+  viper_add_test(test_basic_terminal_scan ${VIPER_TESTS_DIR}/unit/BasicTerminalScanTest.cpp)
+  target_link_libraries(test_basic_terminal_scan PRIVATE fe_basic)
+  viper_add_ctest(test_basic_terminal_scan test_basic_terminal_scan)
+endif()
+
 function(viper_add_runtime_tests)
   if(TARGET test_rt_string)
     return()
