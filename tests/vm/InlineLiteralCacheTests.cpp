@@ -1,5 +1,5 @@
 // File: tests/vm/InlineLiteralCacheTests.cpp
-// Purpose: Ensure inline ConstStr operands with embedded NULs reuse cached runtime handles.
+// Purpose: Ensure inline ConstStr operands reuse cached runtime handles for embedded NULs and ASCII strings.
 // License: MIT License. See LICENSE in project root for details.
 
 #include "il/core/BasicBlock.hpp"
@@ -99,36 +99,50 @@ Module buildLoopModule(const std::string &literal, int64_t iterations)
     module.functions.push_back(std::move(fn));
     return module;
 }
-} // namespace
 
-int main()
+void runLiteralCacheScenario(const std::string &literal, int64_t iterations)
 {
-    const std::string literal = std::string("cache\0literal", 13);
-    constexpr int64_t iterations = 32;
-
     Module module = buildLoopModule(literal, iterations);
     il::vm::VM vm(module);
 
     assert(il::vm::VMTestHook::literalCacheSize(vm) == 0);
     assert(il::vm::VMTestHook::literalCacheLookup(vm, literal) == nullptr);
 
-    int64_t first = vm.run();
-    assert(first == iterations);
+    rt_string cachedHandle = nullptr;
+    for (int run = 0; run < 3; ++run)
+    {
+        int64_t result = vm.run();
+        assert(result == iterations);
+        assert(il::vm::VMTestHook::literalCacheSize(vm) == 1);
 
-    assert(il::vm::VMTestHook::literalCacheSize(vm) == 1);
-    rt_string cached = il::vm::VMTestHook::literalCacheLookup(vm, literal);
-    assert(cached != nullptr);
-    assert(rt_len(cached) == static_cast<int64_t>(literal.size()));
-    const char *data = rt_string_cstr(cached);
-    assert(data != nullptr);
-    assert(std::memcmp(data, literal.data(), literal.size()) == 0);
+        rt_string current = il::vm::VMTestHook::literalCacheLookup(vm, literal);
+        assert(current != nullptr);
 
-    const rt_string cachedBeforeSecond = cached;
-    int64_t second = vm.run();
-    assert(second == iterations);
-    assert(il::vm::VMTestHook::literalCacheSize(vm) == 1);
-    rt_string cachedAfter = il::vm::VMTestHook::literalCacheLookup(vm, literal);
-    assert(cachedAfter == cachedBeforeSecond);
+        if (run == 0)
+        {
+            cachedHandle = current;
+            assert(rt_len(current) == static_cast<int64_t>(literal.size()));
+            const char *data = rt_string_cstr(current);
+            assert(data != nullptr);
+            assert(std::memcmp(data, literal.data(), literal.size()) == 0);
+        }
+        else
+        {
+            assert(current == cachedHandle);
+        }
+    }
+}
+} // namespace
+
+int main()
+{
+    constexpr int64_t iterations = 32;
+
+    const std::string literal = std::string("cache\0literal", 13);
+    runLiteralCacheScenario(literal, iterations);
+
+    const std::string asciiLiteral = "foo";
+    runLiteralCacheScenario(asciiLiteral, iterations);
 
     return 0;
 }
