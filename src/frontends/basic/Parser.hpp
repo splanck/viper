@@ -95,6 +95,11 @@ class Parser
     static void registerRuntimeParsers(StatementParserRegistry &registry);
     static void registerIoParsers(StatementParserRegistry &registry);
     static void registerCoreParsers(StatementParserRegistry &registry);
+#if VIPER_ENABLE_OOP
+    /// @brief Register statement parsers for object-oriented constructs.
+    /// @param registry Registry receiving parser callbacks.
+    static void registerOopParsers(StatementParserRegistry &registry);
+#endif
 
 #include "frontends/basic/Parser_Token.hpp"
 
@@ -296,6 +301,20 @@ class Parser
     /// @brief Parse a SUB definition including body.
     /// @return SUB statement node.
     StmtPtr parseSubStatement();
+
+#if VIPER_ENABLE_OOP
+    /// @brief Parse a CLASS declaration including its body.
+    /// @return CLASS statement node.
+    StmtPtr parseClassDecl();
+
+    /// @brief Parse a TYPE declaration describing a user-defined type.
+    /// @return TYPE statement node.
+    StmtPtr parseTypeDecl();
+
+    /// @brief Parse a DELETE statement handling object cleanup.
+    /// @return DELETE statement node.
+    StmtPtr parseDeleteStatement();
+#endif
 
     /// @brief Parse a RETURN statement.
     /// @return RETURN statement node.
