@@ -8,6 +8,7 @@
 #include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include <cassert>
 #include <optional>
@@ -252,18 +253,24 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
 
     void after(const ClsStmt &)
     {
+        // CLS needs terminal clear helper available at declareRequiredRuntime().
+        lowerer_.requestHelper(il::runtime::RuntimeFeature::TermCls);
     }
 
     void after(const ColorStmt &stmt)
     {
         discardIf(stmt.bg != nullptr);
         discardIf(stmt.fg != nullptr);
+        // Ensure terminal color helper is declared up front.
+        lowerer_.requestHelper(il::runtime::RuntimeFeature::TermColor);
     }
 
     void after(const LocateStmt &stmt)
     {
         discardIf(stmt.col != nullptr);
         discardIf(stmt.row != nullptr);
+        // Ensure cursor locate helper is declared up front.
+        lowerer_.requestHelper(il::runtime::RuntimeFeature::TermLocate);
     }
 
     void after(const LetStmt &stmt)
