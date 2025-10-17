@@ -1,12 +1,22 @@
-// File: src/frontends/basic/SemanticAnalyzer.Stmts.Runtime.cpp
-// License: MIT License. See LICENSE in the project root for full license
-//          information.
-// Purpose: Implements runtime/data-manipulation statement checks for the BASIC
-//          semantic analyzer, covering LET/DIM/REDIM, RANDOMIZE, and CALL.
-// Key invariants: Shared helpers guard loop-variable mutations and array/type
-//                 tracking remains in sync with procedure scopes.
-// Ownership/Lifetime: Borrowed SemanticAnalyzer state only.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements runtime- and data-manipulation statement checks for the BASIC
+// semantic analyzer.  The routines validate CALL/LET/DIM/REDIM semantics,
+// enforce symbol invariants, and surface diagnostics for invalid runtime usage.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Semantic analysis for BASIC runtime-oriented statements.
+/// @details This translation unit builds on shared helpers from
+///          @ref SemanticAnalyzer.Internal to validate runtime statements,
+///          update symbol tables, and emit diagnostics when language rules are
+///          violated.
 
 #include "frontends/basic/SemanticAnalyzer.Stmts.Runtime.hpp"
 
@@ -16,6 +26,11 @@
 namespace il::frontends::basic::semantic_analyzer_detail
 {
 
+/// @brief Construct runtime-statement analysis context state.
+/// @details Forwards to the shared statement context base so runtime-specific
+///          helpers gain access to symbol tables, diagnostic emitters, and helper
+///          utilities owned by the enclosing @ref SemanticAnalyzer.
+/// @param analyzer Analyzer that owns the shared state being referenced.
 RuntimeStmtContext::RuntimeStmtContext(SemanticAnalyzer &analyzer) noexcept
     : StmtShared(analyzer)
 {
@@ -30,6 +45,11 @@ using semantic_analyzer_detail::RuntimeStmtContext;
 using semantic_analyzer_detail::astToSemanticType;
 using semantic_analyzer_detail::semanticTypeName;
 
+/// @brief Validate a CALL statement.
+/// @details Resolves the callee signature and ensures argument arity and types
+///          match the declared procedure.  Missing or mismatched signatures are
+///          reported through the diagnostic emitter.
+/// @param stmt CALL statement under analysis.
 void SemanticAnalyzer::analyzeCallStmt(CallStmt &stmt)
 {
     if (!stmt.call)
@@ -38,6 +58,12 @@ void SemanticAnalyzer::analyzeCallStmt(CallStmt &stmt)
     checkCallArgs(*stmt.call, sig);
 }
 
+/// @brief Validate assignment to a scalar variable in a LET statement.
+/// @details Resolves the variable symbol, checks for illegal loop-variable
+///          mutation, compares inferred expression types, and emits diagnostics
+///          when scalar/array mismatches occur.
+/// @param v Variable expression on the left-hand side.
+/// @param l Enclosing LET statement supplying the assigned expression.
 void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
 {
     RuntimeStmtContext ctx(*this);
@@ -120,6 +146,12 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
     }
 }
 
+/// @brief Validate assignment to an array element.
+/// @details Ensures array symbols are declared, indices are within expected
+///          bounds, and scalar expressions are not stored into array-typed
+///          variables unless permitted by the dialect.
+/// @param a Array expression on the left-hand side.
+/// @param l Enclosing LET statement.
 void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
 {
     resolveAndTrackSymbol(a.name, SymbolKind::Reference);
@@ -172,6 +204,11 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
     }
 }
 
+/// @brief Validate constant expressions within LET statements.
+/// @details Invoked when a LET statement omits an explicit destination variable
+///          but still supplies an expression.  Ensures the expression is legal in
+///          the current scope and surfaces diagnostics for unsupported forms.
+/// @param l LET statement containing the constant expression.
 void SemanticAnalyzer::analyzeConstExpr(const LetStmt &l)
 {
     if (l.target)
@@ -182,6 +219,11 @@ void SemanticAnalyzer::analyzeConstExpr(const LetStmt &l)
     de.emit(il::support::Severity::Error, "B2007", l.loc, 1, std::move(msg));
 }
 
+/// @brief Perform semantic checks for a LET statement.
+/// @details Dispatches to variable or array assignment helpers based on the
+///          destination expression, ensures type compatibility, and tracks symbol
+///          metadata for future analyses.
+/// @param l LET statement undergoing analysis.
 void SemanticAnalyzer::analyzeLet(LetStmt &l)
 {
     if (!l.target)
@@ -200,6 +242,10 @@ void SemanticAnalyzer::analyzeLet(LetStmt &l)
     }
 }
 
+/// @brief Validate a RANDOMIZE statement.
+/// @details Confirms that optional seed expressions are well-typed integers and
+///          records that the runtime RNG feature is required by the program.
+/// @param r RANDOMIZE statement.
 void SemanticAnalyzer::analyzeRandomize(const RandomizeStmt &r)
 {
     if (r.seed)
@@ -213,6 +259,11 @@ void SemanticAnalyzer::analyzeRandomize(const RandomizeStmt &r)
     }
 }
 
+/// @brief Validate a DIM statement and update symbol tables.
+/// @details Checks for duplicate declarations, validates dimension expressions,
+///          and records type information so future assignments can enforce array
+///          semantics.
+/// @param d DIM statement being analyzed.
 void SemanticAnalyzer::analyzeDim(DimStmt &d)
 {
     long long sz = -1;
@@ -301,6 +352,10 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
     }
 }
 
+/// @brief Validate a REDIM statement that resizes dynamic arrays.
+/// @details Verifies PRESERVE usage, ensures the target symbol is an array, and
+///          checks new bounds for correctness before updating stored metadata.
+/// @param d REDIM statement undergoing analysis.
 void SemanticAnalyzer::analyzeReDim(ReDimStmt &d)
 {
     long long sz = -1;

@@ -1,11 +1,21 @@
-// File: src/frontends/basic/Parser_Stmt_Select.cpp
-// Purpose: Implements SELECT CASE parsing routines for the BASIC parser.
-// Key invariants: Validates CASE and CASE ELSE structure while maintaining
-//                 selector range bookkeeping.
-// Ownership/Lifetime: Parser generates AST nodes owned by the caller via
-//                     unique_ptr wrappers.
-// License: MIT; see LICENSE for details.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements SELECT CASE parsing for the BASIC frontend.  The helpers interpret
+// selector expressions, CASE arms, and CASE ELSE bodies while maintaining the
+// bookkeeping required to emit diagnostics for overlapping or malformed ranges.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Parsing helpers for BASIC SELECT CASE statements.
+/// @details The routines collaborate with @ref StatementSequencer to assemble
+///          per-arm statement lists, track terminators, and normalise the parsed
+///          representation into @ref SelectCaseStmt AST nodes.
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
@@ -21,6 +31,12 @@
 namespace il::frontends::basic
 {
 
+/// @brief Parse a SELECT CASE statement including all arms.
+/// @details Consumes the SELECT CASE keywords, parses the controlling expression,
+///          and iteratively gathers CASE and CASE ELSE arms by delegating to
+///          helper routines.  Ensures the statement is terminated by END SELECT
+///          before returning the fully populated AST node.
+/// @return AST node describing the SELECT CASE construct.
 StmtPtr Parser::parseSelectCaseStatement()
 {
     auto loc = peek().loc;
@@ -118,6 +134,12 @@ StmtPtr Parser::parseSelectCaseStatement()
     return stmt;
 }
 
+/// @brief Collect the statements that form the body of the current CASE arm.
+/// @details Uses a @ref StatementSequencer configured with a predicate that stops
+///          when the parser encounters CASE, CASE ELSE, or END SELECT terminators.
+///          The helper returns both the gathered statements and terminator
+///          metadata so callers can determine which keyword triggered the exit.
+/// @return Pair containing the collected statements and terminator information.
 Parser::SelectBodyResult Parser::collectSelectBody()
 {
     SelectBodyResult result;
@@ -136,6 +158,18 @@ Parser::SelectBodyResult Parser::collectSelectBody()
     return result;
 }
 
+/// @brief Handle the END SELECT terminator for the surrounding statement.
+/// @details When the parser encounters END SELECT this helper consumes the
+///          keyword sequence, records the closing location, and emits diagnostics
+///          if the statement lacked CASE arms.  The @p expectEndSelect flag is
+///          cleared so outer loops know the statement has been closed.
+/// @param stmt            SELECT CASE statement being populated.
+/// @param sawCaseArm      Indicates whether any CASE arm was parsed.
+/// @param expectEndSelect Flag that tracks whether an END SELECT is still
+///                        expected; cleared when the terminator is handled.
+/// @param diagnose        Callback used to emit diagnostics.
+/// @return Result indicating whether the caller handled the terminator and if a
+///         diagnostic was produced.
 Parser::SelectHandlerResult Parser::handleEndSelect(SelectCaseStmt &stmt,
                                                     bool sawCaseArm,
                                                     bool &expectEndSelect,
@@ -161,6 +195,17 @@ Parser::SelectHandlerResult Parser::handleEndSelect(SelectCaseStmt &stmt,
     return result;
 }
 
+/// @brief Consume a CASE ELSE arm and attach it to the statement.
+/// @details Validates that a prior CASE arm exists, checks for duplicate CASE
+///          ELSE clauses, and collects the associated statements.  The helper
+///          updates @p sawCaseElse to prevent additional CASE ELSE arms from
+///          being accepted.
+/// @param stmt        SELECT CASE statement being populated.
+/// @param sawCaseArm  Flag noting whether any CASE arm was parsed.
+/// @param sawCaseElse Flag tracking whether a CASE ELSE arm already appeared.
+/// @param diagnose    Callback used to emit diagnostics.
+/// @return Result describing whether parsing consumed a CASE ELSE and if a
+///         diagnostic was emitted.
 Parser::SelectHandlerResult Parser::consumeCaseElse(SelectCaseStmt &stmt,
                                                     bool sawCaseArm,
                                                     bool &sawCaseElse,
@@ -203,6 +248,13 @@ Parser::SelectHandlerResult Parser::consumeCaseElse(SelectCaseStmt &stmt,
     return result;
 }
 
+/// @brief Parse the statement list that follows a CASE ELSE header.
+/// @details Consumes the CASE ELSE keywords, captures the newline terminator,
+///          and delegates to @ref collectSelectBody to gather the subsequent
+///          statements until END SELECT or another terminator appears.  Returns
+///          both the collected body and the location of the CASE ELSE header for
+///          later range tracking.
+/// @return Pair of statements and the location of the CASE ELSE newline token.
 std::pair<std::vector<StmtPtr>, il::support::SourceLoc> Parser::parseCaseElseBody()
 {
     expect(TokenKind::KeywordCase);
@@ -215,6 +267,13 @@ std::pair<std::vector<StmtPtr>, il::support::SourceLoc> Parser::parseCaseElseBod
     return {std::move(body), elseEol.loc};
 }
 
+/// @brief Parse a single CASE arm header and its statement body.
+/// @details After consuming the CASE keyword the helper parses selector elements
+///          (individual values or ranges), records their source spans, and then
+///          gathers the associated statement list via @ref collectSelectBody.
+///          Terminator metadata is stored in the returned @ref CaseArm so the
+///          caller can decide whether more arms follow.
+/// @return Fully populated CASE arm including selector metadata and body.
 CaseArm Parser::parseCaseArm()
 {
     Token caseTok = expect(TokenKind::KeywordCase);

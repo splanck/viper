@@ -1,11 +1,21 @@
-// File: src/frontends/basic/LowerStmt_Runtime.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Implements runtime-oriented BASIC statement lowering helpers such as
-//          assignment, array management, and terminal control statements.
-// Key invariants: Helpers reuse Lowerer's active context to manage string
-//                 ownership, runtime feature requests, and diagnostics.
-// Ownership/Lifetime: Operates on Lowerer without owning AST nodes or IL data.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements lowering routines for BASIC statements that interact with the
+// runtime environment, such as CLS, COLOR, and LOCATE.  The helpers translate
+// AST nodes into IL calls that request the appropriate runtime features.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Lowering helpers for runtime-oriented BASIC statements.
+/// @details Each visitor updates the active @ref Lowerer state with source
+///          locations, evaluates expressions, and emits IL calls that invoke the
+///          runtime bridge with the proper argument marshalling.
 
 #include "frontends/basic/Lowerer.hpp"
 
@@ -16,6 +26,10 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
+/// @brief Lower a CLS statement into a runtime call.
+/// @details Records the source location, requests the CLS runtime helper, and
+///          emits a call with no operands to clear the terminal state.
+/// @param s AST node describing the CLS statement.
 void Lowerer::visit(const ClsStmt &s)
 {
     curLoc = s.loc;
@@ -23,6 +37,12 @@ void Lowerer::visit(const ClsStmt &s)
     emitCallRet(Type(Type::Kind::Void), "rt_term_cls", {});
 }
 
+/// @brief Lower a COLOR statement specifying foreground/background colours.
+/// @details Evaluates optional foreground/background expressions, coerces them
+///          to 32-bit integers, and emits the runtime call that updates terminal
+///          colours.  Missing background operands default to -1 as per BASIC
+///          semantics.
+/// @param s AST node describing the COLOR statement.
 void Lowerer::visit(const ColorStmt &s)
 {
     curLoc = s.loc;
@@ -39,6 +59,11 @@ void Lowerer::visit(const ColorStmt &s)
     emitCallRet(Type(Type::Kind::Void), "rt_term_color_i32", {fg32, bg32});
 }
 
+/// @brief Lower a LOCATE statement positioning the cursor.
+/// @details Evaluates the row expression and optional column expression,
+///          requests the runtime helper, and emits the call with the coerced
+///          arguments so the runtime can adjust cursor state.
+/// @param s AST node describing the LOCATE statement.
 void Lowerer::visit(const LocateStmt &s)
 {
     curLoc = s.loc;
@@ -110,6 +135,11 @@ void Lowerer::assignArrayElement(const ArrayExpr &target,
     emitCall("rt_arr_i32_set", {access.base, access.index, value.value});
 }
 
+/// @brief Lower a runtime-oriented LET statement.
+/// @details Evaluates the expression, ensures the destination slot exists, and
+///          emits the appropriate store or call to runtime helpers responsible
+///          for variable assignment semantics.
+/// @param stmt LET statement being lowered.
 void Lowerer::lowerLet(const LetStmt &stmt)
 {
     RVal value = lowerExpr(*stmt.expr);
@@ -135,6 +165,14 @@ void Lowerer::lowerLet(const LetStmt &stmt)
     }
 }
 
+/// @brief Compute and validate the runtime length for array allocations.
+/// @details Adds one to the supplied bound, emits overflow and negativity checks
+///          by branching to trap blocks when the length is invalid, and returns
+///          the validated length to the caller.
+/// @param bound     Upper bound expression already coerced to I64.
+/// @param loc       Source location used for diagnostics.
+/// @param labelBase Base string used when naming failure/continuation blocks.
+/// @return Length value suitable for passing to runtime helpers.
 Value Lowerer::emitArrayLengthCheck(Value bound,
                                     il::support::SourceLoc loc,
                                     std::string_view labelBase)
@@ -183,6 +221,11 @@ Value Lowerer::emitArrayLengthCheck(Value bound,
     return length;
 }
 
+/// @brief Lower a DIM statement that allocates an array.
+/// @details Evaluates the bound expression, requests the runtime allocation
+///          helper, stores the resulting handle, and updates optional bounds
+///          tracking metadata when enabled.
+/// @param stmt DIM statement describing the new array.
 void Lowerer::lowerDim(const DimStmt &stmt)
 {
     RVal bound = lowerExpr(*stmt.size);
@@ -200,11 +243,10 @@ void Lowerer::lowerDim(const DimStmt &stmt)
     }
 }
 
-/// @brief Lower a REDIM array reallocation.
+/// @brief Lower a REDIM statement that resizes an existing array.
+/// @details Recomputes the requested length, invokes the runtime resize helper,
+///          and updates both the array slot and any cached length metadata.
 /// @param stmt REDIM statement describing the new size.
-/// @details Re-evaluates the target length, invokes @c rt_arr_i32_resize to
-///          adjust the array storage, and stores the returned handle into the
-///          tracked array slot, mirroring DIM lowering semantics.
 void Lowerer::lowerReDim(const ReDimStmt &stmt)
 {
     RVal bound = lowerExpr(*stmt.size);
@@ -221,12 +263,11 @@ void Lowerer::lowerReDim(const ReDimStmt &stmt)
         emitStore(Type(Type::Kind::I64), Value::temp(*info->arrayLengthSlot), length);
 }
 
-/// @brief Lower a RANDOMIZE seed update.
+/// @brief Lower a RANDOMIZE statement that seeds the runtime RNG.
+/// @details Evaluates the seed expression, coerces it to a 64-bit integer, and
+///          emits the runtime call that updates the RNG state while tagging
+///          diagnostics with the statement location.
 /// @param stmt RANDOMIZE statement carrying the seed expression.
-/// @details Converts the seed expression to a 64-bit integer when necessary and
-///          invokes the runtime @c rt_randomize_i64 helper. @ref curLoc is
-///          updated to associate diagnostics with the statement while leaving
-///          @ref cur unchanged.
 void Lowerer::lowerRandomize(const RandomizeStmt &stmt)
 {
     RVal s = lowerExpr(*stmt.seed);

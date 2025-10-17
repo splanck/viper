@@ -1,11 +1,22 @@
-// File: src/frontends/basic/Parser_Stmt_Loop.cpp
-// Purpose: Implements loop-related statement parsing for the BASIC parser.
-// Key invariants: Ensures loop headers and terminators are matched and
-//                 diagnostics cover invalid configurations.
-// Ownership/Lifetime: Parser creates AST nodes managed by caller-owned
-//                     unique_ptr wrappers.
-// License: MIT; see LICENSE for details.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the BASIC parser entry points dedicated to loop statements.
+// WHILE/WEND, DO/LOOP, FOR/NEXT, and EXIT dispatchers are handled here, keeping
+// the token-driven parsing logic grouped with the shared helper utilities.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Parsing helpers for BASIC loop constructs.
+/// @details Each routine validates the surrounding syntax (terminators,
+///          separators, and optional clauses) while building AST nodes that
+///          preserve loop semantics such as bounds, step values, and exit
+///          targets.
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
@@ -15,6 +26,12 @@
 namespace il::frontends::basic
 {
 
+/// @brief Parse a WHILE statement and its trailing WEND.
+/// @details Consumes the WHILE keyword, parses the loop condition, and then
+///          collects the body using a @ref StatementSequencer until it encounters
+///          the terminating WEND.  Missing terminators trigger diagnostics but
+///          still yield an AST so later phases can continue operating.
+/// @return AST node describing the WHILE loop.
 StmtPtr Parser::parseWhileStatement()
 {
     auto loc = peek().loc;
@@ -28,6 +45,13 @@ StmtPtr Parser::parseWhileStatement()
     return stmt;
 }
 
+/// @brief Parse DO...LOOP statements including modifiers.
+/// @details Supports both pre-tested (`DO WHILE`) and post-tested (`LOOP UNTIL`)
+///          forms as well as plain infinite loops.  The helper records whether
+///          the condition is negated and whether the test appears at the top or
+///          bottom so the lowering pass can generate the appropriate control
+///          flow.
+/// @return AST node representing the DO loop.
 StmtPtr Parser::parseDoStatement()
 {
     auto loc = peek().loc;
@@ -87,6 +111,13 @@ StmtPtr Parser::parseDoStatement()
     return stmt;
 }
 
+/// @brief Parse FOR loops with optional STEP clauses.
+/// @details Reads the induction variable, start/end expressions, and an optional
+///          STEP expression before handing control to the statement sequencer.
+///          The routine tracks line numbers for diagnostic fidelity and ensures
+///          the matching NEXT is associated with the same identifier when
+///          present.
+/// @return AST node representing the FOR loop.
 StmtPtr Parser::parseForStatement()
 {
     auto loc = peek().loc;
@@ -113,6 +144,11 @@ StmtPtr Parser::parseForStatement()
     return stmt;
 }
 
+/// @brief Parse the NEXT statement finalising FOR loops.
+/// @details Accepts optional variable names, which are recorded to assist the
+///          semantic analyzer in matching NEXT clauses to their originating FOR
+///          statements.  A missing variable simply results in an empty list.
+/// @return AST node wrapping the parsed NEXT clause.
 StmtPtr Parser::parseNextStatement()
 {
     auto loc = peek().loc;
@@ -129,6 +165,11 @@ StmtPtr Parser::parseNextStatement()
     return stmt;
 }
 
+/// @brief Parse EXIT statements targeting loops or procedures.
+/// @details Consumes the EXIT keyword and optional qualifiers (e.g. EXIT FOR) so
+///          the AST records the intent of the exit.  Unknown qualifiers are
+///          preserved for later diagnostics to maintain error recovery.
+/// @return AST node representing the EXIT statement.
 StmtPtr Parser::parseExitStatement()
 {
     auto loc = peek().loc;

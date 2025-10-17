@@ -1,11 +1,21 @@
-// File: src/frontends/basic/Parser_Stmt_If.cpp
-// Purpose: Implements IF statement parsing for the BASIC parser.
-// Key invariants: Ensures IF/ELSEIF/ELSE blocks are properly terminated and
-//                 branch bodies honor StatementSequencer boundaries.
-// Ownership/Lifetime: Parser produces AST nodes owned by caller-provided
-//                     unique_ptr wrappers.
-// License: MIT; see LICENSE for details.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the BASIC parser logic for IF/THEN/ELSE blocks, including
+// single-line and multi-line forms with optional ELSEIF and ELSE clauses.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Parsing helpers for BASIC IF statements.
+/// @details The parser consumes the IF keyword, condition, and block bodies,
+///          coordinating with @ref StatementSequencer to gather nested
+///          statements until it encounters the appropriate terminators.  The
+///          generated AST tracks the branching structure for downstream phases.
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
@@ -17,6 +27,14 @@
 namespace il::frontends::basic
 {
 
+/// @brief Parse an IF statement with optional ELSEIF/ELSE branches.
+/// @details Handles both single-line (`IF ... THEN <stmt>`) and block (`IF ...
+///          THEN` newline) forms.  The helper orchestrates nested collectors to
+///          accumulate branch bodies, records explicit terminators, and ensures
+///          the resulting @ref IfStmt captures the correct source locations and
+///          branching relationships.
+/// @param line Line number supplied by the caller for diagnostic messages.
+/// @return AST node representing the parsed IF construct.
 StmtPtr Parser::parseIfStatement(int line)
 {
     using parser_helpers::buildBranchList;
