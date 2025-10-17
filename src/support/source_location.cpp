@@ -43,16 +43,30 @@ bool SourceLoc::isValid() const
 /// @brief Determine whether the range refers to a concrete span of source.
 ///
 /// @details The range is considered valid when both endpoints identify tracked
-///          source locations. Clients are responsible for ensuring the
-///          begin/end ordering when constructing the range; this helper only
-///          checks that both endpoints came from the source manager.  It is used
-///          extensively by syntax highlighters and diagnostics to decide whether
-///          to underline spans of text.
+///          source locations, originate from the same file identifier, and the
+///          @ref begin endpoint does not follow @ref end.  The ordering check
+///          first compares lines before columns, enabling zero-width ranges to
+///          remain valid so long as they lie within the same file.  The stricter
+///          validation matches the invariants documented on @ref SourceRange and
+///          prevents diagnostics from attempting to print inverted spans.
 ///
-/// @return True when both @ref begin and @ref end carry valid file ids.
+/// @return True when @ref begin and @ref end reference an ordered span inside a
+///         single tracked file.
 bool SourceRange::isValid() const
 {
-    return begin.isValid() && end.isValid();
+    if (!begin.isValid() || !end.isValid())
+        return false;
+
+    if (begin.file_id != end.file_id)
+        return false;
+
+    if (begin.line > end.line)
+        return false;
+
+    if (begin.line == end.line && begin.column > end.column)
+        return false;
+
+    return true;
 }
 } // namespace il::support
 

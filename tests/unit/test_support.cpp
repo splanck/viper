@@ -27,6 +27,26 @@ int main()
     assert(oss.str().find("error: oops") != std::string::npos);
     assert(oss.str().find("test:1:1") != std::string::npos);
 
+    // Source range validity invariants
+    il::support::SourceLoc begin{loc.file_id, 1, 1};
+    il::support::SourceLoc end_same_file{loc.file_id, 1, 5};
+    il::support::SourceRange ordered{begin, end_same_file};
+    assert(ordered.isValid());
+
+    il::support::SourceLoc same_pos{loc.file_id, 3, 7};
+    il::support::SourceRange zero_width{same_pos, same_pos};
+    assert(zero_width.isValid());
+
+    const auto other_file = sm.addFile("test2");
+    il::support::SourceRange cross_file{{loc.file_id, 2, 1}, {other_file, 2, 1}};
+    assert(!cross_file.isValid());
+
+    il::support::SourceRange inverted_line{{loc.file_id, 5, 1}, {loc.file_id, 4, 1}};
+    assert(!inverted_line.isValid());
+
+    il::support::SourceRange inverted_column{{loc.file_id, 6, 8}, {loc.file_id, 6, 7}};
+    assert(!inverted_column.isValid());
+
     // Arena alignment
     il::support::Arena arena(64);
     void *p1 = arena.allocate(1, 1);
