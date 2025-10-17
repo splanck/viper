@@ -9,7 +9,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef enum { RT_HEAP_STRING = 1, RT_HEAP_ARRAY = 2 } rt_heap_kind_t;
+typedef enum {
+    RT_HEAP_STRING = 1,
+    RT_HEAP_ARRAY = 2,
+#if VIPER_ENABLE_OOP
+    RT_HEAP_OBJECT = 3,
+#endif
+} rt_heap_kind_t;
 typedef enum {
     RT_ELEM_NONE = 0,
     RT_ELEM_I32 = 1,
