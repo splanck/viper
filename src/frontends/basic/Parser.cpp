@@ -63,6 +63,9 @@ Parser::StatementParserRegistry Parser::buildStatementRegistry()
     registerControlFlowParsers(registry);
     registerRuntimeParsers(registry);
     registerIoParsers(registry);
+#if VIPER_ENABLE_OOP
+    registerOopParsers(registry);
+#endif
     return registry;
 }
 
