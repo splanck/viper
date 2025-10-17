@@ -1,9 +1,22 @@
-// File: src/frontends/basic/BasicCompiler.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Implements the BASIC front-end pipeline producing IL modules.
-// Key invariants: Diagnostics capture all failures; lowering only runs on valid programs.
-// Ownership/Lifetime: Result owns diagnostics; borrows SourceManager for source mapping.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the BASIC front-end driver responsible for parsing, analysing, and
+// lowering source programs into IL modules.  The translation unit stitches the
+// individual pipeline stages together while surfacing diagnostics to callers.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief BASIC front-end compilation pipeline.
+/// @details Provides the high-level entry point that runs the parser, constant
+///          folder, semantic analyser, and lowerer in sequence.  Results are
+///          returned as a @ref BasicCompilerResult containing diagnostics and the
+///          generated module.
 
 #include "frontends/basic/BasicCompiler.hpp"
 

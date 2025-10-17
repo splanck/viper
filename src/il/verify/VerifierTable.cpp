@@ -1,8 +1,21 @@
-// File: src/il/verify/VerifierTable.cpp
-// Purpose: Defines lookup helpers for opcode verification properties.
-// Key invariants: Lookup table indices correspond to il::core::Opcode enumerators.
-// Ownership/Lifetime: Table has static storage duration.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Defines the static lookup tables that describe verifier properties for each
+// IL opcode.  Encapsulating the data here keeps the verification passes focused
+// on logic while centralising metadata in one translation unit.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Opcode metadata tables consumed by the verifier.
+/// @details Builds compile-time tables for operand arity, operand classes, and
+///          side-effect information, exposing lookup helpers for use during
+///          instruction checking.
 
 #include "il/verify/VerifierTable.hpp"
 
@@ -15,11 +28,20 @@ namespace
 using il::core::Opcode;
 using Table = std::array<std::optional<OpProps>, static_cast<size_t>(Opcode::Count)>;
 
+/// @brief Construct properties for a binary arithmetic-style opcode.
+/// @details Convenience helper used when initialising the static table so each
+///          entry records the arity, operand class, result class, and trapping
+///          behaviour in a compact literal expression.
 constexpr OpProps makeBinary(TypeClass cls, TypeClass result, bool canTrap)
 {
     return OpProps{2, cls, result, canTrap};
 }
 
+/// @brief Populate the static opcode properties table at program start.
+/// @details Initialises all entries to `std::nullopt` then fills in the subset
+///          of opcodes that currently have dedicated verification metadata.
+///          Additional entries can be added here without modifying the runtime
+///          lookup logic.
 constexpr Table buildTable()
 {
     Table table{};
@@ -41,6 +63,9 @@ const Table kTable = buildTable();
 
 } // namespace
 
+/// @brief Retrieve the optional property record for a given opcode.
+/// @details Validates the index before accessing the static table to guard
+///          against stale enumeration values.
 std::optional<OpProps> lookup(Opcode opcode)
 {
     const size_t index = static_cast<size_t>(opcode);
@@ -52,6 +77,10 @@ std::optional<OpProps> lookup(Opcode opcode)
 namespace
 {
 
+/// @brief Translate a core type category into a verifier type class.
+/// @details The verifier operates on a simplified view of types; this helper
+///          performs the mapping while gracefully handling categories that have
+///          no direct counterpart.
 constexpr TypeClass mapCategory(il::core::TypeCategory category)
 {
     using il::core::TypeCategory;
@@ -90,6 +119,11 @@ constexpr TypeClass mapCategory(il::core::TypeCategory category)
 
 } // namespace
 
+/// @brief Build a rich checking specification for the requested opcode.
+/// @details Reads @ref il::core::OpcodeInfo and converts its operand descriptors
+///          into @ref OpCheckSpec, capturing operand counts, expected types, and
+///          side-effect flags.  Returns `std::nullopt` when the opcode is
+///          outside the known range.
 std::optional<OpCheckSpec> lookupSpec(Opcode opcode)
 {
     const size_t index = static_cast<size_t>(opcode);
@@ -109,6 +143,10 @@ std::optional<OpCheckSpec> lookupSpec(Opcode opcode)
     return spec;
 }
 
+/// @brief Determine whether an opcode is marked as having side effects.
+/// @details Consults @ref lookupSpec first so override metadata can refine the
+///          result, then falls back to @ref il::core::getOpcodeInfo when no
+///          specialisation exists.
 bool hasSideEffects(Opcode opcode)
 {
     if (const auto spec = lookupSpec(opcode); spec.has_value())

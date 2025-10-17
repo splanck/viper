@@ -1,9 +1,22 @@
-// File: src/il/io/TypeParser.cpp
-// Purpose: Implements parsing for IL textual type specifiers.
-// Key invariants: Supported types mirror docs/il-guide.md#reference definitions.
-// Ownership/Lifetime: Stateless utilities returning value objects.
-// License: MIT (see LICENSE for details).
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the light-weight parser that recognises IL textual type tokens.
+// The translation unit remains intentionally tiny so the parser can be used
+// freely in tools and unit tests without pulling in the full front-end stack.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Helpers for converting textual IL type names into @ref il::core::Type.
+/// @details The parsing functions accept lower-case mnemonic tokens and translate
+///          them into the strongly typed representation used by the rest of the
+///          compiler.  The helpers are pure and do not retain references to
+///          caller data.
 
 #include "il/io/TypeParser.hpp"
 

@@ -1,9 +1,18 @@
-// File: src/il/io/ParserUtil.cpp
-// Purpose: Implements lexical helpers used by the IL parser.
-// Key invariants: None.
-// Ownership/Lifetime: Stateless functions operate on caller-provided buffers.
-// License: MIT (see LICENSE).
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements lexical helper functions used by the IL parser.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Token-level utilities shared by the textual IL parser.
+/// @details Supplies trimming, tokenisation, literal parsing, and trap-kind
+///          mapping helpers that keep the main parser logic concise.
 
 #include "il/io/ParserUtil.hpp"
 
@@ -128,6 +137,10 @@ bool parseFloatLiteral(const std::string &token, double &value)
     }
 }
 
+/// @brief Parse a trap-kind mnemonic into its numeric representation.
+/// @param token Trap kind name such as "DivideByZero".
+/// @param value Output receiving the numeric trap code on success.
+/// @return True when @p token matches a known trap name.
 bool parseTrapKindToken(const std::string &token, long long &value)
 {
     for (const auto &entry : kTrapKindSymbols)
@@ -141,6 +154,9 @@ bool parseTrapKindToken(const std::string &token, long long &value)
     return false;
 }
 
+/// @brief Map a numeric trap code back to its mnemonic name.
+/// @param value Numeric trap kind identifier.
+/// @return Name of the trap kind when recognised; otherwise empty optional.
 std::optional<std::string_view> trapKindTokenFromValue(long long value)
 {
     for (const auto &entry : kTrapKindSymbols)

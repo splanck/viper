@@ -1,9 +1,23 @@
-// File: src/il/verify/GlobalVerifier.cpp
-// Purpose: Implements global declaration verification ensuring uniqueness within a module.
-// Key invariants: Global definitions may not share a name; lookup table mirrors module globals.
-// Ownership/Lifetime: Stores pointers to module-owned globals for later lookups.
-// License: MIT (see LICENSE).
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the verifier responsible for tracking module-level global
+// declarations.  The translation unit builds and maintains a map from global
+// names to their definitions so duplicate declarations can be diagnosed quickly
+// while giving other passes a cheap lookup structure.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Verification helpers for enforcing global declaration uniqueness.
+/// @details The @ref GlobalVerifier caches pointers to module-owned globals in a
+///          dense lookup table.  Subsequent queries avoid repeated scans of the
+///          module vector while ensuring every symbol is unique within the
+///          translation unit.
 
 #include "il/verify/GlobalVerifier.hpp"
 
@@ -20,15 +34,25 @@ using il::support::Expected;
 using il::support::makeError;
 }
 
-/// @brief Exposes the cached map from global names to module-owned definitions.
+/// @brief Expose the cached map from global names to module-owned definitions.
+/// @details The verifier records raw pointers to the immutable @ref il::core::Global
+///          instances stored inside the module so downstream passes can perform
+///          O(1) lookups without rebuilding the index.  The returned reference is
+///          valid for the lifetime of the verifier instance.
 [[nodiscard]] const GlobalVerifier::GlobalMap &GlobalVerifier::globals() const
 {
     return globals_;
 }
 
-/// @brief Builds the global lookup map and reports duplicate declarations via the result.
-/// @returns An empty result on success or an error when duplicate globals are detected.
-Expected<void> GlobalVerifier::run(const Module &module, DiagSink &)
+/// @brief Populate the lookup map and detect duplicate declarations.
+/// @details Clears any previous state, iterates over every global declared in the
+///          module, and inserts its address into @ref globals_.  Duplicate names
+///          trigger an error result containing a diagnostic for the caller to
+///          report via the supplied sink.
+/// @param module Module whose globals should be indexed.
+/// @param sink Diagnostic sink provided by the caller for reporting duplicates.
+/// @returns Empty result on success or a populated Expected containing the error.
+Expected<void> GlobalVerifier::run(const Module &module, [[maybe_unused]] DiagSink &sink)
 {
     globals_.clear();
 

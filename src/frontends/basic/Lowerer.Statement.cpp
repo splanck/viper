@@ -1,12 +1,21 @@
-// File: src/frontends/basic/Lowerer.Statement.cpp
-// License: MIT License. See LICENSE in the project root for full license
-//          information.
-// Purpose: Implements statement-sequencing helpers that connect numbered BASIC
-//          lines to IL basic blocks and manage gosub continuations.
-// Key invariants: Statement lowering respects per-procedure block numbering and
-//                 terminator semantics.
-// Ownership/Lifetime: Operates on a borrowed Lowerer instance.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Provides the sequencing routines used by the BASIC lowerer when translating a
+// numbered statement list into IL basic blocks.  The helpers here manage the
+// gosub continuation table and ensure fallthrough edges are emitted correctly.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Statement lowering utilities for the BASIC front end.
+/// @details The @ref StatementLowering helper coordinates between numbered BASIC
+///          lines and the IL block graph, wiring up branches, gosub continuations,
+///          and fallthrough logic while reusing the owning @ref Lowerer state.
 
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/LoweringPipeline.hpp"
@@ -16,8 +25,24 @@
 namespace il::frontends::basic
 {
 
+/// @brief Construct a lowering helper bound to the owning @ref Lowerer.
+/// @details Stores a reference to the parent lowerer so helper routines can
+///          access shared state such as the current lowering context, gosub
+///          stacks, and basic-block tables.
+/// @param lowerer Parent lowerer responsible for emitting IL.
 StatementLowering::StatementLowering(Lowerer &lowerer) : lowerer(lowerer) {}
 
+/// @brief Lower a sequential list of BASIC statements into IL blocks.
+/// @details Establishes gosub continuation state, emits an initial branch from
+///          the caller into the first numbered block, and then iterates over the
+///          statements, lowering each in turn.  After visiting a statement the
+///          helper either stops (when @p stopOnTerminated is true and a
+///          terminator was emitted) or stitches a branch to the next block while
+///          allowing @p beforeBranch to inject custom behaviour.
+/// @param stmts Statement pointers in execution order.
+/// @param stopOnTerminated When true the loop exits once a terminator is seen.
+/// @param beforeBranch Optional hook invoked immediately before emitting a
+///        fallthrough branch.
 void StatementLowering::lowerSequence(const std::vector<const Stmt *> &stmts,
                                       bool stopOnTerminated,
                                       const std::function<void(const Stmt &)> &beforeBranch)

@@ -1,9 +1,18 @@
-// File: src/il/transform/SimplifyCFG/Utils.cpp
-// License: MIT (see LICENSE for details).
-// Purpose: Implements shared helper routines for SimplifyCFG transforms.
-// Key invariants: Maintains structural correctness when mutating CFG constructs.
-// Ownership/Lifetime: Manipulates caller-owned IL IR in place.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements shared helper routines for SimplifyCFG transforms.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Utility functions supporting SimplifyCFG transformations.
+/// @details Includes helpers for locating terminators, comparing values, and
+///          interrogating control-flow constructs.
 
 #include "il/transform/SimplifyCFG/Utils.hpp"
 
@@ -16,6 +25,9 @@
 namespace il::transform::simplify_cfg
 {
 
+/// @brief Locate the terminator instruction in a mutable block.
+/// @param block Basic block to inspect.
+/// @return Pointer to the terminator or nullptr if the block lacks one.
 il::core::Instr *findTerminator(il::core::BasicBlock &block)
 {
     for (auto it = block.instructions.rbegin(); it != block.instructions.rend(); ++it)
@@ -26,11 +38,18 @@ il::core::Instr *findTerminator(il::core::BasicBlock &block)
     return nullptr;
 }
 
+/// @brief Locate the terminator instruction in an immutable block.
+/// @param block Basic block to inspect.
+/// @return Pointer to the terminator or nullptr if the block lacks one.
 const il::core::Instr *findTerminator(const il::core::BasicBlock &block)
 {
     return findTerminator(const_cast<il::core::BasicBlock &>(block));
 }
 
+/// @brief Compare two IL values for structural equality.
+/// @param lhs Left-hand value.
+/// @param rhs Right-hand value.
+/// @return True when both values encode the same literal/temporary.
 bool valuesEqual(const il::core::Value &lhs, const il::core::Value &rhs)
 {
     if (lhs.kind != rhs.kind)
@@ -54,6 +73,10 @@ bool valuesEqual(const il::core::Value &lhs, const il::core::Value &rhs)
     return false;
 }
 
+/// @brief Compare two vectors of IL values for element-wise equality.
+/// @param lhs First vector.
+/// @param rhs Second vector.
+/// @return True when both vectors have equal length and corresponding values match.
 bool valueVectorsEqual(const std::vector<il::core::Value> &lhs,
                        const std::vector<il::core::Value> &rhs)
 {
@@ -69,6 +92,10 @@ bool valueVectorsEqual(const std::vector<il::core::Value> &lhs,
     return true;
 }
 
+/// @brief Substitute temporaries using the provided mapping.
+/// @param value Value that may reference a temporary.
+/// @param mapping Map from temporary ids to replacement values.
+/// @return Replacement value when found; otherwise the original @p value.
 il::core::Value substituteValue(
     const il::core::Value &value,
     const std::unordered_map<unsigned, il::core::Value> &mapping)
@@ -82,6 +109,10 @@ il::core::Value substituteValue(
     return value;
 }
 
+/// @brief Translate a block label into its index when available.
+/// @param labelToIndex Mapping from labels to indices.
+/// @param label Label to search for.
+/// @return Block index or `static_cast<size_t>(-1)` when absent.
 size_t lookupBlockIndex(const std::unordered_map<std::string, size_t> &labelToIndex,
                         const std::string &label)
 {
@@ -90,6 +121,10 @@ size_t lookupBlockIndex(const std::unordered_map<std::string, size_t> &labelToIn
     return static_cast<size_t>(-1);
 }
 
+/// @brief Mark a successor as reachable and add it to a traversal worklist.
+/// @param reachable Bit vector tracking visited blocks.
+/// @param worklist Queue of blocks pending traversal.
+/// @param successor Candidate successor index to enqueue.
 void enqueueSuccessor(BitVector &reachable,
                       std::deque<size_t> &worklist,
                       size_t successor)
@@ -103,6 +138,8 @@ void enqueueSuccessor(BitVector &reachable,
     }
 }
 
+/// @brief Check whether SimplifyCFG debug logging is enabled.
+/// @return True when the `VIPER_DEBUG_PASSES` environment variable is set to a non-empty string.
 bool readDebugFlagFromEnv()
 {
     if (const char *flag = std::getenv("VIPER_DEBUG_PASSES"))
@@ -110,22 +147,34 @@ bool readDebugFlagFromEnv()
     return false;
 }
 
+/// @brief Determine whether an instruction has side effects per opcode metadata.
+/// @param instr Instruction to query.
+/// @return True when the opcode reports side effects.
 bool hasSideEffects(const il::core::Instr &instr)
 {
     return il::core::getOpcodeInfo(instr.op).hasSideEffects;
 }
 
+/// @brief Check whether a label represents a function entry block.
+/// @param label Label string to inspect.
+/// @return True for "entry" or strings prefixed with "entry_".
 bool isEntryLabel(const std::string &label)
 {
     return label == "entry" || label.rfind("entry_", 0) == 0;
 }
 
+/// @brief Determine whether an opcode is a resume-style terminator.
+/// @param op Opcode to inspect.
+/// @return True for resume opcodes, false otherwise.
 bool isResumeOpcode(il::core::Opcode op)
 {
     return op == il::core::Opcode::ResumeSame || op == il::core::Opcode::ResumeNext ||
            op == il::core::Opcode::ResumeLabel;
 }
 
+/// @brief Identify opcodes that manipulate the EH stack structure.
+/// @param op Opcode to inspect.
+/// @return True when @p op is one of the EH structural instructions.
 bool isEhStructuralOpcode(il::core::Opcode op)
 {
     switch (op)
@@ -139,6 +188,9 @@ bool isEhStructuralOpcode(il::core::Opcode op)
     }
 }
 
+/// @brief Determine whether a block participates in exception-handling structure.
+/// @param block Block to inspect.
+/// @return True when the block contains EH structural instructions or resume terminators.
 bool isEHSensitiveBlock(const il::core::BasicBlock &block)
 {
     if (block.instructions.empty())
