@@ -79,6 +79,12 @@ enum class RuntimeFeature : std::size_t
     TermLocate,
     InKey,
     GetKey,
+#if VIPER_ENABLE_OOP
+    ObjNew,
+    ObjRetainMaybe,
+    ObjReleaseChk0,
+    ObjFree,
+#endif
     Count,
 };
 
