@@ -1,8 +1,12 @@
-// File: src/il/verify/ResultTypeChecker.cpp
-// Purpose: Implements a helper that validates result presence and types against opcode metadata.
-// Key invariants: Operates on the verification context for a single instruction.
-// Ownership/Lifetime: Non-owning references to verification data structures.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+// MIT License. See LICENSE file in the project root for full text.
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements the result-type verification helper used by the IL verifier.
+/// @details The checker validates whether an instruction produces a result when
+/// required and whether the result's type matches expectations from the opcode
+/// metadata.
 
 #include "il/verify/ResultTypeChecker.hpp"
 
@@ -22,11 +26,19 @@ using il::core::kindToString;
 namespace il::verify::detail
 {
 
+/// @brief Construct a checker bound to a verification context and opcode metadata.
+/// @param ctx Verification context describing the current instruction.
+/// @param info Opcode metadata containing result-type requirements.
 ResultTypeChecker::ResultTypeChecker(const VerifyCtx &ctx, const il::core::OpcodeInfo &info)
     : ctx_(ctx), info_(info)
 {
 }
 
+/// @brief Validate the presence and type of an instruction's result value.
+/// @details Confirms mandatory results are emitted, optional results are allowed
+/// to be absent, and that typed results use the expected IL type when enforced by
+/// the opcode metadata.
+/// @return Empty success on validity; otherwise a structured diagnostic error.
 Expected<void> ResultTypeChecker::run() const
 {
     const auto &instr = ctx_.instr;
@@ -72,6 +84,11 @@ Expected<void> ResultTypeChecker::run() const
     return {};
 }
 
+/// @brief Emit a formatted diagnostic for a result-type mismatch.
+/// @details Wraps the diagnostic in an @c Expected error so callers can propagate
+/// verification failures uniformly.
+/// @param message Human-readable description of the mismatch.
+/// @return Expected error containing the diagnostic payload.
 Expected<void> ResultTypeChecker::report(std::string_view message) const
 {
     return Expected<void>{makeError(ctx_.instr.loc, formatInstrDiag(ctx_.fn, ctx_.block, ctx_.instr, message))};

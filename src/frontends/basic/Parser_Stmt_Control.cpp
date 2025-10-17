@@ -1,9 +1,12 @@
-// File: src/frontends/basic/Parser_Stmt_Control.cpp
-// Purpose: Wires control-flow statement parsers into the registry for BASIC parsing.
-// Key invariants: Ensures each control-flow keyword resolves to the appropriate parser routine.
-// Ownership/Lifetime: Registry stores member function pointers with Parser owning implementations.
-// License: MIT; see LICENSE for details.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+// MIT License. See LICENSE file in the project root for full text.
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Registers control-flow statement parsers for the BASIC front end.
+/// @details The parser installs member-function handlers for each keyword that
+/// introduces a control-flow construct so that the registry can dispatch to the
+/// appropriate parsing routine during tokenisation.
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
@@ -11,6 +14,11 @@
 namespace il::frontends::basic
 {
 
+/// @brief Install all control-flow statement parsers into the registry.
+/// @details Associates each control-flow keyword with the corresponding parser
+/// member so that statement dispatch can remain table-driven. The registry stores
+/// raw member pointers while the parser retains ownership of the implementations.
+/// @param registry Mutable registry that records keyword-to-parser mappings.
 void Parser::registerControlFlowParsers(StatementParserRegistry &registry)
 {
     registry.registerHandler(TokenKind::KeywordIf, &Parser::parseIfStatement);

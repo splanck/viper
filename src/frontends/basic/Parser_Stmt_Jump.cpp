@@ -1,9 +1,11 @@
-// File: src/frontends/basic/Parser_Stmt_Jump.cpp
-// Purpose: Implements jump-oriented statements (GOTO, GOSUB, RETURN) for the BASIC parser.
-// Key invariants: Validates numeric targets and optional return expressions.
-// Ownership/Lifetime: Parser allocates AST nodes returned via unique_ptr wrappers.
-// License: MIT; see LICENSE for details.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+// MIT License. See LICENSE file in the project root for full text.
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements jump-oriented BASIC statement parsers.
+/// @details Provides the parsing routines for GOTO, GOSUB, and RETURN statements
+/// and returns heap-allocated AST nodes describing the parsed constructs.
 
 #include "frontends/basic/Parser.hpp"
 
@@ -12,6 +14,11 @@
 namespace il::frontends::basic
 {
 
+/// @brief Parse a `GOTO <line>` statement.
+/// @details Consumes the `GOTO` keyword followed by a numeric token representing
+/// the destination line number, constructing a @c GotoStmt with the captured
+/// metadata.
+/// @return Owned AST node describing the goto statement.
 StmtPtr Parser::parseGotoStatement()
 {
     auto loc = peek().loc;
@@ -24,6 +31,10 @@ StmtPtr Parser::parseGotoStatement()
     return stmt;
 }
 
+/// @brief Parse a `GOSUB <line>` statement.
+/// @details Reads the line number after the @c GOSUB keyword and materialises a
+/// @c GosubStmt describing both the call site location and continuation target.
+/// @return Owned AST node describing the gosub statement.
 StmtPtr Parser::parseGosubStatement()
 {
     auto loc = peek().loc;
@@ -36,6 +47,11 @@ StmtPtr Parser::parseGosubStatement()
     return stmt;
 }
 
+/// @brief Parse a `RETURN [expr]` statement.
+/// @details Captures an optional trailing expression that produces the return
+/// value when present. Parsing stops at end-of-line delimiters so chained
+/// statements remain intact.
+/// @return Owned AST node describing the return statement.
 StmtPtr Parser::parseReturnStatement()
 {
     auto loc = peek().loc;

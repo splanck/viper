@@ -1,8 +1,11 @@
-// File: src/il/verify/InstructionStrategies.cpp
-// Purpose: Provide the default instruction verification strategies for FunctionVerifier.
-// Key invariants: Control-flow opcodes are handled separately from generic instruction checking.
-// Ownership/Lifetime: Strategies are allocated per-verifier invocation and owned by the caller.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+// MIT License. See LICENSE file in the project root for full text.
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Provides the default instruction verification strategies for the IL verifier.
+/// @details Supplies specialised handlers for control-flow instructions alongside a
+/// catch-all strategy that delegates to the general instruction checker.
 
 #include "il/verify/InstructionStrategies.hpp"
 
@@ -24,20 +27,39 @@ namespace il::verify
 {
 using il::support::Expected;
 
+/// @brief Verify a non-control-flow instruction using the default checker.
+/// @param ctx Verification context describing the current instruction.
+/// @return Success on validity; otherwise a diagnostic error.
 Expected<void> verifyInstruction_E(const VerifyCtx &ctx);
 
 namespace
 {
 
+/// @brief Strategy that handles control-flow instructions with dedicated checks.
 class ControlFlowStrategy final : public FunctionVerifier::InstructionStrategy
 {
   public:
+    /// @brief Identify whether the strategy should verify the given instruction.
+    /// @param instr Instruction under inspection.
+    /// @return @c true when @p instr is a control-flow opcode.
     bool matches(const Instr &instr) const override
     {
         return instr.op == Opcode::Br || instr.op == Opcode::CBr || instr.op == Opcode::SwitchI32 ||
                instr.op == Opcode::Ret;
     }
 
+    /// @brief Run control-flow specific verification logic.
+    /// @details Dispatches to the appropriate helper based on the opcode while
+    /// ignoring maps that are irrelevant for the handled instructions.
+    /// @param fn Function owning the instruction.
+    /// @param bb Basic block containing the instruction.
+    /// @param instr Instruction to verify.
+    /// @param blockMap Mapping from labels to block definitions.
+    /// @param externs Map of extern declarations (unused).
+    /// @param funcs Map of function declarations (unused).
+    /// @param types Type inference context for the current function.
+    /// @param sink Diagnostic sink used for reporting (unused here).
+    /// @return Success when the instruction satisfies control-flow invariants.
     Expected<void> verify(const Function &fn,
                           const BasicBlock &bb,
                           const Instr &instr,
@@ -67,14 +89,29 @@ class ControlFlowStrategy final : public FunctionVerifier::InstructionStrategy
     }
 };
 
+/// @brief Strategy that delegates generic instruction checking to the common verifier.
 class DefaultInstructionStrategy final : public FunctionVerifier::InstructionStrategy
 {
   public:
+    /// @brief Always claim responsibility for verification when no other strategy applies.
+    /// @return Always returns @c true.
     bool matches(const Instr &) const override
     {
         return true;
     }
 
+    /// @brief Verify an instruction using the default checker pipeline.
+    /// @details Binds the instruction into a @c VerifyCtx and invokes the shared
+    /// instruction checker that handles type and operand validation.
+    /// @param fn Function owning the instruction.
+    /// @param bb Basic block containing the instruction.
+    /// @param instr Instruction to verify.
+    /// @param blockMap Mapping from labels to block definitions (unused).
+    /// @param externs Map of extern declarations.
+    /// @param funcs Map of function declarations.
+    /// @param types Type inference context for the current function.
+    /// @param sink Diagnostic sink used for reporting failures.
+    /// @return Success when the instruction is valid; otherwise a diagnostic error.
     Expected<void> verify(const Function &fn,
                           const BasicBlock &bb,
                           const Instr &instr,
@@ -92,6 +129,8 @@ class DefaultInstructionStrategy final : public FunctionVerifier::InstructionStr
 
 } // namespace
 
+/// @brief Construct the default set of instruction verification strategies.
+/// @return Vector containing control-flow and generic verification strategies.
 std::vector<std::unique_ptr<FunctionVerifier::InstructionStrategy>>
 makeDefaultInstructionStrategies()
 {
