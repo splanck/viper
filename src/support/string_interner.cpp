@@ -1,15 +1,11 @@
-//===----------------------------------------------------------------------===//
-//
-// Part of the Viper project, under the MIT License.
-// See LICENSE for license information.
-//
-//===----------------------------------------------------------------------===//
-//
-// Implements the string interner that assigns stable Symbol handles to unique
-// strings.  The interner owns the canonical copies of the strings and provides
-// constant-time lookup from handles back to their original text.
-//
-//===----------------------------------------------------------------------===//
+// File: src/support/string_interner.cpp
+// License: MIT License (c) 2024 The Viper Project Authors. See LICENSE in the
+//          project root for details.
+// Purpose: Implement the string interner responsible for assigning stable
+//          Symbol handles to unique strings across the compiler.
+// Key invariants: Symbol id 0 remains reserved; storage indices stay in sync
+//                 with assigned handles.
+// Links: docs/codemap.md#support
 
 /// @file
 /// @brief Realises the compact string interning facility used across IL.

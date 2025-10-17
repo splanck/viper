@@ -1,16 +1,10 @@
-//===----------------------------------------------------------------------===//
-//
-// Part of the Viper project, under the MIT License.
-// See LICENSE for license information.
-//
-//===----------------------------------------------------------------------===//
-//
 // File: src/il/core/Type.cpp
-// Purpose: Implement the minimal helpers for rendering and constructing IL type
-//          descriptors without exposing representation details in headers.
+// License: MIT License (c) 2024 The Viper Project Authors. See LICENSE in the
+//          project root for details.
+// Purpose: Implement helpers for constructing and rendering IL type descriptors
+//          while keeping headers lightweight.
+// Key invariants: String renderings must match the IL textual specification.
 // Links: docs/il-guide.md#types
-//
-//===----------------------------------------------------------------------===//
 
 /// @file
 /// @brief Provides stringification helpers for IL type descriptors.
@@ -24,19 +18,18 @@ namespace il::core
 {
 
 /// @brief Construct a Type wrapper from the provided kind enumerator.
-///
-/// The constructor simply stores the enumeration value.  It exists so that the
-/// class can be forward declared without exposing the underlying representation
-/// to callers.
+/// @details The constructor simply stores the enumeration value.  It exists so
+///          that the class can be forward declared without exposing the
+///          underlying representation to callers.
 ///
 /// @param k Enumeration tag describing the type category.
 Type::Type(Kind k) : kind(k) {}
 
 /// @brief Render an IL type enumerator to its canonical textual spelling.
-///
-/// Used by diagnostics and the text serialiser to produce stable, lower-case
-/// mnemonics that match the IL specification.  Unknown enumerators fall back to
-/// the empty string so callers can provide bespoke error messaging.
+/// @details Used by diagnostics and the text serialiser to produce stable,
+///          lower-case mnemonics that match the IL specification.  Unknown
+///          enumerators fall back to the empty string so callers can provide
+///          bespoke error messaging.
 ///
 /// @param k Enumeration tag to translate.
 /// @return Canonical string name for the provided type tag.
@@ -69,9 +62,8 @@ std::string kindToString(Type::Kind k)
 }
 
 /// @brief Produce the canonical spelling for this type instance.
-///
-/// Delegates to @ref kindToString so that all textual rendering flows through a
-/// single implementation.
+/// @details Delegates to @ref kindToString so that all textual rendering flows
+///          through a single implementation.
 ///
 /// @return Canonical string representation of the stored type tag.
 std::string Type::toString() const

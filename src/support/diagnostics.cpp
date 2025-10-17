@@ -1,16 +1,10 @@
-//===----------------------------------------------------------------------===//
-//
-// Part of the Viper project, under the MIT License.
-// See LICENSE for license information.
-//
-//===----------------------------------------------------------------------===//
-//
-// Implements the DiagnosticEngine that aggregates diagnostics emitted by the
-// compiler front-ends and support utilities.  The engine stores the diagnostics
-// for later inspection and offers helpers for printing them in a consistent
-// format while tracking counts of warnings and errors.
-//
-//===----------------------------------------------------------------------===//
+// File: src/support/diagnostics.cpp
+// License: MIT License (c) 2024 The Viper Project Authors. See LICENSE in the
+//          project root for details.
+// Purpose: Implement the diagnostic engine that aggregates, counts, and prints
+//          compiler diagnostics in a consistent format.
+// Ownership/Lifetime: Engine owns stored diagnostics until cleared or destroyed.
+// Links: docs/contributor-guide.md, docs/codemap.md#support
 
 /// @file
 /// @brief Houses the diagnostic aggregation engine shared across front-ends.

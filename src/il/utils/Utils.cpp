@@ -1,16 +1,10 @@
-//===----------------------------------------------------------------------===//
-//
-// Part of the Viper project, under the MIT License.
-// See LICENSE for license information.
-//
-//===----------------------------------------------------------------------===//
-//
 // File: src/il/utils/Utils.cpp
+// License: MIT License (c) 2024 The Viper Project Authors. See LICENSE in the
+//          project root for details.
 // Purpose: Provide shared helper utilities for inspecting IL blocks and
 //          instructions without pulling in heavy analysis headers.
+// Key invariants: Helpers avoid mutating IR and never allocate memory.
 // Links: docs/codemap.md#il-utils
-//
-//===----------------------------------------------------------------------===//
 
 /// @file
 /// @brief Implements lightweight inspection helpers for IL blocks.

@@ -1,15 +1,11 @@
-//===----------------------------------------------------------------------===//
-//
-// Part of the Viper project, under the MIT License.
-// See LICENSE for license information.
-//
-//===----------------------------------------------------------------------===//
-//
-// Implements the façade entry point that wires together the IL text parser.
-// The heavy lifting lives in dedicated module/function/instruction helpers;
-// this translation unit coordinates them while keeping the public header light.
-//
-//===----------------------------------------------------------------------===//
+// File: src/il/io/Parser.cpp
+// License: MIT License (c) 2024 The Viper Project Authors. See LICENSE in the
+//          project root for details.
+// Purpose: Implement the façade entry point that wires together the IL text
+//          parser while keeping the public header lean.
+// Key invariants: Parsing must observe the IL module header directives before
+//                 materialising IR entities.
+// Links: docs/il-guide.md#reference
 //
 /// @file
 /// @brief Top-level textual IL parser implementation.

@@ -1,18 +1,13 @@
-//===----------------------------------------------------------------------===//
-//
-// Part of the Viper project, under the MIT License.
-// See LICENSE for license information.
-//
-//===----------------------------------------------------------------------===//
-//
-// Implements the bump-pointer arena used throughout Viper's support library.
-// The arena manages a single contiguous buffer and satisfies allocation
-// requests by monotonically advancing an offset.  Callers can request memory
-// with an explicit alignment and the arena will compute the correct aligned
-// address while guarding against overflow.  All allocations remain valid until
-// `reset()` is invoked, at which point the arena reuses the entire buffer.
-//
-//===----------------------------------------------------------------------===//
+// File: src/support/arena.cpp
+// License: MIT License (c) 2024 The Viper Project Authors. See LICENSE in the
+//          project root for details.
+// Purpose: Implement the bump-pointer arena used across support utilities for
+//          fast, phase-local allocations.
+// Key invariants: Allocation cursor never exceeds buffer bounds and alignment
+//                 requests must be non-zero powers of two.
+// Ownership/Lifetime: Arena owns its backing buffer and invalidates all
+//                     allocations on reset().
+// Links: docs/codemap.md#support
 
 /// @file
 /// @brief Defines the `il::support::Arena` bump allocator implementation.

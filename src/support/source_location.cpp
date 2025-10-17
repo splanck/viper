@@ -1,17 +1,11 @@
-//===----------------------------------------------------------------------===//
-//
-// Part of the Viper project, under the MIT License.
-// See LICENSE for license information.
-//
-//===----------------------------------------------------------------------===//
-//
-// Provides the minimal out-of-line utilities for the SourceLoc value type.  A
-// location is considered valid when it refers to a registered file identifier
-// and carries 1-based line and column information.  Keeping the helper here
-// avoids inlining the check into every translation unit that includes the
-// header while preserving a central explanation of the validity contract.
-//
-//===----------------------------------------------------------------------===//
+// File: src/support/source_location.cpp
+// License: MIT License (c) 2024 The Viper Project Authors. See LICENSE in the
+//          project root for details.
+// Purpose: Implement validity predicates for SourceLoc and SourceRange without
+//          forcing the checks into every translation unit.
+// Key invariants: Valid locations reference a registered file id and 1-based
+//                 line/column metadata.
+// Links: docs/contributor-guide.md, docs/codemap.md#support
 
 /// @file
 /// @brief Implements validity queries for `SourceLoc` and `SourceRange`.

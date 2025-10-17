@@ -1,16 +1,11 @@
-//===----------------------------------------------------------------------===//
-//
-// Part of the Viper project, under the MIT License.
-// See LICENSE for license information.
-//
-//===----------------------------------------------------------------------===//
-//
-// Implements the SourceManager utility responsible for tracking source files
-// referenced by diagnostics and front-end components.  The manager assigns
-// stable numeric identifiers to file paths and resolves those identifiers back
-// to normalized strings when printing diagnostics.
-//
-//===----------------------------------------------------------------------===//
+// File: src/support/source_manager.cpp
+// License: MIT License (c) 2024 The Viper Project Authors. See LICENSE in the
+//          project root for details.
+// Purpose: Implement the SourceManager that tracks canonicalised file paths and
+//          hands out stable identifiers for diagnostics and front-ends.
+// Ownership/Lifetime: Manager owns the stored strings; views remain valid until
+//                     the manager is destroyed.
+// Links: docs/contributor-guide.md, docs/codemap.md#support
 
 /// @file
 /// @brief Provides the backing store for file identifiers used in diagnostics.

@@ -1,17 +1,11 @@
-//===----------------------------------------------------------------------===//
-//
-// Part of the Viper project, under the MIT License.
-// See LICENSE for license information.
-//
-//===----------------------------------------------------------------------===//
-//
 // File: src/il/core/OpcodeNames.cpp
+// License: MIT License (c) 2024 The Viper Project Authors. See LICENSE in the
+//          project root for details.
 // Purpose: Provide a compact mapping between opcode enumeration values and
 //          their textual mnemonics for diagnostics and serialization.
 // Key invariants: Table size always matches the opcode enumeration count.
+// Perf/Threading notes: Table is immutable data with static storage duration.
 // Links: docs/il-guide.md#opcodes
-//
-//===----------------------------------------------------------------------===//
 
 /// @file
 /// @brief Implements mnemonic lookups for IL opcode enumerators.

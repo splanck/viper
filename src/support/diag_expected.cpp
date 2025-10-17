@@ -1,18 +1,11 @@
-//===----------------------------------------------------------------------===//
-//
-// Part of the Viper project, under the MIT License.
-// See LICENSE for license information.
-//
-//===----------------------------------------------------------------------===//
-//
-// Implements the diagnostic-oriented Expected helpers used across the support
-// library.  The utilities defined here wrap structured diagnostics around an
-// Expected<void> type, provide consistent severity-to-string mapping, and offer
-// helpers for printing diagnostics with optional source location context.  By
-// consolidating this behavior we ensure every subsystem reports errors in a
-// uniform format.
-//
-//===----------------------------------------------------------------------===//
+// File: src/support/diag_expected.cpp
+// License: MIT License (c) 2024 The Viper Project Authors. See LICENSE in the
+//          project root for details.
+// Purpose: Implement diagnostic-flavoured Expected helpers that carry rich
+//          error information across the support layer.
+// Key invariants: Successful Expected instances never store diagnostics; error
+//                 payloads always include severity metadata.
+// Links: docs/contributor-guide.md, docs/codemap.md#support
 
 /// @file
 /// @brief Supplies the `Expected<void>` helpers specialized for diagnostics.
@@ -59,6 +52,7 @@ bool Expected<void>::hasValue() const
 ///          conditionals such as `if (auto ok = doThing())`.  The conversion is
 ///          explicit enough to avoid accidental narrowing yet terse enough to be
 ///          pleasant in control flow.
+/// @return True when the instance holds no diagnostic payload.
 Expected<void>::operator bool() const
 {
     return hasValue();

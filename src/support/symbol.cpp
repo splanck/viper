@@ -1,16 +1,10 @@
-//===----------------------------------------------------------------------===//
-//
-// Part of the Viper project, under the MIT License.
-// See LICENSE for license information.
-//
-//===----------------------------------------------------------------------===//
-//
-// Implements helpers for the Symbol handle returned by the string interner.
-// Symbols wrap a 32-bit identifier where zero represents an invalid handle.
-// The utilities defined here provide comparisons and hashing used throughout
-// the support library.
-//
-//===----------------------------------------------------------------------===//
+// File: src/support/symbol.cpp
+// License: MIT License (c) 2024 The Viper Project Authors. See LICENSE in the
+//          project root for details.
+// Purpose: Implement relational and hashing helpers for interned string symbols
+//          used across the support library.
+// Key invariants: Symbol identifier zero remains reserved as "invalid".
+// Links: docs/codemap.md#support
 
 /// @file
 /// @brief Defines relational and hashing support for `il::support::Symbol`.

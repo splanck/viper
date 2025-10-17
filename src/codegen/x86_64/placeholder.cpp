@@ -1,17 +1,12 @@
-//===----------------------------------------------------------------------===//
-//
-// Part of the Viper project, under the MIT License.
-// See LICENSE for license information.
-//
-//===----------------------------------------------------------------------===//
-//
 // File: src/codegen/x86_64/placeholder.cpp
+// License: MIT License (c) 2024 The Viper Project Authors. See LICENSE in the
+//          project root for details.
 // Purpose: Provide a stable linkage point for the not-yet-implemented x86-64
 //          backend so the code generation library still exports a symbol.
-// Ownership/Lifetime: No state; the function returns an integral status code.
+// Key invariants: Returns a deterministic status code without observable side
+//                 effects to keep integration tests predictable.
+// Ownership/Lifetime: Stateless stub that performs no allocation.
 // Links: docs/architecture.md#codegen
-//
-//===----------------------------------------------------------------------===//
 
 /// @file
 /// @brief Defines a stub symbol that keeps the x86-64 backend linkable.

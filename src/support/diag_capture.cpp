@@ -1,16 +1,11 @@
-//===----------------------------------------------------------------------===//
-//
-// Part of the Viper project, under the MIT License.
-// See LICENSE for license information.
-//
-//===----------------------------------------------------------------------===//
-//
-// Provides the out-of-line helpers for the DiagCapture utility, which captures
-// diagnostics in string form and later materializes them as structured Diag
-// instances.  The helpers bridge legacy APIs that expect boolean success flags
-// with the modern Expected<void> diagnostics used by the rest of the library.
-//
-//===----------------------------------------------------------------------===//
+// File: src/support/diag_capture.cpp
+// License: MIT License (c) 2024 The Viper Project Authors. See LICENSE in the
+//          project root for details.
+// Purpose: Implement the diagnostic capture bridge that converts legacy
+//          text-based error flows into structured diagnostics.
+// Ownership/Lifetime: `DiagCapture` owns its buffered stream and reuses it
+//                     across conversions.
+// Links: docs/contributor-guide.md, docs/codemap.md#support
 
 /// @file
 /// @brief Implements the deferred-diagnostic sink used by text-only pipelines.
@@ -55,10 +50,10 @@ Diag DiagCapture::toDiag() const
 }
 
 /// @brief Bridge a boolean success flag to an Expected<void> diagnostic result.
-///
-/// Older APIs return a boolean to signal success.  This helper wraps that value
-/// by returning a default-constructed Expected on success or by converting the
-/// capture's buffered diagnostic into an error payload on failure.
+/// @details Older APIs return a boolean to signal success.  This helper wraps
+///          that value by returning a default-constructed Expected on success or
+///          by converting the capture's buffered diagnostic into an error
+///          payload on failure.
 ///
 /// @param ok Boolean indicating whether the preceding operation succeeded.
 /// @param capture Capture containing any error text produced by the operation.
