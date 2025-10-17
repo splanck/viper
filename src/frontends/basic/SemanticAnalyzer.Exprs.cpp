@@ -264,7 +264,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeVar(VarExpr &v)
     {
         if (v.name.back() == '$')
             return Type::String;
-        if (v.name.back() == '#')
+        if (v.name.back() == '#' || v.name.back() == '!')
             return Type::Float;
     }
     return Type::Int;
