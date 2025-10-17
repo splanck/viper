@@ -7,6 +7,7 @@
 
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 /// @brief Minimal expected-like container.
@@ -23,7 +24,16 @@ template <typename T> class Result
     /// @details Engages @c value_ with @p value and leaves @c error_ empty.
     /// After this constructor, @c value() may be called and @c error() must not
     /// be used.
-    Result(T value) : value_(std::move(value)) {}
+    template <typename U = T>
+        requires(!std::is_same_v<std::decay_t<T>, std::string>)
+    Result(U &&value) : value_(std::forward<U>(value)) {}
+
+    /// @brief Creates a successful result when the stored type is @c std::string.
+    /// @param value Value to store; ownership is transferred to the Result.
+    /// @param valueTag Boolean tag to disambiguate from the error constructor.
+    template <typename U = T>
+        requires(std::is_same_v<std::decay_t<T>, std::string>)
+    Result(std::string value, bool /*valueTag*/) : value_(std::move(value)) {}
 
     /// @brief Creates an error result with a message.
     /// @param error Error description to store; ownership is transferred to the
