@@ -25,7 +25,14 @@ struct KeywordEntry
     TokenKind kind;
 };
 
-constexpr std::array<KeywordEntry, 66> kKeywordTable{{
+constexpr std::array<KeywordEntry,
+#if VIPER_ENABLE_OOP
+    72
+#else
+    66
+#endif
+    >
+    kKeywordTable{{
     {"ABS", TokenKind::KeywordAbs},
     {"AND", TokenKind::KeywordAnd},
     {"ANDALSO", TokenKind::KeywordAndAlso},
@@ -35,10 +42,17 @@ constexpr std::array<KeywordEntry, 66> kKeywordTable{{
     {"BOOLEAN", TokenKind::KeywordBoolean},
     {"CASE", TokenKind::KeywordCase},
     {"CEIL", TokenKind::KeywordCeil},
+#if VIPER_ENABLE_OOP
+    {"CLASS", TokenKind::KeywordClass},
+#endif
     {"CLOSE", TokenKind::KeywordClose},
     {"CLS", TokenKind::KeywordCls},
     {"COLOR", TokenKind::KeywordColor},
     {"COS", TokenKind::KeywordCos},
+#if VIPER_ENABLE_OOP
+    {"DELETE", TokenKind::KeywordDelete},
+    {"DESTRUCTOR", TokenKind::KeywordDestructor},
+#endif
     {"DIM", TokenKind::KeywordDim},
     {"DO", TokenKind::KeywordDo},
     {"ELSE", TokenKind::KeywordElse},
@@ -62,7 +76,13 @@ constexpr std::array<KeywordEntry, 66> kKeywordTable{{
     {"LOCATE", TokenKind::KeywordLocate},
     {"LOF", TokenKind::KeywordLof},
     {"LOOP", TokenKind::KeywordLoop},
+#if VIPER_ENABLE_OOP
+    {"ME", TokenKind::KeywordMe},
+#endif
     {"MOD", TokenKind::KeywordMod},
+#if VIPER_ENABLE_OOP
+    {"NEW", TokenKind::KeywordNew},
+#endif
     {"NEXT", TokenKind::KeywordNext},
     {"NOT", TokenKind::KeywordNot},
     {"ON", TokenKind::KeywordOn},
@@ -87,6 +107,9 @@ constexpr std::array<KeywordEntry, 66> kKeywordTable{{
     {"THEN", TokenKind::KeywordThen},
     {"TO", TokenKind::KeywordTo},
     {"TRUE", TokenKind::KeywordTrue},
+#if VIPER_ENABLE_OOP
+    {"TYPE", TokenKind::KeywordType},
+#endif
     {"UBOUND", TokenKind::KeywordUbound},
     {"UNTIL", TokenKind::KeywordUntil},
     {"WEND", TokenKind::KeywordWend},
@@ -398,6 +421,33 @@ Token Lexer::next()
             return {TokenKind::Colon, ":", loc};
         case '#':
             return {TokenKind::Hash, "#", loc};
+#if VIPER_ENABLE_OOP
+        case '.':
+        {
+            // If previous and next chars are digits, this is part of a numeric literal; fallthrough to number logic.
+            // Otherwise, return TokenKind::Dot.
+            bool prevIsDigit = false;
+            if (pos_ >= 2)
+            {
+                unsigned char prev = static_cast<unsigned char>(src_[pos_ - 2]);
+                prevIsDigit = std::isdigit(prev) != 0;
+            }
+            bool nextIsDigit = false;
+            if (pos_ < src_.size())
+            {
+                unsigned char next = static_cast<unsigned char>(src_[pos_]);
+                nextIsDigit = std::isdigit(next) != 0;
+            }
+            if (prevIsDigit && nextIsDigit)
+            {
+                if (column_ > 1)
+                    --column_;
+                --pos_;
+                return lexNumber();
+            }
+            return {TokenKind::Dot, ".", loc};
+        }
+#endif
     }
     return {TokenKind::Unknown, std::string(1, c), loc};
 }
