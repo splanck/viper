@@ -391,6 +391,9 @@ bool rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err)
         return false;
     }
 
+    if (len > 0 && buffer[len - 1] == '\r')
+        --len;
+
     if (len + 1 > cap)
     {
         char *nbuf = (char *)realloc(buffer, len + 1);
