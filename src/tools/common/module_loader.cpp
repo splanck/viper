@@ -13,6 +13,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Provides IL module loading and verification helpers for CLI tools.
+/// @details Command-line utilities link this implementation to standardise how
+///          modules are parsed, validated, and reported to users.
+
 #include "tools/common/module_loader.hpp"
 
 #include "il/api/expected_api.hpp"
@@ -25,8 +30,9 @@ namespace
 {
 /// @brief Build a successful load result with no diagnostics attached.
 ///
-/// This helper keeps the success case consistent across all code paths so the
-/// outer control flow can simply check @ref LoadResult::succeeded.
+/// @details This helper keeps the success case consistent across all code paths
+///          so the outer control flow can simply check
+///          @ref LoadResult::succeeded.
 ///
 /// @return A result with @ref LoadStatus::Success and an empty diagnostic.
 LoadResult makeSuccess()
@@ -36,9 +42,10 @@ LoadResult makeSuccess()
 
 /// @brief Create a load result describing an I/O failure.
 ///
-/// File system failures (missing file, permission error, etc.) cannot be
-/// expressed as IL diagnostics, so the helper records the failure kind while
-/// leaving the diagnostic slot empty.
+/// @details File system failures (missing file, permission error, etc.) cannot
+///          be expressed as IL diagnostics, so the helper records the failure
+///          kind while leaving the diagnostic slot empty.  Callers can then emit
+///          bespoke file-system messages.
 ///
 /// @return Result tagged with @ref LoadStatus::FileError and no diagnostic.
 LoadResult makeFileError()
@@ -47,6 +54,9 @@ LoadResult makeFileError()
 }
 
 /// @brief Create a load result populated with a parser diagnostic.
+///
+/// @details The diagnostic is copied so the caller can print it after the
+///          function returns.
 ///
 /// @param diag Diagnostic emitted by the parser that explains the failure.
 /// @return A result tagged with @ref LoadStatus::ParseError holding @p diag.
@@ -58,13 +68,14 @@ LoadResult makeParseError(const il::support::Diag &diag)
 
 /// @brief Load and optionally verify a textual IL module.
 ///
-/// Steps performed:
-///   1. Attempt to open @p path for reading, printing @p ioErrorPrefix when the
-///      file cannot be accessed.
-///   2. Parse the IL stream into @p module using the Expected-based API so
-///      diagnostics propagate naturally.
-///   3. Print parse diagnostics via @ref il::support::printDiag when parsing
-///      fails, returning a result tagged @ref LoadStatus::ParseError.
+/// @details Steps performed:
+///          1. Attempt to open @p path for reading, printing @p ioErrorPrefix
+///             when the file cannot be accessed.
+///          2. Parse the IL stream into @p module using the Expected-based API
+///             so diagnostics propagate naturally.
+///          3. Print parse diagnostics via @ref il::support::printDiag when
+///             parsing fails, returning a result tagged
+///             @ref LoadStatus::ParseError.
 ///
 /// @param path Filesystem path to the IL file.
 /// @param module Module instance receiving parsed content on success.
@@ -96,9 +107,9 @@ LoadResult loadModuleFromFile(const std::string &path,
 
 /// @brief Run the IL verifier and forward diagnostics to the caller.
 ///
-/// The helper calls @ref il::api::v2::verify_module_expected and prints any
-/// resulting diagnostics through @ref il::support::printDiag so command-line
-/// tools can keep their verification reporting uniform.
+/// @details The helper calls @ref il::api::v2::verify_module_expected and
+///          prints any resulting diagnostics through @ref il::support::printDiag
+///          so command-line tools can keep their verification reporting uniform.
 ///
 /// @param module Module that should satisfy verifier invariants.
 /// @param err Output stream receiving verifier diagnostics.
