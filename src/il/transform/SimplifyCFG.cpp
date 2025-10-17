@@ -5,12 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the scaffold for the control-flow graph simplification pass. The
-// actual simplification logic is organised across helper modules that perform
-// individual transformations (branch folding, parameter canonicalisation, etc.).
-// This file wires the helpers together and maintains verification invariants.
-//
-//===----------------------------------------------------------------------===//
+/// @file
+/// @brief Implements the scaffold for the control-flow graph simplification pass.
+/// @details Coordinates helper modules that perform individual transformations
+/// (branch folding, parameter canonicalisation, etc.) and maintains verification
+/// invariants around each batch of changes.
+
 
 #include "il/transform/SimplifyCFG.hpp"
 
@@ -29,6 +29,8 @@ namespace
 {
 
 #ifndef NDEBUG
+/// @brief Optionally verify the module before running the pass (debug builds).
+/// @param module Owning module when available.
 void verifyPreconditions(const il::core::Module *module)
 {
     if (!module)
@@ -39,6 +41,8 @@ void verifyPreconditions(const il::core::Module *module)
     (void)verified;
 }
 
+/// @brief Optionally verify the module after the pass completes (debug builds).
+/// @param module Owning module when available.
 void verifyPostconditions(const il::core::Module *module)
 {
     if (!module)
@@ -49,6 +53,8 @@ void verifyPostconditions(const il::core::Module *module)
     (void)verified;
 }
 
+/// @brief Optionally verify the module between transformation iterations.
+/// @param module Owning module when available.
 void verifyIntermediateState(const il::core::Module *module)
 {
     if (!module)
@@ -66,6 +72,8 @@ void verifyPostconditions(const il::core::Module *) {}
 void verifyIntermediateState(const il::core::Module *) {}
 #endif
 
+/// @brief Mark cached CFG/dominator analyses as stale once the pass modifies IR.
+/// @param function Function whose analyses must be invalidated.
 void invalidateCFGAndDominators(il::core::Function &function)
 {
     static_cast<void>(function);
@@ -77,6 +85,13 @@ void invalidateCFGAndDominators(il::core::Function &function)
 namespace il::transform
 {
 
+/// @brief Execute the SimplifyCFG pass over a single function.
+/// @details Iteratively applies folding and cleanup transforms, running
+/// verification hooks in debug builds and updating pass statistics when changes
+/// occur.
+/// @param F Function to simplify.
+/// @param outStats Optional pointer receiving aggregate statistics.
+/// @return @c true when the pass modified the function.
 bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
 {
     verifyPreconditions(module_);

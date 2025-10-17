@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 // MIT License. See LICENSE file in the project root for full text.
-//
-// Provides the extension point for il::core::Extern.  Extern declarations are
-// currently implemented entirely inline, yet the dedicated translation unit
-// ensures downstream components can gain new behaviors (e.g., verifier hooks or
-// serialization helpers) without forcing wide recompilation due to header
-// changes.
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Placeholder translation unit for `il::core::Extern` out-of-line code.
+/// @details The `Extern` abstraction presently lives entirely in the header, but
+/// keeping this file in the build tree advertises where verifier, serializer, or
+/// analysis helpers should be added without forcing downstream include churn.
 
 #include "il/core/Extern.hpp"
 
