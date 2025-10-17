@@ -9,7 +9,6 @@ set(RT_SOURCES
   rt_random.c
   rt_array.c
   rt_heap.c
-  rt_object.c
   rt_numeric.c
   rt_numeric_conv.c
   rt_debug.c
@@ -17,6 +16,10 @@ set(RT_SOURCES
   rt_int_format.c
   rt_term.c
 )
+
+if(VIPER_ENABLE_OOP)
+  list(APPEND RT_SOURCES rt_object.c)
+endif()
 
 set(RT_PUBLIC_HEADERS
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_error.h
