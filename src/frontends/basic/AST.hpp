@@ -8,6 +8,7 @@
 #include "support/source_location.hpp"
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,6 +28,12 @@ struct BuiltinCallExpr;
 struct LBoundExpr;
 struct UBoundExpr;
 struct CallExpr;
+#if VIPER_ENABLE_OOP
+struct NewExpr;
+struct MeExpr;
+struct MemberAccessExpr;
+struct MethodCallExpr;
+#endif
 
 struct LabelStmt;
 struct PrintStmt;
@@ -61,6 +68,14 @@ struct SelectCaseStmt;
 struct FunctionDecl;
 struct SubDecl;
 struct StmtList;
+#if VIPER_ENABLE_OOP
+struct DeleteStmt;
+struct ConstructorDecl;
+struct DestructorDecl;
+struct MethodDecl;
+struct ClassDecl;
+struct TypeDecl;
+#endif
 
 /// @brief Visitor interface for BASIC expressions.
 struct ExprVisitor
@@ -78,6 +93,12 @@ struct ExprVisitor
     virtual void visit(const LBoundExpr &) = 0;
     virtual void visit(const UBoundExpr &) = 0;
     virtual void visit(const CallExpr &) = 0;
+#if VIPER_ENABLE_OOP
+    virtual void visit(const NewExpr &) = 0;
+    virtual void visit(const MeExpr &) = 0;
+    virtual void visit(const MemberAccessExpr &) = 0;
+    virtual void visit(const MethodCallExpr &) = 0;
+#endif
 };
 
 /// @brief Visitor interface for mutable BASIC expressions.
@@ -96,6 +117,12 @@ struct MutExprVisitor
     virtual void visit(LBoundExpr &) = 0;
     virtual void visit(UBoundExpr &) = 0;
     virtual void visit(CallExpr &) = 0;
+#if VIPER_ENABLE_OOP
+    virtual void visit(NewExpr &) = 0;
+    virtual void visit(MeExpr &) = 0;
+    virtual void visit(MemberAccessExpr &) = 0;
+    virtual void visit(MethodCallExpr &) = 0;
+#endif
 };
 
 /// @brief Visitor interface for BASIC statements.
@@ -135,6 +162,14 @@ struct StmtVisitor
     virtual void visit(const FunctionDecl &) = 0;
     virtual void visit(const SubDecl &) = 0;
     virtual void visit(const StmtList &) = 0;
+#if VIPER_ENABLE_OOP
+    virtual void visit(const DeleteStmt &) = 0;
+    virtual void visit(const ConstructorDecl &) = 0;
+    virtual void visit(const DestructorDecl &) = 0;
+    virtual void visit(const MethodDecl &) = 0;
+    virtual void visit(const ClassDecl &) = 0;
+    virtual void visit(const TypeDecl &) = 0;
+#endif
 };
 
 /// @brief Visitor interface for mutable BASIC statements.
@@ -174,6 +209,14 @@ struct MutStmtVisitor
     virtual void visit(FunctionDecl &) = 0;
     virtual void visit(SubDecl &) = 0;
     virtual void visit(StmtList &) = 0;
+#if VIPER_ENABLE_OOP
+    virtual void visit(DeleteStmt &) = 0;
+    virtual void visit(ConstructorDecl &) = 0;
+    virtual void visit(DestructorDecl &) = 0;
+    virtual void visit(MethodDecl &) = 0;
+    virtual void visit(ClassDecl &) = 0;
+    virtual void visit(TypeDecl &) = 0;
+#endif
 };
 
 /// @brief Base class for all BASIC expressions.
@@ -404,6 +447,54 @@ struct CallExpr : Expr
     void accept(MutExprVisitor &visitor) override;
 };
 
+#if VIPER_ENABLE_OOP
+/// @brief Allocate a new instance of a class.
+struct NewExpr : Expr
+{
+    /// Name of the class type to instantiate.
+    std::string className;
+
+    /// Arguments passed to the constructor.
+    std::vector<ExprPtr> args;
+    void accept(ExprVisitor &visitor) const override;
+    void accept(MutExprVisitor &visitor) override;
+};
+
+/// @brief Reference to the receiver instance inside methods.
+struct MeExpr : Expr
+{
+    void accept(ExprVisitor &visitor) const override;
+    void accept(MutExprVisitor &visitor) override;
+};
+
+/// @brief Access a member field on an object.
+struct MemberAccessExpr : Expr
+{
+    /// Base expression evaluating to an object.
+    ExprPtr base;
+
+    /// Member field being accessed.
+    std::string member;
+    void accept(ExprVisitor &visitor) const override;
+    void accept(MutExprVisitor &visitor) override;
+};
+
+/// @brief Invoke a method on an object instance.
+struct MethodCallExpr : Expr
+{
+    /// Base expression evaluating to the receiver instance.
+    ExprPtr base;
+
+    /// Method name to invoke.
+    std::string method;
+
+    /// Arguments passed to the method call.
+    std::vector<ExprPtr> args;
+    void accept(ExprVisitor &visitor) const override;
+    void accept(MutExprVisitor &visitor) override;
+};
+#endif
+
 /// @brief Base class for all BASIC statements.
 struct Stmt
 {
@@ -443,6 +534,14 @@ struct Stmt
         FunctionDecl,
         SubDecl,
         StmtList,
+#if VIPER_ENABLE_OOP
+        Delete,
+        ConstructorDecl,
+        DestructorDecl,
+        MethodDecl,
+        ClassDecl,
+        TypeDecl,
+#endif
     };
 
     /// BASIC line number associated with this statement.
@@ -1050,6 +1149,103 @@ struct StmtList : Stmt
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
 };
+
+#if VIPER_ENABLE_OOP
+/// @brief DELETE statement releasing an object reference.
+struct DeleteStmt : Stmt
+{
+    [[nodiscard]] Kind stmtKind() const override { return Kind::Delete; }
+    /// Expression evaluating to the instance to delete.
+    ExprPtr target;
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief Constructor declaration for a CLASS.
+struct ConstructorDecl : Stmt
+{
+    [[nodiscard]] Kind stmtKind() const override { return Kind::ConstructorDecl; }
+    /// Ordered parameters for the constructor.
+    std::vector<Param> params;
+
+    /// Statements forming the constructor body.
+    std::vector<StmtPtr> body;
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief Destructor declaration for a CLASS.
+struct DestructorDecl : Stmt
+{
+    [[nodiscard]] Kind stmtKind() const override { return Kind::DestructorDecl; }
+    /// Statements forming the destructor body.
+    std::vector<StmtPtr> body;
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief Method declaration inside a CLASS.
+struct MethodDecl : Stmt
+{
+    [[nodiscard]] Kind stmtKind() const override { return Kind::MethodDecl; }
+    /// Method name.
+    std::string name;
+
+    /// Ordered parameters for the method.
+    std::vector<Param> params;
+
+    /// Optional return type when method yields a value.
+    std::optional<Type> ret;
+
+    /// Statements forming the method body.
+    std::vector<StmtPtr> body;
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief CLASS declaration grouping fields and members.
+struct ClassDecl : Stmt
+{
+    [[nodiscard]] Kind stmtKind() const override { return Kind::ClassDecl; }
+    /// Class name.
+    std::string name;
+
+    /// Field definition within the class.
+    struct Field
+    {
+        std::string name;
+        Type type;
+    };
+
+    /// Ordered fields declared on the class.
+    std::vector<Field> fields;
+
+    /// Members declared within the class (constructors, destructors, methods).
+    std::vector<StmtPtr> members;
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief TYPE declaration defining a structured record type.
+struct TypeDecl : Stmt
+{
+    [[nodiscard]] Kind stmtKind() const override { return Kind::TypeDecl; }
+    /// Type name.
+    std::string name;
+
+    /// Field definition within the type.
+    struct Field
+    {
+        std::string name;
+        Type type;
+    };
+
+    /// Ordered fields declared on the type.
+    std::vector<Field> fields;
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+#endif
 
 /// @brief Root node partitioning procedure declarations from main statements.
 struct Program
