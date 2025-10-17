@@ -13,6 +13,7 @@
 #include "rt_file.h"
 #include "rt_format.h"
 #include "rt_string.h"
+#include "rt_object.h"  /* plain include; functions are no-ops when not linked */
 
 #ifdef __cplusplus
 extern "C" {
