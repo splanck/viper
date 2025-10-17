@@ -337,6 +337,16 @@ class Lowerer
 
     RVal ensureF64(RVal v, il::support::SourceLoc loc);
 
+    struct PrintChArgString
+    {
+        Value text;
+        std::optional<il::runtime::RuntimeFeature> feature;
+    };
+
+    PrintChArgString lowerPrintChArgToString(const Expr &expr, RVal value, bool quoteStrings);
+
+    Value buildPrintChWriteRecord(const PrintChStmt &stmt);
+
 #include "frontends/basic/LowerStmt_Core.hpp"
 
 #include "frontends/basic/LowerStmt_Runtime.hpp"
