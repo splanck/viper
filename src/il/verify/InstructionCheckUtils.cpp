@@ -1,8 +1,15 @@
-// File: src/il/verify/InstructionCheckUtils.cpp
-// Purpose: Implements reusable helpers shared across instruction verification routines.
-// Key invariants: Utility functions operate on fundamental IL metadata enums and kinds.
-// Ownership/Lifetime: Stateless helpers that do not manage resources.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements utility helpers shared by multiple instruction verification
+// components.  These routines handle low-level conversions and range checks for
+// IL type categories.
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/verify/InstructionCheckUtils.hpp"
 
@@ -11,6 +18,14 @@
 namespace il::verify::detail
 {
 
+/// @brief Determine whether an integer literal fits within the given IL integer kind.
+///
+/// Performs bounds checking for the supported integer kinds so constant
+/// verification can ensure literals respect the declared operand type.
+///
+/// @param value Integer literal to test.
+/// @param kind  Target integer kind.
+/// @return True when @p value is representable in @p kind.
 bool fitsInIntegerKind(long long value, il::core::Type::Kind kind)
 {
     switch (kind)
@@ -28,6 +43,14 @@ bool fitsInIntegerKind(long long value, il::core::Type::Kind kind)
     }
 }
 
+/// @brief Translate a type category enumeration into a concrete IL type kind.
+///
+/// Most categories map directly to a single type kind.  Categories describing
+/// dynamic or instruction-dependent types yield @c std::nullopt so callers know
+/// additional context is required.
+///
+/// @param category Type category describing an operand or result.
+/// @return The corresponding type kind when deterministic; otherwise nullopt.
 std::optional<il::core::Type::Kind> kindFromCategory(il::core::TypeCategory category)
 {
     using il::core::Type;

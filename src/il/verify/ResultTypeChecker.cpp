@@ -1,8 +1,14 @@
-// File: src/il/verify/ResultTypeChecker.cpp
-// Purpose: Implements a helper that validates result presence and types against opcode metadata.
-// Key invariants: Operates on the verification context for a single instruction.
-// Ownership/Lifetime: Non-owning references to verification data structures.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the result type checker used during IL verification.  The helper
+// enforces result arity and type expectations derived from opcode metadata.
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/verify/ResultTypeChecker.hpp"
 
@@ -22,11 +28,26 @@ using il::core::kindToString;
 namespace il::verify::detail
 {
 
+/// @brief Construct a result type checker bound to a verification context.
+///
+/// Stores references to the caller's verification context and opcode metadata
+/// so the checker can inspect instruction state without copying data.
+///
+/// @param ctx  Verification context describing the instruction under test.
+/// @param info Opcode metadata supplying result arity and type requirements.
 ResultTypeChecker::ResultTypeChecker(const VerifyCtx &ctx, const il::core::OpcodeInfo &info)
     : ctx_(ctx), info_(info)
-{
+{ 
 }
 
+/// @brief Execute result arity and type validation for the current instruction.
+///
+/// Checks that the instruction's optional result matches the opcode's arity
+/// requirements and, when applicable, that the declared type matches the
+/// expected category.  Certain opcodes allow dynamic result typing and are
+/// handled explicitly.
+///
+/// @return Success when the result satisfies metadata requirements; otherwise a diagnostic failure.
 Expected<void> ResultTypeChecker::run() const
 {
     const auto &instr = ctx_.instr;
@@ -72,6 +93,13 @@ Expected<void> ResultTypeChecker::run() const
     return {};
 }
 
+/// @brief Emit a formatted diagnostic describing a result type mismatch.
+///
+/// Wraps @ref makeError to attach function, block, and instruction context to
+/// the provided message.
+///
+/// @param message Human-readable description of the failure.
+/// @return Diagnostic encapsulated in an @ref Expected failure.
 Expected<void> ResultTypeChecker::report(std::string_view message) const
 {
     return Expected<void>{makeError(ctx_.instr.loc, formatInstrDiag(ctx_.fn, ctx_.block, ctx_.instr, message))};

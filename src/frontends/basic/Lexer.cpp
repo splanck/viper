@@ -1,11 +1,17 @@
-// File: src/frontends/basic/Lexer.cpp
-// Purpose: Implements lexical analysis for BASIC source with line-aware scanning
-//          and comment skipping.
-// Key invariants: pos_ indexes into src_; line_ and column_ reflect the current
-//                 character position.
-// Ownership/Lifetime: Lexer borrows the source buffer; caller retains
-//                     ownership.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the lexical analyzer for the BASIC front end.  The lexer performs
+// line-aware scanning, skips comments introduced by either apostrophes or the
+// REM keyword, and normalizes identifiers for keyword lookup.  Diagnostic
+// locations track the originating file, line, and column so later compilation
+// stages can report precise errors.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lexer.hpp"
 #include <array>
@@ -19,12 +25,14 @@ namespace il::frontends::basic
 
 namespace
 {
+/// @brief Mapping entry pairing a keyword lexeme with its token kind.
 struct KeywordEntry
-{
+{ 
     std::string_view lexeme;
     TokenKind kind;
 };
 
+/// @brief Canonical table of reserved BASIC keywords used for lookup.
 constexpr std::array<KeywordEntry, 66> kKeywordTable{{
     {"ABS", TokenKind::KeywordAbs},
     {"AND", TokenKind::KeywordAnd},
@@ -94,6 +102,13 @@ constexpr std::array<KeywordEntry, 66> kKeywordTable{{
     {"WRITE", TokenKind::KeywordWrite},
 }};
 
+/// @brief Confirm at compile time that the keyword table is lexicographically sorted.
+///
+/// Binary search assumes the table ordering matches std::less semantics.  The
+/// check runs in a constexpr context so the static_assert below fails during
+/// compilation if a new entry is inserted out of order.
+///
+/// @return True when every keyword lexeme is strictly less than the next entry.
 constexpr bool isKeywordTableSorted()
 {
     for (std::size_t i = 1; i < kKeywordTable.size(); ++i)
@@ -106,6 +121,15 @@ constexpr bool isKeywordTableSorted()
 
 static_assert(isKeywordTableSorted(), "Keyword table must be sorted lexicographically");
 
+/// @brief Perform a binary search over @ref kKeywordTable to classify identifiers.
+///
+/// The search compares an upper-cased identifier to the keyword table.  When a
+/// match is found the corresponding keyword token kind is returned; otherwise
+/// the identifier token kind is produced so callers can continue treating the
+/// lexeme as a user-defined name.
+///
+/// @param lexeme Upper-cased identifier to compare against the keyword table.
+/// @return Keyword token kind when matched, otherwise TokenKind::Identifier.
 TokenKind lookupKeyword(std::string_view lexeme)
 {
     auto first = kKeywordTable.begin();

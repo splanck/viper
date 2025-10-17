@@ -1,8 +1,17 @@
-// File: src/vm/VMInit.cpp
-// Purpose: Implements VM construction and execution state preparation routines.
-// Key invariants: Ensures frames and execution state are initialised consistently.
-// Ownership/Lifetime: VM retains references to module functions and runtime strings.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements VM construction and execution-state preparation.  The helpers in
+// this file derive runtime configuration from environment variables, cache
+// module-level lookups, and build the frame state that feeds the interpreter
+// loop.  They ensure locale-dependent formatting remains stable and that
+// debugger hooks are ready before execution begins.
+//
+//===----------------------------------------------------------------------===//
 
 #include "vm/VM.hpp"
 #include "vm/Marshal.hpp"
@@ -31,16 +40,29 @@ namespace il::vm
 namespace
 {
 
+/// @brief Helper that forces the numeric locale to the portable "C" locale.
+///
+/// Initialising this struct once at static startup prevents locale-dependent
+/// formatting from affecting diagnostic or tracing output.  The constructor is
+/// intentionally trivial so it can participate in constant initialization.
 struct NumericLocaleInitializer
-{
+{ 
+    /// @brief Construct the initializer and switch the numeric locale.
     NumericLocaleInitializer()
     {
         std::setlocale(LC_NUMERIC, "C");
     }
 };
 
+/// @brief Instance that ensures numeric locale normalization occurs exactly once.
 [[maybe_unused]] const NumericLocaleInitializer kNumericLocaleInitializer{};
 
+/// @brief Determine whether verbose VM logging is enabled via environment flag.
+///
+/// The helper reads @c VIPER_DEBUG_VM lazily and caches the result for the
+/// remainder of the process so subsequent calls avoid touching the environment.
+///
+/// @return True when debugging logs should be emitted; otherwise false.
 bool isVmDebugLoggingEnabled()
 {
     static const bool enabled = [] {
@@ -51,6 +73,13 @@ bool isVmDebugLoggingEnabled()
     return enabled;
 }
 
+/// @brief Convert a dispatch strategy enum into a printable string.
+///
+/// Used purely for debugging output to explain which dispatch loop variant the
+/// VM selected for the current configuration.
+///
+/// @param kind Dispatch strategy enumeration value.
+/// @return Null-terminated name of the dispatch kind.
 const char *dispatchKindName(VM::DispatchKind kind)
 {
     switch (kind)
@@ -67,7 +96,8 @@ const char *dispatchKindName(VM::DispatchKind kind)
 
 } // namespace
 
-/// Construct a VM instance bound to a specific IL @p Module.
+/// @brief Construct a VM instance bound to a specific IL @p Module.
+///
 /// The constructor wires the tracing and debugging subsystems and pre-populates
 /// lookup tables for functions and runtime strings.
 ///
@@ -150,7 +180,7 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
         strMap[g.name] = toViperString(g.init);
 }
 
-/// Initialise a fresh @c Frame for executing function @p fn.
+/// @brief Initialise a fresh @c Frame for executing function @p fn.
 ///
 /// Populates a basic-block lookup table, selects the entry block and seeds the
 /// register file and any entry parameters. This prepares state for the main
@@ -202,7 +232,7 @@ Frame VM::setupFrame(const Function &fn,
     return fr;
 }
 
-/// Create an initial execution state for running @p fn.
+/// @brief Create an initial execution state for running @p fn.
 ///
 /// This sets up the frame and block map via @c setupFrame, resets debugging
 /// state, and initialises the instruction pointer and stepping flags.

@@ -1,11 +1,17 @@
-// File: src/frontends/basic/builtins/MathBuiltins.cpp
-// Purpose: Implements registration helpers for BASIC math builtins, supplying
-//          metadata consumed by semantic analysis and lowering.
-// Key invariants: Registration populates tables using enum ordinals without
-//                 reallocating storage.
-// Ownership/Lifetime: Tables are owned by the registry; this unit only mutates
-//                     spans passed by the caller.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Provides the registration helpers that populate metadata tables for BASIC's
+// math builtins.  The helpers describe each builtin's textual name, semantic
+// analyzer hook, scanning behaviour, lowering rules, and runtime feature usage.
+// They write directly into spans owned by the builtin registry, keeping the
+// data centralized for later compilation stages.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/builtins/MathBuiltins.hpp"
 
@@ -17,6 +23,14 @@ namespace
 {
 using B = BuiltinCallExpr::Builtin;
 
+/// @brief Convert a builtin enumeration value to its table index.
+///
+/// All builtin metadata arrays are indexed directly by the enumeration ordinal
+/// of @ref BuiltinCallExpr::Builtin.  This helper performs the cast once so the
+/// intent remains clear at the call sites.
+///
+/// @param b Builtin enumeration value.
+/// @return Array index corresponding to @p b.
 constexpr std::size_t idx(B b) noexcept
 {
     return static_cast<std::size_t>(b);
@@ -24,6 +38,14 @@ constexpr std::size_t idx(B b) noexcept
 
 } // namespace
 
+/// @brief Populate builtin name and semantic analyzer callback metadata.
+///
+/// Each entry supplies the BASIC-visible name of the builtin along with an
+/// optional semantic analyzer hook used to customize argument validation.  The
+/// caller provides a span sized to the total builtin count so entries are
+/// written in-place without reallocations.
+///
+/// @param infos Mutable span receiving builtin information records.
 void registerMathBuiltinInfos(std::span<BuiltinInfo> infos)
 {
     infos[idx(B::Int)] = {"INT", nullptr};
@@ -39,6 +61,14 @@ void registerMathBuiltinInfos(std::span<BuiltinInfo> infos)
     infos[idx(B::Rnd)] = {"RND", nullptr};
 }
 
+/// @brief Describe how the parser scans arguments and runtime features for each math builtin.
+///
+/// The scan rules determine argument traversal order, result type behaviour,
+/// and which runtime features must be tracked when the builtin appears.  This
+/// information allows later passes to enforce feature availability and to
+/// normalize argument types prior to lowering.
+///
+/// @param rules Mutable span populated with scan-time rules per builtin.
 void registerMathBuiltinScanRules(std::span<BuiltinScanRule> rules)
 {
     using ResultSpec = BuiltinScanRule::ResultSpec;
@@ -171,6 +201,14 @@ void registerMathBuiltinScanRules(std::span<BuiltinScanRule> rules)
     };
 }
 
+/// @brief Install lowering strategies that translate math builtins into IL operations.
+///
+/// The lowering rules describe which runtime functions to invoke, how to
+/// transform arguments before the call, and which result type metadata to
+/// propagate.  Lowering uses this table to generate consistent IL for builtin
+/// invocations across the language.
+///
+/// @param rules Mutable span populated with lowering rules per builtin.
 void registerMathBuiltinLoweringRules(std::span<BuiltinLoweringRule> rules)
 {
     using LowerRule = BuiltinLoweringRule;

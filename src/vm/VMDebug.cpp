@@ -1,8 +1,16 @@
-// File: src/vm/VMDebug.cpp
-// Purpose: Implements debugging helpers for VM breakpoint and step handling.
-// Key invariants: Debug hooks respect configured breakpoints and step limits.
-// Ownership/Lifetime: Operates on VM-owned frames without assuming external lifetime.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the runtime debugging helpers that honour breakpoints, step
+// limits, and scripted debug sessions within the VM.  The routines integrate
+// with @ref DebugCtrl, @ref DebugScript, and the interpreter loop to pause and
+// resume execution while keeping frame state coherent.
+//
+//===----------------------------------------------------------------------===//
 
 #include "vm/VM.hpp"
 #include "vm/OpHandlerUtils.hpp"

@@ -1,8 +1,18 @@
-// File: src/frontends/basic/SelectCaseLowering.cpp
-// Purpose: Implements the SelectCaseLowering helper for BASIC frontend lowering.
-// Key invariants: Respects Lowerer block allocation and terminator rules.
-// Ownership/Lifetime: Borrows Lowerer state; does not allocate persistent memory.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the SelectCaseLowering helper responsible for translating BASIC
+// `SELECT CASE` statements into the IL builder operations driven by
+// `Lowerer`.  The lowering process creates dedicated basic blocks for each
+// arm, emits guard conditions for relational and range clauses, and builds the
+// jump table used by the IL switch opcode.  The helper borrows all lowering
+// state from `Lowerer` and therefore never owns the generated IR.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/SelectCaseLowering.hpp"
 
@@ -15,8 +25,26 @@
 namespace il::frontends::basic
 {
 
+/// @brief Bind the lowering helper to the surrounding BASIC @ref Lowerer state.
+///
+/// The helper stores a reference to the caller's @ref Lowerer so that all IR
+/// mutations, mangling decisions, and diagnostic locations route through the
+/// owning lowering context.  No additional initialization is required.
+///
+/// @param lowerer Parent lowering context that remains valid for the helper
+///                lifetime.
 SelectCaseLowering::SelectCaseLowering(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
 
+/// @brief Lower a high-level BASIC SELECT CASE statement into IL control flow.
+///
+/// The method first lowers the selector expression and determines whether it
+/// yields a string or numeric value.  It then prepares the necessary blocks,
+/// dispatches to specialized lowering for string or numeric arms, and finally
+/// emits the body of each case arm plus the optional CASE ELSE.  Control is
+/// redirected to a shared end block so subsequent statements continue in a
+/// single location.
+///
+/// @param stmt Parsed SELECT CASE AST node to lower.
 void SelectCaseLowering::lower(const SelectCaseStmt &stmt)
 {
     if (!stmt.selector)
@@ -90,6 +118,18 @@ void SelectCaseLowering::lower(const SelectCaseStmt &stmt)
     ctx.setCurrent(endBlk);
 }
 
+/// @brief Allocate and name the basic blocks that form the SELECT CASE control flow.
+///
+/// The helper adds blocks for each arm body, an optional CASE ELSE block, an
+/// optional dispatch block (used when range or relational checks precede the
+/// switch), and a shared end block.  Existing builder state remains untouched
+/// except for adding blocks to the current function and updating the current
+/// block pointer to the pre-existing entry.
+///
+/// @param stmt         Parsed statement providing arm counts and ranges.
+/// @param hasCaseElse  True when the statement includes a CASE ELSE body.
+/// @param needsDispatch True when numeric lowering requires a separate dispatch block.
+/// @return Structure containing indices of the allocated blocks for later use.
 SelectCaseLowering::Blocks SelectCaseLowering::prepareBlocks(const SelectCaseStmt &stmt,
                                                              bool hasCaseElse,
                                                              bool needsDispatch)
@@ -146,6 +186,16 @@ SelectCaseLowering::Blocks SelectCaseLowering::prepareBlocks(const SelectCaseStm
     return blocks;
 }
 
+/// @brief Emit string comparisons for SELECT CASE arms guarded by string labels.
+///
+/// Each string label becomes a comparison against the lowered selector value.
+/// Comparisons short-circuit into the associated arm block and fall through to
+/// subsequent checks when they fail.  When no comparisons are needed the helper
+/// branches directly to the default block.
+///
+/// @param stmt            Original SELECT CASE AST providing arm labels.
+/// @param blocks          Pre-allocated block indices used for control flow.
+/// @param stringSelector  Lowered selector value in string form.
 void SelectCaseLowering::lowerStringArms(const SelectCaseStmt &stmt,
                                          const Blocks &blocks,
                                          il::core::Value stringSelector)
@@ -234,6 +284,19 @@ void SelectCaseLowering::lowerStringArms(const SelectCaseStmt &stmt,
     ctx.setCurrent(&ctx.function()->blocks[checkIdx]);
 }
 
+/// @brief Lower numeric SELECT CASE arms by combining relational checks, ranges, and switch dispatch.
+///
+/// The method gathers relational and range predicates from each arm, emits the
+/// corresponding comparisons, and finally constructs the integer switch jump
+/// table.  Range checks are optional; when absent the dispatch block reuses the
+/// current block to avoid unnecessary jumps.
+///
+/// @param stmt             SELECT CASE AST providing label and predicate data.
+/// @param blocks           Control-flow block bookkeeping from @ref prepareBlocks.
+/// @param selWide          Selector widened to i64 for range comparisons.
+/// @param selector         Selector narrowed to i32 for switch dispatch.
+/// @param hasRanges        Indicates whether any arms use range predicates.
+/// @param totalRangeCount  Total number of range predicates across all arms.
 void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
                                               const Blocks &blocks,
                                               il::core::Value selWide,
@@ -270,6 +333,17 @@ void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
     emitSwitchJumpTable(stmt, blocks, selector, state);
 }
 
+/// @brief Emit per-arm relational comparisons prior to range or switch evaluation.
+///
+/// Each relational predicate becomes its own basic block that branches to the
+/// corresponding arm on success or falls through to the next predicate.  The
+/// helper records the final block index so subsequent lowering stages know
+/// where to append additional checks.
+///
+/// @param stmt   Statement describing relational predicates for each arm.
+/// @param blocks Control-flow bookkeeping for arm block indices.
+/// @param selWide Selector widened to i64 for comparisons.
+/// @param state  Mutable dispatch state tracking predicate ordering.
 void SelectCaseLowering::emitRelationalChecks(const SelectCaseStmt &stmt,
                                               const Blocks &blocks,
                                               il::core::Value selWide,
@@ -328,6 +402,16 @@ void SelectCaseLowering::emitRelationalChecks(const SelectCaseStmt &stmt,
     ctx.setCurrent(&ctx.function()->blocks[state.afterRelIdx]);
 }
 
+/// @brief Generate inclusive range comparisons for SELECT CASE numeric arms.
+///
+/// Range predicates chain together using freshly created blocks so that each
+/// range either branches into its arm or advances to the next predicate.  When
+/// no ranges exist the helper simply redirects control to the switch block.
+///
+/// @param stmt   Statement describing each range predicate.
+/// @param blocks Control-flow bookkeeping for arm targets.
+/// @param selWide Selector widened to i64 for comparisons.
+/// @param state  Mutable dispatch bookkeeping shared with other lowering steps.
 void SelectCaseLowering::emitRangeChecks(const SelectCaseStmt &stmt,
                                          const Blocks &blocks,
                                          il::core::Value selWide,
@@ -392,6 +476,17 @@ void SelectCaseLowering::emitRangeChecks(const SelectCaseStmt &stmt,
     ctx.setCurrent(&ctx.function()->blocks[state.switchIdx]);
 }
 
+/// @brief Build the integer switch instruction that dispatches to case arm blocks.
+///
+/// After relational and range checks pass control here, the jump table maps
+/// each numeric label to its arm block while defaulting to CASE ELSE or the
+/// shared end block.  Block labels are materialized lazily so the builder has
+/// concrete names for every target.
+///
+/// @param stmt      Statement providing numeric case labels.
+/// @param blocks    Bookkeeping describing arm block indices.
+/// @param selector  Selector narrowed to i32 for the switch instruction.
+/// @param state     Dispatch state providing the switch block index.
 void SelectCaseLowering::emitSwitchJumpTable(const SelectCaseStmt &stmt,
                                              const Blocks &blocks,
                                              il::core::Value selector,
@@ -446,6 +541,17 @@ void SelectCaseLowering::emitSwitchJumpTable(const SelectCaseStmt &stmt,
     switchBlk->terminated = true;
 }
 
+/// @brief Lower the statements contained within a single SELECT CASE arm.
+///
+/// The function iterates over the arm body, invoking the general-purpose
+/// statement lowering for each node.  When lowering leaves the current block
+/// unterminated the helper appends an unconditional branch to the shared end
+/// block, ensuring all arms converge before control continues.
+///
+/// @param body   Sequence of AST statements forming the arm body.
+/// @param entry  Entry block corresponding to the case arm.
+/// @param loc    Source location to attribute to the final branch, if needed.
+/// @param endBlk Shared continuation block for subsequent code.
 void SelectCaseLowering::emitArmBody(const std::vector<StmtPtr> &body,
                                      il::core::BasicBlock *entry,
                                      il::support::SourceLoc loc,
@@ -471,6 +577,15 @@ void SelectCaseLowering::emitArmBody(const std::vector<StmtPtr> &body,
     }
 }
 
+/// @brief Entry point on @ref Lowerer for lowering BASIC SELECT CASE statements.
+///
+/// The method instantiates a @ref SelectCaseLowering helper that encapsulates
+/// the multi-step lowering algorithm and forwards the AST node to it.  Keeping
+/// the implementation out-of-line avoids exposing the helper details in the
+/// header and keeps `Lowerer` focused on dispatching to specialized lowering
+/// logic.
+///
+/// @param stmt SELECT CASE node to translate into IL control flow.
 void Lowerer::lowerSelectCase(const SelectCaseStmt &stmt)
 {
     SelectCaseLowering lowering(*this);

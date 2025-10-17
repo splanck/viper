@@ -1,8 +1,15 @@
-// File: src/il/verify/OperandTypeChecker.cpp
-// Purpose: Implements a helper that validates operand types against opcode metadata.
-// Key invariants: Operates on the verification context for a single instruction.
-// Ownership/Lifetime: Non-owning references to verification data structures.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the operand type checker used by the IL verifier.  The helper
+// compares operand categories from opcode metadata against inferred operand
+// types, reporting diagnostics when mismatches occur.
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/verify/OperandTypeChecker.hpp"
 
@@ -23,11 +30,25 @@ using il::core::kindToString;
 namespace il::verify::detail
 {
 
+/// @brief Construct an operand type checker for a specific verification context.
+///
+/// Stores references to the caller's verification context and opcode metadata
+/// so subsequent checks can pull type information without copying data.
+///
+/// @param ctx  Verification context describing the instruction under test.
+/// @param info Opcode metadata providing operand category expectations.
 OperandTypeChecker::OperandTypeChecker(const VerifyCtx &ctx, const il::core::OpcodeInfo &info)
     : ctx_(ctx), info_(info)
-{
+{ 
 }
 
+/// @brief Execute the operand type validation process.
+///
+/// Iterates over declared operand categories, resolves the actual operand
+/// types via @ref TypeInference, and ensures constants remain within the
+/// representable range.  A diagnostic is produced for the first mismatch.
+///
+/// @return Success when all operands satisfy the metadata requirements.
 Expected<void> OperandTypeChecker::run() const
 {
     const auto &instr = ctx_.instr;
@@ -112,6 +133,12 @@ Expected<void> OperandTypeChecker::run() const
     return {};
 }
 
+/// @brief Emit a formatted diagnostic describing an operand type mismatch.
+///
+/// Convenience helper that wraps @ref makeError with instruction context.
+///
+/// @param message Human-readable description of the mismatch.
+/// @return Diagnostic encapsulated in an @ref Expected failure.
 Expected<void> OperandTypeChecker::report(std::string_view message) const
 {
     return Expected<void>{makeError(ctx_.instr.loc, formatInstrDiag(ctx_.fn, ctx_.block, ctx_.instr, message))};
