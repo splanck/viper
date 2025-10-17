@@ -1,8 +1,14 @@
-// File: src/il/analysis/Dominators.cpp
-// Purpose: Implement dominator tree construction using the Cooper et al. algorithm.
-// Key invariants: Tree is built once per function; no incremental updates or caches.
-// Ownership/Lifetime: Relies on IL blocks owned by the caller.
-// Links: docs/dev/analysis.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the Cooper–Harvey–Kennedy dominator tree construction algorithm
+// and exposes basic queries such as dominance checks and immediate dominators.
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/analysis/Dominators.hpp"
 #include "il/analysis/CFG.hpp"

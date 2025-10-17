@@ -1,8 +1,16 @@
-// File: src/vm/VMInit.cpp
-// Purpose: Implements VM construction and execution state preparation routines.
-// Key invariants: Ensures frames and execution state are initialised consistently.
-// Ownership/Lifetime: VM retains references to module functions and runtime strings.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Defines the routines that construct VM instances and prepare execution
+// state.  This includes wiring up debug/tracing facilities, populating lookup
+// tables for functions and globals, and initialising frames prior to running a
+// function.
+//
+//===----------------------------------------------------------------------===//
 
 #include "vm/VM.hpp"
 #include "vm/Marshal.hpp"
@@ -33,6 +41,7 @@ namespace
 
 struct NumericLocaleInitializer
 {
+    /// @brief Force the C locale for numeric formatting inside the VM.
     NumericLocaleInitializer()
     {
         std::setlocale(LC_NUMERIC, "C");
@@ -41,6 +50,12 @@ struct NumericLocaleInitializer
 
 [[maybe_unused]] const NumericLocaleInitializer kNumericLocaleInitializer{};
 
+/// @brief Check the environment to determine whether verbose VM logging is enabled.
+///
+/// Reads the VIPER_DEBUG_VM flag once and caches the result so subsequent calls
+/// remain cheap.
+///
+/// @return @c true when debugging output should be emitted.
 bool isVmDebugLoggingEnabled()
 {
     static const bool enabled = [] {
@@ -51,6 +66,10 @@ bool isVmDebugLoggingEnabled()
     return enabled;
 }
 
+/// @brief Translate a dispatch strategy into a printable label.
+///
+/// @param kind Dispatch strategy currently active.
+/// @return Human-readable dispatch name used in debug logs.
 const char *dispatchKindName(VM::DispatchKind kind)
 {
     switch (kind)
@@ -67,21 +86,17 @@ const char *dispatchKindName(VM::DispatchKind kind)
 
 } // namespace
 
-/// Construct a VM instance bound to a specific IL @p Module.
-/// The constructor wires the tracing and debugging subsystems and pre-populates
-/// lookup tables for functions and runtime strings.
+/// @brief Construct a VM instance bound to a specific IL module.
+///
+/// The constructor wires tracing/debug facilities, honours environment variables
+/// controlling dispatch strategy selection, caches function/global lookups, and
+/// records debugger configuration so future executions can evaluate breakpoints.
 ///
 /// @param m   Module containing code and globals to execute. It must outlive the VM.
-/// @param tc  Trace configuration used to initialise the @c TraceSink. The contained
-///            source manager is passed to the debug controller so source locations
-///            can be reported in breaks.
-/// @param ms  Optional step limit; execution aborts after this many instructions
-///            have been retired. A value of @c 0 disables the limit.
-/// @param dbg Initial debugger control block describing active breakpoints and
-///            stepping behaviour.
-/// @param script Optional scripted debugger interaction. When provided, scripted
-///            actions drive how pauses are handled; otherwise breaks cause the VM
-///            to return a fixed slot.
+/// @param tc  Trace configuration used to initialise the @c TraceSink.
+/// @param ms  Optional step limit; @c 0 disables the limit.
+/// @param dbg Initial debugger control block describing active breakpoints.
+/// @param script Optional scripted debugger interaction controller.
 VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript *script)
     : mod(m), tracer(tc), debug(std::move(dbg)), script(script), maxSteps(ms)
 {
@@ -150,11 +165,11 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
         strMap[g.name] = toViperString(g.init);
 }
 
-/// Initialise a fresh @c Frame for executing function @p fn.
+/// @brief Initialise a fresh frame for executing @p fn.
 ///
-/// Populates a basic-block lookup table, selects the entry block and seeds the
-/// register file and any entry parameters. This prepares state for the main
-/// interpreter loop without performing any tracing.
+/// Prepares the block lookup map, seeds parameter slots, verifies the argument
+/// count, and selects the entry block so the interpreter loop can begin without
+/// additional bookkeeping.
 ///
 /// @param fn     Function to execute.
 /// @param args   Argument slots for the function's entry block.
@@ -202,10 +217,10 @@ Frame VM::setupFrame(const Function &fn,
     return fr;
 }
 
-/// Create an initial execution state for running @p fn.
+/// @brief Create an initial execution state for running @p fn.
 ///
-/// This sets up the frame and block map via @c setupFrame, resets debugging
-/// state, and initialises the instruction pointer and stepping flags.
+/// Builds the frame, primes the tracer, clears debug bookkeeping, and resets the
+/// interpreter's instruction pointer.
 ///
 /// @param fn   Function to execute.
 /// @param args Arguments passed to the function's entry block.

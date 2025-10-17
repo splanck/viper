@@ -1,9 +1,15 @@
-// File: src/il/analysis/CFG.cpp
-// Purpose: Implements minimal CFG utilities for IL blocks and functions.
-// License: MIT License. See LICENSE in the project root for details.
-// Key invariants: Successor lookups consult cached per-function label maps.
-// Ownership/Lifetime: Uses IL objects owned by the caller.
-// Links: docs/dev/analysis.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements control-flow graph utilities for IL functions, including
+// successor/predecessor queries and common block orderings.  The helpers cache
+// label lookups so repeated analyses can operate without rebuilding indexes.
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/analysis/CFG.hpp"
 #include "il/core/BasicBlock.hpp"

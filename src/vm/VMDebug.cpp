@@ -1,8 +1,16 @@
-// File: src/vm/VMDebug.cpp
-// Purpose: Implements debugging helpers for VM breakpoint and step handling.
-// Key invariants: Debug hooks respect configured breakpoints and step limits.
-// Ownership/Lifetime: Operates on VM-owned frames without assuming external lifetime.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Provides the debugging utilities responsible for breakpoint handling,
+// stepping, and block parameter propagation.  These helpers keep the
+// interpreter loop focused on opcode dispatch while consolidating debug
+// bookkeeping in a single translation unit.
+//
+//===----------------------------------------------------------------------===//
 
 #include "vm/VM.hpp"
 #include "vm/OpHandlerUtils.hpp"
@@ -22,7 +30,7 @@ using namespace il::core;
 namespace il::vm
 {
 
-/// Apply pending block parameter transfers for the given block.
+/// @brief Apply pending block parameter transfers for the given block.
 ///
 /// Any arguments staged by a predecessor terminator are copied into the frame's
 /// register file and announced to the debug controller. Parameters are cleared
@@ -58,7 +66,7 @@ void VM::transferBlockParams(Frame &fr, const BasicBlock &bb)
     }
 }
 
-/// Manage a potential debug break before or after executing an instruction.
+/// @brief Manage a potential debug break before or after executing an instruction.
 ///
 /// Checks label and source line breakpoints using @c DebugCtrl. When a break is
 /// hit the optional @c DebugScript controls stepping; otherwise a fixed slot is
@@ -107,7 +115,7 @@ std::optional<Slot> VM::handleDebugBreak(
     return std::nullopt;
 }
 
-/// Handle debugging-related bookkeeping before or after an instruction executes.
+/// @brief Handle debugging-related bookkeeping before or after an instruction executes.
 ///
 /// Enforces the global step limit, performs breakpoint checks via
 /// @c handleDebugBreak, and manages the single-step budget. When a pause is
