@@ -73,7 +73,7 @@ void SemanticAnalyzer::resolveAndTrackSymbol(std::string &name, SymbolKind kind)
         {
             if (name.back() == '$')
                 defaultType = Type::String;
-            else if (name.back() == '#')
+            else if (name.back() == '#' || name.back() == '!')
                 defaultType = Type::Float;
         }
         if (activeProcScope_)
