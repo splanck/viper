@@ -1,12 +1,25 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
 //
-// Implements the BASIC front-end name mangler.  The mangler generates stable
-// IR identifiers for compiler-generated temporaries and for BASIC block labels
-// derived from user hints.  Consolidating the logic here keeps the policy that
-// governs automatic naming away from semantic analysis so the strategy can
-// evolve without touching the rest of the pipeline.
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
 //===----------------------------------------------------------------------===//
+//
+// File: src/frontends/basic/NameMangler.cpp
+// Purpose: Implement the BASIC name mangler responsible for synthesizing stable
+//          identifiers for temporaries and lowered control-flow labels.
+// Key invariants: Generated names are deterministic and collision-free within a
+//                 compilation unit.
+// Links: docs/basic-language.md, docs/codemap/basic.md
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements helpers that produce compiler-reserved BASIC identifiers.
+/// @details The mangler is isolated so semantic analysis and lowering can share
+///          a single policy for naming blocks and temporaries.  Keeping the
+///          implementation out-of-line documents the sequencing requirements for
+///          counters and hints without polluting the public header.
 
 #include "frontends/basic/NameMangler.hpp"
 

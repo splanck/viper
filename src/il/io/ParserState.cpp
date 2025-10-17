@@ -1,12 +1,24 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
 //
-// Implements the shared state object that threads contextual information
-// through the IL parsing routines.  ParserState primarily exists to bundle a
-// mutable Module reference so that the parser can register newly discovered
-// entities without exposing global state.  The constructor lives here to keep
-// the header lightweight for users that only require forward declarations.
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
 //===----------------------------------------------------------------------===//
+//
+// File: src/il/io/ParserState.cpp
+// Purpose: Define the constructor logic for the shared ParserState object used
+//          by the textual IL parser so that the header can remain lightweight.
+// Ownership/Lifetime: ParserState keeps a reference to a caller-owned Module.
+// Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Binds parser state objects to the module they populate.
+/// @details The constructor is intentionally out-of-line to centralise the
+///          documentation around ownership semantics: parser helpers mutate the
+///          caller-provided module directly and therefore rely on the reference
+///          stored here remaining valid for the parser's lifetime.
 
 #include "il/io/ParserState.hpp"
 

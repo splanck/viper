@@ -5,12 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the top-level pass manager that collects registered passes,
-// constructs pipelines, and dispatches execution through PipelineExecutor.
-// This translation unit focuses on the orchestration logic; individual pass
-// implementations live elsewhere.
+// File: src/il/transform/PassManager.cpp
+// Purpose: Implement the orchestration layer that registers passes, manages
+//          pipelines, and invokes the executor to run them.
+// Links: docs/architecture.md#passes
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Defines the pass manager responsible for constructing and executing transformation pipelines.
+/// @details Provides registration facilities for analyses, passes, and pipelines
+///          while delegating execution to @ref PipelineExecutor.  Keeping this
+///          coordination logic isolated simplifies testing and maintenance of
+///          the transformation stack.
 
 #include "il/transform/PassManager.hpp"
 
@@ -28,9 +35,10 @@ namespace il::transform
 {
 
 /// @brief Initialise the pass manager with default analyses and settings.
-///
-/// The constructor enables verification between passes in debug builds and
-/// registers a selection of function analyses used by canonical pipelines.
+/// @details Enables verification between passes in debug builds and registers
+///          core analyses (CFG, dominator tree, and liveness) used by canonical
+///          pipelines.  The registrations install factory callbacks that lazily
+///          compute results when passes request them.
 PassManager::PassManager()
 {
 #ifndef NDEBUG
@@ -54,10 +62,10 @@ PassManager::PassManager()
 }
 
 /// @brief Register the SimplifyCFG transform in the function pass registry.
-///
-/// The helper wires up a callback that instantiates @ref SimplifyCFG and
-/// advertises preserved analyses when the pass makes no modifications.
-///
+/// @details Installs a factory that constructs @ref SimplifyCFG with the
+///          requested aggressiveness.  When the pass reports no changes the
+///          helper returns a fully preserved analysis set; otherwise analyses are
+///          invalidated so downstream passes recompute what they need.
 /// @param aggressive Whether to enable aggressive simplifications.
 void PassManager::addSimplifyCFG(bool aggressive)
 {
@@ -78,10 +86,9 @@ void PassManager::addSimplifyCFG(bool aggressive)
 }
 
 /// @brief Associate a pipeline identifier with a sequence of pass identifiers.
-///
-/// Pipelines are stored by value so later calls to @ref runPipeline can look up
-/// the configured sequence.
-///
+/// @details Stores the pipeline in an internal map keyed by @p id so later calls
+///          can retrieve it.  Pipelines are copied into the map to keep the API
+///          independent of the caller's container lifetimes.
 /// @param id Stable identifier used by tools or clients to request execution.
 /// @param pipeline Ordered list of pass identifiers.
 void PassManager::registerPipeline(const std::string &id, Pipeline pipeline)
@@ -90,7 +97,9 @@ void PassManager::registerPipeline(const std::string &id, Pipeline pipeline)
 }
 
 /// @brief Look up a previously registered pipeline definition.
-///
+/// @details Performs a map lookup and returns a pointer to the stored pipeline
+///          when found.  Unknown identifiers yield @c nullptr so callers can
+///          report missing configurations gracefully.
 /// @param id Identifier used during registration.
 /// @return Pointer to the pipeline or @c nullptr when the identifier is unknown.
 const PassManager::Pipeline *PassManager::getPipeline(const std::string &id) const
@@ -100,7 +109,8 @@ const PassManager::Pipeline *PassManager::getPipeline(const std::string &id) con
 }
 
 /// @brief Enable or disable verifier checks between pipeline passes.
-///
+/// @details Toggles the flag forwarded to @ref PipelineExecutor so debug builds
+///          can optionally verify module integrity between passes.
 /// @param enable When @c true, the executor will run the IL verifier after each
 ///               pass in debug builds.
 void PassManager::setVerifyBetweenPasses(bool enable)
@@ -109,10 +119,10 @@ void PassManager::setVerifyBetweenPasses(bool enable)
 }
 
 /// @brief Execute a specific pipeline against a module.
-///
-/// Constructs a @ref PipelineExecutor with the currently registered passes and
-/// analyses, then forwards the module to it for execution.
-///
+/// @details Constructs a @ref PipelineExecutor using the current pass and
+///          analysis registries, then invokes it with the provided pipeline.
+///          Ownership of passes remains with the executor, keeping the manager
+///          itself stateless.
 /// @param module Module undergoing transformation.
 /// @param pipeline Ordered list of pass identifiers to execute.
 void PassManager::run(core::Module &module, const Pipeline &pipeline) const
@@ -122,7 +132,9 @@ void PassManager::run(core::Module &module, const Pipeline &pipeline) const
 }
 
 /// @brief Execute a named pipeline if it exists.
-///
+/// @details Uses @ref getPipeline to retrieve the configuration and delegates to
+///          @ref run when found.  Returns false when the pipeline identifier is
+///          unknown so callers can fall back to alternative behaviours.
 /// @param module Module undergoing transformation.
 /// @param pipelineId Identifier of the desired pipeline.
 /// @return @c true when the pipeline was found and executed; otherwise @c false.

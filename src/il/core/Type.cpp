@@ -5,13 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the minimal helpers that accompany the lightweight IL type model.
-// The translation unit primarily provides human-readable rendering utilities so
-// diagnostics and text serialisers can surface type information without pulling
-// in additional headers.  Keeping these helpers out-of-line preserves a stable
-// location for future extensions without bloating the header-only API surface.
+// File: src/il/core/Type.cpp
+// Purpose: Implement the minimal helpers for rendering and constructing IL type
+//          descriptors without exposing representation details in headers.
+// Links: docs/il-guide.md#types
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Provides stringification helpers for IL type descriptors.
+/// @details Keeping the logic here allows other translation units to forward
+///          declare il::core::Type without depending on implementation details
+///          while still sharing the canonical textual rendering helpers.
 
 #include "il/core/Type.hpp"
 

@@ -5,13 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the escape decoding routine shared by IL text parsers. The helper
-// consumes canonical `\n`, `\t`, `\xNN`, and related escape sequences used in IL
-// literals and emits either the decoded text or an explanatory error message.
-// Splitting the implementation into a .cpp file allows the parsing headers to
-// stay lightweight while documenting the precise error handling behaviour.
+// File: src/il/io/StringEscape.cpp
+// Purpose: Implement string escape decoding helpers shared by IL text parsers.
+// Links: docs/il-guide.md#literals
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Defines the helpers used to decode escape sequences in textual IL.
+/// @details Separating the decoding logic keeps parser headers minimal and
+///          centralises error handling so all clients present consistent
+///          messages for malformed escape sequences.
 
 #include "il/io/StringEscape.hpp"
 
@@ -23,11 +27,10 @@ namespace il::io
 namespace
 {
 /// @brief Convert a hexadecimal digit into its numeric value.
-///
-/// Accepts ASCII digits and lowercase or uppercase alphabetic digits. Any
-/// other character yields zero; callers should validate input before relying on
-/// the result.
-///
+/// @details Accepts ASCII digits and lowercase or uppercase alphabetic digits.
+///          Any other character yields zero; callers should validate input
+///          before relying on the result because the helper performs no error
+///          reporting itself.
 /// @param c Character representing a single hexadecimal digit.
 /// @return Numeric value in the range [0, 15]; zero when @p c is not a hex
 ///         digit.
@@ -43,10 +46,8 @@ unsigned hexValue(char c)
 }
 
 /// @brief Determine whether a character is a valid hexadecimal digit.
-///
-/// Delegates to `std::isxdigit` while preserving the unsigned-char cast used to
-/// avoid undefined behaviour on negative char values.
-///
+/// @details Delegates to `std::isxdigit` while preserving the unsigned-char cast
+///          used to avoid undefined behaviour on negative char values.
 /// @param c Character to inspect.
 /// @return True when @p c is a hexadecimal digit; false otherwise.
 bool isHex(char c)
@@ -57,14 +58,11 @@ bool isHex(char c)
 } // namespace
 
 /// @brief Decode escape sequences embedded in IL string literals.
-///
-/// Walks @p input left-to-right, copying ordinary characters directly into
-/// @p output and interpreting `\\` escapes according to the IL specification.
-/// Supports C-style single-character escapes (`\n`, `\t`, `\r`, `\0`, quote and
-/// backslash) as well as `\xNN` hexadecimal escapes. When an invalid sequence is
-/// encountered the function stops, optionally reports an explanatory message via
-/// @p error, and returns false.
-///
+/// @details Walks @p input left-to-right, copying ordinary characters directly
+///          into @p output and interpreting escapes according to the IL
+///          specification.  Supports C-style single-character escapes and
+///          `\xNN` hexadecimal escapes.  Invalid sequences trigger early return
+///          with an optional explanatory message for diagnostics.
 /// @param input String view containing the escaped literal (without quotes).
 /// @param output Destination string populated with the decoded characters.
 /// @param error Optional pointer that receives an explanatory message when
