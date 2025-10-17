@@ -128,15 +128,14 @@ Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
             return slot;
         case il::core::Value::Kind::ConstStr:
         {
-            if (value.str.find('\0') == std::string::npos)
-            {
-                slot.str = rt_const_cstr(value.str.c_str());
-                return slot;
-            }
-
             auto [it, inserted] = vmInstance->inlineLiteralCache.try_emplace(value.str);
             if (inserted)
-                it->second = rt_string_from_bytes(value.str.data(), value.str.size());
+            {
+                if (value.str.find('\0') == std::string::npos)
+                    it->second = rt_const_cstr(value.str.c_str());
+                else
+                    it->second = rt_string_from_bytes(value.str.data(), value.str.size());
+            }
             slot.str = it->second;
             return slot;
         }
