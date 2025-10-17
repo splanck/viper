@@ -166,6 +166,7 @@ static int32_t rt_file_write_entry(RtFileChannelEntry *entry, const uint8_t *dat
     RtError err = RT_ERROR_NONE;
     if (!rt_file_write(&entry->file, data, len, &err))
         return (int32_t)err.kind;
+    entry->at_eof = false;
     return 0;
 }
 

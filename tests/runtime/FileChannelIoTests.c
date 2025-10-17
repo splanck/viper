@@ -9,6 +9,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 int main(void)
@@ -52,6 +53,65 @@ int main(void)
 
     int32_t close_in = rt_close_err(5);
     assert(close_in == Err_None);
+
+    int32_t open_random = rt_open_err_vstr(path, RT_F_RANDOM, 6);
+    assert(open_random == Err_None);
+
+    ViperString *random_line = NULL;
+    int32_t random_read_rc = rt_line_input_ch_err(6, &random_line);
+    assert(random_read_rc == Err_None);
+    assert(random_line != NULL);
+    rt_string_unref(random_line);
+
+    ViperString *eof_line = NULL;
+    int32_t eof_rc = rt_line_input_ch_err(6, &eof_line);
+    assert(eof_rc == Err_EOF);
+    assert(eof_line == NULL);
+
+    bool at_eof = false;
+    int32_t eof_query_rc = rt_file_channel_get_eof(6, &at_eof);
+    assert(eof_query_rc == Err_None);
+    assert(at_eof);
+
+    const char *suffix_cstr = "again";
+    size_t suffix_len = strlen(suffix_cstr);
+    ViperString *suffix = rt_const_cstr(suffix_cstr);
+    assert(suffix != NULL);
+
+    int32_t write_after_eof_rc = rt_println_ch_err(6, suffix);
+    assert(write_after_eof_rc == Err_None);
+
+    bool at_eof_after_write = true;
+    int32_t eof_after_write_rc = rt_file_channel_get_eof(6, &at_eof_after_write);
+    assert(eof_after_write_rc == Err_None);
+    assert(!at_eof_after_write);
+
+    int fd = -1;
+    int32_t channel_fd_rc = rt_file_channel_fd(6, &fd);
+    assert(channel_fd_rc == Err_None);
+    assert(fd >= 0);
+
+    off_t seek_rc = lseek(fd, -(off_t)(suffix_len + 1), SEEK_END);
+    assert(seek_rc >= 0);
+
+    ViperString *again_line = NULL;
+    int32_t read_again_rc = rt_line_input_ch_err(6, &again_line);
+    assert(read_again_rc == Err_None);
+    assert(again_line != NULL);
+    const char *again_view = rt_string_cstr(again_line);
+    assert(again_view != NULL);
+    assert(strcmp(again_view, suffix_cstr) == 0);
+    rt_string_unref(again_line);
+
+    ViperString *final_line = NULL;
+    int32_t final_eof_rc = rt_line_input_ch_err(6, &final_line);
+    assert(final_eof_rc == Err_EOF);
+    assert(final_line == NULL);
+
+    rt_string_unref(suffix);
+
+    int32_t close_random = rt_close_err(6);
+    assert(close_random == Err_None);
 
     remove(template_path);
     rt_string_unref(world);
