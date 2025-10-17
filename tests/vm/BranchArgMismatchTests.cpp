@@ -8,6 +8,7 @@
 #include "vm/VM.hpp"
 
 #include <cassert>
+#include <cerrno>
 #include <optional>
 #include <string>
 #include <sys/wait.h>
@@ -39,7 +40,15 @@ std::string captureTrap(Module &module)
     buffer[n] = '\0';
     close(fds[0]);
     int status = 0;
-    waitpid(pid, &status, 0);
+    while (true)
+    {
+        const pid_t waited = waitpid(pid, &status, 0);
+        if (waited == pid)
+            break;
+        if (waited == -1 && errno == EINTR)
+            continue;
+        assert(false && "waitpid failed");
+    }
     assert(WIFEXITED(status) && WEXITSTATUS(status) == 1);
     return std::string(buffer);
 }
