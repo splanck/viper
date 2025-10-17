@@ -66,6 +66,9 @@ viper_add_ctest(NoAssertFalseGuard
   -DVIPER_SOURCE_DIR=${CMAKE_SOURCE_DIR}
   -P ${CMAKE_SOURCE_DIR}/tests/tools/NoAssertFalseTest.cmake)
 
+add_test(NAME smoke_term_basic
+  COMMAND $<TARGET_FILE:ilc> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/term_basic.bas)
+
 viper_add_unit_support_tests()
 viper_add_il_core_tests()
 viper_add_basic_early_tests()
