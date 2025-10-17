@@ -110,8 +110,15 @@ inline void storeSlotToPtr(il::core::Type::Kind kind, void *ptr, const Slot &val
             *reinterpret_cast<double *>(ptr) = value.f64;
             break;
         case il::core::Type::Kind::Str:
-            *reinterpret_cast<rt_string *>(ptr) = value.str;
+        {
+            auto *slot = reinterpret_cast<rt_string *>(ptr);
+            rt_string current = *slot;
+            rt_str_release_maybe(current);
+            rt_string incoming = value.str;
+            rt_str_retain_maybe(incoming);
+            *slot = incoming;
             break;
+        }
         case il::core::Type::Kind::Ptr:
             *reinterpret_cast<void **>(ptr) = value.ptr;
             break;
