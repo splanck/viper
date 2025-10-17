@@ -1,18 +1,14 @@
 //===----------------------------------------------------------------------===//
-//
-// Part of the Viper project, under the MIT License.
-// See LICENSE for license information.
-//
+// MIT License. See LICENSE file in the project root for full text.
 //===----------------------------------------------------------------------===//
-//
-// Hosts the out-of-line helpers associated with il::core::Function.  At the
-// moment every routine remains inline in the header, yet keeping this
-// translation unit in the build tree documents where future functionality—such
-// as metadata attachment helpers or verification utilities—should live.  Doing
-// so also prevents churn in downstream code that already expects the file to be
-// part of the core IL library.
-//
-//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Placeholder translation unit for `il::core::Function` extensions.
+/// @details All current `Function` members are defined inline in the header, yet
+/// keeping this file in the build makes the extension point explicit for future
+/// helpers (metadata attachment, verifier glue, etc.) and prevents disruptive
+/// build churn when those helpers eventually materialise.
+
 
 #include "il/core/Function.hpp"
 

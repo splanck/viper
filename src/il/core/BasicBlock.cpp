@@ -1,12 +1,13 @@
 //===----------------------------------------------------------------------===//
 // MIT License. See LICENSE file in the project root for full text.
-//
-// This translation unit anchors out-of-line definitions for
-// il::core::BasicBlock. The class currently exposes only inline operations,
-// but keeping the dedicated implementation file in the project tree makes it
-// trivial to extend block-specific behavior without reshaping build scripts or
-// increasing header churn across the compiler.
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Stub translation unit for `il::core::BasicBlock` helpers.
+/// @details `BasicBlock` currently relies entirely on inline member definitions.
+/// The presence of this file documents the sanctioned location for future
+/// out-of-line utilities (verification hooks, metadata helpers, etc.) so build
+/// dependencies remain stable when that functionality arrives.
 
 #include "il/core/BasicBlock.hpp"
 

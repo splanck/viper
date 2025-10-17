@@ -1,8 +1,11 @@
-// File: src/il/verify/ExternVerifier.cpp
-// Purpose: Implements verification of module extern declarations and builds lookup tables.
-// Key invariants: Extern signatures remain stable during verification; duplicate names are rejected.
-// Ownership/Lifetime: Stores pointers to module-owned extern declarations.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+// MIT License. See LICENSE file in the project root for full text.
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements verification of module extern declarations.
+/// @details Builds lookup tables for extern signatures, checks duplicate
+/// declarations, and validates consistency with the runtime signature database.
 
 #include "il/verify/ExternVerifier.hpp"
 
@@ -21,6 +24,10 @@ namespace
 using il::support::Expected;
 using il::support::makeError;
 
+/// @brief Compare two extern declarations for signature equivalence.
+/// @param lhs First extern declaration.
+/// @param rhs Second extern declaration.
+/// @return @c true when return and parameter types are identical.
 bool signaturesMatch(const Extern &lhs, const Extern &rhs)
 {
     if (lhs.retType.kind != rhs.retType.kind || lhs.params.size() != rhs.params.size())
@@ -31,6 +38,10 @@ bool signaturesMatch(const Extern &lhs, const Extern &rhs)
     return true;
 }
 
+/// @brief Compare an extern declaration against a runtime signature descriptor.
+/// @param decl Extern declaration authored in IL.
+/// @param runtime Canonical runtime signature retrieved from the runtime table.
+/// @return @c true when both signatures agree on return and parameter types.
 bool signaturesMatch(const Extern &decl, const il::runtime::RuntimeSignature &runtime)
 {
     if (decl.retType.kind != runtime.retType.kind || decl.params.size() != runtime.paramTypes.size())
@@ -43,11 +54,19 @@ bool signaturesMatch(const Extern &decl, const il::runtime::RuntimeSignature &ru
 
 } // namespace
 
+/// @brief Access the interned extern declaration map.
+/// @return Reference to the map keyed by extern name.
 [[nodiscard]] const ExternVerifier::ExternMap &ExternVerifier::externs() const
 {
     return externs_;
 }
 
+/// @brief Populate the extern map and validate declarations for a module.
+/// @details Rejects duplicates, reports signature mismatches, and cross-checks
+/// definitions against known runtime signatures.
+/// @param module Module supplying extern declarations.
+/// @param sink Diagnostic sink used for structured reporting (unused currently).
+/// @return Empty success on validity; otherwise a formatted diagnostic error.
 Expected<void> ExternVerifier::run(const Module &module, DiagSink &)
 {
     externs_.clear();
