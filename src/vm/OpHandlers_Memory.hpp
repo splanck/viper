@@ -27,6 +27,32 @@ using ExecState = VMAccess::ExecState;
 
 namespace inline_impl
 {
+inline size_t minimumAlignmentFor(il::core::Type::Kind kind)
+{
+    switch (kind)
+    {
+        case il::core::Type::Kind::I1:
+            return alignof(uint8_t);
+        case il::core::Type::Kind::I16:
+            return alignof(int16_t);
+        case il::core::Type::Kind::I32:
+            return alignof(int32_t);
+        case il::core::Type::Kind::I64:
+            return alignof(int64_t);
+        case il::core::Type::Kind::F64:
+            return alignof(double);
+        case il::core::Type::Kind::Str:
+            return alignof(rt_string);
+        case il::core::Type::Kind::Ptr:
+        case il::core::Type::Kind::Error:
+        case il::core::Type::Kind::ResumeTok:
+            return alignof(void *);
+        case il::core::Type::Kind::Void:
+            return 1U;
+    }
+    return 1U;
+}
+
 inline Slot loadSlotFromPtr(il::core::Type::Kind kind, void *ptr)
 {
     Slot out{};
@@ -125,6 +151,21 @@ inline VM::ExecResult handleLoadImpl(VM &vm,
         return result;
     }
 
+    const size_t alignment = inline_impl::minimumAlignmentFor(in.type.kind);
+    const uintptr_t rawPtr = reinterpret_cast<uintptr_t>(ptr);
+    if (alignment > 1U && rawPtr % alignment != 0U)
+    {
+        const std::string blockLabel = bb ? bb->label : std::string();
+        RuntimeBridge::trap(TrapKind::InvalidOperation,
+                            "misaligned load",
+                            in.loc,
+                            fr.func ? fr.func->name : std::string(),
+                            blockLabel);
+        VM::ExecResult result{};
+        result.returned = true;
+        return result;
+    }
+
     ops::storeResult(fr, in, inline_impl::loadSlotFromPtr(in.type.kind, ptr));
     return {};
 }
@@ -146,6 +187,20 @@ inline VM::ExecResult handleStoreImpl(VM &vm,
     {
         RuntimeBridge::trap(TrapKind::InvalidOperation,
                             "null store",
+                            in.loc,
+                            fr.func ? fr.func->name : std::string(),
+                            blockLabel);
+        VM::ExecResult result{};
+        result.returned = true;
+        return result;
+    }
+
+    const size_t alignment = inline_impl::minimumAlignmentFor(in.type.kind);
+    const uintptr_t rawPtr = reinterpret_cast<uintptr_t>(ptr);
+    if (alignment > 1U && rawPtr % alignment != 0U)
+    {
+        RuntimeBridge::trap(TrapKind::InvalidOperation,
+                            "misaligned store",
                             in.loc,
                             fr.func ? fr.func->name : std::string(),
                             blockLabel);
