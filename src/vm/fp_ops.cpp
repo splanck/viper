@@ -314,8 +314,31 @@ VM::ExecResult handleFptosi(VM &vm,
     (void)bb;
     (void)ip;
     Slot value = VMAccess::eval(vm, fr, in.operands[0]);
+    const double operand = value.f64;
+
+    if (!std::isfinite(operand))
+    {
+        RuntimeBridge::trap(TrapKind::InvalidCast,
+                            "invalid fp operand in fptosi",
+                            in.loc,
+                            fr.func->name,
+                            bb ? bb->label : "");
+    }
+
+    const double truncated = std::trunc(operand);
+    constexpr double kMin = static_cast<double>(std::numeric_limits<int64_t>::min());
+    constexpr double kUpperExclusive = std::ldexp(1.0, 63);
+    if (truncated < kMin || truncated >= kUpperExclusive)
+    {
+        RuntimeBridge::trap(TrapKind::Overflow,
+                            "fp overflow in fptosi",
+                            in.loc,
+                            fr.func->name,
+                            bb ? bb->label : "");
+    }
+
     Slot out{};
-    out.i64 = static_cast<int64_t>(value.f64);
+    out.i64 = static_cast<int64_t>(truncated);
     ops::storeResult(fr, in, out);
     return {};
 }
