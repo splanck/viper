@@ -30,8 +30,6 @@ namespace il::vm
 {
 
 class VMContext;
-class DispatchStrategy; ///< Forward declaration of interpreter dispatch strategy.
-
 namespace detail
 {
 struct VMAccess; ///< Forward declaration of helper granting opcode handlers internal access
@@ -39,9 +37,9 @@ namespace ops
 {
 struct OperandDispatcher; ///< Forward declaration of operand evaluation helper
 } // namespace ops
-class FnTableDispatchStrategy;
-class SwitchDispatchStrategy;
-class ThreadedDispatchStrategy;
+class FnTableDispatchDriver;
+class SwitchDispatchDriver;
+class ThreadedDispatchDriver;
 } // namespace detail
 
 /// @brief Scripted debug actions.
@@ -126,13 +124,12 @@ class VM
     };
 
     friend class VMContext; ///< Allow context helpers access to internals
-    friend class DispatchStrategy; ///< Allow dispatch strategies to access internals
-    friend class detail::FnTableDispatchStrategy;
-    friend class detail::SwitchDispatchStrategy;
-#if VIPER_THREADING_SUPPORTED
-    friend class detail::ThreadedDispatchStrategy;
-#endif
     friend struct detail::VMAccess; ///< Allow opcode handlers to access internals via helper
+    friend class detail::FnTableDispatchDriver;
+    friend class detail::SwitchDispatchDriver;
+#if VIPER_THREADING_SUPPORTED
+    friend class detail::ThreadedDispatchDriver;
+#endif
     friend struct detail::ops::OperandDispatcher; ///< Allow shared helpers to evaluate operands
     friend class RuntimeBridge; ///< Runtime bridge accesses trap formatting helpers
     friend void vm_raise(TrapKind kind, int32_t code);
@@ -243,8 +240,15 @@ class VM
     /// @brief Interpreter dispatch strategy selected at construction.
     DispatchKind dispatchKind = FnTable;
 
-    /// @brief Strategy object implementing the selected dispatch mechanism.
-    std::unique_ptr<DispatchStrategy> dispatchStrategy;
+    /// @brief Internal driver implementing the selected dispatch mechanism.
+    struct DispatchDriver;
+    struct DispatchDriverDeleter
+    {
+        void operator()(DispatchDriver *driver) const;
+    };
+    std::unique_ptr<DispatchDriver, DispatchDriverDeleter> dispatchDriver;
+
+    static std::unique_ptr<DispatchDriver, DispatchDriverDeleter> makeDispatchDriver(DispatchKind kind);
 
     /// @brief Executed instruction count.
     /// @invariant Monotonically increases during execution.
@@ -397,6 +401,22 @@ class VM
 
     /// @brief Handle a trap dispatch signal raised during interpretation.
     bool handleTrapDispatch(const TrapDispatchSignal &signal, ExecState &st);
+
+    /// @brief Reset interpreter bookkeeping for a new dispatch cycle.
+    void beginDispatch(ExecState &state);
+
+    /// @brief Select the next instruction to execute.
+    /// @param state Current execution state containing control-flow metadata.
+    /// @param instr Set to point at the instruction when available.
+    /// @return False when execution should halt, leaving @p state updated.
+    bool selectInstruction(ExecState &state, const il::core::Instr *&instr);
+
+    /// @brief Trace an instruction and account for instruction counts.
+    void traceInstruction(const il::core::Instr &instr, Frame &frame);
+
+    /// @brief Apply standard bookkeeping after executing an opcode.
+    /// @return True when the caller should stop dispatching.
+    bool finalizeDispatch(ExecState &state, const ExecResult &exec);
 
     /// @brief Fetch the next opcode for switch-based dispatch.
     il::core::Opcode fetchOpcode(ExecState &st);
