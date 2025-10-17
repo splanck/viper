@@ -99,9 +99,9 @@ static const char *rt_file_mode_string(int32_t mode)
     case RT_F_APPEND:
         return "a";
     case RT_F_BINARY:
-        return "rb+";
+        return "rbc+";
     case RT_F_RANDOM:
-        return "r+";
+        return "rc+";
     default:
         return NULL;
     }
@@ -190,12 +190,15 @@ static bool rt_file_parse_mode(const char *mode, int *flags_out)
     }
 
     bool plus = false;
+    bool create = false;
     for (const char *p = mode + 1; *p; ++p)
     {
         if (*p == '+')
             plus = true;
         else if (*p == 'b' || *p == 't')
             continue;
+        else if (*p == 'c')
+            create = true;
         else
             return false;
     }
@@ -204,6 +207,8 @@ static bool rt_file_parse_mode(const char *mode, int *flags_out)
         flags &= ~(O_RDONLY | O_WRONLY);
         flags |= O_RDWR;
     }
+    if (create)
+        flags |= O_CREAT;
     flags |= O_CLOEXEC;
     *flags_out = flags;
     return true;
