@@ -156,10 +156,6 @@ add_library(il_vm STATIC
   vm/Debug.cpp
   vm/DebugScript.cpp
   vm/Trace.cpp
-  vm/dispatch/DispatchStrategy.cpp
-  vm/dispatch/FnTableDispatch.cpp
-  vm/dispatch/SwitchDispatch.cpp
-  vm/dispatch/ThreadedDispatch.cpp
   vm/mem_ops.cpp
   vm/int_ops_arith.cpp
   vm/int_ops_cmp.cpp

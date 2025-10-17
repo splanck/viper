@@ -7,7 +7,6 @@
 #include "vm/VM.hpp"
 #include "vm/Marshal.hpp"
 #include "vm/RuntimeBridge.hpp"
-#include "vm/dispatch/DispatchStrategy.hpp"
 #include "vm/control_flow.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -136,7 +135,6 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
     }
 
     dispatchKind = selectedDispatch;
-    dispatchStrategy = createDispatchStrategy(dispatchKind);
 
     if (isVmDebugLoggingEnabled())
     {
@@ -150,18 +148,6 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
         fnMap[f.name] = &f;
     for (const auto &g : m.globals)
         strMap[g.name] = toViperString(g.init);
-}
-
-/// Release runtime string handles owned by the VM instance.
-VM::~VM()
-{
-    for (auto &entry : strMap)
-        rt_str_release_maybe(entry.second);
-    strMap.clear();
-
-    for (auto &entry : inlineLiteralCache)
-        rt_str_release_maybe(entry.second);
-    inlineLiteralCache.clear();
 }
 
 /// Initialise a fresh @c Frame for executing function @p fn.
