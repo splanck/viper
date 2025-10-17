@@ -113,6 +113,10 @@ function(viper_add_vm_unit_tests)
   target_link_libraries(test_vm_pow PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_pow test_vm_pow)
 
+  viper_add_test(test_vm_string_return_release ${_VIPER_VM_DIR}/StringReturnReleaseTests.cpp)
+  target_link_libraries(test_vm_string_return_release PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  viper_add_ctest(test_vm_string_return_release test_vm_string_return_release)
+
   viper_add_test(test_vm_dispatch_host_call ${_VIPER_VM_DIR}/DispatchHostCallTests.cpp)
   target_link_libraries(test_vm_dispatch_host_call PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_dispatch_host_call test_vm_dispatch_host_call)

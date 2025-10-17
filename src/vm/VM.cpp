@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <iostream>
 #include <string>
+#include <vector>
 
 using namespace il::core;
 
@@ -36,6 +37,51 @@ std::string opcodeMnemonic(Opcode op)
             return info.name;
     }
     return std::string("opcode#") + std::to_string(static_cast<int>(op));
+}
+
+bool isStringType(const il::core::Type &type)
+{
+    return type.kind == il::core::Type::Kind::Str;
+}
+
+void releaseFrameStrings(Frame &fr)
+{
+    if (!fr.func)
+        return;
+
+    const size_t regCount = fr.regs.size();
+    std::vector<bool> stringSlots(regCount, false);
+
+    auto markStringSlot = [&](unsigned id, const il::core::Type &type) {
+        if (id < stringSlots.size() && isStringType(type))
+            stringSlots[id] = true;
+    };
+
+    for (const auto &param : fr.func->params)
+        markStringSlot(param.id, param.type);
+
+    for (const auto &block : fr.func->blocks)
+    {
+        for (const auto &param : block.params)
+            markStringSlot(param.id, param.type);
+
+        for (const auto &instr : block.instructions)
+            if (instr.result)
+                markStringSlot(*instr.result, instr.type);
+    }
+
+    for (size_t idx = 0; idx < fr.regs.size(); ++idx)
+        if (stringSlots[idx])
+            rt_str_release_maybe(fr.regs[idx].str);
+
+    for (size_t idx = 0; idx < fr.params.size(); ++idx)
+    {
+        if (idx < stringSlots.size() && stringSlots[idx] && fr.params[idx].has_value())
+        {
+            rt_str_release_maybe(fr.params[idx]->str);
+            fr.params[idx].reset();
+        }
+    }
 }
 
 } // namespace
@@ -378,6 +424,16 @@ std::unique_ptr<VM::DispatchDriver, VM::DispatchDriverDeleter> VM::makeDispatchD
 
 Slot VM::runFunctionLoop(ExecState &st)
 {
+    struct FrameCleanup
+    {
+        Frame &frame;
+        explicit FrameCleanup(Frame &fr) : frame(fr) {}
+        ~FrameCleanup()
+        {
+            releaseFrameStrings(frame);
+        }
+    } cleanup(st.fr);
+
     VMContext context(*this);
     for (;;)
     {
@@ -392,7 +448,12 @@ Slot VM::runFunctionLoop(ExecState &st)
             if (finished)
             {
                 if (st.pendingResult)
-                    return *st.pendingResult;
+                {
+                    Slot result = *st.pendingResult;
+                    if (st.fr.func && st.fr.func->retType.kind == il::core::Type::Kind::Str && result.str)
+                        rt_str_retain_maybe(result.str);
+                    return result;
+                }
                 Slot zero{};
                 zero.i64 = 0;
                 return zero;
