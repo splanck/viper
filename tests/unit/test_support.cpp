@@ -1,5 +1,6 @@
 #include "support/arena.hpp"
 #include "support/diagnostics.hpp"
+#include "support/result.hpp"
 #include "support/source_manager.hpp"
 #include "support/string_interner.hpp"
 #include <cassert>
@@ -43,5 +44,23 @@ int main()
     arena.reset();
     arena.allocate(32, 1);
     assert(arena.allocate(std::numeric_limits<size_t>::max() - 15, 1) == nullptr);
+
+    // Result<T> basic success/error flows
+    il::support::Result<int> intResult(42);
+    assert(intResult.isOk());
+    assert(intResult.value() == 42);
+
+    il::support::Result<int> intError(std::string("boom"));
+    assert(!intError.isOk());
+    assert(intError.error() == "boom");
+
+    il::support::Result<std::string> strResult("value", true);
+    assert(strResult.isOk());
+    assert(strResult.value() == "value");
+
+    il::support::Result<std::string> strError(std::string("nope"));
+    assert(!strError.isOk());
+    assert(strError.error() == "nope");
+
     return 0;
 }
