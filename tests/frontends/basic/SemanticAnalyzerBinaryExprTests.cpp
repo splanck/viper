@@ -247,6 +247,25 @@ int main()
     }
 
     {
+        const std::string src = "10 LET A! = 1\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("bang_suffix_float.bas");
+        DiagnosticEngine de;
+        DiagnosticEmitter emitter(de, sm);
+        emitter.addSource(fid, src);
+        Parser parser(src, fid, &emitter);
+        auto program = parser.parseProgram();
+        assert(program);
+
+        SemanticAnalyzer analyzer(emitter);
+        analyzer.analyze(*program);
+        assert(emitter.errorCount() == 0);
+        auto aType = analyzer.lookupVarType("A!");
+        assert(aType.has_value());
+        assert(*aType == SemanticAnalyzer::Type::Float);
+    }
+
+    {
         const std::string src = "10 LET A = 1.5\n20 END\n";
         auto result = analyzeSnippet(src);
         assert(result.errors == 0);
