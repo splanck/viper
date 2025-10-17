@@ -58,7 +58,31 @@ void SemanticAnalyzer::analyzePrint(const PrintStmt &p)
 void SemanticAnalyzer::analyzePrintCh(const PrintChStmt &p)
 {
     if (p.channelExpr)
-        visitExpr(*p.channelExpr);
+    {
+        Type channelTy = visitExpr(*p.channelExpr);
+        if (channelTy != Type::Unknown && channelTy != Type::Int)
+        {
+            std::string msg = "PRINT# channel expression must be INTEGER, got ";
+            msg += semanticTypeName(channelTy);
+            msg += '.';
+            de.emit(il::support::Severity::Error, "B2001", p.channelExpr->loc, 1, std::move(msg));
+        }
+        else if (auto *intExpr = dynamic_cast<IntExpr *>(p.channelExpr.get()))
+        {
+            long long channel = intExpr->value;
+            if (!openChannels_.count(channel))
+            {
+                std::string msg = "channel #";
+                msg += std::to_string(channel);
+                msg += " is not open";
+                de.emit(il::support::Severity::Warning,
+                        "B3002",
+                        p.channelExpr->loc,
+                        1,
+                        std::move(msg));
+            }
+        }
+    }
     for (const auto &arg : p.args)
         if (arg)
             visitExpr(*arg);

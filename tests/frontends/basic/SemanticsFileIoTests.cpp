@@ -67,5 +67,11 @@ int main()
         assert(result.output.find("error[B2001]") != std::string::npos);
     }
 
+    {
+        auto result = analyzeSnippet("10 PRINT #\"1\", 42\n20 END\n");
+        assert(result.errors == 1);
+        assert(result.output.find("error[B2001]") != std::string::npos);
+    }
+
     return 0;
 }
