@@ -504,7 +504,14 @@ void RuntimeBridge::trap(TrapKind kind,
     if (ctx.vm)
     {
         if (loc.isValid())
+        {
             ctx.vm->currentContext.loc = loc;
+            ctx.vm->runtimeContext.loc = loc;
+        }
+        else
+        {
+            ctx.vm->runtimeContext.loc = {};
+        }
         if (!fn.empty())
             ctx.vm->runtimeContext.function = fn;
         if (!block.empty())
