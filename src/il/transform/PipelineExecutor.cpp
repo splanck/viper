@@ -1,9 +1,16 @@
-// File: src/il/transform/PipelineExecutor.cpp
-// License: MIT License. See LICENSE in the project root for details.
-// Purpose: Implement the helper that executes pass pipelines and manages verification.
-// Key invariants: Analysis caches are invalidated according to preservation summaries between passes.
-// Ownership/Lifetime: Executor borrows registries and modules owned by callers; no persistent state.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the helper responsible for iterating over pass pipelines, invoking
+// registered factories, and invalidating cached analyses after each run.  The
+// executor is intentionally stateless so pass managers can construct temporary
+// instances per invocation.
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/transform/PipelineExecutor.hpp"
 
@@ -15,6 +22,12 @@
 namespace il::transform
 {
 
+/// @brief Construct an executor bound to specific pass and analysis registries.
+///
+/// @param registry Pass registry supplying factories for module/function passes.
+/// @param analysisRegistry Registry describing available analyses.
+/// @param verifyBetweenPasses Controls whether debug builds run the verifier
+///                            after each pass.
 PipelineExecutor::PipelineExecutor(const PassRegistry &registry,
                                    const AnalysisRegistry &analysisRegistry,
                                    bool verifyBetweenPasses)
@@ -22,6 +35,16 @@ PipelineExecutor::PipelineExecutor(const PassRegistry &registry,
 {
 }
 
+/// @brief Execute the supplied pipeline against the module.
+///
+/// The executor creates a fresh @ref AnalysisManager for the module, then walks
+/// the pipeline identifiers.  For each entry it materialises the requested pass
+/// via the registry, runs it, and invalidates analyses based on the preservation
+/// summary returned by the pass.  Optional verification occurs between passes in
+/// debug builds.
+///
+/// @param module Module undergoing transformation.
+/// @param pipeline Ordered list of pass identifiers.
 void PipelineExecutor::run(core::Module &module, const std::vector<std::string> &pipeline) const
 {
     AnalysisManager analysis(module, analysisRegistry_);
