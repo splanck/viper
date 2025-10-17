@@ -11,6 +11,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Parses global command-line options shared by ilc subcommands.
+/// @details Keeping this logic out of the subcommand implementations minimises
+///          duplication and ensures future options behave uniformly across the
+///          driver.
+
 #include "cli.hpp"
 
 #include <charconv>
@@ -22,12 +28,15 @@ namespace ilc
 
 /// @brief Parse an ilc global option and update the shared options structure.
 ///
-/// Recognised options include tracing (`--trace[=mode]`), stdin redirection,
-/// instruction limits, bounds checks, and trap dumping. When the option consumes
-/// an additional argument the helper advances @p index so the caller continues
-/// scanning from the next flag. Failures—such as a missing argument or malformed
-/// numeric value—return @ref SharedOptionParseResult::Error so the caller can
-/// surface usage information.
+/// @details Recognised options include tracing (`--trace[=mode]`), stdin
+///          redirection, instruction limits, bounds checks, and trap dumping.
+///          When the option consumes an additional argument the helper advances
+///          @p index so the caller continues scanning from the next flag.
+///          Failures—such as a missing argument or malformed numeric value—
+///          return @ref SharedOptionParseResult::Error so the caller can surface
+///          usage information.  Options that do not match are reported as
+///          @ref SharedOptionParseResult::NotMatched, allowing subcommands to
+///          parse their own flags.
 ///
 /// @param index Current position in the argv array; advanced when extra tokens
 ///        are consumed (for example by `--stdin-from` or `--max-steps`).

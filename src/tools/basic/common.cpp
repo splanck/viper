@@ -12,6 +12,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Contains reusable BASIC tool helpers for argument handling and I/O.
+/// @details Each BASIC developer tool links this translation unit so they can
+///          share usage text, file loading, and diagnostic messaging.
+
 #include "tools/basic/common.hpp"
 
 #include "support/source_manager.hpp"
@@ -35,11 +40,12 @@ constexpr const char *kUsageMessage = VIPER_BASIC_TOOL_USAGE;
 
 /// @brief Load a BASIC source file and register it with a SourceManager.
 ///
-/// The helper validates the provided command-line argument, prints usage text
-/// when the argument is missing, and attempts to read the requested file into
-/// @p buffer. Successfully loaded files are registered with the supplied source
-/// manager so downstream lexer or parser stages can resolve diagnostics back to
-/// the original path.
+/// @details The helper validates the provided command-line argument, prints
+///          usage text when the argument is missing, and attempts to read the
+///          requested file into @p buffer. Successfully loaded files are
+///          registered with the supplied source manager so downstream lexer or
+///          parser stages can resolve diagnostics back to the original path.
+///          Failures leave @p buffer untouched so callers can reuse it.
 ///
 /// @param path Filesystem path provided on the command line.
 /// @param buffer Destination string that receives the file contents on success.

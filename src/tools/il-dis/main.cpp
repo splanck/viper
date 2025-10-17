@@ -14,22 +14,28 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Demonstrates constructing and serializing IL programmatically.
+/// @details The sample intentionally avoids file I/O to focus purely on the
+///          IL-building workflow.  It serves as both developer documentation and
+///          a smoke test for the builder/serializer stack.
+
 #include "il/build/IRBuilder.hpp"
 #include "il/io/Serializer.hpp"
 #include <iostream>
 
 /// @brief Emit IL for a fixed "hello world" style program.
 ///
-/// Control flow proceeds as follows:
-///   1. Instantiate a module and IRBuilder.
-///   2. Declare the runtime print intrinsic and a global string literal.
-///   3. Create @c main, append an entry block, and populate it with call/return
-///      instructions.
-///   4. Serialize the resulting module to stdout via @ref il::io::Serializer.
-///
-/// No arguments are consumed; the function always emits the same program and
-/// returns zero unless serialization throws (which it does not in the current
-/// API).
+/// @details Control flow proceeds as follows:
+///          1. Instantiate a module and `IRBuilder`.
+///          2. Declare the runtime print intrinsic and a global string literal.
+///          3. Create @c main, append an entry block, and populate it with
+///             call/return instructions.
+///          4. Serialize the resulting module to stdout via
+///             @ref il::io::Serializer.
+///          No arguments are consumed; the function always emits the same
+///          program and returns zero unless serialization throws (which it does
+///          not in the current API).
 ///
 /// @return Zero after printing the serialized module to stdout.
 int main()
