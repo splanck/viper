@@ -253,6 +253,10 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
 
     void after(const ClsStmt &)
     {
+        // IMPORTANT: Externs for runtime helpers are emitted between scan and emit.
+        // If we only request helpers during emission, the verifier can see 'call'
+        // to an undeclared callee. Therefore, mark terminal helpers as required
+        // here in scan().
         // CLS needs terminal clear helper available at declareRequiredRuntime().
         lowerer_.requestHelper(il::runtime::RuntimeFeature::TermCls);
     }
@@ -261,7 +265,10 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
     {
         discardIf(stmt.bg != nullptr);
         discardIf(stmt.fg != nullptr);
-        // Ensure terminal color helper is declared up front.
+        // IMPORTANT: Externs for runtime helpers are emitted between scan and emit.
+        // If we only request helpers during emission, the verifier can see 'call'
+        // to an undeclared callee. Therefore, mark terminal helpers as required
+        // here in scan(). Ensure terminal color helper is declared up front.
         lowerer_.requestHelper(il::runtime::RuntimeFeature::TermColor);
     }
 
@@ -269,7 +276,10 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
     {
         discardIf(stmt.col != nullptr);
         discardIf(stmt.row != nullptr);
-        // Ensure cursor locate helper is declared up front.
+        // IMPORTANT: Externs for runtime helpers are emitted between scan and emit.
+        // If we only request helpers during emission, the verifier can see 'call'
+        // to an undeclared callee. Therefore, mark terminal helpers as required
+        // here in scan(). Ensure cursor locate helper is declared up front.
         lowerer_.requestHelper(il::runtime::RuntimeFeature::TermLocate);
     }
 
