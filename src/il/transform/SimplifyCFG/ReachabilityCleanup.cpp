@@ -1,9 +1,20 @@
-// File: src/il/transform/SimplifyCFG/ReachabilityCleanup.cpp
-// License: MIT (see LICENSE for details).
-// Purpose: Implements reachability-based cleanup for SimplifyCFG.
-// Key invariants: Conservatively removes only unreachable and EH-insensitive blocks.
-// Ownership/Lifetime: Updates successor lists and prunes blocks in place.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements reachability analysis and cleanup utilities used by the SimplifyCFG
+// pass to prune unreachable blocks.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Reachability-based cleanup helpers for SimplifyCFG.
+/// @details Provides graph traversal routines and block-pruning helpers that
+///          remove unreachable blocks while respecting exception-handling
+///          structure.
 
 #include "il/transform/SimplifyCFG/ReachabilityCleanup.hpp"
 
@@ -23,6 +34,12 @@ namespace il::transform::simplify_cfg
 namespace
 {
 
+/// @brief Compute the set of blocks reachable from the entry block.
+/// @details Performs a breadth-first traversal following branch labels while
+///          respecting exception-handling terminators.  Returns a bit vector
+///          marking every block visited.
+/// @param function Function whose blocks should be analysed.
+/// @return Bit vector with bits set for reachable block indices.
 BitVector markReachable(il::core::Function &function)
 {
     BitVector reachable(function.blocks.size(), false);
@@ -77,6 +94,12 @@ BitVector markReachable(il::core::Function &function)
 
 } // namespace
 
+/// @brief Remove blocks that are not reachable according to @ref markReachable.
+/// @details Iterates unreachable blocks in reverse order, skipping those marked
+///          as EH-sensitive, updates branch targets to drop references to deleted
+///          blocks, erases the blocks, and updates statistics/logging hooks.
+/// @param ctx Pass context providing function, EH sensitivity checks, and stats.
+/// @return True when any block was removed.
 bool removeUnreachableBlocks(SimplifyCFG::SimplifyCFGPassContext &ctx)
 {
     il::core::Function &F = ctx.function;

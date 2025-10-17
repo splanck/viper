@@ -1,9 +1,22 @@
-// File: src/frontends/basic/ScopeTracker.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Implements lexical scope tracking with name mangling for the BASIC front end.
-// Key invariants: Scopes form a stack; resolving searches innermost to outermost.
-// Ownership/Lifetime: Owned by SemanticAnalyzer; no AST ownership.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the scope-tracking utility used by the BASIC semantic analyser to
+// resolve symbols and generate unique mangled identifiers.  The tracker maintains
+// a stack of hash tables keyed by source names and maps them to unique IR-level
+// identifiers.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Lexical scope tracking utilities for the BASIC front end.
+/// @details Provides RAII helpers for entering/leaving scopes, routines for
+///          declaring locals, and lookup helpers that search from innermost to
+///          outermost scope while preserving mangled names.
 
 #include "frontends/basic/ScopeTracker.hpp"
 
@@ -11,18 +24,25 @@ namespace il::frontends::basic
 {
 
 /// @brief Enter a new lexical scope and automatically pop it on destruction.
+/// @details The guard pushes a fresh scope during construction and pops it when
+///          leaving scope, making it easy to model nested blocks with
+///          exception-safe semantics.
 ScopeTracker::ScopedScope::ScopedScope(ScopeTracker &st) : st_(st)
 {
     st_.pushScope();
 }
 
 /// @brief Pop the active scope when the guard is destroyed.
+/// @details Ensures the scope pushed in the constructor is removed, restoring
+///          the previous lookup environment.
 ScopeTracker::ScopedScope::~ScopedScope()
 {
     st_.popScope();
 }
 
 /// @brief Reset the tracker to an empty stack and identifier counter.
+/// @details Clears all scope tables and resets the mangling counter so the
+///          tracker can be reused for a new procedure.
 void ScopeTracker::reset()
 {
     stack_.clear();
@@ -30,12 +50,16 @@ void ScopeTracker::reset()
 }
 
 /// @brief Introduce a new empty scope on the stack.
+/// @details Appends an empty hash map to the scope vector representing a deeper
+///          lexical nesting level.
 void ScopeTracker::pushScope()
 {
     stack_.emplace_back();
 }
 
 /// @brief Remove the innermost scope when present.
+/// @details If no scope exists the call is a no-op; otherwise the most recent
+///          scope is removed to mirror exiting a block.
 void ScopeTracker::popScope()
 {
     if (!stack_.empty())
@@ -43,6 +67,9 @@ void ScopeTracker::popScope()
 }
 
 /// @brief Bind @p name to @p mapped in the current scope.
+/// @details Records the association in the innermost scope, overwriting any
+///          existing binding for @p name within that scope.  Outer scopes remain
+///          untouched.
 void ScopeTracker::bind(const std::string &name, const std::string &mapped)
 {
     if (!stack_.empty())
@@ -89,6 +116,8 @@ std::optional<std::string> ScopeTracker::resolve(const std::string &name) const
 }
 
 /// @brief Report whether any scope is currently active.
+/// @details Useful for asserting that push/pop pairs are balanced during
+///          compilation.
 bool ScopeTracker::hasScope() const
 {
     return !stack_.empty();

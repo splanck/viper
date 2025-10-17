@@ -1,9 +1,20 @@
-// File: src/frontends/basic/Intrinsics.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Define registry of BASIC intrinsic functions.
-// Key invariants: Table contents remain sorted by declaration order.
-// Ownership/Lifetime: Intrinsic descriptors are static.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Defines the static registry describing BASIC intrinsic functions.  The table
+// enumerates the supported names along with their return types and parameter
+// signatures so semantic analysis can perform quick lookups.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Registry of BASIC intrinsic descriptors.
+/// @details Provides signature constants, the canonical intrinsic table, and
+///          lookup/dumping helpers used by the semantic analyser and tooling.
 
 #include "frontends/basic/Intrinsics.hpp"
 

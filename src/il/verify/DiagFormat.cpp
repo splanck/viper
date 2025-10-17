@@ -1,9 +1,23 @@
-// File: src/il/verify/DiagFormat.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Define shared helpers for formatting IL verifier diagnostics.
-// Key invariants: Functions are pure and rely solely on immutable IL inputs.
-// Ownership/Lifetime: Callers retain ownership of IL structures; helpers copy strings.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the shared formatting helpers used when emitting verifier
+// diagnostics.  Keeping the string assembly logic here allows the verification
+// passes to remain focused on semantic checks while still providing rich,
+// contextual error messages.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Formatting helpers for verifier diagnostics.
+/// @details Exposes functions that build human-readable diagnostic prefixes for
+///          blocks and instructions.  The helpers pull identifying information
+///          (function name, block label, instruction snippet) and stitch it
+///          together in a deterministic format consumed by the CLI tools.
 
 #include "il/verify/DiagFormat.hpp"
 

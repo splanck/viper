@@ -1,12 +1,19 @@
-// File: src/frontends/basic/ConstFold_Logic.cpp
-// License: MIT License. See LICENSE in the project root for full license
-//          information.
-// Purpose: Implements logical constant folding utilities for BASIC expressions.
-// Key invariants: Helpers respect BASIC short-circuit semantics and preserve
-//                 boolean typing for folded expressions.
-// Ownership/Lifetime: Returned expressions are heap-allocated and owned by
-//                     callers.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the logical constant folding helpers used by the BASIC front end.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Logical constant-folding utilities for BASIC expressions.
+/// @details Provides functions that fold boolean expressions, including
+///          short-circuit behaviour and numeric coercions, producing new AST
+///          literal nodes where possible.
 
 #include "frontends/basic/ConstFold_Logic.hpp"
 

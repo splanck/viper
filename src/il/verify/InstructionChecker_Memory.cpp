@@ -1,8 +1,20 @@
-// File: src/il/verify/InstructionChecker_Memory.cpp
-// Purpose: Implements memory-related instruction verification helpers.
-// Key invariants: Pointer and aggregate instructions validate operand/result typing rigorously.
-// Ownership/Lifetime: Functions operate on VerifyCtx without taking ownership of referenced data.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the verifier helpers that validate memory-related instructions
+// such as alloca, load, store, and constant pointer forms.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Memory instruction verification helpers.
+/// @details Provides functions that inspect @ref VerifyCtx and ensure memory
+///          operations obey type and range rules, emitting diagnostics when they
+///          do not.
 
 #include "il/verify/InstructionCheckerShared.hpp"
 
@@ -25,6 +37,9 @@ using il::support::Severity;
 namespace
 {
 
+/// @brief Emit a non-fatal diagnostic associated with the current instruction.
+/// @param ctx Verification context providing diagnostic sink and location.
+/// @param message Warning text to append to the diagnostic.
 void emitWarning(const VerifyCtx &ctx, std::string_view message)
 {
     ctx.diags.report(Diag{Severity::Warning, formatDiag(ctx, message), ctx.instr.loc});
@@ -32,6 +47,10 @@ void emitWarning(const VerifyCtx &ctx, std::string_view message)
 
 } // namespace
 
+/// @brief Verify the semantics of the @c alloca instruction.
+/// @details Ensures the size operand exists, is i64-typed, and warns when the
+///          requested allocation is suspiciously large.  Records the result as a
+///          pointer type when validation succeeds.
 Expected<void> checkAlloca(const VerifyCtx &ctx)
 {
     if (ctx.instr.operands.empty())
@@ -53,6 +72,9 @@ Expected<void> checkAlloca(const VerifyCtx &ctx)
     return {};
 }
 
+/// @brief Verify the @c gep instruction.
+/// @details Checks operand count and records the result as a pointer type.  More
+///          advanced structural checks are deferred to future passes.
 Expected<void> checkGEP(const VerifyCtx &ctx)
 {
     if (ctx.instr.operands.size() < 2)
@@ -62,6 +84,10 @@ Expected<void> checkGEP(const VerifyCtx &ctx)
     return {};
 }
 
+/// @brief Verify the @c load instruction.
+/// @details Requires a pointer operand and records the result as the annotated
+///          instruction type, reporting diagnostics when the pointer type does
+///          not match expectations.
 Expected<void> checkLoad(const VerifyCtx &ctx)
 {
     if (ctx.instr.operands.empty())
@@ -74,6 +100,10 @@ Expected<void> checkLoad(const VerifyCtx &ctx)
     return {};
 }
 
+/// @brief Verify the @c store instruction.
+/// @details Validates pointer operand type, checks boolean stores for legal
+///          literal values, and enforces integer literal bounds based on the
+///          target type.
 Expected<void> checkStore(const VerifyCtx &ctx)
 {
     if (ctx.instr.operands.size() < 2)
@@ -110,6 +140,9 @@ Expected<void> checkStore(const VerifyCtx &ctx)
     return {};
 }
 
+/// @brief Verify the @c addr.of instruction.
+/// @details Requires a single global-address operand and records the result as a
+///          pointer type.
 Expected<void> checkAddrOf(const VerifyCtx &ctx)
 {
     if (ctx.instr.operands.size() != 1 || ctx.instr.operands[0].kind != Value::Kind::GlobalAddr)
@@ -119,6 +152,9 @@ Expected<void> checkAddrOf(const VerifyCtx &ctx)
     return {};
 }
 
+/// @brief Verify the @c const.str instruction.
+/// @details Confirms the operand references a known string global and records
+///          the result as a string type.
 Expected<void> checkConstStr(const VerifyCtx &ctx)
 {
     if (ctx.instr.operands.size() != 1 || ctx.instr.operands[0].kind != Value::Kind::GlobalAddr)
@@ -128,6 +164,10 @@ Expected<void> checkConstStr(const VerifyCtx &ctx)
     return {};
 }
 
+/// @brief Verify the @c const.null instruction.
+/// @details Normalises the result type to a pointer-like class when the
+///          annotation is absent or unsupported, then records the result for
+///          downstream passes.
 Expected<void> checkConstNull(const VerifyCtx &ctx)
 {
     Type resultType = ctx.instr.type;

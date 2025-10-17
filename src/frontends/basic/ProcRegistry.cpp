@@ -1,9 +1,20 @@
-// File: src/frontends/basic/ProcRegistry.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Implements BASIC procedure registry behaviors and diagnostics.
-// Key invariants: Registry maintains unique procedure names and signatures.
-// Ownership/Lifetime: ProcRegistry borrows SemanticDiagnostics lifetime.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the registry that tracks BASIC procedure declarations, ensuring
+// unique names and emitting diagnostics when conflicts occur.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Procedure registry implementation for the BASIC semantic analyser.
+/// @details Maintains a hash table of function/subroutine signatures and exposes
+///          helpers for registering new declarations, clearing state, and
+///          performing lookups.
 
 #include "frontends/basic/ProcRegistry.hpp"
 
@@ -17,6 +28,8 @@ namespace il::frontends::basic
 ProcRegistry::ProcRegistry(SemanticDiagnostics &d) : de(d) {}
 
 /// @brief Remove all procedures registered so far.
+/// @details Clears the internal table so a new compilation unit can start with a
+///          clean namespace.
 void ProcRegistry::clear()
 {
     procs_.clear();
@@ -92,6 +105,8 @@ void ProcRegistry::registerProcImpl(std::string_view name,
 }
 
 /// @brief Register a FUNCTION declaration with its return type and parameters.
+/// @details Constructs a @ref ProcDescriptor capturing the declaration metadata
+///          before delegating to @ref registerProcImpl.
 void ProcRegistry::registerProc(const FunctionDecl &f)
 {
     const ProcDescriptor descriptor{ProcSignature::Kind::Function,
@@ -102,6 +117,8 @@ void ProcRegistry::registerProc(const FunctionDecl &f)
 }
 
 /// @brief Register a SUB declaration with its parameter list.
+/// @details Functions similarly to @ref registerProc for functions but records a
+///          void return type.
 void ProcRegistry::registerProc(const SubDecl &s)
 {
     const ProcDescriptor descriptor{ProcSignature::Kind::Sub,
