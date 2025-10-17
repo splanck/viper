@@ -11,6 +11,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Provides the BASIC lexical dump developer utility.
+/// @details Sharing usage text and file-loading logic with the other BASIC
+///          helpers keeps the tooling suite uniform.
+
 #include "frontends/basic/Lexer.hpp"
 #include "frontends/basic/Token.hpp"
 #include "support/source_manager.hpp"
@@ -26,16 +31,16 @@ using il::tools::basic::loadBasicSource;
 
 /// @brief Tool entry point that dumps BASIC source tokens for golden tests.
 ///
-/// Control flow mirrors the other BASIC developer tools:
-///   1. Validate that a single path argument is supplied.
-///   2. Load the file via @ref il::tools::basic::loadBasicSource so diagnostics
-///      stay consistent with the rest of the toolchain.
-///   3. Run the BASIC lexer until @ref il::frontends::basic::TokenKind::EndOfFile
-///      is encountered.
-///   4. Print each token as `<line>:<column> <token-kind> [<lexeme>]`, emitting
-///      lexemes only for identifiers, literals, and strings.
-/// Any failure to load the source file results in an error message and a
-/// non-zero exit status so the calling scripts can detect the issue.
+/// @details Control flow mirrors the other BASIC developer tools:
+///          1. Validate that a single path argument is supplied.
+///          2. Load the file via @ref il::tools::basic::loadBasicSource so
+///             diagnostics stay consistent with the rest of the toolchain.
+///          3. Run the BASIC lexer until
+///             @ref il::frontends::basic::TokenKind::EndOfFile is encountered.
+///          4. Print each token as `<line>:<column> <token-kind> [<lexeme>]`,
+///             emitting lexemes only for identifiers, literals, and strings.
+///          Any failure to load the source file results in an error message and
+///          a non-zero exit status so the calling scripts can detect the issue.
 ///
 /// @param argc Argument count supplied by the C runtime.
 /// @param argv Argument vector supplied by the C runtime.

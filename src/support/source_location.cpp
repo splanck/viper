@@ -13,17 +13,26 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Implements validity queries for `SourceLoc` and `SourceRange`.
+/// @details The majority of `SourceLoc` operations are inline, but the validity
+///          predicates live out-of-line to centralise their documentation and
+///          keep translation units lightweight.  These helpers are heavily used
+///          when printing diagnostics or deciding whether to attach source
+///          locations to serialized IL entities.
+
 #include "support/source_location.hpp"
 
 namespace il::support
 {
 /// @brief Determine whether the location carries a real source attachment.
 ///
-/// SourceManager dispenses monotonically increasing identifiers for every file
-/// registered with the compiler.  The default-constructed location uses zero to
-/// mark "unknown".  By testing the stored identifier against zero, the helper
-/// distinguishes between genuine, user-authored locations and synthesized
-/// values, enabling diagnostics and serializers to elide missing information.
+/// @details SourceManager dispenses monotonically increasing identifiers for
+///          every file registered with the compiler.  The default-constructed
+///          location uses zero to mark "unknown".  By testing the stored
+///          identifier against zero, the helper distinguishes between genuine,
+///          user-authored locations and synthesized values, enabling
+///          diagnostics and serializers to elide missing information.
 ///
 /// @return True when the location originated from a tracked source file.
 bool SourceLoc::isValid() const
@@ -33,9 +42,12 @@ bool SourceLoc::isValid() const
 
 /// @brief Determine whether the range refers to a concrete span of source.
 ///
-/// The range is considered valid when both endpoints identify tracked source
-/// locations. Clients are responsible for ensuring the begin/end ordering when
-/// constructing the range.
+/// @details The range is considered valid when both endpoints identify tracked
+///          source locations. Clients are responsible for ensuring the
+///          begin/end ordering when constructing the range; this helper only
+///          checks that both endpoints came from the source manager.  It is used
+///          extensively by syntax highlighters and diagnostics to decide whether
+///          to underline spans of text.
 ///
 /// @return True when both @ref begin and @ref end carry valid file ids.
 bool SourceRange::isValid() const

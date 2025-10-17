@@ -14,6 +14,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Implements the canonical IL verifier command-line tool.
+/// @details Designed as both a developer utility and sample code, the binary
+///          wires together the parser, verifier, and diagnostic reporting in the
+///          minimal amount of code necessary to expose a user-facing CLI.
+
 #include "support/source_manager.hpp"
 #include "tools/common/module_loader.hpp"
 #include <iostream>
@@ -21,15 +27,16 @@
 
 /// @brief Entry point for the `il-verify` binary.
 ///
-/// The control flow performs the full verification pipeline:
-///   1. Handle the `--version` flag by printing the IL version banner.
-///   2. Validate the argument count and emit a usage message on mismatch.
-///   3. Parse the IL file into a module using @ref il::tools::common::loadModuleFromFile.
-///   4. Run the verifier via @ref il::tools::common::verifyModule.
-///   5. Print "OK" when verification succeeds or propagate the appropriate
-///      error status when it fails.
-/// The module and source manager are local stack objects so no persistent state
-/// is retained between invocations.
+/// @details The control flow performs the full verification pipeline:
+///          1. Handle the `--version` flag by printing the IL version banner.
+///          2. Validate the argument count and emit a usage message on mismatch.
+///          3. Parse the IL file into a module using
+///             @ref il::tools::common::loadModuleFromFile.
+///          4. Run the verifier via @ref il::tools::common::verifyModule.
+///          5. Print "OK" when verification succeeds or propagate the
+///             appropriate error status when it fails.
+///          The module and source manager are local stack objects so no
+///          persistent state is retained between invocations.
 ///
 /// @param argc Number of arguments supplied by the C runtime.
 /// @param argv Argument vector pointing at UTF-8 encoded strings.

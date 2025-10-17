@@ -12,15 +12,25 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Implements the deferred-diagnostic sink used by text-only pipelines.
+/// @details `il::support::DiagCapture` buffers formatted diagnostics in a
+///          stringstream so subsystems that historically returned `bool`
+///          success codes can surface richer error information.  These helpers
+///          provide the bridge points that turn the buffered text back into the
+///          structured `Diag` objects expected by the modern `Expected<void>`
+///          workflow.
+
 #include "support/diag_capture.hpp"
 
 namespace il::support
 {
 /// @brief Write the given diagnostic to the supplied output stream.
 ///
-/// Delegates to printDiag() so that formatting logic remains centralized.
-/// Emitting a diagnostic does not mutate the capture buffer, allowing the same
-/// capture to be reused when printing multiple times.
+/// @details Delegates to `printDiag()` so formatting logic remains centralized
+///          in a single routine.  The capture's internal buffer is not
+///          mutated, allowing tooling to reprint the same diagnostic multiple
+///          times (for example, to stderr and to a log file) without reformatting.
 ///
 /// @param out Destination stream that receives the formatted diagnostic text.
 /// @param diag Diagnostic instance to serialize.
@@ -31,9 +41,12 @@ void DiagCapture::printTo(std::ostream &out, const Diag &diag)
 
 /// @brief Convert the captured message into a Diagnostic value.
 ///
-/// The capture accumulates text in its stringstream as callers insert messages.
-/// This method packages the resulting string into an error diagnostic so the
-/// caller can propagate it using Expected<void> infrastructure.
+/// @details The capture accumulates text in its stringstream as callers insert
+///          messages.  This method packages the resulting string into an error
+///          diagnostic and returns it by value so the caller can propagate it
+///          using the `Expected<void>` infrastructure.  The internal buffer
+///          remains intact, allowing the capture to continue gathering messages
+///          for later conversions.
 ///
 /// @return Diagnostic containing a copy of the captured text.
 Diag DiagCapture::toDiag() const
