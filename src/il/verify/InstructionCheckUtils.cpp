@@ -1,8 +1,11 @@
-// File: src/il/verify/InstructionCheckUtils.cpp
-// Purpose: Implements reusable helpers shared across instruction verification routines.
-// Key invariants: Utility functions operate on fundamental IL metadata enums and kinds.
-// Ownership/Lifetime: Stateless helpers that do not manage resources.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+// MIT License. See LICENSE file in the project root for full text.
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements shared helper utilities for instruction verification.
+/// @details Provides predicates for integer range checks and type-category
+/// mapping used across the IL verifier components.
 
 #include "il/verify/InstructionCheckUtils.hpp"
 
@@ -11,6 +14,10 @@
 namespace il::verify::detail
 {
 
+/// @brief Determine whether a signed value fits within the specified integer kind.
+/// @param value Signed integer to test.
+/// @param kind Target IL integer kind.
+/// @return @c true when @p value lies within the representable range of @p kind.
 bool fitsInIntegerKind(long long value, il::core::Type::Kind kind)
 {
     switch (kind)
@@ -28,6 +35,10 @@ bool fitsInIntegerKind(long long value, il::core::Type::Kind kind)
     }
 }
 
+/// @brief Translate a type category into a concrete IL type kind.
+/// @param category Operand category derived from opcode metadata.
+/// @return Matching type kind or @c std::nullopt when the category represents a
+///         polymorphic or unsupported type.
 std::optional<il::core::Type::Kind> kindFromCategory(il::core::TypeCategory category)
 {
     using il::core::Type;
