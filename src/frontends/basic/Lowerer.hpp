@@ -13,6 +13,7 @@
 #include "il/build/IRBuilder.hpp"
 #include "il/core/Module.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
+#include "support/feature_flags.hpp"
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -128,6 +129,10 @@ class Lowerer
         std::optional<unsigned>
             arrayLengthSlot;     ///< Optional slot for array length (bounds checks).
         std::string stringLabel; ///< Cached label for deduplicated string literals.
+#if VIPER_ENABLE_OOP
+        bool isObject{false};       ///< True when symbol refers to an object instance.
+        std::string objectClass;    ///< Name of the object's class; empty when not an object.
+#endif
     };
 
   private:
@@ -144,6 +149,10 @@ class Lowerer
         Type type{Type(Type::Kind::I64)};
         bool isArray{false};
         bool isBoolean{false};
+#if VIPER_ENABLE_OOP
+        bool isObject{false};
+        std::string objectClass;
+#endif
     };
 
     /// @brief Cached signature for a user-defined procedure.
