@@ -9,6 +9,7 @@
 // Links: docs/codemap.md
 
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
+#include "support/feature_flags.hpp"
 
 #include <algorithm>
 #include <sstream>

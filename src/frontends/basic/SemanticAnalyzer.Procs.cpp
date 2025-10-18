@@ -12,6 +12,12 @@
 
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 
+#include "support/feature_flags.hpp"
+
+#if VIPER_ENABLE_OOP
+#    include "frontends/basic/Semantic_OOP.hpp"
+#endif
+
 #include <algorithm>
 #include <utility>
 
@@ -252,6 +258,12 @@ void SemanticAnalyzer::analyze(const Program &prog)
     for (const auto &stmt : prog.main)
         if (stmt)
             visitStmt(*stmt);
+
+#if VIPER_ENABLE_OOP
+    static OopIndex g_oopIndex;
+    g_oopIndex.classes().clear();
+    buildOopIndex(prog, g_oopIndex, &de.emitter());
+#endif
 }
 
 const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c,
