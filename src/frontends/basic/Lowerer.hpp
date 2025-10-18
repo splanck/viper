@@ -15,6 +15,7 @@
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "support/feature_flags.hpp"
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -560,7 +561,42 @@ class Lowerer
 
     void resetSymbolState();
 
+#if VIPER_ENABLE_OOP
   public:
+    /// @brief Layout metadata for BASIC CLASS and TYPE aggregates.
+    struct ClassLayout
+    {
+        /// @brief Distinguish layout provenance.
+        enum class Kind
+        {
+            Class, ///< Layout derived from a CLASS declaration.
+            Type,  ///< Layout derived from a TYPE declaration.
+        };
+
+        /// @brief Field layout entry describing offset and storage size.
+        struct Field
+        {
+            std::string name;      ///< Declared field identifier.
+            Type type{Type::I64};  ///< Declared BASIC type for the field.
+            std::size_t offset{0}; ///< Byte offset relative to the aggregate base.
+            std::size_t size{0};   ///< Field storage size in bytes.
+        };
+
+        std::string name; ///< Aggregate identifier.
+        Kind kind{Kind::Class}; ///< Origin of the layout data.
+        std::optional<std::size_t> classId; ///< Sequential class identifier when @ref kind is Class.
+        std::size_t size{0}; ///< Total aggregate size rounded up to alignment.
+        std::vector<Field> fields; ///< Ordered field layout entries.
+    };
+
+  private:
+    void scanOOP(const Program &prog);
+    std::unordered_map<std::string, ClassLayout> classLayouts_;
+
+  public:
+#else
+  public:
+#endif
     /// @brief Lookup a cached procedure signature by BASIC name.
     /// @return Pointer to the signature when present, nullptr otherwise.
     const ProcedureSignature *findProcSignature(const std::string &name) const;
