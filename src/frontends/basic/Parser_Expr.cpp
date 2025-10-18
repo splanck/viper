@@ -436,20 +436,26 @@ ExprPtr Parser::parseArrayOrVar()
 /// @return Parsed primary expression node, never null.
 ExprPtr Parser::parsePrimary()
 {
+    ExprPtr expr;
+
     if (at(TokenKind::Number))
-        return parseNumber();
-    if (at(TokenKind::String))
-        return parseString();
-    if (at(TokenKind::KeywordTrue) || at(TokenKind::KeywordFalse))
+    {
+        expr = parseNumber();
+    }
+    else if (at(TokenKind::String))
+    {
+        expr = parseString();
+    }
+    else if (at(TokenKind::KeywordTrue) || at(TokenKind::KeywordFalse))
     {
         auto b = std::make_unique<BoolExpr>();
         b->loc = peek().loc;
         b->value = at(TokenKind::KeywordTrue);
         consume();
-        return b;
+        expr = std::move(b);
     }
 #if VIPER_ENABLE_OOP
-    if (at(TokenKind::KeywordNew))
+    else if (at(TokenKind::KeywordNew))
     {
         auto loc = peek().loc;
         consume(); // NEW
@@ -476,21 +482,21 @@ ExprPtr Parser::parsePrimary()
         }
         expect(TokenKind::RParen);
 
-        auto expr = std::make_unique<NewExpr>();
-        expr->loc = loc;
-        expr->className = std::move(className);
-        expr->args = std::move(args);
-        return expr;
+        auto newExpr = std::make_unique<NewExpr>();
+        newExpr->loc = loc;
+        newExpr->className = std::move(className);
+        newExpr->args = std::move(args);
+        expr = std::move(newExpr);
     }
-    if (at(TokenKind::KeywordMe))
+    else if (at(TokenKind::KeywordMe))
     {
-        auto expr = std::make_unique<MeExpr>();
-        expr->loc = peek().loc;
+        auto me = std::make_unique<MeExpr>();
+        me->loc = peek().loc;
         consume();
-        return expr;
+        expr = std::move(me);
     }
 #endif
-    if (at(TokenKind::KeywordLbound))
+    else if (at(TokenKind::KeywordLbound))
     {
         auto loc = peek().loc;
         consume();
@@ -503,9 +509,9 @@ ExprPtr Parser::parsePrimary()
         auto l = std::make_unique<LBoundExpr>();
         l->loc = loc;
         l->name = std::move(name);
-        return l;
+        expr = std::move(l);
     }
-    if (at(TokenKind::KeywordUbound))
+    else if (at(TokenKind::KeywordUbound))
     {
         auto loc = peek().loc;
         consume();
@@ -518,9 +524,9 @@ ExprPtr Parser::parsePrimary()
         auto u = std::make_unique<UBoundExpr>();
         u->loc = loc;
         u->name = std::move(name);
-        return u;
+        expr = std::move(u);
     }
-    if (at(TokenKind::KeywordLof))
+    else if (at(TokenKind::KeywordLof))
     {
         auto loc = peek().loc;
         consume();
@@ -533,9 +539,9 @@ ExprPtr Parser::parsePrimary()
         call->Expr::loc = loc;
         call->builtin = BuiltinCallExpr::Builtin::Lof;
         call->args.push_back(std::move(channel));
-        return call;
+        expr = std::move(call);
     }
-    if (at(TokenKind::KeywordEof))
+    else if (at(TokenKind::KeywordEof))
     {
         auto loc = peek().loc;
         consume();
@@ -548,9 +554,9 @@ ExprPtr Parser::parsePrimary()
         call->Expr::loc = loc;
         call->builtin = BuiltinCallExpr::Builtin::Eof;
         call->args.push_back(std::move(channel));
-        return call;
+        expr = std::move(call);
     }
-    if (at(TokenKind::KeywordLoc))
+    else if (at(TokenKind::KeywordLoc))
     {
         auto loc = peek().loc;
         consume();
@@ -563,30 +569,86 @@ ExprPtr Parser::parsePrimary()
         call->Expr::loc = loc;
         call->builtin = BuiltinCallExpr::Builtin::Loc;
         call->args.push_back(std::move(channel));
-        return call;
+        expr = std::move(call);
     }
-    if (!at(TokenKind::Identifier))
+    else if (!at(TokenKind::Identifier))
     {
         if (auto b = lookupBuiltin(peek().lexeme))
         {
             auto loc = peek().loc;
             consume();
-            return parseBuiltinCall(*b, loc);
+            expr = parseBuiltinCall(*b, loc);
         }
     }
-    if (at(TokenKind::Identifier))
-        return parseArrayOrVar();
-    if (at(TokenKind::LParen))
+
+    if (!expr)
+    {
+        if (at(TokenKind::Identifier))
+        {
+            expr = parseArrayOrVar();
+        }
+        else if (at(TokenKind::LParen))
+        {
+            consume();
+            expr = parseExpression();
+            expect(TokenKind::RParen);
+        }
+        else
+        {
+            auto fallback = std::make_unique<IntExpr>();
+            fallback->loc = peek().loc;
+            fallback->value = 0;
+            expr = std::move(fallback);
+        }
+    }
+
+#if VIPER_ENABLE_OOP
+    while (expr && at(TokenKind::Dot))
     {
         consume();
-        auto e = parseExpression();
-        expect(TokenKind::RParen);
-        return e;
+        Token ident = expect(TokenKind::Identifier);
+        std::string member;
+        if (ident.kind == TokenKind::Identifier)
+            member = ident.lexeme;
+
+        if (at(TokenKind::LParen))
+        {
+            expect(TokenKind::LParen);
+            std::vector<ExprPtr> args;
+            if (!at(TokenKind::RParen))
+            {
+                while (true)
+                {
+                    args.push_back(parseExpression());
+                    if (at(TokenKind::Comma))
+                    {
+                        consume();
+                        continue;
+                    }
+                    break;
+                }
+            }
+            expect(TokenKind::RParen);
+
+            auto call = std::make_unique<MethodCallExpr>();
+            call->loc = ident.loc;
+            call->base = std::move(expr);
+            call->method = std::move(member);
+            call->args = std::move(args);
+            expr = std::move(call);
+        }
+        else
+        {
+            auto access = std::make_unique<MemberAccessExpr>();
+            access->loc = ident.loc;
+            access->base = std::move(expr);
+            access->member = std::move(member);
+            expr = std::move(access);
+        }
     }
-    auto e = std::make_unique<IntExpr>();
-    e->loc = peek().loc;
-    e->value = 0;
-    return e;
+#endif
+
+    return expr;
 }
 
 } // namespace il::frontends::basic
