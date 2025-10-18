@@ -18,7 +18,6 @@ add_library(fe_basic STATIC
   Parser_Token.cpp
   StatementSequencer.cpp
   NameMangler.cpp
-  NameMangler_OOP.cpp
   TypeSuffix.cpp
   TypeRules.cpp
   LoweringContext.cpp
@@ -40,10 +39,6 @@ add_library(fe_basic STATIC
   LowerStmt_Runtime.cpp
   LowerRuntime.cpp
   LowerScan.cpp
-  Lower_OOP_Scan.cpp
-  Lower_OOP_Expr.cpp
-  Lower_OOP_Stmt.cpp
-  Lower_OOP_Emit.cpp
   LowerEmit.cpp
   SemanticAnalyzer.cpp
   SemanticAnalyzer.Procs.cpp
@@ -65,6 +60,17 @@ add_library(fe_basic STATIC
   ProcRegistry.cpp
   SemanticDiagnostics.cpp
 )
+
+if(VIPER_ENABLE_OOP)
+  target_sources(fe_basic PRIVATE
+    NameMangler_OOP.cpp
+    Semantic_OOP.cpp
+    Lower_OOP_Scan.cpp
+    Lower_OOP_Emit.cpp
+    Lower_OOP_Expr.cpp
+    Lower_OOP_Stmt.cpp
+  )
+endif()
 
 target_link_libraries(fe_basic PUBLIC viper_il_full il_build il_runtime)
 target_include_directories(fe_basic PUBLIC
