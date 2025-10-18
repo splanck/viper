@@ -137,8 +137,8 @@ class Lowerer
             arrayLengthSlot;     ///< Optional slot for array length (bounds checks).
         std::string stringLabel; ///< Cached label for deduplicated string literals.
 #if VIPER_ENABLE_OOP
-        bool isObject{false};            ///< True when symbol references an object slot.
-        std::string objectClass;         ///< Class name for object symbols; empty otherwise.
+        bool isObject{false};    ///< True when symbol references an object slot.
+        std::string objectClass; ///< Class name for object symbols; empty otherwise.
 #endif
     };
 
@@ -341,6 +341,23 @@ class Lowerer
     /// @param expr UBOUND expression node naming the array.
     /// @return Resulting value and type.
     RVal lowerUBoundExpr(const UBoundExpr &expr);
+
+#if VIPER_ENABLE_OOP
+    /// @brief Lower a NEW expression allocating a BASIC object instance.
+    RVal lowerNewExpr(const NewExpr &expr);
+
+    /// @brief Lower a ME expression referencing the implicit instance slot.
+    RVal lowerMeExpr(const MeExpr &expr);
+
+    /// @brief Lower a member access reading a field from an object instance.
+    RVal lowerMemberAccessExpr(const MemberAccessExpr &expr);
+
+    /// @brief Lower an object method invocation expression.
+    RVal lowerMethodCallExpr(const MethodCallExpr &expr);
+
+    /// @brief Lower a DELETE statement releasing an object reference.
+    void lowerDelete(const DeleteStmt &stmt);
+#endif
 
     // Shared argument helpers
     RVal coerceToI64(RVal v, il::support::SourceLoc loc);
@@ -561,6 +578,8 @@ class Lowerer
         std::unordered_map<std::string, std::size_t> fieldIndex;
         /// @brief Total storage size in bytes rounded up to the alignment requirement.
         std::size_t size{0};
+        /// @brief Stable identifier assigned during OOP scanning for runtime dispatch.
+        std::int64_t classId{0};
 
         [[nodiscard]] const Field *findField(std::string_view name) const
         {
@@ -586,6 +605,9 @@ class Lowerer
 
     /// @brief Cached layout table indexed by class or TYPE name.
     std::unordered_map<std::string, ClassLayout> classLayouts_;
+
+    /// @brief Determine the BASIC class associated with an object expression.
+    [[nodiscard]] std::string resolveObjectClass(const Expr &expr) const;
 #endif
 
   public:
