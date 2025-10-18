@@ -254,6 +254,85 @@ Type Parser::parseTypeKeyword()
     }
     return Type::I64;
 }
+#if VIPER_ENABLE_OOP
+
+StmtPtr Parser::parseTypeDecl()
+{
+    auto loc = peek().loc;
+    consume(); // TYPE
+
+    Token nameTok = expect(TokenKind::Identifier);
+
+    auto decl = std::make_unique<TypeDecl>();
+    decl->loc = loc;
+    if (nameTok.kind == TokenKind::Identifier)
+        decl->name = nameTok.lexeme;
+
+    if (at(TokenKind::EndOfLine))
+        consume();
+
+    while (!at(TokenKind::EndOfFile))
+    {
+        while (at(TokenKind::EndOfLine))
+            consume();
+
+        if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordType)
+            break;
+
+        if (at(TokenKind::Number))
+        {
+            TokenKind nextKind = peek(1).kind;
+            if (nextKind == TokenKind::Identifier ||
+                (nextKind == TokenKind::KeywordEnd && peek(2).kind == TokenKind::KeywordType))
+            {
+                consume();
+                continue;
+            }
+        }
+
+        Token fieldNameTok = expect(TokenKind::Identifier);
+        if (fieldNameTok.kind != TokenKind::Identifier)
+            break;
+
+        Token asTok = expect(TokenKind::KeywordAs);
+        if (asTok.kind != TokenKind::KeywordAs)
+            continue;
+
+        Type fieldType = Type::I64;
+        if (at(TokenKind::KeywordBoolean) || at(TokenKind::Identifier))
+        {
+            fieldType = parseTypeKeyword();
+        }
+        else
+        {
+            expect(TokenKind::Identifier);
+        }
+
+        TypeDecl::Field field;
+        field.name = fieldNameTok.lexeme;
+        field.type = fieldType;
+        decl->fields.push_back(std::move(field));
+
+        if (at(TokenKind::EndOfLine))
+            consume();
+    }
+
+    while (at(TokenKind::EndOfLine))
+        consume();
+
+    if (at(TokenKind::Number) && peek(1).kind == TokenKind::KeywordEnd &&
+        peek(2).kind == TokenKind::KeywordType)
+    {
+        consume();
+    }
+
+    expect(TokenKind::KeywordEnd);
+    expect(TokenKind::KeywordType);
+
+    return decl;
+}
+
+#endif
 
 /// @brief Parse a parenthesized parameter list.
 /// @return Vector of parameters, possibly empty if no list is present.
