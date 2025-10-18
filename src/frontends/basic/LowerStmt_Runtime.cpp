@@ -105,10 +105,8 @@ void Lowerer::assignScalarSlot(const SlotType &slotInfo,
         requestHelper(RuntimeFeature::ObjRetainMaybe);
 
         Value oldValue = emitLoad(Type(Type::Kind::Ptr), slot);
-        Value releaseResult =
-            emitCallRet(Type(Type::Kind::I32), "rt_obj_release_check0", {oldValue});
         Value shouldDestroy =
-            emitBinary(Opcode::ICmpNe, ilBoolTy(), releaseResult, Value::constInt(0));
+            emitCallRet(ilBoolTy(), "rt_obj_release_check0", {oldValue});
 
         ProcedureContext &ctx = context();
         Function *func = ctx.function();
@@ -173,6 +171,22 @@ void Lowerer::lowerLet(const LetStmt &stmt)
     {
         const auto *info = findSymbol(var->name);
         assert(info && info->slotId);
+#if VIPER_ENABLE_OOP
+        if (stmt.expr)
+        {
+            std::string className;
+            if (const auto *alloc = dynamic_cast<const NewExpr *>(stmt.expr.get()))
+            {
+                className = alloc->className;
+            }
+            else
+            {
+                className = resolveObjectClass(*stmt.expr);
+            }
+            if (!className.empty())
+                setSymbolObjectType(var->name, className);
+        }
+#endif
         SlotType slotInfo = getSlotType(var->name);
         Value slot = Value::temp(*info->slotId);
         if (slotInfo.isArray)

@@ -530,6 +530,28 @@ private:
 
     void visit(CallExpr &) override {}
 
+#if VIPER_ENABLE_OOP
+    void visit(NewExpr &expr) override
+    {
+        for (auto &arg : expr.args)
+            foldExpr(arg);
+    }
+
+    void visit(MeExpr &) override {}
+
+    void visit(MemberAccessExpr &expr) override
+    {
+        foldExpr(expr.base);
+    }
+
+    void visit(MethodCallExpr &expr) override
+    {
+        foldExpr(expr.base);
+        for (auto &arg : expr.args)
+            foldExpr(arg);
+    }
+#endif
+
     // MutStmtVisitor overrides ----------------------------------------------
     void visit(LabelStmt &) override {}
     void visit(PrintStmt &stmt) override
@@ -686,6 +708,39 @@ private:
         for (auto &child : stmt.stmts)
             foldStmt(child);
     }
+
+#if VIPER_ENABLE_OOP
+    void visit(DeleteStmt &stmt) override
+    {
+        foldExpr(stmt.target);
+    }
+
+    void visit(ConstructorDecl &stmt) override
+    {
+        for (auto &bodyStmt : stmt.body)
+            foldStmt(bodyStmt);
+    }
+
+    void visit(DestructorDecl &stmt) override
+    {
+        for (auto &bodyStmt : stmt.body)
+            foldStmt(bodyStmt);
+    }
+
+    void visit(MethodDecl &stmt) override
+    {
+        for (auto &bodyStmt : stmt.body)
+            foldStmt(bodyStmt);
+    }
+
+    void visit(ClassDecl &stmt) override
+    {
+        for (auto &member : stmt.members)
+            foldStmt(member);
+    }
+
+    void visit(TypeDecl &) override {}
+#endif
 
     ExprPtr *currentExpr_ = nullptr;
     StmtPtr *currentStmt_ = nullptr;

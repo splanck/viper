@@ -40,9 +40,8 @@ void Lowerer::lowerDelete(const DeleteStmt &stmt)
     requestHelper(RuntimeFeature::ObjReleaseChk0);
     requestHelper(RuntimeFeature::ObjFree);
 
-    Value releaseResult =
-        emitCallRet(Type(Type::Kind::I32), "rt_obj_release_check0", {target.value});
-    Value shouldDestroy = emitBinary(Opcode::ICmpNe, ilBoolTy(), releaseResult, Value::constInt(0));
+    Value shouldDestroy =
+        emitCallRet(ilBoolTy(), "rt_obj_release_check0", {target.value});
 
     ProcedureContext &ctx = context();
     Function *func = ctx.function();

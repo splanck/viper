@@ -105,24 +105,24 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
 
     void after(const NewExpr &)
     {
-        lowerer_.requestHelper(il::runtime::RuntimeFeature::ObjNew);
+        lowerer_.requestRuntimeFeature(il::runtime::RuntimeFeature::ObjNew);
     }
 
     void after(const MethodCallExpr &)
     {
         using Feature = il::runtime::RuntimeFeature;
-        lowerer_.requestHelper(Feature::ObjRetainMaybe);
-        lowerer_.requestHelper(Feature::ObjReleaseChk0);
+        lowerer_.requestRuntimeFeature(Feature::ObjRetainMaybe);
+        lowerer_.requestRuntimeFeature(Feature::ObjReleaseChk0);
     }
 
     void after(const MemberAccessExpr &)
     {
-        lowerer_.requestHelper(il::runtime::RuntimeFeature::ObjRetainMaybe);
+        lowerer_.requestRuntimeFeature(il::runtime::RuntimeFeature::ObjRetainMaybe);
     }
 
     void after(const DeleteStmt &)
     {
-        lowerer_.requestHelper(il::runtime::RuntimeFeature::ObjFree);
+        lowerer_.requestRuntimeFeature(il::runtime::RuntimeFeature::ObjFree);
     }
 
     std::vector<std::pair<std::string, Lowerer::ClassLayout>> layouts;

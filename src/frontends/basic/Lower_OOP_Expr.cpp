@@ -28,26 +28,25 @@
 #include <utility>
 #include <vector>
 
-using namespace il::core;
-
 namespace il::frontends::basic
 {
 namespace
 {
-[[nodiscard]] Type ilTypeForAstType(Lowerer::AstType ty)
+[[nodiscard]] il::core::Type ilTypeForAstType(::il::frontends::basic::Type ty)
 {
+    using IlType = il::core::Type;
     switch (ty)
     {
-        case Lowerer::AstType::I64:
-            return Type(Type::Kind::I64);
-        case Lowerer::AstType::F64:
-            return Type(Type::Kind::F64);
-        case Lowerer::AstType::Str:
-            return Type(Type::Kind::Str);
-        case Lowerer::AstType::Bool:
-            return Type(Type::Kind::I1);
+        case ::il::frontends::basic::Type::I64:
+            return IlType(IlType::Kind::I64);
+        case ::il::frontends::basic::Type::F64:
+            return IlType(IlType::Kind::F64);
+        case ::il::frontends::basic::Type::Str:
+            return IlType(IlType::Kind::Str);
+        case ::il::frontends::basic::Type::Bool:
+            return IlType(IlType::Kind::I1);
     }
-    return Type(Type::Kind::I64);
+    return IlType(IlType::Kind::I64);
 }
 } // namespace
 
