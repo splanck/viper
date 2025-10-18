@@ -18,6 +18,7 @@ add_library(fe_basic STATIC
   Parser_Token.cpp
   StatementSequencer.cpp
   NameMangler.cpp
+  NameMangler_OOP.cpp
   TypeSuffix.cpp
   TypeRules.cpp
   LoweringContext.cpp
