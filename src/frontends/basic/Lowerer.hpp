@@ -561,6 +561,27 @@ class Lowerer
         std::unordered_map<std::string, std::size_t> fieldIndex;
         /// @brief Total storage size in bytes rounded up to the alignment requirement.
         std::size_t size{0};
+        /// @brief Unique runtime class identifier used with object helpers.
+        std::int64_t classId{0};
+
+        /// @brief Parameter description for constructors and methods.
+        struct ParamInfo
+        {
+            AstType type{AstType::I64};
+            bool isArray{false};
+        };
+
+        /// @brief Signature metadata captured for class methods.
+        struct MethodInfo
+        {
+            std::vector<ParamInfo> params;
+            std::optional<AstType> retType;
+        };
+
+        /// @brief Stored constructor parameter ordering.
+        std::vector<ParamInfo> ctorParams;
+        /// @brief Method signatures indexed by method name.
+        std::unordered_map<std::string, MethodInfo> methods;
 
         [[nodiscard]] const Field *findField(std::string_view name) const
         {
@@ -584,8 +605,22 @@ class Lowerer
 
     void emitClassMethod(const ClassDecl &klass, const MethodDecl &method);
 
+    RVal lowerNewExpr(const NewExpr &expr);
+    RVal lowerMeExpr(const MeExpr &expr);
+    RVal lowerMemberAccessExpr(const MemberAccessExpr &expr);
+    RVal lowerMethodCallExpr(const MethodCallExpr &expr);
+    void lowerDelete(const DeleteStmt &stmt);
+
+    /// @brief Allocate a fresh runtime class identifier.
+    [[nodiscard]] std::int64_t allocateClassId();
+
+    /// @brief Attempt to resolve the class name associated with an expression.
+    [[nodiscard]] std::optional<std::string> resolveObjectClass(const Expr &expr) const;
+
     /// @brief Cached layout table indexed by class or TYPE name.
     std::unordered_map<std::string, ClassLayout> classLayouts_;
+    /// @brief Next runtime class identifier.
+    std::int64_t nextClassId{1};
 #endif
 
   public:

@@ -38,6 +38,8 @@ add_library(fe_basic STATIC
   LowerStmt_Control.cpp
   LowerStmt_IO.cpp
   LowerStmt_Runtime.cpp
+  Lower_OOP_Expr.cpp
+  Lower_OOP_Stmt.cpp
   LowerRuntime.cpp
   LowerScan.cpp
   Lower_OOP_Scan.cpp

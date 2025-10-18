@@ -63,6 +63,14 @@ template <typename FieldRange>
     return layout;
 }
 
+[[nodiscard]] Lowerer::ClassLayout::ParamInfo paramInfoFromParam(const Param &param)
+{
+    Lowerer::ClassLayout::ParamInfo info;
+    info.type = param.type;
+    info.isArray = param.is_array;
+    return info;
+}
+
 class OopScanWalker final : public BasicAstWalker<OopScanWalker>
 {
   public:
@@ -86,12 +94,47 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
 
     void after(const ClassDecl &decl)
     {
-        layouts.emplace_back(decl.name, buildLayout(decl.fields));
+        auto layout = buildLayout(decl.fields);
+        layout.classId = lowerer_.allocateClassId();
+        layout.ctorParams.clear();
+        for (const auto &member : decl.members)
+        {
+            if (!member)
+                continue;
+            switch (member->stmtKind())
+            {
+                case Stmt::Kind::ConstructorDecl:
+                {
+                    const auto &ctor = static_cast<const ConstructorDecl &>(*member);
+                    layout.ctorParams.clear();
+                    layout.ctorParams.reserve(ctor.params.size());
+                    for (const auto &param : ctor.params)
+                        layout.ctorParams.push_back(paramInfoFromParam(param));
+                    break;
+                }
+                case Stmt::Kind::MethodDecl:
+                {
+                    const auto &method = static_cast<const MethodDecl &>(*member);
+                    Lowerer::ClassLayout::MethodInfo info;
+                    info.params.reserve(method.params.size());
+                    for (const auto &param : method.params)
+                        info.params.push_back(paramInfoFromParam(param));
+                    if (method.ret)
+                        info.retType = method.ret;
+                    layout.methods.emplace(method.name, std::move(info));
+                    break;
+                }
+                default: break;
+            }
+        }
+        layouts.emplace_back(decl.name, std::move(layout));
     }
 
     void after(const TypeDecl &decl)
     {
-        layouts.emplace_back(decl.name, buildLayout(decl.fields));
+        auto layout = buildLayout(decl.fields);
+        layout.classId = lowerer_.allocateClassId();
+        layouts.emplace_back(decl.name, std::move(layout));
     }
 
     void after(const NewExpr &)
@@ -126,6 +169,7 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
 void Lowerer::scanOOP(const Program &prog)
 {
     classLayouts_.clear();
+    nextClassId = 1;
 
     OopScanWalker walker(*this);
     walker.evaluateProgram(prog);
