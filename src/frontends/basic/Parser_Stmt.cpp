@@ -364,4 +364,73 @@ StmtPtr Parser::parseSubStatement()
     parseProcedureBody(TokenKind::KeywordSub, sub->body);
     return sub;
 }
+#if VIPER_ENABLE_OOP
+/// @brief Parse a TYPE declaration defining a record with named fields.
+/// @return TypeDecl statement node containing declared fields.
+StmtPtr Parser::parseTypeDecl()
+{
+    auto loc = peek().loc;
+    consume(); // TYPE
+    Token nameTok = expect(TokenKind::Identifier);
+
+    auto decl = std::make_unique<TypeDecl>();
+    decl->loc = loc;
+    decl->name = nameTok.lexeme;
+
+    if (at(TokenKind::EndOfLine))
+    {
+        consume();
+    }
+    else
+    {
+        expect(TokenKind::EndOfLine);
+    }
+
+    while (!at(TokenKind::EndOfFile))
+    {
+        while (at(TokenKind::EndOfLine))
+            consume();
+
+        if (at(TokenKind::EndOfFile))
+            break;
+
+        if (at(TokenKind::Number))
+            consume();
+
+        if (at(TokenKind::EndOfLine))
+        {
+            continue;
+        }
+
+        if (at(TokenKind::KeywordEnd))
+            break;
+
+        TypeDecl::Field field;
+        Token fieldNameTok = expect(TokenKind::Identifier);
+        field.name = fieldNameTok.lexeme;
+
+        expect(TokenKind::KeywordAs);
+        field.type = parseTypeKeyword();
+
+        decl->fields.push_back(std::move(field));
+
+        if (at(TokenKind::EndOfLine))
+        {
+            consume();
+        }
+        else if (at(TokenKind::Colon))
+        {
+            consume();
+        }
+        else if (!at(TokenKind::KeywordEnd) && !at(TokenKind::EndOfFile))
+        {
+            expect(TokenKind::EndOfLine);
+        }
+    }
+
+    expect(TokenKind::KeywordEnd);
+    expect(TokenKind::KeywordType);
+    return decl;
+}
+#endif
 } // namespace il::frontends::basic
