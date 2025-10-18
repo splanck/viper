@@ -187,7 +187,6 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
         printer.os << ')';
     }
 
-#if VIPER_ENABLE_OOP
     /// @brief Print an object construction expression.
     void visit(const NewExpr &expr) override
     {
@@ -227,7 +226,6 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
         }
         printer.os << ')';
     }
-#endif
 
   private:
     Printer &printer;

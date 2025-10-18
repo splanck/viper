@@ -199,7 +199,6 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
             push(ExprType::I64);
         }
     }
-#if VIPER_ENABLE_OOP
     bool shouldVisitChildren(const NewExpr &) { return false; }
 
     void after(const NewExpr &expr)
@@ -251,7 +250,6 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
         }
         push(ExprType::I64);
     }
-#endif
 
     // Statement hooks ---------------------------------------------------
 
@@ -349,7 +347,6 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
         {
             if (!var->name.empty())
             {
-#if VIPER_ENABLE_OOP
                 if (stmt.expr)
                 {
                     std::string className;
@@ -364,7 +361,6 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
                     if (!className.empty())
                         lowerer_.setSymbolObjectType(var->name, className);
                 }
-#endif
                 const auto *info = lowerer_.findSymbol(var->name);
                 if (!info || !info->hasType)
                     lowerer_.setSymbolType(var->name, inferAstTypeFromName(var->name));
@@ -618,12 +614,10 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
         discardIf(stmt.value != nullptr);
     }
 
-#if VIPER_ENABLE_OOP
     void after(const DeleteStmt &stmt)
     {
         discardIf(stmt.target != nullptr);
     }
-#endif
 
     void after(const FunctionDecl &)
     {

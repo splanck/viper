@@ -64,10 +64,8 @@ void ProgramLowering::run(const Program &prog, il::core::Module &module)
     lowerer.resetManualHelpers();
 
     lowerer.scanProgram(prog);
-#if VIPER_ENABLE_OOP
     lowerer.scanOOP(prog);
     lowerer.emitOopDeclsAndBodies(prog);
-#endif
     lowerer.declareRequiredRuntime(builder);
     lowerer.emitProgram(prog);
 

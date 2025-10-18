@@ -73,7 +73,6 @@ class Lowerer
     /// @brief Access the diagnostic emitter when present.
     [[nodiscard]] DiagnosticEmitter *diagnosticEmitter() const noexcept;
 
-#if VIPER_ENABLE_OOP
     /// @brief Mark a symbol as storing an object reference.
     /// @param name BASIC symbol name tracked in the symbol table.
     /// @param className Fully-qualified BASIC class name associated with the object.
@@ -85,7 +84,6 @@ class Lowerer
     {
         requestHelper(feature);
     }
-#endif
 
   private:
     friend class LowererExprVisitor;
@@ -143,10 +141,8 @@ class Lowerer
         std::optional<unsigned>
             arrayLengthSlot;     ///< Optional slot for array length (bounds checks).
         std::string stringLabel; ///< Cached label for deduplicated string literals.
-#if VIPER_ENABLE_OOP
         bool isObject{false};    ///< True when symbol references an object slot.
         std::string objectClass; ///< Class name for object symbols; empty otherwise.
-#endif
     };
 
   private:
@@ -163,10 +159,8 @@ class Lowerer
         Type type{Type(Type::Kind::I64)};
         bool isArray{false};
         bool isBoolean{false};
-#if VIPER_ENABLE_OOP
         bool isObject{false};
         std::string objectClass;
-#endif
     };
 
     /// @brief Cached signature for a user-defined procedure.
@@ -349,7 +343,6 @@ class Lowerer
     /// @return Resulting value and type.
     RVal lowerUBoundExpr(const UBoundExpr &expr);
 
-#if VIPER_ENABLE_OOP
     /// @brief Lower a NEW expression allocating a BASIC object instance.
     RVal lowerNewExpr(const NewExpr &expr);
 
@@ -364,7 +357,6 @@ class Lowerer
 
     /// @brief Lower a DELETE statement releasing an object reference.
     void lowerDelete(const DeleteStmt &stmt);
-#endif
 
     // Shared argument helpers
     RVal coerceToI64(RVal v, il::support::SourceLoc loc);
@@ -445,10 +437,8 @@ class Lowerer
     void storeArray(Value slot, Value value);
     void releaseArrayLocals(const std::unordered_set<std::string> &paramNames);
     void releaseArrayParams(const std::unordered_set<std::string> &paramNames);
-#if VIPER_ENABLE_OOP
     void releaseObjectLocals(const std::unordered_set<std::string> &paramNames);
     void releaseObjectParams(const std::unordered_set<std::string> &paramNames);
-#endif
 
     void emitTrap();
 
@@ -569,7 +559,6 @@ class Lowerer
 
     void declareRequiredRuntime(build::IRBuilder &b);
 #include "frontends/basic/LowerScan.hpp"
-#if VIPER_ENABLE_OOP
   public:
     /// @brief Computed memory layout for a BASIC CLASS or TYPE declaration.
     struct ClassLayout
@@ -625,7 +614,6 @@ class Lowerer
 
     /// @brief Determine the BASIC class associated with an object expression.
     [[nodiscard]] std::string resolveObjectClass(const Expr &expr) const;
-#endif
 
   public:
     SymbolInfo &ensureSymbol(std::string_view name);

@@ -94,7 +94,6 @@ class LowererStmtVisitor final : public StmtVisitor
 
     void visit(const StmtList &stmt) override { lowerer_.lowerStmtList(stmt); }
 
-#if VIPER_ENABLE_OOP
     void visit(const DeleteStmt &stmt) override { lowerer_.lowerDelete(stmt); }
 
     void visit(const ConstructorDecl &) override {}
@@ -106,7 +105,6 @@ class LowererStmtVisitor final : public StmtVisitor
     void visit(const ClassDecl &) override {}
 
     void visit(const TypeDecl &) override {}
-#endif
 
   private:
     Lowerer &lowerer_;

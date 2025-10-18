@@ -596,7 +596,6 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         printer.os << ')';
     }
 
-#if VIPER_ENABLE_OOP
     void visit(const DeleteStmt &stmt) override
     {
         printer.os << "(DELETE ";
@@ -676,7 +675,6 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         }
         printer.os << ')';
     }
-#endif
 
   private:
     void printNumberedBody(const std::vector<std::unique_ptr<Stmt>> &body)
