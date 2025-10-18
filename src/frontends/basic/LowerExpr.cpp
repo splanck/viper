@@ -139,6 +139,28 @@ class LowererExprVisitor final : public ExprVisitor
         }
     }
 
+#if VIPER_ENABLE_OOP
+    void visit(const NewExpr &expr) override
+    {
+        result_ = lowerer_.lowerNewExpr(expr);
+    }
+
+    void visit(const MeExpr &expr) override
+    {
+        result_ = lowerer_.lowerMeExpr(expr);
+    }
+
+    void visit(const MemberAccessExpr &expr) override
+    {
+        result_ = lowerer_.lowerMemberAccessExpr(expr);
+    }
+
+    void visit(const MethodCallExpr &expr) override
+    {
+        result_ = lowerer_.lowerMethodCallExpr(expr);
+    }
+#endif
+
     [[nodiscard]] Lowerer::RVal result() const noexcept
     {
         return result_;
