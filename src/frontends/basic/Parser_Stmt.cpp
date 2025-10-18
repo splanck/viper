@@ -357,9 +357,19 @@ StmtPtr Parser::parseClassDecl()
         {
             auto subLoc = peek().loc;
             consume(); // SUB
-            Token subNameTok = expect(TokenKind::Identifier);
-            if (subNameTok.kind != TokenKind::Identifier)
-                break;
+            Token subNameTok;
+            if (peek().kind == TokenKind::KeywordNew)
+            {
+                subNameTok = peek();
+                consume();
+                subNameTok.kind = TokenKind::Identifier;
+            }
+            else
+            {
+                subNameTok = expect(TokenKind::Identifier);
+                if (subNameTok.kind != TokenKind::Identifier)
+                    break;
+            }
 
             if (equalsIgnoreCase(subNameTok.lexeme, "NEW"))
             {

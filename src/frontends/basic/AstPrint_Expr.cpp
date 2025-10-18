@@ -187,6 +187,48 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
         printer.os << ')';
     }
 
+#if VIPER_ENABLE_OOP
+    /// @brief Print an object construction expression.
+    void visit(const NewExpr &expr) override
+    {
+        printer.os << "(NEW " << expr.className;
+        for (const auto &arg : expr.args)
+        {
+            printer.os << ' ';
+            arg->accept(*this);
+        }
+        printer.os << ')';
+    }
+
+    /// @brief Print the ME receiver expression.
+    void visit(const MeExpr &) override
+    {
+        printer.os << "ME";
+    }
+
+    /// @brief Print a member access expression as base.member.
+    void visit(const MemberAccessExpr &expr) override
+    {
+        printer.os << '(';
+        expr.base->accept(*this);
+        printer.os << '.' << expr.member << ')';
+    }
+
+    /// @brief Print a method invocation on an object instance.
+    void visit(const MethodCallExpr &expr) override
+    {
+        printer.os << '(';
+        expr.base->accept(*this);
+        printer.os << '.' << expr.method;
+        for (const auto &arg : expr.args)
+        {
+            printer.os << ' ';
+            arg->accept(*this);
+        }
+        printer.os << ')';
+    }
+#endif
+
   private:
     Printer &printer;
 };

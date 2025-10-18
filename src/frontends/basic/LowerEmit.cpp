@@ -644,10 +644,8 @@ void Lowerer::releaseObjectLocals(const std::unordered_set<std::string> &paramNa
         requestHelper(RuntimeFeature::ObjReleaseChk0);
         requestHelper(RuntimeFeature::ObjFree);
 
-        Value releaseResult =
-            emitCallRet(Type(Type::Kind::I32), "rt_obj_release_check0", {handle});
         Value shouldDestroy =
-            emitBinary(Opcode::ICmpNe, ilBoolTy(), releaseResult, Value::constInt(0));
+            emitCallRet(ilBoolTy(), "rt_obj_release_check0", {handle});
 
         BlockNamer *blockNamer = ctx.blockNames().namer();
         std::string destroyLabel = blockNamer ? blockNamer->generic("obj_epilogue_dtor")
@@ -716,10 +714,8 @@ void Lowerer::releaseObjectParams(const std::unordered_set<std::string> &paramNa
         requestHelper(RuntimeFeature::ObjReleaseChk0);
         requestHelper(RuntimeFeature::ObjFree);
 
-        Value releaseResult =
-            emitCallRet(Type(Type::Kind::I32), "rt_obj_release_check0", {handle});
         Value shouldDestroy =
-            emitBinary(Opcode::ICmpNe, ilBoolTy(), releaseResult, Value::constInt(0));
+            emitCallRet(ilBoolTy(), "rt_obj_release_check0", {handle});
 
         BlockNamer *blockNamer = ctx.blockNames().namer();
         std::string destroyLabel = blockNamer ? blockNamer->generic("obj_epilogue_dtor")

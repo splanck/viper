@@ -8,8 +8,9 @@
 #include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Lowerer.hpp"
-#include "il/runtime/RuntimeSignatures.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
+#include "support/feature_flags.hpp"
 #include <cassert>
 #include <optional>
 #include <string>
@@ -198,6 +199,59 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
             push(ExprType::I64);
         }
     }
+#if VIPER_ENABLE_OOP
+    bool shouldVisitChildren(const NewExpr &) { return false; }
+
+    void after(const NewExpr &expr)
+    {
+        for (const auto &arg : expr.args)
+        {
+            if (!arg)
+                continue;
+            consumeExpr(*arg);
+        }
+        push(ExprType::I64);
+    }
+
+    void after(const MeExpr &)
+    {
+        push(ExprType::I64);
+    }
+
+    bool shouldVisitChildren(const MemberAccessExpr &) { return false; }
+
+    void after(const MemberAccessExpr &expr)
+    {
+        ExprType result = ExprType::I64;
+        if (expr.base)
+        {
+            consumeExpr(*expr.base);
+            std::string className = lowerer_.resolveObjectClass(*expr.base);
+            auto layoutIt = lowerer_.classLayouts_.find(className);
+            if (layoutIt != lowerer_.classLayouts_.end())
+            {
+                if (const auto *field = layoutIt->second.findField(expr.member))
+                    result = exprTypeFromAstType(field->type);
+            }
+        }
+        push(result);
+    }
+
+    bool shouldVisitChildren(const MethodCallExpr &) { return false; }
+
+    void after(const MethodCallExpr &expr)
+    {
+        if (expr.base)
+            consumeExpr(*expr.base);
+        for (const auto &arg : expr.args)
+        {
+            if (!arg)
+                continue;
+            consumeExpr(*arg);
+        }
+        push(ExprType::I64);
+    }
+#endif
 
     // Statement hooks ---------------------------------------------------
 
@@ -295,6 +349,22 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
         {
             if (!var->name.empty())
             {
+#if VIPER_ENABLE_OOP
+                if (stmt.expr)
+                {
+                    std::string className;
+                    if (const auto *alloc = dynamic_cast<const NewExpr *>(stmt.expr.get()))
+                    {
+                        className = alloc->className;
+                    }
+                    else
+                    {
+                        className = lowerer_.resolveObjectClass(*stmt.expr);
+                    }
+                    if (!className.empty())
+                        lowerer_.setSymbolObjectType(var->name, className);
+                }
+#endif
                 const auto *info = lowerer_.findSymbol(var->name);
                 if (!info || !info->hasType)
                     lowerer_.setSymbolType(var->name, inferAstTypeFromName(var->name));
@@ -547,6 +617,13 @@ class ScanWalker final : public BasicAstWalker<ScanWalker>
     {
         discardIf(stmt.value != nullptr);
     }
+
+#if VIPER_ENABLE_OOP
+    void after(const DeleteStmt &stmt)
+    {
+        discardIf(stmt.target != nullptr);
+    }
+#endif
 
     void after(const FunctionDecl &)
     {
