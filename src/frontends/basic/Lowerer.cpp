@@ -37,6 +37,10 @@ Lowerer::SymbolInfo &Lowerer::ensureSymbol(std::string_view name)
         it->second.isArray = false;
         it->second.isBoolean = false;
         it->second.referenced = false;
+#if VIPER_ENABLE_OOP
+        it->second.isObject = false;
+        it->second.objectClass.clear();
+#endif
     }
     return it->second;
 }
@@ -64,6 +68,18 @@ void Lowerer::setSymbolType(std::string_view name, AstType type)
     info.hasType = true;
     info.isBoolean = !info.isArray && type == AstType::Bool;
 }
+
+#if VIPER_ENABLE_OOP
+void Lowerer::setSymbolObjectType(std::string_view name, std::string className)
+{
+    if (name.empty())
+        return;
+    auto &info = ensureSymbol(name);
+    info.isObject = true;
+    info.objectClass = std::move(className);
+    info.hasType = true;
+}
+#endif
 
 void Lowerer::markSymbolReferenced(std::string_view name)
 {
@@ -101,6 +117,10 @@ void Lowerer::resetSymbolState()
             info.isArray = false;
             info.isBoolean = false;
             info.referenced = false;
+#if VIPER_ENABLE_OOP
+            info.isObject = false;
+            info.objectClass.clear();
+#endif
             info.slotId.reset();
             info.arrayLengthSlot.reset();
             ++it;
@@ -116,6 +136,17 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
     AstType astTy = inferAstTypeFromName(name);
     if (const auto *sym = findSymbol(name))
     {
+#if VIPER_ENABLE_OOP
+        if (sym->isObject)
+        {
+            info.type = Type(Type::Kind::Ptr);
+            info.isArray = false;
+            info.isBoolean = false;
+            info.isObject = true;
+            info.objectClass = sym->objectClass;
+            return info;
+        }
+#endif
         if (sym->hasType)
             astTy = sym->type;
         info.isArray = sym->isArray;
