@@ -503,6 +503,18 @@ StmtPtr Parser::parseTypeDecl()
     return decl;
 }
 
+StmtPtr Parser::parseDeleteStatement()
+{
+    auto loc = peek().loc;
+    consume(); // DELETE
+
+    auto target = parseExpression();
+    auto stmt = std::make_unique<DeleteStmt>();
+    stmt->loc = loc;
+    stmt->target = std::move(target);
+    return stmt;
+}
+
 #endif
 
 /// @brief Parse a parenthesized parameter list.
