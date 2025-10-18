@@ -8,6 +8,7 @@
 // Links: docs/codemap.md
 
 #include "frontends/basic/Lowerer.hpp"
+#include "support/feature_flags.hpp"
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -93,6 +94,9 @@ class LowererStmtVisitor final : public StmtVisitor
     void visit(const SubDecl &) override {}
 
     void visit(const StmtList &stmt) override { lowerer_.lowerStmtList(stmt); }
+#if VIPER_ENABLE_OOP
+    void visit(const DeleteStmt &stmt) override { lowerer_.lowerDelete(stmt); }
+#endif
 
   private:
     Lowerer &lowerer_;

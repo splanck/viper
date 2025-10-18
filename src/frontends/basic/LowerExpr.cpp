@@ -11,6 +11,7 @@
 #include "frontends/basic/LowerExprLogical.hpp"
 #include "frontends/basic/LowerExprNumeric.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "support/feature_flags.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -138,6 +139,21 @@ class LowererExprVisitor final : public ExprVisitor
             result_ = Lowerer::RVal{Value::constInt(0), il::core::Type(il::core::Type::Kind::I64)};
         }
     }
+#if VIPER_ENABLE_OOP
+    void visit(const NewExpr &expr) override { result_ = lowerer_.lowerNewExpr(expr); }
+
+    void visit(const MeExpr &expr) override { result_ = lowerer_.lowerMeExpr(expr); }
+
+    void visit(const MemberAccessExpr &expr) override
+    {
+        result_ = lowerer_.lowerMemberAccessExpr(expr);
+    }
+
+    void visit(const MethodCallExpr &expr) override
+    {
+        result_ = lowerer_.lowerMethodCallExpr(expr);
+    }
+#endif
 
     [[nodiscard]] Lowerer::RVal result() const noexcept
     {

@@ -8,6 +8,11 @@
 // Links: docs/codemap.md
 
 #include "frontends/basic/Lowerer.hpp"
+#include "support/feature_flags.hpp"
+
+#if VIPER_ENABLE_OOP
+#include "frontends/basic/NameMangler_OOP.hpp"
+#endif
 
 #include <cassert>
 
@@ -126,6 +131,58 @@ void Lowerer::lowerLet(const LetStmt &stmt)
         }
         else
         {
+#if VIPER_ENABLE_OOP
+            if (slotInfo.isObject)
+            {
+                curLoc = stmt.loc;
+                Value oldValue = emitLoad(Type(Type::Kind::Ptr), slot);
+
+                ProcedureContext &ctx = context();
+                Function *func = ctx.function();
+                BasicBlock *origin = ctx.current();
+                if (func && origin)
+                {
+                    BlockNamer *blockNamer = ctx.blockNames().namer();
+                    std::string baseLabel = "assign_obj";
+                    size_t freeIdx = func->blocks.size();
+                    std::string freeLbl = blockNamer ? blockNamer->generic(baseLabel + "_free")
+                                                     : mangler.block(baseLabel + "_free");
+                    builder->addBlock(*func, freeLbl);
+                    size_t contIdx = func->blocks.size();
+                    std::string contLbl = blockNamer ? blockNamer->generic(baseLabel + "_cont")
+                                                     : mangler.block(baseLabel + "_cont");
+                    builder->addBlock(*func, contLbl);
+
+                    BasicBlock *freeBlk = &func->blocks[freeIdx];
+                    BasicBlock *contBlk = &func->blocks[contIdx];
+
+                    ctx.setCurrent(origin);
+                    curLoc = stmt.loc;
+                    Value releaseCount =
+                        emitCallRet(Type(Type::Kind::I32), "rt_obj_release_check0", {oldValue});
+                    Value shouldFree =
+                        emitBinary(Opcode::ICmpNe, ilBoolTy(), releaseCount, Value::constInt(0));
+                    emitCBr(shouldFree, freeBlk, contBlk);
+
+                    ctx.setCurrent(freeBlk);
+                    curLoc = stmt.loc;
+                    if (!slotInfo.objectClass.empty())
+                    {
+                        std::string dtorName = mangleClassDtor(slotInfo.objectClass);
+                        emitCall(dtorName, {oldValue});
+                    }
+                    emitCall("rt_obj_free", {oldValue});
+                    emitBr(contBlk);
+
+                    ctx.setCurrent(contBlk);
+                }
+
+                curLoc = stmt.loc;
+                emitCall("rt_obj_retain_maybe", {value.value});
+                emitStore(Type(Type::Kind::Ptr), slot, value.value);
+                return;
+            }
+#endif
             assignScalarSlot(slotInfo, slot, std::move(value), stmt.loc);
         }
     }
