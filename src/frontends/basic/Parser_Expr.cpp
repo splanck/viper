@@ -448,6 +448,48 @@ ExprPtr Parser::parsePrimary()
         consume();
         return b;
     }
+#if VIPER_ENABLE_OOP
+    if (at(TokenKind::KeywordNew))
+    {
+        auto loc = peek().loc;
+        consume(); // NEW
+
+        std::string className;
+        Token classTok = expect(TokenKind::Identifier);
+        if (classTok.kind == TokenKind::Identifier)
+            className = classTok.lexeme;
+
+        expect(TokenKind::LParen);
+        std::vector<ExprPtr> args;
+        if (!at(TokenKind::RParen))
+        {
+            while (true)
+            {
+                args.push_back(parseExpression());
+                if (at(TokenKind::Comma))
+                {
+                    consume();
+                    continue;
+                }
+                break;
+            }
+        }
+        expect(TokenKind::RParen);
+
+        auto expr = std::make_unique<NewExpr>();
+        expr->loc = loc;
+        expr->className = std::move(className);
+        expr->args = std::move(args);
+        return expr;
+    }
+    if (at(TokenKind::KeywordMe))
+    {
+        auto expr = std::make_unique<MeExpr>();
+        expr->loc = peek().loc;
+        consume();
+        return expr;
+    }
+#endif
     if (at(TokenKind::KeywordLbound))
     {
         auto loc = peek().loc;
