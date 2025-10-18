@@ -202,6 +202,8 @@ void ProcedureLowering::emit(const std::string &name,
     lowerer.curLoc = {};
     lowerer.releaseArrayLocals(metadata.paramNames);
     lowerer.releaseArrayParams(metadata.paramNames);
+    lowerer.releaseObjectLocals(metadata.paramNames);
+    lowerer.releaseObjectParams(metadata.paramNames);
     lowerer.curLoc = {};
     config.emitFinalReturn();
 

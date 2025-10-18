@@ -179,6 +179,8 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
     curLoc = {};
     releaseArrayLocals(metadata.paramNames);
     releaseArrayParams(metadata.paramNames);
+    releaseObjectLocals(metadata.paramNames);
+    releaseObjectParams(metadata.paramNames);
     curLoc = {};
     emitRetVoid();
     ctx.blockNames().resetNamer();
@@ -237,6 +239,8 @@ void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *
 
     releaseArrayLocals(metadata.paramNames);
     releaseArrayParams(metadata.paramNames);
+    releaseObjectLocals(metadata.paramNames);
+    releaseObjectParams(metadata.paramNames);
     curLoc = {};
     emitRetVoid();
     ctx.blockNames().resetNamer();
@@ -317,6 +321,8 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
     curLoc = {};
     releaseArrayLocals(metadata.paramNames);
     releaseArrayParams(metadata.paramNames);
+    releaseObjectLocals(metadata.paramNames);
+    releaseObjectParams(metadata.paramNames);
     curLoc = {};
     emitRetVoid();
     ctx.blockNames().resetNamer();
