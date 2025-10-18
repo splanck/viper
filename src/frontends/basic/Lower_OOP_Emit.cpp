@@ -177,6 +177,8 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
 
     ctx.setCurrent(exitBlock);
     curLoc = {};
+    releaseObjectLocals(metadata.paramNames);
+    releaseObjectParams(metadata.paramNames);
     releaseArrayLocals(metadata.paramNames);
     releaseArrayParams(metadata.paramNames);
     curLoc = {};
@@ -235,6 +237,8 @@ void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *
     if (layoutIt != classLayouts_.end())
         emitFieldReleaseSequence(*this, selfPtr, layoutIt->second);
 
+    releaseObjectLocals(metadata.paramNames);
+    releaseObjectParams(metadata.paramNames);
     releaseArrayLocals(metadata.paramNames);
     releaseArrayParams(metadata.paramNames);
     curLoc = {};
@@ -315,6 +319,8 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
 
     ctx.setCurrent(exitBlock);
     curLoc = {};
+    releaseObjectLocals(metadata.paramNames);
+    releaseObjectParams(metadata.paramNames);
     releaseArrayLocals(metadata.paramNames);
     releaseArrayParams(metadata.paramNames);
     curLoc = {};

@@ -438,6 +438,10 @@ class Lowerer
     void storeArray(Value slot, Value value);
     void releaseArrayLocals(const std::unordered_set<std::string> &paramNames);
     void releaseArrayParams(const std::unordered_set<std::string> &paramNames);
+#if VIPER_ENABLE_OOP
+    void releaseObjectLocals(const std::unordered_set<std::string> &paramNames);
+    void releaseObjectParams(const std::unordered_set<std::string> &paramNames);
+#endif
 
     void emitTrap();
 
