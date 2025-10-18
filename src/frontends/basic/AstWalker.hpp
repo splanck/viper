@@ -221,6 +221,12 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
         callAfter(expr);
     }
 
+    void visit(const MeExpr &expr) override
+    {
+        callBefore(expr);
+        callAfter(expr);
+    }
+
     void visit(const MemberAccessExpr &expr) override
     {
         callBefore(expr);

@@ -78,6 +78,13 @@ class Lowerer
     /// @param name BASIC symbol name tracked in the symbol table.
     /// @param className Fully-qualified BASIC class name associated with the object.
     void setSymbolObjectType(std::string_view name, std::string className);
+
+    /// @brief Ensure the given runtime helper is available to lowering.
+    /// @param feature Runtime feature required by an auxiliary pass.
+    void requestRuntimeFeature(il::runtime::RuntimeFeature feature)
+    {
+        requestHelper(feature);
+    }
 #endif
 
   private:
@@ -606,6 +613,12 @@ class Lowerer
     void emitClassDestructor(const ClassDecl &klass, const DestructorDecl *userDtor);
 
     void emitClassMethod(const ClassDecl &klass, const MethodDecl &method);
+
+    unsigned materializeSelfSlot(const std::string &className, Function &fn);
+
+    Value loadSelfPointer(unsigned slotId);
+
+    void emitFieldReleaseSequence(Value selfPtr, const ClassLayout &layout);
 
     /// @brief Cached layout table indexed by class or TYPE name.
     std::unordered_map<std::string, ClassLayout> classLayouts_;

@@ -111,6 +111,8 @@ inline void reportFailure(std::string_view expr, const char *file, int line, boo
         }                                                                                               \
     } while (false)
 
+#define EXPECT_FALSE(expr) EXPECT_TRUE(!(expr))
+
 #define ASSERT_TRUE(expr)                                                                               \
     do                                                                                                  \
     {                                                                                                   \
@@ -120,12 +122,41 @@ inline void reportFailure(std::string_view expr, const char *file, int line, boo
         }                                                                                               \
     } while (false)
 
+#define ASSERT_FALSE(expr) ASSERT_TRUE(!(expr))
+
+#define EXPECT_EQ(val1, val2)                                                                           \
+    do                                                                                                  \
+    {                                                                                                   \
+        if (!((val1) == (val2)))                                                                        \
+        {                                                                                               \
+            ::testing::reportFailure(#val1 " == " #val2, __FILE__, __LINE__, false);                    \
+        }                                                                                               \
+    } while (false)
+
 #define EXPECT_NE(val1, val2)                                                                           \
     do                                                                                                  \
     {                                                                                                   \
         if (!((val1) != (val2)))                                                                        \
         {                                                                                               \
             ::testing::reportFailure(#val1 " != " #val2, __FILE__, __LINE__, false);                    \
+        }                                                                                               \
+    } while (false)
+
+#define ASSERT_EQ(val1, val2)                                                                           \
+    do                                                                                                  \
+    {                                                                                                   \
+        if (!((val1) == (val2)))                                                                        \
+        {                                                                                               \
+            ::testing::reportFailure(#val1 " == " #val2, __FILE__, __LINE__, true);                     \
+        }                                                                                               \
+    } while (false)
+
+#define ASSERT_NE(val1, val2)                                                                           \
+    do                                                                                                  \
+    {                                                                                                   \
+        if (!((val1) != (val2)))                                                                        \
+        {                                                                                               \
+            ::testing::reportFailure(#val1 " != " #val2, __FILE__, __LINE__, true);                     \
         }                                                                                               \
     } while (false)
 

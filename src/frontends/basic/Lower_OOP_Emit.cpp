@@ -27,24 +27,23 @@
 #include <utility>
 #include <vector>
 
-using namespace il::core;
-
 namespace il::frontends::basic
 {
 namespace
 {
 using AstType = ::il::frontends::basic::Type;
 
-[[nodiscard]] Type ilTypeForAstType(AstType ty)
+[[nodiscard]] il::core::Type ilTypeForAstType(AstType ty)
 {
+    using IlType = il::core::Type;
     switch (ty)
     {
-        case AstType::I64: return Type(Type::Kind::I64);
-        case AstType::F64: return Type(Type::Kind::F64);
-        case AstType::Str: return Type(Type::Kind::Str);
-        case AstType::Bool: return Type(Type::Kind::I1);
+        case AstType::I64: return IlType(IlType::Kind::I64);
+        case AstType::F64: return IlType(IlType::Kind::F64);
+        case AstType::Str: return IlType(IlType::Kind::Str);
+        case AstType::Bool: return IlType(IlType::Kind::I1);
     }
-    return Type(Type::Kind::I64);
+    return IlType(IlType::Kind::I64);
 }
 
 [[nodiscard]] std::vector<const Stmt *> gatherBody(const std::vector<StmtPtr> &body)
@@ -59,38 +58,40 @@ using AstType = ::il::frontends::basic::Type;
     return out;
 }
 
-unsigned materializeSelfSlot(Lowerer &lowerer, const std::string &className, Function &fn)
+} // namespace
+
+unsigned Lowerer::materializeSelfSlot(const std::string &className, Function &fn)
 {
-    lowerer.curLoc = {};
-    lowerer.setSymbolObjectType("ME", className);
-    auto &info = lowerer.ensureSymbol("ME");
+    curLoc = {};
+    setSymbolObjectType("ME", className);
+    auto &info = ensureSymbol("ME");
     info.referenced = true;
-    Value slot = lowerer.emitAlloca(8);
+    Value slot = emitAlloca(8);
     info.slotId = slot.id;
-    lowerer.emitStore(Type(Type::Kind::Ptr), slot, Value::temp(fn.params.front().id));
+    emitStore(Type(Type::Kind::Ptr), slot, Value::temp(fn.params.front().id));
     return slot.id;
 }
 
-Value loadSelfPointer(Lowerer &lowerer, unsigned slotId)
+Lowerer::Value Lowerer::loadSelfPointer(unsigned slotId)
 {
-    lowerer.curLoc = {};
-    return lowerer.emitLoad(Type(Type::Kind::Ptr), Value::temp(slotId));
+    curLoc = {};
+    return emitLoad(Type(Type::Kind::Ptr), Value::temp(slotId));
 }
 
-void emitFieldReleaseSequence(Lowerer &lowerer, Value selfPtr, const Lowerer::ClassLayout &layout)
+void Lowerer::emitFieldReleaseSequence(Value selfPtr, const ClassLayout &layout)
 {
     for (const auto &field : layout.fields)
     {
-        lowerer.curLoc = {};
+        curLoc = {};
         Value fieldPtr =
-            lowerer.emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), selfPtr, Value::constInt(static_cast<long long>(field.offset)));
+            emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), selfPtr, Value::constInt(static_cast<long long>(field.offset)));
         switch (field.type)
         {
             case AstType::Str:
             {
-                Value fieldValue = lowerer.emitLoad(Type(Type::Kind::Str), fieldPtr);
-                lowerer.requireStrReleaseMaybe();
-                lowerer.emitCall("rt_str_release_maybe", {fieldValue});
+                Value fieldValue = emitLoad(Type(Type::Kind::Str), fieldPtr);
+                requireStrReleaseMaybe();
+                emitCall("rt_str_release_maybe", {fieldValue});
                 break;
             }
             case AstType::I64:
@@ -101,8 +102,6 @@ void emitFieldReleaseSequence(Lowerer &lowerer, Value selfPtr, const Lowerer::Cl
         }
     }
 }
-
-} // namespace
 
 void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl &ctor)
 {
@@ -135,7 +134,7 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
     buildProcedureSkeleton(fn, name, metadata);
 
     ctx.setCurrent(&fn.blocks.front());
-    materializeSelfSlot(*this, klass.name, fn);
+    materializeSelfSlot(klass.name, fn);
     for (std::size_t i = 0; i < ctor.params.size(); ++i)
     {
         const auto &param = ctor.params[i];
@@ -211,7 +210,7 @@ void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *
     buildProcedureSkeleton(fn, name, metadata);
 
     ctx.setCurrent(&fn.blocks.front());
-    unsigned selfSlotId = materializeSelfSlot(*this, klass.name, fn);
+    unsigned selfSlotId = materializeSelfSlot(klass.name, fn);
     allocateLocalSlots(metadata.paramNames, /*includeParams=*/false);
 
     Function *func = ctx.function();
@@ -232,10 +231,10 @@ void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *
     ctx.setCurrent(exitBlock);
     curLoc = {};
 
-    Value selfPtr = loadSelfPointer(*this, selfSlotId);
+    Value selfPtr = loadSelfPointer(selfSlotId);
     auto layoutIt = classLayouts_.find(klass.name);
     if (layoutIt != classLayouts_.end())
-        emitFieldReleaseSequence(*this, selfPtr, layoutIt->second);
+        emitFieldReleaseSequence(selfPtr, layoutIt->second);
 
     releaseObjectLocals(metadata.paramNames);
     releaseObjectParams(metadata.paramNames);
@@ -277,7 +276,7 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
     buildProcedureSkeleton(fn, name, metadata);
 
     ctx.setCurrent(&fn.blocks.front());
-    materializeSelfSlot(*this, klass.name, fn);
+    materializeSelfSlot(klass.name, fn);
     for (std::size_t i = 0; i < method.params.size(); ++i)
     {
         const auto &param = method.params[i];

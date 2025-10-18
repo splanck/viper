@@ -224,6 +224,13 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
 
     void visit(CallExpr &expr) override { result_ = analyzer_.analyzeCall(expr); }
 
+#if VIPER_ENABLE_OOP
+    void visit(NewExpr &) override { result_ = SemanticAnalyzer::Type::Unknown; }
+    void visit(MeExpr &) override { result_ = SemanticAnalyzer::Type::Unknown; }
+    void visit(MemberAccessExpr &) override { result_ = SemanticAnalyzer::Type::Unknown; }
+    void visit(MethodCallExpr &) override { result_ = SemanticAnalyzer::Type::Unknown; }
+#endif
+
     [[nodiscard]] SemanticAnalyzer::Type result() const noexcept { return result_; }
 
   private:
