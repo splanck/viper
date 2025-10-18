@@ -25,7 +25,7 @@ int main()
         auto *let = dynamic_cast<LetStmt *>(prog->main[0].get());
         auto *alloc = dynamic_cast<NewExpr *>(let->expr.get());
         assert(alloc);
-        assert(alloc->className == "Foo");
+        assert(alloc->className == "FOO");
         assert(alloc->args.empty());
     }
 

@@ -596,6 +596,88 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         printer.os << ')';
     }
 
+#if VIPER_ENABLE_OOP
+    void visit(const DeleteStmt &stmt) override
+    {
+        printer.os << "(DELETE ";
+        AstPrinter::printExpr(*stmt.target, printer, style);
+        printer.os << ')';
+    }
+
+    void visit(const ConstructorDecl &stmt) override
+    {
+        printer.os << "(CONSTRUCTOR (";
+        bool firstParam = true;
+        for (const auto &param : stmt.params)
+        {
+            if (!firstParam)
+                printer.os << ' ';
+            firstParam = false;
+            printer.os << param.name;
+            if (param.is_array)
+                printer.os << "()";
+        }
+        printer.os << ")";
+        printNumberedBody(stmt.body);
+    }
+
+    void visit(const DestructorDecl &stmt) override
+    {
+        printer.os << "(DESTRUCTOR";
+        printNumberedBody(stmt.body);
+    }
+
+    void visit(const MethodDecl &stmt) override
+    {
+        printer.os << "(METHOD " << stmt.name;
+        if (stmt.ret)
+            printer.os << " RET " << typeToString(*stmt.ret);
+        printer.os << " (";
+        bool firstParam = true;
+        for (const auto &param : stmt.params)
+        {
+            if (!firstParam)
+                printer.os << ' ';
+            firstParam = false;
+            printer.os << param.name;
+            if (param.is_array)
+                printer.os << "()";
+        }
+        printer.os << ")";
+        printNumberedBody(stmt.body);
+    }
+
+    void visit(const ClassDecl &stmt) override
+    {
+        printer.os << "(CLASS " << stmt.name;
+        if (!stmt.fields.empty())
+        {
+            printer.os << " (FIELDS";
+            for (const auto &field : stmt.fields)
+            {
+                printer.os << ' ' << field.name << ':' << typeToString(field.type);
+            }
+            printer.os << ')';
+        }
+        printNumberedBody(stmt.members);
+    }
+
+    void visit(const TypeDecl &stmt) override
+    {
+        printer.os << "(TYPE " << stmt.name;
+        if (!stmt.fields.empty())
+        {
+            printer.os << " (FIELDS";
+            for (const auto &field : stmt.fields)
+            {
+                printer.os << ' ' << field.name << ':' << typeToString(field.type);
+            }
+            printer.os << ')';
+        }
+        printer.os << ')';
+    }
+#endif
+
   private:
     void printNumberedBody(const std::vector<std::unique_ptr<Stmt>> &body)
     {
