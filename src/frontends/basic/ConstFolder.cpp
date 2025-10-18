@@ -530,7 +530,6 @@ private:
 
     void visit(CallExpr &) override {}
 
-#if VIPER_ENABLE_OOP
     void visit(NewExpr &expr) override
     {
         for (auto &arg : expr.args)
@@ -550,7 +549,6 @@ private:
         for (auto &arg : expr.args)
             foldExpr(arg);
     }
-#endif
 
     // MutStmtVisitor overrides ----------------------------------------------
     void visit(LabelStmt &) override {}
@@ -709,7 +707,6 @@ private:
             foldStmt(child);
     }
 
-#if VIPER_ENABLE_OOP
     void visit(DeleteStmt &stmt) override
     {
         foldExpr(stmt.target);
@@ -740,7 +737,6 @@ private:
     }
 
     void visit(TypeDecl &) override {}
-#endif
 
     ExprPtr *currentExpr_ = nullptr;
     StmtPtr *currentStmt_ = nullptr;

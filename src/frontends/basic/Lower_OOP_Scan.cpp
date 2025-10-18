@@ -7,7 +7,6 @@
 
 #include "support/feature_flags.hpp"
 
-#if VIPER_ENABLE_OOP
 
 #include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/Lowerer.hpp"
@@ -148,4 +147,3 @@ void Lowerer::scanOOP(const Program &prog)
 
 } // namespace il::frontends::basic
 
-#endif // VIPER_ENABLE_OOP

@@ -7,7 +7,6 @@
 
 #include "support/feature_flags.hpp"
 
-#if VIPER_ENABLE_OOP
 
 #include "frontends/basic/AST.hpp"
 
@@ -78,5 +77,4 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
 
 } // namespace il::frontends::basic
 
-#endif // VIPER_ENABLE_OOP
 

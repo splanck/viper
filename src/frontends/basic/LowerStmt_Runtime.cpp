@@ -9,9 +9,7 @@
 
 #include "frontends/basic/Lowerer.hpp"
 
-#if VIPER_ENABLE_OOP
 #include "frontends/basic/NameMangler_OOP.hpp"
-#endif
 
 #include <cassert>
 
@@ -97,7 +95,6 @@ void Lowerer::assignScalarSlot(const SlotType &slotInfo,
         emitCall("rt_str_retain_maybe", {value.value});
     }
 
-#if VIPER_ENABLE_OOP
     else if (slotInfo.isObject)
     {
         requestHelper(RuntimeFeature::ObjReleaseChk0);
@@ -147,7 +144,6 @@ void Lowerer::assignScalarSlot(const SlotType &slotInfo,
         emitCall("rt_obj_retain_maybe", {value.value});
         targetTy = Type(Type::Kind::Ptr);
     }
-#endif
 
     emitStore(targetTy, slot, value.value);
 }
@@ -171,7 +167,6 @@ void Lowerer::lowerLet(const LetStmt &stmt)
     {
         const auto *info = findSymbol(var->name);
         assert(info && info->slotId);
-#if VIPER_ENABLE_OOP
         if (stmt.expr)
         {
             std::string className;
@@ -186,7 +181,6 @@ void Lowerer::lowerLet(const LetStmt &stmt)
             if (!className.empty())
                 setSymbolObjectType(var->name, className);
         }
-#endif
         SlotType slotInfo = getSlotType(var->name);
         Value slot = Value::temp(*info->slotId);
         if (slotInfo.isArray)

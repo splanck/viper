@@ -28,12 +28,10 @@ struct BuiltinCallExpr;
 struct LBoundExpr;
 struct UBoundExpr;
 struct CallExpr;
-#if VIPER_ENABLE_OOP
 struct NewExpr;
 struct MeExpr;
 struct MemberAccessExpr;
 struct MethodCallExpr;
-#endif
 
 struct LabelStmt;
 struct PrintStmt;
@@ -68,14 +66,12 @@ struct SelectCaseStmt;
 struct FunctionDecl;
 struct SubDecl;
 struct StmtList;
-#if VIPER_ENABLE_OOP
 struct DeleteStmt;
 struct ConstructorDecl;
 struct DestructorDecl;
 struct MethodDecl;
 struct ClassDecl;
 struct TypeDecl;
-#endif
 
 /// @brief Visitor interface for BASIC expressions.
 struct ExprVisitor
@@ -93,12 +89,10 @@ struct ExprVisitor
     virtual void visit(const LBoundExpr &) = 0;
     virtual void visit(const UBoundExpr &) = 0;
     virtual void visit(const CallExpr &) = 0;
-#if VIPER_ENABLE_OOP
     virtual void visit(const NewExpr &) = 0;
     virtual void visit(const MeExpr &) = 0;
     virtual void visit(const MemberAccessExpr &) = 0;
     virtual void visit(const MethodCallExpr &) = 0;
-#endif
 };
 
 /// @brief Visitor interface for mutable BASIC expressions.
@@ -117,12 +111,10 @@ struct MutExprVisitor
     virtual void visit(LBoundExpr &) = 0;
     virtual void visit(UBoundExpr &) = 0;
     virtual void visit(CallExpr &) = 0;
-#if VIPER_ENABLE_OOP
     virtual void visit(NewExpr &) = 0;
     virtual void visit(MeExpr &) = 0;
     virtual void visit(MemberAccessExpr &) = 0;
     virtual void visit(MethodCallExpr &) = 0;
-#endif
 };
 
 /// @brief Visitor interface for BASIC statements.
@@ -162,14 +154,12 @@ struct StmtVisitor
     virtual void visit(const FunctionDecl &) = 0;
     virtual void visit(const SubDecl &) = 0;
     virtual void visit(const StmtList &) = 0;
-#if VIPER_ENABLE_OOP
     virtual void visit(const DeleteStmt &) = 0;
     virtual void visit(const ConstructorDecl &) = 0;
     virtual void visit(const DestructorDecl &) = 0;
     virtual void visit(const MethodDecl &) = 0;
     virtual void visit(const ClassDecl &) = 0;
     virtual void visit(const TypeDecl &) = 0;
-#endif
 };
 
 /// @brief Visitor interface for mutable BASIC statements.
@@ -209,14 +199,12 @@ struct MutStmtVisitor
     virtual void visit(FunctionDecl &) = 0;
     virtual void visit(SubDecl &) = 0;
     virtual void visit(StmtList &) = 0;
-#if VIPER_ENABLE_OOP
     virtual void visit(DeleteStmt &) = 0;
     virtual void visit(ConstructorDecl &) = 0;
     virtual void visit(DestructorDecl &) = 0;
     virtual void visit(MethodDecl &) = 0;
     virtual void visit(ClassDecl &) = 0;
     virtual void visit(TypeDecl &) = 0;
-#endif
 };
 
 /// @brief Base class for all BASIC expressions.
@@ -447,7 +435,6 @@ struct CallExpr : Expr
     void accept(MutExprVisitor &visitor) override;
 };
 
-#if VIPER_ENABLE_OOP
 /// @brief Allocate a new instance of a class.
 struct NewExpr : Expr
 {
@@ -493,7 +480,6 @@ struct MethodCallExpr : Expr
     void accept(ExprVisitor &visitor) const override;
     void accept(MutExprVisitor &visitor) override;
 };
-#endif
 
 /// @brief Base class for all BASIC statements.
 struct Stmt
@@ -534,14 +520,12 @@ struct Stmt
         FunctionDecl,
         SubDecl,
         StmtList,
-#if VIPER_ENABLE_OOP
         Delete,
         ConstructorDecl,
         DestructorDecl,
         MethodDecl,
         ClassDecl,
         TypeDecl,
-#endif
     };
 
     /// BASIC line number associated with this statement.
@@ -1150,7 +1134,6 @@ struct StmtList : Stmt
     void accept(MutStmtVisitor &visitor) override;
 };
 
-#if VIPER_ENABLE_OOP
 /// @brief DELETE statement releasing an object reference.
 struct DeleteStmt : Stmt
 {
@@ -1245,7 +1228,6 @@ struct TypeDecl : Stmt
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
 };
-#endif
 
 /// @brief Root node partitioning procedure declarations from main statements.
 struct Program

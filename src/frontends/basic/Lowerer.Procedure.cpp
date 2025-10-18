@@ -200,10 +200,8 @@ void ProcedureLowering::emit(const std::string &name,
 
     ctx.setCurrent(&f.blocks[ctx.exitIndex()]);
     lowerer.curLoc = {};
-#if VIPER_ENABLE_OOP
     lowerer.releaseObjectLocals(metadata.paramNames);
     lowerer.releaseObjectParams(metadata.paramNames);
-#endif
     lowerer.releaseArrayLocals(metadata.paramNames);
     lowerer.releaseArrayParams(metadata.paramNames);
     lowerer.curLoc = {};

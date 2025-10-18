@@ -154,7 +154,6 @@ void CallExpr::accept(MutExprVisitor &visitor)
     visitor.visit(*this);
 }
 
-#if VIPER_ENABLE_OOP
 /// @brief Forwards this NEW expression node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void NewExpr::accept(ExprVisitor &visitor) const
@@ -202,7 +201,6 @@ void MethodCallExpr::accept(MutExprVisitor &visitor)
 {
     visitor.visit(*this);
 }
-#endif
 
 /// @brief Forwards this label statement node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
@@ -600,7 +598,6 @@ void StmtList::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
-#if VIPER_ENABLE_OOP
 
 /// @brief Forwards this DELETE statement node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
@@ -674,5 +671,4 @@ void TypeDecl::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
-#endif
 } // namespace il::frontends::basic
