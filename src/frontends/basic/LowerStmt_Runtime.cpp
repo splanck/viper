@@ -9,6 +9,10 @@
 
 #include "frontends/basic/Lowerer.hpp"
 
+#if VIPER_ENABLE_OOP
+#include "frontends/basic/NameMangler_OOP.hpp"
+#endif
+
 #include <cassert>
 
 using namespace il::core;
@@ -93,12 +97,64 @@ void Lowerer::assignScalarSlot(const SlotType &slotInfo,
         emitCall("rt_str_retain_maybe", {value.value});
     }
 
+#if VIPER_ENABLE_OOP
+    else if (slotInfo.isObject)
+    {
+        requestHelper(RuntimeFeature::ObjReleaseChk0);
+        requestHelper(RuntimeFeature::ObjFree);
+        requestHelper(RuntimeFeature::ObjRetainMaybe);
+
+        Value oldValue = emitLoad(Type(Type::Kind::Ptr), slot);
+        Value releaseResult =
+            emitCallRet(Type(Type::Kind::I32), "rt_obj_release_check0", {oldValue});
+        Value shouldDestroy =
+            emitBinary(Opcode::ICmpNe, ilBoolTy(), releaseResult, Value::constInt(0));
+
+        ProcedureContext &ctx = context();
+        Function *func = ctx.function();
+        BasicBlock *origin = ctx.current();
+        if (func && origin)
+        {
+            std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
+            BlockNamer *blockNamer = ctx.blockNames().namer();
+            std::string base = "obj_assign";
+            std::string destroyLbl =
+                blockNamer ? blockNamer->generic(base + "_dtor") : mangler.block(base + "_dtor");
+            std::string contLbl =
+                blockNamer ? blockNamer->generic(base + "_cont") : mangler.block(base + "_cont");
+
+            std::size_t destroyIdx = func->blocks.size();
+            builder->addBlock(*func, destroyLbl);
+            std::size_t contIdx = func->blocks.size();
+            builder->addBlock(*func, contLbl);
+
+            BasicBlock *destroyBlk = &func->blocks[destroyIdx];
+            BasicBlock *contBlk = &func->blocks[contIdx];
+
+            ctx.setCurrent(&func->blocks[originIdx]);
+            curLoc = loc;
+            emitCBr(shouldDestroy, destroyBlk, contBlk);
+
+            ctx.setCurrent(destroyBlk);
+            curLoc = loc;
+            if (!slotInfo.objectClass.empty())
+                emitCall(mangleClassDtor(slotInfo.objectClass), {oldValue});
+            emitCall("rt_obj_free", {oldValue});
+            emitBr(contBlk);
+
+            ctx.setCurrent(contBlk);
+        }
+
+        curLoc = loc;
+        emitCall("rt_obj_retain_maybe", {value.value});
+        targetTy = Type(Type::Kind::Ptr);
+    }
+#endif
+
     emitStore(targetTy, slot, value.value);
 }
 
-void Lowerer::assignArrayElement(const ArrayExpr &target,
-                                 RVal value,
-                                 il::support::SourceLoc loc)
+void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::support::SourceLoc loc)
 {
     if (value.type.kind == Type::Kind::I1)
     {
@@ -140,8 +196,7 @@ Value Lowerer::emitArrayLengthCheck(Value bound,
                                     std::string_view labelBase)
 {
     curLoc = loc;
-    Value length =
-        emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), bound, Value::constInt(1));
+    Value length = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), bound, Value::constInt(1));
 
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
@@ -155,10 +210,8 @@ Value Lowerer::emitArrayLengthCheck(Value bound,
         std::string failName = base.empty() ? "arr_len_fail" : base + "_fail";
         std::string contName = base.empty() ? "arr_len_cont" : base + "_cont";
 
-        std::string failLbl = blockNamer ? blockNamer->generic(failName)
-                                         : mangler.block(failName);
-        std::string contLbl = blockNamer ? blockNamer->generic(contName)
-                                         : mangler.block(contName);
+        std::string failLbl = blockNamer ? blockNamer->generic(failName) : mangler.block(failName);
+        std::string contLbl = blockNamer ? blockNamer->generic(contName) : mangler.block(contName);
 
         size_t failIdx = func->blocks.size();
         builder->addBlock(*func, failLbl);
@@ -236,4 +289,3 @@ void Lowerer::lowerRandomize(const RandomizeStmt &stmt)
 }
 
 } // namespace il::frontends::basic
-

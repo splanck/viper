@@ -1,8 +1,8 @@
 // File: src/frontends/basic/Lower_OOP_Scan.cpp
 // License: MIT License. See LICENSE in the project root for full license information.
 // Purpose: Implements optional OOP scanning for class layouts and runtime helpers.
-// Key invariants: Field offsets are 8-byte aligned and runtime features are recorded before emission.
-// Ownership/Lifetime: Borrows AST nodes and Lowerer state; owns no persistent resources.
+// Key invariants: Field offsets are 8-byte aligned and runtime features are recorded before
+// emission. Ownership/Lifetime: Borrows AST nodes and Lowerer state; owns no persistent resources.
 // Links: docs/codemap.md
 
 #include "support/feature_flags.hpp"
@@ -14,6 +14,7 @@
 #include "il/runtime/RuntimeSignatures.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
@@ -34,11 +35,15 @@ constexpr std::size_t kPointerSize = sizeof(void *);
 {
     switch (type)
     {
-        case Type::Str: return kPointerSize;
-        case Type::F64: return 8;
-        case Type::Bool: return 1;
+        case Type::Str:
+            return kPointerSize;
+        case Type::F64:
+            return 8;
+        case Type::Bool:
+            return 1;
         case Type::I64:
-        default: return 8;
+        default:
+            return 8;
     }
 }
 
@@ -86,12 +91,16 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
 
     void after(const ClassDecl &decl)
     {
-        layouts.emplace_back(decl.name, buildLayout(decl.fields));
+        auto layout = buildLayout(decl.fields);
+        layout.classId = nextClassId_++;
+        layouts.emplace_back(decl.name, std::move(layout));
     }
 
     void after(const TypeDecl &decl)
     {
-        layouts.emplace_back(decl.name, buildLayout(decl.fields));
+        auto layout = buildLayout(decl.fields);
+        layout.classId = nextClassId_++;
+        layouts.emplace_back(decl.name, std::move(layout));
     }
 
     void after(const NewExpr &)
@@ -120,6 +129,7 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
 
   private:
     Lowerer &lowerer_;
+    std::int64_t nextClassId_{1};
 };
 } // namespace
 
