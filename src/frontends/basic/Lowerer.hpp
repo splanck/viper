@@ -73,6 +73,13 @@ class Lowerer
     /// @brief Access the diagnostic emitter when present.
     [[nodiscard]] DiagnosticEmitter *diagnosticEmitter() const noexcept;
 
+#if VIPER_ENABLE_OOP
+    /// @brief Mark a symbol as storing an object reference.
+    /// @param name BASIC symbol name tracked in the symbol table.
+    /// @param className Fully-qualified BASIC class name associated with the object.
+    void setSymbolObjectType(std::string_view name, std::string className);
+#endif
+
   private:
     friend class LowererExprVisitor;
     friend class LowererStmtVisitor;
