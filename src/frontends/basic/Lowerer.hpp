@@ -575,6 +575,15 @@ class Lowerer
     /// @brief Scan program OOP constructs to populate class layouts and runtime requests.
     void scanOOP(const Program &prog);
 
+    /// @brief Emit constructor, destructor, and method bodies for CLASS declarations.
+    void emitOopDeclsAndBodies(const Program &prog);
+
+    void emitClassConstructor(const ClassDecl &klass, const ConstructorDecl &ctor);
+
+    void emitClassDestructor(const ClassDecl &klass, const DestructorDecl *userDtor);
+
+    void emitClassMethod(const ClassDecl &klass, const MethodDecl &method);
+
     /// @brief Cached layout table indexed by class or TYPE name.
     std::unordered_map<std::string, ClassLayout> classLayouts_;
 #endif
