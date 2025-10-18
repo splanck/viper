@@ -10,6 +10,9 @@
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
+#if VIPER_ENABLE_OOP
+#    include "frontends/basic/NameMangler_OOP.hpp"
+#endif
 #include <cassert>
 #include <unordered_set>
 #include <utility>
@@ -104,6 +107,9 @@ void Lowerer::emitMainBodyAndEpilogue(ProgramEmitContext &state)
 
     ctx.setCurrent(&state.function->blocks[ctx.exitIndex()]);
     curLoc = {};
+#if VIPER_ENABLE_OOP
+    releaseObjectLocals(std::unordered_set<std::string>{});
+#endif
     releaseArrayLocals(std::unordered_set<std::string>{});
     releaseArrayParams(std::unordered_set<std::string>{});
     curLoc = {};
@@ -616,6 +622,149 @@ void Lowerer::releaseArrayParams(const std::unordered_set<std::string> &paramNam
         emitStore(Type(Type::Kind::Ptr), slot, Value::null());
     }
 }
+
+#if VIPER_ENABLE_OOP
+void Lowerer::releaseObjectLocals(const std::unordered_set<std::string> &paramNames)
+{
+    auto releaseSlot = [this](SymbolInfo &info) {
+        if (!builder || !info.slotId)
+            return;
+        ProcedureContext &ctx = context();
+        Function *func = ctx.function();
+        BasicBlock *origin = ctx.current();
+        if (!func || !origin)
+            return;
+
+        std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
+        Value slot = Value::temp(*info.slotId);
+
+        curLoc = {};
+        Value handle = emitLoad(Type(Type::Kind::Ptr), slot);
+
+        requestHelper(RuntimeFeature::ObjReleaseChk0);
+        requestHelper(RuntimeFeature::ObjFree);
+
+        Value releaseResult =
+            emitCallRet(Type(Type::Kind::I32), "rt_obj_release_check0", {handle});
+        Value shouldDestroy =
+            emitBinary(Opcode::ICmpNe, ilBoolTy(), releaseResult, Value::constInt(0));
+
+        BlockNamer *blockNamer = ctx.blockNames().namer();
+        std::string destroyLabel = blockNamer ? blockNamer->generic("obj_epilogue_dtor")
+                                              : mangler.block("obj_epilogue_dtor");
+        std::size_t destroyIdx = func->blocks.size();
+        builder->addBlock(*func, destroyLabel);
+
+        std::string contLabel = blockNamer ? blockNamer->generic("obj_epilogue_cont")
+                                           : mangler.block("obj_epilogue_cont");
+        std::size_t contIdx = func->blocks.size();
+        builder->addBlock(*func, contLabel);
+
+        BasicBlock *destroyBlk = &func->blocks[destroyIdx];
+        BasicBlock *contBlk = &func->blocks[contIdx];
+
+        ctx.setCurrent(&func->blocks[originIdx]);
+        curLoc = {};
+        emitCBr(shouldDestroy, destroyBlk, contBlk);
+
+        ctx.setCurrent(destroyBlk);
+        curLoc = {};
+        if (!info.objectClass.empty())
+            emitCall(mangleClassDtor(info.objectClass), {handle});
+        emitCall("rt_obj_free", {handle});
+        emitBr(contBlk);
+
+        ctx.setCurrent(contBlk);
+        curLoc = {};
+        emitStore(Type(Type::Kind::Ptr), slot, Value::null());
+    };
+
+    for (auto &[name, info] : symbols)
+    {
+        if (!info.referenced || !info.isObject)
+            continue;
+        if (name == "ME")
+            continue;
+        if (paramNames.contains(name))
+            continue;
+        if (!info.slotId)
+            continue;
+        releaseSlot(info);
+    }
+}
+
+void Lowerer::releaseObjectParams(const std::unordered_set<std::string> &paramNames)
+{
+    if (paramNames.empty())
+        return;
+
+    auto releaseSlot = [this](SymbolInfo &info) {
+        if (!builder || !info.slotId)
+            return;
+        ProcedureContext &ctx = context();
+        Function *func = ctx.function();
+        BasicBlock *origin = ctx.current();
+        if (!func || !origin)
+            return;
+
+        std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
+        Value slot = Value::temp(*info.slotId);
+
+        curLoc = {};
+        Value handle = emitLoad(Type(Type::Kind::Ptr), slot);
+
+        requestHelper(RuntimeFeature::ObjReleaseChk0);
+        requestHelper(RuntimeFeature::ObjFree);
+
+        Value releaseResult =
+            emitCallRet(Type(Type::Kind::I32), "rt_obj_release_check0", {handle});
+        Value shouldDestroy =
+            emitBinary(Opcode::ICmpNe, ilBoolTy(), releaseResult, Value::constInt(0));
+
+        BlockNamer *blockNamer = ctx.blockNames().namer();
+        std::string destroyLabel = blockNamer ? blockNamer->generic("obj_epilogue_dtor")
+                                              : mangler.block("obj_epilogue_dtor");
+        std::size_t destroyIdx = func->blocks.size();
+        builder->addBlock(*func, destroyLabel);
+
+        std::string contLabel = blockNamer ? blockNamer->generic("obj_epilogue_cont")
+                                           : mangler.block("obj_epilogue_cont");
+        std::size_t contIdx = func->blocks.size();
+        builder->addBlock(*func, contLabel);
+
+        BasicBlock *destroyBlk = &func->blocks[destroyIdx];
+        BasicBlock *contBlk = &func->blocks[contIdx];
+
+        ctx.setCurrent(&func->blocks[originIdx]);
+        curLoc = {};
+        emitCBr(shouldDestroy, destroyBlk, contBlk);
+
+        ctx.setCurrent(destroyBlk);
+        curLoc = {};
+        if (!info.objectClass.empty())
+            emitCall(mangleClassDtor(info.objectClass), {handle});
+        emitCall("rt_obj_free", {handle});
+        emitBr(contBlk);
+
+        ctx.setCurrent(contBlk);
+        curLoc = {};
+        emitStore(Type(Type::Kind::Ptr), slot, Value::null());
+    };
+
+    for (auto &[name, info] : symbols)
+    {
+        if (!info.referenced || !info.isObject)
+            continue;
+        if (name == "ME")
+            continue;
+        if (!paramNames.contains(name))
+            continue;
+        if (!info.slotId)
+            continue;
+        releaseSlot(info);
+    }
+}
+#endif
 
 void Lowerer::emitEhPush(BasicBlock *handler)
 {
