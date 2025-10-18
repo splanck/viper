@@ -39,6 +39,7 @@ add_library(fe_basic STATIC
   LowerStmt_Runtime.cpp
   LowerRuntime.cpp
   LowerScan.cpp
+  Lower_OOP_Scan.cpp
   LowerEmit.cpp
   SemanticAnalyzer.cpp
   SemanticAnalyzer.Procs.cpp

@@ -541,6 +541,43 @@ class Lowerer
 
     void declareRequiredRuntime(build::IRBuilder &b);
 #include "frontends/basic/LowerScan.hpp"
+#if VIPER_ENABLE_OOP
+  public:
+    /// @brief Computed memory layout for a BASIC CLASS or TYPE declaration.
+    struct ClassLayout
+    {
+        /// @brief Metadata describing a single field within the class layout.
+        struct Field
+        {
+            std::string name;
+            AstType type{AstType::I64};
+            std::size_t offset{0};
+            std::size_t size{0};
+        };
+
+        /// @brief Ordered field entries preserving declaration order.
+        std::vector<Field> fields;
+        /// @brief Mapping from field name to its index within @ref fields.
+        std::unordered_map<std::string, std::size_t> fieldIndex;
+        /// @brief Total storage size in bytes rounded up to the alignment requirement.
+        std::size_t size{0};
+
+        [[nodiscard]] const Field *findField(std::string_view name) const
+        {
+            auto it = fieldIndex.find(std::string(name));
+            if (it == fieldIndex.end())
+                return nullptr;
+            return &fields[it->second];
+        }
+    };
+
+  private:
+    /// @brief Scan program OOP constructs to populate class layouts and runtime requests.
+    void scanOOP(const Program &prog);
+
+    /// @brief Cached layout table indexed by class or TYPE name.
+    std::unordered_map<std::string, ClassLayout> classLayouts_;
+#endif
 
   public:
     SymbolInfo &ensureSymbol(std::string_view name);
