@@ -1,12 +1,22 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Provides the registration glue that wires BASIC control-flow keywords to
+// their parsing routines.  Centralising the table-building logic here keeps the
+// main parser implementation focused on grammar productions while making the
+// registration policy easy to audit.
+//
 //===----------------------------------------------------------------------===//
 
 /// @file
 /// @brief Registers control-flow statement parsers for the BASIC front end.
 /// @details The parser installs member-function handlers for each keyword that
-/// introduces a control-flow construct so that the registry can dispatch to the
-/// appropriate parsing routine during tokenisation.
+///          introduces a control-flow construct so that the registry can
+///          dispatch to the appropriate parsing routine during tokenisation.
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
@@ -15,9 +25,11 @@ namespace il::frontends::basic
 {
 
 /// @brief Install all control-flow statement parsers into the registry.
-/// @details Associates each control-flow keyword with the corresponding parser
-/// member so that statement dispatch can remain table-driven. The registry stores
-/// raw member pointers while the parser retains ownership of the implementations.
+/// @details Walks the set of control-flow keywords supported by the language
+///          and binds each one to its associated parser member function.  The
+///          registry keeps the associations so the parser can dispatch by
+///          keyword at runtime without large conditional chains, while the
+///          parser retains ownership of the implementations themselves.
 /// @param registry Mutable registry that records keyword-to-parser mappings.
 void Parser::registerControlFlowParsers(StatementParserRegistry &registry)
 {

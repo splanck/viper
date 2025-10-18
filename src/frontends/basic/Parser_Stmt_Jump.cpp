@@ -1,11 +1,22 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the parsing routines for BASIC's jump-oriented statements.  By
+// grouping these routines together the parser keeps the grammar-specific logic
+// for GOTO, GOSUB, and RETURN statements easy to audit without scattering
+// helpers across the codebase.
+//
 //===----------------------------------------------------------------------===//
 
 /// @file
 /// @brief Implements jump-oriented BASIC statement parsers.
 /// @details Provides the parsing routines for GOTO, GOSUB, and RETURN statements
-/// and returns heap-allocated AST nodes describing the parsed constructs.
+///          and returns heap-allocated AST nodes describing the parsed
+///          constructs.
 
 #include "frontends/basic/Parser.hpp"
 
@@ -15,9 +26,10 @@ namespace il::frontends::basic
 {
 
 /// @brief Parse a `GOTO <line>` statement.
-/// @details Consumes the `GOTO` keyword followed by a numeric token representing
-/// the destination line number, constructing a @c GotoStmt with the captured
-/// metadata.
+/// @details Captures the source location for error reporting, consumes the
+///          `GOTO` keyword, and then reads the numeric token that supplies the
+///          target line.  The helper builds a @c GotoStmt storing both the
+///          location and parsed target before returning ownership to the caller.
 /// @return Owned AST node describing the goto statement.
 StmtPtr Parser::parseGotoStatement()
 {
@@ -32,8 +44,10 @@ StmtPtr Parser::parseGotoStatement()
 }
 
 /// @brief Parse a `GOSUB <line>` statement.
-/// @details Reads the line number after the @c GOSUB keyword and materialises a
-/// @c GosubStmt describing both the call site location and continuation target.
+/// @details Mirrors @ref parseGotoStatement by recording the location, consuming
+///          the keyword, and converting the following numeric token into the
+///          subroutine target.  The resulting @c GosubStmt captures both the
+///          call site and the continuation line.
 /// @return Owned AST node describing the gosub statement.
 StmtPtr Parser::parseGosubStatement()
 {
@@ -48,9 +62,10 @@ StmtPtr Parser::parseGosubStatement()
 }
 
 /// @brief Parse a `RETURN [expr]` statement.
-/// @details Captures an optional trailing expression that produces the return
-/// value when present. Parsing stops at end-of-line delimiters so chained
-/// statements remain intact.
+/// @details Records the source location, consumes the `RETURN` keyword, and then
+///          checks for an optional trailing expression.  Parsing halts at end of
+///          line or colon delimiters so chained statements remain intact.  The
+///          resulting @c ReturnStmt owns the parsed expression when one exists.
 /// @return Owned AST node describing the return statement.
 StmtPtr Parser::parseReturnStatement()
 {
