@@ -1,12 +1,21 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the operand-count verifier used by the IL validation pipeline.  The
+// helper encapsulates the range checking logic for each instruction so other
+// verifier components can rely on consistent diagnostics.
+//
 //===----------------------------------------------------------------------===//
 
 /// @file
 /// @brief Implements the operand-count verification helper used by the IL verifier.
 /// @details The checker compares each instruction's operand count against the
-/// metadata supplied by @c OpcodeInfo and reports structured diagnostics when the
-/// counts fall outside the permitted range.
+///          metadata supplied by @c OpcodeInfo and reports structured diagnostics
+///          when the counts fall outside the permitted range.
 
 #include "il/verify/OperandCountChecker.hpp"
 
@@ -22,6 +31,10 @@ namespace il::verify::detail
 {
 
 /// @brief Construct a checker bound to a verification context and opcode metadata.
+/// @details Stores references to the verification context—which exposes the
+///          instruction, enclosing function, and block—and the opcode metadata
+///          that records permitted operand ranges.  The checker does not copy the
+///          context, keeping construction lightweight for per-instruction usage.
 /// @param ctx Verification context describing the instruction under inspection.
 /// @param info Opcode metadata supplying operand bounds.
 OperandCountChecker::OperandCountChecker(const VerifyCtx &ctx, const il::core::OpcodeInfo &info)
@@ -30,8 +43,10 @@ OperandCountChecker::OperandCountChecker(const VerifyCtx &ctx, const il::core::O
 }
 
 /// @brief Validate the operand count for the bound instruction.
-/// @details Ensures the instruction's operand count meets the minimum required
-/// operands and, when not variadic, does not exceed the declared maximum.
+/// @details Computes the number of operands carried by the instruction and
+///          compares it to the opcode metadata.  Variadic opcodes relax the upper
+///          bound while fixed-width opcodes require an exact or ranged match.
+///          Failures funnel into @ref report to produce a consistent diagnostic.
 /// @return Empty success on validity; otherwise a structured diagnostic.
 Expected<void> OperandCountChecker::run() const
 {
@@ -65,8 +80,10 @@ Expected<void> OperandCountChecker::run() const
 }
 
 /// @brief Emit a diagnostic constructed from the supplied message.
-/// @details Formats the instruction context into a user-facing string and wraps
-/// it in an @c Expected error value so callers can propagate failure uniformly.
+/// @details Renders the instruction, including its location and parent, into a
+///          diagnostic string via @ref formatInstrDiag and wraps it in an
+///          @c Expected error value.  Callers propagate the error to accumulate
+///          verifier failures without throwing exceptions.
 /// @param message Human-readable detail describing the operand mismatch.
 /// @return Expected error containing the formatted diagnostic payload.
 Expected<void> OperandCountChecker::report(std::string_view message) const

@@ -1,18 +1,31 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Keeps the extension point for il::core::BasicBlock, the aggregate that owns
+// instruction lists and block parameters.  All behaviour is currently defined
+// inline for efficiency, but this translation unit documents where future
+// out-of-line helpers (analytics, metadata attachment, verification glue) should
+// live so that downstream dependencies remain stable when the implementation
+// eventually grows.
+//
 //===----------------------------------------------------------------------===//
 
 /// @file
 /// @brief Stub translation unit for `il::core::BasicBlock` helpers.
-/// @details `BasicBlock` currently relies entirely on inline member definitions.
-/// The presence of this file documents the sanctioned location for future
-/// out-of-line utilities (verification hooks, metadata helpers, etc.) so build
-/// dependencies remain stable when that functionality arrives.
+/// @details The block abstraction is presently header-only.  Keeping this file
+///          visible clarifies the sanctioned location for any forthcoming
+///          utilities that need out-of-line definitions.
 
 #include "il/core/BasicBlock.hpp"
 
 namespace il::core
 {
 
-// No out-of-line methods.
+// Intentionally empty – see file header for rationale.
+
 } // namespace il::core
+

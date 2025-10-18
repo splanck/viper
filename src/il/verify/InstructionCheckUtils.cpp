@@ -1,11 +1,21 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Collects the shared helper routines used by the IL instruction verifier.  By
+// placing the integer range checks and type-category conversions here, the
+// verifier's individual checkers can stay focused on semantics while relying on
+// consistent utility behaviour.
+//
 //===----------------------------------------------------------------------===//
 
 /// @file
 /// @brief Implements shared helper utilities for instruction verification.
 /// @details Provides predicates for integer range checks and type-category
-/// mapping used across the IL verifier components.
+///          mapping used across the IL verifier components.
 
 #include "il/verify/InstructionCheckUtils.hpp"
 
@@ -15,6 +25,11 @@ namespace il::verify::detail
 {
 
 /// @brief Determine whether a signed value fits within the specified integer kind.
+/// @details Compares @p value against the limits implied by the IL type kind.
+///          For narrow integers the helper checks explicit bounds using
+///          @c std::numeric_limits while the 64-bit case accepts all inputs.
+///          Categories outside the integer family return @c false to signal that
+///          the query is not meaningful.
 /// @param value Signed integer to test.
 /// @param kind Target IL integer kind.
 /// @return @c true when @p value lies within the representable range of @p kind.
@@ -36,6 +51,10 @@ bool fitsInIntegerKind(long long value, il::core::Type::Kind kind)
 }
 
 /// @brief Translate a type category into a concrete IL type kind.
+/// @details Maps verifier operand categories—often derived from opcode
+///          metadata—to specific @ref il::core::Type::Kind values.  Categories
+///          representing polymorphic or instruction-dependent types intentionally
+///          map to @c std::nullopt so callers can handle them explicitly.
 /// @param category Operand category derived from opcode metadata.
 /// @return Matching type kind or @c std::nullopt when the category represents a
 ///         polymorphic or unsupported type.

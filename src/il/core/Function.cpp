@@ -1,19 +1,30 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Maintains the out-of-line definition site for il::core::Function, the IR
+// container that models SSA procedures.  All functionality is currently
+// header-only, but keeping this translation unit reserved clarifies where future
+// helpers (debug metadata, verifier bridges, serialization hooks) should live so
+// downstream consumers remain insulated from include churn when they arrive.
+//
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Placeholder translation unit for `il::core::Function` extensions.
-/// @details All current `Function` members are defined inline in the header, yet
-/// keeping this file in the build makes the extension point explicit for future
-/// helpers (metadata attachment, verifier glue, etc.) and prevents disruptive
-/// build churn when those helpers eventually materialise.
-
+/// @brief Stub translation unit for `il::core::Function` helpers.
+/// @details Function behaviour is presently inline.  This file documents the
+///          extension point for any forthcoming out-of-line utilities that need
+///          to augment the type.
 
 #include "il/core/Function.hpp"
 
 namespace il::core
 {
 
-// No out-of-line methods yet.
+// Intentionally empty – see file header for rationale.
+
 } // namespace il::core
+
