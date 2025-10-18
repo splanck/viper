@@ -10,6 +10,9 @@
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
+#if VIPER_ENABLE_OOP
+#include "frontends/basic/NameMangler_OOP.hpp"
+#endif
 #include <cassert>
 #include <unordered_set>
 #include <utility>
@@ -616,6 +619,106 @@ void Lowerer::releaseArrayParams(const std::unordered_set<std::string> &paramNam
         emitStore(Type(Type::Kind::Ptr), slot, Value::null());
     }
 }
+
+#if VIPER_ENABLE_OOP
+
+void Lowerer::releaseObjectSlot(Value slot, const std::string &className)
+{
+    ProcedureContext &ctx = context();
+    Function *func = ctx.function();
+    BasicBlock *origin = ctx.current();
+    if (!func || !origin)
+        return;
+
+    curLoc = {};
+    Value handle = emitLoad(Type(Type::Kind::Ptr), slot);
+    Value releaseResult =
+        emitCallRet(Type(Type::Kind::I32), "rt_obj_release_check0", {handle});
+    Value shouldDestroy =
+        emitBinary(Opcode::ICmpNe, ilBoolTy(), releaseResult, Value::constInt(0));
+
+    std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
+    BlockNamer *blockNamer = ctx.blockNames().namer();
+    std::string destroyLbl;
+    std::string contLbl;
+    if (blockNamer)
+    {
+        destroyLbl = blockNamer->generic("obj_epilogue_dtor");
+        contLbl = blockNamer->generic("obj_epilogue_cont");
+    }
+    else
+    {
+        destroyLbl = nextFallbackBlockLabel();
+        contLbl = nextFallbackBlockLabel();
+    }
+
+    std::size_t destroyIdx = func->blocks.size();
+    builder->addBlock(*func, destroyLbl);
+    std::size_t contIdx = func->blocks.size();
+    builder->addBlock(*func, contLbl);
+
+    BasicBlock *destroyBlk = &func->blocks[destroyIdx];
+    BasicBlock *contBlk = &func->blocks[contIdx];
+
+    ctx.setCurrent(&func->blocks[originIdx]);
+    curLoc = {};
+    emitCBr(shouldDestroy, destroyBlk, contBlk);
+
+    ctx.setCurrent(destroyBlk);
+    curLoc = {};
+    if (!className.empty())
+        emitCall(mangleClassDtor(className), {handle});
+    emitCall("rt_obj_free", {handle});
+    emitBr(contBlk);
+
+    ctx.setCurrent(contBlk);
+    curLoc = {};
+    emitStore(Type(Type::Kind::Ptr), slot, Value::null());
+}
+
+void Lowerer::releaseObjectLocals(const std::unordered_set<std::string> &paramNames)
+{
+    bool requested = false;
+    for (auto &[name, info] : symbols)
+    {
+        if (!info.referenced || !info.slotId || !info.isObject)
+            continue;
+        if (name == "ME")
+            continue;
+        if (paramNames.contains(name))
+            continue;
+        if (!requested)
+        {
+            requestHelper(RuntimeFeature::ObjReleaseChk0);
+            requestHelper(RuntimeFeature::ObjFree);
+            requested = true;
+        }
+        releaseObjectSlot(Value::temp(*info.slotId), info.objectClass);
+    }
+}
+
+void Lowerer::releaseObjectParams(const std::unordered_set<std::string> &paramNames)
+{
+    if (paramNames.empty())
+        return;
+    bool requested = false;
+    for (auto &[name, info] : symbols)
+    {
+        if (!info.referenced || !info.slotId || !info.isObject)
+            continue;
+        if (!paramNames.contains(name))
+            continue;
+        if (!requested)
+        {
+            requestHelper(RuntimeFeature::ObjReleaseChk0);
+            requestHelper(RuntimeFeature::ObjFree);
+            requested = true;
+        }
+        releaseObjectSlot(Value::temp(*info.slotId), info.objectClass);
+    }
+}
+
+#endif // VIPER_ENABLE_OOP
 
 void Lowerer::emitEhPush(BasicBlock *handler)
 {
