@@ -45,6 +45,10 @@ target_sources(fe_basic PRIVATE
   LowerScan.cpp
   Lower_OOP_Scan.cpp
   LowerEmit.cpp
+  lower/Emit_Control.cpp
+  lower/Emit_Expr.cpp
+  lower/Emit_Builtin.cpp
+  lower/Emit_OOP.cpp
   Lower_OOP_Emit.cpp
   SemanticAnalyzer.cpp
   SemanticAnalyzer.Procs.cpp
