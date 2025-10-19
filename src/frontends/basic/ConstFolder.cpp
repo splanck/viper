@@ -54,13 +54,96 @@ Numeric promote(const Numeric &a, const Numeric &b)
     return a;
 }
 
-const BinaryFoldEntry *findBinaryFold(BinaryExpr::Op op)
+enum class LiteralType
 {
-    for (const auto &entry : kBinaryFoldTable)
+    Int,
+    Float,
+    Bool,
+    String,
+    Numeric, ///< Wildcard used for numeric promotion lookups.
+};
+
+using BinaryFolderFn = ExprPtr (*)(const Expr &, const Expr &);
+
+struct BinaryFoldRule
+{
+    BinaryExpr::Op op;
+    LiteralType lhs;
+    LiteralType rhs;
+    BinaryFolderFn folder;
+};
+
+constexpr std::array<BinaryFoldRule, 19> kBinaryFoldRules = {{
+    // Numeric operations rely on ConstFold_Arith helpers which honor BASIC's
+    // two's-complement overflow semantics via wrapAdd/wrapSub/wrapMul.
+    {BinaryExpr::Op::Add, LiteralType::Numeric, LiteralType::Numeric, &foldNumericAdd},
+    {BinaryExpr::Op::Sub, LiteralType::Numeric, LiteralType::Numeric, &foldNumericSub},
+    {BinaryExpr::Op::Mul, LiteralType::Numeric, LiteralType::Numeric, &foldNumericMul},
+    {BinaryExpr::Op::Div, LiteralType::Numeric, LiteralType::Numeric, &foldNumericDiv},
+    {BinaryExpr::Op::IDiv, LiteralType::Numeric, LiteralType::Numeric, &foldNumericIDiv},
+    {BinaryExpr::Op::Mod, LiteralType::Numeric, LiteralType::Numeric, &foldNumericMod},
+    {BinaryExpr::Op::Eq, LiteralType::Numeric, LiteralType::Numeric, &foldNumericEq},
+    {BinaryExpr::Op::Ne, LiteralType::Numeric, LiteralType::Numeric, &foldNumericNe},
+    {BinaryExpr::Op::Lt, LiteralType::Numeric, LiteralType::Numeric, &foldNumericLt},
+    {BinaryExpr::Op::Le, LiteralType::Numeric, LiteralType::Numeric, &foldNumericLe},
+    {BinaryExpr::Op::Gt, LiteralType::Numeric, LiteralType::Numeric, &foldNumericGt},
+    {BinaryExpr::Op::Ge, LiteralType::Numeric, LiteralType::Numeric, &foldNumericGe},
+    {BinaryExpr::Op::LogicalAndShort, LiteralType::Numeric, LiteralType::Numeric, &foldNumericAnd},
+    {BinaryExpr::Op::LogicalOrShort, LiteralType::Numeric, LiteralType::Numeric, &foldNumericOr},
+    {BinaryExpr::Op::LogicalAnd, LiteralType::Numeric, LiteralType::Numeric, &foldNumericAnd},
+    {BinaryExpr::Op::LogicalOr, LiteralType::Numeric, LiteralType::Numeric, &foldNumericOr},
+    {BinaryExpr::Op::Add, LiteralType::String, LiteralType::String, &foldStringBinaryConcat},
+    {BinaryExpr::Op::Eq, LiteralType::String, LiteralType::String, &foldStringBinaryEq},
+    {BinaryExpr::Op::Ne, LiteralType::String, LiteralType::String, &foldStringBinaryNe},
+}};
+
+bool isNumeric(LiteralType type)
+{
+    return type == LiteralType::Int || type == LiteralType::Float;
+}
+
+std::optional<LiteralType> classifyLiteral(const Expr &expr)
+{
+    if (dynamic_cast<const IntExpr *>(&expr))
+        return LiteralType::Int;
+    if (dynamic_cast<const FloatExpr *>(&expr))
+        return LiteralType::Float;
+    if (dynamic_cast<const BoolExpr *>(&expr))
+        return LiteralType::Bool;
+    if (dynamic_cast<const StringExpr *>(&expr))
+        return LiteralType::String;
+    return std::nullopt;
+}
+
+const BinaryFoldRule *lookupRule(BinaryExpr::Op op, LiteralType lhs, LiteralType rhs)
+{
+    const BinaryFoldRule *numericFallback = nullptr;
+    for (const auto &rule : kBinaryFoldRules)
     {
-        if (entry.op == op)
-            return &entry;
+        if (rule.op != op)
+            continue;
+        if (rule.lhs == lhs && rule.rhs == rhs)
+            return &rule;
+        if (rule.lhs == LiteralType::Numeric && rule.rhs == LiteralType::Numeric)
+            numericFallback = &rule;
     }
+
+    if (numericFallback && isNumeric(lhs) && isNumeric(rhs))
+        return numericFallback;
+
+    return nullptr;
+}
+
+ExprPtr foldBinaryLiteral(BinaryExpr::Op op, const Expr &lhs, const Expr &rhs)
+{
+    auto lhsType = classifyLiteral(lhs);
+    auto rhsType = classifyLiteral(rhs);
+    if (!lhsType || !rhsType)
+        return nullptr;
+
+    if (auto *rule = lookupRule(op, *lhsType, *rhsType))
+        return rule->folder(lhs, rhs);
+
     return nullptr;
 }
 } // namespace detail
@@ -483,32 +566,10 @@ private:
             return;
         }
 
-        if (const auto *entry = detail::findBinaryFold(expr.op))
+        if (auto folded = detail::foldBinaryLiteral(expr.op, *expr.lhs, *expr.rhs))
         {
-            if (entry->numeric)
-            {
-                if (auto res = entry->numeric(*expr.lhs, *expr.rhs))
-                {
-                    res->loc = expr.loc;
-                    replaceWithExpr(std::move(res));
-                    return;
-                }
-            }
-
-            if (entry->string)
-            {
-                if (auto *ls = dynamic_cast<StringExpr *>(expr.lhs.get()))
-                {
-                    if (auto *rs = dynamic_cast<StringExpr *>(expr.rhs.get()))
-                    {
-                        if (auto res = entry->string(*ls, *rs))
-                        {
-                            res->loc = expr.loc;
-                            replaceWithExpr(std::move(res));
-                        }
-                    }
-                }
-            }
+            folded->loc = expr.loc;
+            replaceWithExpr(std::move(folded));
         }
     }
 
