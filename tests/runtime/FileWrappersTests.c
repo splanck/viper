@@ -7,6 +7,7 @@
 #include "rt_string.h"
 
 #include <assert.h>
+#include <stdio.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -39,5 +40,32 @@ int main(void)
     assert(S_ISREG(st.st_mode));
     assert(rt_close_err(9) == 0);
     unlink(random_path);
+
+#ifdef _WIN32
+    const char *binary_roundtrip_path = "tmp-rt-file-binary-roundtrip.dat";
+    remove(binary_roundtrip_path);
+    rt_string binary_roundtrip = rt_const_cstr(binary_roundtrip_path);
+    assert(rt_open_err_vstr(binary_roundtrip, RT_F_BINARY, 10) == 0);
+
+    int fd = -1;
+    assert(rt_file_channel_fd(10, &fd) == 0);
+    RtFile write_file;
+    write_file.fd = fd;
+    uint8_t carriage = '\r';
+    RtError err = RT_ERROR_NONE;
+    assert(rt_file_write(&write_file, &carriage, 1, &err));
+    assert(rt_close_err(10) == 0);
+
+    assert(rt_open_err_vstr(binary_roundtrip, RT_F_BINARY, 10) == 0);
+    assert(rt_file_channel_fd(10, &fd) == 0);
+    RtFile read_file;
+    read_file.fd = fd;
+    uint8_t read_back = 0;
+    err = RT_ERROR_NONE;
+    assert(rt_file_read_byte(&read_file, &read_back, &err));
+    assert(read_back == '\r');
+    assert(rt_close_err(10) == 0);
+    remove(binary_roundtrip_path);
+#endif
     return 0;
 }

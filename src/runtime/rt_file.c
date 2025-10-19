@@ -101,7 +101,7 @@ static const char *rt_file_mode_string(int32_t mode)
     case RT_F_BINARY:
         return "rbc+";
     case RT_F_RANDOM:
-        return "rc+";
+        return "rbc+";
     default:
         return NULL;
     }
@@ -195,13 +195,27 @@ static bool rt_file_parse_mode(const char *mode, int *flags_out)
     for (const char *p = mode + 1; *p; ++p)
     {
         if (*p == '+')
+        {
             plus = true;
-        else if (*p == 'b' || *p == 't')
+        }
+        else if (*p == 'b')
+        {
+#ifdef O_BINARY
+            flags |= O_BINARY;
+#endif
+        }
+        else if (*p == 't')
+        {
             continue;
+        }
         else if (*p == 'c')
+        {
             create = true;
+        }
         else
+        {
             return false;
+        }
     }
     if (plus)
     {
