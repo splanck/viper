@@ -30,6 +30,18 @@ int main()
     assert(oss.str().find("error: oops") != std::string::npos);
     assert(oss.str().find("test:1:1") != std::string::npos);
 
+    // Diagnostics missing a registered path should not emit a leading colon.
+    il::support::Diag missingPath{
+        il::support::Severity::Error,
+        "missing path context",
+        il::support::SourceLoc{42, 2, 7},
+    };
+    std::ostringstream missingDiag;
+    il::support::printDiag(missingPath, missingDiag, &sm);
+    const std::string missingMessage = missingDiag.str();
+    assert(missingMessage.rfind("error: missing path context", 0) == 0);
+    assert(!missingMessage.empty() && missingMessage.front() != ':');
+
     // Expected<Diag> success versus error disambiguation
     std::string diagValueMessage = "value diag";
     il::support::Diag diagValue = il::support::makeError({}, diagValueMessage);
