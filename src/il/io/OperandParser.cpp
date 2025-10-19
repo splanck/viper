@@ -398,6 +398,13 @@ Expected<void> OperandParser::parseBranchTarget(const std::string &segment,
         return Expected<void>{makeError(instr_.loc, oss.str())};
     }
 
+    if (!trim(text.substr(rp + 1)).empty())
+    {
+        std::ostringstream oss;
+        oss << "line " << state_.lineNo << ": malformed " << mnemonic;
+        return Expected<void>{makeError(instr_.loc, oss.str())};
+    }
+
     label = trim(text.substr(0, lp));
     std::string argsStr = text.substr(lp + 1, rp - lp - 1);
     auto tokens = splitCommaSeparated(argsStr, mnemonic);
