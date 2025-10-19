@@ -15,9 +15,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "support/feature_flags.hpp"
-
-
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
 
