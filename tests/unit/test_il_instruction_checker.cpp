@@ -170,5 +170,27 @@ int main()
     const std::string releaseDiag = releaseErr.str();
     assert(releaseDiag.find("expected 1 argument to @rt_arr_i32_release") != std::string::npos);
 
+    std::unordered_map<unsigned, Type> idxTemps;
+    idxTemps[40] = Type(Type::Kind::I64);
+    idxTemps[41] = Type(Type::Kind::I64);
+    idxTemps[42] = Type(Type::Kind::I64);
+    std::unordered_set<unsigned> idxDefined = {40, 41, 42};
+    TypeInference idxTypes(idxTemps, idxDefined);
+
+    Instr idxChk;
+    idxChk.result = 43u;
+    idxChk.op = Opcode::IdxChk;
+    idxChk.type = Type(Type::Kind::I64);
+    idxChk.operands.push_back(Value::temp(40));
+    idxChk.operands.push_back(Value::temp(41));
+    idxChk.operands.push_back(Value::temp(42));
+
+    std::ostringstream idxErr;
+    ok = verifyInstruction(fn, bb, idxChk, externs, funcs, idxTypes, idxErr);
+    assert(ok);
+    assert(idxErr.str().empty());
+    assert(idxTemps.at(43).kind == Type::Kind::I64);
+    assert(idxTypes.isDefined(43));
+
     return 0;
 }
