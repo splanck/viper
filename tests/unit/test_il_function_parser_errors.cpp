@@ -123,5 +123,23 @@ entry:
         assert(!secondResult.error().loc.isValid());
     }
 
+    // Re-declaring a function name should surface a duplicate-name diagnostic.
+    {
+        il::core::Module m;
+        ParserState firstParse{m};
+        firstParse.lineNo = 12;
+        auto firstOk = parseFunctionHeader("func @dup(i32 %x) -> i32 {", firstParse);
+        assert(firstOk);
+
+        ParserState secondParse{m};
+        secondParse.lineNo = 18;
+        auto dupResult = parseFunctionHeader("func @dup(i32 %x) -> i32 {", secondParse);
+        assert(!dupResult);
+        const std::string &msg = dupResult.error().message;
+        assert(msg.find("duplicate function") != std::string::npos);
+        assert(msg.find("'@dup'") != std::string::npos);
+        assert(m.functions.size() == 1);
+    }
+
     return 0;
 }
