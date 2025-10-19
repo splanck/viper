@@ -19,6 +19,14 @@ function(viper_add_il_core_tests)
   target_compile_definitions(test_il_serialize PRIVATE TESTS_DIR="${VIPER_TESTS_DIR}")
   viper_add_ctest(test_il_serialize test_il_serialize)
 
+  viper_add_test(
+    test_il_serialize_negative_zero
+    ${_VIPER_IL_UNIT_DIR}/test_il_serialize_negative_zero.cpp)
+  target_link_libraries(
+    test_il_serialize_negative_zero PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build)
+  viper_add_ctest(
+    test_il_serialize_negative_zero test_il_serialize_negative_zero)
+
   viper_add_test(test_il_serialize_opcodes ${_VIPER_IL_UNIT_DIR}/test_il_serialize_opcodes.cpp)
   target_link_libraries(test_il_serialize_opcodes PRIVATE ${VIPER_IL_CORE_IO_LIBS})
   target_compile_definitions(test_il_serialize_opcodes PRIVATE TESTS_DIR="${VIPER_TESTS_DIR}")

@@ -15,6 +15,7 @@
 #include "il/core/Value.hpp"
 #include "il/io/StringEscape.hpp"
 
+#include <cmath>
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -127,6 +128,8 @@ std::string toString(const Value &v)
             return std::to_string(v.i64);
         case Value::Kind::ConstFloat:
         {
+            if (std::signbit(v.f64) && v.f64 == 0.0)
+                return "-0.0";
             std::ostringstream oss;
             oss.setf(std::ios::fmtflags(0), std::ios::floatfield);
             oss << std::setprecision(std::numeric_limits<double>::digits10 + 2) << v.f64;
