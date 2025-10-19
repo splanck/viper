@@ -7,6 +7,7 @@ target_sources(fe_basic PRIVATE
   AstPrinter.cpp
   AstPrint_Expr.cpp
   AstPrint_Stmt.cpp
+  AstWalkerUtils.cpp
   Parser.cpp
   Parser_Stmt.cpp
   Parser_Stmt_Control.cpp
