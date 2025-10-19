@@ -287,6 +287,7 @@ Expected<void> parseWithMetadata(Opcode opcode, const std::string &rest, Instr &
                 std::string token = readToken(ss);
                 if (token.empty())
                 {
+                    const bool readFailed = ss.fail();
                     if (spec.role)
                     {
                         std::ostringstream oss;
@@ -294,6 +295,15 @@ Expected<void> parseWithMetadata(Opcode opcode, const std::string &rest, Instr &
                             << info.name;
                         return Expected<void>{makeError(in.loc, oss.str())};
                     }
+                    if (readFailed)
+                    {
+                        ss.clear();
+                        break;
+                    }
+                    auto value = operandParser.parseValueToken(token);
+                    if (!value)
+                        return Expected<void>{value.error()};
+                    in.operands.push_back(std::move(value.value()));
                     break;
                 }
                 if (opcode == Opcode::TrapKind)
