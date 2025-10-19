@@ -196,6 +196,121 @@ int main()
         assert(mentionsCall && mentionsType);
     }
 
+    {
+        Module module;
+        module.externs.push_back(makeFooExtern());
+
+        Function bar;
+        bar.name = "bar";
+        bar.retType = Type(Type::Kind::I32);
+
+        BasicBlock entry;
+        entry.label = "entry";
+
+        Instr firstArg;
+        firstArg.result = 0u;
+        firstArg.op = Opcode::CastSiNarrowChk;
+        firstArg.type = Type(Type::Kind::I32);
+        firstArg.operands.push_back(Value::constInt(1));
+
+        Instr secondArg;
+        secondArg.result = 1u;
+        secondArg.op = Opcode::CastSiNarrowChk;
+        secondArg.type = Type(Type::Kind::I32);
+        secondArg.operands.push_back(Value::constInt(2));
+
+        Instr call;
+        call.op = Opcode::Call;
+        call.type = Type(Type::Kind::Void);
+        call.callee = "foo";
+        call.operands.push_back(Value::temp(0));
+        call.operands.push_back(Value::temp(1));
+
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::I32);
+        ret.operands.push_back(Value::temp(0));
+
+        entry.instructions.push_back(firstArg);
+        entry.instructions.push_back(secondArg);
+        entry.instructions.push_back(call);
+        entry.instructions.push_back(ret);
+        entry.terminated = true;
+
+        bar.blocks.push_back(entry);
+        module.functions.push_back(bar);
+
+        auto result = il::verify::Verifier::verify(module);
+        std::ostringstream diag;
+        if (!result)
+        {
+            il::support::printDiag(result.error(), diag);
+        }
+
+        assert(!result);
+        const std::string diagStr = diag.str();
+        const bool mentionsResult = diagStr.find("requires a result") != std::string::npos;
+        assert(mentionsResult);
+    }
+
+    {
+        auto makeVoidExtern = []() {
+            Extern ext;
+            ext.name = "noop";
+            ext.retType = Type(Type::Kind::Void);
+            ext.params = {Type(Type::Kind::I32)};
+            return ext;
+        };
+
+        Module module;
+        module.externs.push_back(makeVoidExtern());
+
+        Function bar;
+        bar.name = "bar";
+        bar.retType = Type(Type::Kind::I32);
+
+        BasicBlock entry;
+        entry.label = "entry";
+
+        Instr arg;
+        arg.result = 0u;
+        arg.op = Opcode::CastSiNarrowChk;
+        arg.type = Type(Type::Kind::I32);
+        arg.operands.push_back(Value::constInt(1));
+
+        Instr call;
+        call.result = 1u;
+        call.op = Opcode::Call;
+        call.type = Type(Type::Kind::I32);
+        call.callee = "noop";
+        call.operands.push_back(Value::temp(0));
+
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::I32);
+        ret.operands.push_back(Value::temp(0));
+
+        entry.instructions.push_back(arg);
+        entry.instructions.push_back(call);
+        entry.instructions.push_back(ret);
+        entry.terminated = true;
+
+        bar.blocks.push_back(entry);
+        module.functions.push_back(bar);
+
+        auto result = il::verify::Verifier::verify(module);
+        std::ostringstream diag;
+        if (!result)
+        {
+            il::support::printDiag(result.error(), diag);
+        }
+
+        assert(!result);
+        const std::string diagStr = diag.str();
+        const bool mentionsVoid = diagStr.find("void callee must not produce a result") != std::string::npos;
+        assert(mentionsVoid);
+    }
+
     return 0;
 }
 

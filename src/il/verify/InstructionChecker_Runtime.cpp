@@ -228,11 +228,24 @@ Expected<void> checkCall(const VerifyCtx &ctx)
             return fail(ctx, "call arg type mismatch");
     }
 
-    if (ctx.instr.result)
+    const Type retType = externSig ? externSig->retType : fnSig->retType;
+
+    if (retType.kind == Type::Kind::Void)
     {
-        const Type ret = externSig ? externSig->retType : fnSig->retType;
-        ctx.types.recordResult(ctx.instr, ret);
+        if (ctx.instr.result)
+            return fail(ctx, "void callee must not produce a result");
+        if (ctx.instr.type.kind != Type::Kind::Void)
+            return fail(ctx, "void callee must use void type");
+        return {};
     }
+
+    if (!ctx.instr.result)
+        return fail(ctx, "non-void callee requires a result");
+
+    if (ctx.instr.type.kind != retType.kind)
+        return fail(ctx, "call result type mismatch");
+
+    ctx.types.recordResult(ctx.instr, retType);
 
     return {};
 }
