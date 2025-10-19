@@ -69,18 +69,16 @@ viper_add_ctest(NoAssertFalseGuard
 add_test(NAME smoke_term_basic
   COMMAND $<TARGET_FILE:ilc> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/term_basic.bas)
 
-if(VIPER_ENABLE_OOP)
-  add_executable(test_basic_oop_parsing ${CMAKE_CURRENT_SOURCE_DIR}/unit/BasicOOP_Parsing.cpp)
-  target_link_libraries(test_basic_oop_parsing fe_basic viper_testing)
-  add_test(NAME unit_basic_oop_parsing COMMAND test_basic_oop_parsing)
+add_executable(test_basic_oop_parsing ${CMAKE_CURRENT_SOURCE_DIR}/unit/BasicOOP_Parsing.cpp)
+target_link_libraries(test_basic_oop_parsing fe_basic viper_testing)
+add_test(NAME unit_basic_oop_parsing COMMAND test_basic_oop_parsing)
 
-  add_executable(test_basic_oop_lowering ${CMAKE_CURRENT_SOURCE_DIR}/unit/BasicOOP_Lowering.cpp)
-  target_link_libraries(test_basic_oop_lowering fe_basic viper_testing)
-  add_test(NAME unit_basic_oop_lowering COMMAND test_basic_oop_lowering)
+add_executable(test_basic_oop_lowering ${CMAKE_CURRENT_SOURCE_DIR}/unit/BasicOOP_Lowering.cpp)
+target_link_libraries(test_basic_oop_lowering fe_basic viper_testing)
+add_test(NAME unit_basic_oop_lowering COMMAND test_basic_oop_lowering)
 
-  add_test(NAME smoke_basic_oop
-           COMMAND $<TARGET_FILE:ilc> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/basic_oop.bas)
-endif()
+add_test(NAME smoke_basic_oop
+         COMMAND $<TARGET_FILE:ilc> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/basic_oop.bas)
 
 viper_add_unit_support_tests()
 viper_add_il_core_tests()

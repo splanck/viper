@@ -5,9 +5,6 @@
 // emission. Ownership/Lifetime: Borrows AST nodes and Lowerer state; owns no persistent resources.
 // Links: docs/codemap.md
 
-#include "support/feature_flags.hpp"
-
-
 #include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
