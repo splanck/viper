@@ -437,7 +437,8 @@ VM::ExecResult handleLShr(VM &vm,
                             {
                                 const uint64_t shift = static_cast<uint64_t>(rhsVal.i64) & 63U;
                                 const uint64_t value = static_cast<uint64_t>(lhsVal.i64);
-                                out.i64 = static_cast<int64_t>(value >> shift);
+                                const uint64_t result = value >> shift;
+                                out.i64 = std::bit_cast<int64_t>(result);
                             });
 }
 
@@ -471,7 +472,7 @@ VM::ExecResult handleAShr(VM &vm,
                                     const uint64_t mask = (~uint64_t{0}) << (64U - shift);
                                     shifted |= mask;
                                 }
-                                out.i64 = static_cast<int64_t>(shifted);
+                                out.i64 = std::bit_cast<int64_t>(shifted);
                             });
 }
 } // namespace il::vm::detail::integer

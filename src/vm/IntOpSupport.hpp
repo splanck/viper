@@ -17,6 +17,7 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
 
+#include <bit>
 #include <cstdint>
 #include <limits>
 #include <utility>
@@ -248,7 +249,8 @@ void applyUnsignedDivOrRem(const il::core::Instr &in,
     }
 
     const auto dividend = static_cast<uint64_t>(lhsVal.i64);
-    out.i64 = static_cast<int64_t>(compute(dividend, divisor));
+    const uint64_t result = compute(dividend, divisor);
+    out.i64 = std::bit_cast<int64_t>(result);
 }
 
 template <typename NarrowT> [[nodiscard]] bool fitsUnsignedRange(uint64_t value)

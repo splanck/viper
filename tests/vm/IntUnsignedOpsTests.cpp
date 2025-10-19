@@ -5,6 +5,7 @@
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"
 
+#include <bit>
 #include <cassert>
 #include <cstdint>
 #include <limits>
@@ -150,6 +151,36 @@ int main()
         const int64_t expected = static_cast<int64_t>(static_cast<uint64_t>(lhs) %
                                                        static_cast<uint64_t>(rhs));
         assert(vm.run() == expected);
+    }
+
+    {
+        Module module;
+        const uint64_t lhs = std::numeric_limits<uint64_t>::max();
+        const uint64_t rhs = 1;
+        buildBinaryFunction(module,
+                            Opcode::UDiv,
+                            Type::Kind::I64,
+                            std::bit_cast<int64_t>(lhs),
+                            static_cast<int64_t>(rhs));
+        il::vm::VM vm(module);
+        const uint64_t result = std::bit_cast<uint64_t>(vm.run());
+        const uint64_t expected = lhs / rhs;
+        assert(result == expected);
+    }
+
+    {
+        Module module;
+        const uint64_t lhs = std::numeric_limits<uint64_t>::max();
+        const uint64_t rhs = 2;
+        buildBinaryFunction(module,
+                            Opcode::UDivChk0,
+                            Type::Kind::I64,
+                            std::bit_cast<int64_t>(lhs),
+                            static_cast<int64_t>(rhs));
+        il::vm::VM vm(module);
+        const uint64_t result = std::bit_cast<uint64_t>(vm.run());
+        const uint64_t expected = lhs / rhs;
+        assert(result == expected);
     }
 
     {

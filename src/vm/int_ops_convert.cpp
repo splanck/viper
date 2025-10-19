@@ -68,7 +68,7 @@ struct UnsignedNarrowCastTraits
 
     static int64_t toStorage(WideType value)
     {
-        return static_cast<int64_t>(value);
+        return std::bit_cast<int64_t>(value);
     }
 
     template <typename NarrowT> static bool fits(WideType value)
