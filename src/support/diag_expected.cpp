@@ -138,7 +138,11 @@ void printDiag(const Diag &diag, std::ostream &os, const SourceManager *sm)
     if (diag.loc.isValid() && sm)
     {
         auto path = sm->getPath(diag.loc.file_id);
-        os << path << ":" << diag.loc.line << ":" << diag.loc.column << ": ";
+        if (!path.empty())
+        {
+            os << path << ":" << diag.loc.line << ":" << diag.loc.column
+               << ": ";
+        }
     }
     os << detail::diagSeverityToString(diag.severity) << ": " << diag.message
        << '\n';
