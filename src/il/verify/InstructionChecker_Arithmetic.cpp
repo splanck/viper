@@ -119,16 +119,20 @@ Expected<void> checkUnary(const VerifyCtx &ctx, Type::Kind operandKind, Type res
 }
 
 /// @brief Verify the specialised @c idx.chk instruction used for bounds checks.
-/// @details Ensures operand counts and types are consistent (either all i16 or
-///          all i32), validates constants for range, and records the resulting
-///          integer type when the optional result annotation is present.
+/// @details Ensures operand counts and types are consistent (either all i16,
+///          all i32, or all i64), validates constants for range, and records the
+///          resulting integer type when the optional result annotation is present.
 Expected<void> checkIdxChk(const VerifyCtx &ctx)
 {
     if (ctx.instr.operands.size() != 3)
         return fail(ctx, "invalid operand count");
 
+    const auto isSupportedWidth = [](Type::Kind kind) {
+        return kind == Type::Kind::I16 || kind == Type::Kind::I32 || kind == Type::Kind::I64;
+    };
+
     Type::Kind expectedKind = Type::Kind::Void;
-    if (ctx.instr.type.kind == Type::Kind::I16 || ctx.instr.type.kind == Type::Kind::I32)
+    if (isSupportedWidth(ctx.instr.type.kind))
         expectedKind = ctx.instr.type.kind;
 
     const auto classifyOperand = [&](const Value &value) -> Expected<Type::Kind> {
@@ -147,13 +151,15 @@ Expected<void> checkIdxChk(const VerifyCtx &ctx)
                     return Type::Kind::I16;
                 if (detail::fitsInIntegerKind(value.i64, Type::Kind::I32))
                     return Type::Kind::I32;
+                if (detail::fitsInIntegerKind(value.i64, Type::Kind::I64))
+                    return Type::Kind::I64;
                 return failWith<Type::Kind>(ctx, "constant out of range for idx.chk");
             }
             if (!detail::fitsInIntegerKind(value.i64, expectedKind))
                 return failWith<Type::Kind>(ctx, "constant out of range for idx.chk");
             return expectedKind;
         }
-        return failWith<Type::Kind>(ctx, "operands must be i16 or i32");
+        return failWith<Type::Kind>(ctx, "operands must be i16, i32, or i64");
     };
 
     for (const auto &operand : ctx.instr.operands)
@@ -163,17 +169,17 @@ Expected<void> checkIdxChk(const VerifyCtx &ctx)
             return Expected<void>(kindResult.error());
 
         const Type::Kind operandKind = kindResult.value();
-        if (operandKind != Type::Kind::I16 && operandKind != Type::Kind::I32)
-            return fail(ctx, "operands must be i16 or i32");
+        if (!isSupportedWidth(operandKind))
+            return fail(ctx, "operands must be i16, i32, or i64");
 
         if (expectedKind == Type::Kind::Void)
             expectedKind = operandKind;
         else if (operandKind != expectedKind)
-            return fail(ctx, "operands must share i16/i32 width");
+            return fail(ctx, "operands must share integer width");
     }
 
-    if (expectedKind != Type::Kind::I16 && expectedKind != Type::Kind::I32)
-        return fail(ctx, "operands must be i16 or i32");
+    if (!isSupportedWidth(expectedKind))
+        return fail(ctx, "operands must be i16, i32, or i64");
 
     if (ctx.instr.type.kind != Type::Kind::Void && ctx.instr.type.kind != expectedKind)
         return fail(ctx, "result type annotation must match operand width");
