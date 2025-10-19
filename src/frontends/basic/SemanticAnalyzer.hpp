@@ -23,6 +23,11 @@
 
 namespace il::frontends::basic
 {
+namespace sem
+{
+class ControlCheckContext;
+} // namespace sem
+
 
 class SemanticAnalyzerExprVisitor;
 class SemanticAnalyzerStmtVisitor;
@@ -39,8 +44,8 @@ const ExprRule &exprRule(BinaryExpr::Op op);
 /// @invariant Symbol table only contains definitions; unknown uses report
 ///            diagnostics.
 /// @ownership Borrows DiagnosticEmitter; AST not owned.
-class SemanticAnalyzer
-{
+  class SemanticAnalyzer
+  {
   public:
     /// @brief Diagnostic code for non-boolean conditional expressions.
     static constexpr std::string_view DiagNonBooleanCondition = "E1001";
@@ -77,6 +82,7 @@ class SemanticAnalyzer
     const ProcTable &procs() const;
 
   private:
+    friend class sem::ControlCheckContext;
     friend class SemanticAnalyzerExprVisitor;
     friend class SemanticAnalyzerStmtVisitor;
     friend const semantic_analyzer_detail::ExprRule &
