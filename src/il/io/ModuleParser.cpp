@@ -78,6 +78,12 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st)
         return Expected<void>{makeError({}, oss.str())};
     }
     std::string name = trim(line.substr(at + 1, lp - at - 1));
+    if (name.empty())
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing extern name";
+        return Expected<void>{makeError({}, oss.str())};
+    }
     std::string paramsStr = line.substr(lp + 1, rp - lp - 1);
     std::vector<Type> params;
     std::stringstream pss(paramsStr);
