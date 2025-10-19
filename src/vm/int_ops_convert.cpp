@@ -227,6 +227,8 @@ VM::ExecResult handleTruncOrZext1(VM &vm,
     switch (in.op)
     {
         case il::core::Opcode::Trunc1:
+            result.i64 = operand.i64 & 1;
+            break;
         case il::core::Opcode::Zext1:
             result.i64 = truthy ? 1 : 0;
             break;

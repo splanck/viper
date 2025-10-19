@@ -142,16 +142,22 @@ std::string captureCastFpToUiTrap(double input)
 
 int main()
 {
-    const std::array<std::pair<int64_t, int64_t>, 7> truncCases = {
+    const std::array<std::pair<int64_t, int64_t>, 5> truncCases = {
         {{0, 0},
          {1, 1},
          {-1, 1},
-         {2, 1},
-         {-2, 1},
-         {std::numeric_limits<int64_t>::min(), 1},
+         {std::numeric_limits<int64_t>::min(), 0},
          {std::numeric_limits<int64_t>::max(), 1}}};
 
     for (const auto &[input, expected] : truncCases)
+    {
+        assert(runTrunc1(input) == expected);
+    }
+
+    const std::array<std::pair<int64_t, int64_t>, 4> truncParityCases = {
+        {{2, 0}, {-2, 0}, {3, 1}, {-3, 1}}};
+
+    for (const auto &[input, expected] : truncParityCases)
     {
         assert(runTrunc1(input) == expected);
     }
