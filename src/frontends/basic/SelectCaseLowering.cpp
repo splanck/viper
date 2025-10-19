@@ -473,8 +473,9 @@ void SelectCaseLowering::emitArmBody(const std::vector<StmtPtr> &body,
 
 void Lowerer::lowerSelectCase(const SelectCaseStmt &stmt)
 {
-    SelectCaseLowering lowering(*this);
-    lowering.lower(stmt);
+    CtrlState state = emitSelect(stmt);
+    if (state.cur)
+        context().setCurrent(state.cur);
 }
 
 } // namespace il::frontends::basic
