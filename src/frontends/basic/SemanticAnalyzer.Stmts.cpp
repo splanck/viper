@@ -106,7 +106,6 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
     /// @brief Nested statement lists are analysed recursively.
     void visit(StmtList &stmt) override { analyzer_.analyzeStmtList(stmt); }
 
-#if VIPER_ENABLE_OOP
     /// @brief OOP-specific statements are handled by dedicated passes.
     void visit(DeleteStmt &) override {}
     void visit(ConstructorDecl &) override {}
@@ -114,7 +113,6 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
     void visit(MethodDecl &) override {}
     void visit(ClassDecl &) override {}
     void visit(TypeDecl &) override {}
-#endif
 
   private:
     SemanticAnalyzer &analyzer_;

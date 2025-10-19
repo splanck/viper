@@ -95,12 +95,10 @@ class Parser
     static void registerRuntimeParsers(StatementParserRegistry &registry);
     static void registerIoParsers(StatementParserRegistry &registry);
     static void registerCoreParsers(StatementParserRegistry &registry);
-#if VIPER_ENABLE_OOP
     static void registerOopParsers(StatementParserRegistry &registry);
     StmtPtr parseClassDecl();
     StmtPtr parseTypeDecl();
     StmtPtr parseDeleteStatement();
-#endif
 
 #include "frontends/basic/Parser_Token.hpp"
 

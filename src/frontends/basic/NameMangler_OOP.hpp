@@ -28,7 +28,6 @@
 namespace il::frontends::basic
 {
 
-#if VIPER_ENABLE_OOP
 
 /// @brief Produce the mangled name for a class constructor symbol.
 std::string mangleClassCtor(std::string_view klass);
@@ -39,7 +38,6 @@ std::string mangleClassDtor(std::string_view klass);
 /// @brief Produce the mangled name for a method symbol scoped to @p klass.
 std::string mangleMethod(std::string_view klass, std::string_view method);
 
-#endif // VIPER_ENABLE_OOP
 
 } // namespace il::frontends::basic
 

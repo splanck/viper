@@ -23,7 +23,6 @@
 
 #include "frontends/basic/NameMangler_OOP.hpp"
 
-#if VIPER_ENABLE_OOP
 
 #include <string>
 #include <string_view>
@@ -70,5 +69,4 @@ std::string mangleMethod(std::string_view klass, std::string_view method)
 
 } // namespace il::frontends::basic
 
-#endif // VIPER_ENABLE_OOP
 
