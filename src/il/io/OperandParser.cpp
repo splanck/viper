@@ -44,7 +44,11 @@ OperandParser::OperandParser(ParserState &state, Instr &instr) : state_(state), 
 Expected<Value> OperandParser::parseValueToken(const std::string &tok) const
 {
     if (tok.empty())
-        return Value::constInt(0);
+    {
+        std::ostringstream oss;
+        oss << "Line " << state_.lineNo << ": missing operand";
+        return Expected<Value>{makeError(state_.curLoc, oss.str())};
+    }
 
     const auto equalsIgnoreCase = [](const std::string &value, const char *literal) {
         const size_t len = std::strlen(literal);
