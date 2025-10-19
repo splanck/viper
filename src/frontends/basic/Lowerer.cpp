@@ -180,8 +180,7 @@ const Lowerer::ProcedureSignature *Lowerer::findProcSignature(const std::string 
 Lowerer::Lowerer(bool boundsChecks)
     : programLowering(std::make_unique<ProgramLowering>(*this)),
       procedureLowering(std::make_unique<ProcedureLowering>(*this)),
-      statementLowering(std::make_unique<StatementLowering>(*this)),
-      boundsChecks(boundsChecks)
+      statementLowering(std::make_unique<StatementLowering>(*this)), boundsChecks(boundsChecks)
 {
 }
 
@@ -217,13 +216,15 @@ void Lowerer::setDiagnosticEmitter(DiagnosticEmitter *emitter) noexcept
     diagnosticEmitter_ = emitter;
     if (emitter)
     {
-        TypeRules::setTypeErrorSink([emitter](const TypeRules::TypeError &error) {
-            emitter->emit(il::support::Severity::Error,
-                          error.code,
-                          il::support::SourceLoc{},
-                          0,
-                          error.message);
-        });
+        TypeRules::setTypeErrorSink(
+            [emitter](const TypeRules::TypeError &error)
+            {
+                emitter->emit(il::support::Severity::Error,
+                              error.code,
+                              il::support::SourceLoc{},
+                              0,
+                              error.message);
+            });
     }
     else
     {
@@ -257,10 +258,9 @@ void Lowerer::collectProcedureSignatures(const Program &prog)
     procedureLowering->collectProcedureSignatures(prog);
 }
 
-Lowerer::ProcedureMetadata Lowerer::collectProcedureMetadata(
-    const std::vector<Param> &params,
-    const std::vector<StmtPtr> &body,
-    const ProcedureConfig &config)
+Lowerer::ProcedureMetadata Lowerer::collectProcedureMetadata(const std::vector<Param> &params,
+                                                             const std::vector<StmtPtr> &body,
+                                                             const ProcedureConfig &config)
 {
     ProcedureMetadata metadata;
     metadata.paramCount = params.size();
@@ -308,10 +308,8 @@ void Lowerer::buildProcedureSkeleton(Function &f,
     ctx.blockNames().setNamer(std::make_unique<BlockNamer>(name));
     BlockNamer *blockNamer = ctx.blockNames().namer();
 
-    auto &entry = builder->addBlock(
-        f,
-        blockNamer ? blockNamer->entry()
-                   : mangler.block("entry_" + name));
+    auto &entry =
+        builder->addBlock(f, blockNamer ? blockNamer->entry() : mangler.block("entry_" + name));
     entry.params = f.params;
 
     auto &lineBlocks = ctx.blockNames().lineBlocks();
@@ -324,9 +322,7 @@ void Lowerer::buildProcedureSkeleton(Function &f,
         if (blockNamer)
             builder->addBlock(f, blockNamer->line(vLine));
         else
-            builder->addBlock(
-                f,
-                mangler.block("L" + std::to_string(vLine) + "_" + name));
+            builder->addBlock(f, mangler.block("L" + std::to_string(vLine) + "_" + name));
         lineBlocks[vLine] = blockIdx;
     }
 
@@ -387,10 +383,9 @@ void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNam
     }
 }
 
-void Lowerer::lowerStatementSequence(
-    const std::vector<const Stmt *> &stmts,
-    bool stopOnTerminated,
-    const std::function<void(const Stmt &)> &beforeBranch)
+void Lowerer::lowerStatementSequence(const std::vector<const Stmt *> &stmts,
+                                     bool stopOnTerminated,
+                                     const std::function<void(const Stmt &)> &beforeBranch)
 {
     statementLowering->lowerSequence(stmts, stopOnTerminated, beforeBranch);
 }
@@ -563,12 +558,12 @@ const Lowerer::ProcedureContext &Lowerer::context() const noexcept
     return context_;
 }
 
-
 TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
 {
     using NumericType = TypeRules::NumericType;
 
-    auto classifyBinary = [&](const BinaryExpr &bin) -> NumericType {
+    auto classifyBinary = [&](const BinaryExpr &bin) -> NumericType
+    {
         if (!bin.lhs || !bin.rhs)
             return NumericType::Long;
         NumericType lhsTy = classifyNumericType(*bin.lhs);
@@ -606,7 +601,8 @@ TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
                 break;
         }
         const long long value = i->value;
-        if (value >= std::numeric_limits<int16_t>::min() && value <= std::numeric_limits<int16_t>::max())
+        if (value >= std::numeric_limits<int16_t>::min() &&
+            value <= std::numeric_limits<int16_t>::max())
             return NumericType::Integer;
         return NumericType::Long;
     }
@@ -753,5 +749,35 @@ TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
         return NumericType::Long;
     }
     return NumericType::Long;
+}
+
+unsigned Lowerer::nextTempId()
+{
+    ProcedureContext &ctx = context();
+    unsigned id = 0;
+    if (builder)
+    {
+        id = builder->reserveTempId();
+    }
+    else
+    {
+        id = ctx.nextTemp();
+        ctx.setNextTemp(id + 1);
+    }
+    if (Function *func = ctx.function())
+    {
+        if (func->valueNames.size() <= id)
+            func->valueNames.resize(id + 1);
+        if (func->valueNames[id].empty())
+            func->valueNames[id] = "%t" + std::to_string(id);
+    }
+    if (ctx.nextTemp() <= id)
+        ctx.setNextTemp(id + 1);
+    return id;
+}
+
+std::string Lowerer::nextFallbackBlockLabel()
+{
+    return mangler.block("bb_" + std::to_string(nextFallbackBlockId++));
 }
 } // namespace il::frontends::basic
