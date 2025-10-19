@@ -51,6 +51,10 @@ target_sources(fe_basic PRIVATE
   SemanticAnalyzer.Stmts.cpp
   SemanticAnalyzer.Stmts.Shared.cpp
   SemanticAnalyzer.Stmts.Control.cpp
+  sem/Check_If.cpp
+  sem/Check_Loops.cpp
+  sem/Check_Jumps.cpp
+  sem/Check_Select.cpp
   SemanticAnalyzer.Stmts.IO.cpp
   SemanticAnalyzer.Stmts.Runtime.cpp
   Semantic_OOP.cpp
