@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/StatementSequencer.hpp"
+#include "frontends/basic/AST.hpp"
 
 #include "frontends/basic/Parser.hpp"
 #include <cstdlib>

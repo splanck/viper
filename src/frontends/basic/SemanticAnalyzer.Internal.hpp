@@ -9,6 +9,7 @@
 #pragma once
 
 #include "frontends/basic/SemanticAnalyzer.hpp"
+#include "frontends/basic/AST.hpp"
 
 #include <cstddef>
 #include <string>

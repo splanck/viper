@@ -5,7 +5,7 @@
 // Links: docs/codemap.md
 #pragma once
 
-#include "frontends/basic/AST.hpp"
+#include "frontends/basic/ast/NodeFwd.hpp"
 
 #include <optional>
 #include <string>

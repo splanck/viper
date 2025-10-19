@@ -8,7 +8,7 @@
 // Links: docs/codemap.md
 #pragma once
 
-#include "frontends/basic/AST.hpp"
+#include "frontends/basic/ast/ExprNodes.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "il/core/Value.hpp"
