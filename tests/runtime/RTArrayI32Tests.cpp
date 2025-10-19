@@ -20,16 +20,29 @@
 static void expect_zero_range(int32_t *arr, size_t start, size_t end)
 {
     for (size_t i = start; i < end; ++i)
-        assert(rt_arr_i32_get(arr, i) == 0);
+    {
+        int32_t value = rt_arr_i32_get(arr, i);
+        if (value != 0)
+        {
+            std::fprintf(stderr, "expected zero at %zu, got %d\n", i, value);
+            std::abort();
+        }
+        assert(value == 0);
+    }
 }
 
 int main()
 {
     int32_t *arr = rt_arr_i32_new(0);
+    if (!arr)
+        std::abort();
     assert(arr != nullptr);
     assert(rt_arr_i32_len(arr) == 0);
 
-    assert(rt_arr_i32_resize(&arr, 3) == 0);
+    int rc = rt_arr_i32_resize(&arr, 3);
+    if (rc != 0)
+        std::abort();
+    assert(rc == 0);
     assert(arr != nullptr);
     assert(rt_arr_i32_len(arr) == 3);
     expect_zero_range(arr, 0, 3);
@@ -41,7 +54,10 @@ int main()
     assert(rt_arr_i32_get(arr, 1) == -2);
     assert(rt_arr_i32_get(arr, 2) == 99);
 
-    assert(rt_arr_i32_resize(&arr, 6) == 0);
+    rc = rt_arr_i32_resize(&arr, 6);
+    if (rc != 0)
+        std::abort();
+    assert(rc == 0);
     assert(arr != nullptr);
     assert(rt_arr_i32_len(arr) == 6);
     assert(rt_arr_i32_get(arr, 0) == 7);
@@ -49,13 +65,19 @@ int main()
     assert(rt_arr_i32_get(arr, 2) == 99);
     expect_zero_range(arr, 3, 6);
 
-    assert(rt_arr_i32_resize(&arr, 2) == 0);
+    rc = rt_arr_i32_resize(&arr, 2);
+    if (rc != 0)
+        std::abort();
+    assert(rc == 0);
     assert(arr != nullptr);
     assert(rt_arr_i32_len(arr) == 2);
     assert(rt_arr_i32_get(arr, 0) == 7);
     assert(rt_arr_i32_get(arr, 1) == -2);
 
-    assert(rt_arr_i32_resize(&arr, 5) == 0);
+    rc = rt_arr_i32_resize(&arr, 5);
+    if (rc != 0)
+        std::abort();
+    assert(rc == 0);
     assert(arr != nullptr);
     assert(rt_arr_i32_len(arr) == 5);
     assert(rt_arr_i32_get(arr, 0) == 7);
@@ -63,7 +85,12 @@ int main()
     expect_zero_range(arr, 2, 5);
 
     int32_t *fresh = nullptr;
-    assert(rt_arr_i32_resize(&fresh, 4) == 0);
+    rc = rt_arr_i32_resize(&fresh, 4);
+    if (rc != 0)
+        std::abort();
+    assert(rc == 0);
+    if (!fresh)
+        std::abort();
     assert(fresh != nullptr);
     assert(rt_arr_i32_len(fresh) == 4);
     expect_zero_range(fresh, 0, 4);
@@ -74,8 +101,19 @@ int main()
 #if !defined(_WIN32)
     auto capture_stderr = [](void (*fn)()) {
         int fds[2];
-        assert(pipe(fds) == 0);
+        int pipe_rc = pipe(fds);
+        if (pipe_rc != 0)
+        {
+            std::perror("pipe");
+            std::abort();
+        }
+        assert(pipe_rc == 0);
         pid_t pid = fork();
+        if (pid < 0)
+        {
+            std::perror("fork");
+            std::abort();
+        }
         assert(pid >= 0);
         if (pid == 0)
         {
@@ -107,6 +145,8 @@ int main()
 
     auto invoke_oob_get = []() {
         int32_t *panic_arr = rt_arr_i32_new(1);
+        if (!panic_arr)
+            std::abort();
         assert(panic_arr != nullptr);
         rt_arr_i32_get(panic_arr, 1);
     };
@@ -114,6 +154,8 @@ int main()
 
     auto invoke_oob_set = []() {
         int32_t *panic_arr = rt_arr_i32_new(1);
+        if (!panic_arr)
+            std::abort();
         assert(panic_arr != nullptr);
         rt_arr_i32_set(panic_arr, 1, 42);
     };
