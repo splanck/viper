@@ -1,7 +1,7 @@
 // File: tests/unit/BasicOOP_Lowering.cpp
 // Purpose: Ensure BASIC OOP lowering emits runtime helpers and mangled members.
 // Key invariants: Lowering produces required object runtime externs and class
-//                 member functions when OOP is enabled.
+//                 member functions with OOP permanently enabled.
 // Ownership/Lifetime: Test owns compilation inputs and inspects resulting module.
 // Links: docs/codemap.md
 
@@ -80,7 +80,6 @@ constexpr std::string_view kLoweringSnippet = R"BASIC(
 
 TEST(BasicOOPLoweringTest, EmitsRuntimeHelpersAndClassMembers)
 {
-#if VIPER_ENABLE_OOP
     SourceManager sourceManager;
     BasicCompilerInput input{kLoweringSnippet, "basic_oop.bas"};
     BasicCompilerOptions options{};
@@ -97,7 +96,6 @@ TEST(BasicOOPLoweringTest, EmitsRuntimeHelpersAndClassMembers)
     EXPECT_TRUE(hasFunction(module, "Klass.__ctor"));
     EXPECT_TRUE(hasFunction(module, "Klass.__dtor"));
     EXPECT_TRUE(hasFunction(module, "Klass.inc"));
-#endif
 }
 
 int main(int argc, char **argv)

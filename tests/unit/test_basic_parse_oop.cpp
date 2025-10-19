@@ -1,6 +1,6 @@
 // File: tests/unit/test_basic_parse_oop.cpp
 // Purpose: Ensure OOP-specific expressions and statements parse into expected AST nodes.
-// Key invariants: NEW/ME expressions and DELETE statement are recognized when OOP is enabled.
+// Key invariants: NEW/ME expressions and DELETE statement are recognized with OOP always enabled.
 // Ownership/Lifetime: Test owns parser instance and resulting AST.
 // Links: docs/codemap.md
 
@@ -14,7 +14,6 @@ using namespace il::support;
 
 int main()
 {
-#if VIPER_ENABLE_OOP
     // NEW without arguments produces NewExpr with empty arg list.
     {
         std::string src = "10 LET O = NEW Foo()\n20 END\n";
@@ -70,6 +69,5 @@ int main()
         auto *target = dynamic_cast<VarExpr *>(del->target.get());
         assert(target && target->name == "O");
     }
-#endif
     return 0;
 }
