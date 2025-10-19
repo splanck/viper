@@ -236,8 +236,9 @@ OperandParser::splitCommaSeparated(const std::string &text, const char *context)
 /// @brief Parse operands for call-style instructions.
 ///
 /// Extracts the callee name, decodes each argument, and appends them to the
-/// instruction.  The function verifies balanced parentheses and reports clear
-/// diagnostics on malformed text.
+/// instruction.  The function verifies balanced parentheses, rejects trailing
+/// junk after the argument list, and reports clear diagnostics on malformed
+/// text.
 ///
 /// @param text Operand substring following the mnemonic.
 /// @return Success or an error diagnostic.
@@ -252,6 +253,14 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text)
         oss << "line " << state_.lineNo << ": malformed call";
         return Expected<void>{makeError(instr_.loc, oss.str())};
     }
+
+    if (!trim(text.substr(rp + 1)).empty())
+    {
+        std::ostringstream oss;
+        oss << "line " << state_.lineNo << ": malformed call";
+        return Expected<void>{makeError(instr_.loc, oss.str())};
+    }
+
     instr_.callee = trim(text.substr(at + 1, lp - at - 1));
     std::string args = text.substr(lp + 1, rp - lp - 1);
     auto tokens = splitCommaSeparated(args, "call");
