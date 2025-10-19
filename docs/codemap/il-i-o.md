@@ -12,6 +12,8 @@
 
   Implements the module-level IL parser responsible for directives like `il`, `extern`, `global`, and `func`. Helpers normalize tokens, parse type lists via `parseType`, capture diagnostics from the function parser, and repackage failures as `Expected` errors tied to the current line. Extern and global directives mutate the active `ParserState` in place, while function headers dispatch into the dedicated function parser and version directives update module metadata. Dependencies include `il/io/ModuleParser.hpp`, IL core containers, subordinate parsers (`FunctionParser`, `ParserUtil`, `TypeParser`), `support/diag_expected.hpp`, and standard `<sstream>`, `<string_view>`, `<utility>`, and `<vector>` utilities.
 
+  The global parser additionally validates that the identifier between `@` and `=` is non-empty, emitting a diagnostic instead of constructing an anonymous binding when the name is missing.
+
 - **src/il/io/ModuleParser.hpp**
 
   Declares the `parseModuleHeader` helper that advances the IL reader through top-level directives. Callers provide an input stream, the current line buffer, and the shared `ParserState` so externs, globals, and functions are appended directly to the module. Errors are streamed to an `std::ostream`, mirroring the rest of the parsing layer while keeping this interface minimal. Dependencies are limited to `il/io/ParserState.hpp` alongside `<istream>`, `<ostream>`, and `<string>`.
