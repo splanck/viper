@@ -417,7 +417,11 @@ VM::ExecResult handleShl(VM &vm,
                             fr,
                             in,
                             [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            { out.i64 = lhsVal.i64 << rhsVal.i64; });
+                            {
+                                const uint64_t shift = static_cast<uint64_t>(rhsVal.i64) & 63U;
+                                const uint64_t value = static_cast<uint64_t>(lhsVal.i64);
+                                out.i64 = static_cast<int64_t>(value << shift);
+                            });
 }
 
 VM::ExecResult handleLShr(VM &vm,
