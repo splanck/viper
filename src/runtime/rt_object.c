@@ -4,10 +4,6 @@
 // Ownership/Lifetime: Callers receive zero-initialized payloads managed by the shared heap.
 // Links: docs/codemap.md
 
-#include "support/feature_flags.hpp"
-
-#if VIPER_ENABLE_OOP
-
 #include "rt_object.h"
 #include "rt_heap.h"
 
@@ -71,5 +67,3 @@ void rt_obj_free(void *p)
         return;
     /* Heap will release storage when the reference count reaches zero. */
 }
-
-#endif // VIPER_ENABLE_OOP
