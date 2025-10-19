@@ -71,6 +71,10 @@ function(viper_add_il_core_tests)
   target_link_libraries(test_il_parse_extern_extra_commas PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   viper_add_ctest(test_il_parse_extern_extra_commas test_il_parse_extern_extra_commas)
 
+  viper_add_test(test_il_parse_missing_extern_name ${_VIPER_IL_UNIT_DIR}/test_il_parse_missing_extern_name.cpp)
+  target_link_libraries(test_il_parse_missing_extern_name PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+  viper_add_ctest(test_il_parse_missing_extern_name test_il_parse_missing_extern_name)
+
   viper_add_test(test_il_parse_block_param_prefix ${_VIPER_IL_UNIT_DIR}/test_il_parse_block_param_prefix.cpp)
   target_link_libraries(test_il_parse_block_param_prefix PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   target_compile_definitions(test_il_parse_block_param_prefix PRIVATE PARSE_ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/tests/il/parse-roundtrip")
