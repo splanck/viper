@@ -6,7 +6,7 @@
 // Links: docs/codemap.md
 #pragma once
 
-#include "frontends/basic/AST.hpp"
+#include "frontends/basic/ast/DeclNodes.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lexer.hpp"
 #include "frontends/basic/StatementSequencer.hpp"

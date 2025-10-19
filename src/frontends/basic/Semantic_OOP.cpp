@@ -5,6 +5,7 @@
 // Links: docs/codemap.md
 
 #include "frontends/basic/Semantic_OOP.hpp"
+#include "frontends/basic/AST.hpp"
 
 
 #include <utility>

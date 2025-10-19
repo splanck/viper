@@ -7,14 +7,28 @@
 #include "rt_array.h"
 #include "rt_heap.h"
 
+#ifdef NDEBUG
+#    undef NDEBUG
+#endif
 #include <cassert>
 #include <cstddef>
+#include <cstdio>
+#include <cstdlib>
 
 static size_t refcount(int32_t *arr)
 {
     rt_heap_hdr_t *hdr = rt_arr_i32_hdr(arr);
     assert(hdr != nullptr);
     return hdr->refcnt;
+}
+
+static void resize_or_abort(int32_t **arr, size_t new_len)
+{
+    if (rt_arr_i32_resize(arr, new_len) != 0)
+    {
+        std::fprintf(stderr, "rt_arr_i32_resize failed for len=%zu\n", new_len);
+        std::abort();
+    }
 }
 
 static void test_refcount_lifecycle()
@@ -64,7 +78,7 @@ static void test_copy_on_resize()
     assert(refcount(a) == 2);
 
     int32_t *original = a;
-    assert(rt_arr_i32_resize(&a, 4) == 0);
+    resize_or_abort(&a, 4);
     assert(a != nullptr);
     assert(rt_arr_i32_len(a) == 4);
     assert(rt_arr_i32_get(a, 0) == 5);

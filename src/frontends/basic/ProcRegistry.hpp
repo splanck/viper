@@ -12,7 +12,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "frontends/basic/AST.hpp"
+#include "frontends/basic/ast/DeclNodes.hpp"
 #include "frontends/basic/SemanticDiagnostics.hpp"
 
 namespace il::frontends::basic

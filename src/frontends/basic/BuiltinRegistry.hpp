@@ -6,7 +6,7 @@
 // Links: docs/codemap.md
 #pragma once
 
-#include "frontends/basic/AST.hpp"
+#include "frontends/basic/ast/ExprNodes.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "il/core/Opcode.hpp"

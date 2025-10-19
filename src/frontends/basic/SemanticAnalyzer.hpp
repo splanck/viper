@@ -7,7 +7,7 @@
 // Links: docs/codemap.md
 #pragma once
 
-#include "frontends/basic/AST.hpp"
+#include "frontends/basic/ast/NodeFwd.hpp"
 #include "frontends/basic/ProcRegistry.hpp"
 #include "frontends/basic/ScopeTracker.hpp"
 #include "frontends/basic/SemanticDiagnostics.hpp"
