@@ -12,8 +12,6 @@
 
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 
-#include "support/feature_flags.hpp"
-
 #    include "frontends/basic/Semantic_OOP.hpp"
 
 #include <algorithm>

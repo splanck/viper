@@ -13,7 +13,6 @@
 #include "il/build/IRBuilder.hpp"
 #include "il/core/Module.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
-#include "support/feature_flags.hpp"
 #include <array>
 #include <cstdint>
 #include <functional>
