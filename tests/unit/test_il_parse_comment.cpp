@@ -1,6 +1,7 @@
 // File: tests/unit/test_il_parse_comment.cpp
-// Purpose: Ensure IL parser ignores comment lines.
-// Key invariants: Parser treats lines starting with '//' as comments.
+// Purpose: Ensure IL parser ignores comment lines and inline block header comments.
+// Key invariants: Parser treats lines starting with '//' as comments and trims inline
+// comments from block headers.
 // Ownership/Lifetime: Test owns modules and buffers locally.
 // Links: docs/il-guide.md#reference
 
@@ -16,8 +17,10 @@ int main()
    # hash comment with leading spaces
 // slash comment before function
 func @main() -> i64 {
-entry:
+entry: # inline hash comment after block label
   # hash comment inside block
+  br ^exit()
+exit: // inline slash comment after block label
   // slash comment inside block
   ret 0
 }
@@ -33,7 +36,8 @@ entry:
     assert(pe);
     assert(diag.str().empty());
     assert(m.functions.size() == 1);
-    assert(m.functions.front().blocks.size() == 1);
+    assert(m.functions.front().blocks.size() == 2);
     assert(m.functions.front().blocks.front().instructions.size() == 1);
+    assert(m.functions.front().blocks.back().instructions.size() == 1);
     return 0;
 }

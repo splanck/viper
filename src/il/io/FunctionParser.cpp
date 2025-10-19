@@ -381,12 +381,70 @@ Expected<void> parseFunction(std::istream &is, std::string &header, ParserState 
             st.curLoc = {};
             break;
         }
-        if (line.back() == ':')
+        size_t commentPos = std::string::npos;
+        size_t colonPos = std::string::npos;
+        bool inString = false;
+        bool escapeNext = false;
+        int parenDepth = 0;
+        for (size_t i = 0; i < line.size(); ++i)
         {
-            auto blockResult = parseBlockHeader(line.substr(0, line.size() - 1), st);
-            if (!blockResult)
-                return blockResult;
-            continue;
+            const char c = line[i];
+            if (inString)
+            {
+                if (escapeNext)
+                {
+                    escapeNext = false;
+                    continue;
+                }
+                if (c == '\\')
+                {
+                    escapeNext = true;
+                    continue;
+                }
+                if (c == '"')
+                    inString = false;
+                continue;
+            }
+            if (c == '"')
+            {
+                inString = true;
+                continue;
+            }
+            if (c == '(')
+            {
+                ++parenDepth;
+                continue;
+            }
+            if (c == ')' && parenDepth > 0)
+            {
+                --parenDepth;
+                continue;
+            }
+            if (c == '/' && i + 1 < line.size() && line[i + 1] == '/')
+            {
+                commentPos = i;
+                break;
+            }
+            if (c == '#')
+            {
+                commentPos = i;
+                break;
+            }
+            if (c == ':' && colonPos == std::string::npos && parenDepth == 0)
+                colonPos = i;
+        }
+        std::string headerView = commentPos == std::string::npos ? line : line.substr(0, commentPos);
+        if (colonPos != std::string::npos)
+        {
+            const std::string afterColon = trim(headerView.substr(colonPos + 1));
+            if (afterColon.empty())
+            {
+                auto blockHeader = trim(headerView.substr(0, colonPos));
+                auto blockResult = parseBlockHeader(blockHeader, st);
+                if (!blockResult)
+                    return blockResult;
+                continue;
+            }
         }
         if (!st.curBB)
         {
