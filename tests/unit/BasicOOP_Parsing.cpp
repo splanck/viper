@@ -2,7 +2,7 @@
 // Purpose: Validate BASIC OOP parser accepts a class with field, constructor,
 //          method, and destructor without diagnostics.
 // Key invariants: Parser reports zero diagnostics and produces ClassDecl with
-//                 expected members when OOP is enabled.
+//                 expected members now that OOP is always enabled.
 // Ownership/Lifetime: Test owns parser, diagnostics, and resulting AST.
 // Links: docs/codemap.md
 
@@ -61,7 +61,6 @@ constexpr std::string_view kClassSnippet = R"BASIC(
 
 TEST(BasicOOPParsingTest, ParsesClassWithMembersWithoutDiagnostics)
 {
-#if VIPER_ENABLE_OOP
     SourceManager sourceManager;
     uint32_t fileId = sourceManager.addFile("basic_oop.bas");
 
@@ -119,7 +118,6 @@ TEST(BasicOOPParsingTest, ParsesClassWithMembersWithoutDiagnostics)
     EXPECT_FALSE(dtor->body.empty());
     EXPECT_TRUE(inc->params.empty());
     EXPECT_FALSE(inc->body.empty());
-#endif
 }
 
 int main(int argc, char **argv)

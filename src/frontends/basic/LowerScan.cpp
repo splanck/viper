@@ -10,7 +10,6 @@
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
-#include "support/feature_flags.hpp"
 #include <cassert>
 #include <optional>
 #include <string>

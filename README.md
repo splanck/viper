@@ -174,6 +174,7 @@ error: main:entry: %2 = call %t1: use after release of %1
 
 - **IL Quickstart**: [docs/il-guide.md#quickstart](docs/il-guide.md#quickstart)
 - [BASIC Reference](docs/basic-language.md)
+- [BASIC OOP Guide](docs/basic-oop.md)
 - [IL Reference](docs/il-guide.md#reference)
 - [ViperTUI](tui/): experimental terminal UI library
 - [ViperTUI Architecture](docs/architecture.md#tui-architecture)
