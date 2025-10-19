@@ -29,7 +29,6 @@ namespace il::frontends::basic
 
 class LowererExprVisitor;
 class LowererStmtVisitor;
-class ScanWalker;
 struct ProgramLowering;
 struct ProcedureLowering;
 struct StatementLowering;
@@ -44,6 +43,12 @@ namespace builtins
 {
 class LowerCtx;
 } // namespace builtins
+
+namespace lower::detail
+{
+class ExprTypeScanner;
+class RuntimeNeedsScanner;
+}
 
 /// @brief Lowers BASIC AST into IL Module.
 /// @invariant Generates deterministic block names per procedure using BlockNamer.
@@ -87,7 +92,8 @@ class Lowerer
   private:
     friend class LowererExprVisitor;
     friend class LowererStmtVisitor;
-    friend class ScanWalker;
+    friend class lower::detail::ExprTypeScanner;
+    friend class lower::detail::RuntimeNeedsScanner;
     friend struct ProgramLowering;
     friend struct ProcedureLowering;
     friend struct StatementLowering;
