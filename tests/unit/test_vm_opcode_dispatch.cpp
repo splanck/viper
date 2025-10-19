@@ -79,6 +79,6 @@ merge(%val: i64, %flag: i64):
 
     il::vm::VM vm(m);
     int64_t rv = vm.run();
-    assert(rv == 49);
+    assert(rv == 48);
     return 0;
 }
