@@ -81,7 +81,7 @@ inline Slot loadSlotFromPtr(il::core::Type::Kind kind, void *ptr)
             break;
         case il::core::Type::Kind::Error:
         case il::core::Type::Kind::ResumeTok:
-            out.ptr = nullptr;
+            out.ptr = *reinterpret_cast<void **>(ptr);
             break;
         case il::core::Type::Kind::Void:
             out.i64 = 0;
