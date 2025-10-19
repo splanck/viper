@@ -36,6 +36,37 @@ int main()
         Module module;
 
         Function fn;
+        fn.name = "missing_result";
+        fn.retType = Type(Type::Kind::Void);
+
+        BasicBlock entry;
+        entry.label = "entry";
+
+        Instr add;
+        add.op = Opcode::IAddOvf;
+        add.type = Type(Type::Kind::I64);
+        add.operands.push_back(Value::constInt(1));
+        add.operands.push_back(Value::constInt(2));
+
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+
+        entry.instructions.push_back(add);
+        entry.instructions.push_back(ret);
+        entry.terminated = true;
+
+        fn.blocks.push_back(entry);
+        module.functions.push_back(fn);
+
+        const std::string message = verifyAndCaptureMessage(module);
+        assert(message.find("missing result") != std::string::npos);
+    }
+
+    {
+        Module module;
+
+        Function fn;
         fn.name = "load_bad";
         fn.retType = Type(Type::Kind::Void);
 

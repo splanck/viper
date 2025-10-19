@@ -96,6 +96,9 @@ Expected<void> checkBinary(const VerifyCtx &ctx, Type::Kind operandKind, Type re
     if (ctx.instr.operands.size() != 2)
         return fail(ctx, "invalid operand count");
 
+    if (!ctx.instr.result)
+        return fail(ctx, "missing result");
+
     if (auto result = expectAllOperandType(ctx, operandKind); !result)
         return result;
 
