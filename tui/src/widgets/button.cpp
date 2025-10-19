@@ -6,6 +6,8 @@
 #include "tui/widgets/button.hpp"
 #include "tui/render/screen.hpp"
 
+#include <algorithm>
+
 namespace viper::tui::widgets
 {
 
@@ -52,14 +54,18 @@ void Button::paint(render::ScreenBuffer &sb)
         }
     }
 
-    // Text centered vertically on second row
-    int row = y0 + h / 2;
-    int start = x0 + 1;
-    for (std::size_t i = 0; i < text_.size() && start + static_cast<int>(i) < x0 + w - 1; ++i)
+    // Minimum height of 3 required to render text inside the border.
+    if (h >= 3)
     {
-        auto &cell = sb.at(row, start + static_cast<int>(i));
-        cell.ch = static_cast<char32_t>(text_[i]);
-        cell.style = txt;
+        // Text centered vertically while staying inside the border.
+        int row = std::clamp(y0 + h / 2, y0 + 1, y0 + h - 2);
+        int start = x0 + 1;
+        for (std::size_t i = 0; i < text_.size() && start + static_cast<int>(i) < x0 + w - 1; ++i)
+        {
+            auto &cell = sb.at(row, start + static_cast<int>(i));
+            cell.ch = static_cast<char32_t>(text_[i]);
+            cell.style = txt;
+        }
     }
 }
 
