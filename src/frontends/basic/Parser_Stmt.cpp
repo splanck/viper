@@ -24,14 +24,12 @@ void Parser::registerCoreParsers(StatementParserRegistry &registry)
     registry.registerHandler(TokenKind::KeywordSub, &Parser::parseSubStatement);
 }
 
-#if VIPER_ENABLE_OOP
 void Parser::registerOopParsers(StatementParserRegistry &registry)
 {
     registry.registerHandler(TokenKind::KeywordClass, &Parser::parseClassDecl);
     registry.registerHandler(TokenKind::KeywordType, &Parser::parseTypeDecl);
     registry.registerHandler(TokenKind::KeywordDelete, &Parser::parseDeleteStatement);
 }
-#endif
 
 void Parser::noteProcedureName(std::string name)
 {
@@ -255,7 +253,6 @@ Type Parser::parseTypeKeyword()
     }
     return Type::I64;
 }
-#if VIPER_ENABLE_OOP
 
 StmtPtr Parser::parseClassDecl()
 {
@@ -525,7 +522,6 @@ StmtPtr Parser::parseDeleteStatement()
     return stmt;
 }
 
-#endif
 
 /// @brief Parse a parenthesized parameter list.
 /// @return Vector of parameters, possibly empty if no list is present.

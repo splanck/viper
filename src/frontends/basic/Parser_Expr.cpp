@@ -454,7 +454,6 @@ ExprPtr Parser::parsePrimary()
         consume();
         expr = std::move(b);
     }
-#if VIPER_ENABLE_OOP
     else if (at(TokenKind::KeywordNew))
     {
         auto loc = peek().loc;
@@ -495,7 +494,6 @@ ExprPtr Parser::parsePrimary()
         consume();
         expr = std::move(me);
     }
-#endif
     else if (at(TokenKind::KeywordLbound))
     {
         auto loc = peek().loc;
@@ -602,7 +600,6 @@ ExprPtr Parser::parsePrimary()
         }
     }
 
-#if VIPER_ENABLE_OOP
     while (expr && at(TokenKind::Dot))
     {
         consume();
@@ -646,7 +643,6 @@ ExprPtr Parser::parsePrimary()
             expr = std::move(access);
         }
     }
-#endif
 
     return expr;
 }

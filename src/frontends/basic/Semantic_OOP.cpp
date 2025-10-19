@@ -6,7 +6,6 @@
 
 #include "frontends/basic/Semantic_OOP.hpp"
 
-#if VIPER_ENABLE_OOP
 
 #include <utility>
 
@@ -105,5 +104,4 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter * 
 
 } // namespace il::frontends::basic
 
-#endif // VIPER_ENABLE_OOP
 

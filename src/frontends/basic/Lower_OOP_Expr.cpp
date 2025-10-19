@@ -18,7 +18,6 @@
 
 #include "support/feature_flags.hpp"
 
-#if VIPER_ENABLE_OOP
 
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
@@ -181,4 +180,3 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
 
 } // namespace il::frontends::basic
 
-#endif // VIPER_ENABLE_OOP

@@ -203,7 +203,6 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
         callAfter(expr);
     }
 
-#if VIPER_ENABLE_OOP
     void visit(const NewExpr &expr) override
     {
         callBefore(expr);
@@ -261,7 +260,6 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
         }
         callAfter(expr);
     }
-#endif
 
     // Statement visitors ---------------------------------------------------
 
@@ -776,7 +774,6 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
         callAfter(stmt);
     }
 
-#if VIPER_ENABLE_OOP
     void visit(const DeleteStmt &stmt) override
     {
         callBefore(stmt);
@@ -876,7 +873,6 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
         }
         callAfter(stmt);
     }
-#endif
 
     void visit(const StmtList &stmt) override
     {

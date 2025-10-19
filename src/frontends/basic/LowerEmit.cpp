@@ -10,9 +10,7 @@
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
-#if VIPER_ENABLE_OOP
 #    include "frontends/basic/NameMangler_OOP.hpp"
-#endif
 #include <cassert>
 #include <unordered_set>
 #include <utility>
@@ -107,9 +105,7 @@ void Lowerer::emitMainBodyAndEpilogue(ProgramEmitContext &state)
 
     ctx.setCurrent(&state.function->blocks[ctx.exitIndex()]);
     curLoc = {};
-#if VIPER_ENABLE_OOP
     releaseObjectLocals(std::unordered_set<std::string>{});
-#endif
     releaseArrayLocals(std::unordered_set<std::string>{});
     releaseArrayParams(std::unordered_set<std::string>{});
     curLoc = {};
@@ -623,7 +619,6 @@ void Lowerer::releaseArrayParams(const std::unordered_set<std::string> &paramNam
     }
 }
 
-#if VIPER_ENABLE_OOP
 void Lowerer::releaseObjectLocals(const std::unordered_set<std::string> &paramNames)
 {
     auto releaseSlot = [this](SymbolInfo &info) {
@@ -760,7 +755,6 @@ void Lowerer::releaseObjectParams(const std::unordered_set<std::string> &paramNa
         releaseSlot(info);
     }
 }
-#endif
 
 void Lowerer::emitEhPush(BasicBlock *handler)
 {
