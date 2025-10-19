@@ -22,7 +22,11 @@
 
 #include "source_manager.hpp"
 
+#include "support/diag_expected.hpp"
+
 #include <filesystem>
+#include <iostream>
+#include <limits>
 
 namespace il::support
 {
@@ -40,9 +44,16 @@ namespace il::support
 /// @return Identifier (>0) representing the stored path.
 uint32_t SourceManager::addFile(std::string path)
 {
+    if (next_file_id_ > std::numeric_limits<uint32_t>::max())
+    {
+        auto diag = makeError({}, "source manager exhausted file identifier space");
+        printDiag(diag, std::cerr);
+        return 0;
+    }
+
     std::filesystem::path p(std::move(path));
     files_.push_back(p.lexically_normal().generic_string());
-    return static_cast<uint32_t>(files_.size());
+    return static_cast<uint32_t>(next_file_id_++);
 }
 
 /// @brief Retrieve the canonical path associated with a file identifier.
