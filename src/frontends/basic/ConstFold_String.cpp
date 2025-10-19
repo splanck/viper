@@ -21,6 +21,16 @@ namespace il::frontends::basic::detail
 {
 namespace
 {
+template <typename Fn>
+ExprPtr dispatchStringBinary(const Expr &lhs, const Expr &rhs, Fn fn)
+{
+    const auto *left = dynamic_cast<const StringExpr *>(&lhs);
+    const auto *right = dynamic_cast<const StringExpr *>(&rhs);
+    if (!left || !right)
+        return nullptr;
+    return fn(*left, *right);
+}
+
 /// @brief Construct a string literal node that adopts @p value.
 ///
 /// The helper centralizes allocation of @ref StringExpr nodes so all folding
@@ -151,6 +161,21 @@ ExprPtr foldStringNe(const StringExpr &l, const StringExpr &r)
         out->value = (a != b) ? 1 : 0;
         return out;
     });
+}
+
+ExprPtr foldStringBinaryConcat(const Expr &lhs, const Expr &rhs)
+{
+    return dispatchStringBinary(lhs, rhs, foldStringConcat);
+}
+
+ExprPtr foldStringBinaryEq(const Expr &lhs, const Expr &rhs)
+{
+    return dispatchStringBinary(lhs, rhs, foldStringEq);
+}
+
+ExprPtr foldStringBinaryNe(const Expr &lhs, const Expr &rhs)
+{
+    return dispatchStringBinary(lhs, rhs, foldStringNe);
 }
 
 /// @brief Fold LEN applied to a string literal.
