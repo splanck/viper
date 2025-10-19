@@ -120,6 +120,8 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
         return emitMalformedHeader();
     std::string name = header.substr(at + 1, lp - at - 1);
     name = trim(name);
+    if (name.empty())
+        return emitMalformedHeader();
     std::string paramsStr = header.substr(lp + 1, rp - lp - 1);
     std::vector<Param> params;
     std::stringstream pss(paramsStr);

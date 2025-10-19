@@ -31,6 +31,17 @@ int main()
         assert(msg.find("malformed function header") != std::string::npos);
     }
 
+    // Empty function name should be rejected as a malformed header.
+    {
+        il::core::Module m;
+        ParserState st{m};
+        st.lineNo = 4;
+        auto result = parseFunctionHeader("func @(i64 %x) -> i64 {", st);
+        assert(!result);
+        const std::string &msg = result.error().message;
+        assert(msg.find("malformed function header") != std::string::npos);
+    }
+
     // Unknown parameter type should surface an error and avoid mutating the module.
     {
         il::core::Module m;
