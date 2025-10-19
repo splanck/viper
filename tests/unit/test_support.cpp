@@ -61,6 +61,17 @@ int main()
     arena.allocate(32, 1);
     assert(arena.allocate(std::numeric_limits<size_t>::max() - 15, 1) == nullptr);
 
+    // String interner overflow handling
+    il::support::StringInterner boundedInterner(2);
+    auto s0 = boundedInterner.intern("s0");
+    auto s1 = boundedInterner.intern("s1");
+    assert(s0);
+    assert(s1);
+    auto overflow = boundedInterner.intern("s2");
+    assert(!overflow);
+    assert(boundedInterner.lookup(overflow).empty());
+    assert(boundedInterner.intern("s0") == s0);
+
     // Result<T> basic success/error flows
     il::support::Result<int> intResult(42);
     assert(intResult.isOk());

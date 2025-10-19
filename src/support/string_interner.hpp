@@ -7,6 +7,7 @@
 
 #include "symbol.hpp"
 #include <functional>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -21,12 +22,20 @@ namespace il::support
 class StringInterner
 {
   public:
+    /// Constructs an interner optionally bounded by @p maxSymbols.
+    ///
+    /// The limit defaults to the full 32-bit Symbol address space, ensuring
+    /// backwards compatibility with existing callers.  Tests can request a
+    /// smaller cap to exercise overflow handling deterministically.
+    explicit StringInterner(uint32_t maxSymbols = std::numeric_limits<uint32_t>::max()) noexcept;
+
     /// Interns a string to produce a stable symbol for repeated use.
     ///
     /// Stores a copy of @p str if it has not been seen before and assigns it a
     /// new Symbol. Subsequent calls with the same string yield the existing
     /// Symbol without duplicating storage, enabling fast comparisons and
-    /// lookups.
+    /// lookups. When the interner reaches its capacity, the function returns
+    /// an invalid Symbol (id 0) and leaves the input string uninterned.
     /// @param str String to intern.
     /// @return Symbol uniquely identifying the interned string.
     Symbol intern(std::string_view str);
@@ -85,5 +94,7 @@ class StringInterner
     std::unordered_map<std::string, Symbol, TransparentHash, TransparentEqual> map_;
     /// Retains copies of interned strings so lookups return stable views.
     std::vector<std::string> storage_;
+    /// Maximum number of unique symbols representable by this interner.
+    uint32_t maxSymbols_;
 };
 } // namespace il::support
