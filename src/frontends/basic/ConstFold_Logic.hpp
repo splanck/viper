@@ -7,7 +7,7 @@
 // Links: docs/codemap.md
 #pragma once
 
-#include "frontends/basic/AST.hpp"
+#include "frontends/basic/ast/ExprNodes.hpp"
 
 #include <optional>
 
