@@ -93,7 +93,7 @@ Expected<void> expectAllOperandType(const VerifyCtx &ctx, Type::Kind kind)
 ///          and records the provided @p resultType on success.
 Expected<void> checkBinary(const VerifyCtx &ctx, Type::Kind operandKind, Type resultType)
 {
-    if (ctx.instr.operands.size() < 2)
+    if (ctx.instr.operands.size() != 2)
         return fail(ctx, "invalid operand count");
 
     if (auto result = expectAllOperandType(ctx, operandKind); !result)
