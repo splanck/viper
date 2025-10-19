@@ -266,6 +266,14 @@ function(viper_add_il_core_tests)
   target_link_libraries(test_il_instruction_checker PRIVATE ${VIPER_IL_CORE_IO_LIBS})
   viper_add_ctest(test_il_instruction_checker test_il_instruction_checker)
 
+  viper_add_test(
+    test_il_instruction_checker_binary_arity
+    ${_VIPER_IL_UNIT_DIR}/test_il_instruction_checker_binary_arity.cpp)
+  target_link_libraries(
+    test_il_instruction_checker_binary_arity PRIVATE ${VIPER_IL_CORE_IO_LIBS})
+  viper_add_ctest(
+    test_il_instruction_checker_binary_arity test_il_instruction_checker_binary_arity)
+
   viper_add_test(test_il_error_resume_ir ${_VIPER_IL_UNIT_DIR}/test_il_error_resume_ir.cpp)
   target_link_libraries(test_il_error_resume_ir PRIVATE ${VIPER_IL_CORE_IO_LIBS})
   viper_add_ctest(test_il_error_resume_ir test_il_error_resume_ir)
