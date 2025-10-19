@@ -23,6 +23,10 @@
 namespace il::support
 {
 
+StringInterner::StringInterner(uint32_t maxSymbols) noexcept : maxSymbols_(maxSymbols)
+{
+}
+
 /// @brief Intern the given string and return its Symbol handle.
 ///
 /// @details The interner stores owned strings in `storage_` and maps them to
@@ -40,6 +44,8 @@ Symbol StringInterner::intern(std::string_view str)
     auto it = map_.find(str);
     if (it != map_.end())
         return it->second;
+    if (storage_.size() >= maxSymbols_)
+        return {};
     storage_.emplace_back(str);
     Symbol sym{static_cast<uint32_t>(storage_.size())};
     map_.emplace(storage_.back(), sym);
