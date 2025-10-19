@@ -81,18 +81,27 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st)
     std::string paramsStr = line.substr(lp + 1, rp - lp - 1);
     std::vector<Type> params;
     std::stringstream pss(paramsStr);
-    std::string p;
-    while (std::getline(pss, p, ','))
+    std::string rawParam;
+    while (std::getline(pss, rawParam, ','))
     {
-        p = trim(p);
-        if (p.empty())
-            continue;
+        std::string trimmed = trim(rawParam);
+        if (trimmed.empty())
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": malformed extern parameter";
+            if (!rawParam.empty())
+                oss << " '" << rawParam << "'";
+            else
+                oss << " ''";
+            oss << " (empty entry)";
+            return Expected<void>{makeError({}, oss.str())};
+        }
         bool ok = true;
-        Type ty = parseType(p, &ok);
+        Type ty = parseType(trimmed, &ok);
         if (!ok)
         {
             std::ostringstream oss;
-            oss << "line " << st.lineNo << ": unknown type '" << p << "'";
+            oss << "line " << st.lineNo << ": unknown type '" << trimmed << "'";
             return Expected<void>{makeError({}, oss.str())};
         }
         params.push_back(ty);
