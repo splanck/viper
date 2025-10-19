@@ -159,8 +159,8 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
 
 /// @brief Dispatch module-header directives such as `il`, `extern`, `global`, and `func`.
 ///
-/// @details Handles the leading `il` version directive (defaulting to `0.1.2`
-/// when omitted), parses target triples, and forwards externs/globals/functions
+/// @details Handles the leading `il` version directive, parses target triples,
+/// and forwards externs/globals/functions
 /// to their specialised helpers.  Unrecognised directives return diagnostics
 /// that include the current line number so the caller can surface precise
 /// feedback.
@@ -173,9 +173,15 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
         ls >> kw;
         std::string ver;
         if (ls >> ver)
+        {
             st.m.version = ver;
+        }
         else
-            st.m.version = "0.1.2";
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": missing version after 'il' directive";
+            return Expected<void>{makeError({}, oss.str())};
+        }
         st.sawVersion = true;
         return {};
     }
