@@ -4,12 +4,25 @@
 #include "support/result.hpp"
 #include "support/source_manager.hpp"
 #include "support/string_interner.hpp"
+#include <cstdint>
+#include <iostream>
 #include <cassert>
 #include <cstddef>
-#include <cstdint>
 #include <limits>
 #include <sstream>
+#include <string>
 #include <utility>
+
+namespace il::support
+{
+struct SourceManagerTestAccess
+{
+    static void setNextFileId(SourceManager &sm, uint64_t next)
+    {
+        sm.next_file_id_ = next;
+    }
+};
+} // namespace il::support
 
 int main()
 {
@@ -77,6 +90,23 @@ int main()
     il::support::Result<std::string> strError(std::string("nope"));
     assert(!strError.isOk());
     assert(strError.error() == "nope");
+
+    // SourceManager overflow handling
+    {
+        il::support::SourceManager overflowSm;
+        std::stringstream captured;
+        auto *old = std::cerr.rdbuf(captured.rdbuf());
+        il::support::SourceManagerTestAccess::setNextFileId(
+            overflowSm,
+            static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) + 1);
+        uint32_t overflowId = overflowSm.addFile("overflow");
+        std::cerr.rdbuf(old);
+        assert(overflowId == 0);
+        auto diagText = captured.str();
+        assert(diagText.find("error:") != std::string::npos);
+        assert(diagText.find("source manager exhausted file identifier space")
+               != std::string::npos);
+    }
 
     return 0;
 }
