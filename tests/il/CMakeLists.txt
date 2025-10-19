@@ -183,6 +183,12 @@ function(viper_add_il_core_tests)
   target_link_libraries(test_il_parse_call_string_comma PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   viper_add_ctest(test_il_parse_call_string_comma test_il_parse_call_string_comma)
 
+  viper_add_test(
+    test_il_parse_call_trailing_junk
+    ${_VIPER_IL_UNIT_DIR}/test_il_parse_call_trailing_junk.cpp)
+  target_link_libraries(test_il_parse_call_trailing_junk PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+  viper_add_ctest(test_il_parse_call_trailing_junk test_il_parse_call_trailing_junk)
+
   viper_add_test(test_il_function_parser_errors ${_VIPER_IL_UNIT_DIR}/test_il_function_parser_errors.cpp)
   target_link_libraries(test_il_function_parser_errors PRIVATE ${VIPER_IL_CORE_IO_LIBS})
   viper_add_ctest(test_il_function_parser_errors test_il_function_parser_errors)
