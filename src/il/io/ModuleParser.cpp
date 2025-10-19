@@ -120,6 +120,13 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st)
 Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
 {
     size_t at = line.find('@');
+    if (at == std::string::npos)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing '@'";
+        return Expected<void>{makeError({}, oss.str())};
+    }
+
     size_t eq = line.find('=', at);
     if (eq == std::string::npos)
     {
