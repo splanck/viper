@@ -120,6 +120,53 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st)
 Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
 {
     size_t at = line.find('@');
+    if (at == std::string::npos)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing '@'";
+        return Expected<void>{makeError({}, oss.str())};
+    }
+
+    std::string qualifierSegment = trim(line.substr(0, at));
+    auto makeQualifierError = [&](const std::string &segment) {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": unsupported global qualifier '"
+            << (segment.empty() ? std::string("<empty>") : segment)
+            << "'; expected 'global const str'";
+        return Expected<void>{makeError({}, oss.str())};
+    };
+
+    std::istringstream qss(qualifierSegment);
+    std::vector<std::string> qualifierTokens;
+    std::string tok;
+    while (qss >> tok)
+        qualifierTokens.push_back(tok);
+
+    if (qualifierTokens.size() != 3 || qualifierTokens[0] != "global" ||
+        qualifierTokens[1] != "const")
+    {
+        return makeQualifierError(qualifierSegment);
+    }
+
+    const std::string &typeToken = qualifierTokens[2];
+    bool typeOk = true;
+    Type declaredType = parseType(typeToken, &typeOk);
+    if (!typeOk)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": unknown type '" << typeToken << "'";
+        return Expected<void>{makeError({}, oss.str())};
+    }
+
+    if (declaredType.kind != Type::Kind::Str)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo
+            << ": unsupported global type '" << typeToken
+            << "'; only 'str' is supported";
+        return Expected<void>{makeError({}, oss.str())};
+    }
+
     size_t eq = line.find('=', at);
     if (eq == std::string::npos)
     {
@@ -151,7 +198,7 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
         oss << "line " << st.lineNo << ": " << errMsg;
         return Expected<void>{makeError({}, oss.str())};
     }
-    st.m.globals.push_back({name, Type(Type::Kind::Str), decoded});
+    st.m.globals.push_back({name, declaredType, decoded});
     return {};
 }
 
