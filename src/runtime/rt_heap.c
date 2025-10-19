@@ -29,7 +29,6 @@ static void rt_heap_validate_header(const rt_heap_hdr_t *hdr)
     assert(hdr);
     assert(hdr->magic == RT_MAGIC);
     assert(hdr->refcnt != (size_t)-1);
-#if VIPER_ENABLE_OOP
     switch ((rt_heap_kind_t)hdr->kind)
     {
     case RT_HEAP_STRING:
@@ -39,7 +38,6 @@ static void rt_heap_validate_header(const rt_heap_hdr_t *hdr)
     default:
         assert(!"rt_heap_validate_header: unknown heap kind");
     }
-#endif
 }
 
 void *rt_heap_alloc(rt_heap_kind_t kind,

@@ -841,7 +841,6 @@ constexpr std::array<ManualDescriptorSpec, 4> kManualLifetimeDescriptors{{
      kManualLowering},
 }};
 
-#if VIPER_ENABLE_OOP
 constexpr std::array<ManualDescriptorSpec, 4> kManualObjectDescriptors{{
     {"rt_obj_new_i64",
      Kind::Ptr,
@@ -864,7 +863,6 @@ constexpr std::array<ManualDescriptorSpec, 4> kManualObjectDescriptors{{
      &DirectHandler<&rt_obj_free, void, void *>::invoke,
      featureLowering(RuntimeFeature::ObjFree)},
 }};
-#endif
 
 RuntimeDescriptor makeAbortDescriptor()
 {
@@ -886,10 +884,7 @@ std::vector<RuntimeDescriptor> buildRegistry()
                     kManualMemoryDescriptors.size() + kManualArrayDescriptors.size() +
                     kManualStringManipDescriptors.size() + kManualMathDescriptors.size() +
                     kManualRandomDescriptors.size() + kManualFileDescriptors.size() +
-                    kManualLifetimeDescriptors.size()
-#if VIPER_ENABLE_OOP
-                    + kManualObjectDescriptors.size()
-#endif
+                    kManualLifetimeDescriptors.size() + kManualObjectDescriptors.size()
     );
 
     entries.push_back(makeAbortDescriptor());
@@ -908,9 +903,7 @@ std::vector<RuntimeDescriptor> buildRegistry()
     appendManualDescriptors(entries, kManualRandomDescriptors);
     appendManualDescriptors(entries, kManualFileDescriptors);
     appendManualDescriptors(entries, kManualLifetimeDescriptors);
-#if VIPER_ENABLE_OOP
     appendManualDescriptors(entries, kManualObjectDescriptors);
-#endif
     return entries;
 }
 
