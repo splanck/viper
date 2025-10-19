@@ -36,9 +36,9 @@ constexpr double kUint64Boundary = 18446744073709551616.0; ///< 2^64, sentinel f
     constexpr const char *kOverflowMessage =
         "fp overflow in cast.fp_to_ui.rte.chk";
 
-    auto trap = [&](const char *message)
+    auto trap = [&](TrapKind kind, const char *message)
     {
-        RuntimeBridge::trap(TrapKind::Overflow,
+        RuntimeBridge::trap(kind,
                             message,
                             in.loc,
                             fr.func->name,
@@ -47,12 +47,12 @@ constexpr double kUint64Boundary = 18446744073709551616.0; ///< 2^64, sentinel f
 
     if (!std::isfinite(operand) || std::signbit(operand))
     {
-        trap(kInvalidOperandMessage);
+        trap(TrapKind::InvalidCast, kInvalidOperandMessage);
     }
 
     if (operand >= kUint64Boundary)
     {
-        trap(kOverflowMessage);
+        trap(TrapKind::Overflow, kOverflowMessage);
     }
 
     double integral = 0.0;
@@ -72,7 +72,7 @@ constexpr double kUint64Boundary = 18446744073709551616.0; ///< 2^64, sentinel f
 
     if (integral >= kUint64Boundary)
     {
-        trap(kOverflowMessage);
+        trap(TrapKind::Overflow, kOverflowMessage);
     }
 
     return static_cast<uint64_t>(integral);
