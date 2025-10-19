@@ -175,16 +175,26 @@ int main()
         assert(runCastFpToUiRteChk(input) == expected);
     }
 
-    const std::array<double, 3> fpCastTrapInputs = {
-        std::numeric_limits<double>::quiet_NaN(),
-        -1.0,
-        std::ldexp(1.0, 64)};
+    struct TrapCase
+    {
+        double input;
+        const char *expectedKind;
+    };
 
-    for (double input : fpCastTrapInputs)
+    const std::array<TrapCase, 4> fpCastTrapInputs = {{{
+                                                            std::numeric_limits<double>::quiet_NaN(),
+                                                            "InvalidCast"},
+                                                        {-0.0, "InvalidCast"},
+                                                        {-1.0, "InvalidCast"},
+                                                        {std::ldexp(1.0, 64), "Overflow"}}};
+
+    for (const auto &[input, expectedKind] : fpCastTrapInputs)
     {
         const std::string diag = captureCastFpToUiTrap(input);
-        const bool hasOverflow = diag.find("Trap @main#0 line 1: Overflow (code=0)") != std::string::npos;
-        assert(hasOverflow && "expected overflow trap for invalid cast.fp_to_ui.rte.chk operand");
+        const std::string expected =
+            std::string("Trap @main#0 line 1: ") + expectedKind + " (code=0)";
+        const bool matches = diag.find(expected) != std::string::npos;
+        assert(matches && "unexpected trap kind for cast.fp_to_ui.rte.chk operand");
     }
 
     return 0;
