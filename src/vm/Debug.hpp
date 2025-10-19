@@ -11,6 +11,7 @@
 #include "il/core/Type.hpp"
 #include "support/string_interner.hpp"
 #include "support/symbol.hpp"
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -106,8 +107,8 @@ class DebugCtrl
     std::vector<SrcLineBP> srcLineBPs_;              ///< Source line breakpoints;
                                                      ///< match by path or basename
 
-    mutable std::optional<std::pair<std::string, int>>
-        lastHitSrc_; ///< (normFile or base choice + line)
+    mutable std::optional<std::pair<uint32_t, int>>
+        lastHitSrc_; ///< (file id + line)
 
     struct WatchEntry
     {

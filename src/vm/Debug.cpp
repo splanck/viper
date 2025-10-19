@@ -125,26 +125,24 @@ bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
     if (!sm_ || srcLineBPs_.empty() || !I.loc.isValid())
         return false;
 
+    const uint32_t fileId = I.loc.file_id;
+    const int line = static_cast<int>(I.loc.line);
+    if (lastHitSrc_ && lastHitSrc_->first == fileId && lastHitSrc_->second == line)
+        return false;
+
     // Resolve the instruction's source file, normalize the path, and derive its
     // basename. A breakpoint matches if both the line number and either the
     // normalized path or basename are equal.
-    auto [normFile, base] = normalizePathWithBase(std::string(sm_->getPath(I.loc.file_id)));
-    int line = static_cast<int>(I.loc.line);
+    auto [normFile, base] = normalizePathWithBase(std::string(sm_->getPath(fileId)));
     for (const auto &bp : srcLineBPs_)
     {
         if (line != bp.line)
             continue;
-        auto check = [&](const std::string &key)
+        if (normFile == bp.normFile || base == bp.base)
         {
-            if (lastHitSrc_ && lastHitSrc_->first == key && lastHitSrc_->second == line)
-                return false;
-            lastHitSrc_ = std::make_pair(key, line);
+            lastHitSrc_ = std::make_pair(fileId, line);
             return true;
-        };
-        if (normFile == bp.normFile && check(bp.normFile))
-            return true;
-        if (base == bp.base && check(bp.base))
-            return true;
+        }
     }
     return false;
 }
