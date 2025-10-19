@@ -199,6 +199,16 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
         oss << "line " << st.lineNo << ": unknown return type";
         return Expected<void>{makeError({}, oss.str())};
     }
+
+    for (const auto &fn : st.m.functions)
+    {
+        if (fn.name == name)
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": duplicate function '@" << name << "'";
+            return Expected<void>{makeError({}, oss.str())};
+        }
+    }
     st.tempIds.clear();
     unsigned idx = 0;
     for (auto &param : params)
