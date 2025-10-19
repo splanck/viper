@@ -50,12 +50,14 @@ void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val)
 
     if (in.type.kind == il::core::Type::Kind::Str)
     {
-        if (hadRegister)
-            rt_str_release_maybe(fr.regs[destIndex].str);
-
         Slot stored = val;
         rt_str_retain_maybe(stored.str);
-        fr.regs[destIndex] = stored;
+
+        Slot &dest = fr.regs[destIndex];
+        if (hadRegister)
+            rt_str_release_maybe(dest.str);
+
+        dest = stored;
         return;
     }
 
