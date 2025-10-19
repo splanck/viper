@@ -9,6 +9,24 @@
 // Links: docs/codemap.md
 #pragma once
 
+/// @brief Control-flow state emitted by structured statement helpers.
+/// @details `cur` tracks the block left active after lowering, while
+///          `after` stores the merge/done block when it survives the
+///          lowering step. Helpers mark `fallthrough` when execution can
+///          reach `after` without an explicit transfer, ensuring callers
+///          can reason about terminators consistently.
+struct CtrlState
+{
+    BasicBlock *cur{nullptr};      ///< Block left active after lowering.
+    BasicBlock *after{nullptr};    ///< Merge/done block if retained.
+    bool fallthrough{false};       ///< True when `after` remains reachable.
+
+    [[nodiscard]] bool terminated() const
+    {
+        return !cur || cur->terminated;
+    }
+};
+
 IfBlocks emitIfBlocks(size_t conds);
 void lowerIfCondition(const Expr &cond,
                       BasicBlock *testBlk,
@@ -23,15 +41,20 @@ bool lowerIfBranch(const Stmt *stmt,
                    BasicBlock *thenBlk,
                    BasicBlock *exitBlk,
                    il::support::SourceLoc loc);
+CtrlState emitIf(const IfStmt &stmt);
 void lowerIf(const IfStmt &stmt);
 void lowerLoopBody(const std::vector<StmtPtr> &body);
+CtrlState emitWhile(const WhileStmt &stmt);
 void lowerWhile(const WhileStmt &stmt);
+CtrlState emitDo(const DoStmt &stmt);
 void lowerDo(const DoStmt &stmt);
 ForBlocks setupForBlocks(bool varStep);
 void lowerForConstStep(const ForStmt &stmt, Value slot, RVal end, RVal step, int64_t stepConst);
 void lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal step);
+CtrlState emitFor(const ForStmt &stmt, Value slot, RVal end, RVal step);
 void lowerFor(const ForStmt &stmt);
 void emitForStep(Value slot, Value step);
+CtrlState emitSelect(const SelectCaseStmt &stmt);
 void lowerNext(const NextStmt &stmt);
 void lowerExit(const ExitStmt &stmt);
 void lowerGosub(const GosubStmt &stmt);

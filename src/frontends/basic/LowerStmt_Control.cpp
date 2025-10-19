@@ -9,6 +9,7 @@
 // Links: docs/codemap.md
 
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/SelectCaseLowering.hpp"
 
 #include <cassert>
 
@@ -104,20 +105,25 @@ bool Lowerer::lowerIfBranch(const Stmt *stmt,
     return false;
 }
 
-/// @brief Lower an IF/ELSEIF/ELSE cascade.
-/// @param stmt IF statement containing branches and optional else.
-/// @details Allocates the block layout via @ref emitIfBlocks, sequentially
-///          lowers each condition and branch, and merges control flow into the
-///          shared exit block when at least one branch falls through. The
-///          routine mutates @ref cur as it walks through the generated blocks
-///          and keeps @ref curLoc aligned with the IF source span for emitted
-///          diagnostics.
-void Lowerer::lowerIf(const IfStmt &stmt)
+/// Control helpers follow the invariant that CtrlState::after references the
+/// surviving merge/done block. Helpers clear it when the merge block is erased
+/// to keep terminator management localized.
+Lowerer::CtrlState Lowerer::emitIf(const IfStmt &stmt)
 {
-    size_t conds = 1 + stmt.elseifs.size();
+    CtrlState state{};
+    auto &ctx = context();
+    auto *func = ctx.function();
+    auto *current = ctx.current();
+    if (!func || !current)
+        return state;
+
+    const size_t conds = 1 + stmt.elseifs.size();
     IfBlocks blocks = emitIfBlocks(conds);
+
     std::vector<const Expr *> condExprs;
     std::vector<const Stmt *> thenStmts;
+    condExprs.reserve(conds);
+    thenStmts.reserve(conds);
     condExprs.push_back(stmt.cond.get());
     thenStmts.push_back(stmt.then_branch.get());
     for (const auto &e : stmt.elseifs)
@@ -126,39 +132,56 @@ void Lowerer::lowerIf(const IfStmt &stmt)
         thenStmts.push_back(e.then_branch.get());
     }
 
+    func = ctx.function();
     curLoc = stmt.loc;
-    Function *func = context().function();
-    assert(func && "lowerIf requires an active function");
     emitBr(&func->blocks[blocks.tests[0]]);
 
     bool fallthrough = false;
     for (size_t i = 0; i < conds; ++i)
     {
-        BasicBlock *testBlk = &func->blocks[blocks.tests[i]];
-        BasicBlock *thenBlk = &func->blocks[blocks.thens[i]];
-        BasicBlock *falseBlk = (i + 1 < conds)
-                                   ? &func->blocks[blocks.tests[i + 1]]
-                                   : &func->blocks[blocks.elseIdx];
+        func = ctx.function();
+        auto *testBlk = &func->blocks[blocks.tests[i]];
+        auto *thenBlk = &func->blocks[blocks.thens[i]];
+        auto *falseBlk = (i + 1 < conds) ? &func->blocks[blocks.tests[i + 1]]
+                                         : &func->blocks[blocks.elseIdx];
         lowerIfCondition(*condExprs[i], testBlk, thenBlk, falseBlk, stmt.loc);
+
+        func = ctx.function();
         thenBlk = &func->blocks[blocks.thens[i]];
-        BasicBlock *exitBlk = &func->blocks[blocks.exitIdx];
-        bool branchFall = lowerIfBranch(thenStmts[i], thenBlk, exitBlk, stmt.loc);
-        fallthrough = fallthrough || branchFall;
+        auto *exitBlk = &func->blocks[blocks.exitIdx];
+        fallthrough = lowerIfBranch(thenStmts[i], thenBlk, exitBlk, stmt.loc) || fallthrough;
     }
 
-    BasicBlock *elseBlk = &func->blocks[blocks.elseIdx];
-    BasicBlock *exitBlk = &func->blocks[blocks.exitIdx];
-    bool elseFall = lowerIfBranch(stmt.else_branch.get(), elseBlk, exitBlk, stmt.loc);
-    fallthrough = fallthrough || elseFall;
+    func = ctx.function();
+    auto *elseBlk = &func->blocks[blocks.elseIdx];
+    auto *exitBlk = &func->blocks[blocks.exitIdx];
+    fallthrough = lowerIfBranch(stmt.else_branch.get(), elseBlk, exitBlk, stmt.loc) || fallthrough;
 
     if (!fallthrough)
     {
         func->blocks.pop_back();
-        context().setCurrent(&func->blocks[blocks.elseIdx]);
-        return;
+        func = ctx.function();
+        ctx.setCurrent(&func->blocks[blocks.elseIdx]);
+        state.cur = ctx.current();
+        state.after = nullptr;
+        state.fallthrough = false;
+        return state;
     }
 
-    context().setCurrent(&func->blocks[blocks.exitIdx]);
+    ctx.setCurrent(&func->blocks[blocks.exitIdx]);
+    state.cur = ctx.current();
+    state.after = state.cur;
+    state.fallthrough = true;
+    return state;
+}
+
+/// @brief Lower an IF/ELSEIF/ELSE cascade.
+/// @param stmt IF statement containing branches and optional else.
+void Lowerer::lowerIf(const IfStmt &stmt)
+{
+    CtrlState state = emitIf(stmt);
+    if (state.cur)
+        context().setCurrent(state.cur);
 }
 
 /// @brief Lower statements forming a loop body until a terminator is hit.
@@ -181,19 +204,15 @@ void Lowerer::lowerLoopBody(const std::vector<StmtPtr> &body)
 
 /// @brief Lower a WHILE loop into head/body/done blocks.
 /// @param stmt WHILE statement describing the loop structure.
-/// @details Adds head/body/done blocks, branches into the head, and enforces an
-///          I1 condition before branching to the loop body or exit. The body
-///          reuses @ref lowerStmt for nested statements and, when it does not
-///          terminate, jumps back to the head to re-evaluate the condition. The
-///          method mutates @ref cur as it traverses head, body, and done blocks
-///          and refreshes @ref curLoc for diagnostics tied to loop locations.
-void Lowerer::lowerWhile(const WhileStmt &stmt)
+Lowerer::CtrlState Lowerer::emitWhile(const WhileStmt &stmt)
 {
-    // Adding blocks may reallocate the function's block list; capture index and
-    // reacquire pointers to guarantee stability.
-    ProcedureContext &ctx = context();
-    Function *func = ctx.function();
-    assert(func && "lowerWhile requires an active function");
+    CtrlState state{};
+    auto &ctx = context();
+    auto *func = ctx.function();
+    auto *current = ctx.current();
+    if (!func || !current)
+        return state;
+
     BlockNamer *blockNamer = ctx.blockNames().namer();
     size_t start = func->blocks.size();
     unsigned id = blockNamer ? blockNamer->nextWhile() : 0;
@@ -203,52 +222,78 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
     builder->addBlock(*func, headLbl);
     builder->addBlock(*func, bodyLbl);
     builder->addBlock(*func, doneLbl);
+
+    func = ctx.function();
     size_t headIdx = start;
     size_t bodyIdx = start + 1;
     size_t doneIdx = start + 2;
-    BasicBlock *head = &func->blocks[headIdx];
-    BasicBlock *body = &func->blocks[bodyIdx];
-    BasicBlock *done = &func->blocks[doneIdx];
+    auto *head = &func->blocks[headIdx];
+    auto *body = &func->blocks[bodyIdx];
+    auto *done = &func->blocks[doneIdx];
+    state.after = done;
 
     ctx.loopState().push(done);
 
     curLoc = stmt.loc;
     emitBr(head);
 
-    // head
+    func = ctx.function();
     head = &func->blocks[headIdx];
+    body = &func->blocks[bodyIdx];
+    done = &func->blocks[doneIdx];
+
     ctx.setCurrent(head);
     curLoc = stmt.loc;
     lowerCondBranch(*stmt.cond, body, done, stmt.loc);
 
+    func = ctx.function();
     body = &func->blocks[bodyIdx];
     done = &func->blocks[doneIdx];
 
-    // body
     ctx.setCurrent(body);
     lowerLoopBody(stmt.body);
-    BasicBlock *current = ctx.current();
+    auto *bodyCur = ctx.current();
     bool exitTaken = ctx.loopState().taken();
-    bool term = current && current->terminated;
+    bool term = bodyCur && bodyCur->terminated;
     if (!term)
     {
+        func = ctx.function();
         head = &func->blocks[headIdx];
         curLoc = stmt.loc;
         emitBr(head);
     }
 
+    func = ctx.function();
     done = &func->blocks[doneIdx];
     ctx.loopState().refresh(done);
     ctx.setCurrent(done);
     done->terminated = exitTaken ? false : term;
     ctx.loopState().pop();
+
+    state.cur = ctx.current();
+    state.after = state.cur;
+    state.fallthrough = !done->terminated;
+    return state;
 }
 
-void Lowerer::lowerDo(const DoStmt &stmt)
+/// @brief Lower a WHILE loop into head/body/done blocks.
+/// @param stmt WHILE statement describing the loop structure.
+void Lowerer::lowerWhile(const WhileStmt &stmt)
 {
-    ProcedureContext &ctx = context();
-    Function *func = ctx.function();
-    assert(func && "lowerDo requires an active function");
+    CtrlState state = emitWhile(stmt);
+    if (state.cur)
+        context().setCurrent(state.cur);
+}
+
+Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
+{
+    CtrlState state{};
+    auto &ctx = context();
+    auto *func = ctx.function();
+    auto *current = ctx.current();
+    if (!func || !current)
+        return state;
+
     BlockNamer *blockNamer = ctx.blockNames().namer();
     size_t start = func->blocks.size();
     unsigned id = blockNamer ? blockNamer->nextDo() : 0;
@@ -258,17 +303,21 @@ void Lowerer::lowerDo(const DoStmt &stmt)
     builder->addBlock(*func, headLbl);
     builder->addBlock(*func, bodyLbl);
     builder->addBlock(*func, doneLbl);
+
+    func = ctx.function();
     size_t headIdx = start;
     size_t bodyIdx = start + 1;
     size_t doneIdx = start + 2;
-    BasicBlock *done = &func->blocks[doneIdx];
+    auto *done = &func->blocks[doneIdx];
+    state.after = done;
 
     ctx.loopState().push(done);
 
     auto emitHead = [&]() {
+        func = ctx.function();
         func->blocks[headIdx].label = headLbl;
         func->blocks[bodyIdx].label = bodyLbl;
-        BasicBlock *head = &func->blocks[headIdx];
+        auto *head = &func->blocks[headIdx];
         ctx.setCurrent(head);
         curLoc = stmt.loc;
         if (stmt.condKind == DoStmt::CondKind::None)
@@ -277,8 +326,8 @@ void Lowerer::lowerDo(const DoStmt &stmt)
             return;
         }
         assert(stmt.cond && "DO loop missing condition for conditional form");
-        BasicBlock *body = &func->blocks[bodyIdx];
-        BasicBlock *doneBlk = &func->blocks[doneIdx];
+        auto *body = &func->blocks[bodyIdx];
+        auto *doneBlk = &func->blocks[doneIdx];
         if (stmt.condKind == DoStmt::CondKind::While)
         {
             lowerCondBranch(*stmt.cond, body, doneBlk, stmt.loc);
@@ -289,50 +338,59 @@ void Lowerer::lowerDo(const DoStmt &stmt)
         }
     };
 
+    func = ctx.function();
     switch (stmt.testPos)
     {
         case DoStmt::TestPos::Pre:
-        {
             curLoc = stmt.loc;
             func->blocks[headIdx].label = headLbl;
             emitBr(&func->blocks[headIdx]);
             emitHead();
             ctx.setCurrent(&func->blocks[bodyIdx]);
             break;
-        }
         case DoStmt::TestPos::Post:
-        {
             curLoc = stmt.loc;
             func->blocks[bodyIdx].label = bodyLbl;
             emitBr(&func->blocks[bodyIdx]);
             ctx.setCurrent(&func->blocks[bodyIdx]);
             break;
-        }
     }
 
     lowerLoopBody(stmt.body);
-    BasicBlock *current = ctx.current();
+    auto *bodyCur = ctx.current();
     bool exitTaken = ctx.loopState().taken();
-    bool term = current && current->terminated;
+    bool term = bodyCur && bodyCur->terminated;
 
     if (!term)
     {
         curLoc = stmt.loc;
+        func = ctx.function();
         func->blocks[headIdx].label = headLbl;
         emitBr(&func->blocks[headIdx]);
     }
 
     if (stmt.testPos == DoStmt::TestPos::Post)
-    {
         emitHead();
-    }
 
+    func = ctx.function();
     func->blocks[doneIdx].label = doneLbl;
     done = &func->blocks[doneIdx];
     ctx.loopState().refresh(done);
     ctx.setCurrent(done);
     done->terminated = exitTaken ? false : term;
     ctx.loopState().pop();
+
+    state.cur = ctx.current();
+    state.after = state.cur;
+    state.fallthrough = !done->terminated;
+    return state;
+}
+
+void Lowerer::lowerDo(const DoStmt &stmt)
+{
+    CtrlState state = emitDo(stmt);
+    if (state.cur)
+        context().setCurrent(state.cur);
 }
 
 /// @brief Create the block layout shared by FOR loops.
@@ -499,6 +557,16 @@ void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal st
     ctx.loopState().pop();
 }
 
+Lowerer::CtrlState Lowerer::emitFor(const ForStmt &stmt, Value slot, RVal end, RVal step)
+{
+    CtrlState state{};
+    lowerForVarStep(stmt, slot, end, step);
+    state.cur = context().current();
+    state.after = state.cur;
+    state.fallthrough = state.cur && !state.cur->terminated;
+    return state;
+}
+
 /// @brief Lower a BASIC FOR statement.
 /// @param stmt Parsed FOR statement containing bounds and optional step.
 /// @details Evaluates the start/end/step expressions once, stores the initial
@@ -519,7 +587,20 @@ void Lowerer::lowerFor(const ForStmt &stmt)
     curLoc = stmt.loc;
     emitStore(Type(Type::Kind::I64), slot, start.value);
 
-    lowerForVarStep(stmt, slot, end, step);
+    CtrlState state = emitFor(stmt, slot, end, step);
+    if (state.cur)
+        context().setCurrent(state.cur);
+}
+
+Lowerer::CtrlState Lowerer::emitSelect(const SelectCaseStmt &stmt)
+{
+    CtrlState state{};
+    SelectCaseLowering lowering(*this);
+    lowering.lower(stmt);
+    state.cur = context().current();
+    state.after = state.cur;
+    state.fallthrough = state.cur && !state.cur->terminated;
+    return state;
 }
 
 /// @brief Handle a NEXT marker.
