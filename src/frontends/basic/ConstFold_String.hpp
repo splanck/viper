@@ -14,11 +14,29 @@ namespace il::frontends::basic::detail
 /// @brief Fold string concatenation when both operands are literals.
 ExprPtr foldStringConcat(const StringExpr &l, const StringExpr &r);
 
+/// @brief Fold string concatenation for arbitrary literal expressions.
+/// @param lhs Left operand inspected for string literal content.
+/// @param rhs Right operand inspected for string literal content.
+/// @return Concatenated literal or nullptr when folding is not possible.
+ExprPtr foldStringBinaryConcat(const Expr &lhs, const Expr &rhs);
+
 /// @brief Fold string equality comparison when both operands are literals.
 ExprPtr foldStringEq(const StringExpr &l, const StringExpr &r);
 
 /// @brief Fold string inequality comparison when both operands are literals.
 ExprPtr foldStringNe(const StringExpr &l, const StringExpr &r);
+
+/// @brief Fold string equality comparison for arbitrary literal expressions.
+/// @param lhs Left operand inspected for string literal content.
+/// @param rhs Right operand inspected for string literal content.
+/// @return Integer literal encoding equality or nullptr when folding fails.
+ExprPtr foldStringBinaryEq(const Expr &lhs, const Expr &rhs);
+
+/// @brief Fold string inequality comparison for arbitrary literal expressions.
+/// @param lhs Left operand inspected for string literal content.
+/// @param rhs Right operand inspected for string literal content.
+/// @return Integer literal encoding inequality or nullptr when folding fails.
+ExprPtr foldStringBinaryNe(const Expr &lhs, const Expr &rhs);
 
 /// @brief Fold LEN when invoked on a literal string argument.
 /// @param arg Expression supplying the string operand.
