@@ -15,11 +15,8 @@ set(RT_SOURCES
   rt_format.c
   rt_int_format.c
   rt_term.c
+  rt_object.c
 )
-
-if(VIPER_ENABLE_OOP)
-  list(APPEND RT_SOURCES rt_object.c)
-endif()
 
 set(RT_PUBLIC_HEADERS
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_error.h
@@ -31,6 +28,7 @@ set(RT_PUBLIC_HEADERS
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_string.h
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_array.h
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_heap.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/rt_object.h
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_debug.h
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_file.h
   ${CMAKE_CURRENT_SOURCE_DIR}/rt_format.h
