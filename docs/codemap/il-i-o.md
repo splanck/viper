@@ -6,7 +6,7 @@
 
 - **src/il/io/InstrParser.cpp**
 
-  Parses individual IL instruction lines into `il::core::Instr` instances while updating the parser state that tracks temporaries, blocks, and diagnostics. Utility routines decode operands into values or types, apply opcode metadata to validate operand counts, result arity, and successor lists, and enqueue branch targets for later block resolution. Specialized parsers handle calls, branch target lists, and SSA assignment prefixes so the textual form produced by the serializer round-trips cleanly. Dependencies include `il/io/InstrParser.hpp`, IL core opcode/type/value headers, helper utilities from `ParserUtil` and `TypeParser`, and diagnostic plumbing in `support/diag_expected.hpp`.
+  Parses individual IL instruction lines into `il::core::Instr` instances while updating the parser state that tracks temporaries, blocks, and diagnostics. Utility routines decode operands into values or types, apply opcode metadata to validate operand counts, result arity, and successor lists, and enqueue branch targets for later block resolution. Specialized parsers handle calls, branch target lists, and SSA assignment prefixes so the textual form produced by the serializer round-trips cleanly. Branch destinations now reject any trailing tokens that follow the closing parenthesis, surfacing a `malformed <mnemonic>` diagnostic tied to the offending instruction. Dependencies include `il/io/InstrParser.hpp`, IL core opcode/type/value headers, helper utilities from `ParserUtil` and `TypeParser`, and diagnostic plumbing in `support/diag_expected.hpp`.
 
 - **src/il/io/ModuleParser.cpp**
 
