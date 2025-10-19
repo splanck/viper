@@ -4,6 +4,7 @@ target_sources(fe_basic PRIVATE
   Token.cpp
   Lexer.cpp
   AST.cpp
+  AstWalkerUtils.cpp
   AstPrinter.cpp
   AstPrint_Expr.cpp
   AstPrint_Stmt.cpp

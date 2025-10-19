@@ -6,7 +6,7 @@
 #pragma once
 
 #include "frontends/basic/AST.hpp"
-#include <type_traits>
+#include "frontends/basic/AstWalkerUtils.hpp"
 
 namespace il::frontends::basic
 {
@@ -25,55 +25,71 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
     /// @param expr Root expression to walk.
     void walkExpr(const Expr &expr)
     {
-        expr.accept(*static_cast<Derived *>(this));
+        expr.accept(derived());
     }
 
     /// @brief Visit a statement subtree.
     /// @param stmt Root statement to walk.
     void walkStmt(const Stmt &stmt)
     {
-        stmt.accept(*static_cast<Derived *>(this));
+        stmt.accept(derived());
     }
 
   protected:
     BasicAstWalker() = default;
 
+    /// @brief Invoke Derived::before(@p node) if provided.
+    /// @details Override `before` to prepare state prior to visiting children
+    /// (or to short-circuit by mutating walker state).
     template <typename Node>
     void callBefore(const Node &node)
     {
-        if constexpr (requires(Derived &d, const Node &n) { d.before(n); })
-            static_cast<Derived *>(this)->before(node);
+        walker_detail::dispatchBefore(derived(), node);
     }
 
+    /// @brief Invoke Derived::after(@p node) if present.
+    /// @details Override `after` to finalize state once a node and its children
+    /// have been visited.
     template <typename Node>
     void callAfter(const Node &node)
     {
-        if constexpr (requires(Derived &d, const Node &n) { d.after(n); })
-            static_cast<Derived *>(this)->after(node);
+        walker_detail::dispatchAfter(derived(), node);
     }
 
+    /// @brief Query Derived::shouldVisitChildren(@p node) when available.
+    /// @details Override to skip visiting children for nodes where traversal is
+    /// unnecessary or handled manually.
     template <typename Node>
     bool callShouldVisit(const Node &node)
     {
-        if constexpr (requires(Derived &d, const Node &n) { d.shouldVisitChildren(n); })
-            return static_cast<Derived *>(this)->shouldVisitChildren(node);
-        return true;
+        return walker_detail::dispatchShouldVisit(derived(), node);
     }
 
+    /// @brief Invoke Derived::beforeChild(@p parent, @p child) when supplied.
+    /// @details Override to set up state before descending into a specific
+    /// child relationship.
     template <typename Parent, typename Child>
     void callBeforeChild(const Parent &parent, const Child &child)
     {
-        if constexpr (requires(Derived &d, const Parent &p, const Child &c) { d.beforeChild(p, c); })
-            static_cast<Derived *>(this)->beforeChild(parent, child);
+        walker_detail::dispatchBeforeChild(derived(), parent, child);
     }
 
+    /// @brief Invoke Derived::afterChild(@p parent, @p child) when supplied.
+    /// @details Override to tear down per-child state or accumulate results
+    /// after returning from that child.
     template <typename Parent, typename Child>
     void callAfterChild(const Parent &parent, const Child &child)
     {
-        if constexpr (requires(Derived &d, const Parent &p, const Child &c) { d.afterChild(p, c); })
-            static_cast<Derived *>(this)->afterChild(parent, child);
+        walker_detail::dispatchAfterChild(derived(), parent, child);
     }
 
+  private:
+    Derived &derived() noexcept
+    {
+        return *static_cast<Derived *>(this);
+    }
+
+  protected:
     // Expression visitors --------------------------------------------------
 
     void visit(const IntExpr &expr) override
@@ -114,7 +130,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
             if (expr.index)
             {
                 callBeforeChild(expr, *expr.index);
-                expr.index->accept(*static_cast<Derived *>(this));
+                expr.index->accept(derived());
                 callAfterChild(expr, *expr.index);
             }
         }
@@ -141,7 +157,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
             if (expr.expr)
             {
                 callBeforeChild(expr, *expr.expr);
-                expr.expr->accept(*static_cast<Derived *>(this));
+                expr.expr->accept(derived());
                 callAfterChild(expr, *expr.expr);
             }
         }
@@ -156,13 +172,13 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
             if (expr.lhs)
             {
                 callBeforeChild(expr, *expr.lhs);
-                expr.lhs->accept(*static_cast<Derived *>(this));
+                expr.lhs->accept(derived());
                 callAfterChild(expr, *expr.lhs);
             }
             if (expr.rhs)
             {
                 callBeforeChild(expr, *expr.rhs);
-                expr.rhs->accept(*static_cast<Derived *>(this));
+                expr.rhs->accept(derived());
                 callAfterChild(expr, *expr.rhs);
             }
         }
@@ -179,7 +195,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
                 if (!arg)
                     continue;
                 callBeforeChild(expr, *arg);
-                arg->accept(*static_cast<Derived *>(this));
+                arg->accept(derived());
                 callAfterChild(expr, *arg);
             }
         }
@@ -196,7 +212,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
                 if (!arg)
                     continue;
                 callBeforeChild(expr, *arg);
-                arg->accept(*static_cast<Derived *>(this));
+                arg->accept(derived());
                 callAfterChild(expr, *arg);
             }
         }
@@ -213,7 +229,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
                 if (!arg)
                     continue;
                 callBeforeChild(expr, *arg);
-                arg->accept(*static_cast<Derived *>(this));
+                arg->accept(derived());
                 callAfterChild(expr, *arg);
             }
         }
@@ -232,7 +248,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
         if (callShouldVisit(expr) && expr.base)
         {
             callBeforeChild(expr, *expr.base);
-            expr.base->accept(*static_cast<Derived *>(this));
+            expr.base->accept(derived());
             callAfterChild(expr, *expr.base);
         }
         callAfter(expr);
@@ -246,7 +262,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
             if (expr.base)
             {
                 callBeforeChild(expr, *expr.base);
-                expr.base->accept(*static_cast<Derived *>(this));
+                expr.base->accept(derived());
                 callAfterChild(expr, *expr.base);
             }
             for (const auto &arg : expr.args)
@@ -254,7 +270,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
                 if (!arg)
                     continue;
                 callBeforeChild(expr, *arg);
-                arg->accept(*static_cast<Derived *>(this));
+                arg->accept(derived());
                 callAfterChild(expr, *arg);
             }
         }
@@ -279,7 +295,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
                 if (item.kind != PrintItem::Kind::Expr || !item.expr)
                     continue;
                 callBeforeChild(stmt, *item.expr);
-                item.expr->accept(*static_cast<Derived *>(this));
+                item.expr->accept(derived());
                 callAfterChild(stmt, *item.expr);
             }
         }
@@ -294,7 +310,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
             if (stmt.channelExpr)
             {
                 callBeforeChild(stmt, *stmt.channelExpr);
-                stmt.channelExpr->accept(*static_cast<Derived *>(this));
+                stmt.channelExpr->accept(derived());
                 callAfterChild(stmt, *stmt.channelExpr);
             }
             for (const auto &arg : stmt.args)
@@ -302,7 +318,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
                 if (!arg)
                     continue;
                 callBeforeChild(stmt, *arg);
-                arg->accept(*static_cast<Derived *>(this));
+                arg->accept(derived());
                 callAfterChild(stmt, *arg);
             }
         }
@@ -315,7 +331,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
         if (callShouldVisit(stmt) && stmt.call)
         {
             callBeforeChild(stmt, *stmt.call);
-            stmt.call->accept(*static_cast<Derived *>(this));
+            stmt.call->accept(derived());
             callAfterChild(stmt, *stmt.call);
         }
         callAfter(stmt);
@@ -339,13 +355,13 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
             if (stmt.fg)
             {
                 callBeforeChild(stmt, *stmt.fg);
-                stmt.fg->accept(*static_cast<Derived *>(this));
+                stmt.fg->accept(derived());
                 callAfterChild(stmt, *stmt.fg);
             }
             if (stmt.bg)
             {
                 callBeforeChild(stmt, *stmt.bg);
-                stmt.bg->accept(*static_cast<Derived *>(this));
+                stmt.bg->accept(derived());
                 callAfterChild(stmt, *stmt.bg);
             }
         }
@@ -360,13 +376,13 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
             if (stmt.row)
             {
                 callBeforeChild(stmt, *stmt.row);
-                stmt.row->accept(*static_cast<Derived *>(this));
+                stmt.row->accept(derived());
                 callAfterChild(stmt, *stmt.row);
             }
             if (stmt.col)
             {
                 callBeforeChild(stmt, *stmt.col);
-                stmt.col->accept(*static_cast<Derived *>(this));
+                stmt.col->accept(derived());
                 callAfterChild(stmt, *stmt.col);
             }
         }
@@ -381,13 +397,13 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
             if (stmt.target)
             {
                 callBeforeChild(stmt, *stmt.target);
-                stmt.target->accept(*static_cast<Derived *>(this));
+                stmt.target->accept(derived());
                 callAfterChild(stmt, *stmt.target);
             }
             if (stmt.expr)
             {
                 callBeforeChild(stmt, *stmt.expr);
-                stmt.expr->accept(*static_cast<Derived *>(this));
+                stmt.expr->accept(derived());
                 callAfterChild(stmt, *stmt.expr);
             }
         }
@@ -402,7 +418,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
             if (stmt.size)
             {
                 callBeforeChild(stmt, *stmt.size);
-                stmt.size->accept(*static_cast<Derived *>(this));
+                stmt.size->accept(derived());
                 callAfterChild(stmt, *stmt.size);
             }
         }
@@ -417,7 +433,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
             if (stmt.size)
             {
                 callBeforeChild(stmt, *stmt.size);
-                stmt.size->accept(*static_cast<Derived *>(this));
+                stmt.size->accept(derived());
                 callAfterChild(stmt, *stmt.size);
             }
         }
@@ -430,7 +446,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
         if (callShouldVisit(stmt) && stmt.seed)
         {
             callBeforeChild(stmt, *stmt.seed);
-            stmt.seed->accept(*static_cast<Derived *>(this));
+            stmt.seed->accept(derived());
             callAfterChild(stmt, *stmt.seed);
         }
         callAfter(stmt);
@@ -444,13 +460,13 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
             if (stmt.cond)
             {
                 callBeforeChild(stmt, *stmt.cond);
-                stmt.cond->accept(*static_cast<Derived *>(this));
+                stmt.cond->accept(derived());
                 callAfterChild(stmt, *stmt.cond);
             }
             if (stmt.then_branch)
             {
                 callBeforeChild(stmt, *stmt.then_branch);
-                stmt.then_branch->accept(*static_cast<Derived *>(this));
+                stmt.then_branch->accept(derived());
                 callAfterChild(stmt, *stmt.then_branch);
             }
             for (const auto &elseif : stmt.elseifs)
@@ -458,20 +474,20 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
                 if (elseif.cond)
                 {
                     callBeforeChild(stmt, *elseif.cond);
-                    elseif.cond->accept(*static_cast<Derived *>(this));
+                    elseif.cond->accept(derived());
                     callAfterChild(stmt, *elseif.cond);
                 }
                 if (elseif.then_branch)
                 {
                     callBeforeChild(stmt, *elseif.then_branch);
-                    elseif.then_branch->accept(*static_cast<Derived *>(this));
+                    elseif.then_branch->accept(derived());
                     callAfterChild(stmt, *elseif.then_branch);
                 }
             }
             if (stmt.else_branch)
             {
                 callBeforeChild(stmt, *stmt.else_branch);
-                stmt.else_branch->accept(*static_cast<Derived *>(this));
+                stmt.else_branch->accept(derived());
                 callAfterChild(stmt, *stmt.else_branch);
             }
         }
@@ -486,7 +502,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
             if (stmt.selector)
             {
                 callBeforeChild(stmt, *stmt.selector);
-                stmt.selector->accept(*static_cast<Derived *>(this));
+                stmt.selector->accept(derived());
                 callAfterChild(stmt, *stmt.selector);
             }
             for (const auto &arm : stmt.arms)
@@ -496,7 +512,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
                     if (!armStmt)
                         continue;
                     callBeforeChild(stmt, *armStmt);
-                    armStmt->accept(*static_cast<Derived *>(this));
+                    armStmt->accept(derived());
                     callAfterChild(stmt, *armStmt);
                 }
             }
@@ -505,7 +521,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
                 if (!elseStmt)
                     continue;
                 callBeforeChild(stmt, *elseStmt);
-                elseStmt->accept(*static_cast<Derived *>(this));
+                elseStmt->accept(derived());
                 callAfterChild(stmt, *elseStmt);
             }
         }
@@ -520,7 +536,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
             if (stmt.cond)
             {
                 callBeforeChild(stmt, *stmt.cond);
-                stmt.cond->accept(*static_cast<Derived *>(this));
+                stmt.cond->accept(derived());
                 callAfterChild(stmt, *stmt.cond);
             }
             for (const auto &bodyStmt : stmt.body)
@@ -528,7 +544,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
                 if (!bodyStmt)
                     continue;
                 callBeforeChild(stmt, *bodyStmt);
-                bodyStmt->accept(*static_cast<Derived *>(this));
+                bodyStmt->accept(derived());
                 callAfterChild(stmt, *bodyStmt);
             }
         }
@@ -543,7 +559,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
             if (stmt.cond)
             {
                 callBeforeChild(stmt, *stmt.cond);
-                stmt.cond->accept(*static_cast<Derived *>(this));
+                stmt.cond->accept(derived());
                 callAfterChild(stmt, *stmt.cond);
             }
             for (const auto &bodyStmt : stmt.body)
@@ -551,7 +567,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
                 if (!bodyStmt)
                     continue;
                 callBeforeChild(stmt, *bodyStmt);
-                bodyStmt->accept(*static_cast<Derived *>(this));
+                bodyStmt->accept(derived());
                 callAfterChild(stmt, *bodyStmt);
             }
         }
@@ -566,19 +582,19 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
             if (stmt.start)
             {
                 callBeforeChild(stmt, *stmt.start);
-                stmt.start->accept(*static_cast<Derived *>(this));
+                stmt.start->accept(derived());
                 callAfterChild(stmt, *stmt.start);
             }
             if (stmt.end)
             {
                 callBeforeChild(stmt, *stmt.end);
-                stmt.end->accept(*static_cast<Derived *>(this));
+                stmt.end->accept(derived());
                 callAfterChild(stmt, *stmt.end);
             }
             if (stmt.step)
             {
                 callBeforeChild(stmt, *stmt.step);
-                stmt.step->accept(*static_cast<Derived *>(this));
+                stmt.step->accept(derived());
                 callAfterChild(stmt, *stmt.step);
             }
             for (const auto &bodyStmt : stmt.body)
@@ -586,7 +602,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
                 if (!bodyStmt)
                     continue;
                 callBeforeChild(stmt, *bodyStmt);
-                bodyStmt->accept(*static_cast<Derived *>(this));
+                bodyStmt->accept(derived());
                 callAfterChild(stmt, *bodyStmt);
             }
         }
@@ -625,13 +641,13 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
             if (stmt.pathExpr)
             {
                 callBeforeChild(stmt, *stmt.pathExpr);
-                stmt.pathExpr->accept(*static_cast<Derived *>(this));
+                stmt.pathExpr->accept(derived());
                 callAfterChild(stmt, *stmt.pathExpr);
             }
             if (stmt.channelExpr)
             {
                 callBeforeChild(stmt, *stmt.channelExpr);
-                stmt.channelExpr->accept(*static_cast<Derived *>(this));
+                stmt.channelExpr->accept(derived());
                 callAfterChild(stmt, *stmt.channelExpr);
             }
         }
@@ -644,7 +660,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
         if (callShouldVisit(stmt) && stmt.channelExpr)
         {
             callBeforeChild(stmt, *stmt.channelExpr);
-            stmt.channelExpr->accept(*static_cast<Derived *>(this));
+            stmt.channelExpr->accept(derived());
             callAfterChild(stmt, *stmt.channelExpr);
         }
         callAfter(stmt);
@@ -658,13 +674,13 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
             if (stmt.channelExpr)
             {
                 callBeforeChild(stmt, *stmt.channelExpr);
-                stmt.channelExpr->accept(*static_cast<Derived *>(this));
+                stmt.channelExpr->accept(derived());
                 callAfterChild(stmt, *stmt.channelExpr);
             }
             if (stmt.positionExpr)
             {
                 callBeforeChild(stmt, *stmt.positionExpr);
-                stmt.positionExpr->accept(*static_cast<Derived *>(this));
+                stmt.positionExpr->accept(derived());
                 callAfterChild(stmt, *stmt.positionExpr);
             }
         }
@@ -695,7 +711,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
         if (callShouldVisit(stmt) && stmt.prompt)
         {
             callBeforeChild(stmt, *stmt.prompt);
-            stmt.prompt->accept(*static_cast<Derived *>(this));
+            stmt.prompt->accept(derived());
             callAfterChild(stmt, *stmt.prompt);
         }
         callAfter(stmt);
@@ -715,13 +731,13 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
             if (stmt.channelExpr)
             {
                 callBeforeChild(stmt, *stmt.channelExpr);
-                stmt.channelExpr->accept(*static_cast<Derived *>(this));
+                stmt.channelExpr->accept(derived());
                 callAfterChild(stmt, *stmt.channelExpr);
             }
             if (stmt.targetVar)
             {
                 callBeforeChild(stmt, *stmt.targetVar);
-                stmt.targetVar->accept(*static_cast<Derived *>(this));
+                stmt.targetVar->accept(derived());
                 callAfterChild(stmt, *stmt.targetVar);
             }
         }
@@ -734,7 +750,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
         if (callShouldVisit(stmt) && stmt.value)
         {
             callBeforeChild(stmt, *stmt.value);
-            stmt.value->accept(*static_cast<Derived *>(this));
+            stmt.value->accept(derived());
             callAfterChild(stmt, *stmt.value);
         }
         callAfter(stmt);
@@ -750,7 +766,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
                 if (!bodyStmt)
                     continue;
                 callBeforeChild(stmt, *bodyStmt);
-                bodyStmt->accept(*static_cast<Derived *>(this));
+                bodyStmt->accept(derived());
                 callAfterChild(stmt, *bodyStmt);
             }
         }
@@ -767,7 +783,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
                 if (!bodyStmt)
                     continue;
                 callBeforeChild(stmt, *bodyStmt);
-                bodyStmt->accept(*static_cast<Derived *>(this));
+                bodyStmt->accept(derived());
                 callAfterChild(stmt, *bodyStmt);
             }
         }
@@ -780,7 +796,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
         if (callShouldVisit(stmt) && stmt.target)
         {
             callBeforeChild(stmt, *stmt.target);
-            stmt.target->accept(*static_cast<Derived *>(this));
+            stmt.target->accept(derived());
             callAfterChild(stmt, *stmt.target);
         }
         callAfter(stmt);
@@ -801,7 +817,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
                 if (!bodyStmt)
                     continue;
                 callBeforeChild(stmt, *bodyStmt);
-                bodyStmt->accept(*static_cast<Derived *>(this));
+                bodyStmt->accept(derived());
                 callAfterChild(stmt, *bodyStmt);
             }
         }
@@ -818,7 +834,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
                 if (!bodyStmt)
                     continue;
                 callBeforeChild(stmt, *bodyStmt);
-                bodyStmt->accept(*static_cast<Derived *>(this));
+                bodyStmt->accept(derived());
                 callAfterChild(stmt, *bodyStmt);
             }
         }
@@ -840,7 +856,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
                 if (!bodyStmt)
                     continue;
                 callBeforeChild(stmt, *bodyStmt);
-                bodyStmt->accept(*static_cast<Derived *>(this));
+                bodyStmt->accept(derived());
                 callAfterChild(stmt, *bodyStmt);
             }
         }
@@ -857,7 +873,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
                 if (!member)
                     continue;
                 callBeforeChild(stmt, *member);
-                member->accept(*static_cast<Derived *>(this));
+                member->accept(derived());
                 callAfterChild(stmt, *member);
             }
         }
@@ -884,7 +900,7 @@ class BasicAstWalker : public ExprVisitor, public StmtVisitor
                 if (!sub)
                     continue;
                 callBeforeChild(stmt, *sub);
-                sub->accept(*static_cast<Derived *>(this));
+                sub->accept(derived());
                 callAfterChild(stmt, *sub);
             }
         }
