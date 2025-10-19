@@ -18,6 +18,8 @@
 namespace il::support
 {
 
+struct SourceManagerTestAccess;
+
 /// Maintains the mapping between numeric file identifiers and their
 /// corresponding filesystem paths. Clients can register files and look up
 /// paths by identifier.
@@ -26,7 +28,9 @@ class SourceManager
   public:
     /// @brief Register file path @p path and return its id.
     /// @param path File system path.
-    /// @return New file identifier (>0).
+    /// @return New file identifier (>0 on success, 0 on overflow).
+    /// @details Emits an error diagnostic when the identifier space is
+    ///          exhausted and refuses to insert the file.
     uint32_t addFile(std::string path);
 
     /// @brief Retrieve path for @p file_id.
@@ -37,5 +41,10 @@ class SourceManager
   private:
     /// Stored file paths. Index corresponds to file identifier; index 0 is reserved.
     std::vector<std::string> files_;
+
+    /// Next identifier to assign; stored as 64-bit to detect overflow safely.
+    uint64_t next_file_id_ = 1;
+
+    friend struct SourceManagerTestAccess;
 };
 } // namespace il::support
