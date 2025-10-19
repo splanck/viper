@@ -20,6 +20,35 @@ using namespace il::core;
 namespace
 {
 
+std::string captureModuleTrap(Module &module)
+{
+    int fds[2];
+    assert(pipe(fds) == 0);
+    pid_t pid = fork();
+    assert(pid >= 0);
+    if (pid == 0)
+    {
+        close(fds[0]);
+        dup2(fds[1], 2);
+        il::vm::VM vm(module);
+        vm.run();
+        _exit(0);
+    }
+
+    close(fds[1]);
+    char buffer[512];
+    ssize_t n = read(fds[0], buffer, sizeof(buffer) - 1);
+    if (n < 0)
+        n = 0;
+    buffer[n] = '\0';
+    close(fds[0]);
+
+    int status = 0;
+    waitpid(pid, &status, 0);
+    assert(WIFEXITED(status) && WEXITSTATUS(status) == 1);
+    return std::string(buffer);
+}
+
 int64_t runTrunc1(int64_t input)
 {
     Module module;
@@ -110,32 +139,37 @@ std::string captureCastFpToUiTrap(double input)
 {
     Module module;
     buildCastFpToUi(module, input);
+    return captureModuleTrap(module);
+}
 
-    int fds[2];
-    assert(pipe(fds) == 0);
-    pid_t pid = fork();
-    assert(pid >= 0);
-    if (pid == 0)
-    {
-        close(fds[0]);
-        dup2(fds[1], 2);
-        il::vm::VM vm(module);
-        vm.run();
-        _exit(0);
-    }
+void buildFptosi(Module &module, double input)
+{
+    il::build::IRBuilder builder(module);
+    auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
+    auto &bb = builder.addBlock(fn, "entry");
+    builder.setInsertPoint(bb);
 
-    close(fds[1]);
-    char buffer[512];
-    ssize_t n = read(fds[0], buffer, sizeof(buffer) - 1);
-    if (n < 0)
-        n = 0;
-    buffer[n] = '\0';
-    close(fds[0]);
+    Instr cast;
+    cast.result = builder.reserveTempId();
+    cast.op = Opcode::Fptosi;
+    cast.type = Type(Type::Kind::I64);
+    cast.operands.push_back(Value::constFloat(input));
+    cast.loc = {1, 1, 1};
+    bb.instructions.push_back(cast);
 
-    int status = 0;
-    waitpid(pid, &status, 0);
-    assert(WIFEXITED(status) && WEXITSTATUS(status) == 1);
-    return std::string(buffer);
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.loc = {1, 1, 1};
+    ret.operands.push_back(Value::temp(*cast.result));
+    bb.instructions.push_back(ret);
+}
+
+std::string captureFptosiTrap(double input)
+{
+    Module module;
+    buildFptosi(module, input);
+    return captureModuleTrap(module);
 }
 
 } // namespace
@@ -185,6 +219,29 @@ int main()
         const std::string diag = captureCastFpToUiTrap(input);
         const bool hasOverflow = diag.find("Trap @main#0 line 1: Overflow (code=0)") != std::string::npos;
         assert(hasOverflow && "expected overflow trap for invalid cast.fp_to_ui.rte.chk operand");
+    }
+
+    const std::array<double, 3> fptosiInvalidInputs = {
+        std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::infinity(),
+        -std::numeric_limits<double>::infinity()};
+
+    for (double input : fptosiInvalidInputs)
+    {
+        const std::string diag = captureFptosiTrap(input);
+        const bool hasInvalid = diag.find("Trap @main#0 line 1: InvalidCast (code=0)") != std::string::npos;
+        assert(hasInvalid && "expected InvalidCast trap for non-finite fptosi operand");
+    }
+
+    const std::array<double, 2> fptosiOverflowInputs = {
+        std::ldexp(1.0, 63),
+        std::nextafter(-std::ldexp(1.0, 63), -std::numeric_limits<double>::infinity())};
+
+    for (double input : fptosiOverflowInputs)
+    {
+        const std::string diag = captureFptosiTrap(input);
+        const bool hasOverflow = diag.find("Trap @main#0 line 1: Overflow (code=0)") != std::string::npos;
+        assert(hasOverflow && "expected Overflow trap for out-of-range fptosi operand");
     }
 
     return 0;
