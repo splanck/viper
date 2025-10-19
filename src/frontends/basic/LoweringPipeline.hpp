@@ -5,7 +5,7 @@
 // Links: docs/codemap.md
 #pragma once
 
-#include "frontends/basic/AST.hpp"
+#include "frontends/basic/ast/DeclNodes.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/Type.hpp"
 #include <functional>

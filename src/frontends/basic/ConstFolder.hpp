@@ -5,7 +5,7 @@
 // Links: docs/codemap.md
 #pragma once
 
-#include "frontends/basic/AST.hpp"
+#include "frontends/basic/ast/DeclNodes.hpp"
 #include "frontends/basic/ConstFold_String.hpp"
 #include "frontends/basic/Token.hpp"
 #include <array>

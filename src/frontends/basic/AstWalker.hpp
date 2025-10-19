@@ -5,7 +5,7 @@
 // Links: docs/codemap.md
 #pragma once
 
-#include "frontends/basic/AST.hpp"
+#include "frontends/basic/ast/DeclNodes.hpp"
 #include <type_traits>
 
 namespace il::frontends::basic
