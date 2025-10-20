@@ -22,11 +22,111 @@
 
 #include "rt_string.h"
 #include "vm/RuntimeBridge.hpp"
+#include "vm/VM.hpp"
 
+#include <array>
 #include <cassert>
+#include <cmath>
+#include <sstream>
 
 namespace il::vm
 {
+
+namespace
+{
+    using il::core::Type;
+
+    struct KindAccessors
+    {
+        using SlotAccessor = void *(*)(Slot &);
+        using ResultAccessor = void *(*)(ResultBuffers &);
+        using ResultAssigner = void (*)(Slot &, const ResultBuffers &);
+
+        SlotAccessor slotAccessor = nullptr;
+        ResultAccessor resultAccessor = nullptr;
+        ResultAssigner assignResult = nullptr;
+    };
+
+    constexpr std::array<Type::Kind, 10> kSupportedKinds = {
+        Type::Kind::Void,
+        Type::Kind::I1,
+        Type::Kind::I16,
+        Type::Kind::I32,
+        Type::Kind::I64,
+        Type::Kind::F64,
+        Type::Kind::Ptr,
+        Type::Kind::Str,
+        Type::Kind::Error,
+        Type::Kind::ResumeTok,
+    };
+
+    static_assert(kSupportedKinds.size() == 10, "update kind accessors when Type::Kind grows");
+
+    constexpr void *nullResultBuffer(ResultBuffers &)
+    {
+        return nullptr;
+    }
+
+    constexpr void assignNoop(Slot &, const ResultBuffers &)
+    {
+    }
+
+    template <auto Member>
+    constexpr void *slotMemberAccessor(Slot &slot)
+    {
+        return static_cast<void *>(&(slot.*Member));
+    }
+
+    template <auto Member>
+    constexpr void *bufferMemberAccessor(ResultBuffers &buffers)
+    {
+        return static_cast<void *>(&(buffers.*Member));
+    }
+
+    template <auto SlotMember, auto BufferMember>
+    constexpr void assignFromBuffer(Slot &slot, const ResultBuffers &buffers)
+    {
+        slot.*SlotMember = buffers.*BufferMember;
+    }
+
+    constexpr KindAccessors makeVoidAccessors()
+    {
+        return KindAccessors{nullptr, &nullResultBuffer, &assignNoop};
+    }
+
+    template <auto SlotMember, auto BufferMember>
+    constexpr KindAccessors makeAccessors()
+    {
+        return KindAccessors{
+            &slotMemberAccessor<SlotMember>,
+            &bufferMemberAccessor<BufferMember>,
+            &assignFromBuffer<SlotMember, BufferMember>,
+        };
+    }
+
+    constexpr std::array<KindAccessors, kSupportedKinds.size()> kKindAccessors = [] {
+        std::array<KindAccessors, kSupportedKinds.size()> table{};
+        table[static_cast<size_t>(Type::Kind::Void)] = makeVoidAccessors();
+        table[static_cast<size_t>(Type::Kind::I1)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
+        table[static_cast<size_t>(Type::Kind::I16)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
+        table[static_cast<size_t>(Type::Kind::I32)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
+        table[static_cast<size_t>(Type::Kind::I64)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
+        table[static_cast<size_t>(Type::Kind::F64)] = makeAccessors<&Slot::f64, &ResultBuffers::f64>();
+        table[static_cast<size_t>(Type::Kind::Ptr)] = makeAccessors<&Slot::ptr, &ResultBuffers::ptr>();
+        table[static_cast<size_t>(Type::Kind::Str)] = makeAccessors<&Slot::str, &ResultBuffers::str>();
+        table[static_cast<size_t>(Type::Kind::Error)] = makeVoidAccessors();
+        table[static_cast<size_t>(Type::Kind::ResumeTok)] = makeVoidAccessors();
+        return table;
+    }();
+
+    const KindAccessors &dispatchFor(Type::Kind kind)
+    {
+        const auto index = static_cast<size_t>(kind);
+        assert(index < kKindAccessors.size() && "invalid type kind");
+        return kKindAccessors[index];
+    }
+
+} // namespace
 
 /// @brief Convert an immutable VM string view into a runtime handle.
 /// @details Preserves the `nullptr` sentinel used throughout the VM to mean "no
@@ -125,6 +225,127 @@ double toF64(const il::core::Value &value)
             assert(false && "value kind is not convertible to f64");
             return 0.0;
     }
+}
+
+void *slotToArgPointer(Slot &slot, il::core::Type::Kind kind)
+{
+    const auto &entry = dispatchFor(kind);
+    if (!entry.slotAccessor)
+    {
+        std::ostringstream os;
+        os << "runtime bridge does not support argument kind '" << il::core::kindToString(kind) << "'";
+        RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), {}, "", "");
+        return nullptr;
+    }
+    return entry.slotAccessor(slot);
+}
+
+void *resultBufferFor(il::core::Type::Kind kind, ResultBuffers &buffers)
+{
+    const auto &entry = dispatchFor(kind);
+    if (!entry.resultAccessor)
+    {
+        std::ostringstream os;
+        os << "runtime bridge does not support return kind '" << il::core::kindToString(kind) << "'";
+        RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), {}, "", "");
+        return nullptr;
+    }
+    return entry.resultAccessor(buffers);
+}
+
+void assignResult(Slot &slot, il::core::Type::Kind kind, const ResultBuffers &buffers)
+{
+    const auto &entry = dispatchFor(kind);
+    if (!entry.assignResult)
+    {
+        std::ostringstream os;
+        os << "runtime bridge cannot assign return kind '" << il::core::kindToString(kind) << "'";
+        RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), {}, "", "");
+        return;
+    }
+    entry.assignResult(slot, buffers);
+}
+
+std::vector<void *> marshalArguments(const il::runtime::RuntimeSignature &sig,
+                                     std::span<Slot> args,
+                                     PowStatus &powStatus)
+{
+    std::vector<void *> rawArgs(sig.paramTypes.size() + sig.hiddenParams.size());
+
+    for (size_t i = 0; i < sig.paramTypes.size(); ++i)
+    {
+        auto kind = sig.paramTypes[i].kind;
+        Slot &slot = args[i];
+        rawArgs[i] = slotToArgPointer(slot, kind);
+    }
+
+    size_t hiddenIndex = sig.paramTypes.size();
+    for (const auto &hidden : sig.hiddenParams)
+    {
+        switch (hidden.kind)
+        {
+        case il::runtime::RuntimeHiddenParamKind::None:
+            rawArgs[hiddenIndex++] = nullptr;
+            break;
+        case il::runtime::RuntimeHiddenParamKind::PowStatusPointer:
+            powStatus.active = true;
+            powStatus.ok = true;
+            powStatus.ptr = &powStatus.ok;
+            // Pow helpers expect a pointer to the status pointer so they can swap
+            // it for a runtime-managed location when traps must propagate.
+            rawArgs[hiddenIndex++] = &powStatus.ptr;
+            break;
+        }
+    }
+
+    return rawArgs;
+}
+
+PowTrapOutcome classifyPowTrap(const il::runtime::RuntimeDescriptor &desc,
+                               const PowStatus &powStatus,
+                               std::span<const Slot> args,
+                               const ResultBuffers &buffers)
+{
+    PowTrapOutcome outcome{};
+    if (desc.trapClass != il::runtime::RuntimeTrapClass::PowDomainOverflow || !powStatus.active)
+        return outcome;
+
+    if (!powStatus.ok)
+    {
+        const double base = !args.empty() ? args[0].f64 : 0.0;
+        const double exp = (args.size() > 1) ? args[1].f64 : 0.0;
+        const bool expIntegral = std::isfinite(exp) && (exp == std::trunc(exp));
+        const bool domainError = (base < 0.0) && !expIntegral;
+
+        outcome.triggered = true;
+        if (domainError)
+        {
+            outcome.kind = TrapKind::DomainError;
+            outcome.message = "rt_pow_f64_chkdom: negative base with fractional exponent";
+        }
+        else
+        {
+            outcome.kind = TrapKind::Overflow;
+            outcome.message = "rt_pow_f64_chkdom: overflow";
+        }
+        return outcome;
+    }
+
+    if (desc.signature.retType.kind == il::core::Type::Kind::F64 && !std::isfinite(buffers.f64))
+    {
+        outcome.triggered = true;
+        outcome.kind = TrapKind::Overflow;
+        outcome.message = "rt_pow_f64_chkdom: overflow";
+    }
+
+    return outcome;
+}
+
+Slot assignCallResult(const il::runtime::RuntimeSignature &signature, const ResultBuffers &buffers)
+{
+    Slot destination{};
+    assignResult(destination, signature.retType.kind, buffers);
+    return destination;
 }
 
 } // namespace il::vm
