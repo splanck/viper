@@ -161,7 +161,10 @@ add_library(il_vm STATIC
   vm/int_ops_cmp.cpp
   vm/int_ops_convert.cpp
   vm/fp_ops.cpp
-  vm/control_flow.cpp)
+  vm/control_flow.cpp
+  vm/ops/Op_BranchSwitch.cpp
+  vm/ops/Op_CallRet.cpp
+  vm/ops/Op_TrapEh.cpp)
 target_include_directories(il_vm PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
