@@ -13,6 +13,11 @@
 
 namespace il::frontends::basic
 {
+namespace print_stmt
+{
+struct Context;
+} // namespace print_stmt
+
 /// @brief Emits a textual representation of BASIC programs for debugging.
 ///
 /// AstPrinter walks the Program, Stmt, and Expr nodes to produce a
@@ -21,6 +26,7 @@ namespace il::frontends::basic
 class AstPrinter
 {
   public:
+    friend struct print_stmt::Context;
     /// @brief Produce a formatted dump of the given program.
     /// @param prog Program AST to print.
     /// @return String containing the formatted dump.
