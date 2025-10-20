@@ -243,35 +243,20 @@ rt_string rt_mid2(rt_string s, int64_t start)
 {
     if (!s)
         rt_trap("MID$: null string");
-    if (start < 0)
-    {
-        char buf[64];
-        char numbuf[32];
-        rt_i64_to_cstr(start, numbuf, sizeof(numbuf));
-        snprintf(buf, sizeof(buf), "MID$: start must be >= 0 (got %s)", numbuf);
-        rt_trap(buf);
-    }
     size_t len = rt_string_len_bytes(s);
-    if (start <= 0)
+    if (start <= 1)
         return rt_string_ref(s);
-    if ((size_t)start >= len)
+    size_t start_idx = (size_t)(start - 1);
+    if (start_idx >= len)
         return rt_empty_string();
-    size_t n = len - (size_t)start;
-    return rt_substr(s, start, (int64_t)n);
+    size_t n = len - start_idx;
+    return rt_substr(s, (int64_t)start_idx, (int64_t)n);
 }
 
 rt_string rt_mid3(rt_string s, int64_t start, int64_t len)
 {
     if (!s)
         rt_trap("MID$: null string");
-    if (start < 0)
-    {
-        char buf[64];
-        char numbuf[32];
-        rt_i64_to_cstr(start, numbuf, sizeof(numbuf));
-        snprintf(buf, sizeof(buf), "MID$: start must be >= 0 (got %s)", numbuf);
-        rt_trap(buf);
-    }
     if (len < 0)
     {
         char buf[64];
@@ -281,13 +266,27 @@ rt_string rt_mid3(rt_string s, int64_t start, int64_t len)
         rt_trap(buf);
     }
     size_t slen = rt_string_len_bytes(s);
-    if (len == 0 || (size_t)start >= slen)
+    if (len == 0)
         return rt_empty_string();
-    if (start == 0 && (size_t)len >= slen)
-        return rt_string_ref(s);
-    if ((size_t)len > slen - (size_t)start)
-        len = (int64_t)(slen - (size_t)start);
-    return rt_substr(s, start, len);
+    size_t start_idx = 0;
+    if (start > 1)
+    {
+        uint64_t zero_based = (uint64_t)(start - 1);
+        if (zero_based >= slen)
+            return rt_empty_string();
+        start_idx = (size_t)zero_based;
+    }
+    size_t max_len = slen - start_idx;
+    size_t slice_len = (size_t)len;
+    if (slice_len >= max_len)
+    {
+        if (start_idx == 0 && max_len == slen)
+            return rt_string_ref(s);
+        slice_len = max_len;
+    }
+    if (slice_len == 0)
+        return rt_empty_string();
+    return rt_substr(s, (int64_t)start_idx, (int64_t)slice_len);
 }
 
 static int64_t rt_find(rt_string hay, int64_t start, rt_string needle)
