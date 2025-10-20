@@ -150,9 +150,19 @@ il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
     std::ostringstream ss;
     ss << in.rdbuf();
 
+    std::string contents = ss.str();
+
+    const uint32_t fileId = sm.addFile(path);
+    if (fileId == 0)
+    {
+        return il::support::Expected<LoadedSource>(
+            il::support::makeError({},
+                                   "source manager exhausted file identifier space"));
+    }
+
     LoadedSource source{};
-    source.buffer = ss.str();
-    source.fileId = sm.addFile(path);
+    source.buffer = std::move(contents);
+    source.fileId = fileId;
     return il::support::Expected<LoadedSource>(std::move(source));
 }
 
@@ -248,7 +258,8 @@ int runFrontBasic(const FrontBasicConfig &config, const std::string &source,
 ///   3. Delegate to @ref runFrontBasic to either emit IL or execute the program.
 /// Any failure at these stages results in a non-zero exit status with diagnostics
 /// already printed to stderr, matching the behaviour expected by ilc callers.
-int cmdFrontBasic(int argc, char **argv)
+int cmdFrontBasicWithSourceManager(int argc, char **argv,
+                                   il::support::SourceManager &sm)
 {
     auto parsed = parseFrontBasicArgs(argc, argv);
     if (!parsed)
@@ -258,7 +269,6 @@ int cmdFrontBasic(int argc, char **argv)
 
     FrontBasicConfig config = std::move(parsed.value());
 
-    SourceManager sm;
     auto source = loadSourceBuffer(config.sourcePath, sm);
     if (!source)
     {
@@ -268,4 +278,10 @@ int cmdFrontBasic(int argc, char **argv)
 
     config.sourceFileId = source.value().fileId;
     return runFrontBasic(config, source.value().buffer, sm);
+}
+
+int cmdFrontBasic(int argc, char **argv)
+{
+    SourceManager sm;
+    return cmdFrontBasicWithSourceManager(argc, argv, sm);
 }
