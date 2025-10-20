@@ -50,13 +50,11 @@ void SelectCaseLowering::lower(const SelectCaseStmt &stmt)
         return;
 
     bool hasRanges = false;
-    size_t totalRangeCount = 0;
     for (const auto &arm : stmt.arms)
     {
         if (!arm.ranges.empty())
         {
             hasRanges = true;
-            totalRangeCount += arm.ranges.size();
         }
     }
 
@@ -69,7 +67,7 @@ void SelectCaseLowering::lower(const SelectCaseStmt &stmt)
     }
     else
     {
-        lowerNumericDispatch(stmt, blocks, selWide, sel, hasRanges, totalRangeCount);
+        lowerNumericDispatch(stmt, blocks, selWide, sel, hasRanges);
     }
 
     func = ctx.function();
@@ -152,16 +150,17 @@ void SelectCaseLowering::lowerStringArms(const SelectCaseStmt &stmt,
 {
     auto &ctx = lowerer_.context();
     auto *func = ctx.function();
-    auto *blockNamer = ctx.blockNames().namer();
 
-    auto *defaultBlk =
-        blocks.elseIdx ? &func->blocks[*blocks.elseIdx] : &func->blocks[blocks.endIdx];
-    if (defaultBlk->label.empty())
-        defaultBlk->label = lowerer_.nextFallbackBlockLabel();
+    size_t defaultIdx = blocks.elseIdx ? *blocks.elseIdx : blocks.endIdx;
+    auto &defaultBlk = func->blocks[defaultIdx];
+    if (defaultBlk.label.empty())
+        defaultBlk.label = lowerer_.nextFallbackBlockLabel();
 
-    size_t checkIdx = blocks.currentIdx;
-    ctx.setCurrent(&func->blocks[checkIdx]);
-    bool emittedComparison = false;
+    std::vector<CasePlanEntry> plan;
+    size_t labelCount = 0;
+    for (const auto &arm : stmt.arms)
+        labelCount += arm.str_labels.size();
+    plan.reserve(labelCount);
 
     for (size_t i = 0; i < stmt.arms.size(); ++i)
     {
@@ -169,237 +168,256 @@ void SelectCaseLowering::lowerStringArms(const SelectCaseStmt &stmt,
         if (labels.empty())
             continue;
 
-        func = ctx.function();
-        auto *armBlk = &func->blocks[blocks.armIdx[i]];
-        if (armBlk->label.empty())
-            armBlk->label = lowerer_.nextFallbackBlockLabel();
-
-        for (size_t j = 0; j < labels.size(); ++j)
+        for (const auto &label : labels)
         {
-            bool moreComparisons = (j + 1 < labels.size());
-            if (!moreComparisons)
-            {
-                for (size_t k = i + 1; k < stmt.arms.size(); ++k)
-                {
-                    if (!stmt.arms[k].str_labels.empty())
-                    {
-                        moreComparisons = true;
-                        break;
-                    }
-                }
-            }
-
-            size_t nextIdx;
-            if (moreComparisons)
-            {
-                std::string checkLabel = blockNamer ? blockNamer->generic("select_check")
-                                                    : lowerer_.mangler.block("select_check");
-                lowerer_.builder->addBlock(*func, checkLabel);
-                func = ctx.function();
-                nextIdx = func->blocks.size() - 1;
-            }
-            else
-            {
-                nextIdx = blocks.elseIdx ? *blocks.elseIdx : blocks.endIdx;
-            }
-
-            func = ctx.function();
-            auto *checkBlk = &func->blocks[checkIdx];
-            auto *trueTarget = &func->blocks[blocks.armIdx[i]];
-            if (trueTarget->label.empty())
-                trueTarget->label = lowerer_.nextFallbackBlockLabel();
-            auto *nextBlk = &func->blocks[nextIdx];
-            if (nextBlk->label.empty())
-                nextBlk->label = lowerer_.nextFallbackBlockLabel();
-
-            ctx.setCurrent(checkBlk);
-            lowerer_.curLoc = stmt.arms[i].range.begin;
-            il::core::Value labelValue = lowerer_.emitConstStr(lowerer_.getStringLabel(labels[j]));
-            il::core::Value cond = lowerer_.emitCallRet(
-                lowerer_.ilBoolTy(), "rt_str_eq", {stringSelector, labelValue});
-            lowerer_.emitCBr(cond, trueTarget, nextBlk);
-
-            checkIdx = nextIdx;
-            emittedComparison = true;
+            CasePlanEntry entry{};
+            entry.kind = CaseKind::StringEq;
+            entry.targetIdx = blocks.armIdx[i];
+            entry.loc = stmt.arms[i].range.begin;
+            entry.strPayload = label;
+            plan.push_back(entry);
         }
     }
 
-    if (!emittedComparison)
+    if (plan.empty())
     {
-        ctx.setCurrent(&func->blocks[blocks.currentIdx]);
-        lowerer_.emitBr(defaultBlk);
-        checkIdx = blocks.elseIdx ? *blocks.elseIdx : blocks.endIdx;
+        ctx.setCurrent(&ctx.function()->blocks[blocks.currentIdx]);
+        // No comparisons means the entry block must terminate by jumping to the default.
+        lowerer_.emitBr(&defaultBlk);
+        ctx.setCurrent(&ctx.function()->blocks[defaultIdx]);
+        return;
     }
 
-    ctx.setCurrent(&ctx.function()->blocks[checkIdx]);
+    auto builder = [&](const CasePlanEntry &entry) -> il::core::Value {
+        il::core::Value labelValue =
+            lowerer_.emitConstStr(lowerer_.getStringLabel(entry.strPayload));
+        return lowerer_.emitCallRet(
+            lowerer_.ilBoolTy(), "rt_str_eq", {stringSelector, labelValue});
+    };
+
+    // Every comparison block ends with a conditional branch. False edges fall through to the
+    // next plan entry while the true edge transfers control to the matching arm.
+    emitDecisionChain(plan, blocks.currentIdx, defaultIdx, builder);
 }
 
 void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
-                                              const Blocks &blocks,
-                                              il::core::Value selWide,
-                                              il::core::Value selector,
-                                              bool hasRanges,
-                                              size_t totalRangeCount)
+                                             const Blocks &blocks,
+                                             il::core::Value selWide,
+                                             il::core::Value selector,
+                                             bool hasRanges)
 {
-    NumericDispatchState state{};
-    state.switchIdx = blocks.switchIdx;
-    state.afterRelIdx = blocks.currentIdx;
+    auto &ctx = lowerer_.context();
 
-    state.rangeChecks.reserve(totalRangeCount);
-    for (size_t i = 0; i < stmt.arms.size(); ++i)
-    {
-        for (const auto &range : stmt.arms[i].ranges)
-        {
-            state.rangeChecks.push_back(NumericDispatchState::RangeCheck{
-                static_cast<int32_t>(range.first), static_cast<int32_t>(range.second), i});
-        }
-    }
+    std::vector<CasePlanEntry> plan;
+    size_t decisionCount = 0;
+    for (const auto &arm : stmt.arms)
+        decisionCount += arm.rels.size() + arm.ranges.size();
+    plan.reserve(decisionCount);
 
     for (size_t i = 0; i < stmt.arms.size(); ++i)
     {
         for (const auto &rel : stmt.arms[i].rels)
-            state.relChecks.push_back(NumericDispatchState::RelCheck{&rel, i});
+        {
+            CasePlanEntry entry{};
+            entry.loc = stmt.arms[i].range.begin;
+            entry.targetIdx = blocks.armIdx[i];
+            entry.range.lo = static_cast<int32_t>(rel.rhs);
+            entry.range.hi = entry.range.lo;
+            switch (rel.op)
+            {
+                case CaseArm::CaseRel::Op::LT:
+                    entry.kind = CaseKind::RelLT;
+                    break;
+                case CaseArm::CaseRel::Op::LE:
+                    entry.kind = CaseKind::RelLE;
+                    break;
+                case CaseArm::CaseRel::Op::EQ:
+                    entry.kind = CaseKind::RelEQ;
+                    break;
+                case CaseArm::CaseRel::Op::GE:
+                    entry.kind = CaseKind::RelGE;
+                    break;
+                case CaseArm::CaseRel::Op::GT:
+                    entry.kind = CaseKind::RelGT;
+                    break;
+            }
+            plan.push_back(entry);
+        }
     }
 
-    emitRelationalChecks(stmt, blocks, selWide, state);
-
-    if (!hasRanges)
-        state.switchIdx = state.afterRelIdx;
-
-    emitRangeChecks(stmt, blocks, selWide, state);
-    emitSwitchJumpTable(stmt, blocks, selector, state);
-}
-
-void SelectCaseLowering::emitRelationalChecks(const SelectCaseStmt &stmt,
-                                              const Blocks &blocks,
-                                              il::core::Value selWide,
-                                              NumericDispatchState &state)
-{
-    auto &ctx = lowerer_.context();
-    auto *blockNamer = ctx.blockNames().namer();
-
-    size_t checkIdx = state.afterRelIdx;
-    for (const auto &check : state.relChecks)
+    for (size_t i = 0; i < stmt.arms.size(); ++i)
     {
-        auto *func = ctx.function();
-        auto *checkBlk = &func->blocks[checkIdx];
-        std::string label =
-            blockNamer ? blockNamer->generic("select_rel") : lowerer_.mangler.block("select_rel");
-        lowerer_.builder->addBlock(*func, label);
-
-        func = ctx.function();
-        size_t nextIdx = func->blocks.size() - 1;
-        checkBlk = &func->blocks[checkIdx];
-        auto *trueTarget = &func->blocks[blocks.armIdx[check.armIndex]];
-        if (trueTarget->label.empty())
-            trueTarget->label = lowerer_.nextFallbackBlockLabel();
-        auto *nextBlk = &func->blocks[nextIdx];
-        if (nextBlk->label.empty())
-            nextBlk->label = lowerer_.nextFallbackBlockLabel();
-
-        ctx.setCurrent(checkBlk);
-        lowerer_.curLoc = stmt.arms[check.armIndex].range.begin;
-        il::core::Opcode cmpOp = il::core::Opcode::ICmpEq;
-        switch (check.rel->op)
+        for (const auto &range : stmt.arms[i].ranges)
         {
-            case CaseArm::CaseRel::Op::LT:
-                cmpOp = il::core::Opcode::SCmpLT;
-                break;
-            case CaseArm::CaseRel::Op::LE:
-                cmpOp = il::core::Opcode::SCmpLE;
-                break;
-            case CaseArm::CaseRel::Op::EQ:
-                cmpOp = il::core::Opcode::ICmpEq;
-                break;
-            case CaseArm::CaseRel::Op::GE:
-                cmpOp = il::core::Opcode::SCmpGE;
-                break;
-            case CaseArm::CaseRel::Op::GT:
-                cmpOp = il::core::Opcode::SCmpGT;
+            CasePlanEntry entry{};
+            entry.kind = CaseKind::RangeInclusive;
+            entry.targetIdx = blocks.armIdx[i];
+            entry.loc = stmt.arms[i].range.begin;
+            entry.range.lo = static_cast<int32_t>(range.first);
+            entry.range.hi = static_cast<int32_t>(range.second);
+            plan.push_back(entry);
+        }
+    }
+
+    std::optional<size_t> dispatchFallback = hasRanges ? std::optional<size_t>(blocks.switchIdx)
+                                                       : std::optional<size_t>();
+    auto builder = [&](const CasePlanEntry &entry) -> il::core::Value {
+        switch (entry.kind)
+        {
+            case CaseKind::RelLT:
+                return lowerer_.emitBinary(il::core::Opcode::SCmpLT,
+                                           lowerer_.ilBoolTy(),
+                                           selWide,
+                                           il::core::Value::constInt(static_cast<long long>(entry.range.lo)));
+            case CaseKind::RelLE:
+                return lowerer_.emitBinary(il::core::Opcode::SCmpLE,
+                                           lowerer_.ilBoolTy(),
+                                           selWide,
+                                           il::core::Value::constInt(static_cast<long long>(entry.range.lo)));
+            case CaseKind::RelEQ:
+                return lowerer_.emitBinary(il::core::Opcode::ICmpEq,
+                                           lowerer_.ilBoolTy(),
+                                           selWide,
+                                           il::core::Value::constInt(static_cast<long long>(entry.range.lo)));
+            case CaseKind::RelGE:
+                return lowerer_.emitBinary(il::core::Opcode::SCmpGE,
+                                           lowerer_.ilBoolTy(),
+                                           selWide,
+                                           il::core::Value::constInt(static_cast<long long>(entry.range.lo)));
+            case CaseKind::RelGT:
+                return lowerer_.emitBinary(il::core::Opcode::SCmpGT,
+                                           lowerer_.ilBoolTy(),
+                                           selWide,
+                                           il::core::Value::constInt(static_cast<long long>(entry.range.lo)));
+            case CaseKind::RangeInclusive: {
+                il::core::Value ge = lowerer_.emitBinary(
+                    il::core::Opcode::SCmpGE,
+                    lowerer_.ilBoolTy(),
+                    selWide,
+                    il::core::Value::constInt(static_cast<long long>(entry.range.lo)));
+                il::core::Value le = lowerer_.emitBinary(
+                    il::core::Opcode::SCmpLE,
+                    lowerer_.ilBoolTy(),
+                    selWide,
+                    il::core::Value::constInt(static_cast<long long>(entry.range.hi)));
+                return lowerer_.emitBinary(il::core::Opcode::And, lowerer_.ilBoolTy(), ge, le);
+            }
+            case CaseKind::StringEq:
+                assert(false && "StringEq is not valid for numeric dispatch");
                 break;
         }
-        il::core::Value rhs = il::core::Value::constInt(static_cast<long long>(check.rel->rhs));
-        il::core::Value cond = lowerer_.emitBinary(cmpOp, lowerer_.ilBoolTy(), selWide, rhs);
-        lowerer_.emitCBr(cond, trueTarget, nextBlk);
-        checkIdx = nextIdx;
-    }
+        return il::core::Value{};
+    };
 
-    state.afterRelIdx = checkIdx;
-    ctx.setCurrent(&ctx.function()->blocks[state.afterRelIdx]);
+    // The helper returns the final fall-through block index. When ranges are present the
+    // dispatch block was preallocated in prepareBlocks and is provided as the default branch
+    // destination, so the return value is only relevant when we build the chain ourselves.
+    size_t dispatchIdx = emitDecisionChain(plan, blocks.currentIdx, dispatchFallback, builder);
+    if (hasRanges)
+        dispatchIdx = blocks.switchIdx;
+
+    emitSwitchJumpTable(stmt, blocks, selector, dispatchIdx);
 }
 
-void SelectCaseLowering::emitRangeChecks(const SelectCaseStmt &stmt,
-                                         const Blocks &blocks,
-                                         il::core::Value selWide,
-                                         NumericDispatchState &state)
+size_t SelectCaseLowering::emitDecisionChain(const std::vector<CasePlanEntry> &plan,
+                                             size_t entryIdx,
+                                             std::optional<size_t> defaultIdx,
+                                             const ConditionBuilder &builder)
 {
     auto &ctx = lowerer_.context();
-    auto *blockNamer = ctx.blockNames().namer();
-
-    if (state.rangeChecks.empty())
+    if (plan.empty())
     {
-        ctx.setCurrent(&ctx.function()->blocks[state.switchIdx]);
-        return;
+        ctx.setCurrent(&ctx.function()->blocks[entryIdx]);
+        return entryIdx;
     }
 
-    size_t rangeBlockIdx = state.afterRelIdx;
-    for (size_t idx = 0; idx < state.rangeChecks.size(); ++idx)
+    size_t currentIdx = entryIdx;
+
+    for (size_t i = 0; i < plan.size(); ++i)
     {
+        const CasePlanEntry &entry = plan[i];
         auto *func = ctx.function();
-        const auto &check = state.rangeChecks[idx];
-        auto *rangeBlk = &func->blocks[rangeBlockIdx];
-        auto *trueTarget = &func->blocks[blocks.armIdx[check.armIndex]];
-        if (trueTarget->label.empty())
-            trueTarget->label = lowerer_.nextFallbackBlockLabel();
+        auto &currentBlk = func->blocks[currentIdx];
+        if (currentBlk.label.empty())
+            currentBlk.label = lowerer_.nextFallbackBlockLabel();
+
+        func = ctx.function();
+        auto &targetBlk = func->blocks[entry.targetIdx];
+        if (targetBlk.label.empty())
+            targetBlk.label = lowerer_.nextFallbackBlockLabel();
 
         size_t nextIdx;
-        if (idx + 1 < state.rangeChecks.size())
+        if (i + 1 < plan.size())
         {
-            std::string label = blockNamer ? blockNamer->generic("select_range")
-                                           : lowerer_.mangler.block("select_range");
+            std::string label = chainLabelFor(entry.kind);
             lowerer_.builder->addBlock(*func, label);
             func = ctx.function();
             nextIdx = func->blocks.size() - 1;
         }
+        else if (defaultIdx)
+        {
+            nextIdx = *defaultIdx;
+        }
         else
         {
-            nextIdx = state.switchIdx;
+            std::string label = chainLabelFor(entry.kind);
+            lowerer_.builder->addBlock(*func, label);
+            func = ctx.function();
+            nextIdx = func->blocks.size() - 1;
         }
 
-        auto *nextBlk = &func->blocks[nextIdx];
-        if (nextBlk->label.empty())
-            nextBlk->label = lowerer_.nextFallbackBlockLabel();
+        func = ctx.function();
+        auto &nextBlk = func->blocks[nextIdx];
+        if (nextBlk.label.empty())
+            nextBlk.label = lowerer_.nextFallbackBlockLabel();
 
-        ctx.setCurrent(rangeBlk);
-        lowerer_.curLoc = stmt.arms[check.armIndex].range.begin;
-        il::core::Value ge =
-            lowerer_.emitBinary(il::core::Opcode::SCmpGE,
-                                lowerer_.ilBoolTy(),
-                                selWide,
-                                il::core::Value::constInt(static_cast<long long>(check.lo)));
-        il::core::Value le =
-            lowerer_.emitBinary(il::core::Opcode::SCmpLE,
-                                lowerer_.ilBoolTy(),
-                                selWide,
-                                il::core::Value::constInt(static_cast<long long>(check.hi)));
-        il::core::Value cond =
-            lowerer_.emitBinary(il::core::Opcode::And, lowerer_.ilBoolTy(), ge, le);
-        lowerer_.emitCBr(cond, trueTarget, nextBlk);
+        ctx.setCurrent(&currentBlk);
+        lowerer_.curLoc = entry.loc;
+        il::core::Value cond = builder(entry);
+        // Each block terminates with a conditional branch; the false edge is the fall-through to
+        // either the next comparison block or the default target.
+        lowerer_.emitCBr(cond, &targetBlk, &nextBlk);
 
-        rangeBlockIdx = nextIdx;
+        currentIdx = nextIdx;
     }
 
-    ctx.setCurrent(&ctx.function()->blocks[state.switchIdx]);
+    ctx.setCurrent(&ctx.function()->blocks[currentIdx]);
+    return currentIdx;
+}
+
+std::string SelectCaseLowering::chainLabelFor(CaseKind kind)
+{
+    auto &ctx = lowerer_.context();
+    auto *blockNamer = ctx.blockNames().namer();
+    const char *base = "select_rel";
+    switch (kind)
+    {
+        case CaseKind::StringEq:
+            base = "select_check";
+            break;
+        case CaseKind::RangeInclusive:
+            base = "select_range";
+            break;
+        case CaseKind::RelLT:
+        case CaseKind::RelLE:
+        case CaseKind::RelEQ:
+        case CaseKind::RelGE:
+        case CaseKind::RelGT:
+            base = "select_rel";
+            break;
+    }
+    return blockNamer ? blockNamer->generic(base)
+                      : lowerer_.mangler.block(base);
 }
 
 void SelectCaseLowering::emitSwitchJumpTable(const SelectCaseStmt &stmt,
-                                             const Blocks &blocks,
-                                             il::core::Value selector,
-                                             NumericDispatchState &state)
+                                            const Blocks &blocks,
+                                            il::core::Value selector,
+                                            size_t dispatchIdx)
 {
     auto &ctx = lowerer_.context();
     auto *func = ctx.function();
-    ctx.setCurrent(&func->blocks[state.switchIdx]);
+    ctx.setCurrent(&func->blocks[dispatchIdx]);
 
     std::vector<std::pair<int32_t, il::core::BasicBlock *>> caseTargets;
     size_t labelCount = 0;
@@ -443,6 +461,7 @@ void SelectCaseLowering::emitSwitchJumpTable(const SelectCaseStmt &stmt,
 
     auto *switchBlk = ctx.current();
     switchBlk->instructions.push_back(std::move(sw));
+    // Switch is a terminator; control transfers to one of the labeled targets with no fall-through.
     switchBlk->terminated = true;
 }
 

@@ -10,7 +10,9 @@
 #include "support/source_location.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace il::core
@@ -45,26 +47,33 @@ class SelectCaseLowering
         size_t endIdx{};
     };
 
-    struct NumericDispatchState
+    enum class CaseKind
     {
-        struct RangeCheck
-        {
-            int32_t lo{};
-            int32_t hi{};
-            size_t armIndex{};
-        };
-
-        struct RelCheck
-        {
-            const CaseArm::CaseRel *rel{};
-            size_t armIndex{};
-        };
-
-        std::vector<RangeCheck> rangeChecks;
-        std::vector<RelCheck> relChecks;
-        size_t afterRelIdx{};
-        size_t switchIdx{};
+        StringEq,
+        RangeInclusive,
+        RelLT,
+        RelLE,
+        RelEQ,
+        RelGE,
+        RelGT,
     };
+
+    struct ValueRange
+    {
+        int32_t lo{};
+        int32_t hi{};
+    };
+
+    struct CasePlanEntry
+    {
+        CaseKind kind{};
+        ValueRange range{};
+        size_t targetIdx{};
+        il::support::SourceLoc loc{};
+        std::string strPayload{};
+    };
+
+    using ConditionBuilder = std::function<il::core::Value(const CasePlanEntry &)>;
 
     Blocks prepareBlocks(const SelectCaseStmt &stmt, bool hasCaseElse, bool needsDispatch);
 
@@ -76,23 +85,19 @@ class SelectCaseLowering
                               const Blocks &blocks,
                               il::core::Value selWide,
                               il::core::Value selector,
-                              bool hasRanges,
-                              size_t totalRangeCount);
+                              bool hasRanges);
 
-    void emitRelationalChecks(const SelectCaseStmt &stmt,
-                              const Blocks &blocks,
-                              il::core::Value selWide,
-                              NumericDispatchState &state);
-
-    void emitRangeChecks(const SelectCaseStmt &stmt,
-                         const Blocks &blocks,
-                         il::core::Value selWide,
-                         NumericDispatchState &state);
+    size_t emitDecisionChain(const std::vector<CasePlanEntry> &plan,
+                             size_t entryIdx,
+                             std::optional<size_t> defaultIdx,
+                             const ConditionBuilder &builder);
 
     void emitSwitchJumpTable(const SelectCaseStmt &stmt,
                              const Blocks &blocks,
                              il::core::Value selector,
-                             NumericDispatchState &state);
+                             size_t dispatchIdx);
+
+    std::string chainLabelFor(CaseKind kind);
 
     void emitArmBody(const std::vector<StmtPtr> &body,
                      il::core::BasicBlock *entry,
