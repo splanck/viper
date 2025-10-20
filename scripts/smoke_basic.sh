@@ -5,6 +5,18 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 BUILD_DIR="${ROOT_DIR}/build"
 ILC_BIN="${BUILD_DIR}/src/tools/ilc/ilc"
 
+if command -v timeout >/dev/null 2>&1; then
+  run_with_timeout() {
+    timeout "$@"
+  }
+else
+  run_with_timeout() {
+    local _duration="$1"
+    shift
+    "$@"
+  }
+fi
+
 cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}"
 cmake --build "${BUILD_DIR}"
 
@@ -31,7 +43,7 @@ for i in "${!cases[@]}"; do
   expected="${expected_substrings[i]}"
   abs_path="${ROOT_DIR}/${rel_path}"
   echo "Running ${rel_path}..."
-  if ! output="$(timeout 10s "${ILC_BIN}" front basic -run "${abs_path}")"; then
+  if ! output="$(run_with_timeout 10s "${ILC_BIN}" front basic -run "${abs_path}")"; then
     echo "ERROR: ${rel_path} exited with failure" >&2
     exit 1
   fi
@@ -47,7 +59,7 @@ done
 
 concat_string_path="${ROOT_DIR}/tests/smoke/basic/concat_string.bas"
 echo "Running tests/smoke/basic/concat_string.bas..."
-if ! output="$(timeout 10s "${ILC_BIN}" front basic -run "${concat_string_path}")"; then
+if ! output="$(run_with_timeout 10s "${ILC_BIN}" front basic -run "${concat_string_path}")"; then
   echo "ERROR: tests/smoke/basic/concat_string.bas exited with failure" >&2
   exit 1
 fi
@@ -62,7 +74,7 @@ echo
 
 concat_input_path="${ROOT_DIR}/tests/smoke/basic/concat_input.bas"
 echo "Running tests/smoke/basic/concat_input.bas..."
-if ! output="$(printf "Alice\n" | timeout 10s "${ILC_BIN}" front basic -run "${concat_input_path}")"; then
+if ! output="$(printf "Alice\n" | run_with_timeout 10s "${ILC_BIN}" front basic -run "${concat_input_path}")"; then
   echo "ERROR: tests/smoke/basic/concat_input.bas exited with failure" >&2
   exit 1
 fi
@@ -78,7 +90,7 @@ echo
 echo "All smoke tests passed."
 
 # String concat test
-timeout 2 "$BUILD_ROOT/src/tools/ilc/ilc" front basic -run tests/smoke/basic/strings_concat.bas | grep -F "Hello, World"
+run_with_timeout 2 "$BUILD_ROOT/src/tools/ilc/ilc" front basic -run tests/smoke/basic/strings_concat.bas | grep -F "Hello, World"
 
 # String aliasing test
-printf "Stephen\n" | timeout 2 "$BUILD_ROOT/src/tools/ilc/ilc" front basic -run tests/smoke/basic/strings_alias.bas | grep -F "StephenStephen"
+printf "Stephen\n" | run_with_timeout 2 "$BUILD_ROOT/src/tools/ilc/ilc" front basic -run tests/smoke/basic/strings_alias.bas | grep -F "StephenStephen"
