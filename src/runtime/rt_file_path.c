@@ -60,11 +60,14 @@ bool rt_file_mode_to_flags(const char *mode, int *flags_out)
 
     bool plus = false;
     bool create = false;
+    bool binary = false;
     for (const char *p = mode + 1; *p; ++p)
     {
         if (*p == '+')
             plus = true;
-        else if (*p == 'b' || *p == 't')
+        else if (*p == 'b')
+            binary = true;
+        else if (*p == 't')
             continue;
         else if (*p == 'c')
             create = true;
@@ -79,6 +82,18 @@ bool rt_file_mode_to_flags(const char *mode, int *flags_out)
     }
     if (create)
         flags |= O_CREAT;
+#if defined(_WIN32)
+    if (binary)
+    {
+#    if defined(O_BINARY)
+        flags |= O_BINARY;
+#    elif defined(_O_BINARY)
+        flags |= _O_BINARY;
+#    endif
+    }
+#else
+    (void)binary;
+#endif
     flags |= O_CLOEXEC;
 
     *flags_out = flags;
