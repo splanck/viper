@@ -149,6 +149,24 @@ void rt_print_f64(double v)
     fputs(buf, stdout);
 }
 
+rt_input_grow_result rt_input_try_grow(char **buf, size_t *cap)
+{
+    if (!buf || !cap || !*buf)
+        return RT_INPUT_GROW_ALLOC_FAILED;
+
+    if (*cap > SIZE_MAX / 2)
+        return RT_INPUT_GROW_OVERFLOW;
+
+    size_t new_cap = (*cap) * 2;
+    char *nbuf = (char *)realloc(*buf, new_cap);
+    if (!nbuf)
+        return RT_INPUT_GROW_ALLOC_FAILED;
+
+    *buf = nbuf;
+    *cap = new_cap;
+    return RT_INPUT_GROW_OK;
+}
+
 /**
  * Read a single line of input from stdin into a runtime string.
  *
@@ -176,16 +194,19 @@ rt_string rt_input_line(void)
             break;
         if (len + 1 >= cap)
         {
-            size_t new_cap = cap * 2;
-            char *nbuf = (char *)realloc(buf, new_cap);
-            if (!nbuf)
+            rt_input_grow_result grow = rt_input_try_grow(&buf, &cap);
+            if (grow == RT_INPUT_GROW_OVERFLOW)
+            {
+                free(buf);
+                rt_trap("rt_input_line: overflow");
+                return NULL;
+            }
+            if (grow != RT_INPUT_GROW_OK)
             {
                 free(buf);
                 rt_trap("out of memory");
                 return NULL;
             }
-            buf = nbuf;
-            cap = new_cap;
         }
         buf[len++] = (char)ch;
     }
