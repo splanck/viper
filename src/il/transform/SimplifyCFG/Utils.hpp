@@ -40,7 +40,14 @@ class BitVector
 
     void resize(size_t count, bool value = false)
     {
-        bits_.assign(count, value);
+        const size_t currentSize = bits_.size();
+        if (count <= currentSize)
+        {
+            bits_.resize(count);
+            return;
+        }
+
+        bits_.resize(count, value);
     }
 
     bool test(size_t index) const

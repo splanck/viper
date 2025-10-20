@@ -303,6 +303,14 @@ function(viper_add_il_utils_test)
   viper_add_ctest(test_il_utils test_il_utils)
 
   viper_add_test(
+    test_il_simplifycfg_bitvector_resize
+    ${_VIPER_IL_DIR}/transform/simplifycfg_bitvector_resize.cpp)
+  target_link_libraries(
+    test_il_simplifycfg_bitvector_resize PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+  viper_add_ctest(
+    test_il_simplifycfg_bitvector_resize test_il_simplifycfg_bitvector_resize)
+
+  viper_add_test(
     test_il_simplifycfg_cbr_fold
     ${_VIPER_IL_DIR}/transform/simplifycfg_cbr_fold.cpp)
   target_link_libraries(
