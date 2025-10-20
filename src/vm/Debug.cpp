@@ -1,13 +1,17 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the MIT License.
+// This file is part of the Viper project, under the MIT License.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// Implements the debugger control surface used by the VM to manage breakpoints,
-// watches, and scripted execution.  The helpers normalise file paths, track
-// previously hit locations, and print watch updates in a consistent format.
+// File: src/vm/Debug.cpp
+// Purpose: Implement the debugger control surface for breakpoint and watch management.
+// Key invariants: Path normalisation is deterministic within a process and watch
+//                 notifications preserve the most recently observed value for
+//                 change detection.
+// Ownership/Lifetime: DebugCtrl borrows SourceManager pointers and stores
+//                     interned symbols; it does not own file system resources.
+// Links: docs/runtime-vm.md#debugger
 //
 //===----------------------------------------------------------------------===//
 #include "vm/Debug.hpp"
@@ -22,9 +26,16 @@
 namespace il::vm
 {
 
-/// @brief Normalize a file system path for breakpoint comparison.
-/// @param p Path to normalize. Backslashes are replaced with '/'.
-/// @return Canonical path with resolved '.' and '..' segments.
+/// @brief Normalise a file-system path so breakpoint comparisons are stable.
+///
+/// @details Replaces Windows-style separators with forward slashes, feeds the
+///          result through `std::filesystem::path::lexically_normal()`, and
+///          returns the generic string representation.  Empty inputs collapse to
+///          "." so the debugger never returns an empty path, while absolute
+///          roots remain intact.
+///
+/// @param p Path string to normalise; modified in place.
+/// @return Canonical path with redundant segments removed.
 std::string DebugCtrl::normalizePath(std::string p)
 {
     std::replace(p.begin(), p.end(), '\\', '/');
@@ -41,14 +52,15 @@ std::string DebugCtrl::normalizePath(std::string p)
     return generic;
 }
 
-/// @brief Normalise a path and return both the canonical path and basename.
+/// @brief Produce both the canonical path and basename for breakpoint matching.
 ///
-/// Used by source breakpoints so that either fully-qualified paths or file
-/// basenames can match a breakpoint.  The basename is extracted from the
-/// normalised path to keep both variants in sync.
+/// @details Breakpoints can trigger by either full path or basename.  This helper
+///          normalises the supplied path and splits the final segment so both
+///          representations stay in sync.  Returning by value allows callers to
+///          stash the pair without further allocation.
 ///
-/// @param path Path to normalise; moved into the result.
-/// @return Pair of {normalised path, basename}.
+/// @param path Original path supplied by the user; consumed by the function.
+/// @return Pair of canonical path and basename strings.
 std::pair<std::string, std::string> DebugCtrl::normalizePathWithBase(std::string path)
 {
     std::string normFile = normalizePath(std::move(path));
@@ -58,68 +70,96 @@ std::pair<std::string, std::string> DebugCtrl::normalizePathWithBase(std::string
 }
 
 /// @brief Intern a block label for breakpoint lookup.
-/// @param label Block label to intern.
-/// @return Symbol representing the interned label.
+///
+/// @details The controller stores breakpoints using interned symbols to avoid
+///          repeated allocations during dispatch.  Interning here guarantees the
+///          same symbol identity as other call sites using the shared interner.
+///
+/// @param label Block label text.
+/// @return Interned symbol suitable for set membership queries.
 il::support::Symbol DebugCtrl::internLabel(std::string_view label)
 {
     return interner_.intern(label);
 }
 
 /// @brief Register a block-level breakpoint.
-/// @param sym Interned symbol of the target block.
+///
+/// @details Inserts the interned symbol into the `breaks_` set.  Duplicate calls
+///          are harmless because the underlying container is idempotent.
+///
+/// @param sym Interned symbol identifying the target block.
 void DebugCtrl::addBreak(il::support::Symbol sym)
 {
     if (sym)
         breaks_.insert(sym);
 }
 
-/// @brief Determine if a basic block has a breakpoint.
-/// @param blk Block being executed.
-/// @return True when a breakpoint for @p blk exists.
+/// @brief Determine whether the currently executing block has a breakpoint.
+///
+/// @details The block label is interned using the same symbol table as
+///          registration so lookups become O(1) hash checks.  This keeps the
+///          runtime overhead negligible even when many breakpoints exist.
+///
+/// @param blk Block currently under execution.
+/// @return @c true when a breakpoint has been registered for @p blk.
 bool DebugCtrl::shouldBreak(const il::core::BasicBlock &blk) const
 {
     il::support::Symbol sym = interner_.intern(blk.label);
     return breaks_.count(sym) != 0;
 }
 
-/// @brief Add a source line breakpoint.
-/// @param file Path to the source file; normalized for comparison.
-/// @param line One-based line number to break on.
-/// @details Both the normalized path and its basename are stored so a
-///          breakpoint can match by either.
+/// @brief Register a source-location breakpoint.
+///
+/// @details Normalises the provided file path and stores both the canonical path
+///          and its basename together with the one-based line number.  Matching
+///          code compares against both strings so users can specify either form.
+///
+/// @param file Source file path supplied by the user.
+/// @param line One-based line number that should trigger a breakpoint.
 void DebugCtrl::addBreakSrcLine(std::string file, int line)
 {
     auto [normFile, base] = normalizePathWithBase(std::move(file));
     srcLineBPs_.push_back({std::move(normFile), std::move(base), line});
 }
 
-/// @brief Check if any source line breakpoints are registered.
-/// @return True when there is at least one source line breakpoint.
+/// @brief Query whether any source-level breakpoints exist.
+///
+/// @return @c true when the controller holds at least one source breakpoint.
 bool DebugCtrl::hasSrcLineBPs() const
 {
     return !srcLineBPs_.empty();
 }
 
-/// @brief Set the source manager used for resolving file paths.
-/// @param sm Pointer to the source manager instance.
+/// @brief Install the source manager used to resolve file identifiers.
+///
+/// @details The debugger does not own the source manager; it simply stores a
+///          pointer so it can translate @ref il::support::SourceLoc identifiers
+///          back into canonical paths when evaluating breakpoints.
+///
+/// @param sm Source manager responsible for path resolution.
 void DebugCtrl::setSourceManager(const il::support::SourceManager *sm)
 {
     sm_ = sm;
 }
 
-/// @brief Retrieve the source manager used for resolving file paths.
-/// @return Pointer previously supplied via setSourceManager().
+/// @brief Access the source manager previously provided to the debugger.
+///
+/// @return Pointer installed via @ref setSourceManager or @c nullptr when unset.
 const il::support::SourceManager *DebugCtrl::getSourceManager() const
 {
     return sm_;
 }
 
-/// @brief Decide whether an instruction triggers a source line breakpoint.
-/// @param I Instruction to test.
-/// @return True when a registered breakpoint matches the instruction's source.
-/// @details The instruction's file is normalized and compared by both full
-///          path and basename. A matching line number causes a break unless it
-///          was the most recent hit.
+/// @brief Determine whether the given instruction hits a source breakpoint.
+///
+/// @details The helper resolves the instruction's source file identifier through
+///          the installed source manager, normalises the resulting path, and
+///          compares both the canonical path and basename against registered
+///          breakpoints.  The last-hit cache prevents the debugger from stopping
+///          repeatedly on the same line unless execution leaves and re-enters it.
+///
+/// @param I Instruction currently being executed.
+/// @return @c true when a matching breakpoint is found.
 bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
 {
     if (!sm_ || srcLineBPs_.empty() || !I.loc.isValid())
@@ -148,7 +188,12 @@ bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
 }
 
 /// @brief Register a variable to watch for changes.
-/// @param name Identifier of the variable to watch.
+///
+/// @details Watching a value interns the identifier and ensures an entry exists
+///          in the watch table.  Actual value comparisons happen inside
+///          @ref onStore so registering is effectively O(1).
+///
+/// @param name Identifier of the variable to track.
 void DebugCtrl::addWatch(std::string_view name)
 {
     il::support::Symbol sym = interner_.intern(name);
@@ -156,15 +201,21 @@ void DebugCtrl::addWatch(std::string_view name)
         watches_[sym];
 }
 
-/// @brief Handle a store to a watched variable.
+/// @brief Handle a store to a watched variable and report changes.
+///
+/// @details After interning the identifier, the helper compares the new payload
+///          against the last observed value.  Unsupported types yield a short
+///          diagnostic while numeric and floating-point types trigger an update
+///          message when the value changes.  Watches remember the most recent
+///          value so subsequent stores can detect differences.
+///
 /// @param name Identifier being stored to.
 /// @param ty Type of the stored value.
 /// @param i64 Integer payload when @p ty is an integer type.
 /// @param f64 Floating payload when @p ty is F64.
 /// @param fn Function name containing the store.
 /// @param blk Basic block label.
-/// @param ip Instruction position within the block.
-/// @details Emits a message when the watched value changes.
+/// @param ip Instruction index within the block.
 void DebugCtrl::onStore(std::string_view name,
                         il::core::Type::Kind ty,
                         int64_t i64,
@@ -209,7 +260,10 @@ void DebugCtrl::onStore(std::string_view name,
     w.hasValue = true;
 }
 
-/// @brief Clear the record of the last source-line breakpoint hit.
+/// @brief Forget the last source-line breakpoint location that was triggered.
+///
+/// @details Clearing the cache allows the debugger to stop again on the same
+///          line, for example after the user single-steps past it.
 void DebugCtrl::resetLastHit()
 {
     lastHitSrc_.reset();

@@ -1,14 +1,17 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the MIT License.
+// This file is part of the Viper project, under the MIT License.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// Implements the runtime trap helpers that translate between VM error objects,
-// trap kinds, and user-facing error messages.  The functions in this translation
-// unit mediate between the interpreter loop and the runtime bridge so both VM
-// and native code paths produce consistent diagnostics.
+// File: src/vm/Trap.cpp
+// Purpose: Provide helpers that materialise, inspect, and report VM trap states.
+// Key invariants: Trap tokens are owned either by the active VM instance or the
+//                 thread-local fallback and must be marked valid before use.
+// Ownership/Lifetime: Functions borrow VM state; thread-local fallbacks persist
+//                     only for the lifetime of the thread and avoid heap
+//                     allocation.
+// Links: docs/runtime-vm.md#traps
 //
 //===----------------------------------------------------------------------===//
 
@@ -30,6 +33,13 @@ namespace il::vm
 {
 
 /// @brief Convert a trap kind enumerator to a human-readable mnemonic.
+///
+/// @details Provides canonical string forms for log messages and diagnostics.
+///          Unknown enumerators degrade to "RuntimeError" so callers always
+///          receive a stable token even when future kinds are introduced.
+///
+/// @param kind Trap kind to stringify.
+/// @return Mnemonic describing @p kind.
 std::string_view toString(TrapKind kind)
 {
     switch (kind)
@@ -61,6 +71,14 @@ std::string_view toString(TrapKind kind)
 }
 
 /// @brief Map a raw runtime integer value to the corresponding trap kind.
+///
+/// @details Accepts the integer encoding emitted by the runtime and converts it
+///          back into the strongly typed enumeration.  Unexpected values fall
+///          back to @ref TrapKind::RuntimeError so defensive callers can treat
+///          out-of-range inputs as generic failures.
+///
+/// @param value Integer representation of a trap kind.
+/// @return Equivalent enumeration value.
 TrapKind trapKindFromValue(int32_t value)
 {
     switch (value)
@@ -106,6 +124,13 @@ thread_local bool tlsTrapValid = false;
 } // namespace
 
 /// @brief Acquire a mutable trap token for recording runtime errors.
+///
+/// @details When a VM instance is active the function returns a pointer to its
+///          owned trap token after clearing any previous data.  Otherwise it
+///          falls back to thread-local storage so callers outside the VM can
+///          still materialise traps (for example, during unit tests).
+///
+/// @return Pointer to a writable trap token associated with the current thread.
 VmError *vm_acquire_trap_token()
 {
     if (auto *vm = VM::activeInstance())
@@ -123,6 +148,13 @@ VmError *vm_acquire_trap_token()
 }
 
 /// @brief Retrieve the currently active trap token when one exists.
+///
+/// @details Consults the active VM first and validates that the token is marked
+///          as valid before returning it.  If the VM is absent the thread-local
+///          fallback is checked.  A null pointer indicates no trap is currently
+///          armed.
+///
+/// @return Pointer to the active trap token or nullptr when none is available.
 const VmError *vm_current_trap_token()
 {
     if (auto *vm = VM::activeInstance())
@@ -137,6 +169,12 @@ const VmError *vm_current_trap_token()
 }
 
 /// @brief Attach a human-readable message to the active trap token.
+///
+/// @details Updates the VM-owned token when present, otherwise records the
+///          message in thread-local storage.  Marking the token as valid ensures
+///          subsequent queries recognise that a trap has been produced.
+///
+/// @param text Message describing the trap for diagnostics.
 void vm_store_trap_token_message(std::string_view text)
 {
     if (auto *vm = VM::activeInstance())
@@ -151,6 +189,12 @@ void vm_store_trap_token_message(std::string_view text)
 }
 
 /// @brief Fetch the message associated with the current trap token.
+///
+/// @details Returns the VM-owned message when a VM is active, otherwise the
+///          thread-local fallback message.  Callers typically forward this text
+///          to users or logs.
+///
+/// @return Copy of the currently recorded trap message.
 std::string vm_current_trap_message()
 {
     if (auto *vm = VM::activeInstance())
@@ -159,6 +203,14 @@ std::string vm_current_trap_message()
 }
 
 /// @brief Format a trap error and frame information into a printable string.
+///
+/// @details Consolidates function name, instruction pointer, and line
+///          information into a concise diagnostic.  Missing data defaults to
+///          placeholder values so the resulting string is still informative.
+///
+/// @param error Trap token describing the failure.
+/// @param frame Frame metadata captured when the trap surfaced.
+/// @return Human-readable description of the trap.
 std::string vm_format_error(const VmError &error, const FrameInfo &frame)
 {
     const std::string &function = frame.function.empty() ? std::string("<unknown>") : frame.function;
@@ -172,6 +224,14 @@ std::string vm_format_error(const VmError &error, const FrameInfo &frame)
 }
 
 /// @brief Raise a trap using the supplied error description.
+///
+/// @details Normalises instruction pointer and line metadata against the active
+///          VM context, allows the VM to intercept the trap via
+///          @ref VM::prepareTrap, and records frame information for later
+///          reporting.  When no handler is installed the runtime abort helper is
+///          invoked to terminate execution with the formatted message.
+///
+/// @param input Trap information describing the failure.
 void vm_raise_from_error(const VmError &input)
 {
     VmError error = input;
@@ -205,6 +265,14 @@ void vm_raise_from_error(const VmError &input)
 }
 
 /// @brief Convenience wrapper that raises a trap from a kind/code pair.
+///
+/// @details Populates a @ref VmError structure with the provided metadata and
+///          enriches it with instruction pointer and line information from the
+///          active VM when available.  Control is then delegated to
+///          @ref vm_raise_from_error for final processing.
+///
+/// @param kind Trap classification to raise.
+/// @param code Optional runtime-specific error code.
 void vm_raise(TrapKind kind, int32_t code)
 {
     VmError error{};
