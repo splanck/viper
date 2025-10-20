@@ -1,7 +1,10 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
 //===----------------------------------------------------------------------===//
-
+//
 /// @file
 /// @brief Implements the shared context used by the SimplifyCFG pass.
 /// @details The context exposes logging helpers, EH sensitivity queries, and the

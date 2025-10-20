@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/vm/Trace.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
 // Purpose: Implement deterministic tracing for IL VM steps.
 // Key invariants: Each executed instruction produces at most one flushed line.
 // Ownership/Lifetime: Uses external streams; no resource ownership.
 // Links: docs/dev/vm.md
+//
+//===----------------------------------------------------------------------===//
 #include "vm/Trace.hpp"
 
 #include "il/core/BasicBlock.hpp"
@@ -31,6 +39,8 @@ namespace il::vm
 {
 
 /// @brief Determine whether tracing output should be emitted.
+/// @details Checks the configured trace mode and returns @c true when either
+///          IL or source tracing is active.
 /// @return True when the trace mode is not TraceConfig::Off.
 bool TraceConfig::enabled() const
 {
@@ -40,6 +50,9 @@ bool TraceConfig::enabled() const
 namespace
 {
 /// @brief Temporarily force the C locale for numeric formatting.
+/// @details Guard class that sets the classic locale on a stream and adjusts
+///          the global C locale while tracing prints numeric values.  Restores
+///          the original settings on destruction.
 class LocaleGuard
 {
     std::ostream &os;
@@ -47,6 +60,8 @@ class LocaleGuard
     std::string oldC;
 
   public:
+    /// @brief Apply the classic C locale to the wrapped stream.
+    /// @param s Stream that will emit trace output.
     explicit LocaleGuard(std::ostream &s) : os(s), oldLoc(s.getloc())
     {
         if (const char *c = std::setlocale(LC_NUMERIC, nullptr))
@@ -55,6 +70,7 @@ class LocaleGuard
         std::setlocale(LC_NUMERIC, "C");
     }
 
+    /// @brief Restore the previous locale configuration.
     ~LocaleGuard()
     {
         if (!oldC.empty())
@@ -64,6 +80,11 @@ class LocaleGuard
 };
 
 /// @brief Print a Value with stable numeric formatting.
+/// @details Emits temporaries, integers, floats, strings, globals, and null
+///          values in a deterministic textual form so trace logs can be parsed
+///          predictably.
+/// @param os Stream receiving the rendered value.
+/// @param v IL value to render.
 void printValue(std::ostream &os, const il::core::Value &v)
 {
     switch (v.kind)
@@ -95,8 +116,9 @@ void printValue(std::ostream &os, const il::core::Value &v)
 } // namespace
 
 /// @brief Construct a TraceSink with the given configuration.
-/// @param cfg Trace configuration controlling emission behavior and source lookup.
-/// @return Trace sink ready to emit records according to @p cfg.
+/// @details Stores the configuration and performs any one-time host
+///          initialisation (such as switching Windows stderr to binary mode).
+/// @param cfg Trace configuration controlling emission behaviour and source lookup.
 TraceSink::TraceSink(TraceConfig cfg) : cfg(cfg)
 {
 #ifdef _WIN32
@@ -105,8 +127,10 @@ TraceSink::TraceSink(TraceConfig cfg) : cfg(cfg)
 }
 
 /// @brief Precompute instruction source locations for a prepared frame.
+/// @details Builds a cache mapping IL instructions to their owning block and
+///          instruction index the first time a function is traced.  Subsequent
+///          lookups for the same function reuse the cached data.
 /// @param fr The frame whose function's instructions should be indexed.
-/// @return Nothing.
 void TraceSink::onFramePrepared(const Frame &fr)
 {
     if (!fr.func)
@@ -123,6 +147,9 @@ void TraceSink::onFramePrepared(const Frame &fr)
 }
 
 /// @brief Retrieve cached file contents, loading from disk if necessary.
+/// @details Uses the source manager to resolve file paths and stores line data
+///          in a map keyed by file identifier.  When the file cannot be
+///          located, the method returns @c nullptr.
 /// @param file_id Source manager identifier for the file.
 /// @param path_hint Optional filesystem path to use when the source manager path is empty.
 /// @return Cached file entry or nullptr when the file cannot be resolved.
@@ -157,9 +184,11 @@ const TraceSink::FileCacheEntry *TraceSink::getOrLoadFile(uint32_t file_id, std:
 }
 
 /// @brief Emit a trace line for a single executed instruction.
+/// @details Renders either IL-level or source-level trace output depending on
+///          configuration.  Performs lazy lookups of block/IP pairs and, for
+///          source traces, loads source lines on demand.
 /// @param in Instruction being executed.
 /// @param fr Execution frame that provides function and block context.
-/// @return Nothing.
 void TraceSink::onStep(const il::core::Instr &in, const Frame &fr)
 {
     if (!cfg.enabled())
