@@ -10,7 +10,10 @@
 #include "support/source_location.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <optional>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 namespace il::core
@@ -45,26 +48,29 @@ class SelectCaseLowering
         size_t endIdx{};
     };
 
-    struct NumericDispatchState
+    struct CasePlanEntry
     {
-        struct RangeCheck
+        enum class Kind
         {
-            int32_t lo{};
-            int32_t hi{};
-            size_t armIndex{};
+            StringLabel,
+            RelLT,
+            RelLE,
+            RelEQ,
+            RelGE,
+            RelGT,
+            Range,
+            Default,
         };
 
-        struct RelCheck
-        {
-            const CaseArm::CaseRel *rel{};
-            size_t armIndex{};
-        };
-
-        std::vector<RangeCheck> rangeChecks;
-        std::vector<RelCheck> relChecks;
-        size_t afterRelIdx{};
-        size_t switchIdx{};
+        Kind kind{Kind::Default};
+        std::pair<int32_t, int32_t> valueRange{0, 0};
+        size_t armIndex{};
+        il::core::BasicBlock *target{};
+        il::support::SourceLoc loc{};
+        std::string_view strLiteral{};
     };
+
+    using ConditionEmitter = std::function<il::core::Value(const CasePlanEntry &)>;
 
     Blocks prepareBlocks(const SelectCaseStmt &stmt, bool hasCaseElse, bool needsDispatch);
 
@@ -76,23 +82,18 @@ class SelectCaseLowering
                               const Blocks &blocks,
                               il::core::Value selWide,
                               il::core::Value selector,
-                              bool hasRanges,
-                              size_t totalRangeCount);
+                              bool hasRanges);
 
-    void emitRelationalChecks(const SelectCaseStmt &stmt,
-                              const Blocks &blocks,
-                              il::core::Value selWide,
-                              NumericDispatchState &state);
+    size_t emitCompareChain(size_t startIdx,
+                            std::vector<CasePlanEntry> &plan,
+                            const ConditionEmitter &emitCond);
 
-    void emitRangeChecks(const SelectCaseStmt &stmt,
-                         const Blocks &blocks,
-                         il::core::Value selWide,
-                         NumericDispatchState &state);
+    static std::string_view blockTagFor(const CasePlanEntry &entry);
 
     void emitSwitchJumpTable(const SelectCaseStmt &stmt,
                              const Blocks &blocks,
                              il::core::Value selector,
-                             NumericDispatchState &state);
+                             size_t switchIdx);
 
     void emitArmBody(const std::vector<StmtPtr> &body,
                      il::core::BasicBlock *entry,
