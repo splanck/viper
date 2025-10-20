@@ -263,22 +263,42 @@ int64_t rt_split_fields(rt_string line, rt_string *out_fields, int64_t max_field
     int64_t total = 0;
     size_t start = 0;
     bool in_quotes = false;
-    for (size_t i = 0; i <= len; ++i)
+    size_t i = 0;
+    while (i <= len)
     {
-        bool atComma = false;
-        if (i < len)
+        bool finalize = false;
+        if (i == len)
+        {
+            finalize = true;
+        }
+        else
         {
             char ch = data[i];
             if (ch == '"')
             {
-                in_quotes = !in_quotes;
+                if (in_quotes)
+                {
+                    if (i + 1 < len && data[i + 1] == '"')
+                    {
+                        ++i;
+                    }
+                    else
+                    {
+                        in_quotes = false;
+                    }
+                }
+                else
+                {
+                    in_quotes = true;
+                }
             }
             else if (ch == ',' && !in_quotes)
             {
-                atComma = true;
+                finalize = true;
             }
         }
-        if (i == len || atComma)
+
+        if (finalize)
         {
             size_t field_start = start;
             size_t field_end = i;
@@ -307,6 +327,8 @@ int64_t rt_split_fields(rt_string line, rt_string *out_fields, int64_t max_field
             ++total;
             start = i + 1;
         }
+
+        ++i;
     }
 
     if (total < max_fields)
