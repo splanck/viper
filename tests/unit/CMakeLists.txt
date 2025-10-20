@@ -153,6 +153,10 @@ function(viper_add_runtime_tests)
   target_link_libraries(test_rt_input_line PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_input_line test_rt_input_line)
 
+  viper_add_test(test_rt_input_overflow ${VIPER_TESTS_DIR}/unit/runtime/RTInputGrowOverflowTests.cpp)
+  target_link_libraries(test_rt_input_overflow PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+  viper_add_ctest(test_rt_input_overflow test_rt_input_overflow)
+
   viper_add_test(test_rt_input_line_fail ${VIPER_TESTS_DIR}/runtime/RTInputLineFailTests.cpp)
   target_link_libraries(test_rt_input_line_fail PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_input_line_fail test_rt_input_line_fail)
