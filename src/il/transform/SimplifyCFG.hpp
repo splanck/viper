@@ -14,6 +14,8 @@
 namespace il::transform
 {
 
+class AnalysisManager;
+
 /// \brief Simplify IL control-flow graphs by folding and pruning trivial shapes.
 ///
 /// \details The pass focuses on canonicalising branching and block structure so
@@ -60,6 +62,10 @@ struct SimplifyCFG
     /// \param module Pointer to the parent module; may be null when unavailable.
     void setModule(const il::core::Module *module) { module_ = module; }
 
+    /// \brief Provide the active analysis manager so the pass can invalidate caches.
+    /// \param manager Pointer to the analysis manager driving the pipeline; may be null.
+    void setAnalysisManager(AnalysisManager *manager) { analysisManager_ = manager; }
+
     /// \brief Run the simplification pass on a single function.
     /// \param F Function mutated in place.
     /// \param outStats Optional pointer populated with pass statistics.
@@ -69,6 +75,7 @@ struct SimplifyCFG
   private:
     bool aggressive; ///< Controls heuristic aggressiveness.
     const il::core::Module *module_ = nullptr; ///< Parent module used for verification.
+    AnalysisManager *analysisManager_ = nullptr; ///< Analysis manager invalidated on change.
 };
 
 } // namespace il::transform
