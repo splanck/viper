@@ -21,6 +21,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -37,6 +38,17 @@ void usage()
 // Include the implementation under test so the helper functions (e.g., runFrontBasic)
 // are available within this translation unit.
 #include "tools/ilc/cmd_front_basic.cpp"
+
+namespace il::support
+{
+struct SourceManagerTestAccess
+{
+    static void setNextFileId(SourceManager &sm, uint64_t next)
+    {
+        sm.next_file_id_ = next;
+    }
+};
+} // namespace il::support
 
 namespace il::frontends::basic
 {
@@ -107,13 +119,32 @@ int main()
     std::cerr.flush();
     std::cerr.rdbuf(oldErr);
 
-    fs::remove(tmpPath);
-
     const std::string errText = errStream.str();
     const std::string fileToken = tmpPath.filename().string() + ":2:1";
     const bool hasFileLocation = errText.find(fileToken) != std::string::npos;
 
     assert(rc != 0);
     assert(hasFileLocation);
+
+    il::support::SourceManager saturatedSm;
+    il::support::SourceManagerTestAccess::setNextFileId(
+        saturatedSm, static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) + 1);
+
+    std::ostringstream saturatedErr;
+    oldErr = std::cerr.rdbuf(saturatedErr.rdbuf());
+    int saturatedRc = cmdFrontBasicWithSourceManager(2, argv, saturatedSm);
+    std::cerr.flush();
+    std::cerr.rdbuf(oldErr);
+
+    const std::string saturatedText = saturatedErr.str();
+    const bool reportedExhaustion =
+        saturatedText.find("source manager exhausted file identifier space")
+        != std::string::npos;
+
+    assert(saturatedRc != 0);
+    assert(reportedExhaustion);
+
+    fs::remove(tmpPath);
+
     return 0;
 }
