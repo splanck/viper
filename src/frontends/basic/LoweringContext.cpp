@@ -23,7 +23,6 @@
 
 #include "frontends/basic/LoweringContext.hpp"
 #include "il/build/IRBuilder.hpp"
-#include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 
 namespace il::frontends::basic
@@ -56,25 +55,6 @@ std::string LoweringContext::getOrCreateSlot(const std::string &name)
     std::string slot = "%" + name + "_slot";
     varSlots[name] = slot;
     return slot;
-}
-
-/// @brief Retrieve or create an IR block for BASIC line number @p line.
-/// @details BASIC line numbers serve as natural block labels.  The helper keeps
-///          a map keyed by the integer line so structured control-flow lowering
-///          can reuse blocks as loops and gotos are processed.  Missing entries
-///          result in new blocks inserted via the IR builder with mangled names
-///          that remain stable for diagnostics.
-/// @param line Line number in the source program.
-/// @return Pointer to the corresponding basic block.
-core::BasicBlock *LoweringContext::getOrCreateBlock(int line)
-{
-    auto it = blocks.find(line);
-    if (it != blocks.end())
-        return it->second;
-    std::string label = mangler.block("L" + std::to_string(line));
-    core::BasicBlock &bb = builder.addBlock(function, label);
-    blocks[line] = &bb;
-    return &bb;
 }
 
 /// @brief Intern the BASIC string literal @p value and return its IR symbol.
