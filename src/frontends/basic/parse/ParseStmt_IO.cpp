@@ -1,4 +1,4 @@
-// File: src/frontends/basic/Parser_Stmt_IO.cpp
+// File: src/frontends/basic/parse/ParseStmt_IO.cpp
 // Purpose: Implements BASIC parser helpers for IO-related statements.
 // Key invariants: Requires Parser lookahead to remain synchronized with separators.
 // Ownership/Lifetime: Parser retains ownership of tokens and produced AST nodes.
