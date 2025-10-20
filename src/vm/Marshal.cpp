@@ -22,11 +22,22 @@
 
 #include "rt_string.h"
 #include "vm/RuntimeBridge.hpp"
+#include "vm/VM.hpp"
 
+#include <array>
 #include <cassert>
+#include <cmath>
+#include <sstream>
+#include <vector>
 
 namespace il::vm
 {
+
+using il::core::Type;
+using il::runtime::RuntimeHiddenParam;
+using il::runtime::RuntimeHiddenParamKind;
+using il::runtime::RuntimeSignature;
+using il::runtime::RuntimeTrapClass;
 
 /// @brief Convert an immutable VM string view into a runtime handle.
 /// @details Preserves the `nullptr` sentinel used throughout the VM to mean "no
@@ -125,6 +136,246 @@ double toF64(const il::core::Value &value)
             assert(false && "value kind is not convertible to f64");
             return 0.0;
     }
+}
+
+namespace
+{
+
+struct KindAccessors
+{
+    using SlotAccessor = void *(*)(Slot &);
+    using ResultAccessor = void *(*)(ResultBuffers &);
+    using ResultAssigner = void (*)(Slot &, const ResultBuffers &);
+
+    SlotAccessor slotAccessor = nullptr;
+    ResultAccessor resultAccessor = nullptr;
+    ResultAssigner assignResult = nullptr;
+};
+
+constexpr std::array<Type::Kind, 10> kSupportedKinds = {
+    Type::Kind::Void,
+    Type::Kind::I1,
+    Type::Kind::I16,
+    Type::Kind::I32,
+    Type::Kind::I64,
+    Type::Kind::F64,
+    Type::Kind::Ptr,
+    Type::Kind::Str,
+    Type::Kind::Error,
+    Type::Kind::ResumeTok,
+};
+
+constexpr void *nullResultBuffer(ResultBuffers &)
+{
+    return nullptr;
+}
+
+constexpr void assignNoop(Slot &, const ResultBuffers &)
+{
+}
+
+template <auto Member>
+constexpr void *slotMemberAccessor(Slot &slot)
+{
+    return static_cast<void *>(&(slot.*Member));
+}
+
+template <auto Member>
+constexpr void *bufferMemberAccessor(ResultBuffers &buffers)
+{
+    return static_cast<void *>(&(buffers.*Member));
+}
+
+template <auto SlotMember, auto BufferMember>
+constexpr void assignFromBuffer(Slot &slot, const ResultBuffers &buffers)
+{
+    slot.*SlotMember = buffers.*BufferMember;
+}
+
+constexpr KindAccessors makeVoidAccessors()
+{
+    return KindAccessors{nullptr, &nullResultBuffer, &assignNoop};
+}
+
+template <auto SlotMember, auto BufferMember>
+constexpr KindAccessors makeAccessors()
+{
+    return KindAccessors{
+        &slotMemberAccessor<SlotMember>,
+        &bufferMemberAccessor<BufferMember>,
+        &assignFromBuffer<SlotMember, BufferMember>,
+    };
+}
+
+constexpr std::array<KindAccessors, kSupportedKinds.size()> kKindAccessors = [] {
+    std::array<KindAccessors, kSupportedKinds.size()> table{};
+    table[static_cast<size_t>(Type::Kind::Void)] = makeVoidAccessors();
+    table[static_cast<size_t>(Type::Kind::I1)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
+    table[static_cast<size_t>(Type::Kind::I16)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
+    table[static_cast<size_t>(Type::Kind::I32)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
+    table[static_cast<size_t>(Type::Kind::I64)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
+    table[static_cast<size_t>(Type::Kind::F64)] = makeAccessors<&Slot::f64, &ResultBuffers::f64>();
+    table[static_cast<size_t>(Type::Kind::Ptr)] = makeAccessors<&Slot::ptr, &ResultBuffers::ptr>();
+    table[static_cast<size_t>(Type::Kind::Str)] = makeAccessors<&Slot::str, &ResultBuffers::str>();
+    table[static_cast<size_t>(Type::Kind::Error)] = makeVoidAccessors();
+    table[static_cast<size_t>(Type::Kind::ResumeTok)] = makeVoidAccessors();
+    return table;
+}();
+
+static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::Void)].slotAccessor == nullptr,
+              "Void must not expose a slot accessor");
+static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::Void)].resultAccessor == &nullResultBuffer,
+              "Void must map to the null result buffer");
+static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::I1)].slotAccessor ==
+                  &slotMemberAccessor<&Slot::i64>,
+              "I1 slot accessor must target Slot::i64");
+static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::I16)].slotAccessor ==
+                  &slotMemberAccessor<&Slot::i64>,
+              "I16 slot accessor must target Slot::i64");
+static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::I32)].slotAccessor ==
+                  &slotMemberAccessor<&Slot::i64>,
+              "I32 slot accessor must target Slot::i64");
+static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::I64)].slotAccessor ==
+                  &slotMemberAccessor<&Slot::i64>,
+              "I64 slot accessor must target Slot::i64");
+static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::F64)].slotAccessor ==
+                  &slotMemberAccessor<&Slot::f64>,
+              "F64 slot accessor must target Slot::f64");
+static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::Ptr)].slotAccessor ==
+                  &slotMemberAccessor<&Slot::ptr>,
+              "Ptr slot accessor must target Slot::ptr");
+static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::Str)].slotAccessor ==
+                  &slotMemberAccessor<&Slot::str>,
+              "Str slot accessor must target Slot::str");
+
+const KindAccessors &dispatchFor(Type::Kind kind)
+{
+    const auto index = static_cast<size_t>(kind);
+    assert(index < kKindAccessors.size() && "invalid type kind");
+    return kKindAccessors[index];
+}
+
+void *reportUnsupportedPointer(std::string msg)
+{
+    RuntimeBridge::trap(TrapKind::InvalidOperation, msg, {}, "", "");
+    return nullptr;
+}
+
+void reportUnsupportedAssign(std::string msg)
+{
+    RuntimeBridge::trap(TrapKind::InvalidOperation, msg, {}, "", "");
+}
+
+} // namespace
+
+std::vector<void *> marshalRuntimeArguments(const RuntimeSignature &sig,
+                                            const std::vector<Slot> &args,
+                                            PowStatus &powStatus)
+{
+    std::vector<void *> rawArgs(sig.paramTypes.size() + sig.hiddenParams.size());
+
+    for (size_t i = 0; i < sig.paramTypes.size(); ++i)
+    {
+        auto kind = sig.paramTypes[i].kind;
+        Slot &slot = const_cast<Slot &>(args[i]);
+        const auto &entry = dispatchFor(kind);
+        if (!entry.slotAccessor)
+        {
+            std::ostringstream os;
+            os << "runtime bridge does not support argument kind '" << il::core::kindToString(kind) << "'";
+            rawArgs[i] = reportUnsupportedPointer(os.str());
+            continue;
+        }
+        rawArgs[i] = entry.slotAccessor(slot);
+    }
+
+    size_t hiddenIndex = sig.paramTypes.size();
+    for (const RuntimeHiddenParam &hidden : sig.hiddenParams)
+    {
+        switch (hidden.kind)
+        {
+        case RuntimeHiddenParamKind::None:
+            rawArgs[hiddenIndex++] = nullptr;
+            break;
+        case RuntimeHiddenParamKind::PowStatusPointer:
+            powStatus.active = true;
+            powStatus.ok = true;
+            powStatus.ptr = &powStatus.ok;
+            rawArgs[hiddenIndex++] = &powStatus.ptr;
+            break;
+        }
+    }
+
+    return rawArgs;
+}
+
+void *resultBufferFor(Type::Kind kind, ResultBuffers &buffers)
+{
+    const auto &entry = dispatchFor(kind);
+    if (!entry.resultAccessor)
+    {
+        std::ostringstream os;
+        os << "runtime bridge does not support return kind '" << il::core::kindToString(kind) << "'";
+        return reportUnsupportedPointer(os.str());
+    }
+    return entry.resultAccessor(buffers);
+}
+
+void assignResult(Slot &slot, Type::Kind kind, const ResultBuffers &buffers)
+{
+    const auto &entry = dispatchFor(kind);
+    if (!entry.assignResult)
+    {
+        std::ostringstream os;
+        os << "runtime bridge cannot assign return kind '" << il::core::kindToString(kind) << "'";
+        reportUnsupportedAssign(os.str());
+        return;
+    }
+    entry.assignResult(slot, buffers);
+}
+
+bool handlePowTrap(const RuntimeSignature &sig,
+                   RuntimeTrapClass trapClass,
+                   const PowStatus &powStatus,
+                   const std::vector<Slot> &args,
+                   const ResultBuffers &buffers,
+                   const il::support::SourceLoc &loc,
+                   const std::string &fn,
+                   const std::string &block)
+{
+    if (trapClass != RuntimeTrapClass::PowDomainOverflow || !powStatus.active)
+        return false;
+
+    if (!powStatus.ok)
+    {
+        const double base = !args.empty() ? args[0].f64 : 0.0;
+        const double exp = (args.size() > 1) ? args[1].f64 : 0.0;
+        const bool expIntegral = std::isfinite(exp) && (exp == std::trunc(exp));
+        const bool domainError = (base < 0.0) && !expIntegral;
+
+        std::ostringstream os;
+        if (domainError)
+        {
+            os << "rt_pow_f64_chkdom: negative base with fractional exponent";
+            RuntimeBridge::trap(TrapKind::DomainError, os.str(), loc, fn, block);
+        }
+        else
+        {
+            os << "rt_pow_f64_chkdom: overflow";
+            RuntimeBridge::trap(TrapKind::Overflow, os.str(), loc, fn, block);
+        }
+        return true;
+    }
+
+    if (sig.retType.kind == Type::Kind::F64 && !std::isfinite(buffers.f64))
+    {
+        std::ostringstream os;
+        os << "rt_pow_f64_chkdom: overflow";
+        RuntimeBridge::trap(TrapKind::Overflow, os.str(), loc, fn, block);
+        return true;
+    }
+
+    return false;
 }
 
 } // namespace il::vm
