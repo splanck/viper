@@ -44,7 +44,7 @@ VM::ExecResult handleIAddOvf(VM &vm,
                                     rhsVal,
                                     "integer overflow in iadd.ovf",
                                     [](auto lhs, auto rhs, auto *res)
-                                    { return __builtin_add_overflow(lhs, rhs, res); });
+                                    { return ops::checked_add(lhs, rhs, res); });
                             });
 }
 
@@ -71,7 +71,7 @@ VM::ExecResult handleISubOvf(VM &vm,
                                     rhsVal,
                                     "integer overflow in isub.ovf",
                                     [](auto lhs, auto rhs, auto *res)
-                                    { return __builtin_sub_overflow(lhs, rhs, res); });
+                                    { return ops::checked_sub(lhs, rhs, res); });
                             });
 }
 
@@ -98,7 +98,7 @@ VM::ExecResult handleIMulOvf(VM &vm,
                                     rhsVal,
                                     "integer overflow in imul.ovf",
                                     [](auto lhs, auto rhs, auto *res)
-                                    { return __builtin_mul_overflow(lhs, rhs, res); });
+                                    { return ops::checked_mul(lhs, rhs, res); });
                             });
 }
 
