@@ -7,7 +7,21 @@
 #include "frontends/basic/BasicCompiler.hpp"
 #include "support/source_manager.hpp"
 #include <cassert>
+#include <cstdint>
+#include <limits>
+#include <sstream>
 #include <string>
+
+namespace il::support
+{
+struct SourceManagerTestAccess
+{
+    static void setNextFileId(SourceManager &sm, uint64_t next)
+    {
+        sm.next_file_id_ = next;
+    }
+};
+} // namespace il::support
 
 using namespace il::frontends::basic;
 using namespace il::support;
@@ -26,5 +40,25 @@ int main()
     assert(!result.module.functions.empty());
     assert(!result.module.functions.front().name.empty());
     assert(result.emitter->warningCount() == 0);
+
+    {
+        SourceManager exhaustedSm;
+        SourceManagerTestAccess::setNextFileId(
+            exhaustedSm,
+            static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) + 1);
+
+        BasicCompilerInput exhaustedInput{source, "overflow.bas"};
+        auto exhaustedResult = compileBasic(exhaustedInput, options, exhaustedSm);
+
+        assert(exhaustedResult.emitter);
+        assert(!exhaustedResult.succeeded());
+        assert(exhaustedResult.fileId == 0);
+        assert(exhaustedResult.emitter->errorCount() == 1);
+
+        std::ostringstream oss;
+        exhaustedResult.diagnostics.printAll(oss, &exhaustedSm);
+        auto text = oss.str();
+        assert(text.find("source manager exhausted file identifier space") != std::string::npos);
+    }
     return 0;
 }
