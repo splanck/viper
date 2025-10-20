@@ -36,6 +36,10 @@ using namespace il::support;
 namespace
 {
 
+using SourceManagerHook = void (*)(il::support::SourceManager &);
+
+SourceManagerHook gFrontBasicSourceManagerHook = nullptr;
+
 struct FrontBasicConfig
 {
     bool emitIl{false};
@@ -153,6 +157,13 @@ il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
     LoadedSource source{};
     source.buffer = ss.str();
     source.fileId = sm.addFile(path);
+    if (source.fileId == 0)
+    {
+        return il::support::Expected<LoadedSource>(
+            il::support::Diagnostic{il::support::Severity::Error,
+                                     "source manager exhausted file identifier space",
+                                     {}});
+    }
     return il::support::Expected<LoadedSource>(std::move(source));
 }
 
@@ -240,6 +251,12 @@ int runFrontBasic(const FrontBasicConfig &config, const std::string &source,
 
 } // namespace
 
+void ilcFrontBasicInstallSourceManagerTestHook(
+    void (*hook)(il::support::SourceManager &))
+{
+    gFrontBasicSourceManagerHook = hook;
+}
+
 /// @brief Handle BASIC front-end subcommands.
 ///
 /// Coordinates the high-level workflow:
@@ -259,6 +276,10 @@ int cmdFrontBasic(int argc, char **argv)
     FrontBasicConfig config = std::move(parsed.value());
 
     SourceManager sm;
+    if (gFrontBasicSourceManagerHook)
+    {
+        gFrontBasicSourceManagerHook(sm);
+    }
     auto source = loadSourceBuffer(config.sourcePath, sm);
     if (!source)
     {

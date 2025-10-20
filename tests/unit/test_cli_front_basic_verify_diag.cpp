@@ -21,9 +21,30 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
+
+namespace il::support
+{
+struct SourceManagerTestAccess
+{
+    static void setNextFileId(SourceManager &sm, uint64_t next)
+    {
+        sm.next_file_id_ = next;
+    }
+};
+} // namespace il::support
+
+namespace
+{
+void overflowSourceManager(il::support::SourceManager &sm)
+{
+    il::support::SourceManagerTestAccess::setNextFileId(
+        sm, static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) + 1);
+}
+} // namespace
 
 // Provide usage() expected by cmd_front_basic.cpp when embedded in the test.
 void usage()
@@ -107,13 +128,31 @@ int main()
     std::cerr.flush();
     std::cerr.rdbuf(oldErr);
 
-    fs::remove(tmpPath);
-
     const std::string errText = errStream.str();
     const std::string fileToken = tmpPath.filename().string() + ":2:1";
     const bool hasFileLocation = errText.find(fileToken) != std::string::npos;
 
     assert(rc != 0);
     assert(hasFileLocation);
+
+    ilcFrontBasicInstallSourceManagerTestHook(&overflowSourceManager);
+
+    std::ostringstream overflowErr;
+    auto *oldOverflowErr = std::cerr.rdbuf(overflowErr.rdbuf());
+    int overflowRc = cmdFrontBasic(2, argv);
+    std::cerr.flush();
+    std::cerr.rdbuf(oldOverflowErr);
+
+    ilcFrontBasicInstallSourceManagerTestHook(nullptr);
+
+    fs::remove(tmpPath);
+
+    const std::string overflowText = overflowErr.str();
+    const bool hasOverflowDiag = overflowText.find(
+                                     "source manager exhausted file identifier space")
+                                 != std::string::npos;
+
+    assert(overflowRc != 0);
+    assert(hasOverflowDiag);
     return 0;
 }
