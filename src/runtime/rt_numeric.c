@@ -238,6 +238,18 @@ extern "C" {
             return value;
         }
 
+        if (end)
+        {
+            const unsigned char *tail = (const unsigned char *)end;
+            while (*tail != '\0' && isspace(*tail))
+                ++tail;
+            if (*tail != '\0')
+            {
+                *ok = false;
+                return value;
+            }
+        }
+
         *ok = true;
         return value;
     }
