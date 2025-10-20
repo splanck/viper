@@ -375,9 +375,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::inferCallType([[maybe_unused]] const Ca
 
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeCall(const CallExpr &c)
 {
-    const ProcSignature *sig = resolveCallee(c, ProcSignature::Kind::Function);
-    auto argTys [[maybe_unused]] = checkCallArgs(c, sig);
-    return inferCallType(c, sig);
+    return sem::analyzeCallExpr(*this, c);
 }
 
 } // namespace il::frontends::basic
