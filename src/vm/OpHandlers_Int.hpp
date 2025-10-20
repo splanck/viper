@@ -32,7 +32,10 @@ inline VM::ExecResult handleAddImpl(VM &vm,
                             fr,
                             in,
                             [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            { out.i64 = lhsVal.i64 + rhsVal.i64; });
+                            {
+                                // Plain integer add wraps on overflow per IL semantics.
+                                out.i64 = ops::wrap_add(lhsVal.i64, rhsVal.i64);
+                            });
 }
 
 inline VM::ExecResult handleSubImpl(VM &vm,
@@ -51,7 +54,10 @@ inline VM::ExecResult handleSubImpl(VM &vm,
                             fr,
                             in,
                             [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            { out.i64 = lhsVal.i64 - rhsVal.i64; });
+                            {
+                                // Plain integer sub wraps on overflow per IL semantics.
+                                out.i64 = ops::wrap_sub(lhsVal.i64, rhsVal.i64);
+                            });
 }
 
 inline VM::ExecResult handleMulImpl(VM &vm,
@@ -70,7 +76,10 @@ inline VM::ExecResult handleMulImpl(VM &vm,
                             fr,
                             in,
                             [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            { out.i64 = lhsVal.i64 * rhsVal.i64; });
+                            {
+                                // Plain integer mul wraps on overflow per IL semantics.
+                                out.i64 = ops::wrap_mul(lhsVal.i64, rhsVal.i64);
+                            });
 }
 
 VM::ExecResult handleAdd(VM &vm,
