@@ -6,7 +6,24 @@
 #include "rt.hpp"
 #include "rt_internal.h"
 #include <cassert>
+#include <cstring>
 #include <limits>
+#include <setjmp.h>
+
+namespace
+{
+    static jmp_buf g_trap_jmp;
+    static const char *g_last_trap = nullptr;
+    static bool g_trap_expected = false;
+}
+
+extern "C" void vm_trap(const char *msg)
+{
+    g_last_trap = msg;
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
+    rt_abort(msg);
+}
 
 int main()
 {
@@ -105,6 +122,25 @@ int main()
         rt_string_unref(first);
         rt_string_unref(second);
         rt_string_unref(base);
+    }
+
+    {
+        rt_string_impl huge_literal = {nullptr, nullptr, std::numeric_limits<size_t>::max(), 0};
+        rt_string_impl small_literal = {nullptr, nullptr, 16, 0};
+        g_last_trap = nullptr;
+        g_trap_expected = true;
+        if (setjmp(g_trap_jmp) == 0)
+        {
+            (void)rt_concat(&huge_literal, &small_literal);
+            assert(!"rt_concat should trap on overflow");
+        }
+        else
+        {
+            assert(g_last_trap != nullptr);
+            assert(std::strcmp(g_last_trap, "rt_concat: length overflow") == 0);
+        }
+        g_trap_expected = false;
+        g_last_trap = nullptr;
     }
 
     return 0;
