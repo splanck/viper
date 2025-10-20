@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace il::core
@@ -45,54 +46,50 @@ class SelectCaseLowering
         size_t endIdx{};
     };
 
-    struct NumericDispatchState
+    enum class CaseKind
     {
-        struct RangeCheck
-        {
-            int32_t lo{};
-            int32_t hi{};
-            size_t armIndex{};
-        };
-
-        struct RelCheck
-        {
-            const CaseArm::CaseRel *rel{};
-            size_t armIndex{};
-        };
-
-        std::vector<RangeCheck> rangeChecks;
-        std::vector<RelCheck> relChecks;
-        size_t afterRelIdx{};
-        size_t switchIdx{};
+        String,
+        Rel,
+        Range,
     };
+
+    struct ComparePlanEntry
+    {
+        CaseKind kind{CaseKind::String};
+        size_t armIndex{};
+        il::support::SourceLoc loc{};
+        const std::string *strLabel{};
+        const CaseArm::CaseRel *rel{};
+        int32_t lo{};
+        int32_t hi{};
+    };
+
+    using ComparePlan = std::vector<ComparePlanEntry>;
 
     Blocks prepareBlocks(const SelectCaseStmt &stmt, bool hasCaseElse, bool needsDispatch);
 
     void lowerStringArms(const SelectCaseStmt &stmt,
                          const Blocks &blocks,
-                         il::core::Value stringSelector);
+                         il::core::Value stringSelector,
+                         const ComparePlan &plan);
 
     void lowerNumericDispatch(const SelectCaseStmt &stmt,
                               const Blocks &blocks,
                               il::core::Value selWide,
                               il::core::Value selector,
-                              bool hasRanges,
-                              size_t totalRangeCount);
-
-    void emitRelationalChecks(const SelectCaseStmt &stmt,
-                              const Blocks &blocks,
-                              il::core::Value selWide,
-                              NumericDispatchState &state);
-
-    void emitRangeChecks(const SelectCaseStmt &stmt,
-                         const Blocks &blocks,
-                         il::core::Value selWide,
-                         NumericDispatchState &state);
+                              const ComparePlan &plan);
 
     void emitSwitchJumpTable(const SelectCaseStmt &stmt,
                              const Blocks &blocks,
-                             il::core::Value selector,
-                             NumericDispatchState &state);
+                             il::core::Value selector);
+
+    il::core::BasicBlock *emitCompareChain(const Blocks &blocks,
+                                           size_t startIdx,
+                                           il::core::BasicBlock *defaultBlk,
+                                           const ComparePlan &plan,
+                                           il::core::Value stringSelector,
+                                           il::core::Value selWide,
+                                           il::support::SourceLoc fallbackLoc);
 
     void emitArmBody(const std::vector<StmtPtr> &body,
                      il::core::BasicBlock *entry,
