@@ -37,7 +37,9 @@ add_library(tui STATIC
   src/text/PieceTable.cpp
   src/text/text_buffer.cpp
   src/text/search.cpp
-  src/views/text_view.cpp
+  src/views/text_view_cursor.cpp
+  src/views/text_view_input.cpp
+  src/views/text_view_render.cpp
   src/app.cpp
   src/config/config.cpp
 )
