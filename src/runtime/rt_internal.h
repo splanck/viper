@@ -9,6 +9,25 @@
 #include "rt_heap.h"
 #include "rt.hpp"
 
+#include <stddef.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef enum rt_input_grow_result
+{
+    RT_INPUT_GROW_OK = 0,
+    RT_INPUT_GROW_ALLOC_FAILED = 1,
+    RT_INPUT_GROW_OVERFLOW = 2
+} rt_input_grow_result;
+
+rt_input_grow_result rt_input_try_grow(char **buf, size_t *cap);
+
+#ifdef __cplusplus
+}
+#endif
+
 struct rt_string_impl
 {
     char *data;
