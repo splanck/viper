@@ -21,6 +21,138 @@ namespace il::vm::detail
 {
 namespace ops
 {
+/// @brief Perform checked addition using compiler builtins.
+/// @tparam T Arithmetic type to operate on.
+/// @param lhs Left operand.
+/// @param rhs Right operand.
+/// @param result Pointer receiving the computed value.
+/// @return True when the operation overflowed.
+template <typename T>
+inline bool checked_add(T lhs, T rhs, T *result)
+{
+    return __builtin_add_overflow(lhs, rhs, result);
+}
+
+/// @brief Perform checked subtraction using compiler builtins.
+/// @tparam T Arithmetic type to operate on.
+/// @param lhs Left operand.
+/// @param rhs Right operand.
+/// @param result Pointer receiving the computed value.
+/// @return True when the operation overflowed.
+template <typename T>
+inline bool checked_sub(T lhs, T rhs, T *result)
+{
+    return __builtin_sub_overflow(lhs, rhs, result);
+}
+
+/// @brief Perform checked multiplication using compiler builtins.
+/// @tparam T Arithmetic type to operate on.
+/// @param lhs Left operand.
+/// @param rhs Right operand.
+/// @param result Pointer receiving the computed value.
+/// @return True when the operation overflowed.
+template <typename T>
+inline bool checked_mul(T lhs, T rhs, T *result)
+{
+    return __builtin_mul_overflow(lhs, rhs, result);
+}
+
+/// @brief Apply two's complement wrapping semantics to addition.
+/// @tparam T Arithmetic type to operate on.
+/// @param lhs Left operand.
+/// @param rhs Right operand.
+/// @return Result of the addition with wrap-around semantics.
+template <typename T>
+inline T wrap_add(T lhs, T rhs)
+{
+    T result{};
+    (void)checked_add(lhs, rhs, &result);
+    return result;
+}
+
+/// @brief Apply two's complement wrapping semantics to subtraction.
+/// @tparam T Arithmetic type to operate on.
+/// @param lhs Left operand.
+/// @param rhs Right operand.
+/// @return Result of the subtraction with wrap-around semantics.
+template <typename T>
+inline T wrap_sub(T lhs, T rhs)
+{
+    T result{};
+    (void)checked_sub(lhs, rhs, &result);
+    return result;
+}
+
+/// @brief Apply two's complement wrapping semantics to multiplication.
+/// @tparam T Arithmetic type to operate on.
+/// @param lhs Left operand.
+/// @param rhs Right operand.
+/// @return Result of the multiplication with wrap-around semantics.
+template <typename T>
+inline T wrap_mul(T lhs, T rhs)
+{
+    T result{};
+    (void)checked_mul(lhs, rhs, &result);
+    return result;
+}
+
+/// @brief Perform checked addition and invoke a trap policy on overflow.
+/// @tparam T Arithmetic type to operate on.
+/// @tparam Trap Callable invoked when overflow occurs.
+/// @param lhs Left operand.
+/// @param rhs Right operand.
+/// @param result Pointer receiving the computed value.
+/// @param trap Policy invoked when overflow occurs.
+/// @return True when the result is valid, false if overflow triggered the trap.
+template <typename T, typename Trap>
+inline bool trap_add(T lhs, T rhs, T *result, Trap &&trap)
+{
+    if (checked_add(lhs, rhs, result))
+    {
+        std::forward<Trap>(trap)();
+        return false;
+    }
+    return true;
+}
+
+/// @brief Perform checked subtraction and invoke a trap policy on overflow.
+/// @tparam T Arithmetic type to operate on.
+/// @tparam Trap Callable invoked when overflow occurs.
+/// @param lhs Left operand.
+/// @param rhs Right operand.
+/// @param result Pointer receiving the computed value.
+/// @param trap Policy invoked when overflow occurs.
+/// @return True when the result is valid, false if overflow triggered the trap.
+template <typename T, typename Trap>
+inline bool trap_sub(T lhs, T rhs, T *result, Trap &&trap)
+{
+    if (checked_sub(lhs, rhs, result))
+    {
+        std::forward<Trap>(trap)();
+        return false;
+    }
+    return true;
+}
+
+/// @brief Perform checked multiplication and invoke a trap policy on overflow.
+/// @tparam T Arithmetic type to operate on.
+/// @tparam Trap Callable invoked when overflow occurs.
+/// @param lhs Left operand.
+/// @param rhs Right operand.
+/// @param result Pointer receiving the computed value.
+/// @param trap Policy invoked when overflow occurs.
+/// @return True when the result is valid, false if overflow triggered the trap.
+template <typename T, typename Trap>
+inline bool trap_mul(T lhs, T rhs, T *result, Trap &&trap)
+{
+    if (checked_mul(lhs, rhs, result))
+    {
+        std::forward<Trap>(trap)();
+        return false;
+    }
+    return true;
+}
+
 /// @brief Store the result of an instruction if it produces one.
 /// @param fr Current execution frame.
 /// @param in Instruction being executed.
