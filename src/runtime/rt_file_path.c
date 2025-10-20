@@ -29,7 +29,7 @@ const char *rt_file_mode_string(int32_t mode)
     case RT_F_BINARY:
         return "rbc+";
     case RT_F_RANDOM:
-        return "rc+";
+        return "rbc+";
     default:
         return NULL;
     }
