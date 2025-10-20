@@ -8,22 +8,25 @@
 #include "vm/RuntimeBridge.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
+#include "vm/Marshal.hpp"
 #include "vm/VM.hpp"
-#include "rt_fp.h"
+
 #include <array>
-#include <cassert>
-#include <cmath>
+#include <optional>
 #include <span>
 #include <sstream>
+#include <string>
 #include <vector>
 
 using il::support::SourceLoc;
 
 namespace
 {
-using il::core::kindToString;
 using il::core::Opcode;
+using il::runtime::RuntimeDescriptor;
+using il::runtime::RtSig;
 using il::vm::FrameInfo;
+using il::vm::ResultBuffers;
 using il::vm::RuntimeBridge;
 using il::vm::RuntimeCallContext;
 using il::vm::Slot;
@@ -32,209 +35,12 @@ using il::vm::VM;
 using il::vm::VmError;
 using il::vm::vm_format_error;
 using il::vm::vm_raise;
-using il::core::Type;
-using il::runtime::RuntimeHiddenParamKind;
-using il::runtime::RuntimeTrapClass;
-using il::runtime::RuntimeDescriptor;
-using il::runtime::RuntimeSignature;
 
 /// @brief Thread-local pointer to the runtime call context for active trap reporting.
 thread_local RuntimeCallContext *tlsContext = nullptr;
 
-/// @brief Aggregate of temporary storage for marshalled runtime results.
-struct ResultBuffers
-{
-    int64_t i64 = 0;       ///< Storage for integer and boolean results.
-    double f64 = 0.0;      ///< Storage for floating-point results.
-    rt_string str = nullptr; ///< Storage for runtime string results.
-    void *ptr = nullptr;   ///< Storage for pointer results.
-};
-
-struct PowStatus
-{
-    bool active{false};
-    bool ok{true};
-    bool *ptr{nullptr};
-};
-
-/// @brief Table entry describing how a particular @ref Type::Kind maps to Slot and
-/// runtime buffer storage.
-struct KindAccessors
-{
-    using SlotAccessor = void *(*)(Slot &);
-    using ResultAccessor = void *(*)(ResultBuffers &);
-    using ResultAssigner = void (*)(Slot &, const ResultBuffers &);
-
-    SlotAccessor slotAccessor = nullptr;       ///< Accessor for VM argument slots.
-    ResultAccessor resultAccessor = nullptr;   ///< Accessor for runtime result buffers.
-    ResultAssigner assignResult = nullptr;     ///< Assignment routine for marshalled results.
-};
-
-constexpr std::array<Type::Kind, 10> kSupportedKinds = {
-    Type::Kind::Void,
-    Type::Kind::I1,
-    Type::Kind::I16,
-    Type::Kind::I32,
-    Type::Kind::I64,
-    Type::Kind::F64,
-    Type::Kind::Ptr,
-    Type::Kind::Str,
-    Type::Kind::Error,
-    Type::Kind::ResumeTok,
-};
-
-static_assert(kSupportedKinds.size() == 10, "update kind accessors when Type::Kind grows");
-
-constexpr void *nullResultBuffer(ResultBuffers &)
-{
-    return nullptr;
-}
-
-constexpr void assignNoop(Slot &, const ResultBuffers &)
-{
-}
-
-template <auto Member>
-constexpr void *slotMemberAccessor(Slot &slot)
-{
-    return static_cast<void *>(&(slot.*Member));
-}
-
-template <auto Member>
-constexpr void *bufferMemberAccessor(ResultBuffers &buffers)
-{
-    return static_cast<void *>(&(buffers.*Member));
-}
-
-template <auto SlotMember, auto BufferMember>
-constexpr void assignFromBuffer(Slot &slot, const ResultBuffers &buffers)
-{
-    slot.*SlotMember = buffers.*BufferMember;
-}
-
-constexpr KindAccessors makeVoidAccessors()
-{
-    return KindAccessors{nullptr, &nullResultBuffer, &assignNoop};
-}
-
-template <auto SlotMember, auto BufferMember>
-constexpr KindAccessors makeAccessors()
-{
-    return KindAccessors{
-        &slotMemberAccessor<SlotMember>,
-        &bufferMemberAccessor<BufferMember>,
-        &assignFromBuffer<SlotMember, BufferMember>,
-    };
-}
-
-constexpr std::array<KindAccessors, kSupportedKinds.size()> kKindAccessors = [] {
-    std::array<KindAccessors, kSupportedKinds.size()> table{};
-    table[static_cast<size_t>(Type::Kind::Void)] = makeVoidAccessors();
-    table[static_cast<size_t>(Type::Kind::I1)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
-    table[static_cast<size_t>(Type::Kind::I16)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
-    table[static_cast<size_t>(Type::Kind::I32)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
-    table[static_cast<size_t>(Type::Kind::I64)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
-    table[static_cast<size_t>(Type::Kind::F64)] = makeAccessors<&Slot::f64, &ResultBuffers::f64>();
-    table[static_cast<size_t>(Type::Kind::Ptr)] = makeAccessors<&Slot::ptr, &ResultBuffers::ptr>();
-    table[static_cast<size_t>(Type::Kind::Str)] = makeAccessors<&Slot::str, &ResultBuffers::str>();
-    table[static_cast<size_t>(Type::Kind::Error)] = makeVoidAccessors();
-    table[static_cast<size_t>(Type::Kind::ResumeTok)] = makeVoidAccessors();
-    return table;
-}();
-
-static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::Void)].slotAccessor == nullptr,
-              "Void must not expose a slot accessor");
-static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::Void)].resultAccessor == &nullResultBuffer,
-              "Void must map to the null result buffer");
-static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::I1)].slotAccessor ==
-                  &slotMemberAccessor<&Slot::i64>,
-              "I1 slot accessor must target Slot::i64");
-static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::I16)].slotAccessor ==
-                  &slotMemberAccessor<&Slot::i64>,
-              "I16 slot accessor must target Slot::i64");
-static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::I32)].slotAccessor ==
-                  &slotMemberAccessor<&Slot::i64>,
-              "I32 slot accessor must target Slot::i64");
-static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::I64)].slotAccessor ==
-                  &slotMemberAccessor<&Slot::i64>,
-              "I64 slot accessor must target Slot::i64");
-static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::F64)].slotAccessor ==
-                  &slotMemberAccessor<&Slot::f64>,
-              "F64 slot accessor must target Slot::f64");
-static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::Ptr)].slotAccessor ==
-                  &slotMemberAccessor<&Slot::ptr>,
-              "Ptr slot accessor must target Slot::ptr");
-static_assert(kKindAccessors[static_cast<size_t>(Type::Kind::Str)].slotAccessor ==
-                  &slotMemberAccessor<&Slot::str>,
-              "Str slot accessor must target Slot::str");
-
-const KindAccessors &dispatchFor(Type::Kind kind)
-{
-    const auto index = static_cast<size_t>(kind);
-    assert(index < kKindAccessors.size() && "invalid type kind");
-    return kKindAccessors[index];
-}
-
-void *reportUnsupportedPointer(std::string msg)
-{
-    RuntimeBridge::trap(TrapKind::InvalidOperation, msg, {}, "", "");
-    return nullptr;
-}
-
-void reportUnsupportedAssign(std::string msg)
-{
-    RuntimeBridge::trap(TrapKind::InvalidOperation, msg, {}, "", "");
-}
-
-/// @brief Translate a VM slot to the pointer expected by the runtime handler.
-/// @param slot Slot containing the argument value.
-/// @param kind IL type kind describing the slot contents.
-/// @return Pointer to the slot member corresponding to @p kind.
-void *slotToArgPointer(Slot &slot, Type::Kind kind)
-{
-    const auto &entry = dispatchFor(kind);
-    if (!entry.slotAccessor)
-    {
-        std::ostringstream os;
-        os << "runtime bridge does not support argument kind '" << kindToString(kind)
-           << "'";
-        return reportUnsupportedPointer(os.str());
-    }
-    return entry.slotAccessor(slot);
-}
-
-/// @brief Obtain the buffer address to receive a runtime result of @p kind.
-/// @param kind Type kind of the runtime return value.
-/// @param buffers Temporary storage for return values.
-/// @return Pointer handed to the runtime handler for writing the result.
-void *resultBufferFor(Type::Kind kind, ResultBuffers &buffers)
-{
-    const auto &entry = dispatchFor(kind);
-    if (!entry.resultAccessor)
-    {
-        std::ostringstream os;
-        os << "runtime bridge does not support return kind '" << kindToString(kind) << "'";
-        return reportUnsupportedPointer(os.str());
-    }
-    return entry.resultAccessor(buffers);
-}
-
-/// @brief Store the marshalled runtime result back into VM slot @p slot.
-/// @param slot Destination VM slot.
-/// @param kind Type kind describing the expected slot member.
-/// @param buffers Temporary storage containing the runtime result.
-void assignResult(Slot &slot, Type::Kind kind, const ResultBuffers &buffers)
-{
-    const auto &entry = dispatchFor(kind);
-    if (!entry.assignResult)
-    {
-        std::ostringstream os;
-        os << "runtime bridge cannot assign return kind '" << kindToString(kind) << "'";
-        reportUnsupportedAssign(os.str());
-        return;
-    }
-    entry.assignResult(slot, buffers);
-}
+using VmResult = Slot;
+using Thunk = VmResult (*)(VM &, FrameInfo &, const RuntimeCallContext &);
 
 static bool validateArgumentCount(const RuntimeDescriptor &desc,
                                   const std::string &name,
@@ -255,90 +61,54 @@ static bool validateArgumentCount(const RuntimeDescriptor &desc,
     return false;
 }
 
-static std::vector<void *> marshalArguments(const RuntimeDescriptor &desc,
-                                            const std::vector<Slot> &args,
-                                            PowStatus &powStatus)
+static VmResult executeDescriptor(const RuntimeDescriptor &desc,
+                                  Slot *argBegin,
+                                  std::size_t argCount,
+                                  const RuntimeCallContext &ctx)
 {
-    const RuntimeSignature &sig = desc.signature;
-    std::vector<void *> rawArgs(sig.paramTypes.size() + sig.hiddenParams.size());
+    std::span<Slot> argSpan{};
+    if (argBegin && argCount)
+        argSpan = {argBegin, argCount};
 
-    for (size_t i = 0; i < sig.paramTypes.size(); ++i)
+    il::vm::PowStatus powStatus{};
+    auto rawArgs = il::vm::marshalArguments(desc.signature, argSpan, powStatus);
+
+    ResultBuffers buffers{};
+    void *resultPtr = il::vm::resultBufferFor(desc.signature.retType.kind, buffers);
+    desc.handler(rawArgs.empty() ? nullptr : rawArgs.data(), resultPtr);
+
+    std::span<const Slot> readonlyArgs{};
+    if (argBegin && argCount)
+        readonlyArgs = {argBegin, argCount};
+    auto trap = il::vm::classifyPowTrap(desc, powStatus, readonlyArgs, buffers);
+    if (trap.triggered)
     {
-        auto kind = sig.paramTypes[i].kind;
-        Slot &slot = const_cast<Slot &>(args[i]);
-        rawArgs[i] = slotToArgPointer(slot, kind);
+        // RuntimeBridge::trap escalates into vm_raise when a VM is active.
+        RuntimeBridge::trap(trap.kind, trap.message, ctx.loc, ctx.function, ctx.block);
+        return Slot{};
     }
 
-    size_t hiddenIndex = sig.paramTypes.size();
-    for (const auto &hidden : sig.hiddenParams)
-    {
-        switch (hidden.kind)
-        {
-        case RuntimeHiddenParamKind::None:
-            rawArgs[hiddenIndex++] = nullptr;
-            break;
-        case RuntimeHiddenParamKind::PowStatusPointer:
-            powStatus.active = true;
-            powStatus.ok = true;
-            powStatus.ptr = &powStatus.ok;
-            rawArgs[hiddenIndex++] = &powStatus.ptr;
-            break;
-        }
-    }
-
-    return rawArgs;
+    return il::vm::assignCallResult(desc.signature, buffers);
 }
 
-static bool handlePowTrap(const RuntimeDescriptor &desc,
-                          const PowStatus &powStatus,
-                          const std::vector<Slot> &args,
-                          const ResultBuffers &buffers,
-                          const SourceLoc &loc,
-                          const std::string &fn,
-                          const std::string &block)
+static VmResult genericThunk(VM &vm, FrameInfo &frame, const RuntimeCallContext &ctx)
 {
-    if (desc.trapClass != RuntimeTrapClass::PowDomainOverflow || !powStatus.active)
-        return false;
-
-    const RuntimeSignature &sig = desc.signature;
-
-    if (!powStatus.ok)
-    {
-        const double base = !args.empty() ? args[0].f64 : 0.0;
-        const double exp = (args.size() > 1) ? args[1].f64 : 0.0;
-        const bool expIntegral = std::isfinite(exp) && (exp == std::trunc(exp));
-        const bool domainError = (base < 0.0) && !expIntegral;
-
-        std::ostringstream os;
-        if (domainError)
-        {
-            os << "rt_pow_f64_chkdom: negative base with fractional exponent";
-            RuntimeBridge::trap(TrapKind::DomainError, os.str(), loc, fn, block);
-        }
-        else
-        {
-            os << "rt_pow_f64_chkdom: overflow";
-            RuntimeBridge::trap(TrapKind::Overflow, os.str(), loc, fn, block);
-        }
-        return true;
-    }
-
-    if (sig.retType.kind == Type::Kind::F64 && !std::isfinite(buffers.f64))
-    {
-        std::ostringstream os;
-        os << "rt_pow_f64_chkdom: overflow";
-        RuntimeBridge::trap(TrapKind::Overflow, os.str(), loc, fn, block);
-        return true;
-    }
-
-    return false;
+    (void)vm;
+    (void)frame;
+    return executeDescriptor(*ctx.descriptor, ctx.argBegin, ctx.argCount, ctx);
 }
 
-static void assignCallResult(Slot &destination,
-                             const RuntimeSignature &signature,
-                             const ResultBuffers &buffers)
+constexpr std::array<Thunk, static_cast<std::size_t>(RtSig::Count)> buildThunkTable()
 {
-    assignResult(destination, signature.retType.kind, buffers);
+    std::array<Thunk, static_cast<std::size_t>(RtSig::Count)> table{};
+    table.fill(&genericThunk);
+    return table;
+}
+
+const std::array<Thunk, static_cast<std::size_t>(RtSig::Count)> &thunkTable()
+{
+    static const auto table = buildThunkTable();
+    return table;
 }
 
 struct ContextGuard
@@ -359,12 +129,14 @@ struct ContextGuard
             current->function.clear();
             current->block.clear();
             current->message.clear();
+            current->descriptor = nullptr;
+            current->argBegin = nullptr;
+            current->argCount = 0;
         }
         tlsContext = previous;
     }
 };
 
-using OpCode = Opcode;
 using Operands = std::span<const Slot>;
 
 struct TrapCtx
@@ -396,14 +168,14 @@ static void finalizeTrap(TrapCtx &ctx)
     rt_abort(diagnostic.c_str());
 }
 
-static void handleOverflow(TrapCtx &ctx, OpCode opcode, const Operands &operands)
+static void handleOverflow(TrapCtx &ctx, Opcode opcode, const Operands &operands)
 {
     (void)opcode;
     (void)operands;
     finalizeTrap(ctx);
 }
 
-static void handleDivByZero(TrapCtx &ctx, OpCode opcode, const Operands &operands)
+static void handleDivByZero(TrapCtx &ctx, Opcode opcode, const Operands &operands)
 {
     (void)opcode;
     (void)operands;
@@ -440,12 +212,6 @@ extern "C" void vm_trap(const char *msg)
 namespace il::vm
 {
 
-/// @brief Dispatch a VM runtime call to the corresponding C implementation.
-/// @details Establishes the trap bookkeeping for the duration of the call,
-/// validates the arity against the lazily initialized dispatch table, and then
-/// executes the bound C adapter. Any trap that fires while the callee runs is
-/// able to surface precise context through the thread-local state populated
-/// here.
 Slot RuntimeBridge::call(RuntimeCallContext &ctx,
                          const std::string &name,
                          const std::vector<Slot> &args,
@@ -457,42 +223,42 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
     ctx.function = fn;
     ctx.block = block;
     ContextGuard guard(ctx);
-    Slot res{};
+    Slot result{};
+
     const auto *desc = il::runtime::findRuntimeDescriptor(name);
     if (!desc)
     {
         std::ostringstream os;
         os << "attempted to call unknown runtime helper '" << name << '\'';
         RuntimeBridge::trap(TrapKind::DomainError, os.str(), loc, fn, block);
-        return res;
+        return result;
     }
     if (!validateArgumentCount(*desc, name, args, loc, fn, block))
-        return res;
+        return result;
 
-    PowStatus powStatus;
-    auto rawArgs = marshalArguments(*desc, args, powStatus);
+    ctx.descriptor = desc;
+    ctx.argBegin = args.empty() ? nullptr : const_cast<Slot *>(args.data());
+    ctx.argCount = args.size();
 
-    ResultBuffers buffers;
-    void *resultPtr = resultBufferFor(desc->signature.retType.kind, buffers);
+    if (auto *vm = VM::activeInstance())
+    {
+        FrameInfo frame{};
+        std::optional<RtSig> sigId = il::runtime::findRuntimeSignatureId(name);
+        Thunk thunk = nullptr;
+        if (sigId && static_cast<std::size_t>(*sigId) < thunkTable().size())
+            thunk = thunkTable()[static_cast<std::size_t>(*sigId)];
+        if (!thunk)
+            thunk = &genericThunk;
+        result = thunk(*vm, frame, ctx);
+    }
+    else
+    {
+        result = executeDescriptor(*desc, ctx.argBegin, ctx.argCount, ctx);
+    }
 
-    desc->handler(rawArgs.empty() ? nullptr : rawArgs.data(), resultPtr);
-
-    if (handlePowTrap(*desc, powStatus, args, buffers, loc, fn, block))
-        return res;
-
-    assignCallResult(res, desc->signature, buffers);
-    return res;
+    return result;
 }
 
-/// @brief Report a trap originating from the C runtime.
-/// @details Invoked by `vm_trap` when a runtime builtin signals a fatal
-/// condition. Formats the message with optional function, block, and source
-/// location before forwarding it to `rt_abort`.
-/// @param kind  Classification of the trap condition.
-/// @param msg   Description of the trap condition.
-/// @param loc   Source location of the trapping instruction, if available.
-/// @param fn    Fully qualified function name containing the call.
-/// @param block Label of the basic block with the trapping call.
 void RuntimeBridge::trap(TrapKind kind,
                          const std::string &msg,
                          const SourceLoc &loc,
@@ -531,7 +297,7 @@ void RuntimeBridge::trap(TrapKind kind,
         ctx.frame.handlerInstalled = false;
     }
 
-    constexpr OpCode trapOpcode = OpCode::Trap;
+    constexpr Opcode trapOpcode = Opcode::Trap;
     const Operands noOperands{};
 
     switch (kind)
