@@ -77,6 +77,16 @@ struct VMTestHook
             return nullptr;
         return it->second;
     }
+
+    static RuntimeCallContext &runtimeContext(VM &vm)
+    {
+        return vm.runtimeContext;
+    }
+
+    static const RuntimeCallContext &runtimeContext(const VM &vm)
+    {
+        return vm.runtimeContext;
+    }
 };
 } // namespace il::vm
 
