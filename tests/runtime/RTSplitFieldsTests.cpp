@@ -39,5 +39,20 @@ int main()
         rt_string_unref(limited[i]);
     rt_string_unref(extra);
 
+    const char *quoted = "\"Hello, world\",42, \"alpha, beta\"";
+    rt_string quoted_line = rt_string_from_bytes(quoted, (int64_t)strlen(quoted));
+    rt_string quoted_fields[3] = {0};
+    int64_t quoted_count = rt_split_fields(quoted_line, quoted_fields, 3);
+    assert(quoted_count == 3);
+    const char *q0 = rt_string_cstr(quoted_fields[0]);
+    assert(strcmp(q0, "Hello, world") == 0);
+    assert(rt_to_int(quoted_fields[1]) == 42);
+    const char *q2 = rt_string_cstr(quoted_fields[2]);
+    assert(strcmp(q2, "alpha, beta") == 0);
+
+    for (int i = 0; i < 3; ++i)
+        rt_string_unref(quoted_fields[i]);
+    rt_string_unref(quoted_line);
+
     return 0;
 }
