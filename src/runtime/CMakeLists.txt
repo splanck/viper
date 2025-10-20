@@ -2,7 +2,9 @@ set(RT_SOURCES
   rt_error.c
   rt_fp.c
   rt_memory.c
-  rt_string.c
+  rt_string_encode.c
+  rt_string_format.c
+  rt_string_ops.c
   rt_io.c
   rt_file.c
   rt_math.c
