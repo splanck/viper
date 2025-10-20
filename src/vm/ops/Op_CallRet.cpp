@@ -1,13 +1,17 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the MIT License.
+// This file is part of the Viper project, under the MIT License.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// Implements call/return opcode handlers.  The routines focus on argument
-// propagation and consolidating the bridging between VM-defined functions and
-// the runtime surface so that dispatch remains easy to reason about.
+// File: src/vm/ops/Op_CallRet.cpp
+// Purpose: Implement VM opcode handlers for function calls and returns.
+// Key invariants: Result slots are updated exactly once per handler invocation
+//                 and bridge lookups fall back to the runtime dispatcher when a
+//                 direct VM function implementation is unavailable.
+// Ownership/Lifetime: Handlers borrow the active frame and never take ownership
+//                     of operands or result slots.
+// Links: docs/runtime-vm.md#dispatch
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,7 +23,22 @@
 
 namespace il::vm::detail::control
 {
-
+/// @brief Finalise a function by propagating the return value and signalling exit.
+///
+/// @details Return instructions optionally carry a single operand that is
+///          evaluated before the frame unwinds.  The helper extracts that
+///          operand, captures the resulting slot on the @ref VM::ExecResult, and
+///          flips the @ref VM::ExecResult::returned flag so the dispatch loop can
+///          unwind to the caller.  Branch metadata parameters are ignored for
+///          this opcode; they are present to satisfy the handler signature.
+///
+/// @param vm Active virtual machine instance (unused).
+/// @param fr Frame owning the registers and temporary storage for the call.
+/// @param in IL instruction describing the return operation.
+/// @param blocks Map of block labels to basic block pointers (unused).
+/// @param bb Reference to the current block pointer (unused).
+/// @param ip Instruction pointer within @p bb (unused).
+/// @return Execution result populated with the returned slot when present.
 VM::ExecResult handleRet(VM &vm,
                          Frame &fr,
                          const il::core::Instr &in,
@@ -38,6 +57,30 @@ VM::ExecResult handleRet(VM &vm,
     return result;
 }
 
+/// @brief Invoke a callee and write the result back into the destination register.
+///
+/// @details The handler performs the following sequence:
+///          1. Evaluate all operand expressions eagerly so argument side effects
+///             occur before dispatch.  This mirrors the IL semantics and keeps
+///             runtime bridges deterministic.
+///          2. Look up the callee within the VM's direct function map.  When a
+///             match is found the VM-specific implementation executes via
+///             @ref VMAccess::callFunction.
+///          3. Fall back to @ref RuntimeBridge::call when the VM lacks a native
+///             implementation, thereby delegating to the runtime library.
+///          4. Persist the returned slot using @ref ops::storeResult so that
+///             register lifetime management is centralised.
+///          The handler never manipulates control-flow metadata directly; the
+///          interpreter loop continues execution in the current block after the
+///          call completes.
+///
+/// @param vm Virtual machine coordinating the call.
+/// @param fr Active frame whose registers supply arguments and receive results.
+/// @param in Instruction describing the call site and callee symbol.
+/// @param blocks Map of block labels to block pointers (unused).
+/// @param bb Pointer to the current basic block (unused for calls).
+/// @param ip Instruction pointer within the block (unused for calls).
+/// @return Result structure with @ref VM::ExecResult::returned left false.
 VM::ExecResult handleCall(VM &vm,
                           Frame &fr,
                           const il::core::Instr &in,
