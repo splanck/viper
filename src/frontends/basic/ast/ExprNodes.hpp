@@ -66,6 +66,12 @@ struct Expr
     /// Source location of the expression in the source file.
     il::support::SourceLoc loc{};
     virtual ~Expr() = default;
+    /// @example Visiting without transferring ownership.
+    /// @code
+    /// auto expr = std::make_unique<IntExpr>();
+    /// CustomVisitor visitor;
+    /// expr->accept(visitor); // The AST retains ownership via the unique_ptr.
+    /// @endcode
     /// @brief Accept a visitor to process this expression.
     virtual void accept(ExprVisitor &visitor) const = 0;
     /// @brief Accept a mutable visitor to process this expression.
@@ -319,5 +325,165 @@ struct MethodCallExpr : Expr
     void accept(ExprVisitor &visitor) const override;
     void accept(MutExprVisitor &visitor) override;
 };
+
+inline void IntExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void IntExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void FloatExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void FloatExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void StringExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void StringExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void BoolExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void BoolExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void VarExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void VarExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void ArrayExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void ArrayExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void LBoundExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void LBoundExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void UBoundExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void UBoundExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void UnaryExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void UnaryExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void BinaryExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void BinaryExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void BuiltinCallExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void BuiltinCallExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void CallExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void CallExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void NewExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void NewExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void MeExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void MeExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void MemberAccessExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void MemberAccessExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void MethodCallExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void MethodCallExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
 
 } // namespace il::frontends::basic

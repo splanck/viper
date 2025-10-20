@@ -161,6 +161,11 @@ struct Stmt
     il::support::SourceLoc loc{};
 
     virtual ~Stmt() = default;
+    /// @example Mutating a statement in-place via a visitor while the AST retains ownership.
+    /// @code
+    /// auto stmt = std::make_unique<LetStmt>();
+    /// stmt->accept(transformer); // Ownership stays with stmt as long as the unique_ptr lives.
+    /// @endcode
     /// @brief Retrieve the discriminator for this statement.
     [[nodiscard]] virtual Kind stmtKind() const = 0;
     /// @brief Accept a visitor to process this statement.
@@ -700,5 +705,315 @@ struct DeleteStmt : Stmt
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
 };
+
+inline void LabelStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void LabelStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void PrintStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void PrintStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void PrintChStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void PrintChStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void CallStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void CallStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void ClsStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void ClsStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void ColorStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void ColorStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void LocateStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void LocateStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void LetStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void LetStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void DimStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void DimStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void ReDimStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void ReDimStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void RandomizeStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void RandomizeStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void IfStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void IfStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void SelectCaseStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void SelectCaseStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void WhileStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void WhileStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void DoStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void DoStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void ForStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void ForStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void NextStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void NextStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void ExitStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void ExitStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void GotoStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void GotoStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void GosubStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void GosubStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void OpenStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void OpenStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void CloseStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void CloseStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void SeekStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void SeekStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void OnErrorGoto::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void OnErrorGoto::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void Resume::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void Resume::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void EndStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void EndStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void InputStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void InputStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void InputChStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void InputChStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void LineInputChStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void LineInputChStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void ReturnStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void ReturnStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void DeleteStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void DeleteStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
 
 } // namespace il::frontends::basic

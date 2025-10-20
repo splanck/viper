@@ -176,4 +176,84 @@ struct Program
     il::support::SourceLoc loc{};
 };
 
+inline void FunctionDecl::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void FunctionDecl::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void SubDecl::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void SubDecl::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void StmtList::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void StmtList::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void ConstructorDecl::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void ConstructorDecl::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void DestructorDecl::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void DestructorDecl::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void MethodDecl::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void MethodDecl::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void ClassDecl::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void ClassDecl::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+inline void TypeDecl::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+inline void TypeDecl::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
 } // namespace il::frontends::basic
