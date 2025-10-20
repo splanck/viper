@@ -153,6 +153,12 @@ il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
     LoadedSource source{};
     source.buffer = ss.str();
     source.fileId = sm.addFile(path);
+    if (source.fileId == 0)
+    {
+        return il::support::Expected<LoadedSource>(
+            il::support::Diagnostic{il::support::Severity::Error,
+                                     "source manager exhausted file identifier space", {}});
+    }
     return il::support::Expected<LoadedSource>(std::move(source));
 }
 
