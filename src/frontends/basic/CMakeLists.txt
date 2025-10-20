@@ -52,6 +52,7 @@ target_sources(fe_basic PRIVATE
   Lower_OOP_Scan.cpp
   LowerEmit.cpp
   lower/Emit_Control.cpp
+  lower/Emitter.cpp
   lower/Emit_Expr.cpp
   lower/Emit_Builtin.cpp
   lower/Emit_OOP.cpp
