@@ -20,6 +20,7 @@
 #include <cctype>
 #include <exception>
 #include <optional>
+#include <sstream>
 #include <string_view>
 
 namespace
@@ -83,6 +84,17 @@ std::string readToken(std::istringstream &stream)
     if (!token.empty() && token.back() == ',')
         token.pop_back();
     return token;
+}
+
+/// @brief Format a diagnostic string that mirrors the "Line N:" prefix style.
+/// @param lineNo Input line number associated with the diagnostic.
+/// @param message Human-readable message body.
+/// @return Combined diagnostic string.
+std::string formatLineDiag(unsigned lineNo, std::string_view message)
+{
+    std::ostringstream oss;
+    oss << "Line " << lineNo << ": " << message;
+    return oss.str();
 }
 
 /// @brief Parse a token as a signed integer literal.
