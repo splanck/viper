@@ -81,6 +81,10 @@ function(viper_add_runtime_tests)
   target_link_libraries(test_rt_errors_io PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_errors_io test_rt_errors_io)
 
+  viper_add_test(test_rt_file_mode_string ${VIPER_TESTS_DIR}/runtime/RTFileModeStringTests.c)
+  target_link_libraries(test_rt_file_mode_string PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+  viper_add_ctest(test_rt_file_mode_string test_rt_file_mode_string)
+
   viper_add_test(test_rt_file_wrappers ${VIPER_TESTS_DIR}/runtime/FileWrappersTests.c)
   target_link_libraries(test_rt_file_wrappers PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_file_wrappers test_rt_file_wrappers)
