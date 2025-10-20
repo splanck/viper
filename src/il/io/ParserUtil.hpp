@@ -23,6 +23,12 @@ std::string trim(const std::string &text);
 /// @return Token without any trailing comma delimiter.
 std::string readToken(std::istringstream &stream);
 
+/// @brief Format a diagnostic string including the line number prefix used by the parser.
+/// @param lineNo Line number associated with the diagnostic message.
+/// @param message Human-readable diagnostic message body.
+/// @return Formatted diagnostic string, e.g. "Line 3: malformed foo".
+std::string formatLineDiag(unsigned lineNo, std::string_view message);
+
 /// @brief Attempt to parse an integer literal token.
 /// @param token Textual representation of a signed integer.
 /// @param value Destination receiving the parsed value on success.
