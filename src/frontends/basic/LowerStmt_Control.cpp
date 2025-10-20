@@ -377,12 +377,24 @@ Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
     done = &func->blocks[doneIdx];
     ctx.loopState().refresh(done);
     ctx.setCurrent(done);
-    done->terminated = exitTaken ? false : term;
+    const bool postTest = stmt.testPos == DoStmt::TestPos::Post;
+    if (postTest)
+    {
+        // FIX: Do not branch to a synthetic "next line" block from post-test DO…LOOP.
+        //      Leaving 'done' open allows the statement sequencer to attach the correct
+        //      fallthrough (either the next statement’s block or the function exit),
+        //      preventing empty synthetic blocks at end-of-program.
+        done->terminated = false;
+    }
+    else
+    {
+        done->terminated = exitTaken ? false : term;
+    }
     ctx.loopState().pop();
 
     state.cur = ctx.current();
     state.after = state.cur;
-    state.fallthrough = !done->terminated;
+    state.fallthrough = postTest ? true : !done->terminated;
     return state;
 }
 
