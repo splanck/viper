@@ -1,13 +1,16 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the MIT License.
+// This file is part of the Viper project, under the MIT License.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// Implements trap, error, and exception-handling opcodes.  The helpers share
-// resume-token validation and route diagnostics through the runtime bridge so
-// resumptions and error materialisation follow a single well-documented path.
+// File: src/vm/ops/Op_TrapEh.cpp
+// Purpose: Implement VM opcode handlers for traps and exception-handling flow.
+// Key invariants: Resume tokens are validated before use and are invalidated
+//                 after a successful resume to prevent reuse.
+// Ownership/Lifetime: Handlers borrow VM frames and never allocate persistent
+//                     resources; trap tokens are managed via the runtime bridge.
+// Links: docs/runtime-vm.md#exceptions
 //
 //===----------------------------------------------------------------------===//
 
@@ -26,6 +29,22 @@
 namespace il::vm::detail::control
 {
 
+/// @brief Extract fields from a VmError record and store them into registers.
+///
+/// @details The handler accepts an optional operand referencing a resume token
+///          or error value.  When omitted it falls back to the frame's active
+///          error.  Depending on the opcode variant it copies the requested
+///          field (kind, code, instruction pointer, or line) into the result
+///          register.  The helper never modifies control flow and simply returns
+///          to the dispatcher.
+///
+/// @param vm Virtual machine instance (unused).
+/// @param fr Frame providing the active error state.
+/// @param in Instruction indicating which field to retrieve.
+/// @param blocks Map of block labels to block pointers (unused).
+/// @param bb Reference to the current block pointer (unused).
+/// @param ip Instruction pointer (unused).
+/// @return Execution result signalling normal continuation.
 VM::ExecResult handleErrGet(VM &vm,
                             Frame &fr,
                             const il::core::Instr &in,
@@ -67,6 +86,12 @@ VM::ExecResult handleErrGet(VM &vm,
     return {};
 }
 
+/// @brief No-op handler that marks the beginning of an exception region.
+///
+/// @details The opcode exists to keep the instruction stream aligned with the
+///          source program; the runtime only needs to know about push/pop and
+///          resume operations.  Consequently the handler intentionally performs
+///          no work and returns immediately.
 VM::ExecResult handleEhEntry(VM &vm,
                              Frame &fr,
                              const il::core::Instr &in,
@@ -83,6 +108,13 @@ VM::ExecResult handleEhEntry(VM &vm,
     return {};
 }
 
+/// @brief Register an exception handler block on the frame's handler stack.
+///
+/// @details Validates that a destination label accompanies the opcode, resolves
+///          it to a basic block, and pushes a handler record capturing the
+///          target block together with the instruction pointer snapshot.  The
+///          snapshot enables resume.next to continue from the trapping
+///          instruction's successor.
 VM::ExecResult handleEhPush(VM &vm,
                             Frame &fr,
                             const il::core::Instr &in,
@@ -103,6 +135,12 @@ VM::ExecResult handleEhPush(VM &vm,
     return {};
 }
 
+/// @brief Remove the most recently registered exception handler.
+///
+/// @details Pops the frame's handler stack when non-empty.  The opcode is a
+///          safety net in case control flow leaves a protected region without a
+///          corresponding resume, ensuring stale handlers do not survive across
+///          scopes.
 VM::ExecResult handleEhPop(VM &vm,
                            Frame &fr,
                            const il::core::Instr &in,
@@ -123,6 +161,14 @@ VM::ExecResult handleEhPop(VM &vm,
 /// @brief Resume execution at the trapping instruction itself.
 /// @note Resume tokens are single-use capabilities; once consumed they are
 ///       invalidated to prevent stale resumptions after handler unwinding.
+/// @brief Resume execution at the trapping instruction itself.
+///
+/// @details Validates the supplied resume token, ensuring it matches the
+///          current frame and that the recorded target block still exists.
+///          Successful resumes clear the frame's resume state, redirect the
+///          current block pointer to the captured block, and reset the
+///          instruction pointer to the trapping site.  Failures emit a diagnostic
+///          via @ref trapInvalidResume.
 VM::ExecResult handleResumeSame(VM &vm,
                                 Frame &fr,
                                 const il::core::Instr &in,
@@ -157,6 +203,12 @@ VM::ExecResult handleResumeSame(VM &vm,
     return result;
 }
 
+/// @brief Resume execution at the instruction immediately following the trap.
+///
+/// @details Mirrors @ref handleResumeSame but jumps to the saved "next" program
+///          counter recorded when the resume token was created.  This is used
+///          for trap handlers that want to skip the trapping instruction rather
+///          than re-executing it.
 VM::ExecResult handleResumeNext(VM &vm,
                                 Frame &fr,
                                 const il::core::Instr &in,
@@ -191,6 +243,12 @@ VM::ExecResult handleResumeNext(VM &vm,
     return result;
 }
 
+/// @brief Resume execution by branching to an explicitly provided label.
+///
+/// @details Validates both the resume token and the destination label, emitting
+///          detailed diagnostics when either is invalid.  On success the frame's
+///          resume state is cleared and control transfers through
+///          @ref branchToTarget to reuse branch argument propagation logic.
 VM::ExecResult handleResumeLabel(VM &vm,
                                  Frame &fr,
                                  const il::core::Instr &in,
@@ -230,6 +288,12 @@ VM::ExecResult handleResumeLabel(VM &vm,
     return branchToTarget(vm, fr, in, 0, blocks, bb, ip);
 }
 
+/// @brief Return the trap kind associated with the active error or provided token.
+///
+/// @details Evaluates an optional operand referring to a VmError and otherwise
+///          falls back to the current trap token or the frame's active error.
+///          The resulting kind is stored as an integer in the destination
+///          register, enabling IL code to branch on trap categories.
 VM::ExecResult handleTrapKind(VM &vm,
                               Frame &fr,
                               const il::core::Instr &in,
@@ -263,6 +327,13 @@ VM::ExecResult handleTrapKind(VM &vm,
 /// @brief Materialise a runtime trap token from the legacy err/ codes.
 /// @note The helper bridges err-based semantics into the structured trap path
 ///       so diagnostics and runtime handlers share a consistent VmError format.
+/// @brief Convert a legacy BASIC error code into a VmError trap token.
+///
+/// @details Evaluates the numeric error code operand, optionally captures an
+///          additional string message, and initialises a freshly acquired trap
+///          token.  The token inherits the mapped trap kind and retains the
+///          original error code for diagnostic purposes before being written to
+///          the result register.
 VM::ExecResult handleTrapErr(VM &vm,
                              Frame &fr,
                              const il::core::Instr &in,
@@ -302,6 +373,12 @@ VM::ExecResult handleTrapErr(VM &vm,
     return {};
 }
 
+/// @brief Raise a trap immediately using the opcode-specific semantics.
+///
+/// @details Handles `trap`, `trap.err`, and `trap.from.err` forms by delegating
+///          to the runtime trap helpers.  The function always marks the
+///          execution result as returned so the interpreter unwinds to the
+///          caller after the trap is raised.
 VM::ExecResult handleTrap(VM &vm,
                           Frame &fr,
                           const il::core::Instr &in,
