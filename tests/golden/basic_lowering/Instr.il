@@ -48,20 +48,18 @@ L20:
   .loc 1 2 4
   br L30
 L30:
-  .loc 1 3 16
-  %t8 = iadd.ovf 3, -1
   .loc 1 3 19
-  %t9 = load str, %t0
+  %t8 = load str, %t0
   .loc 1 3 23
-  %t10 = const_str @.L3
+  %t9 = const_str @.L3
   .loc 1 3 23
-  %t11 = call @rt_instr3(%t8, %t9, %t10)
+  %t10 = call @rt_instr3(3, %t8, %t9)
   .loc 1 3 4
-  call @rt_print_i64(%t11)
+  call @rt_print_i64(%t10)
   .loc 1 3 4
-  %t12 = const_str @.L2
+  %t11 = const_str @.L2
   .loc 1 3 4
-  call @rt_print_str(%t12)
+  call @rt_print_str(%t11)
   .loc 1 3 4
   br L40
 L40:

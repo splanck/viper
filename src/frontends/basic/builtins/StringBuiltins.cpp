@@ -147,7 +147,6 @@ Value lowerInstr(LowerCtx &ctx, ArrayRef<Value> args)
     {
         const il::support::SourceLoc startLoc = ctx.argLoc(0);
         ctx.ensureI64(0, startLoc);
-        ctx.addConst(0, -1, startLoc);
         callArgs = {ctx.argValue(0), ctx.argValue(1), ctx.argValue(2)};
         runtime = "rt_instr3";
         callLoc = ctx.argLoc(2);
