@@ -15,46 +15,94 @@
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "il/io/StringEscape.hpp"
+#include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 
 namespace il::frontends::basic
 {
+namespace
+{
+enum class Assoc
+{
+    Left,
+    Right
+};
+
+struct PrefixParselet
+{
+    TokenKind kind;
+    UnaryExpr::Op op;
+    int rbp;
+};
+
+struct InfixParselet
+{
+    TokenKind kind;
+    BinaryExpr::Op op;
+    int lbp;
+    Assoc assoc;
+};
+
+/// Pratt parsing relies on compact parselet tables that encode precedence and associativity.
+/// Each entry corresponds to a BASIC operator and determines how expressions such as
+/// `NOT A AND B` (prefix binds tighter than AND) and `A ^ B ^ C` (power is right associative)
+/// are grouped without requiring large switch statements.
+constexpr std::array<PrefixParselet, 3> prefixParselets{
+    PrefixParselet{TokenKind::KeywordNot, UnaryExpr::Op::LogicalNot, 6},
+    PrefixParselet{TokenKind::Plus, UnaryExpr::Op::Plus, 4},
+    PrefixParselet{TokenKind::Minus, UnaryExpr::Op::Negate, 4},
+};
+
+constexpr std::array<InfixParselet, 17> infixParselets{
+    InfixParselet{TokenKind::Caret, BinaryExpr::Op::Pow, 7, Assoc::Right},
+    InfixParselet{TokenKind::Star, BinaryExpr::Op::Mul, 5, Assoc::Left},
+    InfixParselet{TokenKind::Slash, BinaryExpr::Op::Div, 5, Assoc::Left},
+    InfixParselet{TokenKind::Backslash, BinaryExpr::Op::IDiv, 5, Assoc::Left},
+    InfixParselet{TokenKind::KeywordMod, BinaryExpr::Op::Mod, 5, Assoc::Left},
+    InfixParselet{TokenKind::Plus, BinaryExpr::Op::Add, 4, Assoc::Left},
+    InfixParselet{TokenKind::Minus, BinaryExpr::Op::Sub, 4, Assoc::Left},
+    InfixParselet{TokenKind::Equal, BinaryExpr::Op::Eq, 3, Assoc::Left},
+    InfixParselet{TokenKind::NotEqual, BinaryExpr::Op::Ne, 3, Assoc::Left},
+    InfixParselet{TokenKind::Less, BinaryExpr::Op::Lt, 3, Assoc::Left},
+    InfixParselet{TokenKind::LessEqual, BinaryExpr::Op::Le, 3, Assoc::Left},
+    InfixParselet{TokenKind::Greater, BinaryExpr::Op::Gt, 3, Assoc::Left},
+    InfixParselet{TokenKind::GreaterEqual, BinaryExpr::Op::Ge, 3, Assoc::Left},
+    InfixParselet{TokenKind::KeywordAndAlso, BinaryExpr::Op::LogicalAndShort, 2, Assoc::Left},
+    InfixParselet{TokenKind::KeywordOrElse, BinaryExpr::Op::LogicalOrShort, 1, Assoc::Left},
+    InfixParselet{TokenKind::KeywordAnd, BinaryExpr::Op::LogicalAnd, 2, Assoc::Left},
+    InfixParselet{TokenKind::KeywordOr, BinaryExpr::Op::LogicalOr, 1, Assoc::Left},
+};
+
+inline const PrefixParselet* findPrefix(TokenKind kind)
+{
+    const auto it = std::find_if(prefixParselets.begin(), prefixParselets.end(), [kind](const PrefixParselet& parselet) {
+        return parselet.kind == kind;
+    });
+    return it == prefixParselets.end() ? nullptr : &*it;
+}
+
+inline const InfixParselet* findInfix(TokenKind kind)
+{
+    const auto it = std::find_if(infixParselets.begin(), infixParselets.end(), [kind](const InfixParselet& parselet) {
+        return parselet.kind == kind;
+    });
+    return it == infixParselets.end() ? nullptr : &*it;
+}
+
+} // namespace
+
 /// @brief Determine the binding power for an operator token during Pratt parsing.
 /// @param k Token kind to inspect.
 /// @return Numeric precedence; higher values bind more tightly, 0 for non-operators.
 int Parser::precedence(TokenKind k)
 {
-    switch (k)
-    {
-        case TokenKind::Caret:
-            return 7;
-        case TokenKind::KeywordNot:
-            return 6;
-        case TokenKind::Star:
-        case TokenKind::Slash:
-        case TokenKind::Backslash:
-        case TokenKind::KeywordMod:
-            return 5;
-        case TokenKind::Plus:
-        case TokenKind::Minus:
-            return 4;
-        case TokenKind::Equal:
-        case TokenKind::NotEqual:
-        case TokenKind::Less:
-        case TokenKind::LessEqual:
-        case TokenKind::Greater:
-        case TokenKind::GreaterEqual:
-            return 3;
-        case TokenKind::KeywordAnd:
-        case TokenKind::KeywordAndAlso:
-            return 2;
-        case TokenKind::KeywordOr:
-        case TokenKind::KeywordOrElse:
-            return 1;
-        default:
-            return 0;
-    }
+    if (const auto* prefix = findPrefix(k))
+        return prefix->rbp;
+    if (const auto* infix = findInfix(k))
+        return infix->lbp;
+    return 0;
 }
 
 /// @brief Parse an expression starting at the current token using Pratt parsing.
@@ -72,49 +120,32 @@ ExprPtr Parser::parseExpression(int min_prec)
 
 /// @brief Parse a unary expression or delegate to primary parsing when no prefix operator is
 /// present.
-/// @details Recognizes the grammar `unary := NOT unary | primary`. The helper consumes the NOT
-/// keyword when present and recurses with the prefix precedence; otherwise it defers to
-/// parsePrimary(). Any diagnostics originate from parseExpression or parsePrimary when required
-/// operands are absent.
+/// @details Recognizes the grammar `unary := (+|-) unary | NOT unary | primary` by looking up
+/// prefix parselets in the Pratt table. The helper consumes the prefix operator, recurses with the
+/// recorded binding power, and otherwise defers to parsePrimary(). Any diagnostics originate from
+/// parseExpression or parsePrimary when required operands are absent.
 /// @return Expression node representing the parsed unary or primary expression.
 ExprPtr Parser::parseUnaryExpression()
 {
-    if (at(TokenKind::KeywordNot) || at(TokenKind::Plus) || at(TokenKind::Minus))
+    const auto tok = peek();
+    if (const auto* prefix = findPrefix(tok.kind))
     {
-        auto tok = peek();
         consume();
-        TokenKind precToken = tok.kind;
-        if (tok.kind == TokenKind::KeywordNot)
-            precToken = TokenKind::KeywordNot;
-        auto operand = parseExpression(precedence(precToken));
-        auto u = std::make_unique<UnaryExpr>();
-        u->loc = tok.loc;
-        switch (tok.kind)
-        {
-            case TokenKind::KeywordNot:
-                u->op = UnaryExpr::Op::LogicalNot;
-                break;
-            case TokenKind::Plus:
-                u->op = UnaryExpr::Op::Plus;
-                break;
-            case TokenKind::Minus:
-                u->op = UnaryExpr::Op::Negate;
-                break;
-            default:
-                u->op = UnaryExpr::Op::LogicalNot;
-                break;
-        }
-        u->expr = std::move(operand);
-        return u;
+        auto operand = parseExpression(prefix->rbp);
+        auto expr = std::make_unique<UnaryExpr>();
+        expr->loc = tok.loc;
+        expr->op = prefix->op;
+        expr->expr = std::move(operand);
+        return expr;
     }
     return parsePrimary();
 }
 
 /// @brief Parse the right-hand side of an infix expression chain.
 /// @details Continues the Pratt parsing loop by consuming as many infix operators as bind tighter
-/// than @p min_prec. Each operator pulls in a right-hand operand via parseExpression with a higher
-/// minimum precedence, ensuring correct associativity. Missing operands propagate whatever result
-/// parseExpression produces (typically a recovery literal).
+/// than @p min_prec. The infix parselet table supplies both the binding power and associativity for
+/// each operator so the loop can request the correct right-hand precedence. Missing operands
+/// propagate whatever result parseExpression produces (typically a recovery literal).
 /// @param left Expression already parsed as the left operand.
 /// @param min_prec Minimum precedence required for an operator to bind.
 /// @return Combined expression tree including any parsed infix operations.
@@ -122,75 +153,18 @@ ExprPtr Parser::parseInfixRhs(ExprPtr left, int min_prec)
 {
     while (true)
     {
-        int prec = precedence(peek().kind);
-        if (prec < min_prec || prec == 0)
+        const auto* parselet = findInfix(peek().kind);
+        if (parselet == nullptr || parselet->lbp < min_prec)
             break;
-        TokenKind op = peek().kind;
-        auto opLoc = peek().loc;
+        auto opTok = peek();
         consume();
-        const bool rightAssociative = (op == TokenKind::Caret);
-        auto right = parseExpression(rightAssociative ? prec : prec + 1);
-        auto bin = std::make_unique<BinaryExpr>();
-        bin->loc = opLoc;
-        switch (op)
-        {
-            case TokenKind::Plus:
-                bin->op = BinaryExpr::Op::Add;
-                break;
-            case TokenKind::Minus:
-                bin->op = BinaryExpr::Op::Sub;
-                break;
-            case TokenKind::Star:
-                bin->op = BinaryExpr::Op::Mul;
-                break;
-            case TokenKind::Slash:
-                bin->op = BinaryExpr::Op::Div;
-                break;
-            case TokenKind::Backslash:
-                bin->op = BinaryExpr::Op::IDiv;
-                break;
-            case TokenKind::KeywordMod:
-                bin->op = BinaryExpr::Op::Mod;
-                break;
-            case TokenKind::Caret:
-                bin->op = BinaryExpr::Op::Pow;
-                break;
-            case TokenKind::Equal:
-                bin->op = BinaryExpr::Op::Eq;
-                break;
-            case TokenKind::NotEqual:
-                bin->op = BinaryExpr::Op::Ne;
-                break;
-            case TokenKind::Less:
-                bin->op = BinaryExpr::Op::Lt;
-                break;
-            case TokenKind::LessEqual:
-                bin->op = BinaryExpr::Op::Le;
-                break;
-            case TokenKind::Greater:
-                bin->op = BinaryExpr::Op::Gt;
-                break;
-            case TokenKind::GreaterEqual:
-                bin->op = BinaryExpr::Op::Ge;
-                break;
-            case TokenKind::KeywordAndAlso:
-                bin->op = BinaryExpr::Op::LogicalAndShort;
-                break;
-            case TokenKind::KeywordOrElse:
-                bin->op = BinaryExpr::Op::LogicalOrShort;
-                break;
-            case TokenKind::KeywordAnd:
-                bin->op = BinaryExpr::Op::LogicalAnd;
-                break;
-            case TokenKind::KeywordOr:
-                bin->op = BinaryExpr::Op::LogicalOr;
-                break;
-            default:
-                bin->op = BinaryExpr::Op::Add;
-        }
-        bin->lhs = std::move(left);
-        bin->rhs = std::move(right);
-        left = std::move(bin);
+        auto rhs = parseExpression(parselet->assoc == Assoc::Right ? parselet->lbp : parselet->lbp + 1);
+        auto expr = std::make_unique<BinaryExpr>();
+        expr->loc = opTok.loc;
+        expr->op = parselet->op;
+        expr->lhs = std::move(left);
+        expr->rhs = std::move(rhs);
+        left = std::move(expr);
     }
     return left;
 }
