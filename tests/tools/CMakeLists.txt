@@ -65,4 +65,12 @@ function(viper_add_tools_tests)
   target_include_directories(test_cli_il_opt_passes PRIVATE ${CMAKE_SOURCE_DIR}/src)
   target_link_libraries(test_cli_il_opt_passes PRIVATE ${VIPER_TOOLS_LIBS} il_transform)
   viper_add_ctest(test_cli_il_opt_passes test_cli_il_opt_passes)
+
+  viper_add_test(test_basic_common_load_source
+    ${_VIPER_TOOLS_DIR}/BasicCommonTests.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/basic/common.cpp)
+  target_include_directories(test_basic_common_load_source PRIVATE ${CMAKE_SOURCE_DIR}/src)
+  target_link_libraries(test_basic_common_load_source PRIVATE viper_support)
+  target_compile_definitions(test_basic_common_load_source PRIVATE VIPER_BASIC_TOOL_USAGE="Usage: basic-tool <file.bas>\\n")
+  viper_add_ctest(test_basic_common_load_source test_basic_common_load_source)
 endfunction()
