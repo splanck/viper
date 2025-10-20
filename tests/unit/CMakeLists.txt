@@ -141,6 +141,10 @@ function(viper_add_runtime_tests)
   target_link_libraries(test_rt_alloc_zero_fill PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_alloc_zero_fill test_rt_alloc_zero_fill)
 
+  viper_add_test(test_rt_object_new ${VIPER_TESTS_DIR}/runtime/RTObjectNewTests.cpp)
+  target_link_libraries(test_rt_object_new PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+  viper_add_ctest(test_rt_object_new test_rt_object_new)
+
   viper_add_test(test_rt_array_i32 ${VIPER_TESTS_DIR}/runtime/RTArrayI32Tests.cpp)
   target_link_libraries(test_rt_array_i32 PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_array_i32 test_rt_array_i32)

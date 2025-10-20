@@ -6,8 +6,10 @@
 
 #include "rt_object.h"
 #include "rt_heap.h"
+#include "rt_internal.h"
 
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 
 /**
@@ -29,6 +31,13 @@ static inline void *alloc_payload(size_t bytes)
 void *rt_obj_new_i64(int64_t class_id, int64_t byte_size)
 {
     (void)class_id;
+    if (byte_size < 0)
+        return rt_trap("rt_obj_new_i64: negative size"), NULL;
+    if ((uint64_t)byte_size > (uint64_t)SIZE_MAX)
+    {
+        rt_trap("rt_obj_new_i64: size too large");
+        return NULL;
+    }
     void *payload = alloc_payload((size_t)byte_size);
     if (payload)
         memset(payload, 0, (size_t)byte_size);
