@@ -60,6 +60,9 @@ static void out_str(const char* s) {
 }
 
 static void sgr_color(int fg, int bg) {
+  if (fg < 0 && bg < 0) {
+    return;
+  }
   char buf[64];
   int n = 0, wrote = 0;
 
