@@ -14,6 +14,7 @@
 #include "frontends/basic/builtins/StringBuiltins.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <limits>
 #include <optional>
@@ -35,6 +36,25 @@ using ExprType = Lowerer::ExprType;
 namespace
 {
 constexpr std::string_view kDiagUnsupportedCustomBuiltinVariant = "B4003";
+constexpr std::string_view kDiagMissingBuiltinEmitter = "B4004";
+
+constexpr std::size_t builtinIndex(BuiltinCallExpr::Builtin builtin) noexcept
+{
+    return static_cast<std::size_t>(builtin);
+}
+
+constexpr auto makeBuiltinEmitterTable()
+{
+    using Lowering = BuiltinExprLowering;
+    std::array<Lowering::EmitFn, builtinIndex(BuiltinCallExpr::Builtin::Loc) + 1> table{};
+    table.fill(&Lowering::emitRuleDrivenBuiltin);
+    table[builtinIndex(BuiltinCallExpr::Builtin::Eof)] = &Lowering::emitEofBuiltin;
+    table[builtinIndex(BuiltinCallExpr::Builtin::Lof)] = &Lowering::emitLofBuiltin;
+    table[builtinIndex(BuiltinCallExpr::Builtin::Loc)] = &Lowering::emitLocBuiltin;
+    return table;
+}
+
+constexpr auto kBuiltinEmitters = makeBuiltinEmitterTable();
 } // namespace
 
 BuiltinExprLowering::BuiltinExprLowering(Lowerer &lowerer) noexcept : lowerer_(&lowerer) {}
@@ -42,176 +62,27 @@ BuiltinExprLowering::BuiltinExprLowering(Lowerer &lowerer) noexcept : lowerer_(&
 Lowerer::RVal BuiltinExprLowering::lower(const BuiltinCallExpr &expr)
 {
     Lowerer &self = *lowerer_;
-    const auto &call = expr;
+    const auto idx = builtinIndex(expr.builtin);
+    EmitFn emitter = idx < kBuiltinEmitters.size() ? kBuiltinEmitters[idx] : nullptr;
+    if (!emitter)
+        emitter = &emitUnsupportedBuiltin;
+    return emitter(self, expr);
+}
+
+Lowerer::RVal BuiltinExprLowering::emitRuleDrivenBuiltin(Lowerer &lowerer, const BuiltinCallExpr &call)
+{
     const auto &info = getBuiltinInfo(call.builtin);
     if (const auto *stringSpec = builtins::findBuiltin(info.name))
     {
+        // The string builtin registry pre-validates arity before dispatching into lowering.
         const std::size_t argCount = call.args.size();
         if (argCount >= static_cast<std::size_t>(stringSpec->minArity) &&
             argCount <= static_cast<std::size_t>(stringSpec->maxArity))
         {
-            builtins::LowerCtx ctx(self, call);
+            builtins::LowerCtx ctx(lowerer, call);
             Value resultValue = stringSpec->fn(ctx, ctx.values());
             return {resultValue, ctx.resultType()};
         }
-    }
-
-    if (call.builtin == BuiltinCallExpr::Builtin::Lof)
-    {
-        self.requireLofCh();
-        if (call.args.empty() || !call.args[0])
-            return {Value::constInt(0), IlType(IlKind::I64)};
-
-        Lowerer::RVal channel = self.lowerExpr(*call.args[0]);
-        channel = self.normalizeChannelToI32(std::move(channel), call.loc);
-
-        self.curLoc = call.loc;
-        Value raw = self.emitCallRet(IlType(IlKind::I64), "rt_lof_ch", {channel.value});
-
-        Value isError = self.emitBinary(Opcode::SCmpLT, self.ilBoolTy(), raw, Value::constInt(0));
-
-        Lowerer::ProcedureContext &ctx = self.context();
-        Function *func = ctx.function();
-        BasicBlock *origin = ctx.current();
-        if (func && origin)
-        {
-            std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
-            Lowerer::BlockNamer *blockNamer = ctx.blockNames().namer();
-            std::string failLbl =
-                blockNamer ? blockNamer->generic("lof_err") : self.mangler.block("lof_err");
-            std::string contLbl =
-                blockNamer ? blockNamer->generic("lof_cont") : self.mangler.block("lof_cont");
-
-            std::size_t failIdx = func->blocks.size();
-            self.builder->addBlock(*func, failLbl);
-            std::size_t contIdx = func->blocks.size();
-            self.builder->addBlock(*func, contLbl);
-
-            BasicBlock *failBlk = &func->blocks[failIdx];
-            BasicBlock *contBlk = &func->blocks[contIdx];
-
-            ctx.setCurrent(&func->blocks[originIdx]);
-            self.curLoc = call.loc;
-            self.emitCBr(isError, failBlk, contBlk);
-
-            ctx.setCurrent(failBlk);
-            self.curLoc = call.loc;
-            Value negCode =
-                self.emitBinary(Opcode::Sub, IlType(IlKind::I64), Value::constInt(0), raw);
-            Value err32 = self.emitUnary(Opcode::CastSiNarrowChk, IlType(IlKind::I32), negCode);
-            self.emitTrapFromErr(err32);
-
-            ctx.setCurrent(contBlk);
-        }
-
-        self.curLoc = call.loc;
-        return {raw, IlType(IlKind::I64)};
-    }
-    if (call.builtin == BuiltinCallExpr::Builtin::Eof)
-    {
-        self.requireEofCh();
-        if (call.args.empty() || !call.args[0])
-            return {Value::constInt(0), IlType(IlKind::I64)};
-
-        Lowerer::RVal channel = self.lowerExpr(*call.args[0]);
-        channel = self.normalizeChannelToI32(std::move(channel), call.loc);
-
-        self.curLoc = call.loc;
-        Value raw = self.emitCallRet(IlType(IlKind::I32), "rt_eof_ch", {channel.value});
-
-        Lowerer::ProcedureContext &ctx = self.context();
-        Function *func = ctx.function();
-        BasicBlock *origin = ctx.current();
-        if (func && origin)
-        {
-            std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
-            Lowerer::BlockNamer *blockNamer = ctx.blockNames().namer();
-            std::string failLbl =
-                blockNamer ? blockNamer->generic("eof_err") : self.mangler.block("eof_err");
-            std::string contLbl =
-                blockNamer ? blockNamer->generic("eof_cont") : self.mangler.block("eof_cont");
-
-            std::size_t failIdx = func->blocks.size();
-            self.builder->addBlock(*func, failLbl);
-            std::size_t contIdx = func->blocks.size();
-            self.builder->addBlock(*func, contLbl);
-
-            BasicBlock *failBlk = &func->blocks[failIdx];
-            BasicBlock *contBlk = &func->blocks[contIdx];
-
-            ctx.setCurrent(&func->blocks[originIdx]);
-            self.curLoc = call.loc;
-            Value zero =
-                self.emitUnary(Opcode::CastSiNarrowChk, IlType(IlKind::I32), Value::constInt(0));
-            Value negOne =
-                self.emitUnary(Opcode::CastSiNarrowChk, IlType(IlKind::I32), Value::constInt(-1));
-            Value nonZero = self.emitBinary(Opcode::ICmpNe, self.ilBoolTy(), raw, zero);
-            Value notNegOne = self.emitBinary(Opcode::ICmpNe, self.ilBoolTy(), raw, negOne);
-            Value isError = self.emitBinary(Opcode::And, self.ilBoolTy(), nonZero, notNegOne);
-            self.emitCBr(isError, failBlk, contBlk);
-
-            ctx.setCurrent(failBlk);
-            self.curLoc = call.loc;
-            self.emitTrapFromErr(raw);
-
-            ctx.setCurrent(contBlk);
-        }
-
-        self.curLoc = call.loc;
-        Lowerer::RVal widened{raw, IlType(IlKind::I32)};
-        widened = self.ensureI64(std::move(widened), call.loc);
-        return widened;
-    }
-    if (call.builtin == BuiltinCallExpr::Builtin::Loc)
-    {
-        self.requireLocCh();
-        if (call.args.empty() || !call.args[0])
-            return {Value::constInt(0), IlType(IlKind::I64)};
-
-        Lowerer::RVal channel = self.lowerExpr(*call.args[0]);
-        channel = self.normalizeChannelToI32(std::move(channel), call.loc);
-
-        self.curLoc = call.loc;
-        Value raw = self.emitCallRet(IlType(IlKind::I64), "rt_loc_ch", {channel.value});
-
-        Value isError = self.emitBinary(Opcode::SCmpLT, self.ilBoolTy(), raw, Value::constInt(0));
-
-        Lowerer::ProcedureContext &ctx = self.context();
-        Function *func = ctx.function();
-        BasicBlock *origin = ctx.current();
-        if (func && origin)
-        {
-            std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
-            Lowerer::BlockNamer *blockNamer = ctx.blockNames().namer();
-            std::string failLbl =
-                blockNamer ? blockNamer->generic("loc_err") : self.mangler.block("loc_err");
-            std::string contLbl =
-                blockNamer ? blockNamer->generic("loc_cont") : self.mangler.block("loc_cont");
-
-            std::size_t failIdx = func->blocks.size();
-            self.builder->addBlock(*func, failLbl);
-            std::size_t contIdx = func->blocks.size();
-            self.builder->addBlock(*func, contLbl);
-
-            BasicBlock *failBlk = &func->blocks[failIdx];
-            BasicBlock *contBlk = &func->blocks[contIdx];
-
-            ctx.setCurrent(&func->blocks[originIdx]);
-            self.curLoc = call.loc;
-            self.emitCBr(isError, failBlk, contBlk);
-
-            ctx.setCurrent(failBlk);
-            self.curLoc = call.loc;
-            Value negCode =
-                self.emitBinary(Opcode::Sub, IlType(IlKind::I64), Value::constInt(0), raw);
-            Value err32 = self.emitUnary(Opcode::CastSiNarrowChk, IlType(IlKind::I32), negCode);
-            self.emitTrapFromErr(err32);
-
-            ctx.setCurrent(contBlk);
-        }
-
-        self.curLoc = call.loc;
-        return {raw, IlType(IlKind::I64)};
     }
 
     const auto &rule = getBuiltinLoweringRule(call.builtin);
@@ -224,7 +95,7 @@ Lowerer::RVal BuiltinExprLowering::lower(const BuiltinCallExpr &expr)
         if (!arg)
             continue;
         argLocs[i] = arg->loc;
-        originalTypes[i] = self.scanExpr(*arg);
+        originalTypes[i] = lowerer.scanExpr(*arg);
     }
 
     auto hasArg = [&](std::size_t idx) -> bool
@@ -274,7 +145,7 @@ Lowerer::RVal BuiltinExprLowering::lower(const BuiltinCallExpr &expr)
         assert(hasArg(idx) && "builtin lowering referenced missing argument");
         auto &slot = loweredArgs[idx];
         if (!slot)
-            slot = self.lowerExpr(*call.args[idx]);
+            slot = lowerer.lowerExpr(*call.args[idx]);
         return *slot;
     };
 
@@ -287,7 +158,7 @@ Lowerer::RVal BuiltinExprLowering::lower(const BuiltinCallExpr &expr)
             case ExprType::Str:
                 return IlType(IlKind::Str);
             case ExprType::Bool:
-                return self.ilBoolTy();
+                return lowerer.ilBoolTy();
             case ExprType::I64:
             default:
                 return IlType(IlKind::I64);
@@ -330,7 +201,7 @@ Lowerer::RVal BuiltinExprLowering::lower(const BuiltinCallExpr &expr)
                     assert(false && "string default values are not supported");
                     break;
                 case ExprType::Bool:
-                    value = Lowerer::RVal{self.emitBoolConst(def.i64 != 0), self.ilBoolTy()};
+                    value = Lowerer::RVal{lowerer.emitBoolConst(def.i64 != 0), lowerer.ilBoolTy()};
                     break;
                 case ExprType::I64:
                 default:
@@ -363,33 +234,33 @@ Lowerer::RVal BuiltinExprLowering::lower(const BuiltinCallExpr &expr)
             switch (transform.kind)
             {
                 case BuiltinLoweringRule::ArgTransform::Kind::EnsureI64:
-                    slot = self.ensureI64(std::move(slot), loc);
+                    slot = lowerer.ensureI64(std::move(slot), loc);
                     break;
                 case BuiltinLoweringRule::ArgTransform::Kind::EnsureF64:
-                    slot = self.ensureF64(std::move(slot), loc);
+                    slot = lowerer.ensureF64(std::move(slot), loc);
                     break;
                 case BuiltinLoweringRule::ArgTransform::Kind::EnsureI32:
-                    slot = self.ensureI64(std::move(slot), loc);
+                    slot = lowerer.ensureI64(std::move(slot), loc);
                     if (slot.type.kind != IlKind::I32)
                     {
-                        self.curLoc = loc;
-                        slot.value = self.emitUnary(
+                        lowerer.curLoc = loc;
+                        slot.value = lowerer.emitUnary(
                             Opcode::CastSiNarrowChk, IlType(IlKind::I32), slot.value);
                         slot.type = IlType(IlKind::I32);
                     }
                     break;
                 case BuiltinLoweringRule::ArgTransform::Kind::CoerceI64:
-                    slot = self.coerceToI64(std::move(slot), loc);
+                    slot = lowerer.coerceToI64(std::move(slot), loc);
                     break;
                 case BuiltinLoweringRule::ArgTransform::Kind::CoerceF64:
-                    slot = self.coerceToF64(std::move(slot), loc);
+                    slot = lowerer.coerceToF64(std::move(slot), loc);
                     break;
                 case BuiltinLoweringRule::ArgTransform::Kind::CoerceBool:
-                    slot = self.coerceToBool(std::move(slot), loc);
+                    slot = lowerer.coerceToBool(std::move(slot), loc);
                     break;
                 case BuiltinLoweringRule::ArgTransform::Kind::AddConst:
-                    self.curLoc = loc;
-                    slot.value = self.emitBinary(Opcode::IAddOvf,
+                    lowerer.curLoc = loc;
+                    slot.value = lowerer.emitBinary(Opcode::IAddOvf,
                                                  IlType(IlKind::I64),
                                                  slot.value,
                                                  Value::constInt(transform.immediate));
@@ -424,8 +295,8 @@ Lowerer::RVal BuiltinExprLowering::lower(const BuiltinCallExpr &expr)
                 callArgs.push_back(argVal.value);
             }
             resultType = resolveResultType();
-            self.curLoc = selectCallLoc(variant->callLocArg);
-            resultValue = self.emitCallRet(resultType, variant->runtime, callArgs);
+            lowerer.curLoc = selectCallLoc(variant->callLocArg);
+            resultValue = lowerer.emitCallRet(resultType, variant->runtime, callArgs);
             break;
         }
         case BuiltinLoweringRule::Variant::Kind::EmitUnary:
@@ -434,8 +305,8 @@ Lowerer::RVal BuiltinExprLowering::lower(const BuiltinCallExpr &expr)
             const auto &argSpec = variant->arguments.front();
             Lowerer::RVal &argVal = applyTransforms(argSpec, argSpec.transforms);
             resultType = resolveResultType();
-            self.curLoc = selectCallLoc(variant->callLocArg);
-            resultValue = self.emitUnary(variant->opcode, resultType, argVal.value);
+            lowerer.curLoc = selectCallLoc(variant->callLocArg);
+            resultValue = lowerer.emitUnary(variant->opcode, resultType, argVal.value);
             break;
         }
         case BuiltinLoweringRule::Variant::Kind::Custom:
@@ -447,15 +318,15 @@ Lowerer::RVal BuiltinExprLowering::lower(const BuiltinCallExpr &expr)
 
             auto handleConversion = [&](IlType resultTy)
             {
-                Value okSlot = self.emitAlloca(1);
+                Value okSlot = lowerer.emitAlloca(1);
                 std::vector<Value> callArgs{argVal.value, okSlot};
                 resultType = resultTy;
-                self.curLoc = callLoc;
-                Value callRes = self.emitCallRet(resultType, variant->runtime, callArgs);
+                lowerer.curLoc = callLoc;
+                Value callRes = lowerer.emitCallRet(resultType, variant->runtime, callArgs);
 
-                self.curLoc = callLoc;
-                Value okVal = self.emitLoad(self.ilBoolTy(), okSlot);
-                Lowerer::ProcedureContext &ctx = self.context();
+                lowerer.curLoc = callLoc;
+                Value okVal = lowerer.emitLoad(lowerer.ilBoolTy(), okSlot);
+                Lowerer::ProcedureContext &ctx = lowerer.context();
                 Function *func = ctx.function();
                 assert(func && "conversion lowering requires active function");
                 BasicBlock *origin = ctx.current();
@@ -463,11 +334,11 @@ Lowerer::RVal BuiltinExprLowering::lower(const BuiltinCallExpr &expr)
                 std::string originLabel = origin->label;
                 Lowerer::BlockNamer *blockNamer = ctx.blockNames().namer();
                 std::string contLabel =
-                    blockNamer ? blockNamer->generic("conv_ok") : self.mangler.block("conv_ok");
+                    blockNamer ? blockNamer->generic("conv_ok") : lowerer.mangler.block("conv_ok");
                 std::string trapLabel =
-                    blockNamer ? blockNamer->generic("conv_trap") : self.mangler.block("conv_trap");
-                BasicBlock *contBlk = &self.builder->addBlock(*func, contLabel);
-                BasicBlock *trapBlk = &self.builder->addBlock(*func, trapLabel);
+                    blockNamer ? blockNamer->generic("conv_trap") : lowerer.mangler.block("conv_trap");
+                BasicBlock *contBlk = &lowerer.builder->addBlock(*func, contLabel);
+                BasicBlock *trapBlk = &lowerer.builder->addBlock(*func, trapLabel);
                 auto originIt =
                     std::find_if(func->blocks.begin(),
                                  func->blocks.end(),
@@ -475,16 +346,16 @@ Lowerer::RVal BuiltinExprLowering::lower(const BuiltinCallExpr &expr)
                 assert(originIt != func->blocks.end());
                 origin = &*originIt;
                 ctx.setCurrent(origin);
-                self.emitCBr(okVal, contBlk, trapBlk);
+                lowerer.emitCBr(okVal, contBlk, trapBlk);
 
                 ctx.setCurrent(trapBlk);
-                self.curLoc = callLoc;
+                lowerer.curLoc = callLoc;
                 Value sentinel =
-                    self.emitUnary(Opcode::CastFpToSiRteChk,
+                    lowerer.emitUnary(Opcode::CastFpToSiRteChk,
                                    IlType(IlKind::I64),
                                    Value::constFloat(std::numeric_limits<double>::quiet_NaN()));
                 (void)sentinel;
-                self.emitTrap();
+                lowerer.emitTrap();
 
                 ctx.setCurrent(contBlk);
                 resultValue = callRes;
@@ -504,20 +375,20 @@ Lowerer::RVal BuiltinExprLowering::lower(const BuiltinCallExpr &expr)
                 case BuiltinCallExpr::Builtin::Val:
                 {
                     il::support::SourceLoc conversionLoc = selectCallLoc(variant->callLocArg);
-                    self.curLoc = conversionLoc;
+                    lowerer.curLoc = conversionLoc;
                     Value cstr =
-                        self.emitCallRet(IlType(IlKind::Ptr), "rt_string_cstr", {argVal.value});
+                        lowerer.emitCallRet(IlType(IlKind::Ptr), "rt_string_cstr", {argVal.value});
 
-                    Value okSlot = self.emitAlloca(1);
+                    Value okSlot = lowerer.emitAlloca(1);
                     std::vector<Value> callArgs{cstr, okSlot};
                     resultType = resolveResultType();
-                    self.curLoc = conversionLoc;
-                    Value callRes = self.emitCallRet(resultType, variant->runtime, callArgs);
+                    lowerer.curLoc = conversionLoc;
+                    Value callRes = lowerer.emitCallRet(resultType, variant->runtime, callArgs);
 
-                    self.curLoc = conversionLoc;
-                    Value okVal = self.emitLoad(self.ilBoolTy(), okSlot);
+                    lowerer.curLoc = conversionLoc;
+                    Value okVal = lowerer.emitLoad(lowerer.ilBoolTy(), okSlot);
 
-                    Lowerer::ProcedureContext &ctx = self.context();
+                    Lowerer::ProcedureContext &ctx = lowerer.context();
                     Function *func = ctx.function();
                     assert(func && "VAL lowering requires active function");
                     BasicBlock *origin = ctx.current();
@@ -528,16 +399,16 @@ Lowerer::RVal BuiltinExprLowering::lower(const BuiltinCallExpr &expr)
                     {
                         if (blockNamer)
                             return blockNamer->generic(hint);
-                        return self.mangler.block(std::string(hint));
+                        return lowerer.mangler.block(std::string(hint));
                     };
                     std::string contLabel = labelFor("val_ok");
                     std::string trapLabel = labelFor("val_fail");
                     std::string nanLabel = labelFor("val_nan");
                     std::string overflowLabel = labelFor("val_over");
-                    self.builder->addBlock(*func, contLabel);
-                    self.builder->addBlock(*func, trapLabel);
-                    self.builder->addBlock(*func, nanLabel);
-                    self.builder->addBlock(*func, overflowLabel);
+                    lowerer.builder->addBlock(*func, contLabel);
+                    lowerer.builder->addBlock(*func, trapLabel);
+                    lowerer.builder->addBlock(*func, nanLabel);
+                    lowerer.builder->addBlock(*func, overflowLabel);
 
                     auto originIt =
                         std::find_if(func->blocks.begin(),
@@ -559,32 +430,32 @@ Lowerer::RVal BuiltinExprLowering::lower(const BuiltinCallExpr &expr)
                     BasicBlock *nanBlk = findBlock(nanLabel);
                     BasicBlock *overflowBlk = findBlock(overflowLabel);
                     ctx.setCurrent(origin);
-                    self.curLoc = conversionLoc;
-                    self.emitCBr(okVal, contBlk, trapBlk);
+                    lowerer.curLoc = conversionLoc;
+                    lowerer.emitCBr(okVal, contBlk, trapBlk);
 
                     ctx.setCurrent(trapBlk);
-                    self.curLoc = conversionLoc;
+                    lowerer.curLoc = conversionLoc;
                     Value isNan =
-                        self.emitBinary(Opcode::FCmpNE, self.ilBoolTy(), callRes, callRes);
-                    self.emitCBr(isNan, nanBlk, overflowBlk);
+                        lowerer.emitBinary(Opcode::FCmpNE, lowerer.ilBoolTy(), callRes, callRes);
+                    lowerer.emitCBr(isNan, nanBlk, overflowBlk);
 
                     ctx.setCurrent(nanBlk);
-                    self.curLoc = conversionLoc;
+                    lowerer.curLoc = conversionLoc;
                     Value invalidSentinel =
-                        self.emitUnary(Opcode::CastFpToSiRteChk,
+                        lowerer.emitUnary(Opcode::CastFpToSiRteChk,
                                        IlType(IlKind::I64),
                                        Value::constFloat(std::numeric_limits<double>::quiet_NaN()));
                     (void)invalidSentinel;
-                    self.emitTrap();
+                    lowerer.emitTrap();
 
                     ctx.setCurrent(overflowBlk);
-                    self.curLoc = conversionLoc;
+                    lowerer.curLoc = conversionLoc;
                     Value overflowSentinel =
-                        self.emitUnary(Opcode::CastFpToSiRteChk,
+                        lowerer.emitUnary(Opcode::CastFpToSiRteChk,
                                        IlType(IlKind::I64),
                                        Value::constFloat(std::numeric_limits<double>::max()));
                     (void)overflowSentinel;
-                    self.emitTrap();
+                    lowerer.emitTrap();
 
                     ctx.setCurrent(contBlk);
                     resultValue = callRes;
@@ -615,14 +486,14 @@ Lowerer::RVal BuiltinExprLowering::lower(const BuiltinCallExpr &expr)
                 return unknown;
             };
 
-            if (auto *emitter = self.diagnosticEmitter())
+            if (auto *emitter = lowerer.diagnosticEmitter())
             {
                 std::string message = "custom builtin lowering variant is not supported: ";
                 message.append(variantKindName());
-                self.curLoc = selectCallLoc(variant->callLocArg);
+                lowerer.curLoc = selectCallLoc(variant->callLocArg);
                 emitter->emit(il::support::Severity::Error,
                               std::string(kDiagUnsupportedCustomBuiltinVariant),
-                              self.curLoc,
+                              lowerer.curLoc,
                               0,
                               std::move(message));
             }
@@ -638,15 +509,191 @@ Lowerer::RVal BuiltinExprLowering::lower(const BuiltinCallExpr &expr)
         switch (feature.action)
         {
             case BuiltinLoweringRule::Feature::Action::Request:
-                self.requestHelper(feature.feature);
+                lowerer.requestHelper(feature.feature);
                 break;
             case BuiltinLoweringRule::Feature::Action::Track:
-                self.trackRuntime(feature.feature);
+                lowerer.trackRuntime(feature.feature);
                 break;
         }
     }
 
     return {resultValue, resultType};
+}
+
+Lowerer::RVal BuiltinExprLowering::emitLofBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr)
+{
+    lowerer.requireLofCh();
+    if (expr.args.empty() || !expr.args[0])
+        return {Value::constInt(0), IlType(IlKind::I64)};
+
+    Lowerer::RVal channel = lowerer.lowerExpr(*expr.args[0]);
+    channel = lowerer.normalizeChannelToI32(std::move(channel), expr.loc);
+
+    lowerer.curLoc = expr.loc;
+    Value raw = lowerer.emitCallRet(IlType(IlKind::I64), "rt_lof_ch", {channel.value});
+
+    Value isError = lowerer.emitBinary(Opcode::SCmpLT, lowerer.ilBoolTy(), raw, Value::constInt(0));
+
+    Lowerer::ProcedureContext &ctx = lowerer.context();
+    Function *func = ctx.function();
+    BasicBlock *origin = ctx.current();
+    if (func && origin)
+    {
+        std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
+        Lowerer::BlockNamer *blockNamer = ctx.blockNames().namer();
+        std::string failLbl =
+            blockNamer ? blockNamer->generic("lof_err") : lowerer.mangler.block("lof_err");
+        std::string contLbl =
+            blockNamer ? blockNamer->generic("lof_cont") : lowerer.mangler.block("lof_cont");
+
+        std::size_t failIdx = func->blocks.size();
+        lowerer.builder->addBlock(*func, failLbl);
+        std::size_t contIdx = func->blocks.size();
+        lowerer.builder->addBlock(*func, contLbl);
+
+        BasicBlock *failBlk = &func->blocks[failIdx];
+        BasicBlock *contBlk = &func->blocks[contIdx];
+
+        ctx.setCurrent(&func->blocks[originIdx]);
+        lowerer.curLoc = expr.loc;
+        lowerer.emitCBr(isError, failBlk, contBlk);
+
+        ctx.setCurrent(failBlk);
+        lowerer.curLoc = expr.loc;
+        Value negCode =
+            lowerer.emitBinary(Opcode::Sub, IlType(IlKind::I64), Value::constInt(0), raw);
+        Value err32 = lowerer.emitUnary(Opcode::CastSiNarrowChk, IlType(IlKind::I32), negCode);
+        lowerer.emitTrapFromErr(err32);
+
+        ctx.setCurrent(contBlk);
+    }
+
+    lowerer.curLoc = expr.loc;
+    return {raw, IlType(IlKind::I64)};
+}
+
+Lowerer::RVal BuiltinExprLowering::emitEofBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr)
+{
+    lowerer.requireEofCh();
+    if (expr.args.empty() || !expr.args[0])
+        return {Value::constInt(0), IlType(IlKind::I64)};
+
+    Lowerer::RVal channel = lowerer.lowerExpr(*expr.args[0]);
+    channel = lowerer.normalizeChannelToI32(std::move(channel), expr.loc);
+
+    lowerer.curLoc = expr.loc;
+    Value raw = lowerer.emitCallRet(IlType(IlKind::I32), "rt_eof_ch", {channel.value});
+
+    Lowerer::ProcedureContext &ctx = lowerer.context();
+    Function *func = ctx.function();
+    BasicBlock *origin = ctx.current();
+    if (func && origin)
+    {
+        std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
+        Lowerer::BlockNamer *blockNamer = ctx.blockNames().namer();
+        std::string failLbl =
+            blockNamer ? blockNamer->generic("eof_err") : lowerer.mangler.block("eof_err");
+        std::string contLbl =
+            blockNamer ? blockNamer->generic("eof_cont") : lowerer.mangler.block("eof_cont");
+
+        std::size_t failIdx = func->blocks.size();
+        lowerer.builder->addBlock(*func, failLbl);
+        std::size_t contIdx = func->blocks.size();
+        lowerer.builder->addBlock(*func, contLbl);
+
+        BasicBlock *failBlk = &func->blocks[failIdx];
+        BasicBlock *contBlk = &func->blocks[contIdx];
+
+        ctx.setCurrent(&func->blocks[originIdx]);
+        lowerer.curLoc = expr.loc;
+        Value zero = lowerer.emitUnary(Opcode::CastSiNarrowChk, IlType(IlKind::I32), Value::constInt(0));
+        Value negOne =
+            lowerer.emitUnary(Opcode::CastSiNarrowChk, IlType(IlKind::I32), Value::constInt(-1));
+        Value nonZero = lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(), raw, zero);
+        Value notNegOne = lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(), raw, negOne);
+        Value isError = lowerer.emitBinary(Opcode::And, lowerer.ilBoolTy(), nonZero, notNegOne);
+        lowerer.emitCBr(isError, failBlk, contBlk);
+
+        ctx.setCurrent(failBlk);
+        lowerer.curLoc = expr.loc;
+        lowerer.emitTrapFromErr(raw);
+
+        ctx.setCurrent(contBlk);
+    }
+
+    lowerer.curLoc = expr.loc;
+    Lowerer::RVal widened{raw, IlType(IlKind::I32)};
+    widened = lowerer.ensureI64(std::move(widened), expr.loc);
+    return widened;
+}
+
+Lowerer::RVal BuiltinExprLowering::emitLocBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr)
+{
+    lowerer.requireLocCh();
+    if (expr.args.empty() || !expr.args[0])
+        return {Value::constInt(0), IlType(IlKind::I64)};
+
+    Lowerer::RVal channel = lowerer.lowerExpr(*expr.args[0]);
+    channel = lowerer.normalizeChannelToI32(std::move(channel), expr.loc);
+
+    lowerer.curLoc = expr.loc;
+    Value raw = lowerer.emitCallRet(IlType(IlKind::I64), "rt_loc_ch", {channel.value});
+
+    Value isError = lowerer.emitBinary(Opcode::SCmpLT, lowerer.ilBoolTy(), raw, Value::constInt(0));
+
+    Lowerer::ProcedureContext &ctx = lowerer.context();
+    Function *func = ctx.function();
+    BasicBlock *origin = ctx.current();
+    if (func && origin)
+    {
+        std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
+        Lowerer::BlockNamer *blockNamer = ctx.blockNames().namer();
+        std::string failLbl =
+            blockNamer ? blockNamer->generic("loc_err") : lowerer.mangler.block("loc_err");
+        std::string contLbl =
+            blockNamer ? blockNamer->generic("loc_cont") : lowerer.mangler.block("loc_cont");
+
+        std::size_t failIdx = func->blocks.size();
+        lowerer.builder->addBlock(*func, failLbl);
+        std::size_t contIdx = func->blocks.size();
+        lowerer.builder->addBlock(*func, contLbl);
+
+        BasicBlock *failBlk = &func->blocks[failIdx];
+        BasicBlock *contBlk = &func->blocks[contIdx];
+
+        ctx.setCurrent(&func->blocks[originIdx]);
+        lowerer.curLoc = expr.loc;
+        lowerer.emitCBr(isError, failBlk, contBlk);
+
+        ctx.setCurrent(failBlk);
+        lowerer.curLoc = expr.loc;
+        Value negCode =
+            lowerer.emitBinary(Opcode::Sub, IlType(IlKind::I64), Value::constInt(0), raw);
+        Value err32 = lowerer.emitUnary(Opcode::CastSiNarrowChk, IlType(IlKind::I32), negCode);
+        lowerer.emitTrapFromErr(err32);
+
+        ctx.setCurrent(contBlk);
+    }
+
+    lowerer.curLoc = expr.loc;
+    return {raw, IlType(IlKind::I64)};
+}
+
+Lowerer::RVal BuiltinExprLowering::emitUnsupportedBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr)
+{
+    if (auto *diag = lowerer.diagnosticEmitter())
+    {
+        // This path should never trigger when the registry is complete, but provide a
+        // diagnostic so accidental omissions still surface during lowering.
+        lowerer.curLoc = expr.loc;
+        diag->emit(il::support::Severity::Error,
+                   std::string(kDiagMissingBuiltinEmitter),
+                   lowerer.curLoc,
+                   0,
+                   "no emitter registered for builtin call");
+    }
+
+    return {Value::constInt(0), IlType(IlKind::I64)};
 }
 
 Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &expr)
