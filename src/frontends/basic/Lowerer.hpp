@@ -44,11 +44,16 @@ namespace builtins
 class LowerCtx;
 } // namespace builtins
 
-namespace lower::detail
+namespace lower
+{
+class Emitter;
+
+namespace detail
 {
 class ExprTypeScanner;
 class RuntimeNeedsScanner;
-}
+} // namespace detail
+} // namespace lower
 
 /// @brief Lowers BASIC AST into IL Module.
 /// @invariant Generates deterministic block names per procedure using BlockNamer.
@@ -102,6 +107,7 @@ class Lowerer
     friend struct BuiltinExprLowering;
     friend class builtins::LowerCtx;
     friend class SelectCaseLowering;
+    friend class lower::Emitter;
 
     using Module = il::core::Module;
     using Function = il::core::Function;
@@ -465,6 +471,9 @@ class Lowerer
 
     std::string nextFallbackBlockLabel();
 
+    lower::Emitter &emitter() noexcept;
+    const lower::Emitter &emitter() const noexcept;
+
     ArrayAccess lowerArrayAccess(const ArrayExpr &expr, ArrayAccessKind kind);
 
     void emitProgram(const Program &prog);
@@ -491,6 +500,8 @@ class Lowerer
     int synthSeq_{0};
 
     ProcedureContext context_;
+
+    std::unique_ptr<lower::Emitter> emitter_;
 
     DiagnosticEmitter *diagnosticEmitter_{nullptr};
 

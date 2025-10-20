@@ -8,6 +8,7 @@
 // Links: docs/codemap.md
 
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/lower/Emitter.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "il/core/BasicBlock.hpp"
@@ -180,7 +181,9 @@ const Lowerer::ProcedureSignature *Lowerer::findProcSignature(const std::string 
 Lowerer::Lowerer(bool boundsChecks)
     : programLowering(std::make_unique<ProgramLowering>(*this)),
       procedureLowering(std::make_unique<ProcedureLowering>(*this)),
-      statementLowering(std::make_unique<StatementLowering>(*this)), boundsChecks(boundsChecks)
+      statementLowering(std::make_unique<StatementLowering>(*this)),
+      boundsChecks(boundsChecks),
+      emitter_(std::make_unique<lower::Emitter>(*this))
 {
 }
 
@@ -779,5 +782,17 @@ unsigned Lowerer::nextTempId()
 std::string Lowerer::nextFallbackBlockLabel()
 {
     return mangler.block("bb_" + std::to_string(nextFallbackBlockId++));
+}
+
+lower::Emitter &Lowerer::emitter() noexcept
+{
+    assert(emitter_ && "emitter must be initialized");
+    return *emitter_;
+}
+
+const lower::Emitter &Lowerer::emitter() const noexcept
+{
+    assert(emitter_ && "emitter must be initialized");
+    return *emitter_;
 }
 } // namespace il::frontends::basic
