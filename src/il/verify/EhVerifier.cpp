@@ -1,8 +1,9 @@
 // File: src/il/verify/EhVerifier.cpp
 // License: MIT (see LICENSE for details).
 // Purpose: Implements the verifier pass that validates EH stack balance per function.
-// Key invariants: Control-flow is explored to ensure every execution path maintains
-// balanced eh.push/eh.pop pairs, delegating to ExceptionHandlerAnalysis helpers.
+// Key invariants: Control-flow is explored with an explicit worklist so every
+// execution path maintains balanced eh.push/eh.pop pairs while keeping
+// diagnostics stable for legacy callers.
 // Ownership/Lifetime: Operates on caller-owned modules; no allocations outlive
 // verification. Diagnostics are returned via Expected or forwarded through sinks.
 // Links: docs/il-guide.md#reference
@@ -15,8 +16,8 @@
 #include "il/core/Module.hpp"
 #include "il/verify/ControlFlowChecker.hpp"
 #include "il/verify/DiagFormat.hpp"
-#include "il/verify/ExceptionHandlerAnalysis.hpp"
 
+#include <algorithm>
 #include <deque>
 #include <string>
 #include <unordered_map>
@@ -121,6 +122,234 @@ std::vector<const BasicBlock *> gatherSuccessors(
     return successors;
 }
 
+struct EhState
+{
+    int depth = 0;
+    const BasicBlock *bb = nullptr;
+};
+
+std::vector<const BasicBlock *> buildPath(const std::vector<EhState> &states,
+                                          const std::vector<int> &parents,
+                                          int index)
+{
+    std::vector<const BasicBlock *> path;
+    for (int cur = index; cur >= 0; cur = parents[cur])
+    {
+        if (states[cur].bb)
+            path.push_back(states[cur].bb);
+    }
+    std::reverse(path.begin(), path.end());
+    return path;
+}
+
+std::string formatPathString(const std::vector<const BasicBlock *> &path)
+{
+    std::string buffer;
+    for (const BasicBlock *node : path)
+    {
+        if (!buffer.empty())
+            buffer.append(" -> ");
+        buffer.append(node->label);
+    }
+    return buffer;
+}
+
+Expected<void> reportEhMismatch(const Function &fn,
+                                const BasicBlock &bb,
+                                const Instr &instr,
+                                VerifyDiagCode code,
+                                const std::vector<EhState> &states,
+                                const std::vector<int> &parents,
+                                int stateIndex,
+                                int depth)
+{
+    const std::vector<const BasicBlock *> path = buildPath(states, parents, stateIndex);
+    std::string suffix;
+    switch (code)
+    {
+        case VerifyDiagCode::EhStackUnderflow:
+            suffix = "eh.pop without matching eh.push; path: ";
+            suffix += formatPathString(path);
+            break;
+        case VerifyDiagCode::EhStackLeak:
+            suffix = "unmatched eh.push depth ";
+            suffix += std::to_string(depth);
+            suffix += "; path: ";
+            suffix += formatPathString(path);
+            break;
+        case VerifyDiagCode::EhResumeTokenMissing:
+            suffix = "resume.* requires active resume token; path: ";
+            suffix += formatPathString(path);
+            break;
+        default:
+            suffix = formatPathString(path);
+            break;
+    }
+
+    auto message = formatInstrDiag(fn, bb, instr, suffix);
+    return Expected<void>{makeVerifierError(code, instr.loc, std::move(message))};
+}
+
+Expected<void> verifyEhStackBalance(
+    const Function &fn, const std::unordered_map<std::string, const BasicBlock *> &blockMap)
+{
+    if (fn.blocks.empty())
+        return {};
+
+    std::deque<int> worklist;
+    std::vector<EhState> states;
+    std::vector<int> parents;
+    std::vector<std::vector<const BasicBlock *>> handlerStacks;
+    std::vector<bool> resumeTokens;
+    std::unordered_map<const BasicBlock *, std::unordered_set<std::string>> visited;
+
+    states.push_back({0, &fn.blocks.front()});
+    parents.push_back(-1);
+    handlerStacks.emplace_back();
+    resumeTokens.push_back(false);
+    worklist.push_back(0);
+    visited[&fn.blocks.front()].insert(encodeStateKey(handlerStacks.front(), resumeTokens.front()));
+
+    while (!worklist.empty())
+    {
+        const int stateIndex = worklist.front();
+        worklist.pop_front();
+
+        EhState &state = states[stateIndex];
+        const BasicBlock &bb = *state.bb;
+
+        std::vector<const BasicBlock *> handlerStack = handlerStacks[stateIndex];
+        bool hasResumeToken = resumeTokens[stateIndex];
+        int depth = static_cast<int>(handlerStack.size());
+
+        const Instr *terminator = nullptr;
+        for (const auto &instr : bb.instructions)
+        {
+            if (instr.op == Opcode::EhPush)
+            {
+                const BasicBlock *handlerBlock = nullptr;
+                if (!instr.labels.empty())
+                {
+                    if (auto it = blockMap.find(instr.labels[0]); it != blockMap.end())
+                        handlerBlock = it->second;
+                }
+                handlerStack.push_back(handlerBlock);
+                depth = static_cast<int>(handlerStack.size());
+            }
+            else if (instr.op == Opcode::EhPop)
+            {
+                if (handlerStack.empty())
+                    return reportEhMismatch(fn,
+                                            bb,
+                                            instr,
+                                            VerifyDiagCode::EhStackUnderflow,
+                                            states,
+                                            parents,
+                                            stateIndex,
+                                            depth);
+
+                handlerStack.pop_back();
+                depth = static_cast<int>(handlerStack.size());
+            }
+            else if (instr.op == Opcode::ResumeSame || instr.op == Opcode::ResumeNext ||
+                     instr.op == Opcode::ResumeLabel)
+            {
+                if (!hasResumeToken)
+                    return reportEhMismatch(fn,
+                                            bb,
+                                            instr,
+                                            VerifyDiagCode::EhResumeTokenMissing,
+                                            states,
+                                            parents,
+                                            stateIndex,
+                                            depth);
+
+                if (!handlerStack.empty())
+                    handlerStack.pop_back();
+                hasResumeToken = false;
+                depth = static_cast<int>(handlerStack.size());
+            }
+
+            if (isTerminator(instr.op))
+            {
+                terminator = &instr;
+                break;
+            }
+        }
+
+        if (!terminator)
+            continue;
+
+        state.depth = depth;
+        handlerStacks[stateIndex] = handlerStack;
+        resumeTokens[stateIndex] = hasResumeToken;
+
+        if (terminator->op == Opcode::Ret && depth != 0)
+            return reportEhMismatch(fn,
+                                    bb,
+                                    *terminator,
+                                    VerifyDiagCode::EhStackLeak,
+                                    states,
+                                    parents,
+                                    stateIndex,
+                                    depth);
+
+        if (terminator->op == Opcode::Trap || terminator->op == Opcode::TrapFromErr)
+        {
+            if (!handlerStack.empty())
+            {
+                const BasicBlock *handlerBlock = handlerStack.back();
+                if (handlerBlock)
+                {
+                    EhState nextState;
+                    nextState.bb = handlerBlock;
+                    nextState.depth = static_cast<int>(handlerStack.size());
+
+                    std::vector<const BasicBlock *> nextStack = handlerStack;
+                    bool nextResumeToken = true;
+                    const std::string key = encodeStateKey(nextStack, nextResumeToken);
+                    if (visited[handlerBlock].insert(key).second)
+                    {
+                        const int nextIndex = static_cast<int>(states.size());
+                        states.push_back(nextState);
+                        parents.push_back(stateIndex);
+                        handlerStacks.push_back(std::move(nextStack));
+                        resumeTokens.push_back(nextResumeToken);
+                        worklist.push_back(nextIndex);
+                    }
+                }
+            }
+            continue;
+        }
+
+        const std::vector<const BasicBlock *> successors = gatherSuccessors(*terminator, blockMap);
+        for (const BasicBlock *succ : successors)
+        {
+            EhState nextState;
+            nextState.bb = succ;
+            nextState.depth = static_cast<int>(handlerStack.size());
+
+            std::vector<const BasicBlock *> nextStack = handlerStack;
+            bool nextResumeToken = hasResumeToken;
+            if (terminator->op == Opcode::ResumeLabel)
+                nextResumeToken = false;
+
+            const std::string key = encodeStateKey(nextStack, nextResumeToken);
+            if (!visited[succ].insert(key).second)
+                continue;
+
+            const int nextIndex = static_cast<int>(states.size());
+            states.push_back(nextState);
+            parents.push_back(stateIndex);
+            handlerStacks.push_back(std::move(nextStack));
+            resumeTokens.push_back(nextResumeToken);
+            worklist.push_back(nextIndex);
+        }
+    }
+
+    return {};
+}
+
 /// @brief Determine whether executing @p op could fault and trigger handlers.
 /// @details Returns false for opcodes that either manipulate the EH stack or
 /// serve as terminators; all other operations are conservatively treated as
@@ -147,7 +376,8 @@ bool isPotentialFaultingOpcode(Opcode op)
     }
 }
 
-using HandlerCoverage = std::unordered_map<const BasicBlock *, std::unordered_set<const BasicBlock *>>;
+using HandlerCoverage =
+    std::unordered_map<const BasicBlock *, std::unordered_set<const BasicBlock *>>;
 
 /// @brief Map each handler to the blocks it protects within a function.
 /// @details Performs a worklist traversal over the function's CFG, tracking the
@@ -159,10 +389,9 @@ using HandlerCoverage = std::unordered_map<const BasicBlock *, std::unordered_se
 /// @return Coverage table keyed by handler block pointer.
 class HandlerCoverageTraversal
 {
-public:
-    HandlerCoverageTraversal(
-        const std::unordered_map<std::string, const BasicBlock *> &blockMap,
-        HandlerCoverage &coverage)
+  public:
+    HandlerCoverageTraversal(const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                             HandlerCoverage &coverage)
         : blockMap(blockMap), coverage(coverage)
     {
     }
@@ -206,7 +435,7 @@ public:
         }
     }
 
-private:
+  private:
     struct State
     {
         const BasicBlock *block = nullptr;
@@ -566,7 +795,7 @@ il::support::Expected<void> EhVerifier::run(const Module &module, DiagSink &sink
         for (const auto &bb : fn.blocks)
             blockMap[bb.label] = &bb;
 
-        if (auto result = checkEhStackBalance(fn, blockMap); !result)
+        if (auto result = verifyEhStackBalance(fn, blockMap); !result)
             return result;
 
         if (auto result = verifyResumeLabelTargets(fn, blockMap); !result)
