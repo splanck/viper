@@ -13,7 +13,12 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 mapfile -t DIRS < <(
-  if [[ $# -gt 0 ]]; then printf '%s\n' "$@"; else find "$ROOT" -maxdepth 1 -type d -name 'build*' -printf '%f\n'; fi
+  if [[ $# -gt 0 ]]; then
+    printf '%s\n' "$@"
+  else
+    find "$ROOT" -maxdepth 1 -type d -name 'build*' -print |
+      while IFS= read -r path; do basename "$path"; done
+  fi
 )
 if [[ ${#DIRS[@]} -eq 0 ]]; then echo "[clean] no build* directories found at repo root"; exit 0; fi
 echo "[clean] will remove:"; for d in "${DIRS[@]}"; do echo "  - $d"; done

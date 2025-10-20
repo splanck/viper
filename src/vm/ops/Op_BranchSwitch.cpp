@@ -307,6 +307,7 @@ VM::ExecResult branchToTarget(VM &vm,
             os << " from '" << sourceLabel << '\'';
         os << ": expected " << expected << ", got " << provided;
         RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), in.loc, functionName, sourceLabel);
+        std::exit(1);
         return {};
     }
 
