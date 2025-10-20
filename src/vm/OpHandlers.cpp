@@ -178,42 +178,6 @@ VM::ExecResult handleMul(VM &vm,
 }
 } // namespace integer
 
-namespace control
-{
-VM::ExecResult handleBr(VM &vm,
-                        Frame &fr,
-                        const Instr &in,
-                        const VM::BlockMap &blocks,
-                        const BasicBlock *&bb,
-                        size_t &ip)
-{
-    VMAccess::ExecState *state = VMAccess::currentExecState(vm);
-    return handleBrImpl(vm, state, fr, in, blocks, bb, ip);
-}
-
-VM::ExecResult handleCBr(VM &vm,
-                         Frame &fr,
-                         const Instr &in,
-                         const VM::BlockMap &blocks,
-                         const BasicBlock *&bb,
-                         size_t &ip)
-{
-    VMAccess::ExecState *state = VMAccess::currentExecState(vm);
-    return handleCBrImpl(vm, state, fr, in, blocks, bb, ip);
-}
-
-VM::ExecResult handleSwitchI32(VM &vm,
-                               Frame &fr,
-                               const Instr &in,
-                               const VM::BlockMap &blocks,
-                               const BasicBlock *&bb,
-                               size_t &ip)
-{
-    VMAccess::ExecState *state = VMAccess::currentExecState(vm);
-    return handleSwitchI32Impl(vm, state, fr, in, blocks, bb, ip);
-}
-} // namespace control
-
 /// @brief Builds and caches the opcode dispatch table from the declarative IL
 /// opcode list.
 /// @details A function-local static initialises the table exactly once by

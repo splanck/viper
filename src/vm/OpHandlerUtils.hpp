@@ -9,7 +9,13 @@
 
 #include "il/core/Instr.hpp"
 
+#include <string>
 #include <utility>
+
+namespace il::core
+{
+struct BasicBlock;
+}
 
 namespace il::vm::detail
 {
@@ -85,5 +91,17 @@ VM::ExecResult applyCompare(VM &vm,
     return OperandDispatcher::runCompare(vm, fr, in, std::forward<Compare>(compare));
 }
 } // namespace ops
+
+namespace control
+{
+Frame::ResumeState *expectResumeToken(Frame &fr, const Slot &slot);
+
+void trapInvalidResume(Frame &fr,
+                       const il::core::Instr &in,
+                       const il::core::BasicBlock *bb,
+                       std::string detail);
+
+const VmError *resolveErrorToken(Frame &fr, const Slot &slot);
+} // namespace control
 } // namespace il::vm::detail
 
