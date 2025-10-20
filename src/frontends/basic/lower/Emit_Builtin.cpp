@@ -11,6 +11,7 @@
 /// ProcedureContext tracking.
 
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/lower/Emitter.hpp"
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
@@ -22,56 +23,17 @@ namespace il::frontends::basic
 
 void Lowerer::storeArray(Value slot, Value value)
 {
-    requireArrayI32Retain();
-    emitCall("rt_arr_i32_retain", {value});
-    Value oldValue = emitLoad(Type(Type::Kind::Ptr), slot);
-    requireArrayI32Release();
-    emitCall("rt_arr_i32_release", {oldValue});
-    emitStore(Type(Type::Kind::Ptr), slot, value);
+    emitter().storeArray(slot, value);
 }
 
 void Lowerer::releaseArrayLocals(const std::unordered_set<std::string> &paramNames)
 {
-    bool requested = false;
-    for (auto &[name, info] : symbols)
-    {
-        if (!info.referenced || !info.slotId || !info.isArray)
-            continue;
-        if (paramNames.contains(name))
-            continue;
-        Value slot = Value::temp(*info.slotId);
-        Value handle = emitLoad(Type(Type::Kind::Ptr), slot);
-        if (!requested)
-        {
-            requireArrayI32Release();
-            requested = true;
-        }
-        emitCall("rt_arr_i32_release", {handle});
-        emitStore(Type(Type::Kind::Ptr), slot, Value::null());
-    }
+    emitter().releaseArrayLocals(paramNames);
 }
 
 void Lowerer::releaseArrayParams(const std::unordered_set<std::string> &paramNames)
 {
-    if (paramNames.empty())
-        return;
-    bool requested = false;
-    for (auto &[name, info] : symbols)
-    {
-        if (!info.referenced || !info.slotId || !info.isArray)
-            continue;
-        if (!paramNames.contains(name))
-            continue;
-        Value slot = Value::temp(*info.slotId);
-        Value handle = emitLoad(Type(Type::Kind::Ptr), slot);
-        if (!requested)
-        {
-            requireArrayI32Release();
-            requested = true;
-        }
-        emitCall("rt_arr_i32_release", {handle});
-        emitStore(Type(Type::Kind::Ptr), slot, Value::null());
-    }
+    emitter().releaseArrayParams(paramNames);
 }
 
 } // namespace il::frontends::basic
