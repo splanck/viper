@@ -75,6 +75,7 @@ void PassManager::addSimplifyCFG(bool aggressive)
         {
             SimplifyCFG pass(aggressive);
             pass.setModule(&analysis.module());
+            pass.setAnalysisManager(&analysis);
             bool changed = pass.run(function, nullptr);
             if (!changed)
                 return PreservedAnalyses::all();
