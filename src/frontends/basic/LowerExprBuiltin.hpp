@@ -19,6 +19,14 @@ struct BuiltinExprLowering
 
     [[nodiscard]] Lowerer::RVal lower(const BuiltinCallExpr &expr);
 
+    using EmitFn = Lowerer::RVal (*)(Lowerer &, const BuiltinCallExpr &);
+
+    static Lowerer::RVal emitRuleDrivenBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr);
+    static Lowerer::RVal emitLofBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr);
+    static Lowerer::RVal emitEofBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr);
+    static Lowerer::RVal emitLocBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr);
+    static Lowerer::RVal emitUnsupportedBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr);
+
   private:
     Lowerer *lowerer_{nullptr};
 };
