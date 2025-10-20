@@ -44,7 +44,7 @@ Module buildIdxChkPassModule()
     return module;
 }
 
-Module buildIdxChkTrapModule(Opcode getter)
+Module buildIdxChkTrapModule(Opcode getter, int64_t idxConst, int64_t hiConst)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -77,9 +77,9 @@ Module buildIdxChkTrapModule(Opcode getter)
     chk.result = builder.reserveTempId();
     chk.op = Opcode::IdxChk;
     chk.type = Type(Type::Kind::I32);
-    chk.operands.push_back(Value::constInt(99));
+    chk.operands.push_back(Value::constInt(idxConst));
     chk.operands.push_back(Value::constInt(0));
-    chk.operands.push_back(Value::constInt(10));
+    chk.operands.push_back(Value::constInt(hiConst));
     chk.loc = {1, 42, 0};
     body.instructions.push_back(chk);
 
@@ -111,11 +111,16 @@ Module buildIdxChkTrapModule(Opcode getter)
     return module;
 }
 
-int64_t runBoundsGetter(Opcode getter)
+int64_t runBoundsGetterWithIdx(Opcode getter, int64_t idxConst, int64_t hiConst)
 {
-    Module module = buildIdxChkTrapModule(getter);
+    Module module = buildIdxChkTrapModule(getter, idxConst, hiConst);
     il::vm::VM vm(module);
     return vm.run();
+}
+
+int64_t runBoundsGetter(Opcode getter)
+{
+    return runBoundsGetterWithIdx(getter, 99, 10);
 }
 } // namespace
 
@@ -130,6 +135,11 @@ int main()
     {
         const int64_t kind = runBoundsGetter(Opcode::ErrGetKind);
         assert(kind == static_cast<int64_t>(static_cast<int32_t>(il::vm::TrapKind::Bounds)));
+    }
+
+    {
+        const int64_t kindAtHigh = runBoundsGetterWithIdx(Opcode::ErrGetKind, 10, 10);
+        assert(kindAtHigh == static_cast<int64_t>(static_cast<int32_t>(il::vm::TrapKind::Bounds)));
     }
 
     {
