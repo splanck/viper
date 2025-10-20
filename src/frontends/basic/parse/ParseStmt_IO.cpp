@@ -1,9 +1,18 @@
-// File: src/frontends/basic/Parser_Stmt_IO.cpp
-// Purpose: Implements BASIC parser helpers for IO-related statements.
-// Key invariants: Requires Parser lookahead to remain synchronized with separators.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/frontends/basic/parse/ParseStmt_IO.cpp
+// Purpose: Implements IO-related statement parselets for the BASIC parser.
+// Key invariants: Maintains parser lookahead synchronisation when consuming
+//                 separators and channel specifiers.
 // Ownership/Lifetime: Parser retains ownership of tokens and produced AST nodes.
-// License: MIT; see LICENSE for details.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
@@ -202,14 +211,11 @@ StmtPtr Parser::parseInputStatement()
             {
                 std::fprintf(stderr, "INPUT # with multiple targets not yet supported\n");
             }
-            while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine) && !at(TokenKind::Colon))
-            {
-                consume();
-            }
+            syncToStmtBoundary();
         }
-
         return stmt;
     }
+
     ExprPtr prompt;
     if (at(TokenKind::String))
     {

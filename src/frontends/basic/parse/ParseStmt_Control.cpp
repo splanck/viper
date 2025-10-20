@@ -1,11 +1,19 @@
-// File: src/frontends/basic/Parser_Stmt_Select.cpp
-// Purpose: Implements SELECT CASE parsing routines for the BASIC parser.
-// Key invariants: Validates CASE and CASE ELSE structure while maintaining
-//                 selector range bookkeeping.
-// Ownership/Lifetime: Parser generates AST nodes owned by the caller via
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/frontends/basic/parse/ParseStmt_Control.cpp
+// Purpose: Implements control-flow statement parselets for the BASIC parser.
+// Key invariants: Maintains structured block boundaries while synchronising
+//                 with StatementSequencer terminators.
+// Ownership/Lifetime: Parser produces AST nodes owned by caller-provided
 //                     unique_ptr wrappers.
-// License: MIT; see LICENSE for details.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
@@ -20,6 +28,206 @@
 
 namespace il::frontends::basic
 {
+
+void Parser::registerControlFlowParsers(StatementParserRegistry &registry)
+{
+    registry.registerHandler(TokenKind::KeywordIf, &Parser::parseIfStatement);
+    registry.registerHandler(TokenKind::KeywordSelect, &Parser::parseSelectCaseStatement);
+    registry.registerHandler(TokenKind::KeywordWhile, &Parser::parseWhileStatement);
+    registry.registerHandler(TokenKind::KeywordDo, &Parser::parseDoStatement);
+    registry.registerHandler(TokenKind::KeywordFor, &Parser::parseForStatement);
+    registry.registerHandler(TokenKind::KeywordNext, &Parser::parseNextStatement);
+    registry.registerHandler(TokenKind::KeywordExit, &Parser::parseExitStatement);
+    registry.registerHandler(TokenKind::KeywordGoto, &Parser::parseGotoStatement);
+    registry.registerHandler(TokenKind::KeywordGosub, &Parser::parseGosubStatement);
+    registry.registerHandler(TokenKind::KeywordReturn, &Parser::parseReturnStatement);
+}
+
+StmtPtr Parser::parseIfStatement(int line)
+{
+    using parser_helpers::buildBranchList;
+    using parser_helpers::collectBranchStatements;
+
+    auto loc = peek().loc;
+    consume(); // IF
+    auto cond = parseExpression();
+    expect(TokenKind::KeywordThen);
+    auto stmt = std::make_unique<IfStmt>();
+    stmt->loc = loc;
+    stmt->cond = std::move(cond);
+
+    if (at(TokenKind::EndOfLine))
+    {
+        enum class BlockTerminator
+        {
+            None,
+            ElseIf,
+            Else,
+            EndIf,
+        };
+
+        auto ctxIf = statementSequencer();
+
+        auto collectBranch = [&](bool allowElseBranches) -> std::pair<StmtPtr, BlockTerminator>
+        {
+            BlockTerminator term = BlockTerminator::None;
+            auto predicate = [&](int, il::support::SourceLoc) {
+                if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordIf)
+                    return true;
+                if (!allowElseBranches)
+                    return false;
+                if (at(TokenKind::KeywordElseIf))
+                    return true;
+                if (at(TokenKind::KeywordElse))
+                    return true;
+                return false;
+            };
+            auto consumer = [&](int lineNumber,
+                                 il::support::SourceLoc,
+                                 StatementSequencer::TerminatorInfo &info) {
+                info.line = lineNumber;
+                info.loc = peek().loc;
+                if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordIf)
+                {
+                    Token endTok = consume();
+                    info.loc = endTok.loc;
+                    expect(TokenKind::KeywordIf);
+                    term = BlockTerminator::EndIf;
+                    return;
+                }
+                if (!allowElseBranches)
+                    return;
+                if (at(TokenKind::KeywordElseIf))
+                {
+                    term = BlockTerminator::ElseIf;
+                    return;
+                }
+                if (at(TokenKind::KeywordElse))
+                {
+                    if (peek(1).kind == TokenKind::KeywordIf)
+                    {
+                        term = BlockTerminator::ElseIf;
+                    }
+                    else
+                    {
+                        term = BlockTerminator::Else;
+                    }
+                }
+            };
+            auto stmts = collectBranchStatements(ctxIf, predicate, consumer);
+            return {buildBranchList(line, loc, std::move(stmts)), term};
+        };
+
+        auto [thenBranch, term] = collectBranch(true);
+        stmt->then_branch = std::move(thenBranch);
+        std::vector<IfStmt::ElseIf> elseifs;
+        StmtPtr elseStmt;
+        while (term == BlockTerminator::ElseIf)
+        {
+            IfStmt::ElseIf ei;
+            if (at(TokenKind::KeywordElseIf))
+            {
+                consume();
+            }
+            else if (at(TokenKind::KeywordElse))
+            {
+                consume();
+                expect(TokenKind::KeywordIf);
+            }
+            else
+            {
+                break;
+            }
+            ei.cond = parseExpression();
+            expect(TokenKind::KeywordThen);
+            auto [branchBody, nextTerm] = collectBranch(true);
+            ei.then_branch = std::move(branchBody);
+            elseifs.push_back(std::move(ei));
+            term = nextTerm;
+        }
+
+        if (term == BlockTerminator::Else)
+        {
+            consume();
+            auto [elseBody, endTerm] = collectBranch(false);
+            elseStmt = std::move(elseBody);
+            term = endTerm;
+        }
+
+        if (term != BlockTerminator::EndIf)
+        {
+            if (emitter_)
+            {
+                emitter_->emit(il::support::Severity::Error,
+                               "B0004",
+                               stmt->loc,
+                               2,
+                               "missing END IF");
+            }
+            else
+            {
+                std::fprintf(stderr, "missing END IF\n");
+            }
+            syncToStmtBoundary();
+        }
+
+        stmt->elseifs = std::move(elseifs);
+        stmt->else_branch = std::move(elseStmt);
+    }
+    else
+    {
+        auto ctxIf = statementSequencer();
+        auto thenStmt = parseIfBranchBody(line, ctxIf);
+        std::vector<IfStmt::ElseIf> elseifs;
+        StmtPtr elseStmt;
+        while (true)
+        {
+            skipOptionalLineLabelAfterBreak(ctxIf,
+                                            {TokenKind::KeywordElseIf, TokenKind::KeywordElse});
+            if (at(TokenKind::KeywordElseIf))
+            {
+                consume();
+                IfStmt::ElseIf ei;
+                ei.cond = parseExpression();
+                expect(TokenKind::KeywordThen);
+                ei.then_branch = parseIfBranchBody(line, ctxIf);
+                elseifs.push_back(std::move(ei));
+                continue;
+            }
+            if (at(TokenKind::KeywordElse))
+            {
+                consume();
+                if (at(TokenKind::KeywordIf))
+                {
+                    consume();
+                    IfStmt::ElseIf ei;
+                    ei.cond = parseExpression();
+                    expect(TokenKind::KeywordThen);
+                    ei.then_branch = parseIfBranchBody(line, ctxIf);
+                    elseifs.push_back(std::move(ei));
+                    continue;
+                }
+                elseStmt = parseIfBranchBody(line, ctxIf);
+                break;
+            }
+            break;
+        }
+        stmt->then_branch = std::move(thenStmt);
+        stmt->elseifs = std::move(elseifs);
+        stmt->else_branch = std::move(elseStmt);
+    }
+
+    if (stmt->then_branch)
+        stmt->then_branch->line = line;
+    for (auto &elseif : stmt->elseifs)
+    {
+        if (elseif.then_branch)
+            elseif.then_branch->line = line;
+    }
+    if (stmt->else_branch)
+        stmt->else_branch->line = line;
+    return stmt;
+}
 
 StmtPtr Parser::parseSelectCaseStatement()
 {
@@ -423,6 +631,205 @@ exitCaseEntries:
     arm.body = std::move(bodyResult.body);
 
     return arm;
+}
+
+StmtPtr Parser::parseWhileStatement()
+{
+    auto loc = peek().loc;
+    consume(); // WHILE
+    auto cond = parseExpression();
+    auto stmt = std::make_unique<WhileStmt>();
+    stmt->loc = loc;
+    stmt->cond = std::move(cond);
+    auto ctxWhile = statementSequencer();
+    ctxWhile.collectStatements(TokenKind::KeywordWend, stmt->body);
+    return stmt;
+}
+
+StmtPtr Parser::parseDoStatement()
+{
+    auto loc = peek().loc;
+    consume(); // DO
+    auto stmt = std::make_unique<DoStmt>();
+    stmt->loc = loc;
+
+    bool hasPreTest = false;
+    if (at(TokenKind::KeywordWhile) || at(TokenKind::KeywordUntil))
+    {
+        hasPreTest = true;
+        Token testTok = consume();
+        stmt->testPos = DoStmt::TestPos::Pre;
+        stmt->condKind = testTok.kind == TokenKind::KeywordWhile ? DoStmt::CondKind::While
+                                                                 : DoStmt::CondKind::Until;
+        stmt->cond = parseExpression();
+    }
+
+    auto ctxDo = statementSequencer();
+    ctxDo.collectStatements(TokenKind::KeywordLoop, stmt->body);
+
+    bool hasPostTest = false;
+    Token postTok{};
+    DoStmt::CondKind postKind = DoStmt::CondKind::None;
+    ExprPtr postCond;
+    if (at(TokenKind::KeywordWhile) || at(TokenKind::KeywordUntil))
+    {
+        hasPostTest = true;
+        postTok = consume();
+        postKind = postTok.kind == TokenKind::KeywordWhile ? DoStmt::CondKind::While
+                                                           : DoStmt::CondKind::Until;
+        postCond = parseExpression();
+    }
+
+    if (hasPreTest && hasPostTest)
+    {
+        if (emitter_)
+        {
+            emitter_->emit(il::support::Severity::Error,
+                           "B0001",
+                           postTok.loc,
+                           static_cast<uint32_t>(postTok.lexeme.size()),
+                           "DO loop cannot have both pre and post conditions");
+        }
+        else
+        {
+            std::fprintf(stderr, "DO loop cannot have both pre and post conditions\n");
+        }
+    }
+    else if (hasPostTest)
+    {
+        stmt->testPos = DoStmt::TestPos::Post;
+        stmt->condKind = postKind;
+        stmt->cond = std::move(postCond);
+    }
+
+    return stmt;
+}
+
+StmtPtr Parser::parseForStatement()
+{
+    auto loc = peek().loc;
+    consume(); // FOR
+    auto stmt = std::make_unique<ForStmt>();
+    stmt->loc = loc;
+    Token varTok = expect(TokenKind::Identifier);
+    stmt->var = varTok.lexeme;
+    expect(TokenKind::Equal);
+    stmt->start = parseExpression();
+    expect(TokenKind::KeywordTo);
+    stmt->end = parseExpression();
+    if (at(TokenKind::KeywordStep))
+    {
+        consume();
+        stmt->step = parseExpression();
+    }
+    auto ctxFor = statementSequencer();
+    ctxFor.collectStatements(TokenKind::KeywordNext, stmt->body);
+    if (at(TokenKind::Identifier))
+    {
+        consume();
+    }
+    return stmt;
+}
+
+StmtPtr Parser::parseNextStatement()
+{
+    auto loc = peek().loc;
+    consume(); // NEXT
+    std::string name;
+    if (at(TokenKind::Identifier))
+    {
+        name = peek().lexeme;
+        consume();
+    }
+    auto stmt = std::make_unique<NextStmt>();
+    stmt->loc = loc;
+    stmt->var = std::move(name);
+    return stmt;
+}
+
+StmtPtr Parser::parseExitStatement()
+{
+    auto loc = peek().loc;
+    consume(); // EXIT
+
+    ExitStmt::LoopKind kind = ExitStmt::LoopKind::While;
+    if (at(TokenKind::KeywordFor))
+    {
+        consume();
+        kind = ExitStmt::LoopKind::For;
+    }
+    else if (at(TokenKind::KeywordWhile))
+    {
+        consume();
+        kind = ExitStmt::LoopKind::While;
+    }
+    else if (at(TokenKind::KeywordDo))
+    {
+        consume();
+        kind = ExitStmt::LoopKind::Do;
+    }
+    else
+    {
+        Token unexpected = peek();
+        il::support::SourceLoc diagLoc = unexpected.kind == TokenKind::EndOfFile ? loc : unexpected.loc;
+        uint32_t length = unexpected.lexeme.empty() ? 1u
+                                                    : static_cast<uint32_t>(unexpected.lexeme.size());
+        if (emitter_)
+        {
+            emitter_->emit(il::support::Severity::Error,
+                           "B0002",
+                           diagLoc,
+                           length,
+                           "expected FOR, WHILE, or DO after EXIT");
+        }
+        else
+        {
+            std::fprintf(stderr, "expected FOR, WHILE, or DO after EXIT\n");
+        }
+        auto noop = std::make_unique<EndStmt>();
+        noop->loc = loc;
+        return noop;
+    }
+
+    auto stmt = std::make_unique<ExitStmt>();
+    stmt->loc = loc;
+    stmt->kind = kind;
+    return stmt;
+}
+
+StmtPtr Parser::parseGotoStatement()
+{
+    auto loc = peek().loc;
+    consume(); // GOTO
+    int target = std::atoi(peek().lexeme.c_str());
+    expect(TokenKind::Number);
+    auto stmt = std::make_unique<GotoStmt>();
+    stmt->loc = loc;
+    stmt->target = target;
+    return stmt;
+}
+
+StmtPtr Parser::parseGosubStatement()
+{
+    auto loc = peek().loc;
+    consume(); // GOSUB
+    int target = std::atoi(peek().lexeme.c_str());
+    expect(TokenKind::Number);
+    auto stmt = std::make_unique<GosubStmt>();
+    stmt->loc = loc;
+    stmt->targetLine = target;
+    return stmt;
+}
+
+StmtPtr Parser::parseReturnStatement()
+{
+    auto loc = peek().loc;
+    consume(); // RETURN
+    auto stmt = std::make_unique<ReturnStmt>();
+    stmt->loc = loc;
+    if (!at(TokenKind::EndOfLine) && !at(TokenKind::EndOfFile) && !at(TokenKind::Colon))
+        stmt->value = parseExpression();
+    return stmt;
 }
 
 } // namespace il::frontends::basic
