@@ -144,6 +144,7 @@ target_include_directories(il_tools_common PUBLIC
 
 add_library(il_vm STATIC
   vm/VM.cpp
+  vm/VM_DebugUtils.cpp
   vm/VMInit.cpp
   vm/VMContext.cpp
   vm/VMDebug.cpp

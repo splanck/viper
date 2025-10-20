@@ -72,6 +72,9 @@ struct Frame
         size_t ipSnapshot = 0;
     };
 
+    /// @brief Deferred resumption metadata used by trap handlers.
+    /// @invariant When @c valid is true, @c block references the faulting block
+    ///            and @c nextIp is either @c faultIp + 1 or @c block->instructions.size().
     struct ResumeState
     {
         const il::core::BasicBlock *block = nullptr;
@@ -267,6 +270,8 @@ class VM
 
     /// @brief Cached runtime handles for inline string literals containing embedded NULs.
     /// @ownership Owned by the VM; stores @c rt_string handles created via @c rt_string_from_bytes.
+    /// @invariant Each literal string maps to at most one active handle, released exactly once
+    ///            when the cache is cleared.
     std::unordered_map<std::string, rt_string> inlineLiteralCache;
 
     /// @brief Trap metadata for the currently executing runtime call.
