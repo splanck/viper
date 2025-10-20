@@ -67,6 +67,9 @@ std::string capture_sgr(int fg, int bg)
 
 int main()
 {
+    std::string no_change = capture_sgr(-1, -1);
+    assert(no_change.empty());
+
     for (int bg = 8; bg <= 15; ++bg)
     {
         std::string sgr = capture_sgr(-1, bg);
