@@ -24,6 +24,14 @@ function(viper_add_tools_tests)
   target_link_libraries(test_tools_module_loader PRIVATE ${VIPER_TOOLS_LIBS})
   viper_add_ctest(test_tools_module_loader test_tools_module_loader)
 
+  viper_add_test(test_tools_basic_common
+    ${_VIPER_TOOLS_DIR}/BasicCommonTests.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/basic/common.cpp)
+  target_include_directories(test_tools_basic_common PRIVATE ${CMAKE_SOURCE_DIR}/src)
+  target_compile_definitions(test_tools_basic_common PRIVATE VIPER_BASIC_TOOL_USAGE="Usage: basic-tool <file.bas>\\n")
+  target_link_libraries(test_tools_basic_common PRIVATE ${VIPER_TOOLS_LIBS})
+  viper_add_ctest(test_tools_basic_common test_tools_basic_common)
+
   viper_add_test(test_cli_run_missing_main
     ${VIPER_TESTS_DIR}/unit/test_cli_run_missing_main.cpp
     ${CMAKE_SOURCE_DIR}/src/tools/ilc/cli.cpp
