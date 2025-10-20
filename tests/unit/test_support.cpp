@@ -102,17 +102,23 @@ int main()
     assert(intResult.isOk());
     assert(intResult.value() == 42);
 
-    il::support::Result<int> intError(std::string("boom"));
+    il::support::Result<int> intError = il::support::Result<int>::error("boom");
     assert(!intError.isOk());
     assert(intError.error() == "boom");
 
-    il::support::Result<std::string> strResult("value", true);
+    il::support::Result<std::string> strResult =
+        il::support::Result<std::string>::success("value");
     assert(strResult.isOk());
     assert(strResult.value() == "value");
 
-    il::support::Result<std::string> strError(std::string("nope"));
+    il::support::Result<std::string> strError =
+        il::support::Result<std::string>::error("nope");
     assert(!strError.isOk());
     assert(strError.error() == "nope");
+
+    il::support::Result<std::string> literalResult{"ok"};
+    assert(literalResult.isOk());
+    assert(literalResult.value() == "ok");
 
     // SourceManager overflow handling
     {
