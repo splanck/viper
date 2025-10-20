@@ -280,8 +280,12 @@ void RuntimeBridge::trap(TrapKind kind,
         }
         if (!fn.empty())
             ctx.vm->runtimeContext.function = fn;
+        else
+            ctx.vm->runtimeContext.function.clear();
         if (!block.empty())
             ctx.vm->runtimeContext.block = block;
+        else
+            ctx.vm->runtimeContext.block.clear();
         ctx.vm->runtimeContext.message = msg;
     }
     else
