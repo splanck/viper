@@ -27,8 +27,8 @@ namespace il::tools::basic
 /// with the file contents; on failure it is left unchanged.
 /// @param sm Source manager responsible for tracking file identifiers.
 ///
-/// @return The assigned file identifier on success; std::nullopt if the usage check or
-/// file loading fails.
+/// @return The assigned file identifier on success; std::nullopt if the usage check,
+/// file loading, or SourceManager registration fails.
 std::optional<std::uint32_t> loadBasicSource(const char *path,
                                              std::string &buffer,
                                              il::support::SourceManager &sm);

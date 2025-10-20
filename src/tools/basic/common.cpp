@@ -71,9 +71,16 @@ std::optional<std::uint32_t> loadBasicSource(const char *path,
 
     std::ostringstream ss;
     ss << in.rdbuf();
-    buffer = ss.str();
+    std::string contents = ss.str();
 
     std::uint32_t fileId = sm.addFile(path);
+    if (fileId == 0)
+    {
+        std::cerr << "cannot register " << path << "\n";
+        return std::nullopt;
+    }
+
+    buffer = std::move(contents);
     return fileId;
 }
 
