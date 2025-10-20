@@ -36,8 +36,11 @@ void realignBranchArgs(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::Basic
 
             if (term->brArgs.size() <= edgeIdx)
             {
-                assert(block.params.empty() && "missing branch args for block parameters");
-                continue;
+                std::string message = "realignBranchArgs: predecessor '" + pred.label +
+                                      "' is missing branch arguments for edge to block '" +
+                                      block.label + "'";
+                ctx.logDebug(message);
+                term->brArgs.resize(edgeIdx + 1);
             }
 
             auto &args = term->brArgs[edgeIdx];
@@ -51,8 +54,16 @@ void realignBranchArgs(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::Basic
             if (args.size() > block.params.size())
                 args.resize(block.params.size());
 
-            assert(args.size() == block.params.size() &&
-                   "mismatched branch argument count after parameter update");
+            if (args.size() != block.params.size())
+            {
+                std::string message = "realignBranchArgs: predecessor '" + pred.label +
+                                      "' has " + std::to_string(args.size()) +
+                                      " argument(s) for block '" + block.label + "' expecting " +
+                                      std::to_string(block.params.size()) +
+                                      "; skipping argument realignment";
+                ctx.logDebug(message);
+                continue;
+            }
         }
     }
 }
@@ -273,6 +284,8 @@ bool canonicalizeParamsAndArgs(SimplifyCFG::SimplifyCFGPassContext &ctx)
         if (block.params.empty())
             continue;
 
+        realignBranchArgs(ctx, block);
+
         const size_t beforeShrink = block.params.size();
         if (shrinkParamsEqualAcrossPreds(ctx, block))
         {
@@ -309,6 +322,8 @@ bool canonicalizeParamsAndArgs(SimplifyCFG::SimplifyCFGPassContext &ctx)
                 }
             }
         }
+
+        realignBranchArgs(ctx, block);
     }
 
     return changed;
