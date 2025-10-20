@@ -217,7 +217,7 @@ template <typename T>
     const auto idx = static_cast<T>(idxSlot.i64);
     const auto lo = static_cast<T>(loSlot.i64);
     const auto hi = static_cast<T>(hiSlot.i64);
-    if (idx < lo || idx > hi)
+    if (idx < lo || idx >= hi)
     {
         return {false, static_cast<int64_t>(idx)};
     }
