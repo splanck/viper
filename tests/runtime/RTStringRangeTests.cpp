@@ -1,6 +1,8 @@
 // File: tests/runtime/RTStringRangeTests.cpp
-// Purpose: Verify runtime string helpers report negative start/length diagnostics.
-// Key invariants: LEFT$ and MID$ trap with specific messages on invalid ranges.
+// Purpose: Verify runtime string helpers clamp negative starts but trap on
+//          negative lengths.
+// Key invariants: LEFT$ retains its trap on negative lengths; MID$ clamps
+//                 start positions <= 1 to the full string.
 // Ownership: Uses runtime library.
 // Links: docs/runtime-vm.md#runtime-abi
 #include "rt.hpp"
@@ -39,18 +41,14 @@ static void call_left_negative()
     rt_left(rt_const_cstr("A"), -1);
 }
 
-static void call_mid_negative()
-{
-    rt_mid3(rt_const_cstr("A"), -1, 1);
-}
-
 int main()
 {
     std::string out = capture(call_left_negative);
     bool ok = out.find("LEFT$: len must be >= 0") != std::string::npos;
     assert(ok);
-    out = capture(call_mid_negative);
-    ok = out.find("MID$: start must be >= 0") != std::string::npos;
-    assert(ok);
+    rt_string sample = rt_const_cstr("ABCDE");
+    rt_string clamped = rt_mid3(sample, -4, 3);
+    rt_string abc = rt_const_cstr("ABC");
+    assert(rt_str_eq(clamped, abc));
     return 0;
 }

@@ -59,12 +59,19 @@ int main()
     assert(rt_str_eq(right, cde));
 
     rt_string mid_full = rt_mid2(abcde, 1);
+    assert(mid_full == abcde);
+
+    rt_string mid_tail = rt_mid2(abcde, 2);
     rt_string bcde = rt_const_cstr("BCDE");
-    assert(rt_str_eq(mid_full, bcde));
+    assert(rt_str_eq(mid_tail, bcde));
 
     rt_string mid_part = rt_mid3(abcde, 1, 2);
+    rt_string ab_mid = rt_const_cstr("AB");
+    assert(rt_str_eq(mid_part, ab_mid));
+
+    rt_string mid_part_offset = rt_mid3(abcde, 2, 2);
     rt_string bc = rt_const_cstr("BC");
-    assert(rt_str_eq(mid_part, bc));
+    assert(rt_str_eq(mid_part_offset, bc));
 
     rt_string full_left = rt_left(abcde, 5);
     assert(full_left == abcde);
