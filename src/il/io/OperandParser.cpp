@@ -15,9 +15,9 @@
 
 #include "support/diag_expected.hpp"
 
+#include <array>
 #include <cctype>
 #include <exception>
-#include <cstring>
 #include <sstream>
 #include <string_view>
 #include <utility>
@@ -30,7 +30,184 @@ using il::core::Value;
 using il::support::Expected;
 using il::support::makeError;
 
+namespace
+{
+using il::io::decodeEscapedString;
+using il::io::formatLineDiag;
+using il::io::parseFloatLiteral;
+using il::io::parseIntegerLiteral;
+
+enum class OperandKind : size_t
+{
+    Missing = 0,
+    BoolTrue,
+    BoolFalse,
+    Temp,
+    Global,
+    NullValue,
+    StringLiteral,
+    FloatLiteral,
+    IntegerLiteral,
+    Count,
+};
+
+using OperandHandler = Expected<Value> (*)(const std::string &, ParserState &);
+
+Expected<Value> makeValueError(ParserState &state, std::string message)
+{
+    return Expected<Value>{makeError(state.curLoc, formatLineDiag(state.lineNo, std::move(message)))};
+}
+
+bool equalsIgnoreCase(std::string_view value, std::string_view literal)
+{
+    if (value.size() != literal.size())
+        return false;
+    for (size_t i = 0; i < literal.size(); ++i)
+    {
+        const unsigned char lhs = static_cast<unsigned char>(value[i]);
+        const unsigned char rhs = static_cast<unsigned char>(literal[i]);
+        if (std::tolower(lhs) != std::tolower(rhs))
+            return false;
+    }
+    return true;
+}
+
+OperandKind classifyOperandToken(const std::string &token)
+{
+    if (token.empty())
+        return OperandKind::Missing;
+    if (equalsIgnoreCase(token, "true"))
+        return OperandKind::BoolTrue;
+    if (equalsIgnoreCase(token, "false"))
+        return OperandKind::BoolFalse;
+    if (token.front() == '%')
+        return OperandKind::Temp;
+    if (token.front() == '@')
+        return OperandKind::Global;
+    if (token == "null")
+        return OperandKind::NullValue;
+    if (token.size() >= 2 && token.front() == '"' && token.back() == '"')
+        return OperandKind::StringLiteral;
+    if (token.find('.') != std::string::npos || token.find('e') != std::string::npos ||
+        token.find('E') != std::string::npos)
+        return OperandKind::FloatLiteral;
+    return OperandKind::IntegerLiteral;
+}
+
+Expected<Value> handleMissingOperand(const std::string &, ParserState &state)
+{
+    return makeValueError(state, "missing operand");
+}
+
+Expected<Value> handleBoolTrue(const std::string &, ParserState &)
+{
+    return Value::constBool(true);
+}
+
+Expected<Value> handleBoolFalse(const std::string &, ParserState &)
+{
+    return Value::constBool(false);
+}
+
+Expected<Value> handleTempOperand(const std::string &token, ParserState &state)
+{
+    std::string name = token.substr(1);
+    auto it = state.tempIds.find(name);
+    if (it != state.tempIds.end())
+        return Value::temp(it->second);
+
+    if (name.size() > 1 && name[0] == 't')
+    {
+        bool digits = true;
+        for (size_t i = 1; i < name.size(); ++i)
+        {
+            if (!std::isdigit(static_cast<unsigned char>(name[i])))
+            {
+                digits = false;
+                break;
+            }
+        }
+        if (digits)
+        {
+            try
+            {
+                return Value::temp(static_cast<unsigned>(std::stoul(name.substr(1))));
+            }
+            catch (const std::exception &)
+            {
+                std::ostringstream oss;
+                oss << "invalid temp id '" << token << "'";
+                return makeValueError(state, oss.str());
+            }
+        }
+    }
+
+    std::ostringstream oss;
+    oss << "unknown temp '" << token << "'";
+    return makeValueError(state, oss.str());
+}
+
+Expected<Value> handleGlobalOperand(const std::string &token, ParserState &)
+{
+    return Value::global(token.substr(1));
+}
+
+Expected<Value> handleNullOperand(const std::string &, ParserState &)
+{
+    return Value::null();
+}
+
+Expected<Value> handleStringOperand(const std::string &token, ParserState &state)
+{
+    // String tokens preserve surrounding quotes so we strip them before decoding.
+    // decodeEscapedString validates tricky cases such as trailing '\\' or unknown
+    // escapes and returns a descriptive message that we forward verbatim.
+    std::string literal = token.substr(1, token.size() - 2);
+    std::string decoded;
+    std::string errMsg;
+    if (!decodeEscapedString(literal, decoded, &errMsg))
+        return makeValueError(state, std::move(errMsg));
+    return Value::constStr(std::move(decoded));
+}
+
+Expected<Value> handleFloatOperand(const std::string &token, ParserState &state)
+{
+    double value = 0.0;
+    if (parseFloatLiteral(token, value))
+        return Value::constFloat(value);
+
+    std::ostringstream oss;
+    oss << "invalid floating literal '" << token << "'";
+    return makeValueError(state, oss.str());
+}
+
+Expected<Value> handleIntegerOperand(const std::string &token, ParserState &state)
+{
+    long long value = 0;
+    if (parseIntegerLiteral(token, value))
+        return Value::constInt(value);
+
+    std::ostringstream oss;
+    oss << "invalid integer literal '" << token << "'";
+    return makeValueError(state, oss.str());
+}
+
+constexpr std::array<OperandHandler, static_cast<size_t>(OperandKind::Count)> kOperandHandlers = {
+    handleMissingOperand,
+    handleBoolTrue,
+    handleBoolFalse,
+    handleTempOperand,
+    handleGlobalOperand,
+    handleNullOperand,
+    handleStringOperand,
+    handleFloatOperand,
+    handleIntegerOperand,
+};
+
+} // namespace
+
 /// @brief Create an operand parser bound to the current parser state and instruction.
+/// @note instr_ aliases the caller-owned instruction so operands are populated in-place.
 OperandParser::OperandParser(ParserState &state, Instr &instr) : state_(state), instr_(instr) {}
 
 /// @brief Parse a single operand token into a Value representation.
@@ -43,99 +220,9 @@ OperandParser::OperandParser(ParserState &state, Instr &instr) : state_(state), 
 /// @return Parsed value or an error diagnostic.
 Expected<Value> OperandParser::parseValueToken(const std::string &tok) const
 {
-    if (tok.empty())
-    {
-        std::ostringstream oss;
-        oss << "Line " << state_.lineNo << ": missing operand";
-        return Expected<Value>{makeError(state_.curLoc, oss.str())};
-    }
-
-    const auto equalsIgnoreCase = [](const std::string &value, const char *literal) {
-        const size_t len = std::strlen(literal);
-        if (value.size() != len)
-            return false;
-        for (size_t i = 0; i < len; ++i)
-        {
-            const unsigned char lhs = static_cast<unsigned char>(value[i]);
-            const unsigned char rhs = static_cast<unsigned char>(literal[i]);
-            if (std::tolower(lhs) != std::tolower(rhs))
-                return false;
-        }
-        return true;
-    };
-
-    if (equalsIgnoreCase(tok, "true"))
-        return Value::constBool(true);
-    if (equalsIgnoreCase(tok, "false"))
-        return Value::constBool(false);
-    if (tok[0] == '%')
-    {
-        std::string name = tok.substr(1);
-        auto it = state_.tempIds.find(name);
-        if (it != state_.tempIds.end())
-            return Value::temp(it->second);
-        if (name.size() > 1 && name[0] == 't')
-        {
-            bool digits = true;
-            for (size_t i = 1; i < name.size(); ++i)
-            {
-                if (!std::isdigit(static_cast<unsigned char>(name[i])))
-                {
-                    digits = false;
-                    break;
-                }
-            }
-            if (digits)
-            {
-                try
-                {
-                    return Value::temp(static_cast<unsigned>(std::stoul(name.substr(1))));
-                }
-                catch (const std::exception &)
-                {
-                    std::ostringstream oss;
-                    oss << "Line " << state_.lineNo << ": invalid temp id '" << tok << "'";
-                    return Expected<Value>{makeError(state_.curLoc, oss.str())};
-                }
-            }
-        }
-        std::ostringstream oss;
-        oss << "Line " << state_.lineNo << ": unknown temp '" << tok << "'";
-        return Expected<Value>{makeError(state_.curLoc, oss.str())};
-    }
-    if (tok[0] == '@')
-        return Value::global(tok.substr(1));
-    if (tok == "null")
-        return Value::null();
-    if (tok.size() >= 2 && tok.front() == '"' && tok.back() == '"')
-    {
-        std::string decoded;
-        std::string errMsg;
-        std::string literal = tok.substr(1, tok.size() - 2);
-        if (!il::io::decodeEscapedString(literal, decoded, &errMsg))
-        {
-            std::ostringstream oss;
-            oss << "Line " << state_.lineNo << ": " << errMsg;
-            return Expected<Value>{makeError(state_.curLoc, oss.str())};
-        }
-        return Value::constStr(std::move(decoded));
-    }
-    if (tok.find('.') != std::string::npos || tok.find('e') != std::string::npos ||
-        tok.find('E') != std::string::npos)
-    {
-        double value = 0.0;
-        if (parseFloatLiteral(tok, value))
-            return Value::constFloat(value);
-        std::ostringstream oss;
-        oss << "Line " << state_.lineNo << ": invalid floating literal '" << tok << "'";
-        return Expected<Value>{makeError(state_.curLoc, oss.str())};
-    }
-    long long intValue = 0;
-    if (parseIntegerLiteral(tok, intValue))
-        return Value::constInt(intValue);
-    std::ostringstream oss;
-    oss << "Line " << state_.lineNo << ": invalid integer literal '" << tok << "'";
-    return Expected<Value>{makeError(state_.curLoc, oss.str())};
+    const OperandKind kind = classifyOperandToken(tok);
+    const OperandHandler handler = kOperandHandlers[static_cast<size_t>(kind)];
+    return handler(tok, state_);
 }
 
 /// @brief Split a comma-separated operand list while respecting nested constructs.
