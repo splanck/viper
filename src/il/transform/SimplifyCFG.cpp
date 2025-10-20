@@ -14,6 +14,8 @@
 
 #include "il/transform/SimplifyCFG.hpp"
 
+#include "il/transform/AnalysisManager.hpp"
+#include "il/transform/PassRegistry.hpp"
 #include "il/transform/SimplifyCFG/BlockMerging.hpp"
 #include "il/transform/SimplifyCFG/BranchFolding.hpp"
 #include "il/transform/SimplifyCFG/ForwardingElimination.hpp"
@@ -74,10 +76,17 @@ void verifyIntermediateState(const il::core::Module *) {}
 
 /// @brief Mark cached CFG/dominator analyses as stale once the pass modifies IR.
 /// @param function Function whose analyses must be invalidated.
-void invalidateCFGAndDominators(il::core::Function &function)
+void invalidateCFGAndDominators(il::core::Function &function,
+                                il::transform::AnalysisManager *analysisManager)
 {
-    static_cast<void>(function);
-    // TODO: Hook into analysis invalidation once caches are connected.
+    if (!analysisManager)
+        return;
+
+    il::transform::PreservedAnalyses preserved;
+    preserved.preserveAllModules();
+    // SimplifyCFG mutates the control-flow graph, so drop CFG, dominator, and
+    // liveness summaries to force recomputation on the next query.
+    analysisManager->invalidateAfterFunctionPass(preserved, function);
 }
 
 } // namespace
@@ -120,7 +129,7 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
     if (changedAny)
     {
         verifyPostconditions(module_);
-        invalidateCFGAndDominators(F);
+        invalidateCFGAndDominators(F, analysisManager_);
     }
 
     if (outStats)
