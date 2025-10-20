@@ -160,7 +160,17 @@ rt_string rt_concat(rt_string a, rt_string b)
 {
     size_t len_a = rt_string_len_bytes(a);
     size_t len_b = rt_string_len_bytes(b);
+    if (len_a > SIZE_MAX - len_b)
+    {
+        rt_trap("rt_concat: length overflow");
+        return NULL;
+    }
     size_t total = len_a + len_b;
+    if (total == SIZE_MAX)
+    {
+        rt_trap("rt_concat: length overflow");
+        return NULL;
+    }
 
     rt_string out = rt_string_alloc(total, total + 1);
     if (!out)
