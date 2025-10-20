@@ -11,6 +11,7 @@
 #include "frontends/basic/LowerExprLogical.hpp"
 #include "frontends/basic/LowerExprNumeric.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/lower/Emitter.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -273,32 +274,22 @@ Lowerer::RVal Lowerer::lowerBoolBranchExpr(Value cond,
 
 Lowerer::Value Lowerer::emitConstI64(std::int64_t v)
 {
-    return Value::constInt(v);
+    return emitter().emitConstI64(v);
 }
 
 Lowerer::Value Lowerer::emitZext1ToI64(Value val)
 {
-    return emitUnary(Opcode::Zext1, Type(Type::Kind::I64), val);
+    return emitter().emitZext1ToI64(val);
 }
 
 Lowerer::Value Lowerer::emitISub(Value lhs, Value rhs)
 {
-    return emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), lhs, rhs);
+    return emitter().emitISub(lhs, rhs);
 }
 
 Lowerer::Value Lowerer::emitBasicLogicalI64(Value b1)
 {
-    if (context().current() == nullptr)
-    {
-        if (b1.kind == Value::Kind::ConstInt)
-        {
-            return Value::constInt(b1.i64 != 0 ? -1 : 0);
-        }
-        return Value::constInt(0);
-    }
-    Value i64zero = emitConstI64(0);
-    Value zext = emitZext1ToI64(b1);
-    return emitISub(i64zero, zext);
+    return emitter().emitBasicLogicalI64(b1);
 }
 
 /// @brief Lower a unary BASIC expression, currently handling logical NOT.

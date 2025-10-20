@@ -12,6 +12,7 @@
 /// and are tracked through the shared ProcedureContext.
 
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/lower/Emitter.hpp"
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -27,12 +28,12 @@ namespace il::frontends::basic
 
 Lowerer::IlType Lowerer::ilBoolTy()
 {
-    return Type(Type::Kind::I1);
+    return emitter().ilBoolTy();
 }
 
 Lowerer::IlValue Lowerer::emitBoolConst(bool v)
 {
-    return emitUnary(Opcode::Trunc1, ilBoolTy(), Value::constInt(v ? 1 : 0));
+    return emitter().emitBoolConst(v);
 }
 
 Lowerer::IlValue Lowerer::emitBoolFromBranches(const std::function<void(Value)> &emitThen,
@@ -41,39 +42,7 @@ Lowerer::IlValue Lowerer::emitBoolFromBranches(const std::function<void(Value)> 
                                                std::string_view elseLabelBase,
                                                std::string_view joinLabelBase)
 {
-    ProcedureContext &ctx = context();
-    Value slot = emitAlloca(1);
-
-    auto labelFor = [&](std::string_view base)
-    {
-        std::string hint(base);
-        if (BlockNamer *blockNamer = ctx.blockNames().namer())
-            return blockNamer->generic(hint);
-        return mangler.block(hint);
-    };
-
-    std::string thenLbl = labelFor(thenLabelBase);
-    std::string elseLbl = labelFor(elseLabelBase);
-    std::string joinLbl = labelFor(joinLabelBase);
-
-    Function *func = ctx.function();
-    assert(func && "emitBoolFromBranches requires an active function");
-    BasicBlock *thenBlk = &builder->addBlock(*func, thenLbl);
-    BasicBlock *elseBlk = &builder->addBlock(*func, elseLbl);
-    BasicBlock *joinBlk = &builder->addBlock(*func, joinLbl);
-
-    ctx.setCurrent(thenBlk);
-    emitThen(slot);
-    if (ctx.current() && !ctx.current()->terminated)
-        emitBr(joinBlk);
-
-    ctx.setCurrent(elseBlk);
-    emitElse(slot);
-    if (ctx.current() && !ctx.current()->terminated)
-        emitBr(joinBlk);
-
-    ctx.setCurrent(joinBlk);
-    return emitLoad(ilBoolTy(), slot);
+    return emitter().emitBoolFromBranches(emitThen, emitElse, thenLabelBase, elseLabelBase, joinLabelBase);
 }
 
 Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAccessKind kind)
@@ -131,123 +100,47 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
 
 Value Lowerer::emitAlloca(int bytes)
 {
-    unsigned id = nextTempId();
-    Instr in;
-    in.result = id;
-    in.op = Opcode::Alloca;
-    in.type = Type(Type::Kind::Ptr);
-    in.operands.push_back(Value::constInt(bytes));
-    in.loc = curLoc;
-    BasicBlock *block = context().current();
-    assert(block && "emitAlloca requires an active block");
-    block->instructions.push_back(in);
-    return Value::temp(id);
+    return emitter().emitAlloca(bytes);
 }
 
 Value Lowerer::emitLoad(Type ty, Value addr)
 {
-    unsigned id = nextTempId();
-    Instr in;
-    in.result = id;
-    in.op = Opcode::Load;
-    in.type = ty;
-    in.operands.push_back(addr);
-    in.loc = curLoc;
-    BasicBlock *block = context().current();
-    assert(block && "emitLoad requires an active block");
-    block->instructions.push_back(in);
-    return Value::temp(id);
+    return emitter().emitLoad(ty, addr);
 }
 
 void Lowerer::emitStore(Type ty, Value addr, Value val)
 {
-    Instr in;
-    in.op = Opcode::Store;
-    in.type = ty;
-    in.operands = {addr, val};
-    in.loc = curLoc;
-    BasicBlock *block = context().current();
-    assert(block && "emitStore requires an active block");
-    block->instructions.push_back(in);
+    emitter().emitStore(ty, addr, val);
 }
 
 Value Lowerer::emitBinary(Opcode op, Type ty, Value lhs, Value rhs)
 {
-    unsigned id = nextTempId();
-    Instr in;
-    in.result = id;
-    in.op = op;
-    in.type = ty;
-    in.operands = {lhs, rhs};
-    in.loc = curLoc;
-    BasicBlock *block = context().current();
-    assert(block && "emitBinary requires an active block");
-    block->instructions.push_back(in);
-    return Value::temp(id);
+    return emitter().emitBinary(op, ty, lhs, rhs);
 }
 
 Value Lowerer::emitUnary(Opcode op, Type ty, Value val)
 {
-    unsigned id = nextTempId();
-    Instr in;
-    in.result = id;
-    in.op = op;
-    in.type = ty;
-    in.operands = {val};
-    in.loc = curLoc;
-    BasicBlock *block = context().current();
-    assert(block && "emitUnary requires an active block");
-    block->instructions.push_back(in);
-    return Value::temp(id);
+    return emitter().emitUnary(op, ty, val);
 }
 
 Value Lowerer::emitCheckedNeg(Type ty, Value val)
 {
-    return emitBinary(Opcode::ISubOvf, ty, Value::constInt(0), val);
+    return emitter().emitCheckedNeg(ty, val);
 }
 
 void Lowerer::emitCall(const std::string &callee, const std::vector<Value> &args)
 {
-    Instr in;
-    in.op = Opcode::Call;
-    in.type = Type(Type::Kind::Void);
-    in.callee = callee;
-    in.operands = args;
-    in.loc = curLoc;
-    BasicBlock *block = context().current();
-    assert(block && "emitCall requires an active block");
-    block->instructions.push_back(in);
+    emitter().emitCall(callee, args);
 }
 
 Value Lowerer::emitCallRet(Type ty, const std::string &callee, const std::vector<Value> &args)
 {
-    unsigned id = nextTempId();
-    Instr in;
-    in.result = id;
-    in.op = Opcode::Call;
-    in.type = ty;
-    in.callee = callee;
-    in.operands = args;
-    in.loc = curLoc;
-    BasicBlock *block = context().current();
-    assert(block && "emitCallRet requires an active block");
-    block->instructions.push_back(in);
-    return Value::temp(id);
+    return emitter().emitCallRet(ty, callee, args);
 }
 
 Value Lowerer::emitConstStr(const std::string &globalName)
 {
-    unsigned id = nextTempId();
-    Instr in;
-    in.result = id;
-    in.op = Opcode::ConstStr;
-    in.type = Type(Type::Kind::Str);
-    in.operands.push_back(Value::global(globalName));
-    in.loc = curLoc;
-    BasicBlock *block = context().current();
-    assert(block && "emitConstStr requires an active block");
-    block->instructions.push_back(in);
-    return Value::temp(id);
+    return emitter().emitConstStr(globalName);
 }
 
 std::string Lowerer::getStringLabel(const std::string &s)
