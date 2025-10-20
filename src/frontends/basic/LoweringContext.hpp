@@ -5,7 +5,6 @@
 // Links: docs/codemap.md
 #pragma once
 
-#include "frontends/basic/NameMangler.hpp"
 #include <string>
 #include <unordered_map>
 
@@ -14,7 +13,6 @@ namespace il
 
 namespace core
 {
-struct BasicBlock;
 class Function;
 } // namespace core
 
@@ -42,9 +40,6 @@ class LoweringContext
     /// @brief Get or create stack slot name for BASIC variable @p name.
     std::string getOrCreateSlot(const std::string &name);
 
-    /// @brief Get or create a block for the given BASIC line number.
-    core::BasicBlock *getOrCreateBlock(int line);
-
     /// @brief Get deterministic name for string literal @p value.
     std::string getOrAddString(const std::string &value);
 
@@ -56,17 +51,9 @@ class LoweringContext
     /// function; builder appends new blocks and instructions to it.
     core::Function &function;
 
-    /// Generates deterministic symbol names for variables and strings. Owned by
-    /// the context and lives for its entire duration.
-    NameMangler mangler;
-
     /// Mapping from BASIC variable names to their stack slot identifiers. Owns
     /// the strings it stores but not the variables they represent.
     std::unordered_map<std::string, std::string> varSlots;
-
-    /// BASIC line number to IL basic block mapping. Pointers refer to blocks
-    /// owned by @ref function.
-    std::unordered_map<int, core::BasicBlock *> blocks;
 
     /// Deduplicated string literals mapped to generated symbol names. Owns
     /// copies of the literal values.
