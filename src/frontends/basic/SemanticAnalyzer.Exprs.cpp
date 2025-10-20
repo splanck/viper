@@ -13,184 +13,15 @@
 
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 
-#include <array>
 #include <limits>
-#include <sstream>
 
 namespace il::frontends::basic::semantic_analyzer_detail
 {
-
-namespace
-{
-constexpr std::size_t exprRuleCount() noexcept
-{
-    return static_cast<std::size_t>(BinaryExpr::Op::LogicalOr) + 1;
-}
-} // namespace
-
-constexpr bool isNumericType(SemanticAnalyzer::Type type) noexcept
-{
-    using Type = SemanticAnalyzer::Type;
-    return type == Type::Int || type == Type::Float || type == Type::Unknown;
-}
-
-constexpr bool isIntegerType(SemanticAnalyzer::Type type) noexcept
-{
-    using Type = SemanticAnalyzer::Type;
-    return type == Type::Int || type == Type::Unknown;
-}
-
-constexpr bool isBooleanType(SemanticAnalyzer::Type type) noexcept
-{
-    using Type = SemanticAnalyzer::Type;
-    return type == Type::Bool || type == Type::Unknown;
-}
-
-constexpr bool isStringType(SemanticAnalyzer::Type type) noexcept
-{
-    using Type = SemanticAnalyzer::Type;
-    return type == Type::String;
-}
-
-SemanticAnalyzer::Type commonNumericType(SemanticAnalyzer::Type lhs,
-                                         SemanticAnalyzer::Type rhs) noexcept
-{
-    using Type = SemanticAnalyzer::Type;
-    return (lhs == Type::Float || rhs == Type::Float) ? Type::Float : Type::Int;
-}
-
-SemanticAnalyzer::Type numericResult(SemanticAnalyzer::Type lhs,
-                                     SemanticAnalyzer::Type rhs) noexcept
-{
-    return commonNumericType(lhs, rhs);
-}
-
-SemanticAnalyzer::Type divisionResult(SemanticAnalyzer::Type lhs,
-                                      SemanticAnalyzer::Type rhs) noexcept
-{
-    using semantic_analyzer_detail::isNumericType;
-    if (!isNumericType(lhs) || !isNumericType(rhs))
-        return SemanticAnalyzer::Type::Unknown;
-    return SemanticAnalyzer::Type::Float;
-}
-
-static SemanticAnalyzer::Type addResult(SemanticAnalyzer::Type lhs,
-                                        SemanticAnalyzer::Type rhs) noexcept
-{
-    using T = SemanticAnalyzer::Type;
-    if (lhs == T::String && rhs == T::String) return T::String;
-    return commonNumericType(lhs, rhs);
-}
-
-SemanticAnalyzer::Type powResult(SemanticAnalyzer::Type,
-                                 SemanticAnalyzer::Type) noexcept
-{
-    return SemanticAnalyzer::Type::Float;
-}
-
-SemanticAnalyzer::Type integerResult(SemanticAnalyzer::Type, SemanticAnalyzer::Type) noexcept
-{
-    return SemanticAnalyzer::Type::Int;
-}
-
-SemanticAnalyzer::Type booleanResult(SemanticAnalyzer::Type, SemanticAnalyzer::Type) noexcept
-{
-    return SemanticAnalyzer::Type::Bool;
-}
-
-std::string formatLogicalOperandMessage(BinaryExpr::Op op,
-                                        SemanticAnalyzer::Type lhs,
-                                        SemanticAnalyzer::Type rhs)
-{
-    std::ostringstream oss;
-    oss << "Logical operator " << logicalOpName(op) << " requires BOOLEAN operands, got "
-        << semanticTypeName(lhs) << " and " << semanticTypeName(rhs) << '.';
-    return oss.str();
-}
-
-const ExprRule &exprRule(BinaryExpr::Op op)
-{
-    static const std::array<ExprRule, exprRuleCount()> rules = {{
-        {BinaryExpr::Op::Add,
-         &SemanticAnalyzer::validateAddOperands,
-         &addResult,
-         "B2001"},
-        {BinaryExpr::Op::Sub,
-         &SemanticAnalyzer::validateNumericOperands,
-         &numericResult,
-         "B2001"},
-        {BinaryExpr::Op::Mul,
-         &SemanticAnalyzer::validateNumericOperands,
-         &numericResult,
-         "B2001"},
-        {BinaryExpr::Op::Div,
-         &SemanticAnalyzer::validateDivisionOperands,
-         &divisionResult,
-         "B2001"},
-        {BinaryExpr::Op::Pow,
-         &SemanticAnalyzer::validateNumericOperands,
-         &powResult,
-         "B2001"},
-        {BinaryExpr::Op::IDiv,
-         &SemanticAnalyzer::validateIntegerOperands,
-         &integerResult,
-         "B2001"},
-        {BinaryExpr::Op::Mod,
-         &SemanticAnalyzer::validateIntegerOperands,
-         &integerResult,
-         "B2001"},
-        {BinaryExpr::Op::Eq,
-         &SemanticAnalyzer::validateComparisonOperands,
-         &booleanResult,
-         "B2001"},
-        {BinaryExpr::Op::Ne,
-         &SemanticAnalyzer::validateComparisonOperands,
-         &booleanResult,
-         "B2001"},
-        {BinaryExpr::Op::Lt,
-         &SemanticAnalyzer::validateComparisonOperands,
-         &booleanResult,
-         "B2001"},
-        {BinaryExpr::Op::Le,
-         &SemanticAnalyzer::validateComparisonOperands,
-         &booleanResult,
-         "B2001"},
-        {BinaryExpr::Op::Gt,
-         &SemanticAnalyzer::validateComparisonOperands,
-         &booleanResult,
-         "B2001"},
-        {BinaryExpr::Op::Ge,
-         &SemanticAnalyzer::validateComparisonOperands,
-         &booleanResult,
-         "B2001"},
-        {BinaryExpr::Op::LogicalAndShort,
-         &SemanticAnalyzer::validateLogicalOperands,
-         &booleanResult,
-         SemanticAnalyzer::DiagNonBooleanLogicalOperand},
-        {BinaryExpr::Op::LogicalOrShort,
-         &SemanticAnalyzer::validateLogicalOperands,
-         &booleanResult,
-         SemanticAnalyzer::DiagNonBooleanLogicalOperand},
-        {BinaryExpr::Op::LogicalAnd,
-         &SemanticAnalyzer::validateLogicalOperands,
-         &booleanResult,
-         SemanticAnalyzer::DiagNonBooleanLogicalOperand},
-        {BinaryExpr::Op::LogicalOr,
-         &SemanticAnalyzer::validateLogicalOperands,
-         &booleanResult,
-         SemanticAnalyzer::DiagNonBooleanLogicalOperand},
-    }};
-    return rules.at(static_cast<std::size_t>(op));
-}
 
 } // namespace il::frontends::basic::semantic_analyzer_detail
 
 namespace il::frontends::basic
 {
-
-using semantic_analyzer_detail::exprRule;
-using semantic_analyzer_detail::levenshtein;
-using semantic_analyzer_detail::semanticTypeName;
 
 using semantic_analyzer_detail::levenshtein;
 using semantic_analyzer_detail::semanticTypeName;
@@ -267,6 +98,10 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeVar(VarExpr &v)
         return it->second;
     if (!v.name.empty())
     {
+        // BASIC suffix rules provide implicit types for undeclared variables:
+        // '$' for STRING and '#'/'!' for floating point. Tracking this here keeps
+        // later passes aligned with language defaults even when declarations are
+        // omitted in source.
         if (v.name.back() == '$')
             return Type::String;
         if (v.name.back() == '#' || v.name.back() == '!')
@@ -277,201 +112,17 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeVar(VarExpr &v)
 
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeUnary(const UnaryExpr &u)
 {
-    Type t = Type::Unknown;
-    if (u.expr)
-        t = visitExpr(*u.expr);
-    switch (u.op)
-    {
-        case UnaryExpr::Op::LogicalNot:
-            if (t != Type::Unknown && t != Type::Bool)
-            {
-                std::ostringstream oss;
-                oss << "NOT requires a BOOLEAN operand, got " << semanticTypeName(t) << '.';
-                de.emit(il::support::Severity::Error,
-                        std::string(DiagNonBooleanNotOperand),
-                        u.loc,
-                        3,
-                        oss.str());
-            }
-            return Type::Bool;
-        case UnaryExpr::Op::Plus:
-        case UnaryExpr::Op::Negate:
-            if (t != Type::Unknown && !semantic_analyzer_detail::isNumericType(t))
-            {
-                std::ostringstream oss;
-                char opChar = (u.op == UnaryExpr::Op::Negate) ? '-' : '+';
-                oss << "unary " << opChar << " requires a NUMERIC operand, got "
-                    << semanticTypeName(t) << '.';
-                de.emit(il::support::Severity::Error,
-                        "B2001",
-                        u.loc,
-                        1,
-                        oss.str());
-                return Type::Unknown;
-            }
-            return t;
-    }
-    return Type::Unknown;
+    return sem::analyzeUnaryExpr(*this, u);
 }
 
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeBinary(const BinaryExpr &b)
 {
-    Type lt = Type::Unknown;
-    Type rt = Type::Unknown;
-    if (b.lhs)
-        lt = visitExpr(*b.lhs);
-    if (b.rhs)
-        rt = visitExpr(*b.rhs);
-
-    if (b.op == BinaryExpr::Op::Add || b.op == BinaryExpr::Op::Sub || b.op == BinaryExpr::Op::Mul)
-    {
-        if (semantic_analyzer_detail::isNumericType(lt) &&
-            semantic_analyzer_detail::isNumericType(rt))
-        {
-            Type target = semantic_analyzer_detail::commonNumericType(lt, rt);
-            if (target == Type::Float)
-            {
-                if (b.lhs && lt != Type::Float && lt != Type::Unknown)
-                    markImplicitConversion(*b.lhs, target);
-                if (b.rhs && rt != Type::Float && rt != Type::Unknown)
-                    markImplicitConversion(*b.rhs, target);
-            }
-        }
-    }
-    const auto &rule = exprRule(b.op);
-    if (rule.validator)
-        (this->*(rule.validator))(b, lt, rt, rule.mismatchDiag);
-    if (rule.result)
-        return rule.result(lt, rt);
-    return Type::Unknown;
+    return sem::analyzeBinaryExpr(*this, b);
 }
 
 void SemanticAnalyzer::markImplicitConversion(const Expr &expr, Type targetType)
 {
     implicitConversions_[&expr] = targetType;
-}
-
-void SemanticAnalyzer::emitOperandTypeMismatch(const BinaryExpr &expr, std::string_view diagId)
-{
-    if (diagId.empty())
-        return;
-
-    std::string msg = "operand type mismatch";
-    de.emit(il::support::Severity::Error,
-            std::string(diagId),
-            expr.loc,
-            1,
-            std::move(msg));
-}
-
-void SemanticAnalyzer::emitDivideByZero(const BinaryExpr &expr)
-{
-    std::string msg = "divide by zero";
-    de.emit(il::support::Severity::Error, "B2002", expr.loc, 1, std::move(msg));
-}
-
-bool SemanticAnalyzer::rhsIsLiteralZero(const BinaryExpr &expr) const
-{
-    if (const auto *ri = dynamic_cast<const IntExpr *>(expr.rhs.get());
-        ri != nullptr)
-    {
-        return ri->value == 0;
-    }
-
-    if (const auto *rf = dynamic_cast<const FloatExpr *>(expr.rhs.get());
-        rf != nullptr)
-    {
-        return rf->value == 0.0;
-    }
-
-    return false;
-}
-
-void SemanticAnalyzer::validateNumericOperands(const BinaryExpr &expr,
-                                               Type lhs,
-                                               Type rhs,
-                                               std::string_view diagId)
-{
-    if (!semantic_analyzer_detail::isNumericType(lhs) ||
-        !semantic_analyzer_detail::isNumericType(rhs))
-    {
-        emitOperandTypeMismatch(expr, diagId);
-    }
-}
-
-void SemanticAnalyzer::validateAddOperands(const BinaryExpr &expr,
-                                           Type lhs,
-                                           Type rhs,
-                                           std::string_view diagId)
-{
-    const bool numericOk = semantic_analyzer_detail::isNumericType(lhs) &&
-                           semantic_analyzer_detail::isNumericType(rhs);
-    const bool stringOk = semantic_analyzer_detail::isStringType(lhs) &&
-                          semantic_analyzer_detail::isStringType(rhs);
-    if (!numericOk && !stringOk)
-    {
-        emitOperandTypeMismatch(expr, diagId);
-    }
-}
-
-void SemanticAnalyzer::validateDivisionOperands(const BinaryExpr &expr,
-                                                Type lhs,
-                                                Type rhs,
-                                                std::string_view diagId)
-{
-    validateNumericOperands(expr, lhs, rhs, diagId);
-    if (rhsIsLiteralZero(expr))
-    {
-        emitDivideByZero(expr);
-    }
-}
-
-void SemanticAnalyzer::validateIntegerOperands(const BinaryExpr &expr,
-                                               Type lhs,
-                                               Type rhs,
-                                               std::string_view diagId)
-{
-    if (!semantic_analyzer_detail::isIntegerType(lhs) ||
-        !semantic_analyzer_detail::isIntegerType(rhs))
-    {
-        emitOperandTypeMismatch(expr, diagId);
-    }
-    if (rhsIsLiteralZero(expr))
-    {
-        emitDivideByZero(expr);
-    }
-}
-
-void SemanticAnalyzer::validateComparisonOperands(const BinaryExpr &expr,
-                                                  Type lhs,
-                                                  Type rhs,
-                                                  std::string_view diagId)
-{
-    const bool allowStrings =
-        expr.op == BinaryExpr::Op::Eq || expr.op == BinaryExpr::Op::Ne;
-    const bool numericOk = semantic_analyzer_detail::isNumericType(lhs) &&
-                           semantic_analyzer_detail::isNumericType(rhs);
-    const bool stringOk = allowStrings && semantic_analyzer_detail::isStringType(lhs) &&
-                          semantic_analyzer_detail::isStringType(rhs);
-
-    if (!numericOk && !stringOk)
-        emitOperandTypeMismatch(expr, diagId);
-}
-
-void SemanticAnalyzer::validateLogicalOperands(const BinaryExpr &expr,
-                                               Type lhs,
-                                               Type rhs,
-                                               std::string_view diagId)
-{
-    if (semantic_analyzer_detail::isBooleanType(lhs) &&
-        semantic_analyzer_detail::isBooleanType(rhs))
-        return;
-
-    de.emit(il::support::Severity::Error,
-            std::string(diagId),
-            expr.loc,
-            1,
-            semantic_analyzer_detail::formatLogicalOperandMessage(expr.op, lhs, rhs));
 }
 
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
