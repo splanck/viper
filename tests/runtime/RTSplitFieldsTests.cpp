@@ -54,5 +54,19 @@ int main()
         rt_string_unref(quoted_fields[i]);
     rt_string_unref(quoted_line);
 
+    const char *escaped = "\"Embedded \"\"quotes\"\"\",next";
+    rt_string escaped_line = rt_string_from_bytes(escaped, (int64_t)strlen(escaped));
+    rt_string escaped_fields[2] = {0};
+    int64_t escaped_count = rt_split_fields(escaped_line, escaped_fields, 2);
+    assert(escaped_count == 2);
+    const char *e0 = rt_string_cstr(escaped_fields[0]);
+    assert(strcmp(e0, "Embedded \"quotes\"") == 0);
+    const char *e1 = rt_string_cstr(escaped_fields[1]);
+    assert(strcmp(e1, "next") == 0);
+
+    for (int i = 0; i < 2; ++i)
+        rt_string_unref(escaped_fields[i]);
+    rt_string_unref(escaped_line);
+
     return 0;
 }

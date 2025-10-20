@@ -286,8 +286,10 @@ int64_t rt_split_fields(rt_string line, rt_string *out_fields, int64_t max_field
                 ++field_start;
             while (field_end > field_start && isspace((unsigned char)data[field_end - 1]))
                 --field_end;
+            bool had_quotes = false;
             if (field_end > field_start && data[field_start] == '"' && data[field_end - 1] == '"')
             {
+                had_quotes = true;
                 ++field_start;
                 --field_end;
             }
@@ -300,8 +302,53 @@ int64_t rt_split_fields(rt_string line, rt_string *out_fields, int64_t max_field
                 }
                 else
                 {
-                    out_fields[stored++] =
-                        rt_string_from_bytes(data + field_start, field_end - field_start);
+                    const char *field_data = data + field_start;
+                    size_t field_len = field_end - field_start;
+                    const char *copy_data = field_data;
+                    size_t copy_len = field_len;
+                    char *temp = NULL;
+
+                    if (had_quotes && field_len > 0)
+                    {
+                        bool needs_unescape = false;
+                        for (size_t j = 0; j + 1 < field_len; ++j)
+                        {
+                            if (field_data[j] == '"' && field_data[j + 1] == '"')
+                            {
+                                needs_unescape = true;
+                                break;
+                            }
+                        }
+
+                        if (needs_unescape)
+                        {
+                            temp = (char *)malloc(field_len);
+                            if (!temp)
+                                rt_trap("rt_split_fields: alloc");
+
+                            size_t write_idx = 0;
+                            for (size_t read_idx = 0; read_idx < field_len; ++read_idx)
+                            {
+                                char ch = field_data[read_idx];
+                                if (ch == '"' && read_idx + 1 < field_len && field_data[read_idx + 1] == '"')
+                                {
+                                    temp[write_idx++] = '"';
+                                    ++read_idx;
+                                }
+                                else
+                                {
+                                    temp[write_idx++] = ch;
+                                }
+                            }
+
+                            copy_data = temp;
+                            copy_len = write_idx;
+                        }
+                    }
+
+                    out_fields[stored++] = rt_string_from_bytes(copy_data, copy_len);
+                    if (temp)
+                        free(temp);
                 }
             }
             ++total;
