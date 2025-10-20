@@ -20,15 +20,24 @@
 #include "frontends/basic/SemanticAnalyzer.Stmts.IO.hpp"
 #include "frontends/basic/SemanticAnalyzer.Stmts.Runtime.hpp"
 
+namespace il::frontends::basic::sem
+{
+class ExprCheckContext;
+SemanticAnalyzer::Type analyzeUnaryExpr(SemanticAnalyzer &analyzer, const UnaryExpr &expr);
+SemanticAnalyzer::Type analyzeBinaryExpr(SemanticAnalyzer &analyzer, const BinaryExpr &expr);
+SemanticAnalyzer::Type analyzeCallExpr(SemanticAnalyzer &analyzer, const CallExpr &expr);
+} // namespace il::frontends::basic::sem
+
 namespace il::frontends::basic::semantic_analyzer_detail
 {
 
 struct ExprRule
 {
-    using OperandValidator = void (SemanticAnalyzer::*)(const BinaryExpr &,
-                                                        SemanticAnalyzer::Type,
-                                                        SemanticAnalyzer::Type,
-                                                        std::string_view);
+    using OperandValidator = void (*)(sem::ExprCheckContext &,
+                                      const BinaryExpr &,
+                                      SemanticAnalyzer::Type,
+                                      SemanticAnalyzer::Type,
+                                      std::string_view);
     using ResultTypeFn = SemanticAnalyzer::Type (*)(SemanticAnalyzer::Type,
                                                     SemanticAnalyzer::Type);
 

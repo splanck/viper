@@ -6,10 +6,12 @@
 //===----------------------------------------------------------------------===//
 //
 /// @file
-/// @brief Shared infrastructure for control-flow semantic checkers.
-/// @details Provides a thin context wrapper that exposes the mutable state used
-///          by control-statement analyzers (loop stacks and label tracking)
-///          while asserting balance of those stacks when a checker completes.
+/// @brief Shared infrastructure for control-flow and expression semantic
+///        checkers.
+/// @details Provides thin context wrappers and helper routines that expose the
+///          mutable state used by control-statement analyzers (loop stacks and
+///          label tracking) and expression analyzers (type queries and implicit
+///          conversions) while asserting invariants when a checker completes.
 ///          Individual checkers live in dedicated translation units.
 ///
 //===----------------------------------------------------------------------===//
@@ -22,6 +24,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace il::frontends::basic::sem
 {
@@ -217,6 +220,95 @@ class ControlCheckContext
     size_t forDepth_ = 0;
 };
 
+/// @brief Context wrapper for expression checkers.
+/// @details Provides helpers for evaluating child expressions and recording
+///          implicit conversions while exposing diagnostics. visitExpr expects
+///          mutable nodes, so evaluate() internally casts away constness when
+///          callers only have const handles.
+class ExprCheckContext
+{
+  public:
+    explicit ExprCheckContext(SemanticAnalyzer &analyzer) noexcept
+        : analyzer_(&analyzer)
+    {
+    }
+
+    [[nodiscard]] SemanticAnalyzer &analyzer() noexcept { return *analyzer_; }
+    [[nodiscard]] const SemanticAnalyzer &analyzer() const noexcept { return *analyzer_; }
+
+    SemanticAnalyzer::Type evaluate(Expr &expr)
+    {
+        return analyzer_->visitExpr(expr);
+    }
+
+    SemanticAnalyzer::Type evaluate(const Expr &expr)
+    {
+        return analyzer_->visitExpr(const_cast<Expr &>(expr));
+    }
+
+    void markImplicitConversion(const Expr &expr, SemanticAnalyzer::Type target)
+    {
+        analyzer_->markImplicitConversion(expr, target);
+    }
+
+    [[nodiscard]] SemanticDiagnostics &diagnostics() noexcept { return analyzer_->de; }
+
+    const ProcSignature *resolveCallee(const CallExpr &expr, ProcSignature::Kind kind)
+    {
+        return analyzer_->resolveCallee(expr, kind);
+    }
+
+    std::vector<SemanticAnalyzer::Type> checkCallArgs(const CallExpr &expr,
+                                                      const ProcSignature *sig)
+    {
+        return analyzer_->checkCallArgs(expr, sig);
+    }
+
+    SemanticAnalyzer::Type inferCallType(const CallExpr &expr, const ProcSignature *sig)
+    {
+        return analyzer_->inferCallType(expr, sig);
+    }
+
+  private:
+    SemanticAnalyzer *analyzer_{nullptr};
+};
+
+inline void emitTypeMismatch(SemanticDiagnostics &diagnostics,
+                             std::string code,
+                             il::support::SourceLoc loc,
+                             uint32_t length,
+                             std::string message)
+{
+    diagnostics.emit(il::support::Severity::Error,
+                     std::move(code),
+                     loc,
+                     length,
+                     std::move(message));
+}
+
+inline void emitOperandTypeMismatch(SemanticDiagnostics &diagnostics,
+                                    const BinaryExpr &expr,
+                                    std::string_view diagId)
+{
+    if (diagId.empty())
+        return;
+
+    emitTypeMismatch(diagnostics,
+                     std::string(diagId),
+                     expr.loc,
+                     1,
+                     "operand type mismatch");
+}
+
+inline void emitDivideByZero(SemanticDiagnostics &diagnostics, const BinaryExpr &expr)
+{
+    diagnostics.emit(il::support::Severity::Error,
+                     "B2002",
+                     expr.loc,
+                     1,
+                     "divide by zero");
+}
+
 // Per-construct dispatcher entry points implemented in dedicated translation
 // units.
 void checkConditionExpr(SemanticAnalyzer &analyzer, Expr &expr);
@@ -233,5 +325,8 @@ void analyzeOnErrorGoto(SemanticAnalyzer &analyzer, const OnErrorGoto &stmt);
 void analyzeNext(SemanticAnalyzer &analyzer, const NextStmt &stmt);
 void analyzeResume(SemanticAnalyzer &analyzer, const Resume &stmt);
 void analyzeReturn(SemanticAnalyzer &analyzer, ReturnStmt &stmt);
+SemanticAnalyzer::Type analyzeUnaryExpr(SemanticAnalyzer &analyzer, const UnaryExpr &expr);
+SemanticAnalyzer::Type analyzeBinaryExpr(SemanticAnalyzer &analyzer, const BinaryExpr &expr);
+SemanticAnalyzer::Type analyzeCallExpr(SemanticAnalyzer &analyzer, const CallExpr &expr);
 
 } // namespace il::frontends::basic::sem

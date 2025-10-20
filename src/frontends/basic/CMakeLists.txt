@@ -66,6 +66,9 @@ target_sources(fe_basic PRIVATE
   sem/Check_Loops.cpp
   sem/Check_Jumps.cpp
   sem/Check_Select.cpp
+  sem/Check_Expr_Unary.cpp
+  sem/Check_Expr_Binary.cpp
+  sem/Check_Expr_Call.cpp
   SemanticAnalyzer.Stmts.IO.cpp
   SemanticAnalyzer.Stmts.Runtime.cpp
   Semantic_OOP.cpp

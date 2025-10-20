@@ -23,9 +23,12 @@
 
 namespace il::frontends::basic
 {
+class SemanticAnalyzer;
+
 namespace sem
 {
 class ControlCheckContext;
+class ExprCheckContext;
 } // namespace sem
 
 
@@ -59,6 +62,8 @@ const ExprRule &exprRule(BinaryExpr::Op op);
     /// @brief Diagnostic code for CASE labels that exceed the 32-bit signed range.
     static constexpr std::string_view DiagSelectCaseLabelRange = "B2012";
 
+    enum class Type;
+
     struct SelectCaseSelectorInfo;
     struct SelectCaseArmContext;
 
@@ -83,6 +88,7 @@ const ExprRule &exprRule(BinaryExpr::Op op);
 
   private:
     friend class sem::ControlCheckContext;
+    friend class sem::ExprCheckContext;
     friend class SemanticAnalyzerExprVisitor;
     friend class SemanticAnalyzerStmtVisitor;
     friend const semantic_analyzer_detail::ExprRule &
@@ -288,42 +294,6 @@ const ExprRule &exprRule(BinaryExpr::Op op);
     Type analyzeLBound(LBoundExpr &expr);
     /// @brief Analyze UBOUND expression.
     Type analyzeUBound(UBoundExpr &expr);
-    /// @brief Emit operand type mismatch diagnostic for binary expressions.
-    void emitOperandTypeMismatch(const BinaryExpr &expr, std::string_view diagId);
-    /// @brief Emit divide-by-zero diagnostic when appropriate.
-    void emitDivideByZero(const BinaryExpr &expr);
-    /// @brief Determine whether the RHS of @p expr is the integer literal 0.
-    bool rhsIsLiteralZero(const BinaryExpr &expr) const;
-    /// @brief Ensure operands are numeric (INT or FLOAT) when required.
-    void validateNumericOperands(const BinaryExpr &expr,
-                                 Type lhs,
-                                 Type rhs,
-                                 std::string_view diagId);
-    /// @brief Allows + for numeric+numeric and string+string.
-    void validateAddOperands(const BinaryExpr &expr,
-                             Type lhs,
-                             Type rhs,
-                             std::string_view diagId);
-    /// @brief Validate division operands and detect divide-by-zero.
-    void validateDivisionOperands(const BinaryExpr &expr,
-                                  Type lhs,
-                                  Type rhs,
-                                  std::string_view diagId);
-    /// @brief Validate integer-only operators and detect divide-by-zero.
-    void validateIntegerOperands(const BinaryExpr &expr,
-                                 Type lhs,
-                                 Type rhs,
-                                 std::string_view diagId);
-    /// @brief Validate comparison operands allowing numeric or string equality.
-    void validateComparisonOperands(const BinaryExpr &expr,
-                                    Type lhs,
-                                    Type rhs,
-                                    std::string_view diagId);
-    /// @brief Validate logical operators requiring BOOLEAN operands.
-    void validateLogicalOperands(const BinaryExpr &expr,
-                                 Type lhs,
-                                 Type rhs,
-                                 std::string_view diagId);
     /// @brief Analyze built-in function call.
     Type analyzeBuiltinCall(const BuiltinCallExpr &c);
 
@@ -445,6 +415,6 @@ const ExprRule &exprRule(BinaryExpr::Op op);
     ProcedureScope *activeProcScope_{nullptr};
     bool errorHandlerActive_{false};
     std::optional<int> errorHandlerTarget_;
-};
+}; 
 
 } // namespace il::frontends::basic
