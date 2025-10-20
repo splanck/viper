@@ -134,9 +134,15 @@ void DiagnosticEmitter::printAll(std::ostream &os) const
 {
     for (const auto &e : entries_)
     {
-        auto path = sm_.getPath(e.loc.file_id);
-        os << path << ':' << e.loc.line << ':' << e.loc.column << ": " << toString(e.severity)
-           << '[' << e.code << "]: " << e.message << '\n';
+        if (e.loc.isValid())
+        {
+            auto path = sm_.getPath(e.loc.file_id);
+            if (!path.empty())
+            {
+                os << path << ':' << e.loc.line << ':' << e.loc.column << ": ";
+            }
+        }
+        os << toString(e.severity) << '[' << e.code << "]: " << e.message << '\n';
         std::string line = getLine(e.loc.file_id, e.loc.line);
         if (!line.empty())
         {
