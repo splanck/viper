@@ -36,7 +36,6 @@ Value lowerMid(LowerCtx &ctx, ArrayRef<Value> args)
     const bool hasLength = ctx.hasArg(2);
     const il::support::SourceLoc startLoc = ctx.argLoc(1);
     ctx.ensureI64(1, startLoc);
-    ctx.addConst(1, -1, startLoc);
 
     std::vector<Value> callArgs;
     callArgs.reserve(hasLength ? 3 : 2);

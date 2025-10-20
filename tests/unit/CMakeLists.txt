@@ -35,7 +35,6 @@ function(viper_add_runtime_tests)
   viper_add_test(test_rt_string_invalid ${VIPER_TESTS_DIR}/unit/test_rt_string_invalid.cpp)
   target_link_libraries(test_rt_string_invalid PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_string_invalid test_rt_string_invalid)
-  set_tests_properties(test_rt_string_invalid PROPERTIES WILL_FAIL TRUE)
 
   viper_add_test(test_rt_conv ${VIPER_TESTS_DIR}/unit/test_rt_conv.cpp)
   target_link_libraries(test_rt_conv PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -100,6 +99,10 @@ function(viper_add_runtime_tests)
   viper_add_test(test_rt_instr ${VIPER_TESTS_DIR}/runtime/RTInstrTests.cpp)
   target_link_libraries(test_rt_instr PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_instr test_rt_instr)
+
+  viper_add_test(test_rt_mid ${VIPER_TESTS_DIR}/runtime/RTMidTests.cpp)
+  target_link_libraries(test_rt_mid PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+  viper_add_ctest(test_rt_mid test_rt_mid)
 
   viper_add_test(test_rt_term_color ${VIPER_TESTS_DIR}/runtime/RTTermColorTests.cpp)
   target_link_libraries(test_rt_term_color PRIVATE ${VIPER_RUNTIME_TEST_LIBS} util)
