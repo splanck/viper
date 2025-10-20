@@ -7,6 +7,8 @@ set(RT_SOURCES
   rt_string_encode.c
   rt_io.c
   rt_file.c
+  rt_file_io.c
+  rt_file_path.c
   rt_math.c
   rt_random.c
   rt_array.c
