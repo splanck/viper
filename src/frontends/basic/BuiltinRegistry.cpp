@@ -13,6 +13,7 @@
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/builtins/MathBuiltins.hpp"
 #include <array>
+#include <cstdint>
 #include <unordered_map>
 
 namespace il::frontends::basic
@@ -37,6 +38,91 @@ constexpr std::size_t idx(B b) noexcept
 {
     return static_cast<std::size_t>(b);
 }
+
+/// @brief Describes broad type categories produced by a builtin.
+enum class TypeMask : std::uint8_t
+{
+    None = 0,
+    I64 = 1U << 0U,
+    F64 = 1U << 1U,
+    Str = 1U << 2U,
+};
+
+constexpr TypeMask operator|(TypeMask lhs, TypeMask rhs) noexcept
+{
+    return static_cast<TypeMask>(static_cast<std::uint8_t>(lhs) |
+                                 static_cast<std::uint8_t>(rhs));
+}
+
+struct Arity
+{
+    std::uint8_t minArgs;
+    std::uint8_t maxArgs;
+};
+
+struct BuiltinDescriptor
+{
+    const char *name;
+    B builtin;
+    Arity arity;
+    TypeMask typeMask;
+    SemanticAnalyzer::BuiltinAnalyzer analyze;
+};
+
+/// @brief Declarative builtin table used for name/enum lookups.
+/// Names remain uppercase because lookupBuiltin() performs exact, case-sensitive
+/// matches on normalized BASIC keywords. The arity bounds mirror
+/// SemanticAnalyzer::builtinSignature() so diagnostics continue to enforce the
+/// same argument requirements, and the type masks communicate the possible
+/// result categories to inference helpers.
+constexpr std::array<BuiltinDescriptor, kBuiltinCount> kBuiltinDescriptors{{
+    {"LEN", B::Len, {1, 1}, TypeMask::I64, nullptr},
+    {"MID$", B::Mid, {2, 3}, TypeMask::Str, nullptr},
+    {"LEFT$", B::Left, {2, 2}, TypeMask::Str, nullptr},
+    {"RIGHT$", B::Right, {2, 2}, TypeMask::Str, nullptr},
+    {"STR$", B::Str, {1, 1}, TypeMask::Str, nullptr},
+    {"VAL", B::Val, {1, 1}, TypeMask::F64, nullptr},
+    {"CINT", B::Cint, {1, 1}, TypeMask::I64, nullptr},
+    {"CLNG", B::Clng, {1, 1}, TypeMask::I64, nullptr},
+    {"CSNG", B::Csng, {1, 1}, TypeMask::F64, nullptr},
+    {"CDBL", B::Cdbl, {1, 1}, TypeMask::F64, nullptr},
+    {"INT", B::Int, {1, 1}, TypeMask::F64, nullptr},
+    {"FIX", B::Fix, {1, 1}, TypeMask::F64, nullptr},
+    {"ROUND", B::Round, {1, 2}, TypeMask::F64, nullptr},
+    {"SQR", B::Sqr, {1, 1}, TypeMask::F64, nullptr},
+    {"ABS", B::Abs, {1, 1}, TypeMask::I64 | TypeMask::F64,
+     &SemanticAnalyzer::analyzeAbs},
+    {"FLOOR", B::Floor, {1, 1}, TypeMask::F64, nullptr},
+    {"CEIL", B::Ceil, {1, 1}, TypeMask::F64, nullptr},
+    {"SIN", B::Sin, {1, 1}, TypeMask::F64, nullptr},
+    {"COS", B::Cos, {1, 1}, TypeMask::F64, nullptr},
+    {"POW", B::Pow, {2, 2}, TypeMask::F64, nullptr},
+    {"RND", B::Rnd, {0, 0}, TypeMask::F64, nullptr},
+    {"INSTR", B::Instr, {2, 3}, TypeMask::I64,
+     &SemanticAnalyzer::analyzeInstr},
+    {"LTRIM$", B::Ltrim, {1, 1}, TypeMask::Str, nullptr},
+    {"RTRIM$", B::Rtrim, {1, 1}, TypeMask::Str, nullptr},
+    {"TRIM$", B::Trim, {1, 1}, TypeMask::Str, nullptr},
+    {"UCASE$", B::Ucase, {1, 1}, TypeMask::Str, nullptr},
+    {"LCASE$", B::Lcase, {1, 1}, TypeMask::Str, nullptr},
+    {"CHR$", B::Chr, {1, 1}, TypeMask::Str, nullptr},
+    {"ASC", B::Asc, {1, 1}, TypeMask::I64, nullptr},
+    {"INKEY$", B::InKey, {0, 0}, TypeMask::Str, nullptr},
+    {"GETKEY$", B::GetKey, {0, 0}, TypeMask::Str, nullptr},
+    {"EOF", B::Eof, {1, 1}, TypeMask::I64, nullptr},
+    {"LOF", B::Lof, {1, 1}, TypeMask::I64, nullptr},
+    {"LOC", B::Loc, {1, 1}, TypeMask::I64, nullptr},
+}};
+
+constexpr std::array<BuiltinInfo, kBuiltinCount> makeBuiltinInfos()
+{
+    std::array<BuiltinInfo, kBuiltinCount> infos{};
+    for (const auto &desc : kBuiltinDescriptors)
+        infos[idx(desc.builtin)] = BuiltinInfo{desc.name, desc.analyze};
+    return infos;
+}
+
+constexpr auto kBuiltins = makeBuiltinInfos();
 
 static const std::array<LowerRule, kBuiltinCount> kBuiltinLoweringRules = [] {
     std::array<LowerRule, kBuiltinCount> rules{};
@@ -291,39 +377,6 @@ static const std::array<LowerRule, kBuiltinCount> kBuiltinLoweringRules = [] {
     return rules;
 }();
 
-static const std::array<BuiltinInfo, kBuiltinCount> kBuiltins = [] {
-    std::array<BuiltinInfo, kBuiltinCount> infos{};
-
-    infos[idx(B::Len)] = {"LEN", nullptr};
-    infos[idx(B::Mid)] = {"MID$", nullptr};
-    infos[idx(B::Left)] = {"LEFT$", nullptr};
-    infos[idx(B::Right)] = {"RIGHT$", nullptr};
-    infos[idx(B::Str)] = {"STR$", nullptr};
-    infos[idx(B::Val)] = {"VAL", nullptr};
-    infos[idx(B::Cint)] = {"CINT", nullptr};
-    infos[idx(B::Clng)] = {"CLNG", nullptr};
-    infos[idx(B::Csng)] = {"CSNG", nullptr};
-    infos[idx(B::Cdbl)] = {"CDBL", nullptr};
-
-    builtins::registerMathBuiltinInfos(infos);
-
-    infos[idx(B::Instr)] = {"INSTR", &SemanticAnalyzer::analyzeInstr};
-    infos[idx(B::Ltrim)] = {"LTRIM$", nullptr};
-    infos[idx(B::Rtrim)] = {"RTRIM$", nullptr};
-    infos[idx(B::Trim)] = {"TRIM$", nullptr};
-    infos[idx(B::Ucase)] = {"UCASE$", nullptr};
-    infos[idx(B::Lcase)] = {"LCASE$", nullptr};
-    infos[idx(B::Chr)] = {"CHR$", nullptr};
-    infos[idx(B::Asc)] = {"ASC", nullptr};
-    infos[idx(B::InKey)] = {"INKEY$", nullptr};
-    infos[idx(B::GetKey)] = {"GETKEY$", nullptr};
-    infos[idx(B::Eof)] = {"EOF", nullptr};
-    infos[idx(B::Lof)] = {"LOF", nullptr};
-    infos[idx(B::Loc)] = {"LOC", nullptr};
-
-    return infos;
-}();
-
 static const std::array<BuiltinScanRule, kBuiltinCount> kBuiltinScanRules = [] {
     std::array<BuiltinScanRule, kBuiltinCount> rules{};
 
@@ -571,20 +624,20 @@ static const std::array<BuiltinScanRule, kBuiltinCount> kBuiltinScanRules = [] {
     return rules;
 }();
 
-// Maps canonical BASIC source spellings to enum entries. Names must already be
-// normalized to uppercase with any suffix characters (e.g., $) preserved.
-static const std::unordered_map<std::string_view, B> kByName = {
-    {"LEN", B::Len},      {"MID$", B::Mid},     {"LEFT$", B::Left}, {"RIGHT$", B::Right},
-    {"STR$", B::Str},     {"VAL", B::Val},      {"CINT", B::Cint},  {"CLNG", B::Clng},
-    {"CSNG", B::Csng},    {"CDBL", B::Cdbl},    {"INT", B::Int},    {"FIX", B::Fix},
-    {"ROUND", B::Round},  {"SQR", B::Sqr},
-    {"ABS", B::Abs},      {"FLOOR", B::Floor},  {"CEIL", B::Ceil},  {"SIN", B::Sin},
-    {"COS", B::Cos},      {"POW", B::Pow},      {"RND", B::Rnd},    {"INSTR", B::Instr},
-    {"LTRIM$", B::Ltrim}, {"RTRIM$", B::Rtrim}, {"TRIM$", B::Trim}, {"UCASE$", B::Ucase},
-    {"LCASE$", B::Lcase}, {"CHR$", B::Chr},     {"ASC", B::Asc},
-    {"INKEY$", B::InKey}, {"GETKEY$", B::GetKey}, {"EOF", B::Eof},
-    {"LOF", B::Lof},      {"LOC", B::Loc},
-};
+/// @brief Access the lazily-initialized name-to-enum map.
+/// @details Entries are stored with canonical uppercase spellings so callers
+/// should normalize BASIC identifiers before lookup.
+const std::unordered_map<std::string_view, B> &builtinNameIndex()
+{
+    static const auto index = [] {
+        std::unordered_map<std::string_view, B> map;
+        map.reserve(kBuiltinDescriptors.size());
+        for (const auto &desc : kBuiltinDescriptors)
+            map.emplace(desc.name, desc.builtin);
+        return map;
+    }();
+    return index;
+}
 } // namespace
 
 /// @brief Fetch metadata for a BASIC built-in represented by its enum value.
@@ -606,8 +659,9 @@ const BuiltinInfo &getBuiltinInfo(BuiltinCallExpr::Builtin b)
 ///         registered.
 std::optional<BuiltinCallExpr::Builtin> lookupBuiltin(std::string_view name)
 {
-    auto it = kByName.find(name);
-    if (it == kByName.end())
+    const auto &index = builtinNameIndex();
+    auto it = index.find(name);
+    if (it == index.end())
         return std::nullopt;
     return it->second;
 }
