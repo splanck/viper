@@ -80,6 +80,16 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
     }
     result.fileId = fileId;
 
+    if (fileId == 0)
+    {
+        result.emitter->emit(il::support::Severity::Error,
+                              "B0005",
+                              {},
+                              0,
+                              "source manager exhausted file identifier space");
+        return result;
+    }
+
     result.emitter->addSource(fileId, std::string{input.source});
 
     Parser parser(input.source, fileId, result.emitter.get());
