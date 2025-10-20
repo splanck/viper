@@ -54,5 +54,20 @@ int main()
         rt_string_unref(quoted_fields[i]);
     rt_string_unref(quoted_line);
 
+    const char *complex = "\"He said \"\"Hi, there\"\"\",99, \"Bare, field\"";
+    rt_string complex_line = rt_string_from_bytes(complex, (int64_t)strlen(complex));
+    rt_string complex_fields[3] = {0};
+    int64_t complex_count = rt_split_fields(complex_line, complex_fields, 3);
+    assert(complex_count == 3);
+    const char *c0 = rt_string_cstr(complex_fields[0]);
+    assert(strcmp(c0, "He said \"\"Hi, there\"\"") == 0);
+    assert(rt_to_int(complex_fields[1]) == 99);
+    const char *c2 = rt_string_cstr(complex_fields[2]);
+    assert(strcmp(c2, "Bare, field") == 0);
+
+    for (int i = 0; i < 3; ++i)
+        rt_string_unref(complex_fields[i]);
+    rt_string_unref(complex_line);
+
     return 0;
 }
