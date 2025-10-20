@@ -8,7 +8,6 @@
 #include "rt_heap.h"
 
 #include <stddef.h>
-#include <string.h>
 
 /**
  * @brief Allocate a payload-sized block tagged as an object on the runtime heap.
@@ -17,7 +16,9 @@
  */
 static inline void *alloc_payload(size_t bytes)
 {
-    return rt_heap_alloc(RT_HEAP_OBJECT, RT_ELEM_NONE, 0, 0, bytes);
+    size_t len = bytes;
+    size_t cap = bytes;
+    return rt_heap_alloc(RT_HEAP_OBJECT, RT_ELEM_NONE, 1, len, cap);
 }
 
 /**
@@ -29,10 +30,7 @@ static inline void *alloc_payload(size_t bytes)
 void *rt_obj_new_i64(int64_t class_id, int64_t byte_size)
 {
     (void)class_id;
-    void *payload = alloc_payload((size_t)byte_size);
-    if (payload)
-        memset(payload, 0, (size_t)byte_size);
-    return payload;
+    return alloc_payload((size_t)byte_size);
 }
 
 /**
