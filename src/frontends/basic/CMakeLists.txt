@@ -7,6 +7,10 @@ target_sources(fe_basic PRIVATE
   AstPrinter.cpp
   AstPrint_Expr.cpp
   AstPrint_Stmt.cpp
+  print/Print_Stmt_Control.cpp
+  print/Print_Stmt_Jump.cpp
+  print/Print_Stmt_Decl.cpp
+  print/Print_Stmt_IO.cpp
   AstWalkerUtils.cpp
   Parser.cpp
   Parser_Stmt.cpp
