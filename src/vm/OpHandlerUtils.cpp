@@ -19,7 +19,11 @@
 
 #include "vm/OpHandlerUtils.hpp"
 
+#include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
+#include "vm/RuntimeBridge.hpp"
+#include "vm/Trap.hpp"
 
 namespace il::vm::detail
 {
@@ -62,5 +66,38 @@ void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val)
     fr.regs[destIndex] = val;
 }
 } // namespace ops
+
+namespace control
+{
+Frame::ResumeState *expectResumeToken(Frame &fr, const Slot &slot)
+{
+    auto *token = reinterpret_cast<Frame::ResumeState *>(slot.ptr);
+    if (!token || token != &fr.resumeState || !token->valid)
+        return nullptr;
+    return token;
+}
+
+void trapInvalidResume(Frame &fr,
+                       const il::core::Instr &in,
+                       const il::core::BasicBlock *bb,
+                       std::string detail)
+{
+    const std::string functionName = fr.func ? fr.func->name : std::string{};
+    const std::string blockLabel = bb ? bb->label : std::string{};
+    RuntimeBridge::trap(TrapKind::InvalidOperation, detail, in.loc, functionName, blockLabel);
+}
+
+const VmError *resolveErrorToken(Frame &fr, const Slot &slot)
+{
+    const auto *error = reinterpret_cast<const VmError *>(slot.ptr);
+    if (error)
+        return error;
+
+    if (const VmError *token = vm_current_trap_token())
+        return token;
+
+    return &fr.activeError;
+}
+} // namespace control
 } // namespace il::vm::detail
 
