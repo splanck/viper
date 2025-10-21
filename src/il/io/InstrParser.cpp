@@ -1,8 +1,26 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/il/io/InstrParser.cpp
-// Purpose: Implements parsing of IL instruction statements (MIT License; see LICENSE).
-// Key invariants: ParserState must reference a current function and basic block.
+// Purpose: Interpret textual IL instruction statements and populate IR nodes.
+// Key invariants: ParserState must reference a current function and basic
+//                 block for instruction insertion.
 // Ownership/Lifetime: Instructions are appended to the ParserState's active block.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements the IL instruction parser shared by the textual reader.
+/// @details The parser recognises assignment syntax, consults opcode metadata to
+///          determine operand layouts, and cooperates with operand parsing
+///          helpers to populate SSA temporaries, branch targets, and call
+///          details.  It produces diagnostic-rich errors whenever the textual
+///          representation deviates from the IL specification.
 
 #include "il/io/InstrParser.hpp"
 #include "il/core/BasicBlock.hpp"
@@ -181,17 +199,14 @@ Expected<void> validateShape_E(const Instr &in, ParserState &st)
     return {};
 }
 
-/// @brief Verifies branch argument counts match basic-block parameters.
+/// @brief Lazily build a lookup from textual mnemonics to opcode enums.
 ///
-/// Known blocks must agree with the provided arity; unknown blocks are queued in
-/// ParserState::pendingBrs for later validation once seen.
+/// @details The lookup is shared by all instruction parses and therefore cached
+///          in a static map initialised on first use.  This avoids repeated
+///          linear scans over the opcode table when resolving mnemonic strings
+///          during parsing.
 ///
-/// @param in Instruction issuing the branch.
-/// @param st Parser state tracking block signatures and pending branches.
-/// @param label Target block label being referenced.
-/// @param argCount Number of arguments supplied in the branch.
-/// @return Empty on success; otherwise, a diagnostic referencing @p in.loc.
-/// @brief Lazily build a lookup from opcode mnemonics to Opcode enumerators.
+/// @return Reference to the populated mnemonic lookup table.
 const std::unordered_map<std::string, Opcode> &mnemonicTable()
 {
     static const std::unordered_map<std::string, Opcode> table = []
@@ -209,6 +224,14 @@ const std::unordered_map<std::string, Opcode> &mnemonicTable()
 }
 
 /// @brief Stamp the instruction's result type based on opcode metadata.
+///
+/// @details Many opcodes have a fixed result type independent of operand
+///          annotations.  The metadata encodes the category, which we translate
+///          into a concrete @ref il::core::Type for the instruction prior to
+///          applying operand-driven overrides.
+///
+/// @param info Opcode metadata describing the expected result type.
+/// @param in Instruction receiving the default type.
 void applyDefaultType(const OpcodeInfo &info, Instr &in)
 {
     using Kind = Type::Kind;
@@ -247,8 +270,18 @@ void applyDefaultType(const OpcodeInfo &info, Instr &in)
     }
 }
 
-/// @brief Parse the call operand syntax `<callee>(args...)`.
-/// @brief Parse operands based on opcode metadata-driven descriptions.
+/// @brief Parse operands for an instruction using opcode metadata directives.
+///
+/// @details Each opcode describes how to interpret subsequent tokens via a
+///          sequence of @ref OperandParseKind entries.  This function consumes
+///          tokens, delegates to operand-specific helpers, and validates required
+///          fields while preserving the remainder for branch/switch parsing.
+///
+/// @param opcode Opcode resolved from the mnemonic.
+/// @param rest Remaining text on the line after the mnemonic.
+/// @param in Instruction being populated.
+/// @param st Parser state providing diagnostics, temporaries, and metadata.
+/// @return Success or an error diagnostic describing malformed operands.
 Expected<void> parseWithMetadata(Opcode opcode, const std::string &rest, Instr &in, ParserState &st)
 {
     const auto &info = getOpcodeInfo(opcode);
@@ -447,7 +480,12 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st)
 
 } // namespace
 
-/// @brief Public wrapper for parsing instructions that prints diagnostics.
+/// @brief Parse an instruction and stream any resulting diagnostic messages.
+///
+/// @details Calls the exception-free helper @ref parseInstruction_E.  When an
+///          error occurs the diagnostic is formatted via @ref il::support::printDiag
+///          and written to @p err, matching the behaviour expected by higher-level
+///          textual importers.
 ///
 /// @param line Textual instruction to parse.
 /// @param st Parser state mutated with the decoded instruction.

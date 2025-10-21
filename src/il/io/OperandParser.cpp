@@ -1,9 +1,27 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/il/io/OperandParser.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Implements helpers for parsing IL instruction operands.
+// Purpose: Decode textual IL operands into structured Value instances and
+//          branch metadata.
 // Key invariants: Operates on instructions tied to the current parser state.
 // Ownership/Lifetime: Mutates instructions owned by the parser caller.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements the operand parsing helpers shared by the IL instruction
+///        parser.
+/// @details This module tokenises operand substrings, classifies literal forms,
+///          and translates them into @ref il::core::Value objects.  It also
+///          manages branch argument bookkeeping to ensure control-flow edges
+///          match block parameter signatures, emitting diagnostics when the
+///          textual form deviates from the IL specification.
 
 #include "il/io/OperandParser.hpp"
 
@@ -53,11 +71,26 @@ enum class OperandKind : size_t
 
 using OperandHandler = Expected<Value> (*)(const std::string &, ParserState &);
 
+/// @brief Helper that attaches parser context to operand parsing failures.
+///
+/// @details The instruction parser expects operand diagnostics to be decorated
+///          with both the current source location and line number.  This helper
+///          packages the error so callers simply provide the human-readable
+///          message while the state supplies consistent context.
+///
+/// @param state Parser state providing the current location information.
+/// @param message Diagnostic payload describing the failure.
+/// @return An @ref il::support::Expected error carrying the contextualised message.
 Expected<Value> makeValueError(ParserState &state, std::string message)
 {
     return Expected<Value>{makeError(state.curLoc, formatLineDiag(state.lineNo, std::move(message)))};
 }
 
+/// @brief Compare two ASCII strings without regard to case.
+///
+/// @param value Token extracted from the operand text.
+/// @param literal Canonical spelling to match against.
+/// @return True when both strings are identical ignoring ASCII case.
 bool equalsIgnoreCase(std::string_view value, std::string_view literal)
 {
     if (value.size() != literal.size())
@@ -72,6 +105,14 @@ bool equalsIgnoreCase(std::string_view value, std::string_view literal)
     return true;
 }
 
+/// @brief Categorise an operand token to dispatch specialised parsing logic.
+///
+/// @details The parser distinguishes temporaries, globals, literals, and other
+///          special syntactic forms such as `null`.  The resulting kind drives
+///          the dispatch table used by @ref OperandParser::parseValueToken.
+///
+/// @param token Raw operand token.
+/// @return Enum describing the syntactic kind detected.
 OperandKind classifyOperandToken(const std::string &token)
 {
     if (token.empty())
@@ -94,21 +135,34 @@ OperandKind classifyOperandToken(const std::string &token)
     return OperandKind::IntegerLiteral;
 }
 
+/// @brief Emit a diagnostic for syntactically absent operands.
+///
+/// @details Called when the comma splitter produces an empty token.  The
+///          resulting diagnostic carries the parser state line information so
+///          callers can attribute the issue to the instruction being decoded.
 Expected<Value> handleMissingOperand(const std::string &, ParserState &state)
 {
     return makeValueError(state, "missing operand");
 }
 
+/// @brief Convert a `true` literal into the canonical boolean value.
 Expected<Value> handleBoolTrue(const std::string &, ParserState &)
 {
     return Value::constBool(true);
 }
 
+/// @brief Convert a `false` literal into the canonical boolean value.
 Expected<Value> handleBoolFalse(const std::string &, ParserState &)
 {
     return Value::constBool(false);
 }
 
+/// @brief Resolve a `%temp` reference to its numeric SSA identifier.
+///
+/// @details The parser prefers mappings registered in @ref ParserState::tempIds,
+///          but falls back to accepting `%tNN` spellings to support legacy
+///          textual dumps.  The helper validates numeric suffixes, reports
+///          unknown identifiers, and returns temporaries in Value form.
 Expected<Value> handleTempOperand(const std::string &token, ParserState &state)
 {
     std::string name = token.substr(1);
@@ -147,16 +201,23 @@ Expected<Value> handleTempOperand(const std::string &token, ParserState &state)
     return makeValueError(state, oss.str());
 }
 
+/// @brief Translate an `@global` reference into a Value record.
 Expected<Value> handleGlobalOperand(const std::string &token, ParserState &)
 {
     return Value::global(token.substr(1));
 }
 
+/// @brief Produce the canonical null value for pointer-typed operands.
 Expected<Value> handleNullOperand(const std::string &, ParserState &)
 {
     return Value::null();
 }
 
+/// @brief Decode a quoted UTF-8 string literal operand.
+///
+/// @details Strips the surrounding quotes, feeds the interior through
+///          @ref il::io::decodeEscapedString to handle escape sequences, and
+///          forwards any decoding diagnostics to the caller.
 Expected<Value> handleStringOperand(const std::string &token, ParserState &state)
 {
     // String tokens preserve surrounding quotes so we strip them before decoding.
@@ -170,6 +231,11 @@ Expected<Value> handleStringOperand(const std::string &token, ParserState &state
     return Value::constStr(std::move(decoded));
 }
 
+/// @brief Parse a floating-point literal according to the IL grammar.
+///
+/// @details Uses @ref il::io::parseFloatLiteral to enforce canonical exponent
+///          and mantissa syntax, reporting invalid spellings through the parser
+///          state's diagnostic machinery.
 Expected<Value> handleFloatOperand(const std::string &token, ParserState &state)
 {
     double value = 0.0;
@@ -181,6 +247,11 @@ Expected<Value> handleFloatOperand(const std::string &token, ParserState &state)
     return makeValueError(state, oss.str());
 }
 
+/// @brief Parse an integer literal according to the IL grammar.
+///
+/// @details Uses @ref il::io::parseIntegerLiteral to validate digits and sign.
+///          Non-conforming tokens yield diagnostics attached to the current
+///          instruction location.
 Expected<Value> handleIntegerOperand(const std::string &token, ParserState &state)
 {
     long long value = 0;
@@ -192,6 +263,7 @@ Expected<Value> handleIntegerOperand(const std::string &token, ParserState &stat
     return makeValueError(state, oss.str());
 }
 
+/// @brief Dispatch table mapping operand kinds to specialised handlers.
 constexpr std::array<OperandHandler, static_cast<size_t>(OperandKind::Count)> kOperandHandlers = {
     handleMissingOperand,
     handleBoolTrue,
@@ -665,6 +737,10 @@ Expected<void> OperandParser::parseSwitchTargets(const std::string &text)
     return {};
 }
 
+/// @brief Parse the default branch component of a switch operand list.
+///
+/// @param segment Text describing the default destination.
+/// @return Success or an error diagnostic when the target is malformed.
 Expected<void> OperandParser::parseDefaultTarget(const std::string &segment)
 {
     std::vector<Value> args;
@@ -675,6 +751,11 @@ Expected<void> OperandParser::parseDefaultTarget(const std::string &segment)
     return validateCaseArity(std::move(label), std::move(args));
 }
 
+/// @brief Parse an individual `value -> label(args)` switch case.
+///
+/// @param segment Text describing the case value and destination.
+/// @param mnemonic Name of the opcode for diagnostic messages.
+/// @return Success or an error diagnostic when the case is malformed.
 Expected<void> OperandParser::parseCaseSegment(const std::string &segment, const char *mnemonic)
 {
     const size_t arrow = segment.find("->");
@@ -708,6 +789,11 @@ Expected<void> OperandParser::parseCaseSegment(const std::string &segment, const
     return validateCaseArity(std::move(label), std::move(args));
 }
 
+/// @brief Record a branch label and verify its argument arity for switch targets.
+///
+/// @param label Destination block label stripped of decorations.
+/// @param args Branch arguments associated with the destination.
+/// @return Success or an error diagnostic indicating an argument mismatch.
 Expected<void> OperandParser::validateCaseArity(std::string label, std::vector<Value> args)
 {
     const size_t argCount = args.size();

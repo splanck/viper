@@ -1,9 +1,25 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/vm/RuntimeBridge.cpp
-// Purpose: Bridges VM to C runtime functions.
-// License: MIT License
-// Key invariants: None.
+// Purpose: Provide the glue between the Viper VM and the C runtime library.
+// Key invariants: The bridge maintains thread-local trap context and validates
+//                 runtime signatures before invocation.
 // Ownership/Lifetime: Bridge does not own VM or runtime resources.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements the runtime bridge that dispatches IL runtime calls.
+/// @details The bridge validates call arity, marshals VM slots into native
+///          representations, invokes runtime thunks, and translates traps back
+///          into VM errors.  It also exposes entry points used by the C runtime
+///          to signal asynchronous traps into the active VM context.
 
 #include "vm/RuntimeBridge.hpp"
 #include "il/core/Opcode.hpp"
@@ -37,11 +53,29 @@ using il::vm::vm_format_error;
 using il::vm::vm_raise;
 
 /// @brief Thread-local pointer to the runtime call context for active trap reporting.
+///
+/// The bridge stores the most recent call's context so asynchronous traps raised
+/// from the C runtime can report diagnostics against the correct function and
+/// source location.  The pointer is managed via @ref ContextGuard to ensure
+/// balanced updates.
 thread_local RuntimeCallContext *tlsContext = nullptr;
 
 using VmResult = Slot;
 using Thunk = VmResult (*)(VM &, FrameInfo &, const RuntimeCallContext &);
 
+/// @brief Verify that a runtime call supplies the expected number of arguments.
+///
+/// @details Compares the descriptor's signature against the arguments assembled
+///          by the VM.  Mismatches trigger a domain-error trap describing the
+///          offending call site.
+///
+/// @param desc Runtime descriptor describing the callee signature.
+/// @param name Human-readable name for diagnostics (e.g., "runtime call").
+/// @param args Slots supplied by the VM as call arguments.
+/// @param loc Source location associated with the call.
+/// @param fn Name of the function executing the call.
+/// @param block Name of the basic block executing the call.
+/// @return True when counts match; false when a trap was raised.
 static bool validateArgumentCount(const RuntimeDescriptor &desc,
                                   const std::string &name,
                                   const std::vector<Slot> &args,
@@ -61,6 +95,18 @@ static bool validateArgumentCount(const RuntimeDescriptor &desc,
     return false;
 }
 
+/// @brief Execute a runtime descriptor by marshalling arguments and collecting results.
+///
+/// @details Converts VM slot arguments into the ABI expected by the runtime
+///          library, allocates temporary buffers for return values, invokes the
+///          descriptor's handler, and translates any power-trap metadata into VM
+///          traps.
+///
+/// @param desc Runtime descriptor to invoke.
+/// @param argBegin Pointer to the first argument slot (may be null when @p argCount is zero).
+/// @param argCount Number of argument slots provided.
+/// @param ctx Call context providing trap location metadata.
+/// @return Slot containing the marshalled return value.
 static VmResult executeDescriptor(const RuntimeDescriptor &desc,
                                   Slot *argBegin,
                                   std::size_t argCount,
@@ -91,6 +137,10 @@ static VmResult executeDescriptor(const RuntimeDescriptor &desc,
     return il::vm::assignCallResult(desc.signature, buffers);
 }
 
+/// @brief Generic thunk that executes descriptors without VM-specific side effects.
+///
+/// @details The VM and frame parameters are unused for most runtime functions;
+///          they are present to match the signature expected by the thunk table.
 static VmResult genericThunk(VM &vm, FrameInfo &frame, const RuntimeCallContext &ctx)
 {
     (void)vm;
@@ -98,6 +148,11 @@ static VmResult genericThunk(VM &vm, FrameInfo &frame, const RuntimeCallContext 
     return executeDescriptor(*ctx.descriptor, ctx.argBegin, ctx.argCount, ctx);
 }
 
+/// @brief Construct the table of thunks indexed by runtime signature tags.
+///
+/// @details Each entry defaults to the generic thunk for now, but the table is
+///          built as a constexpr helper so future specialised thunks can be
+///          registered in one place.
 constexpr std::array<Thunk, static_cast<std::size_t>(RtSig::Count)> buildThunkTable()
 {
     std::array<Thunk, static_cast<std::size_t>(RtSig::Count)> table{};
@@ -105,22 +160,28 @@ constexpr std::array<Thunk, static_cast<std::size_t>(RtSig::Count)> buildThunkTa
     return table;
 }
 
+/// @brief Access the lazily initialised thunk table.
+///
+/// @return Reference to the singleton thunk array used for runtime dispatch.
 const std::array<Thunk, static_cast<std::size_t>(RtSig::Count)> &thunkTable()
 {
     static const auto table = buildThunkTable();
     return table;
 }
 
+/// @brief RAII helper that installs a runtime call context for the current thread.
 struct ContextGuard
 {
     RuntimeCallContext *previous;
     RuntimeCallContext *current;
 
+    /// @brief Push the provided context as the thread-local active call.
     explicit ContextGuard(RuntimeCallContext &ctx) : previous(tlsContext), current(&ctx)
     {
         tlsContext = &ctx;
     }
 
+    /// @brief Restore the previous context and clear transient diagnostic fields.
     ~ContextGuard()
     {
         if (current)
@@ -139,6 +200,7 @@ struct ContextGuard
 
 using Operands = std::span<const Slot>;
 
+/// @brief Aggregates information required to finalise a runtime trap.
 struct TrapCtx
 {
     TrapKind kind;
@@ -151,6 +213,11 @@ struct TrapCtx
     FrameInfo frame{};
 };
 
+/// @brief Deliver a trap either to the active VM or to the call-site context.
+///
+/// @details When a VM is executing the trap escalates through @ref vm_raise.
+///          Otherwise the trap information is recorded directly on the context
+///          so higher layers can surface it to the user.
 static void finalizeTrap(TrapCtx &ctx)
 {
     if (ctx.vm)
@@ -168,6 +235,11 @@ static void finalizeTrap(TrapCtx &ctx)
     rt_abort(diagnostic.c_str());
 }
 
+/// @brief Populate overflow-specific diagnostics prior to finalising a trap.
+///
+/// @param ctx Aggregated trap context to populate.
+/// @param opcode Opcode that triggered the overflow.
+/// @param operands Operands involved in the failing operation.
 static void handleOverflow(TrapCtx &ctx, Opcode opcode, const Operands &operands)
 {
     (void)opcode;
@@ -175,6 +247,11 @@ static void handleOverflow(TrapCtx &ctx, Opcode opcode, const Operands &operands
     finalizeTrap(ctx);
 }
 
+/// @brief Populate divide-by-zero diagnostics prior to finalising a trap.
+///
+/// @param ctx Aggregated trap context to populate.
+/// @param opcode Opcode that triggered the trap.
+/// @param operands Operands supplied to the operation.
 static void handleDivByZero(TrapCtx &ctx, Opcode opcode, const Operands &operands)
 {
     (void)opcode;
@@ -182,6 +259,7 @@ static void handleDivByZero(TrapCtx &ctx, Opcode opcode, const Operands &operand
     finalizeTrap(ctx);
 }
 
+/// @brief Finalise traps that do not require operand-specific formatting.
 static void handleGenericTrap(TrapCtx &ctx)
 {
     finalizeTrap(ctx);
@@ -196,8 +274,10 @@ static void handleGenericTrap(TrapCtx &ctx)
 /// the trap through `RuntimeBridge::trap` so diagnostics carry function, block,
 /// and source information.
 #if defined(__GNUC__)
+/// @brief Weak hook allowing embedders to override VM trap behaviour.
 extern "C" __attribute__((weak)) void vm_trap(const char *msg)
 #else
+/// @brief Default implementation that records traps on the active context.
 extern "C" void vm_trap(const char *msg)
 #endif
 {
@@ -212,6 +292,20 @@ extern "C" void vm_trap(const char *msg)
 namespace il::vm
 {
 
+/// @brief Invoke a runtime helper identified by name on behalf of the VM.
+///
+/// @details Validates the callee descriptor, checks argument counts, installs
+///          the call context for trap reporting, and dispatches through the thunk
+///          table or directly when no VM is active.  On failure the function
+///          records diagnostics and returns a zero-initialised slot.
+///
+/// @param ctx Mutable call context tracking diagnostics and temporary buffers.
+/// @param name Runtime helper symbol to resolve.
+/// @param args Argument slots supplied by the VM.
+/// @param loc Source location associated with the call site.
+/// @param fn Function name executing the call.
+/// @param block Block label executing the call.
+/// @return Slot containing the runtime result or zero on trap.
 Slot RuntimeBridge::call(RuntimeCallContext &ctx,
                          const std::string &name,
                          const std::vector<Slot> &args,
@@ -259,6 +353,17 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
     return result;
 }
 
+/// @brief Record a runtime trap and escalate it to the VM when applicable.
+///
+/// @details Populates a @ref TrapCtx structure with diagnostic metadata and
+///          delegates to specialised helpers based on @p kind before finalising
+///          delivery via @ref finalizeTrap.
+///
+/// @param kind Kind of trap raised by the runtime.
+/// @param msg Human-readable diagnostic payload.
+/// @param loc Source location associated with the trap.
+/// @param fn Function name active when the trap occurred.
+/// @param block Block label active when the trap occurred.
 void RuntimeBridge::trap(TrapKind kind,
                          const std::string &msg,
                          const SourceLoc &loc,
@@ -318,6 +423,9 @@ void RuntimeBridge::trap(TrapKind kind,
     }
 }
 
+/// @brief Retrieve the currently installed runtime call context, if any.
+///
+/// @return Pointer to the context managed by @ref ContextGuard, or @c nullptr when inactive.
 const RuntimeCallContext *RuntimeBridge::activeContext()
 {
     return tlsContext;
