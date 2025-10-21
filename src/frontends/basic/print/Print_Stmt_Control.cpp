@@ -20,6 +20,14 @@
 namespace il::frontends::basic::print_stmt
 {
 
+/// @brief Render an IF/ELSEIF/ELSE chain to the printer stream.
+/// @details The helper emits the s-expression form `(IF <cond> THEN <stmt> ...)`
+///          and iterates through the optional ELSEIF arms before appending an
+///          ELSE branch when present. Expressions and nested statements are
+///          delegated to the shared @ref Context utilities so spacing matches
+///          the rest of the printer.
+/// @param stmt High-level IF statement containing branches and predicates.
+/// @param ctx Printer context supplying the destination stream and helpers.
 void printIf(const IfStmt &stmt, Context &ctx)
 {
     auto &os = ctx.stream();
@@ -42,6 +50,15 @@ void printIf(const IfStmt &stmt, Context &ctx)
     os << ')';
 }
 
+/// @brief Emit the SELECT CASE construct with arms and optional ELSE body.
+/// @details The selector expression is printed first, defaulting to the style's
+///          null representation when absent (representing `SELECT CASE TRUE`).
+///          Each case arm is written as `(CASE <labels...>)` followed by the
+///          numbered body; an additional `(CASE ELSE)` section is emitted when an
+///          else body exists. Nested statements are printed via
+///          @ref Context::printNumberedBody to maintain stable numbering.
+/// @param stmt AST node describing the SELECT CASE statement.
+/// @param ctx Printer context responsible for formatting child nodes.
 void printSelectCase(const SelectCaseStmt &stmt, Context &ctx)
 {
     auto &os = ctx.stream();
@@ -72,6 +89,12 @@ void printSelectCase(const SelectCaseStmt &stmt, Context &ctx)
     os << ')';
 }
 
+/// @brief Print a WHILE loop header and numbered body.
+/// @details Outputs the guard expression and then defers to
+///          @ref Context::printNumberedBody so each BASIC line retains its
+///          original numbers during pretty-printing.
+/// @param stmt WHILE statement to render.
+/// @param ctx Printer context with formatting helpers.
 void printWhile(const WhileStmt &stmt, Context &ctx)
 {
     auto &os = ctx.stream();
@@ -80,6 +103,13 @@ void printWhile(const WhileStmt &stmt, Context &ctx)
     ctx.printNumberedBody(stmt.body);
 }
 
+/// @brief Emit a DO loop with its variant (`WHILE`, `UNTIL`, or unconditional`).
+/// @details The printer records whether the test occurs before or after the
+///          loop body, writes the condition kind, and prints the predicate when
+///          required. Body statements are rendered using
+///          @ref Context::printNumberedBody to preserve numbering.
+/// @param stmt DO statement describing the iteration form.
+/// @param ctx Printer context writing to the destination stream.
 void printDo(const DoStmt &stmt, Context &ctx)
 {
     auto &os = ctx.stream();
@@ -104,6 +134,13 @@ void printDo(const DoStmt &stmt, Context &ctx)
     ctx.printNumberedBody(stmt.body);
 }
 
+/// @brief Print a FOR loop header with optional STEP expression.
+/// @details The helper emits `(FOR <var> = <start> TO <end> [STEP <step>])`
+///          before deferring to @ref Context::printNumberedBody for the loop
+///          body. Optional step expressions are only printed when provided in
+///          the AST to match user input.
+/// @param stmt FOR statement carrying bounds and optional step.
+/// @param ctx Printer context that formats nested nodes.
 void printFor(const ForStmt &stmt, Context &ctx)
 {
     auto &os = ctx.stream();
@@ -119,11 +156,23 @@ void printFor(const ForStmt &stmt, Context &ctx)
     ctx.printNumberedBody(stmt.body);
 }
 
+/// @brief Emit the `NEXT` statement closing a FOR loop.
+/// @details Outputs the loop variable directly, producing `(NEXT <var>)`. The
+///          helper intentionally performs no additional formatting because the
+///          AST guarantees a single variable name.
+/// @param stmt NEXT statement to print.
+/// @param ctx Printer context providing the stream.
 void printNext(const NextStmt &stmt, Context &ctx)
 {
     ctx.stream() << "(NEXT " << stmt.var << ')';
 }
 
+/// @brief Print an EXIT statement annotated with the loop kind being exited.
+/// @details Converts the enum describing the loop category back into its BASIC
+///          keyword (FOR/WHILE/DO) and appends it to the `(EXIT ...)` prefix so
+///          the output mirrors the original syntax.
+/// @param stmt EXIT statement that terminates a surrounding loop.
+/// @param ctx Printer context used for streaming.
 void printExit(const ExitStmt &stmt, Context &ctx)
 {
     auto &os = ctx.stream();
