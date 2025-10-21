@@ -23,6 +23,9 @@ int main()
     const char *f2 = rt_string_cstr(fields[2]);
     assert(strcmp(f2, " spaced ") == 0);
 
+    int64_t zero_fields_count = rt_split_fields(line, NULL, 0);
+    assert(zero_fields_count == 3);
+
     for (int i = 0; i < 3; ++i)
         rt_string_unref(fields[i]);
     rt_string_unref(line);

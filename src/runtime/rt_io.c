@@ -243,10 +243,14 @@ rt_string rt_input_line(void)
  */
 int64_t rt_split_fields(rt_string line, rt_string *out_fields, int64_t max_fields)
 {
-    if (!out_fields)
-        rt_trap("rt_split_fields: null output");
     if (max_fields <= 0)
-        return 0;
+    {
+        max_fields = 0;
+    }
+    else if (!out_fields)
+    {
+        rt_trap("rt_split_fields: null output");
+    }
 
     const char *data = "";
     size_t len = 0;
@@ -331,7 +335,7 @@ int64_t rt_split_fields(rt_string line, rt_string *out_fields, int64_t max_field
         ++i;
     }
 
-    if (total < max_fields)
+    if (max_fields > 0 && total < max_fields)
     {
         char msg[128];
         snprintf(msg,
