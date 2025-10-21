@@ -5,16 +5,21 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/frontends/basic/Lower_OOP_Expr.cpp
-// Purpose: Lower BASIC OOP expressions into IL object runtime operations.
-// Key invariants: Object allocations route through runtime helpers and class
-//                 layouts computed during scanning; method/field access obeys
-//                 recorded offsets.
-// Ownership/Lifetime: Operates on Lowerer state without owning AST or module
-//                     resources.
-// Links: docs/codemap.md
+// Implements object-oriented expression lowering for the BASIC front end. The
+// helpers translate AST nodes representing classes, object creation, field
+// access, and method dispatch into IL operations wired to runtime support.
+// Class layout metadata produced by earlier scans guides offset calculations so
+// the generated IL maintains ABI alignment with the runtime object model.
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Converts BASIC OOP expressions into IL instructions.
+/// @details The lowering routines centralise object semantics, ensuring every
+///          object manipulation flows through a consistent runtime API. Sharing
+///          the implementation prevents drift between allocation, field access,
+///          and method invocation while minimising dependencies from other
+///          lowering modules.
 
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
@@ -28,6 +33,15 @@ namespace il::frontends::basic
 {
 namespace
 {
+/// @brief Map a BASIC AST type to its IL representation.
+///
+/// @details BASIC's object system reuses the scalar type lattice. This helper
+///          translates the enumerants to their IL equivalents so callers can
+///          emit typed loads and stores without open-coding the mapping. Unknown
+///          enumerants conservatively fall back to 64-bit integers.
+///
+/// @param ty BASIC AST type enumerant.
+/// @return Equivalent IL type used when emitting instructions.
 [[nodiscard]] il::core::Type ilTypeForAstType(::il::frontends::basic::Type ty)
 {
     using IlType = il::core::Type;
@@ -46,6 +60,15 @@ namespace
 }
 } // namespace
 
+/// @brief Deduce the class name for an object-valued expression.
+///
+/// @details The method peels apart variable references, `ME` self references,
+///          `NEW` expressions, member access chains, and method calls to recover
+///          the originating object class. The information comes from the
+///          lowerer's recorded slot metadata populated during scanning.
+///
+/// @param expr Expression representing an object in some form.
+/// @return Class name recorded for the expression, or empty string on failure.
 std::string Lowerer::resolveObjectClass(const Expr &expr) const
 {
     if (const auto *var = dynamic_cast<const VarExpr *>(&expr))
@@ -81,6 +104,15 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
     return {};
 }
 
+/// @brief Lower an object allocation expression.
+///
+/// @details Resolves class metadata to determine object size and runtime class
+///          identifier, then requests the object allocation helper. After
+///          allocation the constructor is invoked with the new object as the
+///          first parameter followed by lowered arguments.
+///
+/// @param expr AST node representing `NEW Class(args...)`.
+/// @return Result value holding the pointer to the allocated object.
 Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
 {
     curLoc = expr.loc;
@@ -114,6 +146,14 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
     return {obj, Type(Type::Kind::Ptr)};
 }
 
+/// @brief Lower the implicit `ME` self reference.
+///
+/// @details Retrieves the stored slot for the current method's receiver and
+///          emits a load from it. Missing slot information degrades gracefully
+///          to a null pointer so diagnostics can handle the error path later.
+///
+/// @param expr AST node representing the `ME` expression.
+/// @return Result value containing the loaded object pointer.
 Lowerer::RVal Lowerer::lowerMeExpr(const MeExpr &expr)
 {
     curLoc = expr.loc;
@@ -125,6 +165,15 @@ Lowerer::RVal Lowerer::lowerMeExpr(const MeExpr &expr)
     return {self, Type(Type::Kind::Ptr)};
 }
 
+/// @brief Lower a field access expression on an object.
+///
+/// @details Resolves the base class, looks up the field offset within the class
+///          layout, and emits a GEP followed by a typed load. Unknown classes or
+///          fields return a zero literal so later passes can surface diagnostics
+///          without crashing.
+///
+/// @param expr AST node describing the member access.
+/// @return Result value carrying the loaded field content.
 Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
 {
     if (!expr.base)
@@ -150,6 +199,16 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
     return {loaded, fieldTy};
 }
 
+/// @brief Lower an object method invocation.
+///
+/// @details Evaluates the receiver, gathers argument values, and dispatches to
+///          the mangled method symbol. The receiver is inserted as the leading
+///          argument to match the runtime calling convention. Unknown class
+///          metadata results in a no-op call returning zero so diagnostics can
+///          highlight the issue during verification.
+///
+/// @param expr AST node describing the method call.
+/// @return Result value describing the call's return payload (void => zero).
 Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
 {
     if (!expr.base)

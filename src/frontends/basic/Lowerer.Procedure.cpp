@@ -1,12 +1,22 @@
-// File: src/frontends/basic/Lowerer.Procedure.cpp
-// License: MIT License. See LICENSE in the project root for full license
-//          information.
-// Purpose: Implements procedure-level helpers for BASIC lowering including
-//          signature caching, variable discovery, and body emission.
-// Key invariants: Procedure helpers operate on the active Lowerer state and do
-//                 not leak per-procedure state across invocations.
-// Ownership/Lifetime: Operates on a borrowed Lowerer instance.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the procedure-oriented portion of the BASIC lowering pipeline.
+// Responsibilities include materialising procedure signatures, walking the AST
+// to discover referenced symbols, and emitting the IL skeleton for each
+// procedure.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements procedure-scoped helpers for the BASIC lowerer.
+/// @details The logic here keeps per-procedure bookkeeping out of the main
+///          Lowerer class. Concentrating it in a dedicated translation unit
+///          simplifies unit testing and clarifies ownership of temporary state.
 
 #include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/Lowerer.hpp"
@@ -22,17 +32,32 @@ using pipeline_detail::coreTypeForAstType;
 namespace
 {
 
+/// @brief AST walker that records variable and array usage within procedures.
+///
+/// @details While walking a procedure body, the walker notifies the lowerer of
+///          references so slots and runtime resources can be allocated before
+///          code generation begins. It ensures DIM/REDIM statements update type
+///          information and keeps array metadata in sync.
 class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
 {
   public:
+    /// @brief Construct the walker around the owning lowerer.
+    ///
+    /// @param lowerer Lowerer that will receive symbol notifications.
     explicit VarCollectWalker(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
 
+    /// @brief Record variable references encountered in expressions.
+    ///
+    /// @param expr Variable expression node.
     void after(const VarExpr &expr)
     {
         if (!expr.name.empty())
             lowerer_.markSymbolReferenced(expr.name);
     }
 
+    /// @brief Record array element references.
+    ///
+    /// @param expr Array expression node.
     void after(const ArrayExpr &expr)
     {
         if (!expr.name.empty())
@@ -42,6 +67,9 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
         }
     }
 
+    /// @brief Track lower-bound queries on arrays.
+    ///
+    /// @param expr AST node representing `LBOUND` usage.
     void after(const LBoundExpr &expr)
     {
         if (!expr.name.empty())
@@ -51,6 +79,9 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
         }
     }
 
+    /// @brief Track upper-bound queries on arrays.
+    ///
+    /// @param expr AST node representing `UBOUND` usage.
     void after(const UBoundExpr &expr)
     {
         if (!expr.name.empty())
@@ -60,6 +91,9 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
         }
     }
 
+    /// @brief Observe DIM statements to seed symbol metadata.
+    ///
+    /// @param stmt DIM statement node.
     void before(const DimStmt &stmt)
     {
         if (stmt.name.empty())
@@ -70,6 +104,9 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
             lowerer_.markArray(stmt.name);
     }
 
+    /// @brief Observe REDIM statements to keep array metadata current.
+    ///
+    /// @param stmt REDIM statement node.
     void before(const ReDimStmt &stmt)
     {
         if (stmt.name.empty())
@@ -78,18 +115,27 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
         lowerer_.markArray(stmt.name);
     }
 
+    /// @brief Mark FOR-loop induction variables as referenced.
+    ///
+    /// @param stmt FOR statement node.
     void before(const ForStmt &stmt)
     {
         if (!stmt.var.empty())
             lowerer_.markSymbolReferenced(stmt.var);
     }
 
+    /// @brief Mark NEXT statements to ensure loop variables stay live.
+    ///
+    /// @param stmt NEXT statement node.
     void before(const NextStmt &stmt)
     {
         if (!stmt.var.empty())
             lowerer_.markSymbolReferenced(stmt.var);
     }
 
+    /// @brief Mark variables appearing in INPUT statements.
+    ///
+    /// @param stmt INPUT statement node.
     void before(const InputStmt &stmt)
     {
         for (const auto &name : stmt.vars)
@@ -105,8 +151,18 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
 
 } // namespace
 
+/// @brief Construct the procedure helper around a lowerer instance.
+///
+/// @param lowerer Lowerer that will perform IL emission.
 ProcedureLowering::ProcedureLowering(Lowerer &lowerer) : lowerer(lowerer) {}
 
+/// @brief Extract signatures for all procedures in the program.
+///
+/// @details Populates the lowerer's signature cache by walking function/sub
+///          declarations, translating AST parameter types to IL equivalents. The
+///          cache is later consumed when materialising call sites.
+///
+/// @param prog BASIC program AST providing declarations.
 void ProcedureLowering::collectProcedureSignatures(const Program &prog)
 {
     lowerer.procSignatures.clear();
@@ -143,6 +199,9 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
     }
 }
 
+/// @brief Scan a statement list for referenced variables and arrays.
+///
+/// @param stmts Statements comprising a procedure or main body.
 void ProcedureLowering::collectVars(const std::vector<const Stmt *> &stmts)
 {
     VarCollectWalker walker(lowerer);
@@ -151,6 +210,12 @@ void ProcedureLowering::collectVars(const std::vector<const Stmt *> &stmts)
             walker.walkStmt(*stmt);
 }
 
+/// @brief Scan the entire program for variable references.
+///
+/// @details Aggregates statements from both the main body and procedure
+///          declarations before delegating to the list-based overload.
+///
+/// @param prog BASIC program AST.
 void ProcedureLowering::collectVars(const Program &prog)
 {
     std::vector<const Stmt *> ptrs;
@@ -161,6 +226,18 @@ void ProcedureLowering::collectVars(const Program &prog)
     collectVars(ptrs);
 }
 
+/// @brief Emit IL for a single procedure.
+///
+/// @details Resets the lowerer's per-procedure state, builds the entry block,
+///          materialises parameters, and lowers the body statements. Helper
+///          callbacks in @p config handle empty bodies and ensure a final return
+///          is emitted. The routine also releases runtime resources for object
+///          and array locals before finalising the function.
+///
+/// @param name Mangled procedure name to emit.
+/// @param params Procedure parameter list.
+/// @param body Statement body to lower.
+/// @param config Configuration callbacks and return type metadata.
 void ProcedureLowering::emit(const std::string &name,
                              const std::vector<Param> &params,
                              const std::vector<StmtPtr> &body,
