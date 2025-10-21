@@ -1,9 +1,24 @@
-// File: src/il/transform/Peephole.cpp
-// Purpose: Implements local IL peephole optimizations.
-// Key invariants: Transformations preserve program semantics.
-// Ownership/Lifetime: Operates in place on the module.
-// License: MIT (see LICENSE for details).
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the peephole optimisations that simplify short instruction
+// sequences inside individual basic blocks.  The pass walks each function in a
+// module, applies algebraic identity rules, and rewrites conditional branches
+// whose predicate collapses to a constant value.  Transformations preserve the
+// observable semantics of the module while eagerly removing redundant
+// instructions so later passes operate on a smaller IR.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Peephole simplification utilities for IL modules.
+/// @details Centralises the helpers that identify literal operands, count SSA
+///          uses, and rewrite branch instructions so that the high-level
+///          peephole driver can focus on pass orchestration.
 
 #include "il/transform/Peephole.hpp"
 #include "il/core/Function.hpp"
@@ -40,9 +55,10 @@ static bool isConstInt(const Value &v, long long &out)
 
 /// \brief Determine whether an operand equals a specific integer literal.
 ///
-/// This funnels all "compare against constant" logic through the same
-/// implementation so the rule table only needs to record literal values instead
-/// of bespoke predicates.
+/// The helper reuses @ref isConstInt to recognise literal integers and then
+/// performs the comparison against @p target.  Centralising the logic allows the
+/// peephole rule table to specify literal matches declaratively without in-line
+/// conditionals at each call site.
 ///
 /// @param v       Operand to classify.
 /// @param target  Required constant value.
@@ -56,10 +72,11 @@ static bool isConstEq(const Value &v, long long target)
 
 /// \brief Count how many times a temporary identifier is referenced in @p f.
 ///
-/// Some simplifications (e.g., eliminating a branch condition definition) are
-/// only legal when the defining instruction has a single use. This routine
-/// performs that conservative use-counting by scanning every operand in the
-/// function.
+/// The routine walks every instruction in every block, iterating each operand
+/// vector and incrementing a counter whenever it encounters the requested
+/// temporary.  Because the nested loops cover both regular operands and branch
+/// arguments, the resulting count accurately reflects all SSA uses inside the
+/// function, which the pass uses to guard single-use simplifications.
 ///
 /// @param f   Function being optimised.
 /// @param id  Temporary identifier to count.

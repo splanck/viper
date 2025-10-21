@@ -1,9 +1,24 @@
-// File: src/il/transform/ConstFold.cpp
-// License: MIT (see LICENSE for details).
-// Purpose: Implements constant folding for integer ops and math intrinsics.
-// Key invariants: Mirrors checked integer semantics and C math for f64.
-// Ownership/Lifetime: Operates in place on the module.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements constant folding for the IL.  The routines recognise arithmetic
+// operations and selected runtime intrinsics when all operands are literal
+// values, compute the reduced result, and update the IR in place.  Integer
+// folding respects the overflow behaviour encoded by the opcodes while
+// floating-point folding defers to the C math library to mirror runtime
+// semantics.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Constant folding implementation for IL modules.
+/// @details Declares helper routines for extracting literal operands,
+///          performing checked arithmetic, and substituting folded values before
+///          exposing the public @ref constFold entry point.
 
 #include "il/transform/ConstFold.hpp"
 #include "il/core/Function.hpp"
