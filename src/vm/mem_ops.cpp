@@ -1,10 +1,16 @@
-// File: src/vm/mem_ops.cpp
-// Purpose: Implement VM handlers for memory and pointer operations (MIT License,
-// see LICENSE).
-// Key invariants: Operations respect frame stack bounds, pointer provenance,
-// and type semantics.
-// Ownership/Lifetime: Handlers mutate the active frame without retaining state.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the VM opcode handlers responsible for memory and pointer
+// operations.  These routines manage the interpreter's stack storage, compute
+// pointer arithmetic, and bridge to runtime-managed string constants while
+// ensuring traps fire when callers violate safety invariants.
+//
+//===----------------------------------------------------------------------===//
 
 #include "vm/OpHandlers_Memory.hpp"
 
@@ -21,29 +27,34 @@
 
 using namespace il::core;
 
+/// @file
+/// @brief Memory and pointer opcode handlers for the Viper virtual machine.
+/// @details The handlers in this file evaluate IL instructions that manipulate
+///          memory addresses or interact with runtime-managed buffers.  They
+///          ensure stack allocations stay in-bounds, pointer arithmetic obeys
+///          provenance rules, and constant materialisation honours type-specific
+///          storage conventions.
+
 namespace il::vm::detail::memory
 {
-
-
-/// Handles `alloca` instructions by reserving zero-initialized stack space for
-/// the current frame.
-///
-/// The handler expects an operand describing the allocation size in bytes and
-/// raises a runtime trap when it is missing or negative. The frame stack is
-/// treated as a bump allocator; callers rely on the invariant that `fr.sp +
-/// size <= fr.stack.size()` (enforced in debug builds) so allocations never
-/// escape the stack bounds.
-///
-/// @param vm   Virtual machine instance used for operand evaluation and traps.
-/// @param fr   Active frame whose stack pointer is advanced.
-/// @param in   IL instruction supplying the allocation size and destination.
-/// @return ExecResult indicating whether execution should continue or unwind.
+/// @brief Handle the @c alloca opcode by reserving stack storage.
+/// @details Validates the requested size, aligns the stack pointer to
+///          @c std::max_align_t, zeros the allocated memory, and advances the
+///          frame's stack pointer.  On overflow or invalid operands the handler
+///          emits a trap and returns an execution result that signals unwinding.
+/// @param vm Virtual machine instance used for operand evaluation and traps.
+/// @param fr Active frame whose stack storage is extended.
+/// @param in IL instruction supplying the allocation size and destination slot.
+/// @param blocks Map of basic blocks for the current function (unused).
+/// @param bb Reference to the current block pointer (unused).
+/// @param ip Instruction index within the block (unused).
+/// @return Execution result indicating whether interpretation should continue.
 VM::ExecResult handleAlloca(VM &vm,
-                                        Frame &fr,
-                                        const Instr &in,
-                                        const VM::BlockMap &blocks,
-                                        const BasicBlock *&bb,
-                                        size_t &ip)
+                            Frame &fr,
+                            const Instr &in,
+                            const VM::BlockMap &blocks,
+                            const BasicBlock *&bb,
+                            size_t &ip)
 {
     (void)blocks;
     (void)bb;
@@ -70,7 +81,8 @@ VM::ExecResult handleAlloca(VM &vm,
     const size_t stackSize = fr.stack.size();
     constexpr size_t alignment = alignof(std::max_align_t);
 
-    auto trapOverflow = [&]() -> VM::ExecResult {
+    auto trapOverflow = [&]() -> VM::ExecResult
+    {
         RuntimeBridge::trap(TrapKind::Overflow, "stack overflow in alloca", in.loc, fr.func->name, "");
         VM::ExecResult result{};
         result.returned = true;
@@ -112,23 +124,24 @@ VM::ExecResult handleAlloca(VM &vm,
     return {};
 }
 
-/// Computes a pointer by applying a byte offset to a base address, emulating
-/// the IL `gep` semantics.
-///
-/// The base pointer and offset operands are evaluated and combined with
-/// byte-level pointer arithmetic. Callers are responsible for ensuring the
-/// resulting pointer remains within the same allocation; violating that
-/// invariant undermines stack discipline and may be trapped by later loads.
-///
-/// @param vm Virtual machine used for operand evaluation.
-/// @param fr Active frame that stores the computed pointer.
-/// @param in Instruction providing the base pointer and offset.
+/// @brief Handle the @c gep opcode by computing pointer arithmetic.
+/// @details Evaluates the base pointer and byte offset operands, performs the
+///          offset calculation, and stores the resulting pointer.  The handler
+///          assumes callers respect allocation bounds; later loads or stores will
+///          trap if the pointer escapes its provenance.
+/// @param vm Virtual machine instance executing the instruction.
+/// @param fr Active frame storing operands and results.
+/// @param in Instruction describing the base pointer, offset, and destination.
+/// @param blocks Map of basic blocks for the current function (unused).
+/// @param bb Reference to the current block pointer (unused).
+/// @param ip Instruction index within the block (unused).
+/// @return Execution result indicating whether interpretation should continue.
 VM::ExecResult handleGEP(VM &vm,
-                                     Frame &fr,
-                                     const Instr &in,
-                                     const VM::BlockMap &blocks,
-                                     const BasicBlock *&bb,
-                                     size_t &ip)
+                         Frame &fr,
+                         const Instr &in,
+                         const VM::BlockMap &blocks,
+                         const BasicBlock *&bb,
+                         size_t &ip)
 {
     (void)blocks;
     (void)bb;
@@ -141,22 +154,24 @@ VM::ExecResult handleGEP(VM &vm,
     return {};
 }
 
-/// Reifies the address of a runtime string constant for use in pointer-typed
-/// temporaries.
-///
-/// The handler forwards the runtime string pointer stored in the operand slot.
-/// The operand must already represent an immutable string managed by the
-/// runtime; consumers must not mutate through the resulting pointer.
-///
-/// @param vm Virtual machine context.
-/// @param fr Frame receiving the pointer value.
-/// @param in Instruction referencing the source string slot.
+/// @brief Handle the @c addr.of opcode by reifying runtime string pointers.
+/// @details Forwards the pointer held in the operand slot to the destination
+///          without modification, allowing IL to reference immutable runtime
+///          strings.  The handler relies on the runtime to guarantee the operand
+///          points to a valid string payload.
+/// @param vm Virtual machine instance executing the instruction.
+/// @param fr Active frame storing operands and results.
+/// @param in Instruction referencing the string operand and destination slot.
+/// @param blocks Map of basic blocks for the current function (unused).
+/// @param bb Reference to the current block pointer (unused).
+/// @param ip Instruction index within the block (unused).
+/// @return Execution result indicating whether interpretation should continue.
 VM::ExecResult handleAddrOf(VM &vm,
-                                        Frame &fr,
-                                        const Instr &in,
-                                        const VM::BlockMap &blocks,
-                                        const BasicBlock *&bb,
-                                        size_t &ip)
+                            Frame &fr,
+                            const Instr &in,
+                            const VM::BlockMap &blocks,
+                            const BasicBlock *&bb,
+                            size_t &ip)
 {
     (void)blocks;
     (void)bb;
@@ -168,21 +183,23 @@ VM::ExecResult handleAddrOf(VM &vm,
     return {};
 }
 
-/// Materializes a constant string slot by forwarding the evaluated operand.
-///
-/// The handler assumes the operand already yields a pointer or tagged runtime
-/// string object and simply stores it in the destination without further
-/// transformation.
-///
-/// @param vm Virtual machine context.
-/// @param fr Frame storing the resulting slot.
-/// @param in Instruction whose first operand encodes the constant string.
+/// @brief Handle the @c const.str opcode by materialising constant string slots.
+/// @details Copies the evaluated operand directly into the destination without
+///          further transformation, providing a convenient way to expose runtime
+///          string handles to subsequent instructions.
+/// @param vm Virtual machine instance executing the instruction.
+/// @param fr Active frame storing operands and results.
+/// @param in Instruction describing the constant string operand.
+/// @param blocks Map of basic blocks for the current function (unused).
+/// @param bb Reference to the current block pointer (unused).
+/// @param ip Instruction index within the block (unused).
+/// @return Execution result indicating whether interpretation should continue.
 VM::ExecResult handleConstStr(VM &vm,
-                                          Frame &fr,
-                                          const Instr &in,
-                                          const VM::BlockMap &blocks,
-                                          const BasicBlock *&bb,
-                                          size_t &ip)
+                              Frame &fr,
+                              const Instr &in,
+                              const VM::BlockMap &blocks,
+                              const BasicBlock *&bb,
+                              size_t &ip)
 {
     (void)blocks;
     (void)bb;
@@ -192,19 +209,23 @@ VM::ExecResult handleConstStr(VM &vm,
     return {};
 }
 
-/// Materializes a null constant for pointer-like handle types.
-///
-/// The handler writes a zero value into the slot corresponding to the
-/// instruction's result type. Pointer-oriented kinds (Ptr, Error, ResumeTok)
-/// use the generic pointer field, while string handles clear the runtime
-/// string slot. Other kinds fall back to the pointer field to preserve the
-/// historical behaviour for mis-specified instructions.
+/// @brief Handle the @c const.null opcode by writing a type-appropriate null.
+/// @details Inspects the destination type to determine which slot member should
+///          receive the null value.  Pointer-like types clear the generic pointer
+///          field, while string handles set the runtime string pointer to @c nullptr.
+/// @param vm Virtual machine instance executing the instruction (unused).
+/// @param fr Active frame storing the destination slot.
+/// @param in Instruction describing the destination type.
+/// @param blocks Map of basic blocks for the current function (unused).
+/// @param bb Reference to the current block pointer (unused).
+/// @param ip Instruction index within the block (unused).
+/// @return Execution result indicating whether interpretation should continue.
 VM::ExecResult handleConstNull(VM &vm,
-                                           Frame &fr,
-                                           const Instr &in,
-                                           const VM::BlockMap &blocks,
-                                           const BasicBlock *&bb,
-                                           size_t &ip)
+                               Frame &fr,
+                               const Instr &in,
+                               const VM::BlockMap &blocks,
+                               const BasicBlock *&bb,
+                               size_t &ip)
 {
     (void)vm;
     (void)blocks;
@@ -230,6 +251,4 @@ VM::ExecResult handleConstNull(VM &vm,
     ops::storeResult(fr, in, out);
     return {};
 }
-
 } // namespace il::vm::detail::memory
-
