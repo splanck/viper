@@ -18,6 +18,7 @@
 #include "frontends/basic/sem/Check_Common.hpp"
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
+#include "frontends/basic/SelectCaseRange.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -80,10 +81,8 @@ namespace il::frontends::basic::sem::detail
 {
 namespace
 {
-constexpr int64_t kCaseLabelMin =
-    static_cast<int64_t>(std::numeric_limits<int32_t>::min());
-constexpr int64_t kCaseLabelMax =
-    static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+using il::frontends::basic::kCaseLabelMax;
+using il::frontends::basic::kCaseLabelMin;
 
 using ArmContext = SemanticAnalyzer::SelectCaseArmContext;
 using LabelKind = SemanticAnalyzer::SelectCaseArmContext::LabelKind;
@@ -295,9 +294,7 @@ inline bool emitOutOfRangeLabel(const CaseArm &arm, ArmContext &ctx, int64_t raw
     if (raw >= kCaseLabelMin && raw <= kCaseLabelMax)
         return false;
 
-    std::string msg = "CASE label ";
-    msg += std::to_string(raw);
-    msg += " is outside 32-bit signed range";
+    std::string msg = il::frontends::basic::makeSelectCaseLabelRangeMessage(raw);
     ctx.de.emit(il::support::Severity::Error,
                 std::string(SemanticAnalyzer::DiagSelectCaseLabelRange),
                 arm.range.begin,
