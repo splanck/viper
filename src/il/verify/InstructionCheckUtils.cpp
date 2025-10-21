@@ -1,11 +1,22 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Provides shared helper utilities for instruction verification.  These
+// functions translate opcode metadata into concrete IL types and validate that
+// literal operands fit within specific integer widths.  By funnelling these
+// mechanics through one translation unit the verifier avoids duplicated switch
+// statements and maintains consistent range semantics.
+//
 //===----------------------------------------------------------------------===//
 
 /// @file
 /// @brief Implements shared helper utilities for instruction verification.
 /// @details Provides predicates for integer range checks and type-category
-/// mapping used across the IL verifier components.
+///          mapping used across the IL verifier components.
 
 #include "il/verify/InstructionCheckUtils.hpp"
 
@@ -15,6 +26,13 @@ namespace il::verify::detail
 {
 
 /// @brief Determine whether a signed value fits within the specified integer kind.
+///
+/// @details The IL verifier uses this helper when validating literal operands for
+///          instructions such as immediate loads.  The routine performs
+///          width-specific comparisons using `std::numeric_limits` so boundary
+///          values round-trip precisely.  Kinds outside the integer family return
+///          `false` to force callers to handle non-integral operands explicitly.
+///
 /// @param value Signed integer to test.
 /// @param kind Target IL integer kind.
 /// @return @c true when @p value lies within the representable range of @p kind.
@@ -36,6 +54,14 @@ bool fitsInIntegerKind(long long value, il::core::Type::Kind kind)
 }
 
 /// @brief Translate a type category into a concrete IL type kind.
+///
+/// @details Opcode metadata frequently describes operand expectations in terms
+///          of broad categories (integer, pointer, etc.).  This helper resolves
+///          those categories into the precise `Type::Kind` enumeration used by the
+///          rest of the compiler.  Categories that intentionally admit polymorphic
+///          behaviour yield `std::nullopt`, signalling to callers that they must
+///          defer type checking to specialised logic.
+///
 /// @param category Operand category derived from opcode metadata.
 /// @return Matching type kind or @c std::nullopt when the category represents a
 ///         polymorphic or unsupported type.
