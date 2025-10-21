@@ -1,14 +1,31 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
 // File: src/frontends/basic/AstWalkerUtils.cpp
 // Purpose: Implements helper utilities shared by BASIC AST walker implementations.
 // Key invariants: Utilities mirror BasicAstWalker traversal semantics.
 // Ownership/Lifetime: Functions operate on borrowed nodes.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/AstWalkerUtils.hpp"
 
 namespace il::frontends::basic::walker
 {
 
+/// @brief Check whether a PRINT item carries an evaluated expression.
+///
+/// @details BASIC PRINT statements may interleave literal separators and
+///          expressions.  The AST walker needs to know when an item provides a
+///          computed value so it can request lowering or formatting.  The
+///          helper simply inspects the discriminant and ensures the expression
+///          pointer is populated for safety.
+///
+/// @param item PRINT item under inspection.
+/// @return True when the item represents an expression payload.
 bool printItemHasExpr(const PrintItem &item) noexcept
 {
     return item.kind == PrintItem::Kind::Expr && item.expr != nullptr;
