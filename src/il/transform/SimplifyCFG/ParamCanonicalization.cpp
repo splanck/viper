@@ -1,9 +1,24 @@
-// File: src/il/transform/SimplifyCFG/ParamCanonicalization.cpp
-// License: MIT (see LICENSE for details).
-// Purpose: Implements parameter and argument canonicalisation for SimplifyCFG.
-// Key invariants: Keeps branch arguments aligned with block parameter layout.
-// Ownership/Lifetime: Mutates block parameter lists and predecessor argument lists.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the SimplifyCFG parameter canonicalisation routines.  The helpers
+// tighten block parameter lists by removing unused entries and by eliminating
+// parameters that receive the same value from every predecessor.  They also
+// adjust predecessor branch arguments so control-flow edges remain arity
+// compatible.  The transformations operate in place on a function and preserve
+// the module's semantics.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Utilities that keep block parameters and branch arguments aligned.
+/// @details Provides the core algorithms used by the SimplifyCFG pass to drop
+///          redundant block parameters, update predecessor edges, and maintain
+///          argument ordering without rebuilding surrounding data structures.
 
 #include "il/transform/SimplifyCFG/ParamCanonicalization.hpp"
 
@@ -21,6 +36,17 @@ namespace il::transform::simplify_cfg
 namespace
 {
 
+/// @brief Synchronise predecessor branch arguments with an updated block signature.
+///
+/// @details Iterates over every predecessor terminator that targets @p block and
+///          ensures its branch argument list mirrors the block's current
+///          parameter layout.  Arguments are truncated when the block dropped
+///          parameters, cleared when the block takes no parameters, and verified
+///          to remain in lock-step to avoid mismatched arities after other
+///          canonicalisation steps.
+///
+/// @param ctx   SimplifyCFG context providing access to the parent function.
+/// @param block Block whose incoming arguments must be realigned.
 void realignBranchArgs(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::BasicBlock &block)
 {
     for (auto &pred : ctx.function.blocks)
@@ -57,6 +83,19 @@ void realignBranchArgs(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::Basic
     }
 }
 
+/// @brief Remove parameters that receive the same value from every predecessor.
+///
+/// @details Walks all incoming edges to @p block and checks whether each block
+///          parameter is always passed the same SSA value.  When a unanimous
+///          value is found, the helper substitutes that value directly inside
+///          the block and erases the parameter alongside the corresponding
+///          branch arguments.  The scan repeats until no more parameters can be
+///          eliminated, guaranteeing a fixed point even when substitutions
+///          expose additional redundancies.
+///
+/// @param ctx   SimplifyCFG context exposing the current function and logging.
+/// @param block Block under inspection.
+/// @returns True if any parameters were removed.
 bool shrinkParamsEqualAcrossPreds(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::BasicBlock &block)
 {
     bool removedAny = false;
@@ -173,6 +212,18 @@ bool shrinkParamsEqualAcrossPreds(SimplifyCFG::SimplifyCFGPassContext &ctx, il::
     return removedAny;
 }
 
+/// @brief Drop block parameters whose SSA value is never referenced.
+///
+/// @details Scans the block's instructions and branch arguments to determine
+///          whether each parameter identifier is used.  When a parameter is
+///          dead, the helper erases it and prunes the matching argument from
+///          every predecessor edge before finally realigning the remaining
+///          arguments.  The process repeats until all unused parameters are
+///          removed so later passes operate on a minimal signature.
+///
+/// @param ctx   SimplifyCFG context with access to the function being mutated.
+/// @param block Block whose parameters are assessed.
+/// @returns True if any parameters were eliminated.
 bool dropUnusedParams(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::BasicBlock &block)
 {
     bool removedAny = false;
@@ -259,6 +310,16 @@ bool dropUnusedParams(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::BasicB
 
 } // namespace
 
+/// @brief Entry point that canonicalises parameters and branch arguments.
+///
+/// @details Iterates the function's blocks, skipping exception-handling regions
+///          where parameter manipulation is unsafe, and applies both redundancy
+///          elimination helpers.  The routine aggregates statistics, emits
+///          optional debug logs, and returns whether the function changed so the
+///          surrounding pass manager can schedule follow-up work when needed.
+///
+/// @param ctx SimplifyCFG context bound to the function under transformation.
+/// @returns True if any block parameters or arguments were simplified.
 bool canonicalizeParamsAndArgs(SimplifyCFG::SimplifyCFGPassContext &ctx)
 {
     il::core::Function &F = ctx.function;
