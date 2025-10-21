@@ -1,9 +1,23 @@
-// File: src/il/transform/SimplifyCFG/ForwardingElimination.cpp
-// License: MIT (see LICENSE for details).
-// Purpose: Removes empty forwarding blocks within SimplifyCFG.
-// Key invariants: Preserves branch arguments and exception-handling structure.
-// Ownership/Lifetime: Updates predecessor instructions and prunes blocks in place.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the SimplifyCFG logic that recognises and removes empty forwarding
+// blocks.  These blocks contain only a trivial branch to a successor and exist
+// solely to forward arguments.  The routines below redirect predecessor edges
+// to bypass the forwarding block, substitute argument values directly, and
+// finally erase the redundant block once all edges have been retargeted.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Forwarding-block elimination helpers for SimplifyCFG.
+/// @details Provides predicates for identifying empty forwarders, routines for
+///          updating predecessor terminators, and the pass entry point that
+///          collects statistics and debug output.
 
 #include "il/transform/SimplifyCFG/ForwardingElimination.hpp"
 
@@ -26,6 +40,18 @@ namespace il::transform::simplify_cfg
 namespace
 {
 
+/// @brief Check whether a block is an EH-safe forwarding trampoline.
+///
+/// @details Valid forwarding blocks start with optional non-side-effecting
+///          instructions, end with a single @c br terminator, and merely pass
+///          through branch arguments to a unique successor.  The predicate
+///          verifies exception-handling constraints, ensures no side effects
+///          occur before the terminator, and rejects blocks whose terminator
+///          reuses locally defined temporaries in its arguments.
+///
+/// @param ctx   SimplifyCFG context providing EH sensitivity checks.
+/// @param block Candidate block to inspect.
+/// @returns True when the block can be safely removed.
 bool isEmptyForwardingBlock(SimplifyCFG::SimplifyCFGPassContext &ctx, const il::core::BasicBlock &block)
 {
     if (isEntryLabel(block.label))
@@ -81,6 +107,18 @@ bool isEmptyForwardingBlock(SimplifyCFG::SimplifyCFGPassContext &ctx, const il::
     return true;
 }
 
+/// @brief Retarget a predecessor's terminator to bypass a forwarding block.
+///
+/// @details Locates occurrences of @p dead in the predecessor's terminator,
+///          substitutes the forwarding block's parameters with their incoming
+///          arguments, and rebuilds the argument list to match the successor's
+///          expectations.  When the forwarding block forwarded arguments, the
+///          helper materialises the substituted values so that the successor sees
+///          the same inputs it would have received prior to removal.
+///
+/// @param pred Predecessor block whose terminator will be rewritten.
+/// @param dead Forwarding block slated for removal.
+/// @param succ Successor originally targeted by @p dead.
 void redirectPredecessor(il::core::BasicBlock &pred,
                          il::core::BasicBlock &dead,
                          il::core::BasicBlock &succ)
@@ -148,6 +186,17 @@ void redirectPredecessor(il::core::BasicBlock &pred,
 
 } // namespace
 
+/// @brief Remove every empty forwarding block within a function.
+///
+/// @details Collects the labels of eligible forwarders, redirects all
+///          predecessors around each block, and erases the block once no edges
+///          refer to it.  Statistics and optional debug logs track how many
+///          predecessors were retargeted and how many blocks were deleted.  The
+///          function returns whether the control-flow graph changed so callers
+///          can trigger follow-up cleanups.
+///
+/// @param ctx SimplifyCFG context owning the function under transformation.
+/// @returns True if any blocks were rewritten or removed.
 bool removeEmptyForwarders(SimplifyCFG::SimplifyCFGPassContext &ctx)
 {
     il::core::Function &F = ctx.function;

@@ -1,9 +1,22 @@
-// File: src/il/transform/SimplifyCFG/BlockMerging.cpp
-// License: MIT (see LICENSE for details).
-// Purpose: Implements block merging transformations for SimplifyCFG.
-// Key invariants: Ensures parameter substitution and terminator rewrites stay consistent.
-// Ownership/Lifetime: Mutates predecessor blocks and erases merged successors in place.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the SimplifyCFG block merging routines.  These helpers detect
+// blocks with a single predecessor and merge their contents into the predecessor
+// once branch arguments are substituted.  The transformation reduces the number
+// of basic blocks while keeping control flow and SSA operands consistent.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Block merging utilities for SimplifyCFG.
+/// @details Provides the worker that performs the actual merge and the public
+///          entry point that walks the function, records statistics, and emits
+///          debug diagnostics.
 
 #include "il/transform/SimplifyCFG/BlockMerging.hpp"
 
@@ -25,6 +38,19 @@ namespace il::transform::simplify_cfg
 namespace
 {
 
+/// @brief Merge a block into its sole predecessor when safe.
+///
+/// @details Searches for a single predecessor edge targeting @p block, verifies
+///          that the predecessor terminator is a simple branch, and rewrites all
+///          SSA uses in @p block to reference the incoming arguments.  The
+///          routine then splices @p block's non-terminator instructions into the
+///          predecessor, rewrites the successor labels in the merged terminator,
+///          and finally erases the now-redundant block from the function.
+///
+/// @param ctx   SimplifyCFG context providing EH-sensitivity checks and
+///              diagnostic hooks.
+/// @param block Candidate block to merge.
+/// @returns True when the block was merged into its predecessor.
 bool mergeSinglePred(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::BasicBlock &block)
 {
     il::core::Function &F = ctx.function;
@@ -162,6 +188,17 @@ bool mergeSinglePred(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::BasicBl
 
 } // namespace
 
+/// @brief Merge every eligible single-predecessor block in a function.
+///
+/// @details Iterates blocks in order, attempting to merge each into its
+///          predecessor via @ref mergeSinglePred.  The walk repeats for the next
+///          block only when no merge occurred, ensuring indices remain valid as
+///          blocks are erased.  When merges succeed the helper updates
+///          statistics and emits optional debug output so callers can understand
+///          the transformations performed.
+///
+/// @param ctx SimplifyCFG context owning the function under transformation.
+/// @returns True if any block was merged.
 bool mergeSinglePredBlocks(SimplifyCFG::SimplifyCFGPassContext &ctx)
 {
     il::core::Function &F = ctx.function;
