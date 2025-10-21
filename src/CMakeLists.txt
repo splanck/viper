@@ -205,7 +205,7 @@ target_link_libraries(ilc
 get_target_property(ILC_LINK_LIBS ilc LINK_LIBRARIES)
 message(STATUS "ilc LINK_LIBRARIES: ${ILC_LINK_LIBS}")
 
-add_executable(il-verify tools/il-verify/il-verify.cpp)
+add_executable(il-verify tools/il-verify/il-verify.cpp tools/il-verify/driver.cpp)
 set_target_properties(il-verify PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/il-verify)
 target_link_libraries(il-verify
   PRIVATE

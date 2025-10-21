@@ -21,7 +21,7 @@
 ///          minimal amount of code necessary to expose a user-facing CLI.
 
 #include "support/source_manager.hpp"
-#include "tools/common/module_loader.hpp"
+#include "tools/il-verify/driver.hpp"
 #include <iostream>
 #include <string>
 
@@ -54,18 +54,10 @@ int main(int argc, char **argv)
         std::cerr << "Usage: il-verify <file.il>\n";
         return 1;
     }
-    il::core::Module m;
     il::support::SourceManager sm;
-    sm.addFile(argv[1]);
-    auto load = il::tools::common::loadModuleFromFile(argv[1], m, std::cerr, "cannot open ");
-    if (!load.succeeded())
+    if (!il::tools::verify::runVerificationPipeline(argv[1], std::cout, std::cerr, sm))
     {
         return 1;
     }
-    if (!il::tools::common::verifyModule(m, std::cerr, &sm))
-    {
-        return 1;
-    }
-    std::cout << "OK\n";
     return 0;
 }

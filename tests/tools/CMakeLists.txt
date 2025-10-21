@@ -32,6 +32,13 @@ function(viper_add_tools_tests)
   target_link_libraries(test_tools_basic_common PRIVATE ${VIPER_TOOLS_LIBS})
   viper_add_ctest(test_tools_basic_common test_tools_basic_common)
 
+  viper_add_test(test_tools_il_verify_driver
+    ${_VIPER_TOOLS_DIR}/IlVerifyDriverTests.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/il-verify/driver.cpp)
+  target_include_directories(test_tools_il_verify_driver PRIVATE ${CMAKE_SOURCE_DIR}/src)
+  target_link_libraries(test_tools_il_verify_driver PRIVATE ${VIPER_TOOLS_LIBS})
+  viper_add_ctest(test_tools_il_verify_driver test_tools_il_verify_driver)
+
   viper_add_test(test_cli_run_missing_main
     ${VIPER_TESTS_DIR}/unit/test_cli_run_missing_main.cpp
     ${CMAKE_SOURCE_DIR}/src/tools/ilc/cli.cpp
