@@ -1,9 +1,26 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/il/io/FunctionParser.cpp
-// Purpose: Implements helpers for parsing IL function definitions (MIT License; see
-//          LICENSE).
-// Key invariants: ParserState maintains current function and block context.
+// Purpose: Parse IL textual function definitions into in-memory IR structures.
+// Key invariants: ParserState maintains current function, block, and location
+//                 context while enforcing SSA identifier uniqueness.
 // Ownership/Lifetime: Populates functions directly within the supplied module.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements the streaming parser that materialises IL functions.
+/// @details The helpers in this file cooperate with instruction and operand
+///          parsers to translate the textual IL syntax into the core IR data
+///          structures.  The functions actively validate naming, type, and
+///          structural constraints while producing precise diagnostics that
+///          mirror the textual form understood by developers.
 
 #include "il/io/FunctionParser.hpp"
 #include "il/core/BasicBlock.hpp"
