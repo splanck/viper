@@ -28,6 +28,16 @@ namespace il::frontends::basic
 {
 namespace
 {
+/// @brief Translate a BASIC AST type into the corresponding IL type.
+///
+/// @details Provides the shared mapping used by member access lowering when the
+///          class layout records only high-level BASIC types.  Defaults to the
+///          integral representation when a new enumerator is introduced before
+///          the lowering logic is updated, preserving legacy behaviour until the
+///          mapping is extended explicitly.
+///
+/// @param ty BASIC type enumerator describing the field layout.
+/// @return Equivalent IL type descriptor.
 [[nodiscard]] il::core::Type ilTypeForAstType(::il::frontends::basic::Type ty)
 {
     using IlType = il::core::Type;
@@ -46,6 +56,16 @@ namespace
 }
 } // namespace
 
+/// @brief Determine the class name associated with an OOP expression.
+///
+/// @details Walks the expression tree to find the originating class, handling
+///          variables, the implicit `ME` reference, @c NEW expressions, member
+///          access, and method calls.  Returns an empty string when the class
+///          cannot be determined, allowing callers to fall back to conservative
+///          behaviour.
+///
+/// @param expr AST node describing the expression under inspection.
+/// @return Class name string or empty when no object type is associated.
 std::string Lowerer::resolveObjectClass(const Expr &expr) const
 {
     if (const auto *var = dynamic_cast<const VarExpr *>(&expr))
@@ -81,6 +101,16 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
     return {};
 }
 
+/// @brief Lower a BASIC @c NEW expression into IL runtime calls.
+///
+/// @details Queries the cached class layout to determine the allocation size
+///          and class identifier, requests the object-allocation runtime helper,
+///          and emits the constructor call with the newly created object prepended
+///          to the argument list.  The resulting pointer value is packaged in an
+///          @ref RVal ready for further lowering.
+///
+/// @param expr AST node representing the @c NEW expression.
+/// @return Runtime value describing the allocated object pointer.
 Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
 {
     curLoc = expr.loc;
@@ -114,6 +144,15 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
     return {obj, Type(Type::Kind::Ptr)};
 }
 
+/// @brief Lower the implicit @c ME expression to a pointer load.
+///
+/// @details Looks up the @c ME symbol in the current scope, falling back to a
+///          null pointer when the binding is absent (for example, outside a
+///          method).  When present the helper emits a load from the associated
+///          slot so callers receive a runtime object pointer.
+///
+/// @param expr AST node representing the @c ME keyword.
+/// @return Runtime value describing the current object instance.
 Lowerer::RVal Lowerer::lowerMeExpr(const MeExpr &expr)
 {
     curLoc = expr.loc;
@@ -125,6 +164,16 @@ Lowerer::RVal Lowerer::lowerMeExpr(const MeExpr &expr)
     return {self, Type(Type::Kind::Ptr)};
 }
 
+/// @brief Lower a member access expression to loads from the object layout.
+///
+/// @details Evaluates the base expression, consults the cached class layout for
+///          the member, and emits a @c GEP followed by a load using the field's
+///          static type.  When any prerequisite (base, layout, or field) is
+///          missing, the helper returns a zero-valued integer as a defensive
+///          fallback.
+///
+/// @param expr AST node describing the member access.
+/// @return Runtime value of the selected field, or zero when unresolved.
 Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
 {
     if (!expr.base)
@@ -150,6 +199,16 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
     return {loaded, fieldTy};
 }
 
+/// @brief Lower an instance method call, dispatching through the mangled name.
+///
+/// @details Evaluates the receiver expression, prepends it to the argument list,
+///          and emits a direct call using the class-aware mangled identifier.
+///          When the class name cannot be resolved the raw method name is used,
+///          preserving compatibility with late-bound scenarios.
+///
+/// @param expr AST node representing the method invocation.
+/// @return Result value placeholder; currently the runtime returns @c void so
+///         a zero integer is used to preserve SSA expectations.
 Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
 {
     if (!expr.base)

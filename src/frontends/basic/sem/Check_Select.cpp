@@ -17,6 +17,19 @@
 namespace il::frontends::basic::sem
 {
 
+/// @brief Perform semantic validation for a @c SELECT CASE statement.
+///
+/// @details Establishes a @ref ControlCheckContext for the current analyzer so
+///          label tracking and jump accounting remain consistent with other
+///          control-flow checks.  The selector expression is classified through
+///          @ref detail::classifySelectCaseSelector, which reports fatal issues
+///          such as unsupported types.  Each arm is then validated and lowered
+///          via @ref detail::validateSelectCaseArm and
+///          @ref detail::analyzeSelectCaseBody, with the @c ELSE body analysed
+///          last when present.
+///
+/// @param analyzer Semantic analyzer that owns global statement state.
+/// @param stmt Parsed @c SELECT CASE statement under inspection.
 void analyzeSelectCase(SemanticAnalyzer &analyzer, const SelectCaseStmt &stmt)
 {
     ControlCheckContext context(analyzer);
@@ -40,6 +53,17 @@ void analyzeSelectCase(SemanticAnalyzer &analyzer, const SelectCaseStmt &stmt)
         detail::analyzeSelectCaseBody(context, stmt.elseBody);
 }
 
+/// @brief Analyse the body of a @c SELECT CASE arm using standard control-flow
+///        rules.
+///
+/// @details Constructs a fresh @ref ControlCheckContext so nested statements can
+///          reuse the common infrastructure for stack balancing, EXIT handling,
+///          and diagnostic emission.  Delegates to
+///          @ref detail::analyzeSelectCaseBody to keep the shared traversal in a
+///          single location.
+///
+/// @param analyzer Semantic analyzer providing symbol and diagnostic services.
+/// @param body Sequence of statements that make up the case arm.
 void analyzeSelectCaseBody(SemanticAnalyzer &analyzer,
                            const std::vector<StmtPtr> &body)
 {

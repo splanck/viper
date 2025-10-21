@@ -32,6 +32,16 @@ namespace il::frontends::basic
 
 namespace
 {
+/// @brief Concatenate a class name with a suffix that marks a special role.
+///
+/// @details Reserves the combined length up-front to avoid reallocations before
+///          appending the raw character sequences from @p base and @p suffix.
+///          The helper keeps mangling logic local to this file so the public
+///          helpers can focus on semantic naming rules.
+///
+/// @param base   Unmangled class identifier.
+/// @param suffix Role suffix such as ".__ctor" or ".__dtor".
+/// @return Stable mangled identifier string.
 std::string joinWithSuffix(std::string_view base, std::string_view suffix)
 {
     std::string result;
@@ -41,6 +51,16 @@ std::string joinWithSuffix(std::string_view base, std::string_view suffix)
     return result;
 }
 
+/// @brief Concatenate two identifier components using a dot separator.
+///
+/// @details Builds the output string in a single allocation by reserving the
+///          combined length and inserting the separator explicitly.  Used by the
+///          method mangler so the scheme matches BASIC's surface syntax while
+///          remaining deterministic.
+///
+/// @param lhs Class portion of the mangled identifier.
+/// @param rhs Member portion (method name) of the identifier.
+/// @return Joined identifier string in @c "Class.Member" form.
 std::string joinWithDot(std::string_view lhs, std::string_view rhs)
 {
     std::string result;
@@ -52,16 +72,40 @@ std::string joinWithDot(std::string_view lhs, std::string_view rhs)
 }
 } // namespace
 
+/// @brief Build the mangled constructor name for a BASIC class.
+///
+/// @details Constructors receive a stable ".__ctor" suffix to distinguish them
+///          from user-defined methods while keeping the human-readable prefix
+///          intact.
+///
+/// @param klass Source class name.
+/// @return Mangled constructor symbol name.
 std::string mangleClassCtor(std::string_view klass)
 {
     return joinWithSuffix(klass, ".__ctor");
 }
 
+/// @brief Build the mangled destructor name for a BASIC class.
+///
+/// @details Mirrors @ref mangleClassCtor but uses the ".__dtor" suffix so the
+///          lowering logic can reliably locate destructor helpers.
+///
+/// @param klass Source class name.
+/// @return Mangled destructor symbol name.
 std::string mangleClassDtor(std::string_view klass)
 {
     return joinWithSuffix(klass, ".__dtor");
 }
 
+/// @brief Construct the mangled identifier for an instance method.
+///
+/// @details Inserts a dot between the class and method names, matching BASIC's
+///          surface syntax while producing a single symbol suitable for IL and
+///          runtime lookup.
+///
+/// @param klass  Source class name.
+/// @param method Method identifier.
+/// @return Mangled method symbol name.
 std::string mangleMethod(std::string_view klass, std::string_view method)
 {
     return joinWithDot(klass, method);
