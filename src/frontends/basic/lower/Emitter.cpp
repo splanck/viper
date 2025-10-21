@@ -117,6 +117,21 @@ void Emitter::emitStore(Type ty, Value addr, Value val)
 
 Emitter::Value Emitter::emitBinary(Opcode op, Type ty, Value lhs, Value rhs)
 {
+#if !defined(NDEBUG)
+    if (op == Opcode::And)
+    {
+        constexpr const char *kAndOperandMsg =
+            "emitBinary(And): operands must be i64; cast from i1 with ZExt1 then Trunc1 back to i1 for branches.";
+        auto requireI64Value = [&](const Value &operand)
+        {
+            if (operand.kind == Value::Kind::ConstInt)
+                assert(!operand.isBool && kAndOperandMsg);
+        };
+        assert(ty.kind == Type::Kind::I64 && kAndOperandMsg);
+        requireI64Value(lhs);
+        requireI64Value(rhs);
+    }
+#endif
     unsigned id = lowerer_.nextTempId();
     Instr in;
     in.result = id;
