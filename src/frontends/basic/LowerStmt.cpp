@@ -288,7 +288,12 @@ void Lowerer::emitRuntimeErrCheck(Value err,
 
     ctx.setCurrent(&func->blocks[curIdx]);
     curLoc = loc;
-    Value isFail = emitBinary(Opcode::ICmpNe, ilBoolTy(), err, Value::constInt(0));
+    // Runtime helpers surface 32-bit error codes; widen to i64 so the compare
+    // uses operands compatible with ICmpNe's 64-bit expectation.
+    RVal errCoerced{err, Type(Type::Kind::I32)};
+    errCoerced = ensureI64(std::move(errCoerced), loc);
+    Value isFail =
+        emitBinary(Opcode::ICmpNe, ilBoolTy(), errCoerced.value, Value::constInt(0));
     emitCBr(isFail, failBlk, contBlk);
 
     ctx.setCurrent(failBlk);
