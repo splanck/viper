@@ -34,6 +34,19 @@ int main()
     assert(a == b);
     assert(interner.lookup(a) == "hello");
 
+    // Cached string_view from lookup must survive further growth.
+    il::support::StringInterner stableInterner;
+    auto stableSym = stableInterner.intern("stable");
+    std::string_view cachedView = stableInterner.lookup(stableSym);
+    const char *cachedData = cachedView.data();
+    for (int i = 0; i < 1024; ++i)
+    {
+        stableInterner.intern("padding_" + std::to_string(i));
+    }
+    std::string_view refreshed = stableInterner.lookup(stableSym);
+    assert(refreshed == cachedView);
+    assert(refreshed.data() == cachedData);
+
     // Diagnostic formatting
     il::support::SourceManager sm;
     il::support::SourceLoc loc{sm.addFile("test"), 1, 1};
