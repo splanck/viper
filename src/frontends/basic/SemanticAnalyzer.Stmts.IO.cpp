@@ -1,13 +1,22 @@
-// File: src/frontends/basic/SemanticAnalyzer.Stmts.IO.cpp
-// License: MIT License. See LICENSE in the project root for full license
-//          information.
-// Purpose: Implements IO and screen-manipulation statement checks for the BASIC
-//          semantic analyzer, covering PRINT/INPUT, channel management, and
-//          simple terminal controls.
-// Key invariants: Shared helpers report loop-variable mutations consistently;
-//                 channel bookkeeping remains balanced across procedure scopes.
-// Ownership/Lifetime: Borrowed SemanticAnalyzer state only.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements IO and screen-manipulation statement checks for the BASIC semantic
+// analyser, covering PRINT/INPUT, channel management, and terminal control
+// commands.  The routines live in a dedicated translation unit so the main
+// analyzer can remain focused on expression semantics.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Semantic checks for BASIC IO statements (PRINT, INPUT, OPEN, etc.).
+/// @details Each routine validates operand types, enforces channel usage
+///          invariants, and emits diagnostics through
+///          @ref SemanticDiagnostics when contracts are violated.
 
 #include "frontends/basic/SemanticAnalyzer.Stmts.IO.hpp"
 
@@ -16,6 +25,10 @@
 namespace il::frontends::basic::semantic_analyzer_detail
 {
 
+/// @brief Construct an IO statement context that shares analyzer state.
+/// @details Wraps the common @ref StmtShared base so helpers can access
+///          diagnostics and loop-tracking facilities without duplicating
+///          plumbing code.
 IOStmtContext::IOStmtContext(SemanticAnalyzer &analyzer) noexcept
     : StmtShared(analyzer)
 {
@@ -29,11 +42,18 @@ namespace il::frontends::basic
 using semantic_analyzer_detail::IOStmtContext;
 using semantic_analyzer_detail::semanticTypeName;
 
+/// @brief Validate the CLS statement. No semantic checks are required.
+/// @details CLS performs a screen clear and accepts no operands, so the visitor
+///          intentionally performs no validation beyond acknowledging the node.
 void SemanticAnalyzer::visit(const ClsStmt &)
 {
     // nothing to validate
 }
 
+/// @brief Validate the COLOR statement operands.
+/// @details Ensures the foreground expression is numeric and, when present, the
+///          background expression is also numeric to match BASIC semantics.
+///          Violations produce diagnostics via @ref requireNumeric.
 void SemanticAnalyzer::visit(const ColorStmt &s)
 {
     requireNumeric(*s.fg, "COLOR foreground must be numeric");
@@ -41,6 +61,10 @@ void SemanticAnalyzer::visit(const ColorStmt &s)
         requireNumeric(*s.bg, "COLOR background must be numeric");
 }
 
+/// @brief Validate LOCATE statement operands.
+/// @details Requires the row expression to be numeric and conditionally checks
+///          the column expression when supplied, mirroring the runtime
+///          expectations of the LOCATE statement.
 void SemanticAnalyzer::visit(const LocateStmt &s)
 {
     requireNumeric(*s.row, "LOCATE row must be numeric");
@@ -48,6 +72,9 @@ void SemanticAnalyzer::visit(const LocateStmt &s)
         requireNumeric(*s.col, "LOCATE column must be numeric");
 }
 
+/// @brief Analyze a PRINT statement for semantic correctness.
+/// @details Traverses each printed expression (ignoring pure separators) so any
+///          nested semantic issues are diagnosed before code generation.
 void SemanticAnalyzer::analyzePrint(const PrintStmt &p)
 {
     for (const auto &it : p.items)
@@ -55,6 +82,9 @@ void SemanticAnalyzer::analyzePrint(const PrintStmt &p)
             visitExpr(*it.expr);
 }
 
+/// @brief Analyze a PRINT# or WRITE# statement.
+/// @details Validates the optional channel expression and each argument payload
+///          by visiting them in turn.
 void SemanticAnalyzer::analyzePrintCh(const PrintChStmt &p)
 {
     if (p.channelExpr)
@@ -64,21 +94,31 @@ void SemanticAnalyzer::analyzePrintCh(const PrintChStmt &p)
             visitExpr(*arg);
 }
 
+/// @brief Analyze the CLS statement wrapper.
+/// @details Delegates to the parameterless visitor for reuse.
 void SemanticAnalyzer::analyzeCls(const ClsStmt &stmt)
 {
     visit(stmt);
 }
 
+/// @brief Analyze the COLOR statement wrapper.
+/// @details Simply dispatches to the visitor implementation.
 void SemanticAnalyzer::analyzeColor(const ColorStmt &stmt)
 {
     visit(stmt);
 }
 
+/// @brief Analyze the LOCATE statement wrapper.
+/// @details Delegates to the visitor to reuse operand validation logic.
 void SemanticAnalyzer::analyzeLocate(const LocateStmt &stmt)
 {
     visit(stmt);
 }
 
+/// @brief Analyze an OPEN statement including type checks and channel tracking.
+/// @details Verifies the mode is supported, validates operand types, and records
+///          channel mutations so later CLOSE statements can be checked for
+///          balance. Emits warnings for channels reopened without closing.
 void SemanticAnalyzer::analyzeOpen(OpenStmt &stmt)
 {
     const bool modeValid = stmt.mode == OpenStmt::Mode::Input || stmt.mode == OpenStmt::Mode::Output ||
@@ -137,6 +177,10 @@ void SemanticAnalyzer::analyzeOpen(OpenStmt &stmt)
     }
 }
 
+/// @brief Analyze a CLOSE statement and update channel bookkeeping.
+/// @details Ensures the channel expression is numeric and, when it resolves to a
+///          literal channel, records that the descriptor has been closed so the
+///          warning state remains accurate.
 void SemanticAnalyzer::analyzeClose(CloseStmt &stmt)
 {
     if (!stmt.channelExpr)
@@ -164,6 +208,9 @@ void SemanticAnalyzer::analyzeClose(CloseStmt &stmt)
     }
 }
 
+/// @brief Analyze a SEEK statement for channel and position correctness.
+/// @details Visits both operands, emitting diagnostics when non-numeric values
+///          are supplied.
 void SemanticAnalyzer::analyzeSeek(SeekStmt &stmt)
 {
     if (stmt.channelExpr)
@@ -191,6 +238,10 @@ void SemanticAnalyzer::analyzeSeek(SeekStmt &stmt)
     }
 }
 
+/// @brief Analyze an INPUT statement targeting variables in the current scope.
+/// @details Visits the optional prompt expression and resolves each listed
+///          variable, reporting diagnostics when attempting to mutate loop
+///          control variables.
 void SemanticAnalyzer::analyzeInput(InputStmt &inp)
 {
     IOStmtContext ctx(*this);
@@ -206,6 +257,9 @@ void SemanticAnalyzer::analyzeInput(InputStmt &inp)
     }
 }
 
+/// @brief Analyze an INPUT# statement targeting a specific channel.
+/// @details Resolves the target variable and reports loop-variable mutations in
+///          the same fashion as @ref analyzeInput.
 void SemanticAnalyzer::analyzeInputCh(InputChStmt &inp)
 {
     IOStmtContext ctx(*this);
@@ -218,6 +272,9 @@ void SemanticAnalyzer::analyzeInputCh(InputChStmt &inp)
         ctx.reportLoopVariableMutation(name, inp.loc, static_cast<uint32_t>(name.size()));
 }
 
+/// @brief Analyze a LINE INPUT# statement.
+/// @details Visits the optional channel expression and destination expression to
+///          ensure nested semantics are validated.
 void SemanticAnalyzer::analyzeLineInputCh(LineInputChStmt &inp)
 {
     if (inp.channelExpr)
