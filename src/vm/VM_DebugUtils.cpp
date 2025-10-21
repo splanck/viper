@@ -5,10 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements VM-side helpers that expose opcode mnemonics and trap diagnostics
-// to the debugger and runtime error reporting subsystems.  The routines ensure
-// that diagnostic state mirrors execution context so pause/resume behaviour is
-// predictable for interactive tooling.
+// File: src/vm/VM_DebugUtils.cpp
+// Purpose: Provide VM-side helpers for opcode mnemonics and trap diagnostics.
+// Key invariants: Diagnostic caches mirror the most recent execution context so
+//                 debugger output remains coherent across pause/resume cycles.
+// Ownership/Lifetime: Functions mutate VM-owned tracking structures in place
+//                     without allocating persistent external state.
+// Links: docs/runtime-vm.md#diagnostics
 //
 //===----------------------------------------------------------------------===//
 
