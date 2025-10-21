@@ -11,6 +11,7 @@
 #include <limits>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace il::support
@@ -32,6 +33,22 @@ int main()
     auto b = interner.intern("hello");
     assert(a == b);
     assert(interner.lookup(a) == "hello");
+
+    // Previously obtained lookups remain valid after interning more strings.
+    auto stable = interner.intern("persist");
+    std::string_view stableView = interner.lookup(stable);
+    assert(stableView == "persist");
+    const char *stablePtr = stableView.data();
+    for (int i = 0; i < 32; ++i)
+    {
+        std::string filler = "filler_" + std::to_string(i);
+        interner.intern(filler);
+    }
+    assert(stableView == "persist");
+    assert(stableView.data() == stablePtr);
+    auto refreshedView = interner.lookup(stable);
+    assert(refreshedView == "persist");
+    assert(refreshedView.data() == stablePtr);
 
     // Diagnostic formatting
     il::support::SourceManager sm;
