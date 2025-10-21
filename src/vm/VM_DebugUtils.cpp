@@ -1,10 +1,24 @@
-// File: src/vm/VM_DebugUtils.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Implements VM helper utilities for opcode naming and trap diagnostics.
-// Key invariants: Trap metadata updates mirror execution context to preserve
-//                 accurate pause/resume behaviour.
-// Ownership/Lifetime: Utilities operate on VM state owned elsewhere.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements VM-side helpers that expose opcode mnemonics and trap diagnostics
+// to the debugger and runtime error reporting subsystems.  The routines ensure
+// that diagnostic state mirrors execution context so pause/resume behaviour is
+// predictable for interactive tooling.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief VM debugging utilities for opcode and trap reporting.
+/// @details Provides convenience helpers for translating opcodes into readable
+///          mnemonics, exposing trap messages, and synthesising frame summaries
+///          when the VM encounters errors.  These functions are deliberately kept
+///          out-of-line to keep the main VM implementation focused on execution
+///          semantics.
 
 #include "vm/VM.hpp"
 #include "il/core/Function.hpp"
@@ -20,6 +34,13 @@ using il::core::kNumOpcodes;
 using il::core::getOpcodeInfo;
 }
 
+/// @brief Translate an opcode to a printable mnemonic.
+/// @details Consults the opcode metadata table and returns the canonical name
+///          when available, falling back to a numeric placeholder when metadata
+///          is missing.  Keeps debugger output stable even for unrecognised
+///          opcodes.
+/// @param op Opcode enumerator to translate.
+/// @return String mnemonic or numeric placeholder.
 std::string opcodeMnemonic(il::core::Opcode op)
 {
     const size_t index = static_cast<size_t>(op);
@@ -32,6 +53,11 @@ std::string opcodeMnemonic(il::core::Opcode op)
     return std::string("opcode#") + std::to_string(static_cast<int>(op));
 }
 
+/// @brief Retrieve the most recent trap message recorded by the VM.
+/// @details Returns an optional containing the cached trap message when one is
+///          available; otherwise @c std::nullopt so callers can distinguish
+///          between "no trap" and "empty string" cases.
+/// @return Optional string describing the last trap.
 std::optional<std::string> VM::lastTrapMessage() const
 {
     if (lastTrap.message.empty())
@@ -39,6 +65,14 @@ std::optional<std::string> VM::lastTrapMessage() const
     return lastTrap.message;
 }
 
+/// @brief Construct a diagnostic frame snapshot for a VM error.
+/// @details Aggregates function name, instruction index, and source location by
+///          consulting current execution context, runtime context, and cached
+///          trap state.  The helper prefers freshly available data but falls back
+///          to previously recorded information when necessary, ensuring that
+///          debugger output always contains best-effort metadata.
+/// @param error Error descriptor reported by the VM core.
+/// @return Populated frame summary describing the failing execution point.
 FrameInfo VM::buildFrameInfo(const VmError &error) const
 {
     FrameInfo frame{};
@@ -69,6 +103,14 @@ FrameInfo VM::buildFrameInfo(const VmError &error) const
     return frame;
 }
 
+/// @brief Cache details about the latest trap and return its message.
+/// @details Stores the provided error and frame information, recomputes the user
+///          facing message via @ref vm_format_error, and appends any pending
+///          runtime-context message.  The combined message is cached for future
+///          retrieval via @ref lastTrapMessage.
+/// @param error Error descriptor raised by the VM.
+/// @param frame Frame information produced by @ref buildFrameInfo.
+/// @return The formatted trap message stored in the VM state.
 std::string VM::recordTrap(const VmError &error, const FrameInfo &frame)
 {
     lastTrap.error = error;

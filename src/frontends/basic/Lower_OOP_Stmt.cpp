@@ -25,6 +25,14 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
+/// @brief Lower a BASIC @c DELETE statement into runtime helper calls.
+/// @details Evaluates the target expression once, requests the release/free
+///          runtime helpers, and synthesises control flow that conditionally
+///          invokes the class destructor before freeing the object.  The
+///          lowering reuses the current procedure context, splitting the block
+///          into "destroy" and "continue" regions to preserve SSA form while
+///          emitting the appropriate runtime calls.
+/// @param stmt AST node describing the @c DELETE statement to lower.
 void Lowerer::lowerDelete(const DeleteStmt &stmt)
 {
     if (!stmt.target)

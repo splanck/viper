@@ -1,9 +1,23 @@
-// File: src/tools/ilc/cmd_run_il.cpp
-// Purpose: Implements execution of IL programs.
-// License: MIT (see LICENSE).
-// Key invariants: None.
-// Ownership/Lifetime: Tool owns loaded modules.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the `ilc run` subcommand that executes textual IL modules through
+// the in-process virtual machine.  The driver coordinates command-line parsing,
+// debugger configuration, module loading, verification, and VM execution while
+// reporting optional profiling information.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Entry point for the `ilc run` subcommand.
+/// @details Provides CLI parsing helpers, debugger configuration utilities, and
+///          the glue that loads IL from disk before launching the VM.  The
+///          helpers document how tracing, breakpoints, and summary reporting are
+///          wired into the driver so new flags can be added consistently.
 
 #include "break_spec.hpp"
 #include "cli.hpp"
@@ -54,6 +68,16 @@ struct RunILConfig
     std::unique_ptr<vm::DebugScript> debugScript;
 };
 
+/// @brief Parse a decimal breakpoint line number from a CLI token.
+/// @details Validates that @p token contains only digits before invoking
+///          @c std::stoi.  Successful conversions must be strictly positive; the
+///          parsed value is stored in @p line and the helper returns true.
+///          Failures leave @p line untouched and return false so callers can
+///          surface consistent diagnostics.
+/// @param token Candidate substring containing the numeric portion of a
+///        breakpoint spec.
+/// @param line Output slot populated with the parsed value on success.
+/// @return True when @p token encodes a positive decimal integer.
 bool tryParseLineNumber(const std::string &token, int &line)
 {
     if (token.empty())
@@ -78,6 +102,14 @@ bool tryParseLineNumber(const std::string &token, int &line)
     return line > 0;
 }
 
+/// @brief Report a malformed line-number argument and display usage text.
+/// @details Prints the offending token alongside the flag that referenced it
+///          and then invokes @ref usage() to show help before returning to the
+///          caller.  Keeping this logic centralised guarantees identical wording
+///          for @c --break and @c --break-src failures.
+/// @param lineToken Token that failed validation (may be empty when missing).
+/// @param spec Full argument passed to the flag.
+/// @param flag Flag name responsible for the argument, such as "--break".
 void reportInvalidLineNumber(const std::string &lineToken,
                              const std::string &spec,
                              const char *flag)
@@ -91,6 +123,16 @@ void reportInvalidLineNumber(const std::string &lineToken,
     usage();
 }
 
+/// @brief Decode all `ilc run`-specific command-line arguments.
+/// @details Extracts the input file, debugger options, and execution summary
+///          toggles while delegating shared options to
+///          @ref ilc::parseSharedOption.  Missing operands or unknown flags
+///          trigger usage output and a false return value so @ref cmdRunIL can
+///          abort gracefully.
+/// @param argc Number of arguments supplied to the subcommand.
+/// @param argv Argument array (first element is the IL file path).
+/// @param config Configuration structure populated with parsed state.
+/// @return True on success; false after emitting usage information.
 bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
 {
     if (argc < 1)
@@ -215,6 +257,16 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
     return true;
 }
 
+/// @brief Configure debugger state based on parsed CLI options.
+/// @details Resets the debugger when @c --continue is present; otherwise interns
+///          label and source breakpoints, registers watch expressions, and
+///          materialises a @ref vm::DebugScript for scripted or step-driven
+///          execution.  Stepping without an existing script creates a transient
+///          script that requests a single step.
+/// @param config Parsed `run` configuration describing debugger behaviour.
+/// @param dbg Debug controller to update.
+/// @param script Optional debug script owned by the caller; allocated or
+///        cleared depending on CLI flags.
 void configureDebugger(const RunILConfig &config,
                        vm::DebugCtrl &dbg,
                        std::unique_ptr<vm::DebugScript> &script)
@@ -254,6 +306,14 @@ void configureDebugger(const RunILConfig &config,
     }
 }
 
+/// @brief Load, verify, and execute the requested IL module.
+/// @details Sets up diagnostics infrastructure, applies tracing configuration,
+///          loads the module from disk, and runs verification before launching
+///          the VM.  When execution finishes optional instruction counts and
+///          timing summaries are printed, and any trap messages are surfaced on
+///          stderr.  Returns a non-zero status when any phase fails.
+/// @param config Fully populated configuration for the run.
+/// @return Process-style exit status; zero indicates success.
 int executeRunIL(const RunILConfig &config)
 {
     il::support::SourceManager sm;
@@ -352,20 +412,13 @@ int executeRunIL(const RunILConfig &config)
 
 } // namespace
 
-/**
- * @brief Run an IL program from file.
- *
- * Execution proceeds through the following phases:
- * 1. Process debugging-related CLI flags alongside shared `ilc` options.
- * 2. Read the requested IL file into a module via the expected API.
- * 3. Verify the parsed module and surface diagnostics on failure.
- * 4. Configure the VM with stdin redirection, trace controls, and debugger setup.
- * 5. Execute the program and report optional instruction counts and timing metrics.
- *
- * @param argc Number of subcommand arguments (excluding `-run`).
- * @param argv Argument list starting with the IL file path.
- * @return Exit status code.
- */
+/// @brief Execute the `run` subcommand end-to-end.
+/// @details Parses arguments, configures debugger state, and then dispatches to
+///          @ref executeRunIL.  Parsing failures are surfaced via a non-zero
+///          return code so the outer driver can present diagnostics.
+/// @param argc Number of subcommand arguments (excluding the subcommand).
+/// @param argv Argument vector beginning with the IL file path.
+/// @return Zero on success; non-zero when parsing or execution fails.
 int cmdRunIL(int argc, char **argv)
 {
     RunILConfig config;
