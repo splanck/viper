@@ -288,7 +288,12 @@ void Lowerer::emitRuntimeErrCheck(Value err,
 
     ctx.setCurrent(&func->blocks[curIdx]);
     curLoc = loc;
-    Value isFail = emitBinary(Opcode::ICmpNe, ilBoolTy(), err, Value::constInt(0));
+    // Normalize the runtime error code to i64 (zero-extend) so the integer compare type-checks.
+    Value errSlot = emitAlloca(8);
+    emitStore(Type(Type::Kind::I64), errSlot, Value::constInt(0));
+    emitStore(Type(Type::Kind::I32), errSlot, err);
+    Value err64 = emitLoad(Type(Type::Kind::I64), errSlot);
+    Value isFail = emitBinary(Opcode::ICmpNe, ilBoolTy(), err64, Value::constInt(0));
     emitCBr(isFail, failBlk, contBlk);
 
     ctx.setCurrent(failBlk);
