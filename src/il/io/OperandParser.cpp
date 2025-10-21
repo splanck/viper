@@ -202,9 +202,12 @@ Expected<Value> handleTempOperand(const std::string &token, ParserState &state)
 }
 
 /// @brief Translate an `@global` reference into a Value record.
-Expected<Value> handleGlobalOperand(const std::string &token, ParserState &)
+Expected<Value> handleGlobalOperand(const std::string &token, ParserState &state)
 {
-    return Value::global(token.substr(1));
+    std::string name = token.substr(1);
+    if (name.empty())
+        return makeValueError(state, "missing global name");
+    return Value::global(std::move(name));
 }
 
 /// @brief Produce the canonical null value for pointer-typed operands.
