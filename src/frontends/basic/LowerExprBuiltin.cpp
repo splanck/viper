@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cstdint>
 #include <limits>
 #include <optional>
 #include <string>
@@ -653,6 +654,16 @@ Lowerer::RVal BuiltinExprLowering::emitEofBuiltin(Lowerer &lowerer, const Builti
     lowerer.curLoc = expr.loc;
     Value raw = lowerer.emitCallRet(IlType(IlKind::I32), "rt_eof_ch", {channel.value});
 
+    // Normalise the runtime's 32-bit error code to i64 prior to any equality
+    // comparisons to keep parity with emitRuntimeErrCheck's widened checks.
+    Value rawI64 = raw;
+    {
+        Value scratch = lowerer.emitAlloca(sizeof(int64_t));
+        lowerer.emitStore(IlType(IlKind::I64), scratch, Value::constInt(0));
+        lowerer.emitStore(IlType(IlKind::I32), scratch, raw);
+        rawI64 = lowerer.emitLoad(IlType(IlKind::I64), scratch);
+    }
+
     Lowerer::ProcedureContext &ctx = lowerer.context();
     Function *func = ctx.function();
     BasicBlock *origin = ctx.current();
@@ -675,11 +686,9 @@ Lowerer::RVal BuiltinExprLowering::emitEofBuiltin(Lowerer &lowerer, const Builti
 
         ctx.setCurrent(&func->blocks[originIdx]);
         lowerer.curLoc = expr.loc;
-        Value zero = lowerer.emitUnary(Opcode::CastSiNarrowChk, IlType(IlKind::I32), Value::constInt(0));
-        Value negOne =
-            lowerer.emitUnary(Opcode::CastSiNarrowChk, IlType(IlKind::I32), Value::constInt(-1));
-        Value nonZero = lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(), raw, zero);
-        Value notNegOne = lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(), raw, negOne);
+        Value nonZero = lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(), rawI64, Value::constInt(0));
+        Value notNegOne =
+            lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(), rawI64, Value::constInt(-1));
         Value isError = lowerer.emitBinary(Opcode::And, lowerer.ilBoolTy(), nonZero, notNegOne);
         lowerer.emitCBr(isError, failBlk, contBlk);
 
