@@ -1,11 +1,25 @@
-// File: src/frontends/basic/builtins/MathBuiltins.cpp
-// Purpose: Implements registration helpers for BASIC math builtins, supplying
-//          metadata consumed by semantic analysis and lowering.
-// Key invariants: Registration populates tables using enum ordinals without
-//                 reallocating storage.
-// Ownership/Lifetime: Tables are owned by the registry; this unit only mutates
-//                     spans passed by the caller.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Populates the metadata tables that describe BASIC math builtins.  The
+// registration routines translate the declarative tables in
+// `BuiltinCallExpr::Builtin` into spans filled with names, semantic scan rules,
+// and lowering blueprints so the rest of the front end can reason about builtin
+// invocations without duplicating bookkeeping logic.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Registers BASIC math builtin descriptors for scanning and lowering.
+/// @details The BASIC front end constructs several contiguous lookup tables at
+///          start-up.  Each helper in this file fills one of those tables using
+///          the builtin enumeration as an index, ensuring that semantic
+///          analysis, runtime feature tracking, and IL emission all share a
+///          consistent source of truth.
 
 #include "frontends/basic/builtins/MathBuiltins.hpp"
 
@@ -17,6 +31,14 @@ namespace
 {
 using B = BuiltinCallExpr::Builtin;
 
+/// @brief Convert a builtin enumerator into the corresponding table index.
+///
+/// @details The registry tables are laid out densely in the order defined by
+///          `BuiltinCallExpr::Builtin`.  Casting the enumerator to `std::size_t`
+///          therefore yields the correct offset into each span.
+///
+/// @param b Builtin whose ordinal should be translated.
+/// @return Zero-based index pointing to the builtin entry.
 constexpr std::size_t idx(B b) noexcept
 {
     return static_cast<std::size_t>(b);
@@ -24,6 +46,14 @@ constexpr std::size_t idx(B b) noexcept
 
 } // namespace
 
+/// @brief Populate user-facing metadata for each BASIC math builtin.
+///
+/// @details This routine writes symbolic names and optional semantic analysis
+///          callbacks into the provided span.  The information feeds the
+///          parser's builtin registry and allows semantic analysis to dispatch
+///          operand-specific validation logic such as the ABS handler.
+///
+/// @param infos Mutable span whose slots correspond to builtin ordinals.
 void registerMathBuiltinInfos(std::span<BuiltinInfo> infos)
 {
     infos[idx(B::Int)] = {"INT", nullptr};
@@ -39,6 +69,15 @@ void registerMathBuiltinInfos(std::span<BuiltinInfo> infos)
     infos[idx(B::Rnd)] = {"RND", nullptr};
 }
 
+/// @brief Describe semantic analysis requirements for BASIC math builtins.
+///
+/// @details The scan rules capture how arguments are traversed, whether result
+///          types derive from specific operands, and which runtime features must
+///          be requested for successful compilation.  Semantic analysis consults
+///          this table before lowering to validate arguments and annotate the
+///          program's runtime manifest.
+///
+/// @param rules Span that receives the per-builtin scanning descriptors.
 void registerMathBuiltinScanRules(std::span<BuiltinScanRule> rules)
 {
     using ResultSpec = BuiltinScanRule::ResultSpec;
@@ -171,6 +210,16 @@ void registerMathBuiltinScanRules(std::span<BuiltinScanRule> rules)
     };
 }
 
+/// @brief Define the IL lowering strategy for each BASIC math builtin.
+///
+/// @details Lowering rules encode how operands should be coerced, whether
+///          runtime helpers must be invoked, and which diagnostics to issue when
+///          unsupported variants are encountered.  The lowering driver consumes
+///          this table to construct `BuiltinExprLowering::Variant` selections at
+///          runtime, guaranteeing consistent IL emission across translation
+///          units.
+///
+/// @param rules Span that receives fully-specified lowering instructions.
 void registerMathBuiltinLoweringRules(std::span<BuiltinLoweringRule> rules)
 {
     using LowerRule = BuiltinLoweringRule;
