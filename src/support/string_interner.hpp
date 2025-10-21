@@ -6,12 +6,12 @@
 #pragma once
 
 #include "symbol.hpp"
+#include <deque>
 #include <functional>
 #include <limits>
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <vector>
 
 namespace il::support
 {
@@ -93,7 +93,7 @@ class StringInterner
     /// Maps string content to assigned symbols for O(1) lookup during interning.
     std::unordered_map<std::string, Symbol, TransparentHash, TransparentEqual> map_;
     /// Retains copies of interned strings so lookups return stable views.
-    std::vector<std::string> storage_;
+    std::deque<std::string> storage_;
     /// Maximum number of unique symbols representable by this interner.
     uint32_t maxSymbols_;
 };
