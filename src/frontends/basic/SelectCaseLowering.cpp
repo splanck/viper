@@ -338,7 +338,14 @@ void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
                     lowerer_.ilBoolTy(),
                     selWide,
                     il::core::Value::constInt(static_cast<long long>(entry.valueRange.second)));
-                return lowerer_.emitBinary(il::core::Opcode::And, lowerer_.ilBoolTy(), ge, le);
+                // The And opcode requires i64 operands; extend the booleans and truncate back.
+                il::core::Value ge64 = lowerer_.emitZext1ToI64(ge);
+                il::core::Value le64 = lowerer_.emitZext1ToI64(le);
+                il::core::Value both64 = lowerer_.emitBinary(il::core::Opcode::And,
+                                                            il::core::Type(il::core::Type::Kind::I64),
+                                                            ge64,
+                                                            le64);
+                return lowerer_.emitUnary(il::core::Opcode::Trunc1, lowerer_.ilBoolTy(), both64);
             }
             case CasePlanEntry::Kind::StringLabel:
             case CasePlanEntry::Kind::Default:
