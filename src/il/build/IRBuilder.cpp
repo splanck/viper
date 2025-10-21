@@ -1,9 +1,25 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/il/build/IRBuilder.cpp
-// Purpose: Implements helpers to construct IL modules.
-// Key invariants: None.
-// Ownership/Lifetime: Builder references module owned externally.
-// License: MIT (see LICENSE).
+// Purpose: Provide a structured API for constructing IL modules programmatically.
+// Key invariants: Builder maintains a current function/block insertion context
+//                 and monotonically increasing SSA identifiers.
+// Ownership/Lifetime: Builder references a module owned by the caller.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements the fluent builder used by front ends to emit IL.
+/// @details The IRBuilder records insertion points, tracks SSA identifiers, and
+///          materialises instructions while enforcing control-flow invariants
+///          such as single terminators per block.  It also caches callee return
+///          types to validate call emission.
 
 #include "il/build/IRBuilder.hpp"
 #include <cassert>
@@ -12,7 +28,13 @@
 namespace il::build
 {
 
-/// @brief Initialize a builder that mutates an existing module.
+/// @brief Initialise a builder that mutates an existing module.
+///
+/// @details The constructor walks existing functions and extern declarations to
+///          seed the @ref calleeReturnTypes cache.  This enables later calls to
+///          @ref emitCall to validate that callees exist and to stamp the
+///          expected result type before any new instructions are emitted.
+///
 /// @param m Module that will be extended by this builder.
 /// @note Populates callee metadata so emitCall can validate future calls.
 IRBuilder::IRBuilder(Module &m) : mod(m)
@@ -162,6 +184,11 @@ void IRBuilder::cbr(Value cond,
 }
 
 /// @brief Select the basic block that will receive subsequently appended instructions.
+///
+/// @details The builder does not clear the block's terminated flag; callers may
+///          therefore inspect @ref BasicBlock::terminated to decide whether more
+///          instructions may be emitted.
+///
 /// @param bb Block that becomes the current insertion point.
 /// @post curBlock is updated to @p bb; termination state is preserved.
 void IRBuilder::setInsertPoint(BasicBlock &bb)
@@ -187,6 +214,11 @@ Instr &IRBuilder::append(Instr instr)
 }
 
 /// @brief Identify whether an opcode terminates a block's control flow.
+///
+/// @details Terminators encompass both explicit branches and exception-resume
+///          operations.  Recognising them lets the builder mark blocks as closed
+///          and reject additional non-phi instructions.
+///
 /// @param op Opcode to categorize.
 /// @return True when @p op ends the block (branch, conditional branch, return, trap).
 bool IRBuilder::isTerminator(Opcode op) const
@@ -317,6 +349,11 @@ void IRBuilder::emitResumeLabel(Value token, BasicBlock &target, il::support::So
 }
 
 /// @brief Reserve the next SSA temporary identifier for the currently active function.
+///
+/// @details Extends the value name table to ensure future debug lookups remain
+///          in bounds.  The caller typically uses the returned identifier to
+///          populate instructions that will be appended immediately afterwards.
+///
 /// @return Identifier assigned to the new temporary.
 unsigned IRBuilder::reserveTempId()
 {
