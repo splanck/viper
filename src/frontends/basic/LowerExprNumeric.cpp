@@ -1,11 +1,23 @@
-// File: src/frontends/basic/LowerExprNumeric.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Implements numeric expression lowering helpers for the BASIC Lowerer.
-// Key invariants: Numeric helpers share Lowerer coercions and runtime tracking
-//                 utilities to preserve consistent semantics.
-// Ownership/Lifetime: Helpers borrow the Lowerer only for the duration of a
-//                      single lowering call.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the numeric lowering helpers used by the BASIC front end.  The
+// routines in this file perform operand coercions, select appropriate IL
+// opcodes, and emit runtime helper calls for numerically sensitive operations
+// such as exponentiation or string concatenation.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Numeric expression lowering utilities for BASIC.
+/// @details Provides the implementation behind `Lowerer` helpers that handle
+///          arithmetic, relational comparisons, and mixed-type operations,
+///          including specialised handling for string concatenation and
+///          constant folding patterns.
 
 #include "frontends/basic/LowerExprNumeric.hpp"
 
@@ -26,11 +38,24 @@ using IlKind = IlType::Kind;
 namespace
 {
 
+/// @brief Check whether an IL type represents a BASIC integer category.
+///
+/// @param kind IL type kind to inspect.
+/// @return True if the kind is one of the signed integer variants.
 bool isIntegerKind(IlKind kind)
 {
     return kind == IlKind::I16 || kind == IlKind::I32 || kind == IlKind::I64;
 }
 
+/// @brief Choose an integer arithmetic type compatible with both operands.
+///
+/// @details Prefers the narrowest common type to preserve BASIC's integer
+///          semantics when both operands are narrow integers; otherwise promotes
+///          to 64-bit.
+///
+/// @param lhsKind Type of the left-hand operand.
+/// @param rhsKind Type of the right-hand operand.
+/// @return Result type suitable for integer arithmetic.
 IlType integerArithmeticType(IlKind lhsKind, IlKind rhsKind)
 {
     if (lhsKind == IlKind::I16 && rhsKind == IlKind::I16)
@@ -42,8 +67,19 @@ IlType integerArithmeticType(IlKind lhsKind, IlKind rhsKind)
 
 } // namespace
 
+/// @brief Bind the numeric lowering helper to a concrete lowering engine.
+///
+/// @param lowerer Owning lowering driver that emits IL.
 NumericExprLowering::NumericExprLowering(Lowerer &lowerer) noexcept : lowerer_(&lowerer) {}
 
+/// @brief Lower integer division or modulus expressions with overflow checks.
+///
+/// @details Examines operand types to see whether a narrower integer variant can
+///          be used (to match legacy semantics) and emits the appropriate IL
+///          opcode with divide-by-zero guards.
+///
+/// @param expr Binary expression node representing IDIV or MOD.
+/// @return Lowered r-value carrying the operation result.
 Lowerer::RVal NumericExprLowering::lowerDivOrMod(const BinaryExpr &expr)
 {
     Lowerer &lowerer = *lowerer_;
@@ -142,6 +178,16 @@ Lowerer::RVal NumericExprLowering::lowerDivOrMod(const BinaryExpr &expr)
     return {res, resultTy};
 }
 
+/// @brief Normalise operands for a numeric binary operation.
+///
+/// @details Applies BASIC's promotion and coercion rules to ensure both operands
+///          use compatible types, capturing the chosen arithmetic/result type in
+///          a configuration structure for later use.
+///
+/// @param expr Binary expression being lowered.
+/// @param lhs Left-hand side value to normalise (updated in place).
+/// @param rhs Right-hand side value to normalise (updated in place).
+/// @return Configuration describing operand category and result type.
 NumericExprLowering::NumericOpConfig NumericExprLowering::normalizeNumericOperands(
     const BinaryExpr &expr,
     Lowerer::RVal &lhs,
@@ -224,6 +270,17 @@ NumericExprLowering::NumericOpConfig NumericExprLowering::normalizeNumericOperan
     return config;
 }
 
+/// @brief Detect and lower bespoke constant-folding opportunities.
+///
+/// @details Handles the common `0 - X` negation pattern for integer operands,
+///          producing a direct negation rather than emitting subtraction and a
+///          zero literal.
+///
+/// @param expr Binary expression under consideration.
+/// @param lhs Normalised left-hand operand.
+/// @param rhs Normalised right-hand operand.
+/// @param config Operand configuration returned by normalisation.
+/// @return Lowered value when a special case applies; `std::nullopt` otherwise.
 std::optional<Lowerer::RVal> NumericExprLowering::applySpecialConstantPatterns(
     const BinaryExpr &expr,
     Lowerer::RVal &lhs,
@@ -250,6 +307,16 @@ std::optional<Lowerer::RVal> NumericExprLowering::applySpecialConstantPatterns(
     return Lowerer::RVal{neg, rhs.type};
 }
 
+/// @brief Choose the IL opcode used to implement a numeric binary operation.
+///
+/// @details Takes into account whether the operands are floating-point or
+///          integer and whether the operation yields a boolean result, in which
+///          case the helper also records whether the boolean must be promoted to
+///          BASIC's -1/0 logical representation.
+///
+/// @param op Binary operator being lowered.
+/// @param config Operand configuration describing operand categories.
+/// @return Structure containing the opcode, result type, and promotion flags.
 NumericExprLowering::OpcodeSelection NumericExprLowering::selectNumericOpcode(
     BinaryExpr::Op op,
     const NumericOpConfig &config)
@@ -318,6 +385,16 @@ NumericExprLowering::OpcodeSelection NumericExprLowering::selectNumericOpcode(
     return selection;
 }
 
+/// @brief Lower the BASIC exponentiation operator.
+///
+/// @details Normalises operands to floating point and calls the runtime helper
+///          that performs domain-checked exponentiation, recording that the
+///          helper must be linked in.
+///
+/// @param expr AST node for the POW operation.
+/// @param lhs Left-hand operand (moved into the helper).
+/// @param rhs Right-hand operand (moved into the helper).
+/// @return Lowered value representing the power result.
 Lowerer::RVal NumericExprLowering::lowerPowBinary(const BinaryExpr &expr,
                                                   Lowerer::RVal lhs,
                                                   Lowerer::RVal rhs)
@@ -333,6 +410,16 @@ Lowerer::RVal NumericExprLowering::lowerPowBinary(const BinaryExpr &expr,
     return {res, resultType};
 }
 
+/// @brief Lower binary operations when operands are strings.
+///
+/// @details Supports concatenation via `rt_concat` and equality/inequality tests
+///          via dedicated runtime helpers that preserve BASIC's string
+///          comparison semantics.
+///
+/// @param expr AST node for the string operation.
+/// @param lhs Left-hand operand.
+/// @param rhs Right-hand operand.
+/// @return Lowered value storing the operation result.
 Lowerer::RVal NumericExprLowering::lowerStringBinary(const BinaryExpr &expr,
                                                      Lowerer::RVal lhs,
                                                      Lowerer::RVal rhs)
@@ -356,6 +443,16 @@ Lowerer::RVal NumericExprLowering::lowerStringBinary(const BinaryExpr &expr,
     return {eqLogical, IlType(IlKind::I64)};
 }
 
+/// @brief Lower arithmetic or comparison operators on numeric operands.
+///
+/// @details Normalises operands, applies special constant folding, selects the
+///          appropriate opcode, and emits the final IL.  Comparison results are
+///          expanded to BASIC's logical -1/0 representation when required.
+///
+/// @param expr AST node for the binary operation.
+/// @param lhs Left-hand operand.
+/// @param rhs Right-hand operand.
+/// @return Lowered r-value carrying the operation result.
 Lowerer::RVal NumericExprLowering::lowerNumericBinary(const BinaryExpr &expr,
                                                       Lowerer::RVal lhs,
                                                       Lowerer::RVal rhs)
@@ -378,36 +475,70 @@ Lowerer::RVal NumericExprLowering::lowerNumericBinary(const BinaryExpr &expr,
     return {res, selection.resultType};
 }
 
+/// @brief Entry point on `Lowerer` for lowering division or modulus.
+///
+/// @param expr Binary expression node representing IDIV or MOD.
+/// @return Lowered value after delegating to `NumericExprLowering`.
 Lowerer::RVal Lowerer::lowerDivOrMod(const BinaryExpr &expr)
 {
     NumericExprLowering lowering(*this);
     return lowering.lowerDivOrMod(expr);
 }
 
+/// @brief Entry point for lowering exponentiation with explicit operands.
+///
+/// @param expr Binary expression node.
+/// @param lhs Left-hand operand already partially lowered.
+/// @param rhs Right-hand operand already partially lowered.
+/// @return Lowered value computed by the numeric helper.
 Lowerer::RVal Lowerer::lowerPowBinary(const BinaryExpr &expr, RVal lhs, RVal rhs)
 {
     NumericExprLowering lowering(*this);
     return lowering.lowerPowBinary(expr, std::move(lhs), std::move(rhs));
 }
 
+/// @brief Entry point for lowering string-aware binary operations.
+///
+/// @param expr Binary expression node describing the operation.
+/// @param lhs Left-hand operand.
+/// @param rhs Right-hand operand.
+/// @return Lowered value generated by the string helper.
 Lowerer::RVal Lowerer::lowerStringBinary(const BinaryExpr &expr, RVal lhs, RVal rhs)
 {
     NumericExprLowering lowering(*this);
     return lowering.lowerStringBinary(expr, std::move(lhs), std::move(rhs));
 }
 
+/// @brief Entry point for lowering generic numeric binary operations.
+///
+/// @param expr Binary expression node.
+/// @param lhs Left-hand operand.
+/// @param rhs Right-hand operand.
+/// @return Lowered value after delegating to `NumericExprLowering`.
 Lowerer::RVal Lowerer::lowerNumericBinary(const BinaryExpr &expr, RVal lhs, RVal rhs)
 {
     NumericExprLowering lowering(*this);
     return lowering.lowerNumericBinary(expr, std::move(lhs), std::move(rhs));
 }
 
+/// @brief Free-function wrapper for lowering division or modulus.
+///
+/// @param lowerer Lowering engine to use.
+/// @param expr Binary expression to lower.
+/// @return Lowered value provided by the helper.
 Lowerer::RVal lowerDivOrMod(Lowerer &lowerer, const BinaryExpr &expr)
 {
     NumericExprLowering lowering(lowerer);
     return lowering.lowerDivOrMod(expr);
 }
 
+/// @brief Free-function wrapper that lowers exponentiation expressions.
+///
+/// @param lowerer Lowering engine to use.
+/// @param expr Binary exponentiation node.
+/// @param lhs Left-hand operand.
+/// @param rhs Right-hand operand.
+/// @return Lowered value from the numeric helper.
 Lowerer::RVal lowerPowBinary(Lowerer &lowerer,
                              const BinaryExpr &expr,
                              Lowerer::RVal lhs,
@@ -417,6 +548,13 @@ Lowerer::RVal lowerPowBinary(Lowerer &lowerer,
     return lowering.lowerPowBinary(expr, std::move(lhs), std::move(rhs));
 }
 
+/// @brief Free-function wrapper that lowers string binary operations.
+///
+/// @param lowerer Lowering engine to use.
+/// @param expr Binary expression node.
+/// @param lhs Left-hand operand.
+/// @param rhs Right-hand operand.
+/// @return Lowered value emitted by the helper.
 Lowerer::RVal lowerStringBinary(Lowerer &lowerer,
                                 const BinaryExpr &expr,
                                 Lowerer::RVal lhs,
@@ -426,6 +564,13 @@ Lowerer::RVal lowerStringBinary(Lowerer &lowerer,
     return lowering.lowerStringBinary(expr, std::move(lhs), std::move(rhs));
 }
 
+/// @brief Free-function wrapper that lowers generic numeric binary operations.
+///
+/// @param lowerer Lowering engine to use.
+/// @param expr Binary expression node.
+/// @param lhs Left-hand operand.
+/// @param rhs Right-hand operand.
+/// @return Lowered value provided by the helper.
 Lowerer::RVal lowerNumericBinary(Lowerer &lowerer,
                                  const BinaryExpr &expr,
                                  Lowerer::RVal lhs,
