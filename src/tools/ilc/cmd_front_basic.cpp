@@ -17,6 +17,7 @@
 #include "frontends/basic/BasicCompiler.hpp"
 #include "il/io/Serializer.hpp"
 #include "il/api/expected_api.hpp"
+#include "il/transform/SimplifyCFG.hpp"
 #include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
@@ -203,13 +204,34 @@ int runFrontBasic(const FrontBasicConfig &config, const std::string &source,
 
     core::Module module = std::move(result.module);
 
+    std::optional<il::support::Expected<void>> cachedVerification{};
+    if (config.run)
+    {
+        auto initialVerify = il::verify::Verifier::verify(module);
+        if (!initialVerify)
+        {
+            il::transform::SimplifyCFG simplifyCfg;
+            for (auto &function : module.functions)
+            {
+                simplifyCfg.run(function);
+            }
+
+            cachedVerification = il::verify::Verifier::verify(module);
+        }
+        else
+        {
+            cachedVerification = std::move(initialVerify);
+        }
+    }
+
     if (config.emitIl)
     {
         io::Serializer::write(module, std::cout);
         return 0;
     }
 
-    auto verification = il::verify::Verifier::verify(module);
+    auto verification = cachedVerification ? std::move(*cachedVerification)
+                                           : il::verify::Verifier::verify(module);
     if (!verification)
     {
         il::support::printDiag(verification.error(), std::cerr, &sm);
