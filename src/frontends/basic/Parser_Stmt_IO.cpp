@@ -1,9 +1,22 @@
-// File: src/frontends/basic/Parser_Stmt_IO.cpp
-// Purpose: Implements BASIC parser helpers for IO-related statements.
-// Key invariants: Requires Parser lookahead to remain synchronized with separators.
-// Ownership/Lifetime: Parser retains ownership of tokens and produced AST nodes.
-// License: MIT; see LICENSE for details.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements BASIC parser helpers for IO-related statements. The routines live
+// in a dedicated translation unit so the main parser remains focused on general
+// statement handling while these helpers concentrate on separator and channel
+// peculiarities.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Parsing utilities for BASIC IO statements (PRINT, INPUT, OPEN, etc.).
+/// @details The functions consume tokens from @ref Parser, build the appropriate
+///          AST nodes, and report diagnostics through the active diagnostic
+///          emitter when malformed statements are encountered.
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
@@ -14,6 +27,11 @@
 namespace il::frontends::basic
 {
 
+/// @brief Register parsing functions for IO-related statement keywords.
+/// @details Populates the provided registry so the generic parser dispatch can
+///          map BASIC keywords (PRINT, OPEN, etc.) to their specialised handler
+///          methods on @ref Parser.
+/// @param registry Dispatcher that maps tokens to member function pointers.
 void Parser::registerIoParsers(StatementParserRegistry &registry)
 {
     registry.registerHandler(TokenKind::KeywordPrint, &Parser::parsePrintStatement);
@@ -25,6 +43,12 @@ void Parser::registerIoParsers(StatementParserRegistry &registry)
     registry.registerHandler(TokenKind::KeywordLine, &Parser::parseLineInputStatement);
 }
 
+/// @brief Parse the PRINT statement, supporting both console and channel forms.
+/// @details Consumes the `PRINT` token and distinguishes between the standard
+///          variant and the `PRINT #` channel form. Expressions, commas, and
+///          semicolons are appended to the resulting AST node until a statement
+///          terminator is encountered.
+/// @return Newly allocated AST node representing the parsed statement.
 StmtPtr Parser::parsePrintStatement()
 {
     auto loc = peek().loc;
@@ -78,6 +102,12 @@ StmtPtr Parser::parsePrintStatement()
     return stmt;
 }
 
+/// @brief Parse the WRITE# statement.
+/// @details Handles channel-prefixed WRITE statements, requiring a hash marker
+///          and comma-separated expression list. Unlike PRINT#, WRITE# does not
+///          permit null items, so expressions are parsed greedily until no more
+///          commas remain.
+/// @return AST node representing the WRITE# statement.
 StmtPtr Parser::parseWriteStatement()
 {
     auto loc = peek().loc;
@@ -99,6 +129,12 @@ StmtPtr Parser::parseWriteStatement()
     return stmt;
 }
 
+/// @brief Parse the OPEN statement configuring file channels.
+/// @details Consumes the mode keyword, validates it against supported options,
+///          expects the `AS #` channel syntax, and captures optional path and
+///          channel expressions. Diagnostic hooks fire when unexpected tokens
+///          are encountered.
+/// @return AST node describing the OPEN statement.
 StmtPtr Parser::parseOpenStatement()
 {
     auto loc = peek().loc;
@@ -146,6 +182,10 @@ StmtPtr Parser::parseOpenStatement()
     return stmt;
 }
 
+/// @brief Parse the CLOSE statement.
+/// @details Requires `CLOSE #` followed by an expression naming the channel to
+///          close.
+/// @return AST node describing the CLOSE statement.
 StmtPtr Parser::parseCloseStatement()
 {
     auto loc = peek().loc;
@@ -157,6 +197,11 @@ StmtPtr Parser::parseCloseStatement()
     return stmt;
 }
 
+/// @brief Parse the SEEK statement.
+/// @details Expects `SEEK #` followed by the channel expression and a comma
+///          separating the position expression. Both operands are parsed as
+///          general expressions.
+/// @return AST node describing the SEEK statement.
 StmtPtr Parser::parseSeekStatement()
 {
     auto loc = peek().loc;
@@ -170,6 +215,12 @@ StmtPtr Parser::parseSeekStatement()
     return stmt;
 }
 
+/// @brief Parse the INPUT statement, supporting prompt and variable lists.
+/// @details Handles optional prompt strings, comma-separated variable lists, and
+///          the channel-prefixed `INPUT #` variant. The parser emits diagnostics
+///          when unsupported multi-target channel input is encountered and
+///          consumes trailing tokens to recover.
+/// @return AST node for the parsed INPUT statement.
 StmtPtr Parser::parseInputStatement()
 {
     auto loc = peek().loc;
@@ -237,6 +288,12 @@ StmtPtr Parser::parseInputStatement()
     return stmt;
 }
 
+/// @brief Parse the `LINE INPUT` statement that reads an entire line.
+/// @details Supports the channel-prefixed form (`LINE INPUT #`) and validates
+///          that the destination is a simple variable or array element. When an
+///          invalid target is provided, diagnostics are emitted and a fallback
+///          placeholder variable is inserted so compilation can proceed.
+/// @return AST node describing the LINE INPUT statement.
 StmtPtr Parser::parseLineInputStatement()
 {
     auto loc = peek().loc;
