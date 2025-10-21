@@ -1,9 +1,20 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
 // File: src/frontends/basic/Parser_Stmt.cpp
-// Purpose: Implements statement-level parsing routines for the BASIC parser.
-// Key invariants: Relies on token buffer for lookahead.
-// Ownership/Lifetime: Parser owns tokens produced by lexer.
-// License: MIT; see LICENSE for details.
-// Links: docs/codemap.md
+// Purpose: Implement statement-level parsing routines for the BASIC front end.
+// Key invariants: Relies on the token buffer for deterministic lookahead and
+//                 records discovered procedures so forward references can be
+//                 recognised.
+// Ownership/Lifetime: Parser owns tokens produced by the lexer and returns
+//                     statements as std::unique_ptr nodes that the caller
+//                     manages.
+// Links: docs/codemap.md, docs/basic-language.md#statements
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
@@ -17,6 +28,16 @@
 namespace il::frontends::basic
 {
 
+/// @brief Register the minimal statement parsers required for core BASIC.
+///
+/// @details Installs handlers for assignment statements and procedure
+///          declarations.  The registry keeps pointers-to-member functions so
+///          dispatch remains table-driven.  Centralising the registration here
+///          keeps @ref Parser::parseStatement focused on lookup rather than the
+///          list of supported statements.
+///
+/// @param registry Dispatcher that maps statement-starting tokens to Parser
+///        member functions.
 void Parser::registerCoreParsers(StatementParserRegistry &registry)
 {
     registry.registerHandler(TokenKind::KeywordLet, &Parser::parseLetStatement);
@@ -24,6 +45,14 @@ void Parser::registerCoreParsers(StatementParserRegistry &registry)
     registry.registerHandler(TokenKind::KeywordSub, &Parser::parseSubStatement);
 }
 
+/// @brief Register object-oriented statement parsers when the feature set is enabled.
+///
+/// @details Adds handlers for class/type declarations and delete statements so
+///          source files that opt into OOP extensions can parse the additional
+///          constructs.  The core registry remains unchanged when these
+///          keywords are absent.
+///
+/// @param registry Dispatcher that records keyword-to-handler mappings.
 void Parser::registerOopParsers(StatementParserRegistry &registry)
 {
     registry.registerHandler(TokenKind::KeywordClass, &Parser::parseClassDecl);
@@ -31,19 +60,40 @@ void Parser::registerOopParsers(StatementParserRegistry &registry)
     registry.registerHandler(TokenKind::KeywordDelete, &Parser::parseDeleteStatement);
 }
 
+/// @brief Remember that a procedure with @p name was encountered.
+///
+/// @details Procedure names are cached so subsequent bare identifiers can be
+///          interpreted as procedure calls even when parentheses are omitted.
+///          The method inserts the name into a case-sensitive set without
+///          filtering because the parser assumes upstream normalization.
+///
+/// @param name Canonical procedure identifier collected during parsing.
 void Parser::noteProcedureName(std::string name)
 {
     knownProcedures_.insert(std::move(name));
 }
 
+/// @brief Query whether a procedure name has been recorded previously.
+///
+/// @param name Candidate identifier to check.
+/// @return @c true when @ref noteProcedureName registered the symbol earlier.
 bool Parser::isKnownProcedureName(const std::string &name) const
 {
     return knownProcedures_.find(name) != knownProcedures_.end();
 }
 
-/// @brief Parse a single statement based on the current token.
-/// @param line Line number associated with the statement.
-/// @return Parsed statement node or nullptr for unrecognized statements.
+/// @brief Parse a single BASIC statement based on the current token.
+///
+/// @details Dispatches through the statement registry to locate the handler
+///          responsible for the current keyword.  The function also recognises
+///          call statements that omit parentheses and emits diagnostics for
+///          stray line numbers or unknown keywords.  When a statement cannot be
+///          parsed the routine consumes tokens until the end of the line so the
+///          parser can continue producing additional diagnostics.
+///
+/// @param line One-based line number attached to the statement from the
+///        original source listing.
+/// @return Owned AST node on success; @c nullptr when recovery is required.
 StmtPtr Parser::parseStatement(int line)
 {
     const Token &tok = peek();
@@ -159,6 +209,13 @@ StmtPtr Parser::parseStatement(int line)
 }
 
 /// @brief Check whether @p kind marks the beginning of a statement.
+///
+/// @details Some keywords are used both as statement leaders and as infix
+///          operators.  The parser explicitly filters out logical operators and
+///          recognises structural keywords such as THEN and ELSE so the caller
+///          can treat them as implicit statement boundaries when splitting
+///          colon-separated sequences.
+///
 /// @param kind Token to examine.
 /// @return True when a handler or structural keyword introduces a new statement.
 bool Parser::isStatementStart(TokenKind kind) const
@@ -184,9 +241,16 @@ bool Parser::isStatementStart(TokenKind kind) const
     }
     return statementRegistry().contains(kind);
 }
-/// @brief Parse a LET assignment statement.
-/// @return LetStmt with target and assigned expression.
-/// @note Expects an '=' between target and expression.
+/// @brief Parse a `LET` assignment statement.
+///
+/// @details Consumes the keyword, parses the assignment target using
+///          @ref Parser::parsePrimary so either variables or array elements are
+///          accepted, requires an equals sign, and finally lowers the right-hand
+///          side via @ref Parser::parseExpression.  The resulting AST node owns
+///          both sub-expressions and captures the original source location for
+///          diagnostics.
+///
+/// @return Newly allocated @ref LetStmt describing the assignment.
 StmtPtr Parser::parseLetStatement()
 {
     auto loc = peek().loc;
@@ -201,8 +265,14 @@ StmtPtr Parser::parseLetStatement()
     return stmt;
 }
 /// @brief Derive a BASIC type from an identifier suffix.
+///
+/// @details BASIC allows trailing sigils (%, &, $, !, #) to convey type hints.
+///          The parser applies those rules whenever a declaration omits an
+///          explicit `AS <type>` clause so semantic analysis can rely on the
+///          same defaults as the language runtime.
+///
 /// @param name Identifier to inspect.
-/// @return Corresponding BASIC type; defaults to I64.
+/// @return Corresponding BASIC type; defaults to Type::I64 for unadorned names.
 Type Parser::typeFromSuffix(std::string_view name)
 {
     if (!name.empty())
@@ -225,12 +295,15 @@ Type Parser::typeFromSuffix(std::string_view name)
     return Type::I64;
 }
 
-/// @brief Parse a type keyword following an AS clause.
-/// @return BASIC type corresponding to the recognized keyword; defaults to Type::I64.
-/// @details Supported keywords: BOOLEAN, INTEGER, DOUBLE, STRING. BOOLEAN is consumed directly
-/// by keyword, while the others are matched as identifiers. If no supported keyword is present or
-/// an unknown identifier is encountered, the token is treated as INTEGER semantics and Type::I64 is
-/// returned without emitting diagnostics, leaving callers to rely on default typing rules.
+/// @brief Parse a type keyword following an `AS` clause.
+///
+/// @details Supports BOOLEAN, DOUBLE, SINGLE, STRING, and INTEGER synonyms.  The
+///          lexer only produces a dedicated token for BOOLEAN, so the parser
+///          accepts the remaining keywords as identifiers.  Unknown tokens fall
+///          back to INTEGER semantics so the language's implicit typing rules
+///          remain intact without flooding users with diagnostics.
+///
+/// @return BASIC type corresponding to the recognised keyword; defaults to Type::I64.
 Type Parser::parseTypeKeyword()
 {
     if (at(TokenKind::KeywordBoolean))
@@ -254,6 +327,16 @@ Type Parser::parseTypeKeyword()
     return Type::I64;
 }
 
+/// @brief Parse a BASIC `CLASS` declaration.
+///
+/// @details Captures the class name, iterates over field declarations introduced
+///          by `<identifier> AS <type>`, and gathers nested member procedures.
+///          Constructors (`SUB NEW`) are normalised to identifiers so downstream
+///          passes treat them consistently with other subs.  The parser consumes
+///          trailing line numbers to support legacy dialects and stops at
+///          `END CLASS`.
+///
+/// @return Newly allocated @ref ClassDecl describing the parsed declaration.
 StmtPtr Parser::parseClassDecl()
 {
     auto loc = peek().loc;
@@ -434,6 +517,14 @@ StmtPtr Parser::parseClassDecl()
     return decl;
 }
 
+/// @brief Parse a BASIC `TYPE` declaration used for user-defined records.
+///
+/// @details Collects field declarations consisting of identifier/type pairs,
+///          tolerates legacy line-number prefixes, and terminates at
+///          `END TYPE`.  Each field is stored with the resolved BASIC type so
+///          semantic analysis can validate member accesses.
+///
+/// @return Newly allocated @ref TypeDecl describing the record type.
 StmtPtr Parser::parseTypeDecl()
 {
     auto loc = peek().loc;
@@ -510,6 +601,13 @@ StmtPtr Parser::parseTypeDecl()
     return decl;
 }
 
+/// @brief Parse the `DELETE` statement for object lifetimes.
+///
+/// @details Consumes the keyword and parses a single expression that evaluates
+///          to the target object reference.  Diagnostics are deferred to later
+///          phases; the parser simply records the expression for lowering.
+///
+/// @return Newly allocated @ref DeleteStmt representing the statement.
 StmtPtr Parser::parseDeleteStatement()
 {
     auto loc = peek().loc;
@@ -523,12 +621,16 @@ StmtPtr Parser::parseDeleteStatement()
 }
 
 
-/// @brief Parse a parenthesized parameter list.
+/// @brief Parse a parenthesised parameter list.
+///
+/// @details Accepts comma-separated identifiers, honours trailing "()" to mark
+///          array parameters, and infers default types using BASIC suffix rules.
+///          The helper aborts early when no opening parenthesis is present so
+///          callers can reuse it for optional parameter sections.  Any
+///          structural mismatches are reported via @ref expect, ensuring
+///          diagnostics remain consistent.
+///
 /// @return Vector of parameters, possibly empty if no list is present.
-/// @details Accepts comma-separated identifiers with optional trailing "()" to mark arrays and type
-/// suffix characters to infer BASIC types. When no opening parenthesis is found the function
-/// returns immediately without consuming tokens. Token mismatches are diagnosed via expect(),
-/// allowing the caller to surface parser errors consistently.
 std::vector<Param> Parser::parseParamList()
 {
     std::vector<Param> params;
@@ -565,8 +667,15 @@ std::vector<Param> Parser::parseParamList()
     return params;
 }
 
-/// @brief Parse the header of a FUNCTION declaration.
-/// @return FunctionDecl populated with name, return type, and parameters.
+/// @brief Parse the header of a `FUNCTION` declaration.
+///
+/// @details Reads the function name, infers the default return type from any
+///          suffix, and parses an optional parameter list.  The body remains
+///          unparsed so callers can decide when to collect statements.  The
+///          returned node is pre-populated with location and signature
+///          information ready for semantic analysis.
+///
+/// @return Function declaration node containing signature metadata.
 std::unique_ptr<FunctionDecl> Parser::parseFunctionHeader()
 {
     auto loc = peek().loc;
@@ -580,10 +689,18 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionHeader()
     return fn;
 }
 
-/// @brief Shared helper that parses procedure bodies terminated by END.
+/// @brief Parse a sequence of statements terminated by `END <keyword>`.
+///
+/// @details Delegates to @ref StatementSequencer so nested statements can reuse
+///          colon-separated parsing logic.  The callback consumes the terminating
+///          `END` token followed by the expected keyword, leaving the parser
+///          positioned after the body.  All parsed statements are appended to
+///          @p body and the location of the `END` keyword is returned for later
+///          diagnostics.
+///
 /// @param endKind Keyword expected after END to close the body.
 /// @param body Destination vector for parsed statements.
-/// @return Location of the END keyword token.
+/// @return Source location of the terminating END token.
 il::support::SourceLoc Parser::parseProcedureBody(TokenKind endKind, std::vector<StmtPtr> &body)
 {
     auto ctx = statementSequencer();
@@ -600,15 +717,25 @@ il::support::SourceLoc Parser::parseProcedureBody(TokenKind endKind, std::vector
 }
 
 /// @brief Parse statements comprising a function body.
-/// @param fn FunctionDecl to populate with body statements.
-/// @note Consumes tokens until reaching END FUNCTION.
+///
+/// @details Invokes @ref parseProcedureBody with the `FUNCTION` terminator so
+///          the helper collects statements until `END FUNCTION` is encountered.
+///          The resulting end location is stored on the declaration for
+///          downstream diagnostics.
+///
+/// @param fn Function declaration to populate with body statements.
 void Parser::parseFunctionBody(FunctionDecl *fn)
 {
     fn->endLoc = parseProcedureBody(TokenKind::KeywordFunction, fn->body);
 }
 
-/// @brief Parse a full FUNCTION declaration.
-/// @return FunctionDecl statement node including body.
+/// @brief Parse a complete `FUNCTION` declaration including body.
+///
+/// @details Builds the signature via @ref parseFunctionHeader, records the name
+///          for later procedure-call disambiguation, and then parses the body.
+///          The returned node owns all constituent statements.
+///
+/// @return Owned @ref FunctionDecl statement node including body.
 StmtPtr Parser::parseFunctionStatement()
 {
     auto fn = parseFunctionHeader();
@@ -617,8 +744,13 @@ StmtPtr Parser::parseFunctionStatement()
     return fn;
 }
 
-/// @brief Parse a full SUB procedure declaration.
-/// @return SubDecl statement node including body.
+/// @brief Parse a complete `SUB` procedure declaration.
+///
+/// @details Captures the procedure name, parses an optional parameter list,
+///          records the name for call recognition, and gathers statements until
+///          `END SUB`.  The resulting AST node owns the collected body.
+///
+/// @return Owned @ref SubDecl statement node including body.
 StmtPtr Parser::parseSubStatement()
 {
     auto loc = peek().loc;

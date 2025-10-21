@@ -1,11 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
 // File: src/frontends/basic/Parser_Stmt_Loop.cpp
-// Purpose: Implements loop-related statement parsing for the BASIC parser.
+// Purpose: Implement loop-related statement parsing for the BASIC parser.
 // Key invariants: Ensures loop headers and terminators are matched and
 //                 diagnostics cover invalid configurations.
 // Ownership/Lifetime: Parser creates AST nodes managed by caller-owned
-//                     unique_ptr wrappers.
-// License: MIT; see LICENSE for details.
-// Links: docs/codemap.md
+//                     std::unique_ptr wrappers.
+// Links: docs/codemap.md, docs/basic-language.md#loops
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
@@ -15,6 +22,14 @@
 namespace il::frontends::basic
 {
 
+/// @brief Parse a `WHILE ... WEND` loop statement.
+///
+/// @details Consumes the `WHILE` keyword, parses the condition expression, and
+///          delegates to the statement sequencer to collect the body until the
+///          matching `WEND`.  The resulting AST node owns the body statements
+///          and records the loop header location for diagnostics.
+///
+/// @return Newly allocated @ref WhileStmt representing the loop.
 StmtPtr Parser::parseWhileStatement()
 {
     auto loc = peek().loc;
@@ -28,6 +43,15 @@ StmtPtr Parser::parseWhileStatement()
     return stmt;
 }
 
+/// @brief Parse the flexible `DO` loop family.
+///
+/// @details Supports pre-test (`DO WHILE`/`DO UNTIL`) and post-test (`LOOP
+///          WHILE`/`LOOP UNTIL`) forms, reporting diagnostics when both are
+///          specified simultaneously.  The body is gathered until the closing
+///          `LOOP`, and optional conditions are stored on the AST node along
+///          with their source locations.
+///
+/// @return Newly allocated @ref DoStmt capturing the loop semantics.
 StmtPtr Parser::parseDoStatement()
 {
     auto loc = peek().loc;
@@ -87,6 +111,15 @@ StmtPtr Parser::parseDoStatement()
     return stmt;
 }
 
+/// @brief Parse a `FOR` counting loop.
+///
+/// @details Captures the iteration variable, start/end expressions, and
+///          optional `STEP` expression.  Statements are collected until the
+///          matching `NEXT`, which may optionally repeat the loop variable for
+///          clarity.  The resulting AST node records the source location for
+///          diagnostics.
+///
+/// @return Newly allocated @ref ForStmt describing the loop.
 StmtPtr Parser::parseForStatement()
 {
     auto loc = peek().loc;
@@ -113,6 +146,13 @@ StmtPtr Parser::parseForStatement()
     return stmt;
 }
 
+/// @brief Parse a standalone `NEXT` terminator.
+///
+/// @details Recognises the optional loop variable and records it for semantic
+///          checks.  The node is primarily used during validation to ensure
+///          `FOR` loops are properly nested.
+///
+/// @return Newly allocated @ref NextStmt capturing the terminator.
 StmtPtr Parser::parseNextStatement()
 {
     auto loc = peek().loc;
@@ -129,6 +169,14 @@ StmtPtr Parser::parseNextStatement()
     return stmt;
 }
 
+/// @brief Parse an `EXIT` statement for breaking out of loops.
+///
+/// @details Accepts an optional loop-kind keyword (`FOR`, `WHILE`, or `DO`).
+///          When omitted the statement defaults to `EXIT WHILE` for
+///          compatibility.  Invalid keywords trigger diagnostics and the parser
+///          synthesises a no-op sentinel so compilation can continue.
+///
+/// @return Newly allocated @ref ExitStmt describing the exit semantics.
 StmtPtr Parser::parseExitStatement()
 {
     auto loc = peek().loc;
