@@ -18,6 +18,19 @@ int main(int argc, char **argv)
     std::string ilc = argv[1];
     std::string ilFile = argv[2];
     std::string script = argv[3];
+    std::ifstream scriptIn(script);
+    if (!scriptIn)
+        return 1;
+    std::string scriptCRLF = "debug_script_crlf.txt";
+    std::ofstream scriptOut(scriptCRLF, std::ios::binary);
+    if (!scriptOut)
+        return 1;
+    std::string scriptLine;
+    while (std::getline(scriptIn, scriptLine))
+    {
+        scriptOut << scriptLine << "\r\n";
+    }
+    scriptOut.close();
     std::string dbgOut = "dbg.out";
     std::string dbgErr = "dbg.err";
     std::string refOut = "ref.out";
@@ -26,7 +39,7 @@ int main(int argc, char **argv)
         return 1;
     std::remove("step.out");
     std::remove("step.err");
-    cmd = ilc + " -run " + ilFile + " --trace=il --break L3 --debug-cmds " + script + " >" +
+    cmd = ilc + " -run " + ilFile + " --trace=il --break L3 --debug-cmds " + scriptCRLF + " >" +
           dbgOut + " 2>" + dbgErr;
     if (std::system(cmd.c_str()) != 0)
         return 1;
@@ -88,5 +101,6 @@ int main(int argc, char **argv)
     std::remove(refOut.c_str());
     std::remove(contOut.c_str());
     std::remove(contErr.c_str());
+    std::remove(scriptCRLF.c_str());
     return 0;
 }

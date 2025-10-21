@@ -42,6 +42,10 @@ DebugScript::DebugScript(const std::string &path)
     std::string line;
     while (std::getline(f, line))
     {
+        while (!line.empty() && (line.back() == '\r' || line.back() == '\f' || line.back() == '\v'))
+        {
+            line.pop_back();
+        }
         if (line.empty())
             continue;
         if (line == "continue")
