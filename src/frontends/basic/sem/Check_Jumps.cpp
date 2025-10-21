@@ -22,6 +22,17 @@ namespace il::frontends::basic::sem
 
 namespace
 {
+/// @brief Emit an error diagnostic for a reference to an unknown label.
+///
+/// @details Constructs a canonical "unknown line" message that mirrors the
+///          BASIC runtime wording, then forwards the text to the diagnostic
+///          engine owned by @p context.  Centralising the logic keeps the error
+///          codes and formatting consistent across all jump checks.
+///
+/// @param context Control-flow analysis context that exposes diagnostics.
+/// @param label   Numeric label identifier referenced by the statement.
+/// @param loc     Source location used to underline the offending token.
+/// @param width   Width of the highlighted span in characters.
 void emitUnknownLabel(ControlCheckContext &context,
                       int label,
                       const il::support::SourceLoc &loc,
@@ -37,6 +48,16 @@ void emitUnknownLabel(ControlCheckContext &context,
 }
 }
 
+/// @brief Validate a @c GOTO statement's control-flow constraints.
+///
+/// @details Registers the referenced label with the active control-flow context
+///          so later resolution passes can detect unreferenced labels.  If the
+///          label has not been defined yet, emits a diagnostic describing the
+///          unresolved target but still records the reference to allow deferred
+///          resolution during analysis of subsequent statements.
+///
+/// @param analyzer Semantic analyzer currently traversing the program.
+/// @param stmt     Parsed @c GOTO statement to analyse.
 void analyzeGoto(SemanticAnalyzer &analyzer, const GotoStmt &stmt)
 {
     ControlCheckContext context(analyzer);
@@ -45,6 +66,15 @@ void analyzeGoto(SemanticAnalyzer &analyzer, const GotoStmt &stmt)
         emitUnknownLabel(context, stmt.target, stmt.loc, 4);
 }
 
+/// @brief Validate a @c GOSUB statement and its label reference.
+///
+/// @details Records the referenced label to enable post-pass reachability checks
+///          and emits an "unknown line" diagnostic when the label is not present
+///          in the current procedure scope.  The helper mirrors the @c GOTO
+///          logic but adjusts the diagnostic width to match the keyword length.
+///
+/// @param analyzer Semantic analyzer currently traversing the program.
+/// @param stmt     Parsed @c GOSUB statement to analyse.
 void analyzeGosub(SemanticAnalyzer &analyzer, const GosubStmt &stmt)
 {
     ControlCheckContext context(analyzer);
@@ -53,6 +83,15 @@ void analyzeGosub(SemanticAnalyzer &analyzer, const GosubStmt &stmt)
         emitUnknownLabel(context, stmt.targetLine, stmt.loc, 5);
 }
 
+/// @brief Analyse an @c ON ERROR GOTO statement and update handler state.
+///
+/// @details When the statement clears the handler (`GOTO 0`) the active handler
+///          state is reset.  Otherwise the referenced label is recorded and
+///          validated just like a @c GOTO before installing it as the active
+///          error handler inside the control-flow context.
+///
+/// @param analyzer Semantic analyzer providing procedure state.
+/// @param stmt     Parsed @c ON ERROR GOTO statement to analyse.
 void analyzeOnErrorGoto(SemanticAnalyzer &analyzer, const OnErrorGoto &stmt)
 {
     ControlCheckContext context(analyzer);
@@ -69,6 +108,16 @@ void analyzeOnErrorGoto(SemanticAnalyzer &analyzer, const OnErrorGoto &stmt)
     context.installErrorHandler(stmt.target);
 }
 
+/// @brief Verify usage of a @c RESUME statement within an error handler.
+///
+/// @details Ensures a handler is currently active before allowing the resume;
+///          otherwise emits diagnostic B1012 describing the misuse.  When the
+///          statement resumes to a specific label, the label reference is
+///          recorded and validated using the shared helper so unresolved targets
+///          surface consistent diagnostics.
+///
+/// @param analyzer Semantic analyzer providing the execution context.
+/// @param stmt     Parsed @c RESUME statement to analyse.
 void analyzeResume(SemanticAnalyzer &analyzer, const Resume &stmt)
 {
     ControlCheckContext context(analyzer);
@@ -90,6 +139,17 @@ void analyzeResume(SemanticAnalyzer &analyzer, const Resume &stmt)
         emitUnknownLabel(context, stmt.target, stmt.loc, 4);
 }
 
+/// @brief Validate a @c RETURN statement in both procedure and GOSUB contexts.
+///
+/// @details Distinguishes between procedure returns and legacy GOSUB returns.
+///          When used outside a procedure, @c RETURN is only legal without a
+///          value, in which case it is converted into a GOSUB return.  Otherwise
+///          diagnostic B1008 is emitted.  The helper also clears any active error
+///          handler to match BASIC's unwinding semantics.
+///
+/// @param analyzer Semantic analyzer providing access to control-flow state.
+/// @param stmt     Parsed @c RETURN statement to analyse; may be rewritten to
+///                 mark GOSUB return behaviour.
 void analyzeReturn(SemanticAnalyzer &analyzer, ReturnStmt &stmt)
 {
     ControlCheckContext context(analyzer);
