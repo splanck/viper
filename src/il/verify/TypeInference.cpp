@@ -1,8 +1,26 @@
-// File: src/il/verify/TypeInference.cpp
-// Purpose: Implements IL verifier type inference and operand validation helpers.
-// Key invariants: Maintains consistency between temporary maps and defined sets.
-// Ownership/Lifetime: Operates on storage owned by Verifier callers.
-// License: MIT (see LICENSE).
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the shared type inference helpers used by the IL verifier.  The
+// translation unit centralises routines that project operand types, record new
+// SSA definitions, and validate operand availability so verification passes can
+// focus on structural checks rather than bookkeeping.  All state is borrowed
+// from the caller which keeps the helpers free of hidden side effects.
+//
+//===----------------------------------------------------------------------===//
+//
+// @file
+// @brief Type inference and operand validation utilities for the IL verifier.
+// @details The helpers in this translation unit operate on caller-provided
+//          maps describing SSA temporaries and their inferred types.  They keep
+//          the “temporaries” and “defined” sets in lock-step, provide formatting
+//          helpers for diagnostics, and expose both error-reporting and
+//          fallible APIs so callers can pick their preferred control flow.
+//
 // Links: docs/il-guide.md#reference
 
 #include "il/verify/TypeInference.hpp"
@@ -24,7 +42,16 @@ namespace il::verify
 namespace
 {
 
-std::string formatOperands(const Instr &instr)
+/// @brief Render the operand and label payload of an instruction.
+///
+/// @details Serialises each operand and successor label into a flat string that
+///          matches the formatting expected by diagnostic helpers.  The
+///          resulting text is appended to the opcode and optional result to
+///          produce a single-line snippet describing the instruction.
+///
+/// @param instr Instruction being rendered.
+/// @return Space-prefixed payload that lists operands and successor labels.
+static std::string formatOperands(const Instr &instr)
 {
     std::ostringstream os;
     for (const auto &op : instr.operands)
@@ -36,10 +63,16 @@ std::string formatOperands(const Instr &instr)
 
 } // namespace
 
-/// @brief Render @p instr into the concise single-line format used for diagnostics.
+/// @brief Render @p instr into the concise single-line format used for
+///        diagnostics.
+///
+/// @details Prepends the SSA result when present, appends the opcode and
+///          delegates to @ref formatOperands to capture operands and successor
+///          labels.  The helper is purely functional so repeated invocations are
+///          deterministic.
+///
 /// @param instr Instruction being rendered.
-/// @return String containing the printable opcode, result id and operands.
-/// @note Pure helper that only inspects @p instr; it does not depend on verifier state.
+/// @return Printable snippet suitable for inclusion in verifier diagnostics.
 std::string makeSnippet(const Instr &instr)
 {
     std::ostringstream os;
@@ -49,27 +82,29 @@ std::string makeSnippet(const Instr &instr)
     return os.str();
 }
 
-/// @brief Build a helper bound to caller-provided temporary tracking state.
-/// @param temps Reference to the map describing known temporary types. The helper
-///        updates this map whenever it observes a new definition.
-/// @param defined Reference to the set tracking which temporaries are considered
-///        defined. All mutating helpers update this set in lock-step with @p temps
-///        to preserve the invariant that every defined id has a type entry.
-/// @note Invariant: @ref defined_ is always a subset of the keys present in
-///       @ref temps_. Both containers are required to outlive the helper.
+/// @brief Construct a type inference helper that mirrors caller-owned state.
+///
+/// @details The helper stores references to the caller-maintained temporary map
+///          and defined-id set.  All mutating operations keep the containers in
+///          sync so that every defined id has an associated type entry.
+///
+/// @param temps Reference to the map describing known temporary types.
+/// @param defined Reference to the set tracking defined SSA ids.
 TypeInference::TypeInference(std::unordered_map<unsigned, Type> &temps,
                              std::unordered_set<unsigned> &defined)
     : temps_(temps), defined_(defined)
 {
 }
 
-/// @brief Inspect the static type associated with @p value.
-/// @param value Value to query; may reference a temporary or a literal constant.
-/// @param missing Optional out-parameter toggled when the referenced temporary is
-///        not present in @ref temps_. The flag is left untouched for non-temporaries.
-/// @return The inferred type or void when the temporary is unknown.
-/// @note Invariant: queries do not mutate @ref temps_ nor @ref defined_, keeping
-///       lookup operations side-effect free.
+/// @brief Inspect the static type associated with a value.
+///
+/// @details Temporaries are looked up in the tracked map.  Missing entries set
+///          @p missing to @c true when the flag is provided.  Literal values are
+///          translated directly into their canonical IL types.
+///
+/// @param value Value to query; may reference a temporary or literal constant.
+/// @param missing Optional out-parameter toggled when a temporary is unknown.
+/// @return Inferred IL type or void when no information is available.
 Type TypeInference::valueType(const Value &value, bool *missing) const
 {
     switch (value.kind)
@@ -97,9 +132,13 @@ Type TypeInference::valueType(const Value &value, bool *missing) const
 }
 
 /// @brief Compute the storage width for a primitive IL type.
+///
+/// @details Converts the enumerator into a byte width using the canonical
+///          layout expected by the verifier.  Void and unknown kinds yield zero
+///          so callers can treat the result as a safe upper bound.
+///
 /// @param kind Enumerator describing the type whose size is requested.
-/// @return Size in bytes or zero if the type has no storage.
-/// @note This helper does not consult or mutate verifier state.
+/// @return Byte width of the type or zero when it lacks storage.
 size_t TypeInference::typeSize(Type::Kind kind)
 {
     switch (kind)
@@ -124,11 +163,14 @@ size_t TypeInference::typeSize(Type::Kind kind)
     return 0;
 }
 
-/// @brief Record the result type of @p instr, updating the tracked temporaries.
-/// @param instr Instruction whose SSA result is being defined.
+/// @brief Record the result type for an instruction that defines an SSA id.
+///
+/// @details When the instruction declares a result id, the helper inserts the
+///          provided @p type into the temporary map and marks the id as defined.
+///          Instructions without results are ignored.
+///
+/// @param instr Instruction whose result id is being updated.
 /// @param type Type assigned to the result temporary.
-/// @note Invariant: whenever a result id is tracked in @ref defined_, a matching
-///       entry exists in @ref temps_ so future queries yield a concrete type.
 void TypeInference::recordResult(const Instr &instr, Type type)
 {
     if (instr.result)
@@ -138,16 +180,18 @@ void TypeInference::recordResult(const Instr &instr, Type type)
     }
 }
 
-/// @brief Ensure each operand of @p instr is both known and defined.
-/// @param fn Enclosing function, used to render diagnostic context.
-/// @param bb Basic block owning @p instr for additional context.
-/// @param instr Instruction whose operands are being validated.
-/// @return Empty result on success; otherwise contains a diagnostic describing the
-///         first undefined/unknown temporary encountered.
-/// @note Errors are signaled via @ref il::support::Expected by returning an error
-///       payload populated with a formatted diagnostic.
-/// @note Invariant: relies on the contract that @ref temps_ and @ref defined_
-///       describe the same set of temporaries; they are only read in this helper.
+/// @brief Validate that every operand used by an instruction is known and
+///        defined.
+///
+/// @details Walks each operand, checking that temporaries have entries in the
+///          tracked map and have been marked as defined.  When a violation is
+///          discovered the helper produces a formatted diagnostic tied to the
+///          enclosing function and block.
+///
+/// @param fn Function containing the instruction.
+/// @param bb Basic block owning the instruction.
+/// @param instr Instruction whose operands are being verified.
+/// @return Empty expected on success; otherwise contains a diagnostic error.
 il::support::Expected<void> TypeInference::ensureOperandsDefined_E(const Function &fn,
                                                                    const BasicBlock &bb,
                                                                    const Instr &instr) const
@@ -182,12 +226,16 @@ il::support::Expected<void> TypeInference::ensureOperandsDefined_E(const Functio
 }
 
 /// @brief Wrapper around @ref ensureOperandsDefined_E that prints diagnostics.
-/// @param fn Enclosing function used for diagnostics.
-/// @param bb Owning basic block used for diagnostics.
-/// @param instr Instruction whose operands are checked.
-/// @param err Stream receiving the formatted diagnostic text on failure.
-/// @return True when all operands are defined, false otherwise.
-/// @note Errors are emitted by writing a diagnostic message to @p err.
+///
+/// @details Invokes the fallible helper and streams any produced diagnostic to
+///          @p err.  Callers that prefer status codes without exceptions can use
+///          this convenience wrapper.
+///
+/// @param fn Function containing the instruction.
+/// @param bb Basic block owning the instruction.
+/// @param instr Instruction whose operands are being verified.
+/// @param err Output stream receiving diagnostic messages when validation fails.
+/// @return @c true when operands are defined; @c false otherwise.
 bool TypeInference::ensureOperandsDefined(const Function &fn,
                                           const BasicBlock &bb,
                                           const Instr &instr,
@@ -201,11 +249,13 @@ bool TypeInference::ensureOperandsDefined(const Function &fn,
     return true;
 }
 
-/// @brief Predeclare a temporary definition, synchronizing the tracked state.
-/// @param id Temporary identifier to insert.
-/// @param type Type to associate with the definition.
-/// @note Invariant: updates @ref temps_ and @ref defined_ together so readers
-///       observe a consistent view of available temporaries.
+/// @brief Insert a new temporary definition into the tracked state.
+///
+/// @details Updates both the temporary map and defined-id set so future queries
+///          observe a consistent view of available temporaries.
+///
+/// @param id Temporary identifier being declared.
+/// @param type Inferred type associated with the identifier.
 void TypeInference::addTemp(unsigned id, Type type)
 {
     temps_[id] = type;
@@ -213,20 +263,22 @@ void TypeInference::addTemp(unsigned id, Type type)
 }
 
 /// @brief Remove a temporary definition from the tracked state.
+///
+/// @details Erases the identifier from both the temporary map and the defined
+///          set, preventing stale entries from reporting a type without a
+///          definition.
+///
 /// @param id Temporary identifier to erase.
-/// @note Invariant: erases the id from both @ref temps_ and @ref defined_ to avoid
-///       stale entries that could report a definition without a type.
 void TypeInference::removeTemp(unsigned id)
 {
     temps_.erase(id);
     defined_.erase(id);
 }
 
-/// @brief Determine whether @p id is currently marked as defined.
-/// @param id Temporary identifier to query.
-/// @return True when the identifier has been inserted into @ref defined_.
-/// @note Does not consult @ref temps_; callers should still respect the invariant
-///       that defined ids also have a type mapping.
+/// @brief Query whether a temporary identifier is currently defined.
+///
+/// @param id Identifier to inspect.
+/// @return @c true when the identifier is present in the defined-id set.
 bool TypeInference::isDefined(unsigned id) const
 {
     return defined_.count(id) != 0;

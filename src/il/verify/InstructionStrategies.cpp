@@ -1,11 +1,24 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Provides the default instruction verification strategies for the IL verifier.
-/// @details Supplies specialised handlers for control-flow instructions alongside a
-/// catch-all strategy that delegates to the general instruction checker.
+//
+// Implements the strategy objects used by the IL verifier to validate
+// instructions.  Each strategy determines whether it should handle a given
+// instruction and performs the appropriate verification, allowing the verifier
+// pipeline to dispatch by behaviour rather than opcode tables scattered across
+// the code base.
+//
+//===----------------------------------------------------------------------===//
+//
+// @file
+// @brief Construction of default instruction verification strategies.
+// @details Provides both a control-flow specific strategy and a catch-all
+//          default that delegates to the general instruction checker.  The
+//          strategies are returned as heap-allocated polymorphic objects so the
+//          verifier can combine them in priority order.
 
 #include "il/verify/InstructionStrategies.hpp"
 
@@ -28,6 +41,7 @@ namespace il::verify
 using il::support::Expected;
 
 /// @brief Verify a non-control-flow instruction using the default checker.
+///
 /// @param ctx Verification context describing the current instruction.
 /// @return Success on validity; otherwise a diagnostic error.
 Expected<void> verifyInstruction_E(const VerifyCtx &ctx);
@@ -50,7 +64,7 @@ class ControlFlowStrategy final : public FunctionVerifier::InstructionStrategy
 
     /// @brief Run control-flow specific verification logic.
     /// @details Dispatches to the appropriate helper based on the opcode while
-    /// ignoring maps that are irrelevant for the handled instructions.
+    ///          ignoring maps that are irrelevant for the handled instructions.
     /// @param fn Function owning the instruction.
     /// @param bb Basic block containing the instruction.
     /// @param instr Instruction to verify.
@@ -102,7 +116,7 @@ class DefaultInstructionStrategy final : public FunctionVerifier::InstructionStr
 
     /// @brief Verify an instruction using the default checker pipeline.
     /// @details Binds the instruction into a @c VerifyCtx and invokes the shared
-    /// instruction checker that handles type and operand validation.
+    ///          instruction checker that handles type and operand validation.
     /// @param fn Function owning the instruction.
     /// @param bb Basic block containing the instruction.
     /// @param instr Instruction to verify.
@@ -130,6 +144,7 @@ class DefaultInstructionStrategy final : public FunctionVerifier::InstructionStr
 } // namespace
 
 /// @brief Construct the default set of instruction verification strategies.
+///
 /// @return Vector containing control-flow and generic verification strategies.
 std::vector<std::unique_ptr<FunctionVerifier::InstructionStrategy>>
 makeDefaultInstructionStrategies()

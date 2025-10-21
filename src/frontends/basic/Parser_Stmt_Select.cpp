@@ -1,10 +1,17 @@
-// File: src/frontends/basic/Parser_Stmt_Select.cpp
-// Purpose: Implements SELECT CASE parsing routines for the BASIC parser.
-// Key invariants: Validates CASE and CASE ELSE structure while maintaining
-//                 selector range bookkeeping.
-// Ownership/Lifetime: Parser generates AST nodes owned by the caller via
-//                     unique_ptr wrappers.
-// License: MIT; see LICENSE for details.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements parsing support for BASIC's SELECT CASE statement.  The routines
+// here collaborate with the StatementSequencer to gather case bodies, enforce
+// well-formed CASE/CASE ELSE structure, and emit diagnostics when malformed
+// constructs are encountered.  Keeping the implementation in this translation
+// unit isolates the complex multi-branch grammar from the parser registration
+// logic.
+//
 // Links: docs/codemap.md
 
 #include "frontends/basic/Parser.hpp"
@@ -21,6 +28,16 @@
 namespace il::frontends::basic
 {
 
+/// @brief Parse a SELECT CASE statement and all of its arms.
+///
+/// @details Consumes the `SELECT CASE` header, records the selector expression,
+///          and iteratively parses each CASE or CASE ELSE arm.  The helper uses
+///          @ref StatementSequencer to collect statements until a terminating
+///          keyword is seen, diagnosing malformed constructs and missing terminators
+///          via the provided diagnostic emitter.  The resulting AST node captures
+///          the full range of the statement for later source mapping.
+///
+/// @return Owned AST node describing the parsed SELECT CASE statement.
 StmtPtr Parser::parseSelectCaseStatement()
 {
     auto loc = peek().loc;
@@ -118,6 +135,14 @@ StmtPtr Parser::parseSelectCaseStatement()
     return stmt;
 }
 
+/// @brief Collect the statements for a single CASE arm body.
+///
+/// @details Delegates to the StatementSequencer to accumulate statements until
+///          another CASE or END SELECT token is encountered.  The terminator and
+///          gathered body are packaged into a @ref SelectBodyResult structure for
+///          the caller to inspect.
+///
+/// @return Structure describing the collected body and the terminator that ended it.
 Parser::SelectBodyResult Parser::collectSelectBody()
 {
     SelectBodyResult result;
@@ -136,6 +161,18 @@ Parser::SelectBodyResult Parser::collectSelectBody()
     return result;
 }
 
+/// @brief Handle an encountered `END SELECT` terminator.
+///
+/// @details Updates the enclosing statement's source range, diagnoses missing
+///          CASE arms, and flips the @p expectEndSelect guard so callers know the
+///          statement was properly closed.  Returns a structure that records
+///          whether the terminator was consumed and if a diagnostic was emitted.
+///
+/// @param stmt The SELECT CASE statement under construction.
+/// @param sawCaseArm Tracks whether any CASE arms were parsed before the terminator.
+/// @param expectEndSelect Reference toggled to @c false once the terminator is handled.
+/// @param diagnose Callback used to emit diagnostics when malformed constructs are detected.
+/// @return Result indicating whether the terminator was processed and if an error occurred.
 Parser::SelectHandlerResult Parser::handleEndSelect(SelectCaseStmt &stmt,
                                                     bool sawCaseArm,
                                                     bool &expectEndSelect,
@@ -161,6 +198,19 @@ Parser::SelectHandlerResult Parser::handleEndSelect(SelectCaseStmt &stmt,
     return result;
 }
 
+/// @brief Handle a CASE ELSE arm if one is present at the current cursor.
+///
+/// @details Consumes the CASE ELSE tokens, diagnoses structural errors such as
+///          duplicates or CASE ELSE appearing before any CASE arm, and records
+///          the body statements if this is the first CASE ELSE encountered.
+///          The helper reports whether it consumed a terminator and whether any
+///          diagnostics were emitted so the caller can adjust parser state.
+///
+/// @param stmt Statement under construction that owns the eventual CASE ELSE body.
+/// @param sawCaseArm Indicates whether at least one CASE arm has been parsed.
+/// @param sawCaseElse Tracks whether a CASE ELSE was previously seen.
+/// @param diagnose Diagnostic callback supplied by the caller.
+/// @return Result describing whether the branch was consumed and if errors occurred.
 Parser::SelectHandlerResult Parser::consumeCaseElse(SelectCaseStmt &stmt,
                                                     bool sawCaseArm,
                                                     bool &sawCaseElse,
@@ -203,6 +253,13 @@ Parser::SelectHandlerResult Parser::consumeCaseElse(SelectCaseStmt &stmt,
     return result;
 }
 
+/// @brief Parse a CASE ELSE body using the shared helpers.
+///
+/// @details Consumes the CASE ELSE header tokens, collects the body statements,
+///          and returns both the statement list and the source location of the
+///          terminating end-of-line token so callers can update range metadata.
+///
+/// @return Pair consisting of the parsed body statements and the terminator location.
 std::pair<std::vector<StmtPtr>, il::support::SourceLoc> Parser::parseCaseElseBody()
 {
     expect(TokenKind::KeywordCase);
@@ -215,6 +272,15 @@ std::pair<std::vector<StmtPtr>, il::support::SourceLoc> Parser::parseCaseElseBod
     return {std::move(body), elseEol.loc};
 }
 
+/// @brief Parse a single CASE arm, including its label set and body.
+///
+/// @details Handles relational selectors (`CASE IS <op>`), discrete labels,
+///          string literals, and numeric ranges, emitting diagnostics for
+///          malformed label lists.  After collecting the label metadata the
+///          helper gathers the associated body statements via
+///          @ref collectSelectBody and returns a fully-populated @ref CaseArm.
+///
+/// @return CaseArm structure describing the parsed labels and statements.
 CaseArm Parser::parseCaseArm()
 {
     Token caseTok = expect(TokenKind::KeywordCase);

@@ -1,10 +1,17 @@
-// File: src/frontends/basic/Parser_Stmt_If.cpp
-// Purpose: Implements IF statement parsing for the BASIC parser.
-// Key invariants: Ensures IF/ELSEIF/ELSE blocks are properly terminated and
-//                 branch bodies honor StatementSequencer boundaries.
-// Ownership/Lifetime: Parser produces AST nodes owned by caller-provided
-//                     unique_ptr wrappers.
-// License: MIT; see LICENSE for details.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the BASIC parser logic for IF/ELSEIF/ELSE statements.  The helper
+// routines here coordinate with the StatementSequencer to consume nested bodies
+// while maintaining precise source-range information and robust error recovery.
+// Collecting the implementation in this translation unit keeps the parser's
+// registration code declarative while concentrating the IF-specific grammar
+// handling in one place.
+//
 // Links: docs/codemap.md
 
 #include "frontends/basic/Parser.hpp"
@@ -17,6 +24,19 @@
 namespace il::frontends::basic
 {
 
+/// @brief Parse a BASIC IF statement including ELSEIF and ELSE arms.
+///
+/// @details Consumes the `IF` keyword, parses the conditional expression, and
+///          then dispatches based on whether the statement is terminated inline
+///          or opens a multi-line block.  Multi-line blocks use the
+///          StatementSequencer to gather statements until a terminator such as
+///          `ELSEIF`, `ELSE`, or `END IF` is found.  The parser constructs an
+///          @ref IfStmt node with the collected branches and records source
+///          ranges for diagnostics.  Error recovery leverages the sequencer to
+///          skip to the next safe boundary when required.
+///
+/// @param line Source line number where the IF was encountered.
+/// @return Owned AST node describing the parsed IF statement.
 StmtPtr Parser::parseIfStatement(int line)
 {
     using parser_helpers::buildBranchList;
@@ -42,6 +62,9 @@ StmtPtr Parser::parseIfStatement(int line)
 
         auto ctxIf = statementSequencer();
 
+        // Collect statements for the current branch and detect which terminator
+        // (ELSEIF/ELSE/END IF) ended the block.  The boolean toggles whether
+        // ELSE-style terminators are accepted in the current context.
         auto collectBranch = [&](bool allowElseBranches) -> std::pair<StmtPtr, BlockTerminator>
         {
             BlockTerminator term = BlockTerminator::None;
