@@ -5,9 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Legacy aggregation unit for VM control-flow handlers.  The implementations
-// now live in dedicated vm/ops/* translation units per opcode family to reduce
-// coupling; this file remains as a placeholder for existing build references.
+// File: src/vm/control_flow.cpp
+// Purpose: Provide a stable translation unit for legacy control-flow handlers.
+// Key invariants: All control-flow opcode implementations now live in vm/ops
+//                 yet must continue to link through this historical entry point.
+// Ownership/Lifetime: No runtime state; exists solely to preserve linkage until
+//                     dependants are updated.
+// Links: docs/runtime-vm.md#vm-dispatch
 //
 //===----------------------------------------------------------------------===//
 

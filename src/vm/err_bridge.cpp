@@ -5,9 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Provides the runtime error bridge that converts legacy BASIC error codes into
-// the VM's structured @ref TrapKind enumeration.  The helper is intentionally
-// simple and stateless.
+// File: src/vm/err_bridge.cpp
+// Purpose: Map legacy BASIC runtime error codes onto VM trap categories.
+// Key invariants: Unknown codes degrade to TrapKind::RuntimeError so tooling
+//                 always receives a defined classification.
+// Ownership/Lifetime: Pure functions only; no persistent state.
+// Links: docs/runtime-vm.md#traps
 //
 //===----------------------------------------------------------------------===//
 
