@@ -1,9 +1,15 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
 // File: src/frontends/basic/LowerEmit.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
 // Purpose: Implements program-level emission orchestration for BASIC lowering.
 // Key invariants: Block labels are deterministic via BlockNamer or mangler.
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lowerer.hpp"
 #include "il/core/BasicBlock.hpp"
@@ -17,6 +23,15 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
+/// @brief Predeclare procedures and gather main-body statement handles.
+///
+/// @details The pass first registers all procedure signatures so forward calls
+///          resolve correctly, then lowers each declaration stub (functions and
+///          subs) to seed the IR with symbol metadata.  Finally it snapshots the
+///          main statement list into the emit context for later phases.
+///
+/// @param prog Parsed BASIC program.
+/// @return Emission context populated with declaration state and main sequence.
 Lowerer::ProgramEmitContext Lowerer::collectProgramDeclarations(const Program &prog)
 {
     collectProcedureSignatures(prog);
@@ -35,6 +50,18 @@ Lowerer::ProgramEmitContext Lowerer::collectProgramDeclarations(const Program &p
     return state;
 }
 
+/// @brief Create the `@main` function shell and associated basic blocks.
+///
+/// @details Steps performed:
+///          1. Reset per-procedure book-keeping (virtual lines, temporary IDs).
+///          2. Start a new function returning `I64` with the canonical `entry`
+///             block.
+///          3. Preallocate per-line blocks so statement lowering can jump
+///             deterministically.
+///          4. Append a dedicated `exit` block recorded in the context for
+///             epilogue emission.
+///
+/// @param state Mutable emission context storing block references.
 void Lowerer::buildMainFunctionSkeleton(ProgramEmitContext &state)
 {
     build::IRBuilder &b = *builder;
@@ -67,12 +94,27 @@ void Lowerer::buildMainFunctionSkeleton(ProgramEmitContext &state)
     state.entry = &f.blocks.front();
 }
 
+/// @brief Discover locals referenced by the main statement sequence.
+///
+/// @details Clears symbol tracking and walks the recorded main statements to
+///          mark every variable, array, and object used in the outer program
+///          body so storage can be allocated before emission.
+///
+/// @param state Emission context containing the main statement list.
 void Lowerer::collectMainVariables(ProgramEmitContext &state)
 {
     resetSymbolState();
     collectVars(state.mainStmts);
 }
 
+/// @brief Assign storage slots for main-function locals and parameters.
+///
+/// @details Ensures the skeleton builder has produced an entry block, switches
+///          the procedure context to that block, and invokes the slot allocator
+///          with parameter inclusion enabled so `@main` mirrors BASIC calling
+///          conventions.
+///
+/// @param state Emission context seeded by @ref buildMainFunctionSkeleton.
 void Lowerer::allocateMainLocals(ProgramEmitContext &state)
 {
     ProcedureContext &ctx = context();
@@ -81,6 +123,16 @@ void Lowerer::allocateMainLocals(ProgramEmitContext &state)
     allocateLocalSlots(std::unordered_set<std::string>(), /*includeParams=*/true);
 }
 
+/// @brief Lower the main statement list and append a terminating epilogue.
+///
+/// @details When no statements exist the routine emits a trivial `ret 0`.  For
+///          non-empty programs it iterates the cached statement pointers,
+///          lowering each while updating the current source location so
+///          diagnostics remain accurate.  Afterward it moves to the exit block,
+///          releases temporary runtime allocations, and emits the canonical
+///          return instruction.
+///
+/// @param state Emission context describing the main function layout.
 void Lowerer::emitMainBodyAndEpilogue(ProgramEmitContext &state)
 {
     ProcedureContext &ctx = context();
@@ -108,6 +160,14 @@ void Lowerer::emitMainBodyAndEpilogue(ProgramEmitContext &state)
     emitRet(Value::constInt(0));
 }
 
+/// @brief Execute the full lowering pipeline for a BASIC program.
+///
+/// @details Invokes the program-level passes in their required order:
+///          declaration collection, skeleton creation, variable discovery,
+///          local allocation, and final body emission.  Each stage operates on
+///          the shared @ref ProgramEmitContext assembled in this function.
+///
+/// @param prog BASIC program to lower into IL.
 void Lowerer::emitProgram(const Program &prog)
 {
     ProgramEmitContext state = collectProgramDeclarations(prog);
