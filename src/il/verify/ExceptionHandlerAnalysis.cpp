@@ -1,8 +1,25 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
+//
 // File: src/il/verify/ExceptionHandlerAnalysis.cpp
-// Purpose: Implement helpers that analyse exception-handling blocks and EH stack usage.
-// Key invariants: Handler entry must appear first with (%err:Error, %tok:ResumeTok) signature; EH
-// pushes/pops balance. Ownership/Lifetime: Operates on caller-provided IR structures without
-// retaining ownership. Links: docs/il-guide.md#reference
+//
+// Summary:
+//   Implements verifier helpers that reason about exception-handling blocks,
+//   ensuring handlers expose the correct entry signature, EH stack operations
+//   balance, and resume instructions observe required invariants.  The
+//   utilities traverse functions to validate structured exception flow prior to
+//   code generation.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Exception-handling analysis utilities for the IL verifier.
+/// @details Provides functions that inspect handler blocks, track EH stack
+///          state across control-flow edges, and emit diagnostics when
+///          invariants are violated.  These helpers are used during verifier
+///          passes to guarantee consistent exception semantics.
 
 #include "il/verify/ExceptionHandlerAnalysis.hpp"
 
@@ -33,8 +50,12 @@ using il::support::makeError;
 namespace
 {
 
-using HandlerInfo = std::pair<unsigned, unsigned>;
-
+/// @brief Identify terminators relevant for exception-handling analysis.
+/// @details Returns @c true when the opcode can transfer control in a way that
+///          affects EH state transitions, including branches, traps, resumes,
+///          and returns.
+/// @param op Opcode being inspected.
+/// @return @c true if the opcode should trigger successor exploration.
 bool isTerminatorForEh(Opcode op)
 {
     switch (op)
@@ -54,6 +75,10 @@ bool isTerminatorForEh(Opcode op)
     }
 }
 
+/// @brief Breadth-first search state describing EH stack context.
+/// @details Tracks the current block, the stack of active handlers, whether a
+///          resume token is live, and the predecessor state index so paths can
+///          be reconstructed for diagnostics.
 struct EhState
 {
     const BasicBlock *block = nullptr;
@@ -62,6 +87,13 @@ struct EhState
     int parent = -1;
 };
 
+/// @brief Encode the EH stack state into a string used for visited tracking.
+/// @details Generates a compact representation combining the resume-token flag
+///          and the ordered list of handler labels.  The key allows the search
+///          to detect revisiting equivalent states for the same basic block.
+/// @param stack Current stack of handler blocks (top at back).
+/// @param hasResumeToken Whether a resume token is active.
+/// @return Unique string identifying the EH state for visited-set lookup.
 std::string encodeStateKey(const std::vector<const BasicBlock *> &stack, bool hasResumeToken)
 {
     std::string key;
@@ -78,8 +110,15 @@ std::string encodeStateKey(const std::vector<const BasicBlock *> &stack, bool ha
     return key;
 }
 
-std::vector<const BasicBlock *> gatherSuccessors(
-    const Instr &terminator, const std::unordered_map<std::string, const BasicBlock *> &blockMap)
+/// @brief Collect successor blocks from an EH-relevant terminator.
+/// @details Looks up branch targets in the provided block map, filtering out
+///          missing labels.  Only terminators that explicitly list successors
+///          contribute to the returned set.
+/// @param terminator Instruction whose successors are required.
+/// @param blockMap Lookup table resolving block labels to definitions.
+/// @return Vector of successor block pointers.
+std::vector<const BasicBlock *> gatherSuccessors(const Instr &terminator,
+                                                const std::unordered_map<std::string, const BasicBlock *> &blockMap)
 {
     std::vector<const BasicBlock *> successors;
     switch (terminator.op)
@@ -118,6 +157,13 @@ std::vector<const BasicBlock *> gatherSuccessors(
     return successors;
 }
 
+/// @brief Reconstruct the control-flow path that led to a state index.
+/// @details Walks the parent chain from the specified state back to the root
+///          and reverses the collected sequence so callers receive the path in
+///          forward order.
+/// @param states Vector containing all discovered EH states.
+/// @param index Index of the state whose ancestry should be materialised.
+/// @return Ordered list of basic blocks representing the traversal path.
 std::vector<const BasicBlock *> buildPath(const std::vector<EhState> &states, int index)
 {
     std::vector<const BasicBlock *> path;
@@ -127,6 +173,11 @@ std::vector<const BasicBlock *> buildPath(const std::vector<EhState> &states, in
     return path;
 }
 
+/// @brief Format a path of basic blocks for diagnostics.
+/// @details Produces a human-readable string of block labels separated by
+///          arrows, used when reporting EH stack violations.
+/// @param path Sequence of blocks describing a traversal.
+/// @return Formatted path string.
 std::string formatPathString(const std::vector<const BasicBlock *> &path)
 {
     std::ostringstream oss;
@@ -141,6 +192,14 @@ std::string formatPathString(const std::vector<const BasicBlock *> &path)
 
 } // namespace
 
+/// @brief Inspect a basic block to determine whether it defines a handler entry.
+/// @details Validates that @c eh.entry appears first when present, enforces the
+///          required parameter signature, and returns the handler parameter ids
+///          used for later verification.  When the block is not a handler the
+///          function yields an empty optional.
+/// @param fn Function containing the candidate handler block.
+/// @param bb Basic block being analysed.
+/// @return Optional handler signature wrapped in @ref Expected for diagnostics.
 Expected<std::optional<HandlerSignature>> analyzeHandlerBlock(const Function &fn,
                                                               const BasicBlock &bb)
 {
@@ -184,8 +243,16 @@ Expected<std::optional<HandlerSignature>> analyzeHandlerBlock(const Function &fn
     return std::optional<HandlerSignature>{sig};
 }
 
-Expected<void> checkEhStackBalance(
-    const Function &fn, const std::unordered_map<std::string, const BasicBlock *> &blockMap)
+/// @brief Ensure EH push/pop operations and resume instructions remain balanced.
+/// @details Performs a breadth-first traversal over the function's control flow,
+///          tracking active handler stacks and resume tokens.  Reports
+///          diagnostics when the stack underflows, leaks, or when resume
+///          instructions appear without an active token.
+/// @param fn Function whose EH structure is being validated.
+/// @param blockMap Map used to resolve block labels during traversal.
+/// @return Empty success or a structured diagnostic on failure.
+Expected<void> checkEhStackBalance(const Function &fn,
+                                   const std::unordered_map<std::string, const BasicBlock *> &blockMap)
 {
     if (fn.blocks.empty())
         return {};
