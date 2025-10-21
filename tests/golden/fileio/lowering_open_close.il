@@ -21,18 +21,34 @@ L10:
   .loc 1 1 4
   %t3 = call @rt_open_err_vstr(%t0, %t2, %t1)
   .loc 1 1 4
-  %t4 = icmp_ne %t3, 0
+  %t4 = alloca 8
   .loc 1 1 4
-  cbr %t4, open_fail, open_cont
+  store i64, %t4, 0
+  .loc 1 1 4
+  store i32, %t4, %t3
+  .loc 1 1 4
+  %t5 = load i64, %t4
+  .loc 1 1 4
+  %t6 = icmp_ne %t5, 0
+  .loc 1 1 4
+  cbr %t6, open_fail, open_cont
 L20:
   .loc 1 2 4
-  %t5:i32 = cast.si_narrow.chk 1
+  %t7:i32 = cast.si_narrow.chk 1
   .loc 1 2 4
-  %t6 = call @rt_close_err(%t5)
+  %t8 = call @rt_close_err(%t7)
   .loc 1 2 4
-  %t7 = icmp_ne %t6, 0
+  %t9 = alloca 8
   .loc 1 2 4
-  cbr %t7, close_fail, close_cont
+  store i64, %t9, 0
+  .loc 1 2 4
+  store i32, %t9, %t8
+  .loc 1 2 4
+  %t10 = load i64, %t9
+  .loc 1 2 4
+  %t11 = icmp_ne %t10, 0
+  .loc 1 2 4
+  cbr %t11, close_fail, close_cont
 exit:
   ret 0
 open_fail:
@@ -43,7 +59,7 @@ open_cont:
   br L20
 close_fail:
   .loc 1 2 4
-  trap.from_err i32 %t6
+  trap.from_err i32 %t8
 close_cont:
   .loc 1 2 4
   br exit
