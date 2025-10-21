@@ -19,6 +19,7 @@
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
+#include <cstdint>
 #include <optional>
 
 using namespace il::core;
@@ -288,7 +289,18 @@ void Lowerer::emitRuntimeErrCheck(Value err,
 
     ctx.setCurrent(&func->blocks[curIdx]);
     curLoc = loc;
-    Value isFail = emitBinary(Opcode::ICmpNe, ilBoolTy(), err, Value::constInt(0));
+
+    // Runtime helpers surface 32-bit error codes; normalise to i64 before comparing
+    // because the integer comparison opcodes expect i64 operands.
+    Value err64 = err;
+    {
+        Value scratch = emitAlloca(sizeof(int64_t));
+        emitStore(Type(Type::Kind::I64), scratch, Value::constInt(0));
+        emitStore(Type(Type::Kind::I32), scratch, err);
+        err64 = emitLoad(Type(Type::Kind::I64), scratch);
+    }
+
+    Value isFail = emitBinary(Opcode::ICmpNe, ilBoolTy(), err64, Value::constInt(0));
     emitCBr(isFail, failBlk, contBlk);
 
     ctx.setCurrent(failBlk);
