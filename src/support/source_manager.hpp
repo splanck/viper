@@ -8,9 +8,9 @@
 #include "source_location.hpp"
 
 #include <cstdint>
+#include <deque>
 #include <string>
 #include <string_view>
-#include <vector>
 
 /// @brief Tracks mapping from file ids to paths and source locations.
 /// @invariant File id 0 is invalid.
@@ -40,7 +40,8 @@ class SourceManager
 
   private:
     /// Stored file paths. Index corresponds to file identifier; index 0 is reserved.
-    std::vector<std::string> files_;
+    /// Implemented with std::deque to keep string references stable as new files are added.
+    std::deque<std::string> files_;
 
     /// Next identifier to assign; stored as 64-bit to detect overflow safely.
     uint64_t next_file_id_ = 1;
