@@ -6,7 +6,10 @@
 
 #include "frontends/basic/SelectCaseLowering.hpp"
 
+#include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/SelectCaseRange.hpp"
+#include "frontends/basic/SemanticAnalyzer.hpp"
 
 #include "il/core/Module.hpp"
 
@@ -454,6 +457,7 @@ void SelectCaseLowering::emitSwitchJumpTable(const SelectCaseStmt &stmt,
     ctx.setCurrent(&func->blocks[switchIdx]);
 
     std::vector<std::pair<int32_t, il::core::BasicBlock *>> caseTargets;
+    auto *diag = lowerer_.diagnosticEmitter();
     size_t labelCount = 0;
     for (const auto &arm : stmt.arms)
         labelCount += arm.labels.size();
@@ -466,6 +470,20 @@ void SelectCaseLowering::emitSwitchJumpTable(const SelectCaseStmt &stmt,
             armBlk->label = lowerer_.nextFallbackBlockLabel();
         for (int64_t rawLabel : stmt.arms[i].labels)
         {
+            if (rawLabel < kCaseLabelMin || rawLabel > kCaseLabelMax)
+            {
+                if (diag)
+                {
+                    lowerer_.curLoc = stmt.arms[i].range.begin;
+                    diag->emit(il::support::Severity::Error,
+                               std::string(SemanticAnalyzer::DiagSelectCaseLabelRange),
+                               stmt.arms[i].range.begin,
+                               1,
+                               makeSelectCaseLabelRangeMessage(rawLabel));
+                }
+                continue;
+            }
+
             int32_t narrowed = static_cast<int32_t>(rawLabel);
             caseTargets.emplace_back(narrowed, armBlk);
         }

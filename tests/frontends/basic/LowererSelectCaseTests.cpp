@@ -5,12 +5,15 @@
 // Ownership/Lifetime: Test owns parser, lowerer, and produced module per scenario.
 // Links: docs/codemap.md
 
+#include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "il/core/Instr.hpp"
+#include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
 
 #include <cassert>
+#include <sstream>
 #include <string>
 
 using namespace il::frontends::basic;
@@ -79,6 +82,35 @@ il::core::Module lowerSnippet(const std::string &src)
 
     Lowerer lowerer;
     return lowerer.lowerProgram(*program);
+}
+
+struct LowerWithDiagnosticsResult
+{
+    il::core::Module module;
+    size_t errorCount = 0;
+    std::string diagnostics;
+};
+
+LowerWithDiagnosticsResult lowerSnippetWithDiagnostics(const std::string &src)
+{
+    SourceManager sm;
+    uint32_t fid = sm.addFile("select_case.bas");
+
+    il::support::DiagnosticEngine de;
+    DiagnosticEmitter emitter(de, sm);
+    emitter.addSource(fid, src);
+
+    Parser parser(src, fid, &emitter);
+    auto program = parser.parseProgram();
+    assert(program);
+
+    Lowerer lowerer;
+    lowerer.setDiagnosticEmitter(&emitter);
+    il::core::Module module = lowerer.lowerProgram(*program);
+
+    std::ostringstream oss;
+    emitter.printAll(oss);
+    return {std::move(module), emitter.errorCount(), oss.str()};
 }
 
 } // namespace
@@ -173,6 +205,27 @@ int main()
         const il::core::BasicBlock *defaultBlock = findBlockByLabel(*mainFn, defaultLabel);
         assert(defaultBlock);
         assert(blockPrintsConstant(*defaultBlock, 0));
+    }
+
+    {
+        const std::string src =
+            "10 LET X = 0\n"
+            "20 SELECT CASE X\n"
+            "30 CASE 9223372036854775807\n"
+            "40 PRINT 1\n"
+            "50 END SELECT\n"
+            "60 END\n";
+        auto result = lowerSnippetWithDiagnostics(src);
+        assert(result.errorCount == 1);
+        assert(result.diagnostics.find("error[B2012]") != std::string::npos);
+        assert(result.diagnostics.find("outside 32-bit signed range") != std::string::npos);
+
+        const il::core::Function *mainFn = findMain(result.module);
+        assert(mainFn);
+        const il::core::Instr *switchInstr = findSwitch(*mainFn);
+        assert(switchInstr);
+        // The switch should not contain a truncated operand for the overflowing label.
+        assert(switchInstr->operands.size() == 1);
     }
 
     return 0;
