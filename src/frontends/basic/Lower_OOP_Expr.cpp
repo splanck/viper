@@ -28,6 +28,14 @@ namespace il::frontends::basic
 {
 namespace
 {
+/// @brief Convert a BASIC AST type into the corresponding IL type handle.
+///
+/// @details Collapses the BASIC surface type system down to the subset of IL
+///          kinds required by the object lowering path.  Object references map
+///          to pointer types while primitive values retain their scalar kinds.
+///
+/// @param ty BASIC AST type enumerator.
+/// @return IL type used for emitted instructions.
 [[nodiscard]] il::core::Type ilTypeForAstType(::il::frontends::basic::Type ty)
 {
     using IlType = il::core::Type;
@@ -46,6 +54,16 @@ namespace
 }
 } // namespace
 
+/// @brief Determine the object class associated with an expression.
+///
+/// @details Inspects variables, @c ME references, constructor calls, member
+///          accesses, and method calls to recover the originating class name.
+///          The method consults slot metadata populated during scanning to keep
+///          lookups cheap and avoids emitting diagnostics here—the caller is
+///          expected to handle missing metadata gracefully.
+///
+/// @param expr Expression whose class should be determined.
+/// @return Name of the resolved class or an empty string when unknown.
 std::string Lowerer::resolveObjectClass(const Expr &expr) const
 {
     if (const auto *var = dynamic_cast<const VarExpr *>(&expr))
@@ -81,6 +99,16 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
     return {};
 }
 
+/// @brief Lower an object allocation expression into runtime helper calls.
+///
+/// @details Looks up the pre-computed class layout to determine object size and
+///          class identifier, emits the allocation call, and forwards the
+///          resulting object pointer to the class constructor.  Missing layout
+///          entries degrade gracefully by passing zeroed metadata, allowing
+///          diagnostics to occur elsewhere.
+///
+/// @param expr Constructor expression describing the allocation.
+/// @return Resulting pointer value paired with its IL type.
 Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
 {
     curLoc = expr.loc;
@@ -114,6 +142,15 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
     return {obj, Type(Type::Kind::Ptr)};
 }
 
+/// @brief Lower a @c ME expression that references the current object instance.
+///
+/// @details Retrieves the cached slot identifier for the implicit receiver,
+///          emits a load of the pointer stored in that slot, and returns a
+///          pointer-typed value.  When the symbol is missing the lowering
+///          returns a null pointer so upstream diagnostics can flag the error.
+///
+/// @param expr AST node representing the @c ME keyword.
+/// @return Loaded receiver pointer or a null sentinel when unavailable.
 Lowerer::RVal Lowerer::lowerMeExpr(const MeExpr &expr)
 {
     curLoc = expr.loc;
@@ -125,6 +162,15 @@ Lowerer::RVal Lowerer::lowerMeExpr(const MeExpr &expr)
     return {self, Type(Type::Kind::Ptr)};
 }
 
+/// @brief Lower access to an object field into pointer arithmetic and loads.
+///
+/// @details Resolves the class layout of the base expression, computes the
+///          field pointer via a `gep`, and loads the field value using the
+///          appropriate IL type.  Absent layouts or unknown fields yield a zero
+///          literal so subsequent verification can surface precise diagnostics.
+///
+/// @param expr Member access expression to lower.
+/// @return Loaded field value along with its IL type.
 Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
 {
     if (!expr.base)
@@ -150,6 +196,15 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
     return {loaded, fieldTy};
 }
 
+/// @brief Lower a method invocation, injecting the receiver as the first argument.
+///
+/// @details Resolves the receiver class to select the correct mangled method
+///          name, evaluates each argument (including the receiver), and emits a
+///          call instruction.  Return values are ignored because BASIC methods
+///          are currently modelled as procedures that return no value.
+///
+/// @param expr Method call expression describing the invocation.
+/// @return Null integer slot signalling the absence of a return value.
 Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
 {
     if (!expr.base)
