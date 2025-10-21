@@ -37,7 +37,7 @@ namespace il::support
 /// @return True when the location originated from a tracked source file.
 bool SourceLoc::isValid() const
 {
-    return file_id != 0;
+    return file_id != 0 && line > 0 && column > 0;
 }
 
 /// @brief Determine whether the range refers to a concrete span of source.

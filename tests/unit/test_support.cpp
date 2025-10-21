@@ -43,6 +43,20 @@ int main()
     assert(oss.str().find("error: oops") != std::string::npos);
     assert(oss.str().find("test:1:1") != std::string::npos);
 
+    // Source locations must carry positive line and column information.
+    const uint32_t file_id = sm.addFile("more-locs");
+    const il::support::SourceLoc zero_line{file_id, 0, 1};
+    const il::support::SourceLoc zero_column{file_id, 1, 0};
+    const il::support::SourceLoc good_loc{file_id, 3, 7};
+    assert(!zero_line.isValid());
+    assert(!zero_column.isValid());
+    assert(good_loc.isValid());
+
+    il::support::SourceRange invalid_range{{file_id, 0, 1}, {file_id, 4, 2}};
+    assert(!invalid_range.isValid());
+    il::support::SourceRange valid_range{{file_id, 5, 1}, {file_id, 5, 9}};
+    assert(valid_range.isValid());
+
     // Diagnostics missing a registered path should not emit a leading colon.
     il::support::Diag missingPath{
         il::support::Severity::Error,

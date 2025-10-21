@@ -80,14 +80,14 @@ Module buildIdxChkTrapModule(Opcode getter, int64_t idxConst, int64_t hiConst)
     chk.operands.push_back(Value::constInt(idxConst));
     chk.operands.push_back(Value::constInt(0));
     chk.operands.push_back(Value::constInt(hiConst));
-    chk.loc = {1, 42, 0};
+    chk.loc = {1, 42, 1};
     body.instructions.push_back(chk);
 
     Instr retBody;
     retBody.op = Opcode::Ret;
     retBody.type = Type(Type::Kind::Void);
     retBody.operands.push_back(Value::constInt(0));
-    retBody.loc = {1, 43, 0};
+    retBody.loc = {1, 43, 1};
     body.instructions.push_back(retBody);
     body.terminated = true;
 
@@ -97,14 +97,14 @@ Module buildIdxChkTrapModule(Opcode getter, int64_t idxConst, int64_t hiConst)
     get.op = getter;
     get.type = retType;
     get.operands.push_back(builder.blockParam(handler, 0));
-    get.loc = {1, 45, 0};
+    get.loc = {1, 45, 1};
     handler.instructions.push_back(get);
 
     Instr ret;
     ret.op = Opcode::Ret;
     ret.type = Type(Type::Kind::Void);
     ret.operands.push_back(Value::temp(*get.result));
-    ret.loc = {1, 46, 0};
+    ret.loc = {1, 46, 1};
     handler.instructions.push_back(ret);
     handler.terminated = true;
 
