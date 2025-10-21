@@ -294,6 +294,8 @@ Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
     if (!func || !current)
         return state;
 
+    const size_t currentIdx = static_cast<size_t>(current - &func->blocks.front());
+
     BlockNamer *blockNamer = ctx.blockNames().namer();
     size_t start = func->blocks.size();
     unsigned id = blockNamer ? blockNamer->nextDo() : 0;
@@ -310,6 +312,9 @@ Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
     size_t doneIdx = start + 2;
     auto *done = &func->blocks[doneIdx];
     state.after = done;
+
+    current = &func->blocks[currentIdx];
+    ctx.setCurrent(current);
 
     ctx.loopState().push(done);
 
