@@ -1,13 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
 // File: src/frontends/basic/SemanticAnalyzer.Builtins.cpp
-// License: MIT License. See LICENSE in the project root for full license
-//          information.
-// Purpose: Implements BASIC builtin function analysis, validating argument
-//          counts and types for SemanticAnalyzer.
-// Key invariants: Builtin usage diagnostics rely on centralized helper
-//                 functions for arity/type checking.
+// Purpose: Implement BASIC builtin function analysis, validating argument
+//          counts and types for the semantic analyser.
+// Key invariants: Builtin usage diagnostics rely on centralised helpers for
+//                 arity/type checking so call sites share consistent rules.
 // Ownership/Lifetime: Analyzer borrows DiagnosticEmitter; AST nodes owned
 //                     externally.
-// Links: docs/codemap.md
+// Links: docs/codemap.md, docs/basic-language.md#builtins
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 
@@ -22,6 +28,16 @@ namespace il::frontends::basic
 
 using semantic_analyzer_detail::builtinName;
 
+/// @brief Analyse a builtin call expression and return its resulting type.
+///
+/// @details Gathers argument types, looks up the builtin signature, and
+///          dispatches to any specialised analyser registered in the builtin
+///          table.  When no override exists the generic signature-based analysis
+///          path is used, ensuring every builtin honours the declarative
+///          metadata.
+///
+/// @param c Builtin call AST node to analyse.
+/// @return Resulting semantic type inferred for the call.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeBuiltinCall(const BuiltinCallExpr &c)
 {
     std::vector<Type> argTys;
@@ -35,6 +51,17 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeBuiltinCall(const BuiltinCallExp
     return analyzeBuiltinWithSignature(c, argTys, signature);
 }
 
+/// @brief Validate the argument count for a builtin invocation.
+///
+/// @details Ensures the number of provided arguments falls within the inclusive
+///          range [@p min, @p max].  On failure a diagnostic describing the
+///          expected range is emitted.
+///
+/// @param c Builtin call under inspection.
+/// @param args Types observed for each argument expression.
+/// @param min Minimum accepted argument count.
+/// @param max Maximum accepted argument count.
+/// @return @c true when the argument count is valid; otherwise @c false.
 bool SemanticAnalyzer::checkArgCount(const BuiltinCallExpr &c,
                                      const std::vector<Type> &args,
                                      size_t min,
@@ -55,6 +82,18 @@ bool SemanticAnalyzer::checkArgCount(const BuiltinCallExpr &c,
     return true;
 }
 
+/// @brief Ensure an argument's type matches one of the permitted categories.
+///
+/// @details Accepts the computed argument type and compares it against the
+///          allowed set supplied by the builtin signature.  When the type is not
+///          permitted, a diagnostic explains the mismatch and the function
+///          returns @c false.
+///
+/// @param c Builtin call being analysed.
+/// @param idx Zero-based argument index.
+/// @param argTy Observed type of the argument.
+/// @param allowed Span describing the acceptable types.
+/// @return @c true when the argument type is acceptable; otherwise @c false.
 bool SemanticAnalyzer::checkArgType(const BuiltinCallExpr &c,
                                     size_t idx,
                                     Type argTy,
@@ -205,12 +244,26 @@ static constexpr std::array<BuiltinSignature, 34> kBuiltinSignatures{{
 
 } // namespace
 
+/// @brief Retrieve the declarative signature for a builtin enumerator.
+///
+/// @param builtin Builtin enumerator to inspect.
+/// @return Reference to the static signature describing arity and result type.
 const SemanticAnalyzer::BuiltinSignature &
 SemanticAnalyzer::builtinSignature(BuiltinCallExpr::Builtin builtin)
 {
     return kBuiltinSignatures[static_cast<size_t>(builtin)];
 }
 
+/// @brief Validate builtin arguments against a signature definition.
+///
+/// @details Verifies argument counts, honours optional parameters, and enforces
+///          type rules using @ref checkArgType.  Missing optional arguments are
+///          handled gracefully so callers can omit trailing parameters.
+///
+/// @param c Builtin call under validation.
+/// @param args Observed argument types.
+/// @param signature Declarative specification defining expectations.
+/// @return @c true when the invocation satisfies the signature.
 bool SemanticAnalyzer::validateBuiltinArgs(const BuiltinCallExpr &c,
                                            const std::vector<Type> &args,
                                            const BuiltinSignature &signature)
@@ -252,6 +305,16 @@ bool SemanticAnalyzer::validateBuiltinArgs(const BuiltinCallExpr &c,
     return true;
 }
 
+/// @brief Analyse a builtin using only its declarative signature.
+///
+/// @details Invokes @ref validateBuiltinArgs to emit diagnostics and returns
+///          the signature's result type regardless of validation outcome so
+///          downstream analysis can continue.
+///
+/// @param c Builtin call being analysed.
+/// @param args Observed argument types.
+/// @param signature Signature describing arity and return type.
+/// @return Semantic type produced by the builtin.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeBuiltinWithSignature(
     const BuiltinCallExpr &c,
     const std::vector<Type> &args,
@@ -261,6 +324,17 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeBuiltinWithSignature(
     return signature.result;
 }
 
+/// @brief Special-case analysis for the ABS builtin.
+///
+/// @details Validates arguments using the generic path and then selects the
+///          return type based on the argument: floating-point inputs return
+///          floats while integers (or unknown types) yield integers.  This
+///          mirrors runtime behaviour and prevents unnecessary coercions.
+///
+/// @param c Builtin call node.
+/// @param args Observed argument types.
+/// @param signature Declarative signature for ABS.
+/// @return Resulting semantic type for the call.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeAbs(const BuiltinCallExpr &c,
                                                     const std::vector<Type> &args,
                                                     const BuiltinSignature &signature)
@@ -278,6 +352,17 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeAbs(const BuiltinCallExpr &c,
     return Type::Int;
 }
 
+/// @brief Analyse the INSTR builtin.
+///
+/// @details Currently defers entirely to the signature validation so the result
+///          type always matches the declarative metadata.  Hooked separately so
+///          more sophisticated diagnostics can be added without altering the
+///          registry format.
+///
+/// @param c Builtin call node.
+/// @param args Observed argument types.
+/// @param signature Declarative signature for INSTR.
+/// @return Resulting semantic type for the call.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeInstr(const BuiltinCallExpr &c,
                                                       const std::vector<Type> &args,
                                                       const BuiltinSignature &signature)

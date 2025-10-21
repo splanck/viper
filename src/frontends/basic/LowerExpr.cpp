@@ -1,10 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
 // File: src/frontends/basic/LowerExpr.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Implements expression lowering helpers for the BASIC front end.
+// Purpose: Implement expression lowering helpers for the BASIC front end.
 // Key invariants: Expression lowering preserves operand types, injecting
 //                 conversions to match IL expectations and runtime helpers.
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
-// Links: docs/codemap.md
+// Links: docs/codemap.md, docs/basic-language.md#expressions
+//
+//===----------------------------------------------------------------------===//
 
 // Requires the consolidated Lowerer interface for expression lowering helpers.
 #include "frontends/basic/LowerExprBuiltin.hpp"
@@ -29,11 +36,18 @@ namespace il::frontends::basic
 {
 
 /// @brief Expression visitor that lowers nodes via Lowerer helpers.
+/// @brief Visitor that lowers AST expressions into IL values using Lowerer helpers.
+///
+/// @details Each override updates the lowerer state as needed and records the
+///          resulting value/type pair so callers can access the lowered form
+///          after visitation.
 class LowererExprVisitor final : public ExprVisitor
 {
   public:
+    /// @brief Construct a visitor bound to the lowering context.
     explicit LowererExprVisitor(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
 
+    /// @brief Lower integer literals into IL constants.
     void visit(const IntExpr &expr) override
     {
         lowerer_.curLoc = expr.loc;
@@ -41,6 +55,7 @@ class LowererExprVisitor final : public ExprVisitor
             Lowerer::RVal{Value::constInt(expr.value), il::core::Type(il::core::Type::Kind::I64)};
     }
 
+    /// @brief Lower floating-point literals into IL constants.
     void visit(const FloatExpr &expr) override
     {
         lowerer_.curLoc = expr.loc;
@@ -48,6 +63,7 @@ class LowererExprVisitor final : public ExprVisitor
             Lowerer::RVal{Value::constFloat(expr.value), il::core::Type(il::core::Type::Kind::F64)};
     }
 
+    /// @brief Lower string literals by interning and materialising globals.
     void visit(const StringExpr &expr) override
     {
         lowerer_.curLoc = expr.loc;
@@ -56,6 +72,7 @@ class LowererExprVisitor final : public ExprVisitor
         result_ = Lowerer::RVal{tmp, il::core::Type(il::core::Type::Kind::Str)};
     }
 
+    /// @brief Lower boolean literals into two's-complement integers.
     void visit(const BoolExpr &expr) override
     {
         lowerer_.curLoc = expr.loc;
@@ -63,11 +80,13 @@ class LowererExprVisitor final : public ExprVisitor
         result_ = Lowerer::RVal{logical, il::core::Type(il::core::Type::Kind::I64)};
     }
 
+    /// @brief Lower variable references through @ref Lowerer::lowerVarExpr.
     void visit(const VarExpr &expr) override
     {
         result_ = lowerer_.lowerVarExpr(expr);
     }
 
+    /// @brief Lower array element accesses by invoking the array helper.
     void visit(const ArrayExpr &expr) override
     {
         Lowerer::ArrayAccess access =
@@ -79,32 +98,38 @@ class LowererExprVisitor final : public ExprVisitor
         result_ = Lowerer::RVal{val, il::core::Type(il::core::Type::Kind::I64)};
     }
 
+    /// @brief Lower unary expressions by deferring to the lowerer entry point.
     void visit(const UnaryExpr &expr) override
     {
         result_ = lowerer_.lowerUnaryExpr(expr);
     }
 
+    /// @brief Lower binary expressions via @ref Lowerer::lowerBinaryExpr.
     void visit(const BinaryExpr &expr) override
     {
         result_ = lowerer_.lowerBinaryExpr(expr);
     }
 
+    /// @brief Lower builtin calls using the specialised builtin lowering path.
     void visit(const BuiltinCallExpr &expr) override
     {
         result_ = lowerBuiltinCall(lowerer_, expr);
     }
 
+    /// @brief Lower LBOUND expressions to constant integers.
     void visit(const LBoundExpr &expr) override
     {
         lowerer_.curLoc = expr.loc;
         result_ = Lowerer::RVal{Value::constInt(0), il::core::Type(il::core::Type::Kind::I64)};
     }
 
+    /// @brief Lower UBOUND expressions via @ref Lowerer::lowerUBoundExpr.
     void visit(const UBoundExpr &expr) override
     {
         result_ = lowerer_.lowerUBoundExpr(expr);
     }
 
+    /// @brief Lower procedure calls, coercing arguments as required.
     void visit(const CallExpr &expr) override
     {
         const auto *signature = lowerer_.findProcSignature(expr.callee);
@@ -140,26 +165,31 @@ class LowererExprVisitor final : public ExprVisitor
         }
     }
 
+    /// @brief Lower object construction expressions.
     void visit(const NewExpr &expr) override
     {
         result_ = lowerer_.lowerNewExpr(expr);
     }
 
+    /// @brief Lower ME expressions referencing the current instance.
     void visit(const MeExpr &expr) override
     {
         result_ = lowerer_.lowerMeExpr(expr);
     }
 
+    /// @brief Lower member access expressions to the appropriate load/call.
     void visit(const MemberAccessExpr &expr) override
     {
         result_ = lowerer_.lowerMemberAccessExpr(expr);
     }
 
+    /// @brief Lower method calls using OOP-aware lowering helpers.
     void visit(const MethodCallExpr &expr) override
     {
         result_ = lowerer_.lowerMethodCallExpr(expr);
     }
 
+    /// @brief Retrieve the lowered value produced by the most recent visit.
     [[nodiscard]] Lowerer::RVal result() const noexcept
     {
         return result_;
@@ -193,6 +223,15 @@ Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v)
     return {val, ty};
 }
 
+/// @brief Lower a `UBOUND` query into an IL call and subtraction.
+///
+/// @details Loads the array slot, calls into the runtime to obtain the logical
+///          length, and subtracts one to produce the highest valid index.  The
+///          helper assumes semantic analysis already verified the symbol is an
+///          array.
+///
+/// @param expr Array upper-bound expression.
+/// @return Pair containing the computed upper bound and its integer type.
 Lowerer::RVal Lowerer::lowerUBoundExpr(const UBoundExpr &expr)
 {
     curLoc = expr.loc;
@@ -272,21 +311,38 @@ Lowerer::RVal Lowerer::lowerBoolBranchExpr(Value cond,
     return {result, ilBoolTy()};
 }
 
+/// @brief Emit a constant 64-bit integer value via the emitter facade.
+///
+/// @param v Literal integer to materialise.
+/// @return IL value representing the constant.
 Lowerer::Value Lowerer::emitConstI64(std::int64_t v)
 {
     return emitter().emitConstI64(v);
 }
 
+/// @brief Zero-extend an `i1` boolean into the BASIC logical integer form.
+///
+/// @param val Boolean value to extend.
+/// @return Result of invoking the emitter helper.
 Lowerer::Value Lowerer::emitZext1ToI64(Value val)
 {
     return emitter().emitZext1ToI64(val);
 }
 
+/// @brief Emit an integer subtraction.
+///
+/// @param lhs Left operand.
+/// @param rhs Right operand.
+/// @return Difference computed by the emitter helper.
 Lowerer::Value Lowerer::emitISub(Value lhs, Value rhs)
 {
     return emitter().emitISub(lhs, rhs);
 }
 
+/// @brief Convert an `i1` logical value into BASIC's `-1/0` convention.
+///
+/// @param b1 Boolean value to normalise.
+/// @return 64-bit integer representing BASIC truthiness.
 Lowerer::Value Lowerer::emitBasicLogicalI64(Value b1)
 {
     return emitter().emitBasicLogicalI64(b1);
@@ -506,11 +562,20 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
     return visitor.result();
 }
 
+/// @brief Lower an expression and coerce the result to a scalar integer.
+///
+/// @param expr Expression subtree to translate and normalise.
+/// @return Lowered value coerced to the BASIC scalar representation.
 Lowerer::RVal Lowerer::lowerScalarExpr(const Expr &expr)
 {
     return lowerScalarExpr(lowerExpr(expr), expr.loc);
 }
 
+/// @brief Ensure an already-lowered value is compatible with scalar contexts.
+///
+/// @param value Previously lowered value.
+/// @param loc Source location used for diagnostics during coercion.
+/// @return Value coerced to a 64-bit integer when needed.
 Lowerer::RVal Lowerer::lowerScalarExpr(RVal value, il::support::SourceLoc loc)
 {
     switch (value.type.kind)
