@@ -1,8 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
+//
 // File: src/il/verify/InstructionChecker.cpp
-// Purpose: Dispatches instruction verification across specialized helper modules.
-// Key invariants: Each opcode is checked exactly once with consistent operand and result typing rules.
-// Ownership/Lifetime: Operates on caller-provided verification context without owning IL objects.
-// Links: docs/il-guide.md#reference
+//
+// Summary:
+//   Implements the central dispatch for verifying individual IL instructions.
+//   The checker orchestrates operand count/type validation, applies
+//   opcode-specific rules, and delegates arithmetic and memory checks to
+//   specialised helpers to enforce the IL specification.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Instruction verification dispatcher for the IL verifier.
+/// @details Exposes helper functions that validate instruction signatures and
+///          semantics using metadata tables and opcode-specific routines.
 
 #include "il/verify/InstructionChecker.hpp"
 
@@ -52,6 +66,14 @@ using checker::fail;
 using checker::kindFromClass;
 using checker::typeFromClass;
 
+/// @brief Validate operands and results using canonical opcode metadata.
+/// @details Runs the operand-count, operand-type, and result-type checkers in
+///          sequence using @ref il::core::OpcodeInfo to describe the opcode.
+///          Any failure propagates immediately through the @ref Expected
+///          channel.
+/// @param ctx Verification context describing the instruction under test.
+/// @param info Opcode metadata record retrieved from the core tables.
+/// @return Empty success or a diagnostic describing the mismatch.
 Expected<void> checkWithInfo(const VerifyCtx &ctx, const il::core::OpcodeInfo &info)
 {
     detail::OperandCountChecker countChecker(ctx, info);
@@ -66,6 +88,13 @@ Expected<void> checkWithInfo(const VerifyCtx &ctx, const il::core::OpcodeInfo &i
     return resultChecker.run();
 }
 
+/// @brief Validate arithmetic-style opcodes using verifier table properties.
+/// @details Converts the compact verifier table representation into operand and
+///          result kinds understood by the shared arithmetic checkers.  Supports
+///          unary and binary shapes and asserts for unexpected table entries.
+/// @param ctx Verification context describing the instruction under test.
+/// @param props Verifier table metadata for the opcode.
+/// @return Empty success or a diagnostic failure.
 Expected<void> checkWithProps(const VerifyCtx &ctx, const OpProps &props)
 {
     switch (props.arity)
@@ -92,6 +121,15 @@ Expected<void> checkWithProps(const VerifyCtx &ctx, const OpProps &props)
     return {};
 }
 
+/// @brief Check an instruction's structural signature against metadata.
+/// @details Validates result presence, operand counts, successor arity, and
+///          branch argument bundles using @ref il::core::OpcodeInfo.  Produces
+///          targeted diagnostics when the instruction deviates from the
+///          specification.
+/// @param fn Function providing diagnostic context.
+/// @param bb Basic block containing the instruction.
+/// @param instr Instruction being validated.
+/// @return Empty success or a descriptive diagnostic on failure.
 Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
                                           const il::core::BasicBlock &bb,
                                           const il::core::Instr &instr)
@@ -187,6 +225,13 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
     return {};
 }
 
+/// @brief Perform full semantic verification for a single instruction.
+/// @details Combines metadata-driven checks with opcode-specific handlers to
+///          ensure operands, results, and side effects obey the IL specification
+///          and runtime conventions.
+/// @param ctx Verification context that supplies type inference, extern data,
+///        and diagnostic sinks.
+/// @return Empty success or a diagnostic when verification fails.
 Expected<void> verifyInstruction_impl(const VerifyCtx &ctx)
 {
     const auto rejectUnchecked = [&](std::string_view message) {
@@ -330,16 +375,38 @@ Expected<void> verifyInstruction_impl(const VerifyCtx &ctx)
 
 } // namespace
 
+/// @brief Entry point for verifying an instruction with an existing context.
+/// @details Thin wrapper that forwards to @ref verifyInstruction_impl so the
+///          exported API can evolve independently of the internal helper.
+/// @param ctx Verification context describing the instruction under test.
+/// @return Empty success or a diagnostic failure.
 Expected<void> verifyInstruction_E(const VerifyCtx &ctx)
 {
     return verifyInstruction_impl(ctx);
 }
 
+/// @brief Entry point for validating instruction signatures with an existing context.
+/// @details Bridges @ref VerifyCtx users to the shared signature checker,
+///          ensuring consistent diagnostics for both public and internal callers.
+/// @param ctx Verification context describing the instruction under test.
+/// @return Empty success or a diagnostic failure.
 Expected<void> verifyOpcodeSignature_E(const VerifyCtx &ctx)
 {
     return verifyOpcodeSignature_impl(ctx.fn, ctx.block, ctx.instr);
 }
 
+/// @brief Verify an instruction using discrete verifier dependencies.
+/// @details Constructs a @ref VerifyCtx from the provided function, block,
+///          instruction, external symbol tables, and type inference cache before
+///          delegating to @ref verifyInstruction_impl.
+/// @param fn Function supplying structural context.
+/// @param bb Basic block containing the instruction.
+/// @param instr Instruction under verification.
+/// @param externs Map of extern declarations available to the verifier.
+/// @param funcs Map of callable functions referenced by the program.
+/// @param types Type inference helper used to query operand types.
+/// @param sink Diagnostic sink collecting warnings and errors.
+/// @return Empty success or a diagnostic failure.
 Expected<void> verifyInstruction_E(const il::core::Function &fn,
                                     const il::core::BasicBlock &bb,
                                     const il::core::Instr &instr,
@@ -352,6 +419,14 @@ Expected<void> verifyInstruction_E(const il::core::Function &fn,
     return verifyInstruction_impl(ctx);
 }
 
+/// @brief Validate an instruction signature without constructing a context manually.
+/// @details Convenience overload that forwards to
+///          @ref verifyOpcodeSignature_impl while accepting the minimal data
+///          required by diagnostics.
+/// @param fn Function supplying diagnostic context.
+/// @param bb Basic block containing the instruction.
+/// @param instr Instruction whose signature is checked.
+/// @return Empty success or a diagnostic failure.
 Expected<void> verifyOpcodeSignature_E(const il::core::Function &fn,
                                        const il::core::BasicBlock &bb,
                                        const il::core::Instr &instr)
@@ -359,6 +434,14 @@ Expected<void> verifyOpcodeSignature_E(const il::core::Function &fn,
     return verifyOpcodeSignature_impl(fn, bb, instr);
 }
 
+/// @brief Public API for signature checking that prints diagnostics immediately.
+/// @details Invokes @ref verifyOpcodeSignature_E and prints any resulting
+///          diagnostics to the supplied stream, returning @c false on failure.
+/// @param fn Function supplying diagnostic context.
+/// @param bb Basic block containing the instruction.
+/// @param instr Instruction whose signature is checked.
+/// @param err Stream used for diagnostic emission.
+/// @return @c true when verification succeeds, @c false otherwise.
 bool verifyOpcodeSignature(const il::core::Function &fn,
                            const il::core::BasicBlock &bb,
                            const il::core::Instr &instr,
@@ -372,6 +455,18 @@ bool verifyOpcodeSignature(const il::core::Function &fn,
     return true;
 }
 
+/// @brief Public API for full instruction verification that prints diagnostics.
+/// @details Runs verification using a collecting sink so warnings and errors can
+///          be emitted in order to the provided stream.  Returns @c false when a
+///          hard error is encountered.
+/// @param fn Function supplying structural context.
+/// @param bb Basic block containing the instruction.
+/// @param instr Instruction under verification.
+/// @param externs Map of extern declarations referenced by the module.
+/// @param funcs Map of function declarations referenced by the module.
+/// @param types Type inference helper used during verification.
+/// @param err Stream receiving diagnostics.
+/// @return @c true on success, @c false when verification fails.
 bool verifyInstruction(const il::core::Function &fn,
                        const il::core::BasicBlock &bb,
                        const il::core::Instr &instr,
@@ -394,6 +489,13 @@ bool verifyInstruction(const il::core::Function &fn,
     return true;
 }
 
+/// @brief Convenience wrapper returning diagnostics through @ref Expected.
+/// @details Allows callers that already operate on @ref Expected to reuse the
+///          signature checker without dealing with streams.
+/// @param fn Function supplying diagnostic context.
+/// @param bb Basic block containing the instruction.
+/// @param instr Instruction whose signature is checked.
+/// @return Empty success or a diagnostic failure.
 Expected<void> verifyOpcodeSignature_expected(const il::core::Function &fn,
                                                const il::core::BasicBlock &bb,
                                                const il::core::Instr &instr)
@@ -401,6 +503,17 @@ Expected<void> verifyOpcodeSignature_expected(const il::core::Function &fn,
     return verifyOpcodeSignature_E(fn, bb, instr);
 }
 
+/// @brief Return instruction verification results using the @ref Expected channel.
+/// @details Reuses the richer overload while exposing the result in a form
+///          convenient for callers that manage diagnostics themselves.
+/// @param fn Function supplying structural context.
+/// @param bb Basic block containing the instruction.
+/// @param instr Instruction under verification.
+/// @param externs Map of extern declarations referenced by the module.
+/// @param funcs Map of function declarations referenced by the module.
+/// @param types Type inference helper used during verification.
+/// @param sink Diagnostic sink that receives emitted warnings.
+/// @return Empty success or a diagnostic failure.
 Expected<void> verifyInstruction_expected(const il::core::Function &fn,
                                           const il::core::BasicBlock &bb,
                                           const il::core::Instr &instr,
