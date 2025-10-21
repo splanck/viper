@@ -1,11 +1,16 @@
-// File: src/frontends/basic/Parser_Stmt_Loop.cpp
-// Purpose: Implements loop-related statement parsing for the BASIC parser.
-// Key invariants: Ensures loop headers and terminators are matched and
-//                 diagnostics cover invalid configurations.
-// Ownership/Lifetime: Parser creates AST nodes managed by caller-owned
-//                     unique_ptr wrappers.
-// License: MIT; see LICENSE for details.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the BASIC loop statement parser. Each helper consumes the
+// necessary control keywords, leverages StatementSequencer to gather nested
+// bodies, and issues diagnostics when headers or terminators are malformed so
+// subsequent lowering stages receive structurally sound ASTs.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
@@ -15,6 +20,14 @@
 namespace il::frontends::basic
 {
 
+/// @brief Parse a WHILE/WEND loop into an AST node.
+///
+/// Reads the `WHILE` keyword, captures the condition expression, and then uses
+/// StatementSequencer to collect the body until a matching `WEND`. The helper
+/// records the loop location for later diagnostics but otherwise leaves error
+/// reporting to the sequencer if the terminator is missing.
+///
+/// @return Populated @ref WhileStmt instance describing the loop.
 StmtPtr Parser::parseWhileStatement()
 {
     auto loc = peek().loc;
@@ -28,6 +41,15 @@ StmtPtr Parser::parseWhileStatement()
     return stmt;
 }
 
+/// @brief Parse the BASIC DO loop family, handling all condition placements.
+///
+/// Consumes the `DO` keyword, optionally records pre-test conditions, and then
+/// gathers the loop body until `LOOP`. Post-test conditions are parsed when
+/// present, with diagnostics emitted if both pre and post tests appear. The
+/// resulting @ref DoStmt encodes the condition position and kind so later
+/// passes can produce the correct control flow.
+///
+/// @return Newly allocated @ref DoStmt that reflects the parsed structure.
 StmtPtr Parser::parseDoStatement()
 {
     auto loc = peek().loc;
@@ -87,6 +109,14 @@ StmtPtr Parser::parseDoStatement()
     return stmt;
 }
 
+/// @brief Parse a FOR/NEXT loop and normalise optional STEP clauses.
+///
+/// Captures the loop variable, range, and optional step expression before
+/// delegating to StatementSequencer to collect the loop body. If the trailing
+/// `NEXT` names a variable, it is consumed to keep the parser aligned regardless
+/// of matching errors.
+///
+/// @return Owning pointer to the constructed @ref ForStmt node.
 StmtPtr Parser::parseForStatement()
 {
     auto loc = peek().loc;
@@ -113,6 +143,13 @@ StmtPtr Parser::parseForStatement()
     return stmt;
 }
 
+/// @brief Parse a stand-alone NEXT statement used to close loops.
+///
+/// Reads the optional loop variable following `NEXT` so semantic analysis can
+/// verify it matches an active loop. The resulting AST node captures the source
+/// location and variable name (or emptiness when absent).
+///
+/// @return Owning pointer to a @ref NextStmt carrying the parsed metadata.
 StmtPtr Parser::parseNextStatement()
 {
     auto loc = peek().loc;
@@ -129,6 +166,15 @@ StmtPtr Parser::parseNextStatement()
     return stmt;
 }
 
+/// @brief Parse an EXIT statement and identify the targeted loop kind.
+///
+/// Consumes `EXIT` followed by an optional loop keyword, defaulting to WHILE
+/// semantics when no keyword is supplied. Unexpected tokens trigger diagnostics
+/// and result in an @ref EndStmt placeholder so parsing can continue without
+/// cascading errors.
+///
+/// @return Either a configured @ref ExitStmt or a no-op statement when
+///         recovery was required.
 StmtPtr Parser::parseExitStatement()
 {
     auto loc = peek().loc;

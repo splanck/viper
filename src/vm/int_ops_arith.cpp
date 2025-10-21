@@ -1,9 +1,16 @@
-// MIT License. See LICENSE in the project root for full license information.
-// File: src/vm/int_ops_arith.cpp
-// Purpose: Implement integer arithmetic, division, and bitwise VM opcode handlers.
-// Key invariants: Operations follow IL integer semantics, raising traps on overflow
-//                 or divide-by-zero per the specification.
-// Links: docs/il-guide.md#reference §Integer Arithmetic, §Bitwise and Shifts
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements integer arithmetic, division, and bitwise opcode handlers for the
+// VM. Each helper orchestrates register reads, invokes the shared math helpers,
+// and writes back results while respecting the trap semantics defined in the
+// IL specification.
+//
+//===----------------------------------------------------------------------===//
 
 #include "vm/OpHandlers_Int.hpp"
 
@@ -11,6 +18,11 @@
 
 namespace il::vm::detail::integer
 {
+/// @brief Dispatch the generic subtraction helper for the `isub` opcode.
+///
+/// The instruction shares the same semantics as the standard integer
+/// subtraction handler, so this wrapper simply forwards to @ref handleSub while
+/// preserving the expected signature for the opcode dispatch table.
 VM::ExecResult handleISub(VM &vm,
                           Frame &fr,
                           const il::core::Instr &in,
@@ -21,6 +33,11 @@ VM::ExecResult handleISub(VM &vm,
     return handleSub(vm, fr, in, blocks, bb, ip);
 }
 
+/// @brief Execute `iadd.ovf`, trapping on signed overflow.
+///
+/// Evaluates both operands via @ref ops::applyBinary and routes the arithmetic
+/// through @ref dispatchOverflowingBinary so the helper can raise structured
+/// traps when the checked addition exceeds the destination width.
 VM::ExecResult handleIAddOvf(VM &vm,
                              Frame &fr,
                              const il::core::Instr &in,
@@ -48,6 +65,11 @@ VM::ExecResult handleIAddOvf(VM &vm,
                             });
 }
 
+/// @brief Execute `isub.ovf`, trapping on signed overflow.
+///
+/// Mirrors @ref handleIAddOvf but uses @ref ops::checked_sub to detect
+/// overflow during subtraction, emitting the canonical diagnostic message when
+/// the checked operation fails.
 VM::ExecResult handleISubOvf(VM &vm,
                              Frame &fr,
                              const il::core::Instr &in,
@@ -75,6 +97,10 @@ VM::ExecResult handleISubOvf(VM &vm,
                             });
 }
 
+/// @brief Execute `imul.ovf`, trapping when the product exceeds the lane width.
+///
+/// Invokes @ref dispatchOverflowingBinary with @ref ops::checked_mul so signed
+/// multiplication overflow surfaces as a trap rather than silently wrapping.
 VM::ExecResult handleIMulOvf(VM &vm,
                              Frame &fr,
                              const il::core::Instr &in,
@@ -102,6 +128,11 @@ VM::ExecResult handleIMulOvf(VM &vm,
                             });
 }
 
+/// @brief Execute the signed `idiv` opcode without zero checking.
+///
+/// Uses @ref dispatchCheckedSignedBinary to select the correct integer width
+/// implementation while allowing divide-by-zero traps to be deferred to the
+/// specialised checked variants.
 VM::ExecResult handleSDiv(VM &vm,
                           Frame &fr,
                           const il::core::Instr &in,
@@ -123,6 +154,10 @@ VM::ExecResult handleSDiv(VM &vm,
                             });
 }
 
+/// @brief Execute the unsigned `udiv` opcode without zero checking.
+///
+/// Delegates to @ref applyUnsignedDivOrRem so the helper performs width-aware
+/// coercions before invoking the supplied lambda to compute the quotient.
 VM::ExecResult handleUDiv(VM &vm,
                           Frame &fr,
                           const il::core::Instr &in,
@@ -149,6 +184,10 @@ VM::ExecResult handleUDiv(VM &vm,
                             });
 }
 
+/// @brief Execute the signed remainder opcode without zero checking.
+///
+/// Uses @ref dispatchCheckedSignedBinary to select the proper integer width and
+/// reuse the checked division helper for computing the modulo result.
 VM::ExecResult handleSRem(VM &vm,
                           Frame &fr,
                           const il::core::Instr &in,
@@ -170,6 +209,11 @@ VM::ExecResult handleSRem(VM &vm,
                             });
 }
 
+/// @brief Execute the unsigned remainder opcode without zero checking.
+///
+/// Relies on @ref applyUnsignedDivOrRem to normalise operands and compute the
+/// remainder using the provided lambda while leaving zero checking to other
+/// opcode variants.
 VM::ExecResult handleURem(VM &vm,
                           Frame &fr,
                           const il::core::Instr &in,
@@ -196,6 +240,10 @@ VM::ExecResult handleURem(VM &vm,
                             });
 }
 
+/// @brief Execute signed division with an explicit zero check.
+///
+/// Wraps @ref dispatchCheckedSignedBinary with @ref applySignedDiv so divides by
+/// zero trigger traps immediately using the standard diagnostic message.
 VM::ExecResult handleSDivChk0(VM &vm,
                               Frame &fr,
                               const il::core::Instr &in,
@@ -217,6 +265,10 @@ VM::ExecResult handleSDivChk0(VM &vm,
                             });
 }
 
+/// @brief Execute unsigned division with divide-by-zero checking.
+///
+/// Calls @ref applyUnsignedDivOrRem and supplies a lambda that traps when the
+/// divisor is zero before computing the quotient.
 VM::ExecResult handleUDivChk0(VM &vm,
                               Frame &fr,
                               const il::core::Instr &in,
@@ -243,6 +295,10 @@ VM::ExecResult handleUDivChk0(VM &vm,
                             });
 }
 
+/// @brief Execute signed remainder with divide-by-zero checking.
+///
+/// Uses @ref dispatchCheckedSignedBinary to compute the remainder while
+/// ensuring the divisor is validated via the checked helper.
 VM::ExecResult handleSRemChk0(VM &vm,
                               Frame &fr,
                               const il::core::Instr &in,
@@ -264,6 +320,10 @@ VM::ExecResult handleSRemChk0(VM &vm,
                             });
 }
 
+/// @brief Execute unsigned remainder with divide-by-zero checking.
+///
+/// Delegates to @ref applyUnsignedDivOrRem, adding a guard that raises the
+/// canonical divide-by-zero trap before invoking the modulo lambda.
 VM::ExecResult handleURemChk0(VM &vm,
                               Frame &fr,
                               const il::core::Instr &in,
@@ -290,6 +350,11 @@ VM::ExecResult handleURemChk0(VM &vm,
                             });
 }
 
+/// @brief Validate array indices for the bounds-checking helper.
+///
+/// Converts the index operand to the appropriate width and raises an out-of-
+/// bounds trap via @ref ops::checked_array_index when necessary. Successful
+/// checks simply advance the interpreter without modifying state.
 VM::ExecResult handleIdxChk(VM &vm,
                             Frame &fr,
                             const il::core::Instr &in,
@@ -352,6 +417,10 @@ VM::ExecResult handleIdxChk(VM &vm,
     return {};
 }
 
+/// @brief Perform bitwise AND on integer operands.
+///
+/// The helper reuses @ref ops::applyBinary to fetch operands and store the
+/// result, applying a straightforward bitwise conjunction in the callback.
 VM::ExecResult handleAnd(VM &vm,
                          Frame &fr,
                          const il::core::Instr &in,
@@ -369,6 +438,10 @@ VM::ExecResult handleAnd(VM &vm,
                             { out.i64 = lhsVal.i64 & rhsVal.i64; });
 }
 
+/// @brief Perform bitwise OR on integer operands.
+///
+/// Uses @ref ops::applyBinary to read both operands and writes back their
+/// bitwise disjunction.
 VM::ExecResult handleOr(VM &vm,
                         Frame &fr,
                         const il::core::Instr &in,
@@ -386,6 +459,10 @@ VM::ExecResult handleOr(VM &vm,
                             { out.i64 = lhsVal.i64 | rhsVal.i64; });
 }
 
+/// @brief Perform bitwise XOR on integer operands.
+///
+/// Delegates operand management to @ref ops::applyBinary and sets the output to
+/// the bitwise exclusive-or of the inputs.
 VM::ExecResult handleXor(VM &vm,
                          Frame &fr,
                          const il::core::Instr &in,
@@ -403,6 +480,10 @@ VM::ExecResult handleXor(VM &vm,
                             { out.i64 = lhsVal.i64 ^ rhsVal.i64; });
 }
 
+/// @brief Execute logical left shifts with masking of the shift amount.
+///
+/// Fetches operands, masks the shift to the 0–63 range, and shifts the value as
+/// an unsigned quantity before writing the signed result back into the frame.
 VM::ExecResult handleShl(VM &vm,
                          Frame &fr,
                          const il::core::Instr &in,
@@ -424,6 +505,10 @@ VM::ExecResult handleShl(VM &vm,
                             });
 }
 
+/// @brief Execute logical right shifts on integer operands.
+///
+/// Treats the value as unsigned, masks the shift amount, and stores the shifted
+/// result so sign bits are not preserved.
 VM::ExecResult handleLShr(VM &vm,
                           Frame &fr,
                           const il::core::Instr &in,
@@ -445,6 +530,10 @@ VM::ExecResult handleLShr(VM &vm,
                             });
 }
 
+/// @brief Execute arithmetic right shifts, preserving sign bits.
+///
+/// Applies the shift as an unsigned operation and, when the input is negative,
+/// fills the vacated high bits to emulate two's-complement arithmetic shifts.
 VM::ExecResult handleAShr(VM &vm,
                           Frame &fr,
                           const il::core::Instr &in,

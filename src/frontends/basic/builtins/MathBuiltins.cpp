@@ -1,11 +1,16 @@
-// File: src/frontends/basic/builtins/MathBuiltins.cpp
-// Purpose: Implements registration helpers for BASIC math builtins, supplying
-//          metadata consumed by semantic analysis and lowering.
-// Key invariants: Registration populates tables using enum ordinals without
-//                 reallocating storage.
-// Ownership/Lifetime: Tables are owned by the registry; this unit only mutates
-//                     spans passed by the caller.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements registration helpers for BASIC math builtins, supplying metadata
+// consumed by semantic analysis and lowering. Populating the tables here keeps
+// the registry header lightweight while documenting which runtime helpers each
+// builtin requires during scanning and lowering.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/builtins/MathBuiltins.hpp"
 
@@ -17,6 +22,14 @@ namespace
 {
 using B = BuiltinCallExpr::Builtin;
 
+/// @brief Translate a builtin enumerator to its dense table index.
+///
+/// Registration tables are sized to the builtin enum and rely on contiguous
+/// ordinals. This helper performs the cast in one place so callers remain
+/// agnostic of the underlying representation.
+///
+/// @param b Builtin identifier to translate.
+/// @return Zero-based index corresponding to @p b.
 constexpr std::size_t idx(B b) noexcept
 {
     return static_cast<std::size_t>(b);
@@ -24,6 +37,13 @@ constexpr std::size_t idx(B b) noexcept
 
 } // namespace
 
+/// @brief Populate builtin metadata describing signatures and semantic hooks.
+///
+/// Records human-readable names and optional analyser callbacks for each math
+/// builtin. The registry passes in pre-sized spans, so the helper writes entries
+/// in-place without reallocations.
+///
+/// @param infos Mutable span covering the builtin information table.
 void registerMathBuiltinInfos(std::span<BuiltinInfo> infos)
 {
     infos[idx(B::Int)] = {"INT", nullptr};
@@ -39,6 +59,13 @@ void registerMathBuiltinInfos(std::span<BuiltinInfo> infos)
     infos[idx(B::Rnd)] = {"RND", nullptr};
 }
 
+/// @brief Describe runtime feature usage observed during semantic scanning.
+///
+/// Defines how each math builtin traverses its arguments and which runtime
+/// helpers the scan phase must request. The rules feed into lowering so runtime
+/// dependencies are materialised only when necessary.
+///
+/// @param rules Mutable span that receives scan-time rule descriptions.
 void registerMathBuiltinScanRules(std::span<BuiltinScanRule> rules)
 {
     using ResultSpec = BuiltinScanRule::ResultSpec;
@@ -171,6 +198,13 @@ void registerMathBuiltinScanRules(std::span<BuiltinScanRule> rules)
     };
 }
 
+/// @brief Define the lowering strategy for each math builtin invocation.
+///
+/// Populates rule tables that map builtin calls onto runtime invocations and
+/// type transformations. Variants describe conditionally-selected lowering
+/// paths, enabling precise lowering while keeping the dispatcher compact.
+///
+/// @param rules Mutable span containing lowering rule slots.
 void registerMathBuiltinLoweringRules(std::span<BuiltinLoweringRule> rules)
 {
     using LowerRule = BuiltinLoweringRule;

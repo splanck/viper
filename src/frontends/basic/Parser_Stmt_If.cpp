@@ -1,11 +1,16 @@
-// File: src/frontends/basic/Parser_Stmt_If.cpp
-// Purpose: Implements IF statement parsing for the BASIC parser.
-// Key invariants: Ensures IF/ELSEIF/ELSE blocks are properly terminated and
-//                 branch bodies honor StatementSequencer boundaries.
-// Ownership/Lifetime: Parser produces AST nodes owned by caller-provided
-//                     unique_ptr wrappers.
-// License: MIT; see LICENSE for details.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements IF statement parsing for the BASIC front-end. The helper mirrors
+// the surface syntax, emitting nested AST nodes for THEN/ELSEIF/ELSE branches
+// while funnelling common bookkeeping through StatementSequencer so label
+// recovery and fall-through handling remain centralised.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
@@ -17,6 +22,18 @@
 namespace il::frontends::basic
 {
 
+/// @brief Parse a BASIC IF statement and construct the corresponding AST node.
+///
+/// Consumes the `IF` keyword, expression, and `THEN` delimiter before
+/// dispatching into StatementSequencer to gather branch bodies. The helper
+/// recognises multiline and single-line forms, incrementally building the
+/// THEN/ELSEIF/ELSE structure while emitting diagnostics for unterminated
+/// blocks. All child statements inherit the source line number supplied by the
+/// caller so later passes can surface precise error locations.
+///
+/// @param line Line number associated with the IF token as tracked by the
+///             statement sequencer.
+/// @return Owning pointer to the populated @ref IfStmt node.
 StmtPtr Parser::parseIfStatement(int line)
 {
     using parser_helpers::buildBranchList;
