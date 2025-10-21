@@ -11,6 +11,7 @@
 #include <limits>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace il::support
@@ -42,6 +43,18 @@ int main()
     de.printAll(oss, &sm);
     assert(oss.str().find("error: oops") != std::string::npos);
     assert(oss.str().find("test:1:1") != std::string::npos);
+
+    // Captured string views must remain valid after subsequent insertions.
+    il::support::SourceManager viewSm;
+    const uint32_t first_id = viewSm.addFile("first");
+    std::string_view first_view = viewSm.getPath(first_id);
+    const char *first_data = first_view.data();
+    assert(first_view == "first");
+    (void)viewSm.addFile("second");
+    (void)viewSm.addFile("third");
+    std::string_view refreshed_view = viewSm.getPath(first_id);
+    assert(first_view == refreshed_view);
+    assert(first_data == refreshed_view.data());
 
     // Diagnostics missing a registered path should not emit a leading colon.
     il::support::Diag missingPath{
