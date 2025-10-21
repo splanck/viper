@@ -1,7 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // tui/src/ui/focus.cpp
-// @brief FocusManager implementation.
-// @invariant Registered widgets remain valid until unregistered.
-// @ownership FocusManager borrows widgets only.
+//
+// Implements the focus management subsystem for the terminal UI toolkit.  The
+// focus manager owns the traversal ring that keeps track of focusable widgets,
+// providing registration, removal, and navigation helpers.  It does not own the
+// widgets themselves, allowing layout containers to maintain lifetime control
+// while this module orchestrates focus changes and the associated callbacks.
+//
+//===----------------------------------------------------------------------===//
 
 #include "tui/ui/focus.hpp"
 #include "tui/ui/widget.hpp"
@@ -10,6 +22,12 @@
 
 namespace viper::tui::ui
 {
+/// @brief Register a widget as focusable if it opts in via wantsFocus().
+///
+/// @details The manager ignores @c nullptr values as well as widgets that
+///          decline focus.  When the ring transitions from empty to non-empty
+///          the index is reset to the first entry so that subsequent navigation
+///          calls have a well-defined starting point.
 void FocusManager::registerWidget(Widget *w)
 {
     if (!w || !w->wantsFocus())
@@ -23,6 +41,13 @@ void FocusManager::registerWidget(Widget *w)
     }
 }
 
+/// @brief Remove a widget from the focus ring and update state accordingly.
+///
+/// @details If the widget is not present the call is ignored.  When the removed
+///          widget owned focus the method transfers it to the next candidate and
+///          dispatches @ref Widget::onFocusChanged notifications to both the old
+///          and new widgets.  Emptying the ring clears the index so future
+///          registrations start from the beginning.
 void FocusManager::unregisterWidget(Widget *w)
 {
     if (!w)
@@ -58,6 +83,13 @@ void FocusManager::unregisterWidget(Widget *w)
     }
 }
 
+/// @brief Advance focus to the next widget in the ring.
+///
+/// @details When focusable widgets exist, the manager increments the index with
+///          wrap-around semantics, notifies the previously focused widget that it
+///          lost focus, and informs the new widget that it gained focus.  The
+///          newly focused widget pointer is returned to facilitate additional
+///          caller logic such as repaint requests.
 Widget *FocusManager::next()
 {
     if (ring_.empty())
@@ -75,6 +107,13 @@ Widget *FocusManager::next()
     return now;
 }
 
+/// @brief Move focus to the previous widget in the ring.
+///
+/// @details The implementation mirrors @ref next() but decrements the index and
+///          wraps when reaching the beginning.  Notifications are issued to both
+///          the old and new widgets whenever the focus target changes.  The
+///          pointer to the widget now holding focus is returned for callers that
+///          need to react.
 Widget *FocusManager::prev()
 {
     if (ring_.empty())
@@ -92,6 +131,12 @@ Widget *FocusManager::prev()
     return now;
 }
 
+/// @brief Retrieve the widget currently designated as focused.
+///
+/// @details Returns @c nullptr when no focusable widgets are registered.  This
+///          accessor allows higher-level systems to query focus state without
+///          mutating it, for example when deciding which widget should receive
+///          an incoming keyboard event.
 Widget *FocusManager::current() const
 {
     if (ring_.empty())

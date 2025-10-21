@@ -1,7 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // tui/src/widgets/button.cpp
-// @brief Button widget with ASCII border and activation keys.
-// @invariant Border size matches layout rectangle.
-// @ownership Button borrows Theme and callback.
+//
+// Implements a basic push button widget for the terminal UI toolkit.  The
+// widget renders a bordered rectangle, centres its label text, and invokes a
+// caller-supplied callback when activated via keyboard.  It relies on the
+// global theme palette to colour the border and text, keeping visuals consistent
+// across the application without embedding styling decisions here.
+//
+//===----------------------------------------------------------------------===//
 
 #include "tui/widgets/button.hpp"
 #include "tui/render/screen.hpp"
@@ -10,12 +22,25 @@
 
 namespace viper::tui::widgets
 {
-
+/// @brief Construct a button with label text, callback, and theme reference.
+///
+/// @details The label is stored by value while the click handler and theme are
+///          kept by reference, allowing the widget to respond to activations
+///          without owning additional resources.  Callbacks can be empty, in
+///          which case activation simply performs no action.
 Button::Button(std::string text, OnClick onClick, const style::Theme &theme)
     : text_(std::move(text)), onClick_(std::move(onClick)), theme_(theme)
 {
 }
 
+/// @brief Paint the button's border, fill, and label text into the screen buffer.
+///
+/// @details The routine first queries the theme for accent and normal styles,
+///          then draws a rectangular border using ASCII characters.  Interior
+///          cells are cleared to spaces with the normal style applied.  When the
+///          height allows, the label text is centred vertically and truncated to
+///          fit horizontally.  All drawing respects the widget's layout
+///          rectangle, ensuring compatibility with container-managed geometry.
 void Button::paint(render::ScreenBuffer &sb)
 {
     const auto &border = theme_.style(style::Role::Accent);
@@ -69,6 +94,12 @@ void Button::paint(render::ScreenBuffer &sb)
     }
 }
 
+/// @brief Handle key events that should trigger the button's onClick callback.
+///
+/// @details The widget reacts to Enter and Space activations.  When a callback
+///          is registered it is invoked immediately, and the event is reported as
+///          handled.  Other keys fall through so the event system can continue
+///          propagation to other widgets if needed.
 bool Button::onEvent(const ui::Event &ev)
 {
     const auto &k = ev.key;
@@ -83,7 +114,11 @@ bool Button::onEvent(const ui::Event &ev)
     return false;
 }
 
-/// @brief Buttons request focus so they can respond to activation keys.
+/// @brief Request focus participation so activation keys reach the widget.
+///
+/// @details Buttons need focus to receive keyboard events, so the method
+///          returns @c true.  Containers consult this when building traversal
+///          order, ensuring that interactive controls behave as expected.
 bool Button::wantsFocus() const
 {
     return true;
