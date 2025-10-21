@@ -129,8 +129,13 @@ OperandKind classifyOperandToken(const std::string &token)
         return OperandKind::NullValue;
     if (token.size() >= 2 && token.front() == '"' && token.back() == '"')
         return OperandKind::StringLiteral;
-    if (token.find('.') != std::string::npos || token.find('e') != std::string::npos ||
-        token.find('E') != std::string::npos)
+
+    const bool hasDecimalPoint = token.find('.') != std::string::npos;
+    const bool isHexLiteral = token.size() >= 2 && token[0] == '0' && (token[1] == 'x' || token[1] == 'X');
+    const bool hasExponent = (!isHexLiteral) &&
+                             (token.find('e') != std::string::npos || token.find('E') != std::string::npos);
+
+    if (hasDecimalPoint || hasExponent)
         return OperandKind::FloatLiteral;
     return OperandKind::IntegerLiteral;
 }
