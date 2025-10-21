@@ -1,10 +1,16 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
 // File: src/frontends/basic/LowerExprLogical.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
 // Purpose: Implements logical expression lowering helpers for the BASIC Lowerer.
 // Key invariants: Logical operators preserve BASIC truthiness semantics using
 //                 Lowerer utilities for short-circuiting.
 // Ownership/Lifetime: Helpers borrow the Lowerer for the duration of the call.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/LowerExprLogical.hpp"
 
@@ -19,6 +25,14 @@ using IlKind = IlType::Kind;
 
 namespace
 {
+/// @brief Provide a user-facing display name for logical operators.
+///
+/// @details Converts the lowering-time enumeration into the BASIC keyword used
+///          in diagnostics.  Unknown operators fall back to a sentinel so that
+///          callers can include the numeric value when forming error messages.
+///
+/// @param op Logical operator enumeration from the AST.
+/// @return BASIC keyword string or `"<logical>"` for unrecognised values.
 std::string_view logicalOperatorDisplayName(BinaryExpr::Op op) noexcept
 {
     switch (op)
@@ -40,8 +54,22 @@ std::string_view logicalOperatorDisplayName(BinaryExpr::Op op) noexcept
 constexpr std::string_view kDiagUnsupportedLogicalOperator = "B4002";
 } // namespace
 
+/// @brief Construct the logical lowering helper around a @ref Lowerer.
+///
+/// @param lowerer Active lowering context used to emit IL instructions.
 LogicalExprLowering::LogicalExprLowering(Lowerer &lowerer) noexcept : lowerer_(&lowerer) {}
 
+/// @brief Lower a BASIC logical binary expression into IL.
+///
+/// @details Handles both short-circuit (`ANDALSO`, `ORELSE`) and eager
+///          (`AND`, `OR`) operators.  Short-circuit operators delegate to
+///          @ref Lowerer::lowerBoolBranchExpr to build explicit control flow
+///          while eager ones coerce operands to logical words and emit bitwise
+///          operations.  Unsupported operators emit diagnostics and return
+///          `FALSE` to keep compilation progressing.
+///
+/// @param expr Logical binary expression AST node.
+/// @return Resulting IL value paired with its logical word type.
 Lowerer::RVal LogicalExprLowering::lower(const BinaryExpr &expr)
 {
     Lowerer &lowerer = *lowerer_;
@@ -160,11 +188,20 @@ Lowerer::RVal LogicalExprLowering::lower(const BinaryExpr &expr)
     return {logicalWord, IlType(IlKind::I64)};
 }
 
+/// @brief Member façade that forwards logical lowering to the helper module.
+///
+/// @param expr Logical binary expression to lower.
+/// @return Result of @ref lowerLogicalBinary.
 Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &expr)
 {
     return ::il::frontends::basic::lowerLogicalBinary(*this, expr);
 }
 
+/// @brief Free-function entry point used by tests and other lowering helpers.
+///
+/// @param lowerer Active lowering context receiving the emitted IL.
+/// @param expr Logical binary expression under translation.
+/// @return Lowered IL value representing the BASIC logical result.
 Lowerer::RVal lowerLogicalBinary(Lowerer &lowerer, const BinaryExpr &expr)
 {
     LogicalExprLowering lowering(lowerer);
