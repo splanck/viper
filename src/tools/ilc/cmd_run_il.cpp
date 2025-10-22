@@ -64,6 +64,7 @@ struct RunILConfig
     bool continueFlag = false;
     bool countFlag = false;
     bool timeFlag = false;
+    bool boundsChecksRequested = false;
     vm::DebugCtrl debugCtrl;
     std::unique_ptr<vm::DebugScript> debugScript;
 };
@@ -254,6 +255,8 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
         config.stepFlag = false;
     }
 
+    config.boundsChecksRequested = config.sharedOpts.boundsChecks;
+
     return true;
 }
 
@@ -316,6 +319,13 @@ void configureDebugger(const RunILConfig &config,
 /// @return Process-style exit status; zero indicates success.
 int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm)
 {
+    if (config.boundsChecksRequested)
+    {
+        std::cerr << "error: --bounds-checks is not supported when running existing IL modules;";
+        std::cerr << " recompile the source with bounds checks enabled and rerun.\n";
+        return 1;
+    }
+
     const uint32_t fileId = sm.addFile(config.ilFile);
     if (fileId == 0)
     {
