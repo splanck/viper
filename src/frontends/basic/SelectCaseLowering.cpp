@@ -1,8 +1,24 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/frontends/basic/SelectCaseLowering.cpp
 // Purpose: Implements the SelectCaseLowering helper for BASIC frontend lowering.
 // Key invariants: Respects Lowerer block allocation and terminator rules.
 // Ownership/Lifetime: Borrows Lowerer state; does not allocate persistent memory.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements lowering of BASIC SELECT CASE statements into IL control flow.
+/// @details The helper orchestrates block creation, comparison emission, and jump
+///          table construction so SELECT CASE lowering can share logic across
+///          numeric and string selector modes while preserving deterministic
+///          control-flow graphs.
 
 #include "frontends/basic/SelectCaseLowering.hpp"
 
@@ -20,8 +36,21 @@
 namespace il::frontends::basic
 {
 
+/// @brief Bind the lowering helper to the owning @ref Lowerer instance.
+///
+/// @param lowerer Lowerer providing builder access, naming utilities, and
+///        mangling helpers for block generation.
 SelectCaseLowering::SelectCaseLowering(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
 
+/// @brief Lower a BASIC SELECT CASE statement into IL blocks and dispatch logic.
+///
+/// @details Evaluates the selector expression, creates the necessary dispatch
+///          blocks, and emits either string or numeric comparisons depending on
+///          the selector type. Arm bodies are lowered into the blocks prepared
+///          by @ref prepareBlocks. Empty selectors terminate early because the
+///          front end treats them as no-ops.
+///
+/// @param stmt Parsed SELECT CASE statement containing selector, arms, and else.
 void SelectCaseLowering::lower(const SelectCaseStmt &stmt)
 {
     if (!stmt.selector)
@@ -93,6 +122,18 @@ void SelectCaseLowering::lower(const SelectCaseStmt &stmt)
     ctx.setCurrent(endBlk);
 }
 
+/// @brief Materialise the block skeleton required by a SELECT CASE statement.
+///
+/// @details Allocates per-arm entry blocks, optional CASE ELSE and dispatch
+///          blocks, and a shared end block. The helper records the indices of
+///          the created blocks so later lowering stages can emit instructions
+///          without recomputing positions. The current block is restored before
+///          returning to keep builder state consistent.
+///
+/// @param stmt SELECT CASE AST node describing the arms being lowered.
+/// @param hasCaseElse True when the statement includes a CASE ELSE body.
+/// @param needsDispatch True when numeric dispatch requires a jump-table block.
+/// @return Structure enumerating the indices of the created blocks.
 SelectCaseLowering::Blocks SelectCaseLowering::prepareBlocks(const SelectCaseStmt &stmt,
                                                              bool hasCaseElse,
                                                              bool needsDispatch)
@@ -149,6 +190,17 @@ SelectCaseLowering::Blocks SelectCaseLowering::prepareBlocks(const SelectCaseStm
     return blocks;
 }
 
+/// @brief Emit string-comparison dispatch for SELECT CASE arms.
+///
+/// @details Builds a comparison plan covering every string label and CASE ELSE,
+///          then emits a chain of conditional branches that invoke the runtime
+///          string equality helper. When no string labels exist the selector
+///          falls through directly to the default block without performing
+///          comparisons.
+///
+/// @param stmt SELECT CASE node describing available arms and labels.
+/// @param blocks Block indices prepared by @ref prepareBlocks.
+/// @param stringSelector Evaluated selector value produced by expression lowering.
 void SelectCaseLowering::lowerStringArms(const SelectCaseStmt &stmt,
                                          const Blocks &blocks,
                                          il::core::Value stringSelector)
@@ -212,6 +264,19 @@ void SelectCaseLowering::lowerStringArms(const SelectCaseStmt &stmt,
     emitCompareChain(blocks.currentIdx, plan, emitter);
 }
 
+/// @brief Emit numeric dispatch for SELECT CASE arms.
+///
+/// @details Builds a comparison plan for relational guards and ranges, emits a
+///          chain of conditional branches using the 64-bit selector, and finally
+///          constructs a jump table for discrete labels. Range-heavy statements
+///          route through a dedicated dispatch block to keep fall-through logic
+///          straightforward.
+///
+/// @param stmt SELECT CASE statement currently being lowered.
+/// @param blocks Block indices prepared by @ref prepareBlocks.
+/// @param selWide 64-bit widened selector used for comparisons.
+/// @param selector Narrowed selector used when building the switch table.
+/// @param hasRanges Indicates whether any arm provides range guards.
 void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
                                               const Blocks &blocks,
                                               il::core::Value selWide,
@@ -361,6 +426,18 @@ void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
     emitSwitchJumpTable(stmt, blocks, selector, switchIdx);
 }
 
+/// @brief Emit a sequence of conditional branches for the comparison plan.
+///
+/// @details Iterates over every non-default entry in @p plan, emitting
+///          conditional branches that either jump to the arm block on success or
+///          continue to the next comparison block on failure. The final entry is
+///          treated as the default destination and becomes the active current
+///          block when the routine finishes.
+///
+/// @param startIdx Index of the block from which the compare chain should start.
+/// @param plan Comparison plan built by string or numeric lowering.
+/// @param emitCond Callback that materialises the condition for a plan entry.
+/// @return Index of the block that represents the default fall-through path.
 size_t SelectCaseLowering::emitCompareChain(size_t startIdx,
                                             std::vector<CasePlanEntry> &plan,
                                             const ConditionEmitter &emitCond)
@@ -427,6 +504,10 @@ size_t SelectCaseLowering::emitCompareChain(size_t startIdx,
     return static_cast<size_t>(defaultBlk - &ctx.function()->blocks[0]);
 }
 
+/// @brief Compute a diagnostic label describing a case-plan entry.
+///
+/// @param entry Plan entry whose block tag should be determined.
+/// @return Short tag used for generated block names (e.g. "select_rel").
 std::string_view SelectCaseLowering::blockTagFor(const CasePlanEntry &entry)
 {
     switch (entry.kind)
@@ -447,6 +528,17 @@ std::string_view SelectCaseLowering::blockTagFor(const CasePlanEntry &entry)
     return "select_dispatch";
 }
 
+/// @brief Emit the IL switch instruction for discrete SELECT CASE labels.
+///
+/// @details Collects all literal labels, validates their ranges, and writes a
+///          `switch` instruction that jumps to per-arm blocks or the default
+///          CASE ELSE block. Invalid labels surface diagnostics via the active
+///          emitter without aborting lowering, matching historical behaviour.
+///
+/// @param stmt SELECT CASE statement providing labels and diagnostics context.
+/// @param blocks Block indices prepared by @ref prepareBlocks.
+/// @param selector Narrow selector operand used by the emitted switch.
+/// @param switchIdx Index of the block that should contain the jump table.
 void SelectCaseLowering::emitSwitchJumpTable(const SelectCaseStmt &stmt,
                                              const Blocks &blocks,
                                              il::core::Value selector,
@@ -517,6 +609,17 @@ void SelectCaseLowering::emitSwitchJumpTable(const SelectCaseStmt &stmt,
     switchBlk->terminated = true;
 }
 
+/// @brief Lower the statements associated with a single CASE arm.
+///
+/// @details Sets the current builder block to @p entry, lowers each statement in
+///          order, and ensures fall-through control transfers to @p endBlk when
+///          the body does not already terminate. Empty statements are skipped so
+///          sparse bodies work naturally.
+///
+/// @param body AST nodes forming the arm body.
+/// @param entry Block that serves as the entry point for the arm.
+/// @param loc Source location used for synthesized branch diagnostics.
+/// @param endBlk Successor block executed after the arm completes.
 void SelectCaseLowering::emitArmBody(const std::vector<StmtPtr> &body,
                                      il::core::BasicBlock *entry,
                                      il::support::SourceLoc loc,
@@ -542,6 +645,9 @@ void SelectCaseLowering::emitArmBody(const std::vector<StmtPtr> &body,
     }
 }
 
+/// @brief Entrypoint that lowers a SELECT CASE statement via @ref SelectCaseLowering.
+///
+/// @param stmt AST node representing the SELECT CASE statement to lower.
 void Lowerer::lowerSelectCase(const SelectCaseStmt &stmt)
 {
     CtrlState state = emitSelect(stmt);
