@@ -1,9 +1,20 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/il/runtime/RuntimeSignatures.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Defines the shared runtime descriptor registry for IL consumers.
-// Key invariants: Descriptor table is immutable and maps 1:1 with runtime helpers.
-// Ownership/Lifetime: Static storage duration; descriptors live for the entire process.
-// Links: docs/il-guide.md#reference
+// Purpose: Build and expose the runtime descriptor registry used by IL
+//          consumers to marshal calls into the C runtime.
+// Key invariants: The descriptor table is immutable, matches runtime helpers
+//                 one-to-one, and is initialised lazily in a thread-safe manner.
+// Ownership/Lifetime: All descriptors have static storage duration and remain
+//                     valid for the lifetime of the process.
+// Links: docs/il-guide.md#reference, docs/architecture.md#cpp-overview
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "il/runtime/RuntimeSignatureParser.hpp"
@@ -35,6 +46,14 @@ using Kind = il::core::Type::Kind;
 
 constexpr std::size_t kRtSigCount = data::kRtSigCount;
 
+/// @brief Retrieve the parsed runtime signature for a generated enumerator.
+///
+/// @details Lazily initialises an array of signatures by parsing the table of
+///          specification strings emitted at build time.  Subsequent lookups
+///          return references into the cached array without additional parsing.
+///
+/// @param sig Enumerated runtime signature identifier.
+/// @return Reference to the parsed runtime signature.
 const RuntimeSignature &signatureFor(RtSig sig)
 {
     static const auto table = []
@@ -47,11 +66,22 @@ const RuntimeSignature &signatureFor(RtSig sig)
     return table[static_cast<std::size_t>(sig)];
 }
 
+/// @brief Check whether a runtime signature enumerator is in range.
+///
+/// @param sig Enumerated runtime signature identifier.
+/// @return True when @p sig maps to a generated signature entry.
 bool isValid(RtSig sig)
 {
     return static_cast<std::size_t>(sig) < kRtSigCount;
 }
 
+/// @brief Return a lazily initialised index mapping symbol names to signatures.
+///
+/// @details Constructs an unordered_map once by iterating over the generated
+///          symbol name table.  The index enables fast lookup of enumerators by
+///          their canonical name.
+///
+/// @return Map from runtime symbol names to signature identifiers.
 const std::unordered_map<std::string_view, RtSig> &generatedSigIndex()
 {
     static const auto map = []
@@ -65,14 +95,34 @@ const std::unordered_map<std::string_view, RtSig> &generatedSigIndex()
     return map;
 }
 
+/// @brief Adapter that invokes a concrete runtime function from VM call stubs.
+///
+/// @details Each instantiation binds a runtime C function pointer and translates
+///          the generic `void **` argument array provided by the VM into typed
+///          parameters.  The @ref invoke entry point matches the signature
+///          expected by @ref RuntimeDescriptor.
 template <auto Fn, typename Ret, typename... Args> struct DirectHandler
 {
+    /// @brief Dispatch the runtime call using the supplied argument array.
+    ///
+    /// @details Expands the argument pack through @ref call using an index
+    ///          sequence so each operand is reinterpreted to the function's
+    ///          declared type.  Results are written into the provided buffer when
+    ///          applicable.
+    ///
+    /// @param args Pointer to the marshalled argument array.
+    /// @param result Optional pointer to storage for the return value.
     static void invoke(void **args, void *result)
     {
         call(args, result, std::index_sequence_for<Args...>{});
     }
 
   private:
+    /// @brief Helper that expands the argument pack and forwards to the target.
+    ///
+    /// @details Uses `reinterpret_cast` to view each `void *` slot as the
+    ///          appropriate type.  When the function returns a value the helper
+    ///          stores it through @p result.
     template <std::size_t... I>
     static void call(void **args, void *result, std::index_sequence<I...>)
     {
@@ -88,6 +138,13 @@ template <auto Fn, typename Ret, typename... Args> struct DirectHandler
     }
 };
 
+/// @brief Bridge runtime string trap requests into the VM trap mechanism.
+///
+/// @details Extracts the string argument from the generic argument array and
+///          forwards its contents to @ref rt_trap, defaulting to the literal
+///          "trap" when no message is provided.
+///
+/// @param args Argument array provided by the VM call bridge.
 void trapFromRuntimeString(void **args, void * /*result*/)
 {
     rt_string str = args ? *reinterpret_cast<rt_string *>(args[0]) : nullptr;
@@ -95,6 +152,11 @@ void trapFromRuntimeString(void **args, void * /*result*/)
     rt_trap(msg);
 }
 
+/// @brief Construct a runtime lowering descriptor with optional feature gating.
+///
+/// @details Packs the lowering metadata into a @ref RuntimeLowering structure,
+///          optionally recording the feature enum and whether ordering matters
+///          when comparing runtime calls.
 constexpr RuntimeLowering makeLowering(RuntimeLoweringKind kind,
                                        RuntimeFeature feature = RuntimeFeature::Count,
                                        bool ordered = false)
@@ -102,6 +164,11 @@ constexpr RuntimeLowering makeLowering(RuntimeLoweringKind kind,
     return RuntimeLowering{kind, feature, ordered};
 }
 
+/// @brief Wrapper for @ref rt_arr_i32_new that converts VM arguments.
+///
+/// @details Reads the desired array length from the argument array, invokes the
+///          runtime allocator, and stores the resulting handle back into the
+///          VM-provided result buffer.
 void invokeRtArrI32New(void **args, void *result)
 {
     const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[0]) : nullptr;
@@ -111,6 +178,10 @@ void invokeRtArrI32New(void **args, void *result)
         *reinterpret_cast<void **>(result) = arr;
 }
 
+/// @brief Wrapper for @ref rt_arr_i32_len that returns the array length.
+///
+/// @details Unpacks the handle from the argument array, queries the runtime for
+///          its length, and writes the value as a 64-bit integer for the VM.
 void invokeRtArrI32Len(void **args, void *result)
 {
     const auto arrPtr = args ? reinterpret_cast<void *const *>(args[0]) : nullptr;
@@ -120,6 +191,11 @@ void invokeRtArrI32Len(void **args, void *result)
         *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(len);
 }
 
+/// @brief Wrapper for @ref rt_arr_i32_get that exposes 32-bit elements.
+///
+/// @details Reads the array handle and index from the VM argument array, invokes
+///          the runtime accessor, and widens the result to 64 bits before
+///          storing it for the VM.
 void invokeRtArrI32Get(void **args, void *result)
 {
     const auto arrPtr = args ? reinterpret_cast<void *const *>(args[0]) : nullptr;
@@ -131,6 +207,10 @@ void invokeRtArrI32Get(void **args, void *result)
         *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(value);
 }
 
+/// @brief Wrapper for @ref rt_arr_i32_set that writes an element.
+///
+/// @details Unpacks the array handle, index, and value from the argument array
+///          before delegating to the runtime setter.  No result is produced.
 void invokeRtArrI32Set(void **args, void * /*result*/)
 {
     const auto arrPtr = args ? reinterpret_cast<void **>(args[0]) : nullptr;
@@ -142,6 +222,11 @@ void invokeRtArrI32Set(void **args, void * /*result*/)
     rt_arr_i32_set(arr, idx, value);
 }
 
+/// @brief Wrapper for @ref rt_arr_i32_resize that resizes an array in place.
+///
+/// @details Extracts the handle and desired length, requests the runtime to
+///          resize the array, updates the caller-visible handle when successful,
+///          and returns the resized pointer when a result buffer is provided.
 void invokeRtArrI32Resize(void **args, void *result)
 {
     const auto arrPtr = args ? reinterpret_cast<void **>(args[0]) : nullptr;
@@ -158,6 +243,10 @@ void invokeRtArrI32Resize(void **args, void *result)
         *reinterpret_cast<void **>(result) = resized;
 }
 
+/// @brief Wrapper that forwards out-of-bounds diagnostics to the runtime.
+///
+/// @details Converts VM-provided index and length operands to @c size_t before
+///          calling @ref rt_arr_oob_panic, which triggers a fatal runtime trap.
 void invokeRtArrOobPanic(void **args, void * /*result*/)
 {
     const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[0]) : nullptr;
@@ -167,6 +256,11 @@ void invokeRtArrOobPanic(void **args, void * /*result*/)
     rt_arr_oob_panic(idx, len);
 }
 
+/// @brief Wrapper for `rt_cint_from_double` with VM argument handling.
+///
+/// @details Extracts the input value and optional success flag pointer, invokes
+///          the runtime conversion, and widens the result to 64 bits for the VM
+///          register file.
 void invokeRtCintFromDouble(void **args, void *result)
 {
     const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
@@ -178,6 +272,11 @@ void invokeRtCintFromDouble(void **args, void *result)
         *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(value);
 }
 
+/// @brief Wrapper for `rt_clng_from_double` following VM calling conventions.
+///
+/// @details Mirrors @ref invokeRtCintFromDouble but calls the runtime to
+///          produce a 32-bit integer, returning it widened to 64 bits for VM
+///          storage.
 void invokeRtClngFromDouble(void **args, void *result)
 {
     const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
@@ -189,6 +288,11 @@ void invokeRtClngFromDouble(void **args, void *result)
         *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(value);
 }
 
+/// @brief Wrapper for `rt_csng_from_double` that returns a float as double.
+///
+/// @details Reads the double argument, forwards it to the runtime conversion,
+///          and stores the result in the VM buffer after promoting to double so
+///          the interpreter can treat it uniformly.
 void invokeRtCsngFromDouble(void **args, void *result)
 {
     const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
@@ -200,6 +304,11 @@ void invokeRtCsngFromDouble(void **args, void *result)
         *reinterpret_cast<double *>(result) = static_cast<double>(value);
 }
 
+/// @brief Wrapper for `rt_str_f_alloc` that returns a runtime string handle.
+///
+/// @details Converts the incoming double operand to @c float, invokes the
+///          runtime allocator, and stores the resulting `rt_string` handle into
+///          the VM result buffer.
 void invokeRtStrFAlloc(void **args, void *result)
 {
     const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
@@ -209,6 +318,10 @@ void invokeRtStrFAlloc(void **args, void *result)
         *reinterpret_cast<rt_string *>(result) = str;
 }
 
+/// @brief Wrapper for `rt_round_even` that computes banker’s rounding.
+///
+/// @details Extracts the operand and digit count, calls the runtime helper, and
+///          stores the rounded double back into the VM buffer.
 void invokeRtRoundEven(void **args, void *result)
 {
     const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
@@ -220,6 +333,11 @@ void invokeRtRoundEven(void **args, void *result)
         *reinterpret_cast<double *>(result) = rounded;
 }
 
+/// @brief Wrapper for `rt_pow_f64_chkdom` that reports domain errors.
+///
+/// @details Reads the base, exponent, and optional status pointer, delegates to
+///          the runtime implementation, and stores the computed power while
+///          allowing the runtime to set the status flag via the provided pointer.
 void invokeRtPowF64Chkdom(void **args, void *result)
 {
     const auto basePtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
@@ -237,6 +355,11 @@ constexpr RuntimeLowering kAlwaysLowering = makeLowering(RuntimeLoweringKind::Al
 constexpr RuntimeLowering kBoundsCheckedLowering = makeLowering(RuntimeLoweringKind::BoundsChecked);
 constexpr RuntimeLowering kManualLowering = makeLowering(RuntimeLoweringKind::Manual);
 
+/// @brief Helper that records a runtime feature requirement for lowering.
+///
+/// @details Produces a @ref RuntimeLowering descriptor indicating that the
+///          runtime function should only be linked when the given feature is
+///          requested by the front end.
 constexpr RuntimeLowering featureLowering(RuntimeFeature feature, bool ordered = false)
 {
     return makeLowering(RuntimeLoweringKind::Feature, feature, ordered);
@@ -347,6 +470,11 @@ constexpr std::array<DescriptorRow, 88> kDescriptorRows{{
     DescriptorRow{"rt_obj_free", std::nullopt, "void(ptr)", &DirectHandler<&rt_obj_free, void, void *>::invoke, featureLowering(RuntimeFeature::ObjFree), nullptr, 0, RuntimeTrapClass::None},
 }};
 
+/// @brief Construct a @ref RuntimeSignature from a descriptor table row.
+///
+/// @details Uses a pre-generated signature when available or parses the spec
+///          string otherwise.  Hidden parameters and trap metadata are copied
+///          from the descriptor row.
 RuntimeSignature buildSignature(const DescriptorRow &row)
 {
     RuntimeSignature signature = row.signatureId ? signatureFor(*row.signatureId) : parseSignatureSpec(row.spec);
@@ -355,6 +483,10 @@ RuntimeSignature buildSignature(const DescriptorRow &row)
     return signature;
 }
 
+/// @brief Convert a descriptor table row into a @ref RuntimeDescriptor.
+///
+/// @details Populates the descriptor with the name, parsed signature, handler
+///          thunk, lowering metadata, and trap classification.
 RuntimeDescriptor buildDescriptor(const DescriptorRow &row)
 {
     RuntimeDescriptor descriptor;
@@ -368,6 +500,10 @@ RuntimeDescriptor buildDescriptor(const DescriptorRow &row)
 
 } // namespace
 
+/// @brief Retrieve the immutable list of runtime descriptors.
+///
+/// @details Lazily constructs the registry from @ref kDescriptorRows on first
+///          use and caches it for subsequent lookups.
 const std::vector<RuntimeDescriptor> &runtimeRegistry()
 {
     static const std::vector<RuntimeDescriptor> registry = []
@@ -381,6 +517,10 @@ const std::vector<RuntimeDescriptor> &runtimeRegistry()
     return registry;
 }
 
+/// @brief Find a runtime descriptor by its exported name.
+///
+/// @details Builds a map on first use from descriptor names to pointers and
+///          returns the matching entry when present.
 const RuntimeDescriptor *findRuntimeDescriptor(std::string_view name)
 {
     static const auto index = []
@@ -394,6 +534,10 @@ const RuntimeDescriptor *findRuntimeDescriptor(std::string_view name)
     return it == index.end() ? nullptr : it->second;
 }
 
+/// @brief Locate the descriptor that provides a particular runtime feature.
+///
+/// @details Indexes descriptors by the feature recorded in their lowering
+///          metadata so callers can query for optional runtime helpers.
 const RuntimeDescriptor *findRuntimeDescriptor(RuntimeFeature feature)
 {
     static const auto index = []
@@ -410,6 +554,10 @@ const RuntimeDescriptor *findRuntimeDescriptor(RuntimeFeature feature)
     return it == index.end() ? nullptr : it->second;
 }
 
+/// @brief Provide a map from runtime names to parsed signatures.
+///
+/// @details Materialises an unordered_map on first access by iterating over the
+///          registry, enabling quick signature lookups by string name.
 const std::unordered_map<std::string_view, RuntimeSignature> &runtimeSignatures()
 {
     static const std::unordered_map<std::string_view, RuntimeSignature> table = []
@@ -422,6 +570,10 @@ const std::unordered_map<std::string_view, RuntimeSignature> &runtimeSignatures(
     return table;
 }
 
+/// @brief Look up the generated signature enumerator for a runtime symbol name.
+///
+/// @param name Runtime symbol to resolve.
+/// @return Enumerator when found or std::nullopt otherwise.
 std::optional<RtSig> findRuntimeSignatureId(std::string_view name)
 {
     const auto &index = generatedSigIndex();
@@ -431,6 +583,10 @@ std::optional<RtSig> findRuntimeSignatureId(std::string_view name)
     return it->second;
 }
 
+/// @brief Retrieve a signature descriptor by enumerator.
+///
+/// @param sig Enumerated signature identifier.
+/// @return Pointer to the signature when valid, otherwise nullptr.
 const RuntimeSignature *findRuntimeSignature(RtSig sig)
 {
     if (!isValid(sig))
@@ -438,6 +594,13 @@ const RuntimeSignature *findRuntimeSignature(RtSig sig)
     return &signatureFor(sig);
 }
 
+/// @brief Retrieve a signature descriptor by runtime symbol name.
+///
+/// @details First attempts to resolve the generated enumerator; when absent it
+///          falls back to descriptors registered in @ref runtimeRegistry.
+///
+/// @param name Runtime symbol to search for.
+/// @return Pointer to the signature when found, otherwise nullptr.
 const RuntimeSignature *findRuntimeSignature(std::string_view name)
 {
     if (auto id = findRuntimeSignatureId(name))
