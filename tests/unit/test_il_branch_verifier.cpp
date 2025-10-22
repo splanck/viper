@@ -4,14 +4,17 @@
 // Ownership/Lifetime: Constructs temporary IL functions for each scenario.
 // Links: docs/il-guide.md#reference
 
+#include "il/api/expected_api.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
+#include "il/core/Module.hpp"
 #include "il/core/Type.hpp"
 #include "il/verify/BranchVerifier.hpp"
 #include "il/verify/TypeInference.hpp"
 
 #include <cassert>
+#include <fstream>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -22,6 +25,7 @@ int main()
     using il::verify::verifyBr_E;
     using il::verify::verifyCBr_E;
     using il::verify::verifyRet_E;
+    using il::verify::verifySwitchI32_E;
 
     Function fn;
     fn.name = "f";
@@ -87,6 +91,83 @@ int main()
     retInstr.operands.push_back(Value::temp(1));
     auto retOk = verifyRet_E(retFn, retBlock, retInstr, retTypes);
     assert(retOk);
+
+    Function switchFn;
+    switchFn.name = "s";
+
+    BasicBlock switchBlock;
+    switchBlock.label = "entry";
+
+    BasicBlock defaultBlock;
+    defaultBlock.label = "fallback";
+
+    BasicBlock caseBlock;
+    caseBlock.label = "case0";
+
+    std::unordered_map<std::string, const BasicBlock *> manualSwitchMap;
+    manualSwitchMap[defaultBlock.label] = &defaultBlock;
+    manualSwitchMap[caseBlock.label] = &caseBlock;
+
+    std::unordered_map<unsigned, Type> switchTemps;
+    switchTemps[7] = Type(Type::Kind::I32);
+    std::unordered_set<unsigned> switchDefined = {7};
+    TypeInference switchTypes(switchTemps, switchDefined);
+
+    Instr badSwitch;
+    badSwitch.op = Opcode::SwitchI32;
+    badSwitch.type = Type(Type::Kind::Void);
+    badSwitch.operands.push_back(Value::temp(7));
+    badSwitch.operands.push_back(Value::constInt(0));
+    badSwitch.labels = {defaultBlock.label, caseBlock.label};
+
+    auto badSwitchResult = verifySwitchI32_E(switchFn, switchBlock, badSwitch, manualSwitchMap, switchTypes);
+    assert(!badSwitchResult);
+    const std::string switchMessage = badSwitchResult.error().message;
+    assert(switchMessage.find("branch argument vector count mismatch") != std::string::npos);
+
+    badSwitch.brArgs = std::vector<std::vector<Value>>{std::vector<Value>{}, std::vector<Value>{}};
+    auto goodSwitch = verifySwitchI32_E(switchFn, switchBlock, badSwitch, manualSwitchMap, switchTypes);
+    assert(goodSwitch);
+
+#ifdef NEGATIVE_DIR
+    const std::string fixturePath = std::string(NEGATIVE_DIR) + "/switch_missing_brargs.il";
+    std::ifstream fixtureStream(fixturePath);
+    assert(fixtureStream && "failed to open switch_missing_brargs.il fixture");
+
+    il::core::Module module;
+    auto parsed = il::api::v2::parse_text_expected(fixtureStream, module);
+    assert(parsed);
+    assert(module.functions.size() == 1);
+
+    il::core::Function &fixtureFn = module.functions.front();
+    assert(!fixtureFn.blocks.empty());
+    il::core::BasicBlock &fixtureEntry = fixtureFn.blocks.front();
+    assert(!fixtureEntry.instructions.empty());
+    const il::core::Instr &fixtureSwitch = fixtureEntry.instructions.back();
+    assert(fixtureSwitch.op == il::core::Opcode::SwitchI32);
+
+    std::unordered_map<std::string, const il::core::BasicBlock *> fixtureMap;
+    for (const auto &block : fixtureFn.blocks)
+        fixtureMap.emplace(block.label, &block);
+
+    std::unordered_map<unsigned, Type> fixtureTemps;
+    std::unordered_set<unsigned> fixtureDefined;
+    for (const auto &param : fixtureEntry.params)
+    {
+        fixtureTemps[param.id] = param.type;
+        fixtureDefined.insert(param.id);
+    }
+    TypeInference fixtureTypes(fixtureTemps, fixtureDefined);
+
+    auto fixtureOk = verifySwitchI32_E(fixtureFn, fixtureEntry, fixtureSwitch, fixtureMap, fixtureTypes);
+    assert(fixtureOk);
+
+    Instr mutatedSwitch = fixtureSwitch;
+    mutatedSwitch.brArgs.clear();
+    auto mutatedResult = verifySwitchI32_E(fixtureFn, fixtureEntry, mutatedSwitch, fixtureMap, fixtureTypes);
+    assert(!mutatedResult);
+    assert(mutatedResult.error().message.find("branch argument vector count mismatch") != std::string::npos);
+#endif
 
     return 0;
 }
