@@ -306,9 +306,19 @@ Expected<void> parseBlockHeader(const std::string &header, ParserState &st)
         std::string q;
         while (std::getline(pss, q, ','))
         {
+            std::string rawParam = q;
             q = trim(q);
             if (q.empty())
-                continue;
+            {
+                std::ostringstream oss;
+                oss << "line " << st.lineNo << ": bad param";
+                if (!rawParam.empty())
+                    oss << " '" << rawParam << "'";
+                else
+                    oss << " ''";
+                oss << " (empty entry)";
+                return Expected<void>{makeError({}, oss.str())};
+            }
             size_t col = q.find(':');
             if (col == std::string::npos)
             {
