@@ -1,6 +1,11 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/frontends/basic/SemanticAnalyzer.Procs.cpp
-// License: MIT License. See LICENSE in the project root for full license
-//          information.
 // Purpose: Implements procedure registration and analysis logic for the BASIC
 //          semantic analyzer, covering SUB/FUNCTION bodies and user-defined
 //          call validation.
@@ -9,6 +14,14 @@
 // Ownership/Lifetime: Borrowed DiagnosticEmitter; ProcRegistry managed by the
 //                     analyzer instance.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements procedure-scope management and call validation helpers for the BASIC semantic analyzer.
+/// @details The routines in this translation unit manage per-procedure symbol
+///          state, register SUB/FUNCTION signatures, and perform signature-based
+///          diagnostics for CALL statements.
 
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 
@@ -22,6 +35,9 @@ namespace il::frontends::basic
 
 using semantic_analyzer_detail::astToSemanticType;
 
+/// @brief Enter a procedure scope, capturing analyzer state that must be restored.
+///
+/// @param analyzer Semantic analyzer coordinating symbol and control-flow tracking.
 SemanticAnalyzer::ProcedureScope::ProcedureScope(SemanticAnalyzer &analyzer) noexcept
     : analyzer_(analyzer)
 {
@@ -36,6 +52,7 @@ SemanticAnalyzer::ProcedureScope::ProcedureScope(SemanticAnalyzer &analyzer) noe
     analyzer_.scopes_.pushScope();
 }
 
+/// @brief Restore analyzer state when a procedure scope ends.
 SemanticAnalyzer::ProcedureScope::~ProcedureScope() noexcept
 {
     analyzer_.activeProcScope_ = previous_;
@@ -75,11 +92,18 @@ SemanticAnalyzer::ProcedureScope::~ProcedureScope() noexcept
     analyzer_.scopes_.popScope();
 }
 
+/// @brief Record that a new symbol was declared within the active procedure scope.
+///
+/// @param name Canonical symbol name inserted into the symbol table.
 void SemanticAnalyzer::ProcedureScope::noteSymbolInserted(const std::string &name)
 {
     newSymbols_.push_back(name);
 }
 
+/// @brief Track that a variable's inferred type changed within the scope.
+///
+/// @param name Variable whose type is being updated.
+/// @param previous Prior type if one was present, allowing restoration on scope exit.
 void SemanticAnalyzer::ProcedureScope::noteVarTypeMutation(const std::string &name,
                                                            std::optional<Type> previous)
 {
@@ -88,6 +112,10 @@ void SemanticAnalyzer::ProcedureScope::noteVarTypeMutation(const std::string &na
     varTypeDeltas_.push_back({name, previous});
 }
 
+/// @brief Track that an array binding changed size or allocation state.
+///
+/// @param name Array identifier being mutated.
+/// @param previous Previous extent when available.
 void SemanticAnalyzer::ProcedureScope::noteArrayMutation(const std::string &name,
                                                          std::optional<long long> previous)
 {
@@ -96,6 +124,10 @@ void SemanticAnalyzer::ProcedureScope::noteArrayMutation(const std::string &name
     arrayDeltas_.push_back({name, previous});
 }
 
+/// @brief Record the open/closed state change for a file channel.
+///
+/// @param channel Channel number being toggled.
+/// @param previouslyOpen True when the channel was already open prior to the mutation.
 void SemanticAnalyzer::ProcedureScope::noteChannelMutation(long long channel, bool previouslyOpen)
 {
     if (!trackedChannels_.insert(channel).second)
@@ -103,16 +135,25 @@ void SemanticAnalyzer::ProcedureScope::noteChannelMutation(long long channel, bo
     channelDeltas_.push_back({channel, previouslyOpen});
 }
 
+/// @brief Remember that a new label was defined inside the procedure.
+///
+/// @param label Numeric line label introduced in the body.
 void SemanticAnalyzer::ProcedureScope::noteLabelInserted(int label)
 {
     newLabels_.push_back(label);
 }
 
+/// @brief Track that a label reference was encountered in the procedure body.
+///
+/// @param label Numeric label referenced by a GOTO/GOSUB.
 void SemanticAnalyzer::ProcedureScope::noteLabelRefInserted(int label)
 {
     newLabelRefs_.push_back(label);
 }
 
+/// @brief Register a procedure parameter and update tracking tables.
+///
+/// @param param Parameter description sourced from the AST.
 void SemanticAnalyzer::registerProcedureParam(const Param &param)
 {
     scopes_.bind(param.name, param.name);
@@ -148,6 +189,12 @@ void SemanticAnalyzer::registerProcedureParam(const Param &param)
         scopes_.bind(param.name, paramName);
 }
 
+/// @brief Shared implementation for analyzing SUB/FUNCTION bodies.
+///
+/// @tparam Proc AST node type modelling the procedure declaration.
+/// @tparam BodyCallback Callable invoked after statement analysis for final checks.
+/// @param proc Procedure declaration being analyzed.
+/// @param bodyCheck Callback that performs procedure-specific validation.
 template <typename Proc, typename BodyCallback>
 void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc, BodyCallback &&bodyCheck)
 {
@@ -168,6 +215,9 @@ void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc, BodyCallback &&b
     std::forward<BodyCallback>(bodyCheck)(proc);
 }
 
+/// @brief Analyze a FUNCTION declaration and ensure it produces a return value.
+///
+/// @param f FUNCTION declaration node.
 void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
 {
     analyzeProcedureCommon(f, [this](const FunctionDecl &func) {
@@ -183,11 +233,18 @@ void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
     });
 }
 
+/// @brief Analyze a SUB declaration.
+///
+/// @param s SUB declaration node.
 void SemanticAnalyzer::analyzeProc(const SubDecl &s)
 {
     analyzeProcedureCommon(s, [](const SubDecl &) {});
 }
 
+/// @brief Determine whether a block of statements guarantees a return value.
+///
+/// @param stmts Statement list to evaluate.
+/// @return True when the final statement must return.
 bool SemanticAnalyzer::mustReturn(const std::vector<StmtPtr> &stmts) const
 {
     if (stmts.empty())
@@ -195,6 +252,10 @@ bool SemanticAnalyzer::mustReturn(const std::vector<StmtPtr> &stmts) const
     return mustReturn(*stmts.back());
 }
 
+/// @brief Inspect an individual statement to see if it mandates a return value.
+///
+/// @param s Statement to inspect.
+/// @return True when execution of @p s guarantees a return.
 bool SemanticAnalyzer::mustReturn(const Stmt &s) const
 {
     if (auto *lst = dynamic_cast<const StmtList *>(&s))
@@ -217,6 +278,9 @@ bool SemanticAnalyzer::mustReturn(const Stmt &s) const
     return false;
 }
 
+/// @brief Run semantic analysis for the entire BASIC program.
+///
+/// @param prog Program AST containing procedure definitions and main statements.
 void SemanticAnalyzer::analyze(const Program &prog)
 {
     symbols_.clear();
@@ -260,6 +324,11 @@ void SemanticAnalyzer::analyze(const Program &prog)
     buildOopIndex(prog, g_oopIndex, &de.emitter());
 }
 
+/// @brief Resolve the signature for a procedure call and validate its kind.
+///
+/// @param c Call expression whose callee should be checked.
+/// @param expectedKind Whether the caller requires a function or subroutine.
+/// @return Pointer to the resolved signature, or nullptr when diagnostics were emitted.
 const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c,
                                                      ProcSignature::Kind expectedKind)
 {
@@ -300,6 +369,11 @@ const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c,
     return sig;
 }
 
+/// @brief Validate call arguments against a procedure signature.
+///
+/// @param c Call expression supplying argument expressions.
+/// @param sig Resolved signature for the callee; may be null when unknown.
+/// @return Vector of inferred argument types for follow-up analysis.
 std::vector<SemanticAnalyzer::Type> SemanticAnalyzer::checkCallArgs(const CallExpr &c,
                                                                     const ProcSignature *sig)
 {
@@ -359,6 +433,11 @@ std::vector<SemanticAnalyzer::Type> SemanticAnalyzer::checkCallArgs(const CallEx
     return argTys;
 }
 
+/// @brief Infer the result type produced by a procedure call expression.
+///
+/// @param c Call expression being analyzed.
+/// @param sig Signature describing the callee.
+/// @return Semantic type returned by the procedure, or Unknown when unresolved.
 SemanticAnalyzer::Type SemanticAnalyzer::inferCallType([[maybe_unused]] const CallExpr &c,
                                                        const ProcSignature *sig)
 {
@@ -373,6 +452,10 @@ SemanticAnalyzer::Type SemanticAnalyzer::inferCallType([[maybe_unused]] const Ca
     return Type::Int;
 }
 
+/// @brief Analyze a call expression using the shared helper implementation.
+///
+/// @param c Call expression to analyze.
+/// @return Inferred result type of the call.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeCall(const CallExpr &c)
 {
     return sem::analyzeCallExpr(*this, c);
