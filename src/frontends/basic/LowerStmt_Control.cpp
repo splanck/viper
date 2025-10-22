@@ -23,6 +23,9 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
+/// @brief Lower a BASIC GOSUB statement using the runtime-managed continuation stack.
+///
+/// @param stmt GOSUB statement providing the target line and source location.
 void Lowerer::lowerGosub(const GosubStmt &stmt)
 {
     ProcedureContext &ctx = context();
@@ -92,6 +95,9 @@ void Lowerer::lowerGosub(const GosubStmt &stmt)
     emitBr(target);
 }
 
+/// @brief Lower an unconditional GOTO statement.
+///
+/// @param stmt GOTO statement pointing at a target line label.
 void Lowerer::lowerGoto(const GotoStmt &stmt)
 {
     auto &lineBlocks = context().blockNames().lineBlocks();
@@ -105,6 +111,9 @@ void Lowerer::lowerGoto(const GotoStmt &stmt)
     }
 }
 
+/// @brief Lower RETURN statements that exit from a GOSUB invocation.
+///
+/// @param stmt RETURN statement appearing in GOSUB contexts.
 void Lowerer::lowerGosubReturn(const ReturnStmt &stmt)
 {
     ProcedureContext &ctx = context();
@@ -194,6 +203,9 @@ void Lowerer::lowerGosubReturn(const ReturnStmt &stmt)
     emitTrap();
 }
 
+/// @brief Lower the END statement, terminating program execution.
+///
+/// @param stmt END statement providing the source location.
 void Lowerer::lowerEnd(const EndStmt &stmt)
 {
     curLoc = stmt.loc;
