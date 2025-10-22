@@ -93,9 +93,9 @@ FrameInfo VM::buildFrameInfo(const VmError &error) const
         frame.ip = lastTrap.frame.ip;
 
     frame.line = error.line;
-    if (frame.line < 0 && currentContext.loc.isValid())
+    if (frame.line < 0 && currentContext.loc.hasLine())
         frame.line = static_cast<int32_t>(currentContext.loc.line);
-    else if (frame.line < 0 && runtimeContext.loc.isValid())
+    else if (frame.line < 0 && runtimeContext.loc.hasLine())
         frame.line = static_cast<int32_t>(runtimeContext.loc.line);
     else if (frame.line < 0 && lastTrap.frame.line >= 0)
         frame.line = lastTrap.frame.line;

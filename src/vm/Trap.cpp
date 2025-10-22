@@ -242,7 +242,7 @@ void vm_raise_from_error(const VmError &input)
     {
         if (error.ip == 0 && vm->currentContext.hasInstruction)
             error.ip = static_cast<uint64_t>(vm->currentContext.instructionIndex);
-        if (error.line < 0 && vm->currentContext.loc.isValid())
+        if (error.line < 0 && vm->currentContext.loc.hasLine())
             error.line = static_cast<int32_t>(vm->currentContext.loc.line);
 
         if (vm->prepareTrap(error))
@@ -285,7 +285,7 @@ void vm_raise(TrapKind kind, int32_t code)
     {
         if (vm->currentContext.hasInstruction)
             error.ip = static_cast<uint64_t>(vm->currentContext.instructionIndex);
-        if (vm->currentContext.loc.isValid())
+        if (vm->currentContext.loc.hasLine())
             error.line = static_cast<int32_t>(vm->currentContext.loc.line);
     }
 

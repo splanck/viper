@@ -162,7 +162,7 @@ const il::support::SourceManager *DebugCtrl::getSourceManager() const
 /// @return @c true when a matching breakpoint is found.
 bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
 {
-    if (!sm_ || srcLineBPs_.empty() || !I.loc.isValid())
+    if (!sm_ || srcLineBPs_.empty() || !I.loc.hasFile() || !I.loc.hasLine())
         return false;
 
     const uint32_t fileId = I.loc.file_id;

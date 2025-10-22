@@ -39,6 +39,9 @@ int main()
     assert(out.find("error[B1001]") != std::string::npos);
     assert(out.find("unknown variable 'X'") != std::string::npos);
     assert(out.find("zero column test") != std::string::npos);
+    assert(out.find("test.bas:2:0") == std::string::npos);
+    assert(out.find("test.bas:2: error[B9999]: zero column test")
+           != std::string::npos);
     assert(out.find("unknown location test") != std::string::npos);
     assert(out.find("^") != std::string::npos);
     assert(out.find("\n^\n") != std::string::npos);

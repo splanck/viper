@@ -106,10 +106,10 @@ Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
             os << "temp %" << value.id << " out of range (regs=" << fr.regs.size() << ") in function " << fnName;
             if (!blockLabel.empty())
                 os << ", block " << blockLabel;
-            if (loc.isValid())
+            if (loc.hasLine())
             {
                 os << ", at line " << loc.line;
-                if (loc.column > 0)
+                if (loc.hasColumn())
                     os << ':' << loc.column;
             }
             else
