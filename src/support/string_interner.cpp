@@ -23,16 +23,29 @@
 namespace il::support
 {
 
-StringInterner::StringInterner(uint32_t maxSymbols) noexcept : maxSymbols_(maxSymbols)
-{
-}
+/// @brief Construct an interner that caps the number of distinct symbols.
+/// @param maxSymbols Maximum number of unique strings that may be interned.
+/// @note The limit prevents unbounded growth in long-running tooling contexts.
+StringInterner::StringInterner(uint32_t maxSymbols) noexcept : maxSymbols_(maxSymbols) {}
 
+/// @brief Copy-construct an interner, rebuilding the lookup table for the clone.
+/// @param other Source interner whose stored strings should be duplicated.
+/// @details Copies the owned string storage and limit before invoking
+///          @ref rebuildMap so the new instance lazily reconstructs the handle
+///          lookup table.  The map is rebuilt rather than copied directly to
+///          keep string_view keys pointing at the newly owned storage.
 StringInterner::StringInterner(const StringInterner &other) noexcept
     : map_{}, storage_(other.storage_), maxSymbols_(other.maxSymbols_)
 {
     rebuildMap();
 }
 
+/// @brief Assign from another interner, copying storage while preserving limits.
+/// @param other Source interner whose strings and configuration are cloned.
+/// @return Reference to the receiving interner after assignment.
+/// @details Self-assignment is handled explicitly; otherwise the string storage
+///          and cap are copied before @ref rebuildMap refreshes the lookup map to
+///          reference the new owned storage.
 StringInterner &StringInterner::operator=(const StringInterner &other) noexcept
 {
     if (this == &other)
@@ -86,6 +99,11 @@ std::string_view StringInterner::lookup(Symbol sym) const
     return storage_[sym.id - 1];
 }
 
+/// @brief Rebuild the string-to-symbol lookup table from owned storage.
+/// @details Clears the existing map, reserves enough buckets for the stored
+///          strings, and re-inserts each value with a @ref Symbol whose id is the
+///          1-based index into @ref storage_.  The method is used after copying
+///          to ensure string_view keys reference the correct storage buffer.
 void StringInterner::rebuildMap()
 {
     map_.clear();

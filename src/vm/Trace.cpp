@@ -1,9 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/vm/Trace.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
 // Purpose: Implement deterministic tracing for IL VM steps.
-// Key invariants: Each executed instruction produces at most one flushed line.
-// Ownership/Lifetime: Uses external streams; no resource ownership.
-// Links: docs/dev/vm.md
+// Key invariants: Each executed instruction produces at most one flushed line
+//                 and trace emission is gated by @ref TraceConfig::mode.
+// Ownership/Lifetime: Trace sinks borrow VM state and emit to externally owned
+//                     streams; no persistent resources are allocated.
+// Links: docs/runtime-vm.md#debugger, docs/dev/vm.md
+//
+//===----------------------------------------------------------------------===//
 #include "vm/Trace.hpp"
 
 #include "il/core/BasicBlock.hpp"
@@ -95,8 +105,11 @@ void printValue(std::ostream &os, const il::core::Value &v)
 } // namespace
 
 /// @brief Construct a TraceSink with the given configuration.
+/// @details Stores the configuration by value and, on Windows, switches stderr
+///          into binary mode so newline translation does not corrupt emitted IL
+///          snippets.  No dynamic resources are acquired; maps and caches are
+///          populated lazily as frames execute.
 /// @param cfg Trace configuration controlling emission behavior and source lookup.
-/// @return Trace sink ready to emit records according to @p cfg.
 TraceSink::TraceSink(TraceConfig cfg) : cfg(cfg)
 {
 #ifdef _WIN32
@@ -105,8 +118,11 @@ TraceSink::TraceSink(TraceConfig cfg) : cfg(cfg)
 }
 
 /// @brief Precompute instruction source locations for a prepared frame.
+/// @details When a new frame begins executing the trace sink builds an index
+///          from instruction pointers to their owning blocks and instruction
+///          offsets.  The cache is computed only once per function to minimise
+///          tracing overhead during tight interpreter loops.
 /// @param fr The frame whose function's instructions should be indexed.
-/// @return Nothing.
 void TraceSink::onFramePrepared(const Frame &fr)
 {
     if (!fr.func)
@@ -123,6 +139,11 @@ void TraceSink::onFramePrepared(const Frame &fr)
 }
 
 /// @brief Retrieve cached file contents, loading from disk if necessary.
+/// @details Uses @ref TraceConfig::sm to resolve source file identifiers into
+///          absolute paths and then caches the line-by-line contents so repeated
+///          trace entries avoid redundant I/O.  When no source manager is
+///          configured or the file cannot be loaded the function returns null,
+///          signalling that source echoing should be skipped.
 /// @param file_id Source manager identifier for the file.
 /// @param path_hint Optional filesystem path to use when the source manager path is empty.
 /// @return Cached file entry or nullptr when the file cannot be resolved.
@@ -157,9 +178,14 @@ const TraceSink::FileCacheEntry *TraceSink::getOrLoadFile(uint32_t file_id, std:
 }
 
 /// @brief Emit a trace line for a single executed instruction.
+/// @details Guarded by @ref TraceConfig::enabled.  Resolves the currently
+///          executing block and instruction index using the cached maps and then
+///          prints a deterministic record containing the opcode, operand values,
+///          and, when configured, source information.  LocaleGuard ensures
+///          numeric operands always render using the C locale regardless of the
+///          host environment.
 /// @param in Instruction being executed.
 /// @param fr Execution frame that provides function and block context.
-/// @return Nothing.
 void TraceSink::onStep(const il::core::Instr &in, const Frame &fr)
 {
     if (!cfg.enabled())
