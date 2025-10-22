@@ -265,6 +265,7 @@ void Lowerer::requireLineInputChErr()
     setManualHelperRequired(ManualRuntimeHelper::LineInputChErr);
 }
 
+// --- begin: require implementations ---
 /// @brief Request the helper that tests EOF status on a channel.
 void Lowerer::requireEofCh()
 {
@@ -282,6 +283,7 @@ void Lowerer::requireLocCh()
 {
     setManualHelperRequired(ManualRuntimeHelper::LocCh);
 }
+// --- end: require implementations ---
 
 /// @brief Request the helper that conditionally retains a string handle.
 void Lowerer::requireStrRetainMaybe()
