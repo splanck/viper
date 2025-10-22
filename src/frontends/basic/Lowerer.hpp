@@ -351,6 +351,18 @@ class Lowerer
     /// @return Numeric type describing INTEGER, LONG, SINGLE, or DOUBLE semantics.
     TypeRules::NumericType classifyNumericType(const Expr &expr);
 
+    /// @brief Determine the AST kind for numeric classification dispatch.
+    enum class AstKind;
+
+    /// @brief Map an expression to its dispatch kind for numeric classification.
+    AstKind astKindOf(const Expr &expr) const;
+
+    /// @brief Phase handlers used by @ref classifyNumericType.
+    std::optional<TypeRules::NumericType> lowerResolveNames(const Expr &expr, AstKind kind);
+    std::optional<TypeRules::NumericType> lowerTypes(const Expr &expr, AstKind kind);
+    std::optional<TypeRules::NumericType> lowerControlFlow(const Expr &expr, AstKind kind);
+    std::optional<TypeRules::NumericType> lowerCalls(const Expr &expr, AstKind kind);
+
     /// @brief Lower a UBOUND query expression.
     /// @param expr UBOUND expression node naming the array.
     /// @return Resulting value and type.

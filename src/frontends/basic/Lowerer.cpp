@@ -14,9 +14,12 @@
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
+#include <algorithm>
+#include <array>
 #include <cassert>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -561,9 +564,181 @@ const Lowerer::ProcedureContext &Lowerer::context() const noexcept
     return context_;
 }
 
-TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
+enum class Lowerer::AstKind
+{
+    Int,
+    Bool,
+    String,
+    Float,
+    Var,
+    Array,
+    LBound,
+    UBound,
+    Unary,
+    Binary,
+    BuiltinCall,
+    Call,
+    Unknown,
+};
+
+Lowerer::AstKind Lowerer::astKindOf(const Expr &expr) const
+{
+    if (dynamic_cast<const IntExpr *>(&expr))
+        return AstKind::Int;
+    if (dynamic_cast<const BoolExpr *>(&expr))
+        return AstKind::Bool;
+    if (dynamic_cast<const StringExpr *>(&expr))
+        return AstKind::String;
+    if (dynamic_cast<const FloatExpr *>(&expr))
+        return AstKind::Float;
+    if (dynamic_cast<const VarExpr *>(&expr))
+        return AstKind::Var;
+    if (dynamic_cast<const ArrayExpr *>(&expr))
+        return AstKind::Array;
+    if (dynamic_cast<const LBoundExpr *>(&expr))
+        return AstKind::LBound;
+    if (dynamic_cast<const UBoundExpr *>(&expr))
+        return AstKind::UBound;
+    if (dynamic_cast<const UnaryExpr *>(&expr))
+        return AstKind::Unary;
+    if (dynamic_cast<const BinaryExpr *>(&expr))
+        return AstKind::Binary;
+    if (dynamic_cast<const BuiltinCallExpr *>(&expr))
+        return AstKind::BuiltinCall;
+    if (dynamic_cast<const CallExpr *>(&expr))
+        return AstKind::Call;
+    return AstKind::Unknown;
+}
+
+std::optional<TypeRules::NumericType> Lowerer::lowerResolveNames(const Expr &expr, AstKind kind)
 {
     using NumericType = TypeRules::NumericType;
+    using Handler = std::function<std::optional<NumericType>(const Expr &)>;
+
+    const auto floatSuffix = [](std::string_view name) -> std::optional<NumericType>
+    {
+        if (name.empty())
+            return std::nullopt;
+        switch (name.back())
+        {
+            case '!':
+                return NumericType::Single;
+            case '#':
+                return NumericType::Double;
+            default:
+                return std::nullopt;
+        }
+    };
+    const auto intSuffix = [](std::string_view name) -> std::optional<NumericType>
+    {
+        if (name.empty())
+            return std::nullopt;
+        switch (name.back())
+        {
+            case '%':
+                return NumericType::Integer;
+            case '&':
+                return NumericType::Long;
+            default:
+                return std::nullopt;
+        }
+    };
+    const auto anySuffix = [&](std::string_view name) -> std::optional<NumericType>
+    {
+        if (auto s = floatSuffix(name))
+            return s;
+        return intSuffix(name);
+    };
+
+    const std::array<std::pair<AstKind, Handler>, 4> handlers = {{
+        {AstKind::Var, [&, this](const Expr &expr) -> std::optional<NumericType>
+         {
+             const auto &var = static_cast<const VarExpr &>(expr);
+             if (const auto *info = findSymbol(var.name))
+             {
+                 if (info->hasType)
+                 {
+                     if (info->type == AstType::F64)
+                     {
+                         if (auto suffix = floatSuffix(var.name))
+                             return suffix;
+                         return NumericType::Double;
+                     }
+                     if (auto suffix = intSuffix(var.name))
+                         return suffix;
+                     return NumericType::Long;
+                 }
+             }
+             if (auto suffix = anySuffix(var.name))
+                 return suffix;
+             AstType astTy = inferAstTypeFromName(var.name);
+             return (astTy == AstType::F64) ? NumericType::Double : NumericType::Long;
+         }},
+        {AstKind::Array, [](const Expr &) -> std::optional<NumericType>
+         { return NumericType::Long; }},
+        {AstKind::LBound, [](const Expr &) -> std::optional<NumericType>
+         { return NumericType::Long; }},
+        {AstKind::UBound, [](const Expr &) -> std::optional<NumericType>
+         { return NumericType::Long; }},
+    }};
+
+    auto it = std::find_if(handlers.begin(), handlers.end(), [kind](const auto &entry) {
+        return entry.first == kind;
+    });
+    if (it == handlers.end())
+        return std::nullopt;
+    return it->second(expr);
+}
+
+std::optional<TypeRules::NumericType> Lowerer::lowerTypes(const Expr &expr, AstKind kind)
+{
+    using NumericType = TypeRules::NumericType;
+    using Handler = std::function<std::optional<NumericType>(const Expr &)>;
+
+    const std::array<std::pair<AstKind, Handler>, 4> handlers = {{
+        {AstKind::Int, [](const Expr &expr) -> std::optional<NumericType>
+         {
+             const auto &i = static_cast<const IntExpr &>(expr);
+             switch (i.suffix)
+             {
+                 case IntExpr::Suffix::Integer:
+                     return NumericType::Integer;
+                 case IntExpr::Suffix::Long:
+                     return NumericType::Long;
+                 case IntExpr::Suffix::None:
+                     break;
+             }
+             const long long value = i.value;
+             if (value >= std::numeric_limits<int16_t>::min() &&
+                 value <= std::numeric_limits<int16_t>::max())
+                 return NumericType::Integer;
+             return NumericType::Long;
+         }},
+        {AstKind::Bool, [](const Expr &) -> std::optional<NumericType>
+         { return NumericType::Integer; }},
+        {AstKind::String, [](const Expr &) -> std::optional<NumericType>
+         { return NumericType::Double; }},
+        {AstKind::Float, [](const Expr &expr) -> std::optional<NumericType>
+         {
+             const auto &f = static_cast<const FloatExpr &>(expr);
+             if (f.suffix == FloatExpr::Suffix::Single)
+                 return NumericType::Single;
+             return NumericType::Double;
+         }},
+    }};
+
+    auto it = std::find_if(handlers.begin(), handlers.end(), [kind](const auto &entry) {
+        return entry.first == kind;
+    });
+    if (it == handlers.end())
+        return std::nullopt;
+    return it->second(expr);
+}
+
+std::optional<TypeRules::NumericType> Lowerer::lowerControlFlow(const Expr &expr, AstKind kind)
+{
+    using NumericType = TypeRules::NumericType;
+    using Handler = std::function<std::optional<NumericType>(const Expr &)>;
 
     auto classifyBinary = [&](const BinaryExpr &bin) -> NumericType
     {
@@ -592,165 +767,136 @@ TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
         }
     };
 
-    if (const auto *i = dynamic_cast<const IntExpr *>(&expr))
+    const std::array<std::pair<AstKind, Handler>, 2> handlers = {{
+        {AstKind::Unary, [this](const Expr &expr) -> std::optional<NumericType>
+         {
+             const auto &un = static_cast<const UnaryExpr &>(expr);
+             if (!un.expr)
+                 return NumericType::Long;
+             return classifyNumericType(*un.expr);
+         }},
+        {AstKind::Binary, [&, classifyBinary](const Expr &expr) -> std::optional<NumericType>
+         {
+             const auto &bin = static_cast<const BinaryExpr &>(expr);
+             return classifyBinary(bin);
+         }},
+    }};
+
+    auto it = std::find_if(handlers.begin(), handlers.end(), [kind](const auto &entry) {
+        return entry.first == kind;
+    });
+    if (it == handlers.end())
+        return std::nullopt;
+    return it->second(expr);
+}
+
+std::optional<TypeRules::NumericType> Lowerer::lowerCalls(const Expr &expr, AstKind kind)
+{
+    using NumericType = TypeRules::NumericType;
+    using Handler = std::function<std::optional<NumericType>(const Expr &)>;
+
+    const std::array<std::pair<AstKind, Handler>, 2> handlers = {{
+        {AstKind::BuiltinCall, [this](const Expr &expr) -> std::optional<NumericType>
+         {
+             const auto &call = static_cast<const BuiltinCallExpr &>(expr);
+             struct BuiltinEntry
+             {
+                 BuiltinCallExpr::Builtin kind;
+                 std::function<NumericType(const BuiltinCallExpr &)> classify;
+             };
+             const std::array<BuiltinEntry, 15> builtinHandlers = {{
+                 {BuiltinCallExpr::Builtin::Cint, [](const BuiltinCallExpr &) { return NumericType::Integer; }},
+                 {BuiltinCallExpr::Builtin::Clng, [](const BuiltinCallExpr &) { return NumericType::Long; }},
+                 {BuiltinCallExpr::Builtin::Csng, [](const BuiltinCallExpr &) { return NumericType::Single; }},
+                 {BuiltinCallExpr::Builtin::Cdbl, [](const BuiltinCallExpr &) { return NumericType::Double; }},
+                 {BuiltinCallExpr::Builtin::Int, [](const BuiltinCallExpr &) { return NumericType::Double; }},
+                 {BuiltinCallExpr::Builtin::Fix, [](const BuiltinCallExpr &) { return NumericType::Double; }},
+                 {BuiltinCallExpr::Builtin::Round, [](const BuiltinCallExpr &) { return NumericType::Double; }},
+                 {BuiltinCallExpr::Builtin::Sqr, [](const BuiltinCallExpr &) { return NumericType::Double; }},
+                 {BuiltinCallExpr::Builtin::Abs, [](const BuiltinCallExpr &) { return NumericType::Double; }},
+                 {BuiltinCallExpr::Builtin::Floor, [](const BuiltinCallExpr &) { return NumericType::Double; }},
+                 {BuiltinCallExpr::Builtin::Ceil, [](const BuiltinCallExpr &) { return NumericType::Double; }},
+                 {BuiltinCallExpr::Builtin::Sin, [](const BuiltinCallExpr &) { return NumericType::Double; }},
+                 {BuiltinCallExpr::Builtin::Cos, [](const BuiltinCallExpr &) { return NumericType::Double; }},
+                 {BuiltinCallExpr::Builtin::Pow, [](const BuiltinCallExpr &) { return NumericType::Double; }},
+                 {BuiltinCallExpr::Builtin::Rnd, [](const BuiltinCallExpr &) { return NumericType::Double; }},
+             }};
+
+             auto it = std::find_if(builtinHandlers.begin(), builtinHandlers.end(), [&](const BuiltinEntry &entry) {
+                 return entry.kind == call.builtin;
+             });
+             if (it != builtinHandlers.end())
+                 return it->classify(call);
+
+             if (call.builtin == BuiltinCallExpr::Builtin::Val)
+                 return NumericType::Double;
+             if (call.builtin == BuiltinCallExpr::Builtin::Str)
+             {
+                 if (!call.args.empty() && call.args[0])
+                     return classifyNumericType(*call.args[0]);
+                 return NumericType::Long;
+             }
+             return NumericType::Double;
+         }},
+        {AstKind::Call, [this](const Expr &expr) -> std::optional<NumericType>
+         {
+             const auto &callExpr = static_cast<const CallExpr &>(expr);
+             if (const auto *sig = findProcSignature(callExpr.callee))
+             {
+                 switch (sig->retType.kind)
+                 {
+                     case Type::Kind::I16:
+                         return NumericType::Integer;
+                     case Type::Kind::I32:
+                     case Type::Kind::I64:
+                         return NumericType::Long;
+                     case Type::Kind::F64:
+                         return NumericType::Double;
+                     default:
+                         break;
+                 }
+             }
+             return NumericType::Long;
+         }},
+    }};
+
+    auto it = std::find_if(handlers.begin(), handlers.end(), [kind](const auto &entry) {
+        return entry.first == kind;
+    });
+    if (it == handlers.end())
+        return std::nullopt;
+    return it->second(expr);
+}
+
+TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
+{
+    using NumericType = TypeRules::NumericType;
+    using PhaseHandler = std::optional<NumericType> (Lowerer::*)(const Expr &, AstKind);
+
+    const std::array<std::pair<AstKind, PhaseHandler>, 12> dispatch = {{
+        {AstKind::Int, &Lowerer::lowerTypes},
+        {AstKind::Bool, &Lowerer::lowerTypes},
+        {AstKind::String, &Lowerer::lowerTypes},
+        {AstKind::Float, &Lowerer::lowerTypes},
+        {AstKind::Var, &Lowerer::lowerResolveNames},
+        {AstKind::Array, &Lowerer::lowerResolveNames},
+        {AstKind::LBound, &Lowerer::lowerResolveNames},
+        {AstKind::UBound, &Lowerer::lowerResolveNames},
+        {AstKind::Unary, &Lowerer::lowerControlFlow},
+        {AstKind::Binary, &Lowerer::lowerControlFlow},
+        {AstKind::BuiltinCall, &Lowerer::lowerCalls},
+        {AstKind::Call, &Lowerer::lowerCalls},
+    }};
+
+    AstKind kind = astKindOf(expr);
+    for (const auto &entry : dispatch)
     {
-        switch (i->suffix)
-        {
-            case IntExpr::Suffix::Integer:
-                return NumericType::Integer;
-            case IntExpr::Suffix::Long:
-                return NumericType::Long;
-            case IntExpr::Suffix::None:
-                break;
-        }
-        const long long value = i->value;
-        if (value >= std::numeric_limits<int16_t>::min() &&
-            value <= std::numeric_limits<int16_t>::max())
-            return NumericType::Integer;
-        return NumericType::Long;
+        if (entry.first != kind)
+            continue;
+        if (auto result = std::invoke(entry.second, this, expr, kind))
+            return *result;
     }
-    if (dynamic_cast<const BoolExpr *>(&expr))
-        return NumericType::Integer;
-    if (dynamic_cast<const StringExpr *>(&expr))
-        return NumericType::Double;
-    if (const auto *f = dynamic_cast<const FloatExpr *>(&expr))
-    {
-        if (f->suffix == FloatExpr::Suffix::Single)
-            return NumericType::Single;
-        return NumericType::Double;
-    }
-    if (const auto *var = dynamic_cast<const VarExpr *>(&expr))
-    {
-        if (const auto *info = findSymbol(var->name))
-        {
-            if (info->hasType)
-            {
-                if (info->type == AstType::F64)
-                {
-                    if (!var->name.empty())
-                    {
-                        switch (var->name.back())
-                        {
-                            case '!':
-                                return NumericType::Single;
-                            case '#':
-                                return NumericType::Double;
-                            default:
-                                break;
-                        }
-                    }
-                    return NumericType::Double;
-                }
-                if (!var->name.empty())
-                {
-                    switch (var->name.back())
-                    {
-                        case '%':
-                            return NumericType::Integer;
-                        case '&':
-                            return NumericType::Long;
-                        default:
-                            break;
-                    }
-                }
-                return NumericType::Long;
-            }
-        }
-        if (!var->name.empty())
-        {
-            switch (var->name.back())
-            {
-                case '!':
-                    return NumericType::Single;
-                case '#':
-                    return NumericType::Double;
-                case '%':
-                    return NumericType::Integer;
-                case '&':
-                    return NumericType::Long;
-                default:
-                    break;
-            }
-        }
-        AstType astTy = inferAstTypeFromName(var->name);
-        return (astTy == AstType::F64) ? NumericType::Double : NumericType::Long;
-    }
-    if (const auto *arr = dynamic_cast<const ArrayExpr *>(&expr))
-    {
-        (void)arr;
-        return NumericType::Long;
-    }
-    if (const auto *lb = dynamic_cast<const LBoundExpr *>(&expr))
-    {
-        (void)lb;
-        return NumericType::Long;
-    }
-    if (const auto *ub = dynamic_cast<const UBoundExpr *>(&expr))
-    {
-        (void)ub;
-        return NumericType::Long;
-    }
-    if (const auto *un = dynamic_cast<const UnaryExpr *>(&expr))
-    {
-        if (!un->expr)
-            return NumericType::Long;
-        NumericType operand = classifyNumericType(*un->expr);
-        return operand;
-    }
-    if (const auto *bin = dynamic_cast<const BinaryExpr *>(&expr))
-        return classifyBinary(*bin);
-    if (const auto *call = dynamic_cast<const BuiltinCallExpr *>(&expr))
-    {
-        switch (call->builtin)
-        {
-            case BuiltinCallExpr::Builtin::Cint:
-                return NumericType::Integer;
-            case BuiltinCallExpr::Builtin::Clng:
-                return NumericType::Long;
-            case BuiltinCallExpr::Builtin::Csng:
-                return NumericType::Single;
-            case BuiltinCallExpr::Builtin::Cdbl:
-                return NumericType::Double;
-            case BuiltinCallExpr::Builtin::Int:
-            case BuiltinCallExpr::Builtin::Fix:
-            case BuiltinCallExpr::Builtin::Round:
-            case BuiltinCallExpr::Builtin::Sqr:
-            case BuiltinCallExpr::Builtin::Abs:
-            case BuiltinCallExpr::Builtin::Floor:
-            case BuiltinCallExpr::Builtin::Ceil:
-            case BuiltinCallExpr::Builtin::Sin:
-            case BuiltinCallExpr::Builtin::Cos:
-            case BuiltinCallExpr::Builtin::Pow:
-            case BuiltinCallExpr::Builtin::Rnd:
-            case BuiltinCallExpr::Builtin::Val:
-                return NumericType::Double;
-            case BuiltinCallExpr::Builtin::Str:
-                if (!call->args.empty() && call->args[0])
-                    return classifyNumericType(*call->args[0]);
-                return NumericType::Long;
-            default:
-                return NumericType::Double;
-        }
-    }
-    if (const auto *callExpr = dynamic_cast<const CallExpr *>(&expr))
-    {
-        if (const auto *sig = findProcSignature(callExpr->callee))
-        {
-            switch (sig->retType.kind)
-            {
-                case Type::Kind::I16:
-                    return NumericType::Integer;
-                case Type::Kind::I32:
-                case Type::Kind::I64:
-                    return NumericType::Long;
-                case Type::Kind::F64:
-                    return NumericType::Double;
-                default:
-                    break;
-            }
-        }
-        return NumericType::Long;
-    }
+
     return NumericType::Long;
 }
 
