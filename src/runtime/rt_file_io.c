@@ -11,6 +11,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -66,6 +67,64 @@ static bool rt_file_check_fd(const RtFile *file, RtError *out_err)
         return false;
     }
     return true;
+}
+
+static bool rt_file_line_buffer_grow(char **buffer, size_t *cap, size_t len, RtError *out_err)
+{
+    if (!buffer || !*buffer || !cap)
+    {
+        rt_file_set_error(out_err, Err_InvalidOperation, 0);
+        return false;
+    }
+
+    if (len == SIZE_MAX)
+    {
+        free(*buffer);
+        *buffer = NULL;
+        rt_file_set_error(out_err, Err_RuntimeError, ERANGE);
+        return false;
+    }
+
+    if (*cap > SIZE_MAX / 2)
+    {
+        free(*buffer);
+        *buffer = NULL;
+        rt_file_set_error(out_err, Err_RuntimeError, ERANGE);
+        return false;
+    }
+
+    size_t new_cap = (*cap) * 2;
+    if (new_cap <= len)
+    {
+        free(*buffer);
+        *buffer = NULL;
+        rt_file_set_error(out_err, Err_RuntimeError, ERANGE);
+        return false;
+    }
+
+    char *nbuf = (char *)realloc(*buffer, new_cap);
+    if (!nbuf)
+    {
+        free(*buffer);
+        *buffer = NULL;
+        rt_file_set_error(out_err, Err_RuntimeError, ENOMEM);
+        return false;
+    }
+
+    *buffer = nbuf;
+    *cap = new_cap;
+    return true;
+}
+
+/// @brief Test hook exposing the line buffer growth guard for regression coverage.
+/// @param buffer Buffer pointer owned by the caller.
+/// @param cap Current capacity in bytes.
+/// @param len Logical payload length stored in @p buffer.
+/// @param out_err Receives error details when growth fails.
+/// @return True on successful growth; false when allocation or overflow prevents resizing.
+bool rt_file_line_buffer_try_grow_for_test(char **buffer, size_t *cap, size_t len, RtError *out_err)
+{
+    return rt_file_line_buffer_grow(buffer, cap, len, out_err);
 }
 
 void rt_file_init(RtFile *file)
@@ -199,18 +258,10 @@ bool rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err)
         {
             if (ch == '\n')
                 break;
-            if (len + 1 >= cap)
+            if (len == SIZE_MAX || len + 1 >= cap)
             {
-                size_t new_cap = cap * 2;
-                char *nbuf = (char *)realloc(buffer, new_cap);
-                if (!nbuf)
-                {
-                    free(buffer);
-                    rt_file_set_error(out_err, Err_RuntimeError, ENOMEM);
+                if (!rt_file_line_buffer_grow(&buffer, &cap, len, out_err))
                     return false;
-                }
-                buffer = nbuf;
-                cap = new_cap;
             }
             buffer[len++] = ch;
             continue;
