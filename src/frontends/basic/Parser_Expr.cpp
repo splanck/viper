@@ -114,59 +114,54 @@ int Parser::precedence(TokenKind k)
 /// @return Parsed expression subtree.
 ExprPtr Parser::parseExpression(int min_prec)
 {
-    auto left = parseUnaryExpression();
-    return parseInfixRhs(std::move(left), min_prec);
+    return parseBinary(min_prec);
 }
 
-/// @brief Parse a unary expression or delegate to primary parsing when no prefix operator is
-/// present.
-/// @details Recognizes the grammar `unary := (+|-) unary | NOT unary | primary` by looking up
-/// prefix parselets in the Pratt table. The helper consumes the prefix operator, recurses with the
-/// recorded binding power, and otherwise defers to parsePrimary(). Any diagnostics originate from
-/// parseExpression or parsePrimary when required operands are absent.
-/// @return Expression node representing the parsed unary or primary expression.
-ExprPtr Parser::parseUnaryExpression()
+/// @brief Parse unary operators before delegating to primary expressions.
+/// @return Parsed unary expression node.
+ExprPtr Parser::parseUnary()
 {
     const auto tok = peek();
     if (const auto* prefix = findPrefix(tok.kind))
     {
         consume();
-        auto operand = parseExpression(prefix->rbp);
+        auto operand = parseBinary(prefix->rbp);
         auto expr = std::make_unique<UnaryExpr>();
         expr->loc = tok.loc;
         expr->op = prefix->op;
         expr->expr = std::move(operand);
         return expr;
     }
-    return parsePrimary();
+
+    auto primary = parsePrimary();
+    return parsePostfix(std::move(primary));
 }
 
-/// @brief Parse the right-hand side of an infix expression chain.
-/// @details Continues the Pratt parsing loop by consuming as many infix operators as bind tighter
-/// than @p min_prec. The infix parselet table supplies both the binding power and associativity for
-/// each operator so the loop can request the correct right-hand precedence. Missing operands
-/// propagate whatever result parseExpression produces (typically a recovery literal).
-/// @param left Expression already parsed as the left operand.
+/// @brief Parse infix operators using Pratt-style precedence climbing.
 /// @param min_prec Minimum precedence required for an operator to bind.
-/// @return Combined expression tree including any parsed infix operations.
-ExprPtr Parser::parseInfixRhs(ExprPtr left, int min_prec)
+/// @return Parsed expression node.
+ExprPtr Parser::parseBinary(int min_prec)
 {
+    auto lhs = parseUnary();
     while (true)
     {
         const auto* parselet = findInfix(peek().kind);
         if (parselet == nullptr || parselet->lbp < min_prec)
             break;
+
         auto opTok = peek();
         consume();
-        auto rhs = parseExpression(parselet->assoc == Assoc::Right ? parselet->lbp : parselet->lbp + 1);
+        const int next_prec = parselet->assoc == Assoc::Right ? parselet->lbp : parselet->lbp + 1;
+        auto rhs = parseBinary(next_prec);
+
         auto expr = std::make_unique<BinaryExpr>();
         expr->loc = opTok.loc;
         expr->op = parselet->op;
-        expr->lhs = std::move(left);
+        expr->lhs = std::move(lhs);
         expr->rhs = std::move(rhs);
-        left = std::move(expr);
+        lhs = std::move(expr);
     }
-    return left;
+    return lhs;
 }
 
 /// @brief Parse a numeric literal expression from the current token.
@@ -410,170 +405,162 @@ ExprPtr Parser::parseArrayOrVar()
 /// @return Parsed primary expression node, never null.
 ExprPtr Parser::parsePrimary()
 {
-    ExprPtr expr;
-
     if (at(TokenKind::Number))
-    {
-        expr = parseNumber();
-    }
-    else if (at(TokenKind::String))
-    {
-        expr = parseString();
-    }
-    else if (at(TokenKind::KeywordTrue) || at(TokenKind::KeywordFalse))
-    {
-        auto b = std::make_unique<BoolExpr>();
-        b->loc = peek().loc;
-        b->value = at(TokenKind::KeywordTrue);
-        consume();
-        expr = std::move(b);
-    }
-    else if (at(TokenKind::KeywordNew))
-    {
-        auto loc = peek().loc;
-        consume(); // NEW
+        return parseNumber();
 
-        std::string className;
-        Token classTok = expect(TokenKind::Identifier);
-        if (classTok.kind == TokenKind::Identifier)
-            className = classTok.lexeme;
+    if (at(TokenKind::String))
+        return parseString();
 
-        expect(TokenKind::LParen);
-        std::vector<ExprPtr> args;
-        if (!at(TokenKind::RParen))
-        {
-            while (true)
-            {
-                args.push_back(parseExpression());
-                if (at(TokenKind::Comma))
-                {
-                    consume();
-                    continue;
-                }
-                break;
-            }
-        }
-        expect(TokenKind::RParen);
+    if (at(TokenKind::KeywordTrue) || at(TokenKind::KeywordFalse))
+    {
+        auto boolean = std::make_unique<BoolExpr>();
+        boolean->loc = peek().loc;
+        boolean->value = at(TokenKind::KeywordTrue);
+        consume();
+        return boolean;
+    }
 
-        auto newExpr = std::make_unique<NewExpr>();
-        newExpr->loc = loc;
-        newExpr->className = std::move(className);
-        newExpr->args = std::move(args);
-        expr = std::move(newExpr);
-    }
-    else if (at(TokenKind::KeywordMe))
+    if (at(TokenKind::KeywordNew))
+        return parseNewExpression();
+
+    if (at(TokenKind::KeywordMe))
     {
-        auto me = std::make_unique<MeExpr>();
-        me->loc = peek().loc;
+        auto expr = std::make_unique<MeExpr>();
+        expr->loc = peek().loc;
         consume();
-        expr = std::move(me);
+        return expr;
     }
-    else if (at(TokenKind::KeywordLbound))
+
+    if (at(TokenKind::KeywordLbound) || at(TokenKind::KeywordUbound))
+        return parseBoundIntrinsic(peek().kind);
+
+    if (at(TokenKind::KeywordLof) || at(TokenKind::KeywordEof) || at(TokenKind::KeywordLoc))
+        return parseChannelIntrinsic(peek().kind);
+
+    if (!at(TokenKind::Identifier))
     {
-        auto loc = peek().loc;
-        consume();
-        expect(TokenKind::LParen);
-        std::string name;
-        Token ident = expect(TokenKind::Identifier);
-        if (ident.kind == TokenKind::Identifier)
-            name = ident.lexeme;
-        expect(TokenKind::RParen);
-        auto l = std::make_unique<LBoundExpr>();
-        l->loc = loc;
-        l->name = std::move(name);
-        expr = std::move(l);
-    }
-    else if (at(TokenKind::KeywordUbound))
-    {
-        auto loc = peek().loc;
-        consume();
-        expect(TokenKind::LParen);
-        std::string name;
-        Token ident = expect(TokenKind::Identifier);
-        if (ident.kind == TokenKind::Identifier)
-            name = ident.lexeme;
-        expect(TokenKind::RParen);
-        auto u = std::make_unique<UBoundExpr>();
-        u->loc = loc;
-        u->name = std::move(name);
-        expr = std::move(u);
-    }
-    else if (at(TokenKind::KeywordLof))
-    {
-        auto loc = peek().loc;
-        consume();
-        expect(TokenKind::LParen);
-        expect(TokenKind::Hash);
-        auto channel = parseExpression();
-        expect(TokenKind::RParen);
-        auto call = std::make_unique<BuiltinCallExpr>();
-        call->loc = loc;
-        call->Expr::loc = loc;
-        call->builtin = BuiltinCallExpr::Builtin::Lof;
-        call->args.push_back(std::move(channel));
-        expr = std::move(call);
-    }
-    else if (at(TokenKind::KeywordEof))
-    {
-        auto loc = peek().loc;
-        consume();
-        expect(TokenKind::LParen);
-        expect(TokenKind::Hash);
-        auto channel = parseExpression();
-        expect(TokenKind::RParen);
-        auto call = std::make_unique<BuiltinCallExpr>();
-        call->loc = loc;
-        call->Expr::loc = loc;
-        call->builtin = BuiltinCallExpr::Builtin::Eof;
-        call->args.push_back(std::move(channel));
-        expr = std::move(call);
-    }
-    else if (at(TokenKind::KeywordLoc))
-    {
-        auto loc = peek().loc;
-        consume();
-        expect(TokenKind::LParen);
-        expect(TokenKind::Hash);
-        auto channel = parseExpression();
-        expect(TokenKind::RParen);
-        auto call = std::make_unique<BuiltinCallExpr>();
-        call->loc = loc;
-        call->Expr::loc = loc;
-        call->builtin = BuiltinCallExpr::Builtin::Loc;
-        call->args.push_back(std::move(channel));
-        expr = std::move(call);
-    }
-    else if (!at(TokenKind::Identifier))
-    {
-        if (auto b = lookupBuiltin(peek().lexeme))
+        if (auto builtin = lookupBuiltin(peek().lexeme))
         {
             auto loc = peek().loc;
             consume();
-            expr = parseBuiltinCall(*b, loc);
+            return parseBuiltinCall(*builtin, loc);
         }
     }
 
-    if (!expr)
+    if (at(TokenKind::Identifier))
+        return parseArrayOrVar();
+
+    if (at(TokenKind::LParen))
     {
-        if (at(TokenKind::Identifier))
-        {
-            expr = parseArrayOrVar();
-        }
-        else if (at(TokenKind::LParen))
-        {
-            consume();
-            expr = parseExpression();
-            expect(TokenKind::RParen);
-        }
-        else
-        {
-            auto fallback = std::make_unique<IntExpr>();
-            fallback->loc = peek().loc;
-            fallback->value = 0;
-            expr = std::move(fallback);
-        }
+        consume();
+        auto expr = parseExpression();
+        expect(TokenKind::RParen);
+        return expr;
     }
 
+    auto fallback = std::make_unique<IntExpr>();
+    fallback->loc = peek().loc;
+    fallback->value = 0;
+    return fallback;
+}
+
+/// @brief Parse a NEW expression allocating a class instance.
+/// @return Newly allocated expression node.
+ExprPtr Parser::parseNewExpression()
+{
+    auto loc = peek().loc;
+    consume();
+
+    std::string className;
+    Token classTok = expect(TokenKind::Identifier);
+    if (classTok.kind == TokenKind::Identifier)
+        className = classTok.lexeme;
+
+    expect(TokenKind::LParen);
+    std::vector<ExprPtr> args;
+    if (!at(TokenKind::RParen))
+    {
+        while (true)
+        {
+            args.push_back(parseExpression());
+            if (!at(TokenKind::Comma))
+                break;
+            consume();
+        }
+    }
+    expect(TokenKind::RParen);
+
+    auto expr = std::make_unique<NewExpr>();
+    expr->loc = loc;
+    expr->className = std::move(className);
+    expr->args = std::move(args);
+    return expr;
+}
+
+/// @brief Parse LBOUND/UBOUND intrinsic expressions.
+/// @param keyword Token identifying the intrinsic to parse.
+/// @return Parsed intrinsic expression node.
+ExprPtr Parser::parseBoundIntrinsic(TokenKind keyword)
+{
+    auto loc = peek().loc;
+    consume();
+    expect(TokenKind::LParen);
+    std::string name;
+    Token ident = expect(TokenKind::Identifier);
+    if (ident.kind == TokenKind::Identifier)
+        name = ident.lexeme;
+    expect(TokenKind::RParen);
+
+    if (keyword == TokenKind::KeywordLbound)
+    {
+        auto expr = std::make_unique<LBoundExpr>();
+        expr->loc = loc;
+        expr->name = std::move(name);
+        return expr;
+    }
+
+    auto expr = std::make_unique<UBoundExpr>();
+    expr->loc = loc;
+    expr->name = std::move(name);
+    return expr;
+}
+
+/// @brief Parse LOF/EOF/LOC intrinsic expressions operating on file channels.
+/// @param keyword Token identifying the intrinsic to parse.
+/// @return Parsed intrinsic expression node.
+ExprPtr Parser::parseChannelIntrinsic(TokenKind keyword)
+{
+    auto loc = peek().loc;
+    consume();
+    expect(TokenKind::LParen);
+    expect(TokenKind::Hash);
+    auto channel = parseExpression();
+    expect(TokenKind::RParen);
+
+    auto expr = std::make_unique<BuiltinCallExpr>();
+    expr->loc = loc;
+    expr->Expr::loc = loc;
+    switch (keyword)
+    {
+        case TokenKind::KeywordLof:
+            expr->builtin = BuiltinCallExpr::Builtin::Lof;
+            break;
+        case TokenKind::KeywordEof:
+            expr->builtin = BuiltinCallExpr::Builtin::Eof;
+            break;
+        default:
+            expr->builtin = BuiltinCallExpr::Builtin::Loc;
+            break;
+    }
+    expr->args.push_back(std::move(channel));
+    return expr;
+}
+
+/// @brief Parse trailing member access or method call expressions.
+/// @param expr Expression that may receive postfix operators.
+/// @return Expression extended with postfix operations.
+ExprPtr Parser::parsePostfix(ExprPtr expr)
+{
     while (expr && at(TokenKind::Dot))
     {
         consume();
@@ -591,12 +578,9 @@ ExprPtr Parser::parsePrimary()
                 while (true)
                 {
                     args.push_back(parseExpression());
-                    if (at(TokenKind::Comma))
-                    {
-                        consume();
-                        continue;
-                    }
-                    break;
+                    if (!at(TokenKind::Comma))
+                        break;
+                    consume();
                 }
             }
             expect(TokenKind::RParen);
@@ -607,17 +591,15 @@ ExprPtr Parser::parsePrimary()
             call->method = std::move(member);
             call->args = std::move(args);
             expr = std::move(call);
+            continue;
         }
-        else
-        {
-            auto access = std::make_unique<MemberAccessExpr>();
-            access->loc = ident.loc;
-            access->base = std::move(expr);
-            access->member = std::move(member);
-            expr = std::move(access);
-        }
-    }
 
+        auto access = std::make_unique<MemberAccessExpr>();
+        access->loc = ident.loc;
+        access->base = std::move(expr);
+        access->member = std::move(member);
+        expr = std::move(access);
+    }
     return expr;
 }
 
