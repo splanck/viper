@@ -10,6 +10,11 @@
 #include <cstdint>
 #include <string>
 
+namespace il::support
+{
+class SourceManager;
+}
+
 namespace ilc
 {
 
@@ -68,6 +73,17 @@ SharedOptionParseResult parseSharedOption(int &index,
 /// @note May emit IL to `stdout` or run the resulting module via the VM and can
 /// redirect `stdin` when `--stdin-from` is provided.
 int cmdFrontBasic(int argc, char **argv);
+
+/// @brief Handle `ilc -run` with an externally managed source manager.
+///
+/// Allows tests to preconfigure the @ref il::support::SourceManager used by the
+/// run command, enabling overflow scenarios to be triggered deterministically.
+///
+/// @param argc Number of arguments following `-run`.
+/// @param argv Argument vector beginning with the IL file path.
+/// @param sm Source manager instance supplied by the caller.
+/// @return Exit status of the run command; non-zero on failure.
+int cmdRunILWithSourceManager(int argc, char **argv, il::support::SourceManager &sm);
 
 /// @brief Handle `ilc -run`.
 ///
