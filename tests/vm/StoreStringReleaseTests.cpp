@@ -30,6 +30,9 @@ int main()
     il::build::IRBuilder builder(module);
     builder.addExtern("rt_str_i32_alloc", Type(Type::Kind::Str), {Type(Type::Kind::I32)});
     builder.addExtern("rt_str_release_maybe", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
+    builder.addExtern("rt_left", Type(Type::Kind::Str), {Type(Type::Kind::Str), Type(Type::Kind::I64)});
+
+    builder.addGlobalStr("literal", "sample");
 
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &entry = builder.addBlock(fn, "entry");
@@ -76,7 +79,13 @@ int main()
     entry.instructions.push_back(loadStored);
 
     builder.emitCall("rt_str_release_maybe", {Value::temp(loadedId)}, std::nullopt, kLoc(7));
-    builder.emitRet(std::optional<Value>{Value::constInt(0)}, kLoc(8));
+
+    const Value literalValue = builder.emitConstStr("literal", kLoc(8));
+    const unsigned literalId = literalValue.id;
+    builder.emitCall("rt_left", {literalValue, Value::constInt(64)}, std::nullopt, kLoc(9));
+    builder.emitCall("rt_str_release_maybe", {literalValue}, std::nullopt, kLoc(10));
+
+    builder.emitRet(std::optional<Value>{Value::constInt(0)}, kLoc(11));
 
     il::vm::VM vm(module);
     auto &mainFn = module.functions.front();
@@ -130,6 +139,36 @@ int main()
 
     if (stepExpectIp(7))
         return 1; // release loaded string
+
+    if (stepExpectIp(8))
+        return 1; // materialise literal string
+
+    rt_string literalHandle = state.fr.regs[literalId].str;
+    if (!literalHandle)
+        return 1;
+
+    auto *literalImpl = reinterpret_cast<rt_string_impl *>(literalHandle);
+    if (!literalImpl)
+        return 1;
+
+    rt_heap_hdr_t *literalHdr = literalImpl->heap;
+    const size_t initialLiteralRefs = literalHdr ? literalHdr->refcnt : literalImpl->literal_refs;
+
+    if (stepExpectIp(9))
+        return 1; // call rt_left without capturing result
+
+    literalHandle = state.fr.regs[literalId].str;
+    literalImpl = reinterpret_cast<rt_string_impl *>(literalHandle);
+    if (!literalImpl)
+        return 1;
+
+    literalHdr = literalImpl->heap;
+    const size_t postCallRefs = literalHdr ? literalHdr->refcnt : literalImpl->literal_refs;
+    if (postCallRefs != initialLiteralRefs)
+        return 1;
+
+    if (stepExpectIp(10))
+        return 1; // release literal string
 
     while (true)
     {
