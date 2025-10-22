@@ -235,13 +235,22 @@ VM::ExecResult handleConstNull(VM &vm,
     Slot out{};
     switch (in.type.kind)
     {
-        case Type::Kind::Str:
-            out.str = nullptr;
-            break;
+        case Type::Kind::I1:
+        case Type::Kind::I16:
+        case Type::Kind::I32:
+        case Type::Kind::I64:
         case Type::Kind::Error:
         case Type::Kind::ResumeTok:
+            out.i64 = 0;
+            break;
+        case Type::Kind::F64:
+            out.f64 = 0.0;
+            break;
         case Type::Kind::Ptr:
             out.ptr = nullptr;
+            break;
+        case Type::Kind::Str:
+            out.str = nullptr;
             break;
         default:
             out.ptr = nullptr;
