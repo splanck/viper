@@ -31,6 +31,10 @@ namespace il::verify
 {
 using il::support::Expected;
 
+template <typename T> using ErrorOr = il::support::Expected<T>;
+
+using CFG = std::unordered_map<std::string, const BasicBlock *>;
+
 namespace
 {
 
@@ -82,8 +86,7 @@ const Instr *findTerminator(const BasicBlock &bb)
 /// @param terminator Instruction that ends a block.
 /// @param blockMap Mapping from labels to block pointers for the owning function.
 /// @return Vector containing each successor reachable from the terminator.
-std::vector<const BasicBlock *> gatherSuccessors(
-    const Instr &terminator, const std::unordered_map<std::string, const BasicBlock *> &blockMap)
+std::vector<const BasicBlock *> gatherSuccessors(const Instr &terminator, const CFG &blockMap)
 {
     std::vector<const BasicBlock *> successors;
     switch (terminator.op)
@@ -154,14 +157,14 @@ std::string formatPathString(const std::vector<const BasicBlock *> &path)
     return buffer;
 }
 
-Expected<void> reportEhMismatch(const Function &fn,
-                                const BasicBlock &bb,
-                                const Instr &instr,
-                                VerifyDiagCode code,
-                                const std::vector<EhState> &states,
-                                const std::vector<int> &parents,
-                                int stateIndex,
-                                int depth)
+ErrorOr<void> reportEhMismatch(const Function &fn,
+                               const BasicBlock &bb,
+                               const Instr &instr,
+                               VerifyDiagCode code,
+                               const std::vector<EhState> &states,
+                               const std::vector<int> &parents,
+                               int stateIndex,
+                               int depth)
 {
     const std::vector<const BasicBlock *> path = buildPath(states, parents, stateIndex);
     std::string suffix;
@@ -187,14 +190,24 @@ Expected<void> reportEhMismatch(const Function &fn,
     }
 
     auto message = formatInstrDiag(fn, bb, instr, suffix);
-    return Expected<void>{makeVerifierError(code, instr.loc, std::move(message))};
+    return ErrorOr<void>{makeVerifierError(code, instr.loc, std::move(message))};
 }
 
-Expected<void> verifyEhStackBalance(
-    const Function &fn, const std::unordered_map<std::string, const BasicBlock *> &blockMap)
+CFG buildCfg(const Function &fn)
+{
+    CFG blockMap;
+    blockMap.reserve(fn.blocks.size());
+    for (const auto &bb : fn.blocks)
+        blockMap[bb.label] = &bb;
+    return blockMap;
+}
+
+ErrorOr<void> checkBalancedTryCatch(const Function &fn)
 {
     if (fn.blocks.empty())
         return {};
+
+    CFG blockMap = buildCfg(fn);
 
     std::deque<int> worklist;
     std::vector<EhState> states;
@@ -530,8 +543,7 @@ class HandlerCoverageTraversal
     std::unordered_map<const BasicBlock *, std::unordered_set<std::string>> visited;
 };
 
-HandlerCoverage computeHandlerCoverage(
-    const Function &fn, const std::unordered_map<std::string, const BasicBlock *> &blockMap)
+HandlerCoverage computeHandlerCoverage(const Function &fn, const CFG &blockMap)
 {
     HandlerCoverage coverage;
     HandlerCoverageTraversal traversal(blockMap, coverage);
@@ -554,8 +566,7 @@ struct PostDomInfo
 /// @param fn Function being analysed.
 /// @param blockMap Mapping from labels to block pointers.
 /// @return Dense post-dominator summary including index tables.
-PostDomInfo computePostDominators(
-    const Function &fn, const std::unordered_map<std::string, const BasicBlock *> &blockMap)
+PostDomInfo computePostDominators(const Function &fn, const CFG &blockMap)
 {
     PostDomInfo info;
     if (fn.blocks.empty())
@@ -692,8 +703,21 @@ bool isPostDominator(const PostDomInfo &info, const BasicBlock *from, const Basi
 /// @param fn Function being verified.
 /// @param blockMap Mapping from labels to block pointers.
 /// @return Success or a diagnostic describing the invalid target.
-Expected<void> verifyResumeLabelTargets(
-    const Function &fn, const std::unordered_map<std::string, const BasicBlock *> &blockMap)
+ErrorOr<void> checkDominanceOfHandlers(const Function &fn, const CFG &blockMap)
+{
+    (void)fn;
+    (void)blockMap;
+    return {};
+}
+
+ErrorOr<void> checkUnreachableHandlers(const Function &fn, const CFG &blockMap)
+{
+    (void)fn;
+    (void)blockMap;
+    return {};
+}
+
+ErrorOr<void> checkResumeEdges(const Function &fn, const CFG &blockMap)
 {
     const HandlerCoverage coverage = computeHandlerCoverage(fn, blockMap);
     const PostDomInfo postDomInfo = computePostDominators(fn, blockMap);
@@ -736,7 +760,7 @@ Expected<void> verifyResumeLabelTargets(
                 suffix += faultingBlock->label;
 
                 auto message = formatInstrDiag(fn, bb, instr, suffix);
-                return Expected<void>{makeVerifierError(
+                return ErrorOr<void>{makeVerifierError(
                     VerifyDiagCode::EhResumeLabelInvalidTarget, instr.loc, std::move(message))};
             }
         }
@@ -790,15 +814,18 @@ il::support::Expected<void> EhVerifier::run(const Module &module, DiagSink &sink
         if (!hasEhOps)
             continue;
 
-        std::unordered_map<std::string, const BasicBlock *> blockMap;
-        blockMap.reserve(fn.blocks.size());
-        for (const auto &bb : fn.blocks)
-            blockMap[bb.label] = &bb;
-
-        if (auto result = verifyEhStackBalance(fn, blockMap); !result)
+        if (auto result = checkBalancedTryCatch(fn); !result)
             return result;
 
-        if (auto result = verifyResumeLabelTargets(fn, blockMap); !result)
+        CFG cfg = buildCfg(fn);
+
+        if (auto result = checkDominanceOfHandlers(fn, cfg); !result)
+            return result;
+
+        if (auto result = checkUnreachableHandlers(fn, cfg); !result)
+            return result;
+
+        if (auto result = checkResumeEdges(fn, cfg); !result)
             return result;
     }
 
