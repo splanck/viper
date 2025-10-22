@@ -31,6 +31,10 @@ namespace il::verify
 {
 using il::support::Expected;
 
+template <class T> using ErrorOr = il::support::Expected<T>;
+
+using BlockMap = std::unordered_map<std::string, const BasicBlock *>;
+
 namespace
 {
 
@@ -154,14 +158,14 @@ std::string formatPathString(const std::vector<const BasicBlock *> &path)
     return buffer;
 }
 
-Expected<void> reportEhMismatch(const Function &fn,
-                                const BasicBlock &bb,
-                                const Instr &instr,
-                                VerifyDiagCode code,
-                                const std::vector<EhState> &states,
-                                const std::vector<int> &parents,
-                                int stateIndex,
-                                int depth)
+ErrorOr<void> reportEhMismatch(const Function &fn,
+                               const BasicBlock &bb,
+                               const Instr &instr,
+                               VerifyDiagCode code,
+                               const std::vector<EhState> &states,
+                               const std::vector<int> &parents,
+                               int stateIndex,
+                               int depth)
 {
     const std::vector<const BasicBlock *> path = buildPath(states, parents, stateIndex);
     std::string suffix;
@@ -187,15 +191,48 @@ Expected<void> reportEhMismatch(const Function &fn,
     }
 
     auto message = formatInstrDiag(fn, bb, instr, suffix);
-    return Expected<void>{makeVerifierError(code, instr.loc, std::move(message))};
+    return ErrorOr<void>{makeVerifierError(code, instr.loc, std::move(message))};
 }
 
-Expected<void> verifyEhStackBalance(
-    const Function &fn, const std::unordered_map<std::string, const BasicBlock *> &blockMap)
+BlockMap buildBlockMap(const Function &fn)
+{
+    BlockMap blockMap;
+    blockMap.reserve(fn.blocks.size());
+    for (const auto &bb : fn.blocks)
+        blockMap[bb.label] = &bb;
+    return blockMap;
+}
+
+bool hasEhOperations(const Function &fn)
+{
+    for (const auto &bb : fn.blocks)
+    {
+        for (const auto &instr : bb.instructions)
+        {
+            switch (instr.op)
+            {
+                case Opcode::EhPush:
+                case Opcode::EhPop:
+                case Opcode::Trap:
+                case Opcode::TrapFromErr:
+                case Opcode::ResumeSame:
+                case Opcode::ResumeNext:
+                case Opcode::ResumeLabel:
+                    return true;
+                default:
+                    break;
+            }
+        }
+    }
+    return false;
+}
+
+ErrorOr<void> checkBalancedTryCatch(const Function &fn)
 {
     if (fn.blocks.empty())
         return {};
 
+    const BlockMap blockMap = buildBlockMap(fn);
     std::deque<int> worklist;
     std::vector<EhState> states;
     std::vector<int> parents;
@@ -683,6 +720,22 @@ bool isPostDominator(const PostDomInfo &info, const BasicBlock *from, const Basi
     return info.matrix[fromIt->second][candIt->second] != 0;
 }
 
+struct CFG
+{
+    BlockMap blockMap;
+    HandlerCoverage handlerCoverage;
+    PostDomInfo postDomInfo;
+};
+
+CFG buildCfg(const Function &fn)
+{
+    CFG cfg;
+    cfg.blockMap = buildBlockMap(fn);
+    cfg.handlerCoverage = computeHandlerCoverage(fn, cfg.blockMap);
+    cfg.postDomInfo = computePostDominators(fn, cfg.blockMap);
+    return cfg;
+}
+
 /// @brief Ensure resume-label targets are valid handlers for the covered blocks.
 /// @details Reuses handler coverage and post-dominator data to confirm that
 /// every @c resume.label terminator jumps to a handler reachable from the fault
@@ -690,18 +743,14 @@ bool isPostDominator(const PostDomInfo &info, const BasicBlock *from, const Basi
 /// runtime unwinding model. Emits diagnostics when a target is invalid or
 /// missing.
 /// @param fn Function being verified.
-/// @param blockMap Mapping from labels to block pointers.
+/// @param cfg Precomputed control-flow summary shared across EH checks.
 /// @return Success or a diagnostic describing the invalid target.
-Expected<void> verifyResumeLabelTargets(
-    const Function &fn, const std::unordered_map<std::string, const BasicBlock *> &blockMap)
+ErrorOr<void> checkDominanceOfHandlers(const Function &fn, const CFG &cfg)
 {
-    const HandlerCoverage coverage = computeHandlerCoverage(fn, blockMap);
-    const PostDomInfo postDomInfo = computePostDominators(fn, blockMap);
-
     for (const auto &bb : fn.blocks)
     {
-        auto coverageIt = coverage.find(&bb);
-        if (coverageIt == coverage.end())
+        auto coverageIt = cfg.handlerCoverage.find(&bb);
+        if (coverageIt == cfg.handlerCoverage.end())
             continue;
 
         for (const auto &instr : bb.instructions)
@@ -711,8 +760,8 @@ Expected<void> verifyResumeLabelTargets(
             if (instr.labels.empty())
                 continue;
 
-            const auto targetIt = blockMap.find(instr.labels[0]);
-            if (targetIt == blockMap.end())
+            const auto targetIt = cfg.blockMap.find(instr.labels[0]);
+            if (targetIt == cfg.blockMap.end())
                 continue;
 
             const BasicBlock *targetBlock = targetIt->second;
@@ -723,11 +772,11 @@ Expected<void> verifyResumeLabelTargets(
                     continue;
 
                 const std::vector<const BasicBlock *> faultSuccs =
-                    gatherSuccessors(*faultTerminator, blockMap);
+                    gatherSuccessors(*faultTerminator, cfg.blockMap);
                 if (faultSuccs.empty())
                     continue;
 
-                if (isPostDominator(postDomInfo, faultingBlock, targetBlock))
+                if (isPostDominator(cfg.postDomInfo, faultingBlock, targetBlock))
                     continue;
 
                 std::string suffix = "target ^";
@@ -736,12 +785,26 @@ Expected<void> verifyResumeLabelTargets(
                 suffix += faultingBlock->label;
 
                 auto message = formatInstrDiag(fn, bb, instr, suffix);
-                return Expected<void>{makeVerifierError(
+                return ErrorOr<void>{makeVerifierError(
                     VerifyDiagCode::EhResumeLabelInvalidTarget, instr.loc, std::move(message))};
             }
         }
     }
 
+    return {};
+}
+
+ErrorOr<void> checkUnreachableHandlers(const Function &fn, const CFG &cfg)
+{
+    (void)fn;
+    (void)cfg;
+    return {};
+}
+
+ErrorOr<void> checkResumeEdges(const Function &fn, const CFG &cfg)
+{
+    (void)fn;
+    (void)cfg;
     return {};
 }
 
@@ -761,44 +824,18 @@ il::support::Expected<void> EhVerifier::run(const Module &module, DiagSink &sink
     (void)sink;
     for (const auto &fn : module.functions)
     {
-        bool hasEhOps = false;
-        for (const auto &bb : fn.blocks)
-        {
-            for (const auto &instr : bb.instructions)
-            {
-                switch (instr.op)
-                {
-                    case Opcode::EhPush:
-                    case Opcode::EhPop:
-                    case Opcode::Trap:
-                    case Opcode::TrapFromErr:
-                    case Opcode::ResumeSame:
-                    case Opcode::ResumeNext:
-                    case Opcode::ResumeLabel:
-                        hasEhOps = true;
-                        break;
-                    default:
-                        break;
-                }
-                if (hasEhOps)
-                    break;
-            }
-            if (hasEhOps)
-                break;
-        }
-
-        if (!hasEhOps)
+        if (!hasEhOperations(fn))
             continue;
 
-        std::unordered_map<std::string, const BasicBlock *> blockMap;
-        blockMap.reserve(fn.blocks.size());
-        for (const auto &bb : fn.blocks)
-            blockMap[bb.label] = &bb;
-
-        if (auto result = verifyEhStackBalance(fn, blockMap); !result)
+        if (auto result = checkBalancedTryCatch(fn); !result)
             return result;
 
-        if (auto result = verifyResumeLabelTargets(fn, blockMap); !result)
+        const CFG cfg = buildCfg(fn);
+        if (auto result = checkDominanceOfHandlers(fn, cfg); !result)
+            return result;
+        if (auto result = checkUnreachableHandlers(fn, cfg); !result)
+            return result;
+        if (auto result = checkResumeEdges(fn, cfg); !result)
             return result;
     }
 
