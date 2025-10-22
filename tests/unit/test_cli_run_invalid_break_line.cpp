@@ -53,6 +53,14 @@ int main()
 
     gUsageCalled = false;
     err.clear();
+    rc = invokeWithFlag("--break-src", ":42", err);
+    assert(rc != 0);
+    assert(gUsageCalled);
+    assert(err.find("invalid line number") != std::string::npos);
+    assert(err.find("--break-src") != std::string::npos);
+
+    gUsageCalled = false;
+    err.clear();
     rc = invokeWithFlag("--break", "tests/e2e/BreakSrcExact.bas:99999999999999999999", err);
     assert(rc != 0);
     assert(gUsageCalled);
