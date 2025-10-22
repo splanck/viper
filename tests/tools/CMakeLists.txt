@@ -66,6 +66,15 @@ function(viper_add_tools_tests)
   target_link_libraries(test_cli_run_invalid_max_steps PRIVATE ${VIPER_TOOLS_LIBS})
   viper_add_ctest(test_cli_run_invalid_max_steps test_cli_run_invalid_max_steps)
 
+  viper_add_test(test_cli_run_bounds_checks_unsupported
+    ${VIPER_TESTS_DIR}/unit/test_cli_run_bounds_checks_unsupported.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/ilc/cli.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/ilc/cmd_run_il.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/ilc/break_spec.cpp)
+  target_include_directories(test_cli_run_bounds_checks_unsupported PRIVATE ${CMAKE_SOURCE_DIR}/src)
+  target_link_libraries(test_cli_run_bounds_checks_unsupported PRIVATE ${VIPER_TOOLS_LIBS})
+  viper_add_ctest(test_cli_run_bounds_checks_unsupported test_cli_run_bounds_checks_unsupported)
+
   viper_add_test(test_cli_run_source_manager_overflow
     ${VIPER_TESTS_DIR}/unit/test_cli_run_source_manager_overflow.cpp
     ${CMAKE_SOURCE_DIR}/src/tools/ilc/cli.cpp
