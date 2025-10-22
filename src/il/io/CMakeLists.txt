@@ -9,11 +9,13 @@ add_library(viper_il_io STATIC
   StringEscape.cpp
   Serializer.cpp
   TypeParser.cpp
+  ../../parse/Cursor.cpp
 )
 
 target_link_libraries(viper_il_io PRIVATE viper_il_core)
 
 target_include_directories(viper_il_io PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>
+  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )

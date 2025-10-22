@@ -32,6 +32,7 @@
 #include "il/io/ParserUtil.hpp"
 #include "il/io/TypeParser.hpp"
 #include "support/diag_expected.hpp"
+#include "viper/parse/Cursor.h"
 
 #include <array>
 #include <cctype>
@@ -47,6 +48,8 @@ namespace il::io::detail
 
 using il::core::Param;
 using il::core::Type;
+using viper::parse::Cursor;
+using viper::parse::SourcePos;
 
 namespace
 {
@@ -90,8 +93,7 @@ bool tokenIs(TokenKind tok, TokenKind kind)
     return tok == kind;
 }
 
-template <class T = void>
-Expected<T> expect(ParseState &state, DiagKind kind, std::string message)
+template <class T = void> Expected<T> expect(ParseState &state, DiagKind kind, std::string message)
 {
     unsigned line = state.ctx.lineNo;
     if (kind == DiagKind::PendingBranch && !state.ctx.pendingBrs.empty())
@@ -101,133 +103,31 @@ Expected<T> expect(ParseState &state, DiagKind kind, std::string message)
     return Expected<T>{makeError({}, oss.str())};
 }
 
-#define TRY(expr)                   \
-    do                              \
-    {                               \
-        auto _result = (expr);      \
-        if (!_result)               \
-            return _result;         \
+#define TRY(expr)                                                                                  \
+    do                                                                                             \
+    {                                                                                              \
+        auto _result = (expr);                                                                     \
+        if (!_result)                                                                              \
+            return _result;                                                                        \
     } while (false)
-
-struct Cursor
-{
-    std::string_view text;
-    size_t index = 0;
-    unsigned lineNo = 0;
-    size_t gapBegin = 0;
-    size_t gapEnd = 0;
-    bool hasGap = false;
-
-    Cursor(std::string_view src, unsigned line) : text(src), lineNo(line) {}
-
-    void skipWs()
-    {
-        while (index < text.size() && std::isspace(static_cast<unsigned char>(text[index])))
-            ++index;
-    }
-
-    char peek() const
-    {
-        return index < text.size() ? text[index] : '\0';
-    }
-
-    bool consume(char c)
-    {
-        if (peek() != c)
-            return false;
-        ++index;
-        return true;
-    }
-
-    bool consumeIf(char c)
-    {
-        if (peek() == c)
-        {
-            ++index;
-            return true;
-        }
-        return false;
-    }
-
-    bool consumeIdent(std::string_view &out)
-    {
-        skipWs();
-        if (index >= text.size())
-            return false;
-        auto isStart = [](unsigned char ch) {
-            return std::isalpha(ch) || ch == '_' || ch == '.';
-        };
-        auto isBody = [](unsigned char ch) {
-            return std::isalnum(ch) || ch == '_' || ch == '.' || ch == '$';
-        };
-        unsigned char first = static_cast<unsigned char>(text[index]);
-        if (!isStart(first))
-            return false;
-        size_t begin = index++;
-        while (index < text.size() && isBody(static_cast<unsigned char>(text[index])))
-            ++index;
-        out = text.substr(begin, index - begin);
-        return true;
-    }
-
-    bool consumeKeyword(std::string_view kw)
-    {
-        skipWs();
-        if (!kw.empty() && text.substr(index, kw.size()) == kw)
-        {
-            index += kw.size();
-            return true;
-        }
-        return false;
-    }
-
-    bool atEnd() const
-    {
-        return index >= text.size();
-    }
-
-    size_t pos() const
-    {
-        return index;
-    }
-
-    void setGap(size_t begin, size_t end)
-    {
-        gapBegin = begin;
-        gapEnd = end;
-        hasGap = end > begin;
-    }
-
-    std::string_view gap() const
-    {
-        if (!hasGap)
-            return {};
-        return text.substr(gapBegin, gapEnd - gapBegin);
-    }
-
-    void clearGap()
-    {
-        hasGap = false;
-    }
-};
-
-struct SourcePos
-{
-    unsigned line = 0;
-    size_t column = 0;
-};
 
 using Error = Diag;
 
 SourcePos cursorPos(const Cursor &cur)
 {
-    return SourcePos{cur.lineNo, cur.pos()};
+    return cur.pos();
 }
 
 struct Prototype
 {
     Type retType;
     std::vector<Param> params;
+};
+
+struct PrototypeParseResult
+{
+    Prototype proto;
+    std::string_view callingConvSegment;
 };
 
 enum class CallingConv
@@ -262,14 +162,8 @@ struct ParserSnapshot
     bool active = true;
 
     explicit ParserSnapshot(ParserState &st)
-        : state(st),
-          curFn(st.curFn),
-          curBB(st.curBB),
-          curLoc(st.curLoc),
-          tempIds(st.tempIds),
-          nextTemp(st.nextTemp),
-          blockParamCount(st.blockParamCount),
-          pendingBrs(st.pendingBrs),
+        : state(st), curFn(st.curFn), curBB(st.curBB), curLoc(st.curLoc), tempIds(st.tempIds),
+          nextTemp(st.nextTemp), blockParamCount(st.blockParamCount), pendingBrs(st.pendingBrs),
           functionCount(st.m.functions.size())
     {
     }
@@ -310,8 +204,7 @@ std::string_view trimView(std::string_view text)
     return text.substr(begin, end - begin);
 }
 
-template <class T>
-Expected<T> lineError(unsigned lineNo, const std::string &message)
+template <class T> Expected<T> lineError(unsigned lineNo, const std::string &message)
 {
     std::ostringstream oss;
     oss << "line " << lineNo << ": " << message;
@@ -379,34 +272,42 @@ Expected<std::string> parseSymbolName(Cursor &cur)
 {
     cur.skipWs();
     if (cur.atEnd())
-        return Expected<std::string>{makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
+        return Expected<std::string>{
+            makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
 
-    size_t at = cur.text.find('@', cur.pos());
+    const std::size_t searchStart = cur.offset();
+    size_t at = cur.view().find('@', searchStart);
     if (at == std::string_view::npos)
-        return Expected<std::string>{makeSyntaxError(cursorPos(cur), "malformed function header", {})};
-    size_t lp = cur.text.find('(', at);
+        return Expected<std::string>{
+            makeSyntaxError(cursorPos(cur), "malformed function header", {})};
+    size_t lp = cur.view().find('(', at);
     if (lp == std::string_view::npos)
-        return Expected<std::string>{makeSyntaxError(cursorPos(cur), "malformed function header", {})};
-    std::string name = trim(std::string(cur.text.substr(at + 1, lp - at - 1)));
+        return Expected<std::string>{
+            makeSyntaxError(cursorPos(cur), "malformed function header", {})};
+    std::string name = trim(std::string(cur.view().substr(at + 1, lp - at - 1)));
     if (name.empty())
-        return Expected<std::string>{makeSyntaxError(cursorPos(cur), "malformed function header", {})};
-    cur.index = lp;
+        return Expected<std::string>{
+            makeSyntaxError(cursorPos(cur), "malformed function header", {})};
+    cur.seek(lp);
     return name;
 }
 
-Expected<Prototype> parsePrototype(Cursor &cur)
+Expected<PrototypeParseResult> parsePrototype(Cursor &cur)
 {
     cur.skipWs();
     if (cur.atEnd())
-        return Expected<Prototype>{makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
+        return Expected<PrototypeParseResult>{
+            makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
     if (!cur.consume('('))
-        return Expected<Prototype>{makeSyntaxError(cursorPos(cur), "malformed function header", {})};
-    size_t paramsBegin = cur.pos();
-    size_t rp = cur.text.find(')', paramsBegin);
+        return Expected<PrototypeParseResult>{
+            makeSyntaxError(cursorPos(cur), "malformed function header", {})};
+    size_t paramsBegin = cur.offset();
+    size_t rp = cur.view().find(')', paramsBegin);
     if (rp == std::string_view::npos)
-        return Expected<Prototype>{makeSyntaxError(cursorPos(cur), "malformed function header", {})};
-    std::string paramsStr(cur.text.substr(paramsBegin, rp - paramsBegin));
-    cur.index = rp + 1;
+        return Expected<PrototypeParseResult>{
+            makeSyntaxError(cursorPos(cur), "malformed function header", {})};
+    std::string paramsStr(cur.view().substr(paramsBegin, rp - paramsBegin));
+    cur.seek(rp + 1);
 
     std::vector<Param> params;
     if (!paramsStr.empty())
@@ -415,49 +316,54 @@ Expected<Prototype> parsePrototype(Cursor &cur)
         std::string piece;
         while (std::getline(pss, piece, ','))
         {
-            auto param = parseParameterToken(piece, cur.lineNo);
+            auto param = parseParameterToken(piece, cur.line());
             if (!param)
-                return Expected<Prototype>{param.error()};
+                return Expected<PrototypeParseResult>{param.error()};
             params.push_back(std::move(param.value()));
         }
     }
 
-    size_t gapStart = cur.pos();
-    size_t arrow = cur.text.find("->", gapStart);
+    size_t gapStart = cur.offset();
+    size_t arrow = cur.view().find("->", gapStart);
     if (arrow == std::string_view::npos)
     {
-        if (trimView(cur.text.substr(gapStart)).empty())
-            return Expected<Prototype>{makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
-        return Expected<Prototype>{makeSyntaxError(cursorPos(cur), "malformed function header", {})};
+        if (trimView(cur.view().substr(gapStart)).empty())
+            return Expected<PrototypeParseResult>{
+                makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
+        return Expected<PrototypeParseResult>{
+            makeSyntaxError(cursorPos(cur), "malformed function header", {})};
     }
-    cur.setGap(gapStart, arrow);
-    cur.index = arrow + 2;
+    std::string_view ccSegment = cur.view().substr(gapStart, arrow - gapStart);
+    cur.seek(arrow + 2);
     cur.skipWs();
     if (cur.atEnd())
-        return Expected<Prototype>{makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
+        return Expected<PrototypeParseResult>{
+            makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
 
-    size_t brace = cur.text.find('{', cur.pos());
+    size_t brace = cur.view().find('{', cur.offset());
     if (brace == std::string_view::npos)
     {
-        if (trimView(cur.text.substr(cur.pos())).empty())
-            return Expected<Prototype>{makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
-        return Expected<Prototype>{makeSyntaxError(cursorPos(cur), "malformed function header", {})};
+        if (trimView(cur.view().substr(cur.offset())).empty())
+            return Expected<PrototypeParseResult>{
+                makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
+        return Expected<PrototypeParseResult>{
+            makeSyntaxError(cursorPos(cur), "malformed function header", {})};
     }
-    std::string retRaw(cur.text.substr(cur.pos(), brace - cur.pos()));
+    std::string retRaw(cur.view().substr(cur.offset(), brace - cur.offset()));
     std::string retStr = trim(retRaw);
     bool retOk = true;
     Type retTy = parseType(retStr, &retOk);
     if (!retOk)
-        return Expected<Prototype>{makeSyntaxError(cursorPos(cur), "unknown return type", {})};
+        return Expected<PrototypeParseResult>{
+            makeSyntaxError(cursorPos(cur), "unknown return type", {})};
 
-    cur.index = brace;
-    return Prototype{retTy, std::move(params)};
+    cur.seek(brace);
+    return PrototypeParseResult{Prototype{retTy, std::move(params)}, ccSegment};
 }
 
-Expected<CallingConv> parseCallingConv(Cursor &cur)
+Expected<CallingConv> parseCallingConv(std::string_view segment)
 {
-    std::string_view segment = trimView(cur.gap());
-    cur.clearGap();
+    segment = trimView(segment);
     if (segment.empty())
         return CallingConv::Default;
 
@@ -662,7 +568,7 @@ Expected<void> parseBody(ParseState &state)
 Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
 {
     ParserSnapshot snapshot{st};
-    Cursor cursor{header, st.lineNo};
+    Cursor cursor{header, SourcePos{st.lineNo, 0}};
 
     FunctionHeader fh;
     {
@@ -675,10 +581,9 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
         auto proto = parsePrototype(cursor);
         if (!proto)
             return Expected<void>{proto.error()};
-        fh.proto = std::move(proto.value());
-    }
-    {
-        auto cc = parseCallingConv(cursor);
+        auto parsedProto = std::move(proto.value());
+        fh.proto = std::move(parsedProto.proto);
+        auto cc = parseCallingConv(parsedProto.callingConvSegment);
         if (!cc)
             return Expected<void>{cc.error()};
         fh.cc = cc.value();
@@ -844,8 +749,7 @@ Expected<void> parseBlockHeader(const std::string &header, ParserState &st)
             if (!localNames.insert(nm).second)
             {
                 std::ostringstream oss;
-                oss << "line " << st.lineNo
-                    << ": duplicate parameter name '%" << nm << "'";
+                oss << "line " << st.lineNo << ": duplicate parameter name '%" << nm << "'";
                 return Expected<void>{makeError({}, oss.str())};
             }
             bparams.push_back({nm, ty, st.nextTemp});
