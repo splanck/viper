@@ -565,193 +565,259 @@ TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
 {
     using NumericType = TypeRules::NumericType;
 
-    auto classifyBinary = [&](const BinaryExpr &bin) -> NumericType
+    class Classifier final : public ExprVisitor
     {
-        if (!bin.lhs || !bin.rhs)
-            return NumericType::Long;
-        NumericType lhsTy = classifyNumericType(*bin.lhs);
-        NumericType rhsTy = classifyNumericType(*bin.rhs);
-        switch (bin.op)
-        {
-            case BinaryExpr::Op::Add:
-                return TypeRules::resultType('+', lhsTy, rhsTy);
-            case BinaryExpr::Op::Sub:
-                return TypeRules::resultType('-', lhsTy, rhsTy);
-            case BinaryExpr::Op::Mul:
-                return TypeRules::resultType('*', lhsTy, rhsTy);
-            case BinaryExpr::Op::Div:
-                return TypeRules::resultType('/', lhsTy, rhsTy);
-            case BinaryExpr::Op::IDiv:
-                return TypeRules::resultType('\\', lhsTy, rhsTy);
-            case BinaryExpr::Op::Mod:
-                return TypeRules::resultType("MOD", lhsTy, rhsTy);
-            case BinaryExpr::Op::Pow:
-                return TypeRules::resultType('^', lhsTy, rhsTy);
-            default:
-                return NumericType::Long;
-        }
-    };
+    public:
+        explicit Classifier(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
 
-    if (const auto *i = dynamic_cast<const IntExpr *>(&expr))
-    {
-        switch (i->suffix)
+        NumericType result() const noexcept { return result_; }
+
+        void visit(const IntExpr &i) override
         {
-            case IntExpr::Suffix::Integer:
-                return NumericType::Integer;
-            case IntExpr::Suffix::Long:
-                return NumericType::Long;
-            case IntExpr::Suffix::None:
-                break;
-        }
-        const long long value = i->value;
-        if (value >= std::numeric_limits<int16_t>::min() &&
-            value <= std::numeric_limits<int16_t>::max())
-            return NumericType::Integer;
-        return NumericType::Long;
-    }
-    if (dynamic_cast<const BoolExpr *>(&expr))
-        return NumericType::Integer;
-    if (dynamic_cast<const StringExpr *>(&expr))
-        return NumericType::Double;
-    if (const auto *f = dynamic_cast<const FloatExpr *>(&expr))
-    {
-        if (f->suffix == FloatExpr::Suffix::Single)
-            return NumericType::Single;
-        return NumericType::Double;
-    }
-    if (const auto *var = dynamic_cast<const VarExpr *>(&expr))
-    {
-        if (const auto *info = findSymbol(var->name))
-        {
-            if (info->hasType)
+            switch (i.suffix)
             {
-                if (info->type == AstType::F64)
+                case IntExpr::Suffix::Integer:
+                    result_ = NumericType::Integer;
+                    return;
+                case IntExpr::Suffix::Long:
+                    result_ = NumericType::Long;
+                    return;
+                case IntExpr::Suffix::None:
+                    break;
+            }
+
+            const long long value = i.value;
+            if (value >= std::numeric_limits<int16_t>::min() &&
+                value <= std::numeric_limits<int16_t>::max())
+            {
+                result_ = NumericType::Integer;
+            }
+            else
+            {
+                result_ = NumericType::Long;
+            }
+        }
+
+        void visit(const FloatExpr &f) override
+        {
+            result_ = (f.suffix == FloatExpr::Suffix::Single) ? NumericType::Single
+                                                              : NumericType::Double;
+        }
+
+        void visit(const StringExpr &) override { result_ = NumericType::Double; }
+
+        void visit(const BoolExpr &) override { result_ = NumericType::Integer; }
+
+        void visit(const VarExpr &var) override
+        {
+            if (const auto *info = lowerer_.findSymbol(var.name))
+            {
+                if (info->hasType)
                 {
-                    if (!var->name.empty())
+                    if (info->type == AstType::F64)
                     {
-                        switch (var->name.back())
+                        if (!var.name.empty())
                         {
-                            case '!':
-                                return NumericType::Single;
-                            case '#':
-                                return NumericType::Double;
+                            switch (var.name.back())
+                            {
+                                case '!':
+                                    result_ = NumericType::Single;
+                                    return;
+                                case '#':
+                                    result_ = NumericType::Double;
+                                    return;
+                                default:
+                                    break;
+                            }
+                        }
+                        result_ = NumericType::Double;
+                        return;
+                    }
+                    if (!var.name.empty())
+                    {
+                        switch (var.name.back())
+                        {
+                            case '%':
+                                result_ = NumericType::Integer;
+                                return;
+                            case '&':
+                                result_ = NumericType::Long;
+                                return;
                             default:
                                 break;
                         }
                     }
-                    return NumericType::Double;
+                    result_ = NumericType::Long;
+                    return;
                 }
-                if (!var->name.empty())
+            }
+
+            if (!var.name.empty())
+            {
+                switch (var.name.back())
                 {
-                    switch (var->name.back())
-                    {
-                        case '%':
-                            return NumericType::Integer;
-                        case '&':
-                            return NumericType::Long;
-                        default:
-                            break;
-                    }
+                    case '!':
+                        result_ = NumericType::Single;
+                        return;
+                    case '#':
+                        result_ = NumericType::Double;
+                        return;
+                    case '%':
+                        result_ = NumericType::Integer;
+                        return;
+                    case '&':
+                        result_ = NumericType::Long;
+                        return;
+                    default:
+                        break;
                 }
-                return NumericType::Long;
             }
+
+            AstType astTy = inferAstTypeFromName(var.name);
+            result_ = (astTy == AstType::F64) ? NumericType::Double : NumericType::Long;
         }
-        if (!var->name.empty())
+
+        void visit(const ArrayExpr &) override { result_ = NumericType::Long; }
+
+        void visit(const UnaryExpr &un) override
         {
-            switch (var->name.back())
+            if (!un.expr)
             {
-                case '!':
-                    return NumericType::Single;
-                case '#':
-                    return NumericType::Double;
-                case '%':
-                    return NumericType::Integer;
-                case '&':
-                    return NumericType::Long;
-                default:
-                    break;
+                result_ = NumericType::Long;
+                return;
             }
+            result_ = lowerer_.classifyNumericType(*un.expr);
         }
-        AstType astTy = inferAstTypeFromName(var->name);
-        return (astTy == AstType::F64) ? NumericType::Double : NumericType::Long;
-    }
-    if (const auto *arr = dynamic_cast<const ArrayExpr *>(&expr))
-    {
-        (void)arr;
-        return NumericType::Long;
-    }
-    if (const auto *lb = dynamic_cast<const LBoundExpr *>(&expr))
-    {
-        (void)lb;
-        return NumericType::Long;
-    }
-    if (const auto *ub = dynamic_cast<const UBoundExpr *>(&expr))
-    {
-        (void)ub;
-        return NumericType::Long;
-    }
-    if (const auto *un = dynamic_cast<const UnaryExpr *>(&expr))
-    {
-        if (!un->expr)
-            return NumericType::Long;
-        NumericType operand = classifyNumericType(*un->expr);
-        return operand;
-    }
-    if (const auto *bin = dynamic_cast<const BinaryExpr *>(&expr))
-        return classifyBinary(*bin);
-    if (const auto *call = dynamic_cast<const BuiltinCallExpr *>(&expr))
-    {
-        switch (call->builtin)
+
+        void visit(const BinaryExpr &bin) override
         {
-            case BuiltinCallExpr::Builtin::Cint:
-                return NumericType::Integer;
-            case BuiltinCallExpr::Builtin::Clng:
-                return NumericType::Long;
-            case BuiltinCallExpr::Builtin::Csng:
-                return NumericType::Single;
-            case BuiltinCallExpr::Builtin::Cdbl:
-                return NumericType::Double;
-            case BuiltinCallExpr::Builtin::Int:
-            case BuiltinCallExpr::Builtin::Fix:
-            case BuiltinCallExpr::Builtin::Round:
-            case BuiltinCallExpr::Builtin::Sqr:
-            case BuiltinCallExpr::Builtin::Abs:
-            case BuiltinCallExpr::Builtin::Floor:
-            case BuiltinCallExpr::Builtin::Ceil:
-            case BuiltinCallExpr::Builtin::Sin:
-            case BuiltinCallExpr::Builtin::Cos:
-            case BuiltinCallExpr::Builtin::Pow:
-            case BuiltinCallExpr::Builtin::Rnd:
-            case BuiltinCallExpr::Builtin::Val:
-                return NumericType::Double;
-            case BuiltinCallExpr::Builtin::Str:
-                if (!call->args.empty() && call->args[0])
-                    return classifyNumericType(*call->args[0]);
-                return NumericType::Long;
-            default:
-                return NumericType::Double;
-        }
-    }
-    if (const auto *callExpr = dynamic_cast<const CallExpr *>(&expr))
-    {
-        if (const auto *sig = findProcSignature(callExpr->callee))
-        {
-            switch (sig->retType.kind)
+            if (!bin.lhs || !bin.rhs)
             {
-                case Type::Kind::I16:
-                    return NumericType::Integer;
-                case Type::Kind::I32:
-                case Type::Kind::I64:
-                    return NumericType::Long;
-                case Type::Kind::F64:
-                    return NumericType::Double;
+                result_ = NumericType::Long;
+                return;
+            }
+
+            NumericType lhsTy = lowerer_.classifyNumericType(*bin.lhs);
+            NumericType rhsTy = lowerer_.classifyNumericType(*bin.rhs);
+
+            switch (bin.op)
+            {
+                case BinaryExpr::Op::Add:
+                    result_ = TypeRules::resultType('+', lhsTy, rhsTy);
+                    return;
+                case BinaryExpr::Op::Sub:
+                    result_ = TypeRules::resultType('-', lhsTy, rhsTy);
+                    return;
+                case BinaryExpr::Op::Mul:
+                    result_ = TypeRules::resultType('*', lhsTy, rhsTy);
+                    return;
+                case BinaryExpr::Op::Div:
+                    result_ = TypeRules::resultType('/', lhsTy, rhsTy);
+                    return;
+                case BinaryExpr::Op::IDiv:
+                    result_ = TypeRules::resultType('\\', lhsTy, rhsTy);
+                    return;
+                case BinaryExpr::Op::Mod:
+                    result_ = TypeRules::resultType("MOD", lhsTy, rhsTy);
+                    return;
+                case BinaryExpr::Op::Pow:
+                    result_ = TypeRules::resultType('^', lhsTy, rhsTy);
+                    return;
                 default:
-                    break;
+                    result_ = NumericType::Long;
+                    return;
             }
         }
-        return NumericType::Long;
-    }
-    return NumericType::Long;
+
+        void visit(const BuiltinCallExpr &call) override
+        {
+            switch (call.builtin)
+            {
+                case BuiltinCallExpr::Builtin::Cint:
+                    result_ = NumericType::Integer;
+                    return;
+                case BuiltinCallExpr::Builtin::Clng:
+                    result_ = NumericType::Long;
+                    return;
+                case BuiltinCallExpr::Builtin::Csng:
+                    result_ = NumericType::Single;
+                    return;
+                case BuiltinCallExpr::Builtin::Cdbl:
+                    result_ = NumericType::Double;
+                    return;
+                case BuiltinCallExpr::Builtin::Int:
+                case BuiltinCallExpr::Builtin::Fix:
+                case BuiltinCallExpr::Builtin::Round:
+                case BuiltinCallExpr::Builtin::Sqr:
+                case BuiltinCallExpr::Builtin::Abs:
+                case BuiltinCallExpr::Builtin::Floor:
+                case BuiltinCallExpr::Builtin::Ceil:
+                case BuiltinCallExpr::Builtin::Sin:
+                case BuiltinCallExpr::Builtin::Cos:
+                case BuiltinCallExpr::Builtin::Pow:
+                case BuiltinCallExpr::Builtin::Rnd:
+                case BuiltinCallExpr::Builtin::Val:
+                    result_ = NumericType::Double;
+                    return;
+                case BuiltinCallExpr::Builtin::Str:
+                    if (!call.args.empty() && call.args[0])
+                    {
+                        result_ = lowerer_.classifyNumericType(*call.args[0]);
+                    }
+                    else
+                    {
+                        result_ = NumericType::Long;
+                    }
+                    return;
+                default:
+                    result_ = NumericType::Double;
+                    return;
+            }
+        }
+
+        void visit(const LBoundExpr &) override { result_ = NumericType::Long; }
+
+        void visit(const UBoundExpr &) override { result_ = NumericType::Long; }
+
+        void visit(const CallExpr &callExpr) override
+        {
+            if (const auto *sig = lowerer_.findProcSignature(callExpr.callee))
+            {
+                switch (sig->retType.kind)
+                {
+                    case Type::Kind::I16:
+                        result_ = NumericType::Integer;
+                        return;
+                    case Type::Kind::I32:
+                    case Type::Kind::I64:
+                        result_ = NumericType::Long;
+                        return;
+                    case Type::Kind::F64:
+                        result_ = NumericType::Double;
+                        return;
+                    default:
+                        break;
+                }
+            }
+            result_ = NumericType::Long;
+        }
+
+        void visit(const NewExpr &) override { result_ = NumericType::Long; }
+
+        void visit(const MeExpr &) override { result_ = NumericType::Long; }
+
+        void visit(const MemberAccessExpr &) override { result_ = NumericType::Long; }
+
+        void visit(const MethodCallExpr &) override { result_ = NumericType::Long; }
+
+    private:
+        Lowerer &lowerer_;
+        NumericType result_{NumericType::Long};
+    };
+
+    Classifier classifier(*this);
+    expr.accept(classifier);
+    return classifier.result();
 }
 
 unsigned Lowerer::nextTempId()
