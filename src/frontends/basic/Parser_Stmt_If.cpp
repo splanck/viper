@@ -1,11 +1,17 @@
-// File: src/frontends/basic/Parser_Stmt_If.cpp
-// Purpose: Implements IF statement parsing for the BASIC parser.
-// Key invariants: Ensures IF/ELSEIF/ELSE blocks are properly terminated and
-//                 branch bodies honor StatementSequencer boundaries.
-// Ownership/Lifetime: Parser produces AST nodes owned by caller-provided
-//                     unique_ptr wrappers.
-// License: MIT; see LICENSE for details.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements parsing of BASIC IF/ELSEIF/ELSE constructs.  The helpers in this
+// file coordinate statement sequencing, handle multi-branch termination, and
+// produce the structured AST representation consumed by semantic analysis and
+// lowering.  Keeping the logic out-of-line isolates the complex branch
+// collection workflow from the core parser header.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
@@ -17,6 +23,17 @@
 namespace il::frontends::basic
 {
 
+/// @brief Parse the leading `IF ... THEN` clause.
+///
+/// @details The parser records the line number and source location, consumes
+///          the `IF` token, parses the condition expression, and requires the
+///          `THEN` keyword.  The resulting @ref IfParseState owns the partially
+///          constructed AST node and is handed to @ref parseIfBlock for branch
+///          collection.
+///
+/// @param line Line number computed by the statement sequencer.
+/// @return Parser state capturing the header information and AST under
+///         construction.
 Parser::IfParseState Parser::parseIfHeader(int line)
 {
     IfParseState state;
@@ -32,6 +49,16 @@ Parser::IfParseState Parser::parseIfHeader(int line)
     return state;
 }
 
+/// @brief Collect the branches associated with an IF statement.
+///
+/// @details Using @ref StatementSequencer, the helper repeatedly gathers
+///          statements until it encounters a terminating keyword (`ELSEIF`,
+///          `ELSE`, or `END IF`).  Each branch body is wrapped in a statement
+///          list node via `buildBranchList`, and ELSEIF arms are recorded with
+///          their own conditions.  The routine continues until the IF structure
+///          is properly closed, populating the AST stored in @p state.
+///
+/// @param state Parser state initialised by @ref parseIfHeader.
 void Parser::parseIfBlock(IfParseState &state)
 {
     using parser_helpers::buildBranchList;

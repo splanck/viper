@@ -1,11 +1,18 @@
-// File: src/frontends/basic/Parser_Stmt_Select.cpp
-// Purpose: Implements SELECT CASE parsing routines for the BASIC parser.
-// Key invariants: Validates CASE and CASE ELSE structure while maintaining
-//                 selector range bookkeeping.
-// Ownership/Lifetime: Parser generates AST nodes owned by the caller via
-//                     unique_ptr wrappers.
-// License: MIT; see LICENSE for details.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements parsing for BASIC SELECT CASE statements.  The routines collect
+// the selector expression, orchestrate branch parsing via the statement
+// sequencer, and enforce the structural invariants required by semantic
+// analysis (including CASE ELSE uniqueness and range bookkeeping).  Housing the
+// logic here keeps the parser header concise while documenting the control-flow
+// specific behaviour.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
@@ -21,6 +28,15 @@
 namespace il::frontends::basic
 {
 
+/// @brief Parse the leading `SELECT CASE` header.
+///
+/// @details The parser consumes the `SELECT CASE` directive, parses the
+///          selector expression, and records the source range spanned by the
+///          header.  Diagnostics for malformed selectors are routed through the
+///          callback stored in the returned state so subsequent helpers can
+///          surface errors consistently.
+///
+/// @return Parser state containing the partially constructed SELECT CASE AST.
 Parser::SelectParseState Parser::parseSelectHeader()
 {
     SelectParseState state;
@@ -56,12 +72,31 @@ Parser::SelectParseState Parser::parseSelectHeader()
     return state;
 }
 
+/// @brief Parse and record a `CASE ELSE` arm if present.
+///
+/// @details Delegates to @ref parser_helpers::consumeCaseElse, updating the
+///          parse state to reflect whether the directive was handled.  When a
+///          CASE ELSE is discovered the helper marks the state so subsequent
+///          arms are rejected and the branch bodies can be parsed correctly.
+///
+/// @param state Parser state tracking SELECT CASE progress.
+/// @return True when a CASE ELSE clause was consumed.
 bool Parser::parseSelectElse(SelectParseState &state)
 {
     auto result = consumeCaseElse(*state.stmt, state.sawCaseArm, state.sawCaseElse, state.diagnose);
     return result.handled;
 }
 
+/// @brief Inspect the next directive within a SELECT CASE statement.
+///
+/// @details The helper first checks for `END SELECT` using
+///          @ref parser_helpers::handleEndSelect.  If no terminator is found it
+///          attempts to parse a CASE ELSE clause.  The returned action informs
+///          the caller whether to continue parsing arms, terminate the statement,
+///          or skip further work for the current iteration.
+///
+/// @param state Parser state tracking SELECT CASE progress.
+/// @return Dispatch action describing the next parsing step.
 Parser::SelectDispatchAction Parser::dispatchSelectDirective(SelectParseState &state)
 {
     auto endResult = handleEndSelect(*state.stmt, state.sawCaseArm, state.expectEndSelect, state.diagnose);
@@ -74,6 +109,16 @@ Parser::SelectDispatchAction Parser::dispatchSelectDirective(SelectParseState &s
     return SelectDispatchAction::None;
 }
 
+/// @brief Parse all CASE arms for the active SELECT CASE statement.
+///
+/// @details The loop skips blank lines, dispatches control directives via
+///          @ref dispatchSelectDirective, and otherwise parses CASE arms using
+///          @ref parseCaseArm.  Each arm's source range is recorded for
+///          diagnostics, and the statement terminates when an `END SELECT` is
+///          encountered or the file ends.  Unexpected tokens trigger diagnostics
+///          via the callback stored in @p state.
+///
+/// @param state Parser state populated by @ref parseSelectHeader.
 void Parser::parseSelectArms(SelectParseState &state)
 {
     while (!at(TokenKind::EndOfFile))

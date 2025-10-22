@@ -1,11 +1,19 @@
-// File: src/frontends/basic/LowerStmt_IO.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Implements BASIC statement lowering helpers focused on terminal and
-//          file I/O operations.
-// Key invariants: Helpers reuse the active Lowerer context, ensuring channels
-//                 are normalized and runtime error checks remain consistent.
-// Ownership/Lifetime: Operates on Lowerer without owning AST or IL modules.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements lowering utilities for BASIC I/O statements.  The helpers cover
+// OPEN/CLOSE/SEEK, PRINT/WRITE, INPUT, and the channel-oriented variants.  Each
+// routine translates high-level AST nodes into IL while coordinating runtime
+// helper selection, temporary allocation, and structured error reporting.  The
+// file lives out-of-line so the header can remain lightweight while the
+// implementation centralises the nuanced runtime plumbing and diagnostic
+// messaging shared across statements.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lowerer.hpp"
 
@@ -16,6 +24,16 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
+/// @brief Lower an OPEN statement into runtime helper calls.
+///
+/// @details The method validates that both path and channel expressions are
+///          present before lowering them to IL values.  The channel is coerced
+///          to a signed 32-bit integer, the mode enum is narrowed to match the
+///          runtime ABI, and the `rt_open_err_vstr` helper is invoked.  Any
+///          resulting error code is routed through @ref emitRuntimeErrCheck so
+///          traps present consistent diagnostics.
+///
+/// @param stmt AST node describing the BASIC OPEN statement.
 void Lowerer::lowerOpen(const OpenStmt &stmt)
 {
     if (!stmt.pathExpr || !stmt.channelExpr)
@@ -39,6 +57,14 @@ void Lowerer::lowerOpen(const OpenStmt &stmt)
     });
 }
 
+/// @brief Lower a CLOSE statement that releases an open channel.
+///
+/// @details The helper lowers and normalises the channel expression, then calls
+///          `rt_close_err` to request runtime cleanup.  Non-zero error codes are
+///          converted into traps through @ref emitRuntimeErrCheck, matching the
+///          behaviour of other I/O statements.
+///
+/// @param stmt AST node representing the CLOSE statement.
 void Lowerer::lowerClose(const CloseStmt &stmt)
 {
     if (!stmt.channelExpr)
@@ -55,6 +81,14 @@ void Lowerer::lowerClose(const CloseStmt &stmt)
     });
 }
 
+/// @brief Lower a SEEK statement that repositions a file handle.
+///
+/// @details Both channel and position expressions are lowered before coercing
+///          the channel to 32 bits and the position to 64 bits.  The helper then
+///          calls `rt_seek_ch_err` and routes the result through
+///          @ref emitRuntimeErrCheck to surface runtime failures consistently.
+///
+/// @param stmt AST node describing the SEEK operation.
 void Lowerer::lowerSeek(const SeekStmt &stmt)
 {
     if (!stmt.channelExpr || !stmt.positionExpr)
@@ -76,6 +110,18 @@ void Lowerer::lowerSeek(const SeekStmt &stmt)
     });
 }
 
+/// @brief Lower a PRINT statement targeting the default output stream.
+///
+/// @details The routine walks each print item, lowering the underlying
+///          expression and dispatching to the appropriate runtime helper:
+///          strings call `rt_print_str`, floating-point values call
+///          `rt_print_f64`, and other numeric types are coerced to integers
+///          before invoking `rt_print_i64`.  Comma items emit a space literal
+///          while semicolons suppress newline emission.  Unless the final item is
+///          a semicolon the helper appends an explicit newline literal to mirror
+///          the BASIC runtime.
+///
+/// @param stmt AST node capturing the PRINT statement contents.
 void Lowerer::lowerPrint(const PrintStmt &stmt)
 {
     for (const auto &it : stmt.items)
@@ -123,6 +169,19 @@ void Lowerer::lowerPrint(const PrintStmt &stmt)
     }
 }
 
+/// @brief Convert a PRINT # argument into a heap-allocated string.
+///
+/// @details String operands optionally receive CSV quoting via
+///          `rt_csv_quote_alloc`.  Numeric operands are classified using
+///          @ref TypeRules and coerced to the runtime width required by the
+///          conversion helper (narrowing integers or widening to double as
+///          appropriate).  The selected runtime feature flag is returned to
+///          allow callers to request extern declarations lazily.
+///
+/// @param expr          Source expression being converted.
+/// @param value         Lowered value paired with its IL type.
+/// @param quoteStrings  Whether to CSV-quote string operands.
+/// @return String value ready for emission along with an optional feature flag.
 Lowerer::PrintChArgString Lowerer::lowerPrintChArgToString(const Expr &expr,
                                                            RVal value,
                                                            bool quoteStrings)
@@ -178,6 +237,16 @@ Lowerer::PrintChArgString Lowerer::lowerPrintChArgToString(const Expr &expr,
     return {text, feature};
 }
 
+/// @brief Build the comma-separated record used by WRITE # statements.
+///
+/// @details Arguments are lowered to strings, requesting any runtime helpers
+///          necessary for conversions.  The method concatenates arguments using
+///          `rt_concat`, inserting comma separators between fields.  When the
+///          statement carries no arguments, the routine falls back to an empty
+///          string literal so the runtime still receives a valid payload.
+///
+/// @param stmt Statement currently being lowered.
+/// @return String value containing the rendered record.
 Value Lowerer::buildPrintChWriteRecord(const PrintChStmt &stmt)
 {
     Value record{};
@@ -216,6 +285,17 @@ Value Lowerer::buildPrintChWriteRecord(const PrintChStmt &stmt)
     return record;
 }
 
+/// @brief Lower PRINT # and WRITE # statements for file channels.
+///
+/// @details After normalising the channel expression, the helper either emits
+///          newline-only writes for empty argument lists or forwards actual
+///          arguments through @ref lowerPrintChArgToString.  WRITE mode
+///          consolidates arguments into a single CSV record, whereas PRINT mode
+///          streams each argument individually.  Runtime calls are wrapped with
+///          @ref emitRuntimeErrCheck to surface failures through traps with
+///          consistent messaging.
+///
+/// @param stmt AST node representing the PRINT # or WRITE # statement.
 void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
 {
     if (!stmt.channelExpr)
@@ -269,6 +349,16 @@ void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
     }
 }
 
+/// @brief Lower an INPUT statement that consumes user input from stdin.
+///
+/// @details Optional prompt strings are emitted before reading the line via
+///          `rt_input_line`.  Single-variable statements store the raw line,
+///          while multi-variable statements split the line into CSV fields via
+///          `rt_split_fields`.  Fields are converted to the destination slot's
+///          type, emitting reference-count management calls for string targets
+///          and marking implicit conversions for numeric mismatches.
+///
+/// @param stmt AST node describing the INPUT statement.
 void Lowerer::lowerInput(const InputStmt &stmt)
 {
     curLoc = stmt.loc;
@@ -348,6 +438,16 @@ void Lowerer::lowerInput(const InputStmt &stmt)
     }
 }
 
+/// @brief Lower an INPUT # statement that parses a single value from a channel.
+///
+/// @details The routine allocates temporary storage for the runtime output,
+///          invokes `rt_line_input_ch_err`, and checks for errors.  The returned
+///          string is split into one field, which is then converted into the
+///          destination variable's type using dedicated parsing helpers.  Parsed
+///          strings are released after use to honour runtime ownership
+///          conventions.
+///
+/// @param stmt AST node describing the INPUT # statement.
 void Lowerer::lowerInputCh(const InputChStmt &stmt)
 {
     curLoc = stmt.loc;
@@ -424,6 +524,16 @@ void Lowerer::lowerInputCh(const InputChStmt &stmt)
     emitCall("rt_str_release_maybe", {field});
 }
 
+/// @brief Lower a LINE INPUT # statement that reads an entire line verbatim.
+///
+/// @details The helper lowers the channel expression, invokes
+///          `rt_line_input_ch_err`, and traps on failure.  Successful reads store
+///          the resulting string into the target variable when it is a simple
+///          variable expression; other forms were rejected during semantic
+///          analysis.  No further parsing occurs so the line content is preserved
+///          exactly as delivered by the runtime.
+///
+/// @param stmt AST node representing the LINE INPUT # statement.
 void Lowerer::lowerLineInputCh(const LineInputChStmt &stmt)
 {
     if (!stmt.channelExpr || !stmt.targetVar)
