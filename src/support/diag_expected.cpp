@@ -135,13 +135,21 @@ Diag makeError(SourceLoc loc, std::string msg)
 /// @param sm Optional source manager for mapping file identifiers to paths.
 void printDiag(const Diag &diag, std::ostream &os, const SourceManager *sm)
 {
-    if (diag.loc.isValid() && sm)
+    if (sm && diag.loc.file_id != 0)
     {
         auto path = sm->getPath(diag.loc.file_id);
         if (!path.empty())
         {
-            os << path << ":" << diag.loc.line << ":" << diag.loc.column
-               << ": ";
+            os << path;
+            if (diag.loc.line != 0)
+            {
+                os << ':' << diag.loc.line;
+                if (diag.loc.column != 0)
+                {
+                    os << ':' << diag.loc.column;
+                }
+            }
+            os << ": ";
         }
     }
     os << detail::diagSeverityToString(diag.severity) << ": " << diag.message

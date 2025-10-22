@@ -163,7 +163,7 @@ StmtPtr Parser::parseStatement(int line)
     {
         std::string ident = tokLexeme;
         auto nextTok = peek(1);
-        auto diagLoc = nextTok.loc.isValid() ? nextTok.loc : tokLoc;
+        auto diagLoc = (nextTok.loc.hasLine() ? nextTok.loc : tokLoc);
         uint32_t length = 1;
         if (emitter_)
         {

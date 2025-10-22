@@ -525,7 +525,7 @@ bool VM::prepareTrap(VmError &error)
             const auto &record = fr.ehStack.back();
             fr.activeError = error;
             const uint64_t ipValue = static_cast<uint64_t>(faultIp);
-            const int32_t lineValue = faultLoc.isValid() ? static_cast<int32_t>(faultLoc.line) : -1;
+            const int32_t lineValue = faultLoc.hasLine() ? static_cast<int32_t>(faultLoc.line) : -1;
             fr.activeError.ip = ipValue;
             fr.activeError.line = lineValue;
             error.ip = ipValue;

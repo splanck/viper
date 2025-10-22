@@ -1,1 +1,1 @@
-[BREAK] src=BreakSrcCoalesce.bas:1 fn=@main blk=entry ip=#0
+[BREAK] src=BreakSrcCoalesce.bas:1:1 fn=@main blk=entry ip=#0
