@@ -186,6 +186,11 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
             {
                 std::string file = spec.substr(0, pos);
                 const std::string lineToken = spec.substr(pos + 1);
+                if (file.empty())
+                {
+                    reportInvalidLineNumber(lineToken, spec, "--break-src");
+                    return false;
+                }
                 int line = 0;
                 if (!tryParseLineNumber(lineToken, line))
                 {
