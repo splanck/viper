@@ -19,10 +19,116 @@
 
 #include "vm/RuntimeBridge.hpp"
 
+#include "il/core/Function.hpp"
+#include "il/core/Type.hpp"
+
+#include <algorithm>
+#include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace il::vm::detail::control
 {
+namespace
+{
+std::optional<il::core::Type> findValueType(const il::core::Function &fn, unsigned id)
+{
+    for (const auto &param : fn.params)
+    {
+        if (param.id == id)
+            return param.type;
+    }
+
+    for (const auto &block : fn.blocks)
+    {
+        for (const auto &param : block.params)
+        {
+            if (param.id == id)
+                return param.type;
+        }
+
+        for (const auto &instr : block.instructions)
+        {
+            if (instr.result && *instr.result == id)
+                return instr.type;
+        }
+    }
+
+    return std::nullopt;
+}
+
+bool slotsEqual(const Slot &lhs, const Slot &rhs, il::core::Type::Kind kind)
+{
+    using il::core::Type;
+    switch (kind)
+    {
+        case Type::Kind::I1:
+        case Type::Kind::I16:
+        case Type::Kind::I32:
+        case Type::Kind::I64:
+            return lhs.i64 == rhs.i64;
+        case Type::Kind::F64:
+            return lhs.f64 == rhs.f64;
+        case Type::Kind::Ptr:
+        case Type::Kind::Error:
+        case Type::Kind::ResumeTok:
+            return lhs.ptr == rhs.ptr;
+        case Type::Kind::Str:
+            return lhs.str == rhs.str;
+        case Type::Kind::Void:
+            return true;
+    }
+    return true;
+}
+
+bool pointerIntoStack(const Frame &fr, const Slot &slot)
+{
+    const auto *begin = fr.stack.data();
+    const auto *end = begin + fr.stack.size();
+    const auto *ptr = static_cast<const uint8_t *>(slot.ptr);
+    return ptr && ptr >= begin && ptr < end;
+}
+
+void syncMutatedRuntimeArgs(Frame &fr,
+                            const il::core::Instr &in,
+                            const std::vector<Slot> &before,
+                            const std::vector<Slot> &after)
+{
+    if (!fr.func)
+        return;
+
+    const size_t operandCount = std::min({in.operands.size(), before.size(), after.size()});
+    for (size_t index = 0; index < operandCount; ++index)
+    {
+        const auto &operand = in.operands[index];
+        const Slot &original = before[index];
+        const Slot &current = after[index];
+
+        if (operand.kind != il::core::Value::Kind::Temp)
+            continue;
+
+        auto valueType = findValueType(*fr.func, operand.id);
+        if (!valueType)
+            continue;
+
+        if (valueType->kind == il::core::Type::Kind::Ptr && original.ptr != current.ptr &&
+            pointerIntoStack(fr, original))
+        {
+            *reinterpret_cast<void **>(original.ptr) = current.ptr;
+            continue;
+        }
+
+        if (!slotsEqual(original, current, valueType->kind))
+        {
+            il::core::Instr pseudo{};
+            pseudo.result = operand.id;
+            pseudo.type = *valueType;
+            ops::storeResult(fr, pseudo, current);
+        }
+    }
+}
+} // namespace
+
 /// @brief Finalise a function by propagating the return value and signalling exit.
 ///
 /// @details Return instructions optionally carry a single operand that is
@@ -108,9 +214,12 @@ VM::ExecResult handleCall(VM &vm,
     }
     else
     {
+        const std::vector<Slot> preservedArgs = args;
         const std::string functionName = fr.func ? fr.func->name : std::string{};
         const std::string blockLabel = bb ? bb->label : std::string{};
-        out = RuntimeBridge::call(VMAccess::runtimeContext(vm), in.callee, args, in.loc, functionName, blockLabel);
+        out = RuntimeBridge::call(
+            VMAccess::runtimeContext(vm), in.callee, args, in.loc, functionName, blockLabel);
+        syncMutatedRuntimeArgs(fr, in, preservedArgs, args);
     }
     ops::storeResult(fr, in, out);
     return {};
