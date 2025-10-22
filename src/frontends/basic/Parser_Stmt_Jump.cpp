@@ -1,11 +1,26 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/frontends/basic/Parser_Stmt_Jump.cpp
+// Purpose: Parse BASIC control-transfer statements (GOTO, GOSUB, RETURN).
+// Key invariants: Each parser consumes tokens in lock-step with the lexer,
+//                 produces heap-allocated AST nodes, and records source
+//                 locations for later diagnostics.
+// Ownership/Lifetime: Returned AST nodes use std::unique_ptr semantics; the
+//                     parser retains no ownership once the node is returned to
+//                     the caller.
+// Links: docs/basic-language.md#statements, docs/codemap.md
+//
 //===----------------------------------------------------------------------===//
 
 /// @file
 /// @brief Implements jump-oriented BASIC statement parsers.
 /// @details Provides the parsing routines for GOTO, GOSUB, and RETURN statements
-/// and returns heap-allocated AST nodes describing the parsed constructs.
+///          and returns heap-allocated AST nodes describing the parsed constructs.
 
 #include "frontends/basic/Parser.hpp"
 
@@ -15,9 +30,12 @@ namespace il::frontends::basic
 {
 
 /// @brief Parse a `GOTO <line>` statement.
-/// @details Consumes the `GOTO` keyword followed by a numeric token representing
-/// the destination line number, constructing a @c GotoStmt with the captured
-/// metadata.
+/// @details The routine expects the current token stream to be positioned at the
+///          `GOTO` keyword.  It consumes the keyword, parses the trailing line
+///          number token, and materialises a @c GotoStmt containing the numeric
+///          destination together with the originating source location.  Errors
+///          (such as a missing number) are signalled through @ref expect which
+///          emits diagnostics before unwinding via longjmp-style error handling.
 /// @return Owned AST node describing the goto statement.
 StmtPtr Parser::parseGotoStatement()
 {
@@ -32,8 +50,12 @@ StmtPtr Parser::parseGotoStatement()
 }
 
 /// @brief Parse a `GOSUB <line>` statement.
-/// @details Reads the line number after the @c GOSUB keyword and materialises a
-/// @c GosubStmt describing both the call site location and continuation target.
+/// @details After consuming the `GOSUB` keyword the parser requires a numeric
+///          literal that identifies the subroutine entry line.  The resulting
+///          @c GosubStmt records both the call-site location and the numeric
+///          return address so later passes can emit the appropriate frame setup.
+///          Input validation mirrors @ref parseGotoStatement to guarantee
+///          consistent diagnostics.
 /// @return Owned AST node describing the gosub statement.
 StmtPtr Parser::parseGosubStatement()
 {
@@ -48,9 +70,13 @@ StmtPtr Parser::parseGosubStatement()
 }
 
 /// @brief Parse a `RETURN [expr]` statement.
-/// @details Captures an optional trailing expression that produces the return
-/// value when present. Parsing stops at end-of-line delimiters so chained
-/// statements remain intact.
+/// @details Consumes the `RETURN` keyword, captures the current source
+///          location, and optionally parses a trailing expression that supplies
+///          a return value when present.  Parsing halts at statement separators
+///          (`:`, end-of-line, or end-of-file) so chained statements are left in
+///          the token buffer for subsequent parsers.  The resulting @c ReturnStmt
+///          carries either a populated expression or a null pointer to indicate
+///          a void-style return.
 /// @return Owned AST node describing the return statement.
 StmtPtr Parser::parseReturnStatement()
 {
