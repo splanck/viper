@@ -155,6 +155,28 @@ class Parser
     using SelectDiagnoseFn =
         std::function<void(il::support::SourceLoc, uint32_t, std::string_view, std::string_view)>;
 
+    struct SelectParseState
+    {
+        std::unique_ptr<SelectCaseStmt> stmt;
+        SelectDiagnoseFn diagnose;
+        il::support::SourceLoc selectLoc;
+        bool sawCaseArm = false;
+        bool sawCaseElse = false;
+        bool expectEndSelect = true;
+    };
+
+    enum class SelectDispatchAction
+    {
+        None,
+        Continue,
+        Terminate,
+    };
+
+    SelectParseState parseSelectHeader();
+    void parseSelectArms(SelectParseState &state);
+    bool parseSelectElse(SelectParseState &state);
+    SelectDispatchAction dispatchSelectDirective(SelectParseState &state);
+
     /// @brief Collect a CASE/CASE ELSE body until the next arm or END SELECT.
     /// @return Aggregated statements and terminator metadata.
     SelectBodyResult collectSelectBody();
@@ -189,6 +211,17 @@ class Parser
     /// @return Statements contained within CASE ELSE and the location of the
     ///         terminating end-of-line.
     std::pair<std::vector<StmtPtr>, il::support::SourceLoc> parseCaseElseBody();
+
+    struct IfParseState
+    {
+        std::unique_ptr<IfStmt> stmt;
+        int line = 0;
+        il::support::SourceLoc loc;
+    };
+
+    IfParseState parseIfHeader(int line);
+    void parseIfBlock(IfParseState &state);
+    void parseElseChain(IfParseState &state);
 
     /// @brief Parse a DO ... LOOP statement.
     /// @return DO statement node with optional tests.
