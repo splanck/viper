@@ -1,11 +1,14 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Provides the default instruction verification strategies for the IL verifier.
-/// @details Supplies specialised handlers for control-flow instructions alongside a
-/// catch-all strategy that delegates to the general instruction checker.
+//
+// @file
+// @brief Provide the default instruction verification strategies for the IL verifier.
+// @details Supplies specialised handlers for control-flow instructions alongside
+//          a catch-all strategy that delegates to the general instruction checker.
 
 #include "il/verify/InstructionStrategies.hpp"
 
@@ -36,6 +39,11 @@ namespace
 {
 
 /// @brief Strategy that handles control-flow instructions with dedicated checks.
+///
+/// @details Control-flow opcodes need bespoke validation to check successor
+///          arguments and condition semantics.  This strategy dispatches to the
+///          appropriate helper functions and ignores maps that are irrelevant
+///          for these opcodes.
 class ControlFlowStrategy final : public FunctionVerifier::InstructionStrategy
 {
   public:
@@ -90,6 +98,10 @@ class ControlFlowStrategy final : public FunctionVerifier::InstructionStrategy
 };
 
 /// @brief Strategy that delegates generic instruction checking to the common verifier.
+///
+/// @details Acts as the fallback for all opcodes not claimed by specialised
+///          strategies.  Verification is forwarded to the shared instruction
+///          checker that enforces operand/result typing rules.
 class DefaultInstructionStrategy final : public FunctionVerifier::InstructionStrategy
 {
   public:
@@ -130,6 +142,11 @@ class DefaultInstructionStrategy final : public FunctionVerifier::InstructionStr
 } // namespace
 
 /// @brief Construct the default set of instruction verification strategies.
+///
+/// @details The resulting vector orders strategies from most specific to most
+///          general so that control-flow opcodes are handled before the
+///          catch-all strategy claims the remainder.
+///
 /// @return Vector containing control-flow and generic verification strategies.
 std::vector<std::unique_ptr<FunctionVerifier::InstructionStrategy>>
 makeDefaultInstructionStrategies()
