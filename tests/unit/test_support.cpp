@@ -2,6 +2,7 @@
 #include "support/diag_expected.hpp"
 #include "support/diagnostics.hpp"
 #include "support/result.hpp"
+#include "support/source_location.hpp"
 #include "support/source_manager.hpp"
 #include "support/string_interner.hpp"
 #include <cstdint>
@@ -43,6 +44,20 @@ int main()
     de.printAll(oss, &sm);
     assert(oss.str().find("error: oops") != std::string::npos);
     assert(oss.str().find("test:1:1") != std::string::npos);
+
+    il::support::SourceLoc partial{loc.file_id, 2, 0};
+    assert(!partial.isValid());
+    il::support::SourceRange mixed{loc, partial};
+    assert(!mixed.isValid());
+    il::support::Diag partialDiag{il::support::Severity::Error,
+                                  "partial coordinates",
+                                  partial};
+    std::ostringstream partialStream;
+    il::support::printDiag(partialDiag, partialStream, &sm);
+    const std::string partialText = partialStream.str();
+    assert(partialText.find("test:2: error: partial coordinates")
+           != std::string::npos);
+    assert(partialText.find("test:2:0") == std::string::npos);
 
     // Captured string views must remain valid after subsequent insertions.
     il::support::SourceManager viewSm;

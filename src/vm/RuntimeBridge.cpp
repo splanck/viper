@@ -374,7 +374,7 @@ void RuntimeBridge::trap(TrapKind kind,
     ctx.vm = VM::activeInstance();
     if (ctx.vm)
     {
-        if (loc.isValid())
+        if (loc.hasFile())
         {
             ctx.vm->currentContext.loc = loc;
             ctx.vm->runtimeContext.loc = loc;
@@ -398,7 +398,7 @@ void RuntimeBridge::trap(TrapKind kind,
         ctx.error.kind = kind;
         ctx.error.code = 0;
         ctx.error.ip = 0;
-        ctx.error.line = loc.isValid() ? static_cast<int32_t>(loc.line) : -1;
+        ctx.error.line = loc.hasLine() ? static_cast<int32_t>(loc.line) : -1;
 
         ctx.frame.function = fn.empty() ? std::string("<unknown>") : fn;
         ctx.frame.ip = 0;

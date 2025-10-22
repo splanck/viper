@@ -206,22 +206,27 @@ void TraceSink::onStep(const il::core::Instr &in, const Frame &fr)
     {
         std::string locStr = "<unknown>";
         std::string srcLine;
-        if (cfg.sm && in.loc.isValid())
+        if (cfg.sm && in.loc.hasFile())
         {
             std::string path(cfg.sm->getPath(in.loc.file_id));
             std::filesystem::path p(path);
-            locStr = p.filename().string() + ':' + std::to_string(in.loc.line) + ':' +
-                     std::to_string(in.loc.column);
+            locStr = p.filename().string();
+            if (in.loc.hasLine())
+            {
+                locStr += ':' + std::to_string(in.loc.line);
+                if (in.loc.hasColumn())
+                    locStr += ':' + std::to_string(in.loc.column);
+            }
             if (!path.empty())
             {
                 const auto *entry = getOrLoadFile(in.loc.file_id, std::move(path));
-                if (entry && in.loc.line > 0 &&
+                if (entry && in.loc.hasLine() &&
                     static_cast<size_t>(in.loc.line) <= entry->lines.size())
                 {
                     const std::string &line = entry->lines[in.loc.line - 1];
                     if (!line.empty())
                     {
-                        if (in.loc.column > 0 && in.loc.column - 1 < line.size())
+                        if (in.loc.hasColumn() && in.loc.column - 1 < line.size())
                             srcLine = line.substr(in.loc.column - 1);
                         else
                             srcLine = line;

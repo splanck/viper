@@ -403,13 +403,13 @@ StmtPtr StatementSequencer::parseStatementLine()
     il::support::SourceLoc firstLoc{};
     for (const auto &stmt : stmts)
     {
-        if (stmt && stmt->loc.isValid())
+        if (stmt && stmt->loc.hasFile() && stmt->loc.hasLine())
         {
             firstLoc = stmt->loc;
             break;
         }
     }
-    if (!firstLoc.isValid())
+    if (!firstLoc.hasLine())
     {
         firstLoc = stmtLineLoc;
     }

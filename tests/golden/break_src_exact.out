@@ -1,1 +1,1 @@
-[BREAK] src=BreakSrcExact.bas:1 fn=@main blk=entry ip=#0
+[BREAK] src=BreakSrcExact.bas:1:1 fn=@main blk=entry ip=#0
