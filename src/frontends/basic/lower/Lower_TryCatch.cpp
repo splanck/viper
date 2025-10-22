@@ -1,5 +1,20 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/frontends/basic/lower/Lower_TryCatch.cpp
+// Purpose: Lower BASIC ON ERROR and RESUME constructs by manipulating the
+//          lowerer's exception-handling stack.
+// Key invariants: Handler metadata in the procedure context reflects the most
+//                 recent ON ERROR directive; resume tokens are only materialised
+//                 when the target handler remains live.
+// Ownership/Lifetime: Routines borrow the @ref Lowerer state and update handler
+//                     caches owned by @ref ProcedureContext.
+// Links: docs/codemap.md
+//
 //===----------------------------------------------------------------------===//
 
 /// @file
@@ -15,6 +30,13 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
+/// @brief Lower an @c ON @c ERROR directive to push or clear runtime handlers.
+///
+/// @details Establishes the correct handler block when @p stmt targets a line
+///          number and clears state when @c ON @c ERROR @c GOTO @c 0 is
+///          encountered.  The helper ensures the procedure context records the
+///          active handler index and line for use by subsequent statements.
+/// @param stmt AST node describing the ON ERROR directive.
 void Lowerer::lowerOnErrorGoto(const OnErrorGoto &stmt)
 {
     ProcedureContext &ctx = context();
@@ -42,6 +64,13 @@ void Lowerer::lowerOnErrorGoto(const OnErrorGoto &stmt)
     ctx.errorHandlers().setActiveLine(stmt.target);
 }
 
+/// @brief Lower a RESUME statement that unwinds to a stored handler.
+///
+/// @details Finds the appropriate handler block (either by explicit line or the
+///          currently active handler), materialises a resume token, and appends
+///          the matching opcode to the handler block.  The helper bails out if no
+///          live handler exists or if the block already terminated.
+/// @param stmt AST node describing the RESUME statement.
 void Lowerer::lowerResume(const Resume &stmt)
 {
     ProcedureContext &ctx = context();
