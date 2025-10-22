@@ -323,19 +323,37 @@ class Parser
     /// @return Parsed expression node.
     ExprPtr parseExpression(int min_prec = 0);
 
-    /// @brief Parse a unary expression.
+    /// @brief Parse unary operators and delegate to primaries when absent.
     /// @return Parsed unary expression node.
-    ExprPtr parseUnaryExpression();
+    ExprPtr parseUnary();
 
-    /// @brief Parse the right-hand side of an infix expression.
-    /// @param left Already parsed left-hand side.
+    /// @brief Parse infix operators with precedence handling.
     /// @param min_prec Minimum precedence to enforce.
-    /// @return Combined expression node.
-    ExprPtr parseInfixRhs(ExprPtr left, int min_prec);
+    /// @return Parsed expression node.
+    ExprPtr parseBinary(int min_prec);
 
     /// @brief Parse a primary expression such as literals or parenthesized forms.
     /// @return Parsed primary expression node.
     ExprPtr parsePrimary();
+
+    /// @brief Parse postfix member access or method invocation chains.
+    /// @param expr Expression to extend.
+    /// @return Expression with postfix operations applied.
+    ExprPtr parsePostfix(ExprPtr expr);
+
+    /// @brief Parse a NEW expression allocating a class instance.
+    /// @return Newly allocated expression node.
+    ExprPtr parseNewExpression();
+
+    /// @brief Parse LBOUND/UBOUND intrinsics.
+    /// @param keyword Token identifying which bound to read.
+    /// @return Parsed intrinsic expression node.
+    ExprPtr parseBoundIntrinsic(TokenKind keyword);
+
+    /// @brief Parse LOF/EOF/LOC file channel intrinsics.
+    /// @param keyword Token identifying the intrinsic.
+    /// @return Parsed intrinsic expression node.
+    ExprPtr parseChannelIntrinsic(TokenKind keyword);
 
     /// @brief Parse a numeric literal expression.
     /// @return Parsed number expression node.
