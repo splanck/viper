@@ -319,27 +319,44 @@ std::pair<std::vector<StmtPtr>, il::support::SourceLoc> Parser::parseCaseElseBod
     return {std::move(body), elseEol.loc};
 }
 
-/// @brief Parse a single `CASE` arm, including labels and body.
-///
-/// @details Handles relational forms (`CASE IS`), string literals, numeric
-///          literals, and ranges while emitting diagnostics for malformed
-///          entries.  The function then collects the arm body statements using
-///          @ref collectSelectBody and records the source range.
-///
-/// @return Parsed case arm with labels, ranges, and body statements populated.
-CaseArm Parser::parseCaseArm()
+struct Parser::Cursor
 {
-    Token caseTok = expect(TokenKind::KeywordCase);
-    CaseArm arm;
-    arm.range.begin = caseTok.loc;
+    struct Relation
+    {
+        CaseArm::CaseRel::Op op{CaseArm::CaseRel::Op::EQ};
+        int sign = 1;
+        Token valueTok;
+    };
 
-    bool haveEntry = false;
-    while (true)
+    Token caseTok;
+    Token caseEol;
+    std::vector<Token> stringLabels;
+    std::vector<Token> numericLabels;
+    std::vector<std::pair<Token, Token>> ranges;
+    std::vector<Relation> relations;
+};
+
+struct Parser::CaseArmSyntax
+{
+    Cursor *cursor = nullptr;
+};
+
+il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &cursor)
+{
+    cursor.stringLabels.clear();
+    cursor.numericLabels.clear();
+    cursor.ranges.clear();
+    cursor.relations.clear();
+
+    cursor.caseTok = expect(TokenKind::KeywordCase);
+
+    bool bail = false;
+    while (!bail)
     {
         if (at(TokenKind::Identifier) && peek().lexeme == "IS")
         {
-            consume(); // IS
-            CaseArm::CaseRel rel;
+            consume();
+            Cursor::Relation rel;
             Token opTok = peek();
             switch (opTok.kind)
             {
@@ -375,15 +392,18 @@ CaseArm Parser::parseCaseArm()
                             std::fprintf(stderr, "CASE IS requires a relational operator\n");
                         }
                     }
-                    goto exitCaseEntries;
+                    bail = true;
+                    break;
                 }
             }
-            consume();
+            if (bail)
+                break;
 
-            int sign = 1;
+            consume();
+            rel.sign = 1;
             if (at(TokenKind::Plus) || at(TokenKind::Minus))
             {
-                sign = at(TokenKind::Minus) ? -1 : 1;
+                rel.sign = at(TokenKind::Minus) ? -1 : 1;
                 consume();
             }
 
@@ -405,46 +425,20 @@ CaseArm Parser::parseCaseArm()
                         std::fprintf(stderr, "SELECT CASE labels must be integer literals\n");
                     }
                 }
-                goto exitCaseEntries;
+                bail = true;
+                break;
             }
 
-            Token valueTok = consume();
-            long long value = std::strtoll(valueTok.lexeme.c_str(), nullptr, 10);
-            rel.rhs = static_cast<int64_t>(sign * value);
-            arm.rels.push_back(rel);
-            haveEntry = true;
+            rel.valueTok = consume();
+            cursor.relations.push_back(std::move(rel));
         }
         else if (at(TokenKind::String))
         {
-            const Token stringTok = peek();
-            std::string decoded;
-            std::string err;
-            if (!il::io::decodeEscapedString(stringTok.lexeme, decoded, &err))
-            {
-                if (emitter_)
-                {
-                    emitter_->emit(il::support::Severity::Error,
-                                   "B0003",
-                                   stringTok.loc,
-                                   static_cast<uint32_t>(stringTok.lexeme.size()),
-                                   err);
-                }
-                else
-                {
-                    std::fprintf(stderr, "%s\n", err.c_str());
-                }
-                decoded = stringTok.lexeme;
-            }
-            consume();
-            arm.str_labels.push_back(std::move(decoded));
-            haveEntry = true;
+            cursor.stringLabels.push_back(consume());
         }
         else if (at(TokenKind::Number))
         {
-            Token labelTok = consume();
-            long long value = std::strtoll(labelTok.lexeme.c_str(), nullptr, 10);
-            int64_t lo = static_cast<int64_t>(value);
-
+            Token loTok = consume();
             if (at(TokenKind::KeywordTo))
             {
                 consume();
@@ -466,18 +460,16 @@ CaseArm Parser::parseCaseArm()
                             std::fprintf(stderr, "SELECT CASE labels must be integer literals\n");
                         }
                     }
-                    goto exitCaseEntries;
+                    bail = true;
+                    break;
                 }
 
                 Token hiTok = consume();
-                long long hiValue = std::strtoll(hiTok.lexeme.c_str(), nullptr, 10);
-                arm.ranges.emplace_back(lo, static_cast<int64_t>(hiValue));
-                haveEntry = true;
+                cursor.ranges.emplace_back(std::move(loTok), std::move(hiTok));
             }
             else
             {
-                arm.labels.push_back(lo);
-                haveEntry = true;
+                cursor.numericLabels.push_back(std::move(loTok));
             }
         }
         else
@@ -509,27 +501,121 @@ CaseArm Parser::parseCaseArm()
         break;
     }
 
-exitCaseEntries:
+    cursor.caseEol = expect(TokenKind::EndOfLine);
 
-    if (!haveEntry)
+    CaseArmSyntax syntax;
+    syntax.cursor = &cursor;
+    return syntax;
+}
+
+il::support::Expected<CaseArm> Parser::lowerCaseArm(const CaseArmSyntax &syntax)
+{
+    const Cursor &cursor = *syntax.cursor;
+
+    CaseArm arm;
+    arm.range.begin = cursor.caseTok.loc;
+    arm.range.end = cursor.caseEol.loc;
+    arm.caseKeywordLength = static_cast<uint32_t>(cursor.caseTok.lexeme.size());
+
+    for (const Token &labelTok : cursor.numericLabels)
     {
-        if (emitter_)
-        {
-            emitter_->emit(il::support::Severity::Error,
-                           std::string(diag::ERR_Case_EmptyLabelList.id),
-                           caseTok.loc,
-                           static_cast<uint32_t>(caseTok.lexeme.size()),
-                           std::string(diag::ERR_Case_EmptyLabelList.text));
-        }
-        else
-        {
-            const std::string msg(diag::ERR_Case_EmptyLabelList.text);
-            std::fprintf(stderr, "%s\n", msg.c_str());
-        }
+        long long value = std::strtoll(labelTok.lexeme.c_str(), nullptr, 10);
+        arm.labels.push_back(static_cast<int64_t>(value));
     }
 
-    Token caseEol = expect(TokenKind::EndOfLine);
-    arm.range.end = caseEol.loc;
+    for (const auto &rangeTok : cursor.ranges)
+    {
+        long long lo = std::strtoll(rangeTok.first.lexeme.c_str(), nullptr, 10);
+        long long hi = std::strtoll(rangeTok.second.lexeme.c_str(), nullptr, 10);
+        arm.ranges.emplace_back(static_cast<int64_t>(lo), static_cast<int64_t>(hi));
+    }
+
+    for (const Cursor::Relation &relTok : cursor.relations)
+    {
+        long long value = std::strtoll(relTok.valueTok.lexeme.c_str(), nullptr, 10);
+        CaseArm::CaseRel rel;
+        rel.op = relTok.op;
+        rel.rhs = static_cast<int64_t>(relTok.sign * value);
+        arm.rels.push_back(rel);
+    }
+
+    for (const Token &stringTok : cursor.stringLabels)
+    {
+        std::string decoded;
+        std::string err;
+        if (!il::io::decodeEscapedString(stringTok.lexeme, decoded, &err))
+        {
+            if (emitter_)
+            {
+                emitter_->emit(il::support::Severity::Error,
+                               "B0003",
+                               stringTok.loc,
+                               static_cast<uint32_t>(stringTok.lexeme.size()),
+                               err);
+            }
+            else
+            {
+                std::fprintf(stderr, "%s\n", err.c_str());
+            }
+            decoded = stringTok.lexeme;
+        }
+        arm.str_labels.push_back(std::move(decoded));
+    }
+
+    return arm;
+}
+
+Parser::ErrorOr<void> Parser::validateCaseArm(const CaseArm &arm)
+{
+    if (!arm.labels.empty() || !arm.str_labels.empty() || !arm.ranges.empty() || !arm.rels.empty())
+    {
+        return ErrorOr<void>{};
+    }
+
+    if (emitter_)
+    {
+        emitter_->emit(il::support::Severity::Error,
+                       std::string(diag::ERR_Case_EmptyLabelList.id),
+                       arm.range.begin,
+                       arm.caseKeywordLength,
+                       std::string(diag::ERR_Case_EmptyLabelList.text));
+    }
+    else
+    {
+        const std::string msg(diag::ERR_Case_EmptyLabelList.text);
+        std::fprintf(stderr, "%s\n", msg.c_str());
+    }
+
+    return ErrorOr<void>{};
+}
+
+/// @brief Parse a single `CASE` arm, including labels and body.
+///
+/// @details Handles relational forms (`CASE IS`), string literals, numeric
+///          literals, and ranges while emitting diagnostics for malformed
+///          entries.  The function then collects the arm body statements using
+///          @ref collectSelectBody and records the source range.
+///
+/// @return Parsed case arm with labels, ranges, and body statements populated.
+CaseArm Parser::parseCaseArm()
+{
+    Cursor cursor;
+    auto syntax = parseCaseArmSyntax(cursor);
+    if (!syntax)
+    {
+        syncToStmtBoundary();
+        return {};
+    }
+
+    auto lowered = lowerCaseArm(syntax.value());
+    if (!lowered)
+    {
+        syncToStmtBoundary();
+        return {};
+    }
+
+    CaseArm arm = std::move(lowered.value());
+    (void)validateCaseArm(arm);
 
     auto bodyResult = collectSelectBody();
     arm.body = std::move(bodyResult.body);
