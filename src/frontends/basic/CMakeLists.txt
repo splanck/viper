@@ -47,6 +47,7 @@ target_sources(fe_basic PRIVATE
   LowerStmt_Runtime.cpp
   LowerRuntime.cpp
   LowerScan.cpp
+  lower/BuiltinCommon.cpp
   lower/BuiltinUtils.cpp
   lower/Scan_ExprTypes.cpp
   lower/Scan_RuntimeNeeds.cpp
