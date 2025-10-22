@@ -32,11 +32,14 @@
 #include "il/verify/VerifierTable.hpp"
 #include "support/diag_expected.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
+#include <utility>
 
 namespace il::verify
 {
@@ -44,6 +47,7 @@ namespace
 {
 
 using il::core::Opcode;
+using il::core::Type;
 using il::support::Expected;
 using il::support::makeError;
 using checker::checkAddrOf;
@@ -65,6 +69,451 @@ using checker::expectAllOperandType;
 using checker::fail;
 using checker::kindFromClass;
 using checker::typeFromClass;
+
+using Instruction = il::core::Instr;
+
+template <typename T> using ErrorOr = Expected<T>;
+
+using VerifierFn = ErrorOr<void> (*)(const Instruction &, const VerifyCtx &);
+
+ErrorOr<void> rejectUnchecked(const VerifyCtx &ctx, std::string_view message)
+{
+    return fail(ctx, std::string(message));
+}
+
+ErrorOr<void> checkBinaryI64ToI64(const VerifyCtx &ctx)
+{
+    return checkBinary(ctx, Type::Kind::I64, Type(Type::Kind::I64));
+}
+
+ErrorOr<void> checkBinaryI64ToI1(const VerifyCtx &ctx)
+{
+    return checkBinary(ctx, Type::Kind::I64, Type(Type::Kind::I1));
+}
+
+ErrorOr<void> checkBinaryF64ToI1(const VerifyCtx &ctx)
+{
+    return checkBinary(ctx, Type::Kind::F64, Type(Type::Kind::I1));
+}
+
+ErrorOr<void> checkUnaryI64ToF64(const VerifyCtx &ctx)
+{
+    return checkUnary(ctx, Type::Kind::I64, Type(Type::Kind::F64));
+}
+
+ErrorOr<void> checkUnaryF64ToResult(const VerifyCtx &ctx)
+{
+    return checkUnary(ctx, Type::Kind::F64, ctx.instr.type);
+}
+
+ErrorOr<void> checkUnaryI64ToResult(const VerifyCtx &ctx)
+{
+    return checkUnary(ctx, Type::Kind::I64, ctx.instr.type);
+}
+
+ErrorOr<void> verifyAlloca(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkAlloca(ctx);
+}
+
+ErrorOr<void> verifyAdd(const Instruction &, const VerifyCtx &ctx)
+{
+    return rejectUnchecked(ctx, "signed integer add must use iadd.ovf (traps on overflow)");
+}
+
+ErrorOr<void> verifySub(const Instruction &, const VerifyCtx &ctx)
+{
+    return rejectUnchecked(ctx, "signed integer sub must use isub.ovf (traps on overflow)");
+}
+
+ErrorOr<void> verifyMul(const Instruction &, const VerifyCtx &ctx)
+{
+    return rejectUnchecked(ctx, "signed integer mul must use imul.ovf (traps on overflow)");
+}
+
+ErrorOr<void> verifySDiv(const Instruction &, const VerifyCtx &ctx)
+{
+    return rejectUnchecked(ctx, "signed division must use sdiv.chk0 (traps on divide-by-zero and overflow)");
+}
+
+ErrorOr<void> verifyUDiv(const Instruction &, const VerifyCtx &ctx)
+{
+    return rejectUnchecked(ctx, "unsigned division must use udiv.chk0 (traps on divide-by-zero)");
+}
+
+ErrorOr<void> verifySRem(const Instruction &, const VerifyCtx &ctx)
+{
+    return rejectUnchecked(ctx, "signed remainder must use srem.chk0 (traps on divide-by-zero; matches BASIC MOD semantics)");
+}
+
+ErrorOr<void> verifyURem(const Instruction &, const VerifyCtx &ctx)
+{
+    return rejectUnchecked(ctx, "unsigned remainder must use urem.chk0 (traps on divide-by-zero; matches BASIC MOD semantics)");
+}
+
+ErrorOr<void> verifyUDivChk0(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryI64ToI64(ctx);
+}
+
+ErrorOr<void> verifySRemChk0(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryI64ToI64(ctx);
+}
+
+ErrorOr<void> verifyURemChk0(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryI64ToI64(ctx);
+}
+
+ErrorOr<void> verifyAnd(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryI64ToI64(ctx);
+}
+
+ErrorOr<void> verifyOr(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryI64ToI64(ctx);
+}
+
+ErrorOr<void> verifyXor(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryI64ToI64(ctx);
+}
+
+ErrorOr<void> verifyShl(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryI64ToI64(ctx);
+}
+
+ErrorOr<void> verifyLShr(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryI64ToI64(ctx);
+}
+
+ErrorOr<void> verifyAShr(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryI64ToI64(ctx);
+}
+
+ErrorOr<void> verifyICmpEq(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryI64ToI1(ctx);
+}
+
+ErrorOr<void> verifyICmpNe(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryI64ToI1(ctx);
+}
+
+ErrorOr<void> verifySCmpLT(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryI64ToI1(ctx);
+}
+
+ErrorOr<void> verifySCmpLE(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryI64ToI1(ctx);
+}
+
+ErrorOr<void> verifySCmpGT(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryI64ToI1(ctx);
+}
+
+ErrorOr<void> verifySCmpGE(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryI64ToI1(ctx);
+}
+
+ErrorOr<void> verifyUCmpLT(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryI64ToI1(ctx);
+}
+
+ErrorOr<void> verifyUCmpLE(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryI64ToI1(ctx);
+}
+
+ErrorOr<void> verifyUCmpGT(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryI64ToI1(ctx);
+}
+
+ErrorOr<void> verifyUCmpGE(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryI64ToI1(ctx);
+}
+
+ErrorOr<void> verifyFCmpEQ(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryF64ToI1(ctx);
+}
+
+ErrorOr<void> verifyFCmpNE(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryF64ToI1(ctx);
+}
+
+ErrorOr<void> verifyFCmpLT(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryF64ToI1(ctx);
+}
+
+ErrorOr<void> verifyFCmpLE(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryF64ToI1(ctx);
+}
+
+ErrorOr<void> verifyFCmpGT(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryF64ToI1(ctx);
+}
+
+ErrorOr<void> verifyFCmpGE(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkBinaryF64ToI1(ctx);
+}
+
+ErrorOr<void> verifySitofp(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkUnaryI64ToF64(ctx);
+}
+
+ErrorOr<void> verifyFptosi(const Instruction &, const VerifyCtx &ctx)
+{
+    return rejectUnchecked(ctx,
+                           "fp to integer narrowing must use cast.fp_to_si.rte.chk (rounds to nearest-even and traps on "
+                           "overflow)");
+}
+
+ErrorOr<void> verifyCastFpToSiRteChk(const Instruction &, const VerifyCtx &ctx)
+{
+    if (ctx.instr.type.kind != Type::Kind::I16 && ctx.instr.type.kind != Type::Kind::I32 &&
+        ctx.instr.type.kind != Type::Kind::I64)
+        return fail(ctx, "cast result must be i16, i32, or i64");
+    return checkUnaryF64ToResult(ctx);
+}
+
+ErrorOr<void> verifyCastFpToUiRteChk(const Instruction &, const VerifyCtx &ctx)
+{
+    if (ctx.instr.type.kind != Type::Kind::I16 && ctx.instr.type.kind != Type::Kind::I32 &&
+        ctx.instr.type.kind != Type::Kind::I64)
+        return fail(ctx, "cast result must be i16, i32, or i64");
+    return checkUnaryF64ToResult(ctx);
+}
+
+ErrorOr<void> verifyCastSiNarrowChk(const Instruction &, const VerifyCtx &ctx)
+{
+    if (ctx.instr.type.kind != Type::Kind::I16 && ctx.instr.type.kind != Type::Kind::I32)
+        return fail(ctx, "narrowing cast result must be i16 or i32");
+    return checkUnaryI64ToResult(ctx);
+}
+
+ErrorOr<void> verifyCastUiNarrowChk(const Instruction &, const VerifyCtx &ctx)
+{
+    if (ctx.instr.type.kind != Type::Kind::I16 && ctx.instr.type.kind != Type::Kind::I32)
+        return fail(ctx, "narrowing cast result must be i16 or i32");
+    return checkUnaryI64ToResult(ctx);
+}
+
+ErrorOr<void> verifyIdxChk(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkIdxChk(ctx);
+}
+
+ErrorOr<void> verifyZext1(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkUnary(ctx, Type::Kind::I1, Type(Type::Kind::I64));
+}
+
+ErrorOr<void> verifyTrunc1(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkUnary(ctx, Type::Kind::I64, Type(Type::Kind::I1));
+}
+
+ErrorOr<void> verifyGEP(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkGEP(ctx);
+}
+
+ErrorOr<void> verifyLoad(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkLoad(ctx);
+}
+
+ErrorOr<void> verifyStore(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkStore(ctx);
+}
+
+ErrorOr<void> verifyAddrOf(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkAddrOf(ctx);
+}
+
+ErrorOr<void> verifyConstStr(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkConstStr(ctx);
+}
+
+ErrorOr<void> verifyConstNull(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkConstNull(ctx);
+}
+
+ErrorOr<void> verifyCall(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkCall(ctx);
+}
+
+ErrorOr<void> verifyTrapKind(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkTrapKind(ctx);
+}
+
+ErrorOr<void> verifyTrapFromErr(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkTrapFromErr(ctx);
+}
+
+ErrorOr<void> verifyTrapErr(const Instruction &, const VerifyCtx &ctx)
+{
+    return checkTrapErr(ctx);
+}
+
+ErrorOr<void> verifyErrGetKind(const Instruction &, const VerifyCtx &ctx)
+{
+    if (auto result = expectAllOperandType(ctx, Type::Kind::Error); !result)
+        return result;
+    ctx.types.recordResult(ctx.instr, Type(Type::Kind::I32));
+    return {};
+}
+
+ErrorOr<void> verifyErrGetCode(const Instruction &, const VerifyCtx &ctx)
+{
+    if (auto result = expectAllOperandType(ctx, Type::Kind::Error); !result)
+        return result;
+    ctx.types.recordResult(ctx.instr, Type(Type::Kind::I32));
+    return {};
+}
+
+ErrorOr<void> verifyErrGetLine(const Instruction &, const VerifyCtx &ctx)
+{
+    if (auto result = expectAllOperandType(ctx, Type::Kind::Error); !result)
+        return result;
+    ctx.types.recordResult(ctx.instr, Type(Type::Kind::I32));
+    return {};
+}
+
+ErrorOr<void> verifyErrGetIp(const Instruction &, const VerifyCtx &ctx)
+{
+    if (auto result = expectAllOperandType(ctx, Type::Kind::Error); !result)
+        return result;
+    ctx.types.recordResult(ctx.instr, Type(Type::Kind::I64));
+    return {};
+}
+
+ErrorOr<void> verifyResumeSame(const Instruction &, const VerifyCtx &ctx)
+{
+    return expectAllOperandType(ctx, Type::Kind::ResumeTok);
+}
+
+ErrorOr<void> verifyResumeNext(const Instruction &, const VerifyCtx &ctx)
+{
+    return expectAllOperandType(ctx, Type::Kind::ResumeTok);
+}
+
+ErrorOr<void> verifyResumeLabel(const Instruction &, const VerifyCtx &ctx)
+{
+    return expectAllOperandType(ctx, Type::Kind::ResumeTok);
+}
+
+static const std::pair<Opcode, VerifierFn> kVerifiers[] = {
+    {Opcode::Add, &verifyAdd},
+    {Opcode::Sub, &verifySub},
+    {Opcode::Mul, &verifyMul},
+    {Opcode::SDiv, &verifySDiv},
+    {Opcode::UDiv, &verifyUDiv},
+    {Opcode::SRem, &verifySRem},
+    {Opcode::URem, &verifyURem},
+    {Opcode::UDivChk0, &verifyUDivChk0},
+    {Opcode::SRemChk0, &verifySRemChk0},
+    {Opcode::URemChk0, &verifyURemChk0},
+    {Opcode::IdxChk, &verifyIdxChk},
+    {Opcode::And, &verifyAnd},
+    {Opcode::Or, &verifyOr},
+    {Opcode::Xor, &verifyXor},
+    {Opcode::Shl, &verifyShl},
+    {Opcode::LShr, &verifyLShr},
+    {Opcode::AShr, &verifyAShr},
+    {Opcode::ICmpEq, &verifyICmpEq},
+    {Opcode::ICmpNe, &verifyICmpNe},
+    {Opcode::SCmpLT, &verifySCmpLT},
+    {Opcode::SCmpLE, &verifySCmpLE},
+    {Opcode::SCmpGT, &verifySCmpGT},
+    {Opcode::SCmpGE, &verifySCmpGE},
+    {Opcode::UCmpLT, &verifyUCmpLT},
+    {Opcode::UCmpLE, &verifyUCmpLE},
+    {Opcode::UCmpGT, &verifyUCmpGT},
+    {Opcode::UCmpGE, &verifyUCmpGE},
+    {Opcode::FCmpEQ, &verifyFCmpEQ},
+    {Opcode::FCmpNE, &verifyFCmpNE},
+    {Opcode::FCmpLT, &verifyFCmpLT},
+    {Opcode::FCmpLE, &verifyFCmpLE},
+    {Opcode::FCmpGT, &verifyFCmpGT},
+    {Opcode::FCmpGE, &verifyFCmpGE},
+    {Opcode::Sitofp, &verifySitofp},
+    {Opcode::Fptosi, &verifyFptosi},
+    {Opcode::CastFpToSiRteChk, &verifyCastFpToSiRteChk},
+    {Opcode::CastFpToUiRteChk, &verifyCastFpToUiRteChk},
+    {Opcode::CastSiNarrowChk, &verifyCastSiNarrowChk},
+    {Opcode::CastUiNarrowChk, &verifyCastUiNarrowChk},
+    {Opcode::Zext1, &verifyZext1},
+    {Opcode::Trunc1, &verifyTrunc1},
+    {Opcode::Alloca, &verifyAlloca},
+    {Opcode::GEP, &verifyGEP},
+    {Opcode::Load, &verifyLoad},
+    {Opcode::Store, &verifyStore},
+    {Opcode::AddrOf, &verifyAddrOf},
+    {Opcode::ConstStr, &verifyConstStr},
+    {Opcode::ConstNull, &verifyConstNull},
+    {Opcode::Call, &verifyCall},
+    {Opcode::TrapKind, &verifyTrapKind},
+    {Opcode::TrapFromErr, &verifyTrapFromErr},
+    {Opcode::TrapErr, &verifyTrapErr},
+    {Opcode::ErrGetKind, &verifyErrGetKind},
+    {Opcode::ErrGetCode, &verifyErrGetCode},
+    {Opcode::ErrGetIp, &verifyErrGetIp},
+    {Opcode::ErrGetLine, &verifyErrGetLine},
+    {Opcode::ResumeSame, &verifyResumeSame},
+    {Opcode::ResumeNext, &verifyResumeNext},
+    {Opcode::ResumeLabel, &verifyResumeLabel},
+};
+
+VerifierFn lookupVerifier(Opcode opcode)
+{
+    const auto begin = std::begin(kVerifiers);
+    const auto end = std::end(kVerifiers);
+    const auto it = std::lower_bound(
+        begin, end, opcode, [](const auto &entry, Opcode value) {
+            return static_cast<std::underlying_type_t<Opcode>>(entry.first) <
+                   static_cast<std::underlying_type_t<Opcode>>(value);
+        });
+    if (it != end && it->first == opcode)
+        return it->second;
+    return nullptr;
+}
+
+bool hasLegacyArithmeticProps(const std::optional<OpProps> &props)
+{
+    if (!props)
+        return false;
+    if (props->arity == 0 || props->arity > 2)
+        return false;
+    return kindFromClass(props->operands).has_value() && typeFromClass(props->result).has_value();
+}
 
 /// @brief Validate operands and results using canonical opcode metadata.
 /// @details Runs the operand-count, operand-type, and result-type checkers in
@@ -234,143 +683,18 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
 /// @return Empty success or a diagnostic when verification fails.
 Expected<void> verifyInstruction_impl(const VerifyCtx &ctx)
 {
-    const auto rejectUnchecked = [&](std::string_view message) {
-        return fail(ctx, std::string(message));
-    };
-
     const auto props = lookup(ctx.instr.op);
-    const bool hasLegacyArithmeticProps = props && props->arity > 0 && props->arity <= 2 &&
-                                          kindFromClass(props->operands).has_value() &&
-                                          typeFromClass(props->result).has_value();
-
-    if (!hasLegacyArithmeticProps)
-    {
-        const auto &info = il::core::getOpcodeInfo(ctx.instr.op);
-        if (auto result = checkWithInfo(ctx, info); !result)
-            return result;
-    }
-
-    if (hasLegacyArithmeticProps)
+    if (hasLegacyArithmeticProps(props))
         return checkWithProps(ctx, *props);
 
-    switch (ctx.instr.op)
-    {
-        case Opcode::Alloca:
-            return checkAlloca(ctx);
-        case Opcode::Add:
-            return rejectUnchecked("signed integer add must use iadd.ovf (traps on overflow)");
-        case Opcode::Sub:
-            return rejectUnchecked("signed integer sub must use isub.ovf (traps on overflow)");
-        case Opcode::Mul:
-            return rejectUnchecked("signed integer mul must use imul.ovf (traps on overflow)");
-        case Opcode::SDiv:
-            return rejectUnchecked("signed division must use sdiv.chk0 (traps on divide-by-zero and overflow)");
-        case Opcode::UDiv:
-            return rejectUnchecked("unsigned division must use udiv.chk0 (traps on divide-by-zero)");
-        case Opcode::SRem:
-            return rejectUnchecked("signed remainder must use srem.chk0 (traps on divide-by-zero; matches BASIC MOD semantics)");
-        case Opcode::URem:
-            return rejectUnchecked("unsigned remainder must use urem.chk0 (traps on divide-by-zero; matches BASIC MOD semantics)");
-        case Opcode::UDivChk0:
-        case Opcode::SRemChk0:
-        case Opcode::URemChk0:
-        case Opcode::And:
-        case Opcode::Or:
-        case Opcode::Xor:
-        case Opcode::Shl:
-        case Opcode::LShr:
-        case Opcode::AShr:
-            return checkBinary(ctx, il::core::Type::Kind::I64, il::core::Type(il::core::Type::Kind::I64));
-        case Opcode::ICmpEq:
-        case Opcode::ICmpNe:
-        case Opcode::SCmpLT:
-        case Opcode::SCmpLE:
-        case Opcode::SCmpGT:
-        case Opcode::SCmpGE:
-        case Opcode::UCmpLT:
-        case Opcode::UCmpLE:
-        case Opcode::UCmpGT:
-        case Opcode::UCmpGE:
-            return checkBinary(ctx, il::core::Type::Kind::I64, il::core::Type(il::core::Type::Kind::I1));
-        case Opcode::FCmpEQ:
-        case Opcode::FCmpNE:
-        case Opcode::FCmpLT:
-        case Opcode::FCmpLE:
-        case Opcode::FCmpGT:
-        case Opcode::FCmpGE:
-            return checkBinary(ctx, il::core::Type::Kind::F64, il::core::Type(il::core::Type::Kind::I1));
-        case Opcode::Sitofp:
-            return checkUnary(ctx, il::core::Type::Kind::I64, il::core::Type(il::core::Type::Kind::F64));
-        case Opcode::Fptosi:
-            return rejectUnchecked("fp to integer narrowing must use cast.fp_to_si.rte.chk (rounds to nearest-even and traps on overflow)");
-        case Opcode::CastFpToSiRteChk:
-        case Opcode::CastFpToUiRteChk:
-        {
-            if (ctx.instr.type.kind != il::core::Type::Kind::I16 && ctx.instr.type.kind != il::core::Type::Kind::I32 &&
-                ctx.instr.type.kind != il::core::Type::Kind::I64)
-                return fail(ctx, "cast result must be i16, i32, or i64");
-            return checkUnary(ctx, il::core::Type::Kind::F64, ctx.instr.type);
-        }
-        case Opcode::CastSiNarrowChk:
-        case Opcode::CastUiNarrowChk:
-        {
-            if (ctx.instr.type.kind != il::core::Type::Kind::I16 && ctx.instr.type.kind != il::core::Type::Kind::I32)
-                return fail(ctx, "narrowing cast result must be i16 or i32");
-            return checkUnary(ctx, il::core::Type::Kind::I64, ctx.instr.type);
-        }
-        case Opcode::IdxChk:
-            return checkIdxChk(ctx);
-        case Opcode::Zext1:
-            return checkUnary(ctx, il::core::Type::Kind::I1, il::core::Type(il::core::Type::Kind::I64));
-        case Opcode::Trunc1:
-            return checkUnary(ctx, il::core::Type::Kind::I64, il::core::Type(il::core::Type::Kind::I1));
-        case Opcode::GEP:
-            return checkGEP(ctx);
-        case Opcode::Load:
-            return checkLoad(ctx);
-        case Opcode::Store:
-            return checkStore(ctx);
-        case Opcode::AddrOf:
-            return checkAddrOf(ctx);
-        case Opcode::ConstStr:
-            return checkConstStr(ctx);
-        case Opcode::ConstNull:
-            return checkConstNull(ctx);
-        case Opcode::Call:
-            return checkCall(ctx);
-        case Opcode::TrapKind:
-            return checkTrapKind(ctx);
-        case Opcode::TrapFromErr:
-            return checkTrapFromErr(ctx);
-        case Opcode::TrapErr:
-            return checkTrapErr(ctx);
-        case Opcode::ErrGetKind:
-        case Opcode::ErrGetCode:
-        case Opcode::ErrGetLine:
-        {
-            if (auto result = expectAllOperandType(ctx, il::core::Type::Kind::Error); !result)
-                return result;
-            ctx.types.recordResult(ctx.instr, il::core::Type(il::core::Type::Kind::I32));
-            return {};
-        }
-        case Opcode::ErrGetIp:
-        {
-            if (auto result = expectAllOperandType(ctx, il::core::Type::Kind::Error); !result)
-                return result;
-            ctx.types.recordResult(ctx.instr, il::core::Type(il::core::Type::Kind::I64));
-            return {};
-        }
-        case Opcode::ResumeSame:
-        case Opcode::ResumeNext:
-        case Opcode::ResumeLabel:
-            return expectAllOperandType(ctx, il::core::Type::Kind::ResumeTok);
-        case Opcode::EhPush:
-        case Opcode::EhPop:
-        case Opcode::EhEntry:
-            return checkDefault(ctx);
-        default:
-            return checkDefault(ctx);
-    }
+    const auto &info = il::core::getOpcodeInfo(ctx.instr.op);
+    if (auto result = checkWithInfo(ctx, info); !result)
+        return result;
+
+    if (const auto verifier = lookupVerifier(ctx.instr.op))
+        return verifier(ctx.instr, ctx);
+
+    return checkDefault(ctx);
 }
 
 } // namespace
