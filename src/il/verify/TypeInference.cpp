@@ -1,9 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/il/verify/TypeInference.cpp
-// Purpose: Implements IL verifier type inference and operand validation helpers.
-// Key invariants: Maintains consistency between temporary maps and defined sets.
-// Ownership/Lifetime: Operates on storage owned by Verifier callers.
-// License: MIT (see LICENSE).
-// Links: docs/il-guide.md#reference
+// Purpose: Implement the verifier-side type inference utility that tracks SSA
+//          temporaries and validates operand usage.
+// Key invariants: The tracked "defined" set stays in sync with the temporary
+//                 type map; every recorded id has a type and undefined ids are
+//                 absent from both containers.
+// Ownership/Lifetime: The helper borrows all storage from callers (maps, sets,
+//                     diagnostic streams) and never assumes ownership.
+// Links: docs/il-guide.md#reference, docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/verify/TypeInference.hpp"
 #include "il/verify/DiagFormat.hpp"
@@ -24,6 +36,14 @@ namespace il::verify
 namespace
 {
 
+/// @brief Render an instruction's operands and labels into a textual snippet.
+/// @details Concatenates the operands and label targets into a whitespace
+///          separated string that mirrors the IL textual representation.  The
+///          helper is used by diagnostic builders to provide context around
+///          failing operands without duplicating formatting logic in each call
+///          site.
+/// @param instr Instruction whose operands should be rendered.
+/// @return Space-delimited string describing operands and successor labels.
 std::string formatOperands(const Instr &instr)
 {
     std::ostringstream os;

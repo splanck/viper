@@ -1,13 +1,28 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/il/core/BasicBlock.cpp
+// Purpose: Reserve the out-of-line extension point for il::core::BasicBlock.
+// Key invariants: The translation unit intentionally contains no behaviour until
+//                 dedicated helpers are required, ensuring the eventual
+//                 implementation lands in a predictable location.
+// Ownership/Lifetime: BasicBlock remains header-only today; future additions
+//                     should avoid owning global state and instead operate on
+//                     caller-provided IR objects.
+// Links: docs/codemap.md, docs/architecture.md#cpp-overview
+//
 //===----------------------------------------------------------------------===//
 
 /// @file
 /// @brief Stub translation unit for `il::core::BasicBlock` helpers.
 /// @details `BasicBlock` currently relies entirely on inline member definitions.
-/// The presence of this file documents the sanctioned location for future
-/// out-of-line utilities (verification hooks, metadata helpers, etc.) so build
-/// dependencies remain stable when that functionality arrives.
+///          Keeping this file in the build advertises where verifier utilities or
+///          analysis helpers should eventually live without disturbing existing
+///          include graphs.
 
 #include "il/core/BasicBlock.hpp"
 
