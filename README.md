@@ -1,14 +1,48 @@
 # Viper
 
-Viper is an intermediate language (IL) based compiler toolchain. Source frontends such as a BASIC parser lower programs into Viper IL. Programs can then be executed directly by the virtual machine or compiled to native code by backends.
+**Viper** is an **IL‑first compiler toolchain and virtual machine**.  
+High‑level frontends—like the included BASIC compiler—lower programs into a strongly typed, SSA‑inspired intermediate language (**Viper IL**).  
+The IL can be executed by the VM today, with native backends planned.
 
-## How It Works
+> Viper is an active, experimental project exploring IL design, multi‑frontend architectures, and interpreter micro‑architectures.
 
-1. **Frontends** translate source languages into the SSA-style Viper IL.
-2. The **IL** provides a stable, typed representation of the program.
-3. The **virtual machine** interprets IL, while **codegen** components can emit machine code.
+---
 
-## Getting Started
+## Why Viper?
+
+- **IL at the center.** A single, readable, typed IR makes semantics explicit and frontends interchangeable.
+- **Human‑scale design.** The IL is meant to be *read and edited*; you can learn by inspecting disassembly without a microscope.
+- **Composable toolchain.** Parsers → IL builder → verifier → VM all exist as standalone tools you can script.
+- **Performance playground.** Switch vs table vs direct‑threaded dispatch lets you *feel* interpreter trade‑offs.
+- **Teaching & research friendly.** Clear examples, golden tests, and a small surface area encourage experimentation.
+
+---
+
+## Feature Highlights
+
+### Implemented
+- **BASIC Frontend** — parser, semantic analysis, OOP features, and runtime integration.
+- **Viper IL** — stable, typed, SSA‑style IR with a verifier.
+- **Virtual Machine** — configurable dispatch:
+  - `switch` — classic `switch` jump table
+  - `table` — function‑pointer dispatch
+  - `threaded` — direct‑threaded labels‑as‑values (requires GCC/Clang and build flag)
+- **Runtime Libraries** — portable C for strings, math, and file I/O.
+- **Tooling**
+  - `ilc` — compile/run BASIC or IL programs
+  - `il-dis` — disassemble IL binaries
+  - `il-verify` — verify IR correctness and emit diagnostics
+- **Examples & Tests** — curated examples (e.g., `SELECT CASE`) and extensive golden tests.
+- **TUI subsystem** — experimental text‑UI widgets (`tui/`).
+
+### In Progress / Planned
+- Optimization passes for the IL
+- Native code generation backends (e.g., x64)
+- Debugger/IDE integration and richer developer tooling
+
+---
+
+## Quickstart
 
 ```bash
 cmake -S . -B build
@@ -16,173 +50,183 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-After building, the tool binaries reside under `build/src/tools`. Utilities such as
-`build/src/tools/ilc/ilc`, `build/src/tools/il-dis/il-dis`, and
-`build/src/tools/il-verify/il-verify` can compile, run, and inspect IL programs.
-
-### Interpreter configuration
-
-The VM supports multiple dispatch loops. Choose one at runtime by setting
-`VIPER_DISPATCH` before launching a tool:
-
-- `table` – portable function-pointer dispatch.
-- `switch` – `switch`-based dispatch that lets compilers build jump tables.
-- `threaded` – direct-threaded dispatch. Requires building with
-  `-DVIPER_VM_THREADED=ON` and compiling with GCC or Clang so labels-as-values
-  are available. Falls back to `switch` when the extension is unavailable.
-
-Leaving `VIPER_DISPATCH` unset selects `switch` dispatch by default. When the
-binary is compiled with `VIPER_VM_THREADED=ON`, the VM upgrades the default to
-direct-threaded dispatch automatically.
-
-## Example
-
-### BASIC
-
-```basic
-10 LET X = 2 + 3
-20 LET Y = X * 2
-30 PRINT "HELLO"
-40 PRINT "READY"
-50 PRINT Y
-60 IF Y > 8 THEN PRINT Y ELSE PRINT 4
-70 END
-```
-
-### IL
-
-```il
-il 0.1
-extern @rt_print_str(str) -> void
-extern @rt_print_i64(i64) -> void
-
-global const str @.L0 = "HELLO"
-global const str @.L1 = "READY"
-global const str @.L2 = "\n"
-
-func @main() -> i32 {
-entry:
-  %x_slot = alloca 8
-  %y_slot = alloca 8
-
-  %t0 = add 2, 3
-  store i64, %x_slot, %t0
-
-  %xv = load i64, %x_slot
-  %t1 = mul %xv, 2
-  store i64, %y_slot, %t1
-
-  %s0 = const_str @.L0
-  call @rt_print_str(%s0)
-  %nl0 = const_str @.L2
-  call @rt_print_str(%nl0)
-
-  %s1 = const_str @.L1
-  call @rt_print_str(%s1)
-  %nl1 = const_str @.L2
-  call @rt_print_str(%nl1)
-
-  %yv0 = load i64, %y_slot
-  call @rt_print_i64(%yv0)
-  %nl2 = const_str @.L2
-  call @rt_print_str(%nl2)
-
-  %yv1 = load i64, %y_slot
-  %cond = scmp_gt %yv1, 8
-  cbr %cond, label then80, label else60
-
-else60:
-  call @rt_print_i64(4)
-  %nl3 = const_str @.L2
-  call @rt_print_str(%nl3)
-  br label after
-
-then80:
-  %yv2 = load i64, %y_slot
-  call @rt_print_i64(%yv2)
-  %nl4 = const_str @.L2
-  call @rt_print_str(%nl4)
-  br label after
-
-after:
-  ret 0
-}
-```
-
-These examples are available in `examples/basic/ex1_hello_cond.bas` and `examples/il/ex1_hello_cond.il`.
-
-### Running the Example
-
-Run the BASIC source directly through the front end:
+Run BASIC directly:
 
 ```bash
 build/src/tools/ilc/ilc front basic -run examples/basic/ex1_hello_cond.bas
 ```
 
-To execute IL with the interpreter:
+Run IL:
 
 ```bash
 build/src/tools/ilc/ilc -run examples/il/ex1_hello_cond.il
 ```
 
-### SELECT CASE example
+---
 
-The BASIC frontend also supports `SELECT CASE` dispatch. The `examples/basic/select_case.bas`
-program demonstrates multiple case arms and a `CASE ELSE` fallback:
+## IL at a Glance
 
-```basic
-10 FOR ROLL = 1 TO 6
-20   SELECT CASE ROLL
-30     CASE 1
-40       PRINT "Rolled a one"
-50     CASE 2, 3, 4
-60       PRINT "Mid-range roll "; ROLL
-70     CASE 5, 6
-80       PRINT "High roll "; ROLL
-90     CASE ELSE
-100      PRINT "Unexpected value"
-110  END SELECT
-```
-
-Run it with the BASIC frontend after building:
-
-```bash
-build/src/tools/ilc/ilc front basic -run examples/basic/select_case.bas
-```
-
-### Arrays, aliasing, and diagnostics
-
-Arrays in Viper are reference types. Assigning one array variable to another shares the handle and bumps the reference count. When a resize occurs on a shared handle the runtime performs copy-on-resize so the caller observes an isolated buffer:
+**BASIC**
 
 ```basic
-10 DIM A(2)
-20 B = A
-30 B(0) = 42
-40 REDIM A(4)
-50 PRINT B(0)  ' still prints 42 — B keeps the original storage
-60 PRINT A(0)  ' prints 0 — A now points at the resized copy
+10 LET X = 2 + 3
+20 LET Y = X * 2
+30 PRINT "HELLO"
+40 PRINT Y
+50 END
 ```
 
-Diagnostics include precise function/block context. For example, the verifier flags array handle misuse with the exact instruction responsible:
+**Viper IL (abbreviated)**
+
+```il
+il 0.1
+extern @rt_print_str(str) -> void
+extern @rt_print_i64(i64) -> void
+global const str @.NL = "\n"
+global const str @.HELLO = "HELLO"
+
+func @main() -> i32 {
+entry:
+  %x = add 2, 3
+  %y = mul %x, 2
+  call @rt_print_str(const_str @.HELLO); call @rt_print_str(const_str @.NL)
+  call @rt_print_i64(%y);                call @rt_print_str(const_str @.NL)
+  ret 0
+}
+```
+
+This is the essence of Viper: **frontends lower to a typed IL that is compact, explicit, and easy to inspect.**
+
+---
+
+## Architecture at a Glance
+
+```
+[Frontend(s)]
+   BASIC, future languages
+        │
+        ▼
+   [IL Builder]  ──►  [il-verify]
+   (typed, SSA-ish)     (correctness)
+        │
+        ▼
+ [Virtual Machine]  ──►  (planned) [Native Backends]
+  switch / table / threaded
+```
+
+- **Frontends** lower to a *common, typed* IL.
+- **Verifier** enforces type, control‑flow, and lifetime constraints with precise diagnostics.
+- **VM** executes IL; dispatch is swappable for experimentation.
+- **Backends** (planned) will emit native code.
+
+---
+
+## Interpreter Dispatch & Configuration
+
+Choose the dispatch loop at runtime with `VIPER_DISPATCH`:
+
+| Value      | Notes |
+|------------|------|
+| `switch`   | Default portable dispatch; compilers generate jump tables. |
+| `table`    | Function‑pointer dispatch. |
+| `threaded` | Direct‑threaded (GCC/Clang labels‑as‑values). Requires building with `-DVIPER_VM_THREADED=ON`. Falls back if unavailable. |
+
+If compiled with `-DVIPER_VM_THREADED=ON`, the VM upgrades the default to direct‑threaded automatically on supported compilers.
+
+### Performance Note (When `threaded` Helps)
+
+Direct‑threaded dispatch can reduce branch mispredictions and loop overhead in tight interpreter loops where **most time is spent in the dispatch itself**. Expect the most visible gains when:
+- hot paths execute many small IL instructions,
+- control flow is predictable (good I‑cache locality), and
+- your platform supports labels‑as‑values (GCC/Clang).
+
+Workloads dominated by I/O, syscalls, or heavy native library calls will see little difference because interpreter overhead isn’t the bottleneck.
+
+---
+
+## Tools
+
+- **`ilc`** — frontends, compile, run
+  - `ilc front basic -run examples/...`
+  - `ilc -run examples/il/...`
+- **`il-dis`** — disassemble IL binaries for inspection.
+- **`il-verify`** — verify IR; diagnostics include function/block context.
+
+---
+
+## Project Layout
+
+```
+.
+├─ src/         # VM, IL core, frontends, tools
+├─ docs/        # IL spec, BASIC language, architecture
+├─ examples/    # BASIC and IL programs
+├─ tests/       # golden tests across layers
+├─ tui/         # experimental text UI components
+├─ cmake/       # CMake helpers and package exports
+├─ scripts/     # dev and CI convenience scripts
+└─ .github/     # CI workflows
+```
+
+---
+
+## Building & Installing
 
 ```bash
-$ build/src/tools/il-verify/il-verify tests/il/negatives/use_after_release.il
-error: main:entry: %2 = call %t1: use after release of %1
+cmake -S . -B build -DVIPER_VM_THREADED=ON   # optional; enables threaded dispatch where supported
+cmake --build build -j
+cmake --install build                        # installs libraries/tools if install rules are enabled
 ```
 
-## References
+> The project targets **C++20** and builds with modern **CMake**. Direct‑threaded dispatch requires **GCC/Clang** for labels‑as‑values; other toolchains fall back to portable modes.
 
-- **IL Quickstart**: [docs/il-guide.md#quickstart](docs/il-guide.md#quickstart)
-- [BASIC Reference](docs/basic-language.md)
-- [BASIC OOP Guide](docs/basic-oop.md)
-- [IL Reference](docs/il-guide.md#reference)
-- [ViperTUI](tui/): experimental terminal UI library
-- [ViperTUI Architecture](docs/architecture.md#tui-architecture)
+---
+
+## Extending Viper (adding a frontend)
+
+1. **Parse** your language into an AST.
+2. **Lower** to Viper IL using the IL builder (types and control‑flow made explicit).
+3. **Verify** your IL with `il-verify`.
+4. **Execute** via the VM (pick a dispatch), or—once available—emit native code with a backend.
+
+Keep frontends thin: semantics live in the IL so the VM/backends can stay generic.
+
+---
+
+## Roadmap
+
+| Area                             | Status        |
+|----------------------------------|---------------|
+| BASIC frontend + OOP             | ✅ Done       |
+| VM (switch/table/threaded)       | ✅ Done       |
+| Runtime libs (string/math/I/O)   | ✅ Done       |
+| IL verifier & diagnostics        | ✅ Done       |
+| TUI subsystem                    | 🧪 Experimental |
+| IL optimization passes           | 🧩 In progress |
+| Native codegen backends          | ⏳ Planned    |
+| Debugger/IDE                     | ⏳ Planned    |
+
+---
 
 ## Contributing
 
-We’re glad you’re interested in Viper! This project is evolving and we’re experimenting rapidly. You’re welcome to explore the code, file issues, and propose small fixes or documentation improvements. However, we’re **not currently seeking external contributors** or large feature PRs.
+We’re glad you’re interested in Viper! This project is evolving quickly and the architecture is still in flux.  
+You’re welcome to explore the code, file issues, and propose **small fixes or documentation improvements**.  
+However, we’re **not currently seeking large feature PRs** while the core design stabilizes. Keeping the project cohesive is the priority.  
+If you want to experiment more broadly, feel free to fork—Viper is MIT‑licensed.
+
+---
+
+## Learn More
+
+- **BASIC Language Guide** — `docs/basic-language.md`
+- **BASIC OOP Guide** — `docs/basic-oop.md`
+- **IL Quickstart & Reference** — `docs/il-guide.md`
+- **Architecture Notes** — `docs/architecture.md`
+- **ViperTUI** — `tui/`
+
+---
 
 ## License
 
-This project is licensed under the **MIT License**. See [LICENSE](LICENSE) for details.
+MIT — see `LICENSE`.
