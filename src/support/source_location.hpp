@@ -26,6 +26,15 @@ struct SourceLoc
 
     /// @brief Check whether the location references a valid file entry.
     [[nodiscard]] bool isValid() const;
+
+    /// @brief Determine whether a concrete file identifier is attached.
+    [[nodiscard]] bool hasFile() const { return file_id != 0; }
+
+    /// @brief Determine whether a 1-based line number is available.
+    [[nodiscard]] bool hasLine() const { return line != 0; }
+
+    /// @brief Determine whether a 1-based column number is available.
+    [[nodiscard]] bool hasColumn() const { return column != 0; }
 };
 
 /// @brief Represents a half-open range within a source file.

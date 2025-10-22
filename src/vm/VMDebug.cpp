@@ -104,10 +104,17 @@ std::optional<Slot> VM::handleDebugBreak(
     {
         const auto *sm = debug.getSourceManager();
         std::string path;
-        if (sm && in->loc.isValid())
+        if (sm && in->loc.hasFile())
             path = std::filesystem::path(sm->getPath(in->loc.file_id)).filename().string();
-        std::cerr << "[BREAK] src=" << path << ':' << in->loc.line << " fn=@" << fr.func->name
-                  << " blk=" << bb.label << " ip=#" << ip << "\n";
+        std::cerr << "[BREAK] src=" << path;
+        if (in->loc.hasLine())
+        {
+            std::cerr << ':' << in->loc.line;
+            if (in->loc.hasColumn())
+                std::cerr << ':' << in->loc.column;
+        }
+        std::cerr << " fn=@" << fr.func->name << " blk=" << bb.label << " ip=#" << ip
+                  << "\n";
         Slot s{};
         s.i64 = 10;
         return s;

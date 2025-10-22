@@ -308,7 +308,7 @@ StmtPtr Parser::parseLineInputStatement()
     Expr *rawTarget = target.get();
     if (rawTarget && !dynamic_cast<VarExpr *>(rawTarget) && !dynamic_cast<ArrayExpr *>(rawTarget))
     {
-        il::support::SourceLoc diagLoc = rawTarget->loc.isValid() ? rawTarget->loc : loc;
+        il::support::SourceLoc diagLoc = rawTarget->loc.hasLine() ? rawTarget->loc : loc;
         if (emitter_)
         {
             emitter_->emit(il::support::Severity::Error,
