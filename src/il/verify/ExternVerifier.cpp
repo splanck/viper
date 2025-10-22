@@ -1,11 +1,15 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Implements verification of module extern declarations.
-/// @details Builds lookup tables for extern signatures, checks duplicate
-/// declarations, and validates consistency with the runtime signature database.
+//
+// @file
+// @brief Implement verification of module extern declarations.
+// @details Builds lookup tables for extern signatures, checks duplicate
+//          declarations, and validates consistency with the runtime signature
+//          database.
 
 #include "il/verify/ExternVerifier.hpp"
 
@@ -25,6 +29,10 @@ using il::support::Expected;
 using il::support::makeError;
 
 /// @brief Compare two extern declarations for signature equivalence.
+///
+/// @details Used when deduplicating module-provided externs so the verifier can
+///          distinguish benign duplicates from conflicting declarations.
+///
 /// @param lhs First extern declaration.
 /// @param rhs Second extern declaration.
 /// @return @c true when return and parameter types are identical.
@@ -39,6 +47,10 @@ bool signaturesMatch(const Extern &lhs, const Extern &rhs)
 }
 
 /// @brief Compare an extern declaration against a runtime signature descriptor.
+///
+/// @details Ensures module-declared externs mirror the canonical runtime
+///          signature database so runtime dispatch remains sound.
+///
 /// @param decl Extern declaration authored in IL.
 /// @param runtime Canonical runtime signature retrieved from the runtime table.
 /// @return @c true when both signatures agree on return and parameter types.
@@ -62,8 +74,10 @@ bool signaturesMatch(const Extern &decl, const il::runtime::RuntimeSignature &ru
 }
 
 /// @brief Populate the extern map and validate declarations for a module.
+///
 /// @details Rejects duplicates, reports signature mismatches, and cross-checks
-/// definitions against known runtime signatures.
+///          definitions against known runtime signatures.
+///
 /// @param module Module supplying extern declarations.
 /// @param sink Diagnostic sink used for structured reporting (unused currently).
 /// @return Empty success on validity; otherwise a formatted diagnostic error.
