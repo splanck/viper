@@ -1,11 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/frontends/basic/Lexer.cpp
-// Purpose: Implements lexical analysis for BASIC source with line-aware scanning
-//          and comment skipping.
-// Key invariants: pos_ indexes into src_; line_ and column_ reflect the current
-//                 character position.
-// Ownership/Lifetime: Lexer borrows the source buffer; caller retains
-//                     ownership.
+// Purpose: Tokenise BASIC source text into the stream consumed by the parser
+//          while preserving line-structured layout for diagnostic reporting.
+// Key invariants: The cursor state (`pos_`, `line_`, and `column_`) always
+//                 reflects the next character to be read; keyword lookups use a
+//                 binary search over a sorted static table.
+// Ownership/Lifetime: The lexer borrows the source buffer for the duration of
+//                     scanning and never allocates persistent state beyond
+//                     temporary token strings.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lexer.hpp"
 #include <array>
@@ -103,6 +114,13 @@ constexpr std::array<KeywordEntry,
     {"WRITE", TokenKind::KeywordWrite},
 }};
 
+/// @brief Confirm the keyword table maintains the ordering required for binary search.
+///
+/// @details The lexer performs binary searches over @ref kKeywordTable.  Keeping
+///          the table sorted enables the compile-time static assert below to
+///          catch accidental edits that disturb the invariant.
+/// @return @c true when each lexeme is lexicographically ordered before its
+///         successor.
 constexpr bool isKeywordTableSorted()
 {
     for (std::size_t i = 1; i < kKeywordTable.size(); ++i)
@@ -115,6 +133,14 @@ constexpr bool isKeywordTableSorted()
 
 static_assert(isKeywordTableSorted(), "Keyword table must be sorted lexicographically");
 
+/// @brief Lookup a candidate identifier in the keyword table.
+///
+/// @details Performs a manual binary search across @ref kKeywordTable to avoid
+///          introducing dynamic allocations.  The search compares the provided
+///          lexeme against the pre-sorted static table and yields the
+///          corresponding token kind when a match is found.
+/// @param lexeme Uppercased identifier text to classify.
+/// @return Keyword kind when recognised; @ref TokenKind::Identifier otherwise.
 TokenKind lookupKeyword(std::string_view lexeme)
 {
     auto first = kKeywordTable.begin();
@@ -139,24 +165,35 @@ TokenKind lookupKeyword(std::string_view lexeme)
 } // namespace
 
 /// @brief Construct a lexer over the given source buffer.
-/// @param src BASIC program text to scan; must remain valid for the lexer
-///             lifetime.
+///
+/// @details Stores lightweight views into @p src and primes the position
+///          counters so the first call to @ref next observes the opening
+///          character at line 1, column 1.  The caller retains ownership of the
+///          underlying buffer for the lexer's lifetime.
+/// @param src BASIC program text to scan; must outlive the lexer instance.
 /// @param file_id Identifier used when emitting diagnostic locations.
-/// @details Initializes position tracking to the beginning of @p src.
 Lexer::Lexer(std::string_view src, uint32_t file_id) : src_(src), file_id_(file_id) {}
 
 /// @brief Peek at the current character without consuming it.
+///
+/// @details Returns the byte located at the current cursor position.  When the
+///          cursor has advanced past the end of the buffer, the sentinel
+///          character @c '\0' is returned instead so callers can test for
+///          exhaustion without modifying state.
 /// @return The current character, or '\0' if the lexer is at end of input.
-/// @note Does not modify the lexer's state.
 char Lexer::peek() const
 {
     return pos_ < src_.size() ? src_[pos_] : '\0';
 }
 
 /// @brief Consume and return the next character from the source.
+///
+/// @details Advances @ref pos_ by one and updates @ref line_/@ref column_ to
+///          maintain diagnostic accuracy.  Newlines increment the line counter
+///          and reset the column to one, whereas other characters simply bump
+///          the column.  When invoked at end of input the function returns the
+///          sentinel @c '\0' and leaves the state unchanged.
 /// @return The consumed character, or '\0' if already at end of input.
-/// @details Advances internal position; @p line_ and @p column_ are updated,
-///         resetting column to 1 after a newline.
 char Lexer::get()
 {
     if (pos_ >= src_.size())
@@ -175,16 +212,23 @@ char Lexer::get()
 }
 
 /// @brief Determine whether all input has been consumed.
-/// @return True if @p pos_ is at or beyond the end of the buffer.
-/// @note Has no side effects.
+///
+/// @details This lightweight predicate powers loops that walk forward until a
+///          newline or delimiter is encountered without performing bounds
+///          checks on each iteration.  The method leaves the cursor untouched
+///          and can therefore be called freely.
+/// @return @c true if @ref pos_ is at or beyond the end of the buffer.
 bool Lexer::eof() const
 {
     return pos_ >= src_.size();
 }
 
 /// @brief Skip spaces, tabs, and carriage returns but stop at newlines.
-/// @details Advances @p pos_, @p line_, and @p column_ for each consumed
-///         character while leaving newlines untouched for tokenization.
+///
+/// @details Whitespace between statements is ignored by BASIC except for
+///          newline boundaries that influence statement grouping.  This helper
+///          advances the cursor past horizontal whitespace while keeping
+///          newlines in the stream for later tokenisation.
 void Lexer::skipWhitespaceExceptNewline()
 {
     while (!eof())
@@ -202,9 +246,12 @@ void Lexer::skipWhitespaceExceptNewline()
 }
 
 /// @brief Skip whitespace and BASIC comments starting with <tt>'</tt> or REM.
-/// @details Consumes characters until a newline or non-comment character is
-///         encountered.
-/// @note Preserves the terminating newline for the caller.
+///
+/// @details BASIC treats apostrophe-prefixed and "REM" tokens as
+///          rest-of-line comments.  The helper repeatedly removes whitespace and
+///          comment bodies so the next significant token begins at the current
+///          cursor.  The newline terminating a comment is preserved so callers
+///          can emit @ref TokenKind::EndOfLine.
 void Lexer::skipWhitespaceAndComments()
 {
     while (true)
@@ -241,9 +288,13 @@ void Lexer::skipWhitespaceAndComments()
 
 /// @brief Lex a numeric literal including optional fraction, exponent, and type
 ///        suffix (<tt>%</tt>, <tt>&</tt>, <tt>!</tt>, <tt>#</tt>).
+///
+/// @details Consumes digits, a single decimal point, and an optional exponent
+///          section before capturing trailing type designators.  The recognised
+///          substring is returned verbatim so later stages can enforce precise
+///          numeric semantics.  Location data is captured prior to any
+///          consumption for accurate diagnostics.
 /// @return Token of kind Number representing the characters consumed.
-/// @details Advances @p pos_, @p line_, and @p column_ while collecting
-///         characters. Numeric format is minimally validated.
 Token Lexer::lexNumber()
 {
     il::support::SourceLoc loc{file_id_, line_, column_};
@@ -284,11 +335,13 @@ Token Lexer::lexNumber()
 }
 
 /// @brief Lex an identifier or reserved keyword.
-/// @return Identifier or keyword token; identifiers are uppercased for
-///         keyword comparison.
-/// @details Consumes alphanumeric characters and underscores plus an optional
-///         trailing '$', '#', '!', '%', or '&', and advances position counters
-///         accordingly.
+///
+/// @details Characters are uppercased while they are consumed so keyword lookup
+///          becomes a straightforward table search.  Optional type suffixes are
+///          folded into the token text to match the semantics of the BASIC type
+///          inference rules applied later in the pipeline.
+/// @return Identifier or keyword token; identifiers are uppercased for keyword
+///         comparison.
 Token Lexer::lexIdentifierOrKeyword()
 {
     il::support::SourceLoc loc{file_id_, line_, column_};
@@ -302,9 +355,13 @@ Token Lexer::lexIdentifierOrKeyword()
 }
 
 /// @brief Lex a string literal delimited by double quotes.
+///
+/// @details Copies characters verbatim until a closing quote or end of input is
+///          reached.  Escape sequences are not interpreted; instead they are
+///          preserved for later interpretation by runtime helpers.  When the
+///          stream terminates before a closing quote the unterminated literal is
+///          returned to the parser, which is responsible for issuing an error.
 /// @return String token containing characters between quotes.
-/// @details Consumes the opening quote and then reads characters until a
-///         closing quote or end of file; no escape sequences are processed.
 Token Lexer::lexString()
 {
     il::support::SourceLoc loc{file_id_, line_, column_};
@@ -327,10 +384,13 @@ Token Lexer::lexString()
 }
 
 /// @brief Retrieve the next token from the input stream.
+///
+/// @details Skips insignificant trivia, returns explicit newline tokens, and
+///          dispatches to specialised lexers for numbers, identifiers, and
+///          strings.  Punctuation is handled inline via a switch statement to
+///          keep hot paths branch-friendly.  Location metadata is captured for
+///          every token so diagnostics can point back to the source program.
 /// @return The next token, which may be EndOfLine or EndOfFile.
-/// @details Skips whitespace and comments, updating line and column counters as
-///         characters are consumed. Newlines yield an EndOfLine token so
-///         higher-level parsers can maintain line structure.
 Token Lexer::next()
 {
     // Skip leading spaces and tabs but preserve newlines for tokenization.
