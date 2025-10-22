@@ -7,7 +7,9 @@
 #include "rt_file.h"
 
 #include "rt_file_path.h"
+#include "rt_internal.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 
 typedef struct RtFileChannelEntry
@@ -21,6 +23,49 @@ typedef struct RtFileChannelEntry
 static RtFileChannelEntry *g_channel_entries = NULL;
 static size_t g_channel_count = 0;
 static size_t g_channel_capacity = 0;
+static bool g_channel_skip_search = false;
+
+RtFileChannelTestState rt_file_test_capture_state(void)
+{
+    RtFileChannelTestState state = {g_channel_entries, g_channel_count, g_channel_capacity};
+    g_channel_entries = NULL;
+    g_channel_count = 0;
+    g_channel_capacity = 0;
+    g_channel_skip_search = false;
+    return state;
+}
+
+void rt_file_test_restore_state(RtFileChannelTestState state)
+{
+    if (g_channel_entries && g_channel_entries != state.entries)
+    {
+        free(g_channel_entries);
+    }
+    g_channel_entries = state.entries;
+    g_channel_count = state.count;
+    g_channel_capacity = state.capacity;
+    g_channel_skip_search = false;
+}
+
+void rt_file_test_preset_growth_overflow(size_t capacity)
+{
+    if (g_channel_entries)
+    {
+        free(g_channel_entries);
+        g_channel_entries = NULL;
+    }
+    g_channel_count = capacity;
+    g_channel_capacity = capacity;
+    g_channel_skip_search = true;
+}
+
+size_t rt_file_test_max_capacity(void)
+{
+    const size_t entry_size = sizeof(RtFileChannelEntry);
+    if (entry_size == 0)
+        return 0;
+    return SIZE_MAX / entry_size;
+}
 
 static RtFileChannelEntry *rt_file_find_channel(int32_t channel)
 {
@@ -38,15 +83,33 @@ static RtFileChannelEntry *rt_file_prepare_channel(int32_t channel)
 {
     if (channel < 0)
         return NULL;
-    RtFileChannelEntry *entry = rt_file_find_channel(channel);
+    const bool skip_search = g_channel_skip_search;
+    g_channel_skip_search = false;
+
+    RtFileChannelEntry *entry = skip_search ? NULL : rt_file_find_channel(channel);
     if (entry)
         return entry;
 
     if (g_channel_count == g_channel_capacity)
     {
-        size_t new_capacity = g_channel_capacity ? g_channel_capacity * 2 : 4;
+        const size_t entry_size = sizeof(RtFileChannelEntry);
+        const size_t limit = entry_size == 0 ? 0 : SIZE_MAX / entry_size;
+        size_t new_capacity = 0;
+        if (g_channel_capacity == 0)
+        {
+            new_capacity = 4;
+        }
+        else
+        {
+            if (limit == 0 || g_channel_capacity > limit / 2)
+                return NULL;
+            new_capacity = g_channel_capacity * 2;
+        }
+        if (limit != 0 && new_capacity > limit)
+            return NULL;
+        const size_t bytes = new_capacity * entry_size;
         RtFileChannelEntry *new_entries =
-            (RtFileChannelEntry *)realloc(g_channel_entries, new_capacity * sizeof(*new_entries));
+            (RtFileChannelEntry *)realloc(g_channel_entries, bytes);
         if (!new_entries)
             return NULL;
         for (size_t i = g_channel_capacity; i < new_capacity; ++i)

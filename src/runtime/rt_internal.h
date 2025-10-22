@@ -24,6 +24,20 @@ typedef enum rt_input_grow_result
 
 rt_input_grow_result rt_input_try_grow(char **buf, size_t *cap);
 
+struct RtFileChannelEntry;
+
+typedef struct RtFileChannelTestState
+{
+    struct RtFileChannelEntry *entries;
+    size_t count;
+    size_t capacity;
+} RtFileChannelTestState;
+
+RtFileChannelTestState rt_file_test_capture_state(void);
+void rt_file_test_restore_state(RtFileChannelTestState state);
+void rt_file_test_preset_growth_overflow(size_t capacity);
+size_t rt_file_test_max_capacity(void);
+
 #ifdef __cplusplus
 }
 #endif
