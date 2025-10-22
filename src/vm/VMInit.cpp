@@ -39,9 +39,13 @@ namespace il::vm
 namespace
 {
 
+/// @brief RAII helper that forces the process-wide numeric locale to "C".
+/// @details The VM relies on deterministic decimal formatting for diagnostics
+///          and trace output.  Constructing this static initializer once per
+///          process sets the locale early so subsequent numeric prints remain
+///          stable regardless of the host environment.
 struct NumericLocaleInitializer
 {
-    /// @brief Force the C locale for numeric formatting inside the VM.
     NumericLocaleInitializer()
     {
         std::setlocale(LC_NUMERIC, "C");
