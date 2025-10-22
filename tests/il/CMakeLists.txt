@@ -292,7 +292,9 @@ function(viper_add_il_core_tests)
   viper_add_ctest(test_il_exception_handler_analysis test_il_exception_handler_analysis)
 
   viper_add_test(test_il_branch_verifier ${_VIPER_IL_UNIT_DIR}/test_il_branch_verifier.cpp)
-  target_link_libraries(test_il_branch_verifier PRIVATE ${VIPER_IL_CORE_IO_LIBS})
+  target_link_libraries(test_il_branch_verifier PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+  target_compile_definitions(
+    test_il_branch_verifier PRIVATE NEGATIVE_DIR="${CMAKE_SOURCE_DIR}/tests/il/negatives")
   viper_add_ctest(test_il_branch_verifier test_il_branch_verifier)
 endfunction()
 

@@ -183,6 +183,19 @@ Expected<void> verifySwitchI32_E(const Function &fn,
             makeError(instr.loc, formatInstrDiag(fn, bb, instr, "switch.i32 missing default"))};
     }
 
+    if (instr.brArgs.size() != instr.labels.size())
+    {
+        return Expected<void>{makeError(instr.loc,
+                                        formatInstrDiag(fn,
+                                                        bb,
+                                                        instr,
+                                                        "switch.i32 branch argument vector count mismatch"))};
+    }
+
+    const std::vector<Value> *defaultArgs = nullptr;
+    if (!instr.brArgs.empty())
+        defaultArgs = &instr.brArgs.front();
+
     const size_t caseCount = switchCaseCount(instr);
     if (instr.operands.size() != caseCount + 1)
     {
@@ -195,8 +208,8 @@ Expected<void> verifySwitchI32_E(const Function &fn,
 
     if (auto it = blockMap.find(switchDefaultLabel(instr)); it != blockMap.end())
     {
-        const auto &args = switchDefaultArgs(instr);
-        if (auto result = verifyBranchArgs(fn, bb, instr, *it->second, &args, switchDefaultLabel(instr), types);
+        if (auto result =
+                verifyBranchArgs(fn, bb, instr, *it->second, defaultArgs, switchDefaultLabel(instr), types);
             !result)
             return result;
     }
@@ -239,8 +252,10 @@ Expected<void> verifySwitchI32_E(const Function &fn,
         auto it = blockMap.find(label);
         if (it == blockMap.end())
             continue;
-        const auto &args = switchCaseArgs(instr, idx);
-        if (auto result = verifyBranchArgs(fn, bb, instr, *it->second, &args, label, types); !result)
+        const std::vector<Value> *caseArgs = nullptr;
+        if (!instr.brArgs.empty())
+            caseArgs = &instr.brArgs[idx + 1];
+        if (auto result = verifyBranchArgs(fn, bb, instr, *it->second, caseArgs, label, types); !result)
             return result;
     }
 
