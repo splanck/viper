@@ -1,9 +1,26 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/frontends/basic/lower/Emitter.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Implements the IL emission helper composed by the BASIC lowerer.
-// Key invariants: Helpers append instructions to the current block when set.
+// Purpose: Implement the IL emission helper composed by the BASIC lowerer.
+// Key invariants: Helpers append instructions to the current block when set and
+//                 register required runtime helpers.
 // Ownership/Lifetime: Borrows Lowerer-managed contexts and IR builder state.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements the `Emitter` façade used by the BASIC lowerer to
+///        materialise IL instructions.
+/// @details The emitter consolidates instruction-building helpers (allocas,
+///          loads, branching, runtime calls) so lowering code can focus on
+///          semantics while the emitter keeps track of block termination,
+///          runtime feature requests, and error-handler bookkeeping.
 
 #include "frontends/basic/lower/Emitter.hpp"
 
@@ -20,18 +37,42 @@ namespace il::frontends::basic::lower
 {
 
 
+/// @brief Construct an emitter bound to the owning lowering driver.
+/// @details Keeps a reference to @ref Lowerer so helper routines can allocate
+///          temporaries, access the current IR builder, and request runtime
+///          helpers while emitting instructions.
+/// @param lowerer Lowering engine that orchestrates IL emission.
 Emitter::Emitter(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
 
+/// @brief Retrieve the canonical boolean type used during lowering.
+/// @details Returns a one-bit integer wrapper matching the IL representation of
+///          boolean values.
+/// @return Boolean type descriptor.
 Emitter::Type Emitter::ilBoolTy() const
 {
     return Type(Type::Kind::I1);
 }
 
+/// @brief Emit a boolean literal as a truncation from an integer constant.
+/// @details Produces a `trunc1` instruction that converts @p v into the IL
+///          boolean representation and returns the resulting temporary.
+/// @param v Boolean value to encode.
+/// @return Temporary referencing the emitted constant.
 Emitter::Value Emitter::emitBoolConst(bool v)
 {
     return emitUnary(Opcode::Trunc1, ilBoolTy(), Value::constInt(v ? 1 : 0));
 }
 
+/// @brief Emit control flow that materialises a boolean from branch callbacks.
+/// @details Allocates a temporary slot, spawns then/else/join blocks using the
+///          provided label hints, and invokes @p emitThen/@p emitElse to write to
+///          the slot before joining and loading the result.
+/// @param emitThen Callback that stores a boolean in the then branch.
+/// @param emitElse Callback that stores a boolean in the else branch.
+/// @param thenLabelBase Base label hint for the then block.
+/// @param elseLabelBase Base label hint for the else block.
+/// @param joinLabelBase Base label hint for the join block.
+/// @return Temporary holding the boolean read from the slot in the join block.
 Emitter::Value Emitter::emitBoolFromBranches(const std::function<void(Value)> &emitThen,
                                              const std::function<void(Value)> &emitElse,
                                              std::string_view thenLabelBase,
@@ -73,6 +114,11 @@ Emitter::Value Emitter::emitBoolFromBranches(const std::function<void(Value)> &e
     return emitLoad(ilBoolTy(), slot);
 }
 
+/// @brief Emit an `alloca` instruction reserving stack memory.
+/// @details Appends an ALLOCA to the current block, allocating @p bytes of
+///          storage, and returns a temporary pointing at the reserved slot.
+/// @param bytes Number of bytes to allocate on the stack.
+/// @return Temporary referencing the allocated pointer.
 Emitter::Value Emitter::emitAlloca(int bytes)
 {
     unsigned id = lowerer_.nextTempId();
@@ -88,6 +134,12 @@ Emitter::Value Emitter::emitAlloca(int bytes)
     return Value::temp(id);
 }
 
+/// @brief Emit a load from the given address.
+/// @details Constructs a LOAD instruction using the supplied type and address
+///          operands and returns the resulting temporary.
+/// @param ty Type of the value being loaded.
+/// @param addr Pointer operand supplying the address.
+/// @return Temporary representing the loaded value.
 Emitter::Value Emitter::emitLoad(Type ty, Value addr)
 {
     unsigned id = lowerer_.nextTempId();
@@ -103,6 +155,12 @@ Emitter::Value Emitter::emitLoad(Type ty, Value addr)
     return Value::temp(id);
 }
 
+/// @brief Emit a store to the given address.
+/// @details Appends a STORE instruction that writes @p val into @p addr using the
+///          provided element type.
+/// @param ty Element type stored at the address.
+/// @param addr Pointer receiving the value.
+/// @param val Value to store.
 void Emitter::emitStore(Type ty, Value addr, Value val)
 {
     Instr in;
@@ -115,6 +173,14 @@ void Emitter::emitStore(Type ty, Value addr, Value val)
     block->instructions.push_back(in);
 }
 
+/// @brief Emit a binary instruction with two operands.
+/// @details Allocates a new temporary, appends the instruction to the current
+///          block, and returns the temporary identifier.
+/// @param op Opcode describing the operation.
+/// @param ty Result type of the instruction.
+/// @param lhs Left-hand operand.
+/// @param rhs Right-hand operand.
+/// @return Temporary referencing the emitted instruction.
 Emitter::Value Emitter::emitBinary(Opcode op, Type ty, Value lhs, Value rhs)
 {
     unsigned id = lowerer_.nextTempId();
@@ -130,6 +196,12 @@ Emitter::Value Emitter::emitBinary(Opcode op, Type ty, Value lhs, Value rhs)
     return Value::temp(id);
 }
 
+/// @brief Emit a unary instruction with a single operand.
+/// @details Mirrors @ref emitBinary for one-operand instructions such as casts.
+/// @param op Opcode describing the operation.
+/// @param ty Result type of the instruction.
+/// @param val Operand value.
+/// @return Temporary referencing the emitted instruction.
 Emitter::Value Emitter::emitUnary(Opcode op, Type ty, Value val)
 {
     unsigned id = lowerer_.nextTempId();
@@ -145,21 +217,42 @@ Emitter::Value Emitter::emitUnary(Opcode op, Type ty, Value val)
     return Value::temp(id);
 }
 
+/// @brief Emit a 64-bit integer constant value.
+/// @details Wraps @ref Value::constInt to keep emitter call sites uniform when
+///          building arithmetic sequences.
+/// @param v Signed integer literal to encode.
+/// @return Constant value descriptor.
 Emitter::Value Emitter::emitConstI64(std::int64_t v)
 {
     return Value::constInt(v);
 }
 
+/// @brief Zero-extend a boolean to a 64-bit integer.
+/// @details Emits the `zext1` opcode to widen BASIC booleans to I64 for use with
+///          runtime helpers that expect integer semantics.
+/// @param val Boolean value to widen.
+/// @return Temporary containing the widened integer.
 Emitter::Value Emitter::emitZext1ToI64(Value val)
 {
     return emitUnary(Opcode::Zext1, Type(Type::Kind::I64), val);
 }
 
+/// @brief Emit a saturating integer subtraction.
+/// @details Wraps the `isub.ovf` opcode with the canonical 64-bit integer type.
+/// @param lhs Left-hand operand.
+/// @param rhs Right-hand operand.
+/// @return Temporary produced by the subtraction instruction.
 Emitter::Value Emitter::emitISub(Value lhs, Value rhs)
 {
     return emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), lhs, rhs);
 }
 
+/// @brief Convert a boolean into BASIC's logical integer representation.
+/// @details BASIC treats true as -1. This helper emits the sequence needed to
+///          honour that contract, falling back to constants when no block is
+///          active (e.g., folding).
+/// @param b1 Boolean value to convert.
+/// @return I64 value matching BASIC logical semantics.
 Emitter::Value Emitter::emitBasicLogicalI64(Value b1)
 {
     if (lowerer_.context().current() == nullptr)
@@ -173,11 +266,21 @@ Emitter::Value Emitter::emitBasicLogicalI64(Value b1)
     return emitISub(i64zero, zext);
 }
 
+/// @brief Emit a negation guarded by overflow checking.
+/// @details Performs `0 - val` with the overflow flag enabled so arithmetic
+///          traps propagate correctly.
+/// @param ty Type of the result.
+/// @param val Operand being negated.
+/// @return Temporary holding the negated value.
 Emitter::Value Emitter::emitCheckedNeg(Type ty, Value val)
 {
     return emitBinary(Opcode::ISubOvf, ty, Value::constInt(0), val);
 }
 
+/// @brief Emit an unconditional branch to the specified block.
+/// @details Appends a BR instruction when the current block differs from the
+///          target and marks the block as terminated.
+/// @param target Destination block to branch to.
 void Emitter::emitBr(BasicBlock *target)
 {
     BasicBlock *block = lowerer_.context().current();
@@ -197,6 +300,12 @@ void Emitter::emitBr(BasicBlock *target)
     block->terminated = true;
 }
 
+/// @brief Emit a conditional branch referencing two successor blocks.
+/// @details Appends a CBR instruction with @p cond and terminates the current
+///          block.
+/// @param cond Condition controlling the branch.
+/// @param t Destination when @p cond evaluates to true.
+/// @param f Destination when @p cond evaluates to false.
 void Emitter::emitCBr(Value cond, BasicBlock *t, BasicBlock *f)
 {
     Instr in;
@@ -212,6 +321,13 @@ void Emitter::emitCBr(Value cond, BasicBlock *t, BasicBlock *f)
     block->terminated = true;
 }
 
+/// @brief Emit a call that returns a value.
+/// @details Adds a CALL instruction producing a temporary result and returns the
+///          new temporary identifier.
+/// @param ty Result type of the call.
+/// @param callee Symbol name to invoke.
+/// @param args Argument values forwarded to the callee.
+/// @return Temporary capturing the call's result.
 Emitter::Value Emitter::emitCallRet(Type ty, const std::string &callee, const std::vector<Value> &args)
 {
     unsigned id = lowerer_.nextTempId();
@@ -228,6 +344,11 @@ Emitter::Value Emitter::emitCallRet(Type ty, const std::string &callee, const st
     return Value::temp(id);
 }
 
+/// @brief Emit a call that discards the return value.
+/// @details Appends a void-typed CALL instruction with the provided callee and
+///          argument list.
+/// @param callee Symbol name to invoke.
+/// @param args Argument values.
 void Emitter::emitCall(const std::string &callee, const std::vector<Value> &args)
 {
     Instr in;
@@ -241,6 +362,11 @@ void Emitter::emitCall(const std::string &callee, const std::vector<Value> &args
     block->instructions.push_back(in);
 }
 
+/// @brief Emit a CONSTSTR instruction referencing a global literal.
+/// @details Allocates a new temporary, loads the named global string, and
+///          returns the temporary identifier.
+/// @param globalName Name of the global string constant.
+/// @return Temporary holding the string handle.
 Emitter::Value Emitter::emitConstStr(const std::string &globalName)
 {
     unsigned id = lowerer_.nextTempId();
@@ -256,6 +382,11 @@ Emitter::Value Emitter::emitConstStr(const std::string &globalName)
     return Value::temp(id);
 }
 
+/// @brief Store an array handle into a slot with retain/release semantics.
+/// @details Requests the retain/release helpers, retains the new handle,
+///          releases the existing one, and stores the updated pointer.
+/// @param slot Pointer to the slot storing the handle.
+/// @param value New array handle to record.
 void Emitter::storeArray(Value slot, Value value)
 {
     lowerer_.requireArrayI32Retain();
@@ -266,6 +397,10 @@ void Emitter::storeArray(Value slot, Value value)
     emitStore(Type(Type::Kind::Ptr), slot, value);
 }
 
+/// @brief Release array-valued locals tracked in the lowering symbol table.
+/// @details Iterates over symbols, skipping parameters, and emits release calls
+///          for any retained array handles before clearing their slots.
+/// @param paramNames Names of procedure parameters to exclude from release.
 void Emitter::releaseArrayLocals(const std::unordered_set<std::string> &paramNames)
 {
     bool requested = false;
@@ -287,6 +422,10 @@ void Emitter::releaseArrayLocals(const std::unordered_set<std::string> &paramNam
     }
 }
 
+/// @brief Release array parameters at the end of a procedure.
+/// @details Processes the supplied parameter names, invoking the release helper
+///          for each referenced array and clearing the slot afterwards.
+/// @param paramNames Names of parameters to release.
 void Emitter::releaseArrayParams(const std::unordered_set<std::string> &paramNames)
 {
     if (paramNames.empty())
@@ -310,6 +449,11 @@ void Emitter::releaseArrayParams(const std::unordered_set<std::string> &paramNam
     }
 }
 
+/// @brief Release object-valued locals, invoking destructors when required.
+/// @details Synthesises control flow that calls runtime helpers and, when the
+///          object class is known, the user-defined destructor prior to freeing
+///          the handle. Slots are cleared after release.
+/// @param paramNames Names of parameters to skip while releasing locals.
 void Emitter::releaseObjectLocals(const std::unordered_set<std::string> &paramNames)
 {
     auto releaseSlot = [this](Lowerer::SymbolInfo &info)
@@ -382,6 +526,10 @@ void Emitter::releaseObjectLocals(const std::unordered_set<std::string> &paramNa
     }
 }
 
+/// @brief Release object-valued parameters that were retained during lowering.
+/// @details Mirrors @ref releaseObjectLocals but only processes the supplied
+///          parameter set, ensuring borrowed handles are freed at function exit.
+/// @param paramNames Parameter names targeted for release.
 void Emitter::releaseObjectParams(const std::unordered_set<std::string> &paramNames)
 {
     if (paramNames.empty())
@@ -457,6 +605,10 @@ void Emitter::releaseObjectParams(const std::unordered_set<std::string> &paramNa
     }
 }
 
+/// @brief Emit a TRAP instruction that terminates the current block.
+/// @details Produces a trap without operands, relying on the runtime to consult
+///          the VM's trap metadata. The current block is marked terminated so
+///          execution cannot continue.
 void Emitter::emitTrap()
 {
     Instr in;
@@ -469,6 +621,10 @@ void Emitter::emitTrap()
     block->terminated = true;
 }
 
+/// @brief Emit a TrapFromErr instruction to translate runtime errors into traps.
+/// @details Appends the instruction with @p errCode as its operand and marks the
+///          block terminated to reflect the exceptional transfer of control.
+/// @param errCode Runtime error code value.
 void Emitter::emitTrapFromErr(Value errCode)
 {
     Instr in;
@@ -482,6 +638,10 @@ void Emitter::emitTrapFromErr(Value errCode)
     block->terminated = true;
 }
 
+/// @brief Push an error-handler block onto the handler stack.
+/// @details Records the handler label so future trap instructions can resume at
+///          @p handler.
+/// @param handler Basic block serving as the handler entry point.
 void Emitter::emitEhPush(BasicBlock *handler)
 {
     assert(handler && "emitEhPush requires a handler block");
@@ -495,6 +655,7 @@ void Emitter::emitEhPush(BasicBlock *handler)
     block->instructions.push_back(in);
 }
 
+/// @brief Pop the active error handler from the handler stack.
 void Emitter::emitEhPop()
 {
     Instr in;
@@ -506,6 +667,9 @@ void Emitter::emitEhPop()
     block->instructions.push_back(in);
 }
 
+/// @brief Pop an active error handler prior to returning.
+/// @details Ensures the handler stack remains balanced when control leaves the
+///          current scope.
 void Emitter::emitEhPopForReturn()
 {
     if (!lowerer_.context().errorHandlers().active())
@@ -513,6 +677,8 @@ void Emitter::emitEhPopForReturn()
     emitEhPop();
 }
 
+/// @brief Clear the active error-handler bookkeeping in the lowering context.
+/// @details Pops the handler when active and resets the associated metadata.
 void Emitter::clearActiveErrorHandler()
 {
     auto &ctx = lowerer_.context();
@@ -523,6 +689,11 @@ void Emitter::clearActiveErrorHandler()
     ctx.errorHandlers().setActiveLine(std::nullopt);
 }
 
+/// @brief Ensure an error-handler block exists for the specified source line.
+/// @details Reuses any cached handler; otherwise creates a new block with an EH
+///          entry instruction and records it in the handler map.
+/// @param targetLine Line number associated with the handler.
+/// @return Pointer to the handler block.
 Emitter::BasicBlock *Emitter::ensureErrorHandlerBlock(int targetLine)
 {
     auto &ctx = lowerer_.context();
@@ -557,6 +728,10 @@ Emitter::BasicBlock *Emitter::ensureErrorHandlerBlock(int targetLine)
     return &bb;
 }
 
+/// @brief Emit a return instruction that yields a value.
+/// @details Pops the active error handler when present, appends a RET carrying
+///          @p v, and marks the current block as terminated.
+/// @param v Value returned to the caller.
 void Emitter::emitRet(Value v)
 {
     emitEhPopForReturn();
@@ -571,6 +746,9 @@ void Emitter::emitRet(Value v)
     block->terminated = true;
 }
 
+/// @brief Emit a void return instruction.
+/// @details Pops active error handlers and appends a RET with no operands before
+///          terminating the block.
 void Emitter::emitRetVoid()
 {
     emitEhPopForReturn();

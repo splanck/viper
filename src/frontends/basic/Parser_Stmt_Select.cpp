@@ -1,11 +1,28 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/frontends/basic/Parser_Stmt_Select.cpp
-// Purpose: Implements SELECT CASE parsing routines for the BASIC parser.
-// Key invariants: Validates CASE and CASE ELSE structure while maintaining
-//                 selector range bookkeeping.
+// Purpose: Implement SELECT CASE parsing routines for the BASIC front-end
+//          parser.
+// Key invariants: Maintains selector range bookkeeping while validating CASE
+//                 and CASE ELSE structure.
 // Ownership/Lifetime: Parser generates AST nodes owned by the caller via
 //                     unique_ptr wrappers.
-// License: MIT; see LICENSE for details.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Parsing helpers for BASIC's SELECT CASE statement.
+/// @details The functions in this file break down the SELECT CASE grammar into
+///          focused helpers: parsing the header, dispatching directives like END
+///          SELECT or CASE ELSE, and collecting individual CASE arms.  The
+///          parser builds a `SelectCaseStmt` AST node while recording diagnostics
+///          through the shared emitter when malformed constructs are encountered.
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
@@ -21,6 +38,12 @@
 namespace il::frontends::basic
 {
 
+/// @brief Parse the SELECT CASE header and initialise tracking state.
+/// @details Consumes the `SELECT CASE <expr>` header, materialises a
+///          `SelectCaseStmt`, and captures a diagnostic lambda that reports
+///          through the parser's emitter when available.  The returned state is
+///          subsequently threaded through the rest of the parsing routine.
+/// @return SelectParseState capturing the partially built statement and helpers.
 Parser::SelectParseState Parser::parseSelectHeader()
 {
     SelectParseState state;
@@ -56,12 +79,23 @@ Parser::SelectParseState Parser::parseSelectHeader()
     return state;
 }
 
+/// @brief Attempt to parse a CASE ELSE directive for the active SELECT state.
+/// @details Delegates to @ref consumeCaseElse and returns whether the directive
+///          was handled, allowing the caller to continue scanning or exit early.
+/// @param state SELECT parsing state that carries progress flags.
+/// @return True if a CASE ELSE arm was consumed; otherwise false.
 bool Parser::parseSelectElse(SelectParseState &state)
 {
     auto result = consumeCaseElse(*state.stmt, state.sawCaseArm, state.sawCaseElse, state.diagnose);
     return result.handled;
 }
 
+/// @brief Dispatch directives encountered while scanning a SELECT body.
+/// @details Handles END SELECT and CASE ELSE lines before normal arm parsing.
+///          The returned action instructs the caller whether to terminate
+///          parsing, continue scanning, or treat the line as a CASE arm.
+/// @param state Mutable SELECT parsing state.
+/// @return Dispatch action describing how the caller should proceed.
 Parser::SelectDispatchAction Parser::dispatchSelectDirective(SelectParseState &state)
 {
     auto endResult = handleEndSelect(*state.stmt, state.sawCaseArm, state.expectEndSelect, state.diagnose);
@@ -74,6 +108,11 @@ Parser::SelectDispatchAction Parser::dispatchSelectDirective(SelectParseState &s
     return SelectDispatchAction::None;
 }
 
+/// @brief Parse all CASE arms belonging to the current SELECT statement.
+/// @details Iterates through the token stream, skipping blank lines, handling
+///          directives, and invoking @ref parseCaseArm for each CASE block.  As
+///          arms are collected the encompassing statement range is updated.
+/// @param state SELECT parsing state containing the partially built AST.
 void Parser::parseSelectArms(SelectParseState &state)
 {
     while (!at(TokenKind::EndOfFile))
@@ -122,6 +161,11 @@ void Parser::parseSelectArms(SelectParseState &state)
     }
 }
 
+/// @brief Parse an entire SELECT CASE statement and return its AST node.
+/// @details Builds the header, collects arms, emits diagnostics for missing END
+///          SELECT directives, and transfers ownership of the constructed
+///          statement to the caller.
+/// @return AST node representing the parsed SELECT CASE statement.
 StmtPtr Parser::parseSelectCaseStatement()
 {
     auto state = parseSelectHeader();
@@ -138,6 +182,11 @@ StmtPtr Parser::parseSelectCaseStatement()
     return std::move(state.stmt);
 }
 
+/// @brief Collect the statements belonging to a single CASE arm or ELSE body.
+/// @details Delegates to the statement sequencer to capture statements until the
+///          next CASE/END SELECT terminator is seen.  Records the terminator
+///          location so diagnostics can highlight the control-flow boundary.
+/// @return Result containing the collected body and terminator metadata.
 Parser::SelectBodyResult Parser::collectSelectBody()
 {
     SelectBodyResult result;
@@ -156,6 +205,16 @@ Parser::SelectBodyResult Parser::collectSelectBody()
     return result;
 }
 
+/// @brief Handle an END SELECT directive, emitting diagnostics as needed.
+/// @details Confirms the upcoming tokens match `END SELECT`, finalises the
+///          statement range, and reports missing CASE arms.  Updates the
+///          `expectEndSelect` flag that tracks whether the terminator has been
+///          seen.
+/// @param stmt SELECT CASE statement being populated.
+/// @param sawCaseArm Whether any CASE arms have been parsed so far.
+/// @param expectEndSelect Flag indicating an END SELECT is still expected.
+/// @param diagnose Diagnostic callback used to report errors.
+/// @return Handler result describing whether the directive was consumed.
 Parser::SelectHandlerResult Parser::handleEndSelect(SelectCaseStmt &stmt,
                                                     bool sawCaseArm,
                                                     bool &expectEndSelect,
@@ -181,6 +240,14 @@ Parser::SelectHandlerResult Parser::handleEndSelect(SelectCaseStmt &stmt,
     return result;
 }
 
+/// @brief Consume a CASE ELSE arm if present.
+/// @details Validates structural rules (only one CASE ELSE, must follow at least
+///          one CASE), captures the body statements, and updates tracking flags.
+/// @param stmt Statement under construction.
+/// @param sawCaseArm True when a CASE arm has already been parsed.
+/// @param sawCaseElse Flag updated to record whether an ELSE arm exists.
+/// @param diagnose Diagnostic emitter callback.
+/// @return Handler result containing diagnostic information and handled state.
 Parser::SelectHandlerResult Parser::consumeCaseElse(SelectCaseStmt &stmt,
                                                     bool sawCaseArm,
                                                     bool &sawCaseElse,
@@ -223,6 +290,10 @@ Parser::SelectHandlerResult Parser::consumeCaseElse(SelectCaseStmt &stmt,
     return result;
 }
 
+/// @brief Parse the body of a CASE ELSE directive without modifying state.
+/// @details Used by legacy call sites that expect the body and source location as
+///          a pair instead of updating the active parse state.
+/// @return Collected statements and the terminating location.
 std::pair<std::vector<StmtPtr>, il::support::SourceLoc> Parser::parseCaseElseBody()
 {
     expect(TokenKind::KeywordCase);
@@ -235,6 +306,12 @@ std::pair<std::vector<StmtPtr>, il::support::SourceLoc> Parser::parseCaseElseBod
     return {std::move(body), elseEol.loc};
 }
 
+/// @brief Parse a CASE arm including relational, range, and literal entries.
+/// @details Supports relational `CASE IS <op> value`, discrete values, ranges
+///          using the `TO` keyword, and string labels.  Diagnostics surface when
+///          malformed entries are encountered.  The collected body is appended to
+///          the returned `CaseArm`.
+/// @return Populated CASE arm ready to be appended to the SELECT statement.
 CaseArm Parser::parseCaseArm()
 {
     Token caseTok = expect(TokenKind::KeywordCase);
