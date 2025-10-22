@@ -1,12 +1,24 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/frontends/basic/SemanticAnalyzer.Stmts.Runtime.cpp
-// License: MIT License. See LICENSE in the project root for full license
-//          information.
 // Purpose: Implements runtime/data-manipulation statement checks for the BASIC
 //          semantic analyzer, covering LET/DIM/REDIM, RANDOMIZE, and CALL.
 // Key invariants: Shared helpers guard loop-variable mutations and array/type
 //                 tracking remains in sync with procedure scopes.
 // Ownership/Lifetime: Borrowed SemanticAnalyzer state only.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements semantic validation for BASIC statements that manipulate runtime state.
+/// @details These helpers cover assignments, array declarations, random seeds, and
+///          procedure calls while maintaining the analyzer's bookkeeping.
 
 #include "frontends/basic/SemanticAnalyzer.Stmts.Runtime.hpp"
 
@@ -16,6 +28,9 @@
 namespace il::frontends::basic::semantic_analyzer_detail
 {
 
+/// @brief Bind runtime statement helpers to the active semantic analyzer state.
+///
+/// @param analyzer Analyzer that supplies shared context such as loop tracking.
 RuntimeStmtContext::RuntimeStmtContext(SemanticAnalyzer &analyzer) noexcept
     : StmtShared(analyzer)
 {
@@ -30,6 +45,9 @@ using semantic_analyzer_detail::RuntimeStmtContext;
 using semantic_analyzer_detail::astToSemanticType;
 using semantic_analyzer_detail::semanticTypeName;
 
+/// @brief Validate a CALL statement against registered procedure signatures.
+///
+/// @param stmt Statement node describing the call.
 void SemanticAnalyzer::analyzeCallStmt(CallStmt &stmt)
 {
     if (!stmt.call)
@@ -38,6 +56,10 @@ void SemanticAnalyzer::analyzeCallStmt(CallStmt &stmt)
     checkCallArgs(*stmt.call, sig);
 }
 
+/// @brief Check type rules and loop-variable restrictions for scalar assignments.
+///
+/// @param v Variable expression receiving the assignment.
+/// @param l LET statement providing the assigned expression and location.
 void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
 {
     RuntimeStmtContext ctx(*this);
@@ -120,6 +142,10 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
     }
 }
 
+/// @brief Validate assignments targeting array elements.
+///
+/// @param a Array expression identifying the element being written.
+/// @param l LET statement describing the overall assignment.
 void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
 {
     resolveAndTrackSymbol(a.name, SymbolKind::Reference);
@@ -172,6 +198,9 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
     }
 }
 
+/// @brief Emit diagnostics when the left-hand side of a LET is not assignable.
+///
+/// @param l LET statement with a non-variable target.
 void SemanticAnalyzer::analyzeConstExpr(const LetStmt &l)
 {
     if (l.target)
@@ -182,6 +211,9 @@ void SemanticAnalyzer::analyzeConstExpr(const LetStmt &l)
     de.emit(il::support::Severity::Error, "B2007", l.loc, 1, std::move(msg));
 }
 
+/// @brief Dispatch LET statement analysis based on target form.
+///
+/// @param l LET statement being validated.
 void SemanticAnalyzer::analyzeLet(LetStmt &l)
 {
     if (!l.target)
@@ -200,6 +232,9 @@ void SemanticAnalyzer::analyzeLet(LetStmt &l)
     }
 }
 
+/// @brief Validate RANDOMIZE statements and seed expressions.
+///
+/// @param r RANDOMIZE statement node.
 void SemanticAnalyzer::analyzeRandomize(const RandomizeStmt &r)
 {
     if (r.seed)
@@ -213,6 +248,9 @@ void SemanticAnalyzer::analyzeRandomize(const RandomizeStmt &r)
     }
 }
 
+/// @brief Validate DIM statements and update analyzer state.
+///
+/// @param d DIM statement describing variable or array declarations.
 void SemanticAnalyzer::analyzeDim(DimStmt &d)
 {
     long long sz = -1;
@@ -301,6 +339,9 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
     }
 }
 
+/// @brief Validate REDIM statements for previously declared arrays.
+///
+/// @param d REDIM statement describing the new array bounds.
 void SemanticAnalyzer::analyzeReDim(ReDimStmt &d)
 {
     long long sz = -1;
