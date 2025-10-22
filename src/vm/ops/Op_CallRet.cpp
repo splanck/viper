@@ -112,6 +112,8 @@ VM::ExecResult handleCall(VM &vm,
         const std::string blockLabel = bb ? bb->label : std::string{};
         out = RuntimeBridge::call(VMAccess::runtimeContext(vm), in.callee, args, in.loc, functionName, blockLabel);
     }
+    if (!in.result && in.type.kind == il::core::Type::Kind::Str && out.str)
+        rt_str_release_maybe(out.str);
     ops::storeResult(fr, in, out);
     return {};
 }
