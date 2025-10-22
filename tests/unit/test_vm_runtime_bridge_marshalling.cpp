@@ -209,6 +209,18 @@ int main()
         rt_string_unref(nonLiteralHandle);
     }
 
+    {
+        std::array<char, 4> notTerminated{'s', 'l', 'i', 'c'};
+        il::vm::StringRef sliceView{notTerminated.data(), notTerminated.size()};
+        il::vm::ViperString sliceHandle = il::vm::toViperString(sliceView);
+        assert(sliceHandle != nullptr);
+        assert(sliceHandle->heap != nullptr);
+        assert(rt_len(sliceHandle) == static_cast<int64_t>(sliceView.size()));
+        std::string sliceText(sliceHandle->data, static_cast<size_t>(rt_len(sliceHandle)));
+        assert(sliceText == std::string(sliceView.data(), sliceView.size()));
+        rt_string_unref(sliceHandle);
+    }
+
     rt_string_unref(emptyString);
 
     {

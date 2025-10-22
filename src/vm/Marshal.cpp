@@ -27,6 +27,7 @@
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <limits>
 #include <sstream>
 
 namespace il::vm
@@ -35,6 +36,37 @@ namespace il::vm
 namespace
 {
     using il::core::Type;
+
+#if defined(__has_builtin)
+#    if __has_builtin(__builtin_object_size)
+#        define VIPER_HAS_BUILTIN_OBJECT_SIZE 1
+#    endif
+#elif defined(__GNUC__) || defined(__clang__)
+#    define VIPER_HAS_BUILTIN_OBJECT_SIZE 1
+#endif
+
+#ifndef VIPER_HAS_BUILTIN_OBJECT_SIZE
+#    define VIPER_HAS_BUILTIN_OBJECT_SIZE 0
+#endif
+
+    bool hasProvableNullTerminator(StringRef text)
+    {
+        if (!text.data())
+            return text.empty();
+
+#if VIPER_HAS_BUILTIN_OBJECT_SIZE
+        if (text.size() == std::numeric_limits<size_t>::max())
+            return false;
+
+        const size_t objectSize = __builtin_object_size(text.data(), 0);
+        if (objectSize != static_cast<size_t>(-1) && objectSize > text.size())
+            return text.data()[text.size()] == '\0';
+#endif
+
+        return false;
+    }
+
+#undef VIPER_HAS_BUILTIN_OBJECT_SIZE
 
     struct KindAccessors
     {
@@ -143,13 +175,17 @@ ViperString toViperString(StringRef text)
     {
         if (text.data() == nullptr)
             return rt_const_cstr("");
+        if (hasProvableNullTerminator(text))
+            return rt_const_cstr(text.data());
         return rt_string_from_bytes(text.data(), 0);
     }
     if (text.data() == nullptr)
         return nullptr;
     if (text.find('\0') != StringRef::npos)
         return rt_string_from_bytes(text.data(), text.size());
-    return rt_const_cstr(text.data());
+    if (hasProvableNullTerminator(text))
+        return rt_const_cstr(text.data());
+    return rt_string_from_bytes(text.data(), text.size());
 }
 
 /// @brief Convert a runtime string handle back into the VM's view type.

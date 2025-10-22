@@ -33,6 +33,11 @@ int main()
     il::vm::VM vm(m);
     int64_t rv = vm.run();
     rt_string s = reinterpret_cast<rt_string>(static_cast<uintptr_t>(rv));
-    assert(s->data == m.globals.front().init.c_str());
+    assert(s != nullptr);
+    const int64_t len = rt_len(s);
+    assert(len == static_cast<int64_t>(m.globals.front().init.size()));
+    std::string_view globalView = m.globals.front().init;
+    std::string_view runtimeView{s->data, static_cast<size_t>(len)};
+    assert(runtimeView == globalView);
     return 0;
 }
