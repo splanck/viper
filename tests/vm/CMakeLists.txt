@@ -101,6 +101,10 @@ function(viper_add_vm_unit_tests)
   target_link_libraries(test_vm_cast_ops PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_cast_ops test_vm_cast_ops)
 
+  viper_add_test(test_vm_const_null ${_VIPER_VM_DIR}/ConstNullTests.cpp)
+  target_link_libraries(test_vm_const_null PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  viper_add_ctest(test_vm_const_null test_vm_const_null)
+
   viper_add_test(test_vm_int_ops ${_VIPER_VM_DIR}/IntOpsTests.cpp)
   target_link_libraries(test_vm_int_ops PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_int_ops test_vm_int_ops)
