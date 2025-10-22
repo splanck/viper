@@ -23,7 +23,54 @@
 #include "support/source_manager.hpp"
 #include "tools/common/module_loader.hpp"
 #include <iostream>
+#include <ostream>
 #include <string>
+
+namespace il::tools::verify
+{
+/// @brief Execute the il-verify CLI workflow with injectable streams and source manager.
+/// @param argc Argument count supplied by the caller.
+/// @param argv Argument vector containing the program name and input path.
+/// @param out Stream receiving success output.
+/// @param err Stream receiving diagnostics and error messages.
+/// @param sm Source manager used to resolve diagnostics during verification.
+/// @return Zero on success; non-zero on argument, overflow, parse, or verification failure.
+int runCLI(int argc,
+           char **argv,
+           std::ostream &out,
+           std::ostream &err,
+           il::support::SourceManager &sm)
+{
+    if (argc == 2 && std::string(argv[1]) == "--version")
+    {
+        out << "IL v0.1.2\n";
+        return 0;
+    }
+    if (argc != 2)
+    {
+        err << "Usage: il-verify <file.il>\n";
+        return 1;
+    }
+
+    il::core::Module m;
+    if (sm.addFile(argv[1]) == 0)
+    {
+        return 1;
+    }
+
+    auto load = il::tools::common::loadModuleFromFile(argv[1], m, err, "cannot open ");
+    if (!load.succeeded())
+    {
+        return 1;
+    }
+    if (!il::tools::common::verifyModule(m, err, &sm))
+    {
+        return 1;
+    }
+    out << "OK\n";
+    return 0;
+}
+} // namespace il::tools::verify
 
 /// @brief Entry point for the `il-verify` binary.
 ///
@@ -42,30 +89,10 @@
 /// @param argv Argument vector pointing at UTF-8 encoded strings.
 /// @return Zero on success or when printing the version banner; otherwise one
 ///         to signal argument, I/O, parse, or verification failures.
+#ifndef VIPER_IL_VERIFY_SKIP_MAIN
 int main(int argc, char **argv)
 {
-    if (argc == 2 && std::string(argv[1]) == "--version")
-    {
-        std::cout << "IL v0.1.2\n";
-        return 0;
-    }
-    if (argc != 2)
-    {
-        std::cerr << "Usage: il-verify <file.il>\n";
-        return 1;
-    }
-    il::core::Module m;
     il::support::SourceManager sm;
-    sm.addFile(argv[1]);
-    auto load = il::tools::common::loadModuleFromFile(argv[1], m, std::cerr, "cannot open ");
-    if (!load.succeeded())
-    {
-        return 1;
-    }
-    if (!il::tools::common::verifyModule(m, std::cerr, &sm))
-    {
-        return 1;
-    }
-    std::cout << "OK\n";
-    return 0;
+    return il::tools::verify::runCLI(argc, argv, std::cout, std::cerr, sm);
 }
+#endif

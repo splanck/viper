@@ -75,6 +75,14 @@ function(viper_add_tools_tests)
   target_link_libraries(test_cli_run_source_manager_overflow PRIVATE ${VIPER_TOOLS_LIBS})
   viper_add_ctest(test_cli_run_source_manager_overflow test_cli_run_source_manager_overflow)
 
+  viper_add_test(test_cli_il_verify_source_manager_overflow
+    ${VIPER_TESTS_DIR}/unit/test_cli_il_verify_source_manager_overflow.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/il-verify/il-verify.cpp)
+  target_include_directories(test_cli_il_verify_source_manager_overflow PRIVATE ${CMAKE_SOURCE_DIR}/src)
+  target_compile_definitions(test_cli_il_verify_source_manager_overflow PRIVATE VIPER_IL_VERIFY_SKIP_MAIN)
+  target_link_libraries(test_cli_il_verify_source_manager_overflow PRIVATE ${VIPER_TOOLS_LIBS})
+  viper_add_ctest(test_cli_il_verify_source_manager_overflow test_cli_il_verify_source_manager_overflow)
+
   viper_add_test(test_cli_il_opt_passes
     ${VIPER_TESTS_DIR}/unit/test_il_opt_passes.cpp
     ${CMAKE_SOURCE_DIR}/src/tools/ilc/cli.cpp
