@@ -27,6 +27,22 @@ StringInterner::StringInterner(uint32_t maxSymbols) noexcept : maxSymbols_(maxSy
 {
 }
 
+StringInterner::StringInterner(const StringInterner &other) noexcept
+    : map_{}, storage_(other.storage_), maxSymbols_(other.maxSymbols_)
+{
+    rebuildMap();
+}
+
+StringInterner &StringInterner::operator=(const StringInterner &other) noexcept
+{
+    if (this == &other)
+        return *this;
+    storage_ = other.storage_;
+    maxSymbols_ = other.maxSymbols_;
+    rebuildMap();
+    return *this;
+}
+
 /// @brief Intern the given string and return its Symbol handle.
 ///
 /// @details The interner stores owned strings in `storage_` and maps them to
@@ -48,7 +64,8 @@ Symbol StringInterner::intern(std::string_view str)
         return {};
     storage_.emplace_back(str);
     Symbol sym{static_cast<uint32_t>(storage_.size())};
-    map_.emplace(storage_.back(), sym);
+    const std::string &stored = storage_.back();
+    map_.emplace(std::string_view{stored}, sym);
     return sym;
 }
 
@@ -67,5 +84,16 @@ std::string_view StringInterner::lookup(Symbol sym) const
     if (sym.id == 0 || sym.id > storage_.size())
         return {};
     return storage_[sym.id - 1];
+}
+
+void StringInterner::rebuildMap()
+{
+    map_.clear();
+    map_.reserve(storage_.size());
+    uint32_t id = 1;
+    for (const std::string &value : storage_)
+    {
+        map_.emplace(std::string_view{value}, Symbol{id++});
+    }
 }
 } // namespace il::support
