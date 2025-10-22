@@ -33,6 +33,7 @@
 #include "il/io/TypeParser.hpp"
 
 #include "support/diag_expected.hpp"
+#include "viper/parse/Cursor.h"
 
 #include <cctype>
 #include <exception>
@@ -57,51 +58,10 @@ using il::io::parseFloatLiteral;
 using il::io::parseIntegerLiteral;
 
 using Operand = Value;
+using viper::parse::Cursor;
+using viper::parse::SourcePos;
 
-struct Cursor
-{
-    explicit Cursor(std::string_view text) : text(text), pos(0) {}
-
-    bool eof() const { return pos >= text.size(); }
-
-    char peek() const
-    {
-        return eof() ? '\0' : text[pos];
-    }
-
-    void advance()
-    {
-        if (!eof())
-            ++pos;
-    }
-
-    void skipSpaces()
-    {
-        while (!eof() && std::isspace(static_cast<unsigned char>(text[pos])))
-            ++pos;
-    }
-
-    void finish()
-    {
-        pos = text.size();
-    }
-
-    std::string_view remaining() const
-    {
-        return text.substr(pos);
-    }
-
-    std::string_view view() const
-    {
-        return text;
-    }
-
-    std::string_view text;
-    size_t pos;
-};
-
-template <typename T>
-Expected<T> makeSyntaxError(ParserState &state, std::string message)
+template <typename T> Expected<T> makeSyntaxError(ParserState &state, std::string message)
 {
     return Expected<T>{makeError(state.curLoc, formatLineDiag(state.lineNo, std::move(message)))};
 }
@@ -128,17 +88,17 @@ Expected<Operand> parseImm(Cursor &cursor, ParserState &state)
 
     if (equalsIgnoreCase(token, "true"))
     {
-        cursor.finish();
+        cursor.consumeRest();
         return Operand::constBool(true);
     }
     if (equalsIgnoreCase(token, "false"))
     {
-        cursor.finish();
+        cursor.consumeRest();
         return Operand::constBool(false);
     }
     if (token == "null")
     {
-        cursor.finish();
+        cursor.consumeRest();
         return Operand::null();
     }
     if (token.size() >= 2 && token.front() == '"' && token.back() == '"')
@@ -148,21 +108,22 @@ Expected<Operand> parseImm(Cursor &cursor, ParserState &state)
         std::string errMsg;
         if (!decodeEscapedString(literal, decoded, &errMsg))
             return makeSyntaxError<Operand>(state, std::move(errMsg));
-        cursor.finish();
+        cursor.consumeRest();
         return Operand::constStr(std::move(decoded));
     }
 
     const bool hasDecimalPoint = token.find('.') != std::string::npos;
-    const bool isHexLiteral = token.size() >= 2 && token[0] == '0' && (token[1] == 'x' || token[1] == 'X');
-    const bool hasExponent = (!isHexLiteral) &&
-                             (token.find('e') != std::string::npos || token.find('E') != std::string::npos);
+    const bool isHexLiteral =
+        token.size() >= 2 && token[0] == '0' && (token[1] == 'x' || token[1] == 'X');
+    const bool hasExponent = (!isHexLiteral) && (token.find('e') != std::string::npos ||
+                                                 token.find('E') != std::string::npos);
 
     if (hasDecimalPoint || hasExponent)
     {
         double value = 0.0;
         if (parseFloatLiteral(token, value))
         {
-            cursor.finish();
+            cursor.consumeRest();
             return Operand::constFloat(value);
         }
         std::ostringstream oss;
@@ -173,7 +134,7 @@ Expected<Operand> parseImm(Cursor &cursor, ParserState &state)
     long long value = 0;
     if (parseIntegerLiteral(token, value))
     {
-        cursor.finish();
+        cursor.consumeRest();
         return Operand::constInt(value);
     }
 
@@ -189,7 +150,7 @@ Expected<Operand> parseReg(Cursor &cursor, ParserState &state)
     auto it = state.tempIds.find(name);
     if (it != state.tempIds.end())
     {
-        cursor.finish();
+        cursor.consumeRest();
         return Operand::temp(it->second);
     }
 
@@ -208,7 +169,7 @@ Expected<Operand> parseReg(Cursor &cursor, ParserState &state)
         {
             try
             {
-                cursor.finish();
+                cursor.consumeRest();
                 return Operand::temp(static_cast<unsigned>(std::stoul(name.substr(1))));
             }
             catch (const std::exception &)
@@ -239,7 +200,7 @@ Expected<Operand> parseSymbolRef(Cursor &cursor, ParserState &state)
     std::string name = token.substr(1);
     if (name.empty())
         return makeSyntaxError<Operand>(state, "missing global name");
-    cursor.finish();
+    cursor.consumeRest();
     return Operand::global(std::move(name));
 }
 
@@ -256,7 +217,7 @@ Expected<Operand> parseSymbolRef(Cursor &cursor, ParserState &state)
         oss << "unknown type '" << token << "'";
         return makeSyntaxError<Type>(state, oss.str());
     }
-    cursor.finish();
+    cursor.consumeRest();
     return ty;
 }
 
@@ -276,10 +237,10 @@ OperandParser::OperandParser(ParserState &state, Instr &instr) : state_(state), 
 /// @return Parsed value or an error diagnostic.
 Expected<Value> OperandParser::parseValueToken(const std::string &tok) const
 {
-    Cursor cursor(tok);
-    cursor.skipSpaces();
+    Cursor cursor(tok, SourcePos{state_.lineNo, 0});
+    cursor.skipWs();
 
-    if (cursor.eof())
+    if (cursor.atEnd())
         return makeSyntaxError<Value>(state_, "missing operand");
 
     const char first = cursor.peek();
@@ -306,8 +267,8 @@ Expected<Value> OperandParser::parseValueToken(const std::string &tok) const
 /// @param text Raw operand text after the mnemonic.
 /// @param context Human-readable description for error messages.
 /// @return Vector of trimmed tokens or an error diagnostic.
-Expected<std::vector<std::string>>
-OperandParser::splitCommaSeparated(const std::string &text, const char *context) const
+Expected<std::vector<std::string>> OperandParser::splitCommaSeparated(const std::string &text,
+                                                                      const char *context) const
 {
     std::vector<std::string> tokens;
     std::string current;
@@ -315,13 +276,15 @@ OperandParser::splitCommaSeparated(const std::string &text, const char *context)
     bool escape = false;
     size_t depth = 0;
 
-    auto makeErrorWithMessage = [&](const std::string &message) {
+    auto makeErrorWithMessage = [&](const std::string &message)
+    {
         std::ostringstream oss;
         oss << "line " << state_.lineNo << ": " << message;
         return Expected<std::vector<std::string>>{makeError(instr_.loc, oss.str())};
     };
 
-    auto malformedError = [&]() {
+    auto malformedError = [&]()
+    {
         std::ostringstream msg;
         msg << "malformed " << context;
         return makeErrorWithMessage(msg.str());
@@ -591,8 +554,7 @@ Expected<void> OperandParser::parseBranchTarget(const std::string &segment,
 /// @param label Target label being checked.
 /// @param argCount Number of arguments supplied with the branch.
 /// @return Success or an error diagnostic when a mismatch is detected.
-Expected<void> OperandParser::checkBranchArgCount(const std::string &label,
-                                                  size_t argCount) const
+Expected<void> OperandParser::checkBranchArgCount(const std::string &label, size_t argCount) const
 {
     if (instr_.op == il::core::Opcode::EhPush)
         return {};
@@ -666,7 +628,8 @@ Expected<void> OperandParser::parseSwitchTargets(const std::string &text)
 {
     std::string remaining = trim(text);
     const char *mnemonic = il::core::getOpcodeInfo(instr_.op).name;
-    auto malformedSwitch = [&]() {
+    auto malformedSwitch = [&]()
+    {
         std::ostringstream oss;
         oss << "line " << state_.lineNo << ": malformed " << mnemonic;
         return Expected<void>{makeError(instr_.loc, oss.str())};
