@@ -47,6 +47,7 @@ class LowerCtx;
 namespace lower
 {
 class Emitter;
+class BuiltinLowerContext;
 
 namespace detail
 {
@@ -108,6 +109,7 @@ class Lowerer
     friend class builtins::LowerCtx;
     friend class SelectCaseLowering;
     friend class lower::Emitter;
+    friend class lower::BuiltinLowerContext;
 
     using Module = il::core::Module;
     using Function = il::core::Function;
