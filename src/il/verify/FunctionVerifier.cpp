@@ -1,9 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/il/verify/FunctionVerifier.cpp
-// License: MIT (see LICENSE for details).
-// Purpose: Implements function-level verification by coordinating block and instruction checks.
-// Key invariants: Functions must start with an entry block, maintain unique labels, and respect
-// call signatures. Ownership/Lifetime: Operates on module-provided data; no allocations persist
-// beyond verification. Links: docs/il-guide.md#reference
+// Purpose: Coordinate function-level verification by orchestrating block,
+//          instruction, and handler analyses.
+// Key invariants: Functions begin with an entry-labelled block, maintain unique
+//                 labels, respect extern signatures, and honour runtime error
+//                 handling semantics.
+// Ownership/Lifetime: Operates on module-provided data; no allocations persist
+//                     beyond verification and all references remain borrowed.
+// Links: docs/il-guide.md#reference, docs/architecture.md#il-verify
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/verify/FunctionVerifier.hpp"
 
@@ -41,16 +53,25 @@ namespace
 {
 
 /// @brief Identify whether an opcode is one of the resume-family terminators.
-/// @details The verifier uses this to gate resume usage to handler blocks and
-/// ensure the appropriate %tok parameter is forwarded.
+///
+/// @details The verifier uses this helper to gate resume usage to handler
+///          blocks and ensure the appropriate %tok parameter is forwarded when
+///          checking operands.
+///
+/// @param op Opcode under inspection.
+/// @return @c true when the opcode belongs to the resume family.
 bool isResumeOpcode(Opcode op)
 {
     return op == Opcode::ResumeSame || op == Opcode::ResumeNext || op == Opcode::ResumeLabel;
 }
 
 /// @brief Detect whether an opcode reads fields from an error value.
-/// @details Helps enforce that error accessors only appear inside handler blocks
-/// where the %tok parameter is in scope.
+///
+/// @details Helps enforce that error accessors only appear inside handler
+///          blocks where the %tok parameter is in scope.
+///
+/// @param op Opcode to classify.
+/// @return @c true when the opcode is an error accessor.
 bool isErrAccessOpcode(Opcode op)
 {
     switch (op)
@@ -66,8 +87,12 @@ bool isErrAccessOpcode(Opcode op)
 }
 
 /// @brief Recognise calls that release reference-counted runtime arrays.
+///
 /// @details Used to enforce single-release semantics on array handles tracked
-/// by the verifier.
+///          by the verifier so use-after-release diagnostics can be emitted.
+///
+/// @param instr Instruction being analysed.
+/// @return @c true when the instruction releases a runtime array handle.
 bool isRuntimeArrayRelease(const Instr &instr)
 {
     return instr.op == Opcode::Call && instr.callee == "rt_arr_i32_release";

@@ -1,5 +1,19 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/il/verify/ExternVerifier.cpp
+// Purpose: Validate extern declarations against duplicate definitions and the
+//          runtime signature database.
+// Key invariants: Extern names remain unique per module and signatures must
+//                 agree with runtime metadata when available.
+// Ownership/Lifetime: The verifier references module-owned declarations and
+//                     caches pointers without extending their lifetime.
+// Links: docs/il-guide.md#extern-declarations, docs/architecture.md#il-verify
+//
 //===----------------------------------------------------------------------===//
 
 /// @file
@@ -25,6 +39,12 @@ using il::support::Expected;
 using il::support::makeError;
 
 /// @brief Compare two extern declarations for signature equivalence.
+///
+/// @details Checks both return kind and parameter sequence to ensure modules do
+///          not supply incompatible duplicate declarations. Parameter counts and
+///          element kinds must match exactly for the declarations to be treated
+///          as identical.
+///
 /// @param lhs First extern declaration.
 /// @param rhs Second extern declaration.
 /// @return @c true when return and parameter types are identical.
@@ -39,6 +59,12 @@ bool signaturesMatch(const Extern &lhs, const Extern &rhs)
 }
 
 /// @brief Compare an extern declaration against a runtime signature descriptor.
+///
+/// @details Runtime metadata defines the ABI contract for built-in externs.
+///          This helper validates that the IL declaration mirrors the runtime's
+///          return type and parameter sequence exactly to prevent call
+///          mismatches at execution time.
+///
 /// @param decl Extern declaration authored in IL.
 /// @param runtime Canonical runtime signature retrieved from the runtime table.
 /// @return @c true when both signatures agree on return and parameter types.
@@ -55,6 +81,11 @@ bool signaturesMatch(const Extern &decl, const il::runtime::RuntimeSignature &ru
 } // namespace
 
 /// @brief Access the interned extern declaration map.
+///
+/// @details Exposes the cached mapping from extern names to declarations so
+///          downstream verifier components can perform lookups without
+///          rebuilding the table.
+///
 /// @return Reference to the map keyed by extern name.
 [[nodiscard]] const ExternVerifier::ExternMap &ExternVerifier::externs() const
 {
@@ -62,8 +93,14 @@ bool signaturesMatch(const Extern &decl, const il::runtime::RuntimeSignature &ru
 }
 
 /// @brief Populate the extern map and validate declarations for a module.
-/// @details Rejects duplicates, reports signature mismatches, and cross-checks
-/// definitions against known runtime signatures.
+///
+/// @details Clears any previous state, then walks all externs to enforce
+///          uniqueness and signature correctness. Duplicate names trigger a
+///          diagnostic, with additional context when the conflicting signatures
+///          differ. When runtime metadata exists the declaration must match the
+///          canonical signature exactly, ensuring VM and runtime remain in
+///          agreement.
+///
 /// @param module Module supplying extern declarations.
 /// @param sink Diagnostic sink used for structured reporting (unused currently).
 /// @return Empty success on validity; otherwise a formatted diagnostic error.

@@ -1,9 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/il/verify/ControlFlowChecker.cpp
-// Purpose: Implements control-flow specific IL verification helpers.
-// Key invariants: Ensures terminators and branch arguments satisfy structural rules.
-// Ownership/Lifetime: Operates with caller-provided verifier state.
-// License: MIT (see LICENSE).
-// Links: docs/il-guide.md#reference
+// Purpose: Coordinate block-level control-flow verification and expose
+//          reusable wrappers for instruction checks.
+// Key invariants: Every basic block terminates exactly once, parameter lists
+//                 remain well-formed, and diagnostics preserve original source
+//                 locations.
+// Ownership/Lifetime: Routines operate on caller-provided verifier state and
+//                     do not retain references beyond their invocation.
+// Links: docs/il-guide.md#reference, docs/architecture.md#il-verify
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/verify/ControlFlowChecker.hpp"
 #include "il/core/BasicBlock.hpp"
@@ -153,6 +165,16 @@ struct ParsedCapture
     std::vector<std::string> errors;
 };
 
+/// @brief Split captured verifier output into warning and error channels.
+///
+/// @details The legacy @ref VerifyInstrFn interface writes text diagnostics to
+///          an output stream. This helper partitions the captured buffer into
+///          warnings (prefixed with "warning: ") and errors so the new
+///          @ref DiagSink integration can replay them with structured severity
+///          information.
+///
+/// @param text Raw text emitted by the legacy verifier callback.
+/// @return Parsed lists of warnings and errors without trailing newlines.
 ParsedCapture parseCapturedLines(const std::string &text)
 {
     ParsedCapture parsed;
@@ -174,6 +196,16 @@ ParsedCapture parseCapturedLines(const std::string &text)
     return parsed;
 }
 
+/// @brief Join multiple diagnostic message fragments with newline separators.
+///
+/// @details When the legacy verifier emits several error lines they should be
+///          preserved verbatim. This helper concatenates them into a single
+///          string while retaining their original ordering so the aggregated
+///          message remains readable in the structured diagnostic format.
+///
+/// @param messages Collection of message lines to concatenate.
+/// @return Combined message separated by newlines, or an empty string when
+///         @p messages is empty.
 std::string joinMessages(const std::vector<std::string> &messages)
 {
     std::ostringstream oss;
@@ -188,6 +220,12 @@ std::string joinMessages(const std::vector<std::string> &messages)
 
 } // namespace
 
+/// @brief Validate block parameters using the Expected-based verification API.
+///
+/// @details Thin wrapper that exposes the implementation to consumers that
+///          prefer @ref il::support::Expected results. This allows newer
+///          verification paths to reuse the logic without relying on
+///          stream-based diagnostics.
 Expected<void> validateBlockParams_E(const Function &fn,
                                      const BasicBlock &bb,
                                      TypeInference &types,
@@ -196,6 +234,11 @@ Expected<void> validateBlockParams_E(const Function &fn,
     return validateBlockParams_impl(fn, bb, types, paramIds);
 }
 
+/// @brief Drive instruction verification using an Expected-returning callback.
+///
+/// @details Invokes @ref iterateBlockInstructions_impl while exposing the more
+///          expressive @ref VerifyInstrFnExpected signature to callers. This is
+///          the primary entry point for the modern verifier pipeline.
 Expected<void> iterateBlockInstructions_E(
     const Function &fn,
     const BasicBlock &bb,
@@ -210,11 +253,23 @@ Expected<void> iterateBlockInstructions_E(
         fn, bb, blockMap, externs, funcs, types, verifyInstrFn, sink);
 }
 
+/// @brief Ensure a block satisfies the single-terminator rule using Expected.
+///
+/// @details Delegates to @ref checkBlockTerminators_impl so callers can
+///          integrate the logic into Expected-based verification flows.
 Expected<void> checkBlockTerminators_E(const Function &fn, const BasicBlock &bb)
 {
     return checkBlockTerminators_impl(fn, bb);
 }
 
+/// @brief Determine whether an opcode represents a terminator instruction.
+///
+/// @details Encodes the subset of opcodes that end a basic block per the IL
+///          specification. Non-terminators return @c false so callers can decide
+///          whether additional instructions are allowed.
+///
+/// @param op Opcode to inspect.
+/// @return @c true when @p op is a terminator.
 bool isTerminator(Opcode op)
 {
     switch (op)
@@ -234,6 +289,18 @@ bool isTerminator(Opcode op)
     }
 }
 
+/// @brief Validate block parameters using the legacy stream-based interface.
+///
+/// @details Wraps @ref validateBlockParams_E and prints any generated
+///          diagnostics to the supplied stream so existing tooling can continue
+///          to operate without adopting @ref il::support::Expected.
+///
+/// @param fn Function owning the block being checked.
+/// @param bb Block whose parameter list is validated.
+/// @param types Type inference cache used to register parameter IDs.
+/// @param paramIds Output vector populated with registered parameter IDs.
+/// @param err Stream receiving any diagnostics.
+/// @return @c true on success; @c false when validation emits a diagnostic.
 bool validateBlockParams(const Function &fn,
                          const BasicBlock &bb,
                          TypeInference &types,
@@ -248,6 +315,22 @@ bool validateBlockParams(const Function &fn,
     return true;
 }
 
+/// @brief Execute legacy instruction verification using stream-based diagnostics.
+///
+/// @details Bridges the historical callback signature into the modern
+///          Expected-based implementation. Captures textual diagnostics,
+///          replays warnings through @ref DiagSink, and forwards errors to the
+///          provided stream, enabling incremental migration of existing tools.
+///
+/// @param verifyInstrFn Legacy verifier callback returning @c bool success.
+/// @param fn Function under verification.
+/// @param bb Basic block whose instructions are iterated.
+/// @param blockMap Reachable block lookup table.
+/// @param externs Map of extern signatures for call validation.
+/// @param funcs Map of function definitions for call validation.
+/// @param types Type inference context used by the verifier.
+/// @param err Stream receiving legacy diagnostics.
+/// @return @c true when verification succeeds; @c false otherwise.
 bool iterateBlockInstructions(VerifyInstrFn verifyInstrFn,
                               const Function &fn,
                               const BasicBlock &bb,
@@ -299,6 +382,15 @@ bool iterateBlockInstructions(VerifyInstrFn verifyInstrFn,
     return true;
 }
 
+/// @brief Validate terminator structure using the legacy interface.
+///
+/// @details Calls @ref checkBlockTerminators_E and prints diagnostics to the
+///          supplied stream for compatibility with older tools.
+///
+/// @param fn Function owning the block.
+/// @param bb Block whose terminator behaviour is checked.
+/// @param err Stream receiving diagnostic output.
+/// @return @c true when terminator rules are satisfied.
 bool checkBlockTerminators(const Function &fn, const BasicBlock &bb, std::ostream &err)
 {
     if (auto result = checkBlockTerminators_E(fn, bb); !result)
@@ -309,6 +401,10 @@ bool checkBlockTerminators(const Function &fn, const BasicBlock &bb, std::ostrea
     return true;
 }
 
+/// @brief Legacy wrapper for unconditional branch verification.
+///
+/// @details Invokes @ref verifyBr_E and formats any diagnostics to the
+///          provided stream so older callers need not adopt Expected.
 bool verifyBr(const Function &fn,
               const BasicBlock &bb,
               const Instr &instr,
@@ -324,6 +420,10 @@ bool verifyBr(const Function &fn,
     return true;
 }
 
+/// @brief Legacy wrapper for conditional branch verification.
+///
+/// @details Calls @ref verifyCBr_E and forwards diagnostics to the caller's
+///          output stream for compatibility with historical tooling.
 bool verifyCBr(const Function &fn,
                const BasicBlock &bb,
                const Instr &instr,
@@ -339,6 +439,10 @@ bool verifyCBr(const Function &fn,
     return true;
 }
 
+/// @brief Legacy wrapper for return verification.
+///
+/// @details Delegates to @ref verifyRet_E and prints diagnostics to the caller
+///          supplied stream when mismatches occur.
 bool verifyRet(const Function &fn,
                const BasicBlock &bb,
                const Instr &instr,

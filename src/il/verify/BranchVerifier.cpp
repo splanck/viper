@@ -1,9 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/il/verify/BranchVerifier.cpp
-// Purpose: Implement branch and return verification helpers shared by the IL verifier.
-// License: Distributed under the MIT license alongside the main project license text.
-// Key invariants: Branch instructions respect target parameter lists; returns match function
-// signatures. Ownership/Lifetime: Operates on caller-owned IL data without persisting references
-// beyond invocation. Links: docs/il-guide.md#reference
+// Purpose: Provide reusable validation routines for branch-like terminators
+//          and return instructions used by the IL verifier.
+// Key invariants: Successor argument lists must match block parameter arity and
+//                 types, switch cases remain unique, and return instructions
+//                 honour their surrounding function signature.
+// Ownership/Lifetime: Operates on caller-owned IL data structures and emits
+//                     diagnostics through Expected objects without retaining
+//                     references.
+// Links: docs/il-guide.md#reference, docs/architecture.md#il-verify
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/verify/BranchVerifier.hpp"
 
@@ -33,9 +46,11 @@ namespace
 
 /// @brief Validates that a branch transfers arguments compatible with its target block.
 ///
-/// Ensures the provided @p args match @p target parameter arity and inferred types. When
-/// mismatches occur, a formatted diagnostic tied to @p instr is returned via the
-/// il::support::Expected error channel.
+/// @details Ensures that the count of forwarded operands equals the destination
+///          block parameter list and that each operand's inferred type matches
+///          the declared parameter kind. Diagnostics are routed through the
+///          @ref il::support::Expected channel so callers can propagate
+///          structured errors to the verifier's sink.
 ///
 /// @param fn Function containing the branch instruction.
 /// @param bb Basic block holding @p instr.
@@ -74,9 +89,10 @@ Expected<void> verifyBranchArgs(const Function &fn,
 
 /// @brief Verifies an unconditional branch instruction forwards correct operands and target.
 ///
-/// Validates operand/label counts for `br` instructions and checks arguments against the
-/// resolved target block signature using verifyBranchArgs(). On any mismatch a diagnostic is
-/// emitted through the Expected error result.
+/// @details Checks that unconditional branches specify exactly one successor
+///          label and no immediate operands, then delegates to
+///          @ref verifyBranchArgs to validate argument forwarding. Any mismatch
+///          results in a diagnostic identifying the offending branch edge.
 ///
 /// @param fn Function currently being verified.
 /// @param bb Block containing the unconditional branch.
@@ -108,9 +124,10 @@ Expected<void> verifyBr_E(const Function &fn,
 
 /// @brief Verifies a conditional branch instruction's condition and successor arguments.
 ///
-/// Ensures a single i1 condition operand, exactly two successor labels, and per-edge argument
-/// compatibility as checked by verifyBranchArgs(). Errors propagate diagnostics describing the
-/// offending edge or condition mismatch.
+/// @details Ensures the condition operand exists and infers to @c i1, verifies
+///          that two successor labels accompany the opcode, and checks branch
+///          arguments for each edge using @ref verifyBranchArgs. Diagnostics
+///          highlight whether the condition or successor metadata is malformed.
 ///
 /// @param fn Function currently being verified.
 /// @param bb Block containing the conditional branch.
@@ -149,10 +166,11 @@ Expected<void> verifyCBr_E(const Function &fn,
 
 /// @brief Validates switch.i32 structure, operand types, and branch argument conformity.
 ///
-/// Checks that the scrutinee exists and is i32, that default and case labels are present, and
-/// that each case operand is a unique 32-bit integer. Branch arguments for the default and each
-/// case are compared against their targets using verifyBranchArgs(), returning diagnostics on
-/// any inconsistencies.
+/// @details Validates scrutinee presence and type, ensures a default label and
+///          matching argument vectors exist, and enforces unique 32-bit case
+///          values. Each successor receives argument validation through
+///          @ref verifyBranchArgs. Duplicate cases or mismatched signatures
+///          surface as structured diagnostics.
 ///
 /// @param fn Function currently being verified.
 /// @param bb Block containing the switch instruction.
@@ -262,6 +280,19 @@ Expected<void> verifySwitchI32_E(const Function &fn,
     return {};
 }
 
+/// @brief Validate that a return instruction matches its function signature.
+///
+/// @details Functions returning void must not carry operands, while
+///          non-void functions require exactly one operand whose inferred type
+///          equals the function's declared return kind. Violations are reported
+///          using formatted diagnostics tied to the instruction's source
+///          location.
+///
+/// @param fn Function owning the instruction.
+/// @param bb Basic block containing the @c ret.
+/// @param instr Return instruction being checked.
+/// @param types Type inference cache that provides operand kinds.
+/// @return Empty on success or a diagnostic describing the mismatch.
 Expected<void> verifyRet_E(const Function &fn,
                            const BasicBlock &bb,
                            const Instr &instr,

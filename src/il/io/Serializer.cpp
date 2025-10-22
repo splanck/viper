@@ -1,9 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/il/io/Serializer.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Implements serializer for IL modules to text.
-// Key invariants: Output is deterministic in canonical mode.
-// Ownership/Lifetime: Serializer does not own modules.
-// Links: docs/il-guide.md#reference
+// Purpose: Render IL modules, functions, and instructions into deterministic
+//          textual form for tooling and round-tripping.
+// Key invariants: Canonical mode sorts extern declarations, handler blocks are
+//                 annotated consistently, and every operand list mirrors the
+//                 operand ordering prescribed by the IL specification.
+// Ownership/Lifetime: The serializer is stateless; helper routines borrow the
+//                     supplied module and streams without retaining references
+//                     beyond the call site.
+// Links: docs/il-guide.md#reference, docs/codemap.md#il-io
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/io/Serializer.hpp"
 #include "il/core/BasicBlock.hpp"
@@ -34,11 +47,29 @@ namespace
 
 using Formatter = std::function<void(const Instr &, std::ostream &)>;
 
+/// @brief Convert an opcode enumerator to an index usable for lookup tables.
+///
+/// @details The opcode enum is defined densely starting at zero. Casting to
+///          @c size_t yields a stable index that aligns with static arrays of
+///          per-opcode behaviour (for example @ref formatterFor's dispatcher
+///          table).
+///
+/// @param op Opcode enumerator provided by callers.
+/// @return Zero-based index suitable for addressing formatter arrays.
 constexpr size_t toIndex(Opcode op)
 {
     return static_cast<size_t>(op);
 }
 
+/// @brief Convert a value into its textual representation for IL emission.
+///
+/// @details String constants require escape processing to keep the emitted
+///          program parseable. Non-string values defer to @ref il::core::toString
+///          which already understands temporaries, integers, floats, and other
+///          literal encodings.
+///
+/// @param value IL value to format.
+/// @return Textual representation, including surrounding quotes for strings.
 std::string formatValue(const Value &value)
 {
     if (value.kind == Value::Kind::ConstStr)
@@ -46,6 +77,14 @@ std::string formatValue(const Value &value)
     return il::core::toString(value);
 }
 
+/// @brief Print a comma-separated list of IL values.
+///
+/// @details Emits each value using @ref formatValue. Separators are inserted
+///          between entries only when necessary so the function gracefully
+///          handles single-element or empty ranges.
+///
+/// @param os Output stream that receives the formatted list.
+/// @param values Sequence of operands to print in order.
 void printValueList(std::ostream &os, const std::vector<Value> &values)
 {
     for (size_t i = 0; i < values.size(); ++i)
@@ -56,6 +95,14 @@ void printValueList(std::ostream &os, const std::vector<Value> &values)
     }
 }
 
+/// @brief Emit default operand lists separated by commas when present.
+///
+/// @details Many opcodes simply append their operands after the mnemonic.
+///          This helper implements the common behaviour and is reused by the
+///          opcode-specific formatter table.
+///
+/// @param instr Instruction whose operands are to be printed.
+/// @param os Destination stream.
 void printDefaultOperands(const Instr &instr, std::ostream &os)
 {
     if (instr.operands.empty())
@@ -64,6 +111,15 @@ void printDefaultOperands(const Instr &instr, std::ostream &os)
     printValueList(os, instr.operands);
 }
 
+/// @brief Special-case trap.kind operands to print human-readable tokens.
+///
+/// @details The operand may encode a trap token enumerator. When recognised the
+///          textual token is emitted instead of the numeric literal to improve
+///          readability. Unknown or non-integer operands fall back to the
+///          generic value printer.
+///
+/// @param instr Trap instruction providing the operand.
+/// @param os Destination stream.
 void printTrapKindOperand(const Instr &instr, std::ostream &os)
 {
     if (instr.operands.empty())
@@ -80,6 +136,14 @@ void printTrapKindOperand(const Instr &instr, std::ostream &os)
     os << ' ' << formatValue(operand);
 }
 
+/// @brief Print the operands required for @c trap.from_err instructions.
+///
+/// @details These opcodes encode the desired result type, and optionally an
+///          error operand. Both components must be emitted in the textual IL to
+///          round-trip correctly.
+///
+/// @param instr Instruction currently being serialised.
+/// @param os Output stream receiving the text form.
 void printTrapFromErrOperands(const Instr &instr, std::ostream &os)
 {
     os << ' ' << instr.type.toString();
@@ -87,6 +151,14 @@ void printTrapFromErrOperands(const Instr &instr, std::ostream &os)
         os << ' ' << formatValue(instr.operands.front());
 }
 
+/// @brief Serialise call instruction operands and the callee identifier.
+///
+/// @details Calls print their callee name prefixed with @c '@' followed by a
+///          parenthesised, comma-separated argument list. Arguments are always
+///          emitted even when empty so the IL syntax remains explicit.
+///
+/// @param instr Call instruction under serialisation.
+/// @param os Destination stream.
 void printCallOperands(const Instr &instr, std::ostream &os)
 {
     os << " @" << instr.callee << "(";
@@ -94,6 +166,14 @@ void printCallOperands(const Instr &instr, std::ostream &os)
     os << ')';
 }
 
+/// @brief Emit the operand for return instructions when present.
+///
+/// @details Returns may carry zero or one operands. This helper appends the
+///          operand prefixed with a space only when it exists, keeping void
+///          returns concise.
+///
+/// @param instr Return instruction being printed.
+/// @param os Destination stream.
 void printRetOperand(const Instr &instr, std::ostream &os)
 {
     if (instr.operands.empty())
@@ -101,6 +181,13 @@ void printRetOperand(const Instr &instr, std::ostream &os)
     os << ' ' << formatValue(instr.operands[0]);
 }
 
+/// @brief Serialise load instruction operands and the dereferenced type.
+///
+/// @details The textual IL spells out the type of the loaded memory as the
+///          first operand, followed optionally by the address expression.
+///
+/// @param instr Load instruction describing the memory read.
+/// @param os Destination stream.
 void printLoadOperands(const Instr &instr, std::ostream &os)
 {
     os << ' ' << instr.type.toString();
@@ -108,6 +195,14 @@ void printLoadOperands(const Instr &instr, std::ostream &os)
         os << ", " << formatValue(instr.operands[0]);
 }
 
+/// @brief Serialise store instruction operands and the target type.
+///
+/// @details Stores list the pointee type, then the destination and value
+///          operands when provided. Missing operands are tolerated to keep the
+///          printer resilient to malformed IR encountered during debugging.
+///
+/// @param instr Store instruction to print.
+/// @param os Destination stream.
 void printStoreOperands(const Instr &instr, std::ostream &os)
 {
     os << ' ' << instr.type.toString();
@@ -119,6 +214,15 @@ void printStoreOperands(const Instr &instr, std::ostream &os)
     }
 }
 
+/// @brief Helper that prints a branch target and its optional argument list.
+///
+/// @details Branch instructions store successor labels alongside optional lists
+///          of forwarded values. When arguments exist they are emitted within
+///          parentheses directly after the label.
+///
+/// @param instr Instruction providing labels and branch arguments.
+/// @param index Index of the label/argument pair to emit.
+/// @param os Destination stream.
 void printBranchTarget(const Instr &instr, size_t index, std::ostream &os)
 {
     if (index >= instr.labels.size())
@@ -132,6 +236,15 @@ void printBranchTarget(const Instr &instr, size_t index, std::ostream &os)
     }
 }
 
+/// @brief Variant of @ref printBranchTarget that prefixes labels with '^'.
+///
+/// @details Certain exception-handling opcodes use caret-prefixed labels in the
+///          textual syntax. This helper mirrors @ref printBranchTarget but
+///          applies the caret prefix when emitting the label.
+///
+/// @param instr Instruction providing labels and arguments.
+/// @param index Index of the target to print.
+/// @param os Destination stream.
 void printCaretBranchTarget(const Instr &instr, size_t index, std::ostream &os)
 {
     if (index >= instr.labels.size())
@@ -145,6 +258,14 @@ void printCaretBranchTarget(const Instr &instr, size_t index, std::ostream &os)
     }
 }
 
+/// @brief Print operands for unconditional branch instructions.
+///
+/// @details Branches list only their target label (and optional arguments).
+///          The helper leaves malformed instructions untouched so diagnostic
+///          dumps still reflect the underlying data.
+///
+/// @param instr Branch instruction to print.
+/// @param os Destination stream.
 void printBrOperands(const Instr &instr, std::ostream &os)
 {
     if (instr.labels.empty())
@@ -153,6 +274,14 @@ void printBrOperands(const Instr &instr, std::ostream &os)
     printBranchTarget(instr, 0, os);
 }
 
+/// @brief Print operands for conditional branch instructions.
+///
+/// @details Emits the condition operand followed by two successor labels. When
+///          metadata is missing the helper appends inline comments to highlight
+///          inconsistencies, which aids debugging corrupted IR.
+///
+/// @param instr Conditional branch instruction to print.
+/// @param os Destination stream.
 void printCBrOperands(const Instr &instr, std::ostream &os)
 {
     if (instr.operands.empty())
@@ -183,6 +312,14 @@ void printCBrOperands(const Instr &instr, std::ostream &os)
     }
 }
 
+/// @brief Serialise @c switch.i32 operands including case arms.
+///
+/// @details Prints the scrutinee, default destination, then each case value
+///          paired with its caret-prefixed label. Case argument lists piggyback
+///          on @ref printCaretBranchTarget so forwarded values appear naturally.
+///
+/// @param instr Switch instruction to print.
+/// @param os Destination stream.
 void printSwitchI32Operands(const Instr &instr, std::ostream &os)
 {
     if (instr.operands.empty() || instr.labels.empty())
@@ -200,6 +337,14 @@ void printSwitchI32Operands(const Instr &instr, std::ostream &os)
     }
 }
 
+/// @brief Retrieve the formatter callback associated with an opcode.
+///
+/// @details The first invocation constructs a table that defaults to printing
+///          operand lists verbatim, then overrides entries for opcodes requiring
+///          bespoke formatting. Subsequent calls reuse the cached table.
+///
+/// @param op Opcode whose formatter is requested.
+/// @return Callable that knows how to emit operands for @p op.
 const Formatter &formatterFor(Opcode op)
 {
     static const auto formatters = []
@@ -251,13 +396,14 @@ const Formatter &formatterFor(Opcode op)
 }
 
 /// @brief Emit a single extern declaration.
+///
+/// @details Prints the canonical IL syntax `extern @name(params) -> ret`.
+///          Parameters are separated by commas and use the canonical type
+///          spelling. The helper appends a trailing newline so callers can
+///          stream multiple externs without manual separators.
+///
 /// @param e Describes the imported function and its signature; not owned.
 /// @param os Stream that receives the textual representation; not owned.
-/// @format Prints `extern @<name>(<params>) -> <ret>\n` with parameters
-///         separated by commas. Types are rendered using `Type::toString()`
-///         in their canonical form.
-/// @assumptions Parameter and return types are valid per the IL spec.
-///              The function does not take ownership of `e` or `os`.
 void printExtern(const Extern &e, std::ostream &os)
 {
     os << "extern @" << e.name << "(";
@@ -270,6 +416,15 @@ void printExtern(const Extern &e, std::ostream &os)
     os << ") -> " << e.retType.toString() << "\n";
 }
 
+/// @brief Determine the default result kind for an opcode from metadata.
+///
+/// @details The opcode table enumerates canonical result categories. This
+///          helper converts the category into a concrete @ref Type::Kind when
+///          possible. Some opcodes (for example void returns) have no default,
+///          in which case the result is empty.
+///
+/// @param info Opcode metadata describing the result category.
+/// @return Populated kind when the opcode yields a value, otherwise empty.
 std::optional<Type::Kind> defaultResultKind(const OpcodeInfo &info)
 {
     using Kind = Type::Kind;
@@ -297,6 +452,15 @@ std::optional<Type::Kind> defaultResultKind(const OpcodeInfo &info)
     return std::nullopt;
 }
 
+/// @brief Detect whether a block represents an exception handler entry.
+///
+/// @details Handler blocks begin with `eh.entry`, expect at least two parameters
+///          (error and resume token), and use those canonical types. The
+///          serializer reuses this helper to decide whether to prefix block
+///          labels with `handler` in the textual IL form.
+///
+/// @param bb Basic block under inspection.
+/// @return @c true when the block satisfies handler conventions.
 bool isHandlerBlock(const BasicBlock &bb)
 {
     if (bb.instructions.empty())
@@ -312,17 +476,17 @@ bool isHandlerBlock(const BasicBlock &bb)
     return true;
 }
 
-/// @brief Emit a single instruction.
-/// @param in Instruction to serialize; operands and labels must satisfy
+/// @brief Emit a single instruction in canonical textual IL form.
+///
+/// @details Emits optional location metadata, formats the SSA result (including
+///          an explicit type when it differs from the opcode default), prints
+///          the mnemonic, and finally dispatches to the opcode formatter to
+///          serialise operands and branch metadata. Each instruction ends with a
+///          newline so callers can stream multiple instructions directly.
+///
+/// @param in Instruction to serialise; operands and labels must satisfy
 ///           opcode-specific invariants.
 /// @param os Stream that receives text output; not owned.
-/// @format Begins with optional `.loc` metadata, then prints result, opcode,
-///         and operands according to `Opcode`. Branches emit labels and
-///         associated arguments. Values and types use `toString()` helpers.
-/// @assumptions `in`'s operand and label vectors are sized appropriately for
-///              its opcode (e.g., `Call` has `callee` and operands, `Br`
-///              provides at most one label, `CBr` provides two). The function
-///              assumes `os` remains valid for the duration of the call.
 void printInstr(const Instr &in, std::ostream &os)
 {
     if (in.loc.isValid())
@@ -347,14 +511,17 @@ void printInstr(const Instr &in, std::ostream &os)
 
 } // namespace
 
-/// @brief Serialize an IL module into a textual stream.
-/// @param m Module to serialize; not owned.
+/// @brief Serialise an IL module into the textual surface syntax.
+///
+/// @details Writes the module header, target triple, extern declarations,
+///          globals, and functions in order. Externs are optionally sorted for
+///          deterministic diffs when @p mode equals @ref Mode::Canonical. Each
+///          function prints its parameter list, handler annotations, and
+///          instructions by delegating to @ref printInstr.
+///
+/// @param m Module to serialise; not owned.
 /// @param os Stream that receives output; not owned.
-/// @param mode Controls whether externs are emitted canonically or in definition order.
-/// Workflow: print the IL version header, emit externs (sorting them when canonical),
-/// then globals and functions by walking their basic blocks and delegating instruction
-/// formatting to @c printInstr.
-/// @returns Nothing; the serialized form is written directly to @p os.
+/// @param mode Controls whether externs are emitted canonically or in source order.
 void Serializer::write(const Module &m, std::ostream &os, Mode mode)
 {
     os << "il " << m.version << "\n";
@@ -429,12 +596,15 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode)
     }
 }
 
-/// @brief Materialize a module's textual IL into an owned string.
-/// @param m Module to serialize; not owned.
-/// @param mode Printing strategy forwarded to @c write.
-/// Workflow: accumulate output in an @c ostringstream by delegating to @c write
-/// with the requested @p mode and return the resulting buffer.
-/// @returns Canonical or declared-order IL text depending on @p mode.
+/// @brief Materialise a module's textual IL into an owned string buffer.
+///
+/// @details Convenience wrapper around @ref write that funnels the output into
+///          a @c std::ostringstream so callers can capture the serialised form
+///          without managing streams manually.
+///
+/// @param m Module to serialise; not owned.
+/// @param mode Printing strategy forwarded to @ref write.
+/// @return Canonical or declared-order IL text depending on @p mode.
 std::string Serializer::toString(const Module &m, Mode mode)
 {
     std::ostringstream oss;
