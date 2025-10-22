@@ -1,8 +1,7 @@
 # Viper
 
 **Viper** is an **IL‑first compiler toolchain and virtual machine**.  
-High‑level frontends—like the included BASIC compiler—lower programs into a strongly typed, SSA‑inspired intermediate language (**Viper IL**).  
-The IL can be executed by the VM today, with native backends planned.
+High‑level frontends—like the included BASIC compiler—lower programs into a strongly typed, SSA‑inspired intermediate language (**Viper IL**). The IL can be executed by the VM today, with native backends planned.
 
 > Viper is an active, experimental project exploring IL design, multi‑frontend architectures, and interpreter micro‑architectures.
 
