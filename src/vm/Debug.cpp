@@ -1,19 +1,24 @@
 //===----------------------------------------------------------------------===//
 //
-// This file is part of the Viper project, under the MIT License.
+// Part of the Viper project, under the MIT License.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-// File: src/vm/Debug.cpp
-// Purpose: Implement the debugger control surface for breakpoint and watch management.
-// Key invariants: Path normalisation is deterministic within a process and watch
-//                 notifications preserve the most recently observed value for
-//                 change detection.
-// Ownership/Lifetime: DebugCtrl borrows SourceManager pointers and stores
-//                     interned symbols; it does not own file system resources.
-// Links: docs/runtime-vm.md#debugger
+//
+// Implements the debugger control surface that powers breakpoint and watch
+// handling in the IL virtual machine.  The translation unit provides utilities
+// for normalising paths, tracking per-block and per-source breakpoints, and
+// reporting watch state changes to the user.
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Debugger control utilities for the IL virtual machine.
+/// @details The helpers in this file manage breakpoint normalisation, interact
+///          with the shared string interner, and surface source-level watch
+///          notifications for developers.  They borrow VM-owned state such as
+///          the source manager to avoid duplicating heavyweight resources.
+
 #include "vm/Debug.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
