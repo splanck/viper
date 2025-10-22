@@ -1,5 +1,20 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/frontends/basic/lower/Lower_If.cpp
+// Purpose: Lower BASIC IF/ELSEIF/ELSE constructs into IL control flow by
+//          allocating test, body, and merge blocks.
+// Key invariants: Generated block sequences preserve source order and ensure
+//                 exactly one terminator per block; phi operands are prepared by
+//                 the caller once @ref CtrlState is returned.
+// Ownership/Lifetime: Helpers borrow the @ref Lowerer state and manipulate IL
+//                     blocks owned by the active procedure context.
+// Links: docs/codemap.md
+//
 //===----------------------------------------------------------------------===//
 
 /// @file
@@ -20,6 +35,14 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
+/// @brief Allocate the block layout required for an IF/ELSEIF/ELSE chain.
+///
+/// @details Reserves pairs of test/then blocks for each condition plus shared
+///          else and exit blocks.  The helper preserves the caller's current
+///          block and returns indices so subsequent lowering stages can patch in
+///          phi arguments.
+/// @param conds Number of condition arms (including the initial IF).
+/// @return Structure containing indices for all generated blocks.
 Lowerer::IfBlocks Lowerer::emitIfBlocks(size_t conds)
 {
     ProcedureContext &ctx = context();
@@ -58,6 +81,17 @@ Lowerer::IfBlocks Lowerer::emitIfBlocks(size_t conds)
     return {std::move(testIdx), std::move(thenIdx), elseIdx, exitIdx};
 }
 
+/// @brief Emit the conditional branch for a single IF/ELSEIF test.
+///
+/// @details Switches the active block to @p testBlk, lowers the boolean
+///          expression, and emits a conditional branch that jumps to
+///          @p thenBlk on success or @p falseBlk otherwise.  The caller is
+///          responsible for ensuring @p testBlk already exists in the function.
+/// @param cond Expression controlling the branch.
+/// @param testBlk Block that should contain the branch instruction.
+/// @param thenBlk Destination block when the condition evaluates to true.
+/// @param falseBlk Destination block when the condition evaluates to false.
+/// @param loc Source location used for diagnostics within nested lowering.
 void Lowerer::lowerIfCondition(const Expr &cond,
                                BasicBlock *testBlk,
                                BasicBlock *thenBlk,
@@ -68,6 +102,17 @@ void Lowerer::lowerIfCondition(const Expr &cond,
     lowerCondBranch(cond, thenBlk, falseBlk, loc);
 }
 
+/// @brief Lower the body of an IF/ELSEIF/ELSE branch and ensure control-flow continuity.
+///
+/// @details Sets the active block to @p thenBlk, lowers @p stmt when present,
+///          and emits a branch to @p exitBlk when the body finishes without a
+///          terminator.  The return value indicates whether control falls through
+///          to the exit block, guiding the caller's phi construction.
+/// @param stmt Statement tree executed when the branch is taken (may be null).
+/// @param thenBlk Block receiving the branch body.
+/// @param exitBlk Merge block for the entire IF construct.
+/// @param loc Source location applied to any implicit branch.
+/// @return @c true if the lowered branch reaches @p exitBlk.
 bool Lowerer::lowerIfBranch(const Stmt *stmt,
                             BasicBlock *thenBlk,
                             BasicBlock *exitBlk,
@@ -86,6 +131,14 @@ bool Lowerer::lowerIfBranch(const Stmt *stmt,
     return false;
 }
 
+/// @brief Lower a full IF statement including chained ELSEIF and ELSE blocks.
+///
+/// @details Allocates the necessary block structure, evaluates each condition,
+///          and lowers all branch bodies while tracking whether control reaches
+///          the final merge block.  Returns a @ref CtrlState capturing the block
+///          that should remain current once lowering finishes.
+/// @param stmt AST node representing the entire IF statement.
+/// @return Control-flow state describing the resulting CFG configuration.
 Lowerer::CtrlState Lowerer::emitIf(const IfStmt &stmt)
 {
     CtrlState state{};
@@ -153,6 +206,11 @@ Lowerer::CtrlState Lowerer::emitIf(const IfStmt &stmt)
     return state;
 }
 
+/// @brief Public entry point for lowering an IF statement.
+///
+/// @details Invokes @ref emitIf to build the CFG and then updates the lowering
+///          context to the block reported in the returned @ref CtrlState.
+/// @param stmt AST node representing the IF construct.
 void Lowerer::lowerIf(const IfStmt &stmt)
 {
     CtrlState state = emitIf(stmt);
