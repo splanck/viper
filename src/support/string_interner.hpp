@@ -49,6 +49,11 @@ class StringInterner
     /// @return View of the interned string.
     std::string_view lookup(Symbol sym) const;
 
+    StringInterner(const StringInterner &other) noexcept;
+    StringInterner &operator=(const StringInterner &other) noexcept;
+    StringInterner(StringInterner &&) noexcept = default;
+    StringInterner &operator=(StringInterner &&) noexcept = default;
+
   private:
     struct TransparentHash
     {
@@ -91,10 +96,12 @@ class StringInterner
     };
 
     /// Maps string content to assigned symbols for O(1) lookup during interning.
-    std::unordered_map<std::string, Symbol, TransparentHash, TransparentEqual> map_;
+    std::unordered_map<std::string_view, Symbol, TransparentHash, TransparentEqual> map_;
     /// Retains copies of interned strings so lookups return stable views.
     std::deque<std::string> storage_;
     /// Maximum number of unique symbols representable by this interner.
     uint32_t maxSymbols_;
+
+    void rebuildMap();
 };
 } // namespace il::support
