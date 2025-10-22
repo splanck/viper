@@ -314,10 +314,13 @@ void configureDebugger(const RunILConfig &config,
 ///          stderr.  Returns a non-zero status when any phase fails.
 /// @param config Fully populated configuration for the run.
 /// @return Process-style exit status; zero indicates success.
-int executeRunIL(const RunILConfig &config)
+int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm)
 {
-    il::support::SourceManager sm;
-    sm.addFile(config.ilFile);
+    const uint32_t fileId = sm.addFile(config.ilFile);
+    if (fileId == 0)
+    {
+        return 1;
+    }
 
     vm::TraceConfig traceCfg = config.sharedOpts.trace;
     traceCfg.sm = &sm;
@@ -412,6 +415,26 @@ int executeRunIL(const RunILConfig &config)
 
 } // namespace
 
+/// @brief Execute the `run` subcommand with a caller-provided source manager.
+/// @details Parses arguments, configures debugger state, and then dispatches to
+///          @ref executeRunIL using the supplied @p sm.  Tests use this helper
+///          to preconfigure overflow conditions deterministically.
+/// @param argc Number of subcommand arguments (excluding the subcommand).
+/// @param argv Argument vector beginning with the IL file path.
+/// @param sm Source manager instance prepared by the caller.
+/// @return Zero on success; non-zero when parsing or execution fails.
+int cmdRunILWithSourceManager(int argc, char **argv, il::support::SourceManager &sm)
+{
+    RunILConfig config;
+    if (!parseRunILArgs(argc, argv, config))
+    {
+        return 1;
+    }
+
+    configureDebugger(config, config.debugCtrl, config.debugScript);
+    return executeRunIL(config, sm);
+}
+
 /// @brief Execute the `run` subcommand end-to-end.
 /// @details Parses arguments, configures debugger state, and then dispatches to
 ///          @ref executeRunIL.  Parsing failures are surfaced via a non-zero
@@ -421,12 +444,6 @@ int executeRunIL(const RunILConfig &config)
 /// @return Zero on success; non-zero when parsing or execution fails.
 int cmdRunIL(int argc, char **argv)
 {
-    RunILConfig config;
-    if (!parseRunILArgs(argc, argv, config))
-    {
-        return 1;
-    }
-
-    configureDebugger(config, config.debugCtrl, config.debugScript);
-    return executeRunIL(config);
+    il::support::SourceManager sm;
+    return cmdRunILWithSourceManager(argc, argv, sm);
 }
