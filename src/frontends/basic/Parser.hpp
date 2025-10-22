@@ -10,6 +10,7 @@
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lexer.hpp"
 #include "frontends/basic/StatementSequencer.hpp"
+#include "support/diag_expected.hpp"
 #include <array>
 #include <functional>
 #include <initializer_list>
@@ -37,6 +38,8 @@ class Parser
     std::unique_ptr<Program> parseProgram();
 
   private:
+    template <class T> using ErrorOr = il::support::Expected<T>;
+
     friend class StatementSequencer;
 
     /// @brief Create a statement sequencer bound to this parser instance.
@@ -202,6 +205,13 @@ class Parser
                                         bool sawCaseArm,
                                         bool &sawCaseElse,
                                         const SelectDiagnoseFn &diagnose);
+
+    struct Cursor;
+    struct CaseArmSyntax;
+
+    il::support::Expected<CaseArmSyntax> parseCaseArmSyntax(Cursor &cursor);
+    il::support::Expected<CaseArm> lowerCaseArm(const CaseArmSyntax &syntax);
+    ErrorOr<void> validateCaseArm(const CaseArm &arm);
 
     /// @brief Parse a CASE arm including label list and statement body.
     /// @return Parsed CASE arm.
