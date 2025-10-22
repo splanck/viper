@@ -23,6 +23,8 @@ extern "C" {
 #include <cstdlib>
 #include <limits>
 #include <optional>
+#include <string>
+#include <utility>
 
 namespace il::frontends::basic
 {
@@ -63,86 +65,390 @@ enum class LiteralType
     Numeric, ///< Wildcard used for numeric promotion lookups.
 };
 
-using BinaryFolderFn = ExprPtr (*)(const Expr &, const Expr &);
-
-struct BinaryFoldRule
+struct Constant
 {
-    BinaryExpr::Op op;
-    LiteralType lhs;
-    LiteralType rhs;
-    BinaryFolderFn folder;
+    LiteralType type = LiteralType::Int;
+    Numeric numeric{};
+    bool boolValue = false;
+    std::string stringValue;
 };
 
-constexpr std::array<BinaryFoldRule, 19> kBinaryFoldRules = {{
-    // Numeric operations rely on ConstFold_Arith helpers which honor BASIC's
-    // two's-complement overflow semantics via wrapAdd/wrapSub/wrapMul.
-    {BinaryExpr::Op::Add, LiteralType::Numeric, LiteralType::Numeric, &foldNumericAdd},
-    {BinaryExpr::Op::Sub, LiteralType::Numeric, LiteralType::Numeric, &foldNumericSub},
-    {BinaryExpr::Op::Mul, LiteralType::Numeric, LiteralType::Numeric, &foldNumericMul},
-    {BinaryExpr::Op::Div, LiteralType::Numeric, LiteralType::Numeric, &foldNumericDiv},
-    {BinaryExpr::Op::IDiv, LiteralType::Numeric, LiteralType::Numeric, &foldNumericIDiv},
-    {BinaryExpr::Op::Mod, LiteralType::Numeric, LiteralType::Numeric, &foldNumericMod},
-    {BinaryExpr::Op::Eq, LiteralType::Numeric, LiteralType::Numeric, &foldNumericEq},
-    {BinaryExpr::Op::Ne, LiteralType::Numeric, LiteralType::Numeric, &foldNumericNe},
-    {BinaryExpr::Op::Lt, LiteralType::Numeric, LiteralType::Numeric, &foldNumericLt},
-    {BinaryExpr::Op::Le, LiteralType::Numeric, LiteralType::Numeric, &foldNumericLe},
-    {BinaryExpr::Op::Gt, LiteralType::Numeric, LiteralType::Numeric, &foldNumericGt},
-    {BinaryExpr::Op::Ge, LiteralType::Numeric, LiteralType::Numeric, &foldNumericGe},
-    {BinaryExpr::Op::LogicalAndShort, LiteralType::Numeric, LiteralType::Numeric, &foldNumericAnd},
-    {BinaryExpr::Op::LogicalOrShort, LiteralType::Numeric, LiteralType::Numeric, &foldNumericOr},
-    {BinaryExpr::Op::LogicalAnd, LiteralType::Numeric, LiteralType::Numeric, &foldNumericAnd},
-    {BinaryExpr::Op::LogicalOr, LiteralType::Numeric, LiteralType::Numeric, &foldNumericOr},
-    {BinaryExpr::Op::Add, LiteralType::String, LiteralType::String, &foldStringBinaryConcat},
-    {BinaryExpr::Op::Eq, LiteralType::String, LiteralType::String, &foldStringBinaryEq},
-    {BinaryExpr::Op::Ne, LiteralType::String, LiteralType::String, &foldStringBinaryNe},
-}};
+Constant makeIntConstant(long long value)
+{
+    Constant c;
+    c.type = LiteralType::Int;
+    c.numeric = Numeric{false, static_cast<double>(value), value};
+    return c;
+}
+
+Constant makeFloatConstant(double value)
+{
+    Constant c;
+    c.type = LiteralType::Float;
+    c.numeric = Numeric{true, value, static_cast<long long>(value)};
+    return c;
+}
+
+Constant makeBoolConstant(bool value)
+{
+    Constant c;
+    c.type = LiteralType::Bool;
+    c.boolValue = value;
+    return c;
+}
+
+Constant makeStringConstant(std::string value)
+{
+    Constant c;
+    c.type = LiteralType::String;
+    c.stringValue = std::move(value);
+    return c;
+}
+
+Constant makeNumericConstant(const Numeric &numeric)
+{
+    return numeric.isFloat ? makeFloatConstant(numeric.f) : makeIntConstant(numeric.i);
+}
 
 bool isNumeric(LiteralType type)
 {
     return type == LiteralType::Int || type == LiteralType::Float;
 }
 
-std::optional<LiteralType> classifyLiteral(const Expr &expr)
+bool matchesType(LiteralType want, LiteralType have)
 {
-    if (dynamic_cast<const IntExpr *>(&expr))
-        return LiteralType::Int;
-    if (dynamic_cast<const FloatExpr *>(&expr))
-        return LiteralType::Float;
-    if (dynamic_cast<const BoolExpr *>(&expr))
-        return LiteralType::Bool;
-    if (dynamic_cast<const StringExpr *>(&expr))
-        return LiteralType::String;
+    if (want == LiteralType::Numeric)
+        return isNumeric(have);
+    return want == have;
+}
+
+std::optional<Constant> extractConstant(const Expr &expr)
+{
+    if (auto *i = dynamic_cast<const IntExpr *>(&expr))
+        return makeIntConstant(i->value);
+    if (auto *f = dynamic_cast<const FloatExpr *>(&expr))
+        return makeFloatConstant(f->value);
+    if (auto *b = dynamic_cast<const BoolExpr *>(&expr))
+        return makeBoolConstant(b->value);
+    if (auto *s = dynamic_cast<const StringExpr *>(&expr))
+        return makeStringConstant(s->value);
     return std::nullopt;
 }
 
-const BinaryFoldRule *lookupRule(BinaryExpr::Op op, LiteralType lhs, LiteralType rhs)
+ExprPtr materializeConstant(const Constant &value)
 {
-    const BinaryFoldRule *numericFallback = nullptr;
-    for (const auto &rule : kBinaryFoldRules)
+    switch (value.type)
     {
-        if (rule.op != op)
-            continue;
-        if (rule.lhs == lhs && rule.rhs == rhs)
-            return &rule;
-        if (rule.lhs == LiteralType::Numeric && rule.rhs == LiteralType::Numeric)
-            numericFallback = &rule;
+        case LiteralType::Int:
+        {
+            auto out = std::make_unique<IntExpr>();
+            out->value = value.numeric.i;
+            return out;
+        }
+        case LiteralType::Float:
+        {
+            auto out = std::make_unique<FloatExpr>();
+            double fv = value.numeric.isFloat ? value.numeric.f : static_cast<double>(value.numeric.i);
+            out->value = fv;
+            return out;
+        }
+        case LiteralType::Bool:
+        {
+            auto out = std::make_unique<BoolExpr>();
+            out->value = value.boolValue;
+            return out;
+        }
+        case LiteralType::String:
+        {
+            auto out = std::make_unique<StringExpr>();
+            out->value = value.stringValue;
+            return out;
+        }
+        case LiteralType::Numeric:
+            break;
     }
-
-    if (numericFallback && isNumeric(lhs) && isNumeric(rhs))
-        return numericFallback;
-
     return nullptr;
 }
 
-ExprPtr foldBinaryLiteral(BinaryExpr::Op op, const Expr &lhs, const Expr &rhs)
+std::optional<Constant> evalNumericBinary(BinaryExpr::Op op, const Constant &lhs, const Constant &rhs)
 {
-    auto lhsType = classifyLiteral(lhs);
-    auto rhsType = classifyLiteral(rhs);
-    if (!lhsType || !rhsType)
+    if (!isNumeric(lhs.type) || !isNumeric(rhs.type))
+        return std::nullopt;
+
+    if (auto folded = tryFoldBinaryArith(lhs.numeric, op, rhs.numeric))
+        return makeNumericConstant(*folded);
+
+    return std::nullopt;
+}
+
+std::optional<Constant> evalNumericAnd(const Constant &lhs, const Constant &rhs)
+{
+    if (!isNumeric(lhs.type) || !isNumeric(rhs.type))
+        return std::nullopt;
+
+    Numeric left = promote(lhs.numeric, rhs.numeric);
+    Numeric right = promote(rhs.numeric, lhs.numeric);
+    if (left.isFloat || right.isFloat)
+        return std::nullopt;
+
+    bool result = (left.i != 0) && (right.i != 0);
+    return makeIntConstant(result ? 1 : 0);
+}
+
+std::optional<Constant> evalNumericOr(const Constant &lhs, const Constant &rhs)
+{
+    if (!isNumeric(lhs.type) || !isNumeric(rhs.type))
+        return std::nullopt;
+
+    Numeric left = promote(lhs.numeric, rhs.numeric);
+    Numeric right = promote(rhs.numeric, lhs.numeric);
+    if (left.isFloat || right.isFloat)
+        return std::nullopt;
+
+    bool result = (left.i != 0) || (right.i != 0);
+    return makeIntConstant(result ? 1 : 0);
+}
+
+std::optional<Constant> evalStringConcat(const Constant &lhs, const Constant &rhs)
+{
+    if (lhs.type != LiteralType::String || rhs.type != LiteralType::String)
+        return std::nullopt;
+
+    return makeStringConstant(lhs.stringValue + rhs.stringValue);
+}
+
+std::optional<Constant> evalAdd(const Constant &lhs, const Constant &rhs)
+{
+    return evalNumericBinary(BinaryExpr::Op::Add, lhs, rhs);
+}
+
+std::optional<Constant> evalSub(const Constant &lhs, const Constant &rhs)
+{
+    return evalNumericBinary(BinaryExpr::Op::Sub, lhs, rhs);
+}
+
+std::optional<Constant> evalMul(const Constant &lhs, const Constant &rhs)
+{
+    return evalNumericBinary(BinaryExpr::Op::Mul, lhs, rhs);
+}
+
+std::optional<Constant> evalDiv(const Constant &lhs, const Constant &rhs)
+{
+    return evalNumericBinary(BinaryExpr::Op::Div, lhs, rhs);
+}
+
+std::optional<Constant> evalIDiv(const Constant &lhs, const Constant &rhs)
+{
+    return evalNumericBinary(BinaryExpr::Op::IDiv, lhs, rhs);
+}
+
+std::optional<Constant> evalMod(const Constant &lhs, const Constant &rhs)
+{
+    return evalNumericBinary(BinaryExpr::Op::Mod, lhs, rhs);
+}
+
+using ConstantEvalFn = std::optional<Constant> (*)(const Constant &, const Constant &);
+
+struct ArithmeticRule
+{
+    BinaryExpr::Op op;
+    LiteralType lhs;
+    LiteralType rhs;
+    bool commutative;
+    ConstantEvalFn eval;
+};
+
+constexpr std::array<ArithmeticRule, 11> kArithmeticRules = {{
+    {BinaryExpr::Op::Add, LiteralType::Numeric, LiteralType::Numeric, true, &evalAdd},
+    {BinaryExpr::Op::Sub, LiteralType::Numeric, LiteralType::Numeric, false, &evalSub},
+    {BinaryExpr::Op::Mul, LiteralType::Numeric, LiteralType::Numeric, true, &evalMul},
+    {BinaryExpr::Op::Div, LiteralType::Numeric, LiteralType::Numeric, false, &evalDiv},
+    {BinaryExpr::Op::IDiv, LiteralType::Numeric, LiteralType::Numeric, false, &evalIDiv},
+    {BinaryExpr::Op::Mod, LiteralType::Numeric, LiteralType::Numeric, false, &evalMod},
+    {BinaryExpr::Op::LogicalAndShort, LiteralType::Numeric, LiteralType::Numeric, true, &evalNumericAnd},
+    {BinaryExpr::Op::LogicalOrShort, LiteralType::Numeric, LiteralType::Numeric, true, &evalNumericOr},
+    {BinaryExpr::Op::LogicalAnd, LiteralType::Numeric, LiteralType::Numeric, true, &evalNumericAnd},
+    {BinaryExpr::Op::LogicalOr, LiteralType::Numeric, LiteralType::Numeric, true, &evalNumericOr},
+    {BinaryExpr::Op::Add, LiteralType::String, LiteralType::String, false, &evalStringConcat},
+}};
+
+struct ArithmeticMatch
+{
+    const ArithmeticRule *rule;
+    bool swapped;
+};
+
+std::optional<ArithmeticMatch> findArithmeticRule(BinaryExpr::Op op, LiteralType lhs, LiteralType rhs)
+{
+    for (const auto &rule : kArithmeticRules)
+    {
+        if (rule.op != op)
+            continue;
+
+        if (matchesType(rule.lhs, lhs) && matchesType(rule.rhs, rhs))
+            return ArithmeticMatch{&rule, false};
+
+        if (rule.commutative && matchesType(rule.lhs, rhs) && matchesType(rule.rhs, lhs))
+            return ArithmeticMatch{&rule, true};
+    }
+    return std::nullopt;
+}
+
+enum class CompareOutcome : std::size_t
+{
+    Less = 0,
+    Equal = 1,
+    Greater = 2,
+    Unordered = 3,
+};
+
+constexpr std::size_t kCompareOutcomeCount = 4;
+
+using ComparatorFn = std::optional<CompareOutcome> (*)(const Constant &, const Constant &);
+
+std::optional<CompareOutcome> compareNumericConstants(const Constant &lhs, const Constant &rhs)
+{
+    if (!isNumeric(lhs.type) || !isNumeric(rhs.type))
+        return std::nullopt;
+
+    Numeric left = promote(lhs.numeric, rhs.numeric);
+    Numeric right = promote(rhs.numeric, lhs.numeric);
+
+    if (left.isFloat || right.isFloat)
+    {
+        double lv = left.isFloat ? left.f : static_cast<double>(left.i);
+        double rv = right.isFloat ? right.f : static_cast<double>(right.i);
+        if (std::isnan(lv) || std::isnan(rv))
+            return CompareOutcome::Unordered;
+        if (lv < rv)
+            return CompareOutcome::Less;
+        if (lv > rv)
+            return CompareOutcome::Greater;
+        return CompareOutcome::Equal;
+    }
+
+    if (left.i < right.i)
+        return CompareOutcome::Less;
+    if (left.i > right.i)
+        return CompareOutcome::Greater;
+    return CompareOutcome::Equal;
+}
+
+std::optional<CompareOutcome> compareStringConstants(const Constant &lhs, const Constant &rhs)
+{
+    if (lhs.type != LiteralType::String || rhs.type != LiteralType::String)
+        return std::nullopt;
+
+    int cmp = lhs.stringValue.compare(rhs.stringValue);
+    if (cmp < 0)
+        return CompareOutcome::Less;
+    if (cmp > 0)
+        return CompareOutcome::Greater;
+    return CompareOutcome::Equal;
+}
+
+struct ComparatorRule
+{
+    LiteralType lhs;
+    LiteralType rhs;
+    bool commutative;
+    ComparatorFn compare;
+};
+
+constexpr std::array<ComparatorRule, 2> kComparatorRules = {{
+    {LiteralType::Numeric, LiteralType::Numeric, true, &compareNumericConstants},
+    {LiteralType::String, LiteralType::String, true, &compareStringConstants},
+}};
+
+struct ComparatorMatch
+{
+    const ComparatorRule *rule;
+    bool swapped;
+};
+
+std::optional<ComparatorMatch> findComparatorRule(LiteralType lhs, LiteralType rhs)
+{
+    for (const auto &rule : kComparatorRules)
+    {
+        if (matchesType(rule.lhs, lhs) && matchesType(rule.rhs, rhs))
+            return ComparatorMatch{&rule, false};
+        if (rule.commutative && matchesType(rule.lhs, rhs) && matchesType(rule.rhs, lhs))
+            return ComparatorMatch{&rule, true};
+    }
+    return std::nullopt;
+}
+
+struct ComparisonTruth
+{
+    BinaryExpr::Op op;
+    std::array<std::optional<long long>, kCompareOutcomeCount> truth;
+};
+
+constexpr std::array<ComparisonTruth, 6> kComparisonTruthTable = {{
+    {BinaryExpr::Op::Eq, {0LL, 1LL, 0LL, 0LL}},
+    {BinaryExpr::Op::Ne, {1LL, 0LL, 1LL, 1LL}},
+    {BinaryExpr::Op::Lt, {1LL, 0LL, 0LL, 0LL}},
+    {BinaryExpr::Op::Le, {1LL, 1LL, 0LL, 0LL}},
+    {BinaryExpr::Op::Gt, {0LL, 0LL, 1LL, 0LL}},
+    {BinaryExpr::Op::Ge, {0LL, 1LL, 1LL, 0LL}},
+}};
+
+const ComparisonTruth *findComparisonTruth(BinaryExpr::Op op)
+{
+    for (const auto &entry : kComparisonTruthTable)
+    {
+        if (entry.op == op)
+            return &entry;
+    }
+    return nullptr;
+}
+
+std::optional<Constant> evalComparison(BinaryExpr::Op op, const Constant &lhs, const Constant &rhs)
+{
+    if (lhs.type == LiteralType::String && rhs.type == LiteralType::String &&
+        !(op == BinaryExpr::Op::Eq || op == BinaryExpr::Op::Ne))
+        return std::nullopt;
+
+    auto *truth = findComparisonTruth(op);
+    if (!truth)
+        return std::nullopt;
+
+    auto comparator = findComparatorRule(lhs.type, rhs.type);
+    if (!comparator)
+        return std::nullopt;
+
+    const Constant &first = comparator->swapped ? rhs : lhs;
+    const Constant &second = comparator->swapped ? lhs : rhs;
+
+    auto outcome = comparator->rule->compare(first, second);
+    if (!outcome)
+        return std::nullopt;
+
+    auto value = truth->truth[static_cast<std::size_t>(*outcome)];
+    if (!value)
+        return std::nullopt;
+
+    return makeIntConstant(*value);
+}
+
+ExprPtr foldBinaryLiteral(BinaryExpr::Op op, const Expr &lhsExpr, const Expr &rhsExpr)
+{
+    auto lhsConst = extractConstant(lhsExpr);
+    auto rhsConst = extractConstant(rhsExpr);
+    if (!lhsConst || !rhsConst)
         return nullptr;
 
-    if (auto *rule = lookupRule(op, *lhsType, *rhsType))
-        return rule->folder(lhs, rhs);
+    auto arithmetic = findArithmeticRule(op, lhsConst->type, rhsConst->type);
+    if (arithmetic)
+    {
+        const Constant &left = arithmetic->swapped ? *rhsConst : *lhsConst;
+        const Constant &right = arithmetic->swapped ? *lhsConst : *rhsConst;
+        if (auto result = arithmetic->rule->eval(left, right))
+            return materializeConstant(*result);
+    }
+
+    if (auto result = evalComparison(op, *lhsConst, *rhsConst))
+        return materializeConstant(*result);
 
     return nullptr;
 }
