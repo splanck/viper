@@ -30,10 +30,10 @@
 #include "il/core/Value.hpp"
 #include "il/io/ParserUtil.hpp"
 #include "il/io/StringEscape.hpp"
+#include "il/io/TypeParser.hpp"
 
 #include "support/diag_expected.hpp"
 
-#include <array>
 #include <cctype>
 #include <exception>
 #include <sstream>
@@ -44,6 +44,7 @@ namespace il::io::detail
 {
 
 using il::core::Instr;
+using il::core::Type;
 using il::core::Value;
 using il::support::Expected;
 using il::support::makeError;
@@ -55,42 +56,56 @@ using il::io::formatLineDiag;
 using il::io::parseFloatLiteral;
 using il::io::parseIntegerLiteral;
 
-enum class OperandKind : size_t
+using Operand = Value;
+
+struct Cursor
 {
-    Missing = 0,
-    BoolTrue,
-    BoolFalse,
-    Temp,
-    Global,
-    NullValue,
-    StringLiteral,
-    FloatLiteral,
-    IntegerLiteral,
-    Count,
+    explicit Cursor(std::string_view text) : text(text), pos(0) {}
+
+    bool eof() const { return pos >= text.size(); }
+
+    char peek() const
+    {
+        return eof() ? '\0' : text[pos];
+    }
+
+    void advance()
+    {
+        if (!eof())
+            ++pos;
+    }
+
+    void skipSpaces()
+    {
+        while (!eof() && std::isspace(static_cast<unsigned char>(text[pos])))
+            ++pos;
+    }
+
+    void finish()
+    {
+        pos = text.size();
+    }
+
+    std::string_view remaining() const
+    {
+        return text.substr(pos);
+    }
+
+    std::string_view view() const
+    {
+        return text;
+    }
+
+    std::string_view text;
+    size_t pos;
 };
 
-using OperandHandler = Expected<Value> (*)(const std::string &, ParserState &);
-
-/// @brief Helper that attaches parser context to operand parsing failures.
-///
-/// @details The instruction parser expects operand diagnostics to be decorated
-///          with both the current source location and line number.  This helper
-///          packages the error so callers simply provide the human-readable
-///          message while the state supplies consistent context.
-///
-/// @param state Parser state providing the current location information.
-/// @param message Diagnostic payload describing the failure.
-/// @return An @ref il::support::Expected error carrying the contextualised message.
-Expected<Value> makeValueError(ParserState &state, std::string message)
+template <typename T>
+Expected<T> makeSyntaxError(ParserState &state, std::string message)
 {
-    return Expected<Value>{makeError(state.curLoc, formatLineDiag(state.lineNo, std::move(message)))};
+    return Expected<T>{makeError(state.curLoc, formatLineDiag(state.lineNo, std::move(message)))};
 }
 
-/// @brief Compare two ASCII strings without regard to case.
-///
-/// @param value Token extracted from the operand text.
-/// @param literal Canonical spelling to match against.
-/// @return True when both strings are identical ignoring ASCII case.
 bool equalsIgnoreCase(std::string_view value, std::string_view literal)
 {
     if (value.size() != literal.size())
@@ -105,30 +120,37 @@ bool equalsIgnoreCase(std::string_view value, std::string_view literal)
     return true;
 }
 
-/// @brief Categorise an operand token to dispatch specialised parsing logic.
-///
-/// @details The parser distinguishes temporaries, globals, literals, and other
-///          special syntactic forms such as `null`.  The resulting kind drives
-///          the dispatch table used by @ref OperandParser::parseValueToken.
-///
-/// @param token Raw operand token.
-/// @return Enum describing the syntactic kind detected.
-OperandKind classifyOperandToken(const std::string &token)
+Expected<Operand> parseImm(Cursor &cursor, ParserState &state)
 {
+    const std::string token(cursor.remaining());
     if (token.empty())
-        return OperandKind::Missing;
+        return makeSyntaxError<Operand>(state, "missing operand");
+
     if (equalsIgnoreCase(token, "true"))
-        return OperandKind::BoolTrue;
+    {
+        cursor.finish();
+        return Operand::constBool(true);
+    }
     if (equalsIgnoreCase(token, "false"))
-        return OperandKind::BoolFalse;
-    if (token.front() == '%')
-        return OperandKind::Temp;
-    if (token.front() == '@')
-        return OperandKind::Global;
+    {
+        cursor.finish();
+        return Operand::constBool(false);
+    }
     if (token == "null")
-        return OperandKind::NullValue;
+    {
+        cursor.finish();
+        return Operand::null();
+    }
     if (token.size() >= 2 && token.front() == '"' && token.back() == '"')
-        return OperandKind::StringLiteral;
+    {
+        std::string literal = token.substr(1, token.size() - 2);
+        std::string decoded;
+        std::string errMsg;
+        if (!decodeEscapedString(literal, decoded, &errMsg))
+            return makeSyntaxError<Operand>(state, std::move(errMsg));
+        cursor.finish();
+        return Operand::constStr(std::move(decoded));
+    }
 
     const bool hasDecimalPoint = token.find('.') != std::string::npos;
     const bool isHexLiteral = token.size() >= 2 && token[0] == '0' && (token[1] == 'x' || token[1] == 'X');
@@ -136,44 +158,40 @@ OperandKind classifyOperandToken(const std::string &token)
                              (token.find('e') != std::string::npos || token.find('E') != std::string::npos);
 
     if (hasDecimalPoint || hasExponent)
-        return OperandKind::FloatLiteral;
-    return OperandKind::IntegerLiteral;
+    {
+        double value = 0.0;
+        if (parseFloatLiteral(token, value))
+        {
+            cursor.finish();
+            return Operand::constFloat(value);
+        }
+        std::ostringstream oss;
+        oss << "invalid floating literal '" << token << "'";
+        return makeSyntaxError<Operand>(state, oss.str());
+    }
+
+    long long value = 0;
+    if (parseIntegerLiteral(token, value))
+    {
+        cursor.finish();
+        return Operand::constInt(value);
+    }
+
+    std::ostringstream oss;
+    oss << "invalid integer literal '" << token << "'";
+    return makeSyntaxError<Operand>(state, oss.str());
 }
 
-/// @brief Emit a diagnostic for syntactically absent operands.
-///
-/// @details Called when the comma splitter produces an empty token.  The
-///          resulting diagnostic carries the parser state line information so
-///          callers can attribute the issue to the instruction being decoded.
-Expected<Value> handleMissingOperand(const std::string &, ParserState &state)
+Expected<Operand> parseReg(Cursor &cursor, ParserState &state)
 {
-    return makeValueError(state, "missing operand");
-}
-
-/// @brief Convert a `true` literal into the canonical boolean value.
-Expected<Value> handleBoolTrue(const std::string &, ParserState &)
-{
-    return Value::constBool(true);
-}
-
-/// @brief Convert a `false` literal into the canonical boolean value.
-Expected<Value> handleBoolFalse(const std::string &, ParserState &)
-{
-    return Value::constBool(false);
-}
-
-/// @brief Resolve a `%temp` reference to its numeric SSA identifier.
-///
-/// @details The parser prefers mappings registered in @ref ParserState::tempIds,
-///          but falls back to accepting `%tNN` spellings to support legacy
-///          textual dumps.  The helper validates numeric suffixes, reports
-///          unknown identifiers, and returns temporaries in Value form.
-Expected<Value> handleTempOperand(const std::string &token, ParserState &state)
-{
+    const std::string token(cursor.view());
     std::string name = token.substr(1);
     auto it = state.tempIds.find(name);
     if (it != state.tempIds.end())
-        return Value::temp(it->second);
+    {
+        cursor.finish();
+        return Operand::temp(it->second);
+    }
 
     if (name.size() > 1 && name[0] == 't')
     {
@@ -190,99 +208,57 @@ Expected<Value> handleTempOperand(const std::string &token, ParserState &state)
         {
             try
             {
-                return Value::temp(static_cast<unsigned>(std::stoul(name.substr(1))));
+                cursor.finish();
+                return Operand::temp(static_cast<unsigned>(std::stoul(name.substr(1))));
             }
             catch (const std::exception &)
             {
                 std::ostringstream oss;
                 oss << "invalid temp id '" << token << "'";
-                return makeValueError(state, oss.str());
+                return makeSyntaxError<Operand>(state, oss.str());
             }
         }
     }
 
     std::ostringstream oss;
     oss << "unknown temp '" << token << "'";
-    return makeValueError(state, oss.str());
+    return makeSyntaxError<Operand>(state, oss.str());
 }
 
-/// @brief Translate an `@global` reference into a Value record.
-Expected<Value> handleGlobalOperand(const std::string &token, ParserState &state)
+Expected<Operand> parseMem(Cursor &cursor, ParserState &state)
 {
-    std::string name = token.substr(1);
-    if (name.empty())
-        return makeValueError(state, "missing global name");
-    return Value::global(std::move(name));
-}
-
-/// @brief Produce the canonical null value for pointer-typed operands.
-Expected<Value> handleNullOperand(const std::string &, ParserState &)
-{
-    return Value::null();
-}
-
-/// @brief Decode a quoted UTF-8 string literal operand.
-///
-/// @details Strips the surrounding quotes, feeds the interior through
-///          @ref il::io::decodeEscapedString to handle escape sequences, and
-///          forwards any decoding diagnostics to the caller.
-Expected<Value> handleStringOperand(const std::string &token, ParserState &state)
-{
-    // String tokens preserve surrounding quotes so we strip them before decoding.
-    // decodeEscapedString validates tricky cases such as trailing '\\' or unknown
-    // escapes and returns a descriptive message that we forward verbatim.
-    std::string literal = token.substr(1, token.size() - 2);
-    std::string decoded;
-    std::string errMsg;
-    if (!decodeEscapedString(literal, decoded, &errMsg))
-        return makeValueError(state, std::move(errMsg));
-    return Value::constStr(std::move(decoded));
-}
-
-/// @brief Parse a floating-point literal according to the IL grammar.
-///
-/// @details Uses @ref il::io::parseFloatLiteral to enforce canonical exponent
-///          and mantissa syntax, reporting invalid spellings through the parser
-///          state's diagnostic machinery.
-Expected<Value> handleFloatOperand(const std::string &token, ParserState &state)
-{
-    double value = 0.0;
-    if (parseFloatLiteral(token, value))
-        return Value::constFloat(value);
-
-    std::ostringstream oss;
-    oss << "invalid floating literal '" << token << "'";
-    return makeValueError(state, oss.str());
-}
-
-/// @brief Parse an integer literal according to the IL grammar.
-///
-/// @details Uses @ref il::io::parseIntegerLiteral to validate digits and sign.
-///          Non-conforming tokens yield diagnostics attached to the current
-///          instruction location.
-Expected<Value> handleIntegerOperand(const std::string &token, ParserState &state)
-{
-    long long value = 0;
-    if (parseIntegerLiteral(token, value))
-        return Value::constInt(value);
-
+    const std::string token(cursor.remaining());
     std::ostringstream oss;
     oss << "invalid integer literal '" << token << "'";
-    return makeValueError(state, oss.str());
+    return makeSyntaxError<Operand>(state, oss.str());
 }
 
-/// @brief Dispatch table mapping operand kinds to specialised handlers.
-constexpr std::array<OperandHandler, static_cast<size_t>(OperandKind::Count)> kOperandHandlers = {
-    handleMissingOperand,
-    handleBoolTrue,
-    handleBoolFalse,
-    handleTempOperand,
-    handleGlobalOperand,
-    handleNullOperand,
-    handleStringOperand,
-    handleFloatOperand,
-    handleIntegerOperand,
-};
+Expected<Operand> parseSymbolRef(Cursor &cursor, ParserState &state)
+{
+    const std::string token(cursor.view());
+    std::string name = token.substr(1);
+    if (name.empty())
+        return makeSyntaxError<Operand>(state, "missing global name");
+    cursor.finish();
+    return Operand::global(std::move(name));
+}
+
+[[maybe_unused]] Expected<Type> parseType(Cursor &cursor, ParserState &state)
+{
+    const std::string token(cursor.remaining());
+    if (token.empty())
+        return makeSyntaxError<Type>(state, "missing type");
+    bool ok = false;
+    Type ty = ::il::io::parseType(token, &ok);
+    if (!ok)
+    {
+        std::ostringstream oss;
+        oss << "unknown type '" << token << "'";
+        return makeSyntaxError<Type>(state, oss.str());
+    }
+    cursor.finish();
+    return ty;
+}
 
 } // namespace
 
@@ -300,9 +276,25 @@ OperandParser::OperandParser(ParserState &state, Instr &instr) : state_(state), 
 /// @return Parsed value or an error diagnostic.
 Expected<Value> OperandParser::parseValueToken(const std::string &tok) const
 {
-    const OperandKind kind = classifyOperandToken(tok);
-    const OperandHandler handler = kOperandHandlers[static_cast<size_t>(kind)];
-    return handler(tok, state_);
+    Cursor cursor(tok);
+    cursor.skipSpaces();
+
+    if (cursor.eof())
+        return makeSyntaxError<Value>(state_, "missing operand");
+
+    const char first = cursor.peek();
+    if (first == '%')
+        return parseReg(cursor, state_);
+    if (first == '@')
+        return parseSymbolRef(cursor, state_);
+    if (first == '[')
+        return parseMem(cursor, state_);
+    if (first == '"')
+        return parseImm(cursor, state_);
+    if (first == '+' || first == '-' || std::isdigit(static_cast<unsigned char>(first)))
+        return parseImm(cursor, state_);
+
+    return parseImm(cursor, state_);
 }
 
 /// @brief Split a comma-separated operand list while respecting nested constructs.
