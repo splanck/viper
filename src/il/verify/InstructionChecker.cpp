@@ -32,6 +32,7 @@
 #include "il/verify/VerifierTable.hpp"
 #include "support/diag_expected.hpp"
 
+#include <array>
 #include <cassert>
 #include <optional>
 #include <string>
@@ -65,6 +66,493 @@ using checker::expectAllOperandType;
 using checker::fail;
 using checker::kindFromClass;
 using checker::typeFromClass;
+
+using Status = Expected<void>;
+
+struct Rule
+{
+    virtual ~Rule() = default;
+
+    virtual bool applies(const il::core::Instr &instr) const = 0;
+    virtual Status check(const VerifyCtx &ctx) const = 0;
+};
+
+Expected<void> checkWithProps(const VerifyCtx &ctx, const OpProps &props);
+
+std::optional<OpProps> lookupLegacyArithmeticProps(const il::core::Instr &instr)
+{
+    const auto props = lookup(instr.op);
+    if (!props)
+        return std::nullopt;
+
+    const bool supportedArity = props->arity > 0 && props->arity <= 2;
+    const bool hasOperandKind = kindFromClass(props->operands).has_value();
+    const bool hasResultType = typeFromClass(props->result).has_value();
+    if (!supportedArity || !hasOperandKind || !hasResultType)
+        return std::nullopt;
+
+    return props;
+}
+
+class LegacyArithmeticRule final : public Rule
+{
+  public:
+    bool applies(const il::core::Instr &instr) const override
+    {
+        return lookupLegacyArithmeticProps(instr).has_value();
+    }
+
+    Status check(const VerifyCtx &ctx) const override
+    {
+        const auto props = lookupLegacyArithmeticProps(ctx.instr);
+        assert(props.has_value());
+        return checkWithProps(ctx, *props);
+    }
+};
+
+class ForbiddenArithmeticRule final : public Rule
+{
+  public:
+    bool applies(const il::core::Instr &instr) const override
+    {
+        for (const auto &entry : kEntries)
+        {
+            if (instr.op == entry.opcode)
+                return true;
+        }
+        return false;
+    }
+
+    Status check(const VerifyCtx &ctx) const override
+    {
+        for (const auto &entry : kEntries)
+        {
+            if (ctx.instr.op == entry.opcode)
+                return fail(ctx, std::string(entry.message));
+        }
+        return fail(ctx, "unsupported opcode");
+    }
+
+  private:
+    struct Entry
+    {
+        Opcode opcode;
+        std::string_view message;
+    };
+
+    static constexpr std::array<Entry, 8> kEntries{{
+        {Opcode::Add, "signed integer add must use iadd.ovf (traps on overflow)"},
+        {Opcode::Sub, "signed integer sub must use isub.ovf (traps on overflow)"},
+        {Opcode::Mul, "signed integer mul must use imul.ovf (traps on overflow)"},
+        {Opcode::SDiv, "signed division must use sdiv.chk0 (traps on divide-by-zero and overflow)"},
+        {Opcode::UDiv, "unsigned division must use udiv.chk0 (traps on divide-by-zero)"},
+        {Opcode::SRem, "signed remainder must use srem.chk0 (traps on divide-by-zero; matches BASIC MOD semantics)"},
+        {Opcode::URem, "unsigned remainder must use urem.chk0 (traps on divide-by-zero; matches BASIC MOD semantics)"},
+        {Opcode::Fptosi, "fp to integer narrowing must use cast.fp_to_si.rte.chk (rounds to nearest-even and traps on overflow)"},
+    }};
+};
+
+class BinaryI64Rule final : public Rule
+{
+  public:
+    bool applies(const il::core::Instr &instr) const override
+    {
+        for (Opcode opcode : kOpcodes)
+        {
+            if (instr.op == opcode)
+                return true;
+        }
+        return false;
+    }
+
+    Status check(const VerifyCtx &ctx) const override
+    {
+        return checkBinary(ctx, il::core::Type::Kind::I64, il::core::Type(il::core::Type::Kind::I64));
+    }
+
+  private:
+    static constexpr std::array<Opcode, 9> kOpcodes{
+        Opcode::UDivChk0, Opcode::SRemChk0, Opcode::URemChk0, Opcode::And,
+        Opcode::Or,        Opcode::Xor,      Opcode::Shl,      Opcode::LShr,
+        Opcode::AShr,
+    };
+};
+
+class IntegerCompareRule final : public Rule
+{
+  public:
+    bool applies(const il::core::Instr &instr) const override
+    {
+        for (Opcode opcode : kOpcodes)
+        {
+            if (instr.op == opcode)
+                return true;
+        }
+        return false;
+    }
+
+    Status check(const VerifyCtx &ctx) const override
+    {
+        return checkBinary(ctx, il::core::Type::Kind::I64, il::core::Type(il::core::Type::Kind::I1));
+    }
+
+  private:
+    static constexpr std::array<Opcode, 10> kOpcodes{
+        Opcode::ICmpEq, Opcode::ICmpNe, Opcode::SCmpLT, Opcode::SCmpLE, Opcode::SCmpGT,
+        Opcode::SCmpGE, Opcode::UCmpLT, Opcode::UCmpLE, Opcode::UCmpGT, Opcode::UCmpGE,
+    };
+};
+
+class FloatCompareRule final : public Rule
+{
+  public:
+    bool applies(const il::core::Instr &instr) const override
+    {
+        for (Opcode opcode : kOpcodes)
+        {
+            if (instr.op == opcode)
+                return true;
+        }
+        return false;
+    }
+
+    Status check(const VerifyCtx &ctx) const override
+    {
+        return checkBinary(ctx, il::core::Type::Kind::F64, il::core::Type(il::core::Type::Kind::I1));
+    }
+
+  private:
+    static constexpr std::array<Opcode, 6> kOpcodes{
+        Opcode::FCmpEQ, Opcode::FCmpNE, Opcode::FCmpLT,
+        Opcode::FCmpLE, Opcode::FCmpGT, Opcode::FCmpGE,
+    };
+};
+
+class SiToFpRule final : public Rule
+{
+  public:
+    bool applies(const il::core::Instr &instr) const override
+    {
+        return instr.op == Opcode::Sitofp;
+    }
+
+    Status check(const VerifyCtx &ctx) const override
+    {
+        return checkUnary(ctx, il::core::Type::Kind::I64, il::core::Type(il::core::Type::Kind::F64));
+    }
+};
+
+class CastFpToIntRule final : public Rule
+{
+  public:
+    bool applies(const il::core::Instr &instr) const override
+    {
+        return instr.op == Opcode::CastFpToSiRteChk || instr.op == Opcode::CastFpToUiRteChk;
+    }
+
+    Status check(const VerifyCtx &ctx) const override
+    {
+        const auto kind = ctx.instr.type.kind;
+        if (kind != il::core::Type::Kind::I16 && kind != il::core::Type::Kind::I32 && kind != il::core::Type::Kind::I64)
+            return fail(ctx, "cast result must be i16, i32, or i64");
+        return checkUnary(ctx, il::core::Type::Kind::F64, ctx.instr.type);
+    }
+};
+
+class NarrowIntCastRule final : public Rule
+{
+  public:
+    bool applies(const il::core::Instr &instr) const override
+    {
+        return instr.op == Opcode::CastSiNarrowChk || instr.op == Opcode::CastUiNarrowChk;
+    }
+
+    Status check(const VerifyCtx &ctx) const override
+    {
+        const auto kind = ctx.instr.type.kind;
+        if (kind != il::core::Type::Kind::I16 && kind != il::core::Type::Kind::I32)
+            return fail(ctx, "narrowing cast result must be i16 or i32");
+        return checkUnary(ctx, il::core::Type::Kind::I64, ctx.instr.type);
+    }
+};
+
+class IdxChkRule final : public Rule
+{
+  public:
+    bool applies(const il::core::Instr &instr) const override
+    {
+        return instr.op == Opcode::IdxChk;
+    }
+
+    Status check(const VerifyCtx &ctx) const override
+    {
+        return checkIdxChk(ctx);
+    }
+};
+
+class ZextRule final : public Rule
+{
+  public:
+    bool applies(const il::core::Instr &instr) const override
+    {
+        return instr.op == Opcode::Zext1;
+    }
+
+    Status check(const VerifyCtx &ctx) const override
+    {
+        return checkUnary(ctx, il::core::Type::Kind::I1, il::core::Type(il::core::Type::Kind::I64));
+    }
+};
+
+class TruncRule final : public Rule
+{
+  public:
+    bool applies(const il::core::Instr &instr) const override
+    {
+        return instr.op == Opcode::Trunc1;
+    }
+
+    Status check(const VerifyCtx &ctx) const override
+    {
+        return checkUnary(ctx, il::core::Type::Kind::I64, il::core::Type(il::core::Type::Kind::I1));
+    }
+};
+
+class MemoryRule final : public Rule
+{
+  public:
+    bool applies(const il::core::Instr &instr) const override
+    {
+        for (Opcode opcode : kOpcodes)
+        {
+            if (instr.op == opcode)
+                return true;
+        }
+        return false;
+    }
+
+    Status check(const VerifyCtx &ctx) const override
+    {
+        switch (ctx.instr.op)
+        {
+            case Opcode::Alloca:
+                return checkAlloca(ctx);
+            case Opcode::GEP:
+                return checkGEP(ctx);
+            case Opcode::Load:
+                return checkLoad(ctx);
+            case Opcode::Store:
+                return checkStore(ctx);
+            case Opcode::AddrOf:
+                return checkAddrOf(ctx);
+            default:
+                break;
+        }
+        return fail(ctx, "unsupported opcode");
+    }
+
+  private:
+    static constexpr std::array<Opcode, 5> kOpcodes{
+        Opcode::Alloca, Opcode::GEP, Opcode::Load, Opcode::Store, Opcode::AddrOf,
+    };
+};
+
+class ConstRule final : public Rule
+{
+  public:
+    bool applies(const il::core::Instr &instr) const override
+    {
+        return instr.op == Opcode::ConstStr || instr.op == Opcode::ConstNull;
+    }
+
+    Status check(const VerifyCtx &ctx) const override
+    {
+        if (ctx.instr.op == Opcode::ConstStr)
+            return checkConstStr(ctx);
+        return checkConstNull(ctx);
+    }
+};
+
+class CallRule final : public Rule
+{
+  public:
+    bool applies(const il::core::Instr &instr) const override
+    {
+        return instr.op == Opcode::Call;
+    }
+
+    Status check(const VerifyCtx &ctx) const override
+    {
+        return checkCall(ctx);
+    }
+};
+
+class TrapRule final : public Rule
+{
+  public:
+    bool applies(const il::core::Instr &instr) const override
+    {
+        for (Opcode opcode : kOpcodes)
+        {
+            if (instr.op == opcode)
+                return true;
+        }
+        return false;
+    }
+
+    Status check(const VerifyCtx &ctx) const override
+    {
+        switch (ctx.instr.op)
+        {
+            case Opcode::TrapKind:
+                return checkTrapKind(ctx);
+            case Opcode::TrapFromErr:
+                return checkTrapFromErr(ctx);
+            case Opcode::TrapErr:
+                return checkTrapErr(ctx);
+            default:
+                break;
+        }
+        return fail(ctx, "unsupported opcode");
+    }
+
+  private:
+    static constexpr std::array<Opcode, 3> kOpcodes{Opcode::TrapKind, Opcode::TrapFromErr, Opcode::TrapErr};
+};
+
+class ErrorGetFieldRule final : public Rule
+{
+  public:
+    bool applies(const il::core::Instr &instr) const override
+    {
+        for (Opcode opcode : kOpcodes)
+        {
+            if (instr.op == opcode)
+                return true;
+        }
+        return false;
+    }
+
+    Status check(const VerifyCtx &ctx) const override
+    {
+        if (auto result = expectAllOperandType(ctx, il::core::Type::Kind::Error); !result)
+            return result;
+        ctx.types.recordResult(ctx.instr, il::core::Type(il::core::Type::Kind::I32));
+        return {};
+    }
+
+  private:
+    static constexpr std::array<Opcode, 3> kOpcodes{Opcode::ErrGetKind, Opcode::ErrGetCode, Opcode::ErrGetLine};
+};
+
+class ErrorGetIpRule final : public Rule
+{
+  public:
+    bool applies(const il::core::Instr &instr) const override
+    {
+        return instr.op == Opcode::ErrGetIp;
+    }
+
+    Status check(const VerifyCtx &ctx) const override
+    {
+        if (auto result = expectAllOperandType(ctx, il::core::Type::Kind::Error); !result)
+            return result;
+        ctx.types.recordResult(ctx.instr, il::core::Type(il::core::Type::Kind::I64));
+        return {};
+    }
+};
+
+class ResumeRule final : public Rule
+{
+  public:
+    bool applies(const il::core::Instr &instr) const override
+    {
+        for (Opcode opcode : kOpcodes)
+        {
+            if (instr.op == opcode)
+                return true;
+        }
+        return false;
+    }
+
+    Status check(const VerifyCtx &ctx) const override
+    {
+        return expectAllOperandType(ctx, il::core::Type::Kind::ResumeTok);
+    }
+
+  private:
+    static constexpr std::array<Opcode, 3> kOpcodes{Opcode::ResumeSame, Opcode::ResumeNext, Opcode::ResumeLabel};
+};
+
+class EhRule final : public Rule
+{
+  public:
+    bool applies(const il::core::Instr &instr) const override
+    {
+        for (Opcode opcode : kOpcodes)
+        {
+            if (instr.op == opcode)
+                return true;
+        }
+        return false;
+    }
+
+    Status check(const VerifyCtx &ctx) const override
+    {
+        return checkDefault(ctx);
+    }
+
+  private:
+    static constexpr std::array<Opcode, 3> kOpcodes{Opcode::EhPush, Opcode::EhPop, Opcode::EhEntry};
+};
+
+class DefaultRule final : public Rule
+{
+  public:
+    bool applies(const il::core::Instr & /*instr*/) const override
+    {
+        return true;
+    }
+
+    Status check(const VerifyCtx &ctx) const override
+    {
+        return checkDefault(ctx);
+    }
+};
+
+const std::array<const Rule *, 20> &ruleRegistry()
+{
+    static const LegacyArithmeticRule legacyArithmeticRule;
+    static const ForbiddenArithmeticRule forbiddenArithmeticRule;
+    static const BinaryI64Rule binaryI64Rule;
+    static const IntegerCompareRule integerCompareRule;
+    static const FloatCompareRule floatCompareRule;
+    static const SiToFpRule siToFpRule;
+    static const CastFpToIntRule castFpToIntRule;
+    static const NarrowIntCastRule narrowIntCastRule;
+    static const IdxChkRule idxChkRule;
+    static const ZextRule zextRule;
+    static const TruncRule truncRule;
+    static const MemoryRule memoryRule;
+    static const ConstRule constRule;
+    static const CallRule callRule;
+    static const TrapRule trapRule;
+    static const ErrorGetFieldRule errorGetFieldRule;
+    static const ErrorGetIpRule errorGetIpRule;
+    static const ResumeRule resumeRule;
+    static const EhRule ehRule;
+    static const DefaultRule defaultRule;
+
+    static const std::array<const Rule *, 20> rules{
+        &legacyArithmeticRule, &forbiddenArithmeticRule, &binaryI64Rule,      &integerCompareRule,
+        &floatCompareRule,     &siToFpRule,              &castFpToIntRule,    &narrowIntCastRule,
+        &idxChkRule,           &zextRule,                &truncRule,          &memoryRule,
+        &constRule,            &callRule,                &trapRule,           &errorGetFieldRule,
+        &errorGetIpRule,       &resumeRule,              &ehRule,             &defaultRule,
+    };
+
+    return rules;
+}
 
 /// @brief Validate operands and results using canonical opcode metadata.
 /// @details Runs the operand-count, operand-type, and result-type checkers in
@@ -234,143 +722,22 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
 /// @return Empty success or a diagnostic when verification fails.
 Expected<void> verifyInstruction_impl(const VerifyCtx &ctx)
 {
-    const auto rejectUnchecked = [&](std::string_view message) {
-        return fail(ctx, std::string(message));
-    };
-
-    const auto props = lookup(ctx.instr.op);
-    const bool hasLegacyArithmeticProps = props && props->arity > 0 && props->arity <= 2 &&
-                                          kindFromClass(props->operands).has_value() &&
-                                          typeFromClass(props->result).has_value();
-
-    if (!hasLegacyArithmeticProps)
+    const bool isLegacyArithmetic = lookupLegacyArithmeticProps(ctx.instr).has_value();
+    if (!isLegacyArithmetic)
     {
         const auto &info = il::core::getOpcodeInfo(ctx.instr.op);
         if (auto result = checkWithInfo(ctx, info); !result)
             return result;
     }
 
-    if (hasLegacyArithmeticProps)
-        return checkWithProps(ctx, *props);
-
-    switch (ctx.instr.op)
+    for (const Rule *rule : ruleRegistry())
     {
-        case Opcode::Alloca:
-            return checkAlloca(ctx);
-        case Opcode::Add:
-            return rejectUnchecked("signed integer add must use iadd.ovf (traps on overflow)");
-        case Opcode::Sub:
-            return rejectUnchecked("signed integer sub must use isub.ovf (traps on overflow)");
-        case Opcode::Mul:
-            return rejectUnchecked("signed integer mul must use imul.ovf (traps on overflow)");
-        case Opcode::SDiv:
-            return rejectUnchecked("signed division must use sdiv.chk0 (traps on divide-by-zero and overflow)");
-        case Opcode::UDiv:
-            return rejectUnchecked("unsigned division must use udiv.chk0 (traps on divide-by-zero)");
-        case Opcode::SRem:
-            return rejectUnchecked("signed remainder must use srem.chk0 (traps on divide-by-zero; matches BASIC MOD semantics)");
-        case Opcode::URem:
-            return rejectUnchecked("unsigned remainder must use urem.chk0 (traps on divide-by-zero; matches BASIC MOD semantics)");
-        case Opcode::UDivChk0:
-        case Opcode::SRemChk0:
-        case Opcode::URemChk0:
-        case Opcode::And:
-        case Opcode::Or:
-        case Opcode::Xor:
-        case Opcode::Shl:
-        case Opcode::LShr:
-        case Opcode::AShr:
-            return checkBinary(ctx, il::core::Type::Kind::I64, il::core::Type(il::core::Type::Kind::I64));
-        case Opcode::ICmpEq:
-        case Opcode::ICmpNe:
-        case Opcode::SCmpLT:
-        case Opcode::SCmpLE:
-        case Opcode::SCmpGT:
-        case Opcode::SCmpGE:
-        case Opcode::UCmpLT:
-        case Opcode::UCmpLE:
-        case Opcode::UCmpGT:
-        case Opcode::UCmpGE:
-            return checkBinary(ctx, il::core::Type::Kind::I64, il::core::Type(il::core::Type::Kind::I1));
-        case Opcode::FCmpEQ:
-        case Opcode::FCmpNE:
-        case Opcode::FCmpLT:
-        case Opcode::FCmpLE:
-        case Opcode::FCmpGT:
-        case Opcode::FCmpGE:
-            return checkBinary(ctx, il::core::Type::Kind::F64, il::core::Type(il::core::Type::Kind::I1));
-        case Opcode::Sitofp:
-            return checkUnary(ctx, il::core::Type::Kind::I64, il::core::Type(il::core::Type::Kind::F64));
-        case Opcode::Fptosi:
-            return rejectUnchecked("fp to integer narrowing must use cast.fp_to_si.rte.chk (rounds to nearest-even and traps on overflow)");
-        case Opcode::CastFpToSiRteChk:
-        case Opcode::CastFpToUiRteChk:
-        {
-            if (ctx.instr.type.kind != il::core::Type::Kind::I16 && ctx.instr.type.kind != il::core::Type::Kind::I32 &&
-                ctx.instr.type.kind != il::core::Type::Kind::I64)
-                return fail(ctx, "cast result must be i16, i32, or i64");
-            return checkUnary(ctx, il::core::Type::Kind::F64, ctx.instr.type);
-        }
-        case Opcode::CastSiNarrowChk:
-        case Opcode::CastUiNarrowChk:
-        {
-            if (ctx.instr.type.kind != il::core::Type::Kind::I16 && ctx.instr.type.kind != il::core::Type::Kind::I32)
-                return fail(ctx, "narrowing cast result must be i16 or i32");
-            return checkUnary(ctx, il::core::Type::Kind::I64, ctx.instr.type);
-        }
-        case Opcode::IdxChk:
-            return checkIdxChk(ctx);
-        case Opcode::Zext1:
-            return checkUnary(ctx, il::core::Type::Kind::I1, il::core::Type(il::core::Type::Kind::I64));
-        case Opcode::Trunc1:
-            return checkUnary(ctx, il::core::Type::Kind::I64, il::core::Type(il::core::Type::Kind::I1));
-        case Opcode::GEP:
-            return checkGEP(ctx);
-        case Opcode::Load:
-            return checkLoad(ctx);
-        case Opcode::Store:
-            return checkStore(ctx);
-        case Opcode::AddrOf:
-            return checkAddrOf(ctx);
-        case Opcode::ConstStr:
-            return checkConstStr(ctx);
-        case Opcode::ConstNull:
-            return checkConstNull(ctx);
-        case Opcode::Call:
-            return checkCall(ctx);
-        case Opcode::TrapKind:
-            return checkTrapKind(ctx);
-        case Opcode::TrapFromErr:
-            return checkTrapFromErr(ctx);
-        case Opcode::TrapErr:
-            return checkTrapErr(ctx);
-        case Opcode::ErrGetKind:
-        case Opcode::ErrGetCode:
-        case Opcode::ErrGetLine:
-        {
-            if (auto result = expectAllOperandType(ctx, il::core::Type::Kind::Error); !result)
-                return result;
-            ctx.types.recordResult(ctx.instr, il::core::Type(il::core::Type::Kind::I32));
-            return {};
-        }
-        case Opcode::ErrGetIp:
-        {
-            if (auto result = expectAllOperandType(ctx, il::core::Type::Kind::Error); !result)
-                return result;
-            ctx.types.recordResult(ctx.instr, il::core::Type(il::core::Type::Kind::I64));
-            return {};
-        }
-        case Opcode::ResumeSame:
-        case Opcode::ResumeNext:
-        case Opcode::ResumeLabel:
-            return expectAllOperandType(ctx, il::core::Type::Kind::ResumeTok);
-        case Opcode::EhPush:
-        case Opcode::EhPop:
-        case Opcode::EhEntry:
-            return checkDefault(ctx);
-        default:
-            return checkDefault(ctx);
+        if (!rule->applies(ctx.instr))
+            continue;
+        return rule->check(ctx);
     }
+
+    return fail(ctx, "unsupported opcode");
 }
 
 } // namespace
