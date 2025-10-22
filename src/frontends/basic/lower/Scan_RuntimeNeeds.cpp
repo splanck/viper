@@ -416,6 +416,23 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
                     break;
             }
         }
+
+        // --- begin: ensure manual helpers for file-position builtins ---
+        switch (expr.builtin)
+        {
+            case BuiltinCallExpr::Builtin::Eof:
+                lowerer_.requireEofCh();
+                break;
+            case BuiltinCallExpr::Builtin::Lof:
+                lowerer_.requireLofCh();
+                break;
+            case BuiltinCallExpr::Builtin::Loc:
+                lowerer_.requireLocCh();
+                break;
+            default:
+                break;
+        }
+        // --- end: ensure manual helpers for file-position builtins ---
     }
     /// @brief Request helpers needed to print an expression via PRINT#.
     ///
