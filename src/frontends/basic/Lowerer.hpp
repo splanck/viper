@@ -27,6 +27,8 @@
 namespace il::frontends::basic
 {
 
+struct LowerCtx;
+
 class LowererExprVisitor;
 class LowererStmtVisitor;
 struct ProgramLowering;
@@ -107,6 +109,7 @@ class Lowerer
     friend struct NumericExprLowering;
     friend struct BuiltinExprLowering;
     friend class builtins::LowerCtx;
+    friend struct LowerCtx;
     friend class SelectCaseLowering;
     friend class lower::Emitter;
     friend class lower::BuiltinLowerContext;

@@ -48,6 +48,7 @@ target_sources(fe_basic PRIVATE
   LowerRuntime.cpp
   LowerScan.cpp
   lower/BuiltinUtils.cpp
+  lower/TypeRules.cpp
   lower/Scan_ExprTypes.cpp
   lower/Scan_RuntimeNeeds.cpp
   Lower_OOP_Scan.cpp
