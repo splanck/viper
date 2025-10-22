@@ -1,11 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/frontends/basic/Parser_Stmt_Select.cpp
-// Purpose: Implements SELECT CASE parsing routines for the BASIC parser.
-// Key invariants: Validates CASE and CASE ELSE structure while maintaining
-//                 selector range bookkeeping.
-// Ownership/Lifetime: Parser generates AST nodes owned by the caller via
-//                     unique_ptr wrappers.
-// License: MIT; see LICENSE for details.
-// Links: docs/codemap.md
+// Purpose: Parse BASIC SELECT CASE statements and build structured AST nodes.
+// Key invariants: CASE arms and CASE ELSE blocks are validated for correct
+//                 ordering while tracking selector ranges for diagnostics.
+// Ownership/Lifetime: AST nodes are produced as `std::unique_ptr` values that
+//                     transfer ownership to the caller.
+// Links: docs/codemap.md, docs/architecture.md#cpp-overview
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
@@ -21,6 +29,14 @@
 namespace il::frontends::basic
 {
 
+/// @brief Parse the `SELECT CASE` header and initialise parser state.
+///
+/// @details Consumes the `SELECT CASE` keywords, parses the selector expression,
+///          records the source range, and prepares a diagnostic callback that
+///          forwards errors to the configured emitter.  The partially constructed
+///          @ref SelectCaseStmt is stored in the returned state.
+///
+/// @return Parse state capturing selector information and diagnostic plumbing.
 Parser::SelectParseState Parser::parseSelectHeader()
 {
     SelectParseState state;
@@ -56,12 +72,29 @@ Parser::SelectParseState Parser::parseSelectHeader()
     return state;
 }
 
+/// @brief Attempt to parse a `CASE ELSE` block for the current SELECT statement.
+///
+/// @details Delegates to @ref consumeCaseElse, updating parser bookkeeping about
+///          whether an `ELSE` arm has been seen.  The helper returns whether the
+///          directive was consumed so callers can adjust their parsing loop.
+///
+/// @param state Current SELECT parse state.
+/// @return True when a `CASE ELSE` clause was handled.
 bool Parser::parseSelectElse(SelectParseState &state)
 {
     auto result = consumeCaseElse(*state.stmt, state.sawCaseArm, state.sawCaseElse, state.diagnose);
     return result.handled;
 }
 
+/// @brief Handle directives that may terminate or continue SELECT parsing.
+///
+/// @details Checks for `END SELECT` and `CASE ELSE` directives before the parser
+///          attempts to parse a normal `CASE` arm.  The return value informs the
+///          caller whether parsing should terminate, skip to the next iteration,
+///          or continue with arm parsing.
+///
+/// @param state Current SELECT parse state.
+/// @return Dispatch action describing how the caller should proceed.
 Parser::SelectDispatchAction Parser::dispatchSelectDirective(SelectParseState &state)
 {
     auto endResult = handleEndSelect(*state.stmt, state.sawCaseArm, state.expectEndSelect, state.diagnose);
@@ -74,6 +107,13 @@ Parser::SelectDispatchAction Parser::dispatchSelectDirective(SelectParseState &s
     return SelectDispatchAction::None;
 }
 
+/// @brief Parse all CASE arms within a SELECT block.
+///
+/// @details Iterates until `END SELECT` or end-of-file, dispatching directives
+///          and parsing each `CASE` arm encountered.  Diagnostic hooks are used
+///          to report unexpected tokens or missing terminators.
+///
+/// @param state Current SELECT parse state being populated.
 void Parser::parseSelectArms(SelectParseState &state)
 {
     while (!at(TokenKind::EndOfFile))
@@ -122,6 +162,13 @@ void Parser::parseSelectArms(SelectParseState &state)
     }
 }
 
+/// @brief Parse an entire `SELECT CASE` statement.
+///
+/// @details Invokes @ref parseSelectHeader, parses all arms, and emits
+///          diagnostics when an `END SELECT` keyword is missing.  The populated
+///          statement is then returned for lowering.
+///
+/// @return Completed @ref SelectCaseStmt node.
 StmtPtr Parser::parseSelectCaseStatement()
 {
     auto state = parseSelectHeader();
@@ -138,6 +185,13 @@ StmtPtr Parser::parseSelectCaseStatement()
     return std::move(state.stmt);
 }
 
+/// @brief Collect the statements that form a CASE arm body.
+///
+/// @details Uses the statement sequencer to gather statements until another
+///          `CASE` or `END SELECT` keyword is encountered.  The function records
+///          the terminator token for diagnostics.
+///
+/// @return Body statements and metadata describing the terminator.
 Parser::SelectBodyResult Parser::collectSelectBody()
 {
     SelectBodyResult result;
@@ -156,6 +210,17 @@ Parser::SelectBodyResult Parser::collectSelectBody()
     return result;
 }
 
+/// @brief Handle the `END SELECT` directive when encountered.
+///
+/// @details Validates that at least one `CASE` arm was present, updates the
+///          statement's source range, and clears the expectation that an `END`
+///          still needs to appear.
+///
+/// @param stmt Statement being populated.
+/// @param sawCaseArm Whether any CASE arms were parsed previously.
+/// @param expectEndSelect Flag that tracks whether `END SELECT` remains required.
+/// @param diagnose Diagnostic callback for reporting errors.
+/// @return Result structure indicating whether the directive was handled.
 Parser::SelectHandlerResult Parser::handleEndSelect(SelectCaseStmt &stmt,
                                                     bool sawCaseArm,
                                                     bool &expectEndSelect,
@@ -181,6 +246,18 @@ Parser::SelectHandlerResult Parser::handleEndSelect(SelectCaseStmt &stmt,
     return result;
 }
 
+/// @brief Parse a `CASE ELSE` clause if present.
+///
+/// @details Verifies that the clause is not duplicated and that at least one
+///          `CASE` arm preceded it.  The function collects the clause's body and
+///          stores it on the statement when appropriate.
+///
+/// @param stmt Statement being populated.
+/// @param sawCaseArm Whether any CASE arms have been parsed.
+/// @param sawCaseElse Tracks whether a CASE ELSE was already encountered.
+/// @param diagnose Diagnostic callback.
+/// @return Result structure describing whether parsing succeeded and if a
+///         diagnostic was emitted.
 Parser::SelectHandlerResult Parser::consumeCaseElse(SelectCaseStmt &stmt,
                                                     bool sawCaseArm,
                                                     bool &sawCaseElse,
@@ -223,6 +300,13 @@ Parser::SelectHandlerResult Parser::consumeCaseElse(SelectCaseStmt &stmt,
     return result;
 }
 
+/// @brief Parse the statements belonging to a `CASE ELSE` arm.
+///
+/// @details Consumes the `CASE ELSE` keywords, captures the end-of-line location
+///          for range tracking, and then gathers the body statements until the
+///          next directive terminates the block.
+///
+/// @return Pair of body statements and the location of the terminating EOL.
 std::pair<std::vector<StmtPtr>, il::support::SourceLoc> Parser::parseCaseElseBody()
 {
     expect(TokenKind::KeywordCase);
@@ -235,6 +319,14 @@ std::pair<std::vector<StmtPtr>, il::support::SourceLoc> Parser::parseCaseElseBod
     return {std::move(body), elseEol.loc};
 }
 
+/// @brief Parse a single `CASE` arm, including labels and body.
+///
+/// @details Handles relational forms (`CASE IS`), string literals, numeric
+///          literals, and ranges while emitting diagnostics for malformed
+///          entries.  The function then collects the arm body statements using
+///          @ref collectSelectBody and records the source range.
+///
+/// @return Parsed case arm with labels, ranges, and body statements populated.
 CaseArm Parser::parseCaseArm()
 {
     Token caseTok = expect(TokenKind::KeywordCase);

@@ -1,11 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/frontends/basic/LowerStmt_IO.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Implements BASIC statement lowering helpers focused on terminal and
-//          file I/O operations.
-// Key invariants: Helpers reuse the active Lowerer context, ensuring channels
-//                 are normalized and runtime error checks remain consistent.
-// Ownership/Lifetime: Operates on Lowerer without owning AST or IL modules.
-// Links: docs/codemap.md
+// Purpose: Lower BASIC terminal and file I/O statements into IL and runtime
+//          helper calls.
+// Key invariants: Channel numbers are normalised through the Lowerer helpers
+//                 and every runtime invocation performs an accompanying error
+//                 check when required by the language semantics.
+// Ownership/Lifetime: Functions borrow the @ref Lowerer context and never own
+//                     AST nodes or IL modules.
+// Links: docs/codemap.md, docs/architecture.md#cpp-overview
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lowerer.hpp"
 
@@ -16,6 +26,13 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
+/// @brief Lower an OPEN statement to the runtime helper sequence.
+///
+/// @details Evaluates the path and channel expressions, normalises the channel
+///          to a 32-bit descriptor, and invokes `rt_open_err_vstr`.  Any runtime
+///          error triggers emission of a `trap.from_err` via @ref emitRuntimeErrCheck.
+///
+/// @param stmt Parsed OPEN statement containing operands and source location.
 void Lowerer::lowerOpen(const OpenStmt &stmt)
 {
     if (!stmt.pathExpr || !stmt.channelExpr)
@@ -39,6 +56,12 @@ void Lowerer::lowerOpen(const OpenStmt &stmt)
     });
 }
 
+/// @brief Lower a CLOSE statement that releases an open channel.
+///
+/// @details Normalises the channel expression, calls `rt_close_err`, and hooks
+///          the result into the standard runtime error check pipeline.
+///
+/// @param stmt Parsed CLOSE statement.
 void Lowerer::lowerClose(const CloseStmt &stmt)
 {
     if (!stmt.channelExpr)
@@ -55,6 +78,13 @@ void Lowerer::lowerClose(const CloseStmt &stmt)
     });
 }
 
+/// @brief Lower a SEEK statement that repositions a file channel.
+///
+/// @details Converts the channel to an @c i32 descriptor, coerces the position
+///          expression to @c i64, and emits a call to `rt_seek_ch_err` with
+///          diagnostic handling.
+///
+/// @param stmt Parsed SEEK statement.
 void Lowerer::lowerSeek(const SeekStmt &stmt)
 {
     if (!stmt.channelExpr || !stmt.positionExpr)
@@ -76,6 +106,14 @@ void Lowerer::lowerSeek(const SeekStmt &stmt)
     });
 }
 
+/// @brief Lower a PRINT statement to a series of runtime calls.
+///
+/// @details Iterates over each print item, lowering expressions to the
+///          appropriate runtime helper and emitting spacing semantics for commas
+///          and semicolons.  The helper appends a newline when the trailing item
+///          is not a semicolon, mirroring BASIC behaviour.
+///
+/// @param stmt Parsed PRINT statement with expression list.
 void Lowerer::lowerPrint(const PrintStmt &stmt)
 {
     for (const auto &it : stmt.items)
@@ -123,6 +161,18 @@ void Lowerer::lowerPrint(const PrintStmt &stmt)
     }
 }
 
+/// @brief Convert a PRINT# argument into a runtime string representation.
+///
+/// @details Determines whether the expression represents a string or numeric
+///          value, performs any necessary narrowing to match runtime helper
+///          contracts, and optionally quotes string values for CSV emission.
+///          The helper returns both the lowered string and the runtime feature
+///          that must be requested for linking.
+///
+/// @param expr AST expression being lowered.
+/// @param value Result of lowering the expression.
+/// @param quoteStrings Whether string arguments should be quoted for CSV mode.
+/// @return Lowered string value and optional runtime feature dependency.
 Lowerer::PrintChArgString Lowerer::lowerPrintChArgToString(const Expr &expr,
                                                            RVal value,
                                                            bool quoteStrings)
@@ -178,6 +228,15 @@ Lowerer::PrintChArgString Lowerer::lowerPrintChArgToString(const Expr &expr,
     return {text, feature};
 }
 
+/// @brief Concatenate PRINT# arguments into a comma-delimited record.
+///
+/// @details Lowers each argument to a string, requests any needed runtime
+///          helpers, and concatenates values using the runtime `rt_concat`
+///          helper.  When no arguments are present the helper returns an empty
+///          string literal handle.
+///
+/// @param stmt Parsed PRINT# statement describing the arguments.
+/// @return Runtime string handle suitable for writing.
 Value Lowerer::buildPrintChWriteRecord(const PrintChStmt &stmt)
 {
     Value record{};
@@ -216,6 +275,14 @@ Value Lowerer::buildPrintChWriteRecord(const PrintChStmt &stmt)
     return record;
 }
 
+/// @brief Lower a PRINT# or WRITE# statement.
+///
+/// @details Normalises the channel, determines whether the statement is WRITE
+///          (which aggregates arguments) or PRINT (which streams them
+///          individually), and emits calls to `rt_println_ch_err`.  Each call is
+///          wrapped in runtime error checking.
+///
+/// @param stmt Parsed PRINT#/WRITE# statement.
 void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
 {
     if (!stmt.channelExpr)
@@ -269,6 +336,14 @@ void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
     }
 }
 
+/// @brief Lower an INPUT statement that reads from the console.
+///
+/// @details Optionally prints the prompt, reads a line from the runtime, splits
+///          fields when multiple variables are present, and stores each field
+///          into the appropriate slot with type-specific conversions and string
+///          release management.
+///
+/// @param stmt Parsed INPUT statement.
 void Lowerer::lowerInput(const InputStmt &stmt)
 {
     curLoc = stmt.loc;
@@ -348,6 +423,13 @@ void Lowerer::lowerInput(const InputStmt &stmt)
     }
 }
 
+/// @brief Lower an INPUT# statement for reading a record from a channel.
+///
+/// @details Allocates temporary slots, performs the channel read via
+///          `rt_line_input_ch_err`, splits the result into a single field, and
+///          parses it into the target slot according to its declared type.
+///
+/// @param stmt Parsed INPUT# statement.
 void Lowerer::lowerInputCh(const InputChStmt &stmt)
 {
     curLoc = stmt.loc;
@@ -424,6 +506,12 @@ void Lowerer::lowerInputCh(const InputChStmt &stmt)
     emitCall("rt_str_release_maybe", {field});
 }
 
+/// @brief Lower a LINE INPUT# statement that reads a full line into a string.
+///
+/// @details Reads the line through `rt_line_input_ch_err`, stores the result in
+///          the target variable when present, and propagates runtime errors.
+///
+/// @param stmt Parsed LINE INPUT# statement.
 void Lowerer::lowerLineInputCh(const LineInputChStmt &stmt)
 {
     if (!stmt.channelExpr || !stmt.targetVar)
