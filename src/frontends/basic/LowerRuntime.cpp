@@ -340,9 +340,11 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         {"rt_seek_ch_err", ManualRuntimeHelper::SeekChErr, &Lowerer::requireSeekChErr},
         {"rt_println_ch_err", ManualRuntimeHelper::PrintlnChErr, &Lowerer::requirePrintlnChErr},
         {"rt_line_input_ch_err", ManualRuntimeHelper::LineInputChErr, &Lowerer::requireLineInputChErr},
+        // --- begin: declarable manual helpers ---
         {"rt_eof_ch", ManualRuntimeHelper::EofCh, &Lowerer::requireEofCh},
         {"rt_lof_ch", ManualRuntimeHelper::LofCh, &Lowerer::requireLofCh},
         {"rt_loc_ch", ManualRuntimeHelper::LocCh, &Lowerer::requireLocCh},
+        // --- end: declarable manual helpers ---
         {"rt_str_retain_maybe", ManualRuntimeHelper::StrRetainMaybe, &Lowerer::requireStrRetainMaybe},
         {"rt_str_release_maybe", ManualRuntimeHelper::StrReleaseMaybe, &Lowerer::requireStrReleaseMaybe},
     }};
