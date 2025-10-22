@@ -51,6 +51,7 @@ using il::core::Type;
 namespace
 {
 
+using il::support::Diag;
 using il::support::Expected;
 using il::support::makeError;
 
@@ -210,6 +211,19 @@ struct Cursor
     }
 };
 
+struct SourcePos
+{
+    unsigned line = 0;
+    size_t column = 0;
+};
+
+using Error = Diag;
+
+SourcePos cursorPos(const Cursor &cur)
+{
+    return SourcePos{cur.lineNo, cur.pos()};
+}
+
 struct Prototype
 {
     Type retType;
@@ -297,19 +311,20 @@ std::string_view trimView(std::string_view text)
 }
 
 template <class T>
-Expected<T> malformedFunctionHeader(unsigned lineNo)
-{
-    std::ostringstream oss;
-    oss << "line " << lineNo << ": malformed function header";
-    return Expected<T>{makeError({}, oss.str())};
-}
-
-template <class T>
 Expected<T> lineError(unsigned lineNo, const std::string &message)
 {
     std::ostringstream oss;
     oss << "line " << lineNo << ": " << message;
     return Expected<T>{makeError({}, oss.str())};
+}
+
+Error makeSyntaxError(SourcePos pos, std::string_view msg, std::string_view near)
+{
+    std::ostringstream body;
+    body << msg;
+    if (!near.empty())
+        body << " '" << near << "'";
+    return lineError<void>(pos.line, body.str()).error();
 }
 
 Expected<Param> parseParameterToken(const std::string &rawParam, unsigned lineNo)
@@ -362,27 +377,34 @@ Expected<Param> parseParameterToken(const std::string &rawParam, unsigned lineNo
 
 Expected<std::string> parseSymbolName(Cursor &cur)
 {
-    size_t at = cur.text.find('@');
+    cur.skipWs();
+    if (cur.atEnd())
+        return Expected<std::string>{makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
+
+    size_t at = cur.text.find('@', cur.pos());
     if (at == std::string_view::npos)
-        return malformedFunctionHeader<std::string>(cur.lineNo);
+        return Expected<std::string>{makeSyntaxError(cursorPos(cur), "malformed function header", {})};
     size_t lp = cur.text.find('(', at);
     if (lp == std::string_view::npos)
-        return malformedFunctionHeader<std::string>(cur.lineNo);
+        return Expected<std::string>{makeSyntaxError(cursorPos(cur), "malformed function header", {})};
     std::string name = trim(std::string(cur.text.substr(at + 1, lp - at - 1)));
     if (name.empty())
-        return malformedFunctionHeader<std::string>(cur.lineNo);
+        return Expected<std::string>{makeSyntaxError(cursorPos(cur), "malformed function header", {})};
     cur.index = lp;
     return name;
 }
 
 Expected<Prototype> parsePrototype(Cursor &cur)
 {
+    cur.skipWs();
+    if (cur.atEnd())
+        return Expected<Prototype>{makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
     if (!cur.consume('('))
-        return malformedFunctionHeader<Prototype>(cur.lineNo);
+        return Expected<Prototype>{makeSyntaxError(cursorPos(cur), "malformed function header", {})};
     size_t paramsBegin = cur.pos();
     size_t rp = cur.text.find(')', paramsBegin);
     if (rp == std::string_view::npos)
-        return malformedFunctionHeader<Prototype>(cur.lineNo);
+        return Expected<Prototype>{makeSyntaxError(cursorPos(cur), "malformed function header", {})};
     std::string paramsStr(cur.text.substr(paramsBegin, rp - paramsBegin));
     cur.index = rp + 1;
 
@@ -403,20 +425,30 @@ Expected<Prototype> parsePrototype(Cursor &cur)
     size_t gapStart = cur.pos();
     size_t arrow = cur.text.find("->", gapStart);
     if (arrow == std::string_view::npos)
-        return malformedFunctionHeader<Prototype>(cur.lineNo);
+    {
+        if (trimView(cur.text.substr(gapStart)).empty())
+            return Expected<Prototype>{makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
+        return Expected<Prototype>{makeSyntaxError(cursorPos(cur), "malformed function header", {})};
+    }
     cur.setGap(gapStart, arrow);
     cur.index = arrow + 2;
     cur.skipWs();
+    if (cur.atEnd())
+        return Expected<Prototype>{makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
 
     size_t brace = cur.text.find('{', cur.pos());
     if (brace == std::string_view::npos)
-        return malformedFunctionHeader<Prototype>(cur.lineNo);
+    {
+        if (trimView(cur.text.substr(cur.pos())).empty())
+            return Expected<Prototype>{makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
+        return Expected<Prototype>{makeSyntaxError(cursorPos(cur), "malformed function header", {})};
+    }
     std::string retRaw(cur.text.substr(cur.pos(), brace - cur.pos()));
     std::string retStr = trim(retRaw);
     bool retOk = true;
     Type retTy = parseType(retStr, &retOk);
     if (!retOk)
-        return lineError<Prototype>(cur.lineNo, "unknown return type");
+        return Expected<Prototype>{makeSyntaxError(cursorPos(cur), "unknown return type", {})};
 
     cur.index = brace;
     return Prototype{retTy, std::move(params)};
@@ -445,8 +477,10 @@ Expected<CallingConv> parseCallingConv(Cursor &cur)
 Expected<Attrs> parseAttributes(Cursor &cur)
 {
     cur.skipWs();
+    if (cur.atEnd())
+        return Expected<Attrs>{makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
     if (!cur.consume('{'))
-        return malformedFunctionHeader<Attrs>(cur.lineNo);
+        return Expected<Attrs>{makeSyntaxError(cursorPos(cur), "malformed function header", {})};
     return Attrs{};
 }
 
