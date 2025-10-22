@@ -210,10 +210,7 @@ Keep frontends thin: semantics live in the IL so the VM/backends can stay generi
 
 ## Contributing
 
-We’re glad you’re interested in Viper! This project is evolving quickly and the architecture is still in flux.  
-You’re welcome to explore the code, file issues, and propose **small fixes or documentation improvements**.  
-However, we’re **not currently seeking large feature PRs** while the core design stabilizes. Keeping the project cohesive is the priority.  
-If you want to experiment more broadly, feel free to fork—Viper is MIT‑licensed.
+We’re glad you’re interested in Viper! This project is evolving quickly and the architecture is still in flux. You’re welcome to explore the code, file issues, and propose **small fixes or documentation improvements**. However, we’re **not currently seeking large feature PRs** while the core design stabilizes. Keeping the project cohesive is the priority. If you want to experiment more broadly, feel free to fork—Viper is MIT‑licensed.
 
 ---
 
