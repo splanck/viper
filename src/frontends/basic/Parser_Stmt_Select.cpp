@@ -21,24 +21,25 @@
 namespace il::frontends::basic
 {
 
-StmtPtr Parser::parseSelectCaseStatement()
+Parser::SelectParseState Parser::parseSelectHeader()
 {
-    auto loc = peek().loc;
+    SelectParseState state;
+    state.selectLoc = peek().loc;
     consume(); // SELECT
     expect(TokenKind::KeywordCase);
     auto selector = parseExpression();
     Token headerEnd = expect(TokenKind::EndOfLine);
 
-    auto stmt = std::make_unique<SelectCaseStmt>();
-    stmt->loc = loc;
-    stmt->selector = std::move(selector);
-    stmt->range.begin = loc;
-    stmt->range.end = headerEnd.loc;
+    state.stmt = std::make_unique<SelectCaseStmt>();
+    state.stmt->loc = state.selectLoc;
+    state.stmt->selector = std::move(selector);
+    state.stmt->range.begin = state.selectLoc;
+    state.stmt->range.end = headerEnd.loc;
 
-    SelectDiagnoseFn diagnose = [&](il::support::SourceLoc diagLoc,
-                                    uint32_t length,
-                                    std::string_view message,
-                                    std::string_view code)
+    state.diagnose = [&](il::support::SourceLoc diagLoc,
+                         uint32_t length,
+                         std::string_view message,
+                         std::string_view code)
     {
         if (emitter_)
         {
@@ -47,24 +48,41 @@ StmtPtr Parser::parseSelectCaseStatement()
                            diagLoc,
                            length,
                            std::string(message));
+            return;
         }
-        else
-        {
-            std::fprintf(stderr, "%.*s\n", static_cast<int>(message.size()), message.data());
-        }
+        std::fprintf(stderr, "%.*s\n", static_cast<int>(message.size()), message.data());
     };
 
-    bool sawCaseArm = false;
-    bool sawCaseElse = false;
-    bool expectEndSelect = true;
+    return state;
+}
 
+bool Parser::parseSelectElse(SelectParseState &state)
+{
+    auto result = consumeCaseElse(*state.stmt, state.sawCaseArm, state.sawCaseElse, state.diagnose);
+    return result.handled;
+}
+
+Parser::SelectDispatchAction Parser::dispatchSelectDirective(SelectParseState &state)
+{
+    auto endResult = handleEndSelect(*state.stmt, state.sawCaseArm, state.expectEndSelect, state.diagnose);
+    if (endResult.handled)
+        return SelectDispatchAction::Terminate;
+
+    if (parseSelectElse(state))
+        return SelectDispatchAction::Continue;
+
+    return SelectDispatchAction::None;
+}
+
+void Parser::parseSelectArms(SelectParseState &state)
+{
     while (!at(TokenKind::EndOfFile))
     {
         while (at(TokenKind::EndOfLine))
             consume();
 
         if (at(TokenKind::EndOfFile))
-            break;
+            return;
 
         if (at(TokenKind::Number))
         {
@@ -76,46 +94,48 @@ StmtPtr Parser::parseSelectCaseStatement()
             }
         }
 
-        auto endResult = handleEndSelect(*stmt, sawCaseArm, expectEndSelect, diagnose);
-        if (endResult.handled)
-            break;
-
-        auto elseResult = consumeCaseElse(*stmt, sawCaseArm, sawCaseElse, diagnose);
-        if (elseResult.handled)
+        const auto action = dispatchSelectDirective(state);
+        if (action == SelectDispatchAction::Terminate)
+            return;
+        if (action == SelectDispatchAction::Continue)
             continue;
 
         if (!at(TokenKind::KeywordCase))
         {
             Token unexpected = consume();
-            diagnose(unexpected.loc,
-                     static_cast<uint32_t>(unexpected.lexeme.size()),
-                     "expected CASE or END SELECT in SELECT CASE",
-                     "B0001");
+            state.diagnose(unexpected.loc,
+                           static_cast<uint32_t>(unexpected.lexeme.size()),
+                           "expected CASE or END SELECT in SELECT CASE",
+                           "B0001");
             continue;
         }
 
         Token caseTok = peek();
-        il::support::SourceLoc caseLoc = caseTok.loc;
-
         CaseArm arm = parseCaseArm();
-        arm.range.begin = caseLoc;
-        stmt->arms.push_back(std::move(arm));
-        if (!stmt->arms.empty())
+        arm.range.begin = caseTok.loc;
+        state.stmt->arms.push_back(std::move(arm));
+        if (!state.stmt->arms.empty())
         {
-            stmt->range.end = stmt->arms.back().range.end;
+            state.stmt->range.end = state.stmt->arms.back().range.end;
         }
-        sawCaseArm = true;
+        state.sawCaseArm = true;
     }
+}
 
-    if (expectEndSelect)
+StmtPtr Parser::parseSelectCaseStatement()
+{
+    auto state = parseSelectHeader();
+    parseSelectArms(state);
+
+    if (state.expectEndSelect)
     {
-        diagnose(loc,
-                 static_cast<uint32_t>(6),
-                 diag::ERR_SelectCase_MissingEndSelect.text,
-                 diag::ERR_SelectCase_MissingEndSelect.id);
+        state.diagnose(state.selectLoc,
+                       static_cast<uint32_t>(6),
+                       diag::ERR_SelectCase_MissingEndSelect.text,
+                       diag::ERR_SelectCase_MissingEndSelect.id);
     }
 
-    return stmt;
+    return std::move(state.stmt);
 }
 
 Parser::SelectBodyResult Parser::collectSelectBody()
