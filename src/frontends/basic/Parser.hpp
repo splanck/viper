@@ -23,6 +23,8 @@
 namespace il::frontends::basic
 {
 
+struct IoStmtParserState;
+
 class Parser
 {
   public:
@@ -38,6 +40,7 @@ class Parser
 
   private:
     friend class StatementSequencer;
+    friend struct IoStmtParserState;
 
     /// @brief Create a statement sequencer bound to this parser instance.
     /// @return StatementSequencer referencing the parser's token stream.
