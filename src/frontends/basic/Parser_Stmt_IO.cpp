@@ -20,12 +20,84 @@
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
+#include "support/diag_expected.hpp"
 
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
+#include <string>
 
 namespace il::frontends::basic
 {
+namespace
+{
+using il::support::Expected;
+
+struct ParserState
+{
+    DiagnosticEmitter *emitter = nullptr;
+    std::function<const Token &(int)> peek;
+    std::function<Token()> consume;
+    std::function<void()> syncToStmtBoundary;
+    std::function<ExprPtr()> parseExpression;
+    std::function<bool(TokenKind)> isStatementStart;
+};
+
+[[nodiscard]] uint32_t caretLength(const Token &tok)
+{
+    return tok.lexeme.empty() ? 1U : static_cast<uint32_t>(tok.lexeme.size());
+}
+
+template <class MessageFn>
+Expected<Token> expect(ParserState &state, TokenKind expectedKind, MessageFn &&buildMessage)
+{
+    if (state.peek(0).kind == expectedKind)
+        return state.consume();
+
+    const Token unexpected = state.peek(0);
+    std::string message = buildMessage(unexpected);
+    if (state.emitter)
+    {
+        state.emitter->emit(il::support::Severity::Error,
+                            "B0001",
+                            unexpected.loc,
+                            caretLength(unexpected),
+                            message);
+    }
+    else
+    {
+        std::fprintf(stderr, "%s\n", message.c_str());
+    }
+    state.syncToStmtBoundary();
+    return Expected<Token>{il::support::makeError(unexpected.loc, std::move(message))};
+}
+
+[[nodiscard]] bool match(ParserState &state, TokenKind kind)
+{
+    if (state.peek(0).kind != kind)
+        return false;
+    state.consume();
+    return true;
+}
+
+[[nodiscard]] bool atLineEnd(ParserState &state)
+{
+    const TokenKind kind = state.peek(0).kind;
+    return kind == TokenKind::EndOfFile || kind == TokenKind::EndOfLine || kind == TokenKind::Colon;
+}
+
+void consumeToLineEnd(ParserState &state)
+{
+    while (!atLineEnd(state))
+        state.consume();
+}
+
+StmtPtr parsePrintStmt(ParserState &state);
+StmtPtr parseInputStmt(ParserState &state);
+StmtPtr parseOpenStmt(ParserState &state);
+StmtPtr parseCloseStmt(ParserState &state);
+
+} // namespace
 
 /// @brief Register parsing functions for IO-related statement keywords.
 /// @details Populates the provided registry so the generic parser dispatch can
@@ -43,63 +115,327 @@ void Parser::registerIoParsers(StatementParserRegistry &registry)
     registry.registerHandler(TokenKind::KeywordLine, &Parser::parseLineInputStatement);
 }
 
-/// @brief Parse the PRINT statement, supporting both console and channel forms.
-/// @details Consumes the `PRINT` token and distinguishes between the standard
-///          variant and the `PRINT #` channel form. Expressions, commas, and
-///          semicolons are appended to the resulting AST node until a statement
-///          terminator is encountered.
-/// @return Newly allocated AST node representing the parsed statement.
-StmtPtr Parser::parsePrintStatement()
+namespace
 {
-    auto loc = peek().loc;
-    consume(); // PRINT
-    if (at(TokenKind::Hash))
+
+StmtPtr parsePrintStmt(ParserState &state)
+{
+    const auto loc = state.peek(0).loc;
+    state.consume(); // PRINT
+
+    if (match(state, TokenKind::Hash))
     {
-        consume();
         auto stmt = std::make_unique<PrintChStmt>();
         stmt->loc = loc;
         stmt->mode = PrintChStmt::Mode::Print;
-        stmt->channelExpr = parseExpression();
         stmt->trailingNewline = true;
-        if (at(TokenKind::Comma))
+        stmt->channelExpr = state.parseExpression();
+
+        if (!match(state, TokenKind::Comma))
+            return stmt;
+
+        while (!atLineEnd(state))
         {
-            consume();
-            while (true)
-            {
-                if (at(TokenKind::EndOfLine) || at(TokenKind::EndOfFile) || at(TokenKind::Colon))
-                    break;
-                if (isStatementStart(peek().kind))
-                    break;
-                stmt->args.push_back(parseExpression());
-                if (!at(TokenKind::Comma))
-                    break;
-                consume();
-            }
+            if (state.isStatementStart && state.isStatementStart(state.peek(0).kind))
+                break;
+            stmt->args.push_back(state.parseExpression());
+            if (!match(state, TokenKind::Comma))
+                break;
         }
         return stmt;
     }
+
     auto stmt = std::make_unique<PrintStmt>();
     stmt->loc = loc;
-    while (!at(TokenKind::EndOfLine) && !at(TokenKind::EndOfFile) && !at(TokenKind::Colon))
+    while (!atLineEnd(state))
     {
-        TokenKind k = peek().kind;
-        if (isStatementStart(k))
+        const TokenKind kind = state.peek(0).kind;
+        if (state.isStatementStart && state.isStatementStart(kind))
             break;
-        if (at(TokenKind::Comma))
+        if (match(state, TokenKind::Comma))
         {
-            consume();
             stmt->items.push_back(PrintItem{PrintItem::Kind::Comma, nullptr});
             continue;
         }
-        if (at(TokenKind::Semicolon))
+        if (match(state, TokenKind::Semicolon))
         {
-            consume();
             stmt->items.push_back(PrintItem{PrintItem::Kind::Semicolon, nullptr});
             continue;
         }
-        stmt->items.push_back(PrintItem{PrintItem::Kind::Expr, parseExpression()});
+        stmt->items.push_back(PrintItem{PrintItem::Kind::Expr, state.parseExpression()});
     }
     return stmt;
+}
+
+StmtPtr parseInputChannelStmt(ParserState &state, il::support::SourceLoc loc)
+{
+    auto channelTok = expect(state,
+                             TokenKind::Number,
+                             [](const Token &got) {
+                                 return std::string("expected channel number after '#'") +
+                                        ", got " + tokenKindToString(got.kind);
+                             });
+    if (!channelTok)
+        return nullptr;
+
+    auto commaTok = expect(state,
+                           TokenKind::Comma,
+                           [](const Token &got) {
+                               return std::string("expected ',' after channel number") +
+                                      ", got " + tokenKindToString(got.kind);
+                           });
+    if (!commaTok)
+        return nullptr;
+
+    auto targetTok = expect(state,
+                            TokenKind::Identifier,
+                            [](const Token &got) {
+                                return std::string("expected variable name after INPUT #") +
+                                       ", got " + tokenKindToString(got.kind);
+                            });
+    if (!targetTok)
+        return nullptr;
+
+    auto stmt = std::make_unique<InputChStmt>();
+    stmt->loc = loc;
+    const Token &channelToken = channelTok.value();
+    const Token &targetToken = targetTok.value();
+    stmt->channel = std::atoi(channelToken.lexeme.c_str());
+    stmt->target.name = targetToken.lexeme;
+    stmt->target.loc = targetToken.loc;
+
+    if (!match(state, TokenKind::Comma))
+        return stmt;
+
+    if (state.emitter)
+    {
+        const Token &extra = state.peek(0);
+        state.emitter->emit(il::support::Severity::Error,
+                            "B0001",
+                            extra.loc,
+                            caretLength(extra),
+                            "INPUT # with multiple targets not yet supported");
+    }
+    else
+    {
+        std::fprintf(stderr, "INPUT # with multiple targets not yet supported\n");
+    }
+
+    consumeToLineEnd(state);
+    return stmt;
+}
+
+StmtPtr parseInputStmt(ParserState &state)
+{
+    const auto loc = state.peek(0).loc;
+    state.consume(); // INPUT
+
+    if (match(state, TokenKind::Hash))
+        return parseInputChannelStmt(state, loc);
+
+    ExprPtr prompt;
+    if (state.peek(0).kind == TokenKind::String)
+    {
+        auto promptExpr = std::make_unique<StringExpr>();
+        promptExpr->loc = state.peek(0).loc;
+        promptExpr->value = state.peek(0).lexeme;
+        prompt = std::move(promptExpr);
+        state.consume();
+
+        auto commaTok = expect(state,
+                               TokenKind::Comma,
+                               [](const Token &got) {
+                                   return std::string("expected ',' after INPUT prompt") +
+                                          ", got " + tokenKindToString(got.kind);
+                               });
+        if (!commaTok)
+            return nullptr;
+    }
+
+    auto stmt = std::make_unique<InputStmt>();
+    stmt->loc = loc;
+    stmt->prompt = std::move(prompt);
+
+    auto firstVar = expect(state,
+                           TokenKind::Identifier,
+                           [](const Token &got) {
+                               return std::string("expected variable name in INPUT statement") +
+                                      ", got " + tokenKindToString(got.kind);
+                           });
+    if (!firstVar)
+        return nullptr;
+    stmt->vars.push_back(firstVar.value().lexeme);
+
+    while (match(state, TokenKind::Comma))
+    {
+        auto nextVar = expect(state,
+                              TokenKind::Identifier,
+                              [](const Token &got) {
+                                  return std::string("expected variable name after ',' in INPUT") +
+                                         ", got " + tokenKindToString(got.kind);
+                              });
+        if (!nextVar)
+            return nullptr;
+        stmt->vars.push_back(nextVar.value().lexeme);
+    }
+
+    return stmt;
+}
+
+StmtPtr parseOpenStmt(ParserState &state)
+{
+    const auto loc = state.peek(0).loc;
+    state.consume(); // OPEN
+
+    auto stmt = std::make_unique<OpenStmt>();
+    stmt->loc = loc;
+    stmt->pathExpr = state.parseExpression();
+
+    auto forTok = expect(state,
+                         TokenKind::KeywordFor,
+                         [](const Token &got) {
+                             return std::string("expected FOR keyword in OPEN statement") +
+                                    ", got " + tokenKindToString(got.kind);
+                         });
+    if (!forTok)
+        return nullptr;
+
+    const TokenKind modeKind = state.peek(0).kind;
+    switch (modeKind)
+    {
+        case TokenKind::KeywordInput:
+            state.consume();
+            stmt->mode = OpenStmt::Mode::Input;
+            break;
+        case TokenKind::KeywordOutput:
+            state.consume();
+            stmt->mode = OpenStmt::Mode::Output;
+            break;
+        case TokenKind::KeywordAppend:
+            state.consume();
+            stmt->mode = OpenStmt::Mode::Append;
+            break;
+        case TokenKind::KeywordBinary:
+            state.consume();
+            stmt->mode = OpenStmt::Mode::Binary;
+            break;
+        case TokenKind::KeywordRandom:
+            state.consume();
+            stmt->mode = OpenStmt::Mode::Random;
+            break;
+        default:
+        {
+            const Token unexpected = state.peek(0);
+            if (state.emitter)
+            {
+                state.emitter->emit(il::support::Severity::Error,
+                                     "B0001",
+                                     unexpected.loc,
+                                     caretLength(unexpected),
+                                     "expected INPUT, OUTPUT, APPEND, BINARY, or RANDOM");
+            }
+            else
+            {
+                std::fprintf(stderr,
+                             "expected OPEN mode keyword, got %s\n",
+                             tokenKindToString(unexpected.kind));
+            }
+            state.syncToStmtBoundary();
+            return nullptr;
+        }
+    }
+
+    auto asTok = expect(state,
+                        TokenKind::KeywordAs,
+                        [](const Token &got) {
+                            return std::string("expected AS keyword in OPEN statement") +
+                                   ", got " + tokenKindToString(got.kind);
+                        });
+    if (!asTok)
+        return nullptr;
+
+    auto hashTok = expect(state,
+                          TokenKind::Hash,
+                          [](const Token &got) {
+                              return std::string("expected '#'") +
+                                     ", got " + tokenKindToString(got.kind);
+                          });
+    if (!hashTok)
+        return nullptr;
+
+    stmt->channelExpr = state.parseExpression();
+    return stmt;
+}
+
+StmtPtr parseCloseStmt(ParserState &state)
+{
+    const auto loc = state.peek(0).loc;
+    state.consume(); // CLOSE
+
+    auto stmt = std::make_unique<CloseStmt>();
+    stmt->loc = loc;
+
+    auto hashTok = expect(state,
+                          TokenKind::Hash,
+                          [](const Token &got) {
+                              return std::string("expected '#'") +
+                                     ", got " + tokenKindToString(got.kind);
+                          });
+    if (!hashTok)
+        return nullptr;
+
+    stmt->channelExpr = state.parseExpression();
+    return stmt;
+}
+
+} // namespace
+
+StmtPtr Parser::parsePrintStatement()
+{
+    ParserState state{};
+    state.emitter = emitter_;
+    state.peek = [this](int n) -> const Token & { return this->peek(n); };
+    state.consume = [this]() { return this->consume(); };
+    state.syncToStmtBoundary = [this]() { this->syncToStmtBoundary(); };
+    state.parseExpression = [this]() { return this->parseExpression(); };
+    state.isStatementStart = [this](TokenKind kind) { return this->isStatementStart(kind); };
+    return parsePrintStmt(state);
+}
+
+StmtPtr Parser::parseInputStatement()
+{
+    ParserState state{};
+    state.emitter = emitter_;
+    state.peek = [this](int n) -> const Token & { return this->peek(n); };
+    state.consume = [this]() { return this->consume(); };
+    state.syncToStmtBoundary = [this]() { this->syncToStmtBoundary(); };
+    state.parseExpression = [this]() { return this->parseExpression(); };
+    state.isStatementStart = [this](TokenKind kind) { return this->isStatementStart(kind); };
+    return parseInputStmt(state);
+}
+
+StmtPtr Parser::parseOpenStatement()
+{
+    ParserState state{};
+    state.emitter = emitter_;
+    state.peek = [this](int n) -> const Token & { return this->peek(n); };
+    state.consume = [this]() { return this->consume(); };
+    state.syncToStmtBoundary = [this]() { this->syncToStmtBoundary(); };
+    state.parseExpression = [this]() { return this->parseExpression(); };
+    state.isStatementStart = [this](TokenKind kind) { return this->isStatementStart(kind); };
+    return parseOpenStmt(state);
+}
+
+StmtPtr Parser::parseCloseStatement()
+{
+    ParserState state{};
+    state.emitter = emitter_;
+    state.peek = [this](int n) -> const Token & { return this->peek(n); };
+    state.consume = [this]() { return this->consume(); };
+    state.syncToStmtBoundary = [this]() { this->syncToStmtBoundary(); };
+    state.parseExpression = [this]() { return this->parseExpression(); };
+    state.isStatementStart = [this](TokenKind kind) { return this->isStatementStart(kind); };
+    return parseCloseStmt(state);
 }
 
 /// @brief Parse the WRITE# statement.
@@ -129,73 +465,6 @@ StmtPtr Parser::parseWriteStatement()
     return stmt;
 }
 
-/// @brief Parse the OPEN statement configuring file channels.
-/// @details Consumes the mode keyword, validates it against supported options,
-///          expects the `AS #` channel syntax, and captures optional path and
-///          channel expressions. Diagnostic hooks fire when unexpected tokens
-///          are encountered.
-/// @return AST node describing the OPEN statement.
-StmtPtr Parser::parseOpenStatement()
-{
-    auto loc = peek().loc;
-    consume(); // OPEN
-    auto stmt = std::make_unique<OpenStmt>();
-    stmt->loc = loc;
-    stmt->pathExpr = parseExpression();
-    expect(TokenKind::KeywordFor);
-    if (at(TokenKind::KeywordInput))
-    {
-        consume();
-        stmt->mode = OpenStmt::Mode::Input;
-    }
-    else if (at(TokenKind::KeywordOutput))
-    {
-        consume();
-        stmt->mode = OpenStmt::Mode::Output;
-    }
-    else if (at(TokenKind::KeywordAppend))
-    {
-        consume();
-        stmt->mode = OpenStmt::Mode::Append;
-    }
-    else if (at(TokenKind::KeywordBinary))
-    {
-        consume();
-        stmt->mode = OpenStmt::Mode::Binary;
-    }
-    else if (at(TokenKind::KeywordRandom))
-    {
-        consume();
-        stmt->mode = OpenStmt::Mode::Random;
-    }
-    else
-    {
-        Token unexpected = consume();
-        if (emitter_)
-        {
-            emitter_->emitExpected(unexpected.kind, TokenKind::KeywordInput, unexpected.loc);
-        }
-    }
-    expect(TokenKind::KeywordAs);
-    expect(TokenKind::Hash);
-    stmt->channelExpr = parseExpression();
-    return stmt;
-}
-
-/// @brief Parse the CLOSE statement.
-/// @details Requires `CLOSE #` followed by an expression naming the channel to
-///          close.
-/// @return AST node describing the CLOSE statement.
-StmtPtr Parser::parseCloseStatement()
-{
-    auto loc = peek().loc;
-    consume(); // CLOSE
-    auto stmt = std::make_unique<CloseStmt>();
-    stmt->loc = loc;
-    expect(TokenKind::Hash);
-    stmt->channelExpr = parseExpression();
-    return stmt;
-}
 
 /// @brief Parse the SEEK statement.
 /// @details Expects `SEEK #` followed by the channel expression and a comma
@@ -212,79 +481,6 @@ StmtPtr Parser::parseSeekStatement()
     stmt->channelExpr = parseExpression();
     expect(TokenKind::Comma);
     stmt->positionExpr = parseExpression();
-    return stmt;
-}
-
-/// @brief Parse the INPUT statement, supporting prompt and variable lists.
-/// @details Handles optional prompt strings, comma-separated variable lists, and
-///          the channel-prefixed `INPUT #` variant. The parser emits diagnostics
-///          when unsupported multi-target channel input is encountered and
-///          consumes trailing tokens to recover.
-/// @return AST node for the parsed INPUT statement.
-StmtPtr Parser::parseInputStatement()
-{
-    auto loc = peek().loc;
-    consume(); // INPUT
-    if (at(TokenKind::Hash))
-    {
-        consume();
-        Token channelTok = expect(TokenKind::Number);
-        int channel = std::atoi(channelTok.lexeme.c_str());
-        expect(TokenKind::Comma);
-        Token targetTok = expect(TokenKind::Identifier);
-        auto stmt = std::make_unique<InputChStmt>();
-        stmt->loc = loc;
-        stmt->channel = channel;
-        stmt->target.name = targetTok.lexeme;
-        stmt->target.loc = targetTok.loc;
-
-        if (at(TokenKind::Comma))
-        {
-            Token extra = peek();
-            if (emitter_)
-            {
-                emitter_->emit(il::support::Severity::Error,
-                               "B0001",
-                               extra.loc,
-                               1,
-                               "INPUT # with multiple targets not yet supported");
-            }
-            else
-            {
-                std::fprintf(stderr, "INPUT # with multiple targets not yet supported\n");
-            }
-            while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine) && !at(TokenKind::Colon))
-            {
-                consume();
-            }
-        }
-
-        return stmt;
-    }
-    ExprPtr prompt;
-    if (at(TokenKind::String))
-    {
-        auto s = std::make_unique<StringExpr>();
-        s->loc = peek().loc;
-        s->value = peek().lexeme;
-        prompt = std::move(s);
-        consume();
-        expect(TokenKind::Comma);
-    }
-    auto stmt = std::make_unique<InputStmt>();
-    stmt->loc = loc;
-    stmt->prompt = std::move(prompt);
-
-    Token nameTok = expect(TokenKind::Identifier);
-    stmt->vars.push_back(nameTok.lexeme);
-
-    while (at(TokenKind::Comma))
-    {
-        consume();
-        Token nextTok = expect(TokenKind::Identifier);
-        stmt->vars.push_back(nextTok.lexeme);
-    }
-
     return stmt;
 }
 
