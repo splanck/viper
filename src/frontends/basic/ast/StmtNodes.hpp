@@ -407,6 +407,9 @@ struct CaseArm
 
     /// @brief Source range covering the CASE keyword and its labels.
     il::support::SourceRange range{};
+
+    /// @brief Length of the CASE keyword lexeme for diagnostics.
+    uint32_t caseKeywordLength = 0;
 };
 
 /// @brief SELECT CASE statement with zero or more CASE arms and optional ELSE body.
