@@ -1,11 +1,30 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/il/verify/ExternVerifier.cpp
+// Purpose: Define the logic used to validate extern declarations found in IL
+//          modules by cross-referencing module state with the runtime signature
+//          registry and enforcing uniqueness rules.
+// Key invariants: Extern declarations are uniquely keyed by name within a
+//                 module and their type signatures must agree with the runtime
+//                 database when an entry exists.
+// Ownership/Lifetime: The verifier stores non-owning pointers to declarations
+//                     that remain valid for the duration of the verification
+//                     pass.  Diagnostics are produced via the provided sinks but
+//                     no ownership is transferred.
+// Links: docs/il-guide.md#externs
+//
 //===----------------------------------------------------------------------===//
 
 /// @file
 /// @brief Implements verification of module extern declarations.
 /// @details Builds lookup tables for extern signatures, checks duplicate
-/// declarations, and validates consistency with the runtime signature database.
+///          declarations, and validates consistency with the runtime signature
+///          database.
 
 #include "il/verify/ExternVerifier.hpp"
 
@@ -25,6 +44,12 @@ using il::support::Expected;
 using il::support::makeError;
 
 /// @brief Compare two extern declarations for signature equivalence.
+///
+/// @details Each extern stores a return type and an ordered parameter list.  The
+///          helper performs a structural equality check across both properties,
+///          enabling the verifier to identify redeclarations that change the
+///          callable surface area.
+///
 /// @param lhs First extern declaration.
 /// @param rhs Second extern declaration.
 /// @return @c true when return and parameter types are identical.
@@ -39,6 +64,12 @@ bool signaturesMatch(const Extern &lhs, const Extern &rhs)
 }
 
 /// @brief Compare an extern declaration against a runtime signature descriptor.
+///
+/// @details The runtime signature table mirrors the ABI contract enforced by the
+///          runtime.  This overload aligns the IL declaration with the runtime
+///          descriptor to ensure both agree on return and parameter kinds before
+///          a call is permitted.
+///
 /// @param decl Extern declaration authored in IL.
 /// @param runtime Canonical runtime signature retrieved from the runtime table.
 /// @return @c true when both signatures agree on return and parameter types.
@@ -55,6 +86,12 @@ bool signaturesMatch(const Extern &decl, const il::runtime::RuntimeSignature &ru
 } // namespace
 
 /// @brief Access the interned extern declaration map.
+///
+/// @details Verification populates @ref externs_ with pointers to every extern in
+///          the currently processed module.  Exposing the map enables follow-up
+///          passes to query the verified declarations without re-walking the
+///          module.
+///
 /// @return Reference to the map keyed by extern name.
 [[nodiscard]] const ExternVerifier::ExternMap &ExternVerifier::externs() const
 {
@@ -62,8 +99,15 @@ bool signaturesMatch(const Extern &decl, const il::runtime::RuntimeSignature &ru
 }
 
 /// @brief Populate the extern map and validate declarations for a module.
-/// @details Rejects duplicates, reports signature mismatches, and cross-checks
-/// definitions against known runtime signatures.
+///
+/// @details The verifier clears any previously cached state, then iterates the
+///          module's extern list.  For each declaration it ensures the name is
+///          unique within the module, compares re-declarations for exact
+///          signature matches, and, when the runtime publishes a signature,
+///          cross-checks the IL declaration against that canonical descriptor.
+///          Upon failure the function returns a diagnostic explaining the
+///          mismatch; otherwise an empty success signals the module is valid.
+///
 /// @param module Module supplying extern declarations.
 /// @param sink Diagnostic sink used for structured reporting (unused currently).
 /// @return Empty success on validity; otherwise a formatted diagnostic error.

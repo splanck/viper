@@ -1,12 +1,23 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/frontends/basic/SemanticAnalyzer.cpp
-// License: MIT License. See LICENSE in the project root for full license
-//          information.
-// Purpose: Houses shared helpers and common utilities for the BASIC semantic
-//          analyzer along with constructor and accessors.
+// Purpose: Provide the constructor and shared helper routines for the BASIC
+//          semantic analyzer, including lookup utilities used across the
+//          statement- and procedure-specific translation units.
 // Key invariants: Symbol tables mirror analyzer state; helper routines remain
-//                 internal to the BASIC frontend.
-// Ownership/Lifetime: Borrowed DiagnosticEmitter; AST nodes owned externally.
+//                 internal to the BASIC frontend; builtin registries must stay
+//                 synchronised with the runtime definitions.
+// Ownership/Lifetime: Borrowed DiagnosticEmitter; AST nodes and symbol tables
+//                     are owned externally by the driver that orchestrates
+//                     semantic analysis phases.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 
@@ -19,31 +30,74 @@
 namespace il::frontends::basic
 {
 
+/// @brief Construct a semantic analyzer wired to the provided diagnostic sink.
+///
+/// @details The analyzer owns a builtin registry whose diagnostics should flow
+///          through the same @ref DiagnosticEmitter used by the parent driver.
+///          Initialising the registry here guarantees consistent reporting from
+///          all semantic checks.
+///
+/// @param emitter Diagnostic emitter used for user-facing messages.
 SemanticAnalyzer::SemanticAnalyzer(DiagnosticEmitter &emitter)
     : de(emitter), procReg_(de)
 {
 }
 
+/// @brief Access the set of symbols encountered during analysis.
+///
+/// @details The symbol set contains canonicalised names after scope resolution.
+///          Callers use it to detect unused declarations or provide completion
+///          suggestions.
+///
+/// @return Reference to the mutable symbol set owned by the analyzer.
 const std::unordered_set<std::string> &SemanticAnalyzer::symbols() const
 {
     return symbols_;
 }
 
+/// @brief Access the set of declared numeric labels.
+///
+/// @details BASIC statements may define numeric line labels used as jump
+///          targets.  The analyzer records each definition to validate forward
+///          references and to emit helpful diagnostics for duplicates.
+///
+/// @return Reference to the label definition set.
 const std::unordered_set<int> &SemanticAnalyzer::labels() const
 {
     return labels_;
 }
 
+/// @brief Access the set of referenced labels.
+///
+/// @details Tracking references separately from declarations enables the driver
+///          to spot unresolved labels once analysis concludes.
+///
+/// @return Reference to the label reference set.
 const std::unordered_set<int> &SemanticAnalyzer::labelRefs() const
 {
     return labelRefs_;
 }
 
+/// @brief Retrieve the procedure registry maintained by the analyzer.
+///
+/// @details Procedures are managed by a dedicated registry that records
+///          signatures and bodies.  The accessor exposes the immutable view used
+///          during lowering.
+///
+/// @return Procedure table collected during semantic analysis.
 const ProcTable &SemanticAnalyzer::procs() const
 {
     return procReg_.procs();
 }
 
+/// @brief Query the inferred type for a variable if known.
+///
+/// @details The analyzer lazily assigns types based on declarations and naming
+///          conventions.  When a variable has not been seen yet the function
+///          returns @c std::nullopt so callers can fall back to defaults.
+///
+/// @param name Canonical variable identifier.
+/// @return Optional semantic type for the variable.
 std::optional<SemanticAnalyzer::Type>
 SemanticAnalyzer::lookupVarType(const std::string &name) const
 {
@@ -52,6 +106,16 @@ SemanticAnalyzer::lookupVarType(const std::string &name) const
     return std::nullopt;
 }
 
+/// @brief Resolve a symbol through the active scopes and update tracking tables.
+///
+/// @details Symbols first pass through the scope resolver, which maps aliases to
+///          canonical names.  For definitions the helper inserts the symbol into
+///          the tracked set, records mutations for procedure-local scopes, and
+///          ensures type tables carry the proper default (based on suffix naming
+///          conventions or forced defaults for INPUT targets).
+///
+/// @param name Symbol to resolve; updated in place to its canonical spelling.
+/// @param kind Classification describing how the symbol is being used.
 void SemanticAnalyzer::resolveAndTrackSymbol(std::string &name, SymbolKind kind)
 {
     if (auto mapped = scopes_.resolve(name))
@@ -92,6 +156,16 @@ void SemanticAnalyzer::resolveAndTrackSymbol(std::string &name, SymbolKind kind)
 namespace il::frontends::basic::semantic_analyzer_detail
 {
 
+/// @brief Compute the Levenshtein distance between two identifiers.
+///
+/// @details Used to provide edit-distance-based suggestions in diagnostics when
+///          a symbol lookup fails.  The implementation follows the classic
+///          dynamic programming algorithm with two rolling buffers to minimise
+///          allocations.
+///
+/// @param a First string to compare.
+/// @param b Second string to compare.
+/// @return Minimum number of single-character edits needed to transform @p a into @p b.
 size_t levenshtein(const std::string &a, const std::string &b)
 {
     const size_t m = a.size();
@@ -112,6 +186,14 @@ size_t levenshtein(const std::string &a, const std::string &b)
     return prev[n];
 }
 
+/// @brief Convert an AST type enumeration into a semantic analyzer type.
+///
+/// @details The semantic analyzer stores its own compact enum separate from the
+///          AST representation.  This helper bridges the two domains so lookup
+///          helpers share a consistent set of type tags.
+///
+/// @param ty AST type enumerator.
+/// @return Equivalent semantic analyzer type.
 SemanticAnalyzer::Type astToSemanticType(::il::frontends::basic::Type ty)
 {
     switch (ty)
@@ -128,11 +210,25 @@ SemanticAnalyzer::Type astToSemanticType(::il::frontends::basic::Type ty)
     return SemanticAnalyzer::Type::Int;
 }
 
+/// @brief Retrieve the canonical name for a builtin procedure.
+///
+/// @details Delegates to the builtin registry table, ensuring diagnostics and
+///          code generation use the same naming scheme.
+///
+/// @param b Builtin enumerator.
+/// @return Null-terminated name string.
 const char *builtinName(BuiltinCallExpr::Builtin b)
 {
     return getBuiltinInfo(b).name;
 }
 
+/// @brief Render a semantic type enumeration as human-readable text.
+///
+/// @details Used primarily by diagnostics when explaining inferred types or
+///          mismatches to the user.
+///
+/// @param type Semantic analyzer type enumerator.
+/// @return Uppercase string literal describing @p type.
 const char *semanticTypeName(SemanticAnalyzer::Type type)
 {
     using Type = SemanticAnalyzer::Type;
@@ -154,6 +250,14 @@ const char *semanticTypeName(SemanticAnalyzer::Type type)
     return "UNKNOWN";
 }
 
+/// @brief Retrieve the textual representation of a logical operator.
+///
+/// @details BASIC distinguishes between short-circuit and eager logical
+///          operators.  The helper maps each opcode to the keyword emitted in
+///          diagnostics.
+///
+/// @param op Logical operator enumerator.
+/// @return Keyword string identifying the operator.
 const char *logicalOpName(BinaryExpr::Op op)
 {
     switch (op)
@@ -172,6 +276,16 @@ const char *logicalOpName(BinaryExpr::Op op)
     return "<logical>";
 }
 
+/// @brief Produce a textual approximation of a condition expression.
+///
+/// @details Diagnostic routines summarise conditions in error messages.  The
+///          helper inspects common expression forms (variables and literals) and
+///          renders a lightweight textual description suitable for insertion in
+///          prose.  Expressions that are not recognised yield an empty string so
+///          callers can fall back to generic wording.
+///
+/// @param expr Expression to describe.
+/// @return Textual representation or empty string when not representable.
 std::string conditionExprText(const Expr &expr)
 {
     if (auto *var = dynamic_cast<const VarExpr *>(&expr))

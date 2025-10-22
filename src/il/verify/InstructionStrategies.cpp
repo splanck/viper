@@ -1,11 +1,30 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/il/verify/InstructionStrategies.cpp
+// Purpose: Assemble the default verification strategies used by the IL verifier
+//          when walking instructions in a function.  The strategies separate
+//          control-flow opcodes from the generic instruction pipeline so each
+//          category can enforce its own invariants.
+// Key invariants: Every instruction must be handled by exactly one strategy and
+//                 the fallback strategy must accept any opcode not matched by a
+//                 specialised handler.
+// Ownership/Lifetime: Strategies are allocated with `std::unique_ptr` and
+//                     returned to the caller, which assumes ownership of the
+//                     resulting collection.  No additional global state is
+//                     touched inside this file.
+// Links: docs/il-guide.md#verifier
+//
 //===----------------------------------------------------------------------===//
 
 /// @file
 /// @brief Provides the default instruction verification strategies for the IL verifier.
 /// @details Supplies specialised handlers for control-flow instructions alongside a
-/// catch-all strategy that delegates to the general instruction checker.
+///          catch-all strategy that delegates to the general instruction checker.
 
 #include "il/verify/InstructionStrategies.hpp"
 
@@ -28,6 +47,12 @@ namespace il::verify
 using il::support::Expected;
 
 /// @brief Verify a non-control-flow instruction using the default checker.
+///
+/// @details Defined in @c InstructionChecker.cpp, this helper examines operand
+///          types and side effects for generic opcodes.  Declaring it here keeps
+///          the fallback strategy implementation self-contained while avoiding
+///          header exposure.
+///
 /// @param ctx Verification context describing the current instruction.
 /// @return Success on validity; otherwise a diagnostic error.
 Expected<void> verifyInstruction_E(const VerifyCtx &ctx);
@@ -40,6 +65,10 @@ class ControlFlowStrategy final : public FunctionVerifier::InstructionStrategy
 {
   public:
     /// @brief Identify whether the strategy should verify the given instruction.
+    ///
+    /// @details The matcher filters for branch, conditional branch, switch, and
+    ///          return opcodes since those require bespoke control-flow analysis.
+    ///
     /// @param instr Instruction under inspection.
     /// @return @c true when @p instr is a control-flow opcode.
     bool matches(const Instr &instr) const override
@@ -49,8 +78,14 @@ class ControlFlowStrategy final : public FunctionVerifier::InstructionStrategy
     }
 
     /// @brief Run control-flow specific verification logic.
-    /// @details Dispatches to the appropriate helper based on the opcode while
-    /// ignoring maps that are irrelevant for the handled instructions.
+    ///
+    /// @details Each recognised opcode forwards to the dedicated branch
+    ///          verification helper that checks terminator structure, operand
+    ///          types, and successor consistency.  The strategy ignores extern
+    ///          and function maps because control-flow instructions never resolve
+    ///          those tables.  When an opcode slips past the switch the function
+    ///          returns success, allowing other strategies to claim ownership.
+    ///
     /// @param fn Function owning the instruction.
     /// @param bb Basic block containing the instruction.
     /// @param instr Instruction to verify.
@@ -94,6 +129,7 @@ class DefaultInstructionStrategy final : public FunctionVerifier::InstructionStr
 {
   public:
     /// @brief Always claim responsibility for verification when no other strategy applies.
+    ///
     /// @return Always returns @c true.
     bool matches(const Instr &) const override
     {
@@ -101,8 +137,12 @@ class DefaultInstructionStrategy final : public FunctionVerifier::InstructionStr
     }
 
     /// @brief Verify an instruction using the default checker pipeline.
-    /// @details Binds the instruction into a @c VerifyCtx and invokes the shared
-    /// instruction checker that handles type and operand validation.
+    ///
+    /// @details The fallback strategy creates a @ref VerifyCtx that bundles all
+    ///          verifier bookkeeping and forwards it to the generic checker.
+    ///          Control-flow instructions are never dispatched here because the
+    ///          control-flow strategy claims them first.
+    ///
     /// @param fn Function owning the instruction.
     /// @param bb Basic block containing the instruction.
     /// @param instr Instruction to verify.
@@ -130,6 +170,11 @@ class DefaultInstructionStrategy final : public FunctionVerifier::InstructionStr
 } // namespace
 
 /// @brief Construct the default set of instruction verification strategies.
+///
+/// @details The returned collection orders the strategies so control-flow checks
+///          run before the generic verifier.  Callers take ownership of the
+///          vector and install it on a @ref FunctionVerifier instance.
+///
 /// @return Vector containing control-flow and generic verification strategies.
 std::vector<std::unique_ptr<FunctionVerifier::InstructionStrategy>>
 makeDefaultInstructionStrategies()
