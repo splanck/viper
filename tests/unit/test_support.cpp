@@ -39,13 +39,17 @@ int main()
     auto stableSym = stableInterner.intern("stable");
     std::string_view cachedView = stableInterner.lookup(stableSym);
     const char *cachedData = cachedView.data();
+    const size_t cachedSize = cachedView.size();
     for (int i = 0; i < 1024; ++i)
     {
         stableInterner.intern("padding_" + std::to_string(i));
+        std::string_view probe = stableInterner.lookup(stableSym);
+        assert(probe.data() == cachedData);
+        assert(probe.size() == cachedSize);
     }
-    std::string_view refreshed = stableInterner.lookup(stableSym);
-    assert(refreshed == cachedView);
-    assert(refreshed.data() == cachedData);
+    assert(cachedView.data() == cachedData);
+    assert(cachedView.size() == cachedSize);
+    assert(cachedView == "stable");
 
     // Diagnostic formatting
     il::support::SourceManager sm;
