@@ -564,9 +564,11 @@ class Lowerer
     void requireSeekChErr();
     void requirePrintlnChErr();
     void requireLineInputChErr();
+    // --- begin: require declarations ---
     void requireEofCh();
     void requireLofCh();
     void requireLocCh();
+    // --- end: require declarations ---
     void requireStrRetainMaybe();
     void requireStrReleaseMaybe();
     void requestHelper(RuntimeFeature feature);
