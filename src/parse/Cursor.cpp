@@ -23,16 +23,29 @@
 namespace viper::parse
 {
 
+/// @brief Construct a cursor over the provided source buffer.
+/// @details Initialises indices and current position so traversal starts at the
+///          supplied @p start location.
+/// @param text Source text to traverse.
+/// @param start Source position representing the beginning of the buffer.
 Cursor::Cursor(std::string_view text, SourcePos start) noexcept
     : text_(text), index_(0), start_(start), pos_(start)
 {
 }
 
+/// @brief Inspect the current character without advancing.
+/// @details Returns '\0' when the cursor is at the end to simplify callers that
+///          expect a sentinel terminator.
+/// @return Character at the current cursor position or '\0' at end.
 char Cursor::peek() const noexcept
 {
     return atEnd() ? '\0' : text_[index_];
 }
 
+/// @brief Update the tracked source position after consuming @p ch.
+/// @details Handles newlines by incrementing the line counter and resetting the
+///          column; other characters simply increment the column.
+/// @param ch Character that was consumed.
 void Cursor::applyAdvance(char ch) noexcept
 {
     if (ch == '\n')
@@ -46,6 +59,8 @@ void Cursor::applyAdvance(char ch) noexcept
     }
 }
 
+/// @brief Consume the current character and update the position.
+/// @details Safely returns when already at end-of-input.
 void Cursor::advance() noexcept
 {
     if (atEnd())
@@ -54,12 +69,20 @@ void Cursor::advance() noexcept
     applyAdvance(ch);
 }
 
+/// @brief Advance past ASCII whitespace characters.
+/// @details Uses @ref std::isspace to recognise whitespace and stops at the
+///          first non-whitespace character.
 void Cursor::skipWs() noexcept
 {
     while (!atEnd() && std::isspace(static_cast<unsigned char>(peek())))
         advance();
 }
 
+/// @brief Consume @p c when it matches the current character.
+/// @details Returns @c false when the current character differs, leaving the
+///          cursor untouched.
+/// @param c Character to consume.
+/// @return True when the character matched and was consumed.
 bool Cursor::consume(char c) noexcept
 {
     if (peek() != c)
@@ -68,6 +91,12 @@ bool Cursor::consume(char c) noexcept
     return true;
 }
 
+/// @brief Conditionally consume @p c and report success.
+/// @details Similar to @ref consume but implemented without calling
+///          @ref skipWs. The helper keeps the cursor untouched when the
+///          character does not match.
+/// @param c Character to consume.
+/// @return True when @p c was consumed.
 bool Cursor::consumeIf(char c) noexcept
 {
     if (peek() == c)
@@ -78,6 +107,12 @@ bool Cursor::consumeIf(char c) noexcept
     return false;
 }
 
+/// @brief Consume an identifier token from the stream.
+/// @details Skips leading whitespace, then reads a leading alphabetic, '_', or
+///          '.' character followed by alphanumeric, '_', '.', or '$'. On success
+///          @p out references the identifier substring.
+/// @param[out] out View that will reference the consumed identifier.
+/// @return True when an identifier was consumed.
 bool Cursor::consumeIdent(std::string_view &out) noexcept
 {
     skipWs();
@@ -100,6 +135,11 @@ bool Cursor::consumeIdent(std::string_view &out) noexcept
     return true;
 }
 
+/// @brief Consume a signed integer literal.
+/// @details Accepts an optional leading '+' or '-' followed by one or more
+///          digits. On failure the cursor rewinds to its original position.
+/// @param[out] out View that references the consumed number literal.
+/// @return True when a number literal was consumed.
 bool Cursor::consumeNumber(std::string_view &out) noexcept
 {
     skipWs();
@@ -124,6 +164,11 @@ bool Cursor::consumeNumber(std::string_view &out) noexcept
     return true;
 }
 
+/// @brief Consume a fixed keyword string.
+/// @details Skips leading whitespace and compares the next characters with @p kw.
+///          On success the cursor advances past the keyword.
+/// @param kw Keyword that should be matched.
+/// @return True when the keyword was consumed.
 bool Cursor::consumeKeyword(std::string_view kw) noexcept
 {
     skipWs();
@@ -135,6 +180,11 @@ bool Cursor::consumeKeyword(std::string_view kw) noexcept
     return true;
 }
 
+/// @brief Move the cursor to @p offset within the source buffer.
+/// @details Adjusts both the byte index and the tracked source position. When
+///          seeking backwards the routine recomputes the position from the start
+///          of the buffer to keep line/column data accurate.
+/// @param offset Zero-based index into the source buffer.
 void Cursor::seek(std::size_t offset) noexcept
 {
     if (offset > text_.size())
