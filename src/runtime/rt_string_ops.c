@@ -253,33 +253,35 @@ rt_string rt_mid2(rt_string s, int64_t start)
 {
     if (!s)
         rt_trap("MID$: null string");
-    if (start < 0)
+    if (start < 1)
     {
         char buf[64];
         char numbuf[32];
         rt_i64_to_cstr(start, numbuf, sizeof(numbuf));
-        snprintf(buf, sizeof(buf), "MID$: start must be >= 0 (got %s)", numbuf);
+        snprintf(buf, sizeof(buf), "MID$: start must be >= 1 (got %s)", numbuf);
         rt_trap(buf);
     }
     size_t len = rt_string_len_bytes(s);
-    if (start <= 0)
+    if (start == 1)
         return rt_string_ref(s);
-    if ((size_t)start >= len)
+    uint64_t start_idx_u = (uint64_t)(start - 1);
+    if (start_idx_u >= len)
         return rt_empty_string();
-    size_t n = len - (size_t)start;
-    return rt_substr(s, start, (int64_t)n);
+    size_t start_idx = (size_t)start_idx_u;
+    size_t n = len - start_idx;
+    return rt_substr(s, (int64_t)start_idx, (int64_t)n);
 }
 
 rt_string rt_mid3(rt_string s, int64_t start, int64_t len)
 {
     if (!s)
         rt_trap("MID$: null string");
-    if (start < 0)
+    if (start < 1)
     {
         char buf[64];
         char numbuf[32];
         rt_i64_to_cstr(start, numbuf, sizeof(numbuf));
-        snprintf(buf, sizeof(buf), "MID$: start must be >= 0 (got %s)", numbuf);
+        snprintf(buf, sizeof(buf), "MID$: start must be >= 1 (got %s)", numbuf);
         rt_trap(buf);
     }
     if (len < 0)
@@ -291,13 +293,18 @@ rt_string rt_mid3(rt_string s, int64_t start, int64_t len)
         rt_trap(buf);
     }
     size_t slen = rt_string_len_bytes(s);
-    if (len == 0 || (size_t)start >= slen)
+    if (len == 0)
         return rt_empty_string();
-    if (start == 0 && (size_t)len >= slen)
+    uint64_t start_idx_u = (uint64_t)(start - 1);
+    if (start_idx_u >= slen)
+        return rt_empty_string();
+    size_t start_idx = (size_t)start_idx_u;
+    if (start_idx == 0 && (size_t)len >= slen)
         return rt_string_ref(s);
-    if ((size_t)len > slen - (size_t)start)
-        len = (int64_t)(slen - (size_t)start);
-    return rt_substr(s, start, len);
+    size_t avail = slen - start_idx;
+    if ((uint64_t)len > avail)
+        len = (int64_t)avail;
+    return rt_substr(s, (int64_t)start_idx, len);
 }
 
 static int64_t rt_find(rt_string hay, int64_t start, rt_string needle)

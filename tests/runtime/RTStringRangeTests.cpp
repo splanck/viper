@@ -50,7 +50,21 @@ int main()
     bool ok = out.find("LEFT$: len must be >= 0") != std::string::npos;
     assert(ok);
     out = capture(call_mid_negative);
-    ok = out.find("MID$: start must be >= 0") != std::string::npos;
+    ok = out.find("MID$: start must be >= 1") != std::string::npos;
     assert(ok);
+
+    rt_string sample = rt_const_cstr("ABCDEF");
+    rt_string start_one = rt_mid2(sample, 1);
+    assert(rt_str_eq(start_one, sample));
+
+    rt_string start_len = rt_mid2(sample, 6);
+    assert(rt_str_eq(start_len, rt_const_cstr("F")));
+
+    rt_string start_len_with_count = rt_mid3(sample, 6, 5);
+    assert(rt_str_eq(start_len_with_count, rt_const_cstr("F")));
+
+    rt_string start_beyond = rt_mid3(sample, 7, 3);
+    assert(rt_str_eq(start_beyond, rt_str_empty()));
+
     return 0;
 }
