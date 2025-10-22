@@ -17,8 +17,13 @@
 
 #include "vm/OpHandlers_Control.hpp"
 
+#include "il/runtime/RuntimeSignatures.hpp"
+#include "vm/Marshal.hpp"
 #include "vm/RuntimeBridge.hpp"
 
+#include <algorithm>
+#include <cstdint>
+#include <cstring>
 #include <vector>
 
 namespace il::vm::detail::control
@@ -91,13 +96,45 @@ VM::ExecResult handleCall(VM &vm,
     (void)blocks;
     (void)ip;
 
+    struct ArgBinding
+    {
+        Slot *reg = nullptr;
+        uint8_t *stackPtr = nullptr;
+    };
+
     // Evaluate operands up front so argument propagation is explicit and
     // deterministic before dispatch.  This mirrors the IL semantics and avoids
-    // leaking partially evaluated slots if a bridge call traps.
+    // leaking partially evaluated slots if a bridge call traps.  The original
+    // values are preserved so post-call synchronisation can detect mutations.
     std::vector<Slot> args;
     args.reserve(in.operands.size());
+    std::vector<Slot> originalArgs;
+    originalArgs.reserve(in.operands.size());
+    std::vector<ArgBinding> bindings;
+    bindings.reserve(in.operands.size());
+
+    uint8_t *const stackBegin = fr.stack.data();
+    uint8_t *const stackEnd = stackBegin + fr.stack.size();
+
     for (const auto &op : in.operands)
-        args.push_back(VMAccess::eval(vm, fr, op));
+    {
+        Slot value = VMAccess::eval(vm, fr, op);
+
+        ArgBinding binding{};
+        if (op.kind == il::core::Value::Kind::Temp && op.id < fr.regs.size())
+            binding.reg = &fr.regs[op.id];
+
+        if (value.ptr)
+        {
+            auto *ptr = static_cast<uint8_t *>(value.ptr);
+            if (ptr >= stackBegin && ptr < stackEnd)
+                binding.stackPtr = ptr;
+        }
+
+        bindings.push_back(binding);
+        originalArgs.push_back(value);
+        args.push_back(value);
+    }
 
     Slot out{};
     const auto &fnMap = VMAccess::functionMap(vm);
@@ -111,6 +148,90 @@ VM::ExecResult handleCall(VM &vm,
         const std::string functionName = fr.func ? fr.func->name : std::string{};
         const std::string blockLabel = bb ? bb->label : std::string{};
         out = RuntimeBridge::call(VMAccess::runtimeContext(vm), in.callee, args, in.loc, functionName, blockLabel);
+
+        const auto *signature = il::runtime::findRuntimeSignature(in.callee);
+        if (signature)
+        {
+            const size_t paramCount = std::min(args.size(), signature->paramTypes.size());
+            for (size_t index = 0; index < paramCount; ++index)
+            {
+                if (std::memcmp(&args[index], &originalArgs[index], sizeof(Slot)) == 0)
+                    continue;
+
+                const auto kind = signature->paramTypes[index].kind;
+                const ArgBinding &binding = bindings[index];
+
+                auto assignRegister = [&](Slot *destination)
+                {
+                    if (!destination)
+                        return;
+                    if (kind == il::core::Type::Kind::Str)
+                    {
+                        rt_str_release_maybe(destination->str);
+                        Slot stored = args[index];
+                        rt_str_retain_maybe(stored.str);
+                        *destination = stored;
+                    }
+                    else
+                    {
+                        *destination = args[index];
+                    }
+                };
+
+                assignRegister(binding.reg);
+
+                if (!binding.stackPtr)
+                    continue;
+
+                auto copyWidthForKind = [](il::core::Type::Kind k) -> size_t {
+                    switch (k)
+                    {
+                    case il::core::Type::Kind::I1:
+                        return sizeof(uint8_t);
+                    case il::core::Type::Kind::I16:
+                        return sizeof(int16_t);
+                    case il::core::Type::Kind::I32:
+                        return sizeof(int32_t);
+                    case il::core::Type::Kind::I64:
+                        return sizeof(int64_t);
+                    case il::core::Type::Kind::F64:
+                        return sizeof(double);
+                    case il::core::Type::Kind::Ptr:
+                    case il::core::Type::Kind::Error:
+                    case il::core::Type::Kind::ResumeTok:
+                        return sizeof(void *);
+                    case il::core::Type::Kind::Str:
+                        return sizeof(rt_string);
+                    case il::core::Type::Kind::Void:
+                        return 0;
+                    }
+                    return 0;
+                };
+
+                const size_t width = copyWidthForKind(kind);
+                if (width == 0)
+                    continue;
+
+                if (binding.stackPtr < stackBegin || binding.stackPtr + width > stackEnd)
+                    continue;
+
+                Slot &mutated = args[index];
+                if (kind == il::core::Type::Kind::Str)
+                {
+                    auto *slot = reinterpret_cast<rt_string *>(binding.stackPtr);
+                    rt_str_release_maybe(*slot);
+                    rt_string incoming = mutated.str;
+                    rt_str_retain_maybe(incoming);
+                    *slot = incoming;
+                }
+                else
+                {
+                    void *src = il::vm::slotToArgPointer(mutated, kind);
+                    if (src)
+                        std::memcpy(binding.stackPtr, src, width);
+                }
+            }
+        }
     }
     ops::storeResult(fr, in, out);
     return {};
