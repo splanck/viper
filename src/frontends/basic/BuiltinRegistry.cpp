@@ -39,6 +39,14 @@ constexpr std::size_t idx(B b) noexcept
     return static_cast<std::size_t>(b);
 }
 
+using HandlerMap = std::unordered_map<std::string_view, BuiltinHandler>;
+
+HandlerMap &builtinHandlerRegistry()
+{
+    static HandlerMap registry{};
+    return registry;
+}
+
 /// @brief Describes broad type categories produced by a builtin.
 enum class TypeMask : std::uint8_t
 {
@@ -50,8 +58,7 @@ enum class TypeMask : std::uint8_t
 
 constexpr TypeMask operator|(TypeMask lhs, TypeMask rhs) noexcept
 {
-    return static_cast<TypeMask>(static_cast<std::uint8_t>(lhs) |
-                                 static_cast<std::uint8_t>(rhs));
+    return static_cast<TypeMask>(static_cast<std::uint8_t>(lhs) | static_cast<std::uint8_t>(rhs));
 }
 
 struct Arity
@@ -90,16 +97,14 @@ constexpr std::array<BuiltinDescriptor, kBuiltinCount> kBuiltinDescriptors{{
     {"FIX", B::Fix, {1, 1}, TypeMask::F64, nullptr},
     {"ROUND", B::Round, {1, 2}, TypeMask::F64, nullptr},
     {"SQR", B::Sqr, {1, 1}, TypeMask::F64, nullptr},
-    {"ABS", B::Abs, {1, 1}, TypeMask::I64 | TypeMask::F64,
-     &SemanticAnalyzer::analyzeAbs},
+    {"ABS", B::Abs, {1, 1}, TypeMask::I64 | TypeMask::F64, &SemanticAnalyzer::analyzeAbs},
     {"FLOOR", B::Floor, {1, 1}, TypeMask::F64, nullptr},
     {"CEIL", B::Ceil, {1, 1}, TypeMask::F64, nullptr},
     {"SIN", B::Sin, {1, 1}, TypeMask::F64, nullptr},
     {"COS", B::Cos, {1, 1}, TypeMask::F64, nullptr},
     {"POW", B::Pow, {2, 2}, TypeMask::F64, nullptr},
     {"RND", B::Rnd, {0, 0}, TypeMask::F64, nullptr},
-    {"INSTR", B::Instr, {2, 3}, TypeMask::I64,
-     &SemanticAnalyzer::analyzeInstr},
+    {"INSTR", B::Instr, {2, 3}, TypeMask::I64, &SemanticAnalyzer::analyzeInstr},
     {"LTRIM$", B::Ltrim, {1, 1}, TypeMask::Str, nullptr},
     {"RTRIM$", B::Rtrim, {1, 1}, TypeMask::Str, nullptr},
     {"TRIM$", B::Trim, {1, 1}, TypeMask::Str, nullptr},
@@ -124,71 +129,79 @@ constexpr std::array<BuiltinInfo, kBuiltinCount> makeBuiltinInfos()
 
 constexpr auto kBuiltins = makeBuiltinInfos();
 
-static const std::array<LowerRule, kBuiltinCount> kBuiltinLoweringRules = [] {
+static const std::array<LowerRule, kBuiltinCount> kBuiltinLoweringRules = []
+{
     std::array<LowerRule, kBuiltinCount> rules{};
 
-    rules[idx(B::Len)] = LowerRule{.result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::I64},
-                                   .variants = {Variant{.condition = Condition::Always,
-                                                       .kind = VariantKind::CallRuntime,
-                                                       .runtime = "rt_len",
-                                                       .arguments = {Argument{.index = 0}}}}};
+    rules[idx(B::Len)] =
+        LowerRule{.result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::I64},
+                  .variants = {Variant{.condition = Condition::Always,
+                                       .kind = VariantKind::CallRuntime,
+                                       .runtime = "rt_len",
+                                       .arguments = {Argument{.index = 0}}}}};
 
     rules[idx(B::Mid)] = LowerRule{
         .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
-        .variants = {Variant{.condition = Condition::IfArgPresent,
-                             .conditionArg = 2,
-                             .callLocArg = 2,
-                             .kind = VariantKind::CallRuntime,
-                             .runtime = "rt_mid3",
-                             .arguments = {Argument{.index = 0},
-                                           Argument{.index = 1,
-                                                    .transforms = {Transform{.kind = TransformKind::EnsureI64},
-                                                                   Transform{.kind = TransformKind::AddConst,
-                                                                             .immediate = -1}}},
-                                           Argument{.index = 2,
-                                                    .transforms = {Transform{.kind = TransformKind::EnsureI64}}}},
-                             .features = {Feature{.action = FeatureAction::Request,
-                                                  .feature = il::runtime::RuntimeFeature::Mid3}}},
-                     Variant{.condition = Condition::IfArgMissing,
-                             .conditionArg = 2,
-                             .kind = VariantKind::CallRuntime,
-                             .runtime = "rt_mid2",
-                             .arguments = {Argument{.index = 0},
-                                           Argument{.index = 1,
-                                                    .transforms = {Transform{.kind = TransformKind::EnsureI64},
-                                                                   Transform{.kind = TransformKind::AddConst,
-                                                                             .immediate = -1}}}},
-                             .features = {Feature{.action = FeatureAction::Request,
-                                                  .feature = il::runtime::RuntimeFeature::Mid2}}}}};
+        .variants = {
+            Variant{
+                .condition = Condition::IfArgPresent,
+                .conditionArg = 2,
+                .callLocArg = 2,
+                .kind = VariantKind::CallRuntime,
+                .runtime = "rt_mid3",
+                .arguments = {Argument{.index = 0},
+                              Argument{.index = 1,
+                                       .transforms = {Transform{.kind = TransformKind::EnsureI64},
+                                                      Transform{.kind = TransformKind::AddConst,
+                                                                .immediate = -1}}},
+                              Argument{.index = 2,
+                                       .transforms = {Transform{.kind =
+                                                                    TransformKind::EnsureI64}}}},
+                .features = {Feature{.action = FeatureAction::Request,
+                                     .feature = il::runtime::RuntimeFeature::Mid3}}},
+            Variant{.condition = Condition::IfArgMissing,
+                    .conditionArg = 2,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_mid2",
+                    .arguments = {Argument{.index = 0},
+                                  Argument{.index = 1,
+                                           .transforms = {Transform{.kind =
+                                                                        TransformKind::EnsureI64},
+                                                          Transform{.kind = TransformKind::AddConst,
+                                                                    .immediate = -1}}}},
+                    .features = {Feature{.action = FeatureAction::Request,
+                                         .feature = il::runtime::RuntimeFeature::Mid2}}}}};
 
     rules[idx(B::Left)] = LowerRule{
         .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
-        .variants = {Variant{.condition = Condition::Always,
-                             .kind = VariantKind::CallRuntime,
-                             .runtime = "rt_left",
-                             .arguments = {Argument{.index = 0},
-                                           Argument{.index = 1,
-                                                    .transforms = {Transform{.kind = TransformKind::EnsureI64}}}},
-                             .features = {Feature{.action = FeatureAction::Request,
-                                                  .feature = il::runtime::RuntimeFeature::Left}}}}};
+        .variants = {Variant{
+            .condition = Condition::Always,
+            .kind = VariantKind::CallRuntime,
+            .runtime = "rt_left",
+            .arguments = {Argument{.index = 0},
+                          Argument{.index = 1,
+                                   .transforms = {Transform{.kind = TransformKind::EnsureI64}}}},
+            .features = {Feature{.action = FeatureAction::Request,
+                                 .feature = il::runtime::RuntimeFeature::Left}}}}};
 
     rules[idx(B::Right)] = LowerRule{
         .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
-        .variants = {Variant{.condition = Condition::Always,
-                             .kind = VariantKind::CallRuntime,
-                             .runtime = "rt_right",
-                             .arguments = {Argument{.index = 0},
-                                           Argument{.index = 1,
-                                                    .transforms = {Transform{.kind = TransformKind::EnsureI64}}}},
-                             .features = {Feature{.action = FeatureAction::Request,
-                                                  .feature = il::runtime::RuntimeFeature::Right}}}}};
+        .variants = {Variant{
+            .condition = Condition::Always,
+            .kind = VariantKind::CallRuntime,
+            .runtime = "rt_right",
+            .arguments = {Argument{.index = 0},
+                          Argument{.index = 1,
+                                   .transforms = {Transform{.kind = TransformKind::EnsureI64}}}},
+            .features = {Feature{.action = FeatureAction::Request,
+                                 .feature = il::runtime::RuntimeFeature::Right}}}}};
 
-    rules[idx(B::Str)] = LowerRule{
-        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
-        .variants = {Variant{.condition = Condition::Always,
-                             .callLocArg = 0,
-                             .kind = VariantKind::Custom,
-                             .arguments = {Argument{.index = 0}}}}};
+    rules[idx(B::Str)] =
+        LowerRule{.result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
+                  .variants = {Variant{.condition = Condition::Always,
+                                       .callLocArg = 0,
+                                       .kind = VariantKind::Custom,
+                                       .arguments = {Argument{.index = 0}}}}};
 
     rules[idx(B::Val)] = LowerRule{
         .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::F64},
@@ -202,91 +215,99 @@ static const std::array<LowerRule, kBuiltinCount> kBuiltinLoweringRules = [] {
 
     rules[idx(B::Cint)] = LowerRule{
         .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::I64},
-        .variants = {Variant{.condition = Condition::Always,
-                             .callLocArg = 0,
-                             .kind = VariantKind::Custom,
-                             .runtime = "rt_cint_from_double",
-                             .arguments = {Argument{.index = 0,
-                                                    .transforms = {Transform{.kind = TransformKind::EnsureF64}}}},
-                             .features = {Feature{.action = FeatureAction::Request,
-                                                  .feature = il::runtime::RuntimeFeature::CintFromDouble}}}}};
+        .variants = {Variant{
+            .condition = Condition::Always,
+            .callLocArg = 0,
+            .kind = VariantKind::Custom,
+            .runtime = "rt_cint_from_double",
+            .arguments = {Argument{.index = 0,
+                                   .transforms = {Transform{.kind = TransformKind::EnsureF64}}}},
+            .features = {Feature{.action = FeatureAction::Request,
+                                 .feature = il::runtime::RuntimeFeature::CintFromDouble}}}}};
 
     rules[idx(B::Clng)] = LowerRule{
         .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::I64},
-        .variants = {Variant{.condition = Condition::Always,
-                             .callLocArg = 0,
-                             .kind = VariantKind::Custom,
-                             .runtime = "rt_clng_from_double",
-                             .arguments = {Argument{.index = 0,
-                                                    .transforms = {Transform{.kind = TransformKind::EnsureF64}}}},
-                             .features = {Feature{.action = FeatureAction::Request,
-                                                  .feature = il::runtime::RuntimeFeature::ClngFromDouble}}}}};
+        .variants = {Variant{
+            .condition = Condition::Always,
+            .callLocArg = 0,
+            .kind = VariantKind::Custom,
+            .runtime = "rt_clng_from_double",
+            .arguments = {Argument{.index = 0,
+                                   .transforms = {Transform{.kind = TransformKind::EnsureF64}}}},
+            .features = {Feature{.action = FeatureAction::Request,
+                                 .feature = il::runtime::RuntimeFeature::ClngFromDouble}}}}};
 
     rules[idx(B::Csng)] = LowerRule{
         .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::F64},
-        .variants = {Variant{.condition = Condition::Always,
-                             .callLocArg = 0,
-                             .kind = VariantKind::Custom,
-                             .runtime = "rt_csng_from_double",
-                             .arguments = {Argument{.index = 0,
-                                                    .transforms = {Transform{.kind = TransformKind::EnsureF64}}}},
-                             .features = {Feature{.action = FeatureAction::Request,
-                                                  .feature = il::runtime::RuntimeFeature::CsngFromDouble}}}}};
+        .variants = {Variant{
+            .condition = Condition::Always,
+            .callLocArg = 0,
+            .kind = VariantKind::Custom,
+            .runtime = "rt_csng_from_double",
+            .arguments = {Argument{.index = 0,
+                                   .transforms = {Transform{.kind = TransformKind::EnsureF64}}}},
+            .features = {Feature{.action = FeatureAction::Request,
+                                 .feature = il::runtime::RuntimeFeature::CsngFromDouble}}}}};
 
-    rules[idx(B::Cdbl)] = LowerRule{
-        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::F64},
-        .variants = {Variant{.condition = Condition::Always,
-                             .callLocArg = 0,
-                             .kind = VariantKind::CallRuntime,
-                             .runtime = "rt_cdbl_from_any",
-                             .arguments = {Argument{.index = 0,
-                                                    .transforms = {Transform{.kind = TransformKind::EnsureF64}}}},
-                             .features = {Feature{.action = FeatureAction::Request,
-                                                  .feature = il::runtime::RuntimeFeature::CdblFromAny}}}}};
+    rules[idx(B::Cdbl)] =
+        LowerRule{.result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::F64},
+                  .variants = {Variant{
+                      .condition = Condition::Always,
+                      .callLocArg = 0,
+                      .kind = VariantKind::CallRuntime,
+                      .runtime = "rt_cdbl_from_any",
+                      .arguments = {Argument{
+                          .index = 0, .transforms = {Transform{.kind = TransformKind::EnsureF64}}}},
+                      .features = {Feature{.action = FeatureAction::Request,
+                                           .feature = il::runtime::RuntimeFeature::CdblFromAny}}}}};
 
     builtins::registerMathBuiltinLoweringRules(rules);
 
     rules[idx(B::Instr)] = LowerRule{
         .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::I64},
-        .variants = {Variant{.condition = Condition::IfArgPresent,
-                             .conditionArg = 2,
-                             .callLocArg = 2,
-                             .kind = VariantKind::CallRuntime,
-                             .runtime = "rt_instr3",
-                             .arguments = {Argument{.index = 0,
-                                                    .transforms = {Transform{.kind = TransformKind::EnsureI64},
-                                                                   Transform{.kind = TransformKind::AddConst,
-                                                                             .immediate = -1}}},
-                                           Argument{.index = 1},
-                                           Argument{.index = 2}},
-                             .features = {Feature{.action = FeatureAction::Request,
-                                                  .feature = il::runtime::RuntimeFeature::Instr3}}},
-                     Variant{.condition = Condition::IfArgMissing,
-                             .conditionArg = 2,
-                             .callLocArg = 1,
-                             .kind = VariantKind::CallRuntime,
-                             .runtime = "rt_instr2",
-                             .arguments = {Argument{.index = 0}, Argument{.index = 1}},
-                             .features = {Feature{.action = FeatureAction::Request,
-                                                  .feature = il::runtime::RuntimeFeature::Instr2}}}}};
+        .variants = {
+            Variant{
+                .condition = Condition::IfArgPresent,
+                .conditionArg = 2,
+                .callLocArg = 2,
+                .kind = VariantKind::CallRuntime,
+                .runtime = "rt_instr3",
+                .arguments = {Argument{.index = 0,
+                                       .transforms = {Transform{.kind = TransformKind::EnsureI64},
+                                                      Transform{.kind = TransformKind::AddConst,
+                                                                .immediate = -1}}},
+                              Argument{.index = 1},
+                              Argument{.index = 2}},
+                .features = {Feature{.action = FeatureAction::Request,
+                                     .feature = il::runtime::RuntimeFeature::Instr3}}},
+            Variant{.condition = Condition::IfArgMissing,
+                    .conditionArg = 2,
+                    .callLocArg = 1,
+                    .kind = VariantKind::CallRuntime,
+                    .runtime = "rt_instr2",
+                    .arguments = {Argument{.index = 0}, Argument{.index = 1}},
+                    .features = {Feature{.action = FeatureAction::Request,
+                                         .feature = il::runtime::RuntimeFeature::Instr2}}}}};
 
-    rules[idx(B::Ltrim)] = LowerRule{
-        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
-        .variants = {Variant{.condition = Condition::Always,
-                             .kind = VariantKind::CallRuntime,
-                             .runtime = "rt_ltrim",
-                             .arguments = {Argument{.index = 0}},
-                             .features = {Feature{.action = FeatureAction::Request,
-                                                  .feature = il::runtime::RuntimeFeature::Ltrim}}}}};
+    rules[idx(B::Ltrim)] =
+        LowerRule{.result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
+                  .variants = {Variant{
+                      .condition = Condition::Always,
+                      .kind = VariantKind::CallRuntime,
+                      .runtime = "rt_ltrim",
+                      .arguments = {Argument{.index = 0}},
+                      .features = {Feature{.action = FeatureAction::Request,
+                                           .feature = il::runtime::RuntimeFeature::Ltrim}}}}};
 
-    rules[idx(B::Rtrim)] = LowerRule{
-        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
-        .variants = {Variant{.condition = Condition::Always,
-                             .kind = VariantKind::CallRuntime,
-                             .runtime = "rt_rtrim",
-                             .arguments = {Argument{.index = 0}},
-                             .features = {Feature{.action = FeatureAction::Request,
-                                                  .feature = il::runtime::RuntimeFeature::Rtrim}}}}};
+    rules[idx(B::Rtrim)] =
+        LowerRule{.result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
+                  .variants = {Variant{
+                      .condition = Condition::Always,
+                      .kind = VariantKind::CallRuntime,
+                      .runtime = "rt_rtrim",
+                      .arguments = {Argument{.index = 0}},
+                      .features = {Feature{.action = FeatureAction::Request,
+                                           .feature = il::runtime::RuntimeFeature::Rtrim}}}}};
 
     rules[idx(B::Trim)] = LowerRule{
         .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
@@ -297,33 +318,36 @@ static const std::array<LowerRule, kBuiltinCount> kBuiltinLoweringRules = [] {
                              .features = {Feature{.action = FeatureAction::Request,
                                                   .feature = il::runtime::RuntimeFeature::Trim}}}}};
 
-    rules[idx(B::Ucase)] = LowerRule{
-        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
-        .variants = {Variant{.condition = Condition::Always,
-                             .kind = VariantKind::CallRuntime,
-                             .runtime = "rt_ucase",
-                             .arguments = {Argument{.index = 0}},
-                             .features = {Feature{.action = FeatureAction::Request,
-                                                  .feature = il::runtime::RuntimeFeature::Ucase}}}}};
+    rules[idx(B::Ucase)] =
+        LowerRule{.result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
+                  .variants = {Variant{
+                      .condition = Condition::Always,
+                      .kind = VariantKind::CallRuntime,
+                      .runtime = "rt_ucase",
+                      .arguments = {Argument{.index = 0}},
+                      .features = {Feature{.action = FeatureAction::Request,
+                                           .feature = il::runtime::RuntimeFeature::Ucase}}}}};
 
-    rules[idx(B::Lcase)] = LowerRule{
-        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
-        .variants = {Variant{.condition = Condition::Always,
-                             .kind = VariantKind::CallRuntime,
-                             .runtime = "rt_lcase",
-                             .arguments = {Argument{.index = 0}},
-                             .features = {Feature{.action = FeatureAction::Request,
-                                                  .feature = il::runtime::RuntimeFeature::Lcase}}}}};
+    rules[idx(B::Lcase)] =
+        LowerRule{.result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
+                  .variants = {Variant{
+                      .condition = Condition::Always,
+                      .kind = VariantKind::CallRuntime,
+                      .runtime = "rt_lcase",
+                      .arguments = {Argument{.index = 0}},
+                      .features = {Feature{.action = FeatureAction::Request,
+                                           .feature = il::runtime::RuntimeFeature::Lcase}}}}};
 
-    rules[idx(B::Chr)] = LowerRule{
-        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
-        .variants = {Variant{.condition = Condition::Always,
-                             .kind = VariantKind::CallRuntime,
-                             .runtime = "rt_chr",
-                             .arguments = {Argument{.index = 0,
-                                                    .transforms = {Transform{.kind = TransformKind::EnsureI64}}}},
-                             .features = {Feature{.action = FeatureAction::Request,
-                                                  .feature = il::runtime::RuntimeFeature::Chr}}}}};
+    rules[idx(B::Chr)] =
+        LowerRule{.result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
+                  .variants = {Variant{
+                      .condition = Condition::Always,
+                      .kind = VariantKind::CallRuntime,
+                      .runtime = "rt_chr",
+                      .arguments = {Argument{
+                          .index = 0, .transforms = {Transform{.kind = TransformKind::EnsureI64}}}},
+                      .features = {Feature{.action = FeatureAction::Request,
+                                           .feature = il::runtime::RuntimeFeature::Chr}}}}};
 
     rules[idx(B::Asc)] = LowerRule{
         .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::I64},
@@ -334,292 +358,298 @@ static const std::array<LowerRule, kBuiltinCount> kBuiltinLoweringRules = [] {
                              .features = {Feature{.action = FeatureAction::Request,
                                                   .feature = il::runtime::RuntimeFeature::Asc}}}}};
 
-    rules[idx(B::InKey)] = LowerRule{
-        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
-        .variants = {Variant{.condition = Condition::Always,
-                             .kind = VariantKind::CallRuntime,
-                             .runtime = "rt_inkey_str",
-                             .features = {Feature{.action = FeatureAction::Request,
-                                                  .feature = il::runtime::RuntimeFeature::InKey}}}}};
+    rules[idx(B::InKey)] =
+        LowerRule{.result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
+                  .variants = {Variant{
+                      .condition = Condition::Always,
+                      .kind = VariantKind::CallRuntime,
+                      .runtime = "rt_inkey_str",
+                      .features = {Feature{.action = FeatureAction::Request,
+                                           .feature = il::runtime::RuntimeFeature::InKey}}}}};
 
-    rules[idx(B::GetKey)] = LowerRule{
-        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
-        .variants = {Variant{.condition = Condition::Always,
-                             .kind = VariantKind::CallRuntime,
-                             .runtime = "rt_getkey_str",
-                             .features = {Feature{.action = FeatureAction::Request,
-                                                  .feature = il::runtime::RuntimeFeature::GetKey}}}}};
+    rules[idx(B::GetKey)] =
+        LowerRule{.result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::Str},
+                  .variants = {Variant{
+                      .condition = Condition::Always,
+                      .kind = VariantKind::CallRuntime,
+                      .runtime = "rt_getkey_str",
+                      .features = {Feature{.action = FeatureAction::Request,
+                                           .feature = il::runtime::RuntimeFeature::GetKey}}}}};
 
     rules[idx(B::Eof)] = LowerRule{
         .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::I64},
-        .variants = {Variant{.condition = Condition::Always,
-                             .kind = VariantKind::CallRuntime,
-                             .runtime = "rt_eof_ch",
-                             .arguments = {Argument{.index = 0,
-                                                    .transforms = {Transform{.kind = TransformKind::EnsureI32}}}}}}};
+        .variants = {Variant{
+            .condition = Condition::Always,
+            .kind = VariantKind::CallRuntime,
+            .runtime = "rt_eof_ch",
+            .arguments = {Argument{.index = 0,
+                                   .transforms = {Transform{.kind = TransformKind::EnsureI32}}}}}}};
 
     rules[idx(B::Lof)] = LowerRule{
         .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::I64},
-        .variants = {Variant{.condition = Condition::Always,
-                             .kind = VariantKind::CallRuntime,
-                             .runtime = "rt_lof_ch",
-                             .arguments = {Argument{.index = 0,
-                                                    .transforms = {Transform{.kind = TransformKind::EnsureI32}}}}}}};
+        .variants = {Variant{
+            .condition = Condition::Always,
+            .kind = VariantKind::CallRuntime,
+            .runtime = "rt_lof_ch",
+            .arguments = {Argument{.index = 0,
+                                   .transforms = {Transform{.kind = TransformKind::EnsureI32}}}}}}};
 
     rules[idx(B::Loc)] = LowerRule{
         .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::I64},
-        .variants = {Variant{.condition = Condition::Always,
-                             .kind = VariantKind::CallRuntime,
-                             .runtime = "rt_loc_ch",
-                             .arguments = {Argument{.index = 0,
-                                                    .transforms = {Transform{.kind = TransformKind::EnsureI32}}}}}}};
+        .variants = {Variant{
+            .condition = Condition::Always,
+            .kind = VariantKind::CallRuntime,
+            .runtime = "rt_loc_ch",
+            .arguments = {Argument{.index = 0,
+                                   .transforms = {Transform{.kind = TransformKind::EnsureI32}}}}}}};
 
     return rules;
 }();
 
-static const std::array<BuiltinScanRule, kBuiltinCount> kBuiltinScanRules = [] {
+static const std::array<BuiltinScanRule, kBuiltinCount> kBuiltinScanRules = []
+{
     std::array<BuiltinScanRule, kBuiltinCount> rules{};
 
-    rules[idx(B::Len)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                     Lowerer::ExprType::I64,
-                                                                     0},
-                                         BuiltinScanRule::ArgTraversal::Explicit,
-                                         {0},
-                                         {}};
+    rules[idx(B::Len)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::I64, 0},
+                        BuiltinScanRule::ArgTraversal::Explicit,
+                        {0},
+                        {}};
 
-    rules[idx(B::Mid)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                     Lowerer::ExprType::Str,
-                                                                     0},
-                                         BuiltinScanRule::ArgTraversal::All,
-                                         {},
-                                         {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
-                                                                   BuiltinScanRule::Feature::Condition::IfArgPresent,
-                                                                   il::runtime::RuntimeFeature::Mid3,
-                                                                   2,
-                                                                   Lowerer::ExprType::I64},
-                                          BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
-                                                                   BuiltinScanRule::Feature::Condition::IfArgMissing,
-                                                                   il::runtime::RuntimeFeature::Mid2,
-                                                                   2,
-                                                                   Lowerer::ExprType::I64}}};
+    rules[idx(B::Mid)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::Str, 0},
+                        BuiltinScanRule::ArgTraversal::All,
+                        {},
+                        {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                                  BuiltinScanRule::Feature::Condition::IfArgPresent,
+                                                  il::runtime::RuntimeFeature::Mid3,
+                                                  2,
+                                                  Lowerer::ExprType::I64},
+                         BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                                  BuiltinScanRule::Feature::Condition::IfArgMissing,
+                                                  il::runtime::RuntimeFeature::Mid2,
+                                                  2,
+                                                  Lowerer::ExprType::I64}}};
 
-    rules[idx(B::Left)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                      Lowerer::ExprType::Str,
-                                                                      0},
-                                          BuiltinScanRule::ArgTraversal::Explicit,
-                                          {0, 1},
-                                          {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
-                                                                    BuiltinScanRule::Feature::Condition::Always,
-                                                                    il::runtime::RuntimeFeature::Left,
-                                                                    0,
-                                                                    Lowerer::ExprType::I64}}};
+    rules[idx(B::Left)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::Str, 0},
+                        BuiltinScanRule::ArgTraversal::Explicit,
+                        {0, 1},
+                        {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                                  BuiltinScanRule::Feature::Condition::Always,
+                                                  il::runtime::RuntimeFeature::Left,
+                                                  0,
+                                                  Lowerer::ExprType::I64}}};
 
-    rules[idx(B::Right)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                       Lowerer::ExprType::Str,
-                                                                       0},
-                                           BuiltinScanRule::ArgTraversal::Explicit,
-                                           {0, 1},
-                                           {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
-                                                                     BuiltinScanRule::Feature::Condition::Always,
-                                                                     il::runtime::RuntimeFeature::Right,
-                                                                     0,
-                                                                     Lowerer::ExprType::I64}}};
+    rules[idx(B::Right)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::Str, 0},
+                        BuiltinScanRule::ArgTraversal::Explicit,
+                        {0, 1},
+                        {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                                  BuiltinScanRule::Feature::Condition::Always,
+                                                  il::runtime::RuntimeFeature::Right,
+                                                  0,
+                                                  Lowerer::ExprType::I64}}};
 
-    rules[idx(B::Str)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                     Lowerer::ExprType::Str,
-                                                                     0},
-                                         BuiltinScanRule::ArgTraversal::Explicit,
-                                         {0},
-                                         {}};
+    rules[idx(B::Str)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::Str, 0},
+                        BuiltinScanRule::ArgTraversal::Explicit,
+                        {0},
+                        {}};
 
-    rules[idx(B::Val)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                     Lowerer::ExprType::F64,
-                                                                     0},
-                                         BuiltinScanRule::ArgTraversal::Explicit,
-                                         {0},
-                                         {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
-                                                                   BuiltinScanRule::Feature::Condition::Always,
-                                                                   il::runtime::RuntimeFeature::Val,
-                                                                   0,
-                                                                   Lowerer::ExprType::I64}}};
+    rules[idx(B::Val)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::F64, 0},
+                        BuiltinScanRule::ArgTraversal::Explicit,
+                        {0},
+                        {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                                  BuiltinScanRule::Feature::Condition::Always,
+                                                  il::runtime::RuntimeFeature::Val,
+                                                  0,
+                                                  Lowerer::ExprType::I64}}};
 
-    rules[idx(B::Cint)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                      Lowerer::ExprType::I64,
-                                                                      0},
-                                          BuiltinScanRule::ArgTraversal::Explicit,
-                                          {0},
-                                          {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
-                                                                    BuiltinScanRule::Feature::Condition::Always,
-                                                                    il::runtime::RuntimeFeature::CintFromDouble,
-                                                                    0,
-                                                                    Lowerer::ExprType::I64}}};
+    rules[idx(B::Cint)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::I64, 0},
+                        BuiltinScanRule::ArgTraversal::Explicit,
+                        {0},
+                        {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                                  BuiltinScanRule::Feature::Condition::Always,
+                                                  il::runtime::RuntimeFeature::CintFromDouble,
+                                                  0,
+                                                  Lowerer::ExprType::I64}}};
 
-    rules[idx(B::Clng)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                      Lowerer::ExprType::I64,
-                                                                      0},
-                                          BuiltinScanRule::ArgTraversal::Explicit,
-                                          {0},
-                                          {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
-                                                                    BuiltinScanRule::Feature::Condition::Always,
-                                                                    il::runtime::RuntimeFeature::ClngFromDouble,
-                                                                    0,
-                                                                    Lowerer::ExprType::I64}}};
+    rules[idx(B::Clng)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::I64, 0},
+                        BuiltinScanRule::ArgTraversal::Explicit,
+                        {0},
+                        {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                                  BuiltinScanRule::Feature::Condition::Always,
+                                                  il::runtime::RuntimeFeature::ClngFromDouble,
+                                                  0,
+                                                  Lowerer::ExprType::I64}}};
 
-    rules[idx(B::Csng)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                      Lowerer::ExprType::F64,
-                                                                      0},
-                                          BuiltinScanRule::ArgTraversal::Explicit,
-                                          {0},
-                                          {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
-                                                                    BuiltinScanRule::Feature::Condition::Always,
-                                                                    il::runtime::RuntimeFeature::CsngFromDouble,
-                                                                    0,
-                                                                    Lowerer::ExprType::I64}}};
+    rules[idx(B::Csng)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::F64, 0},
+                        BuiltinScanRule::ArgTraversal::Explicit,
+                        {0},
+                        {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                                  BuiltinScanRule::Feature::Condition::Always,
+                                                  il::runtime::RuntimeFeature::CsngFromDouble,
+                                                  0,
+                                                  Lowerer::ExprType::I64}}};
 
-    rules[idx(B::Cdbl)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                      Lowerer::ExprType::F64,
-                                                                      0},
-                                          BuiltinScanRule::ArgTraversal::Explicit,
-                                          {0},
-                                          {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
-                                                                    BuiltinScanRule::Feature::Condition::Always,
-                                                                    il::runtime::RuntimeFeature::CdblFromAny,
-                                                                    0,
-                                                                    Lowerer::ExprType::I64}}};
+    rules[idx(B::Cdbl)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::F64, 0},
+                        BuiltinScanRule::ArgTraversal::Explicit,
+                        {0},
+                        {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                                  BuiltinScanRule::Feature::Condition::Always,
+                                                  il::runtime::RuntimeFeature::CdblFromAny,
+                                                  0,
+                                                  Lowerer::ExprType::I64}}};
 
     builtins::registerMathBuiltinScanRules(rules);
 
-    rules[idx(B::Instr)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                       Lowerer::ExprType::I64,
-                                                                       0},
-                                           BuiltinScanRule::ArgTraversal::All,
-                                           {},
-                                           {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
-                                                                     BuiltinScanRule::Feature::Condition::IfArgPresent,
-                                                                     il::runtime::RuntimeFeature::Instr3,
-                                                                     2,
-                                                                     Lowerer::ExprType::I64},
-                                            BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
-                                                                     BuiltinScanRule::Feature::Condition::IfArgMissing,
-                                                                     il::runtime::RuntimeFeature::Instr2,
-                                                                     2,
-                                                                     Lowerer::ExprType::I64}}};
+    rules[idx(B::Instr)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::I64, 0},
+                        BuiltinScanRule::ArgTraversal::All,
+                        {},
+                        {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                                  BuiltinScanRule::Feature::Condition::IfArgPresent,
+                                                  il::runtime::RuntimeFeature::Instr3,
+                                                  2,
+                                                  Lowerer::ExprType::I64},
+                         BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                                  BuiltinScanRule::Feature::Condition::IfArgMissing,
+                                                  il::runtime::RuntimeFeature::Instr2,
+                                                  2,
+                                                  Lowerer::ExprType::I64}}};
 
-    rules[idx(B::Ltrim)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                       Lowerer::ExprType::Str,
-                                                                       0},
-                                           BuiltinScanRule::ArgTraversal::Explicit,
-                                           {0},
-                                           {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
-                                                                     BuiltinScanRule::Feature::Condition::Always,
-                                                                     il::runtime::RuntimeFeature::Ltrim,
-                                                                     0,
-                                                                     Lowerer::ExprType::I64}}};
+    rules[idx(B::Ltrim)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::Str, 0},
+                        BuiltinScanRule::ArgTraversal::Explicit,
+                        {0},
+                        {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                                  BuiltinScanRule::Feature::Condition::Always,
+                                                  il::runtime::RuntimeFeature::Ltrim,
+                                                  0,
+                                                  Lowerer::ExprType::I64}}};
 
-    rules[idx(B::Rtrim)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                       Lowerer::ExprType::Str,
-                                                                       0},
-                                           BuiltinScanRule::ArgTraversal::Explicit,
-                                           {0},
-                                           {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
-                                                                     BuiltinScanRule::Feature::Condition::Always,
-                                                                     il::runtime::RuntimeFeature::Rtrim,
-                                                                     0,
-                                                                     Lowerer::ExprType::I64}}};
+    rules[idx(B::Rtrim)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::Str, 0},
+                        BuiltinScanRule::ArgTraversal::Explicit,
+                        {0},
+                        {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                                  BuiltinScanRule::Feature::Condition::Always,
+                                                  il::runtime::RuntimeFeature::Rtrim,
+                                                  0,
+                                                  Lowerer::ExprType::I64}}};
 
-    rules[idx(B::Trim)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                      Lowerer::ExprType::Str,
-                                                                      0},
-                                          BuiltinScanRule::ArgTraversal::Explicit,
-                                          {0},
-                                          {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
-                                                                    BuiltinScanRule::Feature::Condition::Always,
-                                                                    il::runtime::RuntimeFeature::Trim,
-                                                                    0,
-                                                                    Lowerer::ExprType::I64}}};
+    rules[idx(B::Trim)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::Str, 0},
+                        BuiltinScanRule::ArgTraversal::Explicit,
+                        {0},
+                        {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                                  BuiltinScanRule::Feature::Condition::Always,
+                                                  il::runtime::RuntimeFeature::Trim,
+                                                  0,
+                                                  Lowerer::ExprType::I64}}};
 
-    rules[idx(B::Ucase)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                       Lowerer::ExprType::Str,
-                                                                       0},
-                                           BuiltinScanRule::ArgTraversal::Explicit,
-                                           {0},
-                                           {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
-                                                                     BuiltinScanRule::Feature::Condition::Always,
-                                                                     il::runtime::RuntimeFeature::Ucase,
-                                                                     0,
-                                                                     Lowerer::ExprType::I64}}};
+    rules[idx(B::Ucase)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::Str, 0},
+                        BuiltinScanRule::ArgTraversal::Explicit,
+                        {0},
+                        {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                                  BuiltinScanRule::Feature::Condition::Always,
+                                                  il::runtime::RuntimeFeature::Ucase,
+                                                  0,
+                                                  Lowerer::ExprType::I64}}};
 
-    rules[idx(B::Lcase)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                       Lowerer::ExprType::Str,
-                                                                       0},
-                                           BuiltinScanRule::ArgTraversal::Explicit,
-                                           {0},
-                                           {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
-                                                                     BuiltinScanRule::Feature::Condition::Always,
-                                                                     il::runtime::RuntimeFeature::Lcase,
-                                                                     0,
-                                                                     Lowerer::ExprType::I64}}};
+    rules[idx(B::Lcase)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::Str, 0},
+                        BuiltinScanRule::ArgTraversal::Explicit,
+                        {0},
+                        {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                                  BuiltinScanRule::Feature::Condition::Always,
+                                                  il::runtime::RuntimeFeature::Lcase,
+                                                  0,
+                                                  Lowerer::ExprType::I64}}};
 
-    rules[idx(B::Chr)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                     Lowerer::ExprType::Str,
-                                                                     0},
-                                         BuiltinScanRule::ArgTraversal::Explicit,
-                                         {0},
-                                         {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
-                                                                   BuiltinScanRule::Feature::Condition::Always,
-                                                                   il::runtime::RuntimeFeature::Chr,
-                                                                   0,
-                                                                   Lowerer::ExprType::I64}}};
+    rules[idx(B::Chr)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::Str, 0},
+                        BuiltinScanRule::ArgTraversal::Explicit,
+                        {0},
+                        {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                                  BuiltinScanRule::Feature::Condition::Always,
+                                                  il::runtime::RuntimeFeature::Chr,
+                                                  0,
+                                                  Lowerer::ExprType::I64}}};
 
-    rules[idx(B::Asc)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                     Lowerer::ExprType::I64,
-                                                                     0},
-                                         BuiltinScanRule::ArgTraversal::Explicit,
-                                         {0},
-                                         {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
-                                                                   BuiltinScanRule::Feature::Condition::Always,
-                                                                   il::runtime::RuntimeFeature::Asc,
-                                                                   0,
-                                                                   Lowerer::ExprType::I64}}};
+    rules[idx(B::Asc)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::I64, 0},
+                        BuiltinScanRule::ArgTraversal::Explicit,
+                        {0},
+                        {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                                  BuiltinScanRule::Feature::Condition::Always,
+                                                  il::runtime::RuntimeFeature::Asc,
+                                                  0,
+                                                  Lowerer::ExprType::I64}}};
 
-    rules[idx(B::InKey)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                       Lowerer::ExprType::Str,
-                                                                       0},
-                                           BuiltinScanRule::ArgTraversal::Explicit,
-                                           {},
-                                           {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
-                                                                     BuiltinScanRule::Feature::Condition::Always,
-                                                                     il::runtime::RuntimeFeature::InKey}}};
+    rules[idx(B::InKey)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::Str, 0},
+                        BuiltinScanRule::ArgTraversal::Explicit,
+                        {},
+                        {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                                  BuiltinScanRule::Feature::Condition::Always,
+                                                  il::runtime::RuntimeFeature::InKey}}};
 
-    rules[idx(B::GetKey)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                        Lowerer::ExprType::Str,
-                                                                        0},
-                                            BuiltinScanRule::ArgTraversal::Explicit,
-                                            {},
-                                            {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
-                                                                      BuiltinScanRule::Feature::Condition::Always,
-                                                                      il::runtime::RuntimeFeature::GetKey}}};
+    rules[idx(B::GetKey)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::Str, 0},
+                        BuiltinScanRule::ArgTraversal::Explicit,
+                        {},
+                        {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                                  BuiltinScanRule::Feature::Condition::Always,
+                                                  il::runtime::RuntimeFeature::GetKey}}};
 
-    rules[idx(B::Eof)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                     Lowerer::ExprType::I64,
-                                                                     0},
-                                         BuiltinScanRule::ArgTraversal::Explicit,
-                                         {0},
-                                         {}};
+    rules[idx(B::Eof)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::I64, 0},
+                        BuiltinScanRule::ArgTraversal::Explicit,
+                        {0},
+                        {}};
 
-    rules[idx(B::Lof)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                     Lowerer::ExprType::I64,
-                                                                     0},
-                                         BuiltinScanRule::ArgTraversal::Explicit,
-                                         {0},
-                                         {}};
+    rules[idx(B::Lof)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::I64, 0},
+                        BuiltinScanRule::ArgTraversal::Explicit,
+                        {0},
+                        {}};
 
-    rules[idx(B::Loc)] = BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
-                                                                     Lowerer::ExprType::I64,
-                                                                     0},
-                                         BuiltinScanRule::ArgTraversal::Explicit,
-                                         {0},
-                                         {}};
+    rules[idx(B::Loc)] =
+        BuiltinScanRule{BuiltinScanRule::ResultSpec{
+                            BuiltinScanRule::ResultSpec::Kind::Fixed, Lowerer::ExprType::I64, 0},
+                        BuiltinScanRule::ArgTraversal::Explicit,
+                        {0},
+                        {}};
 
     return rules;
 }();
@@ -629,7 +659,8 @@ static const std::array<BuiltinScanRule, kBuiltinCount> kBuiltinScanRules = [] {
 /// should normalize BASIC identifiers before lookup.
 const std::unordered_map<std::string_view, B> &builtinNameIndex()
 {
-    static const auto index = [] {
+    static const auto index = []
+    {
         std::unordered_map<std::string_view, B> map;
         map.reserve(kBuiltinDescriptors.size());
         for (const auto &desc : kBuiltinDescriptors)
@@ -680,6 +711,23 @@ const BuiltinScanRule &getBuiltinScanRule(BuiltinCallExpr::Builtin b)
 const BuiltinLoweringRule &getBuiltinLoweringRule(BuiltinCallExpr::Builtin b)
 {
     return kBuiltinLoweringRules[static_cast<std::size_t>(b)];
+}
+
+void register_builtin(std::string_view name, BuiltinHandler fn)
+{
+    auto &registry = builtinHandlerRegistry();
+    if (fn)
+        registry.insert_or_assign(name, fn);
+    else
+        registry.erase(name);
+}
+
+BuiltinHandler find_builtin(std::string_view name)
+{
+    auto &registry = builtinHandlerRegistry();
+    if (auto it = registry.find(name); it != registry.end())
+        return it->second;
+    return nullptr;
 }
 
 } // namespace il::frontends::basic

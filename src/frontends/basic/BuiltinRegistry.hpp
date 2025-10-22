@@ -6,9 +6,9 @@
 // Links: docs/codemap.md
 #pragma once
 
-#include "frontends/basic/ast/ExprNodes.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
+#include "frontends/basic/ast/ExprNodes.hpp"
 #include "il/core/Opcode.hpp"
 #include <cstddef>
 #include <cstdint>
@@ -18,6 +18,11 @@
 
 namespace il::frontends::basic
 {
+namespace lower
+{
+class BuiltinLowerContext;
+} // namespace lower
+
 /// @brief Declarative scan rule describing runtime requirements for a builtin.
 struct BuiltinScanRule
 {
@@ -27,8 +32,8 @@ struct BuiltinScanRule
         /// @brief Result strategy used during scanning.
         enum class Kind
         {
-            Fixed,    ///< Always yields the @ref type supplied below.
-            FromArg,  ///< Mirrors the type inferred for a specific argument.
+            Fixed,   ///< Always yields the @ref type supplied below.
+            FromArg, ///< Mirrors the type inferred for a specific argument.
         } kind{Kind::Fixed};
 
         Lowerer::ExprType type{Lowerer::ExprType::I64}; ///< Fixed type or fallback.
@@ -38,8 +43,8 @@ struct BuiltinScanRule
     /// @brief How scanning should traverse the builtin's argument list.
     enum class ArgTraversal
     {
-        All,       ///< Visit every provided argument in order.
-        Explicit,  ///< Visit only the indexes listed in @ref explicitArgs.
+        All,      ///< Visit every provided argument in order.
+        Explicit, ///< Visit only the indexes listed in @ref explicitArgs.
     } traversal{ArgTraversal::All};
 
     /// @brief Specific argument indexes to traverse when @ref traversal is Explicit.
@@ -58,14 +63,15 @@ struct BuiltinScanRule
         /// @brief Conditional guard controlling whether the feature fires.
         enum class Condition
         {
-            Always,          ///< Unconditionally perform the action.
-            IfArgPresent,    ///< Fire when the argument at @ref argIndex exists.
-            IfArgMissing,    ///< Fire when the argument at @ref argIndex is absent.
-            IfArgTypeIs,     ///< Fire when argument type matches @ref type.
-            IfArgTypeIsNot,  ///< Fire when argument type differs from @ref type.
+            Always,         ///< Unconditionally perform the action.
+            IfArgPresent,   ///< Fire when the argument at @ref argIndex exists.
+            IfArgMissing,   ///< Fire when the argument at @ref argIndex is absent.
+            IfArgTypeIs,    ///< Fire when argument type matches @ref type.
+            IfArgTypeIsNot, ///< Fire when argument type differs from @ref type.
         } condition{Condition::Always};
 
-        il::runtime::RuntimeFeature feature{il::runtime::RuntimeFeature::Count}; ///< Runtime feature to toggle.
+        il::runtime::RuntimeFeature feature{
+            il::runtime::RuntimeFeature::Count};        ///< Runtime feature to toggle.
         std::size_t argIndex{0};                        ///< Argument inspected by the condition.
         Lowerer::ExprType type{Lowerer::ExprType::I64}; ///< Type operand for type-guarded rules.
     };
@@ -103,7 +109,8 @@ struct BuiltinLoweringRule
             Track,   ///< Call @ref Lowerer::trackRuntime.
         } action{Action::Request};
 
-        il::runtime::RuntimeFeature feature{il::runtime::RuntimeFeature::Count}; ///< Runtime feature identifier.
+        il::runtime::RuntimeFeature feature{
+            il::runtime::RuntimeFeature::Count}; ///< Runtime feature identifier.
     };
 
     /// @brief Transformation applied to an argument prior to emission.
@@ -112,13 +119,13 @@ struct BuiltinLoweringRule
         /// @brief Specific adjustment performed on the argument value.
         enum class Kind
         {
-            EnsureI64, ///< Invoke @ref Lowerer::ensureI64.
-            EnsureF64, ///< Invoke @ref Lowerer::ensureF64.
-            EnsureI32, ///< Invoke @ref Lowerer::ensureI64 followed by a narrow to i32.
-            CoerceI64, ///< Invoke @ref Lowerer::coerceToI64.
-            CoerceF64, ///< Invoke @ref Lowerer::coerceToF64.
-            CoerceBool,///< Invoke @ref Lowerer::coerceToBool.
-            AddConst,  ///< Emit an add with an integer constant.
+            EnsureI64,  ///< Invoke @ref Lowerer::ensureI64.
+            EnsureF64,  ///< Invoke @ref Lowerer::ensureF64.
+            EnsureI32,  ///< Invoke @ref Lowerer::ensureI64 followed by a narrow to i32.
+            CoerceI64,  ///< Invoke @ref Lowerer::coerceToI64.
+            CoerceF64,  ///< Invoke @ref Lowerer::coerceToF64.
+            CoerceBool, ///< Invoke @ref Lowerer::coerceToBool.
+            AddConst,   ///< Emit an add with an integer constant.
         } kind{Kind::EnsureI64};
 
         std::int64_t immediate{0}; ///< Constant used by AddConst.
@@ -127,15 +134,17 @@ struct BuiltinLoweringRule
     /// @brief Argument description for runtime emission.
     struct Argument
     {
-        std::size_t index{0};                         ///< Index into BuiltinCallExpr::args.
-        std::vector<ArgTransform> transforms{};       ///< Transformations to apply before use.
+        std::size_t index{0};                   ///< Index into BuiltinCallExpr::args.
+        std::vector<ArgTransform> transforms{}; ///< Transformations to apply before use.
+
         struct DefaultValue
         {
             Lowerer::ExprType type{Lowerer::ExprType::I64}; ///< Expression type of the default.
             double f64{0.0};                                ///< Floating default payload.
             std::int64_t i64{0};                            ///< Integer default payload.
         };
-        std::optional<DefaultValue> defaultValue{};   ///< Optional default when argument absent.
+
+        std::optional<DefaultValue> defaultValue{}; ///< Optional default when argument absent.
     };
 
     /// @brief Variant describing how to materialize the builtin call.
@@ -151,9 +160,10 @@ struct BuiltinLoweringRule
             IfArgTypeIsNot ///< Applies when argument type differs.
         } condition{Condition::Always};
 
-        std::size_t conditionArg{0};                 ///< Argument inspected by the condition.
-        Lowerer::ExprType conditionType{Lowerer::ExprType::I64}; ///< Type operand for type-based predicates.
-        std::optional<std::size_t> callLocArg{};     ///< Optional argument providing emission location.
+        std::size_t conditionArg{0}; ///< Argument inspected by the condition.
+        Lowerer::ExprType conditionType{
+            Lowerer::ExprType::I64};             ///< Type operand for type-based predicates.
+        std::optional<std::size_t> callLocArg{}; ///< Optional argument providing emission location.
 
         /// @brief Lowering strategy for the variant.
         enum class Kind
@@ -164,19 +174,20 @@ struct BuiltinLoweringRule
         } kind{Kind::CallRuntime};
 
         const char *runtime{nullptr}; ///< Runtime symbol name when calling helpers.
-        il::core::Opcode opcode{il::core::Opcode::IAddOvf}; ///< Unary opcode when @ref kind == EmitUnary.
+        il::core::Opcode opcode{
+            il::core::Opcode::IAddOvf};    ///< Unary opcode when @ref kind == EmitUnary.
         std::vector<Argument> arguments{}; ///< Ordered argument specifications.
         std::vector<Feature> features{};   ///< Feature tracking applied for this variant.
     };
 
-    ResultSpec result{};                     ///< Result determination rule.
-    std::vector<Variant> variants{};         ///< Ordered set of variants; first match is used.
+    ResultSpec result{};             ///< Result determination rule.
+    std::vector<Variant> variants{}; ///< Ordered set of variants; first match is used.
 };
 
 /// @brief Metadata for a BASIC built-in function.
 struct BuiltinInfo
 {
-    const char *name;                    ///< BASIC source spelling.
+    const char *name;                          ///< BASIC source spelling.
     SemanticAnalyzer::BuiltinAnalyzer analyze; ///< Optional semantic handler.
 };
 
@@ -188,5 +199,14 @@ std::optional<BuiltinCallExpr::Builtin> lookupBuiltin(std::string_view name);
 
 /// @brief Fetch the lowering rule for a builtin.
 const BuiltinLoweringRule &getBuiltinLoweringRule(BuiltinCallExpr::Builtin b);
+
+/// @brief Function signature used by builtin lowering handlers.
+using BuiltinHandler = Lowerer::RVal (*)(lower::BuiltinLowerContext &);
+
+/// @brief Register a lowering handler for the builtin spelled @p name.
+void register_builtin(std::string_view name, BuiltinHandler fn);
+
+/// @brief Locate the lowering handler associated with @p name.
+BuiltinHandler find_builtin(std::string_view name);
 
 } // namespace il::frontends::basic

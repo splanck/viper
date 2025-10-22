@@ -22,7 +22,6 @@
 
 #include "frontends/basic/LowerExprBuiltin.hpp"
 
-#include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/lower/BuiltinUtils.hpp"
 
@@ -111,15 +110,10 @@ Lowerer::RVal BuiltinExprLowering::lower(const BuiltinCallExpr &expr)
 /// @param lowerer Owning lowering engine.
 /// @param call AST node representing the builtin invocation.
 /// @return Lowered r-value implementing the builtin semantics.
-Lowerer::RVal BuiltinExprLowering::emitRuleDrivenBuiltin(Lowerer &lowerer, const BuiltinCallExpr &call)
+Lowerer::RVal BuiltinExprLowering::emitRuleDrivenBuiltin(Lowerer &lowerer,
+                                                         const BuiltinCallExpr &call)
 {
-    lower::BuiltinLowerContext ctx(lowerer, call);
-    const auto &registry = lower::builtinLowererRegistry();
-    const std::string name(ctx.info().name);
-    const auto it = registry.find(name);
-    if (it != registry.end())
-        return it->second(ctx);
-    return lower::lowerDefaultBuiltin(ctx);
+    return lower::lowerBuiltinCall(lowerer, call);
 }
 
 /// @brief Lower the LOF builtin, handling runtime error propagation.
@@ -239,7 +233,8 @@ Lowerer::RVal BuiltinExprLowering::emitEofBuiltin(Lowerer &lowerer, const Builti
 
         ctx.setCurrent(&func->blocks[originIdx]);
         lowerer.curLoc = expr.loc;
-        Value nonZero = lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(), rawI64, Value::constInt(0));
+        Value nonZero =
+            lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(), rawI64, Value::constInt(0));
         Value notNegOne =
             lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(), rawI64, Value::constInt(-1));
         Value isError = lowerer.emitBinary(Opcode::And, lowerer.ilBoolTy(), nonZero, notNegOne);
@@ -327,7 +322,8 @@ Lowerer::RVal BuiltinExprLowering::emitLocBuiltin(Lowerer &lowerer, const Builti
 /// @param lowerer Owning lowering engine.
 /// @param expr AST node describing the builtin invocation.
 /// @return Placeholder integer result.
-Lowerer::RVal BuiltinExprLowering::emitUnsupportedBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr)
+Lowerer::RVal BuiltinExprLowering::emitUnsupportedBuiltin(Lowerer &lowerer,
+                                                          const BuiltinCallExpr &expr)
 {
     if (auto *diag = lowerer.diagnosticEmitter())
     {
