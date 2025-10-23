@@ -1,17 +1,14 @@
 //===----------------------------------------------------------------------===//
 //
-// This file is part of the Viper project, under the MIT License.
+// Part of the Viper project, under the MIT License.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-// File: src/vm/ops/Op_CallRet.cpp
-// Purpose: Implement VM opcode handlers for function calls and returns.
-// Key invariants: Result slots are updated exactly once per handler invocation
-//                 and bridge lookups fall back to the runtime dispatcher when a
-//                 direct VM function implementation is unavailable.
-// Ownership/Lifetime: Handlers borrow the active frame and never take ownership
-//                     of operands or result slots.
-// Links: docs/runtime-vm.md#dispatch
+//
+// Implements the VM opcode handlers that manage function calls and returns.
+// The helpers evaluate operands, interact with the runtime bridge when the VM
+// lacks a native implementation, and propagate return values back into the
+// interpreter's frame.
 //
 //===----------------------------------------------------------------------===//
 
@@ -20,6 +17,15 @@
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "vm/Marshal.hpp"
 #include "vm/RuntimeBridge.hpp"
+
+/// @file
+/// @brief Call and return opcode handlers for the VM interpreter.
+/// @details These helpers provide the glue between IL call/return instructions
+///          and the VM's execution environment.  Calls eagerly evaluate
+///          arguments, dispatch to either VM-native functions or the runtime
+///          bridge, synchronise mutated arguments back into registers/stack, and
+///          write the result slot.  Returns capture the optional operand and
+///          signal to the interpreter loop that unwinding should begin.
 
 #include <algorithm>
 #include <cstdint>
