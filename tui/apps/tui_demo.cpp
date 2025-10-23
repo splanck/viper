@@ -1,7 +1,29 @@
-// tui/apps/tui_demo.cpp
-// @brief Small demo app wiring TerminalSession + App + a couple widgets.
-// @invariant Exits on Ctrl+Q in interactive mode; headless renders once.
-// @ownership App owns widget tree; TermIO and environment are borrowed.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/apps/tui_demo.cpp
+// Purpose: Provide a lightweight demo that wires the terminal session, widgets,
+//          and renderer together for quick manual testing.
+// Key invariants: The application exits on Ctrl+Q when running interactively
+//                 and performs a single render when headless.
+// Ownership/Lifetime: The App instance owns the widget tree while borrowing
+//                     terminal I/O objects and environment data.
+// Links: docs/tools.md#tui-demo
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Standalone binary demonstrating how to assemble a minimal ViperTUI
+///        application.
+/// @details The executable builds a widget hierarchy consisting of a text view
+///          and a list view, registers them with the focus manager, and then
+///          exercises the event loop.  It supports headless rendering via the
+///          @c VIPERTUI_NO_TTY environment toggle to keep the demo scriptable
+///          during CI runs.
 
 #include "tui/app.hpp"
 #include "tui/style/theme.hpp"
@@ -24,6 +46,13 @@
 #include <unistd.h>
 #endif
 
+/// @brief Entry point that constructs and runs the TUI demonstration app.
+/// @details The routine wires up a @ref viper::tui::TerminalSession,
+///          @ref viper::tui::App, and a pair of widgets showing a simple text
+///          buffer and list.  When the @c VIPERTUI_NO_TTY environment variable
+///          is set to ``1`` the demo performs a single render and exits.  When
+///          interactive, keyboard events are decoded until Ctrl+Q is received.
+/// @return Zero on success after the application exits.
 int main()
 {
     bool headless = false;
