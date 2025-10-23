@@ -1,12 +1,15 @@
-// File: src/il/verify/EhVerifier.cpp
-// License: MIT (see LICENSE for details).
-// Purpose: Implements the verifier pass that validates EH stack balance per function.
-// Key invariants: Control-flow is explored with an explicit worklist so every
-// execution path maintains balanced eh.push/eh.pop pairs while keeping
-// diagnostics stable for legacy callers.
-// Ownership/Lifetime: Operates on caller-owned modules; no allocations outlive
-// verification. Diagnostics are returned via Expected or forwarded through sinks.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the exception-handling verifier.  The pass checks EH stack balance,
+// validates resume targets, and builds coverage data so diagnostics can pinpoint
+// control-flow paths with mismatched handlers.
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/verify/EhVerifier.hpp"
 
@@ -131,6 +134,15 @@ struct EhState
     const BasicBlock *bb = nullptr;
 };
 
+/// @brief Reconstruct the path of basic blocks leading to a recorded state.
+/// @details Walks the parent index chain emitted by the worklist search, collecting
+///          each block pointer from the stored states before reversing the sequence
+///          so diagnostics can report the forward execution path that triggered an
+///          EH mismatch.
+/// @param states Snapshot of traversal states explored so far.
+/// @param parents Parent indices forming the predecessor chain.
+/// @param index Index of the state whose path should be reconstructed.
+/// @return Sequence of basic block pointers describing the execution path.
 std::vector<const BasicBlock *> buildPath(const std::vector<EhState> &states,
                                           const std::vector<int> &parents,
                                           int index)
@@ -145,6 +157,11 @@ std::vector<const BasicBlock *> buildPath(const std::vector<EhState> &states,
     return path;
 }
 
+/// @brief Format a block path for inclusion in diagnostics.
+/// @details Joins the block labels with arrow separators to produce a readable
+///          representation of the execution path returned by @ref buildPath.
+/// @param path Sequence of blocks to stringify.
+/// @return String describing the block path.
 std::string formatPathString(const std::vector<const BasicBlock *> &path)
 {
     std::string buffer;
@@ -157,6 +174,20 @@ std::string formatPathString(const std::vector<const BasicBlock *> &path)
     return buffer;
 }
 
+/// @brief Materialise a verifier diagnostic for EH stack mismatches.
+/// @details Builds the execution path leading to the offending instruction and
+///          tailors the diagnostic suffix to the specific error code.  The helper
+///          centralises message formatting so all EH stack errors share consistent
+///          wording.
+/// @param fn Function being verified.
+/// @param bb Basic block containing the problematic instruction.
+/// @param instr Instruction that triggered the mismatch.
+/// @param code Diagnostic identifier describing the failure.
+/// @param states Snapshot of traversal states.
+/// @param parents Parent index chain for the states.
+/// @param stateIndex Index of the failing state.
+/// @param depth Depth of the handler stack when the mismatch occurred.
+/// @return Expected containing the constructed diagnostic error.
 ErrorOr<void> reportEhMismatch(const Function &fn,
                                const BasicBlock &bb,
                                const Instr &instr,
@@ -193,6 +224,12 @@ ErrorOr<void> reportEhMismatch(const Function &fn,
     return ErrorOr<void>{makeVerifierError(code, instr.loc, std::move(message))};
 }
 
+/// @brief Build a label-to-block lookup table for the function under analysis.
+/// @details Iterates over every basic block and records its address in an unordered
+///          map keyed by label.  The resulting table accelerates later lookups when
+///          translating terminator labels into block pointers during traversal.
+/// @param fn Function whose blocks should be indexed.
+/// @return Mapping from block labels to block pointers.
 CFG buildCfg(const Function &fn)
 {
     CFG blockMap;
@@ -202,6 +239,13 @@ CFG buildCfg(const Function &fn)
     return blockMap;
 }
 
+/// @brief Verify that eh.push/eh.pop usage stays balanced along every path.
+/// @details Performs a worklist traversal over the function, tracking the handler
+///          stack and resume-token state for each reachable block.  Imbalances or
+///          invalid resume operations trigger diagnostics that include the traversal
+///          path leading to the offending instruction.
+/// @param fn Function whose EH regions are validated.
+/// @return Success when the EH stack is balanced; otherwise a diagnostic.
 ErrorOr<void> checkBalancedTryCatch(const Function &fn)
 {
     if (fn.blocks.empty())
@@ -400,15 +444,33 @@ using HandlerCoverage =
 /// @param fn Function whose handlers are analysed.
 /// @param blockMap Mapping from labels to block pointers.
 /// @return Coverage table keyed by handler block pointer.
+/// @brief Worklist engine that computes handler coverage for potentially faulting blocks.
+/// @details Maintains the active handler stack while traversing the CFG so each
+///          handler can be associated with the blocks whose instructions may fault
+///          under its protection.  The traversal respects resume operations to
+///          model the stack unwinding performed at runtime.
 class HandlerCoverageTraversal
 {
   public:
+    /// @brief Prepare the traversal with a label lookup table and output buffer.
+    /// @details Stores references to the caller-provided block map and coverage
+    ///          table so the traversal can reuse them without extra allocations.
+    ///          The constructor performs no work beyond capturing these references.
+    /// @param blockMap Mapping from block labels to block pointers.
+    /// @param coverage Table that will be populated with handler coverage sets.
     HandlerCoverageTraversal(const std::unordered_map<std::string, const BasicBlock *> &blockMap,
                              HandlerCoverage &coverage)
         : blockMap(blockMap), coverage(coverage)
     {
     }
 
+    /// @brief Execute the traversal to collect handler coverage for @p fn.
+    /// @details Seeds the worklist with the entry block and iteratively explores
+    ///          successors while updating handler stacks, recording coverage for
+    ///          potentially faulting instructions, and enqueuing trap and
+    ///          fall-through destinations until all reachable states have been
+    ///          processed.
+    /// @param fn Function whose handler coverage should be computed.
     void compute(const Function &fn)
     {
         if (fn.blocks.empty())
@@ -456,6 +518,15 @@ class HandlerCoverageTraversal
         bool hasResumeToken = false;
     };
 
+    /// @brief Update traversal state for a single EH-aware instruction.
+    /// @details Records coverage for potentially faulting opcodes, manipulates the
+    ///          handler stack for push/pop/resume operations, and returns the
+    ///          instruction when it serves as a block terminator so callers can
+    ///          schedule successor exploration.
+    /// @param instr Instruction currently being evaluated.
+    /// @param bb Owning basic block.
+    /// @param state Mutable traversal state for the block.
+    /// @return Pointer to @p instr when it terminates the block; otherwise nullptr.
     const Instr *processEhInstruction(const Instr &instr, const BasicBlock &bb, State &state)
     {
         if (!state.hasResumeToken && !state.handlerStack.empty() &&
@@ -495,6 +566,13 @@ class HandlerCoverageTraversal
         return nullptr;
     }
 
+    /// @brief Schedule the handler path when encountering a trap terminator.
+    /// @details Records coverage for the faulting block, prepares the successor state
+    ///          that resumes execution inside the handler, and enqueues it for
+    ///          further processing with a resume token in hand.
+    /// @param bb Block that terminates with a trap instruction.
+    /// @param state Traversal state captured at the trap site.
+    /// @param worklist Pending states awaiting exploration.
     void handleTrapTerminator(const BasicBlock &bb, const State &state, std::deque<State> &worklist)
     {
         if (state.handlerStack.empty())
@@ -513,6 +591,13 @@ class HandlerCoverageTraversal
         enqueueState(std::move(nextState), worklist);
     }
 
+    /// @brief Queue successor blocks reached via @p terminator.
+    /// @details Copies the traversal state, adjusts the resume-token flag for
+    ///          resume-label terminators, and enqueues each successor while
+    ///          deduplicating via the visited table.
+    /// @param terminator Instruction whose successors should be enqueued.
+    /// @param state Traversal state captured at the end of the block.
+    /// @param worklist Pending states awaiting exploration.
     void enqueueSuccessors(const Instr &terminator, const State &state, std::deque<State> &worklist)
     {
         const std::vector<const BasicBlock *> successors = gatherSuccessors(terminator, blockMap);
@@ -526,6 +611,12 @@ class HandlerCoverageTraversal
         }
     }
 
+    /// @brief Push a new traversal state if it has not been explored yet.
+    /// @details Computes a memoisation key from the handler stack and resume flag;
+    ///          only unseen states are appended to the worklist, preventing
+    ///          exponential blow-up when handlers nest deeply.
+    /// @param state Candidate traversal state.
+    /// @param worklist Pending states awaiting exploration.
     void enqueueState(State state, std::deque<State> &worklist)
     {
         if (!state.block)
@@ -543,6 +634,13 @@ class HandlerCoverageTraversal
     std::unordered_map<const BasicBlock *, std::unordered_set<std::string>> visited;
 };
 
+/// @brief Compute handler coverage by delegating to the traversal helper.
+/// @details Instantiates @ref HandlerCoverageTraversal with the provided CFG map
+///          and executes it over the function, returning the populated coverage
+///          table to the caller.
+/// @param fn Function whose handlers should be analysed.
+/// @param blockMap Mapping from labels to block pointers.
+/// @return Coverage table keyed by handler block pointers.
 HandlerCoverage computeHandlerCoverage(const Function &fn, const CFG &blockMap)
 {
     HandlerCoverage coverage;
@@ -710,6 +808,13 @@ ErrorOr<void> checkDominanceOfHandlers(const Function &fn, const CFG &blockMap)
     return {};
 }
 
+/// @brief Placeholder for detecting handlers that cannot be reached.
+/// @details Stubbed out for future expansion of the verifier.  The function is
+///          retained so callers can wire in the analysis without altering call
+///          sites when the implementation arrives.
+/// @param fn Function being inspected.
+/// @param blockMap Mapping from labels to block pointers.
+/// @return Currently always succeeds.
 ErrorOr<void> checkUnreachableHandlers(const Function &fn, const CFG &blockMap)
 {
     (void)fn;
@@ -717,6 +822,14 @@ ErrorOr<void> checkUnreachableHandlers(const Function &fn, const CFG &blockMap)
     return {};
 }
 
+/// @brief Validate resume-label terminators against handler coverage data.
+/// @details Uses the computed handler coverage and post-dominator relation to
+///          ensure each resume-label transfer targets a handler that can be
+///          reached from the faulting block and that post-dominates it, mirroring
+///          the runtime unwinding semantics.
+/// @param fn Function whose resume edges are analysed.
+/// @param blockMap Mapping from labels to block pointers.
+/// @return Success or a diagnostic describing the invalid resume edge.
 ErrorOr<void> checkResumeEdges(const Function &fn, const CFG &blockMap)
 {
     const HandlerCoverage coverage = computeHandlerCoverage(fn, blockMap);

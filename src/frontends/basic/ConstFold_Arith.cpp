@@ -1,10 +1,16 @@
-// File: src/frontends/basic/ConstFold_Arith.cpp
-// License: MIT License. See LICENSE in the project root for full license
-//          information.
-// Purpose: Implements arithmetic constant folding utilities for BASIC expressions.
-// Key invariants: Numeric folding honors BASIC promotion rules and 64-bit wrap-around semantics.
-// Ownership/Lifetime: Returned expressions are heap-allocated and owned by callers.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements arithmetic constant folding for BASIC expressions.  The routines
+// evaluate literal operands using BASIC promotion and overflow rules so the
+// front end can replace subtrees with pre-computed results without altering
+// runtime behaviour.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/ConstFold_Arith.hpp"
 
@@ -19,10 +25,9 @@ namespace il::frontends::basic::detail
 namespace
 {
 /// @brief Perform two's-complement addition with wrap-around semantics.
-///
-/// BASIC integer arithmetic uses 64-bit wrapping behaviour.  Casting the
-/// operands to unsigned values mirrors the machine-level wrap before converting
-/// back to a signed representation for further processing.
+/// @details BASIC integer arithmetic uses 64-bit wrapping behaviour.  Casting the
+///          operands to unsigned values mirrors the machine-level wrap before converting
+///          back to a signed representation for further processing.
 ///
 /// @param a First operand.
 /// @param b Second operand.
@@ -33,9 +38,8 @@ long long wrapAdd(long long a, long long b)
 }
 
 /// @brief Perform two's-complement subtraction with wrap-around semantics.
-///
-/// Mirrors @ref wrapAdd but computes the difference `a - b` modulo 2^64 to
-/// reflect BASIC overflow behaviour.
+/// @details Mirrors @ref wrapAdd but computes the difference `a - b` modulo 2^64 to
+///          reflect BASIC overflow behaviour.
 ///
 /// @param a Minuend operand.
 /// @param b Subtrahend operand.
@@ -46,10 +50,9 @@ long long wrapSub(long long a, long long b)
 }
 
 /// @brief Perform two's-complement multiplication with wrap-around semantics.
-///
-/// Multiplication is performed in unsigned space so overflow simply wraps.  The
-/// result is then converted back to the signed domain to match BASIC runtime
-/// behaviour.
+/// @details Multiplication is performed in unsigned space so overflow simply wraps.  The
+///          result is then converted back to the signed domain to match BASIC runtime
+///          behaviour.
 ///
 /// @param a First operand.
 /// @param b Second operand.
@@ -60,11 +63,10 @@ long long wrapMul(long long a, long long b)
 }
 
 /// @brief Fold addition of two numeric literals.
-///
-/// Promotes operands according to BASIC rules before performing integer or
-/// floating-point addition.  When both operands are 16-bit integers and the
-/// result overflows the range required by the BASIC spec, folding is aborted to
-/// let runtime semantics report the overflow.
+/// @details Promotes operands according to BASIC rules before performing integer or
+///          floating-point addition.  When both operands are 16-bit integers and the
+///          result overflows the range required by the BASIC spec, folding is aborted to
+///          let runtime semantics report the overflow.
 ///
 /// @param lhsRaw Left-hand operand prior to promotion.
 /// @param rhsRaw Right-hand operand prior to promotion.
@@ -93,10 +95,9 @@ std::optional<Numeric> foldAdd(const Numeric &lhsRaw, const Numeric &rhsRaw)
 }
 
 /// @brief Fold subtraction of two numeric literals.
-///
-/// Applies the same promotion rules as @ref foldAdd and either performs wrapped
-/// integer subtraction or floating-point subtraction depending on the promoted
-/// operand types.
+/// @details Applies the same promotion rules as @ref foldAdd and either performs wrapped
+///          integer subtraction or floating-point subtraction depending on the promoted
+///          operand types.
 ///
 /// @param lhsRaw Left-hand operand before promotion.
 /// @param rhsRaw Right-hand operand before promotion.
@@ -119,9 +120,8 @@ std::optional<Numeric> foldSub(const Numeric &lhsRaw, const Numeric &rhsRaw)
 }
 
 /// @brief Fold multiplication of two numeric literals.
-///
-/// Performs wrapped integer multiplication or floating-point multiplication
-/// according to the promoted operand types.
+/// @details Performs wrapped integer multiplication or floating-point multiplication
+///          according to the promoted operand types.
 ///
 /// @param lhsRaw Left-hand operand prior to promotion.
 /// @param rhsRaw Right-hand operand prior to promotion.
@@ -144,9 +144,8 @@ std::optional<Numeric> foldMul(const Numeric &lhsRaw, const Numeric &rhsRaw)
 }
 
 /// @brief Fold floating-point division of two numeric literals.
-///
-/// Division always yields a floating-point result in BASIC.  When the divisor is
-/// zero folding is aborted so the runtime can raise the appropriate exception.
+/// @details Division always yields a floating-point result in BASIC.  When the divisor is
+///          zero folding is aborted so the runtime can raise the appropriate exception.
 ///
 /// @param lhsRaw Numerator prior to promotion.
 /// @param rhsRaw Denominator prior to promotion.
@@ -166,9 +165,8 @@ std::optional<Numeric> foldDiv(const Numeric &lhsRaw, const Numeric &rhsRaw)
 }
 
 /// @brief Fold integer division of two numeric literals.
-///
-/// Only executes when both operands are integer-valued and the divisor is
-/// non-zero.  Otherwise the operation cannot be folded safely.
+/// @details Only executes when both operands are integer-valued and the divisor is
+///          non-zero.  Otherwise the operation cannot be folded safely.
 ///
 /// @param lhsRaw Dividend prior to promotion.
 /// @param rhsRaw Divisor prior to promotion.
@@ -186,9 +184,8 @@ std::optional<Numeric> foldIDiv(const Numeric &lhsRaw, const Numeric &rhsRaw)
 }
 
 /// @brief Fold modulo of two integer literals.
-///
-/// Requires both operands to be integers and the divisor to be non-zero.  The
-/// behaviour matches BASIC's integer remainder semantics.
+/// @details Requires both operands to be integers and the divisor to be non-zero.  The
+///          behaviour matches BASIC's integer remainder semantics.
 ///
 /// @param lhsRaw Dividend prior to promotion.
 /// @param rhsRaw Divisor prior to promotion.
@@ -206,8 +203,7 @@ std::optional<Numeric> foldMod(const Numeric &lhsRaw, const Numeric &rhsRaw)
 }
 
 /// @brief Evaluate a floating-point comparison.
-///
-/// @param op Comparison operator being applied.
+/// @details @param op Comparison operator being applied.
 /// @param lhs Left-hand value.
 /// @param rhs Right-hand value.
 /// @return True when the comparison holds; false otherwise.
@@ -233,8 +229,7 @@ bool compareFloat(BinaryExpr::Op op, double lhs, double rhs)
 }
 
 /// @brief Evaluate an integer comparison.
-///
-/// @param op Comparison operator being applied.
+/// @details @param op Comparison operator being applied.
 /// @param lhs Left-hand value.
 /// @param rhs Right-hand value.
 /// @return True when the comparison holds; false otherwise.
@@ -262,11 +257,10 @@ bool compareInt(BinaryExpr::Op op, long long lhs, long long rhs)
 } // namespace
 
 /// @brief Fold a binary arithmetic expression when both operands are numeric literals.
-///
-/// Delegates to @ref foldNumericBinary with a callback that applies the requested
-/// operator via @ref tryFoldBinaryArith.  Keeping the dispatch in one place makes
-/// it easy for callers to produce literal replacements without duplicating
-/// numeric promotion logic.
+/// @details Delegates to @ref foldNumericBinary with a callback that applies the requested
+///          operator via @ref tryFoldBinaryArith.  Keeping the dispatch in one place makes
+///          it easy for callers to produce literal replacements without duplicating
+///          numeric promotion logic.
 ///
 /// @param l Left-hand operand.
 /// @param op Arithmetic operator to evaluate.
@@ -284,10 +278,9 @@ ExprPtr foldBinaryArith(const Expr &l, BinaryExpr::Op op, const Expr &r)
 }
 
 /// @brief Fold a unary arithmetic expression when the operand is numeric.
-///
-/// Supports unary plus and minus by either forwarding the operand unchanged or
-/// negating it using floating-point negation/wrap-around subtraction depending
-/// on the operand type.
+/// @details Supports unary plus and minus by either forwarding the operand unchanged or
+///          negating it using floating-point negation/wrap-around subtraction depending
+///          on the operand type.
 ///
 /// @param op Unary operator kind.
 /// @param v Operand expression to inspect.
@@ -313,10 +306,9 @@ ExprPtr foldUnaryArith(UnaryExpr::Op op, const Expr &v)
 }
 
 /// @brief Fold a numeric comparison when operands are literals.
-///
-/// Relies on @ref tryFoldCompare to produce the 0/1 integer literal that
-/// represents the boolean outcome while respecting the caller's request to allow
-/// or disallow floating-point participation.
+/// @details Relies on @ref tryFoldCompare to produce the 0/1 integer literal that
+///          represents the boolean outcome while respecting the caller's request to allow
+///          or disallow floating-point participation.
 ///
 /// @param l Left-hand operand.
 /// @param op Comparison operator to evaluate.
@@ -335,9 +327,8 @@ ExprPtr foldCompare(const Expr &l, BinaryExpr::Op op, const Expr &r, bool allowF
 }
 
 /// @brief Dispatch to an operator-specific folding helper.
-///
-/// Keeps the per-operator arithmetic in dedicated helpers while exposing a
-/// simple interface for @ref foldBinaryArith to invoke.
+/// @details Keeps the per-operator arithmetic in dedicated helpers while exposing a
+///          simple interface for @ref foldBinaryArith to invoke.
 ///
 /// @param lhsRaw Left-hand operand prior to promotion.
 /// @param op Arithmetic operator to execute.
@@ -366,9 +357,8 @@ std::optional<Numeric> tryFoldBinaryArith(const Numeric &lhsRaw, BinaryExpr::Op 
 }
 
 /// @brief Evaluate a unary arithmetic operator on a numeric literal.
-///
-/// Supports unary plus (no-op) and unary minus (negation).  Integer negation
-/// uses @ref wrapSub to maintain wrap-around semantics.
+/// @details Supports unary plus (no-op) and unary minus (negation).  Integer negation
+///          uses @ref wrapSub to maintain wrap-around semantics.
 ///
 /// @param op Unary operator to apply.
 /// @param value Operand already promoted by the caller.
@@ -397,10 +387,9 @@ std::optional<Numeric> tryFoldUnaryArith(UnaryExpr::Op op, const Numeric &value)
 }
 
 /// @brief Evaluate a comparison between two promoted numeric literals.
-///
-/// Applies BASIC promotion rules, optionally forbidding floating-point
-/// participation, and converts the boolean result into a Numeric with integer
-/// payload 0/1.
+/// @details Applies BASIC promotion rules, optionally forbidding floating-point
+///          participation, and converts the boolean result into a Numeric with integer
+///          payload 0/1.
 ///
 /// @param lhsRaw Left-hand operand prior to promotion.
 /// @param op Comparison operator.
