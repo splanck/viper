@@ -1,7 +1,30 @@
-// tui/src/util/unicode.cpp
-// @brief Implements Unicode width and UTF-8 decoding helpers.
-// @invariant Width table covers common ranges; others default to width 1.
-// @ownership No ownership beyond returned strings.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/src/util/unicode.cpp
+// Purpose: Provide Unicode utilities for width computation and UTF-8 decoding
+//          used by the Viper TUI text rendering subsystem.
+// Key invariants: Routines never allocate more than the returned containers,
+//                 operate on well-formed UTF-8 without invoking undefined
+//                 behaviour, and gracefully substitute replacement characters
+//                 for malformed sequences.
+// Ownership/Lifetime: Functions borrow input views and return value-owned
+//                     containers so callers retain full control over storage.
+// Links: docs/architecture.md#vipertui-architecture
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements Unicode width classification and UTF-8 decoding helpers.
+/// @details Rendering widgets need to reason about East Asian full-width code
+///          points and robustly decode arbitrary UTF-8 user input.  This file
+///          consolidates the lookup tables and decoding loop so every widget
+///          relies on the same behaviour for combining marks, overlong encodings,
+///          and invalid byte sequences.
 
 #include "tui/util/unicode.hpp"
 
@@ -28,6 +51,15 @@ constexpr Range wide_ranges[] = {{0x1100, 0x115F},
                                  {0x30000, 0x3FFFD}};
 } // namespace
 
+/// @brief Compute the terminal column width of a Unicode code point.
+/// @details Treats combining marks in the U+0300–U+036F range as zero-width and
+///          recognises East Asian full-width ranges listed in @ref wide_ranges.
+///          The helper performs only integer comparisons, making it suitable for
+///          per-code-point queries within rendering hot paths.  Code points that
+///          fall outside the known wide ranges default to width @c 1, matching
+///          common terminal behaviour.
+/// @param cp Unicode scalar value to classify.
+/// @return @c 0 for combining marks, @c 2 for full-width glyphs, otherwise @c 1.
 int char_width(char32_t cp)
 {
     if (cp >= 0x0300 && cp <= 0x036F)
@@ -44,6 +76,18 @@ int char_width(char32_t cp)
     return 1;
 }
 
+/// @brief Decode a UTF-8 byte sequence into a UTF-32 string.
+/// @details Iterates through @p in using a hand-written state machine that
+///          handles one-, two-, three-, and four-byte UTF-8 sequences.  Invalid
+///          headers, truncated continuation bytes, surrogate halves, or overlong
+///          encodings trigger insertion of U+FFFD while advancing by a single
+///          byte so the decoder makes forward progress.  Successful decodes
+///          append the resulting scalar value to the output string.  The
+///          resulting container owns its storage, leaving callers free to retain
+///          the decoded content independently of the input view.
+/// @param in UTF-8 encoded byte span to convert.
+/// @return UTF-32 string containing decoded scalar values with replacement
+///         characters substituted for malformed regions.
 std::u32string decode_utf8(std::string_view in)
 {
     std::u32string out;
