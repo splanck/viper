@@ -1,13 +1,41 @@
-// tui/src/term/Utf8Decoder.cpp
-// @brief Implements incremental UTF-8 decoding utilities.
-// @invariant Maintains continuation expectations across bytes.
-// @ownership Owns decoder state only.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/src/term/Utf8Decoder.cpp
+// Purpose: Provide the incremental UTF-8 decoder that converts terminal byte
+//          streams into Unicode code points for the input subsystem.
+// Key invariants: Decoder tracks the number of expected continuation bytes,
+//                 rejects overlong and surrogate-range encodings, and requests
+//                 that callers replay bytes that begin a new sequence after an
+//                 error.
+// Ownership/Lifetime: Utf8Decoder stores only its internal state; callers
+//                     manage the buffers that feed bytes into @ref feed().
+// Links: docs/architecture.md#vipertui-architecture, Unicode Standard §3.9
+//
+//===----------------------------------------------------------------------===//
 
 #include "tui/term/Utf8Decoder.hpp"
 
 namespace viper::tui::term
 {
 
+/// @brief Consume a single byte from the terminal and produce decoding status.
+/// @details Implements a small state machine that recognises one- through
+///          four-byte UTF-8 sequences.  When the decoder is idle (no expected
+///          continuation bytes), it classifies the incoming byte as either an
+///          ASCII code point, the leading byte of a multibyte sequence, or an
+///          error.  Continuation bytes update the accumulated code point; once
+///          the sequence completes, the helper validates against overlong forms,
+///          surrogate halves, and the Unicode maximum before reporting success.
+///          Errors reset the state and request that the caller replay the byte
+///          if it might begin a new sequence.
+/// @param byte Next octet sourced from the terminal stream.
+/// @return Struct describing whether a code point was produced, whether an
+///          error occurred, and if the caller should replay the input byte.
 Utf8Result Utf8Decoder::feed(unsigned char byte) noexcept
 {
     Utf8Result result{};
@@ -91,11 +119,20 @@ Utf8Result Utf8Decoder::feed(unsigned char byte) noexcept
     return result;
 }
 
+/// @brief Report whether the decoder awaits continuation bytes.
+/// @details The decoder is considered idle when no continuation bytes are
+///          outstanding.  Callers can use this to detect incomplete multibyte
+///          sequences at the end of an input buffer.
+/// @return @c true when the decoder is ready for a new leading byte.
 bool Utf8Decoder::idle() const noexcept
 {
     return expected_ == 0;
 }
 
+/// @brief Clear the decoder state after errors or explicit restarts.
+/// @details Resets the accumulated code point, the expected continuation count,
+///          and the cached sequence length.  Callers typically invoke this in
+///          response to fatal terminal protocol errors.
 void Utf8Decoder::reset() noexcept
 {
     cp_ = 0;
