@@ -1,7 +1,28 @@
-// tui/src/term/input.cpp
-// @brief Implements UTF-8 input decoding into terminal events.
-// @invariant Partial UTF-8 sequences are preserved across feeds.
-// @ownership Owns decoded event queues; no ownership of input bytes.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/src/term/input.cpp
+// Purpose: Decode raw terminal byte streams into structured key, mouse, and
+//          paste events for ViperTUI applications.
+// Key invariants: Partial UTF-8 sequences survive across feed calls and escape
+//                 state machines preserve queued parameters until completion.
+// Ownership/Lifetime: The decoder owns event buffers but borrows incoming byte
+//                     spans supplied by the caller.
+// Links: docs/tools.md#input-decoder
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements the terminal input decoder responsible for translating
+///        raw escape sequences into higher-level events.
+/// @details The decoder maintains a small finite-state machine capable of
+///          understanding UTF-8 code points, CSI/SS3 sequences, mouse reporting,
+///          and bracketed paste mode.  Callers feed arbitrary byte ranges and
+///          drain accumulated events when ready to process them.
 
 #include "tui/term/input.hpp"
 
@@ -10,11 +31,21 @@
 namespace viper::tui::term
 {
 
+/// @brief Construct an input decoder with empty event buffers.
+/// @details Initialises the CSI parser with references to the decoder's
+///          internal event storage so that parsed escape sequences can append
+///          events directly.
 InputDecoder::InputDecoder()
     : csi_parser_(key_events_, mouse_events_, paste_buf_)
 {
 }
 
+/// @brief Translate a Unicode code point into a @ref KeyEvent.
+/// @details ASCII control characters are mapped to dedicated key codes while
+///          printable characters populate the @c codepoint field.  Unknown
+///          control codes are surfaced as @c Code::Unknown to keep clients aware
+///          of unusual sequences.
+/// @param cp Code point produced by the UTF-8 decoder.
 void InputDecoder::emit(uint32_t cp)
 {
     KeyEvent ev{};
@@ -47,6 +78,13 @@ void InputDecoder::emit(uint32_t cp)
     key_events_.push_back(ev);
 }
 
+/// @brief Process the final byte of a CSI sequence.
+/// @details Delegates to @ref CsiParser::handle to populate key, mouse, or paste
+///          events and transitions the decoder state machine into paste mode
+///          when OSC 200/201 markers are observed.
+/// @param final Final character identifying the CSI command.
+/// @param params Raw parameter substring captured prior to @p final.
+/// @return The new decoder state following CSI handling.
 InputDecoder::State InputDecoder::handle_csi(char final, std::string_view params)
 {
     auto result = csi_parser_.handle(final, params);
@@ -57,6 +95,12 @@ InputDecoder::State InputDecoder::handle_csi(char final, std::string_view params
     return State::Utf8;
 }
 
+/// @brief Handle SS3 escape sequences used for legacy function keys.
+/// @details SS3 sequences report modifiers in the same format as CSI, so the
+///          implementation reuses @ref CsiParser facilities for parameter
+///          decoding before emitting the resulting key event.
+/// @param final Terminator indicating which key was pressed.
+/// @param params Parameter substring that may include modifier information.
 void InputDecoder::handle_ss3(char final, std::string_view params)
 {
     auto nums = csi_parser_.parse_params(params);
@@ -106,6 +150,12 @@ void InputDecoder::handle_ss3(char final, std::string_view params)
     key_events_.push_back(ev);
 }
 
+/// @brief Feed raw terminal bytes into the decoder state machine.
+/// @details Iterates over each byte, distinguishing UTF-8 payloads from escape
+///          sequences, and buffers intermediate data until complete events are
+///          formed.  Bracketed paste regions are collected verbatim until the
+///          closing terminator arrives.
+/// @param bytes Chunk of terminal output to decode.
 void InputDecoder::feed(std::string_view bytes)
 {
     for (size_t i = 0; i < bytes.size(); ++i)
@@ -230,6 +280,10 @@ void InputDecoder::feed(std::string_view bytes)
     }
 }
 
+/// @brief Retrieve and clear the pending key events.
+/// @details Moves the accumulated vector out of the decoder, leaving the
+///          internal storage empty for future feeds.
+/// @return Sequence of key events ready for consumption.
 std::vector<KeyEvent> InputDecoder::drain()
 {
     auto out = std::move(key_events_);
@@ -237,6 +291,9 @@ std::vector<KeyEvent> InputDecoder::drain()
     return out;
 }
 
+/// @brief Retrieve decoded mouse events.
+/// @details Works like @ref drain but operates on the mouse event buffer.
+/// @return Vector of mouse events produced since the last drain.
 std::vector<MouseEvent> InputDecoder::drain_mouse()
 {
     auto out = std::move(mouse_events_);
@@ -244,6 +301,10 @@ std::vector<MouseEvent> InputDecoder::drain_mouse()
     return out;
 }
 
+/// @brief Retrieve accumulated bracketed paste payloads.
+/// @details Returns any completed paste operations gathered from OSC 200/201
+///          sequences and clears the internal buffer.
+/// @return Vector of paste events ready for processing.
 std::vector<PasteEvent> InputDecoder::drain_paste()
 {
     auto out = std::move(paste_events_);

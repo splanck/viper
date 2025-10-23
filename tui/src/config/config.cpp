@@ -1,7 +1,29 @@
-// tui/src/config/config.cpp
-// @brief INI-like configuration loader implementation.
-// @invariant Reads sections [theme], [keymap.global], and [editor].
-// @ownership Loader does not own external resources beyond file path.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/src/config/config.cpp
+// Purpose: Implement the INI-style configuration loader shared by ViperTUI
+//          applications.
+// Key invariants: Only the [theme], [keymap.global], and [editor] sections are
+//                 recognized today, and unknown keys are ignored so that
+//                 defaults remain intact.
+// Ownership/Lifetime: The loader materializes data into the supplied Config
+//                     instance and otherwise borrows file descriptors and
+//                     string views.
+// Links: docs/tools.md#configuration
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Parses INI-like configuration files into @ref viper::tui::config::Config.
+/// @details The implementation favours robustness: leading/trailing whitespace
+///          is trimmed, unrecognized sections are skipped, and malformed entries
+///          leave the destination structure untouched.  Helpers live in an
+///          anonymous namespace to keep the translation unit self-contained.
 
 #include "tui/config/config.hpp"
 
@@ -18,6 +40,12 @@ namespace viper::tui::config
 
 namespace
 {
+/// @brief Remove leading and trailing ASCII whitespace from a string view.
+/// @details The helper walks the bounds of the provided view without copying
+///          intermediate substrings and then returns an owning @c std::string
+///          containing the trimmed characters.
+/// @param sv Source view to trim.
+/// @return A new @c std::string with surrounding whitespace stripped.
 std::string trim(std::string_view sv)
 {
     while (!sv.empty() && std::isspace(static_cast<unsigned char>(sv.front())))
@@ -31,6 +59,13 @@ std::string trim(std::string_view sv)
     return std::string(sv);
 }
 
+/// @brief Decode a hex RGB triplet into an RGBA colour.
+/// @details Accepts values in the form ``#RRGGBB`` or ``RRGGBB`` and stores the
+///          converted components in @p out.  The alpha channel is forced to 255
+///          to match terminal expectations.
+/// @param s Input colour string.
+/// @param out Destination colour populated on success.
+/// @return @c true when parsing succeeds, otherwise @c false.
 bool parse_color(const std::string &s, render::RGBA &out)
 {
     std::string hex = s;
@@ -56,6 +91,12 @@ bool parse_color(const std::string &s, render::RGBA &out)
     return true;
 }
 
+/// @brief Convert a symbolic key name into a @ref term::KeyEvent::Code.
+/// @details Handles named control keys (``enter``, ``esc``), arrow keys, page
+///          navigation, delete/insert, and function keys (``f1``–``f12``).  Any
+///          unrecognized name maps to @c Code::Unknown.
+/// @param name Case-insensitive key name token.
+/// @return The corresponding @ref term::KeyEvent::Code enumerator.
 term::KeyEvent::Code parse_code(const std::string &name)
 {
     using Code = term::KeyEvent::Code;
@@ -123,6 +164,13 @@ term::KeyEvent::Code parse_code(const std::string &name)
     return Code::Unknown;
 }
 
+/// @brief Parse a key chord specification such as ``Ctrl+Shift+K``.
+/// @details The routine recognises modifier tokens (Ctrl, Alt, Shift) and
+///          delegates to @ref parse_code for named keys.  Single-character tokens
+///          are interpreted as Unicode code points.  Missing components produce
+///          default-initialised modifiers.
+/// @param str User-supplied chord string.
+/// @return Normalised key chord ready for configuration binding.
 input::KeyChord parse_chord(const std::string &str)
 {
     input::KeyChord kc{};
@@ -164,6 +212,11 @@ input::KeyChord parse_chord(const std::string &str)
     return kc;
 }
 
+/// @brief Interpret a boolean configuration value.
+/// @details Accepts ``1``, ``true``, or ``yes`` (case-insensitive) as true and
+///          treats all other strings as false.
+/// @param s Raw value token to normalise.
+/// @return @c true when @p s represents a truthy value.
 bool parse_bool(const std::string &s)
 {
     std::string lower;
@@ -175,6 +228,15 @@ bool parse_bool(const std::string &s)
 
 } // namespace
 
+/// @brief Load configuration data from an INI-like file.
+/// @details The loader iterates line-by-line, ignoring comments and blank
+///          lines, dispatching recognised sections to specialised handlers.  On
+///          failure to open the file the function returns @c false without
+///          mutating @p out.  Successfully parsed keys update the corresponding
+///          substructures in place.
+/// @param path Filesystem path to read.
+/// @param out Destination configuration populated with parsed values.
+/// @return @c true when the file was opened and processed.
 bool loadFromFile(const std::string &path, Config &out)
 {
     std::ifstream in(path);
