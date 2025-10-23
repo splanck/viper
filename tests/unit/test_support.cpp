@@ -23,6 +23,11 @@ struct SourceManagerTestAccess
     {
         sm.next_file_id_ = next;
     }
+
+    static size_t storedPathCount(const SourceManager &sm)
+    {
+        return sm.files_.size();
+    }
 };
 } // namespace il::support
 
@@ -87,6 +92,17 @@ int main()
     std::string_view refreshed_view = viewSm.getPath(first_id);
     assert(first_view == refreshed_view);
     assert(first_data == refreshed_view.data());
+
+    // Re-adding an existing path should reuse the identifier and avoid growth.
+    il::support::SourceManager dedupeSm;
+    const uint32_t dedupeFirst = dedupeSm.addFile("./dupe/path/../file.txt");
+    assert(dedupeFirst != 0);
+    const size_t stored_before = il::support::SourceManagerTestAccess::storedPathCount(dedupeSm);
+    const uint32_t dedupeSecond = dedupeSm.addFile("dupe/./file.txt");
+    assert(dedupeSecond == dedupeFirst);
+    const size_t stored_after = il::support::SourceManagerTestAccess::storedPathCount(dedupeSm);
+    assert(stored_before == stored_after);
+    assert(dedupeSm.getPath(dedupeFirst) == "dupe/file.txt");
 
     // Diagnostics missing a registered path should not emit a leading colon.
     il::support::Diag missingPath{

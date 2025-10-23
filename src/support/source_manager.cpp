@@ -30,6 +30,15 @@
 
 namespace il::support
 {
+namespace
+{
+std::string normalizePath(std::string path)
+{
+    std::filesystem::path p(std::move(path));
+    return p.lexically_normal().generic_string();
+}
+} // namespace
+
 
 /// @brief Register a file path and assign it a stable identifier.
 ///
@@ -44,6 +53,11 @@ namespace il::support
 /// @return Identifier (>0) representing the stored path.
 uint32_t SourceManager::addFile(std::string path)
 {
+    std::string normalized = normalizePath(std::move(path));
+
+    if (auto it = path_to_id_.find(normalized); it != path_to_id_.end())
+        return it->second;
+
     if (next_file_id_ > std::numeric_limits<uint32_t>::max())
     {
         auto diag = makeError({}, "source manager exhausted file identifier space");
@@ -51,9 +65,10 @@ uint32_t SourceManager::addFile(std::string path)
         return 0;
     }
 
-    std::filesystem::path p(std::move(path));
-    files_.push_back(p.lexically_normal().generic_string());
-    return static_cast<uint32_t>(next_file_id_++);
+    const uint32_t file_id = static_cast<uint32_t>(next_file_id_++);
+    files_.push_back(std::move(normalized));
+    path_to_id_.emplace(files_.back(), file_id);
+    return file_id;
 }
 
 /// @brief Retrieve the canonical path associated with a file identifier.
