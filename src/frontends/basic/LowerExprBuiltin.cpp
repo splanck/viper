@@ -301,9 +301,7 @@ Lowerer::RVal BuiltinExprLowering::emitEofBuiltin(Lowerer &lowerer, const Builti
     }
 
     lowerer.curLoc = expr.loc;
-    Lowerer::RVal widened{raw, IlType(IlKind::I32)};
-    widened = lowerer.ensureI64(std::move(widened), expr.loc);
-    return widened;
+    return {rawI64, IlType(IlKind::I64)};
 }
 
 /// @brief Lower the LOC builtin that reports the current file position.
