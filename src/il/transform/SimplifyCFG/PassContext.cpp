@@ -1,11 +1,22 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Provides the shared context plumbing used by the SimplifyCFG transformation
+// pass.  The context aggregates statistics, surfaces logging helpers, and
+// exposes exception-sensitivity queries consumed by individual rewrites.
+//
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Implements the shared context used by the SimplifyCFG pass.
-/// @details The context exposes logging helpers, EH sensitivity queries, and the
-/// pass statistics aggregation required by the various transformation modules.
+/// @brief Shared services for the SimplifyCFG transformation pass.
+/// @details The context owns references to the current function, optional
+///          module, and statistics accumulator while lazily reading debug
+///          configuration from the environment.  Transformation helpers use the
+///          accessors in this unit to coordinate logging and EH checks.
 
 #include "il/transform/SimplifyCFG.hpp"
 
@@ -17,6 +28,10 @@ namespace il::transform
 {
 
 /// @brief Build a pass context that exposes shared SimplifyCFG services.
+/// @details Captures references to the function, optional module, and the
+///          statistics sink provided by the caller.  The constructor also reads
+///          the debug-logging environment flag once so that subsequent logging
+///          checks remain constant-time.
 /// @param function Function currently being simplified.
 /// @param module Optional module owning @p function; enables verifier hooks.
 /// @param stats Mutable statistics accumulator shared with the caller.

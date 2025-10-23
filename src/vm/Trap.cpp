@@ -1,19 +1,23 @@
 //===----------------------------------------------------------------------===//
 //
-// This file is part of the Viper project, under the MIT License.
+// Part of the Viper project, under the MIT License.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-// File: src/vm/Trap.cpp
-// Purpose: Provide helpers that materialise, inspect, and report VM trap states.
-// Key invariants: Trap tokens are owned either by the active VM instance or the
-//                 thread-local fallback and must be marked valid before use.
-// Ownership/Lifetime: Functions borrow VM state; thread-local fallbacks persist
-//                     only for the lifetime of the thread and avoid heap
-//                     allocation.
-// Links: docs/runtime-vm.md#traps
+//
+// Implements trap token helpers for the virtual machine runtime.  The routines
+// convert between enum encodings, manage active trap tokens for both VM-owned
+// and thread-local fallbacks, and provide helpers for raising and formatting
+// runtime traps.
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Trap token management utilities for the VM runtime.
+/// @details This translation unit exposes helpers that translate between raw
+///          integer encodings and @ref TrapKind values, coordinates ownership of
+///          active trap tokens between VM instances and thread-local fallbacks,
+///          and renders human-readable diagnostics for raised traps.
 
 #include "vm/Trap.hpp"
 

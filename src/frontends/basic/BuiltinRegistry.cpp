@@ -1,12 +1,24 @@
-// File: src/frontends/basic/BuiltinRegistry.cpp
-// License: MIT License. See LICENSE in the project root for full license
-//          information.
-// Purpose: Implements registry of BASIC built-ins for semantic analysis and
-//          lowering dispatch.
-// Key invariants: Registry entries correspond 1:1 with BuiltinCallExpr::Builtin
-//                 enum order.
-// Ownership/Lifetime: Static data only.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the declarative BASIC builtin registry used by the semantic
+// analyser and lowering pipeline.  The translation unit owns the static tables
+// that map source spellings to enumerators, provide lowering/scan rules, and
+// expose hooks for dynamically registered intrinsics.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Declarative metadata and lookup utilities for BASIC builtins.
+/// @details The registry centralises builtin descriptors so semantic analysis
+///          and the lowering stages can agree on signatures, runtime feature
+///          requirements, and lowering strategies.  Helper functions in this
+///          unit perform lazy initialisation of lookup tables and expose a
+///          stable API for both static and dynamically registered builtins.
 
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Lowerer.hpp"
@@ -34,6 +46,12 @@ using FeatureAction = LowerRule::Feature::Action;
 
 constexpr std::size_t kBuiltinCount = static_cast<std::size_t>(B::Loc) + 1;
 
+/// @brief Convert a builtin enumerator into a dense array index.
+/// @details All tables in this file store entries densely in declaration order
+///          so the enumerator's numeric value doubles as the correct array
+///          index.  Using a helper keeps the casting logic centralised.
+/// @param b Builtin enumerator being indexed.
+/// @return Zero-based array index corresponding to @p b.
 constexpr std::size_t idx(B b) noexcept
 {
     return static_cast<std::size_t>(b);
@@ -41,6 +59,12 @@ constexpr std::size_t idx(B b) noexcept
 
 using HandlerMap = std::unordered_map<std::string_view, BuiltinHandler>;
 
+/// @brief Access the singleton map storing dynamically registered builtins.
+/// @details The registry persists for the lifetime of the process, allowing
+///          tools or tests to inject custom builtin implementations at runtime.
+///          It is initialised on first use and thereafter reused without further
+///          allocation.
+/// @return Reference to the mutable handler registry.
 HandlerMap &builtinHandlerRegistry()
 {
     static HandlerMap registry{};
@@ -56,6 +80,12 @@ enum class TypeMask : std::uint8_t
     Str = 1U << 2U,
 };
 
+/// @brief Combine two @ref TypeMask values.
+/// @details Enables ergonomic composition of descriptor masks without verbose
+///          static casts at every call site.
+/// @param lhs First mask operand.
+/// @param rhs Second mask operand.
+/// @return Bitwise OR of the supplied masks.
 constexpr TypeMask operator|(TypeMask lhs, TypeMask rhs) noexcept
 {
     return static_cast<TypeMask>(static_cast<std::uint8_t>(lhs) | static_cast<std::uint8_t>(rhs));
@@ -76,12 +106,16 @@ struct BuiltinDescriptor
     SemanticAnalyzer::BuiltinAnalyzer analyze;
 };
 
-/// @brief Declarative builtin table used for name/enum lookups.
-/// Names remain uppercase because lookupBuiltin() performs exact, case-sensitive
-/// matches on normalized BASIC keywords. The arity bounds mirror
-/// SemanticAnalyzer::builtinSignature() so diagnostics continue to enforce the
-/// same argument requirements, and the type masks communicate the possible
-/// result categories to inference helpers.
+/// @brief Build the compile-time descriptor table for each builtin.
+/// @details Names remain uppercase because @ref lookupBuiltin performs exact,
+///          case-sensitive matches on normalized BASIC keywords.  The arity
+///          bounds mirror @ref SemanticAnalyzer::builtinSignature so
+///          diagnostics continue to enforce the same argument requirements, and
+///          the type masks communicate the possible result categories to
+///          inference helpers.  The helper remains constexpr so the resulting
+///          table can populate other constant data structures without runtime
+///          overhead.
+/// @return Fully populated descriptor table.
 constexpr std::array<BuiltinDescriptor, kBuiltinCount> makeBuiltinDescriptors()
 {
     std::array<BuiltinDescriptor, kBuiltinCount> descriptors{};
@@ -94,6 +128,11 @@ constexpr std::array<BuiltinDescriptor, kBuiltinCount> makeBuiltinDescriptors()
 
 constexpr auto kBuiltinDescriptors = makeBuiltinDescriptors();
 
+/// @brief Create the lightweight info table consumed by semantic analysis.
+/// @details Extracts the name and analyser callback from the descriptor table
+///          so the semantic analyser can perform lookups without depending on
+///          lowering metadata.
+/// @return Array mapping builtins to @ref BuiltinInfo records.
 constexpr std::array<BuiltinInfo, kBuiltinCount> makeBuiltinInfos()
 {
     std::array<BuiltinInfo, kBuiltinCount> infos{};
@@ -104,6 +143,10 @@ constexpr std::array<BuiltinInfo, kBuiltinCount> makeBuiltinInfos()
 
 constexpr auto kBuiltins = makeBuiltinInfos();
 
+/// @brief Generate the lowering rule table referenced by lowering passes.
+/// @details Uses an immediately-invoked lambda so additional registration steps
+///          (such as math builtins) can run after the table is initialised while
+///          still keeping the storage static-duration.
 static const std::array<LowerRule, kBuiltinCount> kBuiltinLoweringRules = []
 {
     std::array<LowerRule, kBuiltinCount> rules{};
@@ -114,6 +157,10 @@ static const std::array<LowerRule, kBuiltinCount> kBuiltinLoweringRules = []
     return rules;
 }();
 
+/// @brief Populate the scan rule table for builtin argument traversal.
+/// @details Similar to the lowering table, this lambda initialises the scan
+///          metadata at static initialisation time while still allowing the math
+///          builtin helpers to inject additional patterns.
 static const std::array<BuiltinScanRule, kBuiltinCount> kBuiltinScanRules = []
 {
     std::array<BuiltinScanRule, kBuiltinCount> rules{};
@@ -124,9 +171,12 @@ static const std::array<BuiltinScanRule, kBuiltinCount> kBuiltinScanRules = []
     return rules;
 }();
 
-/// @brief Access the lazily-initialized name-to-enum map.
+/// @brief Access the lazily constructed map from builtin names to enumerators.
 /// @details Entries are stored with canonical uppercase spellings so callers
-/// should normalize BASIC identifiers before lookup.
+///          should normalize BASIC identifiers before lookup.  The map is built
+///          on first use using descriptor data and cached for subsequent
+///          lookups.
+/// @return Reference to the immutable name-to-enum map.
 const std::unordered_map<std::string_view, B> &builtinNameIndex()
 {
     static const auto index = []
@@ -183,6 +233,12 @@ const BuiltinLoweringRule &getBuiltinLoweringRule(BuiltinCallExpr::Builtin b)
     return kBuiltinLoweringRules[static_cast<std::size_t>(b)];
 }
 
+/// @brief Register or remove a dynamically provided builtin handler.
+/// @details Installing a non-null handler either adds a new entry or replaces
+///          an existing one keyed by @p name.  Passing @c nullptr removes the
+///          handler, allowing tests to restore the default behaviour.
+/// @param name Canonical builtin name in uppercase form.
+/// @param fn Handler function to associate with @p name, or nullptr to remove.
 void register_builtin(std::string_view name, BuiltinHandler fn)
 {
     auto &registry = builtinHandlerRegistry();
@@ -192,6 +248,12 @@ void register_builtin(std::string_view name, BuiltinHandler fn)
         registry.erase(name);
 }
 
+/// @brief Locate a dynamically registered builtin handler.
+/// @details Performs an exact lookup against the canonical uppercase spelling.
+///          When no handler exists the function returns @c nullptr so callers
+///          can fall back to the static registry.
+/// @param name Canonical builtin name to query.
+/// @return Installed handler or nullptr when none is registered.
 BuiltinHandler find_builtin(std::string_view name)
 {
     auto &registry = builtinHandlerRegistry();
