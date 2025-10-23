@@ -192,8 +192,7 @@ Lowerer::RVal BuiltinExprLowering::emitLofBuiltin(Lowerer &lowerer, const Builti
 
         ctx.setCurrent(failBlk);
         lowerer.curLoc = expr.loc;
-        Value negCode =
-            lowerer.emitBinary(Opcode::Sub, IlType(IlKind::I64), Value::constInt(0), rawI64);
+        Value negCode = lowerer.emitISub(Value::constInt(0), rawI64);
         Value err32 = lowerer.emitUnary(Opcode::CastSiNarrowChk, IlType(IlKind::I32), negCode);
         lowerer.emitTrapFromErr(err32);
 
