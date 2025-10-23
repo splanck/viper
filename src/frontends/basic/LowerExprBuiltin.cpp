@@ -137,9 +137,17 @@ Lowerer::RVal BuiltinExprLowering::emitLofBuiltin(Lowerer &lowerer, const Builti
     channel = lowerer.normalizeChannelToI32(std::move(channel), expr.loc);
 
     lowerer.curLoc = expr.loc;
-    Value raw = lowerer.emitCallRet(IlType(IlKind::I64), "rt_lof_ch", {channel.value});
+    Value raw32 = lowerer.emitCallRet(IlType(IlKind::I32), "rt_lof_ch", {channel.value});
 
-    Value isError = lowerer.emitBinary(Opcode::SCmpLT, lowerer.ilBoolTy(), raw, Value::constInt(0));
+    Value rawI64 = raw32;
+    {
+        Value scratch = lowerer.emitAlloca(sizeof(int64_t));
+        lowerer.emitStore(IlType(IlKind::I64), scratch, Value::constInt(0));
+        lowerer.emitStore(IlType(IlKind::I32), scratch, raw32);
+        rawI64 = lowerer.emitLoad(IlType(IlKind::I64), scratch);
+    }
+
+    Value isError = lowerer.emitBinary(Opcode::SCmpLT, lowerer.ilBoolTy(), rawI64, Value::constInt(0));
 
     Lowerer::ProcedureContext &ctx = lowerer.context();
     Function *func = ctx.function();
@@ -168,7 +176,7 @@ Lowerer::RVal BuiltinExprLowering::emitLofBuiltin(Lowerer &lowerer, const Builti
         ctx.setCurrent(failBlk);
         lowerer.curLoc = expr.loc;
         Value negCode =
-            lowerer.emitBinary(Opcode::Sub, IlType(IlKind::I64), Value::constInt(0), raw);
+            lowerer.emitBinary(Opcode::Sub, IlType(IlKind::I64), Value::constInt(0), rawI64);
         Value err32 = lowerer.emitUnary(Opcode::CastSiNarrowChk, IlType(IlKind::I32), negCode);
         lowerer.emitTrapFromErr(err32);
 
@@ -176,7 +184,9 @@ Lowerer::RVal BuiltinExprLowering::emitLofBuiltin(Lowerer &lowerer, const Builti
     }
 
     lowerer.curLoc = expr.loc;
-    return {raw, IlType(IlKind::I64)};
+    Lowerer::RVal widened{raw32, IlType(IlKind::I32)};
+    widened = lowerer.ensureI64(std::move(widened), expr.loc);
+    return widened;
 }
 
 /// @brief Lower the EOF builtin with structured error handling.
@@ -272,9 +282,17 @@ Lowerer::RVal BuiltinExprLowering::emitLocBuiltin(Lowerer &lowerer, const Builti
     channel = lowerer.normalizeChannelToI32(std::move(channel), expr.loc);
 
     lowerer.curLoc = expr.loc;
-    Value raw = lowerer.emitCallRet(IlType(IlKind::I64), "rt_loc_ch", {channel.value});
+    Value raw32 = lowerer.emitCallRet(IlType(IlKind::I32), "rt_loc_ch", {channel.value});
 
-    Value isError = lowerer.emitBinary(Opcode::SCmpLT, lowerer.ilBoolTy(), raw, Value::constInt(0));
+    Value rawI64 = raw32;
+    {
+        Value scratch = lowerer.emitAlloca(sizeof(int64_t));
+        lowerer.emitStore(IlType(IlKind::I64), scratch, Value::constInt(0));
+        lowerer.emitStore(IlType(IlKind::I32), scratch, raw32);
+        rawI64 = lowerer.emitLoad(IlType(IlKind::I64), scratch);
+    }
+
+    Value isError = lowerer.emitBinary(Opcode::SCmpLT, lowerer.ilBoolTy(), rawI64, Value::constInt(0));
 
     Lowerer::ProcedureContext &ctx = lowerer.context();
     Function *func = ctx.function();
@@ -303,7 +321,7 @@ Lowerer::RVal BuiltinExprLowering::emitLocBuiltin(Lowerer &lowerer, const Builti
         ctx.setCurrent(failBlk);
         lowerer.curLoc = expr.loc;
         Value negCode =
-            lowerer.emitBinary(Opcode::Sub, IlType(IlKind::I64), Value::constInt(0), raw);
+            lowerer.emitBinary(Opcode::Sub, IlType(IlKind::I64), Value::constInt(0), rawI64);
         Value err32 = lowerer.emitUnary(Opcode::CastSiNarrowChk, IlType(IlKind::I32), negCode);
         lowerer.emitTrapFromErr(err32);
 
@@ -311,7 +329,9 @@ Lowerer::RVal BuiltinExprLowering::emitLocBuiltin(Lowerer &lowerer, const Builti
     }
 
     lowerer.curLoc = expr.loc;
-    return {raw, IlType(IlKind::I64)};
+    Lowerer::RVal widened{raw32, IlType(IlKind::I32)};
+    widened = lowerer.ensureI64(std::move(widened), expr.loc);
+    return widened;
 }
 
 /// @brief Fallback emitter used when no lowering rule exists for a builtin.
