@@ -33,6 +33,14 @@ namespace {
     return "SUBrr";
   case MOpcode::IMULrr:
     return "IMULrr";
+  case MOpcode::DIVS64rr:
+    return "DIVS64rr";
+  case MOpcode::REMS64rr:
+    return "REMS64rr";
+  case MOpcode::CQO:
+    return "CQO";
+  case MOpcode::IDIVrm:
+    return "IDIVrm";
   case MOpcode::XORrr32:
     return "XORrr32";
   case MOpcode::CMPrr:

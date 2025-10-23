@@ -463,6 +463,13 @@ const char* AsmEmitter::mnemonicFor(MOpcode opcode) noexcept {
     return "subq";
   case MOpcode::IMULrr:
     return "imulq";
+  case MOpcode::DIVS64rr:
+  case MOpcode::REMS64rr:
+    return nullptr;
+  case MOpcode::CQO:
+    return "cqto";
+  case MOpcode::IDIVrm:
+    return "idivq";
   case MOpcode::XORrr32:
     return "xorl";
   case MOpcode::CMPrr:
