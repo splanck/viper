@@ -353,7 +353,7 @@ StmtPtr StatementSequencer::parseStatementLine()
     collectStatements(predicate, consumer, stmts);
 
     il::support::SourceLoc stmtLineLoc = lineLoc;
-    if (!stmtLineLoc.isValid())
+    if (!stmtLineLoc.isValid() || !stmtLineLoc.hasLine())
     {
         stmtLineLoc = parser_.peek().loc;
     }
