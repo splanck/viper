@@ -463,29 +463,59 @@ Lowerer::RVal Lowerer::lowerBinaryExpr(const BinaryExpr &b)
     return lowerNumericBinary(b, lhs, rhs);
 }
 
+/*
+ * NOTE: Widening I16/I32 to I64 must produce a real i64 SSA value.
+ * Do not mutate the type tag alone; integer comparisons (icmp_*) require true i64 operands.
+ * We sign-extend using (x << shift) >> shift to preserve negative values (e.g., EOF = -1).
+ */
 /// @brief Coerce a value into a 64-bit integer representation.
 /// @param v Value/type pair to normalize.
 /// @param loc Source location used for emitted conversions.
 /// @return Updated value guaranteed to have `i64` type when conversion occurs.
 Lowerer::RVal Lowerer::coerceToI64(RVal v, il::support::SourceLoc loc)
 {
-    if (v.type.kind == Type::Kind::I1)
+    switch (v.type.kind)
     {
-        curLoc = loc;
-        v.value = emitBasicLogicalI64(v.value);
-        v.type = Type(Type::Kind::I64);
+        case Type::Kind::I64:
+            return v;
+
+        case Type::Kind::I1:
+            curLoc = loc;
+            v.value = emitBasicLogicalI64(v.value);
+            v.type  = Type(Type::Kind::I64);
+            return v;
+
+        case Type::Kind::F64:
+            curLoc = loc;
+            v.value = emitUnary(Opcode::CastFpToSiRteChk, Type(Type::Kind::I64), v.value);
+            v.type  = Type(Type::Kind::I64);
+            return v;
+
+        case Type::Kind::I16:
+        case Type::Kind::I32:
+        {
+            // Materialize a sign-extended i64 from the narrower integer.
+            curLoc = loc;
+
+            const int shift = (v.type.kind == Type::Kind::I32) ? 32 : 48;
+            const std::int64_t mask =
+                (v.type.kind == Type::Kind::I32) ? 0xFFFFFFFFll : 0xFFFFll;
+
+            Value masked = emitBinary(Opcode::And,
+                                      Type(Type::Kind::I64),
+                                      v.value,
+                                      Value::constInt(mask));
+            Value shl  = emitBinary(Opcode::Shl,  Type(Type::Kind::I64), masked, Value::constInt(shift));
+            Value ashr = emitBinary(Opcode::AShr, Type(Type::Kind::I64), shl,    Value::constInt(shift));
+
+            v.value = ashr;
+            v.type  = Type(Type::Kind::I64);
+            return v;
+        }
+
+        default:
+            return v;
     }
-    else if (v.type.kind == Type::Kind::F64)
-    {
-        curLoc = loc;
-        v.value = emitUnary(Opcode::CastFpToSiRteChk, Type(Type::Kind::I64), v.value);
-        v.type = Type(Type::Kind::I64);
-    }
-    else if (v.type.kind == Type::Kind::I16 || v.type.kind == Type::Kind::I32)
-    {
-        v.type = Type(Type::Kind::I64);
-    }
-    return v;
 }
 
 /// @brief Coerce a value into a 64-bit floating-point representation.
