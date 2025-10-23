@@ -1,13 +1,29 @@
 //===----------------------------------------------------------------------===//
-// MIT License. See LICENSE file in the project root for full text.
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/frontends/basic/lower/Lower_Loops.cpp
+// Purpose: Implement BASIC loop lowering helpers that materialise control-flow
+//          skeletons and bridge statement bodies into IL basic blocks.
+// Key invariants: Generated blocks always form a well-structured loop with
+//                 explicit back-edges, and loopState bookkeeping mirrors the
+//                 active nesting depth.
+// Ownership/Lifetime: Operates on Lowerer-owned ProcedureContext and does not
+//                     allocate persistent resources beyond IL instructions.
+// Links: docs/codemap.md, docs/basic-language.md
+//
 //===----------------------------------------------------------------------===//
 
 /// @file
 /// @brief Implements loop lowering helpers for BASIC WHILE, DO, and FOR forms.
 /// @details Shared routines allocate deterministic head/body/done blocks,
-/// establish loop-state bookkeeping, and ensure terminators are emitted with the
-/// correct diagnostics context. Each helper preserves the active Lowerer state so
-/// nested statements observe consistent control-flow graphs.
+///          establish loop-state bookkeeping, and ensure terminators are
+///          emitted with the correct diagnostics context. Each helper preserves
+///          the active Lowerer state so nested statements observe consistent
+///          control-flow graphs.
 
 #include "frontends/basic/Lowerer.hpp"
 
@@ -18,6 +34,12 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
+/// @brief Lower a sequence of statements that forms the body of the enclosing loop.
+/// @details Iterates the provided @p body statements, invoking @ref lowerStmt for
+///          each element while aborting early once the active basic block has
+///          been terminated. The helper acts as the common body driver for all
+///          loop forms so they honour break/exit semantics consistently.
+/// @param body Ordered collection of statements representing the loop body.
 void Lowerer::lowerLoopBody(const std::vector<StmtPtr> &body)
 {
     for (const auto &stmt : body)
@@ -31,6 +53,14 @@ void Lowerer::lowerLoopBody(const std::vector<StmtPtr> &body)
     }
 }
 
+/// @brief Emit the control-flow scaffolding for a BASIC WHILE loop.
+/// @details Allocates head, body, and done blocks using the block namer, wires
+///          the conditional branch in the head, and lowers the body statements.
+///          The loop exit state is recorded through @ref loopState so EXIT
+///          statements resolve correctly. The resulting @ref CtrlState captures
+///          the block that follows the loop and whether it remains fallthrough.
+/// @param stmt Parsed WHILE statement supplying the condition and body.
+/// @return Control-flow snapshot pointing at the loop's done block.
 Lowerer::CtrlState Lowerer::emitWhile(const WhileStmt &stmt)
 {
     CtrlState state{};
@@ -97,12 +127,25 @@ Lowerer::CtrlState Lowerer::emitWhile(const WhileStmt &stmt)
     state.fallthrough = !done->terminated;
     return state;
 }
+/// @brief Lower a WHILE statement by delegating to @ref emitWhile.
+/// @details Calls @ref emitWhile to build the loop skeleton then restores the
+///          procedure context's current block to the returned block so that
+///          subsequent statements append to the correct successor.
+/// @param stmt WHILE statement to lower into IL blocks.
 void Lowerer::lowerWhile(const WhileStmt &stmt)
 {
     CtrlState state = emitWhile(stmt);
     if (state.cur)
         context().setCurrent(state.cur);
 }
+/// @brief Construct the control-flow for BASIC DO loops (pre- and post-test).
+/// @details Emits the shared head/body/done structure, handles the varying test
+///          placement, and respects optional DO...LOOP UNTIL/WHILE semantics by
+///          branching appropriately based on @p stmt.condKind. Loop state is
+///          tracked to honour EXIT statements and to refresh the done block once
+///          the body finishes executing.
+/// @param stmt DO statement containing loop body, test, and metadata.
+/// @return Control state capturing the block following the DO loop.
 Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
 {
     CtrlState state{};
@@ -212,6 +255,11 @@ Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
     state.fallthrough = postTest ? true : !done->terminated;
     return state;
 }
+/// @brief Lower a DO loop and update the current block to its continuation.
+/// @details Invokes @ref emitDo to generate the loop and, when a continuation
+///          block is returned, rebinds the context so subsequent statements emit
+///          after the loop terminates.
+/// @param stmt DO statement to lower.
 void Lowerer::lowerDo(const DoStmt &stmt)
 {
     CtrlState state = emitDo(stmt);
@@ -219,6 +267,14 @@ void Lowerer::lowerDo(const DoStmt &stmt)
         context().setCurrent(state.cur);
 }
 
+/// @brief Allocate the basic blocks required by FOR loops.
+/// @details Appends the necessary head, body, increment, and done blocks to the
+///          active function. When @p varStep is true additional head blocks are
+///          created to handle positive vs negative step comparisons. The
+///          procedure context's current block is restored before returning so
+///          callers can immediately start emitting control flow.
+/// @param varStep Indicates whether the loop step is a runtime value.
+/// @return Indices of the newly created blocks.
 Lowerer::ForBlocks Lowerer::setupForBlocks(bool varStep)
 {
     ProcedureContext &ctx = context();
@@ -261,6 +317,17 @@ Lowerer::ForBlocks Lowerer::setupForBlocks(bool varStep)
     return fb;
 }
 
+/// @brief Lower a FOR loop whose step value is a compile-time constant.
+/// @details Builds the canonical FOR skeleton via @ref setupForBlocks, emits
+///          comparisons against the @p end value using the sign of @p stepConst
+///          to pick the appropriate comparison opcode, and lowers the loop body.
+///          When the body leaves without a terminator the helper emits both the
+///          increment and the back-edge branch before refreshing the loop state.
+/// @param stmt Parsed FOR statement driving the control-flow structure.
+/// @param slot Slot storing the loop induction variable.
+/// @param end Result of lowering the loop's end expression.
+/// @param step Lowered representation of the step expression.
+/// @param stepConst Constant value of the step used to choose comparison sense.
 void Lowerer::lowerForConstStep(
     const ForStmt &stmt, Value slot, RVal end, RVal step, int64_t stepConst)
 {
@@ -303,6 +370,17 @@ void Lowerer::lowerForConstStep(
     ctx.loopState().pop();
 }
 
+/// @brief Lower a FOR loop whose step is evaluated at runtime.
+/// @details Splits the loop head into positive and negative variants so the
+///          comparison direction matches the sign of the step. The helper emits
+///          a runtime check that branches to the correct head, performs the body
+///          lowering, and emits increment/back-edge logic mirroring the control
+///          path used on entry. Loop state is refreshed to maintain EXIT
+///          semantics.
+/// @param stmt Source FOR statement definition.
+/// @param slot Slot representing the induction variable storage.
+/// @param end Lowered end bound expression.
+/// @param step Lowered step expression.
 void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal step)
 {
     curLoc = stmt.loc;
@@ -353,6 +431,16 @@ void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal st
     ctx.loopState().pop();
 }
 
+/// @brief Dispatch FOR loop lowering based on step characteristics.
+/// @details Currently routes all loops through @ref lowerForVarStep because the
+///          lowering logic inspects the step dynamically to decide which
+///          comparison path to follow. The returned control state reflects the
+///          continuation block after the loop completes.
+/// @param stmt Parsed FOR loop metadata.
+/// @param slot Slot storing the induction variable.
+/// @param end Lowered end bound result.
+/// @param step Lowered step expression.
+/// @return Control state representing the loop's continuation.
 Lowerer::CtrlState Lowerer::emitFor(const ForStmt &stmt, Value slot, RVal end, RVal step)
 {
     CtrlState state{};
@@ -362,6 +450,13 @@ Lowerer::CtrlState Lowerer::emitFor(const ForStmt &stmt, Value slot, RVal end, R
     state.fallthrough = state.cur && !state.cur->terminated;
     return state;
 }
+/// @brief Lower a BASIC FOR loop from its AST representation.
+/// @details Lowers the start, end, and optional step expressions, initialises
+///          the induction variable slot with the start value, and forwards to
+///          @ref emitFor to build the IL control flow. After lowering the loop
+///          the current block in the procedure context is updated to the loop's
+///          continuation.
+/// @param stmt Source FOR statement to lower.
 void Lowerer::lowerFor(const ForStmt &stmt)
 {
     RVal start = lowerScalarExpr(*stmt.start);
@@ -378,11 +473,22 @@ void Lowerer::lowerFor(const ForStmt &stmt)
     if (state.cur)
         context().setCurrent(state.cur);
 }
+/// @brief Lower the BASIC NEXT statement.
+/// @details NEXT is a parsing artefact in the current lowering pipeline and is
+///          therefore ignored. The stub remains so future loop finalisation
+///          logic has a dedicated extension point.
+/// @param next NEXT statement node (unused).
 void Lowerer::lowerNext(const NextStmt &next)
 {
     (void)next;
 }
 
+/// @brief Lower an EXIT statement within a loop.
+/// @details Resolves the loop's exit block from the @ref loopState stack. When
+///          no loop context is active the helper emits a trap, otherwise it
+///          branches to the exit block and records that the exit path has been
+///          taken so the loop continuation remains reachable.
+/// @param stmt EXIT statement to lower.
 void Lowerer::lowerExit(const ExitStmt &stmt)
 {
     ProcedureContext &ctx = context();
