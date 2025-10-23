@@ -23,6 +23,19 @@
 namespace viper::parse
 {
 
+namespace
+{
+bool isIdentStart(unsigned char ch) noexcept
+{
+    return std::isalpha(ch) || ch == '_' || ch == '.';
+}
+
+bool isIdentBody(unsigned char ch) noexcept
+{
+    return std::isalnum(ch) || ch == '_' || ch == '.' || ch == '$';
+}
+} // namespace
+
 /// @brief Construct a cursor over the provided source buffer.
 /// @details Initialises indices and current position so traversal starts at the
 ///          supplied @p start location.
@@ -119,17 +132,13 @@ bool Cursor::consumeIdent(std::string_view &out) noexcept
     if (atEnd())
         return false;
 
-    auto isStart = [](unsigned char ch) { return std::isalpha(ch) || ch == '_' || ch == '.'; };
-    auto isBody = [](unsigned char ch)
-    { return std::isalnum(ch) || ch == '_' || ch == '.' || ch == '$'; };
-
     const unsigned char first = static_cast<unsigned char>(peek());
-    if (!isStart(first))
+    if (!isIdentStart(first))
         return false;
 
     const std::size_t begin = index_;
     advance();
-    while (!atEnd() && isBody(static_cast<unsigned char>(peek())))
+    while (!atEnd() && isIdentBody(static_cast<unsigned char>(peek())))
         advance();
     out = text_.substr(begin, index_ - begin);
     return true;
@@ -176,7 +185,14 @@ bool Cursor::consumeKeyword(std::string_view kw) noexcept
         return false;
     if (text_.substr(index_, kw.size()) != kw)
         return false;
-    seek(index_ + kw.size());
+    const std::size_t nextIndex = index_ + kw.size();
+    if (nextIndex < text_.size())
+    {
+        const unsigned char next = static_cast<unsigned char>(text_[nextIndex]);
+        if (isIdentBody(next))
+            return false;
+    }
+    seek(nextIndex);
     return true;
 }
 

@@ -24,6 +24,7 @@
 #include "il/io/TypeParser.hpp"
 
 #include "support/diag_expected.hpp"
+#include "viper/parse/Cursor.h"
 
 #include <iomanip>
 #include <sstream>
@@ -39,6 +40,8 @@ namespace
 using il::core::Type;
 using il::support::Expected;
 using il::support::makeError;
+using viper::parse::Cursor;
+using viper::parse::SourcePos;
 
 /// @brief Parse an extern declaration in the form `extern @name(param, ...) -> type`.
 ///
@@ -242,7 +245,11 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
     if (line.rfind("global", 0) == 0)
         return parseGlobal_E(line, st);
     if (line.rfind("func", 0) == 0)
-        return parseFunction(is, line, st);
+    {
+        Cursor cursor{line, SourcePos{st.lineNo, 0}};
+        if (cursor.consumeKeyword("func"))
+            return parseFunction(is, line, st);
+    }
     std::ostringstream oss;
     oss << "line " << st.lineNo << ": unexpected line: " << line;
     return Expected<void>{makeError({}, oss.str())};
