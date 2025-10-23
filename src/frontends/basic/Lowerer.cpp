@@ -1,11 +1,20 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/frontends/basic/Lowerer.cpp
-// License: MIT License. See LICENSE in the project root for full license
-//          information.
-// Purpose: Lowers BASIC AST to IL with control-flow helpers and centralized
-//          runtime declarations.
-// Key invariants: Block names inside procedures are deterministic via BlockNamer.
-// Ownership/Lifetime: Uses contexts managed externally.
-// Links: docs/codemap.md
+// Purpose: Implement the façade that coordinates BASIC-to-IL lowering across
+//          symbol management, procedure emission, and runtime discovery.
+// Key invariants: Block names are deterministic via BlockNamer and symbol table
+//                 entries persist only for the active compilation unit.
+// Ownership/Lifetime: Operates on lowering contexts owned by the caller while
+//                     storing temporary metadata inside the Lowerer instance.
+// Links: docs/codemap.md, docs/architecture.md#cpp-overview
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
@@ -27,6 +36,14 @@ namespace il::frontends::basic
 
 using pipeline_detail::coreTypeForAstType;
 
+/// @brief Ensure that a symbol table entry exists for @p name.
+///
+/// @details Inserts a default-constructed @ref SymbolInfo when the identifier
+///          has not been seen before.  New entries start with integer type and
+///          no semantic flags so later inference stages can update them lazily.
+///
+/// @param name BASIC identifier being queried.
+/// @return Reference to the symbol information stored in the table.
 Lowerer::SymbolInfo &Lowerer::ensureSymbol(std::string_view name)
 {
     std::string key(name);
@@ -44,6 +61,10 @@ Lowerer::SymbolInfo &Lowerer::ensureSymbol(std::string_view name)
     return it->second;
 }
 
+/// @brief Look up a mutable symbol entry by BASIC identifier.
+///
+/// @param name BASIC identifier to query.
+/// @return Pointer to the symbol entry when present; nullptr otherwise.
 Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name)
 {
     auto it = symbols.find(std::string(name));
@@ -52,6 +73,10 @@ Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name)
     return &it->second;
 }
 
+/// @brief Look up an immutable symbol entry by BASIC identifier.
+///
+/// @param name BASIC identifier to query.
+/// @return Pointer to the symbol entry when present; nullptr otherwise.
 const Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name) const
 {
     auto it = symbols.find(std::string(name));
@@ -60,6 +85,14 @@ const Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name) const
     return &it->second;
 }
 
+/// @brief Assign an explicit BASIC type to a symbol.
+///
+/// @details Records the declared type and marks the symbol as typed so later
+///          inference does not overwrite the explicit annotation.  Boolean flags
+///          are recomputed to match the assigned type.
+///
+/// @param name BASIC identifier to annotate.
+/// @param type Declared BASIC type for the symbol.
 void Lowerer::setSymbolType(std::string_view name, AstType type)
 {
     auto &info = ensureSymbol(name);
@@ -68,6 +101,14 @@ void Lowerer::setSymbolType(std::string_view name, AstType type)
     info.isBoolean = !info.isArray && type == AstType::Bool;
 }
 
+/// @brief Tag a symbol as referring to an object instance.
+///
+/// @details Symbols that represent objects need both the `isObject` flag and
+///          the associated class name.  The helper preserves existing metadata
+///          and marks the symbol as having an explicit type.
+///
+/// @param name BASIC identifier describing the object.
+/// @param className Name of the BASIC class the symbol instantiates.
 void Lowerer::setSymbolObjectType(std::string_view name, std::string className)
 {
     if (name.empty())
@@ -78,6 +119,13 @@ void Lowerer::setSymbolObjectType(std::string_view name, std::string className)
     info.hasType = true;
 }
 
+/// @brief Record that a symbol appeared in source and should be materialised.
+///
+/// @details Ensures the symbol exists, infers a type from naming conventions
+///          when none was provided, and sets the referenced flag so slot
+///          materialisation allocates storage for the identifier.
+///
+/// @param name BASIC identifier encountered during analysis.
 void Lowerer::markSymbolReferenced(std::string_view name)
 {
     if (name.empty())
@@ -92,6 +140,13 @@ void Lowerer::markSymbolReferenced(std::string_view name)
     info.referenced = true;
 }
 
+/// @brief Mark a symbol as representing an array.
+///
+/// @details Array symbols are forced to pointer type and cannot retain boolean
+///          semantics.  The helper ensures the symbol exists before toggling the
+///          relevant flags.
+///
+/// @param name BASIC identifier to update.
 void Lowerer::markArray(std::string_view name)
 {
     if (name.empty())
@@ -102,6 +157,12 @@ void Lowerer::markArray(std::string_view name)
         info.isBoolean = false;
 }
 
+/// @brief Reset per-program symbol state while preserving pooled string labels.
+///
+/// @details Iterates through all symbol entries, clearing metadata for string
+///          labels that must persist across compilations and erasing other
+///          entries entirely.  Called before lowering a new procedure or
+///          program to avoid stale state.
 void Lowerer::resetSymbolState()
 {
     for (auto it = symbols.begin(); it != symbols.end();)
@@ -125,6 +186,14 @@ void Lowerer::resetSymbolState()
     }
 }
 
+/// @brief Compute storage details for a symbol's stack slot.
+///
+/// @details Uses explicit type annotations or inferred naming conventions to
+///          determine the IL type, whether the symbol is an array, and how to
+///          treat boolean scalars.  Object symbols are forced to pointer type.
+///
+/// @param name BASIC identifier whose slot type is requested.
+/// @return Structure describing the IL type and auxiliary flags.
 Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
 {
     SlotType info;
@@ -187,6 +256,11 @@ Lowerer::Lowerer(bool boundsChecks)
 {
 }
 
+/// @brief Destroy the lowering façade.
+///
+/// @details The destructor is defaulted because all owned helpers are stored in
+///          smart pointers; no additional cleanup is required beyond the member
+///          default destruction order.
 Lowerer::~Lowerer() = default;
 
 /// @brief Lower a full BASIC program into an IL module.
@@ -214,6 +288,13 @@ Module Lowerer::lower(const Program &prog)
     return lowerProgram(prog);
 }
 
+/// @brief Install or clear the diagnostic emitter used during lowering.
+///
+/// @details Stores the pointer for later use and wires the global
+///          @ref TypeRules type-error sink so semantic checks emit diagnostics
+///          through the same channel.  Passing @c nullptr disconnects the sink.
+///
+/// @param emitter Diagnostic sink that should receive type errors; nullptr to disable.
 void Lowerer::setDiagnosticEmitter(DiagnosticEmitter *emitter) noexcept
 {
     diagnosticEmitter_ = emitter;
@@ -235,6 +316,8 @@ void Lowerer::setDiagnosticEmitter(DiagnosticEmitter *emitter) noexcept
     }
 }
 
+/// @brief Retrieve the diagnostic emitter currently associated with the lowering pipeline.
+/// @return Pointer previously passed to @ref setDiagnosticEmitter.
 DiagnosticEmitter *Lowerer::diagnosticEmitter() const noexcept
 {
     return diagnosticEmitter_;
@@ -261,6 +344,18 @@ void Lowerer::collectProcedureSignatures(const Program &prog)
     procedureLowering->collectProcedureSignatures(prog);
 }
 
+/// @brief Gather metadata required to lower a BASIC procedure body.
+///
+/// @details Copies parameter names, collects references from the body so slots
+///          can be allocated, and records IL parameter descriptors.  The helper
+///          also invokes the optional @ref ProcedureConfig::postCollect callback
+///          to allow callers to perform custom bookkeeping (e.g., recording
+///          return types or runtime requirements).
+///
+/// @param params Formal parameters supplied with the procedure declaration.
+/// @param body AST statements that form the procedure body.
+/// @param config Configuration hooks describing post-collection behaviour.
+/// @return Metadata snapshot consumed by later lowering phases.
 Lowerer::ProcedureMetadata Lowerer::collectProcedureMetadata(const std::vector<Param> &params,
                                                              const std::vector<StmtPtr> &body,
                                                              const ProcedureConfig &config)
@@ -292,6 +387,14 @@ Lowerer::ProcedureMetadata Lowerer::collectProcedureMetadata(const std::vector<P
     return metadata;
 }
 
+/// @brief Assign a stable synthetic line number to a statement.
+///
+/// @details BASIC statements may lack explicit line numbers.  The helper
+///          consults the memoized map and, when needed, synthesises a unique
+///          virtual line so per-line blocks can be generated deterministically.
+///
+/// @param s Statement whose virtual line number is requested.
+/// @return Real line number when present or a synthesised value otherwise.
 int Lowerer::virtualLine(const Stmt &s)
 {
     auto it = stmtVirtualLines_.find(&s);
@@ -303,6 +406,16 @@ int Lowerer::virtualLine(const Stmt &s)
     return line;
 }
 
+/// @brief Create entry, per-line, and exit blocks for a procedure prior to emission.
+///
+/// @details Resets the block namer, ensures each source line receives a
+///          deterministic block, and appends an explicit return block.  The
+///          skeleton allows later lowering passes to fill in instructions while
+///          preserving predictable label naming.
+///
+/// @param f Function being populated.
+/// @param name BASIC procedure name used for block hints.
+/// @param metadata Metadata describing body statements and parameters.
 void Lowerer::buildProcedureSkeleton(Function &f,
                                      const std::string &name,
                                      const ProcedureMetadata &metadata)
@@ -336,6 +449,16 @@ void Lowerer::buildProcedureSkeleton(Function &f,
         builder->addBlock(f, mangler.block("ret_" + name));
 }
 
+/// @brief Allocate stack storage for referenced locals (and optionally parameters).
+///
+/// @details Iterates the symbol table, emitting allocas for each referenced
+///          symbol that lacks a slot.  Arrays receive pointer slots and optional
+///          length slots when bounds checking is enabled.  Boolean slots are
+///          initialised to false while string slots are initialised to the empty
+///          runtime string to maintain invariants expected by the runtime.
+///
+/// @param paramNames Set of parameter identifiers in scope.
+/// @param includeParams When true, allocate slots for parameters in addition to locals.
 void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNames,
                                  bool includeParams)
 {
@@ -386,6 +509,15 @@ void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNam
     }
 }
 
+/// @brief Lower a sequence of statements with optional branch callbacks.
+///
+/// @details Delegates to the specialised statement-lowering helper, forwarding
+///          control-flow hooks so callers can observe branch boundaries and
+///          optionally stop once a terminating statement is emitted.
+///
+/// @param stmts Ordered list of statements to lower.
+/// @param stopOnTerminated Whether to halt once a terminating statement executes.
+/// @param beforeBranch Callback invoked immediately before a branch is emitted.
 void Lowerer::lowerStatementSequence(const std::vector<const Stmt *> &stmts,
                                      bool stopOnTerminated,
                                      const std::function<void(const Stmt &)> &beforeBranch)
@@ -393,6 +525,11 @@ void Lowerer::lowerStatementSequence(const std::vector<const Stmt *> &stmts,
     statementLowering->lowerSequence(stmts, stopOnTerminated, beforeBranch);
 }
 
+/// @brief Materialise the implicit stack used to service GOSUB/RETURN statements.
+///
+/// @details Lazily emits allocas for the stack pointer and stack buffer the
+///          first time a procedure requires them.  The prologue is inserted at
+///          the entry block so subsequent lowering can assume the storage exists.
 void Lowerer::ensureGosubStack()
 {
     ProcedureContext &ctx = context();
@@ -551,20 +688,34 @@ void Lowerer::collectVars(const Program &prog)
     procedureLowering->collectVars(prog);
 }
 
+/// @brief Access the mutable procedure context associated with the lowering run.
+/// @return Reference to the internal context structure.
 Lowerer::ProcedureContext &Lowerer::context() noexcept
 {
     return context_;
 }
 
+/// @brief Access the immutable procedure context associated with the lowering run.
+/// @return Const reference to the internal context structure.
 const Lowerer::ProcedureContext &Lowerer::context() const noexcept
 {
     return context_;
 }
 
+/// @brief Classify the numeric category produced by an expression.
+///
+/// @details Dispatches to a local visitor that mirrors BASIC's type promotion
+///          rules and identifier suffix conventions.  The result informs the
+///          folding and lowering pipeline which IL type is appropriate for a
+///          given expression.
+///
+/// @param expr Expression to analyse.
+/// @return Numeric category describing the expression's result.
 TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
 {
     using NumericType = TypeRules::NumericType;
 
+    /// @brief Visitor that computes the numeric category for expressions.
     class Classifier final : public ExprVisitor
     {
     public:
@@ -820,6 +971,13 @@ TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
     return classifier.result();
 }
 
+/// @brief Reserve a fresh temporary identifier for IL value emission.
+///
+/// @details Prefers the builder's ID allocator when present; otherwise falls
+///          back to the context-managed counter.  The helper also ensures the
+///          function's value name vector is large enough for debug dumps.
+///
+/// @return Identifier for the next temporary value.
 unsigned Lowerer::nextTempId()
 {
     ProcedureContext &ctx = context();
@@ -845,17 +1003,28 @@ unsigned Lowerer::nextTempId()
     return id;
 }
 
+/// @brief Generate a deterministic label for a synthesized fallback block.
+///
+/// @details Uses the mangler to produce a unique label based on an incrementing
+///          counter so ad-hoc blocks (e.g., for error handling) remain stable
+///          across runs.
+///
+/// @return Fresh block label owned by the caller.
 std::string Lowerer::nextFallbackBlockLabel()
 {
     return mangler.block("bb_" + std::to_string(nextFallbackBlockId++));
 }
 
+/// @brief Access the helper responsible for emitting IL instructions.
+/// @return Reference to the lowering emitter; asserts when uninitialised.
 lower::Emitter &Lowerer::emitter() noexcept
 {
     assert(emitter_ && "emitter must be initialized");
     return *emitter_;
 }
 
+/// @brief Access the instruction emitter from a const context.
+/// @return Const reference to the lowering emitter; asserts when uninitialised.
 const lower::Emitter &Lowerer::emitter() const noexcept
 {
     assert(emitter_ && "emitter must be initialized");

@@ -1,10 +1,20 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/frontends/basic/ConstFold_Arith.cpp
-// License: MIT License. See LICENSE in the project root for full license
-//          information.
-// Purpose: Implements arithmetic constant folding utilities for BASIC expressions.
-// Key invariants: Numeric folding honors BASIC promotion rules and 64-bit wrap-around semantics.
-// Ownership/Lifetime: Returned expressions are heap-allocated and owned by callers.
-// Links: docs/codemap.md
+// Purpose: Implement arithmetic constant-folding helpers for BASIC expressions.
+// Key invariants: Numeric folding honours BASIC promotion rules and 64-bit
+//                 wrap-around semantics across addition, subtraction, and
+//                 multiplication.
+// Ownership/Lifetime: Returned expressions are heap-allocated AST nodes owned by
+//                     the caller.
+// Links: docs/codemap.md, docs/basic-language.md#constant-folding
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/ConstFold_Arith.hpp"
 

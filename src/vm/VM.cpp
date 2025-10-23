@@ -1,10 +1,20 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/vm/VM.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Implements stack-based virtual machine for IL.
-// Key invariants: Inline literal cache retains one runtime handle per embedded-NUL
-//                 string literal.
-// Ownership/Lifetime: VM references module owned externally.
-// Links: docs/il-guide.md#reference
+// Purpose: Implement the IL virtual machine execution engine and dispatch loop.
+// Key invariants: Inline literal caches retain one runtime handle per embedded-NUL
+//                 string literal while execution contexts are reset between
+//                 dispatch iterations.
+// Ownership/Lifetime: VM borrows modules, runtime bridges, and frames from the
+//                     caller; it only owns transient caches and dispatch drivers.
+// Links: docs/il-guide.md#reference, docs/architecture.md#cpp-overview
+//
+//===----------------------------------------------------------------------===//
 
 #include "vm/VM.hpp"
 #include "vm/OpHandlers.hpp"
@@ -29,12 +39,26 @@ using il::core::Instr;
 using il::core::Opcode;
 using il::core::Value;
 
+/// @brief Polymorphic dispatcher used to drive the interpreter loop.
+///
+/// @details Each driver implements a different dispatch strategy (function
+///          table, switch, computed goto).  The interface returns @c true when
+///          the interpreter should stop executing because the active frame has
+///          produced a result or requested shutdown.
 struct VM::DispatchDriver
 {
     virtual ~DispatchDriver() = default;
+
+    /// @brief Execute interpreter steps until a termination condition is met.
+    /// @param vm Owning VM instance that exposes helper operations.
+    /// @param context Runtime bridge context for trap dispatch.
+    /// @param state Mutable execution state describing the active frame.
+    /// @return True when execution finished or an exit was requested.
     virtual bool run(VM &vm, VMContext &context, ExecState &state) = 0;
 };
 
+/// @brief Delete helper for @ref DispatchDriver unique_ptrs.
+/// @param driver Heap-allocated driver instance to destroy.
 void VM::DispatchDriverDeleter::operator()(DispatchDriver *driver) const
 {
     delete driver;
@@ -46,6 +70,19 @@ namespace detail
 class FnTableDispatchDriver final : public VM::DispatchDriver
 {
   public:
+    /// @brief Dispatch by indexing into the opcode handler table.
+    ///
+    /// @details Each iteration prepares the dispatch state, selects the next
+    ///          instruction, traces it for debugging, and invokes the handler
+    ///          from the static opcode table returned by
+    ///          @ref VM::getOpcodeHandlers.  The loop exits when
+    ///          @ref VM::finalizeDispatch reports a return or exit request.
+    ///
+    /// @param vm Owning virtual machine.
+    /// @param context Runtime bridge context (unused because traps bubble via
+    ///        exceptions in this driver).
+    /// @param state Execution state describing the active frame.
+    /// @return True when execution finished or an exit was requested.
     bool run(VM &vm, VMContext &, VM::ExecState &state) override
     {
         while (true)
@@ -67,6 +104,18 @@ class FnTableDispatchDriver final : public VM::DispatchDriver
 class SwitchDispatchDriver final : public VM::DispatchDriver
 {
   public:
+    /// @brief Dispatch using a large switch on the opcode enumerator.
+    ///
+    /// @details After selecting an instruction the driver switches on the
+    ///          opcode and forwards to the corresponding inline handler via the
+    ///          @c inline_handle_* helpers synthesised below.  Each handler may
+    ///          request exit by setting @ref VM::ExecState::exitRequested.
+    ///
+    /// @param vm Active VM executing the program.
+    /// @param context Runtime bridge context (unused because this strategy does
+    ///        not wrap trap dispatch).
+    /// @param state Execution state for the active frame.
+    /// @return True when execution should stop.
     bool run(VM &vm, VMContext &, VM::ExecState &state) override
     {
         while (true)
@@ -104,6 +153,18 @@ class SwitchDispatchDriver final : public VM::DispatchDriver
 class ThreadedDispatchDriver final : public VM::DispatchDriver
 {
   public:
+    /// @brief Dispatch via computed gotos for maximum interpreter throughput.
+    ///
+    /// @details Uses GCC-style labels-as-values to jump directly to the handler
+    ///          for each opcode.  The loop repeatedly fetches the next
+    ///          instruction, jumps to its label, executes it, and then resumes
+    ///          dispatch.  Traps are caught and routed through the runtime
+    ///          bridge context so asynchronous signals can resume execution.
+    ///
+    /// @param vm Owning VM providing helper operations.
+    /// @param context VM context responsible for trap dispatch.
+    /// @param state Execution state for the active frame.
+    /// @return True when execution terminated or an exit was requested.
     bool run(VM &vm, VMContext &context, VM::ExecState &state) override
     {
         const il::core::Instr *currentInstr = nullptr;
@@ -277,6 +338,13 @@ std::optional<Slot> VM::shouldPause(ExecState &st, const Instr *in, bool postExe
     return processDebugControl(st, in, postExec);
 }
 
+/// @brief Reset per-iteration dispatch bookkeeping before executing an opcode.
+///
+/// @details Clears any pending results, resets the exit flag, and forgets the
+///          current instruction pointer so the subsequent selection step can
+///          repopulate it.  Drivers call this before each fetch cycle.
+///
+/// @param state Execution state mutated by the dispatch loop.
 void VM::beginDispatch(ExecState &state)
 {
     state.exitRequested = false;
@@ -284,6 +352,17 @@ void VM::beginDispatch(ExecState &state)
     state.currentInstr = nullptr;
 }
 
+/// @brief Fetch the next instruction and establish the current execution context.
+///
+/// @details When the active basic block is exhausted the helper marks dispatch
+///          as finished by setting @ref VM::ExecState::exitRequested and
+///          synthesising a zero result.  Otherwise it updates the current
+///          context used for debugging and trap reporting and honours pending
+///          debugger pauses by returning @c false.
+///
+/// @param state Execution state describing the active frame.
+/// @param instr [out] Populated with the next instruction when available.
+/// @return True when an instruction was fetched; false when execution should stop.
 bool VM::selectInstruction(ExecState &state, const Instr *&instr)
 {
     if (!state.bb || state.ip >= state.bb->instructions.size())
@@ -311,6 +390,14 @@ bool VM::selectInstruction(ExecState &state, const Instr *&instr)
     return true;
 }
 
+/// @brief Notify tracing/debugging helpers that an instruction is about to execute.
+///
+/// @details Increments the global instruction counter and forwards the step to
+///          the active tracer when tracing is enabled.  When tracing is disabled
+///          the frame parameter is intentionally ignored.
+///
+/// @param instr Instruction about to execute.
+/// @param frame Active frame supplying register state to the tracer.
 void VM::traceInstruction(const Instr &instr, Frame &frame)
 {
     ++instrCount;
@@ -321,6 +408,17 @@ void VM::traceInstruction(const Instr &instr, Frame &frame)
 #endif
 }
 
+/// @brief Apply the effects of a handler and decide whether to continue dispatching.
+///
+/// @details Captures return values, advances the instruction pointer for
+///          fall-through execution, and honours debugger pause requests emitted
+///          after the instruction completes.  When the handler performed a jump
+///          the debug hit cache is reset so breakpoints trigger again on the new
+///          location.
+///
+/// @param state Execution state mutated by the handler.
+/// @param exec Summary of the handler's control-flow effects.
+/// @return True when dispatch should stop for the current frame.
 bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
 {
     if (exec.returned)
@@ -347,6 +445,14 @@ bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
     return false;
 }
 
+/// @brief Construct a dispatch driver implementing the requested strategy.
+///
+/// @details Allocates the concrete driver corresponding to @p kind.  When
+///          threaded dispatch is unavailable the function transparently falls
+///          back to the switch driver so callers do not need conditional logic.
+///
+/// @param kind Dispatch strategy requested by the caller.
+/// @return Owning pointer to the constructed driver.
 std::unique_ptr<VM::DispatchDriver, VM::DispatchDriverDeleter> VM::makeDispatchDriver(DispatchKind kind)
 {
     switch (kind)
@@ -365,6 +471,16 @@ std::unique_ptr<VM::DispatchDriver, VM::DispatchDriverDeleter> VM::makeDispatchD
     return std::unique_ptr<DispatchDriver, DispatchDriverDeleter>(new detail::SwitchDispatchDriver());
 }
 
+/// @brief Run the interpreter loop until the active frame completes.
+///
+/// @details Lazily instantiates the configured dispatch driver, repeatedly
+///          executes it, and handles trap dispatch requests routed through the
+///          @ref VMContext.  When the frame finishes without producing an
+///          explicit return value the helper synthesises an integer zero result
+///          for compatibility with legacy callers.
+///
+/// @param st Execution state prepared by @ref prepareExecution.
+/// @return Slot containing the function's returned value.
 Slot VM::runFunctionLoop(ExecState &st)
 {
     VMContext context(*this);
@@ -395,6 +511,13 @@ Slot VM::runFunctionLoop(ExecState &st)
     }
 }
 
+/// @brief Release runtime handles cached by the VM instance.
+///
+/// @details Drops all cached string handles (both in the map of global strings
+///          and the inline literal cache) by calling the runtime release hook
+///          before clearing the containers.  This ensures reference counts are
+///          decremented even when the VM is destroyed without executing
+///          additional code.
 VM::~VM()
 {
     for (auto &entry : strMap)
@@ -408,6 +531,14 @@ VM::~VM()
 #define VM_DISPATCH_IMPL(DISPATCH, HANDLER_EXPR) HANDLER_EXPR
 #define VM_DISPATCH(NAME) VM_DISPATCH_IMPL(NAME, &detail::handle##NAME)
 #define VM_DISPATCH_ALT(DISPATCH, HANDLER_EXPR) VM_DISPATCH_IMPL(DISPATCH, HANDLER_EXPR)
+/// @brief Inline opcode handler template invoked by switch dispatch.
+///
+/// @details Expands to a tiny wrapper that looks up the concrete handler for an
+///          opcode, reports unimplemented opcodes as traps, executes the handler,
+///          and forwards the result to @ref handleInlineResult so inline
+///          dispatch mirrors the behaviour of the main interpreter loop.
+///          Generated helpers rely on the same handler table used by
+///          @ref FnTableDispatchDriver.
 #define IL_OPCODE(NAME,                                                                            \
                   MNEMONIC,                                                                        \
                   RES_ARITY,                                                                       \
@@ -492,6 +623,16 @@ uint64_t VM::getInstrCount() const
     return instrCount;
 }
 
+/// @brief Record the currently executing frame and instruction for diagnostics.
+///
+/// @details Stores the frame, basic block, instruction index, and source
+///          location so traps and debugger interactions can report precise
+///          provenance.  Called immediately before executing an instruction.
+///
+/// @param fr Active frame.
+/// @param bb Basic block containing the instruction.
+/// @param ip Instruction index within @p bb.
+/// @param in Instruction whose metadata provides the source location.
 void VM::setCurrentContext(Frame &fr, const BasicBlock *bb, size_t ip, const Instr &in)
 {
     currentContext.function = fr.func;
@@ -501,6 +642,11 @@ void VM::setCurrentContext(Frame &fr, const BasicBlock *bb, size_t ip, const Ins
     currentContext.loc = in.loc;
 }
 
+/// @brief Reset the recorded execution context.
+///
+/// @details Clears all context fields so trap reporting does not reference stale
+///          instructions.  Called before potentially throwing and when the
+///          dispatch loop resets state between instructions.
 void VM::clearCurrentContext()
 {
     currentContext.function = nullptr;
@@ -510,6 +656,18 @@ void VM::clearCurrentContext()
     currentContext.loc = {};
 }
 
+/// @brief Populate error metadata and identify the catch handler for a trap.
+///
+/// @details Walks the execution stack from the innermost frame outward looking
+///          for an active exception handler.  When one is found it captures the
+///          fault location, seeds the handler parameters, rewrites the execution
+///          state to resume at the handler, and throws a @ref TrapDispatchSignal
+///          to unwind control back to the interpreter loop.  If no handler is
+///          available the function returns @c false so the caller can escalate
+///          the trap.
+///
+/// @param error Trap payload to populate with location metadata.
+/// @return True when a handler was prepared and control will transfer there.
 bool VM::prepareTrap(VmError &error)
 {
     const BasicBlock *faultBlock = currentContext.block;
@@ -564,6 +722,13 @@ bool VM::prepareTrap(VmError &error)
     return false;
 }
 
+/// @brief Raise an exception used to unwind into trap handlers.
+///
+/// @details Throws a @ref TrapDispatchSignal targeting the specified execution
+///          state.  The interpreter loop catches this exception and reroutes
+///          control to the prepared handler frame.
+///
+/// @param target Execution state that should resume handling the trap.
 [[noreturn]] void VM::throwForTrap(ExecState *target)
 {
     throw TrapDispatchSignal(target);
