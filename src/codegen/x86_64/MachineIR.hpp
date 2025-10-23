@@ -65,6 +65,10 @@ enum class MOpcode {
   ADDri,      ///< Add immediate to register.
   SUBrr,      ///< Subtract registers.
   IMULrr,     ///< Signed multiply registers.
+  DIVS64rr,   ///< Signed 64-bit division pseudo (dest <- lhs / rhs).
+  REMS64rr,   ///< Signed 64-bit remainder pseudo (dest <- lhs % rhs).
+  CQO,        ///< Sign-extend RAX into RDX:RAX.
+  IDIVrm,     ///< Signed divide RDX:RAX by the given operand.
   XORrr32,    ///< 32-bit XOR to zero register.
   CMPrr,      ///< Compare registers.
   CMPri,      ///< Compare register with immediate.
