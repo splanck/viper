@@ -1,7 +1,26 @@
-// tui/src/text/LineIndex.cpp
-// @brief LineIndex implementation reacting to piece table span callbacks.
-// @invariant Offsets remain sorted with sentinel zero entry.
-// @ownership Stores offsets only; text lifetimes managed by callers.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/src/text/LineIndex.cpp
+// Purpose: Maintain the mapping between line numbers and byte offsets for the
+//          text buffer abstraction used by the editor widgets.
+// Key invariants: Offsets remain sorted, include a sentinel zero entry, and are
+//                 updated in response to piece table insert/erase callbacks.
+// Ownership/Lifetime: The index stores offsets only; the underlying text is
+//                     owned by the piece table/TextBuffer.
+// Links: docs/tui/text-buffer.md#line-index
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements the incremental line index used by text views.
+/// @details The index listens to modifications reported by the piece table and
+///          keeps a sorted vector of line start offsets so cursor logic can map
+///          between (line, column) and byte positions efficiently.
 
 #include "tui/text/LineIndex.hpp"
 
@@ -9,6 +28,12 @@
 
 namespace viper::tui::text
 {
+/// @brief Rebuild the line index from scratch using the supplied buffer.
+/// @details Clears existing offsets, seeds the index with the implicit zero
+///          entry, and scans the text for newline characters.  Each newline
+///          contributes the byte position immediately following it, matching the
+///          behaviour expected by cursor navigation utilities.
+/// @param text Entire buffer contents to analyse.
 void LineIndex::reset(std::string_view text)
 {
     line_starts_.clear();
@@ -22,6 +47,14 @@ void LineIndex::reset(std::string_view text)
     }
 }
 
+/// @brief Update offsets to account for text inserted at a given position.
+/// @details Adjusts subsequent line start positions by the length of the insert
+///          and inserts new offsets for newline characters contained within the
+///          inserted text.  The algorithm uses upper_bound to locate the first
+///          line start greater than the insertion point, ensuring offsets remain
+///          sorted.
+/// @param pos Byte position where the new text was inserted.
+/// @param text Text fragment that was inserted into the buffer.
 void LineIndex::onInsert(std::size_t pos, std::string_view text)
 {
     if (text.empty())
@@ -47,6 +80,13 @@ void LineIndex::onInsert(std::size_t pos, std::string_view text)
     }
 }
 
+/// @brief Update offsets after a contiguous span of text has been erased.
+/// @details Removes any line starts that fall within the erased region and shifts
+///          the remaining offsets backward by the number of erased bytes.  Using
+///          lower_bound avoids linear scans when the deletion affects later
+///          lines.
+/// @param pos Byte position where the removal began.
+/// @param text Text fragment that was removed; only its length is used.
 void LineIndex::onErase(std::size_t pos, std::string_view text)
 {
     if (text.empty())
@@ -66,11 +106,21 @@ void LineIndex::onErase(std::size_t pos, std::string_view text)
     }
 }
 
+/// @brief Report the number of tracked line start offsets.
+/// @details Because the vector always includes a sentinel zero entry, the count
+///          equals the number of logical lines plus one.  Consumers typically
+///          subtract one when presenting line counts to the user.
+/// @return Total number of stored offsets.
 std::size_t LineIndex::count() const
 {
     return line_starts_.size();
 }
 
+/// @brief Retrieve the byte offset marking the start of a given line.
+/// @details Uses @ref std::vector::at to provide bounds checking in debug builds,
+///          helping catch incorrect callers while keeping release builds fast.
+/// @param line Zero-based line index to resolve.
+/// @return Byte offset corresponding to the first character on the line.
 std::size_t LineIndex::start(std::size_t line) const
 {
     return line_starts_.at(line);
