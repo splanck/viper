@@ -182,7 +182,11 @@ if(VIPER_VM_THREADED)
   target_compile_definitions(il_vm PUBLIC VIPER_VM_THREADED=1)
 endif()
 
-add_library(il_codegen_x86_64 STATIC codegen/x86_64/placeholder.cpp)
+add_library(il_codegen_x86_64 STATIC
+  codegen/x86_64/AsmEmitter.cpp
+  codegen/x86_64/MachineIR.cpp
+  codegen/x86_64/TargetX64.cpp
+  codegen/x86_64/placeholder.cpp)
 set_target_properties(il_codegen_x86_64 PROPERTIES LINKER_LANGUAGE CXX)
 
 add_executable(ilc
