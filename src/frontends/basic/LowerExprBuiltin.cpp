@@ -220,6 +220,16 @@ Lowerer::RVal BuiltinExprLowering::emitEofBuiltin(Lowerer &lowerer, const Builti
         lowerer.emitStore(IlType(IlKind::I32), scratch, raw);
         rawI64 = lowerer.emitLoad(IlType(IlKind::I64), scratch);
     }
+    // --- begin: sign-extend 32->64 for EOF ---
+    {
+        // rawI64 currently holds the zero-extended 32-bit return.
+        // Make it signed by (x << 32) >> 32 using arithmetic shift.
+        Value shl =
+            lowerer.emitBinary(Opcode::Shl, IlType(IlKind::I64), rawI64, Value::constInt(32));
+        rawI64 =
+            lowerer.emitBinary(Opcode::AShr, IlType(IlKind::I64), shl, Value::constInt(32));
+    }
+    // --- end: sign-extend 32->64 for EOF ---
 
     Lowerer::ProcedureContext &ctx = lowerer.context();
     Function *func = ctx.function();
@@ -243,12 +253,19 @@ Lowerer::RVal BuiltinExprLowering::emitEofBuiltin(Lowerer &lowerer, const Builti
 
         ctx.setCurrent(&func->blocks[originIdx]);
         lowerer.curLoc = expr.loc;
-        Value nonZero =
-            lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(), rawI64, Value::constInt(0));
-        Value notNegOne =
-            lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(), rawI64, Value::constInt(-1));
-        Value isError = lowerer.emitBinary(Opcode::And, lowerer.ilBoolTy(), nonZero, notNegOne);
-        lowerer.emitCBr(isError, failBlk, contBlk);
+        // --- begin: EOF error predicate without i1 and ---
+        {
+            // isError when raw != 0 AND raw != -1.
+            // Use product trick: (raw * (raw + 1)) != 0  <=>  raw ∉ {0, -1}
+            Value plus1 = lowerer.emitBinary(
+                Opcode::Add, IlType(IlKind::I64), rawI64, Value::constInt(1));
+            Value prod =
+                lowerer.emitBinary(Opcode::Mul, IlType(IlKind::I64), rawI64, plus1);
+            Value isError = lowerer.emitBinary(
+                Opcode::ICmpNe, lowerer.ilBoolTy(), prod, Value::constInt(0));
+            lowerer.emitCBr(isError, failBlk, contBlk);
+        }
+        // --- end: EOF error predicate without i1 and ---
 
         ctx.setCurrent(failBlk);
         lowerer.curLoc = expr.loc;
