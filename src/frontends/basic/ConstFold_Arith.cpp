@@ -1,10 +1,25 @@
-// File: src/frontends/basic/ConstFold_Arith.cpp
-// License: MIT License. See LICENSE in the project root for full license
-//          information.
-// Purpose: Implements arithmetic constant folding utilities for BASIC expressions.
-// Key invariants: Numeric folding honors BASIC promotion rules and 64-bit wrap-around semantics.
-// Ownership/Lifetime: Returned expressions are heap-allocated and owned by callers.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// This file is part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements arithmetic constant folding helpers for the BASIC front end.  The
+// routines apply the language's promotion and overflow rules so literal
+// expression trees can be simplified ahead of lowering without changing runtime
+// semantics.  Callers receive freshly allocated AST nodes that mirror the
+// folded result, enabling aggressive fold attempts without mutating the input
+// tree.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Arithmetic constant folding implementation for BASIC expressions.
+/// @details Provides helpers that collapse unary and binary arithmetic,
+///          comparisons, and boolean operations when both operands are
+///          statically known.  The utilities cooperate with the shared
+///          promotion logic defined in @ref ConstFoldHelpers.hpp.
 
 #include "frontends/basic/ConstFold_Arith.hpp"
 
