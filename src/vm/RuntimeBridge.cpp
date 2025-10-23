@@ -384,13 +384,24 @@ void RuntimeBridge::trap(TrapKind kind,
             ctx.vm->runtimeContext.loc = {};
         }
         if (!fn.empty())
+        {
             ctx.vm->runtimeContext.function = fn;
+        }
         else
+        {
             ctx.vm->runtimeContext.function.clear();
+            ctx.vm->lastTrap.frame.function.clear();
+        }
         if (!block.empty())
+        {
             ctx.vm->runtimeContext.block = block;
+        }
         else
+        {
             ctx.vm->runtimeContext.block.clear();
+        }
+        if (!loc.hasLine())
+            ctx.vm->lastTrap.frame.line = -1;
         ctx.vm->runtimeContext.message = msg;
     }
     else
