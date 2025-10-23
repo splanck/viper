@@ -326,7 +326,12 @@ Lowerer::RVal BuiltinExprLowering::emitLocBuiltin(Lowerer &lowerer, const Builti
         rawI64 = lowerer.emitLoad(IlType(IlKind::I64), scratch);
     }
 
-    Value isError = lowerer.emitBinary(Opcode::SCmpLT, lowerer.ilBoolTy(), rawI64, Value::constInt(0));
+    // --- begin: sign-extend 32->64 for LOC ---
+    {
+        Value shl = lowerer.emitBinary(Opcode::Shl, IlType(IlKind::I64), rawI64, Value::constInt(32));
+        rawI64 = lowerer.emitBinary(Opcode::AShr, IlType(IlKind::I64), shl, Value::constInt(32));
+    }
+    // --- end: sign-extend 32->64 for LOC ---
 
     Lowerer::ProcedureContext &ctx = lowerer.context();
     Function *func = ctx.function();
@@ -350,7 +355,13 @@ Lowerer::RVal BuiltinExprLowering::emitLocBuiltin(Lowerer &lowerer, const Builti
 
         ctx.setCurrent(&func->blocks[originIdx]);
         lowerer.curLoc = expr.loc;
-        lowerer.emitCBr(isError, failBlk, contBlk);
+        // --- begin: LOC error predicate (negative return => error) ---
+        {
+            Value sign = lowerer.emitBinary(Opcode::AShr, IlType(IlKind::I64), rawI64, Value::constInt(63));
+            Value isError = lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(), sign, Value::constInt(0));
+            lowerer.emitCBr(isError, failBlk, contBlk);
+        }
+        // --- end: LOC error predicate ---
 
         ctx.setCurrent(failBlk);
         lowerer.curLoc = expr.loc;
