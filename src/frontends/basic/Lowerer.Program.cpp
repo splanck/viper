@@ -5,11 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Hosts the program-level helpers that bridge the BASIC AST to the IL builder.
-// The lowering pipeline coordinates scanning, declaration emission, runtime
-// discovery, and final IL generation.  Concentrating the orchestration logic in
-// this file keeps the main `Lowerer` interface focused while documenting the
-// lifecycle of program compilation.
+// File: src/frontends/basic/Lowerer.Program.cpp
+// Purpose: Hosts the program-level helpers that bridge the BASIC AST to the IL
+//          builder. The lowering pipeline coordinates scanning, declaration
+//          emission, runtime discovery, and final IL generation. Concentrating
+//          the orchestration logic in this file keeps the main `Lowerer`
+//          interface focused while documenting the lifecycle of program
+//          compilation.
+// Key invariants: Shared lowering state is reset before each run and builders
+//                 are released once emission finishes to avoid dangling
+//                 pointers.
+// Ownership/Lifetime: ProgramLowering borrows the Lowerer; emitted modules are
+//                     owned by the caller-provided builder.
+// Links: docs/codemap.md, docs/architecture.md#cpp-overview
 //
 //===----------------------------------------------------------------------===//
 

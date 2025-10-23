@@ -5,11 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Registers the control-flow statement parsers used by the BASIC front end.
-// The parser owns a registry that maps keywords to member-function callbacks;
-// this file installs the callbacks that recognise branching and looping
-// constructs so the parser can remain data-driven instead of hard-coding
-// dispatch logic in a large conditional.
+// File: src/frontends/basic/Parser_Stmt_Control.cpp
+// Purpose: Registers the control-flow statement parsers used by the BASIC front
+//          end. The parser owns a registry that maps keywords to member-function
+//          callbacks; this file installs the callbacks that recognise branching
+//          and looping constructs so the parser can remain data-driven instead of
+//          hard-coding dispatch logic in a large conditional.
+// Key invariants: Registration order mirrors keyword definitions to keep error
+//                 messages deterministic.
+// Ownership/Lifetime: Registry entries borrow parser member functions; no
+//                     additional resources are owned.
+// Links: docs/codemap.md
 //
 //===----------------------------------------------------------------------===//
 
