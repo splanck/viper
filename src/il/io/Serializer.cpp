@@ -1,9 +1,22 @@
-// File: src/il/io/Serializer.cpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Implements serializer for IL modules to text.
-// Key invariants: Output is deterministic in canonical mode.
-// Ownership/Lifetime: Serializer does not own modules.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the textual serializer for IL modules.  The serializer prints
+// deterministic output that mirrors the parser grammar so modules can round
+// trip through the textual form for diagnostics and tooling.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Renders IL modules, functions, and instructions to textual form.
+/// @details Helper routines convert operands, types, and instruction-specific
+///          payloads into the canonical syntax accepted by the parser.  The
+///          resulting string is used by human-facing tools and golden tests to
+///          verify lowering behaviour.
 
 #include "il/io/Serializer.hpp"
 #include "il/core/BasicBlock.hpp"
@@ -34,11 +47,17 @@ namespace
 
 using Formatter = std::function<void(const Instr &, std::ostream &)>;
 
+/// @brief Convert an opcode enumerator into an array index.
+/// @param op Opcode value to convert.
+/// @return Zero-based index suitable for array lookups.
 constexpr size_t toIndex(Opcode op)
 {
     return static_cast<size_t>(op);
 }
 
+/// @brief Format a value operand into the textual representation used by IL.
+/// @param value Operand to serialise.
+/// @return Printable string capturing the operand, including string escapes.
 std::string formatValue(const Value &value)
 {
     if (value.kind == Value::Kind::ConstStr)
@@ -46,6 +65,9 @@ std::string formatValue(const Value &value)
     return il::core::toString(value);
 }
 
+/// @brief Emit a comma-separated list of operands to a stream.
+/// @param os Stream receiving the textual operands.
+/// @param values Sequence of operands to print.
 void printValueList(std::ostream &os, const std::vector<Value> &values)
 {
     for (size_t i = 0; i < values.size(); ++i)
@@ -56,6 +78,9 @@ void printValueList(std::ostream &os, const std::vector<Value> &values)
     }
 }
 
+/// @brief Serialize standard operand lists for instructions.
+/// @param instr Instruction providing operands.
+/// @param os Stream receiving the serialized operands.
 void printDefaultOperands(const Instr &instr, std::ostream &os)
 {
     if (instr.operands.empty())
@@ -64,6 +89,9 @@ void printDefaultOperands(const Instr &instr, std::ostream &os)
     printValueList(os, instr.operands);
 }
 
+/// @brief Render the trap kind operand, mapping integers to tokens when possible.
+/// @param instr Instruction containing the operand.
+/// @param os Stream receiving the textual operand.
 void printTrapKindOperand(const Instr &instr, std::ostream &os)
 {
     if (instr.operands.empty())
@@ -80,6 +108,9 @@ void printTrapKindOperand(const Instr &instr, std::ostream &os)
     os << ' ' << formatValue(operand);
 }
 
+/// @brief Emit operands for trap.from.err instructions.
+/// @param instr Instruction containing the type and optional operand.
+/// @param os Stream receiving serialized operands.
 void printTrapFromErrOperands(const Instr &instr, std::ostream &os)
 {
     os << ' ' << instr.type.toString();
@@ -87,6 +118,9 @@ void printTrapFromErrOperands(const Instr &instr, std::ostream &os)
         os << ' ' << formatValue(instr.operands.front());
 }
 
+/// @brief Emit operand list for call instructions.
+/// @param instr Instruction referencing the callee and operands.
+/// @param os Stream receiving serialized operands.
 void printCallOperands(const Instr &instr, std::ostream &os)
 {
     os << " @" << instr.callee << "(";
@@ -94,6 +128,9 @@ void printCallOperands(const Instr &instr, std::ostream &os)
     os << ')';
 }
 
+/// @brief Emit optional return operand for ret instructions.
+/// @param instr Return instruction to serialise.
+/// @param os Stream receiving serialized operand.
 void printRetOperand(const Instr &instr, std::ostream &os)
 {
     if (instr.operands.empty())
@@ -101,6 +138,9 @@ void printRetOperand(const Instr &instr, std::ostream &os)
     os << ' ' << formatValue(instr.operands[0]);
 }
 
+/// @brief Emit operands for load instructions including type annotation.
+/// @param instr Instruction providing the operands.
+/// @param os Stream receiving serialized operands.
 void printLoadOperands(const Instr &instr, std::ostream &os)
 {
     os << ' ' << instr.type.toString();
@@ -108,6 +148,9 @@ void printLoadOperands(const Instr &instr, std::ostream &os)
         os << ", " << formatValue(instr.operands[0]);
 }
 
+/// @brief Emit operands for store instructions including type annotation.
+/// @param instr Instruction providing the destination and value.
+/// @param os Stream receiving serialized operands.
 void printStoreOperands(const Instr &instr, std::ostream &os)
 {
     os << ' ' << instr.type.toString();
@@ -119,6 +162,10 @@ void printStoreOperands(const Instr &instr, std::ostream &os)
     }
 }
 
+/// @brief Emit the branch target label and arguments at a given index.
+/// @param instr Instruction containing the branch metadata.
+/// @param index Successor index to print.
+/// @param os Stream receiving serialized output.
 void printBranchTarget(const Instr &instr, size_t index, std::ostream &os)
 {
     if (index >= instr.labels.size())
@@ -132,6 +179,10 @@ void printBranchTarget(const Instr &instr, size_t index, std::ostream &os)
     }
 }
 
+/// @brief Emit a caret-prefixed branch target for resume instructions.
+/// @param instr Instruction containing the branch metadata.
+/// @param index Successor index to print.
+/// @param os Stream receiving serialized output.
 void printCaretBranchTarget(const Instr &instr, size_t index, std::ostream &os)
 {
     if (index >= instr.labels.size())
@@ -145,6 +196,9 @@ void printCaretBranchTarget(const Instr &instr, size_t index, std::ostream &os)
     }
 }
 
+/// @brief Emit operands for unconditional branch instructions.
+/// @param instr Branch instruction to serialise.
+/// @param os Stream receiving serialized output.
 void printBrOperands(const Instr &instr, std::ostream &os)
 {
     if (instr.labels.empty())
@@ -153,6 +207,9 @@ void printBrOperands(const Instr &instr, std::ostream &os)
     printBranchTarget(instr, 0, os);
 }
 
+/// @brief Emit operands for conditional branch instructions.
+/// @param instr Branch instruction to serialise.
+/// @param os Stream receiving serialized output.
 void printCBrOperands(const Instr &instr, std::ostream &os)
 {
     if (instr.operands.empty())
@@ -183,6 +240,9 @@ void printCBrOperands(const Instr &instr, std::ostream &os)
     }
 }
 
+/// @brief Emit operands for switch.i32 instructions including case table.
+/// @param instr Switch instruction providing the scrutinee and cases.
+/// @param os Stream receiving serialized output.
 void printSwitchI32Operands(const Instr &instr, std::ostream &os)
 {
     if (instr.operands.empty() || instr.labels.empty())
@@ -200,6 +260,9 @@ void printSwitchI32Operands(const Instr &instr, std::ostream &os)
     }
 }
 
+/// @brief Retrieve the formatter function for a given opcode.
+/// @param op Opcode to format.
+/// @return Function object responsible for serialising operands of @p op.
 const Formatter &formatterFor(Opcode op)
 {
     static const auto formatters = []
@@ -250,14 +313,9 @@ const Formatter &formatterFor(Opcode op)
     return formatters[toIndex(op)];
 }
 
-/// @brief Emit a single extern declaration.
-/// @param e Describes the imported function and its signature; not owned.
+/// @brief Emit a single extern declaration following canonical IL syntax.
+/// @param e Imported function descriptor to serialise; not owned.
 /// @param os Stream that receives the textual representation; not owned.
-/// @format Prints `extern @<name>(<params>) -> <ret>\n` with parameters
-///         separated by commas. Types are rendered using `Type::toString()`
-///         in their canonical form.
-/// @assumptions Parameter and return types are valid per the IL spec.
-///              The function does not take ownership of `e` or `os`.
 void printExtern(const Extern &e, std::ostream &os)
 {
     os << "extern @" << e.name << "(";
@@ -270,6 +328,9 @@ void printExtern(const Extern &e, std::ostream &os)
     os << ") -> " << e.retType.toString() << "\n";
 }
 
+/// @brief Determine the default result type kind for an opcode.
+/// @param info Opcode metadata describing result categories.
+/// @return Matching kind when the opcode produces a fixed result type; empty optional otherwise.
 std::optional<Type::Kind> defaultResultKind(const OpcodeInfo &info)
 {
     using Kind = Type::Kind;
@@ -297,6 +358,9 @@ std::optional<Type::Kind> defaultResultKind(const OpcodeInfo &info)
     return std::nullopt;
 }
 
+/// @brief Identify whether a basic block models an exception handler entry.
+/// @param bb Block to inspect.
+/// @return @c true when @p bb begins with `eh.entry` and carries error/resume parameters.
 bool isHandlerBlock(const BasicBlock &bb)
 {
     if (bb.instructions.empty())
