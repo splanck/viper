@@ -29,6 +29,17 @@ namespace
 {
 using AstType = ::il::frontends::basic::Type;
 
+/// @brief Translate a BASIC AST type into the corresponding IL core type.
+///
+/// @details CLASS lowering frequently needs to emit temporaries or parameters
+///          using the IL type system.  The helper performs a direct mapping from
+///          BASIC enum values to @ref il::core::Type::Kind entries so all call
+///          sites share the same conversion logic.  Unknown enumerators fall
+///          back to 64-bit integers to match historical behaviour and avoid
+///          crashes during incremental language development.
+///
+/// @param ty BASIC type enumerator describing the source language type.
+/// @return IL type descriptor used when emitting instructions for @p ty.
 [[nodiscard]] il::core::Type ilTypeForAstType(AstType ty)
 {
     using IlType = il::core::Type;
@@ -42,6 +53,16 @@ using AstType = ::il::frontends::basic::Type;
     return IlType(IlType::Kind::I64);
 }
 
+/// @brief Extract raw statement pointers from an owning body list.
+///
+/// @details Constructor, destructor, and method declarations all store their
+///          bodies as vectors of owning @ref StmtPtr values.  Lowering only needs
+///          borrowed pointers because the @ref Lowerer never assumes ownership.
+///          The helper strips the indirection while skipping null entries so
+///          downstream passes receive a dense sequence of statements.
+///
+/// @param body Owning pointers sourced from the AST node.
+/// @return Borrowed pointer list suitable for lowering routines.
 [[nodiscard]] std::vector<const Stmt *> gatherBody(const std::vector<StmtPtr> &body)
 {
     std::vector<const Stmt *> out;
@@ -56,6 +77,18 @@ using AstType = ::il::frontends::basic::Type;
 
 } // namespace
 
+/// @brief Allocate and initialise the implicit @c ME slot for a class member.
+///
+/// @details BASIC object procedures implicitly capture @c ME, a pointer to the
+///          current instance.  The routine reserves a stack slot, records the
+///          slot identifier in the symbol table, and stores the incoming @c self
+///          parameter so later field accesses can load from a stable location.
+///          The lowering location is cleared because the slot materialisation is
+///          synthetic and should not inherit the caller's source location.
+///
+/// @param className Name of the class being lowered (used for symbol metadata).
+/// @param fn        Function currently under construction.
+/// @return Identifier of the stack slot holding the @c ME pointer.
 unsigned Lowerer::materializeSelfSlot(const std::string &className, Function &fn)
 {
     curLoc = {};
@@ -68,12 +101,33 @@ unsigned Lowerer::materializeSelfSlot(const std::string &className, Function &fn
     return slot.id;
 }
 
+/// @brief Load the implicit @c ME pointer from the cached stack slot.
+///
+/// @details Resets the current source location because the operation is
+///          compiler-generated, then emits a load from the previously
+///          materialised slot.  Keeping the logic in a helper avoids duplicating
+///          the slot bookkeeping across constructor, destructor, and method
+///          bodies.
+///
+/// @param slotId Identifier of the @c ME stack slot materialised earlier.
+/// @return Runtime value referencing the @c ME pointer.
 Lowerer::Value Lowerer::loadSelfPointer(unsigned slotId)
 {
     curLoc = {};
     return emitLoad(Type(Type::Kind::Ptr), Value::temp(slotId));
 }
 
+/// @brief Release reference-counted fields during destructor emission.
+///
+/// @details Iterates over the cached @ref ClassLayout to determine which fields
+///          require runtime release calls.  String fields trigger retain/release
+///          helpers, and future field kinds can extend the switch without
+///          altering destructor logic.  The helper uses @c curLoc resets so the
+///          emitted instructions are treated as compiler-synthesised clean-up
+///          rather than user code.
+///
+/// @param selfPtr Pointer to the object instance being destroyed.
+/// @param layout  Metadata describing field offsets and types for the class.
 void Lowerer::emitFieldReleaseSequence(Value selfPtr, const ClassLayout &layout)
 {
     for (const auto &field : layout.fields)
@@ -99,6 +153,17 @@ void Lowerer::emitFieldReleaseSequence(Value selfPtr, const ClassLayout &layout)
     }
 }
 
+/// @brief Emit the IL body for a BASIC class constructor.
+///
+/// @details Resets lowering state, binds the implicit @c ME parameter, materialises
+///          user parameters, and drives the lowering pipeline for the constructor
+///          body.  Runtime helpers required for array parameters are requested,
+///          and deterministic exits are enforced by branching to the synthetic
+///          exit block when user code falls through.  The routine also handles
+///          releasing transient allocations before returning.
+///
+/// @param klass Class definition providing layout and member metadata.
+/// @param ctor  AST node describing the constructor body and parameters.
 void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl &ctor)
 {
     resetLoweringState();
@@ -181,6 +246,16 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
     ctx.blockNames().resetNamer();
 }
 
+/// @brief Emit the IL body for a BASIC class destructor.
+///
+/// @details Lowers the optional user-defined destructor body, falls back to an
+///          empty body when absent, and always invokes
+///          @ref emitFieldReleaseSequence to clean up reference-counted fields.
+///          Locals and parameters are released before returning to honour BASIC's
+///          deterministic destruction semantics.
+///
+/// @param klass    Class definition whose instance is being destroyed.
+/// @param userDtor Optional AST node for the user-authored destructor body.
 void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *userDtor)
 {
     resetLoweringState();
@@ -241,6 +316,16 @@ void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *
     ctx.blockNames().resetNamer();
 }
 
+/// @brief Emit the IL body for a BASIC class method.
+///
+/// @details Mirrors constructor emission by setting up the @c ME slot, mapping
+///          user parameters to stack slots, and invoking the standard statement
+///          lowering sequence.  The helper also ensures array parameters request
+///          their runtime retain/release helpers and that fallthrough paths branch
+///          to the synthesised exit block.
+///
+/// @param klass  Class definition that owns the method.
+/// @param method AST node describing the method signature and body.
 void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
 {
     resetLoweringState();
@@ -323,6 +408,15 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
     ctx.blockNames().resetNamer();
 }
 
+/// @brief Lower all class declarations and their members within a program.
+///
+/// @details Iterates the top-level statements looking for CLASS declarations,
+///          gathers their constructor, destructor, and method members, and then
+///          emits each body using the dedicated helpers.  This ensures object
+///          members are materialised before ordinary procedures so runtime
+///          helpers and mangled names are available to subsequent lowering steps.
+///
+/// @param prog BASIC program containing potential CLASS declarations.
 void Lowerer::emitOopDeclsAndBodies(const Program &prog)
 {
     if (!builder)
