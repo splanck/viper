@@ -29,6 +29,7 @@
 #include "rt_random.h"
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -45,6 +46,34 @@ namespace
 using Kind = il::core::Type::Kind;
 
 constexpr std::size_t kRtSigCount = data::kRtSigCount;
+
+/// @brief Clamp a 64-bit runtime file position/length to a 32-bit IL value.
+///
+/// @details Runtime helpers such as @ref rt_lof_ch and @ref rt_loc_ch expose
+///          64-bit offsets so large files can be supported.  BASIC however
+///          models these builtins as returning 32-bit signed integers.  The
+///          bridge narrows the runtime result using saturation so overflow
+///          produces INT32_MAX/INT32_MIN instead of wrapping.
+int32_t clampRuntimeOffset(int64_t value)
+{
+    if (value > std::numeric_limits<int32_t>::max())
+        return std::numeric_limits<int32_t>::max();
+    if (value < std::numeric_limits<int32_t>::min())
+        return std::numeric_limits<int32_t>::min();
+    return static_cast<int32_t>(value);
+}
+
+/// @brief Adapter that narrows @ref rt_lof_ch results to 32 bits.
+int32_t rt_lof_ch_i32(int32_t channel)
+{
+    return clampRuntimeOffset(rt_lof_ch(channel));
+}
+
+/// @brief Adapter that narrows @ref rt_loc_ch results to 32 bits.
+int32_t rt_loc_ch_i32(int32_t channel)
+{
+    return clampRuntimeOffset(rt_loc_ch(channel));
+}
 
 /// @brief Retrieve the parsed runtime signature for a generated enumerator.
 ///
@@ -457,8 +486,8 @@ constexpr std::array<DescriptorRow, 88> kDescriptorRows{{
     DescriptorRow{"rt_println_ch_err", std::nullopt, "i32(i32,string)", &DirectHandler<&rt_println_ch_err, int32_t, int32_t, ViperString *>::invoke, kManualLowering, nullptr, 0, RuntimeTrapClass::None},
     DescriptorRow{"rt_line_input_ch_err", std::nullopt, "i32(i32,ptr)", &DirectHandler<&rt_line_input_ch_err, int32_t, int32_t, ViperString **>::invoke, kManualLowering, nullptr, 0, RuntimeTrapClass::None},
     DescriptorRow{"rt_eof_ch", std::nullopt, "i32(i32)", &DirectHandler<&rt_eof_ch, int32_t, int32_t>::invoke, kManualLowering, nullptr, 0, RuntimeTrapClass::None},
-    DescriptorRow{"rt_lof_ch", std::nullopt, "i64(i32)", &DirectHandler<&rt_lof_ch, int64_t, int32_t>::invoke, kManualLowering, nullptr, 0, RuntimeTrapClass::None},
-    DescriptorRow{"rt_loc_ch", std::nullopt, "i64(i32)", &DirectHandler<&rt_loc_ch, int64_t, int32_t>::invoke, kManualLowering, nullptr, 0, RuntimeTrapClass::None},
+    DescriptorRow{"rt_lof_ch", std::nullopt, "i32(i32)", &DirectHandler<&rt_lof_ch_i32, int32_t, int32_t>::invoke, kManualLowering, nullptr, 0, RuntimeTrapClass::None},
+    DescriptorRow{"rt_loc_ch", std::nullopt, "i32(i32)", &DirectHandler<&rt_loc_ch_i32, int32_t, int32_t>::invoke, kManualLowering, nullptr, 0, RuntimeTrapClass::None},
     DescriptorRow{"rt_seek_ch_err", std::nullopt, "i32(i32,i64)", &DirectHandler<&rt_seek_ch_err, int32_t, int32_t, int64_t>::invoke, kManualLowering, nullptr, 0, RuntimeTrapClass::None},
     DescriptorRow{"rt_str_empty", std::nullopt, "string()", &DirectHandler<&rt_str_empty, rt_string>::invoke, kAlwaysLowering, nullptr, 0, RuntimeTrapClass::None},
     DescriptorRow{"rt_const_cstr", std::nullopt, "string(ptr)", &DirectHandler<&rt_const_cstr, rt_string, const char *>::invoke, kManualLowering, nullptr, 0, RuntimeTrapClass::None},
