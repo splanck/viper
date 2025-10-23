@@ -11,6 +11,7 @@
 #include <deque>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 /// @brief Tracks mapping from file ids to paths and source locations.
 /// @invariant File id 0 is invalid.
@@ -45,6 +46,9 @@ class SourceManager
 
     /// Next identifier to assign; stored as 64-bit to detect overflow safely.
     uint64_t next_file_id_ = 1;
+
+    /// Fast lookup from normalized path to previously assigned identifier.
+    std::unordered_map<std::string, uint32_t> path_to_id_;
 
     friend struct SourceManagerTestAccess;
 };
