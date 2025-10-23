@@ -1,7 +1,26 @@
-// tui/src/text/LineIndex.cpp
-// @brief LineIndex implementation reacting to piece table span callbacks.
-// @invariant Offsets remain sorted with sentinel zero entry.
-// @ownership Stores offsets only; text lifetimes managed by callers.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/src/text/LineIndex.cpp
+// Purpose: Maintain a mapping from line numbers to byte offsets for text
+//          buffers backed by a piece table.
+// Key invariants: The offset list always remains sorted and includes the zero
+//                 sentinel entry representing the start of the document.
+// Ownership/Lifetime: The index stores offsets only; underlying text storage is
+//                     owned elsewhere by the piece table.
+// Links: docs/tools.md#text-buffer
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements @ref viper::tui::text::LineIndex bookkeeping operations.
+/// @details The index listens to insert and erase callbacks from the piece table
+///          and updates cached line start offsets so that views can resolve
+///          ``line → byte`` queries in O(1) time.
 
 #include "tui/text/LineIndex.hpp"
 
@@ -9,6 +28,10 @@
 
 namespace viper::tui::text
 {
+/// @brief Rebuild the line index from the provided text snapshot.
+/// @details Clears any existing offsets, reinstates the leading zero entry, and
+///          scans for newline characters to populate subsequent line starts.
+/// @param text Buffer contents used to initialise the index.
 void LineIndex::reset(std::string_view text)
 {
     line_starts_.clear();
@@ -22,6 +45,12 @@ void LineIndex::reset(std::string_view text)
     }
 }
 
+/// @brief Update offsets after an insertion at @p pos.
+/// @details Offsets beyond the insertion point are shifted by the inserted
+///          length, while newline characters in the inserted text create new
+///          line boundaries at the appropriate offsets.
+/// @param pos Byte offset where new text was inserted.
+/// @param text Inserted contents.
 void LineIndex::onInsert(std::size_t pos, std::string_view text)
 {
     if (text.empty())
@@ -47,6 +76,11 @@ void LineIndex::onInsert(std::size_t pos, std::string_view text)
     }
 }
 
+/// @brief Adjust offsets to account for text removal.
+/// @details Removes any line starts that fall within the erased range and shifts
+///          subsequent offsets backwards by the erased length.
+/// @param pos Starting byte offset of the deletion.
+/// @param text Text fragment that was removed (used solely for length).
 void LineIndex::onErase(std::size_t pos, std::string_view text)
 {
     if (text.empty())
@@ -66,11 +100,18 @@ void LineIndex::onErase(std::size_t pos, std::string_view text)
     }
 }
 
+/// @brief Query how many line starts are tracked.
+/// @details The count corresponds to the number of lines in the buffer plus the
+///          sentinel entry.
+/// @return Number of stored offsets.
 std::size_t LineIndex::count() const
 {
     return line_starts_.size();
 }
 
+/// @brief Fetch the byte offset where a line begins.
+/// @param line Zero-based line index.
+/// @return Byte offset for @p line; throws if the index is out of range.
 std::size_t LineIndex::start(std::size_t line) const
 {
     return line_starts_.at(line);
