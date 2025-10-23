@@ -6,10 +6,11 @@
 //===----------------------------------------------------------------------===//
 //
 // Provides the minimal out-of-line utilities for the SourceLoc value type.  A
-// location is considered valid when it refers to a registered file identifier
-// and carries 1-based line and column information.  Keeping the helper here
-// avoids inlining the check into every translation unit that includes the
-// header while preserving a central explanation of the validity contract.
+// location is considered valid when it refers to a registered file identifier;
+// line and column components are optional and surfaced through `hasLine()` and
+// `hasColumn()` respectively.  Keeping the helper here avoids inlining the
+// check into every translation unit that includes the header while preserving a
+// central explanation of the validity contract.
 //
 //===----------------------------------------------------------------------===//
 
@@ -37,7 +38,7 @@ namespace il::support
 /// @return True when the location originated from a tracked source file.
 bool SourceLoc::isValid() const
 {
-    return file_id != 0 && line != 0 && column != 0;
+    return file_id != 0;
 }
 
 /// @brief Determine whether the range refers to a concrete span of source.
