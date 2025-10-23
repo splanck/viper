@@ -63,7 +63,7 @@ int main()
     int64_t complex_count = rt_split_fields(complex_line, complex_fields, 3);
     assert(complex_count == 3);
     const char *c0 = rt_string_cstr(complex_fields[0]);
-    assert(strcmp(c0, "He said \"\"Hi, there\"\"") == 0);
+    assert(strcmp(c0, "He said \"Hi, there\"") == 0);
     assert(rt_to_int(complex_fields[1]) == 99);
     const char *c2 = rt_string_cstr(complex_fields[2]);
     assert(strcmp(c2, "Bare, field") == 0);
@@ -71,6 +71,18 @@ int main()
     for (int i = 0; i < 3; ++i)
         rt_string_unref(complex_fields[i]);
     rt_string_unref(complex_line);
+
+    const char *escaped = "\"Nested \"\"quotes\"\" stay\"";
+    rt_string escaped_line = rt_string_from_bytes(escaped, (int64_t)strlen(escaped));
+    rt_string escaped_fields[1] = {0};
+    int64_t escaped_count = rt_split_fields(escaped_line, escaped_fields, 1);
+    assert(escaped_count == 1);
+    const char *escaped_value = rt_string_cstr(escaped_fields[0]);
+    assert(strcmp(escaped_value, "Nested \"quotes\" stay") == 0);
+    assert(strstr(escaped_value, "\"\"") == NULL);
+
+    rt_string_unref(escaped_fields[0]);
+    rt_string_unref(escaped_line);
 
     return 0;
 }
