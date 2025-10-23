@@ -63,9 +63,12 @@ int main()
     assert(oss.str().find("test:1:1") != std::string::npos);
 
     il::support::SourceLoc partial{loc.file_id, 2, 0};
-    assert(!partial.isValid());
+    assert(partial.isValid());
+    assert(partial.hasLine());
+    assert(!partial.hasColumn());
     il::support::SourceRange mixed{loc, partial};
-    assert(!mixed.isValid());
+    assert(mixed.isValid());
+    assert(!mixed.end.hasColumn());
     il::support::Diag partialDiag{il::support::Severity::Error,
                                   "partial coordinates",
                                   partial};
