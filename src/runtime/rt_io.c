@@ -310,10 +310,12 @@ int64_t rt_split_fields(rt_string line, rt_string *out_fields, int64_t max_field
                 ++field_start;
             while (field_end > field_start && isspace((unsigned char)data[field_end - 1]))
                 --field_end;
+            bool had_quotes = false;
             if (field_end > field_start && data[field_start] == '"' && data[field_end - 1] == '"')
             {
                 ++field_start;
                 --field_end;
+                had_quotes = true;
             }
 
             if (stored < max_fields)
@@ -324,8 +326,51 @@ int64_t rt_split_fields(rt_string line, rt_string *out_fields, int64_t max_field
                 }
                 else
                 {
-                    out_fields[stored++] =
-                        rt_string_from_bytes(data + field_start, field_end - field_start);
+                    if (had_quotes)
+                    {
+                        size_t unescaped_len = 0;
+                        size_t j = field_start;
+                        while (j < field_end)
+                        {
+                            if (data[j] == '"' && j + 1 < field_end && data[j + 1] == '"')
+                            {
+                                ++j;
+                            }
+                            ++unescaped_len;
+                            ++j;
+                        }
+
+                        char *tmp = (char *)malloc(unescaped_len);
+                        if (!tmp && unescaped_len > 0)
+                        {
+                            rt_trap("out of memory");
+                        }
+
+                        j = field_start;
+                        size_t write = 0;
+                        while (j < field_end)
+                        {
+                            char ch = data[j];
+                            if (ch == '"' && j + 1 < field_end && data[j + 1] == '"')
+                            {
+                                tmp[write++] = '"';
+                                j += 2;
+                            }
+                            else
+                            {
+                                tmp[write++] = ch;
+                                ++j;
+                            }
+                        }
+
+                        out_fields[stored++] = rt_string_from_bytes(tmp, unescaped_len);
+                        free(tmp);
+                    }
+                    else
+                    {
+                        out_fields[stored++] =
+                            rt_string_from_bytes(data + field_start, field_end - field_start);
+                    }
                 }
             }
             ++total;
