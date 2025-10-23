@@ -1,18 +1,22 @@
 //===----------------------------------------------------------------------===//
 //
-// This file is part of the Viper project, under the MIT License.
+// Part of the Viper project, under the MIT License.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-// File: src/vm/ops/Op_TrapEh.cpp
-// Purpose: Implement VM opcode handlers for traps and exception-handling flow.
-// Key invariants: Resume tokens are validated before use and are invalidated
-//                 after a successful resume to prevent reuse.
-// Ownership/Lifetime: Handlers borrow VM frames and never allocate persistent
-//                     resources; trap tokens are managed via the runtime bridge.
-// Links: docs/runtime-vm.md#exceptions
+//
+// Implements trap and exception-handling opcode handlers for the virtual
+// machine interpreter.  The helpers decode VmError payloads, manage resume
+// tokens, and bridge legacy error codes into structured trap reporting.
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Opcode handlers for trap production and exception resumption.
+/// @details The helper functions in this translation unit operate on
+///          @ref VM frames to expose IL instructions that inspect, modify, and
+///          raise trap state.  They coordinate with the runtime bridge to keep
+///          legacy error codes interoperable with the structured trap model.
 
 #include "vm/OpHandlers_Control.hpp"
 
@@ -159,16 +163,14 @@ VM::ExecResult handleEhPop(VM &vm,
 }
 
 /// @brief Resume execution at the trapping instruction itself.
-/// @note Resume tokens are single-use capabilities; once consumed they are
-///       invalidated to prevent stale resumptions after handler unwinding.
-/// @brief Resume execution at the trapping instruction itself.
-///
 /// @details Validates the supplied resume token, ensuring it matches the
 ///          current frame and that the recorded target block still exists.
 ///          Successful resumes clear the frame's resume state, redirect the
 ///          current block pointer to the captured block, and reset the
-///          instruction pointer to the trapping site.  Failures emit a diagnostic
-///          via @ref trapInvalidResume.
+///          instruction pointer to the trapping site.  Failures emit a
+///          diagnostic via @ref trapInvalidResume.  Resume tokens are
+///          single-use; consuming one invalidates it to prevent stale
+///          resumptions after handler unwinding.
 VM::ExecResult handleResumeSame(VM &vm,
                                 Frame &fr,
                                 const il::core::Instr &in,
@@ -324,16 +326,13 @@ VM::ExecResult handleTrapKind(VM &vm,
     return {};
 }
 
-/// @brief Materialise a runtime trap token from the legacy err/ codes.
-/// @note The helper bridges err-based semantics into the structured trap path
-///       so diagnostics and runtime handlers share a consistent VmError format.
 /// @brief Convert a legacy BASIC error code into a VmError trap token.
-///
 /// @details Evaluates the numeric error code operand, optionally captures an
 ///          additional string message, and initialises a freshly acquired trap
 ///          token.  The token inherits the mapped trap kind and retains the
 ///          original error code for diagnostic purposes before being written to
-///          the result register.
+///          the result register.  This bridges the legacy `err` semantics into
+///          the structured trap path so diagnostics remain consistent.
 VM::ExecResult handleTrapErr(VM &vm,
                              Frame &fr,
                              const il::core::Instr &in,
