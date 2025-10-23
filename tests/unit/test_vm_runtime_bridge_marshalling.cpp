@@ -177,6 +177,18 @@ int main()
     assert(roundTrip == embeddedLiteral);
     rt_string_unref(embedded);
 
+    {
+        std::string backing = "substring-check";
+        il::vm::StringRef trimmed{backing.data() + 1, backing.size() - 2};
+        il::vm::ViperString substrHandle = il::vm::toViperString(trimmed);
+        assert(substrHandle != nullptr);
+        const int64_t substrLen = rt_len(substrHandle);
+        assert(substrLen == static_cast<int64_t>(trimmed.size()));
+        std::string substrRoundTrip(substrHandle->data, static_cast<size_t>(substrLen));
+        assert(substrRoundTrip == trimmed);
+        rt_string_unref(substrHandle);
+    }
+
     il::vm::StringRef emptyRef{};
     il::vm::ViperString emptyString = il::vm::toViperString(emptyRef);
     assert(emptyString != nullptr);
