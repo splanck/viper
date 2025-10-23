@@ -183,6 +183,7 @@ if(VIPER_VM_THREADED)
 endif()
 
 add_library(il_codegen_x86_64 STATIC
+  codegen/x86_64/CallLowering.cpp
   codegen/x86_64/FrameLowering.cpp
   codegen/x86_64/AsmEmitter.cpp
   codegen/x86_64/MachineIR.cpp
