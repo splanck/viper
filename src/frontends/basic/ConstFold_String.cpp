@@ -1,12 +1,16 @@
-// File: src/frontends/basic/ConstFold_String.cpp
-// License: MIT License. See LICENSE in the project root for full license
-//          information.
-// Purpose: Implements string constant folding utilities for BASIC expressions.
-// Key invariants: Helpers clamp indices to valid ranges and gracefully handle
-//                 empty and out-of-range slices.
-// Ownership/Lifetime: Returned expressions are heap-allocated and owned by
-//                     callers.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the string constant-folding helpers used by the BASIC front end.
+// The routines examine literal expressions, evaluate operations such as
+// concatenation and slicing, and produce new AST nodes so the lowering pipeline
+// can avoid generating runtime calls for trivial expressions.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/ConstFold_String.hpp"
 
@@ -17,10 +21,29 @@
 #include <optional>
 #include <utility>
 
+/// @file
+/// @brief String-specific constant-folding utilities for BASIC expressions.
+/// @details Each helper inspects AST nodes, validates operand shapes, and
+///          constructs new literal nodes when the computation can be performed
+///          statically.  The utilities rely on the shared `ConstFoldHelpers`
+///          module for numeric conversions and on the AST factory functions
+///          below to build replacement nodes.
+
 namespace il::frontends::basic::detail
 {
 namespace
 {
+/// @brief Invoke a folding callback when both operands are string literals.
+/// @details Attempts to cast @p lhs and @p rhs to @ref StringExpr instances. If
+///          either fails the helper returns @c nullptr so the caller can fall
+///          back to runtime evaluation.  When both casts succeed the supplied
+///          callback is executed to produce a folded expression.
+/// @tparam Fn Callable type that accepts two @ref StringExpr references and
+///         returns an @ref ExprPtr.
+/// @param lhs Left-hand operand supplied to the folding rule.
+/// @param rhs Right-hand operand supplied to the folding rule.
+/// @param fn Callback invoked when both operands are string literals.
+/// @return Folded expression when both operands are literals; nullptr otherwise.
 template <typename Fn>
 ExprPtr dispatchStringBinary(const Expr &lhs, const Expr &rhs, Fn fn)
 {
@@ -163,16 +186,37 @@ ExprPtr foldStringNe(const StringExpr &l, const StringExpr &r)
     });
 }
 
+/// @brief Attempt to fold string concatenation for arbitrary operands.
+/// @details Uses @ref dispatchStringBinary to confirm both operands are string
+///          literals before delegating to @ref foldStringConcat.  When either
+///          operand is non-literal the helper returns @c nullptr so the caller
+///          can defer to runtime evaluation.
+/// @param lhs Left-hand operand supplied to the concatenation operator.
+/// @param rhs Right-hand operand supplied to the concatenation operator.
+/// @return Folded concatenation or nullptr when operands are not both literals.
 ExprPtr foldStringBinaryConcat(const Expr &lhs, const Expr &rhs)
 {
     return dispatchStringBinary(lhs, rhs, foldStringConcat);
 }
 
+/// @brief Attempt to fold string equality for arbitrary operands.
+/// @details Wraps @ref dispatchStringBinary so equality folding only occurs when
+///          both operands are literals.  Non-literal operands yield @c nullptr.
+/// @param lhs Left-hand operand supplied to the equality operator.
+/// @param rhs Right-hand operand supplied to the equality operator.
+/// @return Integer literal encoding the comparison result, or nullptr.
 ExprPtr foldStringBinaryEq(const Expr &lhs, const Expr &rhs)
 {
     return dispatchStringBinary(lhs, rhs, foldStringEq);
 }
 
+/// @brief Attempt to fold string inequality for arbitrary operands.
+/// @details Relies on @ref dispatchStringBinary to guard the call to
+///          @ref foldStringNe so folding only occurs when both operands are
+///          literals.
+/// @param lhs Left-hand operand supplied to the inequality operator.
+/// @param rhs Right-hand operand supplied to the inequality operator.
+/// @return Integer literal encoding the inequality result, or nullptr.
 ExprPtr foldStringBinaryNe(const Expr &lhs, const Expr &rhs)
 {
     return dispatchStringBinary(lhs, rhs, foldStringNe);
