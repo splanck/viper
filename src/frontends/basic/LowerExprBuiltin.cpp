@@ -270,19 +270,29 @@ Lowerer::RVal BuiltinExprLowering::emitEofBuiltin(Lowerer &lowerer, const Builti
 
         ctx.setCurrent(&func->blocks[originIdx]);
         lowerer.curLoc = expr.loc;
-        // --- begin: EOF error predicate without i1 and ---
+        // --- begin: EOF error predicate via i64 logical masks ---
         {
-            // isError when raw != 0 AND raw != -1.
-            // Use product trick: (raw * (raw + 1)) != 0  <=>  raw ∉ {0, -1}
-            Value plus1 = lowerer.emitBinary(
-                Opcode::Add, IlType(IlKind::I64), rawI64, Value::constInt(1));
-            Value prod =
-                lowerer.emitBinary(Opcode::Mul, IlType(IlKind::I64), rawI64, plus1);
-            Value isError = lowerer.emitBinary(
-                Opcode::ICmpNe, lowerer.ilBoolTy(), prod, Value::constInt(0));
+            // rawI64 is the sign-extended 64-bit value from rt_eof_ch (I32 -> I64).
+            // Error iff (raw != 0) && (raw != -1). Do this by building BASIC-style
+            // logical masks (-1 for true, 0 for false) and ANDing them in i64.
+
+            Value notZero   = lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(),
+                                                 rawI64, Value::constInt(0));
+            Value notNegOne = lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(),
+                                                 rawI64, Value::constInt(-1));
+
+            // i1 -> i64 BASIC logical masks: true -> -1, false -> 0
+            Value m1 = lowerer.emitBasicLogicalI64(notZero);
+            Value m2 = lowerer.emitBasicLogicalI64(notNegOne);
+
+            // Bitwise AND (i64), then compare with 0 to get an i1 for cbr
+            Value both    = lowerer.emitBinary(Opcode::And, IlType(IlKind::I64), m1, m2);
+            Value isError = lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(),
+                                               both, Value::constInt(0));
+
             lowerer.emitCBr(isError, failBlk, contBlk);
         }
-        // --- end: EOF error predicate without i1 and ---
+        // --- end: EOF error predicate via i64 logical masks ---
 
         ctx.setCurrent(failBlk);
         lowerer.curLoc = expr.loc;
