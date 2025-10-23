@@ -48,6 +48,13 @@ Lowerer::RVal emitCustom(BuiltinLowerContext &ctx, const Variant &variant);
 
 } // namespace
 
+/// @brief Construct a lowering context for the given builtin call.
+/// @details Captures references to the active @ref Lowerer, the builtin rule,
+///          and the builtin metadata. The constructor eagerly scans each
+///          argument to record source locations and static types so variant
+///          selection and diagnostic emission can access them without re-lowering.
+/// @param lowerer Active lowering engine responsible for emitting IL.
+/// @param call Builtin call expression currently being lowered.
 BuiltinLowerContext::BuiltinLowerContext(Lowerer &lowerer, const BuiltinCallExpr &call)
     : lowerer_(&lowerer), call_(&call), rule_(&getBuiltinLoweringRule(call.builtin)),
       info_(&getBuiltinInfo(call.builtin)), originalTypes_(call.args.size()),
@@ -63,11 +70,24 @@ BuiltinLowerContext::BuiltinLowerContext(Lowerer &lowerer, const BuiltinCallExpr
     }
 }
 
+/// @brief Check whether the builtin call provides an argument at @p idx.
+/// @details Evaluates the call's argument vector and ensures the pointer at the
+///          requested index is non-null. The function never triggers lowering of
+///          the argument, making it safe for speculative checks.
+/// @param idx Zero-based argument index to query.
+/// @return True when an argument exists and is non-null.
 bool BuiltinLowerContext::hasArg(std::size_t idx) const noexcept
 {
     return idx < call_->args.size() && call_->args[idx] != nullptr;
 }
 
+/// @brief Retrieve the statically scanned type for an argument.
+/// @details Returns the type recorded during construction by
+///          @ref Lowerer::scanExpr. If the index is out of range or the type was
+///          unavailable, std::nullopt is returned so callers can fall back to
+///          default behaviour.
+/// @param idx Argument index whose type should be queried.
+/// @return Optional expression type reported by the scanner.
 std::optional<Lowerer::ExprType> BuiltinLowerContext::originalType(std::size_t idx) const noexcept
 {
     if (idx >= originalTypes_.size())
@@ -75,6 +95,12 @@ std::optional<Lowerer::ExprType> BuiltinLowerContext::originalType(std::size_t i
     return originalTypes_[idx];
 }
 
+/// @brief Fetch the source location associated with an argument index.
+/// @details Returns the argument's location when present, otherwise falls back
+///          to the call site location. The helper keeps diagnostic emission
+///          consistent even for synthesized arguments.
+/// @param idx Argument index whose source location is requested.
+/// @return Source location for diagnostics.
 il::support::SourceLoc BuiltinLowerContext::argLoc(std::size_t idx) const noexcept
 {
     if (idx < argLocs_.size() && argLocs_[idx])
@@ -82,6 +108,12 @@ il::support::SourceLoc BuiltinLowerContext::argLoc(std::size_t idx) const noexce
     return call_->loc;
 }
 
+/// @brief Resolve the source location used for runtime calls emitted by a variant.
+/// @details Some variants attribute diagnostics to a specific argument. When
+///          @p idx is provided and references a valid argument location, that
+///          location is returned; otherwise the call site location is used.
+/// @param idx Optional argument index provided by the lowering rule.
+/// @return Source location that should own diagnostics emitted by the variant.
 il::support::SourceLoc BuiltinLowerContext::callLoc(
     const std::optional<std::size_t> &idx) const noexcept
 {
@@ -90,6 +122,12 @@ il::support::SourceLoc BuiltinLowerContext::callLoc(
     return call_->loc;
 }
 
+/// @brief Ensure the argument at @p idx has been lowered.
+/// @details On first use the argument is lowered and cached so subsequent calls
+///          reuse the same IL value and type. The helper asserts the argument is
+///          present to catch rule mismatches early.
+/// @param idx Argument index to lower.
+/// @return Reference to the cached lowered argument.
 Lowerer::RVal &BuiltinLowerContext::ensureLowered(std::size_t idx)
 {
     assert(hasArg(idx) && "builtin lowering referenced missing argument");
@@ -99,12 +137,25 @@ Lowerer::RVal &BuiltinLowerContext::ensureLowered(std::size_t idx)
     return *slot;
 }
 
+/// @brief Append a synthetic argument produced during lowering.
+/// @details Stores @p value in an internal vector to extend the lifetime of
+///          temporary results that mimic call arguments. Returns a reference so
+///          callers can mutate the stored value if needed.
+/// @param value Lowered value/type pair to append.
+/// @return Reference to the stored synthetic argument.
 Lowerer::RVal &BuiltinLowerContext::appendSynthetic(Lowerer::RVal value)
 {
     syntheticArgs_.push_back(std::move(value));
     return syntheticArgs_.back();
 }
 
+/// @brief Obtain the lowered value for an argument defined by @p spec.
+/// @details If the argument exists it is lowered (or retrieved from cache).
+///          Otherwise a default value is synthesized when permitted by the rule;
+///          failing that, a defensive zero is returned after triggering an
+///          assertion in debug builds.
+/// @param spec Argument specification from the lowering rule.
+/// @return Reference to the lowered or synthesized argument slot.
 Lowerer::RVal &BuiltinLowerContext::ensureArgument(const BuiltinLoweringRule::Argument &spec)
 {
     const std::size_t idx = spec.index;
@@ -136,6 +187,12 @@ Lowerer::RVal &BuiltinLowerContext::ensureArgument(const BuiltinLoweringRule::Ar
     return appendSynthetic({Value::constInt(0), IlType(IlKind::I64)});
 }
 
+/// @brief Resolve the diagnostic location for an argument described by @p spec.
+/// @details Prefers the argument's own source location when available and falls
+///          back to the call location. This ensures transforms report errors at
+///          intuitive positions.
+/// @param spec Argument description from the lowering rule.
+/// @return Source location for diagnostics.
 il::support::SourceLoc BuiltinLowerContext::selectArgLoc(
     const BuiltinLoweringRule::Argument &spec) const
 {
@@ -144,6 +201,14 @@ il::support::SourceLoc BuiltinLowerContext::selectArgLoc(
     return call_->loc;
 }
 
+/// @brief Apply a sequence of transformations to an argument.
+/// @details Ensures the argument exists, then iterates @p transforms to coerce
+///          or adjust the argument value and type. Each transform leverages
+///          helper routines on the underlying @ref Lowerer to remain consistent
+///          with normal expression lowering.
+/// @param spec Argument specification describing the source operand.
+/// @param transforms Ordered list of transformations to apply.
+/// @return Reference to the transformed argument slot.
 Lowerer::RVal &BuiltinLowerContext::applyTransforms(
     const BuiltinLoweringRule::Argument &spec,
     const std::vector<BuiltinLoweringRule::ArgTransform> &transforms)
@@ -192,6 +257,13 @@ Lowerer::RVal &BuiltinLowerContext::applyTransforms(
     return slot;
 }
 
+/// @brief Translate a BASIC expression type into the corresponding IL type.
+/// @details Covers the subset of expression kinds used by builtin lowering and
+///          uses @p lowerer to access shared boolean type handles. Defaults to
+///          64-bit integers when no specialised mapping exists.
+/// @param lowerer Lowerer used to access cached IL types.
+/// @param type BASIC expression type classification.
+/// @return Equivalent IL type for code generation.
 IlType BuiltinLowerContext::typeFromExpr(Lowerer &lowerer, Lowerer::ExprType type)
 {
     switch (type)
@@ -208,6 +280,12 @@ IlType BuiltinLowerContext::typeFromExpr(Lowerer &lowerer, Lowerer::ExprType typ
     }
 }
 
+/// @brief Determine the IL result type described by @p spec.
+/// @details Evaluates whether the rule requests a fixed type or wants to mirror
+///          the type of a specific argument. When the referenced argument is
+///          absent the method gracefully falls back to the fixed type.
+/// @param spec Result specification from the lowering rule.
+/// @return IL type that should be used for the builtin result.
 IlType BuiltinLowerContext::resolveResultType(const BuiltinLoweringRule::ResultSpec &spec)
 {
     switch (spec.kind)
@@ -222,16 +300,29 @@ IlType BuiltinLowerContext::resolveResultType(const BuiltinLoweringRule::ResultS
     return IlType(IlKind::I64);
 }
 
+/// @brief Resolve the IL result type for the active variant.
+/// @details Convenience wrapper that delegates to the rule's stored result
+///          specification.
+/// @return IL type for the builtin result.
 IlType BuiltinLowerContext::resolveResultType()
 {
     return resolveResultType(rule_->result);
 }
 
+/// @brief Create a default zero-valued result.
+/// @details Used when lowering fails or when a variant is missing so downstream
+///          lowering can continue with a benign placeholder.
+/// @return Pair containing an integer zero constant and its IL type.
 Lowerer::RVal BuiltinLowerContext::makeZeroResult() const
 {
     return {Value::constInt(0), IlType(IlKind::I64)};
 }
 
+/// @brief Choose the lowering variant that matches the current call shape.
+/// @details Iterates the rule's variants and evaluates each condition against
+///          the recorded arguments and types. The first matching variant is
+///          selected, defaulting to the first entry when none match.
+/// @return Pointer to the selected variant or nullptr if none exist.
 const BuiltinLoweringRule::Variant *BuiltinLowerContext::selectVariant() const
 {
     const auto &variants = rule_->variants;
@@ -271,6 +362,11 @@ const BuiltinLoweringRule::Variant *BuiltinLowerContext::selectVariant() const
     return selected;
 }
 
+/// @brief Apply feature requests declared by a variant.
+/// @details Invokes @ref Lowerer::requestHelper or @ref Lowerer::trackRuntime
+///          based on the feature action so runtime support code is emitted when
+///          necessary.
+/// @param variant Variant whose features should be applied.
 void BuiltinLowerContext::applyFeatures(const BuiltinLoweringRule::Variant &variant)
 {
     for (const auto &feature : variant.features)
@@ -287,16 +383,31 @@ void BuiltinLowerContext::applyFeatures(const BuiltinLoweringRule::Variant &vari
     }
 }
 
+/// @brief Update the lowering context's current source location.
+/// @details Forwards the location to the underlying lowerer so subsequent IL
+///          instructions inherit accurate diagnostic information.
+/// @param loc Source location to apply.
 void BuiltinLowerContext::setCurrentLoc(il::support::SourceLoc loc)
 {
     lowerer_->curLoc = loc;
 }
 
+/// @brief Retrieve the canonical IL boolean type.
+/// @details Forwards to @ref Lowerer::ilBoolTy so all boolean operations share
+///          the same type handle.
+/// @return Boolean IL type.
 il::core::Type BuiltinLowerContext::boolType() const
 {
     return lowerer_->ilBoolTy();
 }
 
+/// @brief Emit a runtime call returning @p type.
+/// @details Delegates to @ref Lowerer::emitCallRet, centralising all runtime
+///          invocations through the lowering context for easier testing.
+/// @param type Expected IL return type.
+/// @param runtime Name of the runtime helper to call.
+/// @param args Argument values to pass to the runtime function.
+/// @return IL value produced by the runtime call.
 il::core::Value BuiltinLowerContext::emitCall(il::core::Type type,
                                               const char *runtime,
                                               const std::vector<il::core::Value> &args)
@@ -304,6 +415,13 @@ il::core::Value BuiltinLowerContext::emitCall(il::core::Type type,
     return lowerer_->emitCallRet(type, runtime, args);
 }
 
+/// @brief Emit a unary IL instruction.
+/// @details Convenience wrapper around @ref Lowerer::emitUnary so builtin
+///          lowering maintains consistent instruction construction.
+/// @param opcode Opcode to emit.
+/// @param type Result type of the instruction.
+/// @param value Operand value.
+/// @return Resulting IL value.
 il::core::Value BuiltinLowerContext::emitUnary(il::core::Opcode opcode,
                                                il::core::Type type,
                                                il::core::Value value)
@@ -311,6 +429,14 @@ il::core::Value BuiltinLowerContext::emitUnary(il::core::Opcode opcode,
     return lowerer_->emitUnary(opcode, type, value);
 }
 
+/// @brief Emit a binary IL instruction.
+/// @details Wraps @ref Lowerer::emitBinary to retain a uniform entry point for
+///          builtin lowering.
+/// @param opcode Opcode to emit.
+/// @param type Result type of the instruction.
+/// @param lhs Left-hand operand.
+/// @param rhs Right-hand operand.
+/// @return Resulting IL value.
 il::core::Value BuiltinLowerContext::emitBinary(il::core::Opcode opcode,
                                                 il::core::Type type,
                                                 il::core::Value lhs,
@@ -319,16 +445,32 @@ il::core::Value BuiltinLowerContext::emitBinary(il::core::Opcode opcode,
     return lowerer_->emitBinary(opcode, type, lhs, rhs);
 }
 
+/// @brief Emit a load from the given address.
+/// @details Delegates to @ref Lowerer::emitLoad.
+/// @param type Type of the value being loaded.
+/// @param addr Address to load from.
+/// @return Loaded IL value.
 il::core::Value BuiltinLowerContext::emitLoad(il::core::Type type, il::core::Value addr)
 {
     return lowerer_->emitLoad(type, addr);
 }
 
+/// @brief Allocate stack storage via the lowerer.
+/// @details Used by builtin lowering to create temporary slots for runtime
+///          helpers that return results via out-parameters.
+/// @param bytes Number of bytes to allocate.
+/// @return IL value representing the address of the allocation.
 il::core::Value BuiltinLowerContext::emitAlloca(int bytes)
 {
     return lowerer_->emitAlloca(bytes);
 }
 
+/// @brief Emit a conditional branch between two blocks.
+/// @details Forwards to @ref Lowerer::emitCBr so builtin lowering integrates
+///          with the procedure context's current block.
+/// @param cond Branch condition.
+/// @param t Target when @p cond is true.
+/// @param f Target when @p cond is false.
 void BuiltinLowerContext::emitCBr(il::core::Value cond,
                                   il::core::BasicBlock *t,
                                   il::core::BasicBlock *f)
@@ -336,16 +478,28 @@ void BuiltinLowerContext::emitCBr(il::core::Value cond,
     lowerer_->emitCBr(cond, t, f);
 }
 
+/// @brief Emit a trap instruction signalling an unrecoverable error.
+/// @details Defers to the lowerer so diagnostics inherit the current location.
 void BuiltinLowerContext::emitTrap()
 {
     lowerer_->emitTrap();
 }
 
+/// @brief Set the procedure context's current basic block.
+/// @details Allows builtin lowering helpers to continue emitting instructions in
+///          newly created blocks after control flow splits.
+/// @param block Block that should become current.
 void BuiltinLowerContext::setCurrentBlock(il::core::BasicBlock *block)
 {
     lowerer_->context().setCurrent(block);
 }
 
+/// @brief Construct a block label using either the block namer or mangler.
+/// @details Prefers the structured naming strategy provided by
+///          @ref Lowerer::BlockNamer, falling back to the mangler when the namer
+///          is unavailable.
+/// @param hint Semantic hint that seeds the label.
+/// @return Fresh block label string.
 std::string BuiltinLowerContext::makeBlockLabel(const char *hint)
 {
     Lowerer::ProcedureContext &procCtx = lowerer_->context();
@@ -355,6 +509,14 @@ std::string BuiltinLowerContext::makeBlockLabel(const char *hint)
     return lowerer_->mangler.block(std::string(hint));
 }
 
+/// @brief Create continuation and trap blocks for guard checks.
+/// @details Appends new blocks to the active function, locates them by label,
+///          and returns pointers so callers can wire up control flow. The
+///          origin block is restored so the caller can emit the conditional
+///          branch immediately after creation.
+/// @param contHint Label hint for the success block.
+/// @param trapHint Label hint for the failure block.
+/// @return Pair of basic blocks representing success and failure continuations.
 BuiltinLowerContext::BranchPair BuiltinLowerContext::createGuardBlocks(const char *contHint,
                                                                        const char *trapHint)
 {
@@ -393,6 +555,11 @@ BuiltinLowerContext::BranchPair BuiltinLowerContext::createGuardBlocks(const cha
     return pair;
 }
 
+/// @brief Create the block structure used by the VAL builtin lowering.
+/// @details Adds four blocks (continue, trap, NaN, overflow) and resolves their
+///          pointers so lowering logic can emit structured control flow around
+///          conversion traps.
+/// @return Structure containing block pointers for the VAL builtin guards.
 BuiltinLowerContext::ValBlocks BuiltinLowerContext::createValBlocks()
 {
     ValBlocks blocks{};
@@ -436,6 +603,10 @@ BuiltinLowerContext::ValBlocks BuiltinLowerContext::createValBlocks()
     return blocks;
 }
 
+/// @brief Emit the trap sequence used when conversions fail.
+/// @details Emits a sentinel CastFpToSiRteChk instruction with NaN input to
+///          surface runtime diagnostics, then emits a trap.
+/// @param loc Source location associated with the failing conversion.
 void BuiltinLowerContext::emitConversionTrap(il::support::SourceLoc loc)
 {
     setCurrentLoc(loc);
@@ -447,6 +618,13 @@ void BuiltinLowerContext::emitConversionTrap(il::support::SourceLoc loc)
     lowerer_->emitTrap();
 }
 
+/// @brief Lower a builtin using the rule-driven generic pipeline.
+/// @details Selects the best-matching variant, emits it via
+///          @ref emitBuiltinVariant, and applies any requested features. When no
+///          variant matches a zero result is returned to keep lowering
+///          progressing.
+/// @param ctx Builtin lowering context.
+/// @return Lowered builtin result.
 Lowerer::RVal lowerGenericBuiltin(BuiltinLowerContext &ctx)
 {
     const Variant *variant = ctx.selectVariant();
@@ -457,6 +635,12 @@ Lowerer::RVal lowerGenericBuiltin(BuiltinLowerContext &ctx)
     return result;
 }
 
+/// @brief Lower conversion builtins with specialised guard handling.
+/// @details Chooses the appropriate variant and routes to specialised helper
+///          implementations for numeric conversions or VAL-specific flows. The
+///          helpers emit guard blocks and traps to replicate BASIC semantics.
+/// @param ctx Builtin lowering context.
+/// @return Lowered conversion result.
 Lowerer::RVal lowerConversionBuiltinImpl(BuiltinLowerContext &ctx)
 {
     const Variant *variant = ctx.selectVariant();
@@ -490,6 +674,13 @@ Lowerer::RVal lowerConversionBuiltinImpl(BuiltinLowerContext &ctx)
     return result;
 }
 
+/// @brief Dispatch a lowering variant based on its kind.
+/// @details Invokes the dedicated helper for runtime calls, unary operations,
+///          or custom lowering logic. Unknown kinds fall back to a zero result
+///          to avoid crashes during development.
+/// @param ctx Builtin lowering context.
+/// @param variant Variant describing how to lower the builtin.
+/// @return Lowered builtin result.
 Lowerer::RVal emitBuiltinVariant(BuiltinLowerContext &ctx, const Variant &variant)
 {
     switch (variant.kind)
@@ -507,6 +698,12 @@ Lowerer::RVal emitBuiltinVariant(BuiltinLowerContext &ctx, const Variant &varian
 namespace
 {
 
+/// @brief Emit a variant that calls directly into the runtime library.
+/// @details Lowers all specified arguments, emits the runtime call, and packages
+///          the result using the resolved result type.
+/// @param ctx Builtin lowering context.
+/// @param variant Variant metadata describing arguments and runtime symbol.
+/// @return Lowered builtin result.
 Lowerer::RVal emitCallRuntime(BuiltinLowerContext &ctx, const Variant &variant)
 {
     std::vector<Value> callArgs;
@@ -522,6 +719,12 @@ Lowerer::RVal emitCallRuntime(BuiltinLowerContext &ctx, const Variant &variant)
     return {resultValue, resultType};
 }
 
+/// @brief Emit a variant that performs a unary IL operation.
+/// @details Lowers the operand, resolves the result type, and emits the unary
+///          opcode recorded in the variant.
+/// @param ctx Builtin lowering context.
+/// @param variant Variant metadata describing the unary operation.
+/// @return Lowered builtin result.
 Lowerer::RVal emitUnary(BuiltinLowerContext &ctx, const Variant &variant)
 {
     assert(!variant.arguments.empty() && "unary builtin requires an operand");
@@ -533,6 +736,12 @@ Lowerer::RVal emitUnary(BuiltinLowerContext &ctx, const Variant &variant)
     return {resultValue, resultType};
 }
 
+/// @brief Emit a variant that requires bespoke lowering logic.
+/// @details Switches on the builtin enumerator to delegate to specialised
+///          helpers. Unsupported builtins trigger a diagnostic and return zero.
+/// @param ctx Builtin lowering context.
+/// @param variant Variant metadata accompanying the builtin.
+/// @return Lowered builtin result.
 Lowerer::RVal emitCustom(BuiltinLowerContext &ctx, const Variant &variant)
 {
     switch (ctx.call().builtin)
@@ -564,6 +773,16 @@ Lowerer::RVal emitCustom(BuiltinLowerContext &ctx, const Variant &variant)
 
 } // namespace
 
+/// @brief Lower numeric conversion builtins that report failure via guard blocks.
+/// @details Emits a runtime call that writes a success flag, creates guard
+///          blocks, and wires them so traps fire when the conversion fails. The
+///          success path simply returns the runtime result.
+/// @param ctx Builtin lowering context.
+/// @param variant Variant describing argument transforms and runtime symbol.
+/// @param resultType IL type produced by the conversion.
+/// @param contHint Label hint for the success block.
+/// @param trapHint Label hint for the failure block.
+/// @return Lowered builtin result.
 Lowerer::RVal lowerNumericConversion(BuiltinLowerContext &ctx,
                                      const Variant &variant,
                                      IlType resultType,
@@ -596,6 +815,13 @@ Lowerer::RVal lowerNumericConversion(BuiltinLowerContext &ctx,
     return {callRes, resultType};
 }
 
+/// @brief Lower the VAL builtin, which parses strings into numeric values.
+/// @details Emits runtime calls and guard blocks that detect NaN or overflow
+///          results and trap accordingly. Successful conversions return the
+///          parsed numeric value.
+/// @param ctx Builtin lowering context.
+/// @param variant Variant metadata describing the VAL runtime helper.
+/// @return Lowered builtin result.
 Lowerer::RVal lowerValBuiltin(BuiltinLowerContext &ctx, const Variant &variant)
 {
     assert(!variant.arguments.empty());
