@@ -186,6 +186,7 @@ add_library(il_codegen_x86_64 STATIC
   codegen/x86_64/CallLowering.cpp
   codegen/x86_64/FrameLowering.cpp
   codegen/x86_64/AsmEmitter.cpp
+  codegen/x86_64/ISel.cpp
   codegen/x86_64/MachineIR.cpp
   codegen/x86_64/RegAllocLinear.cpp
   codegen/x86_64/TargetX64.cpp
