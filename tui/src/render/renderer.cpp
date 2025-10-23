@@ -1,7 +1,29 @@
-// tui/src/render/renderer.cpp
-// @brief Implementation of ANSI renderer producing minimal terminal updates.
-// @invariant setStyle and moveCursor avoid redundant sequences based on cached state.
-// @ownership Renderer writes through a borrowed TermIO reference.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/src/render/renderer.cpp
+// Purpose: Emit ANSI escape sequences that update the terminal to match the
+//          desired screen buffer contents.
+// Key invariants: Style and cursor commands are deduplicated using cached state
+//                 so that redundant escape codes are not transmitted.
+// Ownership/Lifetime: Renderer retains references to @ref term::TermIO but does
+//                     not own the underlying terminal resources.
+// Links: docs/tools.md#rendering
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements the ANSI renderer that translates screen buffers into
+///        terminal output.
+/// @details The renderer batches diff spans produced by
+///          @ref viper::tui::render::ScreenBuffer, emits the minimal cursor and
+///          style changes, and streams UTF-8 glyphs directly to the terminal.
+///          Helpers in this file encapsulate colour quantisation for palette
+///          mode and state caching logic for escape sequences.
 
 #include "tui/render/renderer.hpp"
 
@@ -12,16 +34,34 @@
 namespace viper::tui::render
 {
 
-Renderer::Renderer(::viper::tui::term::TermIO &tio, bool truecolor) : tio_(tio), truecolor_(truecolor) {}
+/// @brief Construct a renderer that writes escape sequences to a terminal.
+/// @param tio Terminal I/O surface used for writing and flushing bytes.
+/// @param truecolor Whether to emit 24-bit colour (true) or fall back to the
+///        256-colour cube approximation.
+Renderer::Renderer(::viper::tui::term::TermIO &tio, bool truecolor)
+    : tio_(tio), truecolor_(truecolor)
+{
+}
 
 namespace
 {
+/// @brief Quantise an 8-bit colour channel to the six-step ANSI colour cube.
+/// @details 256-colour terminals represent RGB values using a 6×6×6 cube.  Each
+///          channel must be converted to a 0–5 index by dividing by 51.
+/// @param c Colour channel in the range [0, 255].
+/// @return Index within the cube for @p c.
 int toCube(uint8_t c)
 {
     return c / 51; // map 0-255 to 0-5
 }
 } // namespace
 
+/// @brief Ensure the terminal style matches the requested cell attributes.
+/// @details The renderer caches the last style sent to the terminal so it can
+///          bail out early when no change is necessary.  Otherwise it composes
+///          an SGR sequence using either truecolour or indexed palette escapes
+///          before writing it through the terminal interface.
+/// @param style Requested attributes for subsequent glyphs.
 void Renderer::setStyle(Style style)
 {
     if (style == currentStyle_)
@@ -67,6 +107,13 @@ void Renderer::setStyle(Style style)
     currentStyle_ = style;
 }
 
+/// @brief Move the terminal cursor to the provided coordinates.
+/// @details Cursor state is cached so the renderer avoids emitting redundant
+///          positioning commands when the cursor already resides at the target.
+///          Coordinates are translated to one-based terminal positions prior to
+///          writing the ``CSI row;col H`` escape.
+/// @param y Zero-based row to place the cursor.
+/// @param x Zero-based column to place the cursor.
 void Renderer::moveCursor(int y, int x)
 {
     if (y == cursorY_ && x == cursorX_)
@@ -79,6 +126,12 @@ void Renderer::moveCursor(int y, int x)
     cursorX_ = x;
 }
 
+/// @brief Apply the differences from a screen buffer to the terminal.
+/// @details Computes a list of modified spans, iterates over each cell, and
+///          streams the UTF-8 encoding of the glyph while maintaining cursor and
+///          style state.  After processing all spans the terminal output is
+///          flushed to ensure prompt rendering.
+/// @param sb Source buffer describing the desired screen contents.
 void Renderer::draw(const ScreenBuffer &sb)
 {
     std::vector<ScreenBuffer::DiffSpan> spans;
