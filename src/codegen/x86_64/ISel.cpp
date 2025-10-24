@@ -220,6 +220,96 @@ void canonicaliseAddSub(MInstr &instr)
     }
 }
 
+/// @brief Attempt to lower a GPR select placeholder into TEST/MOV/CMOV sequence.
+///
+/// @details Matches the three-instruction pattern emitted by LowerILToMIR
+///          (MOV false/true metadata, TEST cond, SETcc mask) when the result
+///          resides in the GPR class.  The helper rebuilds the sequence using a
+///          flags-setting TEST followed by MOV (false path) and CMOVNE (true
+///          path).  When the pattern does not match, the function leaves the
+///          block untouched so other passes may handle it.
+///
+/// @param block Machine basic block undergoing transformation.
+/// @param index Index of the candidate MOV instruction within the block.
+/// @return @c true when the placeholder was replaced.
+bool lowerGprSelect(MBasicBlock &block, std::size_t index)
+{
+    if (index + 2 >= block.instructions.size())
+    {
+        return false;
+    }
+
+    auto &movInstr = block.instructions[index];
+    if (!((movInstr.opcode == MOpcode::MOVrr || movInstr.opcode == MOpcode::MOVri) &&
+          movInstr.operands.size() >= 3))
+    {
+        return false;
+    }
+
+    const auto *destReg = asReg(movInstr.operands[0]);
+    if (!destReg || destReg->cls != RegClass::GPR)
+    {
+        return false;
+    }
+
+    const Operand &falseVal = movInstr.operands[1];
+    const Operand &trueVal = movInstr.operands[2];
+    if (std::holds_alternative<OpImm>(trueVal))
+    {
+        return false;
+    }
+
+    auto &testInstr = block.instructions[index + 1];
+    if (testInstr.opcode != MOpcode::TESTrr || testInstr.operands.size() < 2)
+    {
+        return false;
+    }
+
+    if (!sameRegister(testInstr.operands[0], testInstr.operands[1]))
+    {
+        return false;
+    }
+
+    auto &setccInstr = block.instructions[index + 2];
+    if (setccInstr.opcode != MOpcode::SETcc)
+    {
+        return false;
+    }
+
+    bool destReferenced = false;
+    for (const auto &operand : setccInstr.operands)
+    {
+        if (sameRegister(operand, movInstr.operands[0]))
+        {
+            destReferenced = true;
+            break;
+        }
+    }
+    if (!destReferenced)
+    {
+        return false;
+    }
+
+    std::vector<MInstr> replacement{};
+    replacement.push_back(MInstr::make(
+        MOpcode::TESTrr,
+        std::vector<Operand>{cloneOperand(testInstr.operands[0]), cloneOperand(testInstr.operands[1])}));
+
+    const bool falseIsImm = std::holds_alternative<OpImm>(falseVal);
+    replacement.push_back(MInstr::make(falseIsImm ? MOpcode::MOVri : MOpcode::MOVrr,
+                                       std::vector<Operand>{cloneOperand(movInstr.operands[0]),
+                                                           cloneOperand(falseVal)}));
+
+    replacement.push_back(MInstr::make(
+        MOpcode::CMOVNErr,
+        std::vector<Operand>{cloneOperand(movInstr.operands[0]), cloneOperand(trueVal)}));
+
+    auto beginIt = block.instructions.begin() + static_cast<std::ptrdiff_t>(index);
+    block.instructions.erase(beginIt, beginIt + 3);
+    block.instructions.insert(beginIt, replacement.begin(), replacement.end());
+    return true;
+}
+
 } // namespace
 
 /// @brief Construct an instruction selector bound to a target description.
@@ -319,6 +409,12 @@ void ISel::lowerSelect(MFunction &func) const
     {
         for (std::size_t idx = 0; idx < block.instructions.size(); ++idx)
         {
+            if (lowerGprSelect(block, idx))
+            {
+                idx += 2;
+                continue;
+            }
+
             auto &instr = block.instructions[idx];
             if (instr.opcode == MOpcode::SETcc)
             {

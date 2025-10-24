@@ -66,6 +66,7 @@ using Operand = std::variant<OpReg, OpImm, OpMem, OpLabel>;
 enum class MOpcode
 {
     MOVrr,     ///< Move register to register.
+    CMOVNErr,  ///< Conditional move when not equal (register-register).
     MOVri,     ///< Move immediate to register.
     LEA,       ///< Load effective address into register.
     ADDrr,     ///< Add registers.
