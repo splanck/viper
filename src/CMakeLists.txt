@@ -189,6 +189,7 @@ add_library(il_codegen_x86_64 STATIC
         codegen/x86_64/ISel.cpp
         codegen/x86_64/LowerDiv.cpp
         codegen/x86_64/MachineIR.cpp
+        codegen/x86_64/Peephole.cpp
         codegen/x86_64/RegAllocLinear.cpp
         codegen/x86_64/TargetX64.cpp
         codegen/x86_64/placeholder.cpp)
