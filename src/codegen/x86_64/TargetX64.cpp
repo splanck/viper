@@ -1,13 +1,23 @@
-// src/codegen/x86_64/TargetX64.cpp
-// SPDX-License-Identifier: MIT
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Implement helper routines and singleton construction for the SysV AMD64
-//          target description used by the Viper x86-64 backend.
-// Invariants: Singleton data is initialised once with ABI-compliant register sets and
-//             remains immutable through program execution.
-// Ownership: All data is stored in static duration objects; no manual resource
-//            management is required.
-// Notes: Translation unit stands alone aside from its matching header include.
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/codegen/x86_64/TargetX64.cpp
+// Purpose: Materialise the SysV AMD64 target description used by the Viper
+//          Machine IR pipeline and surface helper queries about register
+//          classes and names.
+// Key invariants: The singleton target descriptor is initialised once with
+//                 ABI-compliant register sets and thereafter treated as
+//                 immutable global data.
+// Ownership/Lifetime: All resources live in static storage, meaning callers do
+//                     not own or free any structures retrieved from this
+//                     translation unit.
+// Links: docs/architecture.md#cpp-overview
+//
+//===----------------------------------------------------------------------===//
 
 #include "TargetX64.hpp"
 
@@ -17,6 +27,15 @@ namespace viper::codegen::x64
 namespace
 {
 
+/// @brief Construct the SysV AMD64 target description for the backend.
+///
+/// @details Populates the @ref TargetInfo structure with register save
+///          conventions, argument passing order, return registers, and stack
+///          alignment information according to the System V ABI.  The helper is
+///          evaluated exactly once to initialise the translation unit's static
+///          singleton and the resulting object is treated as read-only.
+///
+/// @return Fully initialised SysV target descriptor.
 TargetInfo makeSysVTarget()
 {
     TargetInfo info{};
@@ -87,11 +106,27 @@ TargetInfo sysvTargetInstance = makeSysVTarget();
 
 } // namespace
 
+/// @brief Retrieve the canonical SysV AMD64 target description.
+///
+/// @details Returns a reference to the statically initialised singleton created
+///          by @ref makeSysVTarget().  The non-const reference allows callers to
+///          pass the descriptor to APIs expecting mutable references while still
+///          conceptually treating the object as immutable configuration data.
+///
+/// @return Reference to the global SysV target descriptor.
 constexpr TargetInfo &sysvTarget() noexcept
 {
     return sysvTargetInstance;
 }
 
+/// @brief Test whether a physical register is part of the general-purpose set.
+///
+/// @details Implements a switch over the enumerators recognised by the x86-64
+///          backend.  The helper is used by register allocation and frame
+///          lowering to discriminate between GPRs and other register classes.
+///
+/// @param reg Physical register to classify.
+/// @return @c true when @p reg identifies a GPR.
 bool isGPR(PhysReg reg) noexcept
 {
     switch (reg)
@@ -118,6 +153,14 @@ bool isGPR(PhysReg reg) noexcept
     }
 }
 
+/// @brief Determine whether a physical register belongs to the XMM class.
+///
+/// @details Mirrors @ref isGPR but enumerates the SIMD XMM registers recognised
+///          by the backend.  Used in spill slot planning and instruction
+///          selection when choosing encodings for floating-point operands.
+///
+/// @param reg Physical register to classify.
+/// @return @c true when @p reg is an XMM register.
 bool isXMM(PhysReg reg) noexcept
 {
     switch (reg)
@@ -144,6 +187,16 @@ bool isXMM(PhysReg reg) noexcept
     }
 }
 
+/// @brief Map a physical register to its textual assembly representation.
+///
+/// @details The backend prints registers in AT&T syntax.  This helper covers
+///          every register enumerator currently used by the backend and
+///          provides a stable string literal suitable for emission into
+///          assembly listings or diagnostics.  Unknown registers fall through to
+///          the @c default case and return a sentinel string.
+///
+/// @param reg Physical register whose name is requested.
+/// @return Null-terminated string containing the register mnemonic.
 const char *regName(PhysReg reg) noexcept
 {
     switch (reg)

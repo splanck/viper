@@ -1,15 +1,25 @@
-// src/codegen/x86_64/ISel.cpp
-// SPDX-License-Identifier: MIT
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Define the instruction selection helpers that map pseudo Machine IR
-//          emitted by LowerILToMIR into concrete x86-64 encodings for Phase A.
-// Invariants: Transformations keep instruction ordering stable while mutating
-//             opcode/operand pairs to legal forms (e.g. cmp with immediates,
-//             MOVZX after SETcc). Resulting instruction streams remain valid for
-//             subsequent register allocation and emission passes.
-// Ownership: Operates on Machine IR in place; no additional resources beyond the
-//            borrowed target description are acquired.
-// Notes: Depends only on ISel.hpp and standard library utilities.
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/codegen/x86_64/ISel.cpp
+// Purpose: Define instruction selection helpers that map pseudo Machine IR
+//          emitted by LowerILToMIR into concrete x86-64 encodings for the Phase
+//          A backend experiment.
+// Key invariants: Transformations preserve instruction ordering while rewriting
+//                 opcode/operand combinations to legal encodings (e.g. `cmp`
+//                 immediate forms or inserting `movzx` after `setcc`). Resulting
+//                 instruction streams remain valid for register allocation and
+//                 emission.
+// Ownership/Lifetime: Operates entirely in-place on Machine IR graphs borrowed
+//                     from callers without allocating persistent auxiliary
+//                     structures.
+// Links: docs/architecture.md#cpp-overview
+//
+//===----------------------------------------------------------------------===//
 
 #include "ISel.hpp"
 
@@ -26,31 +36,69 @@ namespace viper::codegen::x64
 namespace
 {
 
+/// @brief Produce a copy of a Machine IR operand.
+///
+/// @details Machine IR operands are small value types.  This helper exists to
+///          make clone intent explicit at call sites where code constructs new
+///          instructions from existing operands (for example inserting a
+///          `movzx` after a `setcc`).
+///
+/// @param operand Operand to copy.
+/// @return A value-equal copy of @p operand.
 [[nodiscard]] Operand cloneOperand(const Operand &operand)
 {
     return operand;
 }
 
+/// @brief Determine whether an operand stores an immediate value.
+///
+/// @param operand Operand to classify.
+/// @return @c true when the operand holds an @ref OpImm payload.
 [[nodiscard]] bool isImm(const Operand &operand) noexcept
 {
     return std::holds_alternative<OpImm>(operand);
 }
 
+/// @brief View an operand as an immediate when possible.
+///
+/// @details Wraps @ref std::get_if to centralise the cast and emphasise the
+///          nullable nature of the conversion.
+///
+/// @param operand Operand to reinterpret.
+/// @return Pointer to the @ref OpImm payload or @c nullptr on mismatch.
 [[nodiscard]] OpImm *asImm(Operand &operand) noexcept
 {
     return std::get_if<OpImm>(&operand);
 }
 
+/// @brief View a mutable operand as a register reference.
+///
+/// @param operand Operand to reinterpret.
+/// @return Pointer to the @ref OpReg payload or @c nullptr when not a register.
 [[nodiscard]] OpReg *asReg(Operand &operand) noexcept
 {
     return std::get_if<OpReg>(&operand);
 }
 
+/// @brief View a read-only operand as a register reference.
+///
+/// @param operand Operand to reinterpret.
+/// @return Pointer to the @ref OpReg payload or @c nullptr when not a register.
 [[nodiscard]] const OpReg *asReg(const Operand &operand) noexcept
 {
     return std::get_if<OpReg>(&operand);
 }
 
+/// @brief Compare two operands for register identity.
+///
+/// @details The check covers both physical and virtual registers by comparing
+///          the register class, physical flag, and numeric identifier.  Used to
+///          detect whether two operands refer to the same register so peepholes
+///          can avoid duplicating work.
+///
+/// @param lhs First operand to compare.
+/// @param rhs Second operand to compare.
+/// @return @c true when both operands refer to the same register.
 [[nodiscard]] bool sameRegister(const Operand &lhs, const Operand &rhs) noexcept
 {
     const auto *lhsReg = asReg(lhs);
@@ -63,6 +111,17 @@ namespace
            lhsReg->idOrPhys == rhsReg->idOrPhys;
 }
 
+/// @brief Ensure a zero-extension follows a @c setcc instruction.
+///
+/// @details The lowering pipeline expects boolean results to be materialised as
+///          0/1 integers.  `setcc` writes a byte, so this helper inserts a
+///          `movzx` when the subsequent instruction does not already perform the
+///          zero-extension.  The helper scans for the destination register,
+///          reuses it as both operands of the new instruction, and inserts the
+///          @c movzx immediately after @p index in @p block.
+///
+/// @param block Machine basic block containing the @c setcc.
+/// @param index Index of the @c setcc instruction within the block.
 void ensureMovzxAfterSetcc(MBasicBlock &block, std::size_t index)
 {
     if (index >= block.instructions.size())
@@ -102,6 +161,15 @@ void ensureMovzxAfterSetcc(MBasicBlock &block, std::size_t index)
                               std::move(movzx));
 }
 
+/// @brief Normalise CMP opcodes based on operand kinds.
+///
+/// @details Some passes emit `cmp` using register-register opcodes even when the
+///          right-hand side is an immediate and vice versa.  This helper flips
+///          between @ref MOpcode::CMPrr and @ref MOpcode::CMPri so the encoding
+///          matches operand types, ensuring later passes do not need to handle
+///          redundant cases.
+///
+/// @param instr Instruction to canonicalise in place.
 void canonicaliseCmp(MInstr &instr)
 {
     if (instr.operands.size() < 2)
@@ -118,6 +186,14 @@ void canonicaliseCmp(MInstr &instr)
     }
 }
 
+/// @brief Canonicalise add/sub opcodes to use immediate forms when possible.
+///
+/// @details Instruction selection prefers `add` with immediates because it
+///          exposes more opportunities for constant folding in later passes.  If
+///          a subtraction uses an immediate the helper negates the constant and
+///          replaces the opcode with `add` to keep the IR uniform.
+///
+/// @param instr Instruction to canonicalise in place.
 void canonicaliseAddSub(MInstr &instr)
 {
     if (instr.operands.size() < 2)
@@ -146,8 +222,20 @@ void canonicaliseAddSub(MInstr &instr)
 
 } // namespace
 
+/// @brief Construct an instruction selector bound to a target description.
+///
+/// @param target Target description supplying register and ABI metadata.
 ISel::ISel(const TargetInfo &target) noexcept : target_{&target} {}
 
+/// @brief Lower arithmetic pseudos into canonical Machine IR encodings.
+///
+/// @details Walks every instruction in the function and normalises add/sub
+///          forms via @ref canonicaliseAddSub.  Floating-point instructions are
+///          currently emitted in legal form and therefore left untouched.  The
+///          target reference is unused for Phase A but retained for future
+///          expansion.
+///
+/// @param func Machine function undergoing selection.
 void ISel::lowerArithmetic(MFunction &func) const
 {
     (void)target_;
@@ -176,6 +264,14 @@ void ISel::lowerArithmetic(MFunction &func) const
     }
 }
 
+/// @brief Lower compare and branch constructs to legal encodings.
+///
+/// @details Canonicalises compare opcodes, ensures boolean materialisation via
+///          @ref ensureMovzxAfterSetcc, and converts stray `test` instructions
+///          with immediate operands into `cmp` against zero.  The pass operates
+///          locally within each block without changing control-flow structure.
+///
+/// @param func Machine function undergoing selection.
 void ISel::lowerCompareAndBranch(MFunction &func) const
 {
     (void)target_;
@@ -208,6 +304,14 @@ void ISel::lowerCompareAndBranch(MFunction &func) const
     }
 }
 
+/// @brief Lower select constructs to ensure boolean values are extended.
+///
+/// @details Selection uses @ref ensureMovzxAfterSetcc to make sure any
+///          `setcc` results feeding selects are promoted to full integers.  The
+///          method is intentionally conservative and only inserts missing
+///          zero-extensions.
+///
+/// @param func Machine function undergoing selection.
 void ISel::lowerSelect(MFunction &func) const
 {
     (void)target_;
