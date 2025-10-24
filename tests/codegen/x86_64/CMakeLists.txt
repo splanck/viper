@@ -16,3 +16,10 @@ viper_add_test(
   TEST_NAME codegen_x86_64_select_cmov)
 
 target_link_libraries(test_codegen_x86_64_select_cmov PRIVATE il_codegen_x86_64)
+
+viper_add_test(
+  test_codegen_x86_64_string_literal
+  ${VIPER_TESTS_DIR}/codegen/x86_64/test_string_literal.cpp
+  TEST_NAME codegen_x86_64_string_literal)
+
+target_link_libraries(test_codegen_x86_64_string_literal PRIVATE il_codegen_x86_64)
