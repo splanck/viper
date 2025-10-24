@@ -36,7 +36,8 @@ struct ILValue
         F64,
         I1,
         PTR,
-        LABEL
+        LABEL,
+        STR
     };
 
     Kind kind{Kind::I64}; ///< Static type of the value.
@@ -44,6 +45,8 @@ struct ILValue
     double f64{0.0};      ///< Payload for floating constants.
     int64_t i64{0};       ///< Payload for integer constants.
     std::string label{};  ///< Payload for label references.
+    std::string str{};    ///< Payload for string literal bytes.
+    std::uint64_t strLen{0}; ///< Length in bytes for string literals.
 };
 
 /// \brief IL instruction placeholder containing opcode, operands, and result info.
