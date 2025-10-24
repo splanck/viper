@@ -1,7 +1,29 @@
-// tui/src/views/text_view_render.cpp
-// @brief TextView rendering logic for buffer contents and decorations.
-// @invariant Rendering respects viewport bounds and selection state.
-// @ownership TextView borrows TextBuffer and Theme from the caller.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/src/views/text_view_render.cpp
+// Purpose: Render text buffers, cursors, selections, and syntax highlighting
+//          inside the terminal-based TextView widget.
+// Key invariants: Rendering always respects viewport bounds and selection state
+//                 while leaving the underlying text buffer untouched.
+// Ownership/Lifetime: TextView borrows TextBuffer and Theme instances managed
+//                     by the caller and writes results into an externally-owned
+//                     ScreenBuffer.
+// Links: docs/architecture.md#vipertui-architecture
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements TextView painting for visible buffer regions.
+/// @details The renderer is responsible for copying a rectangular slice of the
+///          backing TextBuffer into a terminal ScreenBuffer, annotating
+///          selections, syntax highlights, and cursor state in the process.
+///          Centralising the logic here keeps the widget façade lightweight
+///          while making the rendering policy easy to audit.
 
 #include "tui/views/text_view.hpp"
 
@@ -19,6 +41,15 @@ namespace viper::tui::views
 {
 namespace
 {
+/// @brief Clamp an addition to avoid overflowing @c size_t.
+/// @details Adds @p delta to @p base unless the computation would overflow,
+///          in which case @c std::numeric_limits<size_t>::max() is returned.
+///          The helper mirrors the arithmetic used by the text buffer when
+///          computing absolute offsets so the renderer stays defensive against
+///          large selections or buffers.
+/// @param base Starting value.
+/// @param delta Amount to add to @p base.
+/// @return @p base + @p delta when it fits, otherwise the saturated maximum.
 std::size_t clampAdd(std::size_t base, std::size_t delta)
 {
     const std::size_t max = std::numeric_limits<std::size_t>::max();
@@ -28,6 +59,15 @@ std::size_t clampAdd(std::size_t base, std::size_t delta)
 }
 } // namespace
 
+/// @brief Paint the visible region of the text buffer into the screen buffer.
+/// @details Iterates every viewport row, rendering optional line numbers,
+///          fetching syntax highlight spans, and decoding UTF-8 glyphs while
+///          respecting East Asian width semantics via @ref char_width. Cursor
+///          and selection state are blended atop the syntax style, ensuring
+///          caret visibility without erasing highlight colours. The routine
+///          never mutates the TextBuffer and only writes to the provided
+///          ScreenBuffer.
+/// @param sb Mutable screen buffer that receives cell data for this frame.
 void TextView::paint(render::ScreenBuffer &sb)
 {
     const auto &normal = theme_.style(style::Role::Normal);
