@@ -1,15 +1,23 @@
-// src/codegen/x86_64/FrameLowering.cpp
-// SPDX-License-Identifier: MIT
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Define stack frame lowering utilities for the x86-64 backend.
-//          Responsibilities include assigning concrete spill slot displacements
-//          and emitting prologue/epilogue sequences that honour the SysV ABI
-//          while maintaining 16-byte stack alignment at call boundaries.
-// Invariants: Stack slots remain addressed off %rbp using negative displacements.
-// Ownership: Functions mutate Machine IR in-place and rely solely on automatic
-//            storage duration helpers.
-// Notes: Translation unit depends only on FrameLowering.hpp and the C++
-//        standard library.
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+// File: src/codegen/x86_64/FrameLowering.cpp
+// Purpose: Lower abstract frame information to concrete stack layouts for the
+//          x86-64 backend, including spill slot assignment and prologue/epilogue
+//          synthesis.
+// Key invariants: Spill slots remain addressed relative to %rbp with 8-byte
+//                 spacing, the outgoing argument area honours 16-byte alignment,
+//                 and callee-saved registers are saved/restored in stack order.
+// Ownership/Lifetime: Functions mutate Machine IR blocks in place using
+//                     stack-allocated scratch structures; no persistent state is
+//                     retained across invocations.
+// Perf/Threading notes: Operates on one Machine IR function at a time and makes
+//                       no assumptions about multi-threaded callers.
+// Links: docs/architecture.md#codegen, docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "FrameLowering.hpp"
 
@@ -29,11 +37,16 @@ namespace
 
 constexpr int kSlotSizeBytes = 8;
 
+/// @brief Uniquely identifies a spill slot by register class and index.
 struct SlotKey
 {
     RegClass cls{RegClass::GPR};
     int index{0};
 
+    /// @brief Compare slot keys for equality.
+    /// @details Spill slots match when both the register class and sequential index
+    ///          align; this ensures GPR and XMM slots remain distinct even when their
+    ///          indices coincide.
     bool operator==(const SlotKey &other) const noexcept
     {
         return cls == other.cls && index == other.index;
@@ -42,6 +55,9 @@ struct SlotKey
 
 struct SlotKeyHash
 {
+    /// @brief Hash a slot key for use in unordered containers.
+    /// @details Combines the register class and index using a simple xor-based mix
+    ///          that suffices for the small domain encountered during frame lowering.
     std::size_t operator()(const SlotKey &key) const noexcept
     {
         const auto clsVal = static_cast<std::size_t>(key.cls);
@@ -50,6 +66,10 @@ struct SlotKeyHash
     }
 };
 
+/// @brief Round @p value up to the next multiple of @p align.
+/// @details Used for stack size and outgoing argument area computations where the
+///          SysV ABI mandates 16-byte alignment.  Assertions ensure callers supply
+///          positive alignment values.
 [[nodiscard]] int roundUp(int value, int align)
 {
     assert(align > 0 && "alignment must be positive");
@@ -61,16 +81,26 @@ struct SlotKeyHash
     return value + (align - remainder);
 }
 
+/// @brief Wrap a physical register enumerator in a Machine IR operand.
+/// @details Keeps operand construction consistent when prologue/epilogue code needs
+///          to reference callee-saved registers explicitly.
 [[nodiscard]] Operand makePhysOperand(RegClass cls, PhysReg reg)
 {
     return makePhysRegOperand(cls, static_cast<uint16_t>(reg));
 }
 
+/// @brief Produce a physical register operand suitable for memory bases.
+/// @details Returns an @ref OpReg value referencing @p reg within the general-purpose
+///          class so frame accesses can reuse the helper consistently.
 [[nodiscard]] OpReg makePhysBase(PhysReg reg)
 {
     return makePhysReg(RegClass::GPR, static_cast<uint16_t>(reg));
 }
 
+/// @brief Test whether @p reg is classified as callee-saved in the target info.
+/// @details Searches both general-purpose and XMM callee-saved sets.  The result
+///          steers whether @ref assignSpillSlots reserves stack space to preserve the
+///          register across calls.
 [[nodiscard]] bool isCalleeSaved(const TargetInfo &target, PhysReg reg)
 {
     const auto hasReg = [&](const std::vector<PhysReg> &regs)
@@ -78,6 +108,11 @@ struct SlotKeyHash
     return hasReg(target.calleeSavedGPR) || hasReg(target.calleeSavedXMM);
 }
 
+/// @brief Infer the register class that produced a memory operand.
+/// @details When spill slots are represented by frame-indexed memory operands, the
+///          lowering pass needs to know whether they store integer or floating-point
+///          values.  The function inspects neighbouring operands to guess the class
+///          and defaults to @ref RegClass::GPR when ambiguous.
 [[nodiscard]] RegClass deduceMemClass(const MInstr &instr, std::size_t memIndex)
 {
     for (std::size_t idx = 0; idx < instr.operands.size(); ++idx)
@@ -106,6 +141,10 @@ struct SlotKeyHash
     return RegClass::GPR;
 }
 
+/// @brief Compute the stack displacement for a callee-saved register spill slot.
+/// @details Callee-saved registers live directly beneath the saved %rbp slot and are
+///          stored in order.  Each slot consumes eight bytes, so the offset scales by
+///          the slot index.
 [[nodiscard]] int calleeSavedOffset(std::size_t index)
 {
     return -static_cast<int>((index + 1) * kSlotSizeBytes);
@@ -113,6 +152,11 @@ struct SlotKeyHash
 
 } // namespace
 
+/// @brief Assign concrete spill slot displacements for a Machine IR function.
+/// @details Scans every instruction to detect placeholder offsets and converts them
+///          into negative frame-relative displacements.  The routine also records
+///          which callee-saved registers require saving, computes the final frame
+///          size aligned to 16 bytes, and updates @p frame to describe the layout.
 void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &frame)
 {
     std::unordered_set<PhysReg> usedCalleeSaved{};
@@ -259,6 +303,12 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
     }
 }
 
+/// @brief Insert prologue and epilogue sequences using the computed frame layout.
+/// @details Prepends instructions to the entry block that establish %rbp, adjust
+///          %rsp, and spill any callee-saved registers recorded in @p frame.  Each
+///          return instruction in the function receives a mirrored epilogue that
+///          restores the saved registers, resets %rsp, and reloads %rbp before
+///          issuing @c RET.
 void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const FrameInfo &frame)
 {
     if (func.blocks.empty())
