@@ -76,6 +76,8 @@ namespace
             return "JMP";
         case MOpcode::JCC:
             return "JCC";
+        case MOpcode::LABEL:
+            return "LABEL";
         case MOpcode::CALL:
             return "CALL";
         case MOpcode::RET:
@@ -162,6 +164,16 @@ MBasicBlock &MFunction::addBlock(MBasicBlock block)
 {
     blocks.push_back(std::move(block));
     return blocks.back();
+}
+
+/// @brief Generate a unique label local to this function using the given prefix.
+/// @param prefix Prefix to prepend to the generated label.
+/// @return New label string guaranteed unique within the function.
+std::string MFunction::makeLocalLabel(std::string_view prefix)
+{
+    std::string label(prefix);
+    label += std::to_string(localLabelCounter++);
+    return label;
 }
 
 /// @brief Append an instruction to the basic block.

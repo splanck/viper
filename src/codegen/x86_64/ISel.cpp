@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -310,6 +311,106 @@ bool lowerGprSelect(MBasicBlock &block, std::size_t index)
     return true;
 }
 
+/// @brief Lower XMM select pseudos into TEST/JCC/MOVSD branch sequences.
+///
+/// @details Matches the three-instruction pattern emitted by the IL bridge for
+///          floating-point selects (MOV placeholder, TEST cond, SETcc) and
+///          rewrites it into a small branchy sequence using unique local
+///          labels. The rewritten sequence uses `movsd` for both true and false
+///          paths so that register allocators can reason about the value flow.
+///
+/// @param func Machine function supplying the label allocator.
+/// @param block Machine basic block containing the pattern.
+/// @param index Index of the MOV placeholder inside @p block.
+/// @return @c true when a select pattern was rewritten.
+bool lowerXmmSelect(MFunction &func, MBasicBlock &block, std::size_t index)
+{
+    if (index + 2 >= block.instructions.size())
+    {
+        return false;
+    }
+
+    auto &movInstr = block.instructions[index];
+    if (movInstr.opcode != MOpcode::MOVrr || movInstr.operands.size() < 3)
+    {
+        return false;
+    }
+
+    const auto *destReg = asReg(movInstr.operands[0]);
+    if (!destReg || destReg->cls != RegClass::XMM)
+    {
+        return false;
+    }
+
+    const Operand &falseVal = movInstr.operands[1];
+    const Operand &trueVal = movInstr.operands[2];
+    if (!std::holds_alternative<OpReg>(falseVal) || !std::holds_alternative<OpReg>(trueVal))
+    {
+        return false;
+    }
+
+    auto &testInstr = block.instructions[index + 1];
+    if (testInstr.opcode != MOpcode::TESTrr || testInstr.operands.size() < 2)
+    {
+        return false;
+    }
+
+    if (!sameRegister(testInstr.operands[0], testInstr.operands[1]))
+    {
+        return false;
+    }
+
+    auto &setccInstr = block.instructions[index + 2];
+    if (setccInstr.opcode != MOpcode::SETcc)
+    {
+        return false;
+    }
+
+    bool destReferenced = false;
+    for (const auto &operand : setccInstr.operands)
+    {
+        if (sameRegister(operand, movInstr.operands[0]))
+        {
+            destReferenced = true;
+            break;
+        }
+    }
+    if (!destReferenced)
+    {
+        return false;
+    }
+
+    const std::string falseLabel = func.makeLocalLabel(".Lfalse");
+    const std::string endLabel = func.makeLocalLabel(".Lend");
+
+    std::vector<MInstr> replacement{};
+    replacement.push_back(MInstr::make(
+        MOpcode::TESTrr,
+        std::vector<Operand>{cloneOperand(testInstr.operands[0]), cloneOperand(testInstr.operands[1])}));
+    replacement.push_back(MInstr::make(
+        MOpcode::JCC,
+        std::vector<Operand>{makeImmOperand(0), makeLabelOperand(falseLabel)}));
+    replacement.push_back(MInstr::make(
+        MOpcode::MOVSDrr,
+        std::vector<Operand>{cloneOperand(movInstr.operands[0]), cloneOperand(trueVal)}));
+    replacement.push_back(
+        MInstr::make(MOpcode::JMP, std::vector<Operand>{makeLabelOperand(endLabel)}));
+    replacement.push_back(
+        MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(falseLabel)}));
+    replacement.push_back(MInstr::make(
+        MOpcode::MOVSDrr,
+        std::vector<Operand>{cloneOperand(movInstr.operands[0]), cloneOperand(falseVal)}));
+    replacement.push_back(
+        MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(endLabel)}));
+
+    auto beginIt = block.instructions.begin() + static_cast<std::ptrdiff_t>(index);
+    block.instructions.erase(beginIt, beginIt + 3);
+    block.instructions.insert(block.instructions.begin() + static_cast<std::ptrdiff_t>(index),
+                              replacement.begin(),
+                              replacement.end());
+    return true;
+}
+
 } // namespace
 
 /// @brief Construct an instruction selector bound to a target description.
@@ -409,6 +510,12 @@ void ISel::lowerSelect(MFunction &func) const
     {
         for (std::size_t idx = 0; idx < block.instructions.size(); ++idx)
         {
+            if (lowerXmmSelect(func, block, idx))
+            {
+                idx += 6;
+                continue;
+            }
+
             if (lowerGprSelect(block, idx))
             {
                 idx += 2;
