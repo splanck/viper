@@ -59,6 +59,7 @@ add_subdirectory(perf)
 add_subdirectory(tools)
 add_subdirectory(basic)
 add_subdirectory(golden)
+add_subdirectory(codegen/x86_64)
 add_subdirectory(e2e)
 
 viper_add_ctest(NoAssertFalseGuard
