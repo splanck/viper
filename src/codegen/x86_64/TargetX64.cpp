@@ -87,7 +87,7 @@ TargetInfo sysvTargetInstance = makeSysVTarget();
 
 } // namespace
 
-constexpr TargetInfo &sysvTarget() noexcept
+TargetInfo &sysvTarget() noexcept
 {
     return sysvTargetInstance;
 }

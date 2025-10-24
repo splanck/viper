@@ -189,9 +189,11 @@ add_library(il_codegen_x86_64 STATIC
         codegen/x86_64/ISel.cpp
         codegen/x86_64/LowerDiv.cpp
         codegen/x86_64/MachineIR.cpp
+        codegen/x86_64/LowerILToMIR.cpp
         codegen/x86_64/Peephole.cpp
         codegen/x86_64/RegAllocLinear.cpp
         codegen/x86_64/TargetX64.cpp
+        codegen/x86_64/Backend.cpp
         codegen/x86_64/placeholder.cpp)
 set_target_properties(il_codegen_x86_64 PROPERTIES LINKER_LANGUAGE CXX)
 
@@ -200,6 +202,7 @@ add_executable(ilc
         tools/ilc/cmd_run_il.cpp
         tools/ilc/cmd_front_basic.cpp
         tools/ilc/cmd_il_opt.cpp
+        tools/ilc/cmd_codegen_x64.cpp
         tools/ilc/cli.cpp
         tools/ilc/break_spec.cpp)
 set_target_properties(ilc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/ilc)
@@ -209,6 +212,7 @@ target_link_libraries(ilc
         viper::il_full
         il_vm
         il_transform
+        il_codegen_x86_64
         fe_basic
         il_api
         il_tools_common)
