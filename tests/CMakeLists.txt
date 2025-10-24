@@ -60,6 +60,7 @@ add_subdirectory(tools)
 add_subdirectory(basic)
 add_subdirectory(golden)
 add_subdirectory(e2e)
+include(${CMAKE_CURRENT_LIST_DIR}/codegen/x86_64/CMakeLists.txt)
 
 viper_add_ctest(NoAssertFalseGuard
   ${CMAKE_COMMAND}
