@@ -60,6 +60,7 @@ add_subdirectory(tools)
 add_subdirectory(basic)
 add_subdirectory(golden)
 add_subdirectory(e2e)
+add_subdirectory(codegen/x86_64)
 
 viper_add_ctest(NoAssertFalseGuard
   ${CMAKE_COMMAND}
