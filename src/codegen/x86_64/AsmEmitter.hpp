@@ -86,6 +86,7 @@ class AsmEmitter
     [[nodiscard]] static std::string formatImm(const OpImm &imm);
     [[nodiscard]] static std::string formatMem(const OpMem &mem, const TargetInfo &target);
     [[nodiscard]] static std::string formatLabel(const OpLabel &label);
+    [[nodiscard]] static std::string formatRipLabel(const OpRipLabel &label);
     [[nodiscard]] static std::string formatShiftCount(const Operand &operand,
                                                       const TargetInfo &target);
 

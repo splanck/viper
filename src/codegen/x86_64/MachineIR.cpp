@@ -267,6 +267,14 @@ Operand makeLabelOperand(std::string name)
     return Operand{OpLabel{std::move(name)}};
 }
 
+/// @brief Construct a RIP-relative label operand variant.
+/// @param name Name of the label referenced by the operand.
+/// @return Operand variant storing the RIP-relative label metadata.
+Operand makeRipLabelOperand(std::string name)
+{
+    return Operand{OpRipLabel{std::move(name)}};
+}
+
 /// @brief Render a register operand as human-readable text.
 /// @details Physical registers are prefixed with '@' and virtual registers with
 ///          `%v` to aid debugging dumps.
@@ -327,6 +335,16 @@ std::string toString(const OpMem &op)
 std::string toString(const OpLabel &op)
 {
     return op.name;
+}
+
+/// @brief Render a RIP-relative label operand as human-readable text.
+/// @param op RIP-relative label operand to print.
+/// @return Label name followed by the (%rip) suffix.
+std::string toString(const OpRipLabel &op)
+{
+    std::string result = op.name;
+    result += "(%rip)";
+    return result;
 }
 
 /// @brief Render a generic operand by visiting the active variant.
