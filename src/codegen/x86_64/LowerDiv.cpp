@@ -1,17 +1,28 @@
-// src/codegen/x86_64/LowerDiv.cpp
-// SPDX-License-Identifier: MIT
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Lower signed 64-bit division and remainder pseudos into concrete
-//          x86-64 Machine IR sequences that guard against division by zero and
-//          call the runtime trap when necessary.
-// Invariants: Only integer GPR virtual registers are expected as operands.
-//             Lowering materialises a shared trap block per function and
-//             preserves the order of subsequent instructions via explicit
-//             continuation blocks.
-// Ownership: Functions operate on Machine IR structures passed by reference
-//            without taking ownership.
-// Notes: Phase A helper intended to run after IL→MIR lowering and before
-//        register allocation.
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the lowering pass that expands signed 64-bit division and remainder
+// pseudos into explicit CQO/IDIV sequences for the x86-64 backend.  The
+// implementation guards each operation with a division-by-zero test, branching
+// to a lazily created trap block when necessary so runtime behaviour matches the
+// VM's expectations.
+//
+// The pass executes between IL→MIR lowering and register allocation.  It keeps
+// operand usage confined to general-purpose registers, builds continuation
+// blocks to preserve instruction order, and reuses a single trap block per
+// function to minimise code growth.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Signed division lowering utilities for the Phase A x86-64 backend.
+/// @details Contains helpers for cloning operands, locating trap blocks, and
+///          synthesising continuation labels so lowered control flow mirrors the
+///          pseudo-instruction semantics emitted earlier in the pipeline.
 
 #include "MachineIR.hpp"
 
@@ -29,11 +40,29 @@ namespace
 {
 constexpr std::string_view kTrapLabel{".Ltrap_div0"};
 
+/// @brief Produce a shallow copy of a Machine IR operand.
+///
+/// @details Operands in Phase A Machine IR are small value types, so copying by
+///          value preserves all necessary information when duplicating operands
+///          across newly emitted instructions.  The helper centralises the
+///          intent and documents that no deep cloning is required.
+///
+/// @param operand Operand instance to duplicate.
+/// @return Copy of @p operand that can be reused in emitted instructions.
 [[nodiscard]] Operand cloneOperand(const Operand &operand)
 {
     return operand;
 }
 
+/// @brief Locate a basic block index using its label, if present.
+///
+/// @details Iterates over @p fn until it finds a block whose @c label matches
+///          the requested string.  The search allows the lowering pass to reuse
+///          an existing trap block rather than materialising a duplicate.
+///
+/// @param fn Function currently being rewritten.
+/// @param label Block label to search for.
+/// @return Index of the block or empty optional when no block matches.
 [[nodiscard]] std::optional<std::size_t> findBlockIndex(const MFunction &fn, std::string_view label)
 {
     for (std::size_t idx = 0; idx < fn.blocks.size(); ++idx)
@@ -46,6 +75,17 @@ constexpr std::string_view kTrapLabel{".Ltrap_div0"};
     return std::nullopt;
 }
 
+/// @brief Generate a unique label for the continuation block after a pseudo.
+///
+/// @details Prefers reusing the source block or function name to keep emitted
+///          labels stable between compilations.  When neither is available a
+///          synthetic prefix is used.  The @p sequence counter differentiates
+///          multiple lowered pseudos originating from the same block.
+///
+/// @param fn Function currently being processed.
+/// @param block Basic block that owned the pseudo instruction.
+/// @param sequence Running identifier incremented per lowered pseudo.
+/// @return Deterministic label for the continuation block.
 [[nodiscard]] std::string makeContinuationLabel(const MFunction &fn,
                                                 const MBasicBlock &block,
                                                 unsigned sequence)
@@ -69,16 +109,33 @@ constexpr std::string_view kTrapLabel{".Ltrap_div0"};
     return base;
 }
 
+/// @brief Create an operand referencing a physical general-purpose register.
+///
+/// @details The lowered IDIV sequence uses the SysV ABI registers RAX and RDX.
+///          This helper ensures the correct register class is used whenever the
+///          sequence materialises operands for those registers.
+///
+/// @param reg Physical register enumerator.
+/// @return Operand representing @p reg.
 [[nodiscard]] Operand makePhysRegOperand(PhysReg reg)
 {
     return x64::makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(reg));
 }
 } // namespace
 
-/// \brief Lower signed division and remainder pseudos into guarded IDIV sequences.
-/// \details Rewrites DIVS64rr/REMS64rr pseudos into a guard that tests the divisor
-///          for zero, branches to a shared trap block on zero, and otherwise
-///          performs the CQO/IDIV sequence using the SysV ABI registers.
+/// @brief Rewrite signed division and remainder pseudos into explicit IDIV guards.
+///
+/// @details Walks each machine basic block in search of @c DIVS64rr and
+///          @c REMS64rr pseudos.  Matching instructions are replaced with a
+///          guarded control-flow pattern: the divisor is tested for zero, a
+///          shared trap block is invoked when necessary, and otherwise the
+///          CQO/IDIV pair executes using the SysV register convention.  The
+///          remaining instructions from the original block are moved into a
+///          freshly created continuation block so the program order remains
+///          intact after the branch sequence.  A single trap block is allocated
+///          lazily and reused for every lowered pseudo within the function.
+///
+/// @param fn Machine IR function being rewritten in place.
 void lowerSignedDivRem(MFunction &fn)
 {
     const std::string trapLabel{std::string{kTrapLabel}};
