@@ -43,6 +43,9 @@ class AsmEmitter
         /// \brief Retrieve the canonical label for a stored string literal.
         [[nodiscard]] std::string stringLabel(int index) const;
 
+        /// \brief Retrieve the length for a stored string literal.
+        [[nodiscard]] std::uint64_t stringLength(int index) const;
+
         /// \brief Retrieve the canonical label for a stored f64 literal.
         [[nodiscard]] std::string f64Label(int index) const;
 

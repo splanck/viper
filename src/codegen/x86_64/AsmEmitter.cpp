@@ -121,6 +121,14 @@ std::string AsmEmitter::RoDataPool::stringLabel(int index) const
     return ".LC_str_" + std::to_string(index);
 }
 
+/// @brief Retrieve the declared length for a stored string literal.
+/// @param index Pool index referencing the literal.
+/// @return Length in bytes of the stored literal.
+std::uint64_t AsmEmitter::RoDataPool::stringLength(int index) const
+{
+    return static_cast<std::uint64_t>(stringLiterals_.at(index).size());
+}
+
 /// @brief Generate the assembly label for a stored 64-bit float literal.
 /// @param index Pool index returned by @ref addF64Literal.
 /// @return Mangled label suitable for use in assembly.
@@ -143,8 +151,11 @@ void AsmEmitter::RoDataPool::emit(std::ostream &os) const
     os << ".section .rodata\n";
     for (std::size_t i = 0; i < stringLiterals_.size(); ++i)
     {
-        os << stringLabel(static_cast<int>(i)) << ":\n";
+        const auto index = static_cast<int>(i);
+        const auto label = stringLabel(index);
+        os << label << ":\n";
         os << formatBytes(stringLiterals_[i]);
+        os << "  .size " << label << ", " << stringLength(index) << "\n";
     }
     if (!f64Literals_.empty())
     {
