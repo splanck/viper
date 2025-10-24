@@ -27,6 +27,7 @@
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <limits>
 #include <sstream>
 #include <string>
 
@@ -185,6 +186,8 @@ StringRef fromViperString(const ViperString &str)
             TrapKind::DomainError, "rt_string reported negative length", {}, "", "");
         return {};
     }
+    if (!detail::lengthWithinLimit(length, std::numeric_limits<size_t>::max()))
+        return {};
     return StringRef{data, static_cast<size_t>(length)};
 }
 

@@ -25,6 +25,18 @@ using ViperString = ::rt_string;
 
 union Slot;
 
+namespace detail
+{
+/// @brief Check whether a runtime-provided string length fits within @p limit.
+/// @param length Length reported by the runtime as a signed 64-bit value.
+/// @param limit Maximum representable size for the destination view type.
+/// @return True when @p length is non-negative and does not exceed @p limit.
+constexpr bool lengthWithinLimit(int64_t length, uint64_t limit)
+{
+    return length >= 0 && static_cast<uint64_t>(length) <= limit;
+}
+} // namespace detail
+
 struct ResultBuffers
 {
     int64_t i64 = 0;
