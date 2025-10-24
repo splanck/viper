@@ -520,6 +520,7 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         }
         case MOpcode::MOVri:
         case MOpcode::ADDri:
+        case MOpcode::ANDri:
         case MOpcode::CMPri:
         case MOpcode::SHLri:
         case MOpcode::SHRri:
@@ -798,6 +799,8 @@ const char *AsmEmitter::mnemonicFor(MOpcode opcode) noexcept
         case MOpcode::ADDrr:
         case MOpcode::ADDri:
             return "addq";
+        case MOpcode::ANDri:
+            return "andq";
         case MOpcode::SUBrr:
             return "subq";
         case MOpcode::SHLri:
@@ -835,6 +838,8 @@ const char *AsmEmitter::mnemonicFor(MOpcode opcode) noexcept
             return "j";
         case MOpcode::CALL:
             return "callq";
+        case MOpcode::UD2:
+            return "ud2";
         case MOpcode::RET:
             return "ret";
         case MOpcode::PX_COPY:
