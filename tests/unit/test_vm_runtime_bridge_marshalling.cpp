@@ -23,6 +23,7 @@
 #include <initializer_list>
 #include <cassert>
 #include <cstdlib>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -219,6 +220,26 @@ int main()
         assert(rt_len(nonLiteralHandle) == 0);
         assert(nonLiteralHandle != emptyString);
         rt_string_unref(nonLiteralHandle);
+    }
+
+    {
+        constexpr uint64_t kLimit32 = static_cast<uint64_t>(std::numeric_limits<uint32_t>::max());
+        const int64_t overflowLength = static_cast<int64_t>(kLimit32) + 1;
+        assert(il::vm::detail::lengthWithinLimit(static_cast<int64_t>(kLimit32), kLimit32));
+        assert(!il::vm::detail::lengthWithinLimit(overflowLength, kLimit32));
+
+        rt_string_impl simulated{};
+        simulated.data = const_cast<char *>("overflow");
+        simulated.heap = nullptr;
+        simulated.literal_len = static_cast<size_t>(overflowLength);
+        simulated.literal_refs = 1;
+
+        il::vm::StringRef simulatedView = il::vm::fromViperString(reinterpret_cast<rt_string>(&simulated));
+        if (!il::vm::detail::lengthWithinLimit(
+                overflowLength, static_cast<uint64_t>(std::numeric_limits<size_t>::max())))
+        {
+            assert(simulatedView.empty());
+        }
     }
 
     rt_string_unref(emptyString);
