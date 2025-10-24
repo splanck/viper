@@ -410,6 +410,7 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
     switch (instr.opcode)
     {
         case MOpcode::MOVrr:
+        case MOpcode::CMOVNErr:
         case MOpcode::ADDrr:
         case MOpcode::SUBrr:
         case MOpcode::IMULrr:
@@ -656,6 +657,8 @@ const char *AsmEmitter::mnemonicFor(MOpcode opcode) noexcept
         case MOpcode::MOVrr:
         case MOpcode::MOVri:
             return "movq";
+        case MOpcode::CMOVNErr:
+            return "cmovne";
         case MOpcode::LEA:
             return "leaq";
         case MOpcode::ADDrr:
