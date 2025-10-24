@@ -1,345 +1,152 @@
 ---
-status: draft
+status: active
 audience: public
-last-verified: 2025-10-24
+last-updated: 2025-10-24
 ---
 
-# Viper BASIC Language Reference (Proposed)
+# Viper BASIC — Tutorial
 
-> **Goal:** One canonical, searchable page for everything the Viper BASIC frontend supports—syntax, semantics, built‑ins, OOP—replacing the split across `basic-language.md` and `basic-oop.md`.
+This tutorial teaches the Viper BASIC language by example. If you prefer a catalog,
+see the **Reference** document.
 
-## Table of contents
-- [Overview](#overview)
-- [Program structure](#program-structure)
-- [Types and literals](#types-and-literals)
-- [Variables, arrays, and assignment](#variables-arrays-and-assignment)
-- [Expressions and operators](#expressions-and-operators)
-- [Control flow](#control-flow)
-- [Procedures](#procedures)
-- [Object‑oriented features](#object-oriented-features)
-- [Console I/O](#console-io)
-- [File I/O](#file-io)
-- [Built‑in functions](#built-in-functions)
-- [Error handling](#error-handling)
-- [Keywords index](#keywords-index)
-- [Examples](#examples)
+> **What is Viper BASIC?**  
+> A compact, modernised BASIC designed for clarity: `LET` for assignment, clean arrays, short‑circuit booleans,
+> lightweight objects, and straightforward console/file I/O. It runs on Viper’s VM and can be lowered to native code.
 
----
-
-## Overview
-Viper BASIC is a small, strict, **line‑numbers‑optional** dialect that lowers to Viper IL. It is case‑insensitive and favors clarity over magical behavior. Integers are 64‑bit; floating‑point is IEEE‑754 double (`#` suffix in literals/vars); strings carry a `$` suffix.
-
-> **Design notes**
-> - Numeric semantics and traps are described in *Specs → Numerics*. Runtime error conventions are in *Specs → Errors*.
-> - Short‑circuit Boolean operators are available: `ANDALSO`, `ORELSE`.
-
-Hello, world:
+## 1. First steps: printing and expressions
 
 ```basic
-PRINT "Hello, Viper!"
+10 PRINT "Hello, world!"
+20 PRINT 1 + 2 * 3       ' 7
+30 PRINT "A"; "B"        ' "AB" (no newline)
 ```
 
-## Program structure
-- Top‑level **statements** run from top to bottom.
-- **Labels** end with `:` and are targets of `GOTO`/`GOSUB`/`ON ERROR GOTO`.
-- **Procedures** (`SUB`/`FUNCTION`) and **classes** (`CLASS`) may appear at top level.
-- **Comments** start with apostrophe `'` or `REM`.
+Try removing line numbers; they are optional. Use `:` to put multiple statements on one line.
+
+## 2. Variables and types
+
+Assignments use **`LET`**. You can declare scalars implicitly by assigning,
+or explicitly with `DIM` to pin a type. Arrays require `DIM`.
 
 ```basic
-Start:
-  REM Single‑line comment
-  ' Also a comment
-  PRINT "ok"
-  GOTO Done
-Done:
-  END
+10 LET I = 42
+20 DIM Flag AS BOOLEAN
+30 LET Flag = TRUE
+40 DIM A(3)              ' indices 0..2
+50 LET A(0) = I
 ```
 
-## Types and literals
-- **Integer** (default), **Float** (`#`), **String** (`$`), **Boolean** (`TRUE`/`FALSE`).
-- Suffixes: `X#` (float var), `S$` (string var). Explicit typing via `AS`:
+Suffixes: `$` string, `#`/`!` float, `&`/`%` integer.
 
 ```basic
-DIM A AS BOOLEAN
-DIM PI# : LET PI# = 3.141592653589793#
+10 LET S$ = "hi"
+20 LET F# = 3.14
 ```
 
-Arrays: one‑dimensional, zero‑based by default.
+## 3. Control flow
 
 ```basic
-DIM A(3)            ' indices 0..2
-REDIM A(UBOUND(A)+1)
-PRINT LBOUND(A), UBOUND(A)
+10 IF N = 0 THEN
+20   PRINT "zero"
+30 ELSE
+40   PRINT "nonzero"
+50 END IF
+
+10 FOR I = 1 TO 5: PRINT I: NEXT
+
+10 LET I = 3
+20 DO
+30   LET I = I - 1
+40 LOOP UNTIL I = 0
+
+10 WHILE X < 3: PRINT X: LET X = X + 1: WEND
+
+' Short-circuit
+10 IF A <> 0 ANDALSO (B / A) > 2 THEN PRINT "ok"
 ```
 
-## Variables, arrays, and assignment
-- `LET` is optional: `LET X = 1` and `X = 1` are equivalent.
-- Bounds are checked at runtime; out‑of‑range indexes trap.
-- `LBOUND(A)`, `UBOUND(A)` query indices.
+## 4. Procedures and functions
 
-## Expressions and operators
-Arithmetic: `+ - * / \ ^ MOD` (integer division is `\`; exponent is `^`).  
-Comparison: `= <> < <= > >=`.  
-Boolean: `NOT`, `AND`/`OR` (eager), `ANDALSO`/`ORELSE` (short‑circuit).
-
-Strings:
-- Concatenation via `+` (with numeric→string conversions via `STR$`).
-- Substrings and search via `LEFT$`, `RIGHT$`, `MID$`, `INSTR`.
-
-## Control flow
-### IF / ELSEIF / ELSE / END IF
-```basic
-IF X < 0 THEN
-  PRINT "neg"
-ELSEIF X = 0 THEN
-  PRINT "zero"
-ELSE
-  PRINT "pos"
-END IF
-```
-
-### WHILE / WEND
-```basic
-WHILE N > 0
-  PRINT N
-  LET N = N - 1
-WEND
-```
-
-### DO / LOOP
-`DO ... LOOP` with `WHILE` or `UNTIL` conditions:
+`SUB` is a procedure (statement call). `FUNCTION` returns a value (use in expressions).
 
 ```basic
-DO
-  LET N = N - 1
-LOOP UNTIL N = 0
+10 SUB GREET(S$)
+20   PRINT "Hello, "; S$
+30 END SUB
+
+40 FUNCTION SQUARE(N)
+50   RETURN N * N
+60 END FUNCTION
+
+70 GREET("Ada")          ' statement call; parentheses required
+80 LET X = SQUARE(9)     ' expression call
 ```
 
-### FOR / NEXT
-```basic
-FOR I = 1 TO 10 STEP 2
-  PRINT I
-NEXT I
-```
-
-### SELECT CASE / END SELECT
-```basic
-SELECT CASE ROLL
-  CASE 1
-    PRINT "one"
-  CASE 2,3,4
-    PRINT "mid "; ROLL
-  CASE ELSE
-    PRINT "other"
-END SELECT
-```
-
-### Jumps
-`GOTO Label`, `GOSUB Label`/`RETURN`, `EXIT FOR/DO/WHILE`, `END`.
-
-## Procedures
-- `FUNCTION` returns a value with `RETURN expr`.
-- `SUB` uses `RETURN` with no value.
+## 5. Objects
 
 ```basic
-FUNCTION Square(N)
-  RETURN N * N
-END FUNCTION
+10 CLASS Counter
+20   X AS INTEGER
+30   SUB NEW(): LET ME.X = 0: END SUB
+40   SUB INC(): LET ME.X = ME.X + 1: END SUB
+50   FUNCTION Current(): RETURN ME.X: END FUNCTION
+60 END CLASS
 
-SUB Greet(S$)
-  PRINT "Hi, "; S$
-  RETURN
-END SUB
+70 DIM c AS Counter
+80 LET c = NEW Counter()
+90 c.INC()
+100 PRINT c.Current()
+110 DELETE c
 ```
 
-## Object‑oriented features
-Classes are first‑class: fields, methods, constructors, destructors, `ME`, dot calls.
+## 6. Console and file I/O
 
 ```basic
-CLASS Counter
-  value AS INTEGER
+10 INPUT "Name? ", N$
+20 PRINT "Hello, "; N$
 
-  SUB NEW()
-    LET value = 0
-  END SUB
-
-  SUB Inc()
-    LET value = value + 1
-  END SUB
-
-  FUNCTION Current() AS INTEGER
-    RETURN value
-  END FUNCTION
-
-  DESTRUCTOR
-    PRINT "destroying"; value
-  END DESTRUCTOR
-END CLASS
-
-DIM c
-LET c = NEW Counter()
-c.Inc()
-PRINT c.Current()
-DELETE c
+10 OPEN "out.txt" FOR OUTPUT AS #1
+20 PRINT #1, "Hello"
+30 CLOSE #1
 ```
 
-Rules:
-- `SUB NEW()` is the constructor; `DESTRUCTOR` runs on `DELETE`.
-- Use `ME` inside methods to refer to the instance.
-- Member access/calls use dot (`obj.Field`, `obj.Method()`).
-
-## Console I/O
-`PRINT` outputs expressions. Use `;` to suppress newline or join fields; `,` separates to print zones.
+## 7. Errors
 
 ```basic
-PRINT "X=", X
-PRINT "A"; 1; "B"
+10 ON ERROR GOTO 100
+20 OPEN "missing.txt" FOR INPUT AS #1
+30 END
+100 PRINT "Could not open file"
+110 RESUME 0
 ```
 
-`INPUT` reads a value; `LINE INPUT` reads an entire line into a string:
+## 8. Mini-project A: number guess
 
 ```basic
-INPUT N
-LINE INPUT A$
+10 LET SECRET = 42
+20 DO
+30   INPUT "Guess? ", G
+40   IF G = SECRET THEN PRINT "Correct!": EXIT DO
+50   IF G < SECRET THEN PRINT "Higher" ELSE PRINT "Lower"
+60 LOOP
 ```
 
-Terminal helpers: `CLS`, `COLOR fg[, bg]`, `LOCATE row[, col]`.
-
-## File I/O
-Open files with a mode and file number, then use channel‑forms of the I/O statements.
+## 9. Mini-project B: file copy (lines)
 
 ```basic
-OPEN "data.txt" FOR OUTPUT AS #1
-WRITE #1, "A", 42, "B"
-CLOSE #1
-
-OPEN "data.txt" FOR INPUT AS #1
-LINE INPUT #1, S$
-PRINT "EOF start:"; EOF(#1)
-PRINT "LOF:"; LOF(#1)
-PRINT "LOC:"; LOC(#1)
-SEEK #1, 0
-CLOSE #1
+10 LINE INPUT "Source? ", S$
+20 LINE INPUT "Dest? ", D$
+30 OPEN S$ FOR INPUT AS #1
+40 OPEN D$ FOR OUTPUT AS #2
+50 WHILE NOT EOF(#1)
+60   LINE INPUT #1, L$
+70   PRINT #2, L$
+80 WEND
+90 CLOSE #1: CLOSE #2
 ```
 
-Modes: `INPUT`, `OUTPUT`, `APPEND`, `BINARY`, `RANDOM`.  
-Helpers: `EOF(#)`, `LOF(#)` (length), `LOC(#)` (position), `SEEK #, pos`.
+## 10. Where to go next
 
-## Built‑in functions
-| Name | Args | Returns | Notes |
-|---|---:|---|---|
-| `ABS` | 1 | numeric/string (see notes) |  |
-| `ASC` | 1 | Integer |  |
-| `CDBL` | 1 | Float | Convert with rounding/trunc per target type. |
-| `CEIL` | 1 | numeric/string (see notes) |  |
-| `CHR$` | 1 | String |  |
-| `CINT` | 1 | Integer | Convert with rounding/trunc per target type. |
-| `CLNG` | 1 | Integer | Convert with rounding/trunc per target type. |
-| `COS` | 1 | numeric/string (see notes) |  |
-| `CSNG` | 1 | Float | Convert with rounding/trunc per target type. |
-| `EOF` | 1 | Integer | File functions; use with file number (#n). |
-| `FIX` | 1 | numeric/string (see notes) | Truncate toward 0. |
-| `FLOOR` | 1 | numeric/string (see notes) |  |
-| `GETKEY$` | 0 | String | Keyboard; GETKEY$ blocks, INKEY$ non‑blocking (may return ""). |
-| `INKEY$` | 0 | String | Keyboard; GETKEY$ blocks, INKEY$ non‑blocking (may return ""). |
-| `INSTR` | 2–3 | Integer | Forms: INSTR(hay$, needle$); INSTR(start, hay$, needle$). 1‑based; 0 if not found. |
-| `INT` | 1 | numeric/string (see notes) | Greatest integer ≤ x. |
-| `LCASE$` | 1 | String |  |
-| `LEFT$` | 2 | String | Takes n characters. |
-| `LEN` | 1 | Integer |  |
-| `LOC` | 1 | Integer | File functions; use with file number (#n). |
-| `LOF` | 1 | Integer | File functions; use with file number (#n). |
-| `LTRIM$` | 1 | String |  |
-| `MID$` | 2–3 | String | 2‑arg (s$, start) to end; 3‑arg (s$, start, len). 1‑based. |
-| `POW` | 2 | numeric/string (see notes) |  |
-| `RIGHT$` | 2 | String | Takes n characters. |
-| `RND` | 0 | numeric/string (see notes) | Uniform [0,1). Use RANDOMIZE seed to seed. |
-| `ROUND` | 1–2 | numeric/string (see notes) | Round to n digits. |
-| `RTRIM$` | 1 | String |  |
-| `SIN` | 1 | numeric/string (see notes) |  |
-| `SQR` | 1 | numeric/string (see notes) |  |
-| `STR$` | 1 | String | Converts numeric to string. |
-| `TRIM$` | 1 | String |  |
-| `UCASE$` | 1 | String |  |
-| `VAL` | 1 | Float | Parses leading numeric; ignores trailing junk. |
-
-## Error handling
-Structured like classic BASIC:
-
-```basic
-ON ERROR GOTO Handler
-PRINT #1, 42        ' will error if #1 not open
-ON ERROR GOTO 0     ' disable handler
-GOTO After
-
-Handler:
-  PRINT "caught"
-  RESUME NEXT
-
-After:
-```
-
-- `ON ERROR GOTO label` installs a handler; `ON ERROR GOTO 0` clears it.
-- `RESUME`, `RESUME NEXT` continue after handling.
-
-## Keywords index
-**Control Flow:** `CASE`, `DO`, `ELSE`, `ELSEIF`, `END`, `ERROR`, `EXIT`, `FOR`, `GOSUB`, `GOTO`, `IF`, `LOOP`, `NEXT`, `ON`, `RESUME`, `RETURN`, `SELECT`, `STEP`, `THEN`, `TO`, `WEND`, `WHILE`
-
-**I/O (console):** `CLS`, `COLOR`, `INPUT`, `LOC`, `LOCATE`, `PRINT`, `WRITE`
-
-**File I/O:** `APPEND`, `BINARY`, `CLOSE`, `EOF`, `LINE`, `LOF`, `OPEN`, `OUTPUT`, `RANDOM`, `SEEK`
-
-**Ops & Logic:** `AND`, `ANDALSO`, `MOD`, `NOT`, `OR`, `ORELSE`
-
-**Math:** `ABS`, `CEIL`, `COS`, `FLOOR`, `POW`, `RND`, `SIN`, `SQR`
-
-**Types & Decls:** `AS`, `BOOLEAN`, `DIM`, `FALSE`, `FUNCTION`, `LBOUND`, `REDIM`, `SUB`, `TRUE`, `TYPE`, `UBOUND`
-
-**OOP:** `CLASS`, `DELETE`, `DESTRUCTOR`, `ME`, `NEW`
-
-**Other:** `LET`, `RANDOMIZE`, `UNTIL`
-
-## Examples
-- **Math and randomness**
-
-```basic
-RANDOMIZE 1
-LET X# = RND()
-PRINT ABS(-5), FLOOR(1.9#), CEIL(1.1#), SQR(9#), POW(2#,10)
-```
-
-- **Strings**
-
-```basic
-LET F$ = "report.txt"
-LET P = INSTR(F$, ".")
-PRINT RIGHT$(F$, LEN(F$) - P)
-
-PRINT INSTR("HELLO","LL")
-PRINT INSTR(3,"HELLO","L")
-```
-
-- **Short‑circuit booleans**
-
-```basic
-INPUT A: INPUT B
-DIM LHS AS BOOLEAN
-LET LHS = A <> 0
-PRINT LHS ORELSE (B <> 0)
-PRINT LHS ANDALSO (B <> 0)
-```
-
-- **File I/O scan**
-
-```basic
-OPEN "tmp.txt" FOR OUTPUT AS #1
-PRINT #1, "HELLO"
-CLOSE #1
-
-OPEN "tmp.txt" FOR INPUT AS #1
-LINE INPUT #1, S$
-PRINT S$
-CLOSE #1
-```
-
----
+- Skim the **Reference** for all statements and built-ins.
+- Review examples in `tests/golden/basic/` (if available).
+- Explore OOP patterns: builders, resource guards with `DESTRUCTOR`, and collection utilities.
