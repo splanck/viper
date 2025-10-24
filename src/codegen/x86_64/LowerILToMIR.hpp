@@ -130,6 +130,7 @@ class LowerILToMIR
     void lowerStore(const ILInstr &instr, MBasicBlock &block);
     void lowerCast(
         const ILInstr &instr, MBasicBlock &block, MOpcode opc, RegClass dstCls, RegClass srcCls);
+    void lowerShift(const ILInstr &instr, MBasicBlock &block, MOpcode opcImm, MOpcode opcReg);
     void emitEdgeCopies(const ILBlock &source, MBasicBlock &block);
 };
 
