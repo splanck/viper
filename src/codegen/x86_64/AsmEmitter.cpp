@@ -22,6 +22,7 @@
 #include "AsmEmitter.hpp"
 
 #include <bit>
+#include <cstdint>
 #include <iomanip>
 #include <sstream>
 #include <utility>
@@ -453,6 +454,9 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         case MOpcode::MOVri:
         case MOpcode::ADDri:
         case MOpcode::CMPri:
+        case MOpcode::SHLri:
+        case MOpcode::SHRri:
+        case MOpcode::SARri:
         {
             if (instr.operands.size() < 2)
             {
@@ -460,6 +464,19 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
                 return;
             }
             os << "  " << mnemonic << ' ' << formatOperand(instr.operands[1], target) << ", "
+               << formatOperand(instr.operands[0], target) << '\n';
+            return;
+        }
+        case MOpcode::SHLrc:
+        case MOpcode::SHRrc:
+        case MOpcode::SARrc:
+        {
+            if (instr.operands.size() < 2)
+            {
+                os << "  " << mnemonic << " #<missing>\n";
+                return;
+            }
+            os << "  " << mnemonic << ' ' << formatShiftCount(instr.operands[1], target) << ", "
                << formatOperand(instr.operands[0], target) << '\n';
             return;
         }
@@ -589,6 +606,23 @@ std::string AsmEmitter::formatLabel(const OpLabel &label)
     return label.name;
 }
 
+/// @brief Format a shift count operand, rewriting RCX to CL when required.
+/// @param operand Operand describing the shift count.
+/// @param target Target lowering context for fallback formatting.
+/// @return Assembly string for the shift count operand.
+std::string AsmEmitter::formatShiftCount(const Operand &operand, const TargetInfo &target)
+{
+    if (const auto *reg = std::get_if<OpReg>(&operand))
+    {
+        if (reg->isPhys && reg->cls == RegClass::GPR &&
+            reg->idOrPhys == static_cast<uint16_t>(PhysReg::RCX))
+        {
+            return "%cl";
+        }
+    }
+    return formatOperand(operand, target);
+}
+
 /// @brief Format the source operand for an @c LEA instruction.
 /// @details Labels are converted into RIP-relative references to match how
 ///          immediate addresses are encoded on x86-64.
@@ -684,6 +718,15 @@ const char *AsmEmitter::mnemonicFor(MOpcode opcode) noexcept
             return "addq";
         case MOpcode::SUBrr:
             return "subq";
+        case MOpcode::SHLri:
+        case MOpcode::SHLrc:
+            return "shlq";
+        case MOpcode::SHRri:
+        case MOpcode::SHRrc:
+            return "shrq";
+        case MOpcode::SARri:
+        case MOpcode::SARrc:
+            return "sarq";
         case MOpcode::IMULrr:
             return "imulq";
         case MOpcode::DIVS64rr:
