@@ -263,6 +263,22 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
 {
     switch (instr.opcode)
     {
+        case MOpcode::LABEL:
+        {
+            if (instr.operands.empty())
+            {
+                os << ".L?\n";
+                return;
+            }
+            const auto *label = std::get_if<OpLabel>(&instr.operands.front());
+            if (!label)
+            {
+                os << "# <invalid label>\n";
+                return;
+            }
+            os << label->name << ":\n";
+            return;
+        }
         case MOpcode::PX_COPY:
         {
             os << "  # px_copy";
@@ -657,6 +673,8 @@ const char *AsmEmitter::mnemonicFor(MOpcode opcode) noexcept
         case MOpcode::MOVrr:
         case MOpcode::MOVri:
             return "movq";
+        case MOpcode::LABEL:
+            return nullptr;
         case MOpcode::CMOVNErr:
             return "cmovne";
         case MOpcode::LEA:
