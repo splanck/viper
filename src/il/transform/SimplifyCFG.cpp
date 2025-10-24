@@ -5,11 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-/// @file
-/// @brief Implements the scaffold for the control-flow graph simplification pass.
-/// @details Coordinates helper modules that perform individual transformations
-/// (branch folding, parameter canonicalisation, etc.) and maintains verification
-/// invariants around each batch of changes.
+// File: src/il/transform/SimplifyCFG.cpp
+// Purpose: Provide the driver implementation for the SimplifyCFG optimisation
+//          pass that orchestrates multiple transformation subroutines.
+// Key invariants: Verification hooks ensure IR validity before, during, and
+//                 after transformations in debug builds, while the analysis
+//                 manager is notified whenever the CFG mutates.
+// Ownership/Lifetime: The pass operates on caller-owned modules and functions
+//                     without taking ownership; analysis caches are invalidated
+//                     via the supplied AnalysisManager.
+// Links: docs/codemap.md#transforms
+//
+//===----------------------------------------------------------------------===//
 
 
 #include "il/transform/SimplifyCFG.hpp"
@@ -67,11 +74,26 @@ void verifyIntermediateState(const il::core::Module *module)
     (void)verified;
 }
 #else
-void verifyPreconditions(const il::core::Module *) {}
+/// @brief No-op verification hook used in release builds.
+/// @param module Ignored module pointer kept for signature parity.
+void verifyPreconditions(const il::core::Module *module)
+{
+    (void)module;
+}
 
-void verifyPostconditions(const il::core::Module *) {}
+/// @brief No-op verification hook used in release builds after the pass.
+/// @param module Ignored module pointer kept for signature parity.
+void verifyPostconditions(const il::core::Module *module)
+{
+    (void)module;
+}
 
-void verifyIntermediateState(const il::core::Module *) {}
+/// @brief No-op verification hook used in release builds between iterations.
+/// @param module Ignored module pointer kept for signature parity.
+void verifyIntermediateState(const il::core::Module *module)
+{
+    (void)module;
+}
 #endif
 
 /// @brief Mark cached CFG/dominator analyses as stale once the pass modifies IR.

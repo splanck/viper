@@ -1,12 +1,22 @@
-// src/codegen/x86_64/MachineIR.cpp
-// SPDX-License-Identifier: MIT
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Provide definitions for the minimal Machine IR representation used
-//          by the x86-64 backend during Phase A.
-// Invariants: Helper utilities preserve operand invariants defined in the
-//             header and avoid introducing invalid combinations.
-// Ownership: Functions operate on value-based IR nodes with no implicit sharing.
-// Notes: Depends only on MachineIR.hpp and the C++ standard library.
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/codegen/x86_64/MachineIR.cpp
+// Purpose: Provide the concrete implementations for the lightweight Machine IR
+//          types used by the x86-64 code generator.
+// Key invariants: Helpers preserve operand invariants declared in the headers,
+//                 never fabricate invalid register classes, and maintain the
+//                 stable textual form relied upon by debugging utilities.
+// Ownership/Lifetime: All Machine IR nodes own their operands by value; helper
+//                     functions return new values or mutate the receiving
+//                     container without introducing aliasing.
+// Links: docs/codemap.md#codegen
+//
+//===----------------------------------------------------------------------===//
 
 #include "MachineIR.hpp"
 
@@ -19,6 +29,9 @@ namespace viper::codegen::x64
 
 namespace
 {
+/// @brief Map a Machine IR opcode to a descriptive string for diagnostics.
+/// @param opc Opcode enumerator to translate.
+/// @return Null-terminated string naming the opcode.
 [[nodiscard]] const char *opcodeName(MOpcode opc) noexcept
 {
     switch (opc)
@@ -91,6 +104,9 @@ namespace
     return "<unknown>";
 }
 
+/// @brief Map a register class to the textual suffix used in debug output.
+/// @param cls Register class enumerator to translate.
+/// @return Short suffix identifying the class (e.g., "gpr").
 [[nodiscard]] std::string_view regClassSuffix(RegClass cls) noexcept
 {
     switch (cls)
@@ -104,34 +120,61 @@ namespace
 }
 } // namespace
 
+/// @brief Construct an instruction by pairing an opcode with operands.
+/// @details Returns a value-based instruction object, transferring ownership of
+///          the supplied operand list.
+/// @param opc Opcode describing the instruction semantics.
+/// @param ops Operand vector consumed by the instruction.
+/// @return Newly constructed Machine IR instruction.
 MInstr MInstr::make(MOpcode opc, std::vector<Operand> ops)
 {
     return MInstr{opc, std::move(ops)};
 }
 
+/// @brief Convenience overload that accepts an initializer list of operands.
+/// @param opc Opcode describing the instruction semantics.
+/// @param ops Operand initializer list copied into the instruction.
+/// @return Newly constructed Machine IR instruction.
 MInstr MInstr::make(MOpcode opc, std::initializer_list<Operand> ops)
 {
     return MInstr{opc, std::vector<Operand>{ops}};
 }
 
+/// @brief Append an operand to the instruction.
+/// @details Operands are stored by value, so the provided operand is moved into
+///          the instruction's operand array.
+/// @param op Operand to append.
+/// @return Reference to the mutated instruction for chaining.
 MInstr &MInstr::addOperand(Operand op)
 {
     operands.push_back(std::move(op));
     return *this;
 }
 
+/// @brief Append a basic block to the function.
+/// @details The block is moved into the function's block list and a reference
+///          to the stored instance is returned for immediate population.
+/// @param block Basic block to append.
+/// @return Reference to the inserted block.
 MBasicBlock &MFunction::addBlock(MBasicBlock block)
 {
     blocks.push_back(std::move(block));
     return blocks.back();
 }
 
+/// @brief Append an instruction to the basic block.
+/// @param instr Instruction to append.
+/// @return Reference to the stored instruction for further mutation.
 MInstr &MBasicBlock::append(MInstr instr)
 {
     instructions.push_back(std::move(instr));
     return instructions.back();
 }
 
+/// @brief Create a virtual register operand descriptor.
+/// @param cls Register class of the virtual register.
+/// @param id Dense identifier assigned to the virtual register.
+/// @return Register descriptor marking the operand as virtual.
 OpReg makeVReg(RegClass cls, uint16_t id) noexcept
 {
     OpReg result{};
@@ -141,6 +184,10 @@ OpReg makeVReg(RegClass cls, uint16_t id) noexcept
     return result;
 }
 
+/// @brief Create a physical register operand descriptor.
+/// @param cls Register class of the physical register.
+/// @param phys Architecture-defined register number.
+/// @return Register descriptor marking the operand as physical.
 OpReg makePhysReg(RegClass cls, uint16_t phys) noexcept
 {
     OpReg result{};
@@ -150,32 +197,55 @@ OpReg makePhysReg(RegClass cls, uint16_t phys) noexcept
     return result;
 }
 
+/// @brief Wrap a virtual register descriptor inside a generic operand variant.
+/// @param cls Register class of the virtual register.
+/// @param id Dense identifier assigned to the virtual register.
+/// @return Operand variant representing the register.
 Operand makeVRegOperand(RegClass cls, uint16_t id)
 {
     return Operand{makeVReg(cls, id)};
 }
 
+/// @brief Wrap a physical register descriptor inside a generic operand variant.
+/// @param cls Register class of the physical register.
+/// @param phys Architecture-defined register number.
+/// @return Operand variant representing the register.
 Operand makePhysRegOperand(RegClass cls, uint16_t phys)
 {
     return Operand{makePhysReg(cls, phys)};
 }
 
+/// @brief Construct an immediate operand variant.
+/// @param value Immediate constant carried by the operand.
+/// @return Operand variant storing the constant.
 Operand makeImmOperand(int64_t value)
 {
     return Operand{OpImm{value}};
 }
 
+/// @brief Construct a memory operand referencing @p base with displacement.
+/// @param base Base register used to form the address.
+/// @param disp Signed displacement added to the base register.
+/// @return Operand variant describing the memory access.
 Operand makeMemOperand(OpReg base, int32_t disp)
 {
     assert(base.cls == RegClass::GPR && "Phase A expects GPR base registers");
     return Operand{OpMem{std::move(base), disp}};
 }
 
+/// @brief Construct a label operand variant.
+/// @param name Name of the label referenced by the operand.
+/// @return Operand variant storing the label metadata.
 Operand makeLabelOperand(std::string name)
 {
     return Operand{OpLabel{std::move(name)}};
 }
 
+/// @brief Render a register operand as human-readable text.
+/// @details Physical registers are prefixed with '@' and virtual registers with
+///          `%v` to aid debugging dumps.
+/// @param op Register operand to print.
+/// @return Textual representation of the register operand.
 std::string toString(const OpReg &op)
 {
     std::ostringstream os;
@@ -192,6 +262,9 @@ std::string toString(const OpReg &op)
     return os.str();
 }
 
+/// @brief Render an immediate operand as human-readable text.
+/// @param op Immediate operand to print.
+/// @return Textual representation prefixed with '#'.
 std::string toString(const OpImm &op)
 {
     std::ostringstream os;
@@ -199,6 +272,10 @@ std::string toString(const OpImm &op)
     return os.str();
 }
 
+/// @brief Render a memory operand as human-readable text.
+/// @details Produces the canonical `[base +/- disp]` representation.
+/// @param op Memory operand to print.
+/// @return Textual representation of the memory operand.
 std::string toString(const OpMem &op)
 {
     std::ostringstream os;
@@ -218,16 +295,25 @@ std::string toString(const OpMem &op)
     return os.str();
 }
 
+/// @brief Render a label operand as human-readable text.
+/// @param op Label operand to print.
+/// @return Underlying label name.
 std::string toString(const OpLabel &op)
 {
     return op.name;
 }
 
+/// @brief Render a generic operand by visiting the active variant.
+/// @param operand Operand variant to print.
+/// @return Textual representation selected by the active operand kind.
 std::string toString(const Operand &operand)
 {
     return std::visit([](const auto &value) { return toString(value); }, operand);
 }
 
+/// @brief Render an instruction, including mnemonic and operands.
+/// @param instr Instruction to print.
+/// @return Multi-operand textual representation suitable for dumps.
 std::string toString(const MInstr &instr)
 {
     std::ostringstream os;
@@ -248,6 +334,9 @@ std::string toString(const MInstr &instr)
     return os.str();
 }
 
+/// @brief Render a basic block and its instructions as human-readable text.
+/// @param block Basic block to print.
+/// @return String containing the label and formatted instruction lines.
 std::string toString(const MBasicBlock &block)
 {
     std::ostringstream os;
@@ -259,6 +348,11 @@ std::string toString(const MBasicBlock &block)
     return os.str();
 }
 
+/// @brief Render an entire Machine IR function for debugging.
+/// @details Prints the function header, vararg marker, and each basic block in
+///          order using @ref toString(const MBasicBlock &).
+/// @param func Function to print.
+/// @return String containing the formatted function.
 std::string toString(const MFunction &func)
 {
     std::ostringstream os;
