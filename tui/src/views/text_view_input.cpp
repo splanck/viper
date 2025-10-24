@@ -1,7 +1,27 @@
-// tui/src/views/text_view_input.cpp
-// @brief TextView input handling and cursor navigation logic.
-// @invariant Navigation maintains cursor and selection invariants.
-// @ownership TextView borrows TextBuffer and Theme from the caller.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/src/views/text_view_input.cpp
+// Purpose: Process terminal input events for the TextView widget, translating
+//          key presses into cursor navigation and selection updates.
+// Key invariants: Navigation always keeps cursor offsets within the text buffer
+//                 and maintains consistent selection anchors.
+// Ownership/Lifetime: TextView borrows TextBuffer and Theme instances; this
+//                     translation unit mutates only TextView state.
+// Links: docs/architecture.md#vipertui-architecture
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements event handling for TextView navigation.
+/// @details The logic converts terminal key events into cursor movement,
+///          viewport scrolling, and selection updates. Keeping it separate from
+///          rendering allows other components to reuse the view without dragging
+///          in terminal-specific code.
 
 #include "tui/views/text_view.hpp"
 
@@ -13,6 +33,13 @@ using viper::tui::util::char_width;
 namespace viper::tui::views
 {
 
+/// @brief Handle a terminal input event and update cursor/selection state.
+/// @details Maps cursor keys, paging keys, and home/end navigation to the
+///          corresponding TextView helpers while preserving the "sticky" target
+///          column used during vertical motion. Shift modifiers extend the
+///          active selection; otherwise it collapses to the new caret.
+/// @param ev UI event describing the received key press.
+/// @return True when the event was handled and should not propagate further.
 bool TextView::onEvent(const ui::Event &ev)
 {
     using Code = term::KeyEvent::Code;
