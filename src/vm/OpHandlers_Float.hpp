@@ -112,4 +112,3 @@ VM::ExecResult handleCastFpToUiRteChk(VM &vm,
                                       size_t &ip);
 
 } // namespace il::vm::detail::floating
-

@@ -242,10 +242,10 @@ void PassRegistry::registerModulePass(const std::string &id, ModulePassFactory f
 void PassRegistry::registerModulePass(const std::string &id, ModulePassCallback callback)
 {
     auto cb = ModulePassCallback(callback);
-    registry_[id] = detail::PassFactory{
-        detail::PassKind::Module,
-        [passId = std::string(id), cb]() { return std::make_unique<LambdaModulePass>(passId, cb); },
-        {}};
+    registry_[id] = detail::PassFactory{detail::PassKind::Module,
+                                        [passId = std::string(id), cb]()
+                                        { return std::make_unique<LambdaModulePass>(passId, cb); },
+                                        {}};
 }
 
 /// @brief Register a void callback as a module pass.
@@ -282,10 +282,11 @@ void PassRegistry::registerFunctionPass(const std::string &id, FunctionPassFacto
 void PassRegistry::registerFunctionPass(const std::string &id, FunctionPassCallback callback)
 {
     auto cb = FunctionPassCallback(callback);
-    registry_[id] = detail::PassFactory{
-        detail::PassKind::Function,
-        {},
-        [passId = std::string(id), cb]() { return std::make_unique<LambdaFunctionPass>(passId, cb); }};
+    registry_[id] =
+        detail::PassFactory{detail::PassKind::Function,
+                            {},
+                            [passId = std::string(id), cb]()
+                            { return std::make_unique<LambdaFunctionPass>(passId, cb); }};
 }
 
 /// @brief Register a void callback as a function pass.
@@ -317,4 +318,3 @@ const detail::PassFactory *PassRegistry::lookup(std::string_view id) const
 }
 
 } // namespace il::transform
-

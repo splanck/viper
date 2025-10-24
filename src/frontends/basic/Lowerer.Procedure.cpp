@@ -14,8 +14,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/LoweringPipeline.hpp"
 
 #include <cassert>
@@ -167,9 +167,8 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
             sig.paramTypes.reserve(fn->params.size());
             for (const auto &p : fn->params)
             {
-                il::core::Type ty = p.is_array
-                                        ? il::core::Type(il::core::Type::Kind::Ptr)
-                                        : coreTypeForAstType(p.type);
+                il::core::Type ty = p.is_array ? il::core::Type(il::core::Type::Kind::Ptr)
+                                               : coreTypeForAstType(p.type);
                 sig.paramTypes.push_back(ty);
             }
             lowerer.procSignatures.emplace(fn->name, std::move(sig));
@@ -181,9 +180,8 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
             sig.paramTypes.reserve(sub->params.size());
             for (const auto &p : sub->params)
             {
-                il::core::Type ty = p.is_array
-                                        ? il::core::Type(il::core::Type::Kind::Ptr)
-                                        : coreTypeForAstType(p.type);
+                il::core::Type ty = p.is_array ? il::core::Type(il::core::Type::Kind::Ptr)
+                                               : coreTypeForAstType(p.type);
                 sig.paramTypes.push_back(ty);
             }
             lowerer.procSignatures.emplace(sub->name, std::move(sig));
@@ -229,16 +227,14 @@ void ProcedureLowering::emit(const std::string &name,
     lowerer.resetLoweringState();
     auto &ctx = lowerer.context();
 
-    Lowerer::ProcedureMetadata metadata =
-        lowerer.collectProcedureMetadata(params, body, config);
+    Lowerer::ProcedureMetadata metadata = lowerer.collectProcedureMetadata(params, body, config);
 
     assert(config.emitEmptyBody && "Missing empty body return handler");
     assert(config.emitFinalReturn && "Missing final return handler");
     if (!config.emitEmptyBody || !config.emitFinalReturn)
         return;
 
-    il::core::Function &f =
-        lowerer.builder->startFunction(name, config.retType, metadata.irParams);
+    il::core::Function &f = lowerer.builder->startFunction(name, config.retType, metadata.irParams);
     ctx.setFunction(&f);
     ctx.setNextTemp(f.valueNames.size());
 
@@ -271,4 +267,3 @@ void ProcedureLowering::emit(const std::string &name,
 }
 
 } // namespace il::frontends::basic
-

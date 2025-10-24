@@ -709,7 +709,6 @@ void StmtList::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
-
 /// @brief Forwards this DELETE statement node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void DeleteStmt::accept(StmtVisitor &visitor) const

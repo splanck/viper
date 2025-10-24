@@ -482,13 +482,13 @@ Lowerer::RVal Lowerer::coerceToI64(RVal v, il::support::SourceLoc loc)
         case Type::Kind::I1:
             curLoc = loc;
             v.value = emitBasicLogicalI64(v.value);
-            v.type  = Type(Type::Kind::I64);
+            v.type = Type(Type::Kind::I64);
             return v;
 
         case Type::Kind::F64:
             curLoc = loc;
             v.value = emitUnary(Opcode::CastFpToSiRteChk, Type(Type::Kind::I64), v.value);
-            v.type  = Type(Type::Kind::I64);
+            v.type = Type(Type::Kind::I64);
             return v;
 
         case Type::Kind::I16:
@@ -498,18 +498,17 @@ Lowerer::RVal Lowerer::coerceToI64(RVal v, il::support::SourceLoc loc)
             curLoc = loc;
 
             const int shift = (v.type.kind == Type::Kind::I32) ? 32 : 48;
-            const std::int64_t mask =
-                (v.type.kind == Type::Kind::I32) ? 0xFFFFFFFFll : 0xFFFFll;
+            const std::int64_t mask = (v.type.kind == Type::Kind::I32) ? 0xFFFFFFFFll : 0xFFFFll;
 
-            Value masked = emitBinary(Opcode::And,
-                                      Type(Type::Kind::I64),
-                                      v.value,
-                                      Value::constInt(mask));
-            Value shl  = emitBinary(Opcode::Shl,  Type(Type::Kind::I64), masked, Value::constInt(shift));
-            Value ashr = emitBinary(Opcode::AShr, Type(Type::Kind::I64), shl,    Value::constInt(shift));
+            Value masked =
+                emitBinary(Opcode::And, Type(Type::Kind::I64), v.value, Value::constInt(mask));
+            Value shl =
+                emitBinary(Opcode::Shl, Type(Type::Kind::I64), masked, Value::constInt(shift));
+            Value ashr =
+                emitBinary(Opcode::AShr, Type(Type::Kind::I64), shl, Value::constInt(shift));
 
             v.value = ashr;
-            v.type  = Type(Type::Kind::I64);
+            v.type = Type(Type::Kind::I64);
             return v;
         }
 

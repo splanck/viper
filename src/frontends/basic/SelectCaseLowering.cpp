@@ -252,13 +252,12 @@ void SelectCaseLowering::lowerStringArms(const SelectCaseStmt &stmt,
         return;
     }
 
-    ConditionEmitter emitter = [this, stringSelector](const CasePlanEntry &entry) {
+    ConditionEmitter emitter = [this, stringSelector](const CasePlanEntry &entry)
+    {
         assert(entry.kind == CasePlanEntry::Kind::StringLabel);
         std::string labelStr(entry.strLiteral);
         il::core::Value labelValue = lowerer_.emitConstStr(lowerer_.getStringLabel(labelStr));
-        return lowerer_.emitCallRet(lowerer_.ilBoolTy(),
-                                    "rt_str_eq",
-                                    {stringSelector, labelValue});
+        return lowerer_.emitCallRet(lowerer_.ilBoolTy(), "rt_str_eq", {stringSelector, labelValue});
     };
 
     emitCompareChain(blocks.currentIdx, plan, emitter);
@@ -360,40 +359,41 @@ void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
     defaultEntry.loc = stmt.loc;
     plan.push_back(defaultEntry);
 
-    ConditionEmitter emitter = [this, selWide](const CasePlanEntry &entry) {
+    ConditionEmitter emitter = [this, selWide](const CasePlanEntry &entry)
+    {
         assert(entry.kind != CasePlanEntry::Kind::Default);
         switch (entry.kind)
         {
             case CasePlanEntry::Kind::RelLT:
-                return lowerer_.emitBinary(il::core::Opcode::SCmpLT,
-                                           lowerer_.ilBoolTy(),
-                                           selWide,
-                                           il::core::Value::constInt(
-                                               static_cast<long long>(entry.valueRange.second)));
+                return lowerer_.emitBinary(
+                    il::core::Opcode::SCmpLT,
+                    lowerer_.ilBoolTy(),
+                    selWide,
+                    il::core::Value::constInt(static_cast<long long>(entry.valueRange.second)));
             case CasePlanEntry::Kind::RelLE:
-                return lowerer_.emitBinary(il::core::Opcode::SCmpLE,
-                                           lowerer_.ilBoolTy(),
-                                           selWide,
-                                           il::core::Value::constInt(
-                                               static_cast<long long>(entry.valueRange.second)));
+                return lowerer_.emitBinary(
+                    il::core::Opcode::SCmpLE,
+                    lowerer_.ilBoolTy(),
+                    selWide,
+                    il::core::Value::constInt(static_cast<long long>(entry.valueRange.second)));
             case CasePlanEntry::Kind::RelEQ:
-                return lowerer_.emitBinary(il::core::Opcode::ICmpEq,
-                                           lowerer_.ilBoolTy(),
-                                           selWide,
-                                           il::core::Value::constInt(
-                                               static_cast<long long>(entry.valueRange.first)));
+                return lowerer_.emitBinary(
+                    il::core::Opcode::ICmpEq,
+                    lowerer_.ilBoolTy(),
+                    selWide,
+                    il::core::Value::constInt(static_cast<long long>(entry.valueRange.first)));
             case CasePlanEntry::Kind::RelGE:
-                return lowerer_.emitBinary(il::core::Opcode::SCmpGE,
-                                           lowerer_.ilBoolTy(),
-                                           selWide,
-                                           il::core::Value::constInt(
-                                               static_cast<long long>(entry.valueRange.first)));
+                return lowerer_.emitBinary(
+                    il::core::Opcode::SCmpGE,
+                    lowerer_.ilBoolTy(),
+                    selWide,
+                    il::core::Value::constInt(static_cast<long long>(entry.valueRange.first)));
             case CasePlanEntry::Kind::RelGT:
-                return lowerer_.emitBinary(il::core::Opcode::SCmpGT,
-                                           lowerer_.ilBoolTy(),
-                                           selWide,
-                                           il::core::Value::constInt(
-                                               static_cast<long long>(entry.valueRange.first)));
+                return lowerer_.emitBinary(
+                    il::core::Opcode::SCmpGT,
+                    lowerer_.ilBoolTy(),
+                    selWide,
+                    il::core::Value::constInt(static_cast<long long>(entry.valueRange.first)));
             case CasePlanEntry::Kind::Range:
             {
                 il::core::Value ge = lowerer_.emitBinary(
@@ -409,10 +409,8 @@ void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
                 // The And opcode requires i64 operands; extend the booleans and truncate back.
                 il::core::Value ge64 = lowerer_.emitZext1ToI64(ge);
                 il::core::Value le64 = lowerer_.emitZext1ToI64(le);
-                il::core::Value both64 = lowerer_.emitBinary(il::core::Opcode::And,
-                                                            il::core::Type(il::core::Type::Kind::I64),
-                                                            ge64,
-                                                            le64);
+                il::core::Value both64 = lowerer_.emitBinary(
+                    il::core::Opcode::And, il::core::Type(il::core::Type::Kind::I64), ge64, le64);
                 return lowerer_.emitUnary(il::core::Opcode::Trunc1, lowerer_.ilBoolTy(), both64);
             }
             case CasePlanEntry::Kind::StringLabel:
@@ -455,8 +453,9 @@ size_t SelectCaseLowering::emitCompareChain(size_t startIdx,
 
     if (!defaultBlk)
     {
-        std::string label = blockNamer ? blockNamer->generic(std::string(blockTagFor(defaultEntry)))
-                                       : lowerer_.mangler.block(std::string(blockTagFor(defaultEntry)));
+        std::string label = blockNamer
+                                ? blockNamer->generic(std::string(blockTagFor(defaultEntry)))
+                                : lowerer_.mangler.block(std::string(blockTagFor(defaultEntry)));
         lowerer_.builder->addBlock(*func, label);
         func = ctx.function();
         size_t idx = func->blocks.size() - 1;
@@ -482,8 +481,9 @@ size_t SelectCaseLowering::emitCompareChain(size_t startIdx,
         size_t nextIdx = static_cast<size_t>(defaultBlk - &func->blocks[0]);
         if (needIntermediate)
         {
-            std::string label = blockNamer ? blockNamer->generic(std::string(blockTagFor(plan[i + 1])))
-                                           : lowerer_.mangler.block(std::string(blockTagFor(plan[i + 1])));
+            std::string label = blockNamer
+                                    ? blockNamer->generic(std::string(blockTagFor(plan[i + 1])))
+                                    : lowerer_.mangler.block(std::string(blockTagFor(plan[i + 1])));
             lowerer_.builder->addBlock(*func, label);
             func = ctx.function();
             nextIdx = func->blocks.size() - 1;

@@ -13,7 +13,8 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Defines the pass manager responsible for constructing and executing transformation pipelines.
+/// @brief Defines the pass manager responsible for constructing and executing transformation
+/// pipelines.
 /// @details Provides registration facilities for analyses, passes, and pipelines
 ///          while delegating execution to @ref PipelineExecutor.  Keeping this
 ///          coordination logic isolated simplifies testing and maintenance of
@@ -149,4 +150,3 @@ bool PassManager::runPipeline(core::Module &module, const std::string &pipelineI
 }
 
 } // namespace il::transform
-

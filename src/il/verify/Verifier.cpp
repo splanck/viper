@@ -22,8 +22,8 @@
 
 #include "il/core/Module.hpp"
 #include "il/verify/DiagSink.hpp"
-#include "il/verify/ExternVerifier.hpp"
 #include "il/verify/EhVerifier.hpp"
+#include "il/verify/ExternVerifier.hpp"
 #include "il/verify/FunctionVerifier.hpp"
 #include "il/verify/GlobalVerifier.hpp"
 #include "support/diag_expected.hpp"

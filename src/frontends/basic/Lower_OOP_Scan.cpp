@@ -224,4 +224,3 @@ void Lowerer::scanOOP(const Program &prog)
 }
 
 } // namespace il::frontends::basic
-

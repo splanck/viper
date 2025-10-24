@@ -11,7 +11,8 @@
 
 // Ensure linkage compatibility with C++ builds.
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
     double rt_pow_f64_chkdom(double base, double exp, bool *ok)
@@ -49,4 +50,3 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif
-

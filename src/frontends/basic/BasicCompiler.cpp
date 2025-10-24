@@ -92,10 +92,10 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
     if (fileId == 0)
     {
         result.emitter->emit(il::support::Severity::Error,
-                              "B0005",
-                              {},
-                              0,
-                              "source manager exhausted file identifier space");
+                             "B0005",
+                             {},
+                             0,
+                             "source manager exhausted file identifier space");
         return result;
     }
 

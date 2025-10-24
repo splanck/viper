@@ -62,14 +62,14 @@ CFGContext::CFGContext(il::core::Module &module) : module(&module)
             bool isBranchTerminator = false;
             switch (term.op)
             {
-            case il::core::Opcode::Br:
-            case il::core::Opcode::CBr:
-            case il::core::Opcode::SwitchI32:
-            case il::core::Opcode::ResumeLabel:
-                isBranchTerminator = true;
-                break;
-            default:
-                break;
+                case il::core::Opcode::Br:
+                case il::core::Opcode::CBr:
+                case il::core::Opcode::SwitchI32:
+                case il::core::Opcode::ResumeLabel:
+                    isBranchTerminator = true;
+                    break;
+                default:
+                    break;
             }
 
             if (!isBranchTerminator)

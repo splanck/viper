@@ -45,10 +45,7 @@ namespace ilc
 /// @param opts Structure receiving parsed option values.
 /// @return Result indicating whether the option was handled, not matched, or
 ///         produced a parsing error.
-SharedOptionParseResult parseSharedOption(int &index,
-                                         int argc,
-                                         char **argv,
-                                         SharedCliOptions &opts)
+SharedOptionParseResult parseSharedOption(int &index, int argc, char **argv, SharedCliOptions &opts)
 {
     const std::string arg = argv[index];
     if (arg == "--trace" || arg == "--trace=il")

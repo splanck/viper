@@ -15,9 +15,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
-#include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "il/io/StringEscape.hpp"
 
 #include <cstdio>
@@ -97,7 +97,8 @@ bool Parser::parseSelectElse(SelectParseState &state)
 /// @return Dispatch action describing how the caller should proceed.
 Parser::SelectDispatchAction Parser::dispatchSelectDirective(SelectParseState &state)
 {
-    auto endResult = handleEndSelect(*state.stmt, state.sawCaseArm, state.expectEndSelect, state.diagnose);
+    auto endResult =
+        handleEndSelect(*state.stmt, state.sawCaseArm, state.expectEndSelect, state.diagnose);
     if (endResult.handled)
         return SelectDispatchAction::Terminate;
 
@@ -196,16 +197,16 @@ Parser::SelectBodyResult Parser::collectSelectBody()
 {
     SelectBodyResult result;
     auto bodyCtx = statementSequencer();
-    auto predicate = [&](int, il::support::SourceLoc) {
+    auto predicate = [&](int, il::support::SourceLoc)
+    {
         if (at(TokenKind::KeywordCase))
             return true;
         if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordSelect)
             return true;
         return false;
     };
-    auto consumer = [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &info) {
-        info.loc = peek().loc;
-    };
+    auto consumer = [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &info)
+    { info.loc = peek().loc; };
     result.terminator = bodyCtx.collectStatements(predicate, consumer, result.body);
     return result;
 }
@@ -624,4 +625,3 @@ CaseArm Parser::parseCaseArm()
 }
 
 } // namespace il::frontends::basic
-

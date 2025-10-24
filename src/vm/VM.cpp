@@ -23,14 +23,14 @@
 ///          branching.
 
 #include "vm/VM.hpp"
-#include "vm/OpHandlers.hpp"
-#include "vm/VMContext.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/Value.hpp"
+#include "vm/OpHandlers.hpp"
 #include "vm/RuntimeBridge.hpp"
+#include "vm/VMContext.hpp"
 #include <algorithm>
 #include <iostream>
 #include <string>
@@ -125,12 +125,12 @@ class SwitchDispatchDriver final : public VM::DispatchDriver
 
             switch (instr->op)
             {
-#define OP_SWITCH(NAME, ...)                                                                                  \
-    case il::core::Opcode::NAME:                                                                              \
-    {                                                                                                         \
-        vm.traceInstruction(*instr, state.fr);                                                                \
-        vm.inline_handle_##NAME(state);                                                                       \
-        break;                                                                                                \
+#define OP_SWITCH(NAME, ...)                                                                       \
+    case il::core::Opcode::NAME:                                                                   \
+    {                                                                                              \
+        vm.traceInstruction(*instr, state.fr);                                                     \
+        vm.inline_handle_##NAME(state);                                                            \
+        break;                                                                                     \
     }
 #define IL_OPCODE(NAME, ...) OP_SWITCH(NAME, __VA_ARGS__)
 #include "il/core/Opcode.def"
@@ -163,7 +163,8 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
     {
         const il::core::Instr *currentInstr = nullptr;
 
-        auto fetchNext = [&]() -> il::core::Opcode {
+        auto fetchNext = [&]() -> il::core::Opcode
+        {
             vm.beginDispatch(state);
 
             const il::core::Instr *instr = nullptr;
@@ -185,13 +186,13 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
 
         static constexpr size_t kOpLabelCount = sizeof(kOpLabels) / sizeof(kOpLabels[0]);
 
-#define DISPATCH_TO(OPCODE_VALUE)                                                                             \
-    do                                                                                                      \
-    {                                                                                                       \
-        size_t index = static_cast<size_t>(OPCODE_VALUE);                                                   \
-        if (index >= kOpLabelCount - 1)                                                                     \
-            index = kOpLabelCount - 1;                                                                      \
-        goto *kOpLabels[index];                                                                             \
+#define DISPATCH_TO(OPCODE_VALUE)                                                                  \
+    do                                                                                             \
+    {                                                                                              \
+        size_t index = static_cast<size_t>(OPCODE_VALUE);                                          \
+        if (index >= kOpLabelCount - 1)                                                            \
+            index = kOpLabelCount - 1;                                                             \
+        goto *kOpLabels[index];                                                                    \
     } while (false)
 
         for (;;)
@@ -204,17 +205,17 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
                     return true;
                 DISPATCH_TO(opcode);
 
-#define OP_CASE(name, ...)                                                                                    \
-    LBL_##name:                                                                                               \
-    {                                                                                                         \
-        vm.traceInstruction(*currentInstr, state.fr);                                                         \
-        auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);               \
-        if (vm.finalizeDispatch(state, exec))                                                                  \
-            return true;                                                                                       \
-        opcode = fetchNext();                                                                                  \
-        if (state.exitRequested)                                                                               \
-            return true;                                                                                       \
-        DISPATCH_TO(opcode);                                                                                    \
+#define OP_CASE(name, ...)                                                                         \
+    LBL_##name:                                                                                    \
+    {                                                                                              \
+        vm.traceInstruction(*currentInstr, state.fr);                                              \
+        auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);   \
+        if (vm.finalizeDispatch(state, exec))                                                      \
+            return true;                                                                           \
+        opcode = fetchNext();                                                                      \
+        if (state.exitRequested)                                                                   \
+            return true;                                                                           \
+        DISPATCH_TO(opcode);                                                                       \
     }
 
 #define IL_OPCODE(name, ...) OP_CASE(name, __VA_ARGS__)
@@ -222,10 +223,10 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
 #undef IL_OPCODE
 #undef OP_CASE
 
-                LBL_UNIMPL:
-                {
-                    vm.trapUnimplemented(opcode);
-                }
+            LBL_UNIMPL:
+            {
+                vm.trapUnimplemented(opcode);
+            }
             }
             catch (const VM::TrapDispatchSignal &signal)
             {
@@ -244,16 +245,13 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
 
 /// @brief Construct a trap dispatch signal targeting a specific execution state.
 /// @param targetState Execution state that should resume after trap handling.
-VM::TrapDispatchSignal::TrapDispatchSignal(ExecState *targetState) : target(targetState)
-{
-}
+VM::TrapDispatchSignal::TrapDispatchSignal(ExecState *targetState) : target(targetState) {}
 
 /// @brief Retrieve the diagnostic message associated with trap dispatch signals.
 const char *VM::TrapDispatchSignal::what() const noexcept
 {
     return "VM trap dispatch";
 }
-
 
 /// @brief Locate and execute the module's @c main function.
 ///
@@ -424,22 +422,28 @@ bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
 /// @brief Instantiate a dispatch driver for the requested strategy.
 /// @param kind Dispatch strategy to instantiate.
 /// @return Unique pointer owning the created driver.
-std::unique_ptr<VM::DispatchDriver, VM::DispatchDriverDeleter> VM::makeDispatchDriver(DispatchKind kind)
+std::unique_ptr<VM::DispatchDriver, VM::DispatchDriverDeleter> VM::makeDispatchDriver(
+    DispatchKind kind)
 {
     switch (kind)
     {
         case DispatchKind::FnTable:
-            return std::unique_ptr<DispatchDriver, DispatchDriverDeleter>(new detail::FnTableDispatchDriver());
+            return std::unique_ptr<DispatchDriver, DispatchDriverDeleter>(
+                new detail::FnTableDispatchDriver());
         case DispatchKind::Switch:
-            return std::unique_ptr<DispatchDriver, DispatchDriverDeleter>(new detail::SwitchDispatchDriver());
+            return std::unique_ptr<DispatchDriver, DispatchDriverDeleter>(
+                new detail::SwitchDispatchDriver());
         case DispatchKind::Threaded:
 #if VIPER_THREADING_SUPPORTED
-            return std::unique_ptr<DispatchDriver, DispatchDriverDeleter>(new detail::ThreadedDispatchDriver());
+            return std::unique_ptr<DispatchDriver, DispatchDriverDeleter>(
+                new detail::ThreadedDispatchDriver());
 #else
-            return std::unique_ptr<DispatchDriver, DispatchDriverDeleter>(new detail::SwitchDispatchDriver());
+            return std::unique_ptr<DispatchDriver, DispatchDriverDeleter>(
+                new detail::SwitchDispatchDriver());
 #endif
     }
-    return std::unique_ptr<DispatchDriver, DispatchDriverDeleter>(new detail::SwitchDispatchDriver());
+    return std::unique_ptr<DispatchDriver, DispatchDriverDeleter>(
+        new detail::SwitchDispatchDriver());
 }
 
 /// @brief Execute the interpreter loop until the current function returns.
@@ -486,6 +490,7 @@ VM::~VM()
         rt_str_release_maybe(entry.second);
     inlineLiteralCache.clear();
 }
+
 #define VM_DISPATCH_IMPL(DISPATCH, HANDLER_EXPR) HANDLER_EXPR
 #define VM_DISPATCH(NAME) VM_DISPATCH_IMPL(NAME, &detail::handle##NAME)
 #define VM_DISPATCH_ALT(DISPATCH, HANDLER_EXPR) VM_DISPATCH_IMPL(DISPATCH, HANDLER_EXPR)
@@ -549,16 +554,19 @@ Slot VM::execFunction(const Function &fn, const std::vector<Slot> &args)
     st.callSiteBlock = currentContext.block;
     st.callSiteIp = currentContext.hasInstruction ? currentContext.instructionIndex : 0;
     st.callSiteLoc = currentContext.loc;
+
     /// @brief RAII helper that pushes/pops the execution stack around calls.
     struct ExecStackGuard
     {
         VM &vm;
         VM::ExecState *state;
+
         /// @brief Push the execution state onto the VM stack.
         ExecStackGuard(VM &vmRef, VM::ExecState &stRef) : vm(vmRef), state(&stRef)
         {
             vm.execStack.push_back(state);
         }
+
         /// @brief Pop the execution state if it is still the active frame.
         ~ExecStackGuard()
         {
@@ -566,6 +574,7 @@ Slot VM::execFunction(const Function &fn, const std::vector<Slot> &args)
                 vm.execStack.pop_back();
         }
     } guardStack(*this, st);
+
     return runFunctionLoop(st);
 }
 
@@ -628,7 +637,8 @@ bool VM::prepareTrap(VmError &error)
 
             fr.resumeState.block = faultBlock;
             fr.resumeState.faultIp = faultIp;
-            fr.resumeState.nextIp = faultBlock ? std::min(faultIp + 1, faultBlock->instructions.size()) : faultIp;
+            fr.resumeState.nextIp =
+                faultBlock ? std::min(faultIp + 1, faultBlock->instructions.size()) : faultIp;
             fr.resumeState.valid = true;
 
             Slot errSlot{};

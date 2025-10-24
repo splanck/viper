@@ -17,9 +17,9 @@
 ///          can reason about terminators consistently.
 struct CtrlState
 {
-    BasicBlock *cur{nullptr};      ///< Block left active after lowering.
-    BasicBlock *after{nullptr};    ///< Merge/done block if retained.
-    bool fallthrough{false};       ///< True when `after` remains reachable.
+    BasicBlock *cur{nullptr};   ///< Block left active after lowering.
+    BasicBlock *after{nullptr}; ///< Merge/done block if retained.
+    bool fallthrough{false};    ///< True when `after` remains reachable.
 
     [[nodiscard]] bool terminated() const
     {

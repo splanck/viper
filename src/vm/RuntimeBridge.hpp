@@ -30,9 +30,10 @@ struct RuntimeCallContext
     std::string function;         ///< Name of the calling function.
     std::string block;            ///< Label of the calling basic block.
     std::string message;          ///< Supplemental diagnostic message from runtime.
-    const il::runtime::RuntimeDescriptor *descriptor = nullptr; ///< Descriptor of active runtime helper.
-    Slot *argBegin = nullptr;     ///< Pointer to first argument slot for the active call.
-    std::size_t argCount = 0;     ///< Number of argument slots.
+    const il::runtime::RuntimeDescriptor *descriptor =
+        nullptr;              ///< Descriptor of active runtime helper.
+    Slot *argBegin = nullptr; ///< Pointer to first argument slot for the active call.
+    std::size_t argCount = 0; ///< Number of argument slots.
 };
 
 /// @brief Provides entry points from the VM into the C runtime library.

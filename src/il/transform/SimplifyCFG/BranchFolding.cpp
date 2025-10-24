@@ -185,8 +185,7 @@ bool foldTrivialConditionalBranches(SimplifyCFG::SimplifyCFGPassContext &ctx)
                 ++ctx.stats.cbrToBr;
                 if (ctx.isDebugLoggingEnabled())
                 {
-                    std::string message =
-                        "folded redundant cbr in block '" + block.label + "'";
+                    std::string message = "folded redundant cbr in block '" + block.label + "'";
                     ctx.logDebug(message);
                 }
             }
@@ -197,4 +196,3 @@ bool foldTrivialConditionalBranches(SimplifyCFG::SimplifyCFGPassContext &ctx)
 }
 
 } // namespace il::transform::simplify_cfg
-

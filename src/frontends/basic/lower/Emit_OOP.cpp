@@ -24,8 +24,8 @@
 ///          documenting when runtime helpers are required.
 
 #include "frontends/basic/Lowerer.hpp"
-#include "frontends/basic/lower/Emitter.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
+#include "frontends/basic/lower/Emitter.hpp"
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

@@ -1,11 +1,12 @@
 // File: src/runtime/rt_string_encode.c
 // Purpose: Bridge runtime strings with raw byte encodings and literals.
 // Error handling: Functions trap on invalid arguments; errno is untouched.
-// Allocation/Ownership: Newly created strings are owned by the caller; literal wrappers do not take ownership of input buffers.
+// Allocation/Ownership: Newly created strings are owned by the caller; literal wrappers do not take
+// ownership of input buffers.
 
-#include "rt_string.h"
-#include "rt_internal.h"
 #include "rt_int_format.h"
+#include "rt_internal.h"
+#include "rt_string.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -62,4 +63,3 @@ rt_string rt_const_cstr(const char *c)
     s->literal_refs = 1;
     return s;
 }
-

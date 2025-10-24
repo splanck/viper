@@ -70,7 +70,8 @@ void analyzeWhile(SemanticAnalyzer &analyzer, const WhileStmt &stmt)
 void analyzeDo(SemanticAnalyzer &analyzer, const DoStmt &stmt)
 {
     ControlCheckContext context(analyzer);
-    const auto checkCond = [&]() {
+    const auto checkCond = [&]()
+    {
         if (stmt.cond)
             checkConditionExpr(context.analyzer(), *stmt.cond);
     };
@@ -136,7 +137,8 @@ void analyzeFor(SemanticAnalyzer &analyzer, ForStmt &stmt)
 void analyzeNext(SemanticAnalyzer &analyzer, const NextStmt &stmt)
 {
     ControlCheckContext context(analyzer);
-    if (!context.hasForVariable() || (!stmt.var.empty() && stmt.var != context.currentForVariable()))
+    if (!context.hasForVariable() ||
+        (!stmt.var.empty() && stmt.var != context.currentForVariable()))
     {
         std::string msg = "mismatched NEXT";
         if (!stmt.var.empty())
@@ -155,11 +157,8 @@ void analyzeNext(SemanticAnalyzer &analyzer, const NextStmt &stmt)
         {
             msg += ", no active FOR";
         }
-        context.diagnostics().emit(il::support::Severity::Error,
-                                   "B1002",
-                                   stmt.loc,
-                                   4,
-                                   std::move(msg));
+        context.diagnostics().emit(
+            il::support::Severity::Error, "B1002", stmt.loc, 4, std::move(msg));
         return;
     }
 
@@ -185,11 +184,8 @@ void analyzeExit(SemanticAnalyzer &analyzer, const ExitStmt &stmt)
         std::string msg = "EXIT ";
         msg += targetName;
         msg += " used outside of any loop";
-        context.diagnostics().emit(il::support::Severity::Error,
-                                   "B1011",
-                                   stmt.loc,
-                                   4,
-                                   std::move(msg));
+        context.diagnostics().emit(
+            il::support::Severity::Error, "B1011", stmt.loc, 4, std::move(msg));
         return;
     }
 
@@ -202,11 +198,7 @@ void analyzeExit(SemanticAnalyzer &analyzer, const ExitStmt &stmt)
     msg += " does not match innermost loop (";
     msg += context.loopKindName(activeLoop);
     msg += ')';
-    context.diagnostics().emit(il::support::Severity::Error,
-                               "B1011",
-                               stmt.loc,
-                               4,
-                               std::move(msg));
+    context.diagnostics().emit(il::support::Severity::Error, "B1011", stmt.loc, 4, std::move(msg));
 }
 
 } // namespace il::frontends::basic::sem

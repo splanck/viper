@@ -68,4 +68,3 @@ inline std::string encodeEscapedString(std::string_view input)
 }
 
 } // namespace il::io
-

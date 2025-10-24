@@ -16,8 +16,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/basic/Parser.hpp"
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
+#include "frontends/basic/Parser.hpp"
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -168,17 +168,11 @@ StmtPtr Parser::parseStatement(int line)
         if (emitter_)
         {
             std::string msg = "expected '(' after procedure name '" + ident + "'";
-            emitter_->emit(il::support::Severity::Error,
-                           "B0001",
-                           diagLoc,
-                           length,
-                           std::move(msg));
+            emitter_->emit(il::support::Severity::Error, "B0001", diagLoc, length, std::move(msg));
         }
         else
         {
-            std::fprintf(stderr,
-                         "expected '(' after procedure name '%s'\n",
-                         ident.c_str());
+            std::fprintf(stderr, "expected '(' after procedure name '%s'\n", ident.c_str());
         }
         while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
         {
@@ -188,12 +182,12 @@ StmtPtr Parser::parseStatement(int line)
     }
     if (emitter_)
     {
-            std::string msg = std::string("unknown statement '") + tokLexeme + "'";
-            emitter_->emit(il::support::Severity::Error,
-                           "B0001",
-                           tokLoc,
-                           static_cast<uint32_t>(tokLexeme.size()),
-                           std::move(msg));
+        std::string msg = std::string("unknown statement '") + tokLexeme + "'";
+        emitter_->emit(il::support::Severity::Error,
+                       "B0001",
+                       tokLoc,
+                       static_cast<uint32_t>(tokLexeme.size()),
+                       std::move(msg));
     }
     else
     {
@@ -241,6 +235,7 @@ bool Parser::isStatementStart(TokenKind kind) const
     }
     return statementRegistry().contains(kind);
 }
+
 /// @brief Parse a `LET` assignment statement.
 ///
 /// @details Consumes the keyword, parses the assignment target using
@@ -264,6 +259,7 @@ StmtPtr Parser::parseLetStatement()
     stmt->expr = std::move(e);
     return stmt;
 }
+
 /// @brief Derive a BASIC type from an identifier suffix.
 ///
 /// @details BASIC allows trailing sigils (%, &, $, !, #) to convey type hints.
@@ -349,7 +345,8 @@ StmtPtr Parser::parseClassDecl()
     if (nameTok.kind == TokenKind::Identifier)
         decl->name = nameTok.lexeme;
 
-    auto equalsIgnoreCase = [](const std::string &lhs, std::string_view rhs) {
+    auto equalsIgnoreCase = [](const std::string &lhs, std::string_view rhs)
+    {
         if (lhs.size() != rhs.size())
             return false;
         for (std::size_t i = 0; i < lhs.size(); ++i)
@@ -620,7 +617,6 @@ StmtPtr Parser::parseDeleteStatement()
     return stmt;
 }
 
-
 /// @brief Parse a parenthesised parameter list.
 ///
 /// @details Accepts comma-separated identifiers, honours trailing "()" to mark
@@ -704,15 +700,15 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionHeader()
 il::support::SourceLoc Parser::parseProcedureBody(TokenKind endKind, std::vector<StmtPtr> &body)
 {
     auto ctx = statementSequencer();
-    auto info = ctx.collectStatements(
-        [&](int, il::support::SourceLoc)
-        { return at(TokenKind::KeywordEnd) && peek(1).kind == endKind; },
-        [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &)
-        {
-            consume();
-            consume();
-        },
-        body);
+    auto info =
+        ctx.collectStatements([&](int, il::support::SourceLoc)
+                              { return at(TokenKind::KeywordEnd) && peek(1).kind == endKind; },
+                              [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &)
+                              {
+                                  consume();
+                                  consume();
+                              },
+                              body);
     return info.loc;
 }
 

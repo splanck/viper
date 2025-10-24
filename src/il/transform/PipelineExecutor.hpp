@@ -1,8 +1,8 @@
 // File: src/il/transform/PipelineExecutor.hpp
 // Purpose: Declare a helper that executes registered pass pipelines on IL modules.
 // Key invariants: Pass ordering matches the provided pipeline sequence.
-// Ownership/Lifetime: Executor borrows registries owned by the pass manager and never outlives them.
-// Links: docs/codemap.md
+// Ownership/Lifetime: Executor borrows registries owned by the pass manager and never outlives
+// them. Links: docs/codemap.md
 #pragma once
 
 #include "il/core/fwd.hpp"
@@ -31,4 +31,3 @@ class PipelineExecutor
 };
 
 } // namespace il::transform
-

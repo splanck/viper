@@ -18,6 +18,7 @@ using Block = BasicBlock;
 namespace viper::analysis
 {
 struct CFGContext;
+
 /// @brief Dominator tree for a function.
 /// Stores immediate dominator relationships and tree children for each block.
 struct DomTree

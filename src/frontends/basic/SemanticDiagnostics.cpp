@@ -74,9 +74,9 @@ std::string SemanticDiagnostics::formatNonBooleanCondition(std::string_view type
                                                            std::string_view exprText)
 {
     std::string message(NonBooleanConditionMessage);
-    const auto replace = [](std::string &subject,
-                            std::string_view placeholder,
-                            std::string_view value) {
+    const auto replace =
+        [](std::string &subject, std::string_view placeholder, std::string_view value)
+    {
         if (auto pos = subject.find(placeholder); pos != std::string::npos)
         {
             subject.replace(pos, placeholder.size(), value);

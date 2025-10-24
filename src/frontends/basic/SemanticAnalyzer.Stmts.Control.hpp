@@ -20,10 +20,8 @@ class ControlStmtContext : public StmtShared
   public:
     using LoopGuard = StmtShared::LoopGuard;
     using ForLoopGuard = StmtShared::ForLoopGuard;
-    explicit ControlStmtContext(SemanticAnalyzer &analyzer) noexcept
-        : StmtShared(analyzer)
-    {
-    }
+
+    explicit ControlStmtContext(SemanticAnalyzer &analyzer) noexcept : StmtShared(analyzer) {}
 };
 
 } // namespace il::frontends::basic::semantic_analyzer_detail

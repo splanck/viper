@@ -306,8 +306,7 @@ void validateComparisonOperands(sem::ExprCheckContext &context,
                                 Type rhs,
                                 std::string_view diagId)
 {
-    const bool allowStrings =
-        expr.op == BinaryExpr::Op::Eq || expr.op == BinaryExpr::Op::Ne;
+    const bool allowStrings = expr.op == BinaryExpr::Op::Eq || expr.op == BinaryExpr::Op::Ne;
     const bool numericOk = isNumericType(lhs) && isNumericType(rhs);
     const bool stringOk = allowStrings && isStringType(lhs) && isStringType(rhs);
     if (!numericOk && !stringOk)

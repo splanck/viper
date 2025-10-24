@@ -47,31 +47,52 @@ class LowererStmtVisitor final : public StmtVisitor
     /// @brief Lower a PRINT statement through the dedicated helper.
     ///
     /// @param stmt PRINT statement to lower.
-    void visit(const PrintStmt &stmt) override { lowerer_.lowerPrint(stmt); }
+    void visit(const PrintStmt &stmt) override
+    {
+        lowerer_.lowerPrint(stmt);
+    }
 
     /// @brief Lower a PRINT# statement via the shared helper.
     ///
     /// @param stmt PRINT# statement to lower.
-    void visit(const PrintChStmt &stmt) override { lowerer_.lowerPrintCh(stmt); }
+    void visit(const PrintChStmt &stmt) override
+    {
+        lowerer_.lowerPrintCh(stmt);
+    }
 
     /// @brief Lower a CALL statement by delegating to expression lowering.
     ///
     /// @param stmt CALL statement to lower.
-    void visit(const CallStmt &stmt) override { lowerer_.lowerCallStmt(stmt); }
+    void visit(const CallStmt &stmt) override
+    {
+        lowerer_.lowerCallStmt(stmt);
+    }
 
     /// @brief Lower CLS via the generic visit hook (terminal helpers).
-    void visit(const ClsStmt &stmt) override { lowerer_.visit(stmt); }
+    void visit(const ClsStmt &stmt) override
+    {
+        lowerer_.visit(stmt);
+    }
 
     /// @brief Lower COLOR via the generic visit hook.
-    void visit(const ColorStmt &stmt) override { lowerer_.visit(stmt); }
+    void visit(const ColorStmt &stmt) override
+    {
+        lowerer_.visit(stmt);
+    }
 
     /// @brief Lower LOCATE via the generic visit hook.
-    void visit(const LocateStmt &stmt) override { lowerer_.visit(stmt); }
+    void visit(const LocateStmt &stmt) override
+    {
+        lowerer_.visit(stmt);
+    }
 
     /// @brief Lower LET statements through the dedicated helper.
     ///
     /// @param stmt LET statement to lower.
-    void visit(const LetStmt &stmt) override { lowerer_.lowerLet(stmt); }
+    void visit(const LetStmt &stmt) override
+    {
+        lowerer_.lowerLet(stmt);
+    }
 
     /// @brief Lower DIM statements, delegating to array handling when needed.
     ///
@@ -83,67 +104,130 @@ class LowererStmtVisitor final : public StmtVisitor
     }
 
     /// @brief Lower a REDIM statement.
-    void visit(const ReDimStmt &stmt) override { lowerer_.lowerReDim(stmt); }
+    void visit(const ReDimStmt &stmt) override
+    {
+        lowerer_.lowerReDim(stmt);
+    }
 
     /// @brief Lower a RANDOMIZE statement.
-    void visit(const RandomizeStmt &stmt) override { lowerer_.lowerRandomize(stmt); }
+    void visit(const RandomizeStmt &stmt) override
+    {
+        lowerer_.lowerRandomize(stmt);
+    }
 
     /// @brief Lower an IF statement.
-    void visit(const IfStmt &stmt) override { lowerer_.lowerIf(stmt); }
+    void visit(const IfStmt &stmt) override
+    {
+        lowerer_.lowerIf(stmt);
+    }
 
     /// @brief Lower a SELECT CASE statement.
-    void visit(const SelectCaseStmt &stmt) override { lowerer_.lowerSelectCase(stmt); }
+    void visit(const SelectCaseStmt &stmt) override
+    {
+        lowerer_.lowerSelectCase(stmt);
+    }
 
     /// @brief Lower a WHILE loop.
-    void visit(const WhileStmt &stmt) override { lowerer_.lowerWhile(stmt); }
+    void visit(const WhileStmt &stmt) override
+    {
+        lowerer_.lowerWhile(stmt);
+    }
 
     /// @brief Lower a DO loop.
-    void visit(const DoStmt &stmt) override { lowerer_.lowerDo(stmt); }
+    void visit(const DoStmt &stmt) override
+    {
+        lowerer_.lowerDo(stmt);
+    }
 
     /// @brief Lower a FOR loop.
-    void visit(const ForStmt &stmt) override { lowerer_.lowerFor(stmt); }
+    void visit(const ForStmt &stmt) override
+    {
+        lowerer_.lowerFor(stmt);
+    }
 
     /// @brief Lower a NEXT statement that advances loop iterators.
-    void visit(const NextStmt &stmt) override { lowerer_.lowerNext(stmt); }
+    void visit(const NextStmt &stmt) override
+    {
+        lowerer_.lowerNext(stmt);
+    }
 
     /// @brief Lower EXIT statements.
-    void visit(const ExitStmt &stmt) override { lowerer_.lowerExit(stmt); }
+    void visit(const ExitStmt &stmt) override
+    {
+        lowerer_.lowerExit(stmt);
+    }
 
     /// @brief Lower GOTO statements.
-    void visit(const GotoStmt &stmt) override { lowerer_.lowerGoto(stmt); }
+    void visit(const GotoStmt &stmt) override
+    {
+        lowerer_.lowerGoto(stmt);
+    }
 
     /// @brief Lower GOSUB statements.
-    void visit(const GosubStmt &stmt) override { lowerer_.lowerGosub(stmt); }
+    void visit(const GosubStmt &stmt) override
+    {
+        lowerer_.lowerGosub(stmt);
+    }
 
     /// @brief Lower OPEN statements.
-    void visit(const OpenStmt &stmt) override { lowerer_.lowerOpen(stmt); }
+    void visit(const OpenStmt &stmt) override
+    {
+        lowerer_.lowerOpen(stmt);
+    }
 
     /// @brief Lower CLOSE statements.
-    void visit(const CloseStmt &stmt) override { lowerer_.lowerClose(stmt); }
+    void visit(const CloseStmt &stmt) override
+    {
+        lowerer_.lowerClose(stmt);
+    }
 
     /// @brief Lower SEEK statements.
-    void visit(const SeekStmt &stmt) override { lowerer_.lowerSeek(stmt); }
+    void visit(const SeekStmt &stmt) override
+    {
+        lowerer_.lowerSeek(stmt);
+    }
 
     /// @brief Lower ON ERROR GOTO handlers.
-    void visit(const OnErrorGoto &stmt) override { lowerer_.lowerOnErrorGoto(stmt); }
+    void visit(const OnErrorGoto &stmt) override
+    {
+        lowerer_.lowerOnErrorGoto(stmt);
+    }
 
     /// @brief Lower RESUME statements.
-    void visit(const Resume &stmt) override { lowerer_.lowerResume(stmt); }
+    void visit(const Resume &stmt) override
+    {
+        lowerer_.lowerResume(stmt);
+    }
 
     /// @brief Lower END statements.
-    void visit(const EndStmt &stmt) override { lowerer_.lowerEnd(stmt); }
+    void visit(const EndStmt &stmt) override
+    {
+        lowerer_.lowerEnd(stmt);
+    }
 
     /// @brief Lower INPUT statements.
-    void visit(const InputStmt &stmt) override { lowerer_.lowerInput(stmt); }
+    void visit(const InputStmt &stmt) override
+    {
+        lowerer_.lowerInput(stmt);
+    }
 
     /// @brief Lower INPUT# statements.
-    void visit(const InputChStmt &stmt) override { lowerer_.lowerInputCh(stmt); }
+    void visit(const InputChStmt &stmt) override
+    {
+        lowerer_.lowerInputCh(stmt);
+    }
 
     /// @brief Lower LINE INPUT# statements.
-    void visit(const LineInputChStmt &stmt) override { lowerer_.lowerLineInputCh(stmt); }
+    void visit(const LineInputChStmt &stmt) override
+    {
+        lowerer_.lowerLineInputCh(stmt);
+    }
 
     /// @brief Lower RETURN statements.
-    void visit(const ReturnStmt &stmt) override { lowerer_.lowerReturn(stmt); }
+    void visit(const ReturnStmt &stmt) override
+    {
+        lowerer_.lowerReturn(stmt);
+    }
 
     /// @brief Function declarations are lowered by dedicated modules.
     void visit(const FunctionDecl &) override {}
@@ -154,10 +238,16 @@ class LowererStmtVisitor final : public StmtVisitor
     /// @brief Lower nested statement lists recursively.
     ///
     /// @param stmt Statement list to lower.
-    void visit(const StmtList &stmt) override { lowerer_.lowerStmtList(stmt); }
+    void visit(const StmtList &stmt) override
+    {
+        lowerer_.lowerStmtList(stmt);
+    }
 
     /// @brief Lower DELETE statements.
-    void visit(const DeleteStmt &stmt) override { lowerer_.lowerDelete(stmt); }
+    void visit(const DeleteStmt &stmt) override
+    {
+        lowerer_.lowerDelete(stmt);
+    }
 
     /// @brief Class constructor declarations are handled elsewhere.
     void visit(const ConstructorDecl &) override {}
@@ -274,10 +364,10 @@ void Lowerer::emitRuntimeErrCheck(Value err,
     size_t curIdx = static_cast<size_t>(original - &func->blocks[0]);
     BlockNamer *blockNamer = ctx.blockNames().namer();
     std::string stem(labelStem);
-    std::string failLbl = blockNamer ? blockNamer->generic(stem + "_fail")
-                                     : mangler.block(stem + "_fail");
-    std::string contLbl = blockNamer ? blockNamer->generic(stem + "_cont")
-                                     : mangler.block(stem + "_cont");
+    std::string failLbl =
+        blockNamer ? blockNamer->generic(stem + "_fail") : mangler.block(stem + "_fail");
+    std::string contLbl =
+        blockNamer ? blockNamer->generic(stem + "_cont") : mangler.block(stem + "_cont");
 
     size_t failIdx = func->blocks.size();
     builder->addBlock(*func, failLbl);

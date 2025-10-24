@@ -3,11 +3,11 @@
 // Error handling: Functions trap on invalid input and reset errno before calling strtoll.
 // Allocation/Ownership: Returned strings are freshly allocated and owned by the caller.
 
-#include "rt_string.h"
-#include "rt_internal.h"
-#include "rt_numeric.h"
 #include "rt_format.h"
 #include "rt_int_format.h"
+#include "rt_internal.h"
+#include "rt_numeric.h"
+#include "rt_string.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -170,4 +170,3 @@ rt_string rt_str(double v)
 {
     return rt_f64_to_str(v);
 }
-

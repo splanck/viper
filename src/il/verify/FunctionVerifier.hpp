@@ -1,8 +1,8 @@
 // File: src/il/verify/FunctionVerifier.hpp
 // Purpose: Declares the verifier responsible for validating module functions and their bodies.
 // Key invariants: Function, block, and instruction checks follow IL specification invariants.
-// Ownership/Lifetime: Holds pointers into the inspected module for the duration of verification only.
-// Links: docs/il-guide.md#reference
+// Ownership/Lifetime: Holds pointers into the inspected module for the duration of verification
+// only. Links: docs/il-guide.md#reference
 #pragma once
 
 #include "il/verify/DiagSink.hpp"
@@ -52,30 +52,32 @@ class FunctionVerifier
         virtual ~InstructionStrategy() = default;
 
         virtual bool matches(const il::core::Instr &instr) const = 0;
-        virtual il::support::Expected<void> verify(const il::core::Function &fn,
-                                                   const il::core::BasicBlock &bb,
-                                                   const il::core::Instr &instr,
-                                                   const std::unordered_map<std::string, const il::core::BasicBlock *> &blockMap,
-                                                   const std::unordered_map<std::string, const il::core::Extern *> &externs,
-                                                   const std::unordered_map<std::string, const il::core::Function *> &funcs,
-                                                   TypeInference &types,
-                                                   DiagSink &sink) const = 0;
+        virtual il::support::Expected<void> verify(
+            const il::core::Function &fn,
+            const il::core::BasicBlock &bb,
+            const il::core::Instr &instr,
+            const std::unordered_map<std::string, const il::core::BasicBlock *> &blockMap,
+            const std::unordered_map<std::string, const il::core::Extern *> &externs,
+            const std::unordered_map<std::string, const il::core::Function *> &funcs,
+            TypeInference &types,
+            DiagSink &sink) const = 0;
     };
 
   private:
-    il::support::Expected<void> verifyFunction(const il::core::Function &fn,
-                                               DiagSink &sink);
-    il::support::Expected<void> verifyBlock(const il::core::Function &fn,
-                                            const il::core::BasicBlock &bb,
-                                            const std::unordered_map<std::string, const il::core::BasicBlock *> &blockMap,
-                                            std::unordered_map<unsigned, il::core::Type> &temps,
-                                            DiagSink &sink);
-    il::support::Expected<void> verifyInstruction(const il::core::Function &fn,
-                                                  const il::core::BasicBlock &bb,
-                                                  const il::core::Instr &instr,
-                                                  const std::unordered_map<std::string, const il::core::BasicBlock *> &blockMap,
-                                                  TypeInference &types,
-                                                  DiagSink &sink);
+    il::support::Expected<void> verifyFunction(const il::core::Function &fn, DiagSink &sink);
+    il::support::Expected<void> verifyBlock(
+        const il::core::Function &fn,
+        const il::core::BasicBlock &bb,
+        const std::unordered_map<std::string, const il::core::BasicBlock *> &blockMap,
+        std::unordered_map<unsigned, il::core::Type> &temps,
+        DiagSink &sink);
+    il::support::Expected<void> verifyInstruction(
+        const il::core::Function &fn,
+        const il::core::BasicBlock &bb,
+        const il::core::Instr &instr,
+        const std::unordered_map<std::string, const il::core::BasicBlock *> &blockMap,
+        TypeInference &types,
+        DiagSink &sink);
     [[nodiscard]] std::string formatFunctionDiag(const il::core::Function &fn,
                                                  std::string_view message) const;
 

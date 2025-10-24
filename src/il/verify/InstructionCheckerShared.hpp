@@ -1,15 +1,15 @@
 // File: src/il/verify/InstructionCheckerShared.hpp
 // Purpose: Provides shared helpers and declarations for instruction verification submodules.
 // Key invariants: Helpers operate on the current verification context without modifying ownership.
-// Ownership/Lifetime: Functions reference caller-managed context and diagnostics only for the call duration.
-// Links: docs/il-guide.md#reference
+// Ownership/Lifetime: Functions reference caller-managed context and diagnostics only for the call
+// duration. Links: docs/il-guide.md#reference
 #pragma once
 
 #include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
 #include "il/verify/DiagFormat.hpp"
-#include "il/verify/VerifyCtx.hpp"
 #include "il/verify/VerifierTable.hpp"
+#include "il/verify/VerifyCtx.hpp"
 #include "support/diag_expected.hpp"
 
 #include <optional>
@@ -46,8 +46,7 @@ inline Expected<void> fail(const VerifyCtx &ctx, std::string message)
 /// @param ctx Verification context that supplies diagnostic metadata.
 /// @param message Human-readable text describing the issue.
 /// @return Expected<T> holding a diagnostic error populated with @p message.
-template <typename T>
-inline Expected<T> failWith(const VerifyCtx &ctx, std::string message)
+template <typename T> inline Expected<T> failWith(const VerifyCtx &ctx, std::string message)
 {
     return Expected<T>(makeError(ctx.instr.loc, formatDiag(ctx, message)));
 }

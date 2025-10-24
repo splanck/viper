@@ -52,7 +52,8 @@ namespace
 /// @param ctx   SimplifyCFG context providing EH sensitivity checks.
 /// @param block Candidate block to inspect.
 /// @returns True when the block can be safely removed.
-bool isEmptyForwardingBlock(SimplifyCFG::SimplifyCFGPassContext &ctx, const il::core::BasicBlock &block)
+bool isEmptyForwardingBlock(SimplifyCFG::SimplifyCFGPassContext &ctx,
+                            const il::core::BasicBlock &block)
 {
     if (isEntryLabel(block.label))
         return false;
@@ -214,9 +215,10 @@ bool removeEmptyForwarders(SimplifyCFG::SimplifyCFGPassContext &ctx)
 
     for (const auto &deadLabel : forwardingBlocks)
     {
-        auto deadIt = std::find_if(
-            F.blocks.begin(), F.blocks.end(),
-            [&](const il::core::BasicBlock &block) { return block.label == deadLabel; });
+        auto deadIt = std::find_if(F.blocks.begin(),
+                                   F.blocks.end(),
+                                   [&](const il::core::BasicBlock &block)
+                                   { return block.label == deadLabel; });
         if (deadIt == F.blocks.end())
             continue;
 
@@ -229,9 +231,10 @@ bool removeEmptyForwarders(SimplifyCFG::SimplifyCFGPassContext &ctx)
         if (succLabel == dead.label)
             continue;
 
-        auto succIt = std::find_if(
-            F.blocks.begin(), F.blocks.end(),
-            [&](const il::core::BasicBlock &block) { return block.label == succLabel; });
+        auto succIt = std::find_if(F.blocks.begin(),
+                                   F.blocks.end(),
+                                   [&](const il::core::BasicBlock &block)
+                                   { return block.label == succLabel; });
         if (succIt == F.blocks.end())
             continue;
 
@@ -316,4 +319,3 @@ bool removeEmptyForwarders(SimplifyCFG::SimplifyCFGPassContext &ctx)
 }
 
 } // namespace il::transform::simplify_cfg
-

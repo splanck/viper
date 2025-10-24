@@ -18,13 +18,13 @@
 ///          transformation passes together using the public API.
 
 #include "cli.hpp"
-#include "tools/common/module_loader.hpp"
-#include "il/transform/Mem2Reg.hpp"
 #include "il/io/Serializer.hpp"
 #include "il/transform/ConstFold.hpp"
 #include "il/transform/DCE.hpp"
+#include "il/transform/Mem2Reg.hpp"
 #include "il/transform/PassManager.hpp"
 #include "il/transform/Peephole.hpp"
+#include "tools/common/module_loader.hpp"
 #include <algorithm>
 #include <cctype>
 #include <fstream>
@@ -66,7 +66,8 @@ int cmdILOpt(int argc, char **argv)
     bool passesExplicit = false;
     bool noMem2Reg = false;
     bool mem2regStats = false;
-    auto trimToken = [](const std::string &token) {
+    auto trimToken = [](const std::string &token)
+    {
         auto begin = token.begin();
         auto end = token.end();
         while (begin != end && std::isspace(static_cast<unsigned char>(*begin)))
@@ -134,44 +135,40 @@ int cmdILOpt(int argc, char **argv)
     }
     transform::PassManager pm;
     pm.addSimplifyCFG();
-    pm.registerModulePass(
-        "constfold",
-        [](core::Module &mod, transform::AnalysisManager &)
-        {
-            transform::constFold(mod);
-            return transform::PreservedAnalyses::none();
-        });
-    pm.registerModulePass(
-        "peephole",
-        [](core::Module &mod, transform::AnalysisManager &)
-        {
-            transform::peephole(mod);
-            return transform::PreservedAnalyses::none();
-        });
-    pm.registerModulePass(
-        "dce",
-        [](core::Module &mod, transform::AnalysisManager &)
-        {
-            transform::dce(mod);
-            return transform::PreservedAnalyses::none();
-        });
-    pm.registerModulePass(
-        "mem2reg",
-        [mem2regStats](core::Module &mod, transform::AnalysisManager &)
-        {
-            viper::passes::Mem2RegStats st;
-            viper::passes::mem2reg(mod, mem2regStats ? &st : nullptr);
-            if (mem2regStats)
-            {
-                std::cout << "mem2reg: promoted " << st.promotedVars << ", removed loads " << st.removedLoads
-                          << ", removed stores " << st.removedStores << "\n";
-            }
-            return transform::PreservedAnalyses::none();
-        });
+    pm.registerModulePass("constfold",
+                          [](core::Module &mod, transform::AnalysisManager &)
+                          {
+                              transform::constFold(mod);
+                              return transform::PreservedAnalyses::none();
+                          });
+    pm.registerModulePass("peephole",
+                          [](core::Module &mod, transform::AnalysisManager &)
+                          {
+                              transform::peephole(mod);
+                              return transform::PreservedAnalyses::none();
+                          });
+    pm.registerModulePass("dce",
+                          [](core::Module &mod, transform::AnalysisManager &)
+                          {
+                              transform::dce(mod);
+                              return transform::PreservedAnalyses::none();
+                          });
+    pm.registerModulePass("mem2reg",
+                          [mem2regStats](core::Module &mod, transform::AnalysisManager &)
+                          {
+                              viper::passes::Mem2RegStats st;
+                              viper::passes::mem2reg(mod, mem2regStats ? &st : nullptr);
+                              if (mem2regStats)
+                              {
+                                  std::cout << "mem2reg: promoted " << st.promotedVars
+                                            << ", removed loads " << st.removedLoads
+                                            << ", removed stores " << st.removedStores << "\n";
+                              }
+                              return transform::PreservedAnalyses::none();
+                          });
     pm.addSimplifyCFG();
     pm.registerPipeline(
-        "default",
-        {"simplify-cfg", "mem2reg", "simplify-cfg", "constfold", "peephole", "dce"});
+        "default", {"simplify-cfg", "mem2reg", "simplify-cfg", "constfold", "peephole", "dce"});
     if (!passesExplicit)
     {
         if (const auto *pipeline = pm.getPipeline("default"))

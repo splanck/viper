@@ -43,9 +43,11 @@ bool fitsInIntegerKind(long long value, il::core::Type::Kind kind)
         case il::core::Type::Kind::I1:
             return value == 0 || value == 1;
         case il::core::Type::Kind::I16:
-            return value >= std::numeric_limits<int16_t>::min() && value <= std::numeric_limits<int16_t>::max();
+            return value >= std::numeric_limits<int16_t>::min() &&
+                   value <= std::numeric_limits<int16_t>::max();
         case il::core::Type::Kind::I32:
-            return value >= std::numeric_limits<int32_t>::min() && value <= std::numeric_limits<int32_t>::max();
+            return value >= std::numeric_limits<int32_t>::min() &&
+                   value <= std::numeric_limits<int32_t>::max();
         case il::core::Type::Kind::I64:
             return true;
         default:
@@ -101,4 +103,3 @@ std::optional<il::core::Type::Kind> kindFromCategory(il::core::TypeCategory cate
 }
 
 } // namespace il::verify::detail
-

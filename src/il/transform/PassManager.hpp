@@ -1,8 +1,8 @@
 // File: src/il/transform/PassManager.hpp
 // Purpose: Declare the IL pass manager responsible for orchestrating pipelines.
-// Key invariants: Pipelines execute registered passes in order with consistent verification semantics.
-// Ownership/Lifetime: PassManager owns pass/analysis registries and borrows modules during execution.
-// Links: docs/codemap.md
+// Key invariants: Pipelines execute registered passes in order with consistent verification
+// semantics. Ownership/Lifetime: PassManager owns pass/analysis registries and borrows modules
+// during execution. Links: docs/codemap.md
 #pragma once
 
 #include "il/core/fwd.hpp"
@@ -29,11 +29,25 @@ class PassManager
 
     PassManager();
 
-    PassRegistry &passes() { return passRegistry_; }
-    const PassRegistry &passes() const { return passRegistry_; }
+    PassRegistry &passes()
+    {
+        return passRegistry_;
+    }
 
-    AnalysisRegistry &analyses() { return analysisRegistry_; }
-    const AnalysisRegistry &analyses() const { return analysisRegistry_; }
+    const PassRegistry &passes() const
+    {
+        return passRegistry_;
+    }
+
+    AnalysisRegistry &analyses()
+    {
+        return analysisRegistry_;
+    }
+
+    const AnalysisRegistry &analyses() const
+    {
+        return analysisRegistry_;
+    }
 
     template <typename Result>
     void registerModuleAnalysis(const std::string &id, std::function<Result(core::Module &)> fn)
@@ -97,4 +111,3 @@ class PassManager
 };
 
 } // namespace il::transform
-

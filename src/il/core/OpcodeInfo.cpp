@@ -35,9 +35,8 @@ namespace
 /// @param b Second operand category (optional).
 /// @param c Third operand category (optional).
 /// @return Array describing up to three operand categories.
-constexpr std::array<TypeCategory, kMaxOperandCategories> makeOperands(TypeCategory a,
-                                                                        TypeCategory b = TypeCategory::None,
-                                                                        TypeCategory c = TypeCategory::None)
+constexpr std::array<TypeCategory, kMaxOperandCategories> makeOperands(
+    TypeCategory a, TypeCategory b = TypeCategory::None, TypeCategory c = TypeCategory::None)
 {
     return {a, b, c};
 }
@@ -64,26 +63,48 @@ constexpr OperandParseSpec makeParseSpec(OperandParseKind kind = OperandParseKin
 /// @param c Third operand parse descriptor.
 /// @param d Fourth operand parse descriptor.
 /// @return Array describing parse behaviour for up to four operands.
-constexpr std::array<OperandParseSpec, kMaxOperandParseEntries>
-makeParseList(OperandParseSpec a = makeParseSpec(),
-              OperandParseSpec b = makeParseSpec(),
-              OperandParseSpec c = makeParseSpec(),
-              OperandParseSpec d = makeParseSpec())
+constexpr std::array<OperandParseSpec, kMaxOperandParseEntries> makeParseList(
+    OperandParseSpec a = makeParseSpec(),
+    OperandParseSpec b = makeParseSpec(),
+    OperandParseSpec c = makeParseSpec(),
+    OperandParseSpec d = makeParseSpec())
 {
     return {a, b, c, d};
 }
 } // namespace
 
-const std::array<OpcodeInfo, kNumOpcodes> kOpcodeTable = {
-    {
-#define IL_OPCODE(NAME, MNEMONIC, RES_ARITY, RES_TYPE, MIN_OPS, MAX_OPS, OP0, OP1, OP2, SIDE_EFFECTS, SUCCESSORS, TERMINATOR,     \
-                  DISPATCH, PARSE0, PARSE1, PARSE2, PARSE3)                                                                        \
-        {MNEMONIC, RES_ARITY, RES_TYPE, MIN_OPS, MAX_OPS, makeOperands(OP0, OP1, OP2), SIDE_EFFECTS, SUCCESSORS, TERMINATOR,      \
-         DISPATCH, makeParseList(PARSE0, PARSE1, PARSE2, PARSE3)},
+const std::array<OpcodeInfo, kNumOpcodes> kOpcodeTable = {{
+#define IL_OPCODE(NAME,                                                                            \
+                  MNEMONIC,                                                                        \
+                  RES_ARITY,                                                                       \
+                  RES_TYPE,                                                                        \
+                  MIN_OPS,                                                                         \
+                  MAX_OPS,                                                                         \
+                  OP0,                                                                             \
+                  OP1,                                                                             \
+                  OP2,                                                                             \
+                  SIDE_EFFECTS,                                                                    \
+                  SUCCESSORS,                                                                      \
+                  TERMINATOR,                                                                      \
+                  DISPATCH,                                                                        \
+                  PARSE0,                                                                          \
+                  PARSE1,                                                                          \
+                  PARSE2,                                                                          \
+                  PARSE3)                                                                          \
+    {MNEMONIC,                                                                                     \
+     RES_ARITY,                                                                                    \
+     RES_TYPE,                                                                                     \
+     MIN_OPS,                                                                                      \
+     MAX_OPS,                                                                                      \
+     makeOperands(OP0, OP1, OP2),                                                                  \
+     SIDE_EFFECTS,                                                                                 \
+     SUCCESSORS,                                                                                   \
+     TERMINATOR,                                                                                   \
+     DISPATCH,                                                                                     \
+     makeParseList(PARSE0, PARSE1, PARSE2, PARSE3)},
 #include "il/core/Opcode.def"
 #undef IL_OPCODE
-    }
-};
+}};
 
 static_assert(kOpcodeTable.size() == kNumOpcodes, "Opcode table must match enum count");
 

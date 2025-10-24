@@ -39,7 +39,6 @@ std::string normalizePath(std::string path)
 }
 } // namespace
 
-
 /// @brief Register a file path and assign it a stable identifier.
 ///
 /// @details The path is normalized into a generic string so diagnostics print

@@ -11,22 +11,22 @@
 #include "rt_string.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-/// @brief Format a double-precision value into a deterministic, locale-independent string.
-///
-/// @param value Value to format.
-/// @param buffer Destination buffer for the textual representation.
-/// @param capacity Size of @p buffer in bytes, including space for the null terminator.
-void rt_format_f64(double value, char *buffer, size_t capacity);
+    /// @brief Format a double-precision value into a deterministic, locale-independent string.
+    ///
+    /// @param value Value to format.
+    /// @param buffer Destination buffer for the textual representation.
+    /// @param capacity Size of @p buffer in bytes, including space for the null terminator.
+    void rt_format_f64(double value, char *buffer, size_t capacity);
 
-/// @brief Produce a CSV-escaped string literal for WRITE # statements.
-/// @param value Source string to escape; NULL treated as empty.
-/// @return Newly allocated string with surrounding quotes and doubled quotes inside.
-rt_string rt_csv_quote_alloc(rt_string value);
+    /// @brief Produce a CSV-escaped string literal for WRITE # statements.
+    /// @param value Source string to escape; NULL treated as empty.
+    /// @return Newly allocated string with surrounding quotes and doubled quotes inside.
+    rt_string rt_csv_quote_alloc(rt_string value);
 
 #ifdef __cplusplus
 }
 #endif
-

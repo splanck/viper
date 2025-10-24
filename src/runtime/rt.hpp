@@ -12,11 +12,12 @@
 #include "rt_error.h"
 #include "rt_file.h"
 #include "rt_format.h"
+#include "rt_object.h" /* plain include; functions are no-ops when not linked */
 #include "rt_string.h"
-#include "rt_object.h"  /* plain include; functions are no-ops when not linked */
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
     /// @brief Abort execution with message @p msg.
@@ -108,4 +109,3 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif
-

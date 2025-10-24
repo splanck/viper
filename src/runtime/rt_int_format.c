@@ -44,4 +44,3 @@ size_t rt_u64_to_cstr(uint64_t value, char *buffer, size_t capacity)
     }
     return (size_t)written;
 }
-

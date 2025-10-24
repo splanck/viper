@@ -18,28 +18,29 @@
 #include "MachineIR.hpp"
 #include "TargetX64.hpp"
 
-namespace viper::codegen::x64 {
+namespace viper::codegen::x64
+{
 
 /// \brief Canonicalises lowered Machine IR into concrete x86-64 forms.
 /// \details The instruction selector fixes operand modes for integer and
 ///          floating point arithmetic, resolves compare+branch sequences, and
 ///          materialises i1 values using byte set + zero-extend idioms.
-class ISel {
-public:
-  explicit ISel(const TargetInfo& target) noexcept;
+class ISel
+{
+  public:
+    explicit ISel(const TargetInfo &target) noexcept;
 
-  /// \brief Lower arithmetic instructions to concrete encodings.
-  void lowerArithmetic(MFunction& func) const;
+    /// \brief Lower arithmetic instructions to concrete encodings.
+    void lowerArithmetic(MFunction &func) const;
 
-  /// \brief Lower compare operations and conditional branches to x86-64 forms.
-  void lowerCompareAndBranch(MFunction& func) const;
+    /// \brief Lower compare operations and conditional branches to x86-64 forms.
+    void lowerCompareAndBranch(MFunction &func) const;
 
-  /// \brief Lower select-like idioms to canonical register sequences.
-  void lowerSelect(MFunction& func) const;
+    /// \brief Lower select-like idioms to canonical register sequences.
+    void lowerSelect(MFunction &func) const;
 
-private:
-  const TargetInfo* target_{nullptr};
+  private:
+    const TargetInfo *target_{nullptr};
 };
 
 } // namespace viper::codegen::x64
-

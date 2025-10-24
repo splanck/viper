@@ -59,8 +59,8 @@ Lowerer::IfBlocks Lowerer::emitIfBlocks(size_t conds)
             firstId = id;
         std::string testLbl = blockNamer ? blockNamer->generic("if_test")
                                          : mangler.block("if_test_" + std::to_string(i));
-        std::string thenLbl = blockNamer ? blockNamer->ifThen(id)
-                                         : mangler.block("if_then_" + std::to_string(i));
+        std::string thenLbl =
+            blockNamer ? blockNamer->ifThen(id) : mangler.block("if_then_" + std::to_string(i));
         builder->addBlock(*func, testLbl);
         builder->addBlock(*func, thenLbl);
     }
@@ -173,8 +173,8 @@ Lowerer::CtrlState Lowerer::emitIf(const IfStmt &stmt)
         func = ctx.function();
         auto *testBlk = &func->blocks[blocks.tests[i]];
         auto *thenBlk = &func->blocks[blocks.thens[i]];
-        auto *falseBlk = (i + 1 < conds) ? &func->blocks[blocks.tests[i + 1]]
-                                         : &func->blocks[blocks.elseIdx];
+        auto *falseBlk =
+            (i + 1 < conds) ? &func->blocks[blocks.tests[i + 1]] : &func->blocks[blocks.elseIdx];
         lowerIfCondition(*condExprs[i], testBlk, thenBlk, falseBlk, stmt.loc);
 
         func = ctx.function();

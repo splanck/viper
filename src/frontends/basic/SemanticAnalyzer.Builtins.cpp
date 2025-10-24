@@ -121,11 +121,12 @@ bool SemanticAnalyzer::checkArgType(const BuiltinCallExpr &c,
     else if (argTy == Type::Int || argTy == Type::Float)
         got = "number";
     std::ostringstream oss;
-    oss << builtinName(c.builtin) << ": arg " << (idx + 1) << " must be " << need << " (got "
-        << got << ')';
+    oss << builtinName(c.builtin) << ": arg " << (idx + 1) << " must be " << need << " (got " << got
+        << ')';
     de.emit(il::support::Severity::Error, "B2001", loc, 1, oss.str());
     return false;
 }
+
 namespace
 {
 using SemanticType = SemanticAnalyzer::Type;
@@ -133,8 +134,8 @@ using BuiltinArgSpec = SemanticAnalyzer::BuiltinArgSpec;
 using BuiltinSignature = SemanticAnalyzer::BuiltinSignature;
 
 static constexpr std::array<SemanticType, 1> kStringType{{SemanticType::String}};
-static constexpr std::array<SemanticType, 2> kNumericTypes{{SemanticType::Int,
-                                                            SemanticType::Float}};
+static constexpr std::array<SemanticType, 2> kNumericTypes{
+    {SemanticType::Int, SemanticType::Float}};
 
 static constexpr std::array<SemanticType, 1> kIntType{{SemanticType::Int}};
 
@@ -178,68 +179,45 @@ static constexpr std::array<BuiltinArgSpec, 3> kInstrArgs{{
 }};
 
 static constexpr std::array<BuiltinSignature, 34> kBuiltinSignatures{{
-    BuiltinSignature{1, 0, kSingleStringArg.data(), kSingleStringArg.size(),
-                     SemanticType::Int},
+    BuiltinSignature{1, 0, kSingleStringArg.data(), kSingleStringArg.size(), SemanticType::Int},
     BuiltinSignature{2, 1, kMidArgs.data(), kMidArgs.size(), SemanticType::String},
-    BuiltinSignature{2, 0, kStringNumericArgs.data(), kStringNumericArgs.size(),
-                     SemanticType::String},
-    BuiltinSignature{2, 0, kStringNumericArgs.data(), kStringNumericArgs.size(),
-                     SemanticType::String},
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(),
-                     SemanticType::String},
-    BuiltinSignature{1, 0, kSingleStringArg.data(), kSingleStringArg.size(),
-                     SemanticType::Float},
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(),
-                     SemanticType::Int},
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(),
-                     SemanticType::Int},
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(),
-                     SemanticType::Float},
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(),
-                     SemanticType::Float},
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(),
-                     SemanticType::Float},
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(),
-                     SemanticType::Float},
+    BuiltinSignature{
+        2, 0, kStringNumericArgs.data(), kStringNumericArgs.size(), SemanticType::String},
+    BuiltinSignature{
+        2, 0, kStringNumericArgs.data(), kStringNumericArgs.size(), SemanticType::String},
+    BuiltinSignature{
+        1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::String},
+    BuiltinSignature{1, 0, kSingleStringArg.data(), kSingleStringArg.size(), SemanticType::Float},
+    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Int},
+    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Int},
+    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float},
+    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float},
+    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float},
+    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float},
     BuiltinSignature{1, 1, kRoundArgs.data(), kRoundArgs.size(), SemanticType::Float},
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(),
-                     SemanticType::Float},
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(),
-                     SemanticType::Int},
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(),
-                     SemanticType::Float},
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(),
-                     SemanticType::Float},
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(),
-                     SemanticType::Float},
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(),
-                     SemanticType::Float},
-    BuiltinSignature{2, 0, kNumericNumericArgs.data(), kNumericNumericArgs.size(),
-                     SemanticType::Float},
+    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float},
+    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Int},
+    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float},
+    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float},
+    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float},
+    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float},
+    BuiltinSignature{
+        2, 0, kNumericNumericArgs.data(), kNumericNumericArgs.size(), SemanticType::Float},
     BuiltinSignature{0, 0, nullptr, 0, SemanticType::Float},
     BuiltinSignature{2, 1, kInstrArgs.data(), kInstrArgs.size(), SemanticType::Int},
-    BuiltinSignature{1, 0, kSingleStringArg.data(), kSingleStringArg.size(),
-                     SemanticType::String},
-    BuiltinSignature{1, 0, kSingleStringArg.data(), kSingleStringArg.size(),
-                     SemanticType::String},
-    BuiltinSignature{1, 0, kSingleStringArg.data(), kSingleStringArg.size(),
-                     SemanticType::String},
-    BuiltinSignature{1, 0, kSingleStringArg.data(), kSingleStringArg.size(),
-                     SemanticType::String},
-    BuiltinSignature{1, 0, kSingleStringArg.data(), kSingleStringArg.size(),
-                     SemanticType::String},
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(),
-                     SemanticType::String},
-    BuiltinSignature{1, 0, kSingleStringArg.data(), kSingleStringArg.size(),
-                     SemanticType::Int},
+    BuiltinSignature{1, 0, kSingleStringArg.data(), kSingleStringArg.size(), SemanticType::String},
+    BuiltinSignature{1, 0, kSingleStringArg.data(), kSingleStringArg.size(), SemanticType::String},
+    BuiltinSignature{1, 0, kSingleStringArg.data(), kSingleStringArg.size(), SemanticType::String},
+    BuiltinSignature{1, 0, kSingleStringArg.data(), kSingleStringArg.size(), SemanticType::String},
+    BuiltinSignature{1, 0, kSingleStringArg.data(), kSingleStringArg.size(), SemanticType::String},
+    BuiltinSignature{
+        1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::String},
+    BuiltinSignature{1, 0, kSingleStringArg.data(), kSingleStringArg.size(), SemanticType::Int},
     BuiltinSignature{0, 0, nullptr, 0, SemanticType::String},
     BuiltinSignature{0, 0, nullptr, 0, SemanticType::String},
-    BuiltinSignature{1, 0, kSingleIntArg.data(), kSingleIntArg.size(),
-                     SemanticType::Int},
-    BuiltinSignature{1, 0, kSingleIntArg.data(), kSingleIntArg.size(),
-                     SemanticType::Int},
-    BuiltinSignature{1, 0, kSingleIntArg.data(), kSingleIntArg.size(),
-                     SemanticType::Int},
+    BuiltinSignature{1, 0, kSingleIntArg.data(), kSingleIntArg.size(), SemanticType::Int},
+    BuiltinSignature{1, 0, kSingleIntArg.data(), kSingleIntArg.size(), SemanticType::Int},
+    BuiltinSignature{1, 0, kSingleIntArg.data(), kSingleIntArg.size(), SemanticType::Int},
 }};
 
 } // namespace
@@ -248,8 +226,8 @@ static constexpr std::array<BuiltinSignature, 34> kBuiltinSignatures{{
 ///
 /// @param builtin Builtin enumerator to inspect.
 /// @return Reference to the static signature describing arity and result type.
-const SemanticAnalyzer::BuiltinSignature &
-SemanticAnalyzer::builtinSignature(BuiltinCallExpr::Builtin builtin)
+const SemanticAnalyzer::BuiltinSignature &SemanticAnalyzer::builtinSignature(
+    BuiltinCallExpr::Builtin builtin)
 {
     return kBuiltinSignatures[static_cast<size_t>(builtin)];
 }
@@ -279,8 +257,8 @@ bool SemanticAnalyzer::validateBuiltinArgs(const BuiltinCallExpr &c,
     std::size_t missing =
         signature.argumentCount > args.size() ? signature.argumentCount - args.size() : 0;
     std::size_t argIndex = 0;
-    for (std::size_t specIndex = 0; specIndex < signature.argumentCount &&
-                                    argIndex < args.size(); ++specIndex)
+    for (std::size_t specIndex = 0; specIndex < signature.argumentCount && argIndex < args.size();
+         ++specIndex)
     {
         const BuiltinArgSpec &spec = signature.arguments[specIndex];
         if (spec.optional && missing > 0)
@@ -316,9 +294,7 @@ bool SemanticAnalyzer::validateBuiltinArgs(const BuiltinCallExpr &c,
 /// @param signature Signature describing arity and return type.
 /// @return Semantic type produced by the builtin.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeBuiltinWithSignature(
-    const BuiltinCallExpr &c,
-    const std::vector<Type> &args,
-    const BuiltinSignature &signature)
+    const BuiltinCallExpr &c, const std::vector<Type> &args, const BuiltinSignature &signature)
 {
     validateBuiltinArgs(c, args, signature);
     return signature.result;

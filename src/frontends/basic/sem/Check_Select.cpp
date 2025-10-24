@@ -64,8 +64,7 @@ void analyzeSelectCase(SemanticAnalyzer &analyzer, const SelectCaseStmt &stmt)
 ///
 /// @param analyzer Semantic analyzer providing symbol and diagnostic services.
 /// @param body Sequence of statements that make up the case arm.
-void analyzeSelectCaseBody(SemanticAnalyzer &analyzer,
-                           const std::vector<StmtPtr> &body)
+void analyzeSelectCaseBody(SemanticAnalyzer &analyzer, const std::vector<StmtPtr> &body)
 {
     ControlCheckContext context(analyzer);
     detail::analyzeSelectCaseBody(context, body);

@@ -35,11 +35,8 @@ namespace il::tools::verify
 /// @param err Stream receiving diagnostics and error messages.
 /// @param sm Source manager used to resolve diagnostics during verification.
 /// @return Zero on success; non-zero on argument, overflow, parse, or verification failure.
-int runCLI(int argc,
-           char **argv,
-           std::ostream &out,
-           std::ostream &err,
-           il::support::SourceManager &sm)
+int runCLI(
+    int argc, char **argv, std::ostream &out, std::ostream &err, il::support::SourceManager &sm)
 {
     if (argc == 2 && std::string(argv[1]) == "--version")
     {

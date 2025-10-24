@@ -35,9 +35,7 @@ namespace il::support
 ///          ensuring the caller relinquishes ownership of the diagnostic.
 ///
 /// @param diag Diagnostic to transfer into the error payload.
-Expected<void>::Expected(Diag diag) : error_(std::move(diag))
-{
-}
+Expected<void>::Expected(Diag diag) : error_(std::move(diag)) {}
 
 /// @brief Report whether the Expected<void> represents a successful outcome.
 ///
@@ -152,8 +150,6 @@ void printDiag(const Diag &diag, std::ostream &os, const SourceManager *sm)
             os << ": ";
         }
     }
-    os << detail::diagSeverityToString(diag.severity) << ": " << diag.message
-       << '\n';
+    os << detail::diagSeverityToString(diag.severity) << ": " << diag.message << '\n';
 }
 } // namespace il::support
-

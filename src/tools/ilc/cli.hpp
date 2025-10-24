@@ -53,9 +53,9 @@ enum class SharedOptionParseResult
 /// @param opts Accumulator receiving parsed option values.
 /// @return Parsing outcome describing whether the argument was handled.
 SharedOptionParseResult parseSharedOption(int &index,
-                                         int argc,
-                                         char **argv,
-                                         SharedCliOptions &opts);
+                                          int argc,
+                                          char **argv,
+                                          SharedCliOptions &opts);
 
 } // namespace ilc
 

@@ -34,15 +34,15 @@ void setSwitchMode(SwitchMode mode);
 /// @brief Dense jump table backing switch dispatch.
 struct DenseJumpTable
 {
-    int32_t base = 0;                 ///< Minimum case value encoded in the table.
-    std::vector<int32_t> targets;     ///< Successor indices; -1 designates default branch.
+    int32_t base = 0;             ///< Minimum case value encoded in the table.
+    std::vector<int32_t> targets; ///< Successor indices; -1 designates default branch.
 };
 
 /// @brief Sorted case list supporting binary search dispatch.
 struct SortedCases
 {
-    std::vector<int32_t> keys;        ///< Sorted case values.
-    std::vector<int32_t> targetIdx;   ///< Parallel successor indices for @ref keys.
+    std::vector<int32_t> keys;      ///< Sorted case values.
+    std::vector<int32_t> targetIdx; ///< Parallel successor indices for @ref keys.
 };
 
 /// @brief Hashed case mapping for sparse switch dispatch.
@@ -57,8 +57,8 @@ using SwitchBackend = std::variant<std::monostate, DenseJumpTable, SortedCases, 
 /// @brief Cached dispatch metadata for a single switch instruction.
 struct SwitchCacheEntry
 {
-    SwitchBackend backend;            ///< Backend-specific data.
-    int32_t defaultIdx = -1;          ///< Index used when no case matches.
+    SwitchBackend backend;   ///< Backend-specific data.
+    int32_t defaultIdx = -1; ///< Index used when no case matches.
 
     /// @brief Enumerates which backend was materialised for diagnostics.
     enum Kind
@@ -76,8 +76,10 @@ struct SwitchCache
     std::unordered_map<const void *, SwitchCacheEntry> entries; ///< Instruction cache.
 
     /// @brief Clear all cached dispatch entries.
-    void clear() { entries.clear(); }
+    void clear()
+    {
+        entries.clear();
+    }
 };
 
 } // namespace viper::vm
-

@@ -36,7 +36,9 @@ ExprPtr foldCompare(const Expr &l, BinaryExpr::Op op, const Expr &r, bool allowF
 /// @param op Binary operator.
 /// @param rhs Right numeric value.
 /// @return Numeric literal result or std::nullopt if folding is not possible.
-std::optional<Numeric> tryFoldBinaryArith(const Numeric &lhs, BinaryExpr::Op op, const Numeric &rhs);
+std::optional<Numeric> tryFoldBinaryArith(const Numeric &lhs,
+                                          BinaryExpr::Op op,
+                                          const Numeric &rhs);
 
 /// @brief Attempt to fold arithmetic unary operation on numeric literal.
 /// @param op Unary operator.
@@ -50,8 +52,9 @@ std::optional<Numeric> tryFoldUnaryArith(UnaryExpr::Op op, const Numeric &value)
 /// @param rhs Right numeric value.
 /// @param allowFloat Whether floating point operands are permitted.
 /// @return Integer-valued numeric literal result or std::nullopt on mismatch.
-std::optional<Numeric> tryFoldCompare(
-    const Numeric &lhs, BinaryExpr::Op op, const Numeric &rhs, bool allowFloat = true);
+std::optional<Numeric> tryFoldCompare(const Numeric &lhs,
+                                      BinaryExpr::Op op,
+                                      const Numeric &rhs,
+                                      bool allowFloat = true);
 
 } // namespace il::frontends::basic::detail
-

@@ -100,8 +100,8 @@ void printPrintChannel(const PrintChStmt &stmt, Context &ctx)
 void printOpen(const OpenStmt &stmt, Context &ctx)
 {
     auto &os = ctx.stream();
-    os << "(OPEN mode=" << openModeToString(stmt.mode) << '('
-       << static_cast<int>(stmt.mode) << ") path=";
+    os << "(OPEN mode=" << openModeToString(stmt.mode) << '(' << static_cast<int>(stmt.mode)
+       << ") path=";
     ctx.printOptionalExpr(stmt.pathExpr.get());
     ctx.style.writeChannelPrefix();
     ctx.printOptionalExpr(stmt.channelExpr.get());
@@ -151,7 +151,8 @@ void printInput(const InputStmt &stmt, Context &ctx)
     auto &os = ctx.stream();
     os << "(INPUT";
     bool firstItem = true;
-    auto writeItemPrefix = [&] {
+    auto writeItemPrefix = [&]
+    {
         if (firstItem)
         {
             os << ' ';

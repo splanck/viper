@@ -18,14 +18,14 @@ namespace il::verify::detail
 /// @brief Ensures an instruction provides the expected number of operands.
 class OperandCountChecker
 {
-public:
+  public:
     OperandCountChecker(const VerifyCtx &ctx, const il::core::OpcodeInfo &info);
 
     /// @brief Validates the operand count described by the instruction and metadata.
     /// @return Empty on success or a populated diagnostic on failure.
     il::support::Expected<void> run() const;
 
-private:
+  private:
     il::support::Expected<void> report(std::string_view message) const;
 
     const VerifyCtx &ctx_;
@@ -33,4 +33,3 @@ private:
 };
 
 } // namespace il::verify::detail
-

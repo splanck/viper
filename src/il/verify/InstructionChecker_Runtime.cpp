@@ -35,8 +35,8 @@ namespace il::verify::checker
 
 using il::core::Extern;
 using il::core::Function;
-using il::core::Type;
 using il::core::kindToString;
+using il::core::Type;
 using il::support::Expected;
 
 namespace
@@ -98,7 +98,8 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
 
     // Helper that enforces an exact operand count and emits a descriptive error
     // when the instruction does not provide the required number of arguments.
-    const auto requireArgCount = [&](size_t expected) -> Expected<void> {
+    const auto requireArgCount = [&](size_t expected) -> Expected<void>
+    {
         if (ctx.instr.operands.size() == expected)
             return {};
 
@@ -113,7 +114,8 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
     // Helper used to check operand types against the expected runtime
     // signature, emitting contextual diagnostics when values are missing or of
     // the wrong type.
-    const auto requireOperandType = [&](size_t index, Type::Kind expected, std::string_view role) {
+    const auto requireOperandType = [&](size_t index, Type::Kind expected, std::string_view role)
+    {
         bool missing = false;
         const Type actual = ctx.types.valueType(ctx.instr.operands[index], &missing);
         if (missing)
@@ -125,7 +127,8 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
         if (actual.kind != expected)
         {
             std::ostringstream ss;
-            ss << "@" << ctx.instr.callee << ' ' << role << " operand must be " << kindToString(expected);
+            ss << "@" << ctx.instr.callee << ' ' << role << " operand must be "
+               << kindToString(expected);
             return fail(ctx, ss.str());
         }
         return Expected<void>{};
@@ -133,11 +136,13 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
 
     // Helper that verifies the presence and type of the instruction result for
     // helpers expected to return a value.
-    const auto requireResultType = [&](Type::Kind expected) -> Expected<void> {
+    const auto requireResultType = [&](Type::Kind expected) -> Expected<void>
+    {
         if (!ctx.instr.result)
         {
             std::ostringstream ss;
-            ss << "@" << ctx.instr.callee << " must produce " << kindToString(expected) << " result";
+            ss << "@" << ctx.instr.callee << " must produce " << kindToString(expected)
+               << " result";
             return fail(ctx, ss.str());
         }
         if (ctx.instr.type.kind != expected)
@@ -151,7 +156,8 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
 
     // Helper ensuring helpers that should not produce a value remain
     // side-effect only.
-    const auto requireNoResult = [&]() -> Expected<void> {
+    const auto requireNoResult = [&]() -> Expected<void>
+    {
         if (ctx.instr.result)
         {
             std::ostringstream ss;
@@ -347,7 +353,8 @@ Expected<void> checkTrapFromErr(const VerifyCtx &ctx)
     }
     else if (operand.kind == il::core::Value::Kind::ConstInt)
     {
-        if (operand.i64 < std::numeric_limits<int32_t>::min() || operand.i64 > std::numeric_limits<int32_t>::max())
+        if (operand.i64 < std::numeric_limits<int32_t>::min() ||
+            operand.i64 > std::numeric_limits<int32_t>::max())
             return fail(ctx, "trap.from_err constant out of range");
     }
     else

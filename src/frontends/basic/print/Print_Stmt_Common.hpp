@@ -36,7 +36,10 @@ struct Context
     AstPrinter::PrintStyle &style;
     AstPrinter::StmtPrinter &dispatcher;
 
-    std::ostream &stream() const { return printer.os; }
+    std::ostream &stream() const
+    {
+        return printer.os;
+    }
 
     void printExpr(const Expr &expr) const;
 

@@ -236,8 +236,8 @@ void registerMathBuiltinLoweringRules(std::span<BuiltinLoweringRule> rules)
         {Variant{.condition = Condition::Always,
                  .kind = VariantKind::CallRuntime,
                  .runtime = "rt_int_floor",
-                 .arguments = {Argument{.index = 0,
-                                        .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
+                 .arguments = {Argument{
+                     .index = 0, .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
                  .features = {Feature{.action = Feature::Action::Track,
                                       .feature = il::runtime::RuntimeFeature::IntFloor}}}},
     };
@@ -247,37 +247,39 @@ void registerMathBuiltinLoweringRules(std::span<BuiltinLoweringRule> rules)
         {Variant{.condition = Condition::Always,
                  .kind = VariantKind::CallRuntime,
                  .runtime = "rt_fix_trunc",
-                 .arguments = {Argument{.index = 0,
-                                        .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
+                 .arguments = {Argument{
+                     .index = 0, .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
                  .features = {Feature{.action = Feature::Action::Track,
                                       .feature = il::runtime::RuntimeFeature::FixTrunc}}}},
     };
 
     rules[idx(B::Round)] = {
         ResultSpec{ResultSpec::Kind::Fixed, Lowerer::ExprType::F64, 0},
-        {Variant{.condition = Condition::IfArgPresent,
-                 .conditionArg = 1,
-                 .kind = VariantKind::CallRuntime,
-                 .runtime = "rt_round_even",
-                 .arguments = {Argument{.index = 0,
-                                        .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}},
-                                Argument{.index = 1,
-                                        .transforms = {Transform{.kind = Transform::Kind::EnsureI32}}}},
-                 .features = {Feature{.action = Feature::Action::Track,
-                                      .feature = il::runtime::RuntimeFeature::RoundEven}}},
-         Variant{.condition = Condition::IfArgMissing,
-                 .conditionArg = 1,
-                 .kind = VariantKind::CallRuntime,
-                 .runtime = "rt_round_even",
-                 .arguments = {Argument{.index = 0,
-                                        .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}},
-                                Argument{.index = 1,
-                                        .transforms = {Transform{.kind = Transform::Kind::EnsureI32}},
-                                        .defaultValue = Argument::DefaultValue{.type = Lowerer::ExprType::I64,
-                                                                               .f64 = 0.0,
-                                                                               .i64 = 0}}},
-                 .features = {Feature{.action = Feature::Action::Track,
-                                      .feature = il::runtime::RuntimeFeature::RoundEven}}}},
+        {Variant{
+             .condition = Condition::IfArgPresent,
+             .conditionArg = 1,
+             .kind = VariantKind::CallRuntime,
+             .runtime = "rt_round_even",
+             .arguments = {Argument{.index = 0,
+                                    .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}},
+                           Argument{.index = 1,
+                                    .transforms = {Transform{.kind = Transform::Kind::EnsureI32}}}},
+             .features = {Feature{.action = Feature::Action::Track,
+                                  .feature = il::runtime::RuntimeFeature::RoundEven}}},
+         Variant{
+             .condition = Condition::IfArgMissing,
+             .conditionArg = 1,
+             .kind = VariantKind::CallRuntime,
+             .runtime = "rt_round_even",
+             .arguments = {Argument{.index = 0,
+                                    .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}},
+                           Argument{.index = 1,
+                                    .transforms = {Transform{.kind = Transform::Kind::EnsureI32}},
+                                    .defaultValue =
+                                        Argument::DefaultValue{
+                                            .type = Lowerer::ExprType::I64, .f64 = 0.0, .i64 = 0}}},
+             .features = {Feature{.action = Feature::Action::Track,
+                                  .feature = il::runtime::RuntimeFeature::RoundEven}}}},
     };
 
     rules[idx(B::Sqr)] = {
@@ -285,8 +287,8 @@ void registerMathBuiltinLoweringRules(std::span<BuiltinLoweringRule> rules)
         {Variant{.condition = Condition::Always,
                  .kind = VariantKind::CallRuntime,
                  .runtime = "rt_sqrt",
-                 .arguments = {Argument{.index = 0,
-                                        .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
+                 .arguments = {Argument{
+                     .index = 0, .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
                  .features = {Feature{.action = Feature::Action::Track,
                                       .feature = il::runtime::RuntimeFeature::Sqrt}}}},
     };
@@ -298,15 +300,15 @@ void registerMathBuiltinLoweringRules(std::span<BuiltinLoweringRule> rules)
                  .conditionType = Lowerer::ExprType::F64,
                  .kind = VariantKind::CallRuntime,
                  .runtime = "rt_abs_f64",
-                 .arguments = {Argument{.index = 0,
-                                        .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
+                 .arguments = {Argument{
+                     .index = 0, .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
                  .features = {Feature{.action = Feature::Action::Track,
                                       .feature = il::runtime::RuntimeFeature::AbsF64}}},
          Variant{.condition = Condition::Always,
                  .kind = VariantKind::CallRuntime,
                  .runtime = "rt_abs_i64",
-                 .arguments = {Argument{.index = 0,
-                                        .transforms = {Transform{.kind = Transform::Kind::EnsureI64}}}},
+                 .arguments = {Argument{
+                     .index = 0, .transforms = {Transform{.kind = Transform::Kind::EnsureI64}}}},
                  .features = {Feature{.action = Feature::Action::Track,
                                       .feature = il::runtime::RuntimeFeature::AbsI64}}}},
     };
@@ -316,8 +318,8 @@ void registerMathBuiltinLoweringRules(std::span<BuiltinLoweringRule> rules)
         {Variant{.condition = Condition::Always,
                  .kind = VariantKind::CallRuntime,
                  .runtime = "rt_floor",
-                 .arguments = {Argument{.index = 0,
-                                        .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
+                 .arguments = {Argument{
+                     .index = 0, .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
                  .features = {Feature{.action = Feature::Action::Track,
                                       .feature = il::runtime::RuntimeFeature::Floor}}}},
     };
@@ -327,8 +329,8 @@ void registerMathBuiltinLoweringRules(std::span<BuiltinLoweringRule> rules)
         {Variant{.condition = Condition::Always,
                  .kind = VariantKind::CallRuntime,
                  .runtime = "rt_ceil",
-                 .arguments = {Argument{.index = 0,
-                                        .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
+                 .arguments = {Argument{
+                     .index = 0, .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
                  .features = {Feature{.action = Feature::Action::Track,
                                       .feature = il::runtime::RuntimeFeature::Ceil}}}},
     };
@@ -338,8 +340,8 @@ void registerMathBuiltinLoweringRules(std::span<BuiltinLoweringRule> rules)
         {Variant{.condition = Condition::Always,
                  .kind = VariantKind::CallRuntime,
                  .runtime = "rt_sin",
-                 .arguments = {Argument{.index = 0,
-                                        .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
+                 .arguments = {Argument{
+                     .index = 0, .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
                  .features = {Feature{.action = Feature::Action::Track,
                                       .feature = il::runtime::RuntimeFeature::Sin}}}},
     };
@@ -349,23 +351,24 @@ void registerMathBuiltinLoweringRules(std::span<BuiltinLoweringRule> rules)
         {Variant{.condition = Condition::Always,
                  .kind = VariantKind::CallRuntime,
                  .runtime = "rt_cos",
-                 .arguments = {Argument{.index = 0,
-                                        .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
+                 .arguments = {Argument{
+                     .index = 0, .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
                  .features = {Feature{.action = Feature::Action::Track,
                                       .feature = il::runtime::RuntimeFeature::Cos}}}},
     };
 
     rules[idx(B::Pow)] = {
         ResultSpec{ResultSpec::Kind::Fixed, Lowerer::ExprType::F64, 0},
-        {Variant{.condition = Condition::Always,
-                 .kind = VariantKind::CallRuntime,
-                 .runtime = "rt_pow_f64_chkdom",
-                 .arguments = {Argument{.index = 0,
-                                        .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}},
-                                Argument{.index = 1,
-                                        .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
-                 .features = {Feature{.action = Feature::Action::Track,
-                                      .feature = il::runtime::RuntimeFeature::Pow}}}},
+        {Variant{
+            .condition = Condition::Always,
+            .kind = VariantKind::CallRuntime,
+            .runtime = "rt_pow_f64_chkdom",
+            .arguments = {Argument{.index = 0,
+                                   .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}},
+                          Argument{.index = 1,
+                                   .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
+            .features = {Feature{.action = Feature::Action::Track,
+                                 .feature = il::runtime::RuntimeFeature::Pow}}}},
     };
 
     rules[idx(B::Rnd)] = {

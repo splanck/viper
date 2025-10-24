@@ -14,4 +14,3 @@ namespace il::transform::simplify_cfg
 bool removeUnreachableBlocks(SimplifyCFG::SimplifyCFGPassContext &ctx);
 
 } // namespace il::transform::simplify_cfg
-

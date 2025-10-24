@@ -6,13 +6,14 @@
 #pragma once
 
 #include <stdbool.h>
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #include "rt_error.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
     /// @brief Convert double @p x to INTEGER using round-to-nearest-even.
@@ -103,4 +104,3 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif
-

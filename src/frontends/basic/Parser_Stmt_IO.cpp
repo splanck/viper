@@ -18,8 +18,8 @@
 ///          AST nodes, and report diagnostics through the active diagnostic
 ///          emitter when malformed statements are encountered.
 
-#include "frontends/basic/Parser.hpp"
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
+#include "frontends/basic/Parser.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -311,11 +311,7 @@ StmtPtr Parser::parseLineInputStatement()
         il::support::SourceLoc diagLoc = rawTarget->loc.hasLine() ? rawTarget->loc : loc;
         if (emitter_)
         {
-            emitter_->emit(il::support::Severity::Error,
-                           "B0001",
-                           diagLoc,
-                           1,
-                           "expected variable");
+            emitter_->emit(il::support::Severity::Error, "B0001", diagLoc, 1, "expected variable");
         }
         auto fallback = std::make_unique<VarExpr>();
         fallback->loc = diagLoc;
@@ -329,4 +325,3 @@ StmtPtr Parser::parseLineInputStatement()
 }
 
 } // namespace il::frontends::basic
-

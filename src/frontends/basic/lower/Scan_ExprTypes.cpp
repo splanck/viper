@@ -42,11 +42,15 @@ Lowerer::ExprType exprTypeFromAstType(Type ty)
 {
     switch (ty)
     {
-        case Type::Str: return Lowerer::ExprType::Str;
-        case Type::F64: return Lowerer::ExprType::F64;
-        case Type::Bool: return Lowerer::ExprType::Bool;
+        case Type::Str:
+            return Lowerer::ExprType::Str;
+        case Type::F64:
+            return Lowerer::ExprType::F64;
+        case Type::Bool:
+            return Lowerer::ExprType::Bool;
         case Type::I64:
-        default: return Lowerer::ExprType::I64;
+        default:
+            return Lowerer::ExprType::I64;
     }
 }
 
@@ -80,31 +84,46 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
     ///
     /// @param expr Builtin call under inspection.
     /// @return False to prevent recursive descent.
-    bool shouldVisitChildren(const BuiltinCallExpr &) { return false; }
+    bool shouldVisitChildren(const BuiltinCallExpr &)
+    {
+        return false;
+    }
 
     /// @brief Skip procedure call children to avoid double counting side effects.
     ///
     /// @param expr Procedure call expression.
     /// @return False so the walker avoids visiting argument subtrees automatically.
-    bool shouldVisitChildren(const CallExpr &) { return false; }
+    bool shouldVisitChildren(const CallExpr &)
+    {
+        return false;
+    }
 
     /// @brief Skip constructor arguments because custom logic consumes them.
     ///
     /// @param expr Constructor call expression.
     /// @return False to defer traversal to helper routines.
-    bool shouldVisitChildren(const NewExpr &) { return false; }
+    bool shouldVisitChildren(const NewExpr &)
+    {
+        return false;
+    }
 
     /// @brief Skip member access children; the base is handled manually.
     ///
     /// @param expr Member access node.
     /// @return False to avoid automatic recursion.
-    bool shouldVisitChildren(const MemberAccessExpr &) { return false; }
+    bool shouldVisitChildren(const MemberAccessExpr &)
+    {
+        return false;
+    }
 
     /// @brief Skip method call arguments because explicit handling is required.
     ///
     /// @param expr Method call expression.
     /// @return False to maintain manual traversal order.
-    bool shouldVisitChildren(const MethodCallExpr &) { return false; }
+    bool shouldVisitChildren(const MethodCallExpr &)
+    {
+        return false;
+    }
 
     /// @brief Classify integer literals as 64-bit integers.
     ///
@@ -220,15 +239,23 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
             using K = il::core::Type::Kind;
             switch (sig->retType.kind)
             {
-                case K::F64: push(ExprType::F64); break;
+                case K::F64:
+                    push(ExprType::F64);
+                    break;
                 case K::Ptr:
                 case K::I1:
                 case K::I16:
                 case K::I32:
-                case K::I64: push(ExprType::I64); break;
-                case K::Str: push(ExprType::Str); break;
+                case K::I64:
+                    push(ExprType::I64);
+                    break;
+                case K::Str:
+                    push(ExprType::Str);
+                    break;
                 case K::Void:
-                default: push(ExprType::I64); break;
+                default:
+                    push(ExprType::I64);
+                    break;
             }
         }
         else
@@ -364,8 +391,8 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
             return ExprType::Str;
         if (expr.op == Op::Eq || expr.op == Op::Ne)
             return ExprType::Bool;
-        if (expr.op == Op::LogicalAndShort || expr.op == Op::LogicalOrShort || expr.op == Op::LogicalAnd ||
-            expr.op == Op::LogicalOr)
+        if (expr.op == Op::LogicalAndShort || expr.op == Op::LogicalOrShort ||
+            expr.op == Op::LogicalAnd || expr.op == Op::LogicalOr)
             return ExprType::Bool;
         if (lhs == ExprType::F64 || rhs == ExprType::F64)
             return ExprType::F64;
@@ -399,7 +426,8 @@ Lowerer::ExprType scanBuiltinExprTypes(Lowerer &lowerer, const BuiltinCallExpr &
     const auto &rule = getBuiltinScanRule(expr.builtin);
     std::vector<std::optional<Lowerer::ExprType>> argTypes(expr.args.size());
 
-    auto scanArg = [&](std::size_t idx) {
+    auto scanArg = [&](std::size_t idx)
+    {
         if (idx >= expr.args.size())
             return;
         const auto &arg = expr.args[idx];
@@ -420,7 +448,8 @@ Lowerer::ExprType scanBuiltinExprTypes(Lowerer &lowerer, const BuiltinCallExpr &
             scanArg(idx);
     }
 
-    auto argType = [&](std::size_t idx) -> std::optional<Lowerer::ExprType> {
+    auto argType = [&](std::size_t idx) -> std::optional<Lowerer::ExprType>
+    {
         if (idx >= argTypes.size())
             return std::nullopt;
         return argTypes[idx];

@@ -42,61 +42,111 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
 {
   public:
     /// @brief Create a visitor bound to @p analyzer.
-    explicit SemanticAnalyzerExprVisitor(SemanticAnalyzer &analyzer) noexcept
-        : analyzer_(analyzer)
+    explicit SemanticAnalyzerExprVisitor(SemanticAnalyzer &analyzer) noexcept : analyzer_(analyzer)
     {
     }
 
     /// @brief Literal integers yield the integer semantic type.
-    void visit(IntExpr &) override { result_ = SemanticAnalyzer::Type::Int; }
+    void visit(IntExpr &) override
+    {
+        result_ = SemanticAnalyzer::Type::Int;
+    }
 
     /// @brief Literal floats evaluate to floating-point semantic type.
-    void visit(FloatExpr &) override { result_ = SemanticAnalyzer::Type::Float; }
+    void visit(FloatExpr &) override
+    {
+        result_ = SemanticAnalyzer::Type::Float;
+    }
 
     /// @brief Literal strings evaluate to string semantic type.
-    void visit(StringExpr &) override { result_ = SemanticAnalyzer::Type::String; }
+    void visit(StringExpr &) override
+    {
+        result_ = SemanticAnalyzer::Type::String;
+    }
 
     /// @brief Boolean literals propagate the boolean semantic type.
-    void visit(BoolExpr &) override { result_ = SemanticAnalyzer::Type::Bool; }
+    void visit(BoolExpr &) override
+    {
+        result_ = SemanticAnalyzer::Type::Bool;
+    }
 
     /// @brief Variables defer to SemanticAnalyzer for resolution.
-    void visit(VarExpr &expr) override { result_ = analyzer_.analyzeVar(expr); }
+    void visit(VarExpr &expr) override
+    {
+        result_ = analyzer_.analyzeVar(expr);
+    }
 
     /// @brief Array expressions trigger array-specific analysis.
-    void visit(ArrayExpr &expr) override { result_ = analyzer_.analyzeArray(expr); }
+    void visit(ArrayExpr &expr) override
+    {
+        result_ = analyzer_.analyzeArray(expr);
+    }
 
     /// @brief Unary expressions are analysed via SemanticAnalyzer helpers.
-    void visit(UnaryExpr &expr) override { result_ = analyzer_.analyzeUnary(expr); }
+    void visit(UnaryExpr &expr) override
+    {
+        result_ = analyzer_.analyzeUnary(expr);
+    }
 
     /// @brief Binary expressions defer to SemanticAnalyzer::analyzeBinary.
-    void visit(BinaryExpr &expr) override { result_ = analyzer_.analyzeBinary(expr); }
+    void visit(BinaryExpr &expr) override
+    {
+        result_ = analyzer_.analyzeBinary(expr);
+    }
 
     /// @brief Builtin calls delegate to dedicated builtin analysis.
-    void visit(BuiltinCallExpr &expr) override { result_ = analyzer_.analyzeBuiltinCall(expr); }
+    void visit(BuiltinCallExpr &expr) override
+    {
+        result_ = analyzer_.analyzeBuiltinCall(expr);
+    }
 
     /// @brief LBOUND expressions compute integer results via analyser logic.
-    void visit(LBoundExpr &expr) override { result_ = analyzer_.analyzeLBound(expr); }
+    void visit(LBoundExpr &expr) override
+    {
+        result_ = analyzer_.analyzeLBound(expr);
+    }
 
     /// @brief UBOUND expressions compute integer results via analyser logic.
-    void visit(UBoundExpr &expr) override { result_ = analyzer_.analyzeUBound(expr); }
+    void visit(UBoundExpr &expr) override
+    {
+        result_ = analyzer_.analyzeUBound(expr);
+    }
 
     /// @brief Procedure calls re-use general call analysis.
-    void visit(CallExpr &expr) override { result_ = analyzer_.analyzeCall(expr); }
+    void visit(CallExpr &expr) override
+    {
+        result_ = analyzer_.analyzeCall(expr);
+    }
 
     /// @brief NEW expressions are not yet typed and produce Unknown.
-    void visit(NewExpr &) override { result_ = SemanticAnalyzer::Type::Unknown; }
+    void visit(NewExpr &) override
+    {
+        result_ = SemanticAnalyzer::Type::Unknown;
+    }
 
     /// @brief ME references are currently untyped placeholders.
-    void visit(MeExpr &) override { result_ = SemanticAnalyzer::Type::Unknown; }
+    void visit(MeExpr &) override
+    {
+        result_ = SemanticAnalyzer::Type::Unknown;
+    }
 
     /// @brief Member access expressions remain Unknown until OOP analysis matures.
-    void visit(MemberAccessExpr &) override { result_ = SemanticAnalyzer::Type::Unknown; }
+    void visit(MemberAccessExpr &) override
+    {
+        result_ = SemanticAnalyzer::Type::Unknown;
+    }
 
     /// @brief Method calls are treated as Unknown until OOP semantics are added.
-    void visit(MethodCallExpr &) override { result_ = SemanticAnalyzer::Type::Unknown; }
+    void visit(MethodCallExpr &) override
+    {
+        result_ = SemanticAnalyzer::Type::Unknown;
+    }
 
     /// @brief Retrieve the semantic type computed during visitation.
-    [[nodiscard]] SemanticAnalyzer::Type result() const noexcept { return result_; }
+    [[nodiscard]] SemanticAnalyzer::Type result() const noexcept
+    {
+        return result_;
+    }
 
   private:
     SemanticAnalyzer &analyzer_;

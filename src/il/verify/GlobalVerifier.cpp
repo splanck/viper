@@ -32,7 +32,7 @@ namespace
 {
 using il::support::Expected;
 using il::support::makeError;
-}
+} // namespace
 
 /// @brief Expose the cached map from global names to module-owned definitions.
 /// @details The verifier records raw pointers to the immutable @ref il::core::Global

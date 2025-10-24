@@ -45,10 +45,14 @@ using AstType = ::il::frontends::basic::Type;
     using IlType = il::core::Type;
     switch (ty)
     {
-        case AstType::I64: return IlType(IlType::Kind::I64);
-        case AstType::F64: return IlType(IlType::Kind::F64);
-        case AstType::Str: return IlType(IlType::Kind::Str);
-        case AstType::Bool: return IlType(IlType::Kind::I1);
+        case AstType::I64:
+            return IlType(IlType::Kind::I64);
+        case AstType::F64:
+            return IlType(IlType::Kind::F64);
+        case AstType::Str:
+            return IlType(IlType::Kind::Str);
+        case AstType::Bool:
+            return IlType(IlType::Kind::I1);
     }
     return IlType(IlType::Kind::I64);
 }
@@ -133,8 +137,10 @@ void Lowerer::emitFieldReleaseSequence(Value selfPtr, const ClassLayout &layout)
     for (const auto &field : layout.fields)
     {
         curLoc = {};
-        Value fieldPtr =
-            emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), selfPtr, Value::constInt(static_cast<long long>(field.offset)));
+        Value fieldPtr = emitBinary(Opcode::GEP,
+                                    Type(Type::Kind::Ptr),
+                                    selfPtr,
+                                    Value::constInt(static_cast<long long>(field.offset)));
         switch (field.type)
         {
             case AstType::Str:
@@ -462,4 +468,3 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
 }
 
 } // namespace il::frontends::basic
-

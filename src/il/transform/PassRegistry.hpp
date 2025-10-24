@@ -1,8 +1,8 @@
 // File: src/il/transform/PassRegistry.hpp
 // Purpose: Declare pass registration primitives and preservation tracking for IL transforms.
-// Key invariants: Pass identifiers are unique within the registry; preservation queries are idempotent.
-// Ownership/Lifetime: Factories and callbacks stored in PassRegistry outlive the pass manager.
-// Links: docs/codemap.md
+// Key invariants: Pass identifiers are unique within the registry; preservation queries are
+// idempotent. Ownership/Lifetime: Factories and callbacks stored in PassRegistry outlive the pass
+// manager. Links: docs/codemap.md
 #pragma once
 
 #include "il/core/fwd.hpp"
@@ -101,4 +101,3 @@ class PassRegistry
 };
 
 } // namespace il::transform
-

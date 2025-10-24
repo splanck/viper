@@ -37,7 +37,7 @@ namespace
 /// @return A result with @ref LoadStatus::Success and an empty diagnostic.
 LoadResult makeSuccess()
 {
-    return { LoadStatus::Success, std::nullopt };
+    return {LoadStatus::Success, std::nullopt};
 }
 
 /// @brief Create a load result describing an I/O failure.
@@ -50,7 +50,7 @@ LoadResult makeSuccess()
 /// @return Result tagged with @ref LoadStatus::FileError and no diagnostic.
 LoadResult makeFileError()
 {
-    return { LoadStatus::FileError, std::nullopt };
+    return {LoadStatus::FileError, std::nullopt};
 }
 
 /// @brief Create a load result populated with a parser diagnostic.
@@ -62,7 +62,7 @@ LoadResult makeFileError()
 /// @return A result tagged with @ref LoadStatus::ParseError holding @p diag.
 LoadResult makeParseError(const il::support::Diag &diag)
 {
-    return { LoadStatus::ParseError, diag };
+    return {LoadStatus::ParseError, diag};
 }
 } // namespace
 
@@ -130,4 +130,3 @@ bool verifyModule(const il::core::Module &module,
 }
 
 } // namespace il::tools::common
-

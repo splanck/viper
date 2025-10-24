@@ -70,9 +70,16 @@ class StmtShared
 
   protected:
     /// @brief Access bound analyzer.
-    SemanticAnalyzer &analyzer() noexcept { return analyzer_; }
+    SemanticAnalyzer &analyzer() noexcept
+    {
+        return analyzer_;
+    }
+
     /// @brief Access bound analyzer.
-    const SemanticAnalyzer &analyzer() const noexcept { return analyzer_; }
+    const SemanticAnalyzer &analyzer() const noexcept
+    {
+        return analyzer_;
+    }
 
   private:
     SemanticAnalyzer &analyzer_;

@@ -74,4 +74,3 @@ std::string formatInstrDiag(const core::Function &fn,
 }
 
 } // namespace il::verify
-

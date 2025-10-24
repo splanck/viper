@@ -60,4 +60,3 @@ void Parser::registerControlFlowParsers(StatementParserRegistry &registry)
 }
 
 } // namespace il::frontends::basic
-

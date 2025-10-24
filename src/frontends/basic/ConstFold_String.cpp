@@ -44,8 +44,7 @@ namespace
 /// @param rhs Right-hand operand supplied to the folding rule.
 /// @param fn Callback invoked when both operands are string literals.
 /// @return Folded expression when both operands are literals; nullptr otherwise.
-template <typename Fn>
-ExprPtr dispatchStringBinary(const Expr &lhs, const Expr &rhs, Fn fn)
+template <typename Fn> ExprPtr dispatchStringBinary(const Expr &lhs, const Expr &rhs, Fn fn)
 {
     const auto *left = dynamic_cast<const StringExpr *>(&lhs);
     const auto *right = dynamic_cast<const StringExpr *>(&rhs);
@@ -146,9 +145,10 @@ std::size_t clampCount(long long count, std::size_t limit)
 /// @return Concatenated literal or nullptr when folding is not possible.
 ExprPtr foldStringConcat(const StringExpr &l, const StringExpr &r)
 {
-    return foldString(l, r, [](const std::string &a, const std::string &b) -> ExprPtr {
-        return makeString(a + b);
-    });
+    return foldString(l,
+                      r,
+                      [](const std::string &a, const std::string &b) -> ExprPtr
+                      { return makeString(a + b); });
 }
 
 /// @brief Fold string equality comparison between two literals.
@@ -162,11 +162,14 @@ ExprPtr foldStringConcat(const StringExpr &l, const StringExpr &r)
 /// @return Integer literal encoding the comparison result, or nullptr.
 ExprPtr foldStringEq(const StringExpr &l, const StringExpr &r)
 {
-    return foldString(l, r, [](const std::string &a, const std::string &b) -> ExprPtr {
-        auto out = std::make_unique<IntExpr>();
-        out->value = (a == b) ? 1 : 0;
-        return out;
-    });
+    return foldString(l,
+                      r,
+                      [](const std::string &a, const std::string &b) -> ExprPtr
+                      {
+                          auto out = std::make_unique<IntExpr>();
+                          out->value = (a == b) ? 1 : 0;
+                          return out;
+                      });
 }
 
 /// @brief Fold string inequality comparison between two literals.
@@ -179,11 +182,14 @@ ExprPtr foldStringEq(const StringExpr &l, const StringExpr &r)
 /// @return Integer literal encoding the comparison result, or nullptr.
 ExprPtr foldStringNe(const StringExpr &l, const StringExpr &r)
 {
-    return foldString(l, r, [](const std::string &a, const std::string &b) -> ExprPtr {
-        auto out = std::make_unique<IntExpr>();
-        out->value = (a != b) ? 1 : 0;
-        return out;
-    });
+    return foldString(l,
+                      r,
+                      [](const std::string &a, const std::string &b) -> ExprPtr
+                      {
+                          auto out = std::make_unique<IntExpr>();
+                          out->value = (a != b) ? 1 : 0;
+                          return out;
+                      });
 }
 
 /// @brief Attempt to fold string concatenation for arbitrary operands.

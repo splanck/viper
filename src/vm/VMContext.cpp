@@ -14,14 +14,14 @@
 
 #include "vm/VMContext.hpp"
 
-#include "vm/Marshal.hpp"
-#include "vm/RuntimeBridge.hpp"
-#include "vm/Trap.hpp"
-#include "il/core/Function.hpp"
 #include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
+#include "vm/Marshal.hpp"
+#include "vm/RuntimeBridge.hpp"
+#include "vm/Trap.hpp"
 
 #include <exception>
 #include <sstream>
@@ -103,7 +103,8 @@ Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
             const auto loc = vmInstance->currentContext.loc;
 
             std::ostringstream os;
-            os << "temp %" << value.id << " out of range (regs=" << fr.regs.size() << ") in function " << fnName;
+            os << "temp %" << value.id << " out of range (regs=" << fr.regs.size()
+               << ") in function " << fnName;
             if (!blockLabel.empty())
                 os << ", block " << blockLabel;
             if (loc.hasLine())
@@ -232,8 +233,11 @@ void VMContext::handleInlineResult(VM::ExecState &state, const VM::ExecResult &e
 /// @param opcode Opcode lacking an implementation.
 [[noreturn]] void VMContext::trapUnimplemented(il::core::Opcode opcode) const
 {
-    const std::string funcName = vmInstance->currentContext.function ? vmInstance->currentContext.function->name : std::string("<unknown>");
-    const std::string blockLabel = vmInstance->currentContext.block ? vmInstance->currentContext.block->label : std::string();
+    const std::string funcName = vmInstance->currentContext.function
+                                     ? vmInstance->currentContext.function->name
+                                     : std::string("<unknown>");
+    const std::string blockLabel =
+        vmInstance->currentContext.block ? vmInstance->currentContext.block->label : std::string();
     RuntimeBridge::trap(TrapKind::InvalidOperation,
                         "unimplemented opcode: " + opcodeMnemonic(opcode),
                         vmInstance->currentContext.loc,

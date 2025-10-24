@@ -16,7 +16,8 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Provides shared utilities, accessors, and helper functions for the BASIC semantic analyzer.
+/// @brief Provides shared utilities, accessors, and helper functions for the BASIC semantic
+/// analyzer.
 /// @details The definitions here back the analyzer's public API and expose
 ///          reusable utilities to other translation units within the BASIC frontend.
 
@@ -34,10 +35,7 @@ namespace il::frontends::basic
 /// @brief Construct a semantic analyzer bound to a diagnostic emitter.
 ///
 /// @param emitter Diagnostic sink used for reporting semantic errors and warnings.
-SemanticAnalyzer::SemanticAnalyzer(DiagnosticEmitter &emitter)
-    : de(emitter), procReg_(de)
-{
-}
+SemanticAnalyzer::SemanticAnalyzer(DiagnosticEmitter &emitter) : de(emitter), procReg_(de) {}
 
 /// @brief Access the set of symbols tracked during the last analysis run.
 ///
@@ -75,8 +73,7 @@ const ProcTable &SemanticAnalyzer::procs() const
 ///
 /// @param name Variable name after scope resolution.
 /// @return Inferred type when known; std::nullopt otherwise.
-std::optional<SemanticAnalyzer::Type>
-SemanticAnalyzer::lookupVarType(const std::string &name) const
+std::optional<SemanticAnalyzer::Type> SemanticAnalyzer::lookupVarType(const std::string &name) const
 {
     if (auto it = varTypes_.find(name); it != varTypes_.end())
         return it->second;

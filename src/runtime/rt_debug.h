@@ -8,7 +8,8 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
     /// @brief Print a signed 32-bit integer followed by a newline.
@@ -22,4 +23,3 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif
-

@@ -50,10 +50,10 @@ void Lowerer::lowerGosub(const GosubStmt &stmt)
         return;
 
     BlockNamer *blockNamer = ctx.blockNames().namer();
-    std::string overflowLbl = blockNamer ? blockNamer->generic("gosub_overflow")
-                                         : mangler.block("gosub_overflow");
-    std::string pushLbl = blockNamer ? blockNamer->generic("gosub_push")
-                                     : mangler.block("gosub_push");
+    std::string overflowLbl =
+        blockNamer ? blockNamer->generic("gosub_overflow") : mangler.block("gosub_overflow");
+    std::string pushLbl =
+        blockNamer ? blockNamer->generic("gosub_push") : mangler.block("gosub_push");
 
     size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
     size_t overflowIdx = func->blocks.size();
@@ -84,9 +84,7 @@ void Lowerer::lowerGosub(const GosubStmt &stmt)
 
     Value offset = emitBinary(Opcode::IMulOvf, Type(Type::Kind::I64), sp, Value::constInt(4));
     Value slotPtr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), gosubState.stackSlot(), offset);
-    emitStore(Type(Type::Kind::I32),
-              slotPtr,
-              Value::constInt(static_cast<long long>(*contIndex)));
+    emitStore(Type(Type::Kind::I32), slotPtr, Value::constInt(static_cast<long long>(*contIndex)));
 
     Value nextSp = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), sp, Value::constInt(1));
     emitStore(Type(Type::Kind::I64), gosubState.spSlot(), nextSp);
@@ -130,10 +128,10 @@ void Lowerer::lowerGosubReturn(const ReturnStmt &stmt)
     Value sp = emitLoad(Type(Type::Kind::I64), gosubState.spSlot());
 
     BlockNamer *blockNamer = ctx.blockNames().namer();
-    std::string emptyLbl = blockNamer ? blockNamer->generic("gosub_ret_empty")
-                                      : mangler.block("gosub_ret_empty");
-    std::string contLbl = blockNamer ? blockNamer->generic("gosub_ret_cont")
-                                     : mangler.block("gosub_ret_cont");
+    std::string emptyLbl =
+        blockNamer ? blockNamer->generic("gosub_ret_empty") : mangler.block("gosub_ret_empty");
+    std::string contLbl =
+        blockNamer ? blockNamer->generic("gosub_ret_cont") : mangler.block("gosub_ret_cont");
 
     size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
     size_t emptyIdx = func->blocks.size();
@@ -168,8 +166,8 @@ void Lowerer::lowerGosubReturn(const ReturnStmt &stmt)
     Value slotPtr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), gosubState.stackSlot(), offset);
     Value idxVal = emitLoad(Type(Type::Kind::I32), slotPtr);
 
-    std::string invalidLbl = blockNamer ? blockNamer->generic("gosub_ret_invalid")
-                                        : mangler.block("gosub_ret_invalid");
+    std::string invalidLbl =
+        blockNamer ? blockNamer->generic("gosub_ret_invalid") : mangler.block("gosub_ret_invalid");
     size_t invalidIdx = func->blocks.size();
     builder->addBlock(*func, invalidLbl);
     func = ctx.function();

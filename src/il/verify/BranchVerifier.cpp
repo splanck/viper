@@ -178,11 +178,12 @@ Expected<void> verifyCBr_E(const Function &fn,
 /// @param instr switch.i32 instruction whose structure is examined.
 /// @param blockMap Lookup for resolving target blocks referenced by labels.
 /// @param types Type inference context providing operand type data.
-Expected<void> verifySwitchI32_E(const Function &fn,
-                                 const BasicBlock &bb,
-                                 const Instr &instr,
-                                 const std::unordered_map<std::string, const BasicBlock *> &blockMap,
-                                 TypeInference &types)
+Expected<void> verifySwitchI32_E(
+    const Function &fn,
+    const BasicBlock &bb,
+    const Instr &instr,
+    const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+    TypeInference &types)
 {
     if (instr.operands.empty())
     {
@@ -192,8 +193,8 @@ Expected<void> verifySwitchI32_E(const Function &fn,
 
     if (types.valueType(switchScrutinee(instr)).kind != Type::Kind::I32)
     {
-        return Expected<void>{
-            makeError(instr.loc, formatInstrDiag(fn, bb, instr, "switch.i32 scrutinee must be i32"))};
+        return Expected<void>{makeError(
+            instr.loc, formatInstrDiag(fn, bb, instr, "switch.i32 scrutinee must be i32"))};
     }
 
     if (instr.labels.empty())
@@ -204,11 +205,9 @@ Expected<void> verifySwitchI32_E(const Function &fn,
 
     if (instr.brArgs.size() != instr.labels.size())
     {
-        return Expected<void>{makeError(instr.loc,
-                                        formatInstrDiag(fn,
-                                                        bb,
-                                                        instr,
-                                                        "switch.i32 branch argument vector count mismatch"))};
+        return Expected<void>{makeError(
+            instr.loc,
+            formatInstrDiag(fn, bb, instr, "switch.i32 branch argument vector count mismatch"))};
     }
 
     const std::vector<Value> *defaultArgs = nullptr;
@@ -218,17 +217,14 @@ Expected<void> verifySwitchI32_E(const Function &fn,
     const size_t caseCount = switchCaseCount(instr);
     if (instr.operands.size() != caseCount + 1)
     {
-        return Expected<void>{makeError(instr.loc,
-                                        formatInstrDiag(fn,
-                                                        bb,
-                                                        instr,
-                                                        "switch.i32 operands mismatch cases"))};
+        return Expected<void>{makeError(
+            instr.loc, formatInstrDiag(fn, bb, instr, "switch.i32 operands mismatch cases"))};
     }
 
     if (auto it = blockMap.find(switchDefaultLabel(instr)); it != blockMap.end())
     {
-        if (auto result =
-                verifyBranchArgs(fn, bb, instr, *it->second, defaultArgs, switchDefaultLabel(instr), types);
+        if (auto result = verifyBranchArgs(
+                fn, bb, instr, *it->second, defaultArgs, switchDefaultLabel(instr), types);
             !result)
             return result;
     }
@@ -241,30 +237,21 @@ Expected<void> verifySwitchI32_E(const Function &fn,
         const Value &caseValue = switchCaseValue(instr, idx);
         if (caseValue.kind != Value::Kind::ConstInt)
         {
-            return Expected<void>{makeError(instr.loc,
-                                            formatInstrDiag(fn,
-                                                            bb,
-                                                            instr,
-                                                            "switch.i32 case must be const i32"))};
+            return Expected<void>{makeError(
+                instr.loc, formatInstrDiag(fn, bb, instr, "switch.i32 case must be const i32"))};
         }
         if (caseValue.i64 < std::numeric_limits<int32_t>::min() ||
             caseValue.i64 > std::numeric_limits<int32_t>::max())
         {
-            return Expected<void>{makeError(instr.loc,
-                                            formatInstrDiag(fn,
-                                                            bb,
-                                                            instr,
-                                                            "switch.i32 case out of i32 range"))};
+            return Expected<void>{makeError(
+                instr.loc, formatInstrDiag(fn, bb, instr, "switch.i32 case out of i32 range"))};
         }
 
         const int32_t key = static_cast<int32_t>(caseValue.i64);
         if (!seen.insert(key).second)
         {
-            return Expected<void>{makeError(instr.loc,
-                                            formatInstrDiag(fn,
-                                                            bb,
-                                                            instr,
-                                                            "duplicate switch.i32 case"))};
+            return Expected<void>{
+                makeError(instr.loc, formatInstrDiag(fn, bb, instr, "duplicate switch.i32 case"))};
         }
 
         const std::string &label = switchCaseLabel(instr, idx);
@@ -274,7 +261,8 @@ Expected<void> verifySwitchI32_E(const Function &fn,
         const std::vector<Value> *caseArgs = nullptr;
         if (!instr.brArgs.empty())
             caseArgs = &instr.brArgs[idx + 1];
-        if (auto result = verifyBranchArgs(fn, bb, instr, *it->second, caseArgs, label, types); !result)
+        if (auto result = verifyBranchArgs(fn, bb, instr, *it->second, caseArgs, label, types);
+            !result)
             return result;
     }
 

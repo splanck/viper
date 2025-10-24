@@ -14,8 +14,8 @@
 /// @details Provides functions for ensuring arithmetic instructions obey type
 ///          rules and for recording result types when checks succeed.
 
-#include "il/verify/InstructionCheckerShared.hpp"
 #include "il/verify/InstructionCheckUtils.hpp"
+#include "il/verify/InstructionCheckerShared.hpp"
 
 #include "il/core/Instr.hpp"
 #include "il/verify/TypeInference.hpp"
@@ -130,15 +130,15 @@ Expected<void> checkIdxChk(const VerifyCtx &ctx)
     if (ctx.instr.operands.size() != 3)
         return fail(ctx, "invalid operand count");
 
-    const auto isSupportedWidth = [](Type::Kind kind) {
-        return kind == Type::Kind::I16 || kind == Type::Kind::I32 || kind == Type::Kind::I64;
-    };
+    const auto isSupportedWidth = [](Type::Kind kind)
+    { return kind == Type::Kind::I16 || kind == Type::Kind::I32 || kind == Type::Kind::I64; };
 
     Type::Kind expectedKind = Type::Kind::Void;
     if (isSupportedWidth(ctx.instr.type.kind))
         expectedKind = ctx.instr.type.kind;
 
-    const auto classifyOperand = [&](const Value &value) -> Expected<Type::Kind> {
+    const auto classifyOperand = [&](const Value &value) -> Expected<Type::Kind>
+    {
         if (value.kind == Value::Kind::Temp)
         {
             const Type::Kind kind = ctx.types.valueType(value).kind;

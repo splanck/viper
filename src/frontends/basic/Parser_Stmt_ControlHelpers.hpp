@@ -93,4 +93,3 @@ inline std::vector<StmtPtr> collectBranchStatements(
 } // namespace parser_helpers
 
 } // namespace il::frontends::basic
-

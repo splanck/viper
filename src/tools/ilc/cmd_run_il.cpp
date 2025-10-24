@@ -21,25 +21,25 @@
 
 #include "break_spec.hpp"
 #include "cli.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Module.hpp"
+#include "support/source_manager.hpp"
 #include "tools/common/module_loader.hpp"
 #include "vm/Debug.hpp"
 #include "vm/DebugScript.hpp"
 #include "vm/Trace.hpp"
-#include "il/core/Function.hpp"
-#include "il/core/Module.hpp"
-#include "support/source_manager.hpp"
 #include "vm/VM.hpp"
 #include <algorithm>
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <exception>
 #include <iostream>
 #include <memory>
-#include <exception>
-#include <vector>
 #include <string>
 #include <utility>
+#include <vector>
 
 using namespace il;
 
@@ -166,7 +166,7 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
                     reportInvalidLineNumber(lineToken, spec, "--break");
                     return false;
                 }
-                config.breakSrcLines.push_back({ std::move(file), line });
+                config.breakSrcLines.push_back({std::move(file), line});
             }
             else
             {
@@ -197,7 +197,7 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
                     reportInvalidLineNumber(lineToken, spec, "--break-src");
                     return false;
                 }
-                config.breakSrcLines.push_back({ std::move(file), line });
+                config.breakSrcLines.push_back({std::move(file), line});
             }
             else
             {
@@ -243,14 +243,14 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
         {
             switch (ilc::parseSharedOption(i, argc, argv, config.sharedOpts))
             {
-            case ilc::SharedOptionParseResult::Parsed:
-                continue;
-            case ilc::SharedOptionParseResult::Error:
-                usage();
-                return false;
-            case ilc::SharedOptionParseResult::NotMatched:
-                usage();
-                return false;
+                case ilc::SharedOptionParseResult::Parsed:
+                    continue;
+                case ilc::SharedOptionParseResult::Error:
+                    usage();
+                    return false;
+                case ilc::SharedOptionParseResult::NotMatched:
+                    usage();
+                    return false;
             }
         }
     }

@@ -12,5 +12,4 @@ struct Function;
 struct BasicBlock;
 struct Instr;
 struct Value;
-}
-
+} // namespace il::core

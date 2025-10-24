@@ -40,4 +40,3 @@ std::string mangleMethod(std::string_view klass, std::string_view method);
 
 
 } // namespace il::frontends::basic
-

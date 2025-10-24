@@ -18,14 +18,14 @@ namespace il::verify::detail
 /// @brief Ensures an instruction's operands satisfy the metadata type requirements.
 class OperandTypeChecker
 {
-public:
+  public:
     OperandTypeChecker(const VerifyCtx &ctx, const il::core::OpcodeInfo &info);
 
     /// @brief Validates operand types described by opcode metadata.
     /// @return Empty on success or a populated diagnostic on failure.
     il::support::Expected<void> run() const;
 
-private:
+  private:
     il::support::Expected<void> report(std::string_view message) const;
 
     const VerifyCtx &ctx_;
@@ -33,4 +33,3 @@ private:
 };
 
 } // namespace il::verify::detail
-

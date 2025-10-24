@@ -8,17 +8,17 @@
 // Links: docs/codemap.md
 #pragma once
 
-#include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/AST.hpp"
+#include "frontends/basic/SemanticAnalyzer.hpp"
 
 #include <cstddef>
 #include <string>
 #include <string_view>
 
-#include "frontends/basic/SemanticAnalyzer.Stmts.Shared.hpp"
 #include "frontends/basic/SemanticAnalyzer.Stmts.Control.hpp"
 #include "frontends/basic/SemanticAnalyzer.Stmts.IO.hpp"
 #include "frontends/basic/SemanticAnalyzer.Stmts.Runtime.hpp"
+#include "frontends/basic/SemanticAnalyzer.Stmts.Shared.hpp"
 
 namespace il::frontends::basic::sem
 {
@@ -38,8 +38,7 @@ struct ExprRule
                                       SemanticAnalyzer::Type,
                                       SemanticAnalyzer::Type,
                                       std::string_view);
-    using ResultTypeFn = SemanticAnalyzer::Type (*)(SemanticAnalyzer::Type,
-                                                    SemanticAnalyzer::Type);
+    using ResultTypeFn = SemanticAnalyzer::Type (*)(SemanticAnalyzer::Type, SemanticAnalyzer::Type);
 
     BinaryExpr::Op op;
     OperandValidator validator;

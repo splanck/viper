@@ -201,9 +201,10 @@ StmtPtr Parser::parseExitStatement()
     else
     {
         Token unexpected = peek();
-        il::support::SourceLoc diagLoc = unexpected.kind == TokenKind::EndOfFile ? loc : unexpected.loc;
-        uint32_t length = unexpected.lexeme.empty() ? 1u
-                                                    : static_cast<uint32_t>(unexpected.lexeme.size());
+        il::support::SourceLoc diagLoc =
+            unexpected.kind == TokenKind::EndOfFile ? loc : unexpected.loc;
+        uint32_t length =
+            unexpected.lexeme.empty() ? 1u : static_cast<uint32_t>(unexpected.lexeme.size());
         if (emitter_)
         {
             emitter_->emit(il::support::Severity::Error,
@@ -228,4 +229,3 @@ StmtPtr Parser::parseExitStatement()
 }
 
 } // namespace il::frontends::basic
-

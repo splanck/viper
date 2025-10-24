@@ -5,11 +5,12 @@
 // Links: docs/codemap.md
 #pragma once
 
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
     struct rt_string_impl;
@@ -204,4 +205,3 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif
-

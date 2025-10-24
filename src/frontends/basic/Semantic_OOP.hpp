@@ -33,14 +33,14 @@ struct ClassInfo
     /// @brief Field metadata copied from the CLASS definition.
     struct FieldInfo
     {
-        std::string name; ///< Declared field name.
+        std::string name;      ///< Declared field name.
         Type type = Type::I64; ///< Declared field type.
     };
 
-    std::string name; ///< Class identifier.
-    std::vector<FieldInfo> fields; ///< Ordered field declarations.
-    bool hasConstructor = false; ///< True if CLASS declares a constructor.
-    bool hasDestructor = false; ///< True if CLASS declares a destructor.
+    std::string name;                                   ///< Class identifier.
+    std::vector<FieldInfo> fields;                      ///< Ordered field declarations.
+    bool hasConstructor = false;                        ///< True if CLASS declares a constructor.
+    bool hasDestructor = false;                         ///< True if CLASS declares a destructor.
     std::unordered_map<std::string, MethodSig> methods; ///< Declared methods indexed by name.
 };
 
@@ -51,13 +51,22 @@ class OopIndex
     using ClassTable = std::unordered_map<std::string, ClassInfo>;
 
     /// @brief Access the mutable class table.
-    [[nodiscard]] ClassTable &classes() noexcept { return classes_; }
+    [[nodiscard]] ClassTable &classes() noexcept
+    {
+        return classes_;
+    }
 
     /// @brief Access the immutable class table.
-    [[nodiscard]] const ClassTable &classes() const noexcept { return classes_; }
+    [[nodiscard]] const ClassTable &classes() const noexcept
+    {
+        return classes_;
+    }
 
     /// @brief Remove all indexed classes.
-    void clear() noexcept { classes_.clear(); }
+    void clear() noexcept
+    {
+        classes_.clear();
+    }
 
     /// @brief Find a class by name.
     [[nodiscard]] ClassInfo *findClass(const std::string &name);
@@ -73,5 +82,3 @@ class OopIndex
 void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *emitter);
 
 } // namespace il::frontends::basic
-
-

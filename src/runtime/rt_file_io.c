@@ -1,8 +1,8 @@
 // File: src/runtime/rt_file_io.c
 // Purpose: Provide POSIX-backed file I/O helpers for the BASIC runtime.
 // Key invariants: Operations never leave RtFile handles in an indeterminate state on failure.
-// Ownership/Lifetime: Callers own RtFile structures and release heap allocations via runtime helpers.
-// Links: docs/specs/errors.md
+// Ownership/Lifetime: Callers own RtFile structures and release heap allocations via runtime
+// helpers. Links: docs/specs/errors.md
 
 #include "rt_file.h"
 
@@ -33,10 +33,10 @@ static enum Err rt_file_err_from_errno(int err, enum Err fallback)
         return fallback;
     switch (err)
     {
-    case ENOENT:
-        return Err_FileNotFound;
-    default:
-        return fallback;
+        case ENOENT:
+            return Err_FileNotFound;
+        default:
+            return fallback;
     }
 }
 
@@ -389,4 +389,3 @@ bool rt_file_write(RtFile *file, const uint8_t *data, size_t len, RtError *out_e
     rt_file_set_ok(out_err);
     return true;
 }
-

@@ -11,7 +11,8 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
     /// @brief Helper returning the heap header associated with @p payload.
@@ -20,11 +21,11 @@ extern "C" {
     rt_heap_hdr_t *rt_arr_i32_hdr(const int32_t *payload);
 
 #if defined(__cplusplus)
-#    define RT_ARR_NORETURN [[noreturn]]
+#define RT_ARR_NORETURN [[noreturn]]
 #elif defined(_MSC_VER)
-#    define RT_ARR_NORETURN __declspec(noreturn)
+#define RT_ARR_NORETURN __declspec(noreturn)
 #else
-#    define RT_ARR_NORETURN __attribute__((noreturn))
+#define RT_ARR_NORETURN __attribute__((noreturn))
 #endif
 
     /// @brief Allocate a new dynamic array of 32-bit integers.
@@ -78,4 +79,3 @@ extern "C" {
 #endif
 
 #undef RT_ARR_NORETURN
-

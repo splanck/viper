@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/basic/Parser.hpp"
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
+#include "frontends/basic/Parser.hpp"
 
 #include <cstdio>
 #include <cstdlib>

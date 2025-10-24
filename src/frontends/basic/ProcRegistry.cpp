@@ -109,10 +109,8 @@ void ProcRegistry::registerProcImpl(std::string_view name,
 ///          before delegating to @ref registerProcImpl.
 void ProcRegistry::registerProc(const FunctionDecl &f)
 {
-    const ProcDescriptor descriptor{ProcSignature::Kind::Function,
-                                    f.ret,
-                                    std::span<const Param>{f.params},
-                                    f.loc};
+    const ProcDescriptor descriptor{
+        ProcSignature::Kind::Function, f.ret, std::span<const Param>{f.params}, f.loc};
     registerProcImpl(f.name, descriptor, f.loc);
 }
 
@@ -121,10 +119,8 @@ void ProcRegistry::registerProc(const FunctionDecl &f)
 ///          void return type.
 void ProcRegistry::registerProc(const SubDecl &s)
 {
-    const ProcDescriptor descriptor{ProcSignature::Kind::Sub,
-                                    std::nullopt,
-                                    std::span<const Param>{s.params},
-                                    s.loc};
+    const ProcDescriptor descriptor{
+        ProcSignature::Kind::Sub, std::nullopt, std::span<const Param>{s.params}, s.loc};
     registerProcImpl(s.name, descriptor, s.loc);
 }
 

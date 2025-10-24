@@ -26,12 +26,12 @@
 
 #include <sstream>
 
+using il::core::kindToString;
+using il::core::TypeCategory;
 using il::support::Expected;
 using il::support::makeError;
 using il::verify::detail::fitsInIntegerKind;
 using il::verify::detail::kindFromCategory;
-using il::core::TypeCategory;
-using il::core::kindToString;
 
 namespace il::verify::detail
 {
@@ -58,10 +58,12 @@ Expected<void> OperandTypeChecker::run() const
 {
     const auto &instr = ctx_.instr;
 
-    for (size_t index = 0; index < instr.operands.size() && index < info_.operandTypes.size(); ++index)
+    for (size_t index = 0; index < instr.operands.size() && index < info_.operandTypes.size();
+         ++index)
     {
         const TypeCategory category = info_.operandTypes[index];
-        if (category == TypeCategory::None || category == TypeCategory::Any || category == TypeCategory::Dynamic)
+        if (category == TypeCategory::None || category == TypeCategory::Any ||
+            category == TypeCategory::Dynamic)
             continue;
 
         il::core::Type::Kind expectedKind;
@@ -145,8 +147,8 @@ Expected<void> OperandTypeChecker::run() const
 /// @return Expected containing the emitted diagnostic for chaining.
 Expected<void> OperandTypeChecker::report(std::string_view message) const
 {
-    return Expected<void>{makeError(ctx_.instr.loc, formatInstrDiag(ctx_.fn, ctx_.block, ctx_.instr, message))};
+    return Expected<void>{
+        makeError(ctx_.instr.loc, formatInstrDiag(ctx_.fn, ctx_.block, ctx_.instr, message))};
 }
 
 } // namespace il::verify::detail
-

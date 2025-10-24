@@ -68,10 +68,10 @@ class AnalysisCacheInvalidator
 
     /// @brief Invalidate function-scoped analyses for a specific function.
     ///
-    /// Behaviour mirrors @ref AnalysisCacheInvalidator::afterModulePass but operates on the per-function
-    /// caches.  When only a subset of analyses are preserved, the routine walks
-    /// each cache entry and removes the stale data for @p fn.  Empty analysis
-    /// maps are pruned to keep the cache compact.
+    /// Behaviour mirrors @ref AnalysisCacheInvalidator::afterModulePass but operates on the
+    /// per-function caches.  When only a subset of analyses are preserved, the routine walks each
+    /// cache entry and removes the stale data for @p fn.  Empty analysis maps are pruned to keep
+    /// the cache compact.
     ///
     /// @param fn Function whose cached analyses should be reviewed.
     void afterFunctionPass(core::Function &fn)
@@ -137,10 +137,10 @@ void AnalysisManager::invalidateAfterModulePass(const PreservedAnalyses &preserv
 ///
 /// @param preserved Summary of analyses that remain valid.
 /// @param fn Function whose cached analyses should be pruned.
-void AnalysisManager::invalidateAfterFunctionPass(const PreservedAnalyses &preserved, core::Function &fn)
+void AnalysisManager::invalidateAfterFunctionPass(const PreservedAnalyses &preserved,
+                                                  core::Function &fn)
 {
     AnalysisCacheInvalidator(*this, preserved).afterFunctionPass(fn);
 }
 
 } // namespace il::transform
-

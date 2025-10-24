@@ -6,19 +6,19 @@
 // Links: docs/il-guide.md#reference
 #pragma once
 
+#include "il/core/Opcode.hpp"
+#include "il/core/fwd.hpp"
+#include "rt.hpp"
+#include "support/source_location.hpp"
 #include "vm/Debug.hpp"
-#include "vm/VMConfig.hpp"
-#include "vm/control_flow.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/Trace.hpp"
 #include "vm/Trap.hpp"
-#include "support/source_location.hpp"
-#include <exception>
-#include "il/core/fwd.hpp"
-#include "il/core/Opcode.hpp"
-#include "rt.hpp"
+#include "vm/VMConfig.hpp"
+#include "vm/control_flow.hpp"
 #include <array>
 #include <cstdint>
+#include <exception>
 #include <memory>
 #include <optional>
 #include <string>
@@ -30,9 +30,11 @@ namespace il::vm
 {
 
 class VMContext;
+
 namespace detail
 {
 struct VMAccess; ///< Forward declaration of helper granting opcode handlers internal access
+
 namespace ops
 {
 struct OperandDispatcher; ///< Forward declaration of operand evaluation helper
@@ -126,7 +128,7 @@ class VM
         Threaded, ///< Use computed goto threaded dispatch when supported.
     };
 
-    friend class VMContext; ///< Allow context helpers access to internals
+    friend class VMContext;         ///< Allow context helpers access to internals
     friend struct detail::VMAccess; ///< Allow opcode handlers to access internals via helper
     friend class detail::FnTableDispatchDriver;
     friend class detail::SwitchDispatchDriver;
@@ -209,16 +211,16 @@ class VM
     /// @brief Last trap recorded by the VM for diagnostic reporting.
     struct TrapState
     {
-        VmError error{};    ///< Structured error payload
-        FrameInfo frame{};  ///< Captured frame metadata
+        VmError error{};     ///< Structured error payload
+        FrameInfo frame{};   ///< Captured frame metadata
         std::string message; ///< Formatted diagnostic message
     };
 
     struct TrapToken
     {
-        VmError error{};        ///< Stored error payload for trap.err construction
-        std::string message;    ///< Message associated with the token
-        bool valid = false;     ///< Whether the token contains a constructed error
+        VmError error{};     ///< Stored error payload for trap.err construction
+        std::string message; ///< Message associated with the token
+        bool valid = false;  ///< Whether the token contains a constructed error
     };
 
     /// @brief Module to execute.
@@ -245,13 +247,16 @@ class VM
 
     /// @brief Internal driver implementing the selected dispatch mechanism.
     struct DispatchDriver;
+
     struct DispatchDriverDeleter
     {
         void operator()(DispatchDriver *driver) const;
     };
+
     std::unique_ptr<DispatchDriver, DispatchDriverDeleter> dispatchDriver;
 
-    static std::unique_ptr<DispatchDriver, DispatchDriverDeleter> makeDispatchDriver(DispatchKind kind);
+    static std::unique_ptr<DispatchDriver, DispatchDriverDeleter> makeDispatchDriver(
+        DispatchKind kind);
 
     /// @brief Executed instruction count.
     /// @invariant Monotonically increases during execution.
@@ -339,7 +344,10 @@ class VM
         size_t &ip);
 
     /// @brief Update current trap context for instruction @p in.
-    void setCurrentContext(Frame &fr, const il::core::BasicBlock *bb, size_t ip, const il::core::Instr &in);
+    void setCurrentContext(Frame &fr,
+                           const il::core::BasicBlock *bb,
+                           size_t ip,
+                           const il::core::Instr &in);
 
     /// @brief Clear the active trap context.
     void clearCurrentContext();
@@ -359,13 +367,15 @@ class VM
         const il::core::BasicBlock *bb = nullptr; ///< Active basic block
         size_t ip = 0;                            ///< Instruction pointer within @p bb
         bool skipBreakOnce = false;               ///< Whether to skip next breakpoint
-        const il::core::BasicBlock *callSiteBlock = nullptr; ///< Block of the call that entered this frame
-        size_t callSiteIp = 0;                                ///< Instruction index of the call in the caller
-        il::support::SourceLoc callSiteLoc{};                 ///< Source location of the call site
-        viper::vm::SwitchCache switchCache{};                 ///< Memoized switch dispatch data for this frame
-        std::optional<Slot> pendingResult{};                  ///< Result staged by threaded interpreter
-        const il::core::Instr *currentInstr = nullptr;        ///< Instruction under execution for inline dispatch
-        bool exitRequested = false;                           ///< Whether the active loop should exit
+        const il::core::BasicBlock *callSiteBlock =
+            nullptr;                          ///< Block of the call that entered this frame
+        size_t callSiteIp = 0;                ///< Instruction index of the call in the caller
+        il::support::SourceLoc callSiteLoc{}; ///< Source location of the call site
+        viper::vm::SwitchCache switchCache{}; ///< Memoized switch dispatch data for this frame
+        std::optional<Slot> pendingResult{};  ///< Result staged by threaded interpreter
+        const il::core::Instr *currentInstr =
+            nullptr;                ///< Instruction under execution for inline dispatch
+        bool exitRequested = false; ///< Whether the active loop should exit
     };
 
     bool prepareTrap(VmError &error);

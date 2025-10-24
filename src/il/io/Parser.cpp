@@ -30,7 +30,8 @@
 
 namespace il::io::detail
 {
-il::support::Expected<void> parseModuleHeader_E(std::istream &is, std::string &line,
+il::support::Expected<void> parseModuleHeader_E(std::istream &is,
+                                                std::string &line,
                                                 ParserState &st);
 }
 

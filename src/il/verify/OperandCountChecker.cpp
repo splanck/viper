@@ -61,7 +61,8 @@ Expected<void> OperandCountChecker::run() const
     const auto &instr = ctx_.instr;
     const size_t operandCount = instr.operands.size();
     const bool variadicOperands = il::core::isVariadicOperandCount(info_.numOperandsMax);
-    if (operandCount < info_.numOperandsMin || (!variadicOperands && operandCount > info_.numOperandsMax))
+    if (operandCount < info_.numOperandsMin ||
+        (!variadicOperands && operandCount > info_.numOperandsMax))
     {
         std::ostringstream ss;
         if (info_.numOperandsMin == info_.numOperandsMax && !variadicOperands)
@@ -99,8 +100,8 @@ Expected<void> OperandCountChecker::run() const
 /// @return Expected error containing the formatted diagnostic payload.
 Expected<void> OperandCountChecker::report(std::string_view message) const
 {
-    return Expected<void>{makeError(ctx_.instr.loc, formatInstrDiag(ctx_.fn, ctx_.block, ctx_.instr, message))};
+    return Expected<void>{
+        makeError(ctx_.instr.loc, formatInstrDiag(ctx_.fn, ctx_.block, ctx_.instr, message))};
 }
 
 } // namespace il::verify::detail
-

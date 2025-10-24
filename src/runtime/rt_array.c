@@ -116,8 +116,8 @@ static void rt_arr_i32_copy_payload(int32_t *dst, const int32_t *src, size_t cou
 }
 
 static int rt_arr_i32_grow_in_place(rt_heap_hdr_t **hdr_inout,
-                                     int32_t **payload_inout,
-                                     size_t new_len)
+                                    int32_t **payload_inout,
+                                    size_t new_len)
 {
     rt_heap_hdr_t *hdr = *hdr_inout;
     size_t new_cap = new_len;
@@ -192,4 +192,3 @@ int rt_arr_i32_resize(int32_t **a_inout, size_t new_len)
     *a_inout = payload;
     return 0;
 }
-

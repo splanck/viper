@@ -44,8 +44,7 @@ void Lowerer::lowerDelete(const DeleteStmt &stmt)
     requestHelper(RuntimeFeature::ObjReleaseChk0);
     requestHelper(RuntimeFeature::ObjFree);
 
-    Value shouldDestroy =
-        emitCallRet(ilBoolTy(), "rt_obj_release_check0", {target.value});
+    Value shouldDestroy = emitCallRet(ilBoolTy(), "rt_obj_release_check0", {target.value});
 
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
@@ -86,4 +85,3 @@ void Lowerer::lowerDelete(const DeleteStmt &stmt)
 }
 
 } // namespace il::frontends::basic
-

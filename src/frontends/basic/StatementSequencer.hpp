@@ -5,8 +5,8 @@
 // Links: docs/codemap.md
 #pragma once
 
-#include "frontends/basic/ast/NodeFwd.hpp"
 #include "frontends/basic/Token.hpp"
+#include "frontends/basic/ast/NodeFwd.hpp"
 #include "support/source_location.hpp"
 #include <functional>
 #include <vector>
@@ -77,7 +77,7 @@ class StatementSequencer
     /// @brief Status returned when deciding how to handle the current line context.
     enum class LineAction
     {
-        Continue, ///< Proceed with parsing the statement body.
+        Continue,  ///< Proceed with parsing the statement body.
         Defer,     ///< Defer parsing until additional input arrives.
         Terminate, ///< Stop collection because a terminator was encountered.
     };
@@ -85,7 +85,8 @@ class StatementSequencer
     /// @brief Local state threaded through statement collection iterations.
     struct CollectionState
     {
-        SeparatorKind separatorBefore = SeparatorKind::None; ///< Separator preceding the current line.
+        SeparatorKind separatorBefore =
+            SeparatorKind::None;     ///< Separator preceding the current line.
         bool hadPendingLine = false; ///< True when a pending line label exists before processing.
         TerminatorInfo info;         ///< Populated once a terminator is observed.
     };
@@ -96,10 +97,11 @@ class StatementSequencer
                                   const TerminatorConsumer &onTerminator,
                                   CollectionState &state);
 
-    Parser &parser_;             ///< Underlying parser providing token access.
-    int pendingLine_ = -1;       ///< Deferred numeric line label for next statement.
+    Parser &parser_;                          ///< Underlying parser providing token access.
+    int pendingLine_ = -1;                    ///< Deferred numeric line label for next statement.
     il::support::SourceLoc pendingLineLoc_{}; ///< Location of the deferred line label.
-    bool deferredLineOnly_ = false; ///< True when pending line should emit label before reading new tokens.
+    bool deferredLineOnly_ =
+        false; ///< True when pending line should emit label before reading new tokens.
     SeparatorKind lastSeparator_ =
         SeparatorKind::None; ///< Treat start-of-file as neutral separator state.
 };

@@ -89,9 +89,7 @@ il::core::Value substituteValue(const il::core::Value &value,
 
 size_t lookupBlockIndex(const std::unordered_map<std::string, size_t> &labelToIndex,
                         const std::string &label);
-void enqueueSuccessor(BitVector &reachable,
-                      std::deque<size_t> &worklist,
-                      size_t successor);
+void enqueueSuccessor(BitVector &reachable, std::deque<size_t> &worklist, size_t successor);
 
 bool readDebugFlagFromEnv();
 bool hasSideEffects(const il::core::Instr &instr);
@@ -101,4 +99,3 @@ bool isEhStructuralOpcode(il::core::Opcode op);
 bool isEHSensitiveBlock(const il::core::BasicBlock &block);
 
 } // namespace il::transform::simplify_cfg
-

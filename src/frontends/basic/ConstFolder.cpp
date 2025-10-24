@@ -27,7 +27,8 @@
 #include "frontends/basic/ConstFold_Logic.hpp"
 #include "frontends/basic/ConstFold_String.hpp"
 
-extern "C" {
+extern "C"
+{
 #include "runtime/rt_format.h"
 }
 #include <array>
@@ -191,7 +192,8 @@ ExprPtr materializeConstant(const Constant &value)
         case LiteralType::Float:
         {
             auto out = std::make_unique<FloatExpr>();
-            double fv = value.numeric.isFloat ? value.numeric.f : static_cast<double>(value.numeric.i);
+            double fv =
+                value.numeric.isFloat ? value.numeric.f : static_cast<double>(value.numeric.i);
             out->value = fv;
             return out;
         }
@@ -218,7 +220,9 @@ ExprPtr materializeConstant(const Constant &value)
 /// @param lhs Left operand constant.
 /// @param rhs Right operand constant.
 /// @return Folded constant or empty optional if operands are incompatible.
-std::optional<Constant> evalNumericBinary(BinaryExpr::Op op, const Constant &lhs, const Constant &rhs)
+std::optional<Constant> evalNumericBinary(BinaryExpr::Op op,
+                                          const Constant &lhs,
+                                          const Constant &rhs)
 {
     if (!isNumeric(lhs.type) || !isNumeric(rhs.type))
         return std::nullopt;
@@ -349,8 +353,16 @@ constexpr std::array<ArithmeticRule, 11> kArithmeticRules = {{
     {BinaryExpr::Op::Div, LiteralType::Numeric, LiteralType::Numeric, false, &evalDiv},
     {BinaryExpr::Op::IDiv, LiteralType::Numeric, LiteralType::Numeric, false, &evalIDiv},
     {BinaryExpr::Op::Mod, LiteralType::Numeric, LiteralType::Numeric, false, &evalMod},
-    {BinaryExpr::Op::LogicalAndShort, LiteralType::Numeric, LiteralType::Numeric, true, &evalNumericAnd},
-    {BinaryExpr::Op::LogicalOrShort, LiteralType::Numeric, LiteralType::Numeric, true, &evalNumericOr},
+    {BinaryExpr::Op::LogicalAndShort,
+     LiteralType::Numeric,
+     LiteralType::Numeric,
+     true,
+     &evalNumericAnd},
+    {BinaryExpr::Op::LogicalOrShort,
+     LiteralType::Numeric,
+     LiteralType::Numeric,
+     true,
+     &evalNumericOr},
     {BinaryExpr::Op::LogicalAnd, LiteralType::Numeric, LiteralType::Numeric, true, &evalNumericAnd},
     {BinaryExpr::Op::LogicalOr, LiteralType::Numeric, LiteralType::Numeric, true, &evalNumericOr},
     {BinaryExpr::Op::Add, LiteralType::String, LiteralType::String, false, &evalStringConcat},
@@ -367,7 +379,9 @@ struct ArithmeticMatch
 /// @param lhs Literal type classification for the left operand.
 /// @param rhs Literal type classification for the right operand.
 /// @return Matching rule and whether operands should be swapped, or empty optional if unsupported.
-std::optional<ArithmeticMatch> findArithmeticRule(BinaryExpr::Op op, LiteralType lhs, LiteralType rhs)
+std::optional<ArithmeticMatch> findArithmeticRule(BinaryExpr::Op op,
+                                                  LiteralType lhs,
+                                                  LiteralType rhs)
 {
     for (const auto &rule : kArithmeticRules)
     {
@@ -578,7 +592,7 @@ namespace
 ///          statement without returning large structures.
 class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
 {
-public:
+  public:
     /// @brief Fold all procedures and top-level statements in a program.
     /// @param prog Program whose AST will be mutated in place.
     void run(Program &prog)
@@ -589,7 +603,7 @@ public:
             foldStmt(stmt);
     }
 
-private:
+  private:
     /// @brief Recursively fold an expression tree and update the current slot.
     /// @param expr Expression pointer reference that may be replaced with a literal.
     void foldExpr(ExprPtr &expr)
@@ -754,9 +768,7 @@ private:
         if (*raw == '\0')
             return 0.0;
 
-        auto isDigit = [](char ch) {
-            return ch >= '0' && ch <= '9';
-        };
+        auto isDigit = [](char ch) { return ch >= '0' && ch <= '9'; };
 
         if (*raw == '+' || *raw == '-')
         {
@@ -979,12 +991,16 @@ private:
     // MutExprVisitor overrides ----------------------------------------------
     /// @brief Literals are already canonical, so integer nodes are left untouched.
     void visit(IntExpr &) override {}
+
     /// @brief Floating literals require no rewriting beyond their existing value.
     void visit(FloatExpr &) override {}
+
     /// @brief String literals are already canonical and therefore skipped.
     void visit(StringExpr &) override {}
+
     /// @brief Boolean literals are already canonical and therefore skipped.
     void visit(BoolExpr &) override {}
+
     /// @brief Variable references cannot be folded directly.
     void visit(VarExpr &) override {}
 
@@ -1117,6 +1133,7 @@ private:
     // MutStmtVisitor overrides ----------------------------------------------
     /// @brief Labels carry no expressions to fold.
     void visit(LabelStmt &) override {}
+
     /// @brief Fold expressions embedded in PRINT statement items.
     void visit(PrintStmt &stmt) override
     {
@@ -1239,12 +1256,16 @@ private:
 
     /// @brief NEXT statements have no expressions to fold.
     void visit(NextStmt &) override {}
+
     /// @brief EXIT statements have no expressions to fold.
     void visit(ExitStmt &) override {}
+
     /// @brief GOTO statements have no expressions to fold.
     void visit(GotoStmt &) override {}
+
     /// @brief GOSUB statements have no expressions to fold.
     void visit(GosubStmt &) override {}
+
     /// @brief Fold OPEN statement operands such as path and channel.
     void visit(OpenStmt &stmt) override
     {
@@ -1253,12 +1274,14 @@ private:
         if (stmt.channelExpr)
             foldExpr(stmt.channelExpr);
     }
+
     /// @brief Fold channel expressions in CLOSE statements.
     void visit(CloseStmt &stmt) override
     {
         if (stmt.channelExpr)
             foldExpr(stmt.channelExpr);
     }
+
     /// @brief Fold channel and offset expressions in SEEK statements.
     void visit(SeekStmt &stmt) override
     {
@@ -1267,12 +1290,16 @@ private:
         if (stmt.positionExpr)
             foldExpr(stmt.positionExpr);
     }
+
     /// @brief ON ERROR GOTO contains no literal operands to fold.
     void visit(OnErrorGoto &) override {}
+
     /// @brief RESUME statements rely on runtime state and are left untouched.
     void visit(Resume &) override {}
+
     /// @brief END statements have no expressions to fold.
     void visit(EndStmt &) override {}
+
     /// @brief Fold prompts within INPUT statements when literal.
     void visit(InputStmt &stmt) override
     {
@@ -1289,11 +1316,13 @@ private:
         foldExpr(stmt.channelExpr);
         foldExpr(stmt.targetVar);
     }
+
     /// @brief RETURN statements are control-only and do not fold expressions.
     void visit(ReturnStmt &) override {}
 
     /// @brief FUNCTION declarations are processed elsewhere; nothing to fold here.
     void visit(FunctionDecl &) override {}
+
     /// @brief SUB declarations are processed elsewhere; nothing to fold here.
     void visit(SubDecl &) override {}
 

@@ -61,7 +61,8 @@ VM::ExecResult handleAlloca(VM &vm,
     (void)ip;
     if (in.operands.empty())
     {
-        RuntimeBridge::trap(TrapKind::DomainError, "missing allocation size", in.loc, fr.func->name, "");
+        RuntimeBridge::trap(
+            TrapKind::DomainError, "missing allocation size", in.loc, fr.func->name, "");
         VM::ExecResult result{};
         result.returned = true;
         return result;
@@ -70,7 +71,8 @@ VM::ExecResult handleAlloca(VM &vm,
     int64_t bytes = VMAccess::eval(vm, fr, in.operands[0]).i64;
     if (bytes < 0)
     {
-        RuntimeBridge::trap(TrapKind::DomainError, "negative allocation", in.loc, fr.func->name, "");
+        RuntimeBridge::trap(
+            TrapKind::DomainError, "negative allocation", in.loc, fr.func->name, "");
         VM::ExecResult result{};
         result.returned = true;
         return result;
@@ -83,7 +85,8 @@ VM::ExecResult handleAlloca(VM &vm,
 
     auto trapOverflow = [&]() -> VM::ExecResult
     {
-        RuntimeBridge::trap(TrapKind::Overflow, "stack overflow in alloca", in.loc, fr.func->name, "");
+        RuntimeBridge::trap(
+            TrapKind::Overflow, "stack overflow in alloca", in.loc, fr.func->name, "");
         VM::ExecResult result{};
         result.returned = true;
         return result;

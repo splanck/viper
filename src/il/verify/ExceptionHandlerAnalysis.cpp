@@ -117,8 +117,8 @@ std::string encodeStateKey(const std::vector<const BasicBlock *> &stack, bool ha
 /// @param terminator Instruction whose successors are required.
 /// @param blockMap Lookup table resolving block labels to definitions.
 /// @return Vector of successor block pointers.
-std::vector<const BasicBlock *> gatherSuccessors(const Instr &terminator,
-                                                const std::unordered_map<std::string, const BasicBlock *> &blockMap)
+std::vector<const BasicBlock *> gatherSuccessors(
+    const Instr &terminator, const std::unordered_map<std::string, const BasicBlock *> &blockMap)
 {
     std::vector<const BasicBlock *> successors;
     switch (terminator.op)
@@ -251,8 +251,8 @@ Expected<std::optional<HandlerSignature>> analyzeHandlerBlock(const Function &fn
 /// @param fn Function whose EH structure is being validated.
 /// @param blockMap Map used to resolve block labels during traversal.
 /// @return Empty success or a structured diagnostic on failure.
-Expected<void> checkEhStackBalance(const Function &fn,
-                                   const std::unordered_map<std::string, const BasicBlock *> &blockMap)
+Expected<void> checkEhStackBalance(
+    const Function &fn, const std::unordered_map<std::string, const BasicBlock *> &blockMap)
 {
     if (fn.blocks.empty())
         return {};
@@ -300,8 +300,8 @@ Expected<void> checkEhStackBalance(const Function &fn,
                                         instr,
                                         std::string("eh.pop without matching eh.push; path: ") +
                                             formatPathString(path));
-                    return Expected<void>{makeVerifierError(
-                        VerifyDiagCode::EhStackUnderflow, instr.loc, message)};
+                    return Expected<void>{
+                        makeVerifierError(VerifyDiagCode::EhStackUnderflow, instr.loc, message)};
                 }
                 handlerStack.pop_back();
             }
@@ -347,8 +347,8 @@ Expected<void> checkEhStackBalance(const Function &fn,
                                 *terminator,
                                 std::string("unmatched eh.push depth ") + std::to_string(depth) +
                                     "; path: " + formatPathString(path));
-            return Expected<void>{makeVerifierError(
-                VerifyDiagCode::EhStackLeak, terminator->loc, message)};
+            return Expected<void>{
+                makeVerifierError(VerifyDiagCode::EhStackLeak, terminator->loc, message)};
         }
 
         if (terminator->op == Opcode::Trap || terminator->op == Opcode::TrapFromErr)
@@ -392,7 +392,8 @@ Expected<void> checkEhStackBalance(const Function &fn,
                 nextState.hasResumeToken = hasResumeToken;
             }
 
-            const std::string key = encodeStateKey(nextState.handlerStack, nextState.hasResumeToken);
+            const std::string key =
+                encodeStateKey(nextState.handlerStack, nextState.hasResumeToken);
             if (!visited[succ].insert(key).second)
                 continue;
             const int nextIndex = static_cast<int>(states.size());

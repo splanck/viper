@@ -9,22 +9,23 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
     /// @brief Canonical runtime error codes surfaced by runtime helpers.
     enum Err
     {
-        Err_None = 0,            ///< Success.
-        Err_FileNotFound = 1,    ///< File could not be located.
-        Err_EOF = 2,             ///< Reached end of input.
-        Err_IOError = 3,         ///< Generic input/output failure.
-        Err_Overflow = 4,        ///< Numeric overflow or underflow occurred.
-        Err_InvalidCast = 5,     ///< Requested cast is invalid.
-        Err_DomainError = 6,     ///< Input outside valid domain.
-        Err_Bounds = 7,          ///< Bounds check failed.
-        Err_InvalidOperation = 8,///< Operation unsupported in current state.
-        Err_RuntimeError = 9     ///< Unclassified runtime error.
+        Err_None = 0,             ///< Success.
+        Err_FileNotFound = 1,     ///< File could not be located.
+        Err_EOF = 2,              ///< Reached end of input.
+        Err_IOError = 3,          ///< Generic input/output failure.
+        Err_Overflow = 4,         ///< Numeric overflow or underflow occurred.
+        Err_InvalidCast = 5,      ///< Requested cast is invalid.
+        Err_DomainError = 6,      ///< Input outside valid domain.
+        Err_Bounds = 7,           ///< Bounds check failed.
+        Err_InvalidOperation = 8, ///< Operation unsupported in current state.
+        Err_RuntimeError = 9      ///< Unclassified runtime error.
     };
 
     /// @brief Structured runtime error record propagated via out-parameters.

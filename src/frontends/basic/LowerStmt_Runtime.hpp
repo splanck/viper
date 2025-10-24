@@ -13,19 +13,12 @@
 #include <string_view>
 
 void lowerLet(const LetStmt &stmt);
-void assignScalarSlot(const SlotType &slotInfo,
-                      Value slot,
-                      RVal value,
-                      il::support::SourceLoc loc);
-void assignArrayElement(const ArrayExpr &target,
-                        RVal value,
-                        il::support::SourceLoc loc);
+void assignScalarSlot(const SlotType &slotInfo, Value slot, RVal value, il::support::SourceLoc loc);
+void assignArrayElement(const ArrayExpr &target, RVal value, il::support::SourceLoc loc);
 void lowerDim(const DimStmt &stmt);
 void lowerReDim(const ReDimStmt &stmt);
 void lowerRandomize(const RandomizeStmt &stmt);
 void visit(const ClsStmt &stmt);
 void visit(const ColorStmt &stmt);
 void visit(const LocateStmt &stmt);
-Value emitArrayLengthCheck(Value bound,
-                          il::support::SourceLoc loc,
-                          std::string_view labelBase);
+Value emitArrayLengthCheck(Value bound, il::support::SourceLoc loc, std::string_view labelBase);

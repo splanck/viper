@@ -14,8 +14,8 @@
 
 #include "vm/OpHandlers_Float.hpp"
 
-#include "il/core/Function.hpp"
 #include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/RuntimeBridge.hpp"
@@ -63,19 +63,11 @@ constexpr double kUint64Boundary = 18446744073709551616.0; ///< 2^64, sentinel f
                                                Frame &fr,
                                                const BasicBlock *bb)
 {
-    constexpr const char *kInvalidOperandMessage =
-        "invalid fp operand in cast.fp_to_ui.rte.chk";
-    constexpr const char *kOverflowMessage =
-        "fp overflow in cast.fp_to_ui.rte.chk";
+    constexpr const char *kInvalidOperandMessage = "invalid fp operand in cast.fp_to_ui.rte.chk";
+    constexpr const char *kOverflowMessage = "fp overflow in cast.fp_to_ui.rte.chk";
 
     auto trap = [&](TrapKind kind, const char *message)
-    {
-        RuntimeBridge::trap(kind,
-                            message,
-                            in.loc,
-                            fr.func->name,
-                            bb ? bb->label : "");
-    };
+    { RuntimeBridge::trap(kind, message, in.loc, fr.func->name, bb ? bb->label : ""); };
 
     if (!std::isfinite(operand) || std::signbit(operand))
     {
@@ -129,11 +121,11 @@ constexpr double kUint64Boundary = 18446744073709551616.0; ///< 2^64, sentinel f
 /// @param ip Instruction index within @p bb (unused).
 /// @return Execution result signalling the interpreter should continue.
 VM::ExecResult handleFAdd(VM &vm,
-                                      Frame &fr,
-                                      const Instr &in,
-                                      const VM::BlockMap &blocks,
-                                      const BasicBlock *&bb,
-                                      size_t &ip)
+                          Frame &fr,
+                          const Instr &in,
+                          const VM::BlockMap &blocks,
+                          const BasicBlock *&bb,
+                          size_t &ip)
 {
     (void)blocks;
     (void)bb;
@@ -158,11 +150,11 @@ VM::ExecResult handleFAdd(VM &vm,
 /// @param ip Instruction index within @p bb (unused).
 /// @return Execution result signalling the interpreter should continue.
 VM::ExecResult handleFSub(VM &vm,
-                                      Frame &fr,
-                                      const Instr &in,
-                                      const VM::BlockMap &blocks,
-                                      const BasicBlock *&bb,
-                                      size_t &ip)
+                          Frame &fr,
+                          const Instr &in,
+                          const VM::BlockMap &blocks,
+                          const BasicBlock *&bb,
+                          size_t &ip)
 {
     (void)blocks;
     (void)bb;
@@ -188,11 +180,11 @@ VM::ExecResult handleFSub(VM &vm,
 /// @param ip Instruction index within @p bb (unused).
 /// @return Execution result signalling the interpreter should continue.
 VM::ExecResult handleFMul(VM &vm,
-                                      Frame &fr,
-                                      const Instr &in,
-                                      const VM::BlockMap &blocks,
-                                      const BasicBlock *&bb,
-                                      size_t &ip)
+                          Frame &fr,
+                          const Instr &in,
+                          const VM::BlockMap &blocks,
+                          const BasicBlock *&bb,
+                          size_t &ip)
 {
     (void)blocks;
     (void)bb;
@@ -218,11 +210,11 @@ VM::ExecResult handleFMul(VM &vm,
 /// @param ip Instruction index within @p bb (unused).
 /// @return Execution result signalling the interpreter should continue.
 VM::ExecResult handleFDiv(VM &vm,
-                                      Frame &fr,
-                                      const Instr &in,
-                                      const VM::BlockMap &blocks,
-                                      const BasicBlock *&bb,
-                                      size_t &ip)
+                          Frame &fr,
+                          const Instr &in,
+                          const VM::BlockMap &blocks,
+                          const BasicBlock *&bb,
+                          size_t &ip)
 {
     (void)blocks;
     (void)bb;
@@ -248,11 +240,11 @@ VM::ExecResult handleFDiv(VM &vm,
 /// @param ip Instruction index within @p bb (unused).
 /// @return Execution result signalling the interpreter should continue.
 VM::ExecResult handleFCmpEQ(VM &vm,
-                                        Frame &fr,
-                                        const Instr &in,
-                                        const VM::BlockMap &blocks,
-                                        const BasicBlock *&bb,
-                                        size_t &ip)
+                            Frame &fr,
+                            const Instr &in,
+                            const VM::BlockMap &blocks,
+                            const BasicBlock *&bb,
+                            size_t &ip)
 {
     (void)blocks;
     (void)bb;
@@ -278,11 +270,11 @@ VM::ExecResult handleFCmpEQ(VM &vm,
 /// @param ip Instruction index within @p bb (unused).
 /// @return Execution result signalling the interpreter should continue.
 VM::ExecResult handleFCmpNE(VM &vm,
-                                        Frame &fr,
-                                        const Instr &in,
-                                        const VM::BlockMap &blocks,
-                                        const BasicBlock *&bb,
-                                        size_t &ip)
+                            Frame &fr,
+                            const Instr &in,
+                            const VM::BlockMap &blocks,
+                            const BasicBlock *&bb,
+                            size_t &ip)
 {
     (void)blocks;
     (void)bb;
@@ -307,20 +299,17 @@ VM::ExecResult handleFCmpNE(VM &vm,
 /// @param ip Instruction index within @p bb (unused).
 /// @return Execution result signalling the interpreter should continue.
 VM::ExecResult handleFCmpGT(VM &vm,
-                                        Frame &fr,
-                                        const Instr &in,
-                                        const VM::BlockMap &blocks,
-                                        const BasicBlock *&bb,
-                                        size_t &ip)
+                            Frame &fr,
+                            const Instr &in,
+                            const VM::BlockMap &blocks,
+                            const BasicBlock *&bb,
+                            size_t &ip)
 {
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyCompare(vm,
-                             fr,
-                             in,
-                             [](const Slot &lhsVal, const Slot &rhsVal)
-                             { return lhsVal.f64 > rhsVal.f64; });
+    return ops::applyCompare(
+        vm, fr, in, [](const Slot &lhsVal, const Slot &rhsVal) { return lhsVal.f64 > rhsVal.f64; });
 }
 
 /// @brief Execute the `fcmp.lt` opcode and record whether lhs < rhs.
@@ -336,20 +325,17 @@ VM::ExecResult handleFCmpGT(VM &vm,
 /// @param ip Instruction index within @p bb (unused).
 /// @return Execution result signalling the interpreter should continue.
 VM::ExecResult handleFCmpLT(VM &vm,
-                                        Frame &fr,
-                                        const Instr &in,
-                                        const VM::BlockMap &blocks,
-                                        const BasicBlock *&bb,
-                                        size_t &ip)
+                            Frame &fr,
+                            const Instr &in,
+                            const VM::BlockMap &blocks,
+                            const BasicBlock *&bb,
+                            size_t &ip)
 {
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyCompare(vm,
-                             fr,
-                             in,
-                             [](const Slot &lhsVal, const Slot &rhsVal)
-                             { return lhsVal.f64 < rhsVal.f64; });
+    return ops::applyCompare(
+        vm, fr, in, [](const Slot &lhsVal, const Slot &rhsVal) { return lhsVal.f64 < rhsVal.f64; });
 }
 
 /// @brief Execute the `fcmp.le` opcode and record whether lhs <= rhs.
@@ -366,11 +352,11 @@ VM::ExecResult handleFCmpLT(VM &vm,
 /// @param ip Instruction index within @p bb (unused).
 /// @return Execution result signalling the interpreter should continue.
 VM::ExecResult handleFCmpLE(VM &vm,
-                                        Frame &fr,
-                                        const Instr &in,
-                                        const VM::BlockMap &blocks,
-                                        const BasicBlock *&bb,
-                                        size_t &ip)
+                            Frame &fr,
+                            const Instr &in,
+                            const VM::BlockMap &blocks,
+                            const BasicBlock *&bb,
+                            size_t &ip)
 {
     (void)blocks;
     (void)bb;
@@ -395,11 +381,11 @@ VM::ExecResult handleFCmpLE(VM &vm,
 /// @param ip Instruction index within @p bb (unused).
 /// @return Execution result signalling the interpreter should continue.
 VM::ExecResult handleFCmpGE(VM &vm,
-                                        Frame &fr,
-                                        const Instr &in,
-                                        const VM::BlockMap &blocks,
-                                        const BasicBlock *&bb,
-                                        size_t &ip)
+                            Frame &fr,
+                            const Instr &in,
+                            const VM::BlockMap &blocks,
+                            const BasicBlock *&bb,
+                            size_t &ip)
 {
     (void)blocks;
     (void)bb;
@@ -425,11 +411,11 @@ VM::ExecResult handleFCmpGE(VM &vm,
 /// @param ip Instruction index within @p bb (unused).
 /// @return Execution result signalling the interpreter should continue.
 VM::ExecResult handleSitofp(VM &vm,
-                                         Frame &fr,
-                                         const Instr &in,
-                                         const VM::BlockMap &blocks,
-                                         const BasicBlock *&bb,
-                                         size_t &ip)
+                            Frame &fr,
+                            const Instr &in,
+                            const VM::BlockMap &blocks,
+                            const BasicBlock *&bb,
+                            size_t &ip)
 {
     (void)blocks;
     (void)bb;
@@ -457,11 +443,11 @@ VM::ExecResult handleSitofp(VM &vm,
 /// @param ip Instruction index within @p bb (unused).
 /// @return Execution result signalling the interpreter should continue.
 VM::ExecResult handleFptosi(VM &vm,
-                                         Frame &fr,
-                                         const Instr &in,
-                                         const VM::BlockMap &blocks,
-                                         const BasicBlock *&bb,
-                                         size_t &ip)
+                            Frame &fr,
+                            const Instr &in,
+                            const VM::BlockMap &blocks,
+                            const BasicBlock *&bb,
+                            size_t &ip)
 {
     (void)blocks;
     (void)bb;
@@ -491,11 +477,11 @@ VM::ExecResult handleFptosi(VM &vm,
 /// @param ip Instruction index within @p bb (unused).
 /// @return Execution result signalling the interpreter should continue when no trap fires.
 VM::ExecResult handleCastFpToSiRteChk(VM &vm,
-                                                  Frame &fr,
-                                                  const Instr &in,
-                                                  const VM::BlockMap &blocks,
-                                                  const BasicBlock *&bb,
-                                                  size_t &ip)
+                                      Frame &fr,
+                                      const Instr &in,
+                                      const VM::BlockMap &blocks,
+                                      const BasicBlock *&bb,
+                                      size_t &ip)
 {
     (void)blocks;
     (void)ip;
@@ -553,11 +539,11 @@ VM::ExecResult handleCastFpToSiRteChk(VM &vm,
 /// @param ip Instruction index within @p bb (unused).
 /// @return Execution result signalling the interpreter should continue when no trap fires.
 VM::ExecResult handleCastFpToUiRteChk(VM &vm,
-                                                  Frame &fr,
-                                                  const Instr &in,
-                                                  const VM::BlockMap &blocks,
-                                                  const BasicBlock *&bb,
-                                                  size_t &ip)
+                                      Frame &fr,
+                                      const Instr &in,
+                                      const VM::BlockMap &blocks,
+                                      const BasicBlock *&bb,
+                                      size_t &ip)
 {
     (void)blocks;
     (void)ip;
@@ -571,4 +557,3 @@ VM::ExecResult handleCastFpToUiRteChk(VM &vm,
 }
 
 } // namespace il::vm::detail::floating
-

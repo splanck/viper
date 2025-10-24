@@ -12,13 +12,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "vm/VM.hpp"
-#include "vm/OpHandlerUtils.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "support/source_manager.hpp"
 #include "vm/DebugScript.hpp"
+#include "vm/OpHandlerUtils.hpp"
+#include "vm/VM.hpp"
 
 #include <cassert>
 #include <filesystem>
@@ -53,13 +53,8 @@ void VM::transferBlockParams(Frame &fr, const BasicBlock &bb)
         pseudo.result = p.id;
         pseudo.type = p.type;
         detail::ops::storeResult(fr, pseudo, *pending);
-        debug.onStore(p.name,
-                      p.type.kind,
-                      fr.regs[p.id].i64,
-                      fr.regs[p.id].f64,
-                      fr.func->name,
-                      bb.label,
-                      0);
+        debug.onStore(
+            p.name, p.type.kind, fr.regs[p.id].i64, fr.regs[p.id].f64, fr.func->name, bb.label, 0);
         if (p.type.kind == Type::Kind::Str)
             rt_str_release_maybe(pending->str);
         pending.reset();
@@ -113,8 +108,7 @@ std::optional<Slot> VM::handleDebugBreak(
             if (in->loc.hasColumn())
                 std::cerr << ':' << in->loc.column;
         }
-        std::cerr << " fn=@" << fr.func->name << " blk=" << bb.label << " ip=#" << ip
-                  << "\n";
+        std::cerr << " fn=@" << fr.func->name << " blk=" << bb.label << " ip=#" << ip << "\n";
         Slot s{};
         s.i64 = 10;
         return s;
@@ -177,4 +171,3 @@ std::optional<Slot> VM::processDebugControl(ExecState &st, const Instr *in, bool
 }
 
 } // namespace il::vm
-

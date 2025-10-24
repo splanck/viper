@@ -6,9 +6,9 @@
 #pragma once
 
 #include "vm/OpHandlerAccess.hpp"
-#include "vm/VM.hpp"
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/RuntimeBridge.hpp"
+#include "vm/VM.hpp"
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -133,12 +133,12 @@ inline void storeSlotToPtr(il::core::Type::Kind kind, void *ptr, const Slot &val
 } // namespace inline_impl
 
 inline VM::ExecResult handleLoadImpl(VM &vm,
-                                    ExecState *state,
-                                    Frame &fr,
-                                    const il::core::Instr &in,
-                                    const VM::BlockMap &blocks,
-                                    const il::core::BasicBlock *&bb,
-                                    size_t &ip)
+                                     ExecState *state,
+                                     Frame &fr,
+                                     const il::core::Instr &in,
+                                     const VM::BlockMap &blocks,
+                                     const il::core::BasicBlock *&bb,
+                                     size_t &ip)
 {
     (void)state;
     (void)blocks;
@@ -178,12 +178,12 @@ inline VM::ExecResult handleLoadImpl(VM &vm,
 }
 
 inline VM::ExecResult handleStoreImpl(VM &vm,
-                                     ExecState *state,
-                                     Frame &fr,
-                                     const il::core::Instr &in,
-                                     const VM::BlockMap &blocks,
-                                     const il::core::BasicBlock *&bb,
-                                     size_t &ip)
+                                      ExecState *state,
+                                      Frame &fr,
+                                      const il::core::Instr &in,
+                                      const VM::BlockMap &blocks,
+                                      const il::core::BasicBlock *&bb,
+                                      size_t &ip)
 {
     (void)state;
     (void)blocks;
@@ -228,15 +228,12 @@ inline VM::ExecResult handleStoreImpl(VM &vm,
             const std::string &name = fr.func->valueNames[id];
             if (!name.empty())
             {
-                const std::string_view fnView = fr.func ? std::string_view(fr.func->name) : std::string_view{};
-                const std::string_view blockView = bb ? std::string_view(bb->label) : std::string_view{};
-                VMAccess::debug(vm).onStore(name,
-                                            in.type.kind,
-                                            value.i64,
-                                            value.f64,
-                                            fnView,
-                                            blockView,
-                                            ip);
+                const std::string_view fnView =
+                    fr.func ? std::string_view(fr.func->name) : std::string_view{};
+                const std::string_view blockView =
+                    bb ? std::string_view(bb->label) : std::string_view{};
+                VMAccess::debug(vm).onStore(
+                    name, in.type.kind, value.i64, value.f64, fnView, blockView, ip);
             }
         }
     }
@@ -294,4 +291,3 @@ VM::ExecResult handleConstNull(VM &vm,
                                size_t &ip);
 
 } // namespace il::vm::detail::memory
-

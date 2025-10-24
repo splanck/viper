@@ -23,17 +23,18 @@
 
 #include <unordered_map>
 
-namespace viper::codegen::x64 {
+namespace viper::codegen::x64
+{
 
 /// \brief Result of a linear-scan allocation.
-struct AllocationResult {
-  std::unordered_map<uint16_t, PhysReg> vregToPhys; ///< Final vreg → phys mapping.
-  int spillSlotsGPR{0};                             ///< Number of 8-byte GPR spill slots.
-  int spillSlotsXMM{0};                             ///< Number of 8-byte XMM spill slots.
+struct AllocationResult
+{
+    std::unordered_map<uint16_t, PhysReg> vregToPhys; ///< Final vreg → phys mapping.
+    int spillSlotsGPR{0};                             ///< Number of 8-byte GPR spill slots.
+    int spillSlotsXMM{0};                             ///< Number of 8-byte XMM spill slots.
 };
 
 /// \brief Allocate registers for \p func using a basic linear-scan strategy.
-[[nodiscard]] AllocationResult allocate(MFunction& func, const TargetInfo& target);
+[[nodiscard]] AllocationResult allocate(MFunction &func, const TargetInfo &target);
 
 } // namespace viper::codegen::x64
-
