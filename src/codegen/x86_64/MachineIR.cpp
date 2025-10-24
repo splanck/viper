@@ -50,6 +50,18 @@ namespace
             return "ADDri";
         case MOpcode::SUBrr:
             return "SUBrr";
+        case MOpcode::SHLri:
+            return "SHLri";
+        case MOpcode::SHLrc:
+            return "SHLrc";
+        case MOpcode::SHRri:
+            return "SHRri";
+        case MOpcode::SHRrc:
+            return "SHRrc";
+        case MOpcode::SARri:
+            return "SARri";
+        case MOpcode::SARrc:
+            return "SARrc";
         case MOpcode::IMULrr:
             return "IMULrr";
         case MOpcode::DIVS64rr:
