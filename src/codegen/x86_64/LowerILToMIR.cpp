@@ -1,15 +1,22 @@
-// src/codegen/x86_64/LowerILToMIR.cpp
-// SPDX-License-Identifier: MIT
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Define the IL→MIR adapter that translates provisional IL structures
-//          into Machine IR for the x86-64 backend.
-// Invariants: Each IL SSA id is mapped to a unique virtual register and block
-//             parameter edges emit PX_COPY pairs. Lowering presently covers a
-//             minimal opcode subset required for Phase A prototyping.
-// Ownership: The adapter borrows IL input objects, materialises MIR by value,
-//            and records call plans for later consumption by call lowering.
-// Notes: Semantics of several instructions are placeholders awaiting full IL
-//        integration; TODO markers highlight follow-up work.
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+// File: src/codegen/x86_64/LowerILToMIR.cpp
+// Purpose: Translate IL functions into the Machine IR representation consumed by
+//          the x86-64 backend while recording auxiliary call lowering plans.
+// Key invariants: Each IL SSA identifier maps to a single virtual register of a
+//                 fixed class, block parameters become PX_COPY pairs on outgoing
+//                 edges, and label operands are preserved verbatim.
+// Ownership/Lifetime: Lowering borrows IL structures, constructs Machine IR by
+//                     value, and caches call plan metadata scoped to the current
+//                     function.
+// Perf/Threading notes: Designed for single-threaded compilation passes; no
+//                       shared global state is mutated.
+// Links: docs/architecture.md#codegen, docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "LowerILToMIR.hpp"
 
@@ -21,19 +28,32 @@ namespace viper::codegen::x64
 
 namespace
 {
+/// @brief Create a shallow copy of a Machine IR operand.
+/// @details Machine IR operands are lightweight value types so copying preserves
+///          all metadata.  Lowering frequently needs duplicate operands when
+///          emitting multi-instruction sequences (for example MOV followed by ADD).
 [[nodiscard]] Operand cloneOperand(const Operand &operand)
 {
     return operand;
 }
 } // namespace
 
+/// @brief Construct the lowering adapter with the target description.
+/// @details Stores a pointer to @p target so lowering steps can reference calling
+///          convention details without copying the descriptor.
 LowerILToMIR::LowerILToMIR(const TargetInfo &target) noexcept : target_{&target} {}
 
+/// @brief Retrieve the call-lowering plans accumulated during the last lowering run.
+/// @details The returned reference remains valid until the adapter lowers another
+///          function, at which point the plans are reset.
 const std::vector<CallLoweringPlan> &LowerILToMIR::callPlans() const noexcept
 {
     return callPlans_;
 }
 
+/// @brief Clear per-function state prior to lowering a new IL function.
+/// @details Resets the virtual register counter, clears SSA-to-register maps, and
+///          discards any previously recorded call-lowering metadata.
 void LowerILToMIR::resetFunctionState()
 {
     nextVReg_ = 1U;
@@ -42,6 +62,10 @@ void LowerILToMIR::resetFunctionState()
     callPlans_.clear();
 }
 
+/// @brief Map an IL value kind to a Machine IR register class.
+/// @details Label values reuse the general-purpose register class because they are
+///          lowered to addresses.  The default case returns GPR to keep the function
+///          total even when new kinds are introduced.
 RegClass LowerILToMIR::regClassFor(ILValue::Kind kind) noexcept
 {
     switch (kind)
@@ -58,6 +82,9 @@ RegClass LowerILToMIR::regClassFor(ILValue::Kind kind) noexcept
     return RegClass::GPR;
 }
 
+/// @brief Ensure the specified SSA id owns a Machine IR virtual register.
+/// @details Creates a new @ref VReg on first use and verifies subsequent accesses use
+///          the same register class.
 VReg LowerILToMIR::ensureVReg(int id, ILValue::Kind kind)
 {
     assert(id >= 0 && "SSA value without identifier");
@@ -72,11 +99,19 @@ VReg LowerILToMIR::ensureVReg(int id, ILValue::Kind kind)
     return vreg;
 }
 
+/// @brief Check whether an IL value is encoded as an immediate constant.
+/// @details Immediate values carry negative identifiers; all non-negative ids refer
+///          to SSA values and must be mapped to virtual registers.
 bool LowerILToMIR::isImmediate(const ILValue &value) const noexcept
 {
     return value.id < 0;
 }
 
+/// @brief Convert an IL value into a Machine IR operand for the given block.
+/// @details Produces label, immediate, or register operands depending on the IL kind.
+///          When a virtual register is required the helper calls @ref ensureVReg.  A
+///          placeholder conversion is used for f64 immediates until a constant pool
+///          exists.
 Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &value, RegClass cls)
 {
     (void)block;
@@ -111,12 +146,18 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
     return makeImmOperand(0);
 }
 
+/// @brief Form a Machine IR label operand from an IL label value.
+/// @details Validates that the input is a label and forwards its name to the Machine
+///          IR factory.
 Operand LowerILToMIR::makeLabelOperand(const ILValue &value) const
 {
     assert(value.kind == ILValue::Kind::LABEL && "label operand expected");
     return x64::makeLabelOperand(value.label);
 }
 
+/// @brief Lower a binary arithmetic IL instruction into Machine IR.
+/// @details Emits a MOV to seed the destination virtual register followed by either
+///          the register-register opcode or its immediate variant when available.
 void LowerILToMIR::lowerBinary(
     const ILInstr &instr, MBasicBlock &block, MOpcode opcRR, MOpcode opcRI, RegClass cls)
 {
@@ -149,6 +190,10 @@ void LowerILToMIR::lowerBinary(
     }
 }
 
+/// @brief Lower a comparison instruction and optional boolean result.
+/// @details Emits the compare opcode appropriate for the register class and, when
+///          the IL instruction defines a result, zero-initialises the destination and
+///          applies SETcc to materialise a 0/1 flag.
 void LowerILToMIR::lowerCmp(const ILInstr &instr, MBasicBlock &block, RegClass cls)
 {
     if (instr.ops.size() < 2)
@@ -179,6 +224,10 @@ void LowerILToMIR::lowerCmp(const ILInstr &instr, MBasicBlock &block, RegClass c
     }
 }
 
+/// @brief Lower a ternary select into MOV/CMOV style sequences.
+/// @details Handles general-purpose and floating-point cases, materialising
+///          immediates into temporaries when required and emitting placeholder logic
+///          for floating-point paths until richer instruction selection lands.
 void LowerILToMIR::lowerSelect(const ILInstr &instr, MBasicBlock &block)
 {
     if (instr.resultId < 0 || instr.ops.size() < 3)
@@ -234,6 +283,7 @@ void LowerILToMIR::lowerSelect(const ILInstr &instr, MBasicBlock &block)
     (void)trueVal;
 }
 
+/// @brief Lower an unconditional IL branch to a Machine IR jump.
 void LowerILToMIR::lowerBranch(const ILInstr &instr, MBasicBlock &block)
 {
     if (instr.ops.empty())
@@ -243,6 +293,9 @@ void LowerILToMIR::lowerBranch(const ILInstr &instr, MBasicBlock &block)
     block.append(MInstr::make(MOpcode::JMP, std::vector<Operand>{makeLabelOperand(instr.ops[0])}));
 }
 
+/// @brief Lower a conditional branch testing a boolean guard.
+/// @details Emits a TEST instruction followed by a conditional jump to the "true"
+///          label and a final JMP to the fallthrough label.
 void LowerILToMIR::lowerCondBranch(const ILInstr &instr, MBasicBlock &block)
 {
     if (instr.ops.size() < 3)
@@ -259,6 +312,10 @@ void LowerILToMIR::lowerCondBranch(const ILInstr &instr, MBasicBlock &block)
     block.append(MInstr::make(MOpcode::JMP, std::vector<Operand>{falseLabel}));
 }
 
+/// @brief Lower a return instruction, routing the value to the correct register.
+/// @details Normalises boolean results to 0/1, materialises immediates into
+///          temporaries when required, and finally moves the value into the ABI
+///          mandated return register before emitting RET.
 void LowerILToMIR::lowerReturn(const ILInstr &instr, MBasicBlock &block)
 {
     if (instr.ops.empty())
@@ -340,6 +397,7 @@ void LowerILToMIR::lowerReturn(const ILInstr &instr, MBasicBlock &block)
     block.append(MInstr::make(MOpcode::RET, {}));
 }
 
+/// @brief Lower a direct function call and record a call-lowering plan.
 void LowerILToMIR::lowerCall(const ILInstr &instr, MBasicBlock &block)
 {
     if (instr.ops.empty())
@@ -380,7 +438,7 @@ void LowerILToMIR::lowerCall(const ILInstr &instr, MBasicBlock &block)
 
     if (instr.resultId >= 0)
     {
-        ensureVReg(instr.resultId, instr.resultKind);
+        [[maybe_unused]] const VReg destReg = ensureVReg(instr.resultId, instr.resultKind);
         if (instr.resultKind == ILValue::Kind::F64)
         {
             plan.returnsF64 = true;
@@ -391,6 +449,9 @@ void LowerILToMIR::lowerCall(const ILInstr &instr, MBasicBlock &block)
     block.append(MInstr::make(MOpcode::CALL, std::vector<Operand>{makeLabelOperand(instr.ops[0])}));
 }
 
+/// @brief Lower a load instruction into Machine IR memory access.
+/// @details Materialises the base register, applies the displacement, and emits the
+///          opcode matching the requested register class.
 void LowerILToMIR::lowerLoad(const ILInstr &instr, MBasicBlock &block, RegClass cls)
 {
     if (instr.resultId < 0 || instr.ops.empty())
@@ -420,6 +481,9 @@ void LowerILToMIR::lowerLoad(const ILInstr &instr, MBasicBlock &block, RegClass 
     }
 }
 
+/// @brief Lower a store instruction into the appropriate Machine IR form.
+/// @details Computes the destination address and chooses the MOV variant based on
+///          whether the stored value is integer, floating point, or immediate.
 void LowerILToMIR::lowerStore(const ILInstr &instr, MBasicBlock &block)
 {
     if (instr.ops.size() < 2)
@@ -455,6 +519,9 @@ void LowerILToMIR::lowerStore(const ILInstr &instr, MBasicBlock &block)
     }
 }
 
+/// @brief Lower an IL cast between register classes.
+/// @details Emits a MOV when no semantic change is required or uses the supplied
+///          opcode to perform conversions such as integer-to-float.
 void LowerILToMIR::lowerCast(
     const ILInstr &instr, MBasicBlock &block, MOpcode opc, RegClass dstCls, RegClass srcCls)
 {
@@ -479,6 +546,9 @@ void LowerILToMIR::lowerCast(
     (void)dstCls;
 }
 
+/// @brief Dispatch IL opcodes to the relevant lowering helper.
+/// @details Covers the subset of operations implemented for Phase A and leaves
+///          unsupported instructions untouched until later phases expand coverage.
 void LowerILToMIR::lowerInstruction(const ILInstr &instr, MBasicBlock &block)
 {
     const std::string_view opc{instr.opcode};
@@ -569,6 +639,10 @@ void LowerILToMIR::lowerInstruction(const ILInstr &instr, MBasicBlock &block)
     // TODO: handle division and additional opcodes.
 }
 
+/// @brief Emit PX_COPY instructions for block parameter transfers.
+/// @details Uses precomputed destination parameter virtual registers to pair source
+///          SSA ids with their Machine IR counterparts when lowering control-flow
+///          edges.
 void LowerILToMIR::emitEdgeCopies(const ILBlock &source, MBasicBlock &block)
 {
     for (const auto &edge : source.terminatorEdges)
@@ -603,6 +677,11 @@ void LowerILToMIR::emitEdgeCopies(const ILBlock &source, MBasicBlock &block)
     }
 }
 
+/// @brief Lower an entire IL function into Machine IR.
+/// @details Resets adapter state, constructs Machine IR blocks mirroring the IL
+///          structure, lowers instructions within each block, and emits PX_COPY
+///          transfers for block parameters.  The resulting @ref MFunction owns the
+///          lowered instructions by value.
 MFunction LowerILToMIR::lower(const ILFunction &func)
 {
     resetFunctionState();
