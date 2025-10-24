@@ -13,6 +13,7 @@
 
 #include "LowerILToMIR.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <string_view>
@@ -53,6 +54,7 @@ RegClass LowerILToMIR::regClassFor(ILValue::Kind kind) noexcept
         case ILValue::Kind::I64:
         case ILValue::Kind::I1:
         case ILValue::Kind::PTR:
+        case ILValue::Kind::STR:
             return RegClass::GPR;
         case ILValue::Kind::F64:
             return RegClass::XMM;
@@ -117,6 +119,64 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
             block.append(
                 MInstr::make(MOpcode::MOVSDrm, std::vector<Operand>{cloneOperand(tempOperand), ripOperand}));
             return tempOperand;
+        }
+        case ILValue::Kind::STR:
+        {
+            assert(cls == RegClass::GPR && "string literals must materialise into GPRs");
+            assert(roDataPool_ && "RoData pool unavailable for string literals");
+            assert(target_ && "Target info required for string literal materialisation");
+
+            const std::size_t declaredLen = static_cast<std::size_t>(value.strlen);
+            std::string literalBytes{};
+            const std::size_t available = value.str.size();
+            const std::size_t copyLen = std::min(declaredLen, available);
+            if (copyLen > 0U)
+            {
+                literalBytes.assign(value.str.data(), value.str.data() + copyLen);
+            }
+            if (declaredLen > copyLen)
+            {
+                literalBytes.resize(declaredLen, '\0');
+            }
+            if (declaredLen == 0U && literalBytes.empty() && !value.str.empty())
+            {
+                literalBytes = value.str;
+            }
+
+            const int poolIndex = roDataPool_->addStringLiteral(std::move(literalBytes));
+            const std::string label = roDataPool_->stringLabel(poolIndex);
+            const std::uint64_t literalLen = roDataPool_->stringLength(poolIndex);
+
+            const VReg ptrTmp = makeTempVReg(RegClass::GPR);
+            const Operand ptrTmpOp = makeVRegOperand(ptrTmp.cls, ptrTmp.id);
+            const Operand ripLabel = makeRipLabelOperand(label);
+            block.append(MInstr::make(
+                MOpcode::LEA, std::vector<Operand>{cloneOperand(ptrTmpOp), ripLabel}));
+
+            const PhysReg ptrArgReg = target_->intArgOrder[0];
+            const PhysReg lenArgReg = target_->intArgOrder[1];
+            const Operand lenArg =
+                makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(lenArgReg));
+            const Operand ptrArg =
+                makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(ptrArgReg));
+
+            block.append(MInstr::make(
+                MOpcode::MOVri,
+                std::vector<Operand>{cloneOperand(lenArg),
+                                     makeImmOperand(static_cast<int64_t>(literalLen))}));
+            block.append(MInstr::make(
+                MOpcode::MOVrr, std::vector<Operand>{cloneOperand(ptrArg), cloneOperand(ptrTmpOp)}));
+            const Operand callTarget = x64::makeLabelOperand("rt_str_from_lit");
+            block.append(MInstr::make(MOpcode::CALL, std::vector<Operand>{callTarget}));
+
+            const Operand retPhys = makePhysRegOperand(
+                RegClass::GPR, static_cast<uint16_t>(target_->intReturnReg));
+            const VReg resultVReg = makeTempVReg(RegClass::GPR);
+            const Operand resultOp = makeVRegOperand(resultVReg.cls, resultVReg.id);
+            block.append(MInstr::make(
+                MOpcode::MOVrr, std::vector<Operand>{cloneOperand(resultOp), retPhys}));
+
+            return resultOp;
         }
         case ILValue::Kind::LABEL:
             break;
