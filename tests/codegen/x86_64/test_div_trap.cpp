@@ -1,0 +1,196 @@
+// File: tests/codegen/x86_64/test_div_trap.cpp
+// Purpose: Verify that signed 64-bit division emits a guarded trap sequence
+//          before the IDIV instruction in the x86-64 backend.
+// Key invariants: Generated assembly must test the divisor for zero, branch to
+//                 the shared trap block, extend RAX into RDX via CQO, execute
+//                 IDIV, and call the runtime trap when the divisor is zero.
+// Ownership/Lifetime: The test builds an IL module locally, requests assembly
+//                     emission by value, and analyses the resulting text in
+//                     memory without additional allocations.
+// Links: src/codegen/x86_64/LowerDiv.cpp
+
+#include "codegen/x86_64/Backend.hpp"
+
+#include <sstream>
+#include <string>
+#include <string_view>
+
+#if __has_include(<gtest/gtest.h>)
+#include <gtest/gtest.h>
+#define VIPER_HAS_GTEST 1
+#else
+#include <cstdlib>
+#include <iostream>
+#define VIPER_HAS_GTEST 0
+#endif
+
+namespace viper::codegen::x64
+{
+namespace
+{
+[[nodiscard]] ILValue makeParam(int id) noexcept
+{
+    ILValue value{};
+    value.kind = ILValue::Kind::I64;
+    value.id = id;
+    return value;
+}
+
+[[nodiscard]] ILModule makeDivModule()
+{
+    ILValue dividend = makeParam(0);
+    ILValue divisor = makeParam(1);
+
+    ILInstr divInstr{};
+    divInstr.opcode = "div";
+    divInstr.ops = {dividend, divisor};
+    divInstr.resultId = 2;
+    divInstr.resultKind = ILValue::Kind::I64;
+
+    ILInstr retInstr{};
+    retInstr.opcode = "ret";
+    ILValue quotient{};
+    quotient.kind = ILValue::Kind::I64;
+    quotient.id = divInstr.resultId;
+    retInstr.ops = {quotient};
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {dividend.id, divisor.id};
+    entry.paramKinds = {dividend.kind, divisor.kind};
+    entry.instrs = {divInstr, retInstr};
+
+    ILFunction func{};
+    func.name = "div_guard";
+    func.blocks = {entry};
+
+    ILModule module{};
+    module.funcs = {func};
+    return module;
+}
+
+[[nodiscard]] bool isSelfTest(const std::string &line)
+{
+    const auto testPos = line.find("testq");
+    if (testPos == std::string::npos)
+    {
+        return false;
+    }
+
+    const auto firstPercent = line.find('%', testPos);
+    if (firstPercent == std::string::npos)
+    {
+        return false;
+    }
+    const auto commaPos = line.find(',', firstPercent);
+    if (commaPos == std::string::npos)
+    {
+        return false;
+    }
+
+    const std::string firstReg = line.substr(firstPercent, commaPos - firstPercent);
+
+    const auto secondPercent = line.find('%', commaPos);
+    if (secondPercent == std::string::npos)
+    {
+        return false;
+    }
+    const auto secondEnd = line.find_first_of(", \t", secondPercent);
+    const std::string secondReg = secondEnd == std::string::npos
+                                      ? line.substr(secondPercent)
+                                      : line.substr(secondPercent, secondEnd - secondPercent);
+
+    return firstReg == secondReg;
+}
+
+struct DivTrapSequence
+{
+    bool hasSelfTest{false};
+    bool hasTrapBranch{false};
+    bool hasCqto{false};
+    bool hasIdiv{false};
+    bool hasTrapCall{false};
+};
+
+[[nodiscard]] DivTrapSequence analyseDivTrapSequence(const std::string &asmText)
+{
+    DivTrapSequence sequence{};
+    std::istringstream stream{asmText};
+    std::string line{};
+    while (std::getline(stream, line))
+    {
+        if (!sequence.hasSelfTest && isSelfTest(line))
+        {
+            sequence.hasSelfTest = true;
+        }
+        if (!sequence.hasTrapBranch && line.find("je ") != std::string::npos &&
+            line.find(".Ltrap_div0") != std::string::npos)
+        {
+            sequence.hasTrapBranch = true;
+        }
+        if (!sequence.hasCqto && line.find("cqto") != std::string::npos)
+        {
+            sequence.hasCqto = true;
+        }
+        if (!sequence.hasIdiv && line.find("idivq") != std::string::npos)
+        {
+            sequence.hasIdiv = true;
+        }
+        if (!sequence.hasTrapCall && line.find("callq") != std::string::npos &&
+            line.find("rt_trap_div0") != std::string::npos)
+        {
+            sequence.hasTrapCall = true;
+        }
+    }
+    return sequence;
+}
+
+} // namespace
+} // namespace viper::codegen::x64
+
+#if VIPER_HAS_GTEST
+
+TEST(CodegenX64DivTrapTest, EmitsGuardedDivisionSequence)
+{
+    using namespace viper::codegen::x64;
+
+    const ILModule module = makeDivModule();
+    const CodegenResult result = emitModuleToAssembly(module, {});
+
+    ASSERT_TRUE(result.errors.empty()) << result.errors;
+
+    const DivTrapSequence sequence = analyseDivTrapSequence(result.asmText);
+    EXPECT_TRUE(sequence.hasSelfTest) << result.asmText;
+    EXPECT_TRUE(sequence.hasTrapBranch) << result.asmText;
+    EXPECT_TRUE(sequence.hasCqto) << result.asmText;
+    EXPECT_TRUE(sequence.hasIdiv) << result.asmText;
+    EXPECT_TRUE(sequence.hasTrapCall) << result.asmText;
+}
+
+#else
+
+int main()
+{
+    using namespace viper::codegen::x64;
+
+    const ILModule module = makeDivModule();
+    const CodegenResult result = emitModuleToAssembly(module, {});
+
+    if (!result.errors.empty())
+    {
+        std::cerr << result.errors;
+        return EXIT_FAILURE;
+    }
+
+    const DivTrapSequence sequence = analyseDivTrapSequence(result.asmText);
+    if (!sequence.hasSelfTest || !sequence.hasTrapBranch || !sequence.hasCqto ||
+        !sequence.hasIdiv || !sequence.hasTrapCall)
+    {
+        std::cerr << "Missing guarded division pattern in assembly:\n" << result.asmText;
+        return EXIT_FAILURE;
+    }
+
+    return EXIT_SUCCESS;
+}
+
+#endif
