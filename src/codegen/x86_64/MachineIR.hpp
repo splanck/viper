@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <initializer_list>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -85,6 +86,7 @@ enum class MOpcode
     TESTrr,    ///< Bitwise test between registers.
     JMP,       ///< Unconditional jump.
     JCC,       ///< Conditional jump.
+    LABEL,     ///< In-block label definition.
     CALL,      ///< Call near label or register.
     RET,       ///< Return from function.
     PX_COPY,   ///< Parallel copy pseudo-instruction for phi lowering.
@@ -138,9 +140,13 @@ struct MFunction
     std::string name{};                ///< Symbolic name of the function.
     std::vector<MBasicBlock> blocks{}; ///< Basic blocks forming the body.
     FunctionMetadata metadata{};       ///< Ancillary metadata about the function.
+    std::size_t localLabelCounter{0};  ///< Counter used to mint unique local labels.
 
     /// \brief Add a new basic block and return a reference to it.
     MBasicBlock &addBlock(MBasicBlock block);
+
+    /// \brief Generate a function-local unique label using the provided prefix.
+    [[nodiscard]] std::string makeLocalLabel(std::string_view prefix);
 };
 
 // -----------------------------------------------------------------------------
