@@ -192,7 +192,31 @@ void LowerILToMIR::lowerSelect(const ILInstr &instr, MBasicBlock &block)
     const Operand trueVal = makeOperandForValue(block, instr.ops[1], destReg.cls);
     const Operand falseVal = makeOperandForValue(block, instr.ops[2], destReg.cls);
 
-    // Phase A placeholder: materialise false path then overwrite with true path using SETcc mask.
+    if (destReg.cls == RegClass::GPR)
+    {
+        Operand cmovSource = trueVal;
+        if (std::holds_alternative<OpImm>(cmovSource))
+        {
+            const VReg tmpVReg{nextVReg_++, destReg.cls};
+            cmovSource = makeVRegOperand(tmpVReg.cls, tmpVReg.id);
+            block.append(MInstr::make(
+                MOpcode::MOVri, std::vector<Operand>{cloneOperand(cmovSource), trueVal}));
+        }
+
+        const bool falseIsImm = std::holds_alternative<OpImm>(falseVal);
+        std::vector<Operand> movOperands{};
+        movOperands.push_back(cloneOperand(dest));
+        movOperands.push_back(cloneOperand(falseVal));
+        movOperands.push_back(cloneOperand(cmovSource));
+        block.append(
+            MInstr::make(falseIsImm ? MOpcode::MOVri : MOpcode::MOVrr, std::move(movOperands)));
+
+        block.append(MInstr::make(MOpcode::TESTrr, std::vector<Operand>{cloneOperand(cond), cond}));
+        block.append(MInstr::make(
+            MOpcode::SETcc, std::vector<Operand>{makeImmOperand(1), cloneOperand(dest)}));
+        return;
+    }
+
     if (std::holds_alternative<OpImm>(falseVal))
     {
         block.append(
@@ -204,7 +228,6 @@ void LowerILToMIR::lowerSelect(const ILInstr &instr, MBasicBlock &block)
             MInstr::make(MOpcode::MOVrr, std::vector<Operand>{cloneOperand(dest), falseVal}));
     }
 
-    // TODO: Replace with CMOV-based lowering once available.
     block.append(MInstr::make(MOpcode::TESTrr, std::vector<Operand>{cloneOperand(cond), cond}));
     block.append(
         MInstr::make(MOpcode::SETcc, std::vector<Operand>{makeImmOperand(1), cloneOperand(dest)}));
