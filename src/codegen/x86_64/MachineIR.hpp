@@ -73,6 +73,12 @@ enum class MOpcode
     ADDrr,     ///< Add registers.
     ADDri,     ///< Add immediate to register.
     SUBrr,     ///< Subtract registers.
+    SHLri,     ///< Shift left by immediate (imm8).
+    SHLrc,     ///< Shift left by CL register.
+    SHRri,     ///< Logical shift right by immediate (imm8).
+    SHRrc,     ///< Logical shift right by CL register.
+    SARri,     ///< Arithmetic shift right by immediate (imm8).
+    SARrc,     ///< Arithmetic shift right by CL register.
     IMULrr,    ///< Signed multiply registers.
     DIVS64rr,  ///< Signed 64-bit division pseudo (dest <- lhs / rhs).
     REMS64rr,  ///< Signed 64-bit remainder pseudo (dest <- lhs % rhs).

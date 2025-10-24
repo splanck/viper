@@ -14,6 +14,7 @@
 #include "LowerILToMIR.hpp"
 
 #include <cassert>
+#include <cstdint>
 #include <string_view>
 
 namespace viper::codegen::x64
@@ -147,6 +148,60 @@ void LowerILToMIR::lowerBinary(
     {
         block.append(MInstr::make(opcRR, std::vector<Operand>{cloneOperand(dest), rhs}));
     }
+}
+
+void LowerILToMIR::lowerShift(const ILInstr &instr,
+                              MBasicBlock &block,
+                              MOpcode opcImm,
+                              MOpcode opcReg)
+{
+    if (instr.resultId < 0 || instr.ops.size() < 2)
+    {
+        return;
+    }
+
+    const VReg destReg = ensureVReg(instr.resultId, instr.resultKind);
+    const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
+    const Operand lhs = makeOperandForValue(block, instr.ops[0], destReg.cls);
+
+    if (std::holds_alternative<OpImm>(lhs))
+    {
+        block.append(MInstr::make(MOpcode::MOVri, std::vector<Operand>{cloneOperand(dest), lhs}));
+    }
+    else
+    {
+        block.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{cloneOperand(dest), lhs}));
+    }
+
+    Operand rhs = makeOperandForValue(block, instr.ops[1], destReg.cls);
+    if (auto *imm = std::get_if<OpImm>(&rhs))
+    {
+        const auto masked = static_cast<int64_t>(static_cast<std::uint8_t>(imm->val));
+        block.append(MInstr::make(opcImm,
+                                  std::vector<Operand>{cloneOperand(dest), makeImmOperand(masked)}));
+        return;
+    }
+
+    const Operand clOperand =
+        makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RCX));
+
+    bool alreadyCl = false;
+    if (const auto *reg = std::get_if<OpReg>(&rhs))
+    {
+        alreadyCl = reg->isPhys && reg->cls == RegClass::GPR &&
+                    reg->idOrPhys == static_cast<uint16_t>(PhysReg::RCX);
+    }
+
+    if (!alreadyCl)
+    {
+        block.append(MInstr::make(
+            MOpcode::MOVrr,
+            std::vector<Operand>{cloneOperand(clOperand), cloneOperand(rhs)}));
+    }
+
+    block.append(
+        MInstr::make(opcReg,
+                     std::vector<Operand>{cloneOperand(dest), cloneOperand(clOperand)}));
 }
 
 void LowerILToMIR::lowerCmp(const ILInstr &instr, MBasicBlock &block, RegClass cls)
@@ -503,6 +558,21 @@ void LowerILToMIR::lowerInstruction(const ILInstr &instr, MBasicBlock &block)
         const RegClass cls = regClassFor(instr.resultKind);
         const MOpcode opRR = cls == RegClass::GPR ? MOpcode::IMULrr : MOpcode::FMUL;
         lowerBinary(instr, block, opRR, opRR, cls);
+        return;
+    }
+    if (opc == "shl")
+    {
+        lowerShift(instr, block, MOpcode::SHLri, MOpcode::SHLrc);
+        return;
+    }
+    if (opc == "lshr")
+    {
+        lowerShift(instr, block, MOpcode::SHRri, MOpcode::SHRrc);
+        return;
+    }
+    if (opc == "ashr")
+    {
+        lowerShift(instr, block, MOpcode::SARri, MOpcode::SARrc);
         return;
     }
     if (opc == "cmp")
