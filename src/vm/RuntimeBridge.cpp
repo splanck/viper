@@ -382,6 +382,7 @@ void RuntimeBridge::trap(TrapKind kind,
         }
         else
         {
+            ctx.vm->clearCurrentContext();
             ctx.vm->runtimeContext.loc = {};
         }
         if (!fn.empty())
