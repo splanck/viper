@@ -12,6 +12,7 @@
 #include "VMTestHook.hpp"
 
 #include "rt_file.h"
+#include "rt_internal.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -161,6 +162,26 @@ int main()
     if (std::string_view(capturedData) != payload)
     {
         std::fprintf(stderr, "unexpected payload '%s'\n", capturedData);
+        return 1;
+    }
+
+    auto *capturedImpl = reinterpret_cast<rt_string_impl *>(captured);
+    if (!capturedImpl)
+    {
+        std::fprintf(stderr, "missing captured impl\n");
+        return 1;
+    }
+
+    if (!capturedImpl->heap)
+    {
+        std::fprintf(stderr, "captured string is not heap backed\n");
+        return 1;
+    }
+
+    const size_t preCallRefs = capturedImpl->heap->refcnt;
+    if (preCallRefs != 1)
+    {
+        std::fprintf(stderr, "unexpected retained refs: %zu\n", preCallRefs);
         return 1;
     }
 
