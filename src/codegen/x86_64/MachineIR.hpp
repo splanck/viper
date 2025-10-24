@@ -60,8 +60,14 @@ struct OpLabel
     std::string name{}; ///< Symbol name.
 };
 
+/// \brief RIP-relative label operand representing a memory reference without a base register.
+struct OpRipLabel
+{
+    std::string name{}; ///< Symbol name referenced relative to RIP.
+};
+
 /// \brief Union over all supported operand kinds.
-using Operand = std::variant<OpReg, OpImm, OpMem, OpLabel>;
+using Operand = std::variant<OpReg, OpImm, OpMem, OpLabel, OpRipLabel>;
 
 /// \brief Enumerates the opcode set required for Phase A.
 enum class MOpcode
@@ -180,6 +186,9 @@ struct MFunction
 /// \brief Construct a label operand with the provided symbol name.
 [[nodiscard]] Operand makeLabelOperand(std::string name);
 
+/// \brief Construct a RIP-relative label operand with the provided symbol name.
+[[nodiscard]] Operand makeRipLabelOperand(std::string name);
+
 // -----------------------------------------------------------------------------
 // Pretty printing helpers (for debugging only)
 // -----------------------------------------------------------------------------
@@ -195,6 +204,9 @@ struct MFunction
 
 /// \brief Render a label operand to string form.
 [[nodiscard]] std::string toString(const OpLabel &op);
+
+/// \brief Render a RIP-relative label operand to string form.
+[[nodiscard]] std::string toString(const OpRipLabel &op);
 
 /// \brief Render any operand to string form.
 [[nodiscard]] std::string toString(const Operand &operand);

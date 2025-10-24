@@ -28,7 +28,10 @@ namespace
 }
 } // namespace
 
-LowerILToMIR::LowerILToMIR(const TargetInfo &target) noexcept : target_{&target} {}
+LowerILToMIR::LowerILToMIR(const TargetInfo &target, AsmEmitter::RoDataPool &roData) noexcept
+    : target_{&target}, roDataPool_{&roData}
+{
+}
 
 const std::vector<CallLoweringPlan> &LowerILToMIR::callPlans() const noexcept
 {
@@ -73,6 +76,11 @@ VReg LowerILToMIR::ensureVReg(int id, ILValue::Kind kind)
     return vreg;
 }
 
+VReg LowerILToMIR::makeTempVReg(RegClass cls)
+{
+    return VReg{nextVReg_++, cls};
+}
+
 bool LowerILToMIR::isImmediate(const ILValue &value) const noexcept
 {
     return value.id < 0;
@@ -80,13 +88,10 @@ bool LowerILToMIR::isImmediate(const ILValue &value) const noexcept
 
 Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &value, RegClass cls)
 {
-    (void)block;
     if (value.kind == ILValue::Kind::LABEL)
     {
         return makeLabelOperand(value);
     }
-
-    (void)cls;
 
     if (!isImmediate(value))
     {
@@ -102,9 +107,16 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
             return makeImmOperand(value.i64);
         case ILValue::Kind::F64:
         {
-            // TODO: Materialise f64 immediates using a constant pool.
-            const auto approx = static_cast<int64_t>(value.f64);
-            return makeImmOperand(approx);
+            assert(cls == RegClass::XMM && "f64 operands must target XMM registers");
+            assert(roDataPool_ && "RoData pool unavailable for f64 literals");
+            const int poolIndex = roDataPool_->addF64Literal(value.f64);
+            const std::string label = roDataPool_->f64Label(poolIndex);
+            const VReg temp = makeTempVReg(RegClass::XMM);
+            Operand tempOperand = makeVRegOperand(temp.cls, temp.id);
+            const Operand ripOperand = makeRipLabelOperand(label);
+            block.append(
+                MInstr::make(MOpcode::MOVSDrm, std::vector<Operand>{cloneOperand(tempOperand), ripOperand}));
+            return tempOperand;
         }
         case ILValue::Kind::LABEL:
             break;
@@ -435,7 +447,7 @@ void LowerILToMIR::lowerCall(const ILInstr &instr, MBasicBlock &block)
 
     if (instr.resultId >= 0)
     {
-        ensureVReg(instr.resultId, instr.resultKind);
+        [[maybe_unused]] const VReg retReg = ensureVReg(instr.resultId, instr.resultKind);
         if (instr.resultKind == ILValue::Kind::F64)
         {
             plan.returnsF64 = true;
