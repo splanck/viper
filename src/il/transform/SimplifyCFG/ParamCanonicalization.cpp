@@ -96,7 +96,8 @@ void realignBranchArgs(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::Basic
 /// @param ctx   SimplifyCFG context exposing the current function and logging.
 /// @param block Block under inspection.
 /// @returns True if any parameters were removed.
-bool shrinkParamsEqualAcrossPreds(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::BasicBlock &block)
+bool shrinkParamsEqualAcrossPreds(SimplifyCFG::SimplifyCFGPassContext &ctx,
+                                  il::core::BasicBlock &block)
 {
     bool removedAny = false;
 
@@ -158,7 +159,8 @@ bool shrinkParamsEqualAcrossPreds(SimplifyCFG::SimplifyCFGPassContext &ctx, il::
                 continue;
             }
 
-            auto replaceUses = [&](il::core::Value &value) {
+            auto replaceUses = [&](il::core::Value &value)
+            {
                 if (value.kind == il::core::Value::Kind::Temp && value.id == paramId)
                     value = commonValue;
             };
@@ -235,9 +237,8 @@ bool dropUnusedParams(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::BasicB
 
         for (const auto &instr : block.instructions)
         {
-            auto checkValue = [&](const il::core::Value &value) {
-                return value.kind == il::core::Value::Kind::Temp && value.id == paramId;
-            };
+            auto checkValue = [&](const il::core::Value &value)
+            { return value.kind == il::core::Value::Kind::Temp && value.id == paramId; };
 
             for (const auto &operand : instr.operands)
             {
@@ -376,4 +377,3 @@ bool canonicalizeParamsAndArgs(SimplifyCFG::SimplifyCFGPassContext &ctx)
 }
 
 } // namespace il::transform::simplify_cfg
-

@@ -80,7 +80,8 @@ Lowerer::IlValue Lowerer::emitBoolFromBranches(const std::function<void(Value)> 
                                                std::string_view elseLabelBase,
                                                std::string_view joinLabelBase)
 {
-    return emitter().emitBoolFromBranches(emitThen, emitElse, thenLabelBase, elseLabelBase, joinLabelBase);
+    return emitter().emitBoolFromBranches(
+        emitThen, emitElse, thenLabelBase, elseLabelBase, joinLabelBase);
 }
 
 /// @brief Lower a BASIC array access expression.

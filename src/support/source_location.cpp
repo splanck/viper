@@ -56,4 +56,3 @@ bool SourceRange::isValid() const
     return begin.isValid() && end.isValid();
 }
 } // namespace il::support
-

@@ -1,7 +1,7 @@
 // File: src/il/api/expected_api.hpp
 // Purpose: Provide Expected-based wrappers for IL parsing and verification entry points.
-// Key invariants: Wrapper success mirrors legacy bool-returning APIs; errors carry diagnostic text only.
-// Ownership/Lifetime: Callers retain ownership of modules and streams passed by reference.
+// Key invariants: Wrapper success mirrors legacy bool-returning APIs; errors carry diagnostic text
+// only. Ownership/Lifetime: Callers retain ownership of modules and streams passed by reference.
 // Links: docs/il-guide.md#reference
 #pragma once
 

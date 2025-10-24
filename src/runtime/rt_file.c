@@ -232,4 +232,3 @@ int32_t rt_file_channel_set_eof(int32_t channel, bool at_eof)
     entry->at_eof = at_eof;
     return 0;
 }
-

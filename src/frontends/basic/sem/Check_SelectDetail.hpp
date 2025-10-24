@@ -56,10 +56,8 @@ struct SemanticAnalyzer::SelectCaseArmContext
                          bool selectorIsStringIn,
                          bool selectorIsNumericIn,
                          bool hasElseBody) noexcept
-        : de(diagnostics),
-          selectorIsString(selectorIsStringIn),
-          selectorIsNumeric(selectorIsNumericIn),
-          caseElseCount(hasElseBody ? 1 : 0)
+        : de(diagnostics), selectorIsString(selectorIsStringIn),
+          selectorIsNumeric(selectorIsNumericIn), caseElseCount(hasElseBody ? 1 : 0)
     {
     }
 
@@ -90,8 +88,7 @@ using RelInterval = SemanticAnalyzer::SelectCaseArmContext::RelInterval;
 
 inline bool isCaseElseArm(const CaseArm &arm)
 {
-    return arm.labels.empty() && arm.ranges.empty() && arm.rels.empty() &&
-           arm.str_labels.empty();
+    return arm.labels.empty() && arm.ranges.empty() && arm.rels.empty() && arm.str_labels.empty();
 }
 
 inline RelInterval makeRangeInterval(int32_t lo, int32_t hi)
@@ -163,36 +160,33 @@ inline void emitOverlap(ArmContext &ctx, const CaseArm &arm)
                 std::move(msg));
 }
 
-inline bool checkIntervalCollision(ArmContext &ctx,
-                                   const CaseArm &arm,
-                                   const RelInterval &interval)
+inline bool checkIntervalCollision(ArmContext &ctx, const CaseArm &arm, const RelInterval &interval)
 {
     const auto collidesRange = std::any_of(
         ctx.seenRanges.begin(),
         ctx.seenRanges.end(),
-        [&](const auto &seen) {
-            return intervalsOverlap(interval, makeRangeInterval(seen.first, seen.second));
-        });
+        [&](const auto &seen)
+        { return intervalsOverlap(interval, makeRangeInterval(seen.first, seen.second)); });
     if (collidesRange)
     {
         emitOverlap(ctx, arm);
         return true;
     }
 
-    const auto collidesLabel = std::any_of(
-        ctx.seenLabels.begin(),
-        ctx.seenLabels.end(),
-        [&](int32_t label) { return intervalContains(interval, label); });
+    const auto collidesLabel =
+        std::any_of(ctx.seenLabels.begin(),
+                    ctx.seenLabels.end(),
+                    [&](int32_t label) { return intervalContains(interval, label); });
     if (collidesLabel)
     {
         emitOverlap(ctx, arm);
         return true;
     }
 
-    const auto collidesRel = std::any_of(
-        ctx.seenRelIntervals.begin(),
-        ctx.seenRelIntervals.end(),
-        [&](const RelInterval &seen) { return intervalsOverlap(interval, seen); });
+    const auto collidesRel =
+        std::any_of(ctx.seenRelIntervals.begin(),
+                    ctx.seenRelIntervals.end(),
+                    [&](const RelInterval &seen) { return intervalsOverlap(interval, seen); });
     if (collidesRel)
     {
         emitOverlap(ctx, arm);
@@ -260,10 +254,7 @@ inline void emitRangeBoundError(ArmContext &ctx,
                 std::move(msg));
 }
 
-inline bool validateRangeBounds(ArmContext &ctx,
-                                const CaseArm &arm,
-                                int64_t rawLo,
-                                int64_t rawHi)
+inline bool validateRangeBounds(ArmContext &ctx, const CaseArm &arm, int64_t rawLo, int64_t rawHi)
 {
     bool valid = true;
     if (rawLo < kCaseLabelMin || rawLo > kCaseLabelMax)
@@ -317,8 +308,8 @@ inline void emitDuplicateLabel(ArmContext &ctx, const CaseArm &arm, std::string 
 
 } // namespace
 
-inline SemanticAnalyzer::SelectCaseSelectorInfo
-classifySelectCaseSelector(ControlCheckContext &context, const SelectCaseStmt &stmt)
+inline SemanticAnalyzer::SelectCaseSelectorInfo classifySelectCaseSelector(
+    ControlCheckContext &context, const SelectCaseStmt &stmt)
 {
     SemanticAnalyzer::SelectCaseSelectorInfo info;
     if (!stmt.selector)
@@ -391,13 +382,12 @@ inline bool validateSelectCaseNumericArm(const CaseArm &arm, ArmContext &ctx)
         if (!validateRangeBounds(ctx, arm, rawLo, rawHi))
             continue;
 
-        const auto interval = makeRangeInterval(static_cast<int32_t>(rawLo),
-                                                static_cast<int32_t>(rawHi));
+        const auto interval =
+            makeRangeInterval(static_cast<int32_t>(rawLo), static_cast<int32_t>(rawHi));
         if (checkIntervalCollision(ctx, arm, interval))
             continue;
 
-        ctx.seenRanges.emplace_back(static_cast<int32_t>(rawLo),
-                                    static_cast<int32_t>(rawHi));
+        ctx.seenRanges.emplace_back(static_cast<int32_t>(rawLo), static_cast<int32_t>(rawHi));
     }
 
     for (int64_t rawLabel : arm.labels)
@@ -442,8 +432,7 @@ inline bool validateSelectCaseArm(const CaseArm &arm, ArmContext &ctx)
     }
 
     const bool hasString = !arm.str_labels.empty();
-    const bool hasNumeric = !arm.labels.empty() || !arm.ranges.empty() ||
-                            !arm.rels.empty();
+    const bool hasNumeric = !arm.labels.empty() || !arm.ranges.empty() || !arm.rels.empty();
     if (hasString && hasNumeric)
         reportMixedLabelTypes(ctx, arm);
 
@@ -455,8 +444,7 @@ inline bool validateSelectCaseArm(const CaseArm &arm, ArmContext &ctx)
     return ok;
 }
 
-inline void analyzeSelectCaseBody(ControlCheckContext &context,
-                                  const std::vector<StmtPtr> &body)
+inline void analyzeSelectCaseBody(ControlCheckContext &context, const std::vector<StmtPtr> &body)
 {
     auto scope = context.pushScope();
     for (const auto &child : body)

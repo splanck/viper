@@ -35,4 +35,3 @@ namespace il::io::detail
 ///             parser.
 ParserState::ParserState(il::core::Module &mod) : m(mod) {}
 } // namespace il::io::detail
-

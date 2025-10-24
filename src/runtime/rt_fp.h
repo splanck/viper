@@ -8,7 +8,8 @@
 #include <stdbool.h>
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
     /// @brief Compute base^exp while tracking domain/overflow conditions.
@@ -21,4 +22,3 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif
-

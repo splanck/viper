@@ -18,7 +18,8 @@ namespace il::transform
 struct CFGInfo
 {
     std::unordered_map<const core::BasicBlock *, std::vector<const core::BasicBlock *>> successors;
-    std::unordered_map<const core::BasicBlock *, std::vector<const core::BasicBlock *>> predecessors;
+    std::unordered_map<const core::BasicBlock *, std::vector<const core::BasicBlock *>>
+        predecessors;
 };
 
 /// @brief Cached liveness sets (live-in/live-out) for each block.
@@ -82,4 +83,3 @@ LivenessInfo computeLiveness(core::Module &module, core::Function &fn);
 LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFGInfo &cfg);
 
 } // namespace il::transform
-

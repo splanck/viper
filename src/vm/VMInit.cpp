@@ -12,24 +12,24 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "vm/VM.hpp"
-#include "vm/Marshal.hpp"
-#include "vm/RuntimeBridge.hpp"
-#include "vm/control_flow.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Global.hpp"
 #include "il/core/Module.hpp"
+#include "vm/Marshal.hpp"
+#include "vm/RuntimeBridge.hpp"
+#include "vm/VM.hpp"
+#include "vm/control_flow.hpp"
 
-#include <cassert>
-#include <clocale>
-#include <cctype>
-#include <cstdlib>
-#include <cstdio>
 #include <algorithm>
+#include <cassert>
+#include <cctype>
+#include <clocale>
+#include <cstdio>
+#include <cstdlib>
 #include <sstream>
-#include <utility>
 #include <string>
+#include <utility>
 
 using namespace il::core;
 
@@ -62,7 +62,8 @@ struct NumericLocaleInitializer
 /// @return @c true when debugging output should be emitted.
 bool isVmDebugLoggingEnabled()
 {
-    static const bool enabled = [] {
+    static const bool enabled = []
+    {
         if (const char *flag = std::getenv("VIPER_DEBUG_VM"))
             return flag[0] != '\0';
         return false;
@@ -109,9 +110,10 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
     if (switchModeEnv != nullptr)
     {
         std::string rawMode{switchModeEnv};
-        std::transform(rawMode.begin(), rawMode.end(), rawMode.begin(), [](unsigned char ch) {
-            return static_cast<char>(std::tolower(ch));
-        });
+        std::transform(rawMode.begin(),
+                       rawMode.end(),
+                       rawMode.begin(),
+                       [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
 
         if (rawMode == "dense")
             mode = viper::vm::SwitchMode::Dense;
@@ -135,9 +137,10 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
     if (const char *dispatchEnv = std::getenv("VIPER_DISPATCH"))
     {
         std::string rawDispatch{dispatchEnv};
-        std::transform(rawDispatch.begin(), rawDispatch.end(), rawDispatch.begin(), [](unsigned char ch) {
-            return static_cast<char>(std::tolower(ch));
-        });
+        std::transform(rawDispatch.begin(),
+                       rawDispatch.end(),
+                       rawDispatch.begin(),
+                       [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
 
         if (rawDispatch == "table")
             selectedDispatch = DispatchKind::FnTable;
@@ -206,10 +209,9 @@ Frame VM::setupFrame(const Function &fn,
         {
             std::ostringstream os;
             os << "argument count mismatch for function " << fn.name << ": expected "
-               << params.size() << " argument" << (params.size() == 1 ? "" : "s")
-               << ", received " << args.size();
-            RuntimeBridge::trap(
-                TrapKind::InvalidOperation, os.str(), {}, fn.name, bb->label);
+               << params.size() << " argument" << (params.size() == 1 ? "" : "s") << ", received "
+               << args.size();
+            RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), {}, fn.name, bb->label);
         }
         for (size_t i = 0; i < params.size() && i < args.size(); ++i)
         {
@@ -242,4 +244,3 @@ VM::ExecState VM::prepareExecution(const Function &fn, const std::vector<Slot> &
 }
 
 } // namespace il::vm
-

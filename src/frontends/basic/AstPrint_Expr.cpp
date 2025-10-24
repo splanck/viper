@@ -239,4 +239,3 @@ void AstPrinter::printExpr(const Expr &expr, Printer &printer, PrintStyle &style
 }
 
 } // namespace il::frontends::basic
-

@@ -1,8 +1,8 @@
 // File: src/support/diag_expected.hpp
 // Purpose: Provides diagnostic helpers and a lightweight Expected container for CLI tools.
-// Key invariants: Diagnostics encapsulate a single severity, message, and location; Expected holds either a value or diagnostic.
-// Ownership/Lifetime: Expected owns success payloads or diagnostics; diagnostics own their message buffers.
-// Links: docs/codemap.md
+// Key invariants: Diagnostics encapsulate a single severity, message, and location; Expected holds
+// either a value or diagnostic. Ownership/Lifetime: Expected owns success payloads or diagnostics;
+// diagnostics own their message buffers. Links: docs/codemap.md
 #pragma once
 
 #include "support/diagnostics.hpp"
@@ -38,9 +38,10 @@ template <class T> class Expected
     /// @param value Value produced by a successful computation.
     /// @details Enabled only when the provided value does not decay to Diag to
     ///          avoid colliding with the diagnostic constructor below.
-    template <class U = T,
-              class = std::enable_if_t<!std::is_same_v<std::decay_t<U>, Diag>>>
-    Expected(U &&value) : value_(std::forward<U>(value)) {}
+    template <class U = T, class = std::enable_if_t<!std::is_same_v<std::decay_t<U>, Diag>>>
+    Expected(U &&value) : value_(std::forward<U>(value))
+    {
+    }
 
     /// @brief Construct an error result holding diagnostic @p diag.
     /// @param diag Diagnostic to return to the caller.
@@ -49,16 +50,15 @@ template <class T> class Expected
     /// @brief Construct a successful result containing a Diag payload.
     /// @param tag Tag used to disambiguate value-vs-error construction.
     /// @param value Diagnostic stored as the success payload.
-    template <class U = T,
-              std::enable_if_t<std::is_same_v<U, Diag>, int> = 0>
-    Expected(SuccessDiagTag, Diag value)
-        : value_(std::move(value)) {}
+    template <class U = T, std::enable_if_t<std::is_same_v<U, Diag>, int> = 0>
+    Expected(SuccessDiagTag, Diag value) : value_(std::move(value))
+    {
+    }
 
     /// @brief Create a successful Expected<Diag> from a diagnostic payload.
     /// @param tag Tag selecting the success overload.
     /// @param value Diagnostic stored as the success payload.
-    template <class U = T,
-              std::enable_if_t<std::is_same_v<U, Diag>, int> = 0>
+    template <class U = T, std::enable_if_t<std::is_same_v<U, Diag>, int> = 0>
     static Expected success(SuccessDiagTag tag, Diag value)
     {
         return Expected(tag, std::move(value));
@@ -141,6 +141,5 @@ Diag makeError(SourceLoc loc, std::string msg);
 /// @param os Output stream receiving the text.
 /// @param sm Optional source manager to resolve file paths.
 /// @note Follows DiagnosticEngine::printAll formatting for consistency.
-void printDiag(const Diag &diag, std::ostream &os,
-               const SourceManager *sm = nullptr);
+void printDiag(const Diag &diag, std::ostream &os, const SourceManager *sm = nullptr);
 } // namespace il::support

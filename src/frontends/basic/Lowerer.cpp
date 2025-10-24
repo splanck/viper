@@ -22,9 +22,9 @@
 ///          individual lowering stages implemented in other translation units.
 
 #include "frontends/basic/Lowerer.hpp"
-#include "frontends/basic/lower/Emitter.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
+#include "frontends/basic/lower/Emitter.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -248,8 +248,7 @@ const Lowerer::ProcedureSignature *Lowerer::findProcSignature(const std::string 
 Lowerer::Lowerer(bool boundsChecks)
     : programLowering(std::make_unique<ProgramLowering>(*this)),
       procedureLowering(std::make_unique<ProcedureLowering>(*this)),
-      statementLowering(std::make_unique<StatementLowering>(*this)),
-      boundsChecks(boundsChecks),
+      statementLowering(std::make_unique<StatementLowering>(*this)), boundsChecks(boundsChecks),
       emitter_(std::make_unique<lower::Emitter>(*this))
 {
 }
@@ -704,12 +703,15 @@ TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
     /// @brief Expression visitor that deduces the numeric category of an expression tree.
     class Classifier final : public ExprVisitor
     {
-    public:
+      public:
         /// @brief Bind the classifier to the owning @ref Lowerer instance.
         explicit Classifier(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
 
         /// @brief Retrieve the computed numeric category.
-        NumericType result() const noexcept { return result_; }
+        NumericType result() const noexcept
+        {
+            return result_;
+        }
 
         /// @brief Classify integer literals using suffix information.
         void visit(const IntExpr &i) override
@@ -741,15 +743,21 @@ TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
         /// @brief Classify floating-point literals based on their suffix.
         void visit(const FloatExpr &f) override
         {
-            result_ = (f.suffix == FloatExpr::Suffix::Single) ? NumericType::Single
-                                                              : NumericType::Double;
+            result_ =
+                (f.suffix == FloatExpr::Suffix::Single) ? NumericType::Single : NumericType::Double;
         }
 
         /// @brief Strings coerce numeric operations to double precision.
-        void visit(const StringExpr &) override { result_ = NumericType::Double; }
+        void visit(const StringExpr &) override
+        {
+            result_ = NumericType::Double;
+        }
 
         /// @brief Boolean literals behave like 16-bit integers.
-        void visit(const BoolExpr &) override { result_ = NumericType::Integer; }
+        void visit(const BoolExpr &) override
+        {
+            result_ = NumericType::Integer;
+        }
 
         /// @brief Classify variables using recorded symbol metadata and suffixes.
         void visit(const VarExpr &var) override
@@ -822,7 +830,10 @@ TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
         }
 
         /// @brief Array references are treated as 64-bit integers (pointers).
-        void visit(const ArrayExpr &) override { result_ = NumericType::Long; }
+        void visit(const ArrayExpr &) override
+        {
+            result_ = NumericType::Long;
+        }
 
         /// @brief Classify unary expressions by delegating to the operand.
         void visit(const UnaryExpr &un) override
@@ -924,10 +935,16 @@ TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
         }
 
         /// @brief Lower bound queries produce 64-bit integers.
-        void visit(const LBoundExpr &) override { result_ = NumericType::Long; }
+        void visit(const LBoundExpr &) override
+        {
+            result_ = NumericType::Long;
+        }
 
         /// @brief Upper bound queries produce 64-bit integers.
-        void visit(const UBoundExpr &) override { result_ = NumericType::Long; }
+        void visit(const UBoundExpr &) override
+        {
+            result_ = NumericType::Long;
+        }
 
         /// @brief Classify user-defined procedure calls using recorded signatures.
         void visit(const CallExpr &callExpr) override
@@ -954,18 +971,30 @@ TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
         }
 
         /// @brief Object creation returns pointers encoded as 64-bit integers.
-        void visit(const NewExpr &) override { result_ = NumericType::Long; }
+        void visit(const NewExpr &) override
+        {
+            result_ = NumericType::Long;
+        }
 
         /// @brief `ME` resolves to the current object pointer (64-bit integer).
-        void visit(const MeExpr &) override { result_ = NumericType::Long; }
+        void visit(const MeExpr &) override
+        {
+            result_ = NumericType::Long;
+        }
 
         /// @brief Member access yields a pointer, represented as a 64-bit integer.
-        void visit(const MemberAccessExpr &) override { result_ = NumericType::Long; }
+        void visit(const MemberAccessExpr &) override
+        {
+            result_ = NumericType::Long;
+        }
 
         /// @brief Method calls produce pointers by default when return type is unknown.
-        void visit(const MethodCallExpr &) override { result_ = NumericType::Long; }
+        void visit(const MethodCallExpr &) override
+        {
+            result_ = NumericType::Long;
+        }
 
-    private:
+      private:
         Lowerer &lowerer_;
         NumericType result_{NumericType::Long};
     };

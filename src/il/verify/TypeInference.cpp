@@ -18,12 +18,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "il/verify/TypeInference.hpp"
-#include "il/verify/DiagFormat.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/Value.hpp"
+#include "il/verify/DiagFormat.hpp"
 #include "support/diag_expected.hpp"
 #include <sstream>
 #include <string_view>
@@ -189,8 +189,8 @@ il::support::Expected<void> TypeInference::ensureOperandsDefined_E(const Functio
         {
             return il::support::Expected<void>{il::support::makeError(
                 instr.loc,
-                formatInstrDiag(fn, bb, instr,
-                                "unknown temp %" + id + "; use before def of %" + id))};
+                formatInstrDiag(
+                    fn, bb, instr, "unknown temp %" + id + "; use before def of %" + id))};
         }
         if (missing)
             return il::support::Expected<void>{il::support::makeError(

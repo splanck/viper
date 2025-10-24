@@ -56,7 +56,8 @@ bool signaturesMatch(const Extern &lhs, const Extern &rhs)
 /// @return @c true when both signatures agree on return and parameter types.
 bool signaturesMatch(const Extern &decl, const il::runtime::RuntimeSignature &runtime)
 {
-    if (decl.retType.kind != runtime.retType.kind || decl.params.size() != runtime.paramTypes.size())
+    if (decl.retType.kind != runtime.retType.kind ||
+        decl.params.size() != runtime.paramTypes.size())
         return false;
     for (size_t i = 0; i < runtime.paramTypes.size(); ++i)
         if (decl.params[i].kind != runtime.paramTypes[i].kind)

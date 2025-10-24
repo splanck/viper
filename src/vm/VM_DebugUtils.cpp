@@ -23,9 +23,9 @@
 ///          out-of-line to keep the main VM implementation focused on execution
 ///          semantics.
 
-#include "vm/VM.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/OpcodeInfo.hpp"
+#include "vm/VM.hpp"
 #include <algorithm>
 #include <string>
 
@@ -33,9 +33,9 @@ namespace il::vm
 {
 namespace
 {
-using il::core::kNumOpcodes;
 using il::core::getOpcodeInfo;
-}
+using il::core::kNumOpcodes;
+} // namespace
 
 /// @brief Translate an opcode to a printable mnemonic.
 /// @details Consults the opcode metadata table and returns the canonical name
@@ -100,9 +100,10 @@ FrameInfo VM::buildFrameInfo(const VmError &error) const
     else if (frame.line < 0 && lastTrap.frame.line >= 0)
         frame.line = lastTrap.frame.line;
 
-    frame.handlerInstalled = std::any_of(execStack.begin(), execStack.end(), [](const ExecState *st) {
-        return st && !st->fr.ehStack.empty();
-    });
+    frame.handlerInstalled =
+        std::any_of(execStack.begin(),
+                    execStack.end(),
+                    [](const ExecState *st) { return st && !st->fr.ehStack.empty(); });
     return frame;
 }
 

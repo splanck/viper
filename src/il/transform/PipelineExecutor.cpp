@@ -40,7 +40,8 @@ namespace il::transform
 PipelineExecutor::PipelineExecutor(const PassRegistry &registry,
                                    const AnalysisRegistry &analysisRegistry,
                                    bool verifyBetweenPasses)
-    : registry_(registry), analysisRegistry_(analysisRegistry), verifyBetweenPasses_(verifyBetweenPasses)
+    : registry_(registry), analysisRegistry_(analysisRegistry),
+      verifyBetweenPasses_(verifyBetweenPasses)
 {
 }
 
@@ -102,4 +103,3 @@ void PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
 }
 
 } // namespace il::transform
-

@@ -29,10 +29,7 @@ namespace il::frontends::basic::semantic_analyzer_detail
 /// @details Wraps the common @ref StmtShared base so helpers can access
 ///          diagnostics and loop-tracking facilities without duplicating
 ///          plumbing code.
-IOStmtContext::IOStmtContext(SemanticAnalyzer &analyzer) noexcept
-    : StmtShared(analyzer)
-{
-}
+IOStmtContext::IOStmtContext(SemanticAnalyzer &analyzer) noexcept : StmtShared(analyzer) {}
 
 } // namespace il::frontends::basic::semantic_analyzer_detail
 
@@ -121,9 +118,10 @@ void SemanticAnalyzer::analyzeLocate(const LocateStmt &stmt)
 ///          balance. Emits warnings for channels reopened without closing.
 void SemanticAnalyzer::analyzeOpen(OpenStmt &stmt)
 {
-    const bool modeValid = stmt.mode == OpenStmt::Mode::Input || stmt.mode == OpenStmt::Mode::Output ||
-                           stmt.mode == OpenStmt::Mode::Append || stmt.mode == OpenStmt::Mode::Binary ||
-                           stmt.mode == OpenStmt::Mode::Random;
+    const bool modeValid =
+        stmt.mode == OpenStmt::Mode::Input || stmt.mode == OpenStmt::Mode::Output ||
+        stmt.mode == OpenStmt::Mode::Append || stmt.mode == OpenStmt::Mode::Binary ||
+        stmt.mode == OpenStmt::Mode::Random;
     if (!modeValid)
     {
         std::string msg = "invalid OPEN mode";
@@ -150,7 +148,8 @@ void SemanticAnalyzer::analyzeOpen(OpenStmt &stmt)
             std::string msg = "OPEN channel expression must be INTEGER, got ";
             msg += semanticTypeName(channelTy);
             msg += '.';
-            de.emit(il::support::Severity::Error, "B2001", stmt.channelExpr->loc, 1, std::move(msg));
+            de.emit(
+                il::support::Severity::Error, "B2001", stmt.channelExpr->loc, 1, std::move(msg));
         }
         else if (auto *intExpr = dynamic_cast<IntExpr *>(stmt.channelExpr.get()))
         {
@@ -221,7 +220,8 @@ void SemanticAnalyzer::analyzeSeek(SeekStmt &stmt)
             std::string msg = "SEEK channel expression must be INTEGER, got ";
             msg += semanticTypeName(channelTy);
             msg += '.';
-            de.emit(il::support::Severity::Error, "B2001", stmt.channelExpr->loc, 1, std::move(msg));
+            de.emit(
+                il::support::Severity::Error, "B2001", stmt.channelExpr->loc, 1, std::move(msg));
         }
     }
 
@@ -233,7 +233,8 @@ void SemanticAnalyzer::analyzeSeek(SeekStmt &stmt)
             std::string msg = "SEEK position expression must be INTEGER, got ";
             msg += semanticTypeName(posTy);
             msg += '.';
-            de.emit(il::support::Severity::Error, "B2001", stmt.positionExpr->loc, 1, std::move(msg));
+            de.emit(
+                il::support::Severity::Error, "B2001", stmt.positionExpr->loc, 1, std::move(msg));
         }
     }
 }

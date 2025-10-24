@@ -117,4 +117,3 @@ void ProgramLowering::run(const Program &prog, il::core::Module &module)
 }
 
 } // namespace il::frontends::basic
-

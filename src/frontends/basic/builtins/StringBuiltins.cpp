@@ -170,9 +170,7 @@ Value lowerStr(LowerCtx &ctx, ArrayRef<Value> args)
     const char *runtime = nullptr;
     RuntimeFeature feature = RuntimeFeature::StrFromDouble;
 
-    auto narrowInteger = [&](Type::Kind target) {
-        ctx.narrowInt(0, Type(target), argLoc);
-    };
+    auto narrowInteger = [&](Type::Kind target) { ctx.narrowInt(0, Type(target), argLoc); };
 
     switch (numericType)
     {
@@ -255,10 +253,7 @@ Value lowerInstr(LowerCtx &ctx, ArrayRef<Value> args)
 /// @param runtime Name of the runtime helper to invoke.
 /// @param feature Runtime capability that must be tracked for the program.
 /// @return Value produced by the selected runtime helper.
-Value lowerTrim(LowerCtx &ctx,
-                ArrayRef<Value> args,
-                const char *runtime,
-                RuntimeFeature feature)
+Value lowerTrim(LowerCtx &ctx, ArrayRef<Value> args, const char *runtime, RuntimeFeature feature)
 {
     (void)args;
     ctx.setResultType(Type(Type::Kind::Str));
@@ -355,18 +350,18 @@ Value lowerAsc(LowerCtx &ctx, ArrayRef<Value> args)
 }
 
 constexpr std::array<BuiltinSpec, 13> kStringBuiltins = {{{"LEN", 1, 1, &lowerLen},
-                                                           {"MID$", 2, 3, &lowerMid},
-                                                           {"LEFT$", 2, 2, &lowerLeft},
-                                                           {"RIGHT$", 2, 2, &lowerRight},
-                                                           {"STR$", 1, 1, &lowerStr},
-                                                           {"INSTR", 2, 3, &lowerInstr},
-                                                           {"LTRIM$", 1, 1, &lowerLTrim},
-                                                           {"RTRIM$", 1, 1, &lowerRTrim},
-                                                           {"TRIM$", 1, 1, &lowerTrimBoth},
-                                                           {"UCASE$", 1, 1, &lowerUcase},
-                                                           {"LCASE$", 1, 1, &lowerLcase},
-                                                           {"CHR$", 1, 1, &lowerChr},
-                                                           {"ASC", 1, 1, &lowerAsc}}};
+                                                          {"MID$", 2, 3, &lowerMid},
+                                                          {"LEFT$", 2, 2, &lowerLeft},
+                                                          {"RIGHT$", 2, 2, &lowerRight},
+                                                          {"STR$", 1, 1, &lowerStr},
+                                                          {"INSTR", 2, 3, &lowerInstr},
+                                                          {"LTRIM$", 1, 1, &lowerLTrim},
+                                                          {"RTRIM$", 1, 1, &lowerRTrim},
+                                                          {"TRIM$", 1, 1, &lowerTrimBoth},
+                                                          {"UCASE$", 1, 1, &lowerUcase},
+                                                          {"LCASE$", 1, 1, &lowerLcase},
+                                                          {"CHR$", 1, 1, &lowerChr},
+                                                          {"ASC", 1, 1, &lowerAsc}}};
 
 } // namespace
 
@@ -380,9 +375,9 @@ constexpr std::array<BuiltinSpec, 13> kStringBuiltins = {{{"LEN", 1, 1, &lowerLe
 /// @return Pointer to the builtin specification or `nullptr` if not found.
 const BuiltinSpec *findBuiltin(StringRef name)
 {
-    auto it = std::find_if(kStringBuiltins.begin(), kStringBuiltins.end(), [&](const BuiltinSpec &spec) {
-        return spec.name == name;
-    });
+    auto it = std::find_if(kStringBuiltins.begin(),
+                           kStringBuiltins.end(),
+                           [&](const BuiltinSpec &spec) { return spec.name == name; });
     if (it == kStringBuiltins.end())
         return nullptr;
     return &*it;
@@ -397,8 +392,7 @@ const BuiltinSpec *findBuiltin(StringRef name)
 ///
 /// @param lowerer Owning lowering driver used to materialise IL.
 /// @param call AST node describing the builtin invocation.
-LowerCtx::LowerCtx(Lowerer &lowerer, const BuiltinCallExpr &call)
-    : lowerer_(lowerer), call_(call)
+LowerCtx::LowerCtx(Lowerer &lowerer, const BuiltinCallExpr &call) : lowerer_(lowerer), call_(call)
 {
     const std::size_t count = call.args.size();
     loweredArgs_.resize(count);
@@ -595,14 +589,14 @@ Lowerer::RVal &LowerCtx::coerceToF64(std::size_t idx, il::support::SourceLoc loc
 /// @param immediate Constant delta to add.
 /// @param loc Location attributed to the arithmetic for diagnostics.
 /// @return Reference to the mutated slot.
-Lowerer::RVal &LowerCtx::addConst(std::size_t idx, std::int64_t immediate, il::support::SourceLoc loc)
+Lowerer::RVal &LowerCtx::addConst(std::size_t idx,
+                                  std::int64_t immediate,
+                                  il::support::SourceLoc loc)
 {
     Lowerer::RVal &slot = ensureLowered(idx);
     lowerer_.curLoc = loc;
-    slot.value = lowerer_.emitBinary(il::core::Opcode::IAddOvf,
-                                     Type(Type::Kind::I64),
-                                     slot.value,
-                                     Value::constInt(immediate));
+    slot.value = lowerer_.emitBinary(
+        il::core::Opcode::IAddOvf, Type(Type::Kind::I64), slot.value, Value::constInt(immediate));
     slot.type = Type(Type::Kind::I64);
     syncValue(idx);
     return slot;

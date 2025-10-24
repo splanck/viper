@@ -129,10 +129,12 @@ Expected<void> checkStore(const VerifyCtx &ctx)
              (ctx.instr.type.kind == Type::Kind::I16 || ctx.instr.type.kind == Type::Kind::I32))
     {
         const long long value = ctx.instr.operands[1].i64;
-        const long long min = ctx.instr.type.kind == Type::Kind::I16 ? std::numeric_limits<int16_t>::min()
-                                                                     : std::numeric_limits<int32_t>::min();
-        const long long max = ctx.instr.type.kind == Type::Kind::I16 ? std::numeric_limits<int16_t>::max()
-                                                                     : std::numeric_limits<int32_t>::max();
+        const long long min = ctx.instr.type.kind == Type::Kind::I16
+                                  ? std::numeric_limits<int16_t>::min()
+                                  : std::numeric_limits<int32_t>::min();
+        const long long max = ctx.instr.type.kind == Type::Kind::I16
+                                  ? std::numeric_limits<int16_t>::max()
+                                  : std::numeric_limits<int32_t>::max();
         if (value < min || value > max)
             return fail(ctx, "value out of range for store type");
     }

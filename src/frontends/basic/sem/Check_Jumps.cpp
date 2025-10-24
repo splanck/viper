@@ -40,13 +40,9 @@ void emitUnknownLabel(ControlCheckContext &context,
 {
     std::string msg = "unknown line ";
     msg += std::to_string(label);
-    context.diagnostics().emit(il::support::Severity::Error,
-                               "B1003",
-                               loc,
-                               width,
-                               std::move(msg));
+    context.diagnostics().emit(il::support::Severity::Error, "B1003", loc, width, std::move(msg));
 }
-}
+} // namespace
 
 /// @brief Validate a @c GOTO statement's control-flow constraints.
 ///
@@ -124,11 +120,8 @@ void analyzeResume(SemanticAnalyzer &analyzer, const Resume &stmt)
     if (!context.hasActiveErrorHandler())
     {
         std::string msg = "RESUME requires an active error handler";
-        context.diagnostics().emit(il::support::Severity::Error,
-                                   "B1012",
-                                   stmt.loc,
-                                   6,
-                                   std::move(msg));
+        context.diagnostics().emit(
+            il::support::Severity::Error, "B1012", stmt.loc, 6, std::move(msg));
     }
 
     if (stmt.mode != Resume::Mode::Label)
@@ -158,11 +151,8 @@ void analyzeReturn(SemanticAnalyzer &analyzer, ReturnStmt &stmt)
         if (stmt.value)
         {
             std::string msg = "RETURN with value not allowed at top level";
-            context.diagnostics().emit(il::support::Severity::Error,
-                                       "B1008",
-                                       stmt.loc,
-                                       6,
-                                       std::move(msg));
+            context.diagnostics().emit(
+                il::support::Severity::Error, "B1008", stmt.loc, 6, std::move(msg));
         }
         else
         {

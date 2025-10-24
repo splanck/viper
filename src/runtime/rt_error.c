@@ -7,13 +7,13 @@
 #include "rt_error.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
     /// @brief Canonical success error record.
-    const RtError RT_ERROR_NONE = { Err_None, 0 };
+    const RtError RT_ERROR_NONE = {Err_None, 0};
 
 #ifdef __cplusplus
 }
 #endif
-

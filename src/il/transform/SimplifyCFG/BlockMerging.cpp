@@ -55,9 +55,10 @@ bool mergeSinglePred(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::BasicBl
 {
     il::core::Function &F = ctx.function;
 
-    auto blockIt = std::find_if(
-        F.blocks.begin(), F.blocks.end(),
-        [&](il::core::BasicBlock &candidate) { return &candidate == &block; });
+    auto blockIt =
+        std::find_if(F.blocks.begin(),
+                     F.blocks.end(),
+                     [&](il::core::BasicBlock &candidate) { return &candidate == &block; });
     if (blockIt == F.blocks.end())
         return false;
 
@@ -143,16 +144,16 @@ bool mergeSinglePred(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::BasicBl
     }
 
     auto &predInstrs = predBlock->instructions;
-    auto predTermIt = std::find_if(
-        predInstrs.begin(), predInstrs.end(),
-        [&](il::core::Instr &instr) { return &instr == predTerm; });
+    auto predTermIt = std::find_if(predInstrs.begin(),
+                                   predInstrs.end(),
+                                   [&](il::core::Instr &instr) { return &instr == predTerm; });
     if (predTermIt == predInstrs.end())
         return false;
 
     auto &blockInstrs = block.instructions;
-    auto blockTermIt = std::find_if(
-        blockInstrs.begin(), blockInstrs.end(),
-        [&](il::core::Instr &instr) { return &instr == blockTerm; });
+    auto blockTermIt = std::find_if(blockInstrs.begin(),
+                                    blockInstrs.end(),
+                                    [&](il::core::Instr &instr) { return &instr == blockTerm; });
     if (blockTermIt == blockInstrs.end())
         return false;
 
@@ -230,4 +231,3 @@ bool mergeSinglePredBlocks(SimplifyCFG::SimplifyCFGPassContext &ctx)
 }
 
 } // namespace il::transform::simplify_cfg
-

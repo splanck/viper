@@ -377,7 +377,9 @@ void Emitter::emitCBr(Value cond, BasicBlock *t, BasicBlock *f)
 /// @param callee Mangled name of the function to invoke.
 /// @param args Argument list forwarded to the callee.
 /// @return SSA value bound to the call's result.
-Emitter::Value Emitter::emitCallRet(Type ty, const std::string &callee, const std::vector<Value> &args)
+Emitter::Value Emitter::emitCallRet(Type ty,
+                                    const std::string &callee,
+                                    const std::vector<Value> &args)
 {
     unsigned id = lowerer_.nextTempId();
     Instr in;

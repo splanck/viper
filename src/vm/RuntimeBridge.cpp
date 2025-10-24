@@ -39,8 +39,8 @@ using il::support::SourceLoc;
 namespace
 {
 using il::core::Opcode;
-using il::runtime::RuntimeDescriptor;
 using il::runtime::RtSig;
+using il::runtime::RuntimeDescriptor;
 using il::vm::FrameInfo;
 using il::vm::ResultBuffers;
 using il::vm::RuntimeBridge;
@@ -48,9 +48,9 @@ using il::vm::RuntimeCallContext;
 using il::vm::Slot;
 using il::vm::TrapKind;
 using il::vm::VM;
-using il::vm::VmError;
 using il::vm::vm_format_error;
 using il::vm::vm_raise;
+using il::vm::VmError;
 
 /// @brief Thread-local pointer to the runtime call context for active trap reporting.
 ///
@@ -284,7 +284,8 @@ extern "C" void vm_trap(const char *msg)
     const auto *ctx = il::vm::RuntimeBridge::activeContext();
     const char *trapMsg = msg ? msg : "trap";
     if (ctx)
-        il::vm::RuntimeBridge::trap(TrapKind::DomainError, trapMsg, ctx->loc, ctx->function, ctx->block);
+        il::vm::RuntimeBridge::trap(
+            TrapKind::DomainError, trapMsg, ctx->loc, ctx->function, ctx->block);
     else
         il::vm::RuntimeBridge::trap(TrapKind::DomainError, trapMsg, {}, "", "");
 }
@@ -422,15 +423,15 @@ void RuntimeBridge::trap(TrapKind kind,
 
     switch (kind)
     {
-    case TrapKind::Overflow:
-        handleOverflow(ctx, trapOpcode, noOperands);
-        return;
-    case TrapKind::DivideByZero:
-        handleDivByZero(ctx, trapOpcode, noOperands);
-        return;
-    default:
-        handleGenericTrap(ctx);
-        return;
+        case TrapKind::Overflow:
+            handleOverflow(ctx, trapOpcode, noOperands);
+            return;
+        case TrapKind::DivideByZero:
+            handleDivByZero(ctx, trapOpcode, noOperands);
+            return;
+        default:
+            handleGenericTrap(ctx);
+            return;
     }
 }
 

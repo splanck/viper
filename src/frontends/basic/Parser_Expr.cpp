@@ -75,19 +75,21 @@ constexpr std::array<InfixParselet, 17> infixParselets{
     InfixParselet{TokenKind::KeywordOr, BinaryExpr::Op::LogicalOr, 1, Assoc::Left},
 };
 
-inline const PrefixParselet* findPrefix(TokenKind kind)
+inline const PrefixParselet *findPrefix(TokenKind kind)
 {
-    const auto it = std::find_if(prefixParselets.begin(), prefixParselets.end(), [kind](const PrefixParselet& parselet) {
-        return parselet.kind == kind;
-    });
+    const auto it =
+        std::find_if(prefixParselets.begin(),
+                     prefixParselets.end(),
+                     [kind](const PrefixParselet &parselet) { return parselet.kind == kind; });
     return it == prefixParselets.end() ? nullptr : &*it;
 }
 
-inline const InfixParselet* findInfix(TokenKind kind)
+inline const InfixParselet *findInfix(TokenKind kind)
 {
-    const auto it = std::find_if(infixParselets.begin(), infixParselets.end(), [kind](const InfixParselet& parselet) {
-        return parselet.kind == kind;
-    });
+    const auto it =
+        std::find_if(infixParselets.begin(),
+                     infixParselets.end(),
+                     [kind](const InfixParselet &parselet) { return parselet.kind == kind; });
     return it == infixParselets.end() ? nullptr : &*it;
 }
 
@@ -98,9 +100,9 @@ inline const InfixParselet* findInfix(TokenKind kind)
 /// @return Numeric precedence; higher values bind more tightly, 0 for non-operators.
 int Parser::precedence(TokenKind k)
 {
-    if (const auto* prefix = findPrefix(k))
+    if (const auto *prefix = findPrefix(k))
         return prefix->rbp;
-    if (const auto* infix = findInfix(k))
+    if (const auto *infix = findInfix(k))
         return infix->lbp;
     return 0;
 }
@@ -122,7 +124,7 @@ ExprPtr Parser::parseExpression(int min_prec)
 ExprPtr Parser::parseUnary()
 {
     const auto tok = peek();
-    if (const auto* prefix = findPrefix(tok.kind))
+    if (const auto *prefix = findPrefix(tok.kind))
     {
         consume();
         auto operand = parseBinary(prefix->rbp);
@@ -145,7 +147,7 @@ ExprPtr Parser::parseBinary(int min_prec)
     auto lhs = parseUnary();
     while (true)
     {
-        const auto* parselet = findInfix(peek().kind);
+        const auto *parselet = findInfix(peek().kind);
         if (parselet == nullptr || parselet->lbp < min_prec)
             break;
 
@@ -286,7 +288,8 @@ ExprPtr Parser::parseBuiltinCall(BuiltinCallExpr::Builtin builtin, il::support::
              builtin == BuiltinCallExpr::Builtin::Right ||
              builtin == BuiltinCallExpr::Builtin::Str || builtin == BuiltinCallExpr::Builtin::Val ||
              builtin == BuiltinCallExpr::Builtin::Int || builtin == BuiltinCallExpr::Builtin::Fix ||
-             builtin == BuiltinCallExpr::Builtin::Round || builtin == BuiltinCallExpr::Builtin::Instr)
+             builtin == BuiltinCallExpr::Builtin::Round ||
+             builtin == BuiltinCallExpr::Builtin::Instr)
     {
         if (!at(TokenKind::RParen))
         {

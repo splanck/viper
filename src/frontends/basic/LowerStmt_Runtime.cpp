@@ -145,8 +145,7 @@ void Lowerer::assignScalarSlot(const SlotType &slotInfo,
         requestHelper(RuntimeFeature::ObjRetainMaybe);
 
         Value oldValue = emitLoad(Type(Type::Kind::Ptr), slot);
-        Value shouldDestroy =
-            emitCallRet(ilBoolTy(), "rt_obj_release_check0", {oldValue});
+        Value shouldDestroy = emitCallRet(ilBoolTy(), "rt_obj_release_check0", {oldValue});
 
         ProcedureContext &ctx = context();
         Function *func = ctx.function();

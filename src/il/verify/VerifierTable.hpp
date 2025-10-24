@@ -35,20 +35,21 @@ enum class TypeClass : uint8_t
 /// @brief Verification properties describing a simple arithmetic opcode.
 struct OpProps
 {
-    uint8_t arity;     ///< Number of value operands required.
-    TypeClass operands;///< Shared operand type requirement.
-    TypeClass result;  ///< Result type produced on success.
-    bool canTrap;      ///< Whether the opcode may trap at runtime.
+    uint8_t arity;      ///< Number of value operands required.
+    TypeClass operands; ///< Shared operand type requirement.
+    TypeClass result;   ///< Result type produced on success.
+    bool canTrap;       ///< Whether the opcode may trap at runtime.
 };
 
 /// @brief Specification of operand and result constraints for opcode verification.
 struct OpCheckSpec
 {
-    uint8_t numOperandsMin;                                                 ///< Minimum number of operands accepted.
-    uint8_t numOperandsMax;                                                 ///< Maximum number of operands accepted; may be variadic.
-    std::array<TypeClass, il::core::kMaxOperandCategories> operandTypes;    ///< Per-operand type constraints.
-    TypeClass result;                                                       ///< Result type constraint; InstrType refers to instruction type.
-    bool hasSideEffects;                                                    ///< Whether the opcode performs side effects.
+    uint8_t numOperandsMin; ///< Minimum number of operands accepted.
+    uint8_t numOperandsMax; ///< Maximum number of operands accepted; may be variadic.
+    std::array<TypeClass, il::core::kMaxOperandCategories>
+        operandTypes;    ///< Per-operand type constraints.
+    TypeClass result;    ///< Result type constraint; InstrType refers to instruction type.
+    bool hasSideEffects; ///< Whether the opcode performs side effects.
 };
 
 /// @brief Look up verification properties for supported arithmetic opcodes.
@@ -75,4 +76,3 @@ inline bool isPure(il::core::Opcode opcode)
 }
 
 } // namespace il::verify
-

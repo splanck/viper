@@ -5,8 +5,8 @@
 // Links: docs/codemap.md
 #pragma once
 
-#include "frontends/basic/ast/DeclNodes.hpp"
 #include "frontends/basic/Token.hpp"
+#include "frontends/basic/ast/DeclNodes.hpp"
 #include <optional>
 
 namespace il::frontends::basic

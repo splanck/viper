@@ -81,8 +81,7 @@ const Parser::StatementParserRegistry &Parser::statementRegistry()
 /// @details Stores the callback in the registry entry associated with @p kind.
 ///          The registry distinguishes between handlers that consume prefixed
 ///          line numbers and those that do not.
-void Parser::StatementParserRegistry::registerHandler(TokenKind kind,
-                                                      NoArgHandler handler)
+void Parser::StatementParserRegistry::registerHandler(TokenKind kind, NoArgHandler handler)
 {
     entries_[static_cast<std::size_t>(kind)].first = handler;
 }
@@ -90,8 +89,7 @@ void Parser::StatementParserRegistry::registerHandler(TokenKind kind,
 /// @brief Install a statement handler that receives the parsed line number.
 /// @details Complements the no-argument registration to support statements that
 ///          require awareness of their source line during parsing.
-void Parser::StatementParserRegistry::registerHandler(TokenKind kind,
-                                                      WithLineHandler handler)
+void Parser::StatementParserRegistry::registerHandler(TokenKind kind, WithLineHandler handler)
 {
     entries_[static_cast<std::size_t>(kind)].second = handler;
 }

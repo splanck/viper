@@ -21,8 +21,8 @@
 
 #include "vm/Trap.hpp"
 
-#include "vm/VM.hpp"
 #include "rt.hpp"
+#include "vm/VM.hpp"
 
 #include <sstream>
 #include <string_view>
@@ -217,7 +217,8 @@ std::string vm_current_trap_message()
 /// @return Human-readable description of the trap.
 std::string vm_format_error(const VmError &error, const FrameInfo &frame)
 {
-    const std::string &function = frame.function.empty() ? std::string("<unknown>") : frame.function;
+    const std::string &function =
+        frame.function.empty() ? std::string("<unknown>") : frame.function;
     const uint64_t ip = error.ip ? error.ip : frame.ip;
     const int32_t line = error.line >= 0 ? error.line : (frame.line >= 0 ? frame.line : -1);
 

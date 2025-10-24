@@ -153,7 +153,8 @@ VM::ExecResult handleCall(VM &vm,
     {
         const std::string functionName = fr.func ? fr.func->name : std::string{};
         const std::string blockLabel = bb ? bb->label : std::string{};
-        out = RuntimeBridge::call(VMAccess::runtimeContext(vm), in.callee, args, in.loc, functionName, blockLabel);
+        out = RuntimeBridge::call(
+            VMAccess::runtimeContext(vm), in.callee, args, in.loc, functionName, blockLabel);
 
         const auto *signature = il::runtime::findRuntimeSignature(in.callee);
         if (signature)
@@ -189,27 +190,28 @@ VM::ExecResult handleCall(VM &vm,
                 if (!binding.stackPtr)
                     continue;
 
-                auto copyWidthForKind = [](il::core::Type::Kind k) -> size_t {
+                auto copyWidthForKind = [](il::core::Type::Kind k) -> size_t
+                {
                     switch (k)
                     {
-                    case il::core::Type::Kind::I1:
-                        return sizeof(uint8_t);
-                    case il::core::Type::Kind::I16:
-                        return sizeof(int16_t);
-                    case il::core::Type::Kind::I32:
-                        return sizeof(int32_t);
-                    case il::core::Type::Kind::I64:
-                        return sizeof(int64_t);
-                    case il::core::Type::Kind::F64:
-                        return sizeof(double);
-                    case il::core::Type::Kind::Ptr:
-                    case il::core::Type::Kind::Error:
-                    case il::core::Type::Kind::ResumeTok:
-                        return sizeof(void *);
-                    case il::core::Type::Kind::Str:
-                        return sizeof(rt_string);
-                    case il::core::Type::Kind::Void:
-                        return 0;
+                        case il::core::Type::Kind::I1:
+                            return sizeof(uint8_t);
+                        case il::core::Type::Kind::I16:
+                            return sizeof(int16_t);
+                        case il::core::Type::Kind::I32:
+                            return sizeof(int32_t);
+                        case il::core::Type::Kind::I64:
+                            return sizeof(int64_t);
+                        case il::core::Type::Kind::F64:
+                            return sizeof(double);
+                        case il::core::Type::Kind::Ptr:
+                        case il::core::Type::Kind::Error:
+                        case il::core::Type::Kind::ResumeTok:
+                            return sizeof(void *);
+                        case il::core::Type::Kind::Str:
+                            return sizeof(rt_string);
+                        case il::core::Type::Kind::Void:
+                            return 0;
                     }
                     return 0;
                 };
@@ -246,4 +248,3 @@ VM::ExecResult handleCall(VM &vm,
 }
 
 } // namespace il::vm::detail::control
-

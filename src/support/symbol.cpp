@@ -82,4 +82,3 @@ size_t hash<il::support::Symbol>::operator()(il::support::Symbol s) const noexce
     return s.id;
 }
 } // namespace std
-

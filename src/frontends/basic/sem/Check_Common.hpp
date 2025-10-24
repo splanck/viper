@@ -37,9 +37,7 @@ class ControlCheckContext
 {
   public:
     explicit ControlCheckContext(SemanticAnalyzer &analyzer) noexcept
-        : analyzer_(&analyzer),
-          stmtContext_(analyzer),
-          loopDepth_(analyzer.loopStack_.size()),
+        : analyzer_(&analyzer), stmtContext_(analyzer), loopDepth_(analyzer.loopStack_.size()),
           forDepth_(analyzer.forStack_.size())
     {
     }
@@ -56,8 +54,15 @@ class ControlCheckContext
                "FOR stack unbalanced by control-flow check");
     }
 
-    [[nodiscard]] SemanticAnalyzer &analyzer() noexcept { return *analyzer_; }
-    [[nodiscard]] const SemanticAnalyzer &analyzer() const noexcept { return *analyzer_; }
+    [[nodiscard]] SemanticAnalyzer &analyzer() noexcept
+    {
+        return *analyzer_;
+    }
+
+    [[nodiscard]] const SemanticAnalyzer &analyzer() const noexcept
+    {
+        return *analyzer_;
+    }
 
     [[nodiscard]] semantic_analyzer_detail::ControlStmtContext &stmt() noexcept
     {
@@ -100,22 +105,22 @@ class ControlCheckContext
 
     semantic_analyzer_detail::ControlStmtContext::LoopGuard whileLoopGuard()
     {
-        return { *analyzer_, SemanticAnalyzer::LoopKind::While };
+        return {*analyzer_, SemanticAnalyzer::LoopKind::While};
     }
 
     semantic_analyzer_detail::ControlStmtContext::LoopGuard doLoopGuard()
     {
-        return { *analyzer_, SemanticAnalyzer::LoopKind::Do };
+        return {*analyzer_, SemanticAnalyzer::LoopKind::Do};
     }
 
     semantic_analyzer_detail::ControlStmtContext::LoopGuard forLoopGuard()
     {
-        return { *analyzer_, SemanticAnalyzer::LoopKind::For };
+        return {*analyzer_, SemanticAnalyzer::LoopKind::For};
     }
 
     semantic_analyzer_detail::ControlStmtContext::ForLoopGuard trackForVariable(std::string name)
     {
-        return { *analyzer_, std::move(name) };
+        return {*analyzer_, std::move(name)};
     }
 
     SemanticAnalyzer::LoopKind toLoopKind(ExitStmt::LoopKind kind) const noexcept
@@ -228,13 +233,17 @@ class ControlCheckContext
 class ExprCheckContext
 {
   public:
-    explicit ExprCheckContext(SemanticAnalyzer &analyzer) noexcept
-        : analyzer_(&analyzer)
+    explicit ExprCheckContext(SemanticAnalyzer &analyzer) noexcept : analyzer_(&analyzer) {}
+
+    [[nodiscard]] SemanticAnalyzer &analyzer() noexcept
     {
+        return *analyzer_;
     }
 
-    [[nodiscard]] SemanticAnalyzer &analyzer() noexcept { return *analyzer_; }
-    [[nodiscard]] const SemanticAnalyzer &analyzer() const noexcept { return *analyzer_; }
+    [[nodiscard]] const SemanticAnalyzer &analyzer() const noexcept
+    {
+        return *analyzer_;
+    }
 
     SemanticAnalyzer::Type evaluate(Expr &expr)
     {
@@ -251,7 +260,10 @@ class ExprCheckContext
         analyzer_->markImplicitConversion(expr, target);
     }
 
-    [[nodiscard]] SemanticDiagnostics &diagnostics() noexcept { return analyzer_->de; }
+    [[nodiscard]] SemanticDiagnostics &diagnostics() noexcept
+    {
+        return analyzer_->de;
+    }
 
     const ProcSignature *resolveCallee(const CallExpr &expr, ProcSignature::Kind kind)
     {
@@ -279,11 +291,8 @@ inline void emitTypeMismatch(SemanticDiagnostics &diagnostics,
                              uint32_t length,
                              std::string message)
 {
-    diagnostics.emit(il::support::Severity::Error,
-                     std::move(code),
-                     loc,
-                     length,
-                     std::move(message));
+    diagnostics.emit(
+        il::support::Severity::Error, std::move(code), loc, length, std::move(message));
 }
 
 inline void emitOperandTypeMismatch(SemanticDiagnostics &diagnostics,
@@ -293,20 +302,12 @@ inline void emitOperandTypeMismatch(SemanticDiagnostics &diagnostics,
     if (diagId.empty())
         return;
 
-    emitTypeMismatch(diagnostics,
-                     std::string(diagId),
-                     expr.loc,
-                     1,
-                     "operand type mismatch");
+    emitTypeMismatch(diagnostics, std::string(diagId), expr.loc, 1, "operand type mismatch");
 }
 
 inline void emitDivideByZero(SemanticDiagnostics &diagnostics, const BinaryExpr &expr)
 {
-    diagnostics.emit(il::support::Severity::Error,
-                     "B2002",
-                     expr.loc,
-                     1,
-                     "divide by zero");
+    diagnostics.emit(il::support::Severity::Error, "B2002", expr.loc, 1, "divide by zero");
 }
 
 // Per-construct dispatcher entry points implemented in dedicated translation

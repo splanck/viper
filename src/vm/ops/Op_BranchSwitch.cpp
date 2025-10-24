@@ -51,7 +51,8 @@ SwitchMode g_switchMode = SwitchMode::Auto; ///< Global override for switch back
 /// @return @c true when `VIPER_DEBUG_VM` is non-empty.
 bool isVmDebugLoggingEnabled()
 {
-    static const bool enabled = [] {
+    static const bool enabled = []
+    {
         if (const char *flag = std::getenv("VIPER_DEBUG_VM"))
             return flag[0] != '\0';
         return false;
@@ -149,7 +150,8 @@ SwitchMeta collectSwitchMeta(const il::core::Instr &in)
     for (size_t idx = 0; idx < caseCount; ++idx)
     {
         const il::core::Value &value = switchCaseValue(in, idx);
-        assert(value.kind == il::core::Value::Kind::ConstInt && "switch case requires integer literal");
+        assert(value.kind == il::core::Value::Kind::ConstInt &&
+               "switch case requires integer literal");
         const int32_t caseValue = static_cast<int32_t>(value.i64);
         const auto [_, inserted] = seenValues.insert(caseValue);
         if (!inserted)
@@ -290,9 +292,9 @@ SortedCases buildSorted(const SwitchMeta &meta)
 {
     std::vector<size_t> order(meta.values.size());
     std::iota(order.begin(), order.end(), 0);
-    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
-        return meta.values[a] < meta.values[b];
-    });
+    std::sort(order.begin(),
+              order.end(),
+              [&](size_t a, size_t b) { return meta.values[a] < meta.values[b]; });
     SortedCases sorted;
     sorted.keys.reserve(order.size());
     sorted.targetIdx.reserve(order.size());
@@ -431,7 +433,8 @@ VM::ExecResult branchToTarget(VM &vm,
         if (!sourceLabel.empty())
             os << " from '" << sourceLabel << '\'';
         os << ": expected " << expected << ", got " << provided;
-        RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), in.loc, functionName, sourceLabel);
+        RuntimeBridge::trap(
+            TrapKind::InvalidOperation, os.str(), in.loc, functionName, sourceLabel);
         return {};
     }
 
@@ -530,7 +533,8 @@ VM::ExecResult handleSwitchI32(VM &vm,
     else
     {
         std::visit(
-            [&](auto &backend) {
+            [&](auto &backend)
+            {
                 using BackendT = std::decay_t<decltype(backend)>;
                 if constexpr (std::is_same_v<BackendT, DenseJumpTable>)
                     idx = lookupDense(backend, sel, entry.defaultIdx);
@@ -551,7 +555,8 @@ VM::ExecResult handleSwitchI32(VM &vm,
                             "switch target out of range",
                             in.loc,
                             fr.func ? fr.func->name : std::string(),
-                            fr.func && !fr.func->blocks.empty() ? fr.func->blocks.front().label : "");
+                            fr.func && !fr.func->blocks.empty() ? fr.func->blocks.front().label
+                                                                : "");
         return result;
     }
 
@@ -592,4 +597,3 @@ VM::ExecResult handleCBr(VM &vm,
 }
 
 } // namespace il::vm::detail::control
-

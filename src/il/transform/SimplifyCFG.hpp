@@ -42,9 +42,9 @@ struct SimplifyCFG
                                const il::core::Module *module,
                                Stats &stats);
 
-        il::core::Function &function;     ///< Function currently being simplified.
-        const il::core::Module *module;   ///< Parent module, may be null.
-        Stats &stats;                     ///< Mutable statistics for the run.
+        il::core::Function &function;   ///< Function currently being simplified.
+        const il::core::Module *module; ///< Parent module, may be null.
+        Stats &stats;                   ///< Mutable statistics for the run.
 
         bool isDebugLoggingEnabled() const;
         void logDebug(std::string_view message) const;
@@ -60,11 +60,17 @@ struct SimplifyCFG
 
     /// \brief Provide the module containing functions processed by this pass.
     /// \param module Pointer to the parent module; may be null when unavailable.
-    void setModule(const il::core::Module *module) { module_ = module; }
+    void setModule(const il::core::Module *module)
+    {
+        module_ = module;
+    }
 
     /// \brief Provide the active analysis manager so the pass can invalidate caches.
     /// \param manager Pointer to the analysis manager driving the pipeline; may be null.
-    void setAnalysisManager(AnalysisManager *manager) { analysisManager_ = manager; }
+    void setAnalysisManager(AnalysisManager *manager)
+    {
+        analysisManager_ = manager;
+    }
 
     /// \brief Run the simplification pass on a single function.
     /// \param F Function mutated in place.
@@ -73,8 +79,8 @@ struct SimplifyCFG
     bool run(il::core::Function &F, Stats *outStats = nullptr);
 
   private:
-    bool aggressive; ///< Controls heuristic aggressiveness.
-    const il::core::Module *module_ = nullptr; ///< Parent module used for verification.
+    bool aggressive;                             ///< Controls heuristic aggressiveness.
+    const il::core::Module *module_ = nullptr;   ///< Parent module used for verification.
     AnalysisManager *analysisManager_ = nullptr; ///< Analysis manager invalidated on change.
 };
 

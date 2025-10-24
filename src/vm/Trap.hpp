@@ -20,16 +20,16 @@ namespace il::vm
 #endif
 enum class TrapKind : int32_t
 {
-    DivideByZero = 0,    ///< Integer division or remainder by zero.
-    Overflow = 1,        ///< Arithmetic or conversion overflow.
-    InvalidCast = 2,     ///< Invalid cast or conversion semantics.
-    DomainError = 3,     ///< Semantic domain violation or user trap.
-    Bounds = 4,          ///< Bounds check failure.
-    FileNotFound = 5,    ///< File system open on a path that does not exist.
-    EOF = 6,             ///< End-of-file reached while input still expected.
-    IOError = 7,         ///< Generic I/O failure.
-    InvalidOperation = 8,///< Operation outside the allowed state machine.
-    RuntimeError = 9,    ///< Catch-all for unexpected runtime failures.
+    DivideByZero = 0,     ///< Integer division or remainder by zero.
+    Overflow = 1,         ///< Arithmetic or conversion overflow.
+    InvalidCast = 2,      ///< Invalid cast or conversion semantics.
+    DomainError = 3,      ///< Semantic domain violation or user trap.
+    Bounds = 4,           ///< Bounds check failure.
+    FileNotFound = 5,     ///< File system open on a path that does not exist.
+    EOF = 6,              ///< End-of-file reached while input still expected.
+    IOError = 7,          ///< Generic I/O failure.
+    InvalidOperation = 8, ///< Operation outside the allowed state machine.
+    RuntimeError = 9,     ///< Catch-all for unexpected runtime failures.
 };
 
 /// @brief Structured representation of a VM error record.
@@ -44,9 +44,9 @@ struct VmError
 /// @brief Execution context metadata used for trap formatting.
 struct FrameInfo
 {
-    std::string function; ///< Function in which the trap occurred.
-    uint64_t ip = 0;      ///< Instruction pointer of the trap.
-    int32_t line = -1;    ///< Source line for diagnostics.
+    std::string function;          ///< Function in which the trap occurred.
+    uint64_t ip = 0;               ///< Instruction pointer of the trap.
+    int32_t line = -1;             ///< Source line for diagnostics.
     bool handlerInstalled = false; ///< Whether an error handler is active.
 };
 

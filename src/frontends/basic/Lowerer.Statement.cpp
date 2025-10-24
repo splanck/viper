@@ -92,10 +92,9 @@ void StatementLowering::lowerSequence(const std::vector<const Stmt *> &stmts,
                 break;
             continue;
         }
-        auto *next =
-            (i + 1 < stmts.size())
-                ? &func->blocks[lineBlocks[lowerer.virtualLine(*stmts[i + 1])]]
-                : &func->blocks[ctx.exitIndex()];
+        auto *next = (i + 1 < stmts.size())
+                         ? &func->blocks[lineBlocks[lowerer.virtualLine(*stmts[i + 1])]]
+                         : &func->blocks[ctx.exitIndex()];
         if (beforeBranch)
             beforeBranch(stmt);
         lowerer.emitBr(next);
@@ -103,4 +102,3 @@ void StatementLowering::lowerSequence(const std::vector<const Stmt *> &stmts,
 }
 
 } // namespace il::frontends::basic
-

@@ -1,8 +1,8 @@
 // File: src/tools/common/module_loader.hpp
 // Purpose: Shared helpers for loading and verifying IL modules used by CLI tools.
-// Key invariants: LoadResult accurately describes success or failure without mutating the output module on I/O failures.
-// Ownership/Lifetime: Callers own provided modules and error streams; helpers borrow them temporarily.
-// Links: docs/codemap.md
+// Key invariants: LoadResult accurately describes success or failure without mutating the output
+// module on I/O failures. Ownership/Lifetime: Callers own provided modules and error streams;
+// helpers borrow them temporarily. Links: docs/codemap.md
 
 #pragma once
 
@@ -66,4 +66,3 @@ bool verifyModule(const il::core::Module &module,
                   const il::support::SourceManager *sm = nullptr);
 
 } // namespace il::tools::common
-

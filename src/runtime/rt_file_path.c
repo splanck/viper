@@ -20,18 +20,18 @@ const char *rt_file_mode_string(int32_t mode)
 {
     switch (mode)
     {
-    case RT_F_INPUT:
-        return "r";
-    case RT_F_OUTPUT:
-        return "w";
-    case RT_F_APPEND:
-        return "a";
-    case RT_F_BINARY:
-        return "rbc+";
-    case RT_F_RANDOM:
-        return "rbc+";
-    default:
-        return NULL;
+        case RT_F_INPUT:
+            return "r";
+        case RT_F_OUTPUT:
+            return "w";
+        case RT_F_APPEND:
+            return "a";
+        case RT_F_BINARY:
+            return "rbc+";
+        case RT_F_RANDOM:
+            return "rbc+";
+        default:
+            return NULL;
     }
 }
 
@@ -45,17 +45,17 @@ bool rt_file_mode_to_flags(const char *mode, int *flags_out)
     int flags = 0;
     switch (mode[0])
     {
-    case 'r':
-        flags = O_RDONLY;
-        break;
-    case 'w':
-        flags = O_WRONLY | O_CREAT | O_TRUNC;
-        break;
-    case 'a':
-        flags = O_WRONLY | O_CREAT | O_APPEND;
-        break;
-    default:
-        return false;
+        case 'r':
+            flags = O_RDONLY;
+            break;
+        case 'w':
+            flags = O_WRONLY | O_CREAT | O_TRUNC;
+            break;
+        case 'a':
+            flags = O_WRONLY | O_CREAT | O_APPEND;
+            break;
+        default:
+            return false;
     }
 
     bool plus = false;
@@ -85,11 +85,11 @@ bool rt_file_mode_to_flags(const char *mode, int *flags_out)
 #if defined(_WIN32)
     if (binary)
     {
-#    if defined(O_BINARY)
+#if defined(O_BINARY)
         flags |= O_BINARY;
-#    elif defined(_O_BINARY)
+#elif defined(_O_BINARY)
         flags |= _O_BINARY;
-#    endif
+#endif
     }
 #else
     (void)binary;
@@ -123,4 +123,3 @@ size_t rt_file_string_view(const ViperString *s, const uint8_t **data_out)
         return rt_heap_len(s->data);
     return s->literal_len;
 }
-

@@ -1,8 +1,8 @@
 // File: src/runtime/rt_heap.c
 // Purpose: Provide reference-counted heap allocation helpers shared by runtime strings and arrays.
-// Key invariants: Each payload pointer is preceded by a validated header containing metadata and a magic tag.
-// Ownership/Lifetime: Callers retain/release to manage shared ownership; block freed automatically when refcount hits zero.
-// Links: docs/codemap.md
+// Key invariants: Each payload pointer is preceded by a validated header containing metadata and a
+// magic tag. Ownership/Lifetime: Callers retain/release to manage shared ownership; block freed
+// automatically when refcount hits zero. Links: docs/codemap.md
 
 #include "rt_heap.h"
 
@@ -31,12 +31,12 @@ static void rt_heap_validate_header(const rt_heap_hdr_t *hdr)
     assert(hdr->refcnt != (size_t)-1);
     switch ((rt_heap_kind_t)hdr->kind)
     {
-    case RT_HEAP_STRING:
-    case RT_HEAP_ARRAY:
-    case RT_HEAP_OBJECT:
-        break;
-    default:
-        assert(!"rt_heap_validate_header: unknown heap kind");
+        case RT_HEAP_STRING:
+        case RT_HEAP_ARRAY:
+        case RT_HEAP_OBJECT:
+            break;
+        default:
+            assert(!"rt_heap_validate_header: unknown heap kind");
     }
 }
 

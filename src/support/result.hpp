@@ -34,21 +34,20 @@ template <typename T> class Result
     /// @details Engages @c value_ with @p value and leaves @c error_ empty.
     /// After this constructor, @c value() may be called and @c error() must not
     /// be used.
-    template <typename U = T>
-    Result(SuccessTag /*tag*/, U &&value) : value_(std::forward<U>(value)) {}
+    template <typename U = T> Result(SuccessTag /*tag*/, U &&value) : value_(std::forward<U>(value))
+    {
+    }
 
     /// @brief Creates a successful result from a value without an explicit tag.
     /// @param value Value to store; ownership is transferred to the Result.
     /// @details Delegates to the tagged constructor so the same disambiguation
     /// path is used for all specializations, including @c std::string.
-    template <typename U = T>
-    Result(U &&value) : Result(kSuccessTag, std::forward<U>(value)) {}
+    template <typename U = T> Result(U &&value) : Result(kSuccessTag, std::forward<U>(value)) {}
 
     /// @brief Factory that constructs a successful result.
     /// @param value Value to store in the Result.
     /// @return Result containing the provided @p value.
-    template <typename U = T>
-    static Result success(U &&value)
+    template <typename U = T> static Result success(U &&value)
     {
         return Result(kSuccessTag, std::forward<U>(value));
     }

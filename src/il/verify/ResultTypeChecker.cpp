@@ -27,12 +27,12 @@
 
 #include <sstream>
 
+using il::core::kindToString;
+using il::core::ResultArity;
+using il::core::TypeCategory;
 using il::support::Expected;
 using il::support::makeError;
 using il::verify::detail::kindFromCategory;
-using il::core::ResultArity;
-using il::core::TypeCategory;
-using il::core::kindToString;
 
 namespace il::verify::detail
 {
@@ -96,9 +96,10 @@ Expected<void> ResultTypeChecker::run() const
     }
     else if (auto expectedKind = kindFromCategory(info_.resultType))
     {
-        const bool skipResultTypeCheck =
-            instr.op == il::core::Opcode::CastFpToSiRteChk || instr.op == il::core::Opcode::CastFpToUiRteChk ||
-            instr.op == il::core::Opcode::CastSiNarrowChk || instr.op == il::core::Opcode::CastUiNarrowChk;
+        const bool skipResultTypeCheck = instr.op == il::core::Opcode::CastFpToSiRteChk ||
+                                         instr.op == il::core::Opcode::CastFpToUiRteChk ||
+                                         instr.op == il::core::Opcode::CastSiNarrowChk ||
+                                         instr.op == il::core::Opcode::CastUiNarrowChk;
 
         if (!skipResultTypeCheck && instr.type.kind != *expectedKind)
         {
@@ -122,8 +123,8 @@ Expected<void> ResultTypeChecker::run() const
 /// @return Expected error containing the diagnostic payload.
 Expected<void> ResultTypeChecker::report(std::string_view message) const
 {
-    return Expected<void>{makeError(ctx_.instr.loc, formatInstrDiag(ctx_.fn, ctx_.block, ctx_.instr, message))};
+    return Expected<void>{
+        makeError(ctx_.instr.loc, formatInstrDiag(ctx_.fn, ctx_.block, ctx_.instr, message))};
 }
 
 } // namespace il::verify::detail
-

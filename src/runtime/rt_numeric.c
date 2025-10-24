@@ -26,7 +26,8 @@
 #endif
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
     static int rt_is_digit_char(char ch)
@@ -129,30 +130,30 @@ extern "C" {
         return true;
     }
 #else
-    static bool rt_strtod_c_locale(const char *input, char **out_end, double *out_value)
-    {
-        if (!input || !out_value)
-            return false;
+static bool rt_strtod_c_locale(const char *input, char **out_end, double *out_value)
+{
+    if (!input || !out_value)
+        return false;
 
-        locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
-        if (!c_locale)
-            return false;
+    locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
+    if (!c_locale)
+        return false;
 
-        locale_t previous = uselocale(c_locale);
-        errno = 0;
-        char *endptr = NULL;
-        double value = strtod(input, &endptr);
-        uselocale(previous);
-        freelocale(c_locale);
+    locale_t previous = uselocale(c_locale);
+    errno = 0;
+    char *endptr = NULL;
+    double value = strtod(input, &endptr);
+    uselocale(previous);
+    freelocale(c_locale);
 
-        if (endptr == input)
-            return false;
+    if (endptr == input)
+        return false;
 
-        if (out_end)
-            *out_end = endptr;
-        *out_value = value;
-        return true;
-    }
+    if (out_end)
+        *out_end = endptr;
+    *out_value = value;
+    return true;
+}
 #endif
 
     double rt_val_to_double(const char *s, bool *ok)
@@ -301,4 +302,3 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif
-

@@ -189,15 +189,12 @@ Lowerer::RVal NumericExprLowering::lowerDivOrMod(const BinaryExpr &expr)
 /// @param rhs Right-hand side value to normalise (updated in place).
 /// @return Configuration describing operand category and result type.
 NumericExprLowering::NumericOpConfig NumericExprLowering::normalizeNumericOperands(
-    const BinaryExpr &expr,
-    Lowerer::RVal &lhs,
-    Lowerer::RVal &rhs)
+    const BinaryExpr &expr, Lowerer::RVal &lhs, Lowerer::RVal &rhs)
 {
     Lowerer &lowerer = *lowerer_;
     NumericOpConfig config;
 
-    const bool requiresFloat =
-        expr.op == BinaryExpr::Op::Div || expr.op == BinaryExpr::Op::Pow;
+    const bool requiresFloat = expr.op == BinaryExpr::Op::Div || expr.op == BinaryExpr::Op::Pow;
     if (requiresFloat)
     {
         auto promoteToF64 = [&](Lowerer::RVal &value, const Expr *node)
@@ -282,10 +279,7 @@ NumericExprLowering::NumericOpConfig NumericExprLowering::normalizeNumericOperan
 /// @param config Operand configuration returned by normalisation.
 /// @return Lowered value when a special case applies; `std::nullopt` otherwise.
 std::optional<Lowerer::RVal> NumericExprLowering::applySpecialConstantPatterns(
-    const BinaryExpr &expr,
-    Lowerer::RVal &lhs,
-    Lowerer::RVal &rhs,
-    const NumericOpConfig &config)
+    const BinaryExpr &expr, Lowerer::RVal &lhs, Lowerer::RVal &rhs, const NumericOpConfig &config)
 {
     (void)lhs;
     if (expr.op != BinaryExpr::Op::Sub || config.isFloat)
@@ -318,8 +312,7 @@ std::optional<Lowerer::RVal> NumericExprLowering::applySpecialConstantPatterns(
 /// @param config Operand configuration describing operand categories.
 /// @return Structure containing the opcode, result type, and promotion flags.
 NumericExprLowering::OpcodeSelection NumericExprLowering::selectNumericOpcode(
-    BinaryExpr::Op op,
-    const NumericOpConfig &config)
+    BinaryExpr::Op op, const NumericOpConfig &config)
 {
     Lowerer &lowerer = *lowerer_;
     OpcodeSelection selection;
@@ -403,8 +396,8 @@ Lowerer::RVal NumericExprLowering::lowerPowBinary(const BinaryExpr &expr,
     NumericOpConfig config = normalizeNumericOperands(expr, lhs, rhs);
     lowerer.trackRuntime(Lowerer::RuntimeFeature::Pow);
     lowerer.curLoc = expr.loc;
-    Value res = lowerer.emitCallRet(
-        IlType(IlKind::F64), "rt_pow_f64_chkdom", {lhs.value, rhs.value});
+    Value res =
+        lowerer.emitCallRet(IlType(IlKind::F64), "rt_pow_f64_chkdom", {lhs.value, rhs.value});
     IlType resultType =
         (config.resultType.kind == IlKind::Void) ? IlType(IlKind::F64) : config.resultType;
     return {res, resultType};

@@ -13,7 +13,7 @@ namespace il::verify
 /// @brief Interface implemented by verification rules for specific opcodes.
 class Rule
 {
-public:
+  public:
     virtual ~Rule() = default;
 
     /// @brief Validate the given instruction using the rule context.

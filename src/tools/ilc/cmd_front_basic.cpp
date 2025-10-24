@@ -12,23 +12,23 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "vm/Trace.hpp"
 #include "cli.hpp"
 #include "frontends/basic/BasicCompiler.hpp"
-#include "il/io/Serializer.hpp"
 #include "il/api/expected_api.hpp"
+#include "il/io/Serializer.hpp"
 #include "il/transform/SimplifyCFG.hpp"
 #include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
+#include "vm/Trace.hpp"
 #include "vm/VM.hpp"
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <string>
-#include <optional>
 
 using namespace il;
 using namespace il::frontends::basic;
@@ -76,9 +76,8 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
             if (i + 1 >= argc)
             {
                 usage();
-                return il::support::Expected<FrontBasicConfig>(
-                    il::support::Diagnostic{il::support::Severity::Error,
-                                             "missing BASIC source path", {}});
+                return il::support::Expected<FrontBasicConfig>(il::support::Diagnostic{
+                    il::support::Severity::Error, "missing BASIC source path", {}});
             }
             config.emitIl = true;
             config.sourcePath = argv[++i];
@@ -88,9 +87,8 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
             if (i + 1 >= argc)
             {
                 usage();
-                return il::support::Expected<FrontBasicConfig>(
-                    il::support::Diagnostic{il::support::Severity::Error,
-                                             "missing BASIC source path", {}});
+                return il::support::Expected<FrontBasicConfig>(il::support::Diagnostic{
+                    il::support::Severity::Error, "missing BASIC source path", {}});
             }
             config.run = true;
             config.sourcePath = argv[++i];
@@ -99,18 +97,16 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
         {
             switch (ilc::parseSharedOption(i, argc, argv, config.shared))
             {
-            case ilc::SharedOptionParseResult::Parsed:
-                continue;
-            case ilc::SharedOptionParseResult::Error:
-                usage();
-                return il::support::Expected<FrontBasicConfig>(
-                    il::support::Diagnostic{il::support::Severity::Error,
-                                             "failed to parse shared option", {}});
-            case ilc::SharedOptionParseResult::NotMatched:
-                usage();
-                return il::support::Expected<FrontBasicConfig>(
-                    il::support::Diagnostic{il::support::Severity::Error,
-                                             "unknown flag", {}});
+                case ilc::SharedOptionParseResult::Parsed:
+                    continue;
+                case ilc::SharedOptionParseResult::Error:
+                    usage();
+                    return il::support::Expected<FrontBasicConfig>(il::support::Diagnostic{
+                        il::support::Severity::Error, "failed to parse shared option", {}});
+                case ilc::SharedOptionParseResult::NotMatched:
+                    usage();
+                    return il::support::Expected<FrontBasicConfig>(
+                        il::support::Diagnostic{il::support::Severity::Error, "unknown flag", {}});
             }
         }
     }
@@ -118,9 +114,8 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
     if ((config.emitIl == config.run) || config.sourcePath.empty())
     {
         usage();
-        return il::support::Expected<FrontBasicConfig>(
-            il::support::Diagnostic{il::support::Severity::Error,
-                                     "specify exactly one of -emit-il or -run", {}});
+        return il::support::Expected<FrontBasicConfig>(il::support::Diagnostic{
+            il::support::Severity::Error, "specify exactly one of -emit-il or -run", {}});
     }
 
     return il::support::Expected<FrontBasicConfig>(std::move(config));
@@ -144,8 +139,7 @@ il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
     if (!in)
     {
         return il::support::Expected<LoadedSource>(
-            il::support::Diagnostic{il::support::Severity::Error,
-                                     "unable to open " + path, {}});
+            il::support::Diagnostic{il::support::Severity::Error, "unable to open " + path, {}});
     }
 
     std::ostringstream ss;
@@ -157,8 +151,7 @@ il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
     if (fileId == 0)
     {
         return il::support::Expected<LoadedSource>(
-            il::support::makeError({},
-                                   "source manager exhausted file identifier space"));
+            il::support::makeError({}, "source manager exhausted file identifier space"));
     }
 
     LoadedSource source{};
@@ -183,7 +176,8 @@ il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
 /// @param sm Source manager for diagnostic printing and trace source lookup.
 /// @return Zero on success; non-zero when compilation, verification, or
 ///         execution fails.
-int runFrontBasic(const FrontBasicConfig &config, const std::string &source,
+int runFrontBasic(const FrontBasicConfig &config,
+                  const std::string &source,
                   il::support::SourceManager &sm)
 {
     BasicCompilerOptions compilerOpts{};
@@ -230,8 +224,8 @@ int runFrontBasic(const FrontBasicConfig &config, const std::string &source,
         return 0;
     }
 
-    auto verification = cachedVerification ? std::move(*cachedVerification)
-                                           : il::verify::Verifier::verify(module);
+    auto verification =
+        cachedVerification ? std::move(*cachedVerification) : il::verify::Verifier::verify(module);
     if (!verification)
     {
         il::support::printDiag(verification.error(), std::cerr, &sm);
@@ -280,8 +274,7 @@ int runFrontBasic(const FrontBasicConfig &config, const std::string &source,
 ///   3. Delegate to @ref runFrontBasic to either emit IL or execute the program.
 /// Any failure at these stages results in a non-zero exit status with diagnostics
 /// already printed to stderr, matching the behaviour expected by ilc callers.
-int cmdFrontBasicWithSourceManager(int argc, char **argv,
-                                   il::support::SourceManager &sm)
+int cmdFrontBasicWithSourceManager(int argc, char **argv, il::support::SourceManager &sm)
 {
     auto parsed = parseFrontBasicArgs(argc, argv);
     if (!parsed)

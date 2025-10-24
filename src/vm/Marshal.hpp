@@ -10,8 +10,8 @@
 #include "rt_string.h"
 #include "vm/Trap.hpp"
 
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <string>
 #include <string_view>

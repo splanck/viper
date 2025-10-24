@@ -12,7 +12,8 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
     /// @brief Convert BASIC OPEN mode enumeration to the corresponding mode string.
@@ -41,4 +42,3 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif
-

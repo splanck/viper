@@ -31,8 +31,7 @@ namespace il::frontends::basic::semantic_analyzer_detail
 /// @brief Bind runtime statement helpers to the active semantic analyzer state.
 ///
 /// @param analyzer Analyzer that supplies shared context such as loop tracking.
-RuntimeStmtContext::RuntimeStmtContext(SemanticAnalyzer &analyzer) noexcept
-    : StmtShared(analyzer)
+RuntimeStmtContext::RuntimeStmtContext(SemanticAnalyzer &analyzer) noexcept : StmtShared(analyzer)
 {
 }
 
@@ -41,8 +40,8 @@ RuntimeStmtContext::RuntimeStmtContext(SemanticAnalyzer &analyzer) noexcept
 namespace il::frontends::basic
 {
 
-using semantic_analyzer_detail::RuntimeStmtContext;
 using semantic_analyzer_detail::astToSemanticType;
+using semantic_analyzer_detail::RuntimeStmtContext;
 using semantic_analyzer_detail::semanticTypeName;
 
 /// @brief Validate a CALL statement against registered procedure signatures.
@@ -99,7 +98,8 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
         {
             if (const auto *bin = dynamic_cast<const BinaryExpr *>(l.expr.get()))
             {
-                const bool hasExplicitIntSuffix = !v.name.empty() && (v.name.back() == '%' || v.name.back() == '&');
+                const bool hasExplicitIntSuffix =
+                    !v.name.empty() && (v.name.back() == '%' || v.name.back() == '&');
                 switch (bin->op)
                 {
                     case BinaryExpr::Op::Div:

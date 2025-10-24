@@ -18,14 +18,14 @@ namespace il::verify::detail
 /// @brief Ensures an instruction's result matches opcode metadata expectations.
 class ResultTypeChecker
 {
-public:
+  public:
     ResultTypeChecker(const VerifyCtx &ctx, const il::core::OpcodeInfo &info);
 
     /// @brief Validates the presence and type of the instruction result.
     /// @return Empty on success or a populated diagnostic on failure.
     il::support::Expected<void> run() const;
 
-private:
+  private:
     il::support::Expected<void> report(std::string_view message) const;
 
     const VerifyCtx &ctx_;
@@ -33,4 +33,3 @@ private:
 };
 
 } // namespace il::verify::detail
-

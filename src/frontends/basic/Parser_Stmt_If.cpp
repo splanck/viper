@@ -75,7 +75,8 @@ void Parser::parseIfBlock(IfParseState &state)
     auto collectBranch = [&](bool allowElseBranches) -> std::pair<StmtPtr, BlockTerminator>
     {
         BlockTerminator term = BlockTerminator::None;
-        auto predicate = [&](int, il::support::SourceLoc) {
+        auto predicate = [&](int, il::support::SourceLoc)
+        {
             if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordIf)
                 return true;
             if (!allowElseBranches)
@@ -86,9 +87,9 @@ void Parser::parseIfBlock(IfParseState &state)
                 return true;
             return false;
         };
-        auto consumer = [&](int lineNumber,
-                             il::support::SourceLoc,
-                             StatementSequencer::TerminatorInfo &info) {
+        auto consumer =
+            [&](int lineNumber, il::support::SourceLoc, StatementSequencer::TerminatorInfo &info)
+        {
             info.line = lineNumber;
             info.loc = peek().loc;
             if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordIf)
@@ -159,11 +160,8 @@ void Parser::parseIfBlock(IfParseState &state)
     {
         if (emitter_)
         {
-            emitter_->emit(il::support::Severity::Error,
-                           "B0004",
-                           state.stmt->loc,
-                           2,
-                           "missing END IF");
+            emitter_->emit(
+                il::support::Severity::Error, "B0004", state.stmt->loc, 2, "missing END IF");
         }
         else
         {
@@ -192,8 +190,7 @@ void Parser::parseElseChain(IfParseState &state)
 
     while (true)
     {
-        skipOptionalLineLabelAfterBreak(ctxIf,
-                                        {TokenKind::KeywordElseIf, TokenKind::KeywordElse});
+        skipOptionalLineLabelAfterBreak(ctxIf, {TokenKind::KeywordElseIf, TokenKind::KeywordElse});
         if (at(TokenKind::KeywordElseIf))
         {
             consume();
@@ -264,4 +261,3 @@ StmtPtr Parser::parseIfStatement(int line)
 }
 
 } // namespace il::frontends::basic
-

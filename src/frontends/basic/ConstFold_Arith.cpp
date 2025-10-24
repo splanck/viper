@@ -289,13 +289,10 @@ bool compareInt(BinaryExpr::Op op, long long lhs, long long rhs)
 /// @return Literal expression for the folded result, or nullptr on failure.
 ExprPtr foldBinaryArith(const Expr &l, BinaryExpr::Op op, const Expr &r)
 {
-    return foldNumericBinary(
-        l,
-        r,
-        [op](const Numeric &lhs, const Numeric &rhs) -> std::optional<Numeric>
-        {
-            return tryFoldBinaryArith(lhs, op, rhs);
-        });
+    return foldNumericBinary(l,
+                             r,
+                             [op](const Numeric &lhs, const Numeric &rhs) -> std::optional<Numeric>
+                             { return tryFoldBinaryArith(lhs, op, rhs); });
 }
 
 /// @brief Fold a unary arithmetic expression when the operand is numeric.
@@ -344,9 +341,7 @@ ExprPtr foldCompare(const Expr &l, BinaryExpr::Op op, const Expr &r, bool allowF
         l,
         r,
         [op, allowFloat](const Numeric &lhs, const Numeric &rhs) -> std::optional<Numeric>
-        {
-            return tryFoldCompare(lhs, op, rhs, allowFloat);
-        });
+        { return tryFoldCompare(lhs, op, rhs, allowFloat); });
 }
 
 /// @brief Dispatch to an operator-specific folding helper.
@@ -358,7 +353,9 @@ ExprPtr foldCompare(const Expr &l, BinaryExpr::Op op, const Expr &r, bool allowF
 /// @param op Arithmetic operator to execute.
 /// @param rhsRaw Right-hand operand prior to promotion.
 /// @return Folded numeric result or std::nullopt when folding is unsupported.
-std::optional<Numeric> tryFoldBinaryArith(const Numeric &lhsRaw, BinaryExpr::Op op, const Numeric &rhsRaw)
+std::optional<Numeric> tryFoldBinaryArith(const Numeric &lhsRaw,
+                                          BinaryExpr::Op op,
+                                          const Numeric &rhsRaw)
 {
     switch (op)
     {
@@ -422,8 +419,10 @@ std::optional<Numeric> tryFoldUnaryArith(UnaryExpr::Op op, const Numeric &value)
 /// @param rhsRaw Right-hand operand prior to promotion.
 /// @param allowFloat Whether floating-point operands may be used.
 /// @return Numeric representing the comparison result or std::nullopt.
-std::optional<Numeric> tryFoldCompare(
-    const Numeric &lhsRaw, BinaryExpr::Op op, const Numeric &rhsRaw, bool allowFloat)
+std::optional<Numeric> tryFoldCompare(const Numeric &lhsRaw,
+                                      BinaryExpr::Op op,
+                                      const Numeric &rhsRaw,
+                                      bool allowFloat)
 {
     Numeric lhs = promote(lhsRaw, rhsRaw);
     Numeric rhs = promote(rhsRaw, lhsRaw);
@@ -522,34 +521,31 @@ ExprPtr foldNumericGe(const Expr &l, const Expr &r)
 /// @brief Fold bitwise AND for numeric expressions interpreted as booleans.
 ExprPtr foldNumericAnd(const Expr &l, const Expr &r)
 {
-    return foldNumericBinary(
-        l,
-        r,
-        [](const Numeric &lhs, const Numeric &rhs) -> std::optional<Numeric>
-        {
-            if (lhs.isFloat || rhs.isFloat)
-                return std::nullopt;
-            bool result = (lhs.i != 0) && (rhs.i != 0);
-            long long v = result ? 1 : 0;
-            return Numeric{false, static_cast<double>(v), v};
-        });
+    return foldNumericBinary(l,
+                             r,
+                             [](const Numeric &lhs, const Numeric &rhs) -> std::optional<Numeric>
+                             {
+                                 if (lhs.isFloat || rhs.isFloat)
+                                     return std::nullopt;
+                                 bool result = (lhs.i != 0) && (rhs.i != 0);
+                                 long long v = result ? 1 : 0;
+                                 return Numeric{false, static_cast<double>(v), v};
+                             });
 }
 
 /// @brief Fold bitwise OR for numeric expressions interpreted as booleans.
 ExprPtr foldNumericOr(const Expr &l, const Expr &r)
 {
-    return foldNumericBinary(
-        l,
-        r,
-        [](const Numeric &lhs, const Numeric &rhs) -> std::optional<Numeric>
-        {
-            if (lhs.isFloat || rhs.isFloat)
-                return std::nullopt;
-            bool result = (lhs.i != 0) || (rhs.i != 0);
-            long long v = result ? 1 : 0;
-            return Numeric{false, static_cast<double>(v), v};
-        });
+    return foldNumericBinary(l,
+                             r,
+                             [](const Numeric &lhs, const Numeric &rhs) -> std::optional<Numeric>
+                             {
+                                 if (lhs.isFloat || rhs.isFloat)
+                                     return std::nullopt;
+                                 bool result = (lhs.i != 0) || (rhs.i != 0);
+                                 long long v = result ? 1 : 0;
+                                 return Numeric{false, static_cast<double>(v), v};
+                             });
 }
 
 } // namespace il::frontends::basic::detail
-

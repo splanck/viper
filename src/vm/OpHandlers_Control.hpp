@@ -1,14 +1,14 @@
 // File: src/vm/OpHandlers_Control.hpp
 // Purpose: Declare control-flow opcode handlers and shared switch dispatch helpers.
 // Key invariants: Handlers maintain VM block state, propagate parameters, and honor trap contracts.
-// Ownership/Lifetime: Functions mutate the active VM frame without taking ownership of VM resources.
-// Links: docs/il-guide.md#reference
+// Ownership/Lifetime: Functions mutate the active VM frame without taking ownership of VM
+// resources. Links: docs/il-guide.md#reference
 #pragma once
 
 #include "vm/OpHandlerAccess.hpp"
-#include "vm/VM.hpp"
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/RuntimeBridge.hpp"
+#include "vm/VM.hpp"
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -70,9 +70,7 @@ inline SwitchMeta collectSwitchMeta(const il::core::Instr &in)
     return meta;
 }
 
-inline int32_t lookupDense(const viper::vm::DenseJumpTable &table,
-                           int32_t sel,
-                           int32_t defIdx)
+inline int32_t lookupDense(const viper::vm::DenseJumpTable &table, int32_t sel, int32_t defIdx)
 {
     const int64_t offset = static_cast<int64_t>(sel) - static_cast<int64_t>(table.base);
     if (offset < 0 || offset >= static_cast<int64_t>(table.targets.size()))
@@ -81,9 +79,7 @@ inline int32_t lookupDense(const viper::vm::DenseJumpTable &table,
     return (target < 0) ? defIdx : target;
 }
 
-inline int32_t lookupSorted(const viper::vm::SortedCases &cases,
-                            int32_t sel,
-                            int32_t defIdx)
+inline int32_t lookupSorted(const viper::vm::SortedCases &cases, int32_t sel, int32_t defIdx)
 {
     auto it = std::lower_bound(cases.keys.begin(), cases.keys.end(), sel);
     if (it == cases.keys.end() || *it != sel)
@@ -92,9 +88,7 @@ inline int32_t lookupSorted(const viper::vm::SortedCases &cases,
     return cases.targetIdx[idx];
 }
 
-inline int32_t lookupHashed(const viper::vm::HashedCases &cases,
-                            int32_t sel,
-                            int32_t defIdx)
+inline int32_t lookupHashed(const viper::vm::HashedCases &cases, int32_t sel, int32_t defIdx)
 {
     auto it = cases.map.find(sel);
     return (it == cases.map.end()) ? defIdx : it->second;
@@ -109,8 +103,7 @@ inline viper::vm::SwitchCacheEntry::Kind chooseBackend(const SwitchMeta &meta)
     const int64_t minv = *minIt;
     const int64_t maxv = *maxIt;
     const int64_t range = maxv - minv + 1;
-    const double density = static_cast<double>(meta.values.size()) /
-                           static_cast<double>(range);
+    const double density = static_cast<double>(meta.values.size()) / static_cast<double>(range);
 
     if (range <= 4096 && density >= 0.60)
         return viper::vm::SwitchCacheEntry::Dense;
@@ -147,9 +140,9 @@ inline viper::vm::SortedCases buildSorted(const SwitchMeta &meta)
 {
     std::vector<size_t> order(meta.values.size());
     std::iota(order.begin(), order.end(), 0);
-    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
-        return meta.values[a] < meta.values[b];
-    });
+    std::sort(order.begin(),
+              order.end(),
+              [&](size_t a, size_t b) { return meta.values[a] < meta.values[b]; });
     viper::vm::SortedCases sorted;
     sorted.keys.reserve(order.size());
     sorted.targetIdx.reserve(order.size());
@@ -319,7 +312,8 @@ inline VM::ExecResult handleSwitchI32Impl(VM &vm,
     else
     {
         std::visit(
-            [&](auto &backend) {
+            [&](auto &backend)
+            {
                 using BackendT = std::decay_t<decltype(backend)>;
                 if constexpr (std::is_same_v<BackendT, viper::vm::DenseJumpTable>)
                     idx = inline_impl::lookupDense(backend, sel, entry.defaultIdx);
@@ -340,7 +334,8 @@ inline VM::ExecResult handleSwitchI32Impl(VM &vm,
                             "switch target out of range",
                             in.loc,
                             fr.func ? fr.func->name : std::string(),
-                            fr.func && !fr.func->blocks.empty() ? fr.func->blocks.front().label : "");
+                            fr.func && !fr.func->blocks.empty() ? fr.func->blocks.front().label
+                                                                : "");
         return result;
     }
 
@@ -453,4 +448,3 @@ VM::ExecResult handleTrap(VM &vm,
                           size_t &ip);
 
 } // namespace il::vm::detail::control
-

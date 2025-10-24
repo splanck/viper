@@ -19,33 +19,27 @@ struct Message
 
 /// @brief SELECT CASE selector must be integer-compatible.
 inline constexpr Message ERR_SelectCase_NonIntegerSelector{
-    "ERR_SelectCase_NonIntegerSelector",
-    "SELECT CASE selector must be numeric or string"};
+    "ERR_SelectCase_NonIntegerSelector", "SELECT CASE selector must be numeric or string"};
 
 /// @brief Duplicate CASE label encountered inside a SELECT CASE.
-inline constexpr Message ERR_SelectCase_DuplicateLabel{
-    "ERR_SelectCase_DuplicateLabel",
-    "Duplicate CASE label"};
+inline constexpr Message ERR_SelectCase_DuplicateLabel{"ERR_SelectCase_DuplicateLabel",
+                                                       "Duplicate CASE label"};
 
 /// @brief CASE range lower bound exceeds its upper bound.
 inline constexpr Message ERR_SelectCase_InvalidRange{
-    "ERR_SelectCase_InvalidRange",
-    "CASE range lower bound must be <= upper bound"};
+    "ERR_SelectCase_InvalidRange", "CASE range lower bound must be <= upper bound"};
 
 /// @brief CASE range overlaps an existing CASE label or range.
 inline constexpr Message ERR_SelectCase_OverlappingRange{
-    "ERR_SelectCase_OverlappingRange",
-    "CASE range overlaps existing CASE labels or ranges"};
+    "ERR_SelectCase_OverlappingRange", "CASE range overlaps existing CASE labels or ranges"};
 
 /// @brief Multiple CASE ELSE arms were found in the same SELECT CASE.
-inline constexpr Message ERR_SelectCase_DuplicateElse{
-    "ERR_SelectCase_DuplicateElse",
-    "duplicate CASE ELSE"};
+inline constexpr Message ERR_SelectCase_DuplicateElse{"ERR_SelectCase_DuplicateElse",
+                                                      "duplicate CASE ELSE"};
 
 /// @brief SELECT CASE statement was not terminated by END SELECT.
 inline constexpr Message ERR_SelectCase_MissingEndSelect{
-    "ERR_SelectCase_MissingEndSelect",
-    "SELECT CASE missing END SELECT terminator"};
+    "ERR_SelectCase_MissingEndSelect", "SELECT CASE missing END SELECT terminator"};
 
 /// @brief String selector requires CASE labels to be string literals.
 inline constexpr Message ERR_SelectCase_StringSelectorLabels{
@@ -58,13 +52,11 @@ inline constexpr Message ERR_SelectCase_StringLabelSelector{
     "String CASE labels require a string SELECT CASE selector"};
 
 /// @brief Numeric and string CASE labels may not be mixed within a SELECT CASE.
-inline constexpr Message ERR_SelectCase_MixedLabelTypes{
-    "ERR_SelectCase_MixedLabelTypes",
-    "mixed-type SELECT CASE"};
+inline constexpr Message ERR_SelectCase_MixedLabelTypes{"ERR_SelectCase_MixedLabelTypes",
+                                                        "mixed-type SELECT CASE"};
 
 /// @brief CASE statement lacked any labels before the body.
-inline constexpr Message ERR_Case_EmptyLabelList{
-    "ERR_Case_EmptyLabelList",
-    "CASE arm requires at least one label"};
+inline constexpr Message ERR_Case_EmptyLabelList{"ERR_Case_EmptyLabelList",
+                                                 "CASE arm requires at least one label"};
 
 } // namespace il::frontends::basic::diag

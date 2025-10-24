@@ -25,10 +25,10 @@
 #include "il/verify/DiagSink.hpp"
 #include "il/verify/InstructionCheckUtils.hpp"
 #include "il/verify/InstructionCheckerShared.hpp"
-#include "il/verify/TypeInference.hpp"
 #include "il/verify/OperandCountChecker.hpp"
 #include "il/verify/OperandTypeChecker.hpp"
 #include "il/verify/ResultTypeChecker.hpp"
+#include "il/verify/TypeInference.hpp"
 #include "il/verify/VerifierTable.hpp"
 #include "support/diag_expected.hpp"
 
@@ -46,10 +46,6 @@ namespace il::verify
 namespace
 {
 
-using il::core::Opcode;
-using il::core::Type;
-using il::support::Expected;
-using il::support::makeError;
 using checker::checkAddrOf;
 using checker::checkAlloca;
 using checker::checkBinary;
@@ -69,6 +65,10 @@ using checker::expectAllOperandType;
 using checker::fail;
 using checker::kindFromClass;
 using checker::typeFromClass;
+using il::core::Opcode;
+using il::core::Type;
+using il::support::Expected;
+using il::support::makeError;
 
 using Instruction = il::core::Instr;
 
@@ -133,7 +133,8 @@ ErrorOr<void> verifyMul(const Instruction &, const VerifyCtx &ctx)
 
 ErrorOr<void> verifySDiv(const Instruction &, const VerifyCtx &ctx)
 {
-    return rejectUnchecked(ctx, "signed division must use sdiv.chk0 (traps on divide-by-zero and overflow)");
+    return rejectUnchecked(
+        ctx, "signed division must use sdiv.chk0 (traps on divide-by-zero and overflow)");
 }
 
 ErrorOr<void> verifyUDiv(const Instruction &, const VerifyCtx &ctx)
@@ -143,12 +144,16 @@ ErrorOr<void> verifyUDiv(const Instruction &, const VerifyCtx &ctx)
 
 ErrorOr<void> verifySRem(const Instruction &, const VerifyCtx &ctx)
 {
-    return rejectUnchecked(ctx, "signed remainder must use srem.chk0 (traps on divide-by-zero; matches BASIC MOD semantics)");
+    return rejectUnchecked(ctx,
+                           "signed remainder must use srem.chk0 (traps on divide-by-zero; matches "
+                           "BASIC MOD semantics)");
 }
 
 ErrorOr<void> verifyURem(const Instruction &, const VerifyCtx &ctx)
 {
-    return rejectUnchecked(ctx, "unsigned remainder must use urem.chk0 (traps on divide-by-zero; matches BASIC MOD semantics)");
+    return rejectUnchecked(ctx,
+                           "unsigned remainder must use urem.chk0 (traps on divide-by-zero; "
+                           "matches BASIC MOD semantics)");
 }
 
 ErrorOr<void> verifyUDivChk0(const Instruction &, const VerifyCtx &ctx)
@@ -284,7 +289,8 @@ ErrorOr<void> verifySitofp(const Instruction &, const VerifyCtx &ctx)
 ErrorOr<void> verifyFptosi(const Instruction &, const VerifyCtx &ctx)
 {
     return rejectUnchecked(ctx,
-                           "fp to integer narrowing must use cast.fp_to_si.rte.chk (rounds to nearest-even and traps on "
+                           "fp to integer narrowing must use cast.fp_to_si.rte.chk (rounds to "
+                           "nearest-even and traps on "
                            "overflow)");
 }
 
@@ -496,11 +502,15 @@ VerifierFn lookupVerifier(Opcode opcode)
 {
     const auto begin = std::begin(kVerifiers);
     const auto end = std::end(kVerifiers);
-    const auto it = std::lower_bound(
-        begin, end, opcode, [](const auto &entry, Opcode value) {
-            return static_cast<std::underlying_type_t<Opcode>>(entry.first) <
-                   static_cast<std::underlying_type_t<Opcode>>(value);
-        });
+    const auto it =
+        std::lower_bound(begin,
+                         end,
+                         opcode,
+                         [](const auto &entry, Opcode value)
+                         {
+                             return static_cast<std::underlying_type_t<Opcode>>(entry.first) <
+                                    static_cast<std::underlying_type_t<Opcode>>(value);
+                         });
     if (it != end && it->first == opcode)
         return it->second;
     return nullptr;
@@ -590,11 +600,13 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
     {
         case il::core::ResultArity::None:
             if (hasResult)
-                return Expected<void>(makeError(instr.loc, formatInstrDiag(fn, bb, instr, "unexpected result")));
+                return Expected<void>(
+                    makeError(instr.loc, formatInstrDiag(fn, bb, instr, "unexpected result")));
             break;
         case il::core::ResultArity::One:
             if (!hasResult)
-                return Expected<void>(makeError(instr.loc, formatInstrDiag(fn, bb, instr, "missing result")));
+                return Expected<void>(
+                    makeError(instr.loc, formatInstrDiag(fn, bb, instr, "missing result")));
             break;
         case il::core::ResultArity::Optional:
             break;
@@ -607,13 +619,15 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
         std::string message;
         if (info.numOperandsMin == info.numOperandsMax)
         {
-            message = "expected " + std::to_string(static_cast<unsigned>(info.numOperandsMin)) + " operand";
+            message = "expected " + std::to_string(static_cast<unsigned>(info.numOperandsMin)) +
+                      " operand";
             if (info.numOperandsMin != 1)
                 message += 's';
         }
         else if (variadic)
         {
-            message = "expected at least " + std::to_string(static_cast<unsigned>(info.numOperandsMin)) + " operand";
+            message = "expected at least " +
+                      std::to_string(static_cast<unsigned>(info.numOperandsMin)) + " operand";
             if (info.numOperandsMin != 1)
                 message += 's';
         }
@@ -630,13 +644,16 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
     if (variadicSucc)
     {
         if (instr.labels.empty())
-            return Expected<void>(makeError(instr.loc, formatInstrDiag(fn, bb, instr, "expected at least 1 successor")));
+            return Expected<void>(makeError(
+                instr.loc, formatInstrDiag(fn, bb, instr, "expected at least 1 successor")));
     }
     else
     {
         if (instr.labels.size() != info.numSuccessors)
         {
-            std::string message = "expected " + std::to_string(static_cast<unsigned>(info.numSuccessors)) + " successor";
+            std::string message = "expected " +
+                                  std::to_string(static_cast<unsigned>(info.numSuccessors)) +
+                                  " successor";
             if (info.numSuccessors != 1)
                 message += 's';
             return Expected<void>(makeError(instr.loc, formatInstrDiag(fn, bb, instr, message)));
@@ -646,16 +663,18 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
     if (variadicSucc)
     {
         if (!instr.brArgs.empty() && instr.brArgs.size() != instr.labels.size())
-            return Expected<void>(makeError(instr.loc,
-                                            formatInstrDiag(fn, bb, instr,
-                                                            "expected branch argument bundle per successor or none")));
+            return Expected<void>(makeError(
+                instr.loc,
+                formatInstrDiag(
+                    fn, bb, instr, "expected branch argument bundle per successor or none")));
     }
     else
     {
         if (instr.brArgs.size() > info.numSuccessors)
         {
             std::string message = "expected at most " +
-                                  std::to_string(static_cast<unsigned>(info.numSuccessors)) + " branch argument bundle";
+                                  std::to_string(static_cast<unsigned>(info.numSuccessors)) +
+                                  " branch argument bundle";
             if (info.numSuccessors != 1)
                 message += 's';
             return Expected<void>(makeError(instr.loc, formatInstrDiag(fn, bb, instr, message)));
@@ -663,7 +682,8 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
         if (!instr.brArgs.empty() && instr.brArgs.size() != info.numSuccessors)
         {
             std::string message = "expected " +
-                                  std::to_string(static_cast<unsigned>(info.numSuccessors)) + " branch argument bundle";
+                                  std::to_string(static_cast<unsigned>(info.numSuccessors)) +
+                                  " branch argument bundle";
             if (info.numSuccessors != 1)
                 message += 's';
             message += ", or none";
@@ -731,13 +751,14 @@ Expected<void> verifyOpcodeSignature_E(const VerifyCtx &ctx)
 /// @param types Type inference helper used to query operand types.
 /// @param sink Diagnostic sink collecting warnings and errors.
 /// @return Empty success or a diagnostic failure.
-Expected<void> verifyInstruction_E(const il::core::Function &fn,
-                                    const il::core::BasicBlock &bb,
-                                    const il::core::Instr &instr,
-                                    const std::unordered_map<std::string, const il::core::Extern *> &externs,
-                                    const std::unordered_map<std::string, const il::core::Function *> &funcs,
-                                    TypeInference &types,
-                                    DiagSink &sink)
+Expected<void> verifyInstruction_E(
+    const il::core::Function &fn,
+    const il::core::BasicBlock &bb,
+    const il::core::Instr &instr,
+    const std::unordered_map<std::string, const il::core::Extern *> &externs,
+    const std::unordered_map<std::string, const il::core::Function *> &funcs,
+    TypeInference &types,
+    DiagSink &sink)
 {
     VerifyCtx ctx{sink, types, externs, funcs, fn, bb, instr};
     return verifyInstruction_impl(ctx);
@@ -821,8 +842,8 @@ bool verifyInstruction(const il::core::Function &fn,
 /// @param instr Instruction whose signature is checked.
 /// @return Empty success or a diagnostic failure.
 Expected<void> verifyOpcodeSignature_expected(const il::core::Function &fn,
-                                               const il::core::BasicBlock &bb,
-                                               const il::core::Instr &instr)
+                                              const il::core::BasicBlock &bb,
+                                              const il::core::Instr &instr)
 {
     return verifyOpcodeSignature_E(fn, bb, instr);
 }
@@ -838,13 +859,14 @@ Expected<void> verifyOpcodeSignature_expected(const il::core::Function &fn,
 /// @param types Type inference helper used during verification.
 /// @param sink Diagnostic sink that receives emitted warnings.
 /// @return Empty success or a diagnostic failure.
-Expected<void> verifyInstruction_expected(const il::core::Function &fn,
-                                          const il::core::BasicBlock &bb,
-                                          const il::core::Instr &instr,
-                                          const std::unordered_map<std::string, const il::core::Extern *> &externs,
-                                          const std::unordered_map<std::string, const il::core::Function *> &funcs,
-                                          TypeInference &types,
-                                          DiagSink &sink)
+Expected<void> verifyInstruction_expected(
+    const il::core::Function &fn,
+    const il::core::BasicBlock &bb,
+    const il::core::Instr &instr,
+    const std::unordered_map<std::string, const il::core::Extern *> &externs,
+    const std::unordered_map<std::string, const il::core::Function *> &funcs,
+    TypeInference &types,
+    DiagSink &sink)
 {
     return verifyInstruction_E(fn, bb, instr, externs, funcs, types, sink);
 }

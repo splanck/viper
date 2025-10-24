@@ -82,7 +82,8 @@ class TraceSink
     const FileCacheEntry *getOrLoadFile(uint32_t file_id, std::string path_hint = {});
 
     TraceConfig cfg; ///< Active configuration
-    std::unordered_map<const il::core::Function *, std::unordered_map<const il::core::Instr *, InstrLocation>>
+    std::unordered_map<const il::core::Function *,
+                       std::unordered_map<const il::core::Instr *, InstrLocation>>
         instrLocations; ///< Per-function instruction location cache.
     std::unordered_map<uint32_t, FileCacheEntry> fileCache; ///< Cached source text.
 };

@@ -59,4 +59,3 @@ Type inferAstTypeFromName(std::string_view name)
 }
 
 } // namespace il::frontends::basic
-

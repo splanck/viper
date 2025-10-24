@@ -21,4 +21,3 @@ void rt_println_str(const char *text)
     printf("%s\n", text);
     fflush(stdout);
 }
-

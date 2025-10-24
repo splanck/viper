@@ -235,14 +235,13 @@ static void addIncoming(BasicBlock *B,
 }
 
 /// Forward declaration for recursive SSA renaming.
-static Value renameUses(
-    Function &F,
-    BasicBlock *B,
-    unsigned varId,
-    VarMap &vars,
-    BlockMap &blocks,
-    unsigned &nextId,
-    const analysis::CFGContext &ctx);
+static Value renameUses(Function &F,
+                        BasicBlock *B,
+                        unsigned varId,
+                        VarMap &vars,
+                        BlockMap &blocks,
+                        unsigned &nextId,
+                        const analysis::CFGContext &ctx);
 
 /// @brief Resolve a promoted variable's value at the start of a block.
 ///
@@ -259,14 +258,13 @@ static Value renameUses(
 /// @param nextId Counter for generating temp ids.
 /// @return SSA value representing the variable at block entry.
 /// @sideeffect May mutate the CFG by adding parameters and arguments.
-static Value readFromPreds(
-    Function &F,
-    BasicBlock *B,
-    unsigned varId,
-    VarMap &vars,
-    BlockMap &blocks,
-    unsigned &nextId,
-    const analysis::CFGContext &ctx)
+static Value readFromPreds(Function &F,
+                           BasicBlock *B,
+                           unsigned varId,
+                           VarMap &vars,
+                           BlockMap &blocks,
+                           unsigned &nextId,
+                           const analysis::CFGContext &ctx)
 {
     auto preds = analysis::predecessors(ctx, *B);
     if (preds.empty())
@@ -299,14 +297,13 @@ static Value readFromPreds(
 /// @param nextId Counter for generating temp ids.
 /// @return SSA value for the variable within @p B.
 /// @sideeffect May add block parameters and update definition maps.
-static Value renameUses(
-    Function &F,
-    BasicBlock *B,
-    unsigned varId,
-    VarMap &vars,
-    BlockMap &blocks,
-    unsigned &nextId,
-    const analysis::CFGContext &ctx)
+static Value renameUses(Function &F,
+                        BasicBlock *B,
+                        unsigned varId,
+                        VarMap &vars,
+                        BlockMap &blocks,
+                        unsigned &nextId,
+                        const analysis::CFGContext &ctx)
 {
     VarState &VS = vars[varId];
     if (auto it = VS.defs.find(B); it != VS.defs.end())

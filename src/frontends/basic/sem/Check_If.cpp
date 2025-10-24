@@ -100,11 +100,12 @@ void checkConditionExpr(SemanticAnalyzer &analyzer, Expr &expr)
     if (exprText.empty())
         exprText = "<expr>";
 
-    context.diagnostics().emitNonBooleanCondition(std::string(SemanticAnalyzer::DiagNonBooleanCondition),
-                                                  expr.loc,
-                                                  1,
-                                                  semantic_analyzer_detail::semanticTypeName(condTy),
-                                                  exprText);
+    context.diagnostics().emitNonBooleanCondition(
+        std::string(SemanticAnalyzer::DiagNonBooleanCondition),
+        expr.loc,
+        1,
+        semantic_analyzer_detail::semanticTypeName(condTy),
+        exprText);
 }
 
 /// @brief Analyse an IF statement, including optional ELSEIF/ELSE branches.

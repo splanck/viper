@@ -36,10 +36,7 @@ struct KeywordEntry
     TokenKind kind;
 };
 
-constexpr std::array<KeywordEntry,
-    72
-    >
-    kKeywordTable{{
+constexpr std::array<KeywordEntry, 72> kKeywordTable{{
     {"ABS", TokenKind::KeywordAbs},
     {"AND", TokenKind::KeywordAnd},
     {"ANDALSO", TokenKind::KeywordAndAlso},
@@ -270,8 +267,8 @@ void Lexer::skipWhitespaceAndComments()
             std::toupper(static_cast<unsigned char>(src_[pos_ + 2])) == 'M')
         {
             char after = (pos_ + 3 < src_.size()) ? src_[pos_ + 3] : '\0';
-            if (!std::isalnum(static_cast<unsigned char>(after)) && after != '$' && after != '#' && after != '!' &&
-                after != '%' && after != '&')
+            if (!std::isalnum(static_cast<unsigned char>(after)) && after != '$' && after != '#' &&
+                after != '!' && after != '%' && after != '&')
             {
                 get();
                 get();
@@ -469,8 +466,8 @@ Token Lexer::next()
             return {TokenKind::Hash, "#", loc};
         case '.':
         {
-            // If previous and next chars are digits, this is part of a numeric literal; fallthrough to number logic.
-            // Otherwise, return TokenKind::Dot.
+            // If previous and next chars are digits, this is part of a numeric literal; fallthrough
+            // to number logic. Otherwise, return TokenKind::Dot.
             bool prevIsDigit = false;
             if (pos_ >= 2)
             {

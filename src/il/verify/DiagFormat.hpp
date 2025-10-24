@@ -34,4 +34,3 @@ std::string formatInstrDiag(const il::core::Function &fn,
                             std::string_view message = {});
 
 } // namespace il::verify
-

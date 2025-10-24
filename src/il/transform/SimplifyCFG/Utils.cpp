@@ -96,9 +96,8 @@ bool valueVectorsEqual(const std::vector<il::core::Value> &lhs,
 /// @param value Value that may reference a temporary.
 /// @param mapping Map from temporary ids to replacement values.
 /// @return Replacement value when found; otherwise the original @p value.
-il::core::Value substituteValue(
-    const il::core::Value &value,
-    const std::unordered_map<unsigned, il::core::Value> &mapping)
+il::core::Value substituteValue(const il::core::Value &value,
+                                const std::unordered_map<unsigned, il::core::Value> &mapping)
 {
     if (value.kind != il::core::Value::Kind::Temp)
         return value;
@@ -125,9 +124,7 @@ size_t lookupBlockIndex(const std::unordered_map<std::string, size_t> &labelToIn
 /// @param reachable Bit vector tracking visited blocks.
 /// @param worklist Queue of blocks pending traversal.
 /// @param successor Candidate successor index to enqueue.
-void enqueueSuccessor(BitVector &reachable,
-                      std::deque<size_t> &worklist,
-                      size_t successor)
+void enqueueSuccessor(BitVector &reachable, std::deque<size_t> &worklist, size_t successor)
 {
     if (successor == static_cast<size_t>(-1))
         return;
@@ -210,4 +207,3 @@ bool isEHSensitiveBlock(const il::core::BasicBlock &block)
 }
 
 } // namespace il::transform::simplify_cfg
-

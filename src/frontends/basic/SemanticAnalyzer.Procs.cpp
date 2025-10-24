@@ -18,14 +18,15 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Implements procedure-scope management and call validation helpers for the BASIC semantic analyzer.
+/// @brief Implements procedure-scope management and call validation helpers for the BASIC semantic
+/// analyzer.
 /// @details The routines in this translation unit manage per-procedure symbol
 ///          state, register SUB/FUNCTION signatures, and perform signature-based
 ///          diagnostics for CALL statements.
 
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 
-#    include "frontends/basic/Semantic_OOP.hpp"
+#include "frontends/basic/Semantic_OOP.hpp"
 
 #include <algorithm>
 #include <utility>
@@ -220,17 +221,19 @@ void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc, BodyCallback &&b
 /// @param f FUNCTION declaration node.
 void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
 {
-    analyzeProcedureCommon(f, [this](const FunctionDecl &func) {
-        if (mustReturn(func.body))
-            return;
+    analyzeProcedureCommon(f,
+                           [this](const FunctionDecl &func)
+                           {
+                               if (mustReturn(func.body))
+                                   return;
 
-        std::string msg = "missing return in FUNCTION " + func.name;
-        de.emit(il::support::Severity::Error,
-                "B1007",
-                func.endLoc.isValid() ? func.endLoc : func.loc,
-                3,
-                std::move(msg));
-    });
+                               std::string msg = "missing return in FUNCTION " + func.name;
+                               de.emit(il::support::Severity::Error,
+                                       "B1007",
+                                       func.endLoc.isValid() ? func.endLoc : func.loc,
+                                       3,
+                                       std::move(msg));
+                           });
 }
 
 /// @brief Analyze a SUB declaration.

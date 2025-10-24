@@ -1,11 +1,12 @@
 // File: src/runtime/rt_string_ops.c
 // Purpose: Implement core string operations for the BASIC runtime.
 // Error handling: Functions trap via rt_trap on invalid inputs and never rely on errno.
-// Allocation/Ownership: Newly created strings transfer ownership to the caller; callers must manage reference counts.
+// Allocation/Ownership: Newly created strings transfer ownership to the caller; callers must manage
+// reference counts.
 
-#include "rt_string.h"
-#include "rt_internal.h"
 #include "rt_int_format.h"
+#include "rt_internal.h"
+#include "rt_string.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -431,4 +432,3 @@ int64_t rt_str_eq(rt_string a, rt_string b)
         return 0;
     return memcmp(a->data, b->data, alen) == 0;
 }
-

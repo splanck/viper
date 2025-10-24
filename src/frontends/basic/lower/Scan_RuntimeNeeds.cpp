@@ -46,7 +46,10 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     /// @brief Analyse a single statement and record runtime requirements.
     ///
     /// @param stmt Statement node to visit.
-    void evaluateStmt(const Stmt &stmt) { stmt.accept(*this); }
+    void evaluateStmt(const Stmt &stmt)
+    {
+        stmt.accept(*this);
+    }
 
     /// @brief Analyse an entire program, scanning declarations and main body.
     ///
@@ -54,31 +57,58 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     void evaluateProgram(const Program &prog)
     {
         for (const auto &decl : prog.procs)
-            if (decl) decl->accept(*this);
+            if (decl)
+                decl->accept(*this);
         for (const auto &stmt : prog.main)
-            if (stmt) stmt->accept(*this);
+            if (stmt)
+                stmt->accept(*this);
     }
+
     /// @brief Defer builtin call traversal to bespoke runtime logic.
-    bool shouldVisitChildren(const BuiltinCallExpr &) { return false; }
+    bool shouldVisitChildren(const BuiltinCallExpr &)
+    {
+        return false;
+    }
+
     /// @brief Skip procedure call traversal; arguments are processed manually.
-    bool shouldVisitChildren(const CallExpr &) { return false; }
+    bool shouldVisitChildren(const CallExpr &)
+    {
+        return false;
+    }
+
     /// @brief Skip constructor arguments; runtime tracking occurs explicitly.
-    bool shouldVisitChildren(const NewExpr &) { return false; }
+    bool shouldVisitChildren(const NewExpr &)
+    {
+        return false;
+    }
+
     /// @brief Skip member access traversal; base expressions handled explicitly.
-    bool shouldVisitChildren(const MemberAccessExpr &) { return false; }
+    bool shouldVisitChildren(const MemberAccessExpr &)
+    {
+        return false;
+    }
+
     /// @brief Skip method call traversal; helper handles base and args.
-    bool shouldVisitChildren(const MethodCallExpr &) { return false; }
+    bool shouldVisitChildren(const MethodCallExpr &)
+    {
+        return false;
+    }
+
     // Expression hooks --------------------------------------------------
     /// @brief Track runtime helpers required for array element access.
     ///
     /// @param expr Array expression encountered in rvalue position.
     void after(const ArrayExpr &expr)
     {
-        if (lvalueDepth_ > 0) return;
+        if (lvalueDepth_ > 0)
+            return;
         lowerer_.markSymbolReferenced(expr.name);
         lowerer_.markArray(expr.name);
-        lowerer_.requireArrayI32Len(); lowerer_.requireArrayI32Get(); lowerer_.requireArrayOobPanic();
+        lowerer_.requireArrayI32Len();
+        lowerer_.requireArrayI32Get();
+        lowerer_.requireArrayOobPanic();
     }
+
     /// @brief Mark array usage and ensure LBOUND helpers are tracked.
     ///
     /// @param expr LBOUND expression referencing an array.
@@ -90,6 +120,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
             lowerer_.markArray(expr.name);
         }
     }
+
     /// @brief Mark array usage and request runtime support for UBOUND.
     ///
     /// @param expr UBOUND expression referencing an array.
@@ -102,10 +133,14 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         }
         lowerer_.requireArrayI32Len();
     }
+
     /// @brief Delegate binary expression analysis to helper logic.
     ///
     /// @param expr Binary expression whose operands may require helpers.
-    void after(const BinaryExpr &expr) { applyBinaryRuntimeNeeds(expr); }
+    void after(const BinaryExpr &expr)
+    {
+        applyBinaryRuntimeNeeds(expr);
+    }
 
     /// @brief Record runtime needs for builtin calls and consume arguments.
     ///
@@ -116,12 +151,14 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         for (std::size_t i = 0; i < expr.args.size(); ++i)
         {
             const auto &arg = expr.args[i];
-            if (!arg) continue;
+            if (!arg)
+                continue;
             argTypes[i] = lowerer_.scanExpr(*arg);
             consumeExpr(*arg);
         }
         applyBuiltinRuntimeNeeds(expr, argTypes);
     }
+
     /// @brief Consume procedure call arguments to avoid leaking temporaries.
     ///
     /// @param expr Procedure call expression.
@@ -129,10 +166,12 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     {
         for (const auto &arg : expr.args)
         {
-            if (!arg) continue;
+            if (!arg)
+                continue;
             consumeExpr(*arg);
         }
     }
+
     /// @brief Consume constructor arguments to track nested runtime needs.
     ///
     /// @param expr New-expression node whose args may require helpers.
@@ -140,31 +179,43 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     {
         for (const auto &arg : expr.args)
         {
-            if (!arg) continue;
+            if (!arg)
+                continue;
             consumeExpr(*arg);
         }
     }
+
     /// @brief Consume the base expression of member access to maintain balance.
     ///
     /// @param expr Member access expression encountered during scanning.
-    void after(const MemberAccessExpr &expr) { if (expr.base) consumeExpr(*expr.base); }
+    void after(const MemberAccessExpr &expr)
+    {
+        if (expr.base)
+            consumeExpr(*expr.base);
+    }
 
     /// @brief Consume method call base and arguments to surface nested helpers.
     ///
     /// @param expr Method call expression.
     void after(const MethodCallExpr &expr)
     {
-        if (expr.base) consumeExpr(*expr.base);
+        if (expr.base)
+            consumeExpr(*expr.base);
         for (const auto &arg : expr.args)
         {
-            if (!arg) continue;
+            if (!arg)
+                continue;
             consumeExpr(*arg);
         }
     }
+
     // Statement hooks ---------------------------------------------------
 
     /// @brief Ensure PRINT# statements request channel-aware runtime helpers.
-    void before(const PrintChStmt &) { lowerer_.requirePrintlnChErr(); }
+    void before(const PrintChStmt &)
+    {
+        lowerer_.requirePrintlnChErr();
+    }
 
     /// @brief Analyse PRINT# arguments and request supporting helpers.
     ///
@@ -173,61 +224,95 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     {
         for (const auto &arg : stmt.args)
         {
-            if (!arg) continue;
+            if (!arg)
+                continue;
             auto ty = lowerer_.scanExpr(*arg);
             handlePrintChArg(*arg, ty, stmt.mode);
         }
         if (stmt.mode == PrintChStmt::Mode::Write && stmt.args.size() > 1)
             lowerer_.requestHelper(Lowerer::RuntimeFeature::Concat);
     }
+
     /// @brief GOSUB needs trap handling when used with error recovery.
-    void before(const GosubStmt &) { lowerer_.requireTrap(); }
+    void before(const GosubStmt &)
+    {
+        lowerer_.requireTrap();
+    }
+
     /// @brief RETURN interacts with trap-based unwinding.
-    void before(const ReturnStmt &) { lowerer_.requireTrap(); }
+    void before(const ReturnStmt &)
+    {
+        lowerer_.requireTrap();
+    }
+
     /// @brief CLS requires terminal helper support.
-    void after(const ClsStmt &) { lowerer_.requestHelper(il::runtime::RuntimeFeature::TermCls); }
+    void after(const ClsStmt &)
+    {
+        lowerer_.requestHelper(il::runtime::RuntimeFeature::TermCls);
+    }
+
     /// @brief COLOR requires terminal colour helper support.
-    void after(const ColorStmt &) { lowerer_.requestHelper(il::runtime::RuntimeFeature::TermColor); }
+    void after(const ColorStmt &)
+    {
+        lowerer_.requestHelper(il::runtime::RuntimeFeature::TermColor);
+    }
+
     /// @brief LOCATE requires terminal cursor helper support.
-    void after(const LocateStmt &) { lowerer_.requestHelper(il::runtime::RuntimeFeature::TermLocate); }
+    void after(const LocateStmt &)
+    {
+        lowerer_.requestHelper(il::runtime::RuntimeFeature::TermLocate);
+    }
 
     /// @brief Track runtime needs stemming from LET targets and values.
     ///
     /// @param stmt LET statement being analysed.
     void after(const LetStmt &stmt)
     {
-        if (!stmt.target) return;
+        if (!stmt.target)
+            return;
         if (auto *var = dynamic_cast<const VarExpr *>(stmt.target.get()))
             handleLetVarTarget(*var, stmt.expr.get());
         else if (auto *arr = dynamic_cast<const ArrayExpr *>(stmt.target.get()))
             handleLetArrayTarget(*arr);
     }
+
     /// @brief Prime symbol tracking and runtime helpers for DIM statements.
     ///
     /// @param stmt DIM statement describing variable storage.
     void before(const DimStmt &stmt)
     {
-        if (stmt.name.empty()) return;
+        if (stmt.name.empty())
+            return;
         lowerer_.setSymbolType(stmt.name, stmt.type);
         lowerer_.markSymbolReferenced(stmt.name);
         if (stmt.isArray)
         {
             lowerer_.markArray(stmt.name);
-            lowerer_.requireArrayI32New(); lowerer_.requireArrayI32Retain(); lowerer_.requireArrayI32Release();
+            lowerer_.requireArrayI32New();
+            lowerer_.requireArrayI32Retain();
+            lowerer_.requireArrayI32Release();
         }
     }
+
     /// @brief Track helpers needed for REDIM resizing operations.
     ///
     /// @param stmt REDIM statement with array metadata.
     void before(const ReDimStmt &stmt)
     {
-        if (stmt.name.empty()) return;
+        if (stmt.name.empty())
+            return;
         lowerer_.markSymbolReferenced(stmt.name);
         lowerer_.markArray(stmt.name);
-        lowerer_.requireArrayI32Resize(); lowerer_.requireArrayI32Retain(); lowerer_.requireArrayI32Release();
+        lowerer_.requireArrayI32Resize();
+        lowerer_.requireArrayI32Retain();
+        lowerer_.requireArrayI32Release();
     }
+
     /// @brief RANDOMIZE requires the random number helper.
-    void before(const RandomizeStmt &) { lowerer_.trackRuntime(Lowerer::RuntimeFeature::RandomizeI64); }
+    void before(const RandomizeStmt &)
+    {
+        lowerer_.trackRuntime(Lowerer::RuntimeFeature::RandomizeI64);
+    }
 
     /// @brief Ensure FOR loop variables have inferred types for runtime helpers.
     ///
@@ -237,17 +322,28 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         if (!stmt.var.empty())
         {
             const auto *info = lowerer_.findSymbol(stmt.var);
-            if (!info || !info->hasType) lowerer_.setSymbolType(stmt.var, inferAstTypeFromName(stmt.var));
+            if (!info || !info->hasType)
+                lowerer_.setSymbolType(stmt.var, inferAstTypeFromName(stmt.var));
         }
     }
+
     /// @brief OPEN requires file runtime error helpers.
-    void before(const OpenStmt &) { lowerer_.requireOpenErrVstr(); }
+    void before(const OpenStmt &)
+    {
+        lowerer_.requireOpenErrVstr();
+    }
 
     /// @brief CLOSE requires runtime helpers for closing file handles.
-    void before(const CloseStmt &) { lowerer_.requireCloseErr(); }
+    void before(const CloseStmt &)
+    {
+        lowerer_.requireCloseErr();
+    }
 
     /// @brief SEEK needs runtime helpers for repositioning file channels.
-    void before(const SeekStmt &) { lowerer_.requireSeekChErr(); }
+    void before(const SeekStmt &)
+    {
+        lowerer_.requireSeekChErr();
+    }
 
     /// @brief Prepare runtime helpers and bookkeeping before INPUT executes.
     ///
@@ -262,12 +358,14 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         }
         inputVarNames_ = stmt.vars;
     }
+
     /// @brief Post-process INPUT to request conversions for destination types.
     void after(const InputStmt &)
     {
         for (const auto &name : inputVarNames_)
         {
-            if (name.empty()) continue;
+            if (name.empty())
+                continue;
             Type astTy = inferAstTypeFromName(name);
             switch (astTy)
             {
@@ -289,6 +387,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         }
         inputVarNames_.clear();
     }
+
     /// @brief Prepare helpers for INPUT# channel reads.
     void before(const InputChStmt &)
     {
@@ -296,13 +395,15 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         lowerer_.requestHelper(Lowerer::RuntimeFeature::SplitFields);
         lowerer_.requireStrReleaseMaybe();
     }
+
     /// @brief Request conversions required after INPUT# completes.
     ///
     /// @param stmt INPUT# statement describing the destination variable.
     void after(const InputChStmt &stmt)
     {
         const auto &name = stmt.target.name;
-        if (name.empty()) return;
+        if (name.empty())
+            return;
 
         Type astTy = inferAstTypeFromName(name);
         switch (astTy)
@@ -322,14 +423,21 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         if (!info || !info->hasType)
             lowerer_.setSymbolType(name, astTy);
     }
+
     /// @brief Ensure LINE INPUT# requests error-reporting helpers.
-    void before(const LineInputChStmt &) { lowerer_.requireLineInputChErr(); }
+    void before(const LineInputChStmt &)
+    {
+        lowerer_.requireLineInputChErr();
+    }
 
   private:
     /// @brief Evaluate an expression solely to surface nested runtime needs.
     ///
     /// @param expr Expression subtree to visit.
-    void consumeExpr(const Expr &expr) { expr.accept(*this); }
+    void consumeExpr(const Expr &expr)
+    {
+        expr.accept(*this);
+    }
 
     /// @brief Record helpers required by binary operators such as POW or string addition.
     ///
@@ -358,6 +466,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
                 lowerer_.requestHelper(Lowerer::RuntimeFeature::StrEq);
         }
     }
+
     /// @brief Apply builtin-specific runtime tracking based on scan rules.
     ///
     /// @param expr Builtin expression being analysed.
@@ -366,13 +475,14 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
                                   const std::vector<std::optional<Lowerer::ExprType>> &argTypes)
     {
         if (expr.builtin == BuiltinCallExpr::Builtin::Str && !expr.args.empty() && expr.args[0])
-            lowerer_.requestHelper(strFeatureForNumeric(lowerer_.classifyNumericType(*expr.args[0])));
+            lowerer_.requestHelper(
+                strFeatureForNumeric(lowerer_.classifyNumericType(*expr.args[0])));
 
         const auto &rule = getBuiltinScanRule(expr.builtin);
-        auto hasArg = [&](std::size_t idx) { return idx < expr.args.size() && expr.args[idx] != nullptr; };
-        auto argType = [&](std::size_t idx) -> std::optional<Lowerer::ExprType> {
-            return idx < argTypes.size() ? argTypes[idx] : std::nullopt;
-        };
+        auto hasArg = [&](std::size_t idx)
+        { return idx < expr.args.size() && expr.args[idx] != nullptr; };
+        auto argType = [&](std::size_t idx) -> std::optional<Lowerer::ExprType>
+        { return idx < argTypes.size() ? argTypes[idx] : std::nullopt; };
 
         using Feature = BuiltinScanRule::Feature;
         for (const auto &feature : rule.features)
@@ -434,6 +544,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         }
         // --- end: ensure manual helpers for file-position builtins ---
     }
+
     /// @brief Request helpers needed to print an expression via PRINT#.
     ///
     /// @param expr Expression being printed.
@@ -449,6 +560,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         }
         lowerer_.requestHelper(strFeatureForNumeric(lowerer_.classifyNumericType(expr)));
     }
+
     /// @brief Map numeric categories to string conversion helper requirements.
     ///
     /// @param type Numeric classification determined by TypeRules.
@@ -465,6 +577,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         auto idx = static_cast<std::size_t>(type);
         return idx < kMap.size() ? kMap[idx] : Feature::StrFromDouble;
     }
+
     /// @brief Ensure a symbol has a known AST type, defaulting to @p fallback.
     ///
     /// @param name Symbol to update.
@@ -474,13 +587,15 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         if (const auto *info = lowerer_.findSymbol(name); !info || !info->hasType)
             lowerer_.setSymbolType(name, fallback);
     }
+
     /// @brief Record runtime needs when LET assigns to a variable target.
     ///
     /// @param var Target variable expression.
     /// @param value Optional value expression driving helper requirements.
     void handleLetVarTarget(const VarExpr &var, const Expr *value)
     {
-        if (var.name.empty()) return;
+        if (var.name.empty())
+            return;
         if (value)
         {
             std::string className;
@@ -488,57 +603,72 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
                 className = alloc->className;
             else
                 className = lowerer_.resolveObjectClass(*value);
-            if (!className.empty()) lowerer_.setSymbolObjectType(var.name, className);
+            if (!className.empty())
+                lowerer_.setSymbolObjectType(var.name, className);
         }
         ensureSymbolType(var.name, inferAstTypeFromName(var.name));
         if (const auto *info = lowerer_.findSymbol(var.name); info && info->isArray)
         {
-            lowerer_.requireArrayI32Retain(); lowerer_.requireArrayI32Release();
+            lowerer_.requireArrayI32Retain();
+            lowerer_.requireArrayI32Release();
             return;
         }
         const auto *symInfo = lowerer_.findSymbol(var.name);
         if ((symInfo ? symInfo->type : inferAstTypeFromName(var.name)) == Type::Str)
         {
-            lowerer_.requireStrRetainMaybe(); lowerer_.requireStrReleaseMaybe();
+            lowerer_.requireStrRetainMaybe();
+            lowerer_.requireStrReleaseMaybe();
         }
     }
+
     /// @brief Record runtime needs when LET assigns into an array element.
     ///
     /// @param arr Array expression describing the target element.
     void handleLetArrayTarget(const ArrayExpr &arr)
     {
-        if (arr.name.empty()) return;
+        if (arr.name.empty())
+            return;
         ensureSymbolType(arr.name, inferAstTypeFromName(arr.name));
         lowerer_.markSymbolReferenced(arr.name);
         lowerer_.markArray(arr.name);
-        lowerer_.requireArrayI32Len(); lowerer_.requireArrayI32Set(); lowerer_.requireArrayOobPanic();
+        lowerer_.requireArrayI32Len();
+        lowerer_.requireArrayI32Set();
+        lowerer_.requireArrayOobPanic();
     }
+
     /// @brief Track when the scanner descends into the lvalue side of LET.
     ///
     /// @param stmt LET statement currently being visited.
     /// @param child Child expression about to be visited.
     void beforeChild(const LetStmt &stmt, const Expr &child)
     {
-        if (stmt.target && stmt.target.get() == &child) ++lvalueDepth_;
+        if (stmt.target && stmt.target.get() == &child)
+            ++lvalueDepth_;
     }
+
     /// @brief Restore lvalue tracking after visiting a LET target.
     ///
     /// @param stmt LET statement currently being visited.
     /// @param child Child expression that was visited.
     void afterChild(const LetStmt &stmt, const Expr &child)
     {
-        if (stmt.target && stmt.target.get() == &child) --lvalueDepth_;
+        if (stmt.target && stmt.target.get() == &child)
+            --lvalueDepth_;
     }
+
     /// @brief Ensure LINE INPUT# target variables receive string types.
     ///
     /// @param stmt LINE INPUT# statement under analysis.
     /// @param child Expression about to be visited.
     void beforeChild(const LineInputChStmt &stmt, const Expr &child)
     {
-        if (!(stmt.targetVar && stmt.targetVar.get() == &child)) return;
-        if (auto *var = dynamic_cast<const VarExpr *>(stmt.targetVar.get()); var && !var->name.empty())
+        if (!(stmt.targetVar && stmt.targetVar.get() == &child))
+            return;
+        if (auto *var = dynamic_cast<const VarExpr *>(stmt.targetVar.get());
+            var && !var->name.empty())
             lowerer_.setSymbolType(var->name, Type::Str);
     }
+
     Lowerer &lowerer_;
     std::vector<std::string> inputVarNames_{};
     int lvalueDepth_{0};
@@ -550,12 +680,18 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
 ///
 /// @param lowerer Lowerer receiving runtime requirement updates.
 /// @param stmt Statement to analyse.
-void scanStmtRuntimeNeeds(Lowerer &lowerer, const Stmt &stmt) { detail::RuntimeNeedsScanner(lowerer).evaluateStmt(stmt); }
+void scanStmtRuntimeNeeds(Lowerer &lowerer, const Stmt &stmt)
+{
+    detail::RuntimeNeedsScanner(lowerer).evaluateStmt(stmt);
+}
 
 /// @brief Analyse an entire BASIC program to record runtime helper requirements.
 ///
 /// @param lowerer Lowerer receiving runtime requirement updates.
 /// @param prog Program containing declarations and main body statements.
-void scanProgramRuntimeNeeds(Lowerer &lowerer, const Program &prog) { detail::RuntimeNeedsScanner(lowerer).evaluateProgram(prog); }
+void scanProgramRuntimeNeeds(Lowerer &lowerer, const Program &prog)
+{
+    detail::RuntimeNeedsScanner(lowerer).evaluateProgram(prog);
+}
 
 } // namespace il::frontends::basic::lower

@@ -60,8 +60,15 @@ class AnalysisRegistry
             std::type_index(typeid(Result))};
     }
 
-    const ModuleAnalysisMap &moduleAnalyses() const { return moduleAnalyses_; }
-    const FunctionAnalysisMap &functionAnalyses() const { return functionAnalyses_; }
+    const ModuleAnalysisMap &moduleAnalyses() const
+    {
+        return moduleAnalyses_;
+    }
+
+    const FunctionAnalysisMap &functionAnalyses() const
+    {
+        return functionAnalyses_;
+    }
 
   private:
     ModuleAnalysisMap moduleAnalyses_;
@@ -106,18 +113,25 @@ class AnalysisManager
     void invalidateAfterModulePass(const PreservedAnalyses &preserved);
     void invalidateAfterFunctionPass(const PreservedAnalyses &preserved, core::Function &fn);
 
-    core::Module &module() { return module_; }
-    const core::Module &module() const { return module_; }
+    core::Module &module()
+    {
+        return module_;
+    }
+
+    const core::Module &module() const
+    {
+        return module_;
+    }
 
   private:
     core::Module &module_;
     const ModuleAnalysisMap *moduleAnalyses_ = nullptr;
     const FunctionAnalysisMap *functionAnalyses_ = nullptr;
     std::unordered_map<std::string, std::any> moduleCache_;
-    std::unordered_map<std::string, std::unordered_map<const core::Function *, std::any>> functionCache_;
+    std::unordered_map<std::string, std::unordered_map<const core::Function *, std::any>>
+        functionCache_;
 
     friend class AnalysisCacheInvalidator;
 };
 
 } // namespace il::transform
-

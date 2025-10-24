@@ -145,5 +145,3 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter * 
 }
 
 } // namespace il::frontends::basic
-
-

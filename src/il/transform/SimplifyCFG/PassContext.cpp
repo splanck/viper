@@ -63,8 +63,11 @@ void SimplifyCFG::SimplifyCFGPassContext::logDebug(std::string_view message) con
         return;
 
     const char *name = function.name.c_str();
-    std::fprintf(stderr, "[DEBUG][SimplifyCFG] %s: %.*s\n", name,
-                 static_cast<int>(message.size()), message.data());
+    std::fprintf(stderr,
+                 "[DEBUG][SimplifyCFG] %s: %.*s\n",
+                 name,
+                 static_cast<int>(message.size()),
+                 message.data());
 }
 
 /// @brief Determine whether a block is sensitive to exception handling rules.
@@ -78,4 +81,3 @@ bool SimplifyCFG::SimplifyCFGPassContext::isEHSensitive(const il::core::BasicBlo
 }
 
 } // namespace il::transform
-

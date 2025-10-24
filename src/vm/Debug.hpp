@@ -107,8 +107,7 @@ class DebugCtrl
     std::vector<SrcLineBP> srcLineBPs_;              ///< Source line breakpoints;
                                                      ///< match by path or basename
 
-    mutable std::optional<std::pair<uint32_t, int>>
-        lastHitSrc_; ///< (file id + line)
+    mutable std::optional<std::pair<uint32_t, int>> lastHitSrc_; ///< (file id + line)
 
     struct WatchEntry
     {

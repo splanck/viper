@@ -12,8 +12,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "frontends/basic/ast/DeclNodes.hpp"
 #include "frontends/basic/SemanticDiagnostics.hpp"
+#include "frontends/basic/ast/DeclNodes.hpp"
 
 namespace il::frontends::basic
 {

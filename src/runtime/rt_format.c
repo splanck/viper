@@ -116,4 +116,3 @@ rt_string rt_csv_quote_alloc(rt_string value)
     free(buffer);
     return result;
 }
-

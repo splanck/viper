@@ -31,7 +31,8 @@ struct VMAccess
         return vm.debug;
     }
 
-    static inline const std::unordered_map<std::string, const il::core::Function *> &functionMap(const VM &vm)
+    static inline const std::unordered_map<std::string, const il::core::Function *> &functionMap(
+        const VM &vm)
     {
         return vm.fnMap;
     }
@@ -41,10 +42,11 @@ struct VMAccess
         return vm.runtimeContext;
     }
 
-    static inline Slot callFunction(VM &vm, const il::core::Function &fn, const std::vector<Slot> &args)
+    static inline Slot callFunction(VM &vm,
+                                    const il::core::Function &fn,
+                                    const std::vector<Slot> &args)
     {
         return vm.execFunction(fn, args);
     }
 };
 } // namespace il::vm::detail
-

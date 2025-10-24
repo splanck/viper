@@ -7,18 +7,18 @@
 // Links: docs/codemap.md
 #pragma once
 
-#include "frontends/basic/ast/NodeFwd.hpp"
 #include "frontends/basic/ProcRegistry.hpp"
 #include "frontends/basic/ScopeTracker.hpp"
 #include "frontends/basic/SemanticDiagnostics.hpp"
+#include "frontends/basic/ast/NodeFwd.hpp"
 #include <initializer_list>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
-#include <utility>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace il::frontends::basic
@@ -40,15 +40,15 @@ namespace semantic_analyzer_detail
 struct ExprRule;
 class StmtShared;
 const ExprRule &exprRule(BinaryExpr::Op op);
-}
+} // namespace semantic_analyzer_detail
 
 /// @brief Traverses BASIC AST to collect symbols and labels, validate variable
 ///        references, and verify FOR/NEXT nesting.
 /// @invariant Symbol table only contains definitions; unknown uses report
 ///            diagnostics.
 /// @ownership Borrows DiagnosticEmitter; AST not owned.
-  class SemanticAnalyzer
-  {
+class SemanticAnalyzer
+{
   public:
     /// @brief Diagnostic code for non-boolean conditional expressions.
     static constexpr std::string_view DiagNonBooleanCondition = "E1001";
@@ -91,8 +91,8 @@ const ExprRule &exprRule(BinaryExpr::Op op);
     friend class sem::ExprCheckContext;
     friend class SemanticAnalyzerExprVisitor;
     friend class SemanticAnalyzerStmtVisitor;
-    friend const semantic_analyzer_detail::ExprRule &
-    semantic_analyzer_detail::exprRule(BinaryExpr::Op op);
+    friend const semantic_analyzer_detail::ExprRule &semantic_analyzer_detail::exprRule(
+        BinaryExpr::Op op);
     friend class semantic_analyzer_detail::StmtShared;
 
     /// @brief Record symbols and labels from a statement.
@@ -254,9 +254,9 @@ const ExprRule &exprRule(BinaryExpr::Op op);
     /// @brief Classify how a symbol should be tracked during resolution.
     enum class SymbolKind
     {
-        Reference,      ///< Existing symbol use; do not declare or type.
-        Definition,     ///< Implicit definition; apply suffix defaults if unset.
-        InputTarget     ///< INPUT destination; force suffix-based defaults.
+        Reference,  ///< Existing symbol use; do not declare or type.
+        Definition, ///< Implicit definition; apply suffix defaults if unset.
+        InputTarget ///< INPUT destination; force suffix-based defaults.
     };
 
     /// @brief Track active loop constructs for EXIT validation.
@@ -301,7 +301,7 @@ const ExprRule &exprRule(BinaryExpr::Op op);
     /// @brief Metadata describing a single builtin argument slot.
     struct BuiltinArgSpec
     {
-        bool optional{false}; ///< Whether the argument may be omitted.
+        bool optional{false};         ///< Whether the argument may be omitted.
         const Type *allowed{nullptr}; ///< Pointer to allowed types array.
         std::size_t allowedCount{0};  ///< Number of entries in @ref allowed.
     };
@@ -309,11 +309,11 @@ const ExprRule &exprRule(BinaryExpr::Op op);
     /// @brief Metadata describing builtin arity and result type.
     struct BuiltinSignature
     {
-        std::size_t requiredArgs{0}; ///< Number of mandatory arguments.
-        std::size_t optionalArgs{0}; ///< Number of optional arguments.
+        std::size_t requiredArgs{0};              ///< Number of mandatory arguments.
+        std::size_t optionalArgs{0};              ///< Number of optional arguments.
         const BuiltinArgSpec *arguments{nullptr}; ///< Per-position argument specs.
-        std::size_t argumentCount{0}; ///< Total number of entries in @ref arguments.
-        Type result{Type::Unknown};   ///< Result type reported when checks pass.
+        std::size_t argumentCount{0};             ///< Total number of entries in @ref arguments.
+        Type result{Type::Unknown};               ///< Result type reported when checks pass.
     };
 
     /// @brief Pointer-to-member hook used for builtin semantic handlers.
@@ -406,7 +406,7 @@ const ExprRule &exprRule(BinaryExpr::Op op);
     std::unordered_set<std::string> symbols_;
     std::unordered_map<std::string, Type> varTypes_;
     std::unordered_map<std::string, long long> arrays_; ///< array sizes if known (-1 if dynamic)
-    std::unordered_set<long long> openChannels_; ///< Channels opened by literal handles.
+    std::unordered_set<long long> openChannels_;        ///< Channels opened by literal handles.
     std::unordered_set<int> labels_;
     std::unordered_set<int> labelRefs_;
     std::vector<std::string> forStack_; ///< Active FOR loop variables.
@@ -415,6 +415,6 @@ const ExprRule &exprRule(BinaryExpr::Op op);
     ProcedureScope *activeProcScope_{nullptr};
     bool errorHandlerActive_{false};
     std::optional<int> errorHandlerTarget_;
-}; 
+};
 
 } // namespace il::frontends::basic

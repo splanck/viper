@@ -320,7 +320,8 @@ VM::ExecResult handleTrapKind(VM &vm,
         error = &fr.activeError;
 
     Slot out{};
-    const auto kindValue = error ? static_cast<int32_t>(error->kind) : static_cast<int32_t>(TrapKind::RuntimeError);
+    const auto kindValue =
+        error ? static_cast<int32_t>(error->kind) : static_cast<int32_t>(TrapKind::RuntimeError);
     out.i64 = static_cast<int64_t>(kindValue);
     ops::storeResult(fr, in, out);
     return {};
@@ -411,4 +412,3 @@ VM::ExecResult handleTrap(VM &vm,
 }
 
 } // namespace il::vm::detail::control
-

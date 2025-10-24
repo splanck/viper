@@ -18,7 +18,7 @@ namespace il::core
 {
 class BasicBlock;
 class Function;
-}
+} // namespace il::core
 
 namespace il::frontends::basic
 {

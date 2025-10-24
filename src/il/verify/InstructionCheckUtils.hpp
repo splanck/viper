@@ -25,4 +25,3 @@ bool fitsInIntegerKind(long long value, il::core::Type::Kind kind);
 std::optional<il::core::Type::Kind> kindFromCategory(il::core::TypeCategory category);
 
 } // namespace il::verify::detail
-

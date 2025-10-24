@@ -104,11 +104,7 @@ SemanticAnalyzer::Type analyzeUnaryExpr(SemanticAnalyzer &analyzer, const UnaryE
                 const char opChar = (expr.op == UnaryExpr::Op::Negate) ? '-' : '+';
                 oss << "unary " << opChar << " requires a NUMERIC operand, got "
                     << semantic_analyzer_detail::semanticTypeName(operandType) << '.';
-                emitTypeMismatch(context.diagnostics(),
-                                 "B2001",
-                                 expr.loc,
-                                 1,
-                                 oss.str());
+                emitTypeMismatch(context.diagnostics(), "B2001", expr.loc, 1, oss.str());
                 return Type::Unknown;
             }
             return operandType;

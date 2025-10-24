@@ -235,4 +235,3 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
 }
 
 } // namespace il::frontends::basic
-

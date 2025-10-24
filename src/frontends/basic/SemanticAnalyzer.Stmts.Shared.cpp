@@ -94,23 +94,20 @@ namespace il::frontends::basic::semantic_analyzer_detail
 
 /// @brief Construct shared helpers bound to the owning analyser.
 /// @param analyzer Semantic analyser that maintains loop stacks and diagnostics.
-StmtShared::StmtShared(SemanticAnalyzer &analyzer) noexcept
-    : analyzer_(analyzer)
-{
-}
+StmtShared::StmtShared(SemanticAnalyzer &analyzer) noexcept : analyzer_(analyzer) {}
 
 /// @brief RAII guard that records loop entry and exit.
 /// @details Pushes @p kind onto the loop stack during construction and pops it
 ///          during destruction.
-StmtShared::LoopGuard::LoopGuard(SemanticAnalyzer &analyzer, SemanticAnalyzer::LoopKind kind) noexcept
+StmtShared::LoopGuard::LoopGuard(SemanticAnalyzer &analyzer,
+                                 SemanticAnalyzer::LoopKind kind) noexcept
     : analyzer_(&analyzer)
 {
     analyzer_->pushLoop(kind);
 }
 
 /// @brief Move-construct the guard, transferring ownership of the stack entry.
-StmtShared::LoopGuard::LoopGuard(LoopGuard &&other) noexcept
-    : analyzer_(other.analyzer_)
+StmtShared::LoopGuard::LoopGuard(LoopGuard &&other) noexcept : analyzer_(other.analyzer_)
 {
     other.analyzer_ = nullptr;
 }
@@ -143,8 +140,7 @@ StmtShared::ForLoopGuard::ForLoopGuard(SemanticAnalyzer &analyzer, std::string v
 }
 
 /// @brief Move-construct a guard, adopting the tracked variable.
-StmtShared::ForLoopGuard::ForLoopGuard(ForLoopGuard &&other) noexcept
-    : analyzer_(other.analyzer_)
+StmtShared::ForLoopGuard::ForLoopGuard(ForLoopGuard &&other) noexcept : analyzer_(other.analyzer_)
 {
     other.analyzer_ = nullptr;
 }

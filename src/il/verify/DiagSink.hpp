@@ -17,10 +17,10 @@ namespace il::verify
 /// @brief Identifier for structured verifier diagnostics.
 enum class VerifyDiagCode
 {
-    Unknown = 0,            ///< Unclassified diagnostic.
-    EhStackUnderflow,       ///< Encountered eh.pop with an empty handler stack.
-    EhStackLeak,             ///< Execution left a function with handlers still active.
-    EhResumeTokenMissing,    ///< Resume.* executed without an active resume token.
+    Unknown = 0,               ///< Unclassified diagnostic.
+    EhStackUnderflow,          ///< Encountered eh.pop with an empty handler stack.
+    EhStackLeak,               ///< Execution left a function with handlers still active.
+    EhResumeTokenMissing,      ///< Resume.* executed without an active resume token.
     EhResumeLabelInvalidTarget ///< resume.label target does not postdominate the faulting block.
 };
 

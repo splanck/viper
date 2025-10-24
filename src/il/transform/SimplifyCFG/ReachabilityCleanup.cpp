@@ -65,9 +65,8 @@ BitVector markReachable(il::core::Function &function)
         if (!terminator)
             continue;
 
-        auto addLabel = [&](const std::string &label) {
-            enqueueSuccessor(reachable, worklist, lookupBlockIndex(labelToIndex, label));
-        };
+        auto addLabel = [&](const std::string &label)
+        { enqueueSuccessor(reachable, worklist, lookupBlockIndex(labelToIndex, label)); };
 
         switch (terminator->op)
         {
@@ -159,9 +158,8 @@ bool removeUnreachableBlocks(SimplifyCFG::SimplifyCFGPassContext &ctx)
         ctx.stats.unreachableRemoved += removedBlocks;
         if (ctx.isDebugLoggingEnabled())
         {
-            std::string message =
-                "erased " + std::to_string(removedBlocks) + " unreachable block" +
-                (removedBlocks == 1 ? "" : "s");
+            std::string message = "erased " + std::to_string(removedBlocks) + " unreachable block" +
+                                  (removedBlocks == 1 ? "" : "s");
             ctx.logDebug(message);
         }
         return true;
@@ -171,4 +169,3 @@ bool removeUnreachableBlocks(SimplifyCFG::SimplifyCFGPassContext &ctx)
 }
 
 } // namespace il::transform::simplify_cfg
-

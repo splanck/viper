@@ -27,8 +27,7 @@ namespace ops
 /// @param rhs Right operand.
 /// @param result Pointer receiving the computed value.
 /// @return True when the operation overflowed.
-template <typename T>
-inline bool checked_add(T lhs, T rhs, T *result)
+template <typename T> inline bool checked_add(T lhs, T rhs, T *result)
 {
     return __builtin_add_overflow(lhs, rhs, result);
 }
@@ -39,8 +38,7 @@ inline bool checked_add(T lhs, T rhs, T *result)
 /// @param rhs Right operand.
 /// @param result Pointer receiving the computed value.
 /// @return True when the operation overflowed.
-template <typename T>
-inline bool checked_sub(T lhs, T rhs, T *result)
+template <typename T> inline bool checked_sub(T lhs, T rhs, T *result)
 {
     return __builtin_sub_overflow(lhs, rhs, result);
 }
@@ -51,8 +49,7 @@ inline bool checked_sub(T lhs, T rhs, T *result)
 /// @param rhs Right operand.
 /// @param result Pointer receiving the computed value.
 /// @return True when the operation overflowed.
-template <typename T>
-inline bool checked_mul(T lhs, T rhs, T *result)
+template <typename T> inline bool checked_mul(T lhs, T rhs, T *result)
 {
     return __builtin_mul_overflow(lhs, rhs, result);
 }
@@ -62,8 +59,7 @@ inline bool checked_mul(T lhs, T rhs, T *result)
 /// @param lhs Left operand.
 /// @param rhs Right operand.
 /// @return Result of the addition with wrap-around semantics.
-template <typename T>
-inline T wrap_add(T lhs, T rhs)
+template <typename T> inline T wrap_add(T lhs, T rhs)
 {
     T result{};
     (void)checked_add(lhs, rhs, &result);
@@ -75,8 +71,7 @@ inline T wrap_add(T lhs, T rhs)
 /// @param lhs Left operand.
 /// @param rhs Right operand.
 /// @return Result of the subtraction with wrap-around semantics.
-template <typename T>
-inline T wrap_sub(T lhs, T rhs)
+template <typename T> inline T wrap_sub(T lhs, T rhs)
 {
     T result{};
     (void)checked_sub(lhs, rhs, &result);
@@ -88,8 +83,7 @@ inline T wrap_sub(T lhs, T rhs)
 /// @param lhs Left operand.
 /// @param rhs Right operand.
 /// @return Result of the multiplication with wrap-around semantics.
-template <typename T>
-inline T wrap_mul(T lhs, T rhs)
+template <typename T> inline T wrap_mul(T lhs, T rhs)
 {
     T result{};
     (void)checked_mul(lhs, rhs, &result);
@@ -104,8 +98,7 @@ inline T wrap_mul(T lhs, T rhs)
 /// @param result Pointer receiving the computed value.
 /// @param trap Policy invoked when overflow occurs.
 /// @return True when the result is valid, false if overflow triggered the trap.
-template <typename T, typename Trap>
-inline bool trap_add(T lhs, T rhs, T *result, Trap &&trap)
+template <typename T, typename Trap> inline bool trap_add(T lhs, T rhs, T *result, Trap &&trap)
 {
     if (checked_add(lhs, rhs, result))
     {
@@ -123,8 +116,7 @@ inline bool trap_add(T lhs, T rhs, T *result, Trap &&trap)
 /// @param result Pointer receiving the computed value.
 /// @param trap Policy invoked when overflow occurs.
 /// @return True when the result is valid, false if overflow triggered the trap.
-template <typename T, typename Trap>
-inline bool trap_sub(T lhs, T rhs, T *result, Trap &&trap)
+template <typename T, typename Trap> inline bool trap_sub(T lhs, T rhs, T *result, Trap &&trap)
 {
     if (checked_sub(lhs, rhs, result))
     {
@@ -142,8 +134,7 @@ inline bool trap_sub(T lhs, T rhs, T *result, Trap &&trap)
 /// @param result Pointer receiving the computed value.
 /// @param trap Policy invoked when overflow occurs.
 /// @return True when the result is valid, false if overflow triggered the trap.
-template <typename T, typename Trap>
-inline bool trap_mul(T lhs, T rhs, T *result, Trap &&trap)
+template <typename T, typename Trap> inline bool trap_mul(T lhs, T rhs, T *result, Trap &&trap)
 {
     if (checked_mul(lhs, rhs, result))
     {
@@ -163,10 +154,7 @@ void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val);
 struct OperandDispatcher
 {
     template <typename Compute>
-    static VM::ExecResult runBinary(VM &vm,
-                                    Frame &fr,
-                                    const il::core::Instr &in,
-                                    Compute &&compute)
+    static VM::ExecResult runBinary(VM &vm, Frame &fr, const il::core::Instr &in, Compute &&compute)
     {
         Slot lhs = vm.eval(fr, in.operands[0]);
         Slot rhs = vm.eval(fr, in.operands[1]);
@@ -199,10 +187,7 @@ struct OperandDispatcher
 /// @param compute Functor that writes the computed result into the provided output slot.
 /// @return Execution result signalling normal fallthrough.
 template <typename Compute>
-VM::ExecResult applyBinary(VM &vm,
-                           Frame &fr,
-                           const il::core::Instr &in,
-                           Compute &&compute)
+VM::ExecResult applyBinary(VM &vm, Frame &fr, const il::core::Instr &in, Compute &&compute)
 {
     return OperandDispatcher::runBinary(vm, fr, in, std::forward<Compute>(compute));
 }
@@ -215,10 +200,7 @@ VM::ExecResult applyBinary(VM &vm,
 /// @param compare Functor returning true when the predicate holds.
 /// @return Execution result signalling normal fallthrough.
 template <typename Compare>
-VM::ExecResult applyCompare(VM &vm,
-                            Frame &fr,
-                            const il::core::Instr &in,
-                            Compare &&compare)
+VM::ExecResult applyCompare(VM &vm, Frame &fr, const il::core::Instr &in, Compare &&compare)
 {
     return OperandDispatcher::runCompare(vm, fr, in, std::forward<Compare>(compare));
 }
@@ -236,4 +218,3 @@ void trapInvalidResume(Frame &fr,
 const VmError *resolveErrorToken(Frame &fr, const Slot &slot);
 } // namespace control
 } // namespace il::vm::detail
-

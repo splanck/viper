@@ -35,97 +35,93 @@ namespace il::vm
 
 namespace
 {
-    using il::core::Type;
+using il::core::Type;
 
-    struct KindAccessors
-    {
-        using SlotAccessor = void *(*)(Slot &);
-        using ResultAccessor = void *(*)(ResultBuffers &);
-        using ResultAssigner = void (*)(Slot &, const ResultBuffers &);
+struct KindAccessors
+{
+    using SlotAccessor = void *(*)(Slot &);
+    using ResultAccessor = void *(*)(ResultBuffers &);
+    using ResultAssigner = void (*)(Slot &, const ResultBuffers &);
 
-        SlotAccessor slotAccessor = nullptr;
-        ResultAccessor resultAccessor = nullptr;
-        ResultAssigner assignResult = nullptr;
+    SlotAccessor slotAccessor = nullptr;
+    ResultAccessor resultAccessor = nullptr;
+    ResultAssigner assignResult = nullptr;
+};
+
+constexpr std::array<Type::Kind, 10> kSupportedKinds = {
+    Type::Kind::Void,
+    Type::Kind::I1,
+    Type::Kind::I16,
+    Type::Kind::I32,
+    Type::Kind::I64,
+    Type::Kind::F64,
+    Type::Kind::Ptr,
+    Type::Kind::Str,
+    Type::Kind::Error,
+    Type::Kind::ResumeTok,
+};
+
+static_assert(kSupportedKinds.size() == 10, "update kind accessors when Type::Kind grows");
+
+constexpr void *nullResultBuffer(ResultBuffers &)
+{
+    return nullptr;
+}
+
+constexpr void assignNoop(Slot &, const ResultBuffers &) {}
+
+template <auto Member> constexpr void *slotMemberAccessor(Slot &slot)
+{
+    return static_cast<void *>(&(slot.*Member));
+}
+
+template <auto Member> constexpr void *bufferMemberAccessor(ResultBuffers &buffers)
+{
+    return static_cast<void *>(&(buffers.*Member));
+}
+
+template <auto SlotMember, auto BufferMember>
+constexpr void assignFromBuffer(Slot &slot, const ResultBuffers &buffers)
+{
+    slot.*SlotMember = buffers.*BufferMember;
+}
+
+constexpr KindAccessors makeVoidAccessors()
+{
+    return KindAccessors{nullptr, &nullResultBuffer, &assignNoop};
+}
+
+template <auto SlotMember, auto BufferMember> constexpr KindAccessors makeAccessors()
+{
+    return KindAccessors{
+        &slotMemberAccessor<SlotMember>,
+        &bufferMemberAccessor<BufferMember>,
+        &assignFromBuffer<SlotMember, BufferMember>,
     };
+}
 
-    constexpr std::array<Type::Kind, 10> kSupportedKinds = {
-        Type::Kind::Void,
-        Type::Kind::I1,
-        Type::Kind::I16,
-        Type::Kind::I32,
-        Type::Kind::I64,
-        Type::Kind::F64,
-        Type::Kind::Ptr,
-        Type::Kind::Str,
-        Type::Kind::Error,
-        Type::Kind::ResumeTok,
-    };
+constexpr std::array<KindAccessors, kSupportedKinds.size()> kKindAccessors = []
+{
+    std::array<KindAccessors, kSupportedKinds.size()> table{};
+    table[static_cast<size_t>(Type::Kind::Void)] = makeVoidAccessors();
+    table[static_cast<size_t>(Type::Kind::I1)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
+    table[static_cast<size_t>(Type::Kind::I16)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
+    table[static_cast<size_t>(Type::Kind::I32)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
+    table[static_cast<size_t>(Type::Kind::I64)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
+    table[static_cast<size_t>(Type::Kind::F64)] = makeAccessors<&Slot::f64, &ResultBuffers::f64>();
+    table[static_cast<size_t>(Type::Kind::Ptr)] = makeAccessors<&Slot::ptr, &ResultBuffers::ptr>();
+    table[static_cast<size_t>(Type::Kind::Str)] = makeAccessors<&Slot::str, &ResultBuffers::str>();
+    table[static_cast<size_t>(Type::Kind::Error)] = makeVoidAccessors();
+    table[static_cast<size_t>(Type::Kind::ResumeTok)] = makeVoidAccessors();
+    return table;
+}();
 
-    static_assert(kSupportedKinds.size() == 10, "update kind accessors when Type::Kind grows");
-
-    constexpr void *nullResultBuffer(ResultBuffers &)
-    {
-        return nullptr;
-    }
-
-    constexpr void assignNoop(Slot &, const ResultBuffers &)
-    {
-    }
-
-    template <auto Member>
-    constexpr void *slotMemberAccessor(Slot &slot)
-    {
-        return static_cast<void *>(&(slot.*Member));
-    }
-
-    template <auto Member>
-    constexpr void *bufferMemberAccessor(ResultBuffers &buffers)
-    {
-        return static_cast<void *>(&(buffers.*Member));
-    }
-
-    template <auto SlotMember, auto BufferMember>
-    constexpr void assignFromBuffer(Slot &slot, const ResultBuffers &buffers)
-    {
-        slot.*SlotMember = buffers.*BufferMember;
-    }
-
-    constexpr KindAccessors makeVoidAccessors()
-    {
-        return KindAccessors{nullptr, &nullResultBuffer, &assignNoop};
-    }
-
-    template <auto SlotMember, auto BufferMember>
-    constexpr KindAccessors makeAccessors()
-    {
-        return KindAccessors{
-            &slotMemberAccessor<SlotMember>,
-            &bufferMemberAccessor<BufferMember>,
-            &assignFromBuffer<SlotMember, BufferMember>,
-        };
-    }
-
-    constexpr std::array<KindAccessors, kSupportedKinds.size()> kKindAccessors = [] {
-        std::array<KindAccessors, kSupportedKinds.size()> table{};
-        table[static_cast<size_t>(Type::Kind::Void)] = makeVoidAccessors();
-        table[static_cast<size_t>(Type::Kind::I1)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
-        table[static_cast<size_t>(Type::Kind::I16)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
-        table[static_cast<size_t>(Type::Kind::I32)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
-        table[static_cast<size_t>(Type::Kind::I64)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
-        table[static_cast<size_t>(Type::Kind::F64)] = makeAccessors<&Slot::f64, &ResultBuffers::f64>();
-        table[static_cast<size_t>(Type::Kind::Ptr)] = makeAccessors<&Slot::ptr, &ResultBuffers::ptr>();
-        table[static_cast<size_t>(Type::Kind::Str)] = makeAccessors<&Slot::str, &ResultBuffers::str>();
-        table[static_cast<size_t>(Type::Kind::Error)] = makeVoidAccessors();
-        table[static_cast<size_t>(Type::Kind::ResumeTok)] = makeVoidAccessors();
-        return table;
-    }();
-
-    const KindAccessors &dispatchFor(Type::Kind kind)
-    {
-        const auto index = static_cast<size_t>(kind);
-        assert(index < kKindAccessors.size() && "invalid type kind");
-        return kKindAccessors[index];
-    }
+const KindAccessors &dispatchFor(Type::Kind kind)
+{
+    const auto index = static_cast<size_t>(kind);
+    assert(index < kKindAccessors.size() && "invalid type kind");
+    return kKindAccessors[index];
+}
 
 } // namespace
 
@@ -185,11 +181,8 @@ StringRef fromViperString(const ViperString &str)
     const int64_t length = rt_len(str);
     if (length < 0)
     {
-        RuntimeBridge::trap(TrapKind::DomainError,
-                            "rt_string reported negative length",
-                            {},
-                            "",
-                            "");
+        RuntimeBridge::trap(
+            TrapKind::DomainError, "rt_string reported negative length", {}, "", "");
         return {};
     }
     return StringRef{data, static_cast<size_t>(length)};
@@ -247,7 +240,8 @@ void *slotToArgPointer(Slot &slot, il::core::Type::Kind kind)
     if (!entry.slotAccessor)
     {
         std::ostringstream os;
-        os << "runtime bridge does not support argument kind '" << il::core::kindToString(kind) << "'";
+        os << "runtime bridge does not support argument kind '" << il::core::kindToString(kind)
+           << "'";
         RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), {}, "", "");
         return nullptr;
     }
@@ -260,7 +254,8 @@ void *resultBufferFor(il::core::Type::Kind kind, ResultBuffers &buffers)
     if (!entry.resultAccessor)
     {
         std::ostringstream os;
-        os << "runtime bridge does not support return kind '" << il::core::kindToString(kind) << "'";
+        os << "runtime bridge does not support return kind '" << il::core::kindToString(kind)
+           << "'";
         RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), {}, "", "");
         return nullptr;
     }
@@ -298,17 +293,17 @@ std::vector<void *> marshalArguments(const il::runtime::RuntimeSignature &sig,
     {
         switch (hidden.kind)
         {
-        case il::runtime::RuntimeHiddenParamKind::None:
-            rawArgs[hiddenIndex++] = nullptr;
-            break;
-        case il::runtime::RuntimeHiddenParamKind::PowStatusPointer:
-            powStatus.active = true;
-            powStatus.ok = true;
-            powStatus.ptr = &powStatus.ok;
-            // Pow helpers expect a pointer to the status pointer so they can swap
-            // it for a runtime-managed location when traps must propagate.
-            rawArgs[hiddenIndex++] = &powStatus.ptr;
-            break;
+            case il::runtime::RuntimeHiddenParamKind::None:
+                rawArgs[hiddenIndex++] = nullptr;
+                break;
+            case il::runtime::RuntimeHiddenParamKind::PowStatusPointer:
+                powStatus.active = true;
+                powStatus.ok = true;
+                powStatus.ptr = &powStatus.ok;
+                // Pow helpers expect a pointer to the status pointer so they can swap
+                // it for a runtime-managed location when traps must propagate.
+                rawArgs[hiddenIndex++] = &powStatus.ptr;
+                break;
         }
     }
 

@@ -253,13 +253,12 @@ StatementSequencer::TerminatorInfo StatementSequencer::collectStatements(
 
         int line = 0;
         il::support::SourceLoc lineLoc{};
-        withOptionalLineNumber([
-                                  &line, &lineLoc
-                              ](int currentLine, il::support::SourceLoc currentLoc)
-                              {
-                                  line = currentLine;
-                                  lineLoc = currentLoc;
-                              });
+        withOptionalLineNumber(
+            [&line, &lineLoc](int currentLine, il::support::SourceLoc currentLoc)
+            {
+                line = currentLine;
+                lineLoc = currentLoc;
+            });
 
         LineAction action = evaluateLineAction(line, lineLoc, isTerminator, onTerminator, state);
         if (action == LineAction::Terminate || action == LineAction::Defer)
@@ -290,8 +289,8 @@ StatementSequencer::TerminatorInfo StatementSequencer::collectStatements(
 /// @param terminator Token kind to treat as the terminator.
 /// @param dst Destination vector for parsed statements.
 /// @return Terminator metadata populated by the underlying collection routine.
-StatementSequencer::TerminatorInfo StatementSequencer::collectStatements(
-    TokenKind terminator, std::vector<StmtPtr> &dst)
+StatementSequencer::TerminatorInfo StatementSequencer::collectStatements(TokenKind terminator,
+                                                                         std::vector<StmtPtr> &dst)
 {
     auto predicate = [&](int, il::support::SourceLoc) { return parser_.at(terminator); };
     auto consumer = [&](int, il::support::SourceLoc, TerminatorInfo &) { parser_.consume(); };

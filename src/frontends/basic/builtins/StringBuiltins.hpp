@@ -8,10 +8,10 @@
 // Links: docs/codemap.md
 #pragma once
 
-#include "frontends/basic/ast/ExprNodes.hpp"
 #include "frontends/basic/Lowerer.hpp"
-#include "il/runtime/RuntimeSignatures.hpp"
+#include "frontends/basic/ast/ExprNodes.hpp"
 #include "il/core/Value.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -28,8 +28,7 @@ using il::core::Value;
 class LowerCtx;
 
 /// @brief Alias used for passing contiguous argument views.
-template <typename T>
-using ArrayRef = std::span<T>;
+template <typename T> using ArrayRef = std::span<T>;
 
 /// @brief Alias for lightweight string views.
 using StringRef = std::string_view;
@@ -40,9 +39,9 @@ using LoweringFn = Value (*)(LowerCtx &, ArrayRef<Value>);
 /// @brief Specification record describing a registered builtin.
 struct BuiltinSpec
 {
-    std::string name;   ///< Canonical BASIC spelling of the builtin.
-    int minArity{0};    ///< Minimum number of accepted arguments.
-    int maxArity{0};    ///< Maximum number of accepted arguments.
+    std::string name;       ///< Canonical BASIC spelling of the builtin.
+    int minArity{0};        ///< Minimum number of accepted arguments.
+    int maxArity{0};        ///< Maximum number of accepted arguments.
     LoweringFn fn{nullptr}; ///< Lowering entry point for the builtin.
 };
 

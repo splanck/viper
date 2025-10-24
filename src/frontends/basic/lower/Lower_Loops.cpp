@@ -127,6 +127,7 @@ Lowerer::CtrlState Lowerer::emitWhile(const WhileStmt &stmt)
     state.fallthrough = !done->terminated;
     return state;
 }
+
 /// @brief Lower a WHILE statement by delegating to @ref emitWhile.
 /// @details Calls @ref emitWhile to build the loop skeleton then restores the
 ///          procedure context's current block to the returned block so that
@@ -138,6 +139,7 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
     if (state.cur)
         context().setCurrent(state.cur);
 }
+
 /// @brief Construct the control-flow for BASIC DO loops (pre- and post-test).
 /// @details Emits the shared head/body/done structure, handles the varying test
 ///          placement, and respects optional DO...LOOP UNTIL/WHILE semantics by
@@ -176,7 +178,8 @@ Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
     current = &func->blocks[currentIdx];
     ctx.setCurrent(current);
     ctx.loopState().push(done);
-    auto emitHead = [&]() {
+    auto emitHead = [&]()
+    {
         func = ctx.function();
         func->blocks[headIdx].label = headLbl;
         func->blocks[bodyIdx].label = bodyLbl;
@@ -255,6 +258,7 @@ Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
     state.fallthrough = postTest ? true : !done->terminated;
     return state;
 }
+
 /// @brief Lower a DO loop and update the current block to its continuation.
 /// @details Invokes @ref emitDo to generate the loop and, when a continuation
 ///          block is returned, rebinds the context so subsequent statements emit
@@ -450,6 +454,7 @@ Lowerer::CtrlState Lowerer::emitFor(const ForStmt &stmt, Value slot, RVal end, R
     state.fallthrough = state.cur && !state.cur->terminated;
     return state;
 }
+
 /// @brief Lower a BASIC FOR loop from its AST representation.
 /// @details Lowers the start, end, and optional step expressions, initialises
 ///          the induction variable slot with the start value, and forwards to
@@ -461,8 +466,8 @@ void Lowerer::lowerFor(const ForStmt &stmt)
 {
     RVal start = lowerScalarExpr(*stmt.start);
     RVal end = lowerScalarExpr(*stmt.end);
-    RVal step = stmt.step ? lowerScalarExpr(*stmt.step)
-                          : RVal{Value::constInt(1), Type(Type::Kind::I64)};
+    RVal step =
+        stmt.step ? lowerScalarExpr(*stmt.step) : RVal{Value::constInt(1), Type(Type::Kind::I64)};
     const auto *info = findSymbol(stmt.var);
     assert(info && info->slotId);
     Value slot = Value::temp(*info->slotId);
@@ -473,6 +478,7 @@ void Lowerer::lowerFor(const ForStmt &stmt)
     if (state.cur)
         context().setCurrent(state.cur);
 }
+
 /// @brief Lower the BASIC NEXT statement.
 /// @details NEXT is a parsing artefact in the current lowering pipeline and is
 ///          therefore ignored. The stub remains so future loop finalisation

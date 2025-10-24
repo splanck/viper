@@ -283,6 +283,7 @@ void Lowerer::requireLocCh()
 {
     setManualHelperRequired(ManualRuntimeHelper::LocCh);
 }
+
 // --- end: require implementations ---
 
 /// @brief Request the helper that conditionally retains a string handle.
@@ -335,25 +336,35 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         {"rt_arr_i32_get", ManualRuntimeHelper::ArrayI32Get, &Lowerer::requireArrayI32Get},
         {"rt_arr_i32_set", ManualRuntimeHelper::ArrayI32Set, &Lowerer::requireArrayI32Set},
         {"rt_arr_i32_retain", ManualRuntimeHelper::ArrayI32Retain, &Lowerer::requireArrayI32Retain},
-        {"rt_arr_i32_release", ManualRuntimeHelper::ArrayI32Release, &Lowerer::requireArrayI32Release},
+        {"rt_arr_i32_release",
+         ManualRuntimeHelper::ArrayI32Release,
+         &Lowerer::requireArrayI32Release},
         {"rt_arr_oob_panic", ManualRuntimeHelper::ArrayOobPanic, &Lowerer::requireArrayOobPanic},
         {"rt_open_err_vstr", ManualRuntimeHelper::OpenErrVstr, &Lowerer::requireOpenErrVstr},
         {"rt_close_err", ManualRuntimeHelper::CloseErr, &Lowerer::requireCloseErr},
         {"rt_seek_ch_err", ManualRuntimeHelper::SeekChErr, &Lowerer::requireSeekChErr},
         {"rt_println_ch_err", ManualRuntimeHelper::PrintlnChErr, &Lowerer::requirePrintlnChErr},
-        {"rt_line_input_ch_err", ManualRuntimeHelper::LineInputChErr, &Lowerer::requireLineInputChErr},
+        {"rt_line_input_ch_err",
+         ManualRuntimeHelper::LineInputChErr,
+         &Lowerer::requireLineInputChErr},
         // --- begin: declarable manual helpers ---
         {"rt_eof_ch", ManualRuntimeHelper::EofCh, &Lowerer::requireEofCh},
         {"rt_lof_ch", ManualRuntimeHelper::LofCh, &Lowerer::requireLofCh},
         {"rt_loc_ch", ManualRuntimeHelper::LocCh, &Lowerer::requireLocCh},
         // --- end: declarable manual helpers ---
-        {"rt_str_retain_maybe", ManualRuntimeHelper::StrRetainMaybe, &Lowerer::requireStrRetainMaybe},
-        {"rt_str_release_maybe", ManualRuntimeHelper::StrReleaseMaybe, &Lowerer::requireStrReleaseMaybe},
+        {"rt_str_retain_maybe",
+         ManualRuntimeHelper::StrRetainMaybe,
+         &Lowerer::requireStrRetainMaybe},
+        {"rt_str_release_maybe",
+         ManualRuntimeHelper::StrReleaseMaybe,
+         &Lowerer::requireStrReleaseMaybe},
     }};
 
-    auto declareManual = [&](std::string_view name) {
+    auto declareManual = [&](std::string_view name)
+    {
         if (const auto *desc = il::runtime::findRuntimeDescriptor(name))
-            b.addExtern(std::string(desc->name), desc->signature.retType, desc->signature.paramTypes);
+            b.addExtern(
+                std::string(desc->name), desc->signature.retType, desc->signature.paramTypes);
     };
 
     for (const auto &helper : manualHelpers)

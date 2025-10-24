@@ -6,10 +6,10 @@
 // Links: docs/codemap.md
 #pragma once
 
-#include "frontends/basic/ast/DeclNodes.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lexer.hpp"
 #include "frontends/basic/StatementSequencer.hpp"
+#include "frontends/basic/ast/DeclNodes.hpp"
 #include "support/diag_expected.hpp"
 #include <array>
 #include <functional>
@@ -59,10 +59,10 @@ class Parser
     /// @return Parsed statement belonging to the branch body.
     StmtPtr parseIfBranchBody(int line, StatementSequencer &ctx);
 
-    mutable Lexer lexer_;                     ///< Provides tokens from the source buffer.
-    mutable std::vector<Token> tokens_;       ///< Lookahead token buffer.
-    DiagnosticEmitter *emitter_ = nullptr;    ///< Diagnostic sink; not owned.
-    std::unordered_set<std::string> arrays_;  ///< Names of arrays declared via DIM.
+    mutable Lexer lexer_;                             ///< Provides tokens from the source buffer.
+    mutable std::vector<Token> tokens_;               ///< Lookahead token buffer.
+    DiagnosticEmitter *emitter_ = nullptr;            ///< Diagnostic sink; not owned.
+    std::unordered_set<std::string> arrays_;          ///< Names of arrays declared via DIM.
     std::unordered_set<std::string> knownProcedures_; ///< Procedure identifiers seen so far.
 
     /// @brief Registry that maps statement-leading tokens to parser callbacks.
@@ -80,8 +80,7 @@ class Parser
 
         /// @brief Lookup registered handler for @p kind.
         /// @return Pointer pair containing callbacks if present.
-        [[nodiscard]] std::pair<NoArgHandler, WithLineHandler>
-        lookup(TokenKind kind) const;
+        [[nodiscard]] std::pair<NoArgHandler, WithLineHandler> lookup(TokenKind kind) const;
 
         /// @brief Check whether @p kind begins a statement according to the registry.
         [[nodiscard]] bool contains(TokenKind kind) const;
@@ -143,16 +142,16 @@ class Parser
     /// @brief Status information returned by CASE parsing helpers.
     struct SelectHandlerResult
     {
-        bool handled = false;             ///< True when helper consumed tokens.
-        bool emittedDiagnostic = false;   ///< True when helper reported errors.
+        bool handled = false;           ///< True when helper consumed tokens.
+        bool emittedDiagnostic = false; ///< True when helper reported errors.
     };
 
     /// @brief Aggregates CASE body collection results.
     struct SelectBodyResult
     {
-        std::vector<StmtPtr> body;                    ///< Statements collected.
+        std::vector<StmtPtr> body;                     ///< Statements collected.
         StatementSequencer::TerminatorInfo terminator; ///< Terminator metadata.
-        bool emittedDiagnostic = false;               ///< Diagnostics emitted.
+        bool emittedDiagnostic = false;                ///< Diagnostics emitted.
     };
 
     using SelectDiagnoseFn =

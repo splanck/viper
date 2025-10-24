@@ -47,13 +47,10 @@ void Lowerer::lowerOpen(const OpenStmt &stmt)
                                 Type(Type::Kind::I32),
                                 Value::constInt(static_cast<int32_t>(stmt.mode)));
 
-    Value err = emitCallRet(Type(Type::Kind::I32),
-                            "rt_open_err_vstr",
-                            {path.value, modeValue, channel.value});
+    Value err = emitCallRet(
+        Type(Type::Kind::I32), "rt_open_err_vstr", {path.value, modeValue, channel.value});
 
-    emitRuntimeErrCheck(err, stmt.loc, "open", [&](Value code) {
-        emitTrapFromErr(code);
-    });
+    emitRuntimeErrCheck(err, stmt.loc, "open", [&](Value code) { emitTrapFromErr(code); });
 }
 
 /// @brief Lower a CLOSE statement that releases an open channel.
@@ -73,9 +70,7 @@ void Lowerer::lowerClose(const CloseStmt &stmt)
     curLoc = stmt.loc;
     Value err = emitCallRet(Type(Type::Kind::I32), "rt_close_err", {channel.value});
 
-    emitRuntimeErrCheck(err, stmt.loc, "close", [&](Value code) {
-        emitTrapFromErr(code);
-    });
+    emitRuntimeErrCheck(err, stmt.loc, "close", [&](Value code) { emitTrapFromErr(code); });
 }
 
 /// @brief Lower a SEEK statement that repositions a file channel.
@@ -97,13 +92,10 @@ void Lowerer::lowerSeek(const SeekStmt &stmt)
     position = ensureI64(std::move(position), stmt.loc);
 
     curLoc = stmt.loc;
-    Value err = emitCallRet(Type(Type::Kind::I32),
-                            "rt_seek_ch_err",
-                            {channel.value, position.value});
+    Value err =
+        emitCallRet(Type(Type::Kind::I32), "rt_seek_ch_err", {channel.value, position.value});
 
-    emitRuntimeErrCheck(err, stmt.loc, "seek", [&](Value code) {
-        emitTrapFromErr(code);
-    });
+    emitRuntimeErrCheck(err, stmt.loc, "seek", [&](Value code) { emitTrapFromErr(code); });
 }
 
 /// @brief Lower a PRINT statement to a series of runtime calls.
@@ -191,7 +183,8 @@ Lowerer::PrintChArgString Lowerer::lowerPrintChArgToString(const Expr &expr,
     const char *runtime = nullptr;
     il::runtime::RuntimeFeature feature = il::runtime::RuntimeFeature::StrFromDouble;
 
-    auto narrowInteger = [&](Type::Kind target) {
+    auto narrowInteger = [&](Type::Kind target)
+    {
         value = ensureI64(std::move(value), expr.loc);
         curLoc = expr.loc;
         value.value = emitUnary(Opcode::CastSiNarrowChk, Type(target), value.value);
@@ -300,11 +293,10 @@ void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
             std::string emptyLbl = getStringLabel("");
             Value empty = emitConstStr(emptyLbl);
             curLoc = stmt.loc;
-            Value err = emitCallRet(Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, empty});
+            Value err =
+                emitCallRet(Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, empty});
             const char *context = isWrite ? "write" : "printch";
-            emitRuntimeErrCheck(err, stmt.loc, context, [&](Value code) {
-                emitTrapFromErr(code);
-            });
+            emitRuntimeErrCheck(err, stmt.loc, context, [&](Value code) { emitTrapFromErr(code); });
         }
         return;
     }
@@ -313,10 +305,9 @@ void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
     {
         Value record = buildPrintChWriteRecord(stmt);
         curLoc = stmt.loc;
-        Value err = emitCallRet(Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, record});
-        emitRuntimeErrCheck(err, stmt.loc, "write", [&](Value code) {
-            emitTrapFromErr(code);
-        });
+        Value err =
+            emitCallRet(Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, record});
+        emitRuntimeErrCheck(err, stmt.loc, "write", [&](Value code) { emitTrapFromErr(code); });
         return;
     }
 
@@ -329,10 +320,9 @@ void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
         if (lowered.feature)
             requestHelper(*lowered.feature);
         curLoc = arg->loc;
-        Value err = emitCallRet(Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, lowered.text});
-        emitRuntimeErrCheck(err, arg->loc, "printch", [&](Value code) {
-            emitTrapFromErr(code);
-        });
+        Value err =
+            emitCallRet(Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, lowered.text});
+        emitRuntimeErrCheck(err, arg->loc, "printch", [&](Value code) { emitTrapFromErr(code); });
     }
 }
 
@@ -361,7 +351,8 @@ void Lowerer::lowerInput(const InputStmt &stmt)
 
     Value line = emitCallRet(Type(Type::Kind::Str), "rt_input_line", {});
 
-    auto storeField = [&](const std::string &name, Value field) {
+    auto storeField = [&](const std::string &name, Value field)
+    {
         SlotType slotInfo = getSlotType(name);
         const auto *info = findSymbol(name);
         assert(info && info->slotId);
@@ -409,7 +400,8 @@ void Lowerer::lowerInput(const InputStmt &stmt)
 
     const long long fieldCount = static_cast<long long>(stmt.vars.size());
     Value fields = emitAlloca(static_cast<int>(fieldCount * 8));
-    emitCallRet(Type(Type::Kind::I64), "rt_split_fields", {line, fields, Value::constInt(fieldCount)});
+    emitCallRet(
+        Type(Type::Kind::I64), "rt_split_fields", {line, fields, Value::constInt(fieldCount)});
     requireStrReleaseMaybe();
     curLoc = stmt.loc;
     emitCall("rt_str_release_maybe", {line});
@@ -417,7 +409,8 @@ void Lowerer::lowerInput(const InputStmt &stmt)
     for (std::size_t i = 0; i < stmt.vars.size(); ++i)
     {
         long long offset = static_cast<long long>(i * 8);
-        Value slot = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), fields, Value::constInt(offset));
+        Value slot =
+            emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), fields, Value::constInt(offset));
         Value field = emitLoad(Type(Type::Kind::Str), slot);
         storeField(stmt.vars[i], field);
     }
@@ -479,7 +472,8 @@ void Lowerer::lowerInputCh(const InputChStmt &stmt)
     if (slotInfo.type.kind == Type::Kind::F64)
     {
         Value err = emitCallRet(Type(Type::Kind::I32), "rt_parse_double", {fieldCstr, parsedSlot});
-        emitRuntimeErrCheck(err, stmt.loc, "inputch_parse", [&](Value code) { emitTrapFromErr(code); });
+        emitRuntimeErrCheck(
+            err, stmt.loc, "inputch_parse", [&](Value code) { emitTrapFromErr(code); });
         Value parsed = emitLoad(Type(Type::Kind::F64), parsedSlot);
         curLoc = stmt.loc;
         emitStore(Type(Type::Kind::F64), slot, parsed);
@@ -487,7 +481,8 @@ void Lowerer::lowerInputCh(const InputChStmt &stmt)
     else
     {
         Value err = emitCallRet(Type(Type::Kind::I32), "rt_parse_int64", {fieldCstr, parsedSlot});
-        emitRuntimeErrCheck(err, stmt.loc, "inputch_parse", [&](Value code) { emitTrapFromErr(code); });
+        emitRuntimeErrCheck(
+            err, stmt.loc, "inputch_parse", [&](Value code) { emitTrapFromErr(code); });
         Value parsed = emitLoad(Type(Type::Kind::I64), parsedSlot);
         if (slotInfo.isBoolean)
         {
@@ -524,11 +519,10 @@ void Lowerer::lowerLineInputCh(const LineInputChStmt &stmt)
     Value outSlot = emitAlloca(8);
     emitStore(Type(Type::Kind::Ptr), outSlot, Value::null());
 
-    Value err = emitCallRet(Type(Type::Kind::I32), "rt_line_input_ch_err", {channel.value, outSlot});
+    Value err =
+        emitCallRet(Type(Type::Kind::I32), "rt_line_input_ch_err", {channel.value, outSlot});
 
-    emitRuntimeErrCheck(err, stmt.loc, "lineinputch", [&](Value code) {
-        emitTrapFromErr(code);
-    });
+    emitRuntimeErrCheck(err, stmt.loc, "lineinputch", [&](Value code) { emitTrapFromErr(code); });
 
     curLoc = stmt.loc;
     Value line = emitLoad(Type(Type::Kind::Str), outSlot);
@@ -544,4 +538,3 @@ void Lowerer::lowerLineInputCh(const LineInputChStmt &stmt)
     }
 }
 } // namespace il::frontends::basic
-

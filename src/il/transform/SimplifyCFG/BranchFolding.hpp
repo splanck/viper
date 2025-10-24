@@ -15,4 +15,3 @@ bool foldTrivialSwitches(SimplifyCFG::SimplifyCFGPassContext &ctx);
 bool foldTrivialConditionalBranches(SimplifyCFG::SimplifyCFGPassContext &ctx);
 
 } // namespace il::transform::simplify_cfg
-

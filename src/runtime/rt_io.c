@@ -4,10 +4,10 @@
 // Ownership/Lifetime: Caller manages strings passed to printing routines.
 // Links: docs/codemap.md
 
-#include "rt_internal.h"
+#include "rt_file.h"
 #include "rt_format.h"
 #include "rt_int_format.h"
-#include "rt_file.h"
+#include "rt_internal.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -17,9 +17,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 /**
  * Terminate the program immediately due to a fatal runtime error.

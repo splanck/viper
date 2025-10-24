@@ -151,8 +151,7 @@ Lowerer::RVal BuiltinExprLowering::emitLofBuiltin(Lowerer &lowerer, const Builti
     {
         Value shl =
             lowerer.emitBinary(Opcode::Shl, IlType(IlKind::I64), rawI64, Value::constInt(32));
-        rawI64 =
-            lowerer.emitBinary(Opcode::AShr, IlType(IlKind::I64), shl, Value::constInt(32));
+        rawI64 = lowerer.emitBinary(Opcode::AShr, IlType(IlKind::I64), shl, Value::constInt(32));
     }
     // --- end: sign-extend 32->64 for LOF ---
 
@@ -182,10 +181,10 @@ Lowerer::RVal BuiltinExprLowering::emitLofBuiltin(Lowerer &lowerer, const Builti
         // --- begin: LOF error predicate (negative return => error) ---
         {
             // Extract sign bit: arithmetic shift right by 63.
-            Value sign = lowerer.emitBinary(Opcode::AShr, IlType(IlKind::I64), rawI64,
-                                            Value::constInt(63));
-            Value isError = lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(), sign,
-                                               Value::constInt(0));
+            Value sign =
+                lowerer.emitBinary(Opcode::AShr, IlType(IlKind::I64), rawI64, Value::constInt(63));
+            Value isError =
+                lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(), sign, Value::constInt(0));
             lowerer.emitCBr(isError, failBlk, contBlk);
         }
         // --- end: LOF error predicate ---
@@ -242,8 +241,7 @@ Lowerer::RVal BuiltinExprLowering::emitEofBuiltin(Lowerer &lowerer, const Builti
         // Make it signed by (x << 32) >> 32 using arithmetic shift.
         Value shl =
             lowerer.emitBinary(Opcode::Shl, IlType(IlKind::I64), rawI64, Value::constInt(32));
-        rawI64 =
-            lowerer.emitBinary(Opcode::AShr, IlType(IlKind::I64), shl, Value::constInt(32));
+        rawI64 = lowerer.emitBinary(Opcode::AShr, IlType(IlKind::I64), shl, Value::constInt(32));
     }
     // --- end: sign-extend 32->64 for EOF ---
 
@@ -275,19 +273,19 @@ Lowerer::RVal BuiltinExprLowering::emitEofBuiltin(Lowerer &lowerer, const Builti
             // Error iff (raw != 0) && (raw != -1). Do this by building BASIC-style
             // logical masks (-1 for true, 0 for false) and ANDing them in i64.
 
-            Value notZero   = lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(),
-                                                 rawI64, Value::constInt(0));
-            Value notNegOne = lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(),
-                                                 rawI64, Value::constInt(-1));
+            Value notZero =
+                lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(), rawI64, Value::constInt(0));
+            Value notNegOne =
+                lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(), rawI64, Value::constInt(-1));
 
             // i1 -> i64 BASIC logical masks: true -> -1, false -> 0
             Value m1 = lowerer.emitBasicLogicalI64(notZero);
             Value m2 = lowerer.emitBasicLogicalI64(notNegOne);
 
             // Bitwise AND (i64), then compare with 0 to get an i1 for cbr
-            Value both    = lowerer.emitBinary(Opcode::And, IlType(IlKind::I64), m1, m2);
-            Value isError = lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(),
-                                               both, Value::constInt(0));
+            Value both = lowerer.emitBinary(Opcode::And, IlType(IlKind::I64), m1, m2);
+            Value isError =
+                lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(), both, Value::constInt(0));
 
             lowerer.emitCBr(isError, failBlk, contBlk);
         }
@@ -335,7 +333,8 @@ Lowerer::RVal BuiltinExprLowering::emitLocBuiltin(Lowerer &lowerer, const Builti
 
     // --- begin: sign-extend 32->64 for LOC ---
     {
-        Value shl = lowerer.emitBinary(Opcode::Shl, IlType(IlKind::I64), rawI64, Value::constInt(32));
+        Value shl =
+            lowerer.emitBinary(Opcode::Shl, IlType(IlKind::I64), rawI64, Value::constInt(32));
         rawI64 = lowerer.emitBinary(Opcode::AShr, IlType(IlKind::I64), shl, Value::constInt(32));
     }
     // --- end: sign-extend 32->64 for LOC ---
@@ -364,8 +363,10 @@ Lowerer::RVal BuiltinExprLowering::emitLocBuiltin(Lowerer &lowerer, const Builti
         lowerer.curLoc = expr.loc;
         // --- begin: LOC error predicate (negative return => error) ---
         {
-            Value sign = lowerer.emitBinary(Opcode::AShr, IlType(IlKind::I64), rawI64, Value::constInt(63));
-            Value isError = lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(), sign, Value::constInt(0));
+            Value sign =
+                lowerer.emitBinary(Opcode::AShr, IlType(IlKind::I64), rawI64, Value::constInt(63));
+            Value isError =
+                lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(), sign, Value::constInt(0));
             lowerer.emitCBr(isError, failBlk, contBlk);
         }
         // --- end: LOC error predicate ---

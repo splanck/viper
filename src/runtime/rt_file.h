@@ -13,7 +13,8 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
     /// @brief Lightweight handle representing an open runtime file.
@@ -131,4 +132,3 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif
-

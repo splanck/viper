@@ -8,22 +8,23 @@
 #define _GNU_SOURCE 1
 #endif
 
-#include "rt_numeric.h"
 #include "rt.hpp"
+#include "rt_numeric.h"
 
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
+#include <locale.h>
 #include <math.h>
 #include <stdlib.h>
-#include <locale.h>
 
 #if defined(__APPLE__)
 #include <xlocale.h>
 #endif
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
     static double rt_round_nearest_even(double x)
@@ -32,11 +33,7 @@ extern "C" {
     }
 
     static inline double rt_cast_integer_checked(
-        double value,
-        bool *ok,
-        double min_value,
-        double max_value,
-        const char *null_ok_trap)
+        double value, bool *ok, double min_value, double max_value, const char *null_ok_trap)
     {
         if (!ok)
         {
@@ -60,13 +57,9 @@ extern "C" {
         return value;
     }
 
-#define RT_CAST_INTEGER(value, ok, type, min_value, max_value, null_ok_trap) \
-    ((type)rt_cast_integer_checked(                                             \
-        (value),                                                                \
-        (ok),                                                                   \
-        (double)(min_value),                                                    \
-        (double)(max_value),                                                    \
-        (null_ok_trap)))
+#define RT_CAST_INTEGER(value, ok, type, min_value, max_value, null_ok_trap)                       \
+    ((type)rt_cast_integer_checked(                                                                \
+        (value), (ok), (double)(min_value), (double)(max_value), (null_ok_trap)))
 
     static int16_t rt_cast_i16(double value, bool *ok)
     {
@@ -205,13 +198,13 @@ extern "C" {
         value = _strtod_l((const char *)cursor, &endptr, c_locale);
         _free_locale(c_locale);
 #else
-        locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
-        if (!c_locale)
-            return (int32_t)Err_RuntimeError;
-        locale_t previous = uselocale(c_locale);
-        value = strtod((const char *)cursor, &endptr);
-        uselocale(previous);
-        freelocale(c_locale);
+    locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
+    if (!c_locale)
+        return (int32_t)Err_RuntimeError;
+    locale_t previous = uselocale(c_locale);
+    value = strtod((const char *)cursor, &endptr);
+    uselocale(previous);
+    freelocale(c_locale);
 #endif
 
         if (endptr == (const char *)cursor)
@@ -238,4 +231,3 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif
-

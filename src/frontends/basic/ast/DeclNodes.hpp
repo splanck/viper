@@ -33,7 +33,11 @@ struct Param
 /// @brief FUNCTION declaration with optional parameters and return type.
 struct FunctionDecl : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override { return Kind::FunctionDecl; }
+    [[nodiscard]] Kind stmtKind() const override
+    {
+        return Kind::FunctionDecl;
+    }
+
     /// Function name including suffix.
     Identifier name;
 
@@ -55,7 +59,11 @@ struct FunctionDecl : Stmt
 /// @brief SUB declaration representing a void procedure.
 struct SubDecl : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override { return Kind::SubDecl; }
+    [[nodiscard]] Kind stmtKind() const override
+    {
+        return Kind::SubDecl;
+    }
+
     /// Subroutine name including suffix.
     Identifier name;
 
@@ -71,7 +79,11 @@ struct SubDecl : Stmt
 /// @brief Sequence of statements executed left-to-right on one BASIC line.
 struct StmtList : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override { return Kind::StmtList; }
+    [[nodiscard]] Kind stmtKind() const override
+    {
+        return Kind::StmtList;
+    }
+
     /// Ordered statements sharing the same line.
     std::vector<StmtPtr> stmts;
     void accept(StmtVisitor &visitor) const override;
@@ -81,7 +93,11 @@ struct StmtList : Stmt
 /// @brief Constructor declaration for a CLASS.
 struct ConstructorDecl : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override { return Kind::ConstructorDecl; }
+    [[nodiscard]] Kind stmtKind() const override
+    {
+        return Kind::ConstructorDecl;
+    }
+
     /// Ordered parameters for the constructor.
     std::vector<Param> params;
 
@@ -94,7 +110,11 @@ struct ConstructorDecl : Stmt
 /// @brief Destructor declaration for a CLASS.
 struct DestructorDecl : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override { return Kind::DestructorDecl; }
+    [[nodiscard]] Kind stmtKind() const override
+    {
+        return Kind::DestructorDecl;
+    }
+
     /// Statements forming the destructor body.
     std::vector<StmtPtr> body;
     void accept(StmtVisitor &visitor) const override;
@@ -104,7 +124,11 @@ struct DestructorDecl : Stmt
 /// @brief Method declaration inside a CLASS.
 struct MethodDecl : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override { return Kind::MethodDecl; }
+    [[nodiscard]] Kind stmtKind() const override
+    {
+        return Kind::MethodDecl;
+    }
+
     /// Method name.
     std::string name;
 
@@ -123,7 +147,11 @@ struct MethodDecl : Stmt
 /// @brief CLASS declaration grouping fields and members.
 struct ClassDecl : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override { return Kind::ClassDecl; }
+    [[nodiscard]] Kind stmtKind() const override
+    {
+        return Kind::ClassDecl;
+    }
+
     /// Class name.
     std::string name;
 
@@ -146,7 +174,11 @@ struct ClassDecl : Stmt
 /// @brief TYPE declaration defining a structured record type.
 struct TypeDecl : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override { return Kind::TypeDecl; }
+    [[nodiscard]] Kind stmtKind() const override
+    {
+        return Kind::TypeDecl;
+    }
+
     /// Type name.
     std::string name;
 

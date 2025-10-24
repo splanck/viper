@@ -22,34 +22,34 @@ inline constexpr uint8_t kVariadicOperandCount = std::numeric_limits<uint8_t>::m
 /// @brief Result arity expectation for an opcode.
 enum class ResultArity : uint8_t
 {
-    None = 0,   ///< Instruction never produces a result.
-    One = 1,    ///< Instruction must produce exactly one result.
+    None = 0,       ///< Instruction never produces a result.
+    One = 1,        ///< Instruction must produce exactly one result.
     Optional = 0xFF ///< Instruction may omit or provide a result.
 };
 
 /// @brief Type category requirement for operands or results.
 enum class TypeCategory : uint8_t
 {
-    None,        ///< Unused slot or no constraint.
-    Void,        ///< Void type (primarily for annotations).
-    I1,          ///< Boolean integer type.
-    I16,         ///< 16-bit integer type.
-    I32,         ///< 32-bit integer type.
-    I64,         ///< 64-bit integer type.
-    F64,         ///< 64-bit floating point type.
-    Ptr,         ///< Pointer type.
-    Str,         ///< Runtime string type.
-    Error,       ///< Opaque VM error record.
-    ResumeTok,   ///< Opaque resume token provided to handlers.
-    Any,         ///< No specific type requirement.
-    InstrType,   ///< Type derived from the instruction's @c type field.
-    Dynamic      ///< Type derived from external context (e.g., call signature).
+    None,      ///< Unused slot or no constraint.
+    Void,      ///< Void type (primarily for annotations).
+    I1,        ///< Boolean integer type.
+    I16,       ///< 16-bit integer type.
+    I32,       ///< 32-bit integer type.
+    I64,       ///< 64-bit integer type.
+    F64,       ///< 64-bit floating point type.
+    Ptr,       ///< Pointer type.
+    Str,       ///< Runtime string type.
+    Error,     ///< Opaque VM error record.
+    ResumeTok, ///< Opaque resume token provided to handlers.
+    Any,       ///< No specific type requirement.
+    InstrType, ///< Type derived from the instruction's @c type field.
+    Dynamic    ///< Type derived from external context (e.g., call signature).
 };
 
 /// @brief Identifier describing VM dispatch strategy for an opcode.
 enum class VMDispatch : uint8_t
 {
-    None,          ///< No interpreter handler implemented yet.
+    None, ///< No interpreter handler implemented yet.
     Alloca,
     Load,
     Store,
@@ -133,12 +133,12 @@ inline constexpr size_t kMaxOperandCategories = 3;
 /// @brief Describes how the textual parser should interpret an operand slot.
 enum class OperandParseKind : uint8_t
 {
-    None,         ///< No token expected in this slot.
-    Value,        ///< Parse a general value operand.
-    TypeImmediate,///< Parse a type literal influencing the instruction type.
-    BranchTarget, ///< Parse a successor label with optional arguments.
-    Call,         ///< Parse call-style callee and argument list syntax.
-    Switch        ///< Parse switch scrutinee/default/case syntax.
+    None,          ///< No token expected in this slot.
+    Value,         ///< Parse a general value operand.
+    TypeImmediate, ///< Parse a type literal influencing the instruction type.
+    BranchTarget,  ///< Parse a successor label with optional arguments.
+    Call,          ///< Parse call-style callee and argument list syntax.
+    Switch         ///< Parse switch scrutinee/default/case syntax.
 };
 
 /// @brief Maximum number of parser descriptors stored per opcode.
@@ -154,15 +154,15 @@ struct OperandParseSpec
 /// @brief Static description of an opcode signature and behaviour.
 struct OpcodeInfo
 {
-    const char *name; ///< Canonical mnemonic.
+    const char *name;        ///< Canonical mnemonic.
     ResultArity resultArity; ///< Expected result arity.
     TypeCategory resultType; ///< Result type constraint, if any.
-    uint8_t numOperandsMin; ///< Minimum operand count.
-    uint8_t numOperandsMax; ///< Maximum operand count or kVariadicOperandCount.
+    uint8_t numOperandsMin;  ///< Minimum operand count.
+    uint8_t numOperandsMax;  ///< Maximum operand count or kVariadicOperandCount.
     std::array<TypeCategory, kMaxOperandCategories> operandTypes; ///< Operand constraints.
-    bool hasSideEffects; ///< Instruction mutates state or control flow.
+    bool hasSideEffects;   ///< Instruction mutates state or control flow.
     uint8_t numSuccessors; ///< Number of successor labels required.
-    bool isTerminator; ///< Instruction terminates a block.
+    bool isTerminator;     ///< Instruction terminates a block.
     VMDispatch vmDispatch; ///< Interpreter dispatch category.
     std::array<OperandParseSpec, kMaxOperandParseEntries> parse; ///< Textual parsing recipe.
 };

@@ -165,7 +165,8 @@ constexpr NumericType arithmeticResult(NumericType lhs, NumericType rhs) noexcep
 /// @brief Determine the result type for division operators (/).
 /// @param lhs Left-hand operand type.
 /// @param rhs Right-hand operand type.
-/// @return DOUBLE when either operand is DOUBLE, SINGLE when either operand is SINGLE, otherwise DOUBLE.
+/// @return DOUBLE when either operand is DOUBLE, SINGLE when either operand is SINGLE, otherwise
+/// DOUBLE.
 constexpr NumericType divisionResult(NumericType lhs, NumericType rhs) noexcept
 {
     if (lhs == NumericType::Double || rhs == NumericType::Double)
@@ -272,9 +273,7 @@ TypeRules::NumericType TypeRules::resultType(std::string_view op,
 /// @param lhs Left-hand operand type.
 /// @param rhs Right-hand operand type.
 /// @return Resulting numeric type.
-TypeRules::NumericType TypeRules::resultType(char op,
-                                             NumericType lhs,
-                                             NumericType rhs) noexcept
+TypeRules::NumericType TypeRules::resultType(char op, NumericType lhs, NumericType rhs) noexcept
 {
     for (const auto &rule : Rules)
     {
