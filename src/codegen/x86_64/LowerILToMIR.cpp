@@ -15,6 +15,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <limits>
 #include <string_view>
 
 namespace viper::codegen::x64
@@ -57,6 +58,7 @@ RegClass LowerILToMIR::regClassFor(ILValue::Kind kind) noexcept
         case ILValue::Kind::F64:
             return RegClass::XMM;
         case ILValue::Kind::LABEL:
+        case ILValue::Kind::STR:
             return RegClass::GPR;
     }
     return RegClass::GPR;
@@ -117,6 +119,52 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
             block.append(
                 MInstr::make(MOpcode::MOVSDrm, std::vector<Operand>{cloneOperand(tempOperand), ripOperand}));
             return tempOperand;
+        }
+        case ILValue::Kind::STR:
+        {
+            assert(cls == RegClass::GPR && "string literals expect GPR destinations");
+            assert(roDataPool_ && "RoData pool unavailable for string literals");
+            assert(target_ && "Target info unavailable for string literal lowering");
+
+            std::string literalBytes = value.str;
+            const auto requestedLen = static_cast<std::size_t>(value.strLen);
+            if (literalBytes.size() != requestedLen)
+            {
+                literalBytes.resize(requestedLen);
+            }
+
+            const int poolIndex = roDataPool_->addStringLiteral(std::move(literalBytes));
+            const std::string label = roDataPool_->stringLabel(poolIndex);
+            const auto literalLen = roDataPool_->stringByteLength(poolIndex);
+            assert(literalLen <= static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()));
+
+            const Operand ripOperand = makeRipLabelOperand(label);
+            const VReg ptrTmp = makeTempVReg(RegClass::GPR);
+            const Operand ptrTmpOp = makeVRegOperand(ptrTmp.cls, ptrTmp.id);
+            block.append(MInstr::make(MOpcode::LEA, std::vector<Operand>{cloneOperand(ptrTmpOp), ripOperand}));
+
+            const Operand ptrArg = makePhysRegOperand(
+                RegClass::GPR, static_cast<uint16_t>(target_->intArgOrder[0]));
+            const Operand lenArg = makePhysRegOperand(
+                RegClass::GPR, static_cast<uint16_t>(target_->intArgOrder[1]));
+
+            block.append(MInstr::make(
+                MOpcode::MOVrr, std::vector<Operand>{cloneOperand(ptrArg), cloneOperand(ptrTmpOp)}));
+
+            const auto lenImm = static_cast<int64_t>(literalLen);
+            block.append(MInstr::make(
+                MOpcode::MOVri, std::vector<Operand>{cloneOperand(lenArg), makeImmOperand(lenImm)}));
+
+            const Operand callTarget = x64::makeLabelOperand(std::string{"rt_str_from_lit"});
+            block.append(MInstr::make(MOpcode::CALL, std::vector<Operand>{callTarget}));
+
+            const VReg result = makeTempVReg(RegClass::GPR);
+            const Operand resultOp = makeVRegOperand(result.cls, result.id);
+            const Operand retReg = makePhysRegOperand(
+                RegClass::GPR, static_cast<uint16_t>(target_->intReturnReg));
+            block.append(MInstr::make(
+                MOpcode::MOVrr, std::vector<Operand>{cloneOperand(resultOp), retReg}));
+            return resultOp;
         }
         case ILValue::Kind::LABEL:
             break;

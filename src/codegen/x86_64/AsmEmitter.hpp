@@ -16,6 +16,7 @@
 
 #include "MachineIR.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <ostream>
 #include <string>
@@ -43,6 +44,9 @@ class AsmEmitter
         /// \brief Retrieve the canonical label for a stored string literal.
         [[nodiscard]] std::string stringLabel(int index) const;
 
+        /// \brief Retrieve the byte length for a stored string literal.
+        [[nodiscard]] std::size_t stringByteLength(int index) const;
+
         /// \brief Retrieve the canonical label for a stored f64 literal.
         [[nodiscard]] std::string f64Label(int index) const;
 
@@ -54,6 +58,7 @@ class AsmEmitter
 
       private:
         std::vector<std::string> stringLiterals_{};
+        std::vector<std::size_t> stringLengths_{};
         std::vector<double> f64Literals_{};
         std::unordered_map<std::string, int> stringLookup_{};
         std::unordered_map<std::uint64_t, int> f64Lookup_{};
