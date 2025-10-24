@@ -1,476 +1,345 @@
 ---
-status: active
+status: draft
 audience: public
-last-verified: 2025-09-24
+last-verified: 2025-10-24
 ---
 
-<a id="basic-reference"></a>
-## Reference
+# Viper BASIC Language Reference (Proposed)
 
-### Comments
-Single-line comments begin with an apostrophe `'` or the keyword `REM`. `REM` is case-insensitive and must appear at the start of a line or after whitespace. Both forms ignore the rest of the line.
+> **Goal:** One canonical, searchable page for everything the Viper BASIC frontend supports—syntax, semantics, built‑ins, OOP—replacing the split across `basic-language.md` and `basic-oop.md`.
 
-```basic
-' Using apostrophe
-REM Using REM
-10 PRINT "HI" ' trailing comment
-20 REM trailing REM comment
-```
+## Table of contents
+- [Overview](#overview)
+- [Program structure](#program-structure)
+- [Types and literals](#types-and-literals)
+- [Variables, arrays, and assignment](#variables-arrays-and-assignment)
+- [Expressions and operators](#expressions-and-operators)
+- [Control flow](#control-flow)
+- [Procedures](#procedures)
+- [Object‑oriented features](#object-oriented-features)
+- [Console I/O](#console-io)
+- [File I/O](#file-io)
+- [Built‑in functions](#built-in-functions)
+- [Error handling](#error-handling)
+- [Keywords index](#keywords-index)
+- [Examples](#examples)
 
-### Program structure
-Programs can include top-level statements and user-defined procedures. Procedures may appear before or after the main program, and both sections are optional.
+---
 
-```basic
-10 Greet
-20 PRINT Square(3)
-30 END
-40 SUB Greet
-50   PRINT "hi"
-60 END SUB
-70 FUNCTION Square(N)
-80   RETURN N * N
-90 END FUNCTION
-```
+## Overview
+Viper BASIC is a small, strict, **line‑numbers‑optional** dialect that lowers to Viper IL. It is case‑insensitive and favors clarity over magical behavior. Integers are 64‑bit; floating‑point is IEEE‑754 double (`#` suffix in literals/vars); strings carry a `$` suffix.
 
-### Keywords
-The following reserved words are case-insensitive and cannot be used as identifiers:
+> **Design notes**
+> - Numeric semantics and traps are described in *Specs → Numerics*. Runtime error conventions are in *Specs → Errors*.
+> - Short‑circuit Boolean operators are available: `ANDALSO`, `ORELSE`.
 
-`ABS`, `AND`, `ANDALSO`, `APPEND`, `AS`, `BINARY`, `BOOLEAN`, `CASE`, `CEIL`, `CLOSE`, `CLS`, `COLOR`, `COS`, `DIM`, `DO`, `ELSE`, `ELSEIF`, `END`, `EOF`, `ERROR`, `EXIT`, `FALSE`, `FLOOR`, `FOR`, `FUNCTION`, `GOSUB`, `GOTO`, `IF`, `INPUT`, `LBOUND`, `LET`, `LINE`, `LOCATE`, `LOOP`, `MOD`, `NEXT`, `NOT`, `ON`, `OPEN`, `OR`, `ORELSE`, `OUTPUT`, `POW`, `PRINT`, `RANDOM`, `RANDOMIZE`, `REDIM`, `RESUME`, `RETURN`, `RND`, `SELECT`, `SIN`, `SQR`, `STEP`, `SUB`, `THEN`, `TO`, `TRUE`, `UBOUND`, `UNTIL`, `WEND`, `WHILE`.
-
-### Data types
-* Integers are 64-bit by default.
-* Floating-point variables use the `#` suffix and are `f64`.
-* Strings use the `$` suffix.
-* Arrays are one-dimensional and declared with `DIM`.
-
-> **Semantics changed:** Numeric ranges, promotion rules, and traps are now governed by [specs/numerics.md](specs/numerics.md).
+Hello, world:
 
 ```basic
-10 LET I = 42
-20 LET F# = 3.14
-30 LET S$ = "hi"
-40 DIM A(5)
-50 LET A(1) = I
+PRINT "Hello, Viper!"
 ```
 
-### Arrays (1-D)
-Arrays use zero-based indexing. `DIM` allocates a fixed-length array and `REDIM`
-changes its length in place. `LBOUND(arrayVar)` always returns `0`, and
-`UBOUND(arrayVar)` evaluates to `len - 1`. Elements are currently stored as
-`Int32`; additional element types are planned.
+## Program structure
+- Top‑level **statements** run from top to bottom.
+- **Labels** end with `:` and are targets of `GOTO`/`GOSUB`/`ON ERROR GOTO`.
+- **Procedures** (`SUB`/`FUNCTION`) and **classes** (`CLASS`) may appear at top level.
+- **Comments** start with apostrophe `'` or `REM`.
 
 ```basic
-10 DIM A(3)
-20 LET A(0) = 10
-30 PRINT LBOUND(A), UBOUND(A)
-40 PRINT A(0), A(2)
-50 PRINT A(3)  ' runtime error: index 3 is out of bounds (array length is 3)
-60 REDIM A(5)
-70 PRINT UBOUND(A)
+Start:
+  REM Single‑line comment
+  ' Also a comment
+  PRINT "ok"
+  GOTO Done
+Done:
+  END
 ```
 
-Out-of-bounds accesses trigger a runtime bounds check that terminates the
-program with an error message.
-
-### Variables and assignment
-Variables are created with `LET`. Scalars are named without suffix (int), with `#` (float), or `$` (string).
+## Types and literals
+- **Integer** (default), **Float** (`#`), **String** (`$`), **Boolean** (`TRUE`/`FALSE`).
+- Suffixes: `X#` (float var), `S$` (string var). Explicit typing via `AS`:
 
 ```basic
-10 LET A = 1
-20 LET B# = 2.5
-30 LET C$ = "OK"
+DIM A AS BOOLEAN
+DIM PI# : LET PI# = 3.141592653589793#
 ```
 
-### Expressions
-Arithmetic operators include `+`, `-`, `*`, `/`, integer division `\\`, and `MOD`.
+Arrays: one‑dimensional, zero‑based by default.
 
 ```basic
-10 LET X = 5 \\ 2
-20 PRINT X MOD 2
+DIM A(3)            ' indices 0..2
+REDIM A(UBOUND(A)+1)
+PRINT LBOUND(A), UBOUND(A)
 ```
 
-### PRINT
-`PRINT` outputs comma-separated expressions.
+## Variables, arrays, and assignment
+- `LET` is optional: `LET X = 1` and `X = 1` are equivalent.
+- Bounds are checked at runtime; out‑of‑range indexes trap.
+- `LBOUND(A)`, `UBOUND(A)` query indices.
+
+## Expressions and operators
+Arithmetic: `+ - * / \ ^ MOD` (integer division is `\`; exponent is `^`).  
+Comparison: `= <> < <= > >=`.  
+Boolean: `NOT`, `AND`/`OR` (eager), `ANDALSO`/`ORELSE` (short‑circuit).
+
+Strings:
+- Concatenation via `+` (with numeric→string conversions via `STR$`).
+- Substrings and search via `LEFT$`, `RIGHT$`, `MID$`, `INSTR`.
+
+## Control flow
+### IF / ELSEIF / ELSE / END IF
+```basic
+IF X < 0 THEN
+  PRINT "neg"
+ELSEIF X = 0 THEN
+  PRINT "zero"
+ELSE
+  PRINT "pos"
+END IF
+```
+
+### WHILE / WEND
+```basic
+WHILE N > 0
+  PRINT N
+  LET N = N - 1
+WEND
+```
+
+### DO / LOOP
+`DO ... LOOP` with `WHILE` or `UNTIL` conditions:
 
 ```basic
-10 LET X = 1
-20 PRINT "X=", X
+DO
+  LET N = N - 1
+LOOP UNTIL N = 0
 ```
 
-### INPUT
-`INPUT` reads a line into a variable. Prompts may appear before the semicolon.
+### FOR / NEXT
+```basic
+FOR I = 1 TO 10 STEP 2
+  PRINT I
+NEXT I
+```
+
+### SELECT CASE / END SELECT
+```basic
+SELECT CASE ROLL
+  CASE 1
+    PRINT "one"
+  CASE 2,3,4
+    PRINT "mid "; ROLL
+  CASE ELSE
+    PRINT "other"
+END SELECT
+```
+
+### Jumps
+`GOTO Label`, `GOSUB Label`/`RETURN`, `EXIT FOR/DO/WHILE`, `END`.
+
+## Procedures
+- `FUNCTION` returns a value with `RETURN expr`.
+- `SUB` uses `RETURN` with no value.
 
 ```basic
-10 INPUT "Name? "; N$
-20 PRINT "Hi ", N$
+FUNCTION Square(N)
+  RETURN N * N
+END FUNCTION
+
+SUB Greet(S$)
+  PRINT "Hi, "; S$
+  RETURN
+END SUB
 ```
 
-### Terminal control
-
-**CLS**  
-Clears the screen and moves the cursor to (1, 1). No effect when output is redirected.
-
-**COLOR _fg_[, _bg_]**  
-Sets foreground and optionally background color. Accepts 0–7 (normal), 8–15 (bright), and 16–255 (256‑color SGR). Use `-1` to leave an attribute unchanged.
-
-**LOCATE _row_[, _col_]**  
-Moves the cursor to the 1‑based row/column. Values < 1 clamp to 1.
-
-### Keyboard
-
-**GETKEY$()** → `String`  
-Blocks until a single key byte is available; returns a 1‑character string.
-
-**INKEY$()** → `String`  
-Non-blocking; returns the empty string `""` when no key is available, otherwise a 1‑character string.
-
-> Notes  
-> • On Windows, VT sequences are used when available.  
-> • Arrow/function keys emit multi‑byte sequences; successive calls read successive bytes.
-
-### Control flow
-
-#### IF / ELSEIF / ELSE / END IF
-Conditional blocks evaluate boolean expressions. Each branch ends with `END IF`.
+## Object‑oriented features
+Classes are first‑class: fields, methods, constructors, destructors, `ME`, dot calls.
 
 ```basic
-10 IF A = 1 THEN
-20   PRINT "one"
-30 ELSEIF A = 2 THEN
-40   PRINT "two"
-50 ELSE
-60   PRINT "other"
-70 END IF
+CLASS Counter
+  value AS INTEGER
+
+  SUB NEW()
+    LET value = 0
+  END SUB
+
+  SUB Inc()
+    LET value = value + 1
+  END SUB
+
+  FUNCTION Current() AS INTEGER
+    RETURN value
+  END FUNCTION
+
+  DESTRUCTOR
+    PRINT "destroying"; value
+  END DESTRUCTOR
+END CLASS
+
+DIM c
+LET c = NEW Counter()
+c.Inc()
+PRINT c.Current()
+DELETE c
 ```
 
-#### WHILE / WEND
-`WHILE` loops continue while the condition is `TRUE`.
+Rules:
+- `SUB NEW()` is the constructor; `DESTRUCTOR` runs on `DELETE`.
+- Use `ME` inside methods to refer to the instance.
+- Member access/calls use dot (`obj.Field`, `obj.Method()`).
+
+## Console I/O
+`PRINT` outputs expressions. Use `;` to suppress newline or join fields; `,` separates to print zones.
 
 ```basic
-10 WHILE I < 3
-20   PRINT I
-30   LET I = I + 1
-40 WEND
+PRINT "X=", X
+PRINT "A"; 1; "B"
 ```
 
-#### DO / LOOP
-`DO` / `LOOP` supports both pre-test and post-test forms. `WHILE` repeats while
-the condition is true; `UNTIL` repeats until the condition becomes true.
+`INPUT` reads a value; `LINE INPUT` reads an entire line into a string:
 
 ```basic
-10 DO WHILE I < 3
-20   PRINT I
-30   LET I = I + 1
-40 LOOP
-
-50 DO UNTIL READY
-60   INPUT READY
-70 LOOP
-
-80 DO
-90   PRINT "tick"
-100  LET I = I + 1
-110 LOOP WHILE I < 5
-
-120 DO
-130   PRINT "polling"
-140 LOOP UNTIL DONE()
-
-150 DO
-160   PRINT "infinite"
-170   EXIT DO        ' exit manually when ready
-180 LOOP
+INPUT N
+LINE INPUT A$
 ```
 
-The final form above runs indefinitely unless an `EXIT DO` transfers control to
-the loop's `LOOP` terminator.
+Terminal helpers: `CLS`, `COLOR fg[, bg]`, `LOCATE row[, col]`.
 
-#### FOR / NEXT
-`FOR` loops iterate over an inclusive range.
+## File I/O
+Open files with a mode and file number, then use channel‑forms of the I/O statements.
 
 ```basic
-10 FOR I = 1 TO 3
-20   PRINT I
-30 NEXT I
+OPEN "data.txt" FOR OUTPUT AS #1
+WRITE #1, "A", 42, "B"
+CLOSE #1
+
+OPEN "data.txt" FOR INPUT AS #1
+LINE INPUT #1, S$
+PRINT "EOF start:"; EOF(#1)
+PRINT "LOF:"; LOF(#1)
+PRINT "LOC:"; LOC(#1)
+SEEK #1, 0
+CLOSE #1
 ```
 
-The loop variable is immutable inside the body. Attempting to reassign it (for
-example, `I = I + 1`) is rejected during semantic analysis with an error such as
-`error: FOR loop variable 'I' cannot be reassigned inside the loop`.
+Modes: `INPUT`, `OUTPUT`, `APPEND`, `BINARY`, `RANDOM`.  
+Helpers: `EOF(#)`, `LOF(#)` (length), `LOC(#)` (position), `SEEK #, pos`.
 
-#### SELECT CASE / END SELECT
-`SELECT CASE` performs multi-way branching on an integer selector.
+## Built‑in functions
+| Name | Args | Returns | Notes |
+|---|---:|---|---|
+| `ABS` | 1 | numeric/string (see notes) |  |
+| `ASC` | 1 | Integer |  |
+| `CDBL` | 1 | Float | Convert with rounding/trunc per target type. |
+| `CEIL` | 1 | numeric/string (see notes) |  |
+| `CHR$` | 1 | String |  |
+| `CINT` | 1 | Integer | Convert with rounding/trunc per target type. |
+| `CLNG` | 1 | Integer | Convert with rounding/trunc per target type. |
+| `COS` | 1 | numeric/string (see notes) |  |
+| `CSNG` | 1 | Float | Convert with rounding/trunc per target type. |
+| `EOF` | 1 | Integer | File functions; use with file number (#n). |
+| `FIX` | 1 | numeric/string (see notes) | Truncate toward 0. |
+| `FLOOR` | 1 | numeric/string (see notes) |  |
+| `GETKEY$` | 0 | String | Keyboard; GETKEY$ blocks, INKEY$ non‑blocking (may return ""). |
+| `INKEY$` | 0 | String | Keyboard; GETKEY$ blocks, INKEY$ non‑blocking (may return ""). |
+| `INSTR` | 2–3 | Integer | Forms: INSTR(hay$, needle$); INSTR(start, hay$, needle$). 1‑based; 0 if not found. |
+| `INT` | 1 | numeric/string (see notes) | Greatest integer ≤ x. |
+| `LCASE$` | 1 | String |  |
+| `LEFT$` | 2 | String | Takes n characters. |
+| `LEN` | 1 | Integer |  |
+| `LOC` | 1 | Integer | File functions; use with file number (#n). |
+| `LOF` | 1 | Integer | File functions; use with file number (#n). |
+| `LTRIM$` | 1 | String |  |
+| `MID$` | 2–3 | String | 2‑arg (s$, start) to end; 3‑arg (s$, start, len). 1‑based. |
+| `POW` | 2 | numeric/string (see notes) |  |
+| `RIGHT$` | 2 | String | Takes n characters. |
+| `RND` | 0 | numeric/string (see notes) | Uniform [0,1). Use RANDOMIZE seed to seed. |
+| `ROUND` | 1–2 | numeric/string (see notes) | Round to n digits. |
+| `RTRIM$` | 1 | String |  |
+| `SIN` | 1 | numeric/string (see notes) |  |
+| `SQR` | 1 | numeric/string (see notes) |  |
+| `STR$` | 1 | String | Converts numeric to string. |
+| `TRIM$` | 1 | String |  |
+| `UCASE$` | 1 | String |  |
+| `VAL` | 1 | Float | Parses leading numeric; ignores trailing junk. |
 
-```ebnf
-select_case ::= "SELECT" "CASE" expression NEWLINE case_arm+ [case_else] "END" "SELECT"
-case_arm    ::= "CASE" integer_literal ("," integer_literal)* NEWLINE statement_list
-case_else   ::= "CASE" "ELSE" NEWLINE statement_list
-```
-
-Semantics:
-
-* The selector expression must be integer-compatible; it is evaluated once and
-  compared against each arm's labels in order.
-* Each `CASE` arm contains one or more unique integer labels. Duplicate labels
-  are rejected.
-* At most one `CASE ELSE` arm may appear, and it runs when no preceding `CASE`
-  labels match.
-* Control transfers directly into the matching arm's statements; there is no
-  fallthrough between arms.
-
-> **Note:** Version 1 only accepts integer literal labels. Ranges (`CASE 1 TO
-> 5`) and relational forms (`CASE > 10`) are not yet supported.
-
-Example:
+## Error handling
+Structured like classic BASIC:
 
 ```basic
-10 SELECT CASE N
-20   CASE 0, 1
-30     PRINT "small"
-40   CASE 2
-50     PRINT "medium"
-60   CASE ELSE
-70     PRINT "large"
-80 END SELECT
+ON ERROR GOTO Handler
+PRINT #1, 42        ' will error if #1 not open
+ON ERROR GOTO 0     ' disable handler
+GOTO After
+
+Handler:
+  PRINT "caught"
+  RESUME NEXT
+
+After:
 ```
 
-#### EXIT statements
-`EXIT FOR`, `EXIT WHILE`, and `EXIT DO` terminate the innermost loop of the
-matching kind and continue execution after that loop.
+- `ON ERROR GOTO label` installs a handler; `ON ERROR GOTO 0` clears it.
+- `RESUME`, `RESUME NEXT` continue after handling.
 
-#### Multi-statement lines
-Separate statements on the same line with `:`.
+## Keywords index
+**Control Flow:** `CASE`, `DO`, `ELSE`, `ELSEIF`, `END`, `ERROR`, `EXIT`, `FOR`, `GOSUB`, `GOTO`, `IF`, `LOOP`, `NEXT`, `ON`, `RESUME`, `RETURN`, `SELECT`, `STEP`, `THEN`, `TO`, `WEND`, `WHILE`
 
-```basic
-10 LET A = 1 : PRINT A
-```
+**I/O (console):** `CLS`, `COLOR`, `INPUT`, `LOC`, `LOCATE`, `PRINT`, `WRITE`
 
-### Procedures
-BASIC procedures come in two forms: `FUNCTION` (returns a value) and `SUB` (no return). Procedures may be declared anywhere in the file and invoked before or after their definitions.
+**File I/O:** `APPEND`, `BINARY`, `CLOSE`, `EOF`, `LINE`, `LOF`, `OPEN`, `OUTPUT`, `RANDOM`, `SEEK`
 
-#### FUNCTION
-`FUNCTION` returns a value. The return type is derived from the name suffix (`#` → `f64`, `$` → `str`, none → `i64`). Parameters are passed by value unless noted. See [procedure definitions](lowering/basic-to-il.md#procedure-definitions) for lowering details.
+**Ops & Logic:** `AND`, `ANDALSO`, `MOD`, `NOT`, `OR`, `ORELSE`
 
-```basic
-10 FUNCTION Add(X, Y)
-20   RETURN X + Y
-30 END FUNCTION
-```
+**Math:** `ABS`, `CEIL`, `COS`, `FLOOR`, `POW`, `RND`, `SIN`, `SQR`
 
-#### SUB
-`SUB` declares a procedure with no return value. Parameter rules match those of `FUNCTION`.
+**Types & Decls:** `AS`, `BOOLEAN`, `DIM`, `FALSE`, `FUNCTION`, `LBOUND`, `REDIM`, `SUB`, `TRUE`, `TYPE`, `UBOUND`
 
-```basic
-10 SUB Hello
-20   PRINT "hi"
-30 END SUB
-```
+**OOP:** `CLASS`, `DELETE`, `DESTRUCTOR`, `ME`, `NEW`
 
-#### Parameters
-Scalar parameters are passed by value. Array parameters are passed by reference and must be supplied as bare array variables declared with `DIM`.
-
-```basic
-10 SUB S(X())
-20 END SUB
-30 DIM A(10), B(10)
-40 CALL S(B)        ' OK
-50 CALL S(A(1))     ' error: argument must be an array variable (ByRef)
-60 CALL S(A + 0)    ' error: argument must be an array variable (ByRef)
-```
-
-### Boolean expressions
-The literals `TRUE` and `FALSE` are case-insensitive. Boolean operators follow this precedence (higher binds tighter):
-
-| Precedence | Operators | Notes |
-|------------|-----------|-------|
-| 1 | `NOT` | Unary logical negation |
-| 2 | `ANDALSO`, `AND` | `ANDALSO` short-circuits; `AND` always evaluates both operands |
-| 3 | `ORELSE`, `OR` | `ORELSE` short-circuits; `OR` always evaluates both operands |
-
-Conditions in `IF`, `WHILE`, and `UNTIL` statements must be boolean expressions. Numeric values do not implicitly convert to `BOOLEAN`; use comparisons (for example `X <> 0`).
-
-### RETURN
-`RETURN` exits the current `FUNCTION` or `SUB`. In a `FUNCTION`, assign the result to the function name before returning. The lowering emits an IL `ret`; see [return statements](lowering/basic-to-il.md#return-statements).
-
-### Arrays
-Declare arrays with `DIM` and index with parentheses.
-
-```basic
-10 DIM A(2)
-20 FOR I = 0 TO 2
-30   LET A(I) = I
-40 NEXT I
-50 LET S = 0
-60 FOR I = 0 TO 2
-70   LET S = S + A(I)
-80 NEXT I
-90 PRINT S
-```
-
-### Intrinsic functions
-
-#### Indexing and substrings
-String positions are 1-based. Substring functions interpret the starting position as 1 = first character. When a length is supplied, it counts characters from the starting position.
-
-#### LEN
-Returns the length of a string.
-
-```basic
-PRINT LEN("HELLO")
-```
-
-#### LEFT$
-Returns the leftmost `n` characters.
-
-```basic
-PRINT LEFT$("hello", 3)
-```
-
-#### RIGHT$
-Returns the rightmost `n` characters.
-
-```basic
-PRINT RIGHT$("hello", 2)
-```
-
-#### MID$
-Extracts a substring starting at position.
-
-```basic
-PRINT MID$("hello", 2, 2)
-```
-
-#### INSTR
-Finds the first occurrence of `needle$` in `haystack$`.
-
-```basic
-PRINT INSTR("HELLO", "LO")
-```
-
-#### LTRIM$
-Removes leading whitespace.
-
-```basic
-PRINT LTRIM$("  hi")
-```
-
-#### RTRIM$
-Removes trailing whitespace.
-
-```basic
-PRINT RTRIM$("hi  ")
-```
-
-#### TRIM$
-Removes leading and trailing whitespace.
-
-```basic
-PRINT TRIM$("  hi  ")
-```
-
-#### UCASE$
-Converts to upper case (ASCII only).
-
-```basic
-PRINT UCASE$("hi")
-```
-
-#### LCASE$
-Converts to lower case (ASCII only).
-
-```basic
-PRINT LCASE$("HI")
-```
-
-#### CHR$
-Returns the character for a code point.
-
-```basic
-PRINT CHR$(65)
-```
-
-#### ASC
-Returns the code point of the first character.
-
-```basic
-PRINT ASC("A")
-```
-
-#### VAL
-Parses a numeric string to a value.
-
-```basic
-PRINT VAL("42")
-```
-
-#### STR$
-Converts a number to a string.
-
-```basic
-PRINT STR$(42)
-```
-
-#### Math functions
-
-| Function | Example | Result |
-|----------|---------|--------|
-| `ABS(x)` | `ABS(-3)` | `3` |
-| `SQR(x)` | `SQR(9)` | `3` |
-| `FLOOR(x)` | `FLOOR(2.7)` | `2` |
-| `CEIL(x)` | `CEIL(2.1)` | `3` |
-| `POW(x, y)` | `POW(2,3)` | `8` |
-| `SIN(x)` | `SIN(0)` | `0` |
-| `COS(x)` | `COS(0)` | `1` |
-| `RND()` | `RND()` | pseudo-random number |
-
-### Debugging options
-Use command-line flags with the compiler:
-
-```bash
-ilc --trace=src program.bas
-ilc --break main.bas:10 --watch X program.bas
-```
+**Other:** `LET`, `RANDOMIZE`, `UNTIL`
 
 ## Examples
+- **Math and randomness**
 
-### Language basics
-- [`ex1_hello_cond.bas`](../examples/basic/ex1_hello_cond.bas) prints a greeting and branches on a condition.
-- [`ex2_sum_1_to_10.bas`](../examples/basic/ex2_sum_1_to_10.bas) evaluates an expression at compile time.
-- [`ex3_for_table.bas`](../examples/basic/ex3_for_table.bas) builds a multiplication table with `FOR` loops.
-- [`ex4_if_elseif.bas`](../examples/basic/ex4_if_elseif.bas) shows multi-branch `IF` statements.
-- [`ex5_input_echo.bas`](../examples/basic/ex5_input_echo.bas) prompts the user with `INPUT`.
-- [`ex6_array_sum.bas`](../examples/basic/ex6_array_sum.bas) accumulates values stored in an array.
+```basic
+RANDOMIZE 1
+LET X# = RND()
+PRINT ABS(-5), FLOOR(1.9#), CEIL(1.1#), SQR(9#), POW(2#,10)
+```
 
-### Math and randomness
-- [`math_basics.bas`](../examples/basic/math_basics.bas) demonstrates arithmetic, `ABS`, and `SQR`.
-- [`math_constfold.bas`](../examples/basic/math_constfold.bas) highlights constant folding of numeric expressions.
-- [`sine_cosine.bas`](../examples/basic/sine_cosine.bas) evaluates `SIN` and `COS`.
-- [`random_repro.bas`](../examples/basic/random_repro.bas) shows deterministic seeding for `RND()`.
-- [`random_walk.bas`](../examples/basic/random_walk.bas) simulates a random walk.
-- [`monte_carlo_pi.bas`](../examples/basic/monte_carlo_pi.bas) estimates π with Monte Carlo sampling.
+- **Strings**
 
-### Procedures and recursion
-- [`fact.bas`](../examples/basic/fact.bas) implements factorial with recursion.
-- [`fib.bas`](../examples/basic/fib.bas) computes Fibonacci numbers with a loop.
-- [`string_builder.bas`](../examples/basic/string_builder.bas) builds strings in a `SUB` and returns the result.
-- [`trace_src.bas`](../examples/basic/trace_src.bas) is useful with `ilc --trace=src` for debugging walkthroughs.
+```basic
+LET F$ = "report.txt"
+LET P = INSTR(F$, ".")
+PRINT RIGHT$(F$, LEN(F$) - P)
 
-### String utilities
-- [`strings/len.bas`](../examples/basic/strings/len.bas) measures string length with `LEN`.
-- [`strings/left_right.bas`](../examples/basic/strings/left_right.bas) slices characters with `LEFT$` and `RIGHT$`.
-- [`strings/mid.bas`](../examples/basic/strings/mid.bas) extracts substrings with `MID$`.
-- [`strings/instr.bas`](../examples/basic/strings/instr.bas) searches for substrings with `INSTR`.
-- [`strings/trims.bas`](../examples/basic/strings/trims.bas) compares `LTRIM$`, `RTRIM$`, and `TRIM$`.
-- [`strings/case.bas`](../examples/basic/strings/case.bas) normalizes case with `UCASE$` and `LCASE$`.
-- [`strings/chr_asc.bas`](../examples/basic/strings/chr_asc.bas) converts between characters and code points.
-- [`strings/val_str.bas`](../examples/basic/strings/val_str.bas) converts between numeric strings and values.
+PRINT INSTR("HELLO","LL")
+PRINT INSTR(3,"HELLO","L")
+```
 
-### Common tasks
-- [`strings/ext.bas`](../examples/basic/strings/ext.bas) extracts file extensions.
-- [`strings/trim_input.bas`](../examples/basic/strings/trim_input.bas) cleans user input.
-- [`strings/normalize.bas`](../examples/basic/strings/normalize.bas) normalizes string case.
-- [`strings/csv.bas`](../examples/basic/strings/csv.bas) builds a CSV line.
+- **Short‑circuit booleans**
 
-Sources:
-- `docs/basic-language.md`
-- `archive/docs/references/basic.md`
+```basic
+INPUT A: INPUT B
+DIM LHS AS BOOLEAN
+LET LHS = A <> 0
+PRINT LHS ORELSE (B <> 0)
+PRINT LHS ANDALSO (B <> 0)
+```
+
+- **File I/O scan**
+
+```basic
+OPEN "tmp.txt" FOR OUTPUT AS #1
+PRINT #1, "HELLO"
+CLOSE #1
+
+OPEN "tmp.txt" FOR INPUT AS #1
+LINE INPUT #1, S$
+PRINT S$
+CLOSE #1
+```
+
+---
