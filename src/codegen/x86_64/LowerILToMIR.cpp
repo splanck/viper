@@ -14,6 +14,7 @@
 #include "LowerILToMIR.hpp"
 
 #include <cassert>
+#include <cstdint>
 #include <string_view>
 
 namespace viper::codegen::x64
@@ -27,7 +28,10 @@ namespace
 }
 } // namespace
 
-LowerILToMIR::LowerILToMIR(const TargetInfo &target) noexcept : target_{&target} {}
+LowerILToMIR::LowerILToMIR(const TargetInfo &target, AsmEmitter::RoDataPool &roData) noexcept
+    : target_{&target}, roDataPool_{&roData}
+{
+}
 
 const std::vector<CallLoweringPlan> &LowerILToMIR::callPlans() const noexcept
 {
@@ -72,6 +76,11 @@ VReg LowerILToMIR::ensureVReg(int id, ILValue::Kind kind)
     return vreg;
 }
 
+VReg LowerILToMIR::makeTempVReg(RegClass cls)
+{
+    return VReg{nextVReg_++, cls};
+}
+
 bool LowerILToMIR::isImmediate(const ILValue &value) const noexcept
 {
     return value.id < 0;
@@ -79,13 +88,10 @@ bool LowerILToMIR::isImmediate(const ILValue &value) const noexcept
 
 Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &value, RegClass cls)
 {
-    (void)block;
     if (value.kind == ILValue::Kind::LABEL)
     {
         return makeLabelOperand(value);
     }
-
-    (void)cls;
 
     if (!isImmediate(value))
     {
@@ -101,9 +107,16 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
             return makeImmOperand(value.i64);
         case ILValue::Kind::F64:
         {
-            // TODO: Materialise f64 immediates using a constant pool.
-            const auto approx = static_cast<int64_t>(value.f64);
-            return makeImmOperand(approx);
+            assert(cls == RegClass::XMM && "f64 operands must target XMM registers");
+            assert(roDataPool_ && "RoData pool unavailable for f64 literals");
+            const int poolIndex = roDataPool_->addF64Literal(value.f64);
+            const std::string label = roDataPool_->f64Label(poolIndex);
+            const VReg temp = makeTempVReg(RegClass::XMM);
+            Operand tempOperand = makeVRegOperand(temp.cls, temp.id);
+            const Operand ripOperand = makeRipLabelOperand(label);
+            block.append(
+                MInstr::make(MOpcode::MOVSDrm, std::vector<Operand>{cloneOperand(tempOperand), ripOperand}));
+            return tempOperand;
         }
         case ILValue::Kind::LABEL:
             break;
@@ -147,6 +160,60 @@ void LowerILToMIR::lowerBinary(
     {
         block.append(MInstr::make(opcRR, std::vector<Operand>{cloneOperand(dest), rhs}));
     }
+}
+
+void LowerILToMIR::lowerShift(const ILInstr &instr,
+                              MBasicBlock &block,
+                              MOpcode opcImm,
+                              MOpcode opcReg)
+{
+    if (instr.resultId < 0 || instr.ops.size() < 2)
+    {
+        return;
+    }
+
+    const VReg destReg = ensureVReg(instr.resultId, instr.resultKind);
+    const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
+    const Operand lhs = makeOperandForValue(block, instr.ops[0], destReg.cls);
+
+    if (std::holds_alternative<OpImm>(lhs))
+    {
+        block.append(MInstr::make(MOpcode::MOVri, std::vector<Operand>{cloneOperand(dest), lhs}));
+    }
+    else
+    {
+        block.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{cloneOperand(dest), lhs}));
+    }
+
+    Operand rhs = makeOperandForValue(block, instr.ops[1], destReg.cls);
+    if (auto *imm = std::get_if<OpImm>(&rhs))
+    {
+        const auto masked = static_cast<int64_t>(static_cast<std::uint8_t>(imm->val));
+        block.append(MInstr::make(opcImm,
+                                  std::vector<Operand>{cloneOperand(dest), makeImmOperand(masked)}));
+        return;
+    }
+
+    const Operand clOperand =
+        makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RCX));
+
+    bool alreadyCl = false;
+    if (const auto *reg = std::get_if<OpReg>(&rhs))
+    {
+        alreadyCl = reg->isPhys && reg->cls == RegClass::GPR &&
+                    reg->idOrPhys == static_cast<uint16_t>(PhysReg::RCX);
+    }
+
+    if (!alreadyCl)
+    {
+        block.append(MInstr::make(
+            MOpcode::MOVrr,
+            std::vector<Operand>{cloneOperand(clOperand), cloneOperand(rhs)}));
+    }
+
+    block.append(
+        MInstr::make(opcReg,
+                     std::vector<Operand>{cloneOperand(dest), cloneOperand(clOperand)}));
 }
 
 void LowerILToMIR::lowerCmp(const ILInstr &instr, MBasicBlock &block, RegClass cls)
@@ -380,7 +447,7 @@ void LowerILToMIR::lowerCall(const ILInstr &instr, MBasicBlock &block)
 
     if (instr.resultId >= 0)
     {
-        ensureVReg(instr.resultId, instr.resultKind);
+        [[maybe_unused]] const VReg retReg = ensureVReg(instr.resultId, instr.resultKind);
         if (instr.resultKind == ILValue::Kind::F64)
         {
             plan.returnsF64 = true;
@@ -503,6 +570,21 @@ void LowerILToMIR::lowerInstruction(const ILInstr &instr, MBasicBlock &block)
         const RegClass cls = regClassFor(instr.resultKind);
         const MOpcode opRR = cls == RegClass::GPR ? MOpcode::IMULrr : MOpcode::FMUL;
         lowerBinary(instr, block, opRR, opRR, cls);
+        return;
+    }
+    if (opc == "shl")
+    {
+        lowerShift(instr, block, MOpcode::SHLri, MOpcode::SHLrc);
+        return;
+    }
+    if (opc == "lshr")
+    {
+        lowerShift(instr, block, MOpcode::SHRri, MOpcode::SHRrc);
+        return;
+    }
+    if (opc == "ashr")
+    {
+        lowerShift(instr, block, MOpcode::SARri, MOpcode::SARrc);
         return;
     }
     if (opc == "cmp")

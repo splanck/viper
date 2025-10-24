@@ -22,6 +22,7 @@
 #include "AsmEmitter.hpp"
 
 #include <bit>
+#include <cstdint>
 #include <iomanip>
 #include <sstream>
 #include <utility>
@@ -144,6 +145,10 @@ void AsmEmitter::RoDataPool::emit(std::ostream &os) const
     {
         os << stringLabel(static_cast<int>(i)) << ":\n";
         os << formatBytes(stringLiterals_[i]);
+    }
+    if (!f64Literals_.empty())
+    {
+        os << "  .p2align 3\n";
     }
     for (std::size_t i = 0; i < f64Literals_.size(); ++i)
     {
@@ -453,6 +458,9 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         case MOpcode::MOVri:
         case MOpcode::ADDri:
         case MOpcode::CMPri:
+        case MOpcode::SHLri:
+        case MOpcode::SHRri:
+        case MOpcode::SARri:
         {
             if (instr.operands.size() < 2)
             {
@@ -460,6 +468,19 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
                 return;
             }
             os << "  " << mnemonic << ' ' << formatOperand(instr.operands[1], target) << ", "
+               << formatOperand(instr.operands[0], target) << '\n';
+            return;
+        }
+        case MOpcode::SHLrc:
+        case MOpcode::SHRrc:
+        case MOpcode::SARrc:
+        {
+            if (instr.operands.size() < 2)
+            {
+                os << "  " << mnemonic << " #<missing>\n";
+                return;
+            }
+            os << "  " << mnemonic << ' ' << formatShiftCount(instr.operands[1], target) << ", "
                << formatOperand(instr.operands[0], target) << '\n';
             return;
         }
@@ -531,7 +552,8 @@ std::string AsmEmitter::formatOperand(const Operand &operand, const TargetInfo &
     return std::visit(Overload{[&](const OpReg &reg) { return formatReg(reg, target); },
                                [&](const OpImm &imm) { return formatImm(imm); },
                                [&](const OpMem &mem) { return formatMem(mem, target); },
-                               [&](const OpLabel &label) { return formatLabel(label); }},
+                               [&](const OpLabel &label) { return formatLabel(label); },
+                               [&](const OpRipLabel &label) { return formatRipLabel(label); }},
                       operand);
 }
 
@@ -589,6 +611,33 @@ std::string AsmEmitter::formatLabel(const OpLabel &label)
     return label.name;
 }
 
+/// @brief Format a RIP-relative label operand.
+/// @param label RIP-relative label to print.
+/// @return Label text suffixed with the RIP-relative addressing mode.
+std::string AsmEmitter::formatRipLabel(const OpRipLabel &label)
+{
+    std::string result = label.name;
+    result += "(%rip)";
+    return result;
+}
+
+/// @brief Format a shift count operand, rewriting RCX to CL when required.
+/// @param operand Operand describing the shift count.
+/// @param target Target lowering context for fallback formatting.
+/// @return Assembly string for the shift count operand.
+std::string AsmEmitter::formatShiftCount(const Operand &operand, const TargetInfo &target)
+{
+    if (const auto *reg = std::get_if<OpReg>(&operand))
+    {
+        if (reg->isPhys && reg->cls == RegClass::GPR &&
+            reg->idOrPhys == static_cast<uint16_t>(PhysReg::RCX))
+        {
+            return "%cl";
+        }
+    }
+    return formatOperand(operand, target);
+}
+
 /// @brief Format the source operand for an @c LEA instruction.
 /// @details Labels are converted into RIP-relative references to match how
 ///          immediate addresses are encoded on x86-64.
@@ -605,7 +654,8 @@ std::string AsmEmitter::formatLeaSource(const Operand &operand, const TargetInfo
                                },
                                [&](const OpMem &mem) { return formatMem(mem, target); },
                                [&](const OpReg &reg) { return formatReg(reg, target); },
-                               [&](const OpImm &imm) { return formatImm(imm); }},
+                               [&](const OpImm &imm) { return formatImm(imm); },
+                               [&](const OpRipLabel &label) { return formatRipLabel(label); }},
                       operand);
 }
 
@@ -617,12 +667,15 @@ std::string AsmEmitter::formatLeaSource(const Operand &operand, const TargetInfo
 /// @return Assembly string representing the call target.
 std::string AsmEmitter::formatCallTarget(const Operand &operand, const TargetInfo &target)
 {
-    return std::visit(
-        Overload{[&](const OpLabel &label) { return label.name; },
-                 [&](const OpReg &reg) { return std::string{"*"} + formatReg(reg, target); },
-                 [&](const OpMem &mem) { return std::string{"*"} + formatMem(mem, target); },
-                 [&](const OpImm &imm) { return formatImm(imm); }},
-        operand);
+    return std::visit(Overload{[&](const OpLabel &label) { return label.name; },
+                               [&](const OpReg &reg)
+                               { return std::string{"*"} + formatReg(reg, target); },
+                               [&](const OpMem &mem)
+                               { return std::string{"*"} + formatMem(mem, target); },
+                               [&](const OpImm &imm) { return formatImm(imm); },
+                               [&](const OpRipLabel &label)
+                               { return std::string{"*"} + formatRipLabel(label); }},
+                      operand);
 }
 
 /// @brief Translate a Machine IR condition code into an x86 suffix.
@@ -684,6 +737,15 @@ const char *AsmEmitter::mnemonicFor(MOpcode opcode) noexcept
             return "addq";
         case MOpcode::SUBrr:
             return "subq";
+        case MOpcode::SHLri:
+        case MOpcode::SHLrc:
+            return "shlq";
+        case MOpcode::SHRri:
+        case MOpcode::SHRrc:
+            return "shrq";
+        case MOpcode::SARri:
+        case MOpcode::SARrc:
+            return "sarq";
         case MOpcode::IMULrr:
             return "imulq";
         case MOpcode::DIVS64rr:
