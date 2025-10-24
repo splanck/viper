@@ -90,7 +90,7 @@ struct TargetInfo
 };
 
 /// \brief Returns the singleton SysV target description.
-[[nodiscard]] constexpr TargetInfo &sysvTarget() noexcept;
+[[nodiscard]] TargetInfo &sysvTarget() noexcept;
 
 /// \brief Determines if a physical register belongs to the general-purpose class.
 [[nodiscard]] bool isGPR(PhysReg reg) noexcept;

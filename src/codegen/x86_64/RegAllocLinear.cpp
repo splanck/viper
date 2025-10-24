@@ -250,8 +250,8 @@ class LinearScanAllocator
             spillOne(cls, prefix);
         }
         assert(!pool.empty() && "register pool exhausted");
-        const PhysReg reg = pool.back();
-        pool.pop_back();
+        const PhysReg reg = pool.front();
+        pool.erase(pool.begin());
         return reg;
     }
 

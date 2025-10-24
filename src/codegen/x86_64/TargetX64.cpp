@@ -41,10 +41,10 @@ TargetInfo makeSysVTarget()
     TargetInfo info{};
     info.callerSavedGPR = {
         PhysReg::RAX,
-        PhysReg::RCX,
-        PhysReg::RDX,
-        PhysReg::RSI,
         PhysReg::RDI,
+        PhysReg::RSI,
+        PhysReg::RDX,
+        PhysReg::RCX,
         PhysReg::R8,
         PhysReg::R9,
         PhysReg::R10,
@@ -114,7 +114,7 @@ TargetInfo sysvTargetInstance = makeSysVTarget();
 ///          conceptually treating the object as immutable configuration data.
 ///
 /// @return Reference to the global SysV target descriptor.
-constexpr TargetInfo &sysvTarget() noexcept
+TargetInfo &sysvTarget() noexcept
 {
     return sysvTargetInstance;
 }
