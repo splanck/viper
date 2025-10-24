@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "AsmEmitter.hpp"
 #include "CallLowering.hpp"
 #include "MachineIR.hpp"
 #include "TargetX64.hpp"
@@ -87,7 +88,7 @@ struct ILModule
 class LowerILToMIR
 {
   public:
-    explicit LowerILToMIR(const TargetInfo &target) noexcept;
+    explicit LowerILToMIR(const TargetInfo &target, AsmEmitter::RoDataPool &roData) noexcept;
 
     /// \brief Lower a single IL function into Machine IR.
     [[nodiscard]] MFunction lower(const ILFunction &func);
@@ -107,10 +108,12 @@ class LowerILToMIR
     std::unordered_map<int, VReg> valueToVReg_{};
     std::unordered_map<std::string, BlockInfo> blockInfo_{};
     std::vector<CallLoweringPlan> callPlans_{};
+    AsmEmitter::RoDataPool *roDataPool_{nullptr};
 
     void resetFunctionState();
     [[nodiscard]] static RegClass regClassFor(ILValue::Kind kind) noexcept;
     [[nodiscard]] VReg ensureVReg(int id, ILValue::Kind kind);
+    [[nodiscard]] VReg makeTempVReg(RegClass cls);
     [[nodiscard]] Operand makeOperandForValue(MBasicBlock &block,
                                               const ILValue &value,
                                               RegClass cls);
