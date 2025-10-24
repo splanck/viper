@@ -1,19 +1,36 @@
-// src/codegen/x86_64/RegAllocLinear.cpp
-// SPDX-License-Identifier: MIT
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Implement a straightforward linear-scan register allocator for the
-//          x86-64 backend during Phase A. The allocator walks machine blocks in
-//          reverse-post-order, applies a block-local liveness approximation, and
-//          resolves PX_COPY pseudo instructions into concrete move sequences.
-// Invariants: Virtual registers retain a single class and identifier within a
-//             function. Stack slot numbering grows monotonically and represents
-//             8-byte slots addressed off %rbp. Instructions are mutated in-place
-//             to reference physical registers or stack locations.
-// Ownership: The allocator owns only transient data structures describing live
-//            virtual registers and available physical registers.
-// Notes: The implementation intentionally favours clarity over optimality. It
-//        eschews global liveness, preferring a conservative "live to end of
-//        block" approximation that keeps the code base manageable for Phase A.
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/codegen/x86_64/RegAllocLinear.cpp
+// Purpose: Provide the Phase-A linear-scan register allocator for the x86-64
+//          backend.
+// Key invariants:
+//   * Each Machine IR virtual register is associated with exactly one register
+//     class and, when active, one physical register.
+//   * Spill slots are 8-byte stack locations addressed relative to %rbp and are
+//     allocated monotonically.
+//   * PX_COPY pseudo instructions are expanded into explicit move sequences
+//     before the function leaves the allocator.
+// Ownership model: The allocator mutates Machine IR blocks in place while
+// maintaining transient state describing active virtual registers, scratch
+// temporaries, and spill slots.  All state is released once allocation
+// completes.
+// Links: docs/architecture.md#codegen
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements a readability-first linear-scan allocator for Machine IR.
+/// @details The allocator walks Machine IR blocks in reverse-post-order,
+///          assigning physical registers from target-specific pools.  When pools
+///          empty, registers are spilled into stack slots and reloaded on demand
+///          using helper routines that preserve register class semantics.  The
+///          implementation is intentionally conservative, approximating liveness
+///          on a per-block basis to keep Phase-A development approachable.
 
 #include "RegAllocLinear.hpp"
 
@@ -41,13 +58,21 @@ template <typename... Ts> struct Overload : Ts...
 
 template <typename... Ts> Overload(Ts...) -> Overload<Ts...>;
 
-/// \brief Convenience wrapper for creating physical register operands.
+/// @brief Build a Machine IR operand referencing a concrete physical register.
+/// @details Helper used throughout the allocator when inserting moves or loads
+///          that target a specific architectural register.  The function wraps
+///          the register class and numeric identifier into the variant used by
+///          Machine IR instructions.
 [[nodiscard]] Operand makePhysOperand(RegClass cls, PhysReg reg)
 {
     return makePhysRegOperand(cls, static_cast<uint16_t>(reg));
 }
 
-/// \brief Construct a frame-indexed memory operand for the given slot.
+/// @brief Form a memory operand that references a stack slot relative to %rbp.
+/// @details Spill slots are addressed as negative offsets from the frame
+///          pointer.  This helper converts the slot index into the correct
+///          displacement and packages it into a Machine IR memory operand with
+///          %rbp as the base register.
 [[nodiscard]] Operand makeFrameOperand(int slotIndex)
 {
     const auto base = makePhysReg(RegClass::GPR, static_cast<uint16_t>(PhysReg::RBP));
@@ -55,7 +80,10 @@ template <typename... Ts> Overload(Ts...) -> Overload<Ts...>;
     return makeMemOperand(base, offset);
 }
 
-/// \brief Returns true when \p reg is reserved for the frame/stack pointer.
+/// @brief Check whether a general-purpose register is reserved for ABI use.
+/// @details The allocator never hands out %rsp or %rbp because they anchor the
+///          stack frame.  Reserving them here simplifies register-pool
+///          construction.
 [[nodiscard]] bool isReservedGPR(PhysReg reg) noexcept
 {
     return reg == PhysReg::RSP || reg == PhysReg::RBP;
@@ -113,11 +141,21 @@ struct CopyTask
 class LinearScanAllocator
 {
   public:
+    /// @brief Construct an allocator bound to a Machine IR function.
+    /// @details The constructor stores references to the function under
+    ///          mutation and the target description before eagerly constructing
+    ///          the register pools.  Building the pools up front keeps the
+    ///          hot path free from repeated target queries.
     LinearScanAllocator(MFunction &func, const TargetInfo &target) : func_(func), target_(target)
     {
         buildPools();
     }
 
+    /// @brief Run the allocation pass over every block in reverse-post-order.
+    /// @details Walks the function, rewriting each instruction so virtual
+    ///          register operands refer to physical registers or stack slots.
+    ///          After all blocks have been processed the method records spill
+    ///          usage statistics and returns them to the caller.
     [[nodiscard]] AllocationResult run()
     {
         for (auto &block : func_.blocks)
@@ -144,6 +182,10 @@ class LinearScanAllocator
     int nextSpillSlotGPR_{0};
     int nextSpillSlotXMM_{0};
 
+    /// @brief Populate register pools based on the target's available registers.
+    /// @details The allocator concatenates caller- and callee-saved sets for each
+    ///          register class before removing reserved registers.  The pools are
+    ///          later treated as LIFO stacks when allocating scratch registers.
     void buildPools()
     {
         auto appendRegs = [](RegPool &pool, const std::vector<PhysReg> &regs)
@@ -160,16 +202,29 @@ class LinearScanAllocator
         appendRegs(freeXMM_, target_.calleeSavedXMM);
     }
 
+    /// @brief Select the register pool that corresponds to a register class.
+    /// @details Returns either the general-purpose pool or the floating-point
+    ///          pool depending on @p cls.  The pools are mutated in place when
+    ///          registers are allocated or released.
     [[nodiscard]] RegPool &poolFor(RegClass cls)
     {
         return cls == RegClass::GPR ? freeGPR_ : freeXMM_;
     }
 
+    /// @brief Retrieve the active-virtual-register list for a class.
+    /// @details Active sets track which virtual registers currently hold
+    ///          physical registers.  This data drives spill decisions when pools
+    ///          run empty.
     [[nodiscard]] std::vector<uint16_t> &activeFor(RegClass cls)
     {
         return cls == RegClass::GPR ? activeGPR_ : activeXMM_;
     }
 
+    /// @brief Fetch (or create) bookkeeping for a virtual register.
+    /// @details The allocator lazily initialises @ref VRegState entries so it can
+    ///          record register class, spill status, and current physical
+    ///          assignment.  Subsequent lookups reuse the cached state and assert
+    ///          that the register class remains stable.
     [[nodiscard]] VRegState &stateFor(RegClass cls, uint16_t id)
     {
         auto [it, inserted] = states_.try_emplace(id);
@@ -187,6 +242,10 @@ class LinearScanAllocator
         return state;
     }
 
+    /// @brief Record that a virtual register currently holds a physical register.
+    /// @details Active sets guard against double-insertion and later feed spill
+    ///          heuristics.  Only registers that are live past the current
+    ///          instruction are tracked.
     void addActive(RegClass cls, uint16_t id)
     {
         auto &active = activeFor(cls);
@@ -196,12 +255,20 @@ class LinearScanAllocator
         }
     }
 
+    /// @brief Drop a virtual register from the active set.
+    /// @details Called once a register is known to no longer require a physical
+    ///          register for the remainder of the block, making it eligible for
+    ///          reuse or spill without violating liveness assumptions.
     void removeActive(RegClass cls, uint16_t id)
     {
         auto &active = activeFor(cls);
         active.erase(std::remove(active.begin(), active.end(), id), active.end());
     }
 
+    /// @brief Reserve a new stack slot for the given register class.
+    /// @details GPR and XMM spills are tracked independently so stack layout can
+    ///          later respect class-specific alignment requirements.  Slots are
+    ///          numbered densely from zero.
     [[nodiscard]] int allocateSpillSlot(RegClass cls)
     {
         if (cls == RegClass::GPR)
@@ -211,6 +278,9 @@ class LinearScanAllocator
         return nextSpillSlotXMM_++;
     }
 
+    /// @brief Build a load instruction that restores a spilled value.
+    /// @details Encapsulates the class-specific opcode selection required to
+    ///          load from a frame slot back into a physical register.
     [[nodiscard]] MInstr makeLoad(RegClass cls, PhysReg dst, int slot)
     {
         if (cls == RegClass::GPR)
@@ -221,6 +291,10 @@ class LinearScanAllocator
         return MInstr::make(MOpcode::MOVSDmr, {makePhysOperand(cls, dst), makeFrameOperand(slot)});
     }
 
+    /// @brief Build a store instruction that spills a value to the stack.
+    /// @details Mirrors @ref makeLoad by emitting the appropriate move opcode
+    ///          for the register class while referencing the requested frame
+    ///          slot.
     [[nodiscard]] MInstr makeStore(RegClass cls, int slot, PhysReg src)
     {
         if (cls == RegClass::GPR)
@@ -231,6 +305,8 @@ class LinearScanAllocator
         return MInstr::make(MOpcode::MOVSDrm, {makeFrameOperand(slot), makePhysOperand(cls, src)});
     }
 
+    /// @brief Construct a register-to-register move for a register class.
+    /// @details Used while resolving PX_COPY cycles or shuffling temporaries.
     [[nodiscard]] MInstr makeMove(RegClass cls, PhysReg dst, PhysReg src)
     {
         if (cls == RegClass::GPR)
@@ -242,6 +318,11 @@ class LinearScanAllocator
                             {makePhysOperand(cls, dst), makePhysOperand(cls, src)});
     }
 
+    /// @brief Acquire a physical register from the appropriate pool.
+    /// @details When the pool is empty the allocator spills an active register to
+    ///          free space before returning a register.  Optional @p prefix
+    ///          instructions receive the spill sequence so callers can insert it
+    ///          ahead of the instruction being rewritten.
     [[nodiscard]] PhysReg takeRegister(RegClass cls, std::vector<MInstr> &prefix)
     {
         auto &pool = poolFor(cls);
@@ -255,11 +336,19 @@ class LinearScanAllocator
         return reg;
     }
 
+    /// @brief Return a physical register to the allocator's free pool.
+    /// @details Called when temporaries expire or when parallel copies finish
+    ///          using scratch registers.
     void releaseRegister(PhysReg phys, RegClass cls)
     {
         poolFor(cls).push_back(phys);
     }
 
+    /// @brief Evict one active virtual register to free a physical register.
+    /// @details Implements a FIFO heuristic by selecting the first active
+    ///          virtual register of the requested class.  The victim's value is
+    ///          stored to its spill slot before the physical register is released
+    ///          back to the pool.
     void spillOne(RegClass cls, std::vector<MInstr> &prefix)
     {
         auto &active = activeFor(cls);
@@ -290,6 +379,11 @@ class LinearScanAllocator
         result_.vregToPhys.erase(victimId);
     }
 
+    /// @brief Rewrite every instruction in a Machine IR block.
+    /// @details Handles PX_COPY pseudo instructions separately, otherwise walks
+    ///          each instruction to classify operands, allocate registers, and
+    ///          insert necessary spill/reload sequences.  The rewritten block is
+    ///          stored back into the Machine IR function.
     void processBlock(MBasicBlock &block)
     {
         std::vector<MInstr> rewritten;
@@ -332,6 +426,10 @@ class LinearScanAllocator
         block.instructions = std::move(rewritten);
     }
 
+    /// @brief Release all active physical registers at block boundaries.
+    /// @details Linear-scan allocation approximates liveness per block, so any
+    ///          registers left active after processing a block are returned to
+    ///          the free pools before visiting the next block.
     void releaseActiveForBlock()
     {
         for (auto vreg : activeGPR_)
@@ -357,6 +455,11 @@ class LinearScanAllocator
         activeXMM_.clear();
     }
 
+    /// @brief Describe whether each operand is used, defined, or both.
+    /// @details The classification drives whether the allocator must load from
+    ///          a spill slot before using the operand and/or store back after
+    ///          defining it.  The logic mirrors the semantics of each opcode the
+    ///          allocator currently understands.
     [[nodiscard]] std::vector<OperandRole> classifyOperands(const MInstr &instr)
     {
         std::vector<OperandRole> roles(instr.operands.size(), OperandRole{true, false});
@@ -462,6 +565,10 @@ class LinearScanAllocator
         return roles;
     }
 
+    /// @brief Rewrite an operand in-place to reference allocated resources.
+    /// @details Dispatches based on operand kind, rewriting register operands and
+    ///          recursively processing the base register of memory operands so
+    ///          addressing modes remain valid after allocation.
     void handleOperand(Operand &operand,
                        const OperandRole &role,
                        std::vector<MInstr> &prefix,
@@ -479,6 +586,10 @@ class LinearScanAllocator
                    operand);
     }
 
+    /// @brief Allocate or reload the physical register backing a virtual one.
+    /// @details Depending on the operand role the helper loads from spill slots,
+    ///          marks values for later stores, and records temporary registers so
+    ///          they can be released after the instruction executes.
     void processRegOperand(OpReg &reg,
                            const OperandRole &role,
                            std::vector<MInstr> &prefix,
@@ -528,6 +639,11 @@ class LinearScanAllocator
         reg = makePhysReg(state.cls, static_cast<uint16_t>(state.phys));
     }
 
+    /// @brief Expand a PX_COPY pseudo instruction into explicit moves.
+    /// @details Resolves both source and destination locations (registers or
+    ///          spill slots), acquires scratch registers when necessary, and
+    ///          breaks cycles using temporary registers so the resulting sequence
+    ///          faithfully copies all values.
     void handleParallelCopy(const MInstr &instr, std::vector<MInstr> &out)
     {
         std::vector<MInstr> prefix;
@@ -715,6 +831,10 @@ class LinearScanAllocator
         }
     }
 
+    /// @brief Emit the concrete instructions for a single copy task.
+    /// @details Handles register-to-register, memory-to-register, and
+    ///          register-to-memory combinations, using temporary registers when
+    ///          a memory-to-memory transfer is required.
     void emitCopyTask(const CopyTask &task, std::vector<MInstr> &generated)
     {
         if (task.destKind == CopyTask::DestKind::Mem)
@@ -763,6 +883,9 @@ class LinearScanAllocator
 
 } // namespace
 
+/// @brief Entry point that allocates registers for an entire Machine IR function.
+/// @details Convenience wrapper that constructs the allocator, runs it, and
+///          returns the allocation summary to callers.
 AllocationResult allocate(MFunction &func, const TargetInfo &target)
 {
     LinearScanAllocator allocator{func, target};

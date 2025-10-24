@@ -1,15 +1,34 @@
-// src/codegen/x86_64/AsmEmitter.cpp
-// SPDX-License-Identifier: MIT
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Provide the x86-64 assembly emission routines that translate
-//          Machine IR instructions into AT&T syntax while maintaining
-//          deterministic literal pools for the .rodata section.
-// Invariants: Emission preserves operand ordering, conditions, and label
-//             bindings from Machine IR. Literal pools deduplicate entries and
-//             assign stable labels across emissions.
-// Ownership: AsmEmitter borrows the rodata pool supplied at construction; no
-//            ownership transfers occur.
-// Notes: Depends only on AsmEmitter.hpp and the C++ standard library.
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/codegen/x86_64/AsmEmitter.cpp
+// Purpose: Implement AT&T-style assembly emission for the experimental x86-64
+//          backend.
+// Key invariants:
+//   * Machine IR operand ordering and label bindings are preserved verbatim in
+//     the emitted assembly.
+//   * Read-only literal pools deduplicate string and f64 constants, assigning
+//     deterministic labels that remain stable across runs.
+//   * PX_COPY pseudo instructions are rendered as annotated comments so later
+//     passes can validate allocation decisions.
+// Ownership model: The emitter borrows the literal pool supplied at
+// construction while writing assembly into caller-provided streams.  No global
+// state is mutated.
+// Links: docs/architecture.md#codegen
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Converts Machine IR into textual x86-64 assembly.
+/// @details The emitter walks Machine IR functions, printing each block and
+///          instruction using AT&T syntax.  A nested read-only data pool tracks
+///          string and floating-point literals so they can be emitted with
+///          stable labels.  The translation favours determinism to keep golden
+///          tests straightforward.
 
 #include "AsmEmitter.hpp"
 
@@ -31,6 +50,10 @@ template <typename... Ts> struct Overload : Ts...
 
 template <typename... Ts> Overload(Ts...) -> Overload<Ts...>;
 
+/// @brief Render a string literal into `.byte` directives.
+/// @details Emits up to sixteen bytes per line using decimal notation, matching
+///          the style of other tools in the toolchain.  An explicit comment is
+///          produced for empty strings so diffs remain clear.
 [[nodiscard]] std::string formatBytes(const std::string &bytes)
 {
     std::ostringstream os;
@@ -58,6 +81,10 @@ template <typename... Ts> Overload(Ts...) -> Overload<Ts...>;
 
 } // namespace
 
+/// @brief Deduplicate and store a string literal in the read-only pool.
+/// @details Returns the stable index assigned to @p bytes.  Repeated literals
+///          reuse the same slot so the emitted assembly contains a single copy
+///          per unique string.
 int AsmEmitter::RoDataPool::addStringLiteral(std::string bytes)
 {
     if (const auto it = stringLookup_.find(bytes); it != stringLookup_.end())
@@ -70,6 +97,9 @@ int AsmEmitter::RoDataPool::addStringLiteral(std::string bytes)
     return index;
 }
 
+/// @brief Record an f64 literal and return its index in the pool.
+/// @details The literal is keyed by its bit pattern to ensure `-0.0` and
+///          `+0.0` remain distinct when required.
 int AsmEmitter::RoDataPool::addF64Literal(double value)
 {
     const auto bits = std::bit_cast<std::uint64_t>(value);
@@ -83,16 +113,22 @@ int AsmEmitter::RoDataPool::addF64Literal(double value)
     return index;
 }
 
+/// @brief Produce the assembly label that names a string literal slot.
 std::string AsmEmitter::RoDataPool::stringLabel(int index) const
 {
     return ".LC_str_" + std::to_string(index);
 }
 
+/// @brief Produce the assembly label that names an f64 literal slot.
 std::string AsmEmitter::RoDataPool::f64Label(int index) const
 {
     return ".LC_f64_" + std::to_string(index);
 }
 
+/// @brief Emit all stored literals into the provided stream.
+/// @details Writes a `.rodata` section containing each string as a sequence of
+///          `.byte` directives followed by every double literal encoded as a
+///          `.quad`.  The existing stream formatting flags are preserved.
 void AsmEmitter::RoDataPool::emit(std::ostream &os) const
 {
     if (empty())
@@ -118,13 +154,21 @@ void AsmEmitter::RoDataPool::emit(std::ostream &os) const
     }
 }
 
+/// @brief Query whether the literal pool contains any entries.
 bool AsmEmitter::RoDataPool::empty() const noexcept
 {
     return stringLiterals_.empty() && f64Literals_.empty();
 }
 
+/// @brief Construct an emitter backed by an external literal pool.
+/// @details The pool pointer is stored so both assembly emission and literal
+///          emission operate on the same underlying data structure.
 AsmEmitter::AsmEmitter(RoDataPool &pool) noexcept : pool_{&pool} {}
 
+/// @brief Emit a Machine IR function as AT&T assembly.
+/// @details Prints the `.text` directive, declares the function global, and
+///          then walks each block.  The entry block is emitted inline while
+///          subsequent blocks use @ref emitBlock to attach labels.
 void AsmEmitter::emitFunction(std::ostream &os,
                               const MFunction &func,
                               const TargetInfo &target) const
@@ -155,6 +199,7 @@ void AsmEmitter::emitFunction(std::ostream &os,
     }
 }
 
+/// @brief Emit the read-only data section if literals are present.
 void AsmEmitter::emitRoData(std::ostream &os) const
 {
     if (pool_ && !pool_->empty())
@@ -163,16 +208,21 @@ void AsmEmitter::emitRoData(std::ostream &os) const
     }
 }
 
+/// @brief Access the mutable literal pool owned by the emitter.
 AsmEmitter::RoDataPool &AsmEmitter::roDataPool() noexcept
 {
     return *pool_;
 }
 
+/// @brief Access the literal pool without granting mutation.
 const AsmEmitter::RoDataPool &AsmEmitter::roDataPool() const noexcept
 {
     return *pool_;
 }
 
+/// @brief Emit a labelled Machine IR block.
+/// @details If the block supplies a label it is printed before the instruction
+///          sequence.  Each instruction is then forwarded to @ref emitInstruction.
 void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &block, const TargetInfo &target)
 {
     if (!block.label.empty())
@@ -185,6 +235,10 @@ void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &block, const Tar
     }
 }
 
+/// @brief Translate a single Machine IR instruction into assembly syntax.
+/// @details Handles special cases such as PX_COPY (rendered as comments),
+///          conditional branches, and LEA operands while falling back to
+///          @ref mnemonicFor and @ref formatOperand for straightforward cases.
 void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const TargetInfo &target)
 {
     switch (instr.opcode)
@@ -428,6 +482,7 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
     os << '\n';
 }
 
+/// @brief Convert an operand variant into its AT&T textual representation.
 std::string AsmEmitter::formatOperand(const Operand &operand, const TargetInfo &target)
 {
     return std::visit(Overload{[&](const OpReg &reg) { return formatReg(reg, target); },
@@ -437,6 +492,7 @@ std::string AsmEmitter::formatOperand(const Operand &operand, const TargetInfo &
                       operand);
 }
 
+/// @brief Format a register operand using ABI register names.
 std::string AsmEmitter::formatReg(const OpReg &reg, const TargetInfo &)
 {
     if (reg.isPhys)
@@ -449,6 +505,7 @@ std::string AsmEmitter::formatReg(const OpReg &reg, const TargetInfo &)
     return os.str();
 }
 
+/// @brief Format an immediate operand with the `$` prefix.
 std::string AsmEmitter::formatImm(const OpImm &imm)
 {
     std::ostringstream os;
@@ -456,6 +513,7 @@ std::string AsmEmitter::formatImm(const OpImm &imm)
     return os.str();
 }
 
+/// @brief Format a base+displacement memory operand.
 std::string AsmEmitter::formatMem(const OpMem &mem, const TargetInfo &target)
 {
     std::ostringstream os;
@@ -467,11 +525,15 @@ std::string AsmEmitter::formatMem(const OpMem &mem, const TargetInfo &target)
     return os.str();
 }
 
+/// @brief Emit the raw label name for label operands.
 std::string AsmEmitter::formatLabel(const OpLabel &label)
 {
     return label.name;
 }
 
+/// @brief Format the source operand for an LEA instruction.
+/// @details Handles labels specially by appending `(%rip)` to produce
+///          position-independent addressing.
 std::string AsmEmitter::formatLeaSource(const Operand &operand, const TargetInfo &target)
 {
     return std::visit(Overload{[&](const OpLabel &label)
@@ -486,6 +548,7 @@ std::string AsmEmitter::formatLeaSource(const Operand &operand, const TargetInfo
                       operand);
 }
 
+/// @brief Format a call target operand, prefixing indirect forms with `*`.
 std::string AsmEmitter::formatCallTarget(const Operand &operand, const TargetInfo &target)
 {
     return std::visit(
@@ -496,6 +559,7 @@ std::string AsmEmitter::formatCallTarget(const Operand &operand, const TargetInf
         operand);
 }
 
+/// @brief Map a condition-code enumeration to its mnemonic suffix.
 std::string_view AsmEmitter::conditionSuffix(std::int64_t code) noexcept
 {
     switch (static_cast<int>(code))
@@ -529,6 +593,8 @@ std::string_view AsmEmitter::conditionSuffix(std::int64_t code) noexcept
     }
 }
 
+/// @brief Return the AT&T mnemonic for a Machine IR opcode.
+/// @details Returns @c nullptr for opcodes that require bespoke emission.
 const char *AsmEmitter::mnemonicFor(MOpcode opcode) noexcept
 {
     switch (opcode)
