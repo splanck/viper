@@ -238,8 +238,82 @@ void LowerILToMIR::lowerCondBranch(const ILInstr &instr, MBasicBlock &block)
 
 void LowerILToMIR::lowerReturn(const ILInstr &instr, MBasicBlock &block)
 {
-    // TODO: Materialise return value copies once ABI details are defined.
-    (void)instr;
+    if (instr.ops.empty())
+    {
+        block.append(MInstr::make(MOpcode::RET, {}));
+        return;
+    }
+
+    assert(target_ != nullptr && "target info must be initialised");
+
+    const ILValue &retVal = instr.ops.front();
+    const RegClass cls = regClassFor(retVal.kind);
+
+    Operand src = makeOperandForValue(block, retVal, cls);
+
+    if (retVal.kind == ILValue::Kind::I1)
+    {
+        if (const auto *imm = std::get_if<OpImm>(&src))
+        {
+            src = makeImmOperand(imm->val != 0 ? 1 : 0);
+        }
+    }
+
+    const auto materialiseToReg = [this, &block](Operand operand, RegClass expectedCls) -> Operand {
+        if (std::holds_alternative<OpReg>(operand))
+        {
+            return operand;
+        }
+
+        const VReg tmp{nextVReg_++, expectedCls};
+        const Operand tmpOp = makeVRegOperand(tmp.cls, tmp.id);
+
+        if (std::holds_alternative<OpImm>(operand))
+        {
+            block.append(MInstr::make(
+                MOpcode::MOVri, {cloneOperand(tmpOp), cloneOperand(operand)}));
+        }
+        else if (std::holds_alternative<OpMem>(operand))
+        {
+            const MOpcode loadOpc = expectedCls == RegClass::XMM ? MOpcode::MOVSDmr : MOpcode::MOVrr;
+            block.append(MInstr::make(loadOpc, {cloneOperand(tmpOp), cloneOperand(operand)}));
+        }
+        else if (std::holds_alternative<OpLabel>(operand))
+        {
+            block.append(MInstr::make(MOpcode::LEA, {cloneOperand(tmpOp), cloneOperand(operand)}));
+        }
+
+        return tmpOp;
+    };
+
+    Operand srcReg = materialiseToReg(std::move(src), cls);
+
+    if (retVal.kind == ILValue::Kind::I1 && std::holds_alternative<OpReg>(srcReg))
+    {
+        const auto &reg = std::get<OpReg>(srcReg);
+        if (!reg.isPhys)
+        {
+            const VReg zx{nextVReg_++, RegClass::GPR};
+            const Operand zxOp = makeVRegOperand(zx.cls, zx.id);
+            block.append(MInstr::make(MOpcode::MOVZXrr32, {cloneOperand(zxOp), cloneOperand(srcReg)}));
+            srcReg = zxOp;
+        }
+    }
+
+    if (cls == RegClass::XMM)
+    {
+        const Operand retReg = makePhysRegOperand(
+            RegClass::XMM, static_cast<uint16_t>(target_->f64ReturnReg));
+        block.append(
+            MInstr::make(MOpcode::MOVSDrr, {retReg, cloneOperand(srcReg)}));
+    }
+    else
+    {
+        const Operand retReg = makePhysRegOperand(
+            RegClass::GPR, static_cast<uint16_t>(target_->intReturnReg));
+        block.append(MInstr::make(MOpcode::MOVrr, {retReg, cloneOperand(srcReg)}));
+    }
+
     block.append(MInstr::make(MOpcode::RET, {}));
 }
 
