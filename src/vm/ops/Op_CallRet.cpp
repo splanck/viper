@@ -231,6 +231,7 @@ VM::ExecResult handleCall(VM &vm,
                     rt_string incoming = mutated.str;
                     rt_str_retain_maybe(incoming);
                     *slot = incoming;
+                    rt_str_release_maybe(mutated.str);
                 }
                 else
                 {
