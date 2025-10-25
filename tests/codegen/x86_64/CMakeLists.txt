@@ -5,6 +5,7 @@
 
 set(_viper_codegen_x86_64_tests
     add_ret
+    f64_const
     return_values
     select_cmov
     string_literal)
