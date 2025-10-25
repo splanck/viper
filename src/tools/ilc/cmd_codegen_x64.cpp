@@ -39,6 +39,11 @@ namespace viper::tools::ilc
 namespace
 {
 
+[[noreturn]] void reportUnsupported(std::string detail)
+{
+    viper::codegen::x64::phaseAUnsupported(detail.c_str());
+}
+
 /// @brief Configuration derived from the command line.
 struct CodegenConfig
 {
@@ -84,10 +89,7 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
     using viper::codegen::x64::ILModule;
     using viper::codegen::x64::ILValue;
 
-    auto reportUnsupported = [](std::string detail) [[noreturn]]
-    { viper::codegen::x64::phaseAUnsupported(detail.c_str()); };
-
-    const auto typeToKind = [&reportUnsupported](const il::core::Type &type) -> ILValue::Kind
+    const auto typeToKind = [](const il::core::Type &type) -> ILValue::Kind
     {
         using il::core::Type;
         switch (type.kind)
@@ -198,9 +200,8 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                 valueKinds[param.id] = kind;
             }
 
-            const auto convertValue = [&reportUnsupported,
-                                       &valueKinds](const il::core::Value &value,
-                                                    std::optional<ILValue::Kind> hint) -> ILValue
+            const auto convertValue = [&valueKinds](const il::core::Value &value,
+                                                   std::optional<ILValue::Kind> hint) -> ILValue
             {
                 ILValue converted{};
                 converted.id = -1;
@@ -406,14 +407,6 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                             isFloat ? ILValue::Kind::F64 : ILValue::Kind::I64;
                         convertOperands(instr, {operandKind, operandKind}, adaptedInstr);
                         adaptedInstr.ops.push_back(makeCondImmediate(condCodeFor(instr.op)));
-                        break;
-                    }
-                    case il::core::Opcode::Select:
-                    {
-                        const ILValue::Kind resultKind = setResultKind(instr.type);
-                        adaptedInstr.opcode = "select";
-                        convertOperands(
-                            instr, {ILValue::Kind::I1, resultKind, resultKind}, adaptedInstr);
                         break;
                     }
                     case il::core::Opcode::Call:
