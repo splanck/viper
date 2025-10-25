@@ -530,13 +530,31 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         }
         case MOpcode::MOVri:
         case MOpcode::ADDri:
-        case MOpcode::ANDri:
         case MOpcode::CMPri:
         case MOpcode::SHLri:
         case MOpcode::SHRri:
         case MOpcode::SARri:
         {
             emitBinary([&](const Operand &operand) { return formatOperand(operand, target); });
+            return;
+        }
+        case MOpcode::ANDri:
+        {
+            const std::string dest = instr.operands.empty()
+                                       ? std::string{"#<missing>"}
+                                       : formatOperand(instr.operands.front(), target);
+            if (instr.operands.size() < 2)
+            {
+                os << "  andq #<missing>, " << dest << "\n";
+                return;
+            }
+            const auto *imm = std::get_if<OpImm>(&instr.operands[1]);
+            if (!imm)
+            {
+                os << "  andq #<invalid>, " << dest << "\n";
+                return;
+            }
+            os << "  andq " << formatImm(*imm) << ", " << dest << "\n";
             return;
         }
         case MOpcode::SHLrc:
