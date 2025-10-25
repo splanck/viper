@@ -273,6 +273,13 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
     const auto rspBase = makePhysBase(PhysReg::RSP);
     const auto rbpBase = makePhysBase(PhysReg::RBP);
 
+    // Emit the SysV prologue/epilogue in a form equivalent to the canonical
+    //   push %rbp; mov %rsp, %rbp; sub $frameSize, %rsp
+    // sequence. Reserving kSlotSizeBytes and spilling %rbp mirrors the push so
+    // that our spill slot accounting remains uniform, and subtracting the
+    // rounded frame size keeps the stack 16-byte aligned at call boundaries.
+    // The epilogue below performs the inverse operations before the trailing
+    // ret, restoring both %rbp and the aligned %rsp value.
     std::vector<MInstr> prologue{};
     prologue.reserve(4 + frame.usedCalleeSaved.size());
 
