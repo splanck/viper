@@ -182,8 +182,12 @@ Operand LowerILToMIR::makeLabelOperand(const ILValue &value) const
     return x64::makeLabelOperand(value.label);
 }
 
-void LowerILToMIR::lowerBinary(
-    const ILInstr &instr, MBasicBlock &block, MOpcode opcRR, MOpcode opcRI, RegClass cls)
+void LowerILToMIR::lowerBinary(const ILInstr &instr,
+                               MBasicBlock &block,
+                               MOpcode opcRR,
+                               MOpcode opcRI,
+                               RegClass cls,
+                               bool requireImm32)
 {
     if (instr.resultId < 0 || instr.ops.size() < 2)
     {
@@ -193,7 +197,7 @@ void LowerILToMIR::lowerBinary(
     const VReg destReg = ensureVReg(instr.resultId, instr.resultKind);
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
     const Operand lhs = makeOperandForValue(block, instr.ops[0], cls);
-    const Operand rhs = makeOperandForValue(block, instr.ops[1], cls);
+    Operand rhs = makeOperandForValue(block, instr.ops[1], cls);
 
     if (std::holds_alternative<OpImm>(lhs))
     {
@@ -204,14 +208,61 @@ void LowerILToMIR::lowerBinary(
         block.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{cloneOperand(dest), lhs}));
     }
 
-    if (opcRI != opcRR && std::holds_alternative<OpImm>(rhs))
+    const auto canUseImm = [&]() {
+        if (opcRI == opcRR)
+        {
+            return false;
+        }
+        const auto *imm = std::get_if<OpImm>(&rhs);
+        if (!imm)
+        {
+            return false;
+        }
+        if (!requireImm32)
+        {
+            return true;
+        }
+        return imm->val >= static_cast<int64_t>(std::numeric_limits<int32_t>::min()) &&
+               imm->val <= static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+    }();
+
+    if (canUseImm)
     {
         block.append(MInstr::make(opcRI, std::vector<Operand>{cloneOperand(dest), rhs}));
+        return;
     }
-    else
-    {
-        block.append(MInstr::make(opcRR, std::vector<Operand>{cloneOperand(dest), rhs}));
-    }
+
+    const auto materialiseToReg = [this, &block, cls](Operand operand) {
+        if (std::holds_alternative<OpReg>(operand))
+        {
+            return operand;
+        }
+
+        const VReg tmp = makeTempVReg(cls);
+        const Operand tmpOp = makeVRegOperand(tmp.cls, tmp.id);
+
+        if (std::holds_alternative<OpImm>(operand))
+        {
+            block.append(MInstr::make(MOpcode::MOVri,
+                                      std::vector<Operand>{cloneOperand(tmpOp), cloneOperand(operand)}));
+        }
+        else if (std::holds_alternative<OpLabel>(operand) || std::holds_alternative<OpRipLabel>(operand))
+        {
+            block.append(MInstr::make(MOpcode::LEA,
+                                      std::vector<Operand>{cloneOperand(tmpOp), cloneOperand(operand)}));
+        }
+        else
+        {
+            block.append(MInstr::make(MOpcode::MOVrr,
+                                      std::vector<Operand>{cloneOperand(tmpOp), cloneOperand(operand)}));
+        }
+
+        return tmpOp;
+    };
+
+    const Operand rhsReg = materialiseToReg(rhs);
+    block.append(
+        MInstr::make(opcRR, std::vector<Operand>{cloneOperand(dest), cloneOperand(rhsReg)}));
 }
 
 void LowerILToMIR::lowerShift(const ILInstr &instr,
@@ -622,6 +673,33 @@ void LowerILToMIR::lowerInstruction(const ILInstr &instr, MBasicBlock &block)
         const RegClass cls = regClassFor(instr.resultKind);
         const MOpcode opRR = cls == RegClass::GPR ? MOpcode::IMULrr : MOpcode::FMUL;
         lowerBinary(instr, block, opRR, opRR, cls);
+        return;
+    }
+    if (opc == "and")
+    {
+        const RegClass cls = regClassFor(instr.resultKind);
+        if (cls == RegClass::GPR)
+        {
+            lowerBinary(instr, block, MOpcode::ANDrr, MOpcode::ANDri, cls, true);
+        }
+        return;
+    }
+    if (opc == "or")
+    {
+        const RegClass cls = regClassFor(instr.resultKind);
+        if (cls == RegClass::GPR)
+        {
+            lowerBinary(instr, block, MOpcode::ORrr, MOpcode::ORri, cls, true);
+        }
+        return;
+    }
+    if (opc == "xor")
+    {
+        const RegClass cls = regClassFor(instr.resultKind);
+        if (cls == RegClass::GPR)
+        {
+            lowerBinary(instr, block, MOpcode::XORrr, MOpcode::XORri, cls, true);
+        }
         return;
     }
     if (opc == "sdiv" || opc == "srem" || opc == "udiv" || opc == "urem")
