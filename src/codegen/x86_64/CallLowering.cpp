@@ -32,6 +32,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <string>
 
 namespace viper::codegen::x64
 {
@@ -44,6 +45,10 @@ constexpr std::size_t kXmmArgLimit = 8;
 constexpr std::size_t kSlotSizeBytes = 8;
 constexpr PhysReg kScratchGPR = PhysReg::R11;
 constexpr PhysReg kScratchXMM = PhysReg::XMM15;
+
+#ifndef NDEBUG
+int callAlignmentCheckCounter = 0;
+#endif
 
 /// @brief Create an operand referencing a concrete physical register.
 ///
@@ -321,6 +326,19 @@ void lowerCall(MBasicBlock &block,
 
     frame.outgoingArgArea =
         std::max(frame.outgoingArgArea, static_cast<int>(alignToSlot(stackBytes)));
+
+#ifndef NDEBUG
+    const std::string callOkLabel = ".Lcall_ok_" + std::to_string(callAlignmentCheckCounter++);
+    const Operand rax = makePhysOperand(RegClass::GPR, PhysReg::RAX);
+    const Operand rsp = makePhysOperand(RegClass::GPR, PhysReg::RSP);
+    insertInstr(MInstr::make(MOpcode::MOVrr, {rax, rsp}));
+    insertInstr(MInstr::make(MOpcode::ANDri, {rax, makeImmOperand(15)}));
+    insertInstr(MInstr::make(MOpcode::TESTrr, {rax, rax}));
+    insertInstr(
+        MInstr::make(MOpcode::JCC, {makeImmOperand(0), makeLabelOperand(callOkLabel)}));
+    insertInstr(MInstr::make(MOpcode::UD2));
+    insertInstr(MInstr::make(MOpcode::LABEL, {makeLabelOperand(callOkLabel)}));
+#endif
 
     insertInstr(MInstr::make(MOpcode::CALL, {makeLabelOperand(plan.calleeLabel)}));
 }
