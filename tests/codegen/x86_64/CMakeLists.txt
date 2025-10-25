@@ -4,11 +4,16 @@
 #          ILModule facade and verify minimal assembly output.
 
 set(_viper_codegen_x86_64_tests
+    abi_probe
     add_ret
+    div_trap
+    i1_normalization
     pro_epi
     f64_const
     return_values
+    select
     select_cmov
+    shifts
     string_literal)
 
 set(_viper_codegen_x86_64_has_gtest OFF)
