@@ -624,7 +624,7 @@ void LowerILToMIR::lowerInstruction(const ILInstr &instr, MBasicBlock &block)
         lowerBinary(instr, block, opRR, opRR, cls);
         return;
     }
-    if (opc == "sdiv" || opc == "srem")
+    if (opc == "sdiv" || opc == "srem" || opc == "udiv" || opc == "urem")
     {
         if (instr.resultId < 0 || instr.ops.size() < 2)
         {
@@ -673,7 +673,21 @@ void LowerILToMIR::lowerInstruction(const ILInstr &instr, MBasicBlock &block)
 
         divisor = materialiseGprReg(divisor);
 
-        const MOpcode pseudo = opc == "sdiv" ? MOpcode::DIVS64rr : MOpcode::REMS64rr;
+        const MOpcode pseudo = [opc]() {
+            if (opc == "sdiv")
+            {
+                return MOpcode::DIVS64rr;
+            }
+            if (opc == "srem")
+            {
+                return MOpcode::REMS64rr;
+            }
+            if (opc == "udiv")
+            {
+                return MOpcode::DIVU64rr;
+            }
+            return MOpcode::REMU64rr;
+        }();
         block.append(MInstr::make(pseudo,
                                   std::vector<Operand>{cloneOperand(dest), cloneOperand(dividend),
                                                        cloneOperand(divisor)}));
