@@ -70,10 +70,16 @@ namespace
             return "DIVS64rr";
         case MOpcode::REMS64rr:
             return "REMS64rr";
+        case MOpcode::DIVU64rr:
+            return "DIVU64rr";
+        case MOpcode::REMU64rr:
+            return "REMU64rr";
         case MOpcode::CQO:
             return "CQO";
         case MOpcode::IDIVrm:
             return "IDIVrm";
+        case MOpcode::DIVrm:
+            return "DIVrm";
         case MOpcode::XORrr32:
             return "XORrr32";
         case MOpcode::CMPrr:
