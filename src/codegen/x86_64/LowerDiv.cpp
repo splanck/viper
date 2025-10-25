@@ -5,11 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the lowering pass that expands signed 64-bit division and remainder
-// pseudos into explicit CQO/IDIV sequences for the x86-64 backend.  The
-// implementation guards each operation with a division-by-zero test, branching
-// to a lazily created trap block when necessary so runtime behaviour matches the
-// VM's expectations.
+// Implements the lowering pass that expands signed and unsigned 64-bit division
+// and remainder pseudos into explicit CQO/IDIV or XOR/DIV sequences for the
+// x86-64 backend.  The implementation guards each operation with a
+// division-by-zero test, branching to a lazily created trap block when necessary
+// so runtime behaviour matches the VM's expectations.
 //
 // The pass executes between IL→MIR lowering and register allocation.  It keeps
 // operand usage confined to general-purpose registers, builds continuation
@@ -19,7 +19,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Signed division lowering utilities for the Phase A x86-64 backend.
+/// @brief Division lowering utilities for the Phase A x86-64 backend.
 /// @details Contains helpers for cloning operands, locating trap blocks, and
 ///          synthesising continuation labels so lowered control flow mirrors the
 ///          pseudo-instruction semantics emitted earlier in the pipeline.
@@ -123,13 +123,14 @@ constexpr std::string_view kTrapLabel{".Ltrap_div0"};
 }
 } // namespace
 
-/// @brief Rewrite signed division and remainder pseudos into explicit IDIV guards.
+/// @brief Rewrite division and remainder pseudos into explicit guarded sequences.
 ///
-/// @details Walks each machine basic block in search of @c DIVS64rr and
-///          @c REMS64rr pseudos.  Matching instructions are replaced with a
+/// @details Walks each machine basic block in search of signed or unsigned
+///          integer division pseudos.  Matching instructions are replaced with a
 ///          guarded control-flow pattern: the divisor is tested for zero, a
 ///          shared trap block is invoked when necessary, and otherwise the
-///          CQO/IDIV pair executes using the SysV register convention.  The
+///          CQO/IDIV (signed) or XOR/DIV (unsigned) sequence executes using the
+///          SysV register convention.  The
 ///          remaining instructions from the original block are moved into a
 ///          freshly created continuation block so the program order remains
 ///          intact after the branch sequence.  A single trap block is allocated
@@ -180,7 +181,11 @@ void lowerSignedDivRem(MFunction &fn)
         for (std::size_t instrIdx = 0; instrIdx < block.instructions.size(); ++instrIdx)
         {
             const MInstr &candidate = block.instructions[instrIdx];
-            if (candidate.opcode != MOpcode::DIVS64rr && candidate.opcode != MOpcode::REMS64rr)
+            const bool isSignedDiv = candidate.opcode == MOpcode::DIVS64rr;
+            const bool isSignedRem = candidate.opcode == MOpcode::REMS64rr;
+            const bool isUnsignedDiv = candidate.opcode == MOpcode::DIVU64rr;
+            const bool isUnsignedRem = candidate.opcode == MOpcode::REMU64rr;
+            if (!isSignedDiv && !isSignedRem && !isUnsignedDiv && !isUnsignedRem)
             {
                 continue;
             }
@@ -211,7 +216,8 @@ void lowerSignedDivRem(MFunction &fn)
             }
 
             MInstr pseudo = std::move(block.instructions[instrIdx]);
-            const bool isDiv = pseudo.opcode == MOpcode::DIVS64rr;
+            const bool isDiv = isSignedDiv || isUnsignedDiv;
+            const bool isSigned = isSignedDiv || isSignedRem;
 
             MBasicBlock afterBlock{};
             afterBlock.label = makeContinuationLabel(fn, block, sequenceId++);
@@ -253,9 +259,20 @@ void lowerSignedDivRem(MFunction &fn)
                     std::vector<Operand>{cloneOperand(raxOp), cloneOperand(dividendClone)}));
             }
 
-            block.append(MInstr::make(MOpcode::CQO, {}));
-            block.append(
-                MInstr::make(MOpcode::IDIVrm, std::vector<Operand>{cloneOperand(divisorClone)}));
+            if (isSigned)
+            {
+                block.append(MInstr::make(MOpcode::CQO, {}));
+                block.append(MInstr::make(
+                    MOpcode::IDIVrm, std::vector<Operand>{cloneOperand(divisorClone)}));
+            }
+            else
+            {
+                block.append(MInstr::make(
+                    MOpcode::XORrr32,
+                    std::vector<Operand>{cloneOperand(rdxOp), cloneOperand(rdxOp)}));
+                block.append(
+                    MInstr::make(MOpcode::DIVrm, std::vector<Operand>{cloneOperand(divisorClone)}));
+            }
 
             const Operand resultPhys = isDiv ? raxOp : rdxOp;
             block.append(
