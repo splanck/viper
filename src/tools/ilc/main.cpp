@@ -18,6 +18,17 @@
 ///          such as pass management or VM execution is delegated to subcommands.
 
 #include "cli.hpp"
+#include "cmd_codegen_x64.hpp"
+
+namespace viper::tools::ilc
+{
+
+inline int run_codegen_x64(int argc, char **argv)
+{
+    return cmd_codegen_x64(argc, argv);
+}
+
+} // namespace viper::tools::ilc
 #include "frontends/basic/Intrinsics.hpp"
 #include "il/core/Module.hpp"
 #include <iostream>
@@ -64,6 +75,7 @@ void usage()
         << "       ilc front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>] "
            "[--max-steps N] [--break label|file:line]* [--break-src file:line]* [--bounds-checks] "
            "[--dump-trap]\n"
+        << "       ilc codegen x64 -S <in.il> [-o <exe>] [--run-native]\n"
         << "       ilc il-opt <in.il> -o <out.il> --passes p1,p2\n"
         << "\nIL notes:\n"
         << "  IL modules executed with -run must define func @main().\n"
@@ -113,6 +125,14 @@ int main(int argc, char **argv)
     if (cmd == "front" && argc >= 3 && std::string(argv[2]) == "basic")
     {
         return cmdFrontBasic(argc - 3, argv + 3);
+    }
+    if (cmd == "codegen" && argc >= 3)
+    {
+        std::string_view backend = argv[2];
+        if (backend == "x64")
+        {
+            return viper::tools::ilc::run_codegen_x64(argc - 2, argv + 2);
+        }
     }
     usage();
     return 1;

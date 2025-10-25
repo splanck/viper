@@ -408,6 +408,7 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                         adaptedInstr.ops.push_back(makeCondImmediate(condCodeFor(instr.op)));
                         break;
                     }
+#if 0
                     case il::core::Opcode::Select:
                     {
                         const ILValue::Kind resultKind = setResultKind(instr.type);
@@ -416,6 +417,7 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                             instr, {ILValue::Kind::I1, resultKind, resultKind}, adaptedInstr);
                         break;
                     }
+#endif
                     case il::core::Opcode::Call:
                     {
                         if (instr.result && instr.type.kind != il::core::Type::Kind::Void)
