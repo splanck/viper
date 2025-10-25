@@ -369,6 +369,9 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         case MOpcode::RET:
             os << "  ret\n";
             return;
+        case MOpcode::UD2:
+            os << "  ud2\n";
+            return;
         case MOpcode::JMP:
         {
             os << "  jmp ";
@@ -491,6 +494,18 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         return;
     }
 
+    const auto emitBinary = [&](auto &&formatSource) {
+        if (instr.operands.size() < 2)
+        {
+            os << "  " << mnemonic << " #<missing>\n";
+            return;
+        }
+
+        os << "  " << mnemonic << ' '
+           << formatSource(instr.operands[1]) << ", "
+           << formatOperand(instr.operands[0], target) << '\n';
+    };
+
     switch (instr.opcode)
     {
         case MOpcode::MOVrr:
@@ -509,13 +524,7 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         case MOpcode::CVTSI2SD:
         case MOpcode::CVTTSD2SI:
         {
-            if (instr.operands.size() < 2)
-            {
-                os << "  " << mnemonic << " #<missing>\n";
-                return;
-            }
-            os << "  " << mnemonic << ' ' << formatOperand(instr.operands[1], target) << ", "
-               << formatOperand(instr.operands[0], target) << '\n';
+            emitBinary([&](const Operand &operand) { return formatOperand(operand, target); });
             return;
         }
         case MOpcode::MOVri:
@@ -526,60 +535,30 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         case MOpcode::SHRri:
         case MOpcode::SARri:
         {
-            if (instr.operands.size() < 2)
-            {
-                os << "  " << mnemonic << " #<missing>\n";
-                return;
-            }
-            os << "  " << mnemonic << ' ' << formatOperand(instr.operands[1], target) << ", "
-               << formatOperand(instr.operands[0], target) << '\n';
+            emitBinary([&](const Operand &operand) { return formatOperand(operand, target); });
             return;
         }
         case MOpcode::SHLrc:
         case MOpcode::SHRrc:
         case MOpcode::SARrc:
         {
-            if (instr.operands.size() < 2)
-            {
-                os << "  " << mnemonic << " #<missing>\n";
-                return;
-            }
-            os << "  " << mnemonic << ' ' << formatShiftCount(instr.operands[1], target) << ", "
-               << formatOperand(instr.operands[0], target) << '\n';
+            emitBinary([&](const Operand &operand) { return formatShiftCount(operand, target); });
             return;
         }
         case MOpcode::CMPrr:
         case MOpcode::TESTrr:
         {
-            if (instr.operands.size() < 2)
-            {
-                os << "  " << mnemonic << " #<missing>\n";
-                return;
-            }
-            os << "  " << mnemonic << ' ' << formatOperand(instr.operands[1], target) << ", "
-               << formatOperand(instr.operands[0], target) << '\n';
+            emitBinary([&](const Operand &operand) { return formatOperand(operand, target); });
             return;
         }
         case MOpcode::MOVSDrm:
         {
-            if (instr.operands.size() < 2)
-            {
-                os << "  movsd #<missing>\n";
-                return;
-            }
-            os << "  movsd " << formatOperand(instr.operands[1], target) << ", "
-               << formatOperand(instr.operands[0], target) << '\n';
+            emitBinary([&](const Operand &operand) { return formatOperand(operand, target); });
             return;
         }
         case MOpcode::MOVSDmr:
         {
-            if (instr.operands.size() < 2)
-            {
-                os << "  movsd #<missing>\n";
-                return;
-            }
-            os << "  movsd " << formatOperand(instr.operands[1], target) << ", "
-               << formatOperand(instr.operands[0], target) << '\n';
+            emitBinary([&](const Operand &operand) { return formatOperand(operand, target); });
             return;
         }
         default:
