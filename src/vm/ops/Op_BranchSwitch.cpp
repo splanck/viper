@@ -433,9 +433,11 @@ VM::ExecResult branchToTarget(VM &vm,
         if (!sourceLabel.empty())
             os << " from '" << sourceLabel << '\'';
         os << ": expected " << expected << ", got " << provided;
+        VM::ExecResult result{};
+        result.returned = true;
         RuntimeBridge::trap(
             TrapKind::InvalidOperation, os.str(), in.loc, functionName, sourceLabel);
-        return {};
+        return result;
     }
 
     if (provided > 0)
