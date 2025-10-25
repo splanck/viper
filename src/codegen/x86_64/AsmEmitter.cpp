@@ -480,6 +480,84 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
             os << "  leaq " << formatLeaSource(instr.operands[1], target) << ", "
                << formatOperand(instr.operands[0], target) << '\n';
             return;
+        case MOpcode::CMOVNErr:
+        {
+            const char *mnemonic = mnemonicFor(instr.opcode);
+            if (!mnemonic)
+            {
+                os << "  # <unknown opcode>\n";
+                return;
+            }
+            if (instr.operands.size() < 2)
+            {
+                os << "  " << mnemonic << " #<missing>\n";
+                return;
+            }
+            os << "  " << mnemonic << ' ' << formatOperand(instr.operands[1], target) << ", "
+               << formatOperand(instr.operands[0], target) << '\n';
+            return;
+        }
+        case MOpcode::SHLri:
+        case MOpcode::SHRri:
+        case MOpcode::SARri:
+        {
+            const char *mnemonic = mnemonicFor(instr.opcode);
+            if (!mnemonic)
+            {
+                os << "  # <unknown opcode>\n";
+                return;
+            }
+            if (instr.operands.size() < 2)
+            {
+                os << "  " << mnemonic << " #<missing>\n";
+                return;
+            }
+            os << "  " << mnemonic << ' ' << formatOperand(instr.operands[1], target) << ", "
+               << formatOperand(instr.operands[0], target) << '\n';
+            return;
+        }
+        case MOpcode::SHLrc:
+        case MOpcode::SHRrc:
+        case MOpcode::SARrc:
+        {
+            const char *mnemonic = mnemonicFor(instr.opcode);
+            if (!mnemonic)
+            {
+                os << "  # <unknown opcode>\n";
+                return;
+            }
+            if (instr.operands.size() < 2)
+            {
+                os << "  " << mnemonic << " #<missing>\n";
+                return;
+            }
+            os << "  " << mnemonic << ' ' << formatShiftCount(instr.operands[1], target) << ", "
+               << formatOperand(instr.operands[0], target) << '\n';
+            return;
+        }
+        case MOpcode::ANDri:
+        {
+            const char *mnemonic = mnemonicFor(instr.opcode);
+            if (!mnemonic)
+            {
+                os << "  # <unknown opcode>\n";
+                return;
+            }
+            if (instr.operands.size() < 2)
+            {
+                os << "  " << mnemonic << " #<missing>\n";
+                return;
+            }
+            os << "  " << mnemonic << ' ' << formatOperand(instr.operands[1], target) << ", "
+               << formatOperand(instr.operands[0], target) << '\n';
+            return;
+        }
+        case MOpcode::UD2:
+        {
+            const char *mnemonic = mnemonicFor(instr.opcode);
+            os << "  " << (mnemonic ? mnemonic : "ud2") << '\n';
+            return;
+        }
         default:
             break;
     }
@@ -494,7 +572,6 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
     switch (instr.opcode)
     {
         case MOpcode::MOVrr:
-        case MOpcode::CMOVNErr:
         case MOpcode::ADDrr:
         case MOpcode::SUBrr:
         case MOpcode::IMULrr:
@@ -520,11 +597,7 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         }
         case MOpcode::MOVri:
         case MOpcode::ADDri:
-        case MOpcode::ANDri:
         case MOpcode::CMPri:
-        case MOpcode::SHLri:
-        case MOpcode::SHRri:
-        case MOpcode::SARri:
         {
             if (instr.operands.size() < 2)
             {
@@ -532,19 +605,6 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
                 return;
             }
             os << "  " << mnemonic << ' ' << formatOperand(instr.operands[1], target) << ", "
-               << formatOperand(instr.operands[0], target) << '\n';
-            return;
-        }
-        case MOpcode::SHLrc:
-        case MOpcode::SHRrc:
-        case MOpcode::SARrc:
-        {
-            if (instr.operands.size() < 2)
-            {
-                os << "  " << mnemonic << " #<missing>\n";
-                return;
-            }
-            os << "  " << mnemonic << ' ' << formatShiftCount(instr.operands[1], target) << ", "
                << formatOperand(instr.operands[0], target) << '\n';
             return;
         }
