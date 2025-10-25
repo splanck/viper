@@ -18,6 +18,7 @@
 ///          such as pass management or VM execution is delegated to subcommands.
 
 #include "cli.hpp"
+#include "cmd_codegen_x64.hpp"
 #include "frontends/basic/Intrinsics.hpp"
 #include "il/core/Module.hpp"
 #include <iostream>
@@ -45,6 +46,16 @@ void printVersion()
 
 } // namespace
 
+namespace viper::tools::ilc
+{
+
+int run_codegen_x64(int argc, char **argv)
+{
+    return cmd_codegen_x64(argc, argv);
+}
+
+} // namespace viper::tools::ilc
+
 /// @brief Print synopsis and option hints for the `ilc` CLI.
 ///
 /// @details Step-by-step summary:
@@ -65,6 +76,7 @@ void usage()
            "[--max-steps N] [--break label|file:line]* [--break-src file:line]* [--bounds-checks] "
            "[--dump-trap]\n"
         << "       ilc il-opt <in.il> -o <out.il> --passes p1,p2\n"
+        << "       ilc codegen x64 -S <in.il> [-o <exe>] [--run-native]\n"
         << "\nIL notes:\n"
         << "  IL modules executed with -run must define func @main().\n"
         << "\nBASIC notes:\n"
@@ -109,6 +121,14 @@ int main(int argc, char **argv)
     if (cmd == "il-opt")
     {
         return cmdILOpt(argc - 2, argv + 2);
+    }
+    if (cmd == "codegen" && argc >= 3)
+    {
+        std::string_view target = argv[2];
+        if (target == "x64")
+        {
+            return viper::tools::ilc::run_codegen_x64(argc - 2, argv + 2);
+        }
     }
     if (cmd == "front" && argc >= 3 && std::string(argv[2]) == "basic")
     {
