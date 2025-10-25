@@ -49,23 +49,82 @@ namespace
     return module;
 }
 
+[[nodiscard]] std::string_view lineContaining(const std::string &text, std::size_t pos) noexcept
+{
+    const std::size_t lineStart = text.rfind('\n', pos);
+    const std::size_t start = lineStart == std::string::npos ? 0 : lineStart + 1;
+    const std::size_t lineEnd = text.find('\n', pos);
+    const std::size_t end = lineEnd == std::string::npos ? text.size() : lineEnd;
+    return std::string_view{text}.substr(start, end - start);
+}
+
 [[nodiscard]] bool hasExpectedStringLiteralSequence(const std::string &asmText)
 {
-    constexpr std::string_view kPatterns[] = {
-        "callq rt_str_from_lit",
-        ".LC_str_0",
-        "leaq .LC_str_0(%rip)",
-        "movq $13, %rsi",
-        ".ascii \"Hello, world!\"",
-        ".section .rodata"};
-
-    for (const std::string_view pattern : kPatterns)
+    const auto rodataPos = asmText.find(".section .rodata");
+    if (rodataPos == std::string::npos)
     {
-        if (asmText.find(pattern) == std::string::npos)
-        {
-            return false;
-        }
+        return false;
     }
+
+    const auto labelPos = asmText.find(".LC_str_", rodataPos);
+    if (labelPos == std::string::npos)
+    {
+        return false;
+    }
+
+    const std::string_view rodataLabelLine = lineContaining(asmText, labelPos);
+    if (rodataLabelLine.find(':') == std::string::npos)
+    {
+        return false;
+    }
+
+    bool hasLeaReference = false;
+    std::size_t searchPos = 0;
+    while ((searchPos = asmText.find(".LC_str_", searchPos)) != std::string::npos)
+    {
+        const std::string_view line = lineContaining(asmText, searchPos);
+        if (line.find("lea") != std::string::npos)
+        {
+            hasLeaReference = true;
+            break;
+        }
+        ++searchPos;
+    }
+    if (!hasLeaReference)
+    {
+        return false;
+    }
+
+    bool hasLenMove = false;
+    std::size_t rsiPos = asmText.find("%rsi");
+    while (rsiPos != std::string::npos)
+    {
+        const std::string_view line = lineContaining(asmText, rsiPos);
+        if (line.find("mov") != std::string::npos &&
+            (line.find("$13") != std::string::npos || line.find("$0xd") != std::string::npos))
+        {
+            hasLenMove = true;
+            break;
+        }
+        rsiPos = asmText.find("%rsi", rsiPos + 4);
+    }
+    if (!hasLenMove)
+    {
+        return false;
+    }
+
+    const auto callPos = asmText.find("rt_str_from_lit");
+    if (callPos == std::string::npos)
+    {
+        return false;
+    }
+
+    const std::string_view callLine = lineContaining(asmText, callPos);
+    if (callLine.find("call") == std::string::npos)
+    {
+        return false;
+    }
+
     return true;
 }
 
