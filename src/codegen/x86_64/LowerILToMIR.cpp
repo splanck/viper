@@ -624,6 +624,61 @@ void LowerILToMIR::lowerInstruction(const ILInstr &instr, MBasicBlock &block)
         lowerBinary(instr, block, opRR, opRR, cls);
         return;
     }
+    if (opc == "sdiv" || opc == "srem")
+    {
+        if (instr.resultId < 0 || instr.ops.size() < 2)
+        {
+            return;
+        }
+
+        const VReg destReg = ensureVReg(instr.resultId, instr.resultKind);
+        const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
+
+        Operand dividend = makeOperandForValue(block, instr.ops[0], RegClass::GPR);
+        Operand divisor = makeOperandForValue(block, instr.ops[1], RegClass::GPR);
+
+        const auto materialiseGprReg = [this, &block](const Operand &operand) -> Operand
+        {
+            if (std::holds_alternative<OpReg>(operand))
+            {
+                return cloneOperand(operand);
+            }
+
+            const VReg tmp = makeTempVReg(RegClass::GPR);
+            const Operand tmpOp = makeVRegOperand(tmp.cls, tmp.id);
+
+            if (std::holds_alternative<OpImm>(operand))
+            {
+                block.append(MInstr::make(
+                    MOpcode::MOVri, std::vector<Operand>{cloneOperand(tmpOp), cloneOperand(operand)}));
+            }
+            else if (std::holds_alternative<OpLabel>(operand))
+            {
+                block.append(MInstr::make(
+                    MOpcode::LEA, std::vector<Operand>{cloneOperand(tmpOp), cloneOperand(operand)}));
+            }
+            else
+            {
+                block.append(MInstr::make(
+                    MOpcode::MOVrr, std::vector<Operand>{cloneOperand(tmpOp), cloneOperand(operand)}));
+            }
+
+            return tmpOp;
+        };
+
+        if (!std::holds_alternative<OpReg>(dividend) && !std::holds_alternative<OpImm>(dividend))
+        {
+            dividend = materialiseGprReg(dividend);
+        }
+
+        divisor = materialiseGprReg(divisor);
+
+        const MOpcode pseudo = opc == "sdiv" ? MOpcode::DIVS64rr : MOpcode::REMS64rr;
+        block.append(MInstr::make(pseudo,
+                                  std::vector<Operand>{cloneOperand(dest), cloneOperand(dividend),
+                                                       cloneOperand(divisor)}));
+        return;
+    }
     if (opc == "shl")
     {
         lowerShift(instr, block, MOpcode::SHLri, MOpcode::SHLrc);
@@ -700,7 +755,7 @@ void LowerILToMIR::lowerInstruction(const ILInstr &instr, MBasicBlock &block)
         lowerCast(instr, block, MOpcode::CVTTSD2SI, RegClass::GPR, RegClass::XMM);
         return;
     }
-    // TODO: handle division and additional opcodes.
+    // TODO: handle additional opcodes.
 }
 
 void LowerILToMIR::emitEdgeCopies(const ILBlock &source, MBasicBlock &block)
