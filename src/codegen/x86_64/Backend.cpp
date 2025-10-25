@@ -121,7 +121,8 @@ void runFunctionPipeline(const ILFunction &ilFunc,
 /// @param functions IL functions to translate.
 /// @param options Backend configuration supplied by the caller.
 /// @return Result structure containing assembly text and diagnostic messages.
-CodegenResult emitModuleImpl(const std::vector<ILFunction> &functions, const CodegenOptions &options)
+CodegenResult emitModuleImpl(const std::vector<ILFunction> &functions,
+                             const CodegenOptions &options)
 {
     CodegenResult result{};
 

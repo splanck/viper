@@ -32,12 +32,10 @@ namespace viper::tui::term
 /// @param keys Buffer that receives decoded key events.
 /// @param mouse Buffer that receives decoded mouse events.
 /// @param paste_buffer String accumulator that stores bracketed paste payloads.
-CsiParser::CsiParser(std::vector<KeyEvent>& keys,
-                     std::vector<MouseEvent>& mouse,
-                     std::string& paste_buffer)
-    : key_events_(keys)
-    , mouse_events_(mouse)
-    , paste_buffer_(paste_buffer)
+CsiParser::CsiParser(std::vector<KeyEvent> &keys,
+                     std::vector<MouseEvent> &mouse,
+                     std::string &paste_buffer)
+    : key_events_(keys), mouse_events_(mouse), paste_buffer_(paste_buffer)
 {
 }
 
@@ -294,4 +292,3 @@ CsiResult CsiParser::handle(char final, std::string_view params)
 }
 
 } // namespace viper::tui::term
-

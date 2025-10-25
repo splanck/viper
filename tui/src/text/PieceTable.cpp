@@ -241,7 +241,8 @@ std::list<PieceTable::Piece>::iterator PieceTable::findPiece(std::size_t pos, st
     return pieces_.end();
 }
 
-std::list<PieceTable::Piece>::const_iterator PieceTable::findPiece(std::size_t pos, std::size_t &offset) const
+std::list<PieceTable::Piece>::const_iterator PieceTable::findPiece(std::size_t pos,
+                                                                   std::size_t &offset) const
 {
     std::size_t idx = 0;
     for (auto it = pieces_.cbegin(); it != pieces_.cend(); ++it)

@@ -20,7 +20,6 @@ std::size_t KeyChordHash::operator()(const KeyChord &kc) const
            (static_cast<std::size_t>(kc.codepoint) << 16U);
 }
 
-
 void Keymap::registerCommand(CommandId id, std::string name, std::function<void()> action)
 {
     auto it = index_.find(id);

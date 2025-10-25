@@ -12,5 +12,4 @@ struct Event
 {
     term::KeyEvent key{};
 };
-}
-
+} // namespace viper::tui::ui

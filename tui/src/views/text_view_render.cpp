@@ -107,72 +107,80 @@ void TextView::paint(render::ScreenBuffer &sb)
         }
 
         const int availableWidth = rect_.w - static_cast<int>(gutter);
-        const std::size_t availableCols = availableWidth > 0 ? static_cast<std::size_t>(availableWidth) : 0U;
+        const std::size_t availableCols =
+            availableWidth > 0 ? static_cast<std::size_t>(availableWidth) : 0U;
         const bool lineHasSelection = hasSelection && lineStart < selFinish && lineEnd > selBegin;
-        const bool lineHasHighlights = std::any_of(highlights_.begin(), highlights_.end(), [&](const auto &h) {
-            if (h.second == 0)
-                return false;
-            const std::size_t highlightEnd = clampAdd(h.first, h.second);
-            return lineStart < highlightEnd && lineEnd > h.first;
-        });
+        const bool lineHasHighlights =
+            std::any_of(highlights_.begin(),
+                        highlights_.end(),
+                        [&](const auto &h)
+                        {
+                            if (h.second == 0)
+                                return false;
+                            const std::size_t highlightEnd = clampAdd(h.first, h.second);
+                            return lineStart < highlightEnd && lineEnd > h.first;
+                        });
 
         std::size_t lineByte = 0;
         std::size_t col = 0;
-        lineView.forEachSegment([&](std::string_view segment) -> bool {
-            std::size_t segOffset = 0;
-            while (segOffset < segment.size())
+        lineView.forEachSegment(
+            [&](std::string_view segment) -> bool
             {
-                if (col >= availableCols)
-                    return false;
-
-                auto [cp, len] = decodeChar(segment, segOffset);
-                std::size_t w = static_cast<std::size_t>(char_width(cp));
-                if (col + w > availableCols)
-                    return false;
-
-                const std::size_t charByte = lineByte;
-                const std::size_t global = clampAdd(lineStart, charByte);
-                const bool selected = lineHasSelection && global >= selBegin && global < selFinish;
-                bool highlighted = false;
-                if (lineHasHighlights)
+                std::size_t segOffset = 0;
+                while (segOffset < segment.size())
                 {
-                    for (const auto &h : highlights_)
+                    if (col >= availableCols)
+                        return false;
+
+                    auto [cp, len] = decodeChar(segment, segOffset);
+                    std::size_t w = static_cast<std::size_t>(char_width(cp));
+                    if (col + w > availableCols)
+                        return false;
+
+                    const std::size_t charByte = lineByte;
+                    const std::size_t global = clampAdd(lineStart, charByte);
+                    const bool selected =
+                        lineHasSelection && global >= selBegin && global < selFinish;
+                    bool highlighted = false;
+                    if (lineHasHighlights)
                     {
-                        if (global < h.first)
-                            continue;
-                        const std::size_t offset = global - h.first;
-                        if (offset < h.second)
+                        for (const auto &h : highlights_)
                         {
-                            highlighted = true;
-                            break;
+                            if (global < h.first)
+                                continue;
+                            const std::size_t offset = global - h.first;
+                            if (offset < h.second)
+                            {
+                                highlighted = true;
+                                break;
+                            }
                         }
                     }
-                }
 
-                auto &cell = sb.at(rect_.y + row, rect_.x + static_cast<int>(gutter + col));
-                cell.ch = cp;
-                cell.width = static_cast<uint8_t>(w);
-                render::Style syn = normal;
-                if (spansPtr)
-                {
-                    for (const auto &sp : *spansPtr)
+                    auto &cell = sb.at(rect_.y + row, rect_.x + static_cast<int>(gutter + col));
+                    cell.ch = cp;
+                    cell.width = static_cast<uint8_t>(w);
+                    render::Style syn = normal;
+                    if (spansPtr)
                     {
-                        const std::size_t spanEnd = clampAdd(sp.start, sp.length);
-                        if (charByte >= sp.start && charByte < spanEnd)
+                        for (const auto &sp : *spansPtr)
                         {
-                            syn = sp.style;
-                            break;
+                            const std::size_t spanEnd = clampAdd(sp.start, sp.length);
+                            if (charByte >= sp.start && charByte < spanEnd)
+                            {
+                                syn = sp.style;
+                                break;
+                            }
                         }
                     }
-                }
-                cell.style = selected ? sel : (highlighted ? accent : syn);
+                    cell.style = selected ? sel : (highlighted ? accent : syn);
 
-                segOffset += len;
-                lineByte += len;
-                col += w;
-            }
-            return true;
-        });
+                    segOffset += len;
+                    lineByte += len;
+                    col += w;
+                }
+                return true;
+            });
     }
 
     if (cursor_row_ >= top_row_ && cursor_row_ < top_row_ + static_cast<std::size_t>(rect_.h))

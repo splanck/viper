@@ -8,9 +8,9 @@
 #include <cassert>
 
 using viper::tui::term::InputDecoder;
+using viper::tui::term::KeyEvent;
 using viper::tui::term::MouseEvent;
 using viper::tui::term::PasteEvent;
-using viper::tui::term::KeyEvent;
 
 int main()
 {

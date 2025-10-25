@@ -93,7 +93,8 @@ template <typename... Ts> Overload(Ts...) -> Overload<Ts...>;
         if (isAsciiPrintable(current))
         {
             const std::size_t begin = index;
-            while (index < bytes.size() && isAsciiPrintable(static_cast<unsigned char>(bytes[index])))
+            while (index < bytes.size() &&
+                   isAsciiPrintable(static_cast<unsigned char>(bytes[index])))
             {
                 ++index;
             }
@@ -494,15 +495,15 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         return;
     }
 
-    const auto emitBinary = [&](auto &&formatSource) {
+    const auto emitBinary = [&](auto &&formatSource)
+    {
         if (instr.operands.size() < 2)
         {
             os << "  " << mnemonic << " #<missing>\n";
             return;
         }
 
-        os << "  " << mnemonic << ' '
-           << formatSource(instr.operands[1]) << ", "
+        os << "  " << mnemonic << ' ' << formatSource(instr.operands[1]) << ", "
            << formatOperand(instr.operands[0], target) << '\n';
     };
 
@@ -710,15 +711,13 @@ std::string AsmEmitter::formatLeaSource(const Operand &operand, const TargetInfo
 /// @return Assembly string representing the call target.
 std::string AsmEmitter::formatCallTarget(const Operand &operand, const TargetInfo &target)
 {
-    return std::visit(Overload{[&](const OpLabel &label) { return label.name; },
-                               [&](const OpReg &reg)
-                               { return std::string{"*"} + formatReg(reg, target); },
-                               [&](const OpMem &mem)
-                               { return std::string{"*"} + formatMem(mem, target); },
-                               [&](const OpImm &imm) { return formatImm(imm); },
-                               [&](const OpRipLabel &label)
-                               { return std::string{"*"} + formatRipLabel(label); }},
-                      operand);
+    return std::visit(
+        Overload{[&](const OpLabel &label) { return label.name; },
+                 [&](const OpReg &reg) { return std::string{"*"} + formatReg(reg, target); },
+                 [&](const OpMem &mem) { return std::string{"*"} + formatMem(mem, target); },
+                 [&](const OpImm &imm) { return formatImm(imm); },
+                 [&](const OpRipLabel &label) { return std::string{"*"} + formatRipLabel(label); }},
+        operand);
 }
 
 /// @brief Translate a Machine IR condition code into an x86 suffix.

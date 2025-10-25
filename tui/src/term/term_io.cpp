@@ -70,9 +70,7 @@ void StringTermIO::write(std::string_view s)
 /// @brief String-backed term IO has no flushing side effects.
 /// @details The capture buffer is always up-to-date, so flushing is effectively
 ///          a no-op.  The method exists to honour the @ref TermIO interface.
-void StringTermIO::flush()
-{
-}
+void StringTermIO::flush() {}
 
 /// @brief Inspect the accumulated terminal output.
 /// @details Provides read-only access to the captured bytes so tests can perform

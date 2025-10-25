@@ -41,4 +41,3 @@ class Utf8Decoder
 };
 
 } // namespace viper::tui::term
-

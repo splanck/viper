@@ -77,4 +77,3 @@ struct PasteEvent
 };
 
 } // namespace viper::tui::term
-

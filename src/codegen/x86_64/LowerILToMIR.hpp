@@ -40,12 +40,12 @@ struct ILValue
         STR
     };
 
-    Kind kind{Kind::I64}; ///< Static type of the value.
-    int id{-1};           ///< SSA identifier (>= 0) or -1 for immediates.
-    double f64{0.0};      ///< Payload for floating constants.
-    int64_t i64{0};       ///< Payload for integer constants.
-    std::string label{};  ///< Payload for label references.
-    std::string str{};    ///< Payload for string literal bytes.
+    Kind kind{Kind::I64};    ///< Static type of the value.
+    int id{-1};              ///< SSA identifier (>= 0) or -1 for immediates.
+    double f64{0.0};         ///< Payload for floating constants.
+    int64_t i64{0};          ///< Payload for integer constants.
+    std::string label{};     ///< Payload for label references.
+    std::string str{};       ///< Payload for string literal bytes.
     std::uint64_t strLen{0}; ///< Length in bytes for string literals.
 };
 

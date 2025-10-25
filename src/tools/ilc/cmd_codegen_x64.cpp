@@ -16,13 +16,13 @@
 #include "il/core/Module.hpp"
 #include "tools/common/module_loader.hpp"
 
+#include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
-#include <cstdint>
-#include <cstddef>
 #include <initializer_list>
+#include <iostream>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -85,9 +85,7 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
     using viper::codegen::x64::ILValue;
 
     auto reportUnsupported = [](std::string detail) [[noreturn]]
-    {
-        viper::codegen::x64::phaseAUnsupported(detail.c_str());
-    };
+    { viper::codegen::x64::phaseAUnsupported(detail.c_str()); };
 
     const auto typeToKind = [&reportUnsupported](const il::core::Type &type) -> ILValue::Kind
     {
@@ -200,9 +198,9 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                 valueKinds[param.id] = kind;
             }
 
-            const auto convertValue = [&reportUnsupported, &valueKinds](
-                                         const il::core::Value &value,
-                                         std::optional<ILValue::Kind> hint) -> ILValue
+            const auto convertValue = [&reportUnsupported,
+                                       &valueKinds](const il::core::Value &value,
+                                                    std::optional<ILValue::Kind> hint) -> ILValue
             {
                 ILValue converted{};
                 converted.id = -1;
@@ -214,7 +212,8 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                         const auto it = valueKinds.find(value.id);
                         if (it == valueKinds.end())
                         {
-                            reportUnsupported("ssa temp without registered kind in Phase A lowering");
+                            reportUnsupported(
+                                "ssa temp without registered kind in Phase A lowering");
                         }
                         converted.kind = it->second;
                         converted.id = static_cast<int>(value.id);
@@ -222,7 +221,8 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                     }
                     case il::core::Value::Kind::ConstInt:
                     {
-                        converted.kind = hint.value_or(value.isBool ? ILValue::Kind::I1 : ILValue::Kind::I64);
+                        converted.kind =
+                            hint.value_or(value.isBool ? ILValue::Kind::I1 : ILValue::Kind::I64);
                         converted.i64 = value.i64;
                         break;
                     }
@@ -253,15 +253,17 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                 return converted;
             };
 
-            const auto convertOperands = [&](const il::core::Instr &instr,
-                                             std::initializer_list<std::optional<ILValue::Kind>> hints,
-                                             viper::codegen::x64::ILInstr &out)
+            const auto convertOperands =
+                [&](const il::core::Instr &instr,
+                    std::initializer_list<std::optional<ILValue::Kind>> hints,
+                    viper::codegen::x64::ILInstr &out)
             {
                 std::size_t index = 0;
                 for (const auto &operand : instr.operands)
                 {
-                    const std::optional<ILValue::Kind> hint = index < hints.size() ? *(hints.begin() + static_cast<std::ptrdiff_t>(index))
-                                                                                    : std::optional<ILValue::Kind>{};
+                    const std::optional<ILValue::Kind> hint =
+                        index < hints.size() ? *(hints.begin() + static_cast<std::ptrdiff_t>(index))
+                                             : std::optional<ILValue::Kind>{};
                     out.ops.push_back(convertValue(operand, hint));
                     ++index;
                 }
@@ -354,10 +356,14 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                     {
                         setResultKind(instr.type);
                         adaptedInstr.opcode = "cmp";
-                        const bool isFloat = instr.op == il::core::Opcode::FCmpEQ || instr.op == il::core::Opcode::FCmpNE ||
-                                             instr.op == il::core::Opcode::FCmpLT || instr.op == il::core::Opcode::FCmpLE ||
-                                             instr.op == il::core::Opcode::FCmpGT || instr.op == il::core::Opcode::FCmpGE;
-                        const ILValue::Kind operandKind = isFloat ? ILValue::Kind::F64 : ILValue::Kind::I64;
+                        const bool isFloat = instr.op == il::core::Opcode::FCmpEQ ||
+                                             instr.op == il::core::Opcode::FCmpNE ||
+                                             instr.op == il::core::Opcode::FCmpLT ||
+                                             instr.op == il::core::Opcode::FCmpLE ||
+                                             instr.op == il::core::Opcode::FCmpGT ||
+                                             instr.op == il::core::Opcode::FCmpGE;
+                        const ILValue::Kind operandKind =
+                            isFloat ? ILValue::Kind::F64 : ILValue::Kind::I64;
                         convertOperands(instr, {operandKind, operandKind}, adaptedInstr);
                         adaptedInstr.ops.push_back(makeCondImmediate(condCodeFor(instr.op)));
                         break;
@@ -366,7 +372,8 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                     {
                         const ILValue::Kind resultKind = setResultKind(instr.type);
                         adaptedInstr.opcode = "select";
-                        convertOperands(instr, {ILValue::Kind::I1, resultKind, resultKind}, adaptedInstr);
+                        convertOperands(
+                            instr, {ILValue::Kind::I1, resultKind, resultKind}, adaptedInstr);
                         break;
                     }
                     case il::core::Opcode::Call:
@@ -391,7 +398,8 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                     {
                         const ILValue::Kind resultKind = setResultKind(instr.type);
                         adaptedInstr.opcode = "load";
-                        convertOperands(instr, {ILValue::Kind::PTR, ILValue::Kind::I64}, adaptedInstr);
+                        convertOperands(
+                            instr, {ILValue::Kind::PTR, ILValue::Kind::I64}, adaptedInstr);
                         if (adaptedInstr.ops.size() > 2)
                         {
                             adaptedInstr.ops.resize(2);
@@ -402,7 +410,9 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                     case il::core::Opcode::Store:
                     {
                         adaptedInstr.opcode = "store";
-                        convertOperands(instr, {std::nullopt, ILValue::Kind::PTR, ILValue::Kind::I64}, adaptedInstr);
+                        convertOperands(instr,
+                                        {std::nullopt, ILValue::Kind::PTR, ILValue::Kind::I64},
+                                        adaptedInstr);
                         if (adaptedInstr.ops.size() > 3)
                         {
                             adaptedInstr.ops.resize(3);
@@ -447,7 +457,8 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                             adaptedInstr.ops.push_back(makeLabelValue(instr.labels.front()));
                         }
                         const std::size_t succCount = instr.labels.size();
-                        adaptedBlock.terminatorEdges.reserve(adaptedBlock.terminatorEdges.size() + succCount);
+                        adaptedBlock.terminatorEdges.reserve(adaptedBlock.terminatorEdges.size() +
+                                                             succCount);
                         for (std::size_t idx = 0; idx < succCount; ++idx)
                         {
                             ILBlock::EdgeArg edge{};
@@ -458,7 +469,8 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                                 {
                                     if (arg.kind != il::core::Value::Kind::Temp)
                                     {
-                                        reportUnsupported("non-SSA block argument in Phase A lowering");
+                                        reportUnsupported(
+                                            "non-SSA block argument in Phase A lowering");
                                     }
                                     edge.argIds.push_back(static_cast<int>(arg.id));
                                 }
@@ -474,13 +486,15 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                         {
                             reportUnsupported("conditional branch missing condition operand");
                         }
-                        adaptedInstr.ops.push_back(convertValue(instr.operands.front(), ILValue::Kind::I1));
+                        adaptedInstr.ops.push_back(
+                            convertValue(instr.operands.front(), ILValue::Kind::I1));
                         const std::size_t succCount = instr.labels.size();
                         for (std::size_t idx = 0; idx < succCount; ++idx)
                         {
                             adaptedInstr.ops.push_back(makeLabelValue(instr.labels[idx]));
                         }
-                        adaptedBlock.terminatorEdges.reserve(adaptedBlock.terminatorEdges.size() + succCount);
+                        adaptedBlock.terminatorEdges.reserve(adaptedBlock.terminatorEdges.size() +
+                                                             succCount);
                         for (std::size_t idx = 0; idx < succCount; ++idx)
                         {
                             ILBlock::EdgeArg edge{};
@@ -491,7 +505,8 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                                 {
                                     if (arg.kind != il::core::Value::Kind::Temp)
                                     {
-                                        reportUnsupported("non-SSA block argument in Phase A lowering");
+                                        reportUnsupported(
+                                            "non-SSA block argument in Phase A lowering");
                                     }
                                     edge.argIds.push_back(static_cast<int>(arg.id));
                                 }
@@ -505,15 +520,18 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                         adaptedInstr.opcode = "ret";
                         if (!instr.operands.empty())
                         {
-                            const auto returnKind = func.retType.kind == il::core::Type::Kind::Void
-                                                        ? std::optional<ILValue::Kind>{}
-                                                        : std::optional<ILValue::Kind>{typeToKind(func.retType)};
-                            adaptedInstr.ops.push_back(convertValue(instr.operands.front(), returnKind));
+                            const auto returnKind =
+                                func.retType.kind == il::core::Type::Kind::Void
+                                    ? std::optional<ILValue::Kind>{}
+                                    : std::optional<ILValue::Kind>{typeToKind(func.retType)};
+                            adaptedInstr.ops.push_back(
+                                convertValue(instr.operands.front(), returnKind));
                         }
                         break;
                     }
                     default:
-                        reportUnsupported(std::string{"IL opcode '"} + il::core::toString(instr.op) +
+                        reportUnsupported(std::string{"IL opcode '"} +
+                                          il::core::toString(instr.op) +
                                           "' not supported by x86-64 Phase A");
                 }
 
@@ -636,7 +654,8 @@ int invokeLinker(const std::filesystem::path &asmPath, const std::filesystem::pa
     std::ostringstream cmd;
     cmd << "cc \"" << asmPath.string() << "\" -o \"" << exePath.string() << "\"";
     const std::string command = cmd.str();
-    const int status = std::system(command.c_str()); // TODO: replace with process management that captures output.
+    const int status =
+        std::system(command.c_str()); // TODO: replace with process management that captures output.
     if (status == -1)
     {
         std::cerr << "error: failed to launch system linker command\n";
@@ -656,7 +675,8 @@ int runExecutable(const std::filesystem::path &exePath)
     std::ostringstream cmd;
     cmd << "\"" << exePath.string() << "\"";
     const std::string command = cmd.str();
-    const int status = std::system(command.c_str()); // TODO: replace with process management that captures output.
+    const int status =
+        std::system(command.c_str()); // TODO: replace with process management that captures output.
     if (status == -1)
     {
         std::cerr << "error: failed to execute '" << exePath.string() << "'\n";
@@ -677,7 +697,8 @@ int cmd_codegen_x64(int argc, char **argv)
     const CodegenConfig config = *configOpt;
 
     il::core::Module module;
-    const auto loadResult = il::tools::common::loadModuleFromFile(config.inputPath, module, std::cerr);
+    const auto loadResult =
+        il::tools::common::loadModuleFromFile(config.inputPath, module, std::cerr);
     if (!loadResult.succeeded())
     {
         return 1;
@@ -688,15 +709,17 @@ int cmd_codegen_x64(int argc, char **argv)
     }
 
     const viper::codegen::x64::ILModule adapted = convertToAdapterModule(module);
-    const viper::codegen::x64::CodegenResult result = viper::codegen::x64::emitModuleToAssembly(adapted, {});
+    const viper::codegen::x64::CodegenResult result =
+        viper::codegen::x64::emitModuleToAssembly(adapted, {});
     if (!result.errors.empty())
     {
         std::cerr << "error: x64 codegen failed:\n" << result.errors << "\n";
         return 1;
     }
 
-    const std::filesystem::path asmPath = config.assemblyPath ? std::filesystem::path(*config.assemblyPath)
-                                                              : deriveAssemblyPath(config);
+    const std::filesystem::path asmPath = config.assemblyPath
+                                              ? std::filesystem::path(*config.assemblyPath)
+                                              : deriveAssemblyPath(config);
     if (!writeAssemblyFile(asmPath, result.asmText))
     {
         return 1;
@@ -708,8 +731,9 @@ int cmd_codegen_x64(int argc, char **argv)
         return 0;
     }
 
-    const std::filesystem::path exePath = config.executablePath ? std::filesystem::path(*config.executablePath)
-                                                                : deriveExecutablePath(config);
+    const std::filesystem::path exePath = config.executablePath
+                                              ? std::filesystem::path(*config.executablePath)
+                                              : deriveExecutablePath(config);
     const int linkExit = invokeLinker(asmPath, exePath);
     if (linkExit != 0)
     {
@@ -736,4 +760,3 @@ void register_codegen_x64_commands(CLI &cli)
 }
 
 } // namespace viper::tools::ilc
-

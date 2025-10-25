@@ -116,8 +116,8 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
             const VReg temp = makeTempVReg(RegClass::XMM);
             Operand tempOperand = makeVRegOperand(temp.cls, temp.id);
             const Operand ripOperand = makeRipLabelOperand(label);
-            block.append(
-                MInstr::make(MOpcode::MOVSDrm, std::vector<Operand>{cloneOperand(tempOperand), ripOperand}));
+            block.append(MInstr::make(MOpcode::MOVSDrm,
+                                      std::vector<Operand>{cloneOperand(tempOperand), ripOperand}));
             return tempOperand;
         }
         case ILValue::Kind::STR:
@@ -136,34 +136,38 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
             const int poolIndex = roDataPool_->addStringLiteral(std::move(literalBytes));
             const std::string label = roDataPool_->stringLabel(poolIndex);
             const auto literalLen = roDataPool_->stringByteLength(poolIndex);
-            assert(literalLen <= static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()));
+            assert(literalLen <=
+                   static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()));
 
             const Operand ripOperand = makeRipLabelOperand(label);
             const VReg ptrTmp = makeTempVReg(RegClass::GPR);
             const Operand ptrTmpOp = makeVRegOperand(ptrTmp.cls, ptrTmp.id);
-            block.append(MInstr::make(MOpcode::LEA, std::vector<Operand>{cloneOperand(ptrTmpOp), ripOperand}));
+            block.append(MInstr::make(MOpcode::LEA,
+                                      std::vector<Operand>{cloneOperand(ptrTmpOp), ripOperand}));
 
-            const Operand ptrArg = makePhysRegOperand(
-                RegClass::GPR, static_cast<uint16_t>(target_->intArgOrder[0]));
-            const Operand lenArg = makePhysRegOperand(
-                RegClass::GPR, static_cast<uint16_t>(target_->intArgOrder[1]));
+            const Operand ptrArg =
+                makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(target_->intArgOrder[0]));
+            const Operand lenArg =
+                makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(target_->intArgOrder[1]));
 
-            block.append(MInstr::make(
-                MOpcode::MOVrr, std::vector<Operand>{cloneOperand(ptrArg), cloneOperand(ptrTmpOp)}));
+            block.append(
+                MInstr::make(MOpcode::MOVrr,
+                             std::vector<Operand>{cloneOperand(ptrArg), cloneOperand(ptrTmpOp)}));
 
             const auto lenImm = static_cast<int64_t>(literalLen);
-            block.append(MInstr::make(
-                MOpcode::MOVri, std::vector<Operand>{cloneOperand(lenArg), makeImmOperand(lenImm)}));
+            block.append(
+                MInstr::make(MOpcode::MOVri,
+                             std::vector<Operand>{cloneOperand(lenArg), makeImmOperand(lenImm)}));
 
             const Operand callTarget = x64::makeLabelOperand(std::string{"rt_str_from_lit"});
             block.append(MInstr::make(MOpcode::CALL, std::vector<Operand>{callTarget}));
 
             const VReg result = makeTempVReg(RegClass::GPR);
             const Operand resultOp = makeVRegOperand(result.cls, result.id);
-            const Operand retReg = makePhysRegOperand(
-                RegClass::GPR, static_cast<uint16_t>(target_->intReturnReg));
-            block.append(MInstr::make(
-                MOpcode::MOVrr, std::vector<Operand>{cloneOperand(resultOp), retReg}));
+            const Operand retReg =
+                makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(target_->intReturnReg));
+            block.append(
+                MInstr::make(MOpcode::MOVrr, std::vector<Operand>{cloneOperand(resultOp), retReg}));
             return resultOp;
         }
         case ILValue::Kind::LABEL:
@@ -237,8 +241,8 @@ void LowerILToMIR::lowerShift(const ILInstr &instr,
     if (auto *imm = std::get_if<OpImm>(&rhs))
     {
         const auto masked = static_cast<int64_t>(static_cast<std::uint8_t>(imm->val));
-        block.append(MInstr::make(opcImm,
-                                  std::vector<Operand>{cloneOperand(dest), makeImmOperand(masked)}));
+        block.append(
+            MInstr::make(opcImm, std::vector<Operand>{cloneOperand(dest), makeImmOperand(masked)}));
         return;
     }
 
@@ -255,13 +259,11 @@ void LowerILToMIR::lowerShift(const ILInstr &instr,
     if (!alreadyCl)
     {
         block.append(MInstr::make(
-            MOpcode::MOVrr,
-            std::vector<Operand>{cloneOperand(clOperand), cloneOperand(rhs)}));
+            MOpcode::MOVrr, std::vector<Operand>{cloneOperand(clOperand), cloneOperand(rhs)}));
     }
 
     block.append(
-        MInstr::make(opcReg,
-                     std::vector<Operand>{cloneOperand(dest), cloneOperand(clOperand)}));
+        MInstr::make(opcReg, std::vector<Operand>{cloneOperand(dest), cloneOperand(clOperand)}));
 }
 
 void LowerILToMIR::lowerCmp(const ILInstr &instr, MBasicBlock &block, RegClass cls)
@@ -314,8 +316,8 @@ void LowerILToMIR::lowerSelect(const ILInstr &instr, MBasicBlock &block)
         {
             const VReg tmpVReg{nextVReg_++, destReg.cls};
             cmovSource = makeVRegOperand(tmpVReg.cls, tmpVReg.id);
-            block.append(MInstr::make(
-                MOpcode::MOVri, std::vector<Operand>{cloneOperand(cmovSource), trueVal}));
+            block.append(MInstr::make(MOpcode::MOVri,
+                                      std::vector<Operand>{cloneOperand(cmovSource), trueVal}));
         }
 
         const bool falseIsImm = std::holds_alternative<OpImm>(falseVal);
@@ -327,8 +329,8 @@ void LowerILToMIR::lowerSelect(const ILInstr &instr, MBasicBlock &block)
             MInstr::make(falseIsImm ? MOpcode::MOVri : MOpcode::MOVrr, std::move(movOperands)));
 
         block.append(MInstr::make(MOpcode::TESTrr, std::vector<Operand>{cloneOperand(cond), cond}));
-        block.append(MInstr::make(
-            MOpcode::SETcc, std::vector<Operand>{makeImmOperand(1), cloneOperand(dest)}));
+        block.append(MInstr::make(MOpcode::SETcc,
+                                  std::vector<Operand>{makeImmOperand(1), cloneOperand(dest)}));
         return;
     }
 
@@ -397,7 +399,8 @@ void LowerILToMIR::lowerReturn(const ILInstr &instr, MBasicBlock &block)
         }
     }
 
-    const auto materialiseToReg = [this, &block](Operand operand, RegClass expectedCls) -> Operand {
+    const auto materialiseToReg = [this, &block](Operand operand, RegClass expectedCls) -> Operand
+    {
         if (std::holds_alternative<OpReg>(operand))
         {
             return operand;
@@ -408,12 +411,13 @@ void LowerILToMIR::lowerReturn(const ILInstr &instr, MBasicBlock &block)
 
         if (std::holds_alternative<OpImm>(operand))
         {
-            block.append(MInstr::make(
-                MOpcode::MOVri, {cloneOperand(tmpOp), cloneOperand(operand)}));
+            block.append(
+                MInstr::make(MOpcode::MOVri, {cloneOperand(tmpOp), cloneOperand(operand)}));
         }
         else if (std::holds_alternative<OpMem>(operand))
         {
-            const MOpcode loadOpc = expectedCls == RegClass::XMM ? MOpcode::MOVSDmr : MOpcode::MOVrr;
+            const MOpcode loadOpc =
+                expectedCls == RegClass::XMM ? MOpcode::MOVSDmr : MOpcode::MOVrr;
             block.append(MInstr::make(loadOpc, {cloneOperand(tmpOp), cloneOperand(operand)}));
         }
         else if (std::holds_alternative<OpLabel>(operand))
@@ -433,22 +437,22 @@ void LowerILToMIR::lowerReturn(const ILInstr &instr, MBasicBlock &block)
         {
             const VReg zx{nextVReg_++, RegClass::GPR};
             const Operand zxOp = makeVRegOperand(zx.cls, zx.id);
-            block.append(MInstr::make(MOpcode::MOVZXrr32, {cloneOperand(zxOp), cloneOperand(srcReg)}));
+            block.append(
+                MInstr::make(MOpcode::MOVZXrr32, {cloneOperand(zxOp), cloneOperand(srcReg)}));
             srcReg = zxOp;
         }
     }
 
     if (cls == RegClass::XMM)
     {
-        const Operand retReg = makePhysRegOperand(
-            RegClass::XMM, static_cast<uint16_t>(target_->f64ReturnReg));
-        block.append(
-            MInstr::make(MOpcode::MOVSDrr, {retReg, cloneOperand(srcReg)}));
+        const Operand retReg =
+            makePhysRegOperand(RegClass::XMM, static_cast<uint16_t>(target_->f64ReturnReg));
+        block.append(MInstr::make(MOpcode::MOVSDrr, {retReg, cloneOperand(srcReg)}));
     }
     else
     {
-        const Operand retReg = makePhysRegOperand(
-            RegClass::GPR, static_cast<uint16_t>(target_->intReturnReg));
+        const Operand retReg =
+            makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(target_->intReturnReg));
         block.append(MInstr::make(MOpcode::MOVrr, {retReg, cloneOperand(srcReg)}));
     }
 

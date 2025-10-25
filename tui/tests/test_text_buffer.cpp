@@ -51,46 +51,54 @@ int main()
     assert(buf.getLine(0) == "bye, there");
 
     std::size_t visited = 0;
-    buf.forEachLine([&](std::size_t lineNo, const TextBuffer::LineView &view) {
-        std::string reconstructed;
-        std::size_t segments = 0;
-        view.forEachSegment([&](std::string_view segment) {
-            reconstructed.append(segment);
-            ++segments;
+    buf.forEachLine(
+        [&](std::size_t lineNo, const TextBuffer::LineView &view)
+        {
+            std::string reconstructed;
+            std::size_t segments = 0;
+            view.forEachSegment(
+                [&](std::string_view segment)
+                {
+                    reconstructed.append(segment);
+                    ++segments;
+                    return true;
+                });
+
+            if (lineNo == 0)
+            {
+                assert(reconstructed == "bye, there");
+                assert(segments >= 2);
+            }
+            else if (lineNo == 1)
+            {
+                assert(reconstructed == "beautiful");
+            }
+            else if (lineNo == 2)
+            {
+                assert(reconstructed == "world");
+            }
+
+            ++visited;
             return true;
         });
-
-        if (lineNo == 0)
-        {
-            assert(reconstructed == "bye, there");
-            assert(segments >= 2);
-        }
-        else if (lineNo == 1)
-        {
-            assert(reconstructed == "beautiful");
-        }
-        else if (lineNo == 2)
-        {
-            assert(reconstructed == "world");
-        }
-
-        ++visited;
-        return true;
-    });
     assert(visited == buf.lineCount());
 
     visited = 0;
-    buf.forEachLine([&](std::size_t lineNo, const TextBuffer::LineView &) {
-        ++visited;
-        return lineNo < 1;
-    });
+    buf.forEachLine(
+        [&](std::size_t lineNo, const TextBuffer::LineView &)
+        {
+            ++visited;
+            return lineNo < 1;
+        });
     assert(visited == 2);
 
     std::size_t segmentVisits = 0;
-    buf.lineView(0).forEachSegment([&](std::string_view) {
-        ++segmentVisits;
-        return false;
-    });
+    buf.lineView(0).forEachSegment(
+        [&](std::string_view)
+        {
+            ++segmentVisits;
+            return false;
+        });
     assert(segmentVisits == 1);
 
     return 0;
