@@ -56,6 +56,7 @@ std::string captureTrap(bool includeMetadata, bool primeContext)
             auto &ctx = il::vm::VMTestHook::runtimeContext(vm);
             ctx.function = kFirstFunction;
             ctx.block = kFirstBlock;
+            ctx.loc = {1, 1, 1};
             gExitVm = &vm;
             gReportContext = true;
             std::atexit(reportRuntimeContext);
@@ -95,12 +96,15 @@ int main()
     const std::string firstDiag = captureTrap(true, false);
     assert(firstDiag.find("Trap @first_fn") != std::string::npos);
     assert(firstDiag.find("first trap") != std::string::npos);
+    assert(firstDiag.find("line 1") != std::string::npos);
 
     const std::string secondDiag = captureTrap(false, true);
     assert(secondDiag.find("Trap @first_fn") == std::string::npos);
     assert(secondDiag.find("<unknown>") != std::string::npos);
     assert(secondDiag.find("second trap") != std::string::npos);
     assert(secondDiag.find("runtime-context: fn='' block=''\n") != std::string::npos);
+    assert(secondDiag.find("line -1") != std::string::npos);
+    assert(secondDiag.find("line 1") == std::string::npos);
 
     return 0;
 }
