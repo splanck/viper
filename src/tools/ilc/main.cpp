@@ -18,6 +18,7 @@
 ///          such as pass management or VM execution is delegated to subcommands.
 
 #include "cli.hpp"
+#include "cmd_codegen_x64.hpp"
 #include "frontends/basic/Intrinsics.hpp"
 #include "il/core/Module.hpp"
 #include <iostream>
@@ -64,6 +65,7 @@ void usage()
         << "       ilc front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>] "
            "[--max-steps N] [--break label|file:line]* [--break-src file:line]* [--bounds-checks] "
            "[--dump-trap]\n"
+        << "       ilc codegen x64 -S <in.il> [-o <exe>] [--run-native]\n"
         << "       ilc il-opt <in.il> -o <out.il> --passes p1,p2\n"
         << "\nIL notes:\n"
         << "  IL modules executed with -run must define func @main().\n"
@@ -75,6 +77,25 @@ void usage()
     il::frontends::basic::intrinsics::dumpNames(std::cerr);
     std::cerr << "\n";
 }
+
+namespace viper::tools::ilc
+{
+
+/// @brief Adapter invoked by `ilc codegen x64` from the top-level driver.
+/// @details The driver hands control to this helper with `argv` still pointing
+///          at the architecture token. The helper strips it before delegating to
+///          the actual command implementation so existing parsing logic
+///          continues to expect the IL input path as the leading argument.
+/// @param argc Number of command-line arguments following the "codegen"
+///             subcommand.
+/// @param argv Argument vector beginning with the target architecture token.
+/// @return Exit status propagated from @ref cmd_codegen_x64.
+int run_codegen_x64(int argc, char **argv)
+{
+    return cmd_codegen_x64(argc - 1, argv + 1);
+}
+
+} // namespace viper::tools::ilc
 
 /// @brief Program entry for the `ilc` command-line tool.
 ///
@@ -109,6 +130,15 @@ int main(int argc, char **argv)
     if (cmd == "il-opt")
     {
         return cmdILOpt(argc - 2, argv + 2);
+    }
+    if (cmd == "codegen")
+    {
+        if (argc >= 3 && std::string_view(argv[2]) == "x64")
+        {
+            return viper::tools::ilc::run_codegen_x64(argc - 2, argv + 2);
+        }
+        usage();
+        return 1;
     }
     if (cmd == "front" && argc >= 3 && std::string(argv[2]) == "basic")
     {
