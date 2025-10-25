@@ -78,7 +78,7 @@ enum class MOpcode
     LEA,       ///< Load effective address into register.
     ADDrr,     ///< Add registers.
     ADDri,     ///< Add immediate to register.
-    ANDri,     ///< Bitwise AND register with immediate.
+    ANDri,     ///< Bitwise AND register with immediate (stack alignment guard).
     SUBrr,     ///< Subtract registers.
     SHLri,     ///< Shift left by immediate (imm8).
     SHLrc,     ///< Shift left by CL register.
@@ -101,7 +101,7 @@ enum class MOpcode
     JCC,       ///< Conditional jump.
     LABEL,     ///< In-block label definition.
     CALL,      ///< Call near label or register.
-    UD2,       ///< Undefined instruction used to flag hard failures.
+    UD2,       ///< Undefined instruction used to flag hard failures (alignment trap).
     RET,       ///< Return from function.
     PX_COPY,   ///< Parallel copy pseudo-instruction for phi lowering.
     FADD,      ///< Floating-point add (scalar double).

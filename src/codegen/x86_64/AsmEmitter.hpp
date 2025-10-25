@@ -28,6 +28,7 @@ namespace viper::codegen::x64
 {
 
 /// \brief Emits AT&T-style assembly for Machine IR functions and rodata pools.
+/// \details Includes support for trap sequences (UD2) and alignment masks (ANDri).
 class AsmEmitter
 {
   public:
