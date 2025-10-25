@@ -49,7 +49,7 @@ namespace
         case MOpcode::ADDri:
             return "ADDri";
         case MOpcode::ANDri:
-            return "ANDri";
+            return "ANDri"; // used by stack alignment instrumentation
         case MOpcode::SUBrr:
             return "SUBrr";
         case MOpcode::SHLri:
@@ -95,7 +95,7 @@ namespace
         case MOpcode::CALL:
             return "CALL";
         case MOpcode::UD2:
-            return "UD2";
+            return "UD2"; // traps hard alignment failures
         case MOpcode::RET:
             return "RET";
         case MOpcode::PX_COPY:
