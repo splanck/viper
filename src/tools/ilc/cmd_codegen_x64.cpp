@@ -316,6 +316,26 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                         convertOperands(instr, {kind, kind}, adaptedInstr);
                         break;
                     }
+                    case il::core::Opcode::SDiv:
+                    case il::core::Opcode::SDivChk0:
+                    {
+                        setResultKind(instr.type);
+                        adaptedInstr.opcode = "sdiv";
+                        convertOperands(instr,
+                                        {ILValue::Kind::I64, ILValue::Kind::I64},
+                                        adaptedInstr);
+                        break;
+                    }
+                    case il::core::Opcode::SRem:
+                    case il::core::Opcode::SRemChk0:
+                    {
+                        setResultKind(instr.type);
+                        adaptedInstr.opcode = "srem";
+                        convertOperands(instr,
+                                        {ILValue::Kind::I64, ILValue::Kind::I64},
+                                        adaptedInstr);
+                        break;
+                    }
                     case il::core::Opcode::Shl:
                     {
                         const ILValue::Kind kind = setResultKind(instr.type);
