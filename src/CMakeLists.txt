@@ -1,4 +1,5 @@
 add_subdirectory(support)
+add_subdirectory(codegen/x86_64)
 
 add_library(viper_il_core STATIC
         il/core/OpcodeInfo.cpp

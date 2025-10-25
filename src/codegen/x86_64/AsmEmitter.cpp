@@ -22,6 +22,7 @@
 #include "AsmEmitter.hpp"
 
 #include <bit>
+#include <cassert>
 #include <cstdint>
 #include <iomanip>
 #include <sstream>
@@ -44,34 +45,83 @@ template <typename... Ts> struct Overload : Ts...
 
 template <typename... Ts> Overload(Ts...) -> Overload<Ts...>;
 
-/// @brief Pretty-print a byte buffer using AT&T `.byte` directives.
-/// @details Emits up to 16 comma-separated byte literals per line. When the
-///          buffer is empty a comment line is written so the output still
-///          conveys that the literal was intentionally empty.
+/// @brief Determine whether @p ch is printable ASCII suitable for `.ascii`.
+/// @param ch Byte under consideration.
+/// @return True when @p ch falls within the printable ASCII range.
+[[nodiscard]] bool isAsciiPrintable(unsigned char ch) noexcept
+{
+    return ch >= 0x20U && ch <= 0x7EU;
+}
+
+/// @brief Escape a run of printable characters for insertion into `.ascii`.
+/// @param chunk Sequence of bytes to escape.
+/// @return Escaped string with quotes and backslashes protected.
+[[nodiscard]] std::string escapeAsciiChunk(std::string_view chunk)
+{
+    std::string escaped{};
+    escaped.reserve(chunk.size());
+    for (const unsigned char ch : chunk)
+    {
+        if (ch == static_cast<unsigned char>('\\') || ch == static_cast<unsigned char>('"'))
+        {
+            escaped.push_back('\\');
+        }
+        escaped.push_back(static_cast<char>(ch));
+    }
+    return escaped;
+}
+
+/// @brief Pretty-print a byte buffer using `.ascii`/`.byte` directives.
+/// @details Groups printable runs into `.ascii` directives for readability and
+///          falls back to `.byte` for non-printable data, emitting up to sixteen
+///          entries per `.byte` line. Empty literals generate a comment marker.
 /// @param bytes Raw literal payload destined for the `.rodata` section.
 /// @return Assembly text representing @p bytes.
 [[nodiscard]] std::string formatBytes(const std::string &bytes)
 {
     std::ostringstream os;
-    constexpr std::size_t kBytesPerLine = 16U;
-    for (std::size_t i = 0; i < bytes.size();)
-    {
-        os << "  .byte ";
-        for (std::size_t j = 0; j < kBytesPerLine && i < bytes.size(); ++j, ++i)
-        {
-            if (j != 0)
-            {
-                os << ", ";
-            }
-            const auto value = static_cast<unsigned>(static_cast<unsigned char>(bytes[i]));
-            os << value;
-        }
-        os << '\n';
-    }
     if (bytes.empty())
     {
         os << "  # empty literal\n";
+        return os.str();
     }
+
+    std::size_t index = 0;
+    while (index < bytes.size())
+    {
+        const unsigned char current = static_cast<unsigned char>(bytes[index]);
+        if (isAsciiPrintable(current))
+        {
+            const std::size_t begin = index;
+            while (index < bytes.size() && isAsciiPrintable(static_cast<unsigned char>(bytes[index])))
+            {
+                ++index;
+            }
+            const std::string_view view{bytes.data() + begin, index - begin};
+            os << "  .ascii \"" << escapeAsciiChunk(view) << "\"\n";
+            continue;
+        }
+
+        os << "  .byte ";
+        std::size_t emitted = 0;
+        while (index < bytes.size() && emitted < 16U)
+        {
+            const unsigned char byteVal = static_cast<unsigned char>(bytes[index]);
+            if (isAsciiPrintable(byteVal))
+            {
+                break;
+            }
+            if (emitted != 0)
+            {
+                os << ", ";
+            }
+            os << static_cast<unsigned>(byteVal);
+            ++index;
+            ++emitted;
+        }
+        os << '\n';
+    }
+
     return os.str();
 }
 
@@ -91,6 +141,7 @@ int AsmEmitter::RoDataPool::addStringLiteral(std::string bytes)
     }
     const int index = static_cast<int>(stringLiterals_.size());
     stringLookup_.emplace(bytes, index);
+    stringLengths_.push_back(bytes.size());
     stringLiterals_.push_back(std::move(bytes));
     return index;
 }
@@ -121,6 +172,17 @@ std::string AsmEmitter::RoDataPool::stringLabel(int index) const
     return ".LC_str_" + std::to_string(index);
 }
 
+/// @brief Retrieve the byte length recorded for a string literal entry.
+/// @param index Pool index supplied by @ref addStringLiteral.
+/// @return Number of bytes stored for the literal.
+std::size_t AsmEmitter::RoDataPool::stringByteLength(int index) const
+{
+    assert(index >= 0);
+    const auto idx = static_cast<std::size_t>(index);
+    assert(idx < stringLengths_.size());
+    return stringLengths_[idx];
+}
+
 /// @brief Generate the assembly label for a stored 64-bit float literal.
 /// @param index Pool index returned by @ref addF64Literal.
 /// @return Mangled label suitable for use in assembly.
@@ -140,6 +202,7 @@ void AsmEmitter::RoDataPool::emit(std::ostream &os) const
     {
         return;
     }
+    assert(stringLiterals_.size() == stringLengths_.size());
     os << ".section .rodata\n";
     for (std::size_t i = 0; i < stringLiterals_.size(); ++i)
     {
@@ -457,6 +520,7 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         }
         case MOpcode::MOVri:
         case MOpcode::ADDri:
+        case MOpcode::ANDri:
         case MOpcode::CMPri:
         case MOpcode::SHLri:
         case MOpcode::SHRri:
@@ -735,6 +799,8 @@ const char *AsmEmitter::mnemonicFor(MOpcode opcode) noexcept
         case MOpcode::ADDrr:
         case MOpcode::ADDri:
             return "addq";
+        case MOpcode::ANDri:
+            return "andq";
         case MOpcode::SUBrr:
             return "subq";
         case MOpcode::SHLri:
@@ -772,6 +838,8 @@ const char *AsmEmitter::mnemonicFor(MOpcode opcode) noexcept
             return "j";
         case MOpcode::CALL:
             return "callq";
+        case MOpcode::UD2:
+            return "ud2";
         case MOpcode::RET:
             return "ret";
         case MOpcode::PX_COPY:
