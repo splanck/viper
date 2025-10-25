@@ -48,6 +48,8 @@ namespace
             return "ADDrr";
         case MOpcode::ADDri:
             return "ADDri";
+        case MOpcode::ANDri:
+            return "ANDri";
         case MOpcode::SUBrr:
             return "SUBrr";
         case MOpcode::SHLri:
@@ -92,6 +94,8 @@ namespace
             return "LABEL";
         case MOpcode::CALL:
             return "CALL";
+        case MOpcode::UD2:
+            return "UD2";
         case MOpcode::RET:
             return "RET";
         case MOpcode::PX_COPY:
