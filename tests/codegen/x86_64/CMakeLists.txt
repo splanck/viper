@@ -3,23 +3,33 @@
 # Purpose: Build the x86-64 codegen smoke tests that exercise the adapter
 #          ILModule facade and verify minimal assembly output.
 
-viper_add_test(
-  test_codegen_x86_64_add_ret
-  ${VIPER_TESTS_DIR}/codegen/x86_64/test_add_ret.cpp
-  TEST_NAME codegen_x86_64_add_ret)
+set(_viper_codegen_x86_64_tests
+    add_ret
+    select_cmov
+    string_literal)
 
-target_link_libraries(test_codegen_x86_64_add_ret PRIVATE il_codegen_x86_64)
+set(_viper_codegen_x86_64_has_gtest OFF)
+if(TARGET GTest::gtest_main OR TARGET GTest::gtest OR TARGET gtest_main OR TARGET gtest)
+  set(_viper_codegen_x86_64_has_gtest ON)
+endif()
 
-viper_add_test(
-  test_codegen_x86_64_select_cmov
-  ${VIPER_TESTS_DIR}/codegen/x86_64/test_select_cmov.cpp
-  TEST_NAME codegen_x86_64_select_cmov)
+foreach(_viper_codegen_case IN LISTS _viper_codegen_x86_64_tests)
+  set(_viper_codegen_target test_codegen_x86_64_${_viper_codegen_case})
+  set(_viper_codegen_source
+      ${VIPER_TESTS_DIR}/codegen/x86_64/test_${_viper_codegen_case}.cpp)
 
-target_link_libraries(test_codegen_x86_64_select_cmov PRIVATE il_codegen_x86_64)
+  if(_viper_codegen_x86_64_has_gtest)
+    viper_add_test(
+      ${_viper_codegen_target}
+      ${_viper_codegen_source}
+      TEST_NAME codegen_x86_64_${_viper_codegen_case})
+  else()
+    add_executable(${_viper_codegen_target} ${_viper_codegen_source})
+    target_link_libraries(${_viper_codegen_target} PRIVATE viper_testing)
+    add_test(
+      NAME codegen_x86_64_${_viper_codegen_case}
+      COMMAND ${_viper_codegen_target})
+  endif()
 
-viper_add_test(
-  test_codegen_x86_64_string_literal
-  ${VIPER_TESTS_DIR}/codegen/x86_64/test_string_literal.cpp
-  TEST_NAME codegen_x86_64_string_literal)
-
-target_link_libraries(test_codegen_x86_64_string_literal PRIVATE il_codegen_x86_64)
+  target_link_libraries(${_viper_codegen_target} PRIVATE viper_codegen_x86_64)
+endforeach()

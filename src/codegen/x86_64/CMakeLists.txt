@@ -7,8 +7,10 @@ add_library(viper_codegen_x86_64 STATIC
     CallLowering.cpp
     ISel.cpp
     LowerDiv.cpp
+    LowerILToMIR.cpp
     Peephole.cpp
     Backend.cpp
+    placeholder.cpp
 )
 
 target_include_directories(viper_codegen_x86_64 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
