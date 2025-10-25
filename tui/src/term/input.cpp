@@ -35,10 +35,7 @@ namespace viper::tui::term
 /// @details Initialises the CSI parser with references to the decoder's
 ///          internal event storage so that parsed escape sequences can append
 ///          events directly.
-InputDecoder::InputDecoder()
-    : csi_parser_(key_events_, mouse_events_, paste_buf_)
-{
-}
+InputDecoder::InputDecoder() : csi_parser_(key_events_, mouse_events_, paste_buf_) {}
 
 /// @brief Translate a Unicode code point into a @ref KeyEvent.
 /// @details ASCII control characters are mapped to dedicated key codes while
@@ -313,4 +310,3 @@ std::vector<PasteEvent> InputDecoder::drain_paste()
 }
 
 } // namespace viper::tui::term
-

@@ -60,4 +60,3 @@ class InputDecoder
 };
 
 } // namespace viper::tui::term
-

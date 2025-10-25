@@ -11,10 +11,10 @@
 #include <cassert>
 #include <string>
 
-using viper::tui::term::StringTermIO;
 using viper::tui::render::Renderer;
 using viper::tui::render::ScreenBuffer;
 using viper::tui::render::Style;
+using viper::tui::term::StringTermIO;
 
 static int countChar(const std::string &s, char c)
 {

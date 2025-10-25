@@ -37,83 +37,83 @@ namespace viper::tui::term
 {
 namespace
 {
-    static const char kB64Table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+static const char kB64Table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-    /// @brief Encode a byte string into base64 for OSC payloads.
-    /// @details Processes the input three bytes at a time, emitting four base64
-    ///          characters per chunk and applying the canonical '=' padding
-    ///          rules for trailing bytes.  The implementation avoids heap churn
-    ///          by reserving the exact output size upfront, making it suitable
-    ///          for latency-sensitive clipboard operations.
-    /// @param in UTF-8 text to encode.
-    /// @return Base64 string ready for insertion into an OSC 52 sequence.
-    std::string base64_encode(std::string_view in)
+/// @brief Encode a byte string into base64 for OSC payloads.
+/// @details Processes the input three bytes at a time, emitting four base64
+///          characters per chunk and applying the canonical '=' padding
+///          rules for trailing bytes.  The implementation avoids heap churn
+///          by reserving the exact output size upfront, making it suitable
+///          for latency-sensitive clipboard operations.
+/// @param in UTF-8 text to encode.
+/// @return Base64 string ready for insertion into an OSC 52 sequence.
+std::string base64_encode(std::string_view in)
+{
+    std::string out;
+    out.reserve(((in.size() + 2) / 3) * 4);
+    std::size_t i = 0;
+    while (i + 3 <= in.size())
     {
-        std::string out;
-        out.reserve(((in.size() + 2) / 3) * 4);
-        std::size_t i = 0;
-        while (i + 3 <= in.size())
+        unsigned triple = (static_cast<unsigned char>(in[i]) << 16) |
+                          (static_cast<unsigned char>(in[i + 1]) << 8) |
+                          (static_cast<unsigned char>(in[i + 2]));
+        out.push_back(kB64Table[(triple >> 18) & 0x3F]);
+        out.push_back(kB64Table[(triple >> 12) & 0x3F]);
+        out.push_back(kB64Table[(triple >> 6) & 0x3F]);
+        out.push_back(kB64Table[triple & 0x3F]);
+        i += 3;
+    }
+    if (i < in.size())
+    {
+        unsigned triple = static_cast<unsigned char>(in[i]) << 16;
+        bool two = false;
+        if (i + 1 < in.size())
         {
-            unsigned triple = (static_cast<unsigned char>(in[i]) << 16) |
-                              (static_cast<unsigned char>(in[i + 1]) << 8) |
-                              (static_cast<unsigned char>(in[i + 2]));
-            out.push_back(kB64Table[(triple >> 18) & 0x3F]);
-            out.push_back(kB64Table[(triple >> 12) & 0x3F]);
+            triple |= static_cast<unsigned char>(in[i + 1]) << 8;
+            two = true;
+        }
+        out.push_back(kB64Table[(triple >> 18) & 0x3F]);
+        out.push_back(kB64Table[(triple >> 12) & 0x3F]);
+        if (two)
+        {
             out.push_back(kB64Table[(triple >> 6) & 0x3F]);
-            out.push_back(kB64Table[triple & 0x3F]);
-            i += 3;
+            out.push_back('=');
         }
-        if (i < in.size())
+        else
         {
-            unsigned triple = static_cast<unsigned char>(in[i]) << 16;
-            bool two = false;
-            if (i + 1 < in.size())
-            {
-                triple |= static_cast<unsigned char>(in[i + 1]) << 8;
-                two = true;
-            }
-            out.push_back(kB64Table[(triple >> 18) & 0x3F]);
-            out.push_back(kB64Table[(triple >> 12) & 0x3F]);
-            if (two)
-            {
-                out.push_back(kB64Table[(triple >> 6) & 0x3F]);
-                out.push_back('=');
-            }
-            else
-            {
-                out.push_back('=');
-                out.push_back('=');
-            }
+            out.push_back('=');
+            out.push_back('=');
         }
-        return out;
     }
+    return out;
+}
 
-    /// @brief Construct a complete OSC 52 sequence for the provided text.
-    /// @details Prepends the OSC introducer (`ESC ] 52 ; c ;`), appends the
-    ///          base64-encoded payload, and terminates with BEL.  The helper
-    ///          keeps the logic centralised so both production and mock
-    ///          clipboards emit identical sequences.
-    /// @param text Clipboard text to transmit.
-    /// @return Escape sequence that copies @p text into the terminal clipboard.
-    std::string build_seq(std::string_view text)
-    {
-        std::string seq("\x1b]52;c;");
-        seq += base64_encode(text);
-        seq.push_back('\x07');
-        return seq;
-    }
+/// @brief Construct a complete OSC 52 sequence for the provided text.
+/// @details Prepends the OSC introducer (`ESC ] 52 ; c ;`), appends the
+///          base64-encoded payload, and terminates with BEL.  The helper
+///          keeps the logic centralised so both production and mock
+///          clipboards emit identical sequences.
+/// @param text Clipboard text to transmit.
+/// @return Escape sequence that copies @p text into the terminal clipboard.
+std::string build_seq(std::string_view text)
+{
+    std::string seq("\x1b]52;c;");
+    seq += base64_encode(text);
+    seq.push_back('\x07');
+    return seq;
+}
 
-    /// @brief Check whether OSC 52 clipboard integration is disabled.
-    /// @details Reads the `VIPERTUI_DISABLE_OSC52` environment variable,
-    ///          treating a leading `1` as an affirmative disable signal.  This
-    ///          allows developers to opt out of clipboard writes in environments
-    ///          where OSC 52 is unsupported or undesirable.
-    /// @return @c true when OSC 52 emission should be skipped.
-    bool osc52_disabled()
-    {
-        const char *v = std::getenv("VIPERTUI_DISABLE_OSC52");
-        return v && v[0] == '1';
-    }
+/// @brief Check whether OSC 52 clipboard integration is disabled.
+/// @details Reads the `VIPERTUI_DISABLE_OSC52` environment variable,
+///          treating a leading `1` as an affirmative disable signal.  This
+///          allows developers to opt out of clipboard writes in environments
+///          where OSC 52 is unsupported or undesirable.
+/// @return @c true when OSC 52 emission should be skipped.
+bool osc52_disabled()
+{
+    const char *v = std::getenv("VIPERTUI_DISABLE_OSC52");
+    return v && v[0] == '1';
+}
 } // namespace
 
 /// @brief Bind the OSC 52 clipboard implementation to a terminal interface.

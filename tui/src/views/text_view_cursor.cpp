@@ -185,22 +185,24 @@ std::size_t TextView::offsetFromRowCol(std::size_t row, std::size_t col) const
     auto line = buf_.lineView(row);
     std::size_t byteOffset = 0;
     std::size_t currentCol = 0;
-    line.forEachSegment([&](std::string_view segment) -> bool {
-        std::size_t idx = 0;
-        while (idx < segment.size())
+    line.forEachSegment(
+        [&](std::string_view segment) -> bool
         {
-            auto [cp, len] = decodeChar(segment, idx);
-            if (len == 0)
-                return false;
-            std::size_t width = static_cast<std::size_t>(char_width(cp));
-            if (currentCol + width > col)
-                return false;
-            idx += len;
-            byteOffset += len;
-            currentCol += width;
-        }
-        return true;
-    });
+            std::size_t idx = 0;
+            while (idx < segment.size())
+            {
+                auto [cp, len] = decodeChar(segment, idx);
+                if (len == 0)
+                    return false;
+                std::size_t width = static_cast<std::size_t>(char_width(cp));
+                if (currentCol + width > col)
+                    return false;
+                idx += len;
+                byteOffset += len;
+                currentCol += width;
+            }
+            return true;
+        });
     return line.offset() + byteOffset;
 }
 
@@ -297,22 +299,24 @@ void TextView::moveCursorToOffset(std::size_t off)
         std::size_t col = 0;
         std::size_t consumed = 0;
         auto line = buf_.lineView(row);
-        line.forEachSegment([&](std::string_view segment) -> bool {
-            std::size_t idx = 0;
-            while (idx < segment.size() && consumed < inLineOffset)
+        line.forEachSegment(
+            [&](std::string_view segment) -> bool
             {
-                auto [cp, len] = decodeChar(segment, idx);
-                if (len == 0)
-                    return false;
-                std::size_t advance = std::min(len, inLineOffset - consumed);
-                consumed += advance;
-                col += static_cast<std::size_t>(char_width(cp));
-                idx += len;
-                if (consumed >= inLineOffset)
-                    break;
-            }
-            return consumed < inLineOffset;
-        });
+                std::size_t idx = 0;
+                while (idx < segment.size() && consumed < inLineOffset)
+                {
+                    auto [cp, len] = decodeChar(segment, idx);
+                    if (len == 0)
+                        return false;
+                    std::size_t advance = std::min(len, inLineOffset - consumed);
+                    consumed += advance;
+                    col += static_cast<std::size_t>(char_width(cp));
+                    idx += len;
+                    if (consumed >= inLineOffset)
+                        break;
+                }
+                return consumed < inLineOffset;
+            });
 
         setCursor(row, col, false, true);
     }

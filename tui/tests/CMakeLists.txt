@@ -98,8 +98,8 @@ add_test(NAME tui_test_list_tree COMMAND tui_test_list_tree)
 add_executable(tui_test_config test_config.cpp)
 target_link_libraries(tui_test_config PRIVATE tui)
 target_compile_definitions(tui_test_config
-    PRIVATE CONFIG_INI="${CMAKE_CURRENT_SOURCE_DIR}/data/config.ini"
-            CONFIG_BAD_TAB_INI="${CMAKE_CURRENT_SOURCE_DIR}/data/config_bad_tab.ini")
+        PRIVATE CONFIG_INI="${CMAKE_CURRENT_SOURCE_DIR}/data/config.ini"
+        CONFIG_BAD_TAB_INI="${CMAKE_CURRENT_SOURCE_DIR}/data/config_bad_tab.ini")
 add_test(NAME tui_test_config COMMAND tui_test_config)
 
 add_executable(tui_test_demo_headless test_demo_headless.cpp)

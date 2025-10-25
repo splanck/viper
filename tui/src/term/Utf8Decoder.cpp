@@ -96,8 +96,7 @@ Utf8Result Utf8Decoder::feed(unsigned char byte) noexcept
                     break;
             }
 
-            if (overlong || codepoint > 0x10FFFF ||
-                (codepoint >= 0xD800 && codepoint <= 0xDFFF))
+            if (overlong || codepoint > 0x10FFFF || (codepoint >= 0xD800 && codepoint <= 0xDFFF))
             {
                 result.error = true;
                 reset();
@@ -141,4 +140,3 @@ void Utf8Decoder::reset() noexcept
 }
 
 } // namespace viper::tui::term
-

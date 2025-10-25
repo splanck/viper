@@ -35,7 +35,8 @@ struct CodegenResult
 };
 
 /// \brief Lower a single IL function to assembly text.
-[[nodiscard]] CodegenResult emitFunctionToAssembly(const ILFunction &func, const CodegenOptions &opt);
+[[nodiscard]] CodegenResult emitFunctionToAssembly(const ILFunction &func,
+                                                   const CodegenOptions &opt);
 
 /// \brief Lower an IL module to assembly text using the Phase A backend pipeline.
 [[nodiscard]] CodegenResult emitModuleToAssembly(const ILModule &mod, const CodegenOptions &opt);

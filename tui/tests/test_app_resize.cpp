@@ -11,9 +11,9 @@
 #include <cassert>
 #include <memory>
 
-using viper::tui::term::StringTermIO;
 using viper::tui::App;
 using viper::tui::render::ScreenBuffer;
+using viper::tui::term::StringTermIO;
 using viper::tui::ui::Widget;
 
 struct CharWidget : Widget

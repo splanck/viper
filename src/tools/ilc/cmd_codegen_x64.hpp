@@ -1,8 +1,8 @@
 // File: src/tools/ilc/cmd_codegen_x64.hpp
 // Purpose: Declare the x86-64 code generation subcommand glue for ilc.
-// Key invariants: Interfaces expose configuration and command entry points without owning resources.
-// Ownership/Lifetime: Callers retain ownership of CLI objects and argument buffers passed in.
-// Links: docs/codemap.md, src/codegen/x86_64/Backend.hpp
+// Key invariants: Interfaces expose configuration and command entry points without owning
+// resources. Ownership/Lifetime: Callers retain ownership of CLI objects and argument buffers
+// passed in. Links: docs/codemap.md, src/codegen/x86_64/Backend.hpp
 
 #pragma once
 
@@ -34,4 +34,3 @@ int cmd_codegen_x64(int argc, char **argv);
 void register_codegen_x64_commands(CLI &cli);
 
 } // namespace viper::tools::ilc
-

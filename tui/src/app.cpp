@@ -33,8 +33,11 @@ namespace viper::tui
 /// @param rows Initial terminal row count.
 /// @param cols Initial terminal column count.
 /// @param truecolor Whether the renderer should emit 24-bit colour sequences.
-App::App(
-    std::unique_ptr<ui::Widget> root, ::viper::tui::term::TermIO &tio, int rows, int cols, bool truecolor)
+App::App(std::unique_ptr<ui::Widget> root,
+         ::viper::tui::term::TermIO &tio,
+         int rows,
+         int cols,
+         bool truecolor)
     : root_(std::move(root)), renderer_(tio, truecolor), rows_(rows), cols_(cols)
 {
     screen_.resize(rows, cols);

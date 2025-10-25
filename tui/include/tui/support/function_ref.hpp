@@ -15,12 +15,10 @@ namespace viper::tui
 /// FunctionRef allows passing inline lambdas or function objects without incurring
 /// heap allocations. The referenced callable must remain alive for the duration of
 /// the FunctionRef use.
-template <typename Signature>
-class FunctionRef;
+template <typename Signature> class FunctionRef;
 
 /// @brief Specialization handling invocation of callables matching the signature.
-template <typename Ret, typename... Args>
-class FunctionRef<Ret(Args...)>
+template <typename Ret, typename... Args> class FunctionRef<Ret(Args...)>
 {
   public:
     /// @brief Construct from a function pointer.
@@ -30,9 +28,9 @@ class FunctionRef<Ret(Args...)>
     }
 
     /// @brief Construct from any callable matching the signature.
-    template <typename Callable,
-              typename = std::enable_if_t<
-                  !std::is_same_v<std::remove_cvref_t<Callable>, FunctionRef>>>
+    template <
+        typename Callable,
+        typename = std::enable_if_t<!std::is_same_v<std::remove_cvref_t<Callable>, FunctionRef>>>
     FunctionRef(Callable &&callable) noexcept
         : obj_(const_cast<void *>(static_cast<const void *>(std::addressof(callable)))),
           callback_(&invoke<Callable>)
@@ -46,8 +44,7 @@ class FunctionRef<Ret(Args...)>
     }
 
   private:
-    template <typename Callable>
-    static Ret invoke(void *obj, Args... args)
+    template <typename Callable> static Ret invoke(void *obj, Args... args)
     {
         return std::invoke(*static_cast<std::remove_reference_t<Callable> *>(obj),
                            std::forward<Args>(args)...);

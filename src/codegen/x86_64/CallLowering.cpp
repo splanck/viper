@@ -334,8 +334,7 @@ void lowerCall(MBasicBlock &block,
     insertInstr(MInstr::make(MOpcode::MOVrr, {rax, rsp}));
     insertInstr(MInstr::make(MOpcode::ANDri, {rax, makeImmOperand(15)}));
     insertInstr(MInstr::make(MOpcode::TESTrr, {rax, rax}));
-    insertInstr(
-        MInstr::make(MOpcode::JCC, {makeImmOperand(0), makeLabelOperand(callOkLabel)}));
+    insertInstr(MInstr::make(MOpcode::JCC, {makeImmOperand(0), makeLabelOperand(callOkLabel)}));
     insertInstr(MInstr::make(MOpcode::UD2));
     insertInstr(MInstr::make(MOpcode::LABEL, {makeLabelOperand(callOkLabel)}));
 #endif

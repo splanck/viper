@@ -76,8 +76,7 @@ class PieceTable
     [[nodiscard]] std::string getText(std::size_t pos, std::size_t len) const;
 
     /// @brief Iterate contiguous segments covering [pos, pos + len).
-    template <typename Fn>
-    void forEachSegment(std::size_t pos, std::size_t len, Fn &&fn) const;
+    template <typename Fn> void forEachSegment(std::size_t pos, std::size_t len, Fn &&fn) const;
 
     /// @brief Insert text at position returning span callbacks.
     Change insertInternal(std::size_t pos, std::string_view text);

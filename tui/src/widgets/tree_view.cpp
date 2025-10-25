@@ -12,9 +12,7 @@ namespace viper::tui::widgets
 {
 
 /// @brief Construct a tree node with the provided label string.
-TreeNode::TreeNode(std::string lbl) : label(std::move(lbl))
-{
-}
+TreeNode::TreeNode(std::string lbl) : label(std::move(lbl)) {}
 
 /// @brief Append a child node and wire its parent pointer.
 TreeNode *TreeNode::add(std::unique_ptr<TreeNode> child)

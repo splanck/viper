@@ -41,8 +41,7 @@ void Widget::layout(const Rect &r)
 ///          @ref render::ScreenBuffer passed from the compositor.  Keeping the
 ///          default empty avoids accidental double-painting when intermediate
 ///          classes forget to call into their base.
-void Widget::paint(render::ScreenBuffer &)
-{}
+void Widget::paint(render::ScreenBuffer &) {}
 
 /// @brief Handle an input event directed at this widget.
 ///
@@ -74,9 +73,7 @@ bool Widget::wantsFocus() const
 ///          (@c false).  The base implementation is a no-op so passive widgets
 ///          do not incur overhead, but interactive widgets can override this to
 ///          update internal state or trigger repaints when focus changes.
-void Widget::onFocusChanged(bool)
-{
-}
+void Widget::onFocusChanged(bool) {}
 
 /// @brief Retrieve the rectangle assigned during the last layout pass.
 ///

@@ -14,7 +14,6 @@
 #include <algorithm>
 #include <cassert>
 
-using viper::tui::term::StringTermIO;
 using viper::tui::input::KeyChord;
 using viper::tui::input::Keymap;
 using viper::tui::render::Renderer;
@@ -22,6 +21,7 @@ using viper::tui::render::ScreenBuffer;
 using viper::tui::style::Role;
 using viper::tui::style::Theme;
 using viper::tui::term::KeyEvent;
+using viper::tui::term::StringTermIO;
 using viper::tui::ui::Event;
 using viper::tui::widgets::CommandPalette;
 using viper::tui::widgets::Label;
@@ -42,8 +42,9 @@ int main()
     km.registerCommand("save", "Save Document", [&] { save_fired = true; });
 
     assert(km.commands().size() == 3);
-    const auto save_count = std::count_if(
-        km.commands().begin(), km.commands().end(), [](const auto &cmd) { return cmd.id == "save"; });
+    const auto save_count = std::count_if(km.commands().begin(),
+                                          km.commands().end(),
+                                          [](const auto &cmd) { return cmd.id == "save"; });
     assert(save_count == 1);
     const auto *save_cmd = km.find("save");
     assert(save_cmd != nullptr);

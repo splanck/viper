@@ -292,14 +292,14 @@ bool lowerGprSelect(MBasicBlock &block, std::size_t index)
     }
 
     std::vector<MInstr> replacement{};
-    replacement.push_back(MInstr::make(
-        MOpcode::TESTrr,
-        std::vector<Operand>{cloneOperand(testInstr.operands[0]), cloneOperand(testInstr.operands[1])}));
+    replacement.push_back(MInstr::make(MOpcode::TESTrr,
+                                       std::vector<Operand>{cloneOperand(testInstr.operands[0]),
+                                                            cloneOperand(testInstr.operands[1])}));
 
     const bool falseIsImm = std::holds_alternative<OpImm>(falseVal);
-    replacement.push_back(MInstr::make(falseIsImm ? MOpcode::MOVri : MOpcode::MOVrr,
-                                       std::vector<Operand>{cloneOperand(movInstr.operands[0]),
-                                                           cloneOperand(falseVal)}));
+    replacement.push_back(MInstr::make(
+        falseIsImm ? MOpcode::MOVri : MOpcode::MOVrr,
+        std::vector<Operand>{cloneOperand(movInstr.operands[0]), cloneOperand(falseVal)}));
 
     replacement.push_back(MInstr::make(
         MOpcode::CMOVNErr,
@@ -384,12 +384,11 @@ bool lowerXmmSelect(MFunction &func, MBasicBlock &block, std::size_t index)
     const std::string endLabel = func.makeLocalLabel(".Lend");
 
     std::vector<MInstr> replacement{};
+    replacement.push_back(MInstr::make(MOpcode::TESTrr,
+                                       std::vector<Operand>{cloneOperand(testInstr.operands[0]),
+                                                            cloneOperand(testInstr.operands[1])}));
     replacement.push_back(MInstr::make(
-        MOpcode::TESTrr,
-        std::vector<Operand>{cloneOperand(testInstr.operands[0]), cloneOperand(testInstr.operands[1])}));
-    replacement.push_back(MInstr::make(
-        MOpcode::JCC,
-        std::vector<Operand>{makeImmOperand(0), makeLabelOperand(falseLabel)}));
+        MOpcode::JCC, std::vector<Operand>{makeImmOperand(0), makeLabelOperand(falseLabel)}));
     replacement.push_back(MInstr::make(
         MOpcode::MOVSDrr,
         std::vector<Operand>{cloneOperand(movInstr.operands[0]), cloneOperand(trueVal)}));

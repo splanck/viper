@@ -13,12 +13,12 @@
 #include <cassert>
 #include <string>
 
-using viper::tui::term::StringTermIO;
 using viper::tui::render::Renderer;
 using viper::tui::render::ScreenBuffer;
 using viper::tui::style::Role;
 using viper::tui::style::Theme;
 using viper::tui::term::KeyEvent;
+using viper::tui::term::StringTermIO;
 using viper::tui::ui::Event;
 using viper::tui::widgets::Button;
 using viper::tui::widgets::Label;

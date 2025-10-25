@@ -26,9 +26,9 @@ class CsiParser
 {
   public:
     /// @brief Construct a parser bound to output event buffers.
-    CsiParser(std::vector<KeyEvent>& keys,
-              std::vector<MouseEvent>& mouse,
-              std::string& paste_buffer);
+    CsiParser(std::vector<KeyEvent> &keys,
+              std::vector<MouseEvent> &mouse,
+              std::string &paste_buffer);
 
     /// @brief Handle a CSI sequence with final byte and parameter payload.
     /// @param final Terminal final byte.
@@ -45,10 +45,9 @@ class CsiParser
   private:
     void handle_sgr_mouse(char final, std::string_view params);
 
-    std::vector<KeyEvent>& key_events_;
-    std::vector<MouseEvent>& mouse_events_;
-    std::string& paste_buffer_;
+    std::vector<KeyEvent> &key_events_;
+    std::vector<MouseEvent> &mouse_events_;
+    std::string &paste_buffer_;
 };
 
 } // namespace viper::tui::term
-

@@ -11,9 +11,9 @@
 #include <cassert>
 #include <memory>
 
-using viper::tui::term::StringTermIO;
 using viper::tui::App;
 using viper::tui::term::KeyEvent;
+using viper::tui::term::StringTermIO;
 using viper::tui::ui::Event;
 using viper::tui::ui::VStack;
 using viper::tui::ui::Widget;

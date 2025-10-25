@@ -320,8 +320,8 @@ bool loadFromFile(const std::string &path, Config &out)
                         continue;
                     }
                     const unsigned max_width = std::numeric_limits<unsigned>::max();
-                    const unsigned clamped = parsed > max_width ? max_width
-                                                                 : static_cast<unsigned>(parsed);
+                    const unsigned clamped =
+                        parsed > max_width ? max_width : static_cast<unsigned>(parsed);
                     out.editor.tab_width = clamped;
                 }
                 catch (const std::exception &)
