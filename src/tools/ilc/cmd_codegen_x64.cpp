@@ -84,7 +84,7 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
     using viper::codegen::x64::ILModule;
     using viper::codegen::x64::ILValue;
 
-    auto reportUnsupported = [](std::string detail) [[noreturn]]
+    auto reportUnsupported = [] [[noreturn]](std::string detail)
     { viper::codegen::x64::phaseAUnsupported(detail.c_str()); };
 
     const auto typeToKind = [&reportUnsupported](const il::core::Type &type) -> ILValue::Kind
