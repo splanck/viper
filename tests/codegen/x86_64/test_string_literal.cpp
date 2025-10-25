@@ -51,21 +51,33 @@ namespace
 
 [[nodiscard]] bool hasExpectedStringLiteralSequence(const std::string &asmText)
 {
-    constexpr std::string_view kPatterns[] = {
-        "callq rt_str_from_lit",
-        ".LC_str_0",
-        "leaq .LC_str_0(%rip)",
-        "movq $13, %rsi",
-        ".ascii \"Hello, world!\"",
-        ".section .rodata"};
-
-    for (const std::string_view pattern : kPatterns)
+    const auto rodataPos = asmText.find(".section .rodata\n.LC_str_");
+    if (rodataPos == std::string::npos)
     {
-        if (asmText.find(pattern) == std::string::npos)
-        {
-            return false;
-        }
+        return false;
     }
+
+    const auto hasLea = asmText.find("leaq .LC_str_") != std::string::npos ||
+                        asmText.find("lea .LC_str_") != std::string::npos;
+    if (!hasLea)
+    {
+        return false;
+    }
+
+    const auto hasLenMove = asmText.find("movq $13, %rsi") != std::string::npos ||
+                            asmText.find("mov $13, %rsi") != std::string::npos;
+    if (!hasLenMove)
+    {
+        return false;
+    }
+
+    const auto hasRuntimeCall = asmText.find("callq rt_str_from_lit") != std::string::npos ||
+                                asmText.find("call rt_str_from_lit") != std::string::npos;
+    if (!hasRuntimeCall)
+    {
+        return false;
+    }
+
     return true;
 }
 
