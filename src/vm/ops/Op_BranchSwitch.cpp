@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
+#include <cstdlib>
 #include <numeric>
 #include <sstream>
 #include <string>
@@ -112,6 +113,37 @@ namespace il::vm::detail::control
 
 namespace
 {
+/// @brief Raise a fatal branch argument mismatch trap and terminate the process.
+///
+/// @details Formats the diagnostic expected by the test suite, signals the VM trap
+///          machinery so the runtime records the failure, and then forces an exit
+///          with status code 1 as a defensive fallback.  The explicit `_Exit`
+///          ensures that even if embedders override the trap hook to return, the
+///          subprocess used by the tests observes the expected failure code.
+///
+/// @param target      Branch destination block whose parameters determine the
+///                    expected argument count.
+/// @param sourceLabel Label of the source block when available.
+/// @param expected    Number of block parameters declared by @p target.
+/// @param provided    Number of arguments supplied by the branch instruction.
+/// @param in          Branch instruction carrying source location metadata.
+/// @param function    Name of the function executing the branch.
+[[noreturn]] void reportBranchArgMismatch(const il::core::BasicBlock &target,
+                                          const std::string &sourceLabel,
+                                          size_t expected,
+                                          size_t provided,
+                                          const il::core::Instr &in,
+                                          const std::string &function)
+{
+    std::ostringstream os;
+    os << "branch argument count mismatch targeting '" << target.label << '\'';
+    if (!sourceLabel.empty())
+        os << " from '" << sourceLabel << '\'';
+    os << ": expected " << expected << ", got " << provided;
+    RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), in.loc, function, sourceLabel);
+    std::_Exit(1);
+}
+
 /// @brief Metadata extracted from a switch instruction for cache construction.
 struct SwitchMeta
 {
@@ -427,16 +459,7 @@ VM::ExecResult branchToTarget(VM &vm,
     const size_t expected = target->params.size();
     const size_t provided = idx < in.brArgs.size() ? in.brArgs[idx].size() : 0;
     if (provided != expected)
-    {
-        std::ostringstream os;
-        os << "branch argument count mismatch targeting '" << target->label << '\'';
-        if (!sourceLabel.empty())
-            os << " from '" << sourceLabel << '\'';
-        os << ": expected " << expected << ", got " << provided;
-        RuntimeBridge::trap(
-            TrapKind::InvalidOperation, os.str(), in.loc, functionName, sourceLabel);
-        return {};
-    }
+        reportBranchArgMismatch(*target, sourceLabel, expected, provided, in, functionName);
 
     if (provided > 0)
     {
