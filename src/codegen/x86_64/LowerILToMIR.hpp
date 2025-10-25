@@ -124,8 +124,12 @@ class LowerILToMIR
     [[nodiscard]] bool isImmediate(const ILValue &value) const noexcept;
 
     void lowerInstruction(const ILInstr &instr, MBasicBlock &block);
-    void lowerBinary(
-        const ILInstr &instr, MBasicBlock &block, MOpcode opcRR, MOpcode opcRI, RegClass cls);
+    void lowerBinary(const ILInstr &instr,
+                     MBasicBlock &block,
+                     MOpcode opcRR,
+                     MOpcode opcRI,
+                     RegClass cls,
+                     bool requireImm32 = false);
     void lowerCmp(const ILInstr &instr, MBasicBlock &block, RegClass cls);
     void lowerSelect(const ILInstr &instr, MBasicBlock &block);
     void lowerBranch(const ILInstr &instr, MBasicBlock &block);

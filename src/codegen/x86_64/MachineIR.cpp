@@ -48,8 +48,18 @@ namespace
             return "ADDrr";
         case MOpcode::ADDri:
             return "ADDri";
+        case MOpcode::ANDrr:
+            return "ANDrr";
         case MOpcode::ANDri:
-            return "ANDri"; // used by stack alignment instrumentation
+            return "ANDri";
+        case MOpcode::ORrr:
+            return "ORrr";
+        case MOpcode::ORri:
+            return "ORri";
+        case MOpcode::XORrr:
+            return "XORrr";
+        case MOpcode::XORri:
+            return "XORri";
         case MOpcode::SUBrr:
             return "SUBrr";
         case MOpcode::SHLri:

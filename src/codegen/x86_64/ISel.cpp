@@ -221,6 +221,68 @@ void canonicaliseAddSub(MInstr &instr)
     }
 }
 
+/// @brief Canonicalise bitwise opcodes to match operand kinds and zeroing idioms.
+///
+/// @details Normalises AND/OR/XOR to use immediate forms when the second operand
+///          is a literal and falls back to register forms otherwise. Additionally
+///          rewrites XOR against zero into the canonical 32-bit self-XOR used by
+///          later peephole passes to recognise zeroing patterns.
+///
+/// @param instr Instruction to canonicalise in place.
+void canonicaliseBitwise(MInstr &instr)
+{
+    if (instr.operands.size() < 2)
+    {
+        return;
+    }
+
+    const auto convertForm = [&](MOpcode rr, MOpcode ri) {
+        if (instr.opcode == rr && isImm(instr.operands[1]))
+        {
+            instr.opcode = ri;
+            return true;
+        }
+        if (instr.opcode == ri && !isImm(instr.operands[1]))
+        {
+            instr.opcode = rr;
+            return true;
+        }
+        return false;
+    };
+
+    convertForm(MOpcode::ANDrr, MOpcode::ANDri);
+    convertForm(MOpcode::ORrr, MOpcode::ORri);
+    convertForm(MOpcode::XORrr, MOpcode::XORri);
+
+    if (instr.opcode == MOpcode::XORrr)
+    {
+        if (sameRegister(instr.operands[0], instr.operands[1]))
+        {
+            const auto *dst = asReg(instr.operands[0]);
+            if (dst && dst->cls == RegClass::GPR)
+            {
+                instr.opcode = MOpcode::XORrr32;
+                instr.operands[1] = cloneOperand(instr.operands[0]);
+            }
+        }
+        return;
+    }
+
+    if (instr.opcode == MOpcode::XORri)
+    {
+        auto *imm = asImm(instr.operands[1]);
+        if (imm && imm->val == 0)
+        {
+            const auto *dst = asReg(instr.operands[0]);
+            if (dst && dst->cls == RegClass::GPR)
+            {
+                instr.opcode = MOpcode::XORrr32;
+                instr.operands[1] = cloneOperand(instr.operands[0]);
+            }
+        }
+    }
+}
+
 /// @brief Attempt to lower a GPR select placeholder into TEST/MOV/CMOV sequence.
 ///
 /// @details Matches the three-instruction pattern emitted by LowerILToMIR
@@ -439,6 +501,14 @@ void ISel::lowerArithmetic(MFunction &func) const
                 case MOpcode::ADDri:
                 case MOpcode::SUBrr:
                     canonicaliseAddSub(instr);
+                    break;
+                case MOpcode::ANDrr:
+                case MOpcode::ANDri:
+                case MOpcode::ORrr:
+                case MOpcode::ORri:
+                case MOpcode::XORrr:
+                case MOpcode::XORri:
+                    canonicaliseBitwise(instr);
                     break;
                 case MOpcode::IMULrr:
                 case MOpcode::FADD:

@@ -78,7 +78,12 @@ enum class MOpcode
     LEA,       ///< Load effective address into register.
     ADDrr,     ///< Add registers.
     ADDri,     ///< Add immediate to register.
-    ANDri,     ///< Bitwise AND register with immediate (stack alignment guard).
+    ANDrr,     ///< Bitwise AND register with register.
+    ANDri,     ///< Bitwise AND register with immediate.
+    ORrr,      ///< Bitwise OR register with register.
+    ORri,      ///< Bitwise OR register with immediate.
+    XORrr,     ///< Bitwise XOR register with register.
+    XORri,     ///< Bitwise XOR register with immediate.
     SUBrr,     ///< Subtract registers.
     SHLri,     ///< Shift left by immediate (imm8).
     SHLrc,     ///< Shift left by CL register.
