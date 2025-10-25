@@ -273,6 +273,12 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
     const auto rspBase = makePhysBase(PhysReg::RSP);
     const auto rbpBase = makePhysBase(PhysReg::RBP);
 
+    // The following prologue synthesises the canonical
+    //   push %rbp; mov %rsp, %rbp; sub $frameSize, %rsp
+    // sequence using MIR operations. We materialise the push via an explicit
+    // store after decrementing %rsp because the backend models stack slots as
+    // memory operands. The extra 8-byte subtraction keeps the pre-call stack
+    // pointer 16-byte aligned once the optional frame allocation executes.
     std::vector<MInstr> prologue{};
     prologue.reserve(4 + frame.usedCalleeSaved.size());
 
@@ -303,6 +309,11 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
     updatedEntry.insert(updatedEntry.end(), entry.instructions.begin(), entry.instructions.end());
     entry.instructions = std::move(updatedEntry);
 
+    // Epilogue mirrors the canonical
+    //   add $frameSize, %rsp; pop %rbp; ret
+    // form by undoing the frame allocation before reloading %rbp from the
+    // spill slot. Using the same explicit memory traffic as the prologue keeps
+    // stack alignment consistent for any intervening callee-saved stores.
     std::vector<MInstr> epilogue{};
     epilogue.reserve(3 + frame.usedCalleeSaved.size());
 
