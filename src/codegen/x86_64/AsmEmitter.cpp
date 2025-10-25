@@ -512,7 +512,10 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         case MOpcode::MOVrr:
         case MOpcode::CMOVNErr:
         case MOpcode::ADDrr:
+        case MOpcode::ANDrr:
         case MOpcode::SUBrr:
+        case MOpcode::ORrr:
+        case MOpcode::XORrr:
         case MOpcode::IMULrr:
         case MOpcode::XORrr32:
         case MOpcode::MOVZXrr32:
@@ -530,31 +533,15 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         }
         case MOpcode::MOVri:
         case MOpcode::ADDri:
+        case MOpcode::ANDri:
         case MOpcode::CMPri:
         case MOpcode::SHLri:
         case MOpcode::SHRri:
         case MOpcode::SARri:
+        case MOpcode::ORri:
+        case MOpcode::XORri:
         {
             emitBinary([&](const Operand &operand) { return formatOperand(operand, target); });
-            return;
-        }
-        case MOpcode::ANDri:
-        {
-            const std::string dest = instr.operands.empty()
-                                       ? std::string{"#<missing>"}
-                                       : formatOperand(instr.operands.front(), target);
-            if (instr.operands.size() < 2)
-            {
-                os << "  andq #<missing>, " << dest << "\n";
-                return;
-            }
-            const auto *imm = std::get_if<OpImm>(&instr.operands[1]);
-            if (!imm)
-            {
-                os << "  andq #<invalid>, " << dest << "\n";
-                return;
-            }
-            os << "  andq " << formatImm(*imm) << ", " << dest << "\n";
             return;
         }
         case MOpcode::SHLrc:
@@ -795,10 +782,14 @@ const char *AsmEmitter::mnemonicFor(MOpcode opcode) noexcept
         case MOpcode::ADDrr:
         case MOpcode::ADDri:
             return "addq";
+        case MOpcode::ANDrr:
         case MOpcode::ANDri:
             return "andq";
         case MOpcode::SUBrr:
             return "subq";
+        case MOpcode::ORrr:
+        case MOpcode::ORri:
+            return "orq";
         case MOpcode::SHLri:
         case MOpcode::SHLrc:
             return "shlq";
@@ -821,6 +812,9 @@ const char *AsmEmitter::mnemonicFor(MOpcode opcode) noexcept
             return "idivq";
         case MOpcode::DIVrm:
             return "divq";
+        case MOpcode::XORrr:
+        case MOpcode::XORri:
+            return "xorq";
         case MOpcode::XORrr32:
             return "xorl";
         case MOpcode::CMPrr:
