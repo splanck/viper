@@ -1,7 +1,7 @@
-// File: tests/unit/test_il_parse_global_missing_quotes.cpp
-// Purpose: Ensure IL parser reports diagnostics when global string quotes are missing.
-// Key invariants: Parser surfaces a single diagnostic instead of crashing on malformed globals.
-// Ownership/Lifetime: Test owns parsing streams and module instance.
+// File: tests/unit/test_il_parse_global_missing_type.cpp
+// Purpose: Ensure IL parser rejects globals that omit a type qualifier.
+// Key invariants: Parser must emit a diagnostic before attempting to read the name or initializer.
+// Ownership/Lifetime: Test owns parser state and module instance locally.
 // Links: docs/il-guide.md#reference
 
 #include "il/api/expected_api.hpp"
@@ -13,7 +13,7 @@
 int main()
 {
     const char *src = R"(il 0.1.2
-global const str @greeting = hello
+global @g = "lit"
 )";
     std::istringstream in(src);
     il::core::Module m;
@@ -25,7 +25,6 @@ global const str @greeting = hello
     }
     assert(!parse);
     const std::string message = diag.str();
-    assert(message.find("missing opening '\"'") != std::string::npos ||
-           message.find("missing closing '\"'") != std::string::npos);
+    assert(message.find("missing global type") != std::string::npos);
     return 0;
 }
