@@ -27,9 +27,14 @@
 #include <algorithm>
 #include <filesystem>
 #include <iostream>
+#include <string_view>
 
 namespace il::vm
 {
+namespace
+{
+[[maybe_unused]] constexpr bool kDebugBreakpoints = false;
+} // namespace
 
 /// @brief Normalise a file-system path so breakpoint comparisons are stable.
 ///
@@ -175,10 +180,21 @@ bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
     if (lastHitSrc_ && lastHitSrc_->first == fileId && lastHitSrc_->second == line)
         return false;
 
+    std::string_view pathView = sm_->getPath(fileId);
+    if (pathView.empty())
+    {
+        if constexpr (kDebugBreakpoints)
+        {
+            std::cerr << "[DEBUG][DebugCtrl] unresolved file id " << fileId
+                      << " while checking breakpoint for line " << line << "\n";
+        }
+        return false;
+    }
+
     // Resolve the instruction's source file, normalize the path, and derive its
     // basename. A breakpoint matches if both the line number and either the
     // normalized path or basename are equal.
-    auto [normFile, base] = normalizePathWithBase(std::string(sm_->getPath(fileId)));
+    auto [normFile, base] = normalizePathWithBase(std::string(pathView));
     for (const auto &bp : srcLineBPs_)
     {
         if (line != bp.line)

@@ -271,6 +271,14 @@ function(viper_add_vm_path_tests)
   target_link_libraries(test_vm_debug_src_breakpoint PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_debug_src_breakpoint test_vm_debug_src_breakpoint)
 
+  viper_add_test(
+    test_vm_debug_src_breakpoint_unknown_file
+    ${VIPER_TESTS_DIR}/unit/test_vm_debug_src_breakpoint_unknown_file.cpp)
+  target_link_libraries(test_vm_debug_src_breakpoint_unknown_file
+                        PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  viper_add_ctest(test_vm_debug_src_breakpoint_unknown_file
+                  test_vm_debug_src_breakpoint_unknown_file)
+
   viper_add_test(test_path_normalize ${VIPER_TESTS_DIR}/unit/PathNormalizeTests.cpp)
   target_link_libraries(test_path_normalize PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_path_normalize test_path_normalize)
