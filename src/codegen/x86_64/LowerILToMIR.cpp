@@ -16,6 +16,7 @@
 #include <cassert>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <string_view>
 
 namespace viper::codegen::x64
@@ -26,6 +27,92 @@ namespace
 [[nodiscard]] Operand cloneOperand(const Operand &operand)
 {
     return operand;
+}
+
+[[nodiscard]] std::optional<int> icmpConditionCode(std::string_view opcode) noexcept
+{
+    if (!opcode.starts_with("icmp_"))
+    {
+        return std::nullopt;
+    }
+
+    const std::string_view suffix = opcode.substr(5);
+    if (suffix == "eq")
+    {
+        return 0;
+    }
+    if (suffix == "ne")
+    {
+        return 1;
+    }
+    if (suffix == "slt")
+    {
+        return 2;
+    }
+    if (suffix == "sle")
+    {
+        return 3;
+    }
+    if (suffix == "sgt")
+    {
+        return 4;
+    }
+    if (suffix == "sge")
+    {
+        return 5;
+    }
+    if (suffix == "ugt")
+    {
+        return 6;
+    }
+    if (suffix == "uge")
+    {
+        return 7;
+    }
+    if (suffix == "ult")
+    {
+        return 8;
+    }
+    if (suffix == "ule")
+    {
+        return 9;
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::optional<int> fcmpConditionCode(std::string_view opcode) noexcept
+{
+    if (!opcode.starts_with("fcmp_"))
+    {
+        return std::nullopt;
+    }
+
+    const std::string_view suffix = opcode.substr(5);
+    if (suffix == "eq")
+    {
+        return 0;
+    }
+    if (suffix == "ne")
+    {
+        return 1;
+    }
+    if (suffix == "lt")
+    {
+        return 2;
+    }
+    if (suffix == "le")
+    {
+        return 3;
+    }
+    if (suffix == "gt")
+    {
+        return 4;
+    }
+    if (suffix == "ge")
+    {
+        return 5;
+    }
+    return std::nullopt;
 }
 } // namespace
 
@@ -317,11 +404,25 @@ void LowerILToMIR::lowerShift(const ILInstr &instr,
         MInstr::make(opcReg, std::vector<Operand>{cloneOperand(dest), cloneOperand(clOperand)}));
 }
 
-void LowerILToMIR::lowerCmp(const ILInstr &instr, MBasicBlock &block, RegClass cls)
+void LowerILToMIR::lowerCmp(const ILInstr &instr,
+                            MBasicBlock &block,
+                            RegClass cls,
+                            int defaultCond)
 {
     if (instr.ops.size() < 2)
     {
         return;
+    }
+
+    int condCode = defaultCond;
+    if (instr.ops.size() >= 3)
+    {
+        const ILValue &condOperand = instr.ops[2];
+        if (condOperand.id < 0 &&
+            (condOperand.kind == ILValue::Kind::I64 || condOperand.kind == ILValue::Kind::I1))
+        {
+            condCode = static_cast<int>(condOperand.i64);
+        }
     }
 
     const Operand lhs = makeOperandForValue(block, instr.ops[0], cls);
@@ -343,7 +444,7 @@ void LowerILToMIR::lowerCmp(const ILInstr &instr, MBasicBlock &block, RegClass c
         block.append(
             MInstr::make(MOpcode::XORrr32, std::vector<Operand>{cloneOperand(dest), dest}));
         block.append(MInstr::make(MOpcode::SETcc,
-                                  std::vector<Operand>{makeImmOperand(1), cloneOperand(dest)}));
+                                  std::vector<Operand>{makeImmOperand(condCode), cloneOperand(dest)}));
     }
 }
 
@@ -385,21 +486,15 @@ void LowerILToMIR::lowerSelect(const ILInstr &instr, MBasicBlock &block)
         return;
     }
 
-    if (std::holds_alternative<OpImm>(falseVal))
-    {
-        block.append(
-            MInstr::make(MOpcode::MOVri, std::vector<Operand>{cloneOperand(dest), falseVal}));
-    }
-    else
-    {
-        block.append(
-            MInstr::make(MOpcode::MOVrr, std::vector<Operand>{cloneOperand(dest), falseVal}));
-    }
+    std::vector<Operand> movOperands{};
+    movOperands.push_back(cloneOperand(dest));
+    movOperands.push_back(cloneOperand(falseVal));
+    movOperands.push_back(cloneOperand(trueVal));
+    block.append(MInstr::make(MOpcode::MOVSDrr, std::move(movOperands)));
 
     block.append(MInstr::make(MOpcode::TESTrr, std::vector<Operand>{cloneOperand(cond), cond}));
     block.append(
         MInstr::make(MOpcode::SETcc, std::vector<Operand>{makeImmOperand(1), cloneOperand(dest)}));
-    (void)trueVal;
 }
 
 void LowerILToMIR::lowerBranch(const ILInstr &instr, MBasicBlock &block)
@@ -702,7 +797,18 @@ void LowerILToMIR::lowerInstruction(const ILInstr &instr, MBasicBlock &block)
         }
         return;
     }
-    if (opc == "sdiv" || opc == "srem" || opc == "udiv" || opc == "urem")
+    if (const auto cond = icmpConditionCode(opc))
+    {
+        lowerCmp(instr, block, RegClass::GPR, *cond);
+        return;
+    }
+    if (const auto cond = fcmpConditionCode(opc))
+    {
+        lowerCmp(instr, block, RegClass::XMM, *cond);
+        return;
+    }
+    if (opc == "div" || opc == "sdiv" || opc == "srem" || opc == "udiv" || opc == "urem" ||
+        opc == "rem")
     {
         if (instr.resultId < 0 || instr.ops.size() < 2)
         {
@@ -752,11 +858,11 @@ void LowerILToMIR::lowerInstruction(const ILInstr &instr, MBasicBlock &block)
         divisor = materialiseGprReg(divisor);
 
         const MOpcode pseudo = [opc]() {
-            if (opc == "sdiv")
+            if (opc == "div" || opc == "sdiv")
             {
                 return MOpcode::DIVS64rr;
             }
-            if (opc == "srem")
+            if (opc == "rem" || opc == "srem")
             {
                 return MOpcode::REMS64rr;
             }
@@ -788,9 +894,9 @@ void LowerILToMIR::lowerInstruction(const ILInstr &instr, MBasicBlock &block)
     }
     if (opc == "cmp")
     {
-        lowerCmp(instr,
-                 block,
-                 regClassFor(instr.ops.empty() ? instr.resultKind : instr.ops.front().kind));
+        const RegClass cls =
+            regClassFor(instr.ops.empty() ? instr.resultKind : instr.ops.front().kind);
+        lowerCmp(instr, block, cls, 1);
         return;
     }
     if (opc == "select")
