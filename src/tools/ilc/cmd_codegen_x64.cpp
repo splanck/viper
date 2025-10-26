@@ -1,10 +1,27 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/tools/ilc/cmd_codegen_x64.cpp
-// Purpose: Implement the ilc glue that lowers IL modules via the x86-64 backend.
-// Key invariants: Emits diagnostics on I/O or backend failures and never leaves
-//                 partially written output files on error paths.
+// Purpose: Implement the `ilc codegen x64` subcommand that lowers IL modules
+//          via the experimental x86-64 backend.
+// Key invariants: Command-line parsing always emits actionable diagnostics,
+//                 temporary files are overwritten atomically, and backend
+//                 failures bubble up as non-zero exit codes.
 // Ownership/Lifetime: Borrows parsed IL modules and writes assembly/binaries to
 //                     caller-specified locations.
 // Links: src/codegen/x86_64/Backend.hpp, src/tools/common/module_loader.hpp
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements the `ilc codegen x64` command-line entry point.
+/// @details Provides argument parsing, module loading, adapter conversion, and
+///          backend invocation glue required to emit x86-64 assembly (and
+///          optionally link and run) from IL modules.
 
 // TODO(PhaseB): Extend the adapter to cover division, overflow arithmetic, logic,
 //               switches, GEP/addressing, runtime/EH ops, and remaining cast forms.
@@ -39,6 +56,12 @@ namespace viper::tools::ilc
 namespace
 {
 
+/// @brief Surface a backend limitation as a fatal diagnostic.
+/// @details Forwards the message to the Phase A unsupported hook so tests and
+///          the CLI observe a consistent failure path.  The helper never
+///          returns; it either aborts or long-jumps via the backend's reporting
+///          infrastructure.
+/// @param detail Human-readable description of the missing feature.
 [[noreturn]] void reportUnsupported(std::string detail)
 {
     viper::codegen::x64::phaseAUnsupported(detail.c_str());
@@ -54,12 +77,21 @@ struct CodegenConfig
 };
 
 /// @brief Print a concise usage hint for the subcommand.
+/// @details Emits a single-line usage synopsis describing the required IL file
+///          argument and optional flags.  Called when parsing fails or when the
+///          user omits mandatory arguments.
 void printUsageHint()
 {
     std::cerr << "usage: ilc codegen x64 <file.il> [-S <file.s>] [-o <a.out>] [-run-native]\n";
 }
 
 /// @brief Decode the system() return value into an exit status when possible.
+/// @details Normalises the platform-specific encoding produced by @c system so
+///          the CLI can report consistent exit codes across POSIX and Windows.
+///          Signals -1 when process creation failed and maps signals to
+///          conventional 128+signal values on POSIX platforms.
+/// @param status Raw return value from @c system.
+/// @return Normalised exit status or -1 when process spawning failed.
 int normaliseSystemStatus(int status)
 {
     if (status == -1)
@@ -82,6 +114,15 @@ int normaliseSystemStatus(int status)
 }
 
 /// @brief Convert the parsed IL module into the temporary adapter structure.
+/// @details Translates IL functions, blocks, and instructions into the
+///          simplified structures expected by the experimental x86-64 backend.
+///          The adapter performs type classification, assigns SSA identifiers,
+///          rewrites operands, and expands control-flow metadata such as
+///          branch edges.
+/// @param module Fully parsed IL module.
+/// @return Adapter module consumable by the Phase A backend; never nullopt but
+///         may terminate via @ref reportUnsupported when encountering
+///         unsupported features.
 viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &module)
 {
     using viper::codegen::x64::ILBlock;
@@ -581,6 +622,13 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
 }
 
 /// @brief Parse command-line flags into @p config.
+/// @details Consumes the raw argv vector for the subcommand, validating option
+///          arity and collecting requested output paths.  Emits diagnostics and
+///          returns @c std::nullopt when parsing fails so callers can surface the
+///          usage message.
+/// @param argc Number of remaining CLI arguments.
+/// @param argv Pointer to argument array (first element is the IL input path).
+/// @return Populated configuration on success; nullopt when parsing fails.
 std::optional<CodegenConfig> parseArgs(int argc, char **argv)
 {
     if (argc < 1)
@@ -632,6 +680,11 @@ std::optional<CodegenConfig> parseArgs(int argc, char **argv)
 }
 
 /// @brief Derive a default assembly output path when the user does not supply one.
+/// @details Mirrors the behaviour of traditional compilers by using the input
+///          file stem suffixed with `.s`.  When the input lacks a meaningful
+///          filename, `out.s` in the current directory is used.
+/// @param config Parsed configuration providing the IL input path.
+/// @return Absolute or relative path where assembly should be written.
 std::filesystem::path deriveAssemblyPath(const CodegenConfig &config)
 {
     std::filesystem::path assembly = std::filesystem::path(config.inputPath);
@@ -648,6 +701,11 @@ std::filesystem::path deriveAssemblyPath(const CodegenConfig &config)
 }
 
 /// @brief Derive a default executable path when not explicitly requested.
+/// @details Produces `a.out` in the same directory as the input module unless a
+///          specific `-o` flag overrides it.  Handles edge cases where the input
+///          resides in a directory without a filename component.
+/// @param config Parsed configuration.
+/// @return Candidate executable path.
 std::filesystem::path deriveExecutablePath(const CodegenConfig &config)
 {
     std::filesystem::path exe = std::filesystem::path(config.inputPath);
@@ -664,6 +722,13 @@ std::filesystem::path deriveExecutablePath(const CodegenConfig &config)
 }
 
 /// @brief Write assembly text to disk, overwriting @p path on success.
+/// @details Opens the destination in binary mode to avoid newline translation
+///          surprises, writes the assembly buffer, and verifies the stream
+///          remains healthy.  Emits diagnostics when file creation or writing
+///          fails.
+/// @param path Destination file path.
+/// @param text Assembly text to persist.
+/// @return True on success, false when an error occurred.
 bool writeAssemblyFile(const std::filesystem::path &path, const std::string &text)
 {
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
@@ -682,6 +747,12 @@ bool writeAssemblyFile(const std::filesystem::path &path, const std::string &tex
 }
 
 /// @brief Invoke the system C compiler to assemble and link the module.
+/// @details Shells out to the host C toolchain using @c system, passing the
+///          generated assembly and requested executable output.  Reports errors
+///          when invocation fails or returns a non-zero exit status.
+/// @param asmPath Path to the generated assembly file.
+/// @param exePath Destination executable path.
+/// @return Normalised exit status or -1 on launch failure.
 int invokeLinker(const std::filesystem::path &asmPath, const std::filesystem::path &exePath)
 {
     std::ostringstream cmd;
@@ -703,6 +774,11 @@ int invokeLinker(const std::filesystem::path &asmPath, const std::filesystem::pa
 }
 
 /// @brief Execute the generated binary when requested.
+/// @details Runs the newly produced executable via @c system so users can
+///          validate codegen output quickly.  Exit codes are normalised across
+///          platforms in the same way as @ref invokeLinker.
+/// @param exePath Executable to run.
+/// @return Normalised exit status or -1 when launching fails.
 int runExecutable(const std::filesystem::path &exePath)
 {
     std::ostringstream cmd;
@@ -720,6 +796,14 @@ int runExecutable(const std::filesystem::path &exePath)
 
 } // namespace
 
+/// @brief Entry point for the `ilc codegen x64` command.
+/// @details Parses command-line options, loads and verifies the IL module,
+///          converts it into the backend adapter format, and emits x86-64
+///          assembly.  When requested, it links the assembly into an executable
+///          and optionally runs it, propagating exit statuses along the way.
+/// @param argc Number of subcommand arguments.
+/// @param argv Argument vector beginning with the IL input path.
+/// @return Zero on success or a non-zero diagnostic code on failure.
 int cmd_codegen_x64(int argc, char **argv)
 {
     auto configOpt = parseArgs(argc, argv);
@@ -786,6 +870,10 @@ int cmd_codegen_x64(int argc, char **argv)
     return runExit;
 }
 
+/// @brief Register the codegen x64 subcommand with the CLI dispatcher.
+/// @details Placeholder hook that will eventually install structured CLI
+///          handlers once the common tooling layer is ready.
+/// @param cli CLI root to augment.
 void register_codegen_x64_commands(CLI &cli)
 {
     (void)cli;

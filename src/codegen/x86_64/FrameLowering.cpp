@@ -1,15 +1,27 @@
-// src/codegen/x86_64/FrameLowering.cpp
-// SPDX-License-Identifier: MIT
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Define stack frame lowering utilities for the x86-64 backend.
-//          Responsibilities include assigning concrete spill slot displacements
-//          and emitting prologue/epilogue sequences that honour the SysV ABI
-//          while maintaining 16-byte stack alignment at call boundaries.
-// Invariants: Stack slots remain addressed off %rbp using negative displacements.
-// Ownership: Functions mutate Machine IR in-place and rely solely on automatic
-//            storage duration helpers.
-// Notes: Translation unit depends only on FrameLowering.hpp and the C++
-//        standard library.
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/codegen/x86_64/FrameLowering.cpp
+// Purpose: Define stack-frame construction utilities for the x86-64 backend.
+// Key invariants: Spill slots are addressed off %rbp with negative displacements
+//                 and the final frame size preserves 16-byte alignment across
+//                 calls.
+// Ownership/Lifetime: Operates directly on Machine IR owned by the caller and
+//                     uses only automatic storage duration helpers.
+// Links: docs/codemap.md, src/codegen/x86_64/FrameLowering.hpp
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements stack-frame layout and prologue/epilogue synthesis.
+/// @details The helpers in this translation unit walk Machine IR produced by the
+///          IL-to-MIR adapter to allocate concrete spill displacements, reserve
+///          callee-saved slots, and generate ABI-compliant prologue/epilogue
+///          sequences for Phase A of the x86-64 backend.
 
 #include "FrameLowering.hpp"
 
@@ -27,21 +39,26 @@ namespace viper::codegen::x64
 namespace
 {
 
+/// @brief Size in bytes of a single spill slot addressed from %rbp.
 constexpr int kSlotSizeBytes = 8;
 
+/// @brief Composite key describing a spill slot's register class and index.
 struct SlotKey
 {
     RegClass cls{RegClass::GPR};
     int index{0};
 
+    /// @brief Equality comparison required by the unordered_map cache.
     bool operator==(const SlotKey &other) const noexcept
     {
         return cls == other.cls && index == other.index;
     }
 };
 
+/// @brief Hash functor for @ref SlotKey enabling unordered maps.
 struct SlotKeyHash
 {
+    /// @brief Combine the register class and index into a small hash code.
     std::size_t operator()(const SlotKey &key) const noexcept
     {
         const auto clsVal = static_cast<std::size_t>(key.cls);
@@ -50,6 +67,13 @@ struct SlotKeyHash
     }
 };
 
+/// @brief Round @p value up to the nearest multiple of @p align.
+/// @details Used when computing spill areas and outgoing argument space to
+///          maintain stack alignment.  Alignment is assumed to be positive.
+/// @param value Base value to round.
+/// @param align Required alignment in bytes.
+/// @return Smallest multiple of @p align that is greater than or equal to
+///         @p value.
 [[nodiscard]] int roundUp(int value, int align)
 {
     assert(align > 0 && "alignment must be positive");
@@ -61,16 +85,31 @@ struct SlotKeyHash
     return value + (align - remainder);
 }
 
+/// @brief Create a physical-register Machine IR operand.
+/// @details Wraps the helper exposed by MachineIR.hpp while retaining the
+///          register class information so callers avoid repeating casts.
+/// @param cls Register class that owns @p reg.
+/// @param reg Physical register identifier.
+/// @return Operand referencing the concrete register.
 [[nodiscard]] Operand makePhysOperand(RegClass cls, PhysReg reg)
 {
     return makePhysRegOperand(cls, static_cast<uint16_t>(reg));
 }
 
+/// @brief Construct a base register operand for frame or stack pointers.
+/// @param reg Physical register to convert.
+/// @return Register operand tagged as a physical general-purpose register.
 [[nodiscard]] OpReg makePhysBase(PhysReg reg)
 {
     return makePhysReg(RegClass::GPR, static_cast<uint16_t>(reg));
 }
 
+/// @brief Determine whether @p reg belongs to the callee-saved set.
+/// @details Consults the target's callee-saved lists for both GPR and XMM
+///          classes.
+/// @param target Target description providing ABI details.
+/// @param reg Physical register being queried.
+/// @return True when the register must be preserved across calls.
 [[nodiscard]] bool isCalleeSaved(const TargetInfo &target, PhysReg reg)
 {
     const auto hasReg = [&](const std::vector<PhysReg> &regs)
@@ -78,6 +117,14 @@ struct SlotKeyHash
     return hasReg(target.calleeSavedGPR) || hasReg(target.calleeSavedXMM);
 }
 
+/// @brief Guess the register class used by a memory operand.
+/// @details Scans all other operands in the instruction looking for physical
+///          registers to infer whether the memory slot stores GPR or XMM state.
+///          Falls back to @ref RegClass::GPR when no hint is found, which keeps
+///          stack layout deterministic for scalar spills.
+/// @param instr Machine instruction containing the operand.
+/// @param memIndex Index of the memory operand within the instruction.
+/// @return Register class used to model the memory payload.
 [[nodiscard]] RegClass deduceMemClass(const MInstr &instr, std::size_t memIndex)
 {
     for (std::size_t idx = 0; idx < instr.operands.size(); ++idx)
@@ -106,6 +153,11 @@ struct SlotKeyHash
     return RegClass::GPR;
 }
 
+/// @brief Compute the stack offset that stores a callee-saved register.
+/// @details Spill slots are allocated consecutively below %rbp.  Each slot
+///          occupies eight bytes and stores one callee-saved value.
+/// @param index Zero-based index of the callee-saved register spill slot.
+/// @return Negative byte offset relative to %rbp.
 [[nodiscard]] int calleeSavedOffset(std::size_t index)
 {
     return -static_cast<int>((index + 1) * kSlotSizeBytes);
@@ -113,6 +165,17 @@ struct SlotKeyHash
 
 } // namespace
 
+/// @brief Assign concrete spill slot displacements and record callee saves.
+/// @details Walks all Machine IR instructions searching for placeholder stack
+///          references (encoded as negative displacements from %rbp) and
+///          replaces them with the final offsets computed from the register
+///          class partitioning.  The routine also records which callee-saved
+///          registers actually appear in the function and rounds frame
+///          allocations up to 16 bytes to maintain ABI alignment.
+/// @param func Machine function whose frame layout is being materialised.
+/// @param target Target ABI description (callee-saved sets, etc.).
+/// @param frame Frame metadata that will be populated with spill sizes and
+///              outgoing argument requirements.
 void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &frame)
 {
     std::unordered_set<PhysReg> usedCalleeSaved{};
@@ -259,6 +322,17 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
     }
 }
 
+/// @brief Inject prologue and epilogue sequences that honour the SysV ABI.
+/// @details Emits the canonical prologue (`push %rbp; mov %rsp, %rbp; sub ...`)
+///          and mirrors it with an epilogue that restores callee-saved
+///          registers, tears down the frame allocation, and pops %rbp before
+///          returning.  Prologue instructions are prepended to the entry block
+///          while each `ret` instruction receives an epilogue copy to ensure
+///          multiple return sites stay well-formed.
+/// @param func Machine function receiving prologue/epilogue code.
+/// @param target Target ABI description (currently unused but kept for
+///               symmetry with future extensions).
+/// @param frame Frame metadata produced by @ref assignSpillSlots.
 void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const FrameInfo &frame)
 {
     if (func.blocks.empty())
