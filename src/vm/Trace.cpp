@@ -83,7 +83,10 @@ void printValue(std::ostream &os, const il::core::Value &v)
             os << "%t" << std::dec << v.id;
             break;
         case il::core::Value::Kind::ConstInt:
-            os << std::dec << v.i64;
+            if (v.isBool)
+                os << (v.i64 != 0 ? "true" : "false");
+            else
+                os << std::dec << v.i64;
             break;
         case il::core::Value::Kind::ConstFloat:
         {
