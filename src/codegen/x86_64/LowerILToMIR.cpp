@@ -923,6 +923,7 @@ void LowerILToMIR::lowerInstruction(const ILInstr &instr, MBasicBlock &block)
     }
     if (opc == "fdiv")
     {
+        // Lower: dst = FDIV lhs, rhs   (both XMM class)
         lowerBinary(instr, block, MOpcode::FDIV, MOpcode::FDIV, RegClass::XMM);
         return;
     }
