@@ -24,6 +24,7 @@
 #include "support/source_manager.hpp"
 #include "vm/VM.hpp"
 #include <clocale>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -86,6 +87,16 @@ void printValue(std::ostream &os, const il::core::Value &v)
             break;
         case il::core::Value::Kind::ConstFloat:
         {
+            if (std::signbit(v.f64) && v.f64 == 0.0)
+            {
+                os << "-0.0";
+                break;
+            }
+            if (v.f64 == 0.0)
+            {
+                os << "0.0";
+                break;
+            }
             char buf[32];
             std::snprintf(buf, sizeof(buf), "%.17g", v.f64);
             os << buf;
