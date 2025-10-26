@@ -108,10 +108,18 @@ void rt_arr_i32_set(int32_t *arr, size_t idx, int32_t value)
     arr[idx] = value;
 }
 
-static void rt_arr_i32_copy_payload(int32_t *dst, const int32_t *src, size_t count)
+/// @brief Copy @p count elements, aborting when presented with invalid buffers.
+/// @param dst Destination array payload; must be non-null when @p count > 0.
+/// @param src Source array payload; must be non-null when @p count > 0.
+/// @param count Number of elements to copy.
+void rt_arr_i32_copy_payload(int32_t *dst, const int32_t *src, size_t count)
 {
-    if (!dst || !src || count == 0)
+    if (count == 0)
         return;
+
+    if (!dst || !src)
+        rt_arr_oob_panic(0, count);
+
     memcpy(dst, src, count * sizeof(int32_t));
 }
 
@@ -179,6 +187,7 @@ int rt_arr_i32_resize(int32_t **a_inout, size_t new_len)
         if (!fresh)
             return -1;
         size_t copy_len = old_len < new_len ? old_len : new_len;
+        // rt_arr_i32_new and the existing array guarantee non-null payloads when copy_len > 0.
         rt_arr_i32_copy_payload(fresh, arr, copy_len);
         rt_arr_i32_release(arr);
         *a_inout = fresh;
