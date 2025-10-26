@@ -339,7 +339,7 @@ void lowerCall(MBasicBlock &block,
     insertInstr(MInstr::make(MOpcode::LABEL, {makeLabelOperand(callOkLabel)}));
 #endif
 
-    insertInstr(MInstr::make(MOpcode::CALL, {makeLabelOperand(plan.calleeLabel)}));
+    (void)plan;
 }
 
 } // namespace viper::codegen::x64

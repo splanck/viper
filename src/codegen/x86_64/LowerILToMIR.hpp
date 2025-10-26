@@ -130,7 +130,7 @@ class LowerILToMIR
                      MOpcode opcRI,
                      RegClass cls,
                      bool requireImm32 = false);
-    void lowerCmp(const ILInstr &instr, MBasicBlock &block, RegClass cls);
+    void lowerCmp(const ILInstr &instr, MBasicBlock &block, RegClass cls, int defaultCond);
     void lowerSelect(const ILInstr &instr, MBasicBlock &block);
     void lowerBranch(const ILInstr &instr, MBasicBlock &block);
     void lowerCondBranch(const ILInstr &instr, MBasicBlock &block);
