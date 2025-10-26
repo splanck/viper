@@ -10,6 +10,7 @@ set(_viper_codegen_x86_64_tests
     i1_normalization
     pro_epi
     f64_const
+    diff_vm_native
     return_values
     select
     select_cmov
@@ -40,4 +41,8 @@ foreach(_viper_codegen_case IN LISTS _viper_codegen_x86_64_tests)
   endif()
 
   target_link_libraries(${_viper_codegen_target} PRIVATE viper_codegen_x86_64)
+
+  if(_viper_codegen_case STREQUAL "diff_vm_native")
+    target_compile_definitions(${_viper_codegen_target} PRIVATE VIPER_TEST_ILC_PATH="$<TARGET_FILE:ilc>")
+  endif()
 endforeach()
