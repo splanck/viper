@@ -241,7 +241,8 @@ void canonicaliseBitwise(MInstr &instr)
         return;
     }
 
-    const auto convertForm = [&](MOpcode rr, MOpcode ri) {
+    const auto convertForm = [&](MOpcode rr, MOpcode ri)
+    {
         if (instr.opcode == rr && isImm(instr.operands[1]))
         {
             instr.opcode = ri;

@@ -242,7 +242,7 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
             }
 
             const auto convertValue = [&valueKinds](const il::core::Value &value,
-                                                   std::optional<ILValue::Kind> hint) -> ILValue
+                                                    std::optional<ILValue::Kind> hint) -> ILValue
             {
                 ILValue converted{};
                 converted.id = -1;
@@ -363,9 +363,8 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                     {
                         setResultKind(instr.type);
                         adaptedInstr.opcode = "sdiv";
-                        convertOperands(instr,
-                                        {ILValue::Kind::I64, ILValue::Kind::I64},
-                                        adaptedInstr);
+                        convertOperands(
+                            instr, {ILValue::Kind::I64, ILValue::Kind::I64}, adaptedInstr);
                         break;
                     }
                     case il::core::Opcode::SRem:
@@ -373,9 +372,8 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                     {
                         setResultKind(instr.type);
                         adaptedInstr.opcode = "srem";
-                        convertOperands(instr,
-                                        {ILValue::Kind::I64, ILValue::Kind::I64},
-                                        adaptedInstr);
+                        convertOperands(
+                            instr, {ILValue::Kind::I64, ILValue::Kind::I64}, adaptedInstr);
                         break;
                     }
                     case il::core::Opcode::UDiv:
@@ -383,9 +381,8 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                     {
                         setResultKind(instr.type);
                         adaptedInstr.opcode = "udiv";
-                        convertOperands(instr,
-                                        {ILValue::Kind::I64, ILValue::Kind::I64},
-                                        adaptedInstr);
+                        convertOperands(
+                            instr, {ILValue::Kind::I64, ILValue::Kind::I64}, adaptedInstr);
                         break;
                     }
                     case il::core::Opcode::URem:
@@ -393,9 +390,8 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                     {
                         setResultKind(instr.type);
                         adaptedInstr.opcode = "urem";
-                        convertOperands(instr,
-                                        {ILValue::Kind::I64, ILValue::Kind::I64},
-                                        adaptedInstr);
+                        convertOperands(
+                            instr, {ILValue::Kind::I64, ILValue::Kind::I64}, adaptedInstr);
                         break;
                     }
                     case il::core::Opcode::Shl:
