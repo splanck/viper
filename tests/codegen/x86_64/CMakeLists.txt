@@ -6,8 +6,6 @@
 set(_viper_codegen_x86_64_tests
     abi_probe
     add_ret
-    e2e_bitwise_cli
-    e2e_fdiv_cli
     diff_vm_native
     div_trap
     udiv_urem
@@ -19,6 +17,10 @@ set(_viper_codegen_x86_64_tests
     select_cmov
     shifts
     string_literal)
+
+list(APPEND _viper_codegen_x86_64_tests
+    e2e_bitwise_cli
+    e2e_fdiv_cli)
 
 set(_viper_codegen_x86_64_has_gtest OFF)
 if(TARGET GTest::gtest_main OR TARGET GTest::gtest OR TARGET gtest_main OR TARGET gtest)
