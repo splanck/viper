@@ -69,6 +69,12 @@ extern "C"
     /// @return 0 on success, -1 on allocation failure; pointer may be rebound on success.
     int rt_arr_i32_resize(int32_t **a_inout, size_t new_len);
 
+    /// @brief Copy @p count elements between array payloads, trapping on invalid buffers.
+    /// @param dst Destination payload pointer; must be non-null when @p count > 0.
+    /// @param src Source payload pointer; must be non-null when @p count > 0.
+    /// @param count Number of elements to copy.
+    void rt_arr_i32_copy_payload(int32_t *dst, const int32_t *src, size_t count);
+
     /// @brief Abort execution due to an out-of-bounds access.
     /// @param idx Failing index.
     /// @param len Array length observed by the caller.
