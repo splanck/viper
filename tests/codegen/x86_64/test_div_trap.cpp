@@ -11,17 +11,26 @@
 
 #include "codegen/x86_64/Backend.hpp"
 
+#include <chrono>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <system_error>
 
 #if __has_include(<gtest/gtest.h>)
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else
-#include <cstdlib>
 #include <iostream>
 #define VIPER_HAS_GTEST 0
+#endif
+
+#ifndef _WIN32
+#include <sys/wait.h>
 #endif
 
 namespace viper::codegen::x64
@@ -145,6 +154,198 @@ struct DivTrapSequence
     return sequence;
 }
 
+[[nodiscard]] bool envFlagEnabled(const char *name) noexcept
+{
+    if (const char *value = std::getenv(name))
+    {
+        std::string_view view(value);
+        if (view.empty())
+        {
+            return true;
+        }
+        if (view == "0" || view == "false" || view == "FALSE" || view == "False")
+        {
+            return false;
+        }
+        return true;
+    }
+    return false;
+}
+
+[[nodiscard]] std::optional<std::string> nativeExecDisabledReason()
+{
+    if (envFlagEnabled("VIPER_TESTS_DISABLE_NATIVE_EXEC"))
+    {
+        return std::string("Native execution disabled via VIPER_TESTS_DISABLE_NATIVE_EXEC");
+    }
+    if (envFlagEnabled("VIPER_TESTS_DISABLE_SUBPROCESS"))
+    {
+        return std::string("Native execution disabled via VIPER_TESTS_DISABLE_SUBPROCESS");
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::string quoteForShell(const std::filesystem::path &path)
+{
+    const std::string raw = path.string();
+    std::string quoted;
+    quoted.reserve(raw.size() + 2);
+    quoted.push_back('"');
+    for (const char ch : raw)
+    {
+        if (ch == '"')
+        {
+            quoted.push_back('\\');
+            quoted.push_back('"');
+        }
+        else
+        {
+            quoted.push_back(ch);
+        }
+    }
+    quoted.push_back('"');
+    return quoted;
+}
+
+[[nodiscard]] int decodeExitCode(const int rawStatus)
+{
+#ifdef _WIN32
+    return rawStatus;
+#else
+    if (rawStatus == -1)
+    {
+        return -1;
+    }
+    if (WIFEXITED(rawStatus))
+    {
+        return WEXITSTATUS(rawStatus);
+    }
+    if (WIFSIGNALED(rawStatus))
+    {
+        return 128 + WTERMSIG(rawStatus);
+    }
+    return rawStatus;
+#endif
+}
+
+[[nodiscard]] std::string makeRunNativeCommand(const std::filesystem::path &ilPath)
+{
+    return std::string("ilc codegen x64 ") + quoteForShell(ilPath) + " -run-native";
+}
+
+[[nodiscard]] bool writeTextFile(const std::filesystem::path &path, std::string_view contents)
+{
+    std::ofstream file(path, std::ios::binary);
+    if (!file.is_open())
+    {
+        return false;
+    }
+    file << contents;
+    return file.good();
+}
+
+class TempDirGuard
+{
+  public:
+    explicit TempDirGuard(std::filesystem::path path) : path_(std::move(path)) {}
+    TempDirGuard(const TempDirGuard &) = delete;
+    TempDirGuard &operator=(const TempDirGuard &) = delete;
+    TempDirGuard(TempDirGuard &&) = delete;
+    TempDirGuard &operator=(TempDirGuard &&) = delete;
+    ~TempDirGuard()
+    {
+        if (path_.empty())
+        {
+            return;
+        }
+        std::error_code ec;
+        std::filesystem::remove_all(path_, ec);
+    }
+
+    [[nodiscard]] const std::filesystem::path &path() const noexcept { return path_; }
+
+  private:
+    std::filesystem::path path_{};
+};
+
+struct NativeRunResult
+{
+    bool skipped{false};
+    bool launchFailed{false};
+    int exitCode{0};
+    std::string command{};
+    std::string message{};
+};
+
+[[nodiscard]] NativeRunResult runDivTrapNative()
+{
+    NativeRunResult result{};
+
+    if (auto reason = nativeExecDisabledReason())
+    {
+        result.skipped = true;
+        result.message = *reason;
+        return result;
+    }
+
+    std::error_code tempEc;
+    const std::filesystem::path baseTemp = std::filesystem::temp_directory_path(tempEc);
+    if (tempEc)
+    {
+        result.launchFailed = true;
+        result.message = std::string("Failed to resolve temporary directory: ") + tempEc.message();
+        return result;
+    }
+
+    const auto suffix = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    const std::filesystem::path tempDir = baseTemp / (std::string("viper_div_trap_") + suffix);
+
+    std::error_code createEc;
+    std::filesystem::create_directories(tempDir, createEc);
+    if (createEc)
+    {
+        result.launchFailed = true;
+        result.message = std::string("Failed to create temporary directory '") + tempDir.string() +
+                          "': " + createEc.message();
+        return result;
+    }
+
+    TempDirGuard guard(tempDir);
+
+    constexpr std::string_view kDivTrapProgram = R"(il 0.1.2
+
+func @main() -> i64 {
+entry:
+  %q:i64 = sdiv.chk0 1, 0
+  ret %q
+}
+)";
+
+    const std::filesystem::path ilPath = tempDir / "div_trap.il";
+    if (!writeTextFile(ilPath, kDivTrapProgram))
+    {
+        result.launchFailed = true;
+        result.message = std::string("Failed to write IL program to '") + ilPath.string() + "'";
+        return result;
+    }
+
+    const std::string command = makeRunNativeCommand(ilPath);
+    result.command = command;
+
+    const int rawStatus = std::system(command.c_str());
+    const int exitCode = decodeExitCode(rawStatus);
+    if (exitCode == -1)
+    {
+        result.launchFailed = true;
+        result.message = std::string("Failed to execute '") + command + "'";
+        return result;
+    }
+
+    result.exitCode = exitCode;
+    result.message = std::string("Command '") + command + "' exited with code " + std::to_string(exitCode);
+    return result;
+}
+
 } // namespace
 } // namespace viper::codegen::x64
 
@@ -165,6 +366,21 @@ TEST(CodegenX64DivTrapTest, EmitsGuardedDivisionSequence)
     EXPECT_TRUE(sequence.hasCqto) << result.asmText;
     EXPECT_TRUE(sequence.hasIdiv) << result.asmText;
     EXPECT_TRUE(sequence.hasTrapCall) << result.asmText;
+}
+
+TEST(CodegenX64DivTrapTest, RunNativeTrapExitsNonZero)
+{
+    using namespace viper::codegen::x64;
+
+    const NativeRunResult result = runDivTrapNative();
+    if (result.skipped)
+    {
+        GTEST_SKIP() << result.message;
+    }
+
+    ASSERT_FALSE(result.launchFailed) << result.message;
+    EXPECT_NE(result.exitCode, 0) << "Expected non-zero exit code when running native trap. "
+                                   << result.message;
 }
 
 #else
@@ -188,6 +404,22 @@ int main()
     {
         std::cerr << "Missing guarded division pattern in assembly:\n" << result.asmText;
         return EXIT_FAILURE;
+    }
+
+    const NativeRunResult native = runDivTrapNative();
+    if (!native.skipped)
+    {
+        if (native.launchFailed)
+        {
+            std::cerr << native.message << '\n';
+            return EXIT_FAILURE;
+        }
+        if (native.exitCode == 0)
+        {
+            std::cerr << "Expected ilc run-native to exit with a non-zero status when dividing by zero.\n"
+                      << native.message << '\n';
+            return EXIT_FAILURE;
+        }
     }
 
     return EXIT_SUCCESS;
