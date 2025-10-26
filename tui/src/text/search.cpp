@@ -1,7 +1,23 @@
-// tui/src/text/search.cpp
-// @brief TextBuffer search implementations for literal and regex queries.
-// @invariant Limits searches to reasonable buffer size and handles regex errors.
-// @ownership Functions borrow TextBuffer; matches returned by value.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Provides literal and regular-expression search utilities for the terminal UI
+// text buffer.  The implementation keeps runtime safeguards in place (size caps,
+// exception handling) so interactive searches cannot stall the UI or surface
+// uncaught regex errors to users.
+//
+//===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Search helpers for @ref viper::tui::text::TextBuffer.
+/// @details The functions offer simple literal scans and regular-expression
+///          matches while constraining the scanned text to a configurable limit
+///          to keep latency predictable.  Results are returned by value so the
+///          caller can store or display them freely.
 
 #include "tui/text/search.hpp"
 
@@ -11,9 +27,19 @@ namespace viper::tui::text
 {
 namespace
 {
+/// @brief Maximum number of characters a search considers before truncating.
+/// @details Keeps regex operations bounded so pathological patterns cannot freeze
+///          the UI.  One megabyte is large enough for typical buffers yet small
+///          enough for interactive latency.
 constexpr size_t kMaxSearchSize = 1 << 20; // 1MB cap
 }
 
+/// @brief Locate every match for @p query within @p buf.
+/// @details Performs a literal scan when @p useRegex is false and otherwise uses
+///          @c std::regex to discover matches.  The buffer is truncated to
+///          @ref kMaxSearchSize characters before searching to keep runtime costs
+///          predictable.  Regex errors result in an empty match list rather than
+///          propagating exceptions to the caller.
 std::vector<Match> findAll(const TextBuffer &buf, std::string_view query, bool useRegex)
 {
     std::vector<Match> hits;
@@ -54,6 +80,12 @@ std::vector<Match> findAll(const TextBuffer &buf, std::string_view query, bool u
     return hits;
 }
 
+/// @brief Find the next match starting at @p from.
+/// @details Mirrors @ref findAll but stops at the first occurrence on or after
+///          the requested offset.  Literal searches delegate to
+///          @c std::string::find, while regex searches reuse the same truncated
+///          buffer strategy.  Regex failures yield @c std::nullopt so the caller
+///          can continue gracefully.
 std::optional<Match> findNext(const TextBuffer &buf,
                               std::string_view query,
                               size_t from,
