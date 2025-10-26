@@ -6,6 +6,7 @@
 set(_viper_codegen_x86_64_tests
     abi_probe
     add_ret
+    e2e_bitwise_cli
     diff_vm_native
     div_trap
     udiv_urem
