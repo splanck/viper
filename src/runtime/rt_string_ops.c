@@ -183,6 +183,12 @@ rt_string rt_concat(rt_string a, rt_string b)
         memcpy(out->data + len_a, b->data, len_b);
 
     out->data[total] = '\0';
+
+    if (a)
+        rt_string_unref(a);
+    if (b)
+        rt_string_unref(b);
+
     return out;
 }
 

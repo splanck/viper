@@ -93,34 +93,47 @@ int main()
     {
         rt_string left_owned = rt_const_cstr("left");
         rt_string right_owned = rt_const_cstr("right");
-        rt_string left_ref = rt_string_ref(left_owned);
-        rt_string right_ref = rt_string_ref(right_owned);
-        rt_string joined = rt_concat(left_ref, right_ref);
         auto *left_impl = (rt_string_impl *)left_owned;
         auto *right_impl = (rt_string_impl *)right_owned;
         assert(left_impl->heap == nullptr);
         assert(right_impl->heap == nullptr);
-        assert(left_impl->literal_refs == 2);
-        assert(right_impl->literal_refs == 2);
+        size_t left_before = left_impl->literal_refs;
+        size_t right_before = right_impl->literal_refs;
+        rt_string joined = rt_concat(rt_string_ref(left_owned), rt_string_ref(right_owned));
+        assert(left_impl->literal_refs == left_before);
+        assert(right_impl->literal_refs == right_before);
         rt_string_unref(joined);
-        rt_string_unref(left_ref);
-        rt_string_unref(right_ref);
         rt_string_unref(left_owned);
         rt_string_unref(right_owned);
     }
 
     {
         rt_string base = rt_const_cstr("dup");
-        rt_string first = rt_string_ref(base);
-        rt_string second = rt_string_ref(base);
-        rt_string doubled = rt_concat(first, second);
         auto *base_impl = (rt_string_impl *)base;
         assert(base_impl->heap == nullptr);
-        assert(base_impl->literal_refs == 3);
+        size_t before = base_impl->literal_refs;
+        rt_string doubled = rt_concat(rt_string_ref(base), rt_string_ref(base));
+        assert(base_impl->literal_refs == before);
         rt_string_unref(doubled);
-        rt_string_unref(first);
-        rt_string_unref(second);
         rt_string_unref(base);
+    }
+
+    {
+        rt_string left_heap = rt_string_from_bytes("heap", 4);
+        rt_string right_heap = rt_string_from_bytes("data", 4);
+        auto *left_impl = (rt_string_impl *)left_heap;
+        auto *right_impl = (rt_string_impl *)right_heap;
+        assert(left_impl->heap != nullptr);
+        assert(right_impl->heap != nullptr);
+        size_t left_before = left_impl->heap->refcnt;
+        size_t right_before = right_impl->heap->refcnt;
+        rt_string merged = rt_concat(rt_string_ref(left_heap), rt_string_ref(right_heap));
+        assert(left_impl->heap->refcnt == left_before);
+        assert(right_impl->heap->refcnt == right_before);
+        assert(std::strcmp(((rt_string_impl *)merged)->data, "heapdata") == 0);
+        rt_string_unref(merged);
+        rt_string_unref(left_heap);
+        rt_string_unref(right_heap);
     }
 
     {

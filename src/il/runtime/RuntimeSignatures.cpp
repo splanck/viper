@@ -167,6 +167,38 @@ template <auto Fn, typename Ret, typename... Args> struct DirectHandler
     }
 };
 
+template <auto Fn, typename Ret, typename... Args> struct ConsumingStringHandler
+{
+    static void invoke(void **args, void *result)
+    {
+        retainStrings(args, std::index_sequence_for<Args...>{});
+        DirectHandler<Fn, Ret, Args...>::invoke(args, result);
+    }
+
+  private:
+    template <std::size_t... I>
+    static void retainStrings(void **args, std::index_sequence<I...>)
+    {
+        (retainArg<Args>(args, I), ...);
+    }
+
+    template <typename T>
+    static void retainArg(void **args, std::size_t index)
+    {
+        if constexpr (std::is_same_v<std::remove_cv_t<T>, rt_string>)
+        {
+            if (!args)
+                return;
+            void *slot = args[index];
+            if (!slot)
+                return;
+            rt_string value = *reinterpret_cast<rt_string *>(slot);
+            if (value)
+                rt_string_ref(value);
+        }
+    }
+};
+
 /// @brief Bridge runtime string trap requests into the VM trap mechanism.
 ///
 /// @details Extracts the string argument from the generic argument array and
@@ -485,7 +517,7 @@ constexpr std::array<DescriptorRow, 88> kDescriptorRows{{
     DescriptorRow{"rt_concat",
                   RtSig::Concat,
                   data::kRtSigSpecs[static_cast<std::size_t>(RtSig::Concat)],
-                  &DirectHandler<&rt_concat, rt_string, rt_string, rt_string>::invoke,
+                  &ConsumingStringHandler<&rt_concat, rt_string, rt_string, rt_string>::invoke,
                   featureLowering(RuntimeFeature::Concat),
                   nullptr,
                   0,
