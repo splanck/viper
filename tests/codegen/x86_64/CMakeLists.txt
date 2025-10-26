@@ -8,6 +8,7 @@ set(_viper_codegen_x86_64_tests
     add_ret
     diff_vm_native
     div_trap
+    e2e_bitwise_cli
     udiv_urem
     i1_normalization
     pro_epi
