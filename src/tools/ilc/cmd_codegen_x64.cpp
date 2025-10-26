@@ -415,6 +415,57 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                         convertOperands(instr, {kind, ILValue::Kind::I64}, adaptedInstr);
                         break;
                     }
+                    case il::core::Opcode::And:
+                    {
+                        if (instr.result)
+                        {
+                            adaptedInstr.resultId = static_cast<int>(*instr.result);
+                            adaptedInstr.resultKind = ILValue::Kind::I64;
+                            valueKinds[*instr.result] = ILValue::Kind::I64;
+                        }
+                        else
+                        {
+                            adaptedInstr.resultKind = ILValue::Kind::I64;
+                        }
+                        adaptedInstr.opcode = "and";
+                        convertOperands(instr, {ILValue::Kind::I64, ILValue::Kind::I64},
+                                        adaptedInstr);
+                        break;
+                    }
+                    case il::core::Opcode::Or:
+                    {
+                        if (instr.result)
+                        {
+                            adaptedInstr.resultId = static_cast<int>(*instr.result);
+                            adaptedInstr.resultKind = ILValue::Kind::I64;
+                            valueKinds[*instr.result] = ILValue::Kind::I64;
+                        }
+                        else
+                        {
+                            adaptedInstr.resultKind = ILValue::Kind::I64;
+                        }
+                        adaptedInstr.opcode = "or";
+                        convertOperands(instr, {ILValue::Kind::I64, ILValue::Kind::I64},
+                                        adaptedInstr);
+                        break;
+                    }
+                    case il::core::Opcode::Xor:
+                    {
+                        if (instr.result)
+                        {
+                            adaptedInstr.resultId = static_cast<int>(*instr.result);
+                            adaptedInstr.resultKind = ILValue::Kind::I64;
+                            valueKinds[*instr.result] = ILValue::Kind::I64;
+                        }
+                        else
+                        {
+                            adaptedInstr.resultKind = ILValue::Kind::I64;
+                        }
+                        adaptedInstr.opcode = "xor";
+                        convertOperands(instr, {ILValue::Kind::I64, ILValue::Kind::I64},
+                                        adaptedInstr);
+                        break;
+                    }
                     case il::core::Opcode::ICmpEq:
                     case il::core::Opcode::ICmpNe:
                     case il::core::Opcode::SCmpLT:
