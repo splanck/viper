@@ -365,6 +365,14 @@ function(viper_add_il_utils_test)
     test_il_simplifycfg_shrink_params test_il_simplifycfg_shrink_params)
 
   viper_add_test(
+    test_il_simplifycfg_values_equal_fp
+    ${_VIPER_IL_DIR}/transform/simplifycfg_values_equal_fp.cpp)
+  target_link_libraries(
+    test_il_simplifycfg_values_equal_fp PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+  viper_add_ctest(
+    test_il_simplifycfg_values_equal_fp test_il_simplifycfg_values_equal_fp)
+
+  viper_add_test(
     test_il_simplifycfg_pass_manager_cfg_invalidation
     ${_VIPER_IL_DIR}/transform/simplifycfg_pass_manager_cfg_invalidation.cpp)
   target_link_libraries(
