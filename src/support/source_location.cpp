@@ -53,6 +53,26 @@ bool SourceLoc::isValid() const
 /// @return True when both @ref begin and @ref end carry valid file ids.
 bool SourceRange::isValid() const
 {
-    return begin.isValid() && end.isValid();
+    if (!begin.isValid() || !end.isValid())
+    {
+        return false;
+    }
+
+    if (begin.file_id != end.file_id)
+    {
+        return false;
+    }
+
+    if (begin.line > end.line)
+    {
+        return false;
+    }
+
+    if (begin.line == end.line && begin.column > end.column)
+    {
+        return false;
+    }
+
+    return true;
 }
 } // namespace il::support
