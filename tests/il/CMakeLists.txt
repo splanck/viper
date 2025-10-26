@@ -191,6 +191,18 @@ function(viper_add_il_core_tests)
   target_link_libraries(test_il_parse_global_missing_name PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   viper_add_ctest(test_il_parse_global_missing_name test_il_parse_global_missing_name)
 
+  viper_add_test(test_il_parse_global_const_str ${_VIPER_IL_UNIT_DIR}/test_il_parse_global_const_str.cpp)
+  target_link_libraries(test_il_parse_global_const_str PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+  viper_add_ctest(test_il_parse_global_const_str test_il_parse_global_const_str)
+
+  viper_add_test(test_il_parse_global_missing_const ${_VIPER_IL_UNIT_DIR}/test_il_parse_global_missing_const.cpp)
+  target_link_libraries(test_il_parse_global_missing_const PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+  viper_add_ctest(test_il_parse_global_missing_const test_il_parse_global_missing_const)
+
+  viper_add_test(test_il_parse_global_wrong_type ${_VIPER_IL_UNIT_DIR}/test_il_parse_global_wrong_type.cpp)
+  target_link_libraries(test_il_parse_global_wrong_type PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+  viper_add_ctest(test_il_parse_global_wrong_type test_il_parse_global_wrong_type)
+
   viper_add_test(test_il_parse_string_escapes ${_VIPER_IL_UNIT_DIR}/test_il_parse_string_escapes.cpp)
   target_link_libraries(test_il_parse_string_escapes PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   viper_add_ctest(test_il_parse_string_escapes test_il_parse_string_escapes)

@@ -128,13 +128,15 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st)
     return {};
 }
 
-/// @brief Parse a global string binding written as `global @name = "literal"`.
+/// @brief Parse a global string binding written as `global const str @name = "literal"`.
 ///
-/// @details Validates that an assignment operator is present, trims the name
-/// token to ignore incidental whitespace, and copies the quoted payload after
-/// decoding escape sequences with @ref il::io::decodeEscapedString.  Missing
-/// delimiters or invalid escapes produce diagnostics; otherwise a UTF-8 string
-/// global is appended to @c ParserState::m.globals.
+/// @details Validates that an assignment operator is present, checks the
+/// required `const` keyword and declared type preceding the name, trims the
+/// identifier token to ignore incidental whitespace, and copies the quoted
+/// payload after decoding escape sequences with @ref il::io::decodeEscapedString.
+/// Missing delimiters, invalid escapes, or unsupported type annotations produce
+/// diagnostics; otherwise a UTF-8 string global is appended to
+/// @c ParserState::m.globals.
 Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
 {
     size_t at = line.find('@');
@@ -142,6 +144,59 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
     {
         std::ostringstream oss;
         oss << "line " << st.lineNo << ": missing '@'";
+        return Expected<void>{makeError({}, oss.str())};
+    }
+
+    std::string header = trim(line.substr(0, at));
+    std::istringstream hs(header);
+    std::string globalKw;
+    hs >> globalKw;
+    if (globalKw != "global")
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": unexpected token '" << globalKw
+            << "' before 'const'";
+        return Expected<void>{makeError({}, oss.str())};
+    }
+
+    std::string constKw;
+    if (!(hs >> constKw) || constKw != "const")
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing 'const' before global name";
+        return Expected<void>{makeError({}, oss.str())};
+    }
+
+    std::string typeTok;
+    if (!(hs >> typeTok))
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing global type";
+        return Expected<void>{makeError({}, oss.str())};
+    }
+
+    std::string trailing;
+    if (hs >> trailing)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": unexpected token '" << trailing
+            << "' before global name";
+        return Expected<void>{makeError({}, oss.str())};
+    }
+
+    bool typeOk = true;
+    Type declaredType = parseType(typeTok, &typeOk);
+    if (!typeOk)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": unknown type '" << typeTok << "'";
+        return Expected<void>{makeError({}, oss.str())};
+    }
+    if (declaredType.kind != Type::Kind::Str)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": unsupported global type '" << typeTok
+            << "'";
         return Expected<void>{makeError({}, oss.str())};
     }
 
@@ -176,7 +231,7 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
         oss << "line " << st.lineNo << ": " << errMsg;
         return Expected<void>{makeError({}, oss.str())};
     }
-    st.m.globals.push_back({name, Type(Type::Kind::Str), decoded});
+    st.m.globals.push_back({name, declaredType, decoded});
     return {};
 }
 
