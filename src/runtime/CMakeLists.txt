@@ -1,5 +1,6 @@
 set(RT_SOURCES
         rt_error.c
+        rt_trap.c
         rt_fp.c
         rt_memory.c
         rt_string_ops.c
@@ -24,6 +25,7 @@ set(RT_SOURCES
 
 set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_error.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_trap.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt.hpp
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_fp.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_math.h
