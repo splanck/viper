@@ -144,6 +144,11 @@ void ensureMovzxAfterSetcc(MBasicBlock &block, std::size_t index)
         return;
     }
 
+    if (const auto *destReg = asReg(*destOperand); destReg && destReg->cls != RegClass::GPR)
+    {
+        return;
+    }
+
     if (index + 1 < block.instructions.size())
     {
         auto &next = block.instructions[index + 1];
@@ -393,7 +398,7 @@ bool lowerXmmSelect(MFunction &func, MBasicBlock &block, std::size_t index)
     }
 
     auto &movInstr = block.instructions[index];
-    if (movInstr.opcode != MOpcode::MOVrr || movInstr.operands.size() < 3)
+    if (movInstr.opcode != MOpcode::MOVSDrr || movInstr.operands.size() < 3)
     {
         return false;
     }

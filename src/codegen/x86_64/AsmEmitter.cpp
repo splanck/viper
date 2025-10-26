@@ -518,7 +518,6 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         case MOpcode::XORrr:
         case MOpcode::IMULrr:
         case MOpcode::XORrr32:
-        case MOpcode::MOVZXrr32:
         case MOpcode::FADD:
         case MOpcode::FSUB:
         case MOpcode::FMUL:
@@ -555,6 +554,24 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         case MOpcode::TESTrr:
         {
             emitBinary([&](const Operand &operand) { return formatOperand(operand, target); });
+            return;
+        }
+        case MOpcode::MOVZXrr32:
+        {
+            if (instr.operands.size() < 2)
+            {
+                os << "  movzbq #<missing>\n";
+                return;
+            }
+            const auto *dest = std::get_if<OpReg>(&instr.operands[0]);
+            const auto *src = std::get_if<OpReg>(&instr.operands[1]);
+            if (!dest || !src)
+            {
+                os << "  movzbq #<invalid>\n";
+                return;
+            }
+            os << "  movzbq " << formatReg8(*src, target) << ", "
+               << formatReg(*dest, target) << '\n';
             return;
         }
         case MOpcode::MOVSDrm:
@@ -623,6 +640,55 @@ std::string AsmEmitter::formatReg(const OpReg &reg, const TargetInfo &)
     std::ostringstream os;
     os << "%v" << static_cast<unsigned>(reg.idOrPhys);
     return os.str();
+}
+
+std::string AsmEmitter::formatReg8(const OpReg &reg, const TargetInfo &target)
+{
+    if (!reg.isPhys)
+    {
+        std::ostringstream os;
+        os << "%v" << static_cast<unsigned>(reg.idOrPhys) << ".b";
+        return os.str();
+    }
+
+    const auto phys = static_cast<PhysReg>(reg.idOrPhys);
+    switch (phys)
+    {
+        case PhysReg::RAX:
+            return "%al";
+        case PhysReg::RBX:
+            return "%bl";
+        case PhysReg::RCX:
+            return "%cl";
+        case PhysReg::RDX:
+            return "%dl";
+        case PhysReg::RSI:
+            return "%sil";
+        case PhysReg::RDI:
+            return "%dil";
+        case PhysReg::RBP:
+            return "%bpl";
+        case PhysReg::RSP:
+            return "%spl";
+        case PhysReg::R8:
+            return "%r8b";
+        case PhysReg::R9:
+            return "%r9b";
+        case PhysReg::R10:
+            return "%r10b";
+        case PhysReg::R11:
+            return "%r11b";
+        case PhysReg::R12:
+            return "%r12b";
+        case PhysReg::R13:
+            return "%r13b";
+        case PhysReg::R14:
+            return "%r14b";
+        case PhysReg::R15:
+            return "%r15b";
+        default:
+            return formatReg(reg, target);
+    }
 }
 
 /// @brief Format an immediate operand using AT&T syntax.

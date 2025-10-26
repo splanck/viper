@@ -28,6 +28,7 @@
 #include "Backend.hpp"
 
 #include "AsmEmitter.hpp"
+#include "CallLowering.hpp"
 #include "FrameLowering.hpp"
 #include "ISel.hpp"
 #include "Peephole.hpp"
@@ -35,6 +36,7 @@
 #include "TargetX64.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <sstream>
 #include <string_view>
@@ -70,6 +72,61 @@ constexpr int kSpillSlotBytes = 8;
     return std::string_view{};
 }
 
+/// @brief Lower pending call plans onto their corresponding CALL instructions.
+///
+/// @details Iterates over the machine function's basic blocks, matching each
+///          placeholder CALL emitted during IL lowering with its associated
+///          @ref CallLoweringPlan. For every match the helper invokes
+///          @ref lowerCall to materialise argument moves and update the frame
+///          summary with any required outgoing stack space. The traversal skips
+///          over the CALL that triggered lowering to avoid reprocessing it once
+///          the preparation sequence has been inserted.
+///
+/// @param func Machine function containing placeholder CALL instructions.
+/// @param plans Ordered sequence of call plans captured during IL lowering.
+/// @param target Target description providing ABI register order.
+/// @param frame Mutable frame summary updated with outgoing argument usage.
+void lowerPendingCalls(MFunction &func,
+                       const std::vector<CallLoweringPlan> &plans,
+                       const TargetInfo &target,
+                       FrameInfo &frame)
+{
+    std::size_t planIndex = 0;
+    for (auto &block : func.blocks)
+    {
+        std::size_t instrIndex = 0;
+        while (instrIndex < block.instructions.size())
+        {
+            if (block.instructions[instrIndex].opcode != MOpcode::CALL)
+            {
+                ++instrIndex;
+                continue;
+            }
+
+            if (planIndex >= plans.size())
+            {
+                break;
+            }
+
+            lowerCall(block, instrIndex, plans[planIndex], target, frame);
+            ++planIndex;
+
+            ++instrIndex;
+            while (instrIndex < block.instructions.size() &&
+                   block.instructions[instrIndex].opcode != MOpcode::CALL)
+            {
+                ++instrIndex;
+            }
+            if (instrIndex < block.instructions.size())
+            {
+                ++instrIndex;
+            }
+        }
+    }
+
+    assert(planIndex == plans.size() && "call plan count mismatch");
+}
+
 /// @brief Execute the per-function Phase A code-generation pipeline.
 ///
 /// @details Converts an IL function into Machine IR, lowers complex operations,
@@ -91,6 +148,9 @@ void runFunctionPipeline(const ILFunction &ilFunc,
 {
     machineFunc = lowering.lower(ilFunc);
 
+    frame = FrameInfo{};
+    lowerPendingCalls(machineFunc, lowering.callPlans(), target, frame);
+
     ISel isel{target};
     isel.lowerArithmetic(machineFunc);
     isel.lowerCompareAndBranch(machineFunc);
@@ -100,7 +160,6 @@ void runFunctionPipeline(const ILFunction &ilFunc,
 
     const AllocationResult allocResult = allocate(machineFunc, target);
 
-    frame = FrameInfo{};
     assignSpillSlots(machineFunc, target, frame);
     frame.spillAreaGPR = std::max(frame.spillAreaGPR, allocResult.spillSlotsGPR * kSpillSlotBytes);
     frame.spillAreaXMM = std::max(frame.spillAreaXMM, allocResult.spillSlotsXMM * kSpillSlotBytes);
