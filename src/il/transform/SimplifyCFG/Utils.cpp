@@ -19,8 +19,11 @@
 #include "il/core/Instr.hpp"
 #include "il/verify/ControlFlowChecker.hpp"
 
+#include <bit>
 #include <cassert>
 #include <cstdlib>
+#include <cstdint>
+#include <cstring>
 
 namespace il::transform::simplify_cfg
 {
@@ -50,6 +53,22 @@ const il::core::Instr *findTerminator(const il::core::BasicBlock &block)
 /// @param lhs Left-hand value.
 /// @param rhs Right-hand value.
 /// @return True when both values encode the same literal/temporary.
+namespace
+{
+
+std::uint64_t encodeDoubleToBits(double value)
+{
+#if defined(__cpp_lib_bit_cast)
+    return std::bit_cast<std::uint64_t>(value);
+#else
+    std::uint64_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(double));
+    return bits;
+#endif
+}
+
+} // namespace
+
 bool valuesEqual(const il::core::Value &lhs, const il::core::Value &rhs)
 {
     if (lhs.kind != rhs.kind)
@@ -62,7 +81,7 @@ bool valuesEqual(const il::core::Value &lhs, const il::core::Value &rhs)
         case il::core::Value::Kind::ConstInt:
             return lhs.i64 == rhs.i64 && lhs.isBool == rhs.isBool;
         case il::core::Value::Kind::ConstFloat:
-            return lhs.f64 == rhs.f64;
+            return encodeDoubleToBits(lhs.f64) == encodeDoubleToBits(rhs.f64);
         case il::core::Value::Kind::ConstStr:
         case il::core::Value::Kind::GlobalAddr:
             return lhs.str == rhs.str;
