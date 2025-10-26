@@ -358,6 +358,14 @@ viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &mod
                         convertOperands(instr, {kind, kind}, adaptedInstr);
                         break;
                     }
+                    case il::core::Opcode::FDiv:
+                    {
+                        setResultKind(instr.type);
+                        adaptedInstr.opcode = "fdiv";
+                        convertOperands(
+                            instr, {ILValue::Kind::F64, ILValue::Kind::F64}, adaptedInstr);
+                        break;
+                    }
                     case il::core::Opcode::SDiv:
                     case il::core::Opcode::SDivChk0:
                     {

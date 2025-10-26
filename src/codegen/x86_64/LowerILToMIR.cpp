@@ -921,6 +921,11 @@ void LowerILToMIR::lowerInstruction(const ILInstr &instr, MBasicBlock &block)
         lowerBinary(instr, block, opRR, opRR, cls);
         return;
     }
+    if (opc == "fdiv")
+    {
+        lowerBinary(instr, block, MOpcode::FDIV, MOpcode::FDIV, RegClass::XMM);
+        return;
+    }
     if (opc == "and")
     {
         const RegClass cls = regClassFor(instr.resultKind);
