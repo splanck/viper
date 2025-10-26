@@ -11,17 +11,25 @@
 
 #include "codegen/x86_64/Backend.hpp"
 
+#include <chrono>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <system_error>
 
 #if __has_include(<gtest/gtest.h>)
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else
-#include <cstdlib>
 #include <iostream>
 #define VIPER_HAS_GTEST 0
+#endif
+
+#ifndef _WIN32
+#include <sys/wait.h>
 #endif
 
 namespace viper::codegen::x64
@@ -112,6 +120,126 @@ struct DivTrapSequence
     bool hasTrapCall{false};
 };
 
+[[nodiscard]] std::string makeDivTrapProgramText()
+{
+    return R"IL(func @main() -> i32 {
+entry:
+  %q = div 42, 0
+  ret 0
+}
+)IL";
+}
+
+[[nodiscard]] std::string quoteForShell(const std::filesystem::path &path)
+{
+    const std::string raw = path.string();
+    std::string quoted;
+    quoted.reserve(raw.size() + 2);
+    quoted.push_back('"');
+    for (const char ch : raw)
+    {
+        if (ch == '"')
+        {
+            quoted.push_back('\\');
+            quoted.push_back('"');
+        }
+        else
+        {
+            quoted.push_back(ch);
+        }
+    }
+    quoted.push_back('"');
+    return quoted;
+}
+
+[[nodiscard]] bool canRunSubprocesses() noexcept
+{
+    return std::system(nullptr) != 0;
+}
+
+[[nodiscard]] int decodeExitCode(const int rawStatus) noexcept
+{
+#ifdef _WIN32
+    return rawStatus;
+#else
+    if (rawStatus == -1)
+    {
+        return -1;
+    }
+    if (WIFEXITED(rawStatus))
+    {
+        return WEXITSTATUS(rawStatus);
+    }
+    if (WIFSIGNALED(rawStatus))
+    {
+        return 128 + WTERMSIG(rawStatus);
+    }
+    return rawStatus;
+#endif
+}
+
+struct RuntimeTrapResult
+{
+    bool commandProcessorUnavailable{false};
+    bool tempDirFailed{false};
+    bool programWriteFailed{false};
+    bool systemCallFailed{false};
+    int exitCode{-1};
+    std::filesystem::path tempDir;
+    std::filesystem::path programPath;
+    std::string commandLine;
+};
+
+[[nodiscard]] RuntimeTrapResult runDivZeroProgramNative()
+{
+    RuntimeTrapResult result{};
+    if (!canRunSubprocesses())
+    {
+        result.commandProcessorUnavailable = true;
+        return result;
+    }
+
+    namespace fs = std::filesystem;
+    const auto uniqueSuffix =
+        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    const fs::path tempDir = fs::temp_directory_path() / fs::path("viper-div-trap-" + uniqueSuffix);
+    result.tempDir = tempDir;
+
+    std::error_code dirError;
+    fs::create_directories(tempDir, dirError);
+    if (dirError)
+    {
+        result.tempDirFailed = true;
+        return result;
+    }
+
+    const fs::path programPath = tempDir / "div_zero.il";
+    result.programPath = programPath;
+    {
+        std::ofstream ilFile(programPath, std::ios::binary);
+        ilFile << makeDivTrapProgramText();
+        if (!ilFile)
+        {
+            result.programWriteFailed = true;
+            return result;
+        }
+    }
+
+    const std::string command =
+        std::string("ilc codegen x64 ") + quoteForShell(programPath) + " --run-native";
+    result.commandLine = command;
+
+    const int rawStatus = std::system(command.c_str());
+    result.systemCallFailed = (rawStatus == -1);
+    result.exitCode = decodeExitCode(rawStatus);
+
+    std::error_code cleanupError;
+    fs::remove_all(tempDir, cleanupError);
+    (void)cleanupError;
+
+    return result;
+}
+
 [[nodiscard]] DivTrapSequence analyseDivTrapSequence(const std::string &asmText)
 {
     DivTrapSequence sequence{};
@@ -167,6 +295,25 @@ TEST(CodegenX64DivTrapTest, EmitsGuardedDivisionSequence)
     EXPECT_TRUE(sequence.hasTrapCall) << result.asmText;
 }
 
+TEST(CodegenX64DivTrapTest, RuntimeTrapTerminatesProcess)
+{
+    using namespace viper::codegen::x64;
+
+    const RuntimeTrapResult result = runDivZeroProgramNative();
+    if (result.commandProcessorUnavailable)
+    {
+        GTEST_SKIP() << "Command processor unavailable; skipping native run.";
+    }
+
+    ASSERT_FALSE(result.tempDirFailed) << "Failed to create temp dir: " << result.tempDir.string();
+    ASSERT_FALSE(result.programWriteFailed)
+        << "Failed to write IL program at " << result.programPath.string();
+    ASSERT_FALSE(result.systemCallFailed) << "Failed to invoke command: " << result.commandLine;
+
+    EXPECT_NE(result.exitCode, 0) << "Native execution unexpectedly succeeded. Command: "
+                                  << result.commandLine;
+}
+
 #else
 
 int main()
@@ -188,6 +335,36 @@ int main()
     {
         std::cerr << "Missing guarded division pattern in assembly:\n" << result.asmText;
         return EXIT_FAILURE;
+    }
+
+    const RuntimeTrapResult runtime = runDivZeroProgramNative();
+    if (!runtime.commandProcessorUnavailable)
+    {
+        if (runtime.tempDirFailed)
+        {
+            std::cerr << "Failed to create temp directory at " << runtime.tempDir << '\n';
+            return EXIT_FAILURE;
+        }
+        if (runtime.programWriteFailed)
+        {
+            std::cerr << "Failed to write IL program to " << runtime.programPath << '\n';
+            return EXIT_FAILURE;
+        }
+        if (runtime.systemCallFailed)
+        {
+            std::cerr << "Failed to invoke command: " << runtime.commandLine << '\n';
+            return EXIT_FAILURE;
+        }
+        if (runtime.exitCode == 0)
+        {
+            std::cerr << "Native execution unexpectedly succeeded. Command: " << runtime.commandLine
+                      << '\n';
+            return EXIT_FAILURE;
+        }
+    }
+    else
+    {
+        std::cout << "Skipping native runtime trap test (no command processor).\n";
     }
 
     return EXIT_SUCCESS;
