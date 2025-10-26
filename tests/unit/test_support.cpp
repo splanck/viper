@@ -74,6 +74,13 @@ int main()
     il::support::SourceRange mixed{loc, partial};
     assert(mixed.isValid());
     assert(!mixed.end.hasColumn());
+
+    il::support::SourceLoc otherFile{sm.addFile("other"), 3, 5};
+    il::support::SourceRange mismatched{loc, otherFile};
+    assert(!mismatched.isValid());
+
+    il::support::SourceRange reversed{partial, loc};
+    assert(!reversed.isValid());
     il::support::Diag partialDiag{il::support::Severity::Error,
                                   "partial coordinates",
                                   partial};
