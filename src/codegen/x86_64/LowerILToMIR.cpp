@@ -388,7 +388,8 @@ void LowerILToMIR::lowerBinary(const ILInstr &instr,
         block.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{cloneOperand(dest), lhs}));
     }
 
-    const auto canUseImm = [&]() {
+    const auto canUseImm = [&]()
+    {
         if (opcRI == opcRR)
         {
             return false;
@@ -412,7 +413,8 @@ void LowerILToMIR::lowerBinary(const ILInstr &instr,
         return;
     }
 
-    const auto materialiseToReg = [this, &block, cls](Operand operand) {
+    const auto materialiseToReg = [this, &block, cls](Operand operand)
+    {
         if (std::holds_alternative<OpReg>(operand))
         {
             return operand;
@@ -423,18 +425,19 @@ void LowerILToMIR::lowerBinary(const ILInstr &instr,
 
         if (std::holds_alternative<OpImm>(operand))
         {
-            block.append(MInstr::make(MOpcode::MOVri,
-                                      std::vector<Operand>{cloneOperand(tmpOp), cloneOperand(operand)}));
+            block.append(MInstr::make(
+                MOpcode::MOVri, std::vector<Operand>{cloneOperand(tmpOp), cloneOperand(operand)}));
         }
-        else if (std::holds_alternative<OpLabel>(operand) || std::holds_alternative<OpRipLabel>(operand))
+        else if (std::holds_alternative<OpLabel>(operand) ||
+                 std::holds_alternative<OpRipLabel>(operand))
         {
-            block.append(MInstr::make(MOpcode::LEA,
-                                      std::vector<Operand>{cloneOperand(tmpOp), cloneOperand(operand)}));
+            block.append(MInstr::make(
+                MOpcode::LEA, std::vector<Operand>{cloneOperand(tmpOp), cloneOperand(operand)}));
         }
         else
         {
-            block.append(MInstr::make(MOpcode::MOVrr,
-                                      std::vector<Operand>{cloneOperand(tmpOp), cloneOperand(operand)}));
+            block.append(MInstr::make(
+                MOpcode::MOVrr, std::vector<Operand>{cloneOperand(tmpOp), cloneOperand(operand)}));
         }
 
         return tmpOp;
@@ -509,10 +512,7 @@ void LowerILToMIR::lowerShift(const ILInstr &instr,
 ///          synthesises a SETcc into the destination vreg when the IL instruction
 ///          produces a result.  Condition codes default to @p defaultCond but can
 ///          be overridden by an immediate third operand on the IL instruction.
-void LowerILToMIR::lowerCmp(const ILInstr &instr,
-                            MBasicBlock &block,
-                            RegClass cls,
-                            int defaultCond)
+void LowerILToMIR::lowerCmp(const ILInstr &instr, MBasicBlock &block, RegClass cls, int defaultCond)
 {
     if (instr.ops.size() < 2)
     {
@@ -548,8 +548,8 @@ void LowerILToMIR::lowerCmp(const ILInstr &instr,
         const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
         block.append(
             MInstr::make(MOpcode::XORrr32, std::vector<Operand>{cloneOperand(dest), dest}));
-        block.append(MInstr::make(MOpcode::SETcc,
-                                  std::vector<Operand>{makeImmOperand(condCode), cloneOperand(dest)}));
+        block.append(MInstr::make(
+            MOpcode::SETcc, std::vector<Operand>{makeImmOperand(condCode), cloneOperand(dest)}));
     }
 }
 
@@ -984,18 +984,21 @@ void LowerILToMIR::lowerInstruction(const ILInstr &instr, MBasicBlock &block)
 
             if (std::holds_alternative<OpImm>(operand))
             {
-                block.append(MInstr::make(
-                    MOpcode::MOVri, std::vector<Operand>{cloneOperand(tmpOp), cloneOperand(operand)}));
+                block.append(
+                    MInstr::make(MOpcode::MOVri,
+                                 std::vector<Operand>{cloneOperand(tmpOp), cloneOperand(operand)}));
             }
             else if (std::holds_alternative<OpLabel>(operand))
             {
-                block.append(MInstr::make(
-                    MOpcode::LEA, std::vector<Operand>{cloneOperand(tmpOp), cloneOperand(operand)}));
+                block.append(
+                    MInstr::make(MOpcode::LEA,
+                                 std::vector<Operand>{cloneOperand(tmpOp), cloneOperand(operand)}));
             }
             else
             {
-                block.append(MInstr::make(
-                    MOpcode::MOVrr, std::vector<Operand>{cloneOperand(tmpOp), cloneOperand(operand)}));
+                block.append(
+                    MInstr::make(MOpcode::MOVrr,
+                                 std::vector<Operand>{cloneOperand(tmpOp), cloneOperand(operand)}));
             }
 
             return tmpOp;
@@ -1008,7 +1011,8 @@ void LowerILToMIR::lowerInstruction(const ILInstr &instr, MBasicBlock &block)
 
         divisor = materialiseGprReg(divisor);
 
-        const MOpcode pseudo = [opc]() {
+        const MOpcode pseudo = [opc]()
+        {
             if (opc == "div" || opc == "sdiv")
             {
                 return MOpcode::DIVS64rr;
@@ -1024,7 +1028,8 @@ void LowerILToMIR::lowerInstruction(const ILInstr &instr, MBasicBlock &block)
             return MOpcode::REMU64rr;
         }();
         block.append(MInstr::make(pseudo,
-                                  std::vector<Operand>{cloneOperand(dest), cloneOperand(dividend),
+                                  std::vector<Operand>{cloneOperand(dest),
+                                                       cloneOperand(dividend),
                                                        cloneOperand(divisor)}));
         return;
     }

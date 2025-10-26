@@ -570,8 +570,8 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
                 os << "  movzbq #<invalid>\n";
                 return;
             }
-            os << "  movzbq " << formatReg8(*src, target) << ", "
-               << formatReg(*dest, target) << '\n';
+            os << "  movzbq " << formatReg8(*src, target) << ", " << formatReg(*dest, target)
+               << '\n';
             return;
         }
         case MOpcode::MOVSDrm:

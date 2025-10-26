@@ -7,11 +7,12 @@
 #pragma once
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-/// @brief Traps the runtime on division by zero.
-void rt_trap_div0(void);
+    /// @brief Traps the runtime on division by zero.
+    void rt_trap_div0(void);
 
 #ifdef __cplusplus
 }

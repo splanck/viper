@@ -10,7 +10,8 @@
 #include "rt_trap.h"
 
 /// @brief Trap implementation for division by zero errors.
-void rt_trap_div0(void) {
+void rt_trap_div0(void)
+{
     fprintf(stderr, "Viper runtime trap: division by zero\n");
     fflush(stderr);
     exit(1); // Match VM behavior if your VM uses a specific code; adjust here later if needed.

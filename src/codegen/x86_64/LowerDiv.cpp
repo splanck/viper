@@ -264,14 +264,14 @@ void lowerSignedDivRem(MFunction &fn)
             if (isSigned)
             {
                 currentBlock.append(MInstr::make(MOpcode::CQO, {}));
-                currentBlock.append(MInstr::make(
-                    MOpcode::IDIVrm, std::vector<Operand>{cloneOperand(divisorClone)}));
+                currentBlock.append(MInstr::make(MOpcode::IDIVrm,
+                                                 std::vector<Operand>{cloneOperand(divisorClone)}));
             }
             else
             {
-                currentBlock.append(MInstr::make(
-                    MOpcode::XORrr32,
-                    std::vector<Operand>{cloneOperand(rdxOp), cloneOperand(rdxOp)}));
+                currentBlock.append(
+                    MInstr::make(MOpcode::XORrr32,
+                                 std::vector<Operand>{cloneOperand(rdxOp), cloneOperand(rdxOp)}));
                 currentBlock.append(
                     MInstr::make(MOpcode::DIVrm, std::vector<Operand>{cloneOperand(divisorClone)}));
             }
@@ -281,8 +281,8 @@ void lowerSignedDivRem(MFunction &fn)
                 MInstr::make(MOpcode::MOVrr,
                              std::vector<Operand>{cloneOperand(destOp), cloneOperand(resultPhys)}));
 
-            currentBlock.append(MInstr::make(MOpcode::JMP,
-                                             std::vector<Operand>{makeLabelOperand(afterBlock.label)}));
+            currentBlock.append(MInstr::make(
+                MOpcode::JMP, std::vector<Operand>{makeLabelOperand(afterBlock.label)}));
 
             fn.blocks.push_back(std::move(afterBlock));
 
