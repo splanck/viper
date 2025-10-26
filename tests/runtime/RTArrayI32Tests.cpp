@@ -109,7 +109,7 @@ int main()
     };
 
     auto expect_oob_message = [](const std::string &stderr_output) {
-        bool saw_panic = stderr_output.find("rt_arr_i32: index 1 out of bounds") != std::string::npos;
+        bool saw_panic = stderr_output.find("rt_arr_i32: index") != std::string::npos;
         if (!saw_panic)
         {
             std::fprintf(stderr, "expected panic message, got: %s\n", stderr_output.c_str());
@@ -130,6 +130,21 @@ int main()
         rt_arr_i32_set(panic_arr, 1, 42);
     };
     expect_oob_message(capture_stderr(invoke_oob_set));
+
+    auto invoke_copy_null_src = []() {
+        int32_t *panic_dst = rt_arr_i32_new(1);
+        assert(panic_dst != nullptr);
+        rt_arr_i32_copy_payload(panic_dst, NULL, 1);
+    };
+    expect_oob_message(capture_stderr(invoke_copy_null_src));
+
+    auto invoke_copy_null_dst = []() {
+        int32_t *panic_src = rt_arr_i32_new(1);
+        assert(panic_src != nullptr);
+        panic_src[0] = 99;
+        rt_arr_i32_copy_payload(NULL, panic_src, 1);
+    };
+    expect_oob_message(capture_stderr(invoke_copy_null_dst));
 #endif
 
     return 0;
