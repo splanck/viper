@@ -167,6 +167,12 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
         return Expected<void>{makeError({}, oss.str())};
     }
     std::string name = trim(line.substr(at + 1, eq - at - 1));
+    if (name.empty())
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing global name";
+        return Expected<void>{makeError({}, oss.str())};
+    }
     std::string init = line.substr(q1 + 1, q2 - q1 - 1);
     std::string decoded;
     std::string errMsg;
