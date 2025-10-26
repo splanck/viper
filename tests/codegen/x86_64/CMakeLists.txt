@@ -7,6 +7,7 @@ set(_viper_codegen_x86_64_tests
     abi_probe
     add_ret
     div_trap
+    udiv_urem
     i1_normalization
     pro_epi
     f64_const
