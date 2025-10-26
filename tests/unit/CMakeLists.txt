@@ -133,6 +133,12 @@ function(viper_add_runtime_tests)
   target_link_libraries(test_rt_alloc PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_alloc test_rt_alloc)
 
+  viper_add_test(
+    test_rt_string_alloc_overflow
+    ${VIPER_TESTS_DIR}/runtime/RTStringAllocOverflowTests.cpp)
+  target_link_libraries(test_rt_string_alloc_overflow PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+  viper_add_ctest(test_rt_string_alloc_overflow test_rt_string_alloc_overflow)
+
   viper_add_test(test_rt_alloc_zero ${VIPER_TESTS_DIR}/runtime/RTAllocZeroTests.cpp)
   target_link_libraries(test_rt_alloc_zero PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_alloc_zero test_rt_alloc_zero)
