@@ -145,6 +145,50 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
         return Expected<void>{makeError({}, oss.str())};
     }
 
+    constexpr size_t kGlobalKeywordLen = 6; // length of "global"
+    const std::string qualifiers = trim(line.substr(kGlobalKeywordLen, at - kGlobalKeywordLen));
+    std::istringstream qss(qualifiers);
+    std::vector<std::string> tokens;
+    std::string token;
+    while (qss >> token)
+    {
+        tokens.push_back(token);
+    }
+
+    if (!tokens.empty() && tokens.front() == "const")
+    {
+        tokens.erase(tokens.begin());
+        if (tokens.empty())
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": missing global type after 'const'";
+            return Expected<void>{makeError({}, oss.str())};
+        }
+    }
+
+    if (tokens.empty())
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": missing global type";
+        return Expected<void>{makeError({}, oss.str())};
+    }
+
+    if (tokens.size() != 1)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": unexpected tokens before '@'";
+        return Expected<void>{makeError({}, oss.str())};
+    }
+
+    const std::string &typeToken = tokens.front();
+    if (typeToken != "str")
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": unsupported global type '" << typeToken
+            << "' (expected 'str')";
+        return Expected<void>{makeError({}, oss.str())};
+    }
+
     size_t eq = line.find('=', at);
     if (eq == std::string::npos)
     {
