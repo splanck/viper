@@ -232,14 +232,16 @@ void lowerSignedDivRem(MFunction &fn)
 
             ensureTrapBlock();
 
+            auto &currentBlock = fn.blocks[blockIdx];
+
             const Operand destOp = cloneOperand(pseudo.operands[0]);
             const Operand dividendClone = cloneOperand(dividendOp);
             const Operand divisorClone = cloneOperand(divisorOp);
 
-            block.append(MInstr::make(
+            currentBlock.append(MInstr::make(
                 MOpcode::TESTrr,
                 std::vector<Operand>{cloneOperand(divisorClone), cloneOperand(divisorClone)}));
-            block.append(
+            currentBlock.append(
                 MInstr::make(MOpcode::JCC,
                              std::vector<Operand>{makeImmOperand(0), makeLabelOperand(trapLabel)}));
 
@@ -248,43 +250,43 @@ void lowerSignedDivRem(MFunction &fn)
 
             if (std::holds_alternative<OpImm>(dividendClone))
             {
-                block.append(MInstr::make(
+                currentBlock.append(MInstr::make(
                     MOpcode::MOVri,
                     std::vector<Operand>{cloneOperand(raxOp), cloneOperand(dividendClone)}));
             }
             else
             {
-                block.append(MInstr::make(
+                currentBlock.append(MInstr::make(
                     MOpcode::MOVrr,
                     std::vector<Operand>{cloneOperand(raxOp), cloneOperand(dividendClone)}));
             }
 
             if (isSigned)
             {
-                block.append(MInstr::make(MOpcode::CQO, {}));
-                block.append(MInstr::make(
+                currentBlock.append(MInstr::make(MOpcode::CQO, {}));
+                currentBlock.append(MInstr::make(
                     MOpcode::IDIVrm, std::vector<Operand>{cloneOperand(divisorClone)}));
             }
             else
             {
-                block.append(MInstr::make(
+                currentBlock.append(MInstr::make(
                     MOpcode::XORrr32,
                     std::vector<Operand>{cloneOperand(rdxOp), cloneOperand(rdxOp)}));
-                block.append(
+                currentBlock.append(
                     MInstr::make(MOpcode::DIVrm, std::vector<Operand>{cloneOperand(divisorClone)}));
             }
 
             const Operand resultPhys = isDiv ? raxOp : rdxOp;
-            block.append(
+            currentBlock.append(
                 MInstr::make(MOpcode::MOVrr,
                              std::vector<Operand>{cloneOperand(destOp), cloneOperand(resultPhys)}));
 
-            block.append(MInstr::make(MOpcode::JMP,
-                                      std::vector<Operand>{makeLabelOperand(afterBlock.label)}));
+            currentBlock.append(MInstr::make(MOpcode::JMP,
+                                             std::vector<Operand>{makeLabelOperand(afterBlock.label)}));
 
             fn.blocks.push_back(std::move(afterBlock));
 
-            instrIdx = block.instructions.size();
+            instrIdx = currentBlock.instructions.size();
         }
     }
 }
