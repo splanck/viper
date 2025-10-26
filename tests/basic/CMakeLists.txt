@@ -201,6 +201,13 @@ function(viper_add_basic_main_tests)
   target_link_libraries(test_frontends_basic_semantic_calls PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_semantic_calls test_frontends_basic_semantic_calls)
 
+  viper_add_test(
+    test_frontends_basic_builtin_registry
+    ${VIPER_TESTS_DIR}/frontends/basic/BuiltinRegistryTests.cpp)
+  target_link_libraries(test_frontends_basic_builtin_registry PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(
+    test_frontends_basic_builtin_registry test_frontends_basic_builtin_registry)
+
   viper_add_test(test_frontends_basic_semantic_on_error ${VIPER_TESTS_DIR}/frontends/basic/SemanticAnalyzerOnErrorTests.cpp)
   target_link_libraries(test_frontends_basic_semantic_on_error PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_semantic_on_error test_frontends_basic_semantic_on_error)
