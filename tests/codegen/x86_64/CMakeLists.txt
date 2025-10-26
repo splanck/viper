@@ -9,7 +9,12 @@ set(_viper_codegen_x86_64_tests
     f64_const
     return_values
     select_cmov
-    string_literal)
+    string_literal
+    shifts
+    select
+    i1_normalization
+    abi_probe
+    div_trap)
 
 set(_viper_codegen_x86_64_has_gtest OFF)
 if(TARGET GTest::gtest_main OR TARGET GTest::gtest OR TARGET gtest_main OR TARGET gtest)
