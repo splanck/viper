@@ -57,8 +57,14 @@ static rt_string rt_string_wrap(char *payload)
 
 static rt_string rt_string_alloc(size_t len, size_t cap)
 {
-    if (cap < len + 1)
-        cap = len + 1;
+    if (len >= SIZE_MAX)
+    {
+        rt_trap("rt_string_alloc: length overflow");
+        return NULL;
+    }
+    size_t required = len + 1;
+    if (cap < required)
+        cap = required;
     char *payload = (char *)rt_heap_alloc(RT_HEAP_STRING, RT_ELEM_NONE, 1, len, cap);
     if (!payload)
     {
