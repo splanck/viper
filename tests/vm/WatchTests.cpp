@@ -28,13 +28,20 @@ int main(int argc, char **argv)
     std::string line;
     while (std::getline(out, line))
         lines.push_back(line);
-    if (lines.size() != 2)
+    if (lines.size() != 6)
     {
         std::cerr << "unexpected line count\n";
         return 1;
     }
-    if (lines[0] != "[WATCH] x=i64:1  (fn=@main blk=entry ip=#1)" ||
-        lines[1] != "[WATCH] x=i64:2  (fn=@main blk=entry ip=#3)")
+    const std::vector<std::string> expected = {
+        "[WATCH] x=i64:1  (fn=@main blk=entry ip=#1)",
+        "[WATCH] x=f64:1  (fn=@main blk=entry ip=#3)",
+        "[WATCH] x=f64:2  (fn=@main blk=entry ip=#4)",
+        "[WATCH] x=i64:2  (fn=@main blk=entry ip=#5)",
+        "[WATCH] x=f64:2  (fn=@main blk=entry ip=#7)",
+        "[WATCH] x=f64:3  (fn=@main blk=entry ip=#8)",
+    };
+    if (lines != expected)
     {
         std::cerr << "unexpected watch output\n";
         return 1;
