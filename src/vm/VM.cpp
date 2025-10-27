@@ -123,22 +123,7 @@ class SwitchDispatchDriver final : public VM::DispatchDriver
             if (!vm.selectInstruction(state, instr))
                 return state.exitRequested;
 
-            switch (instr->op)
-            {
-#define OP_SWITCH(NAME, ...)                                                                       \
-    case il::core::Opcode::NAME:                                                                   \
-    {                                                                                              \
-        vm.traceInstruction(*instr, state.fr);                                                     \
-        vm.inline_handle_##NAME(state);                                                            \
-        break;                                                                                     \
-    }
-#define IL_OPCODE(NAME, ...) OP_SWITCH(NAME, __VA_ARGS__)
-#include "il/core/Opcode.def"
-#undef IL_OPCODE
-#undef OP_SWITCH
-                default:
-                    vm.trapUnimplemented(instr->op);
-            }
+            vm.dispatchOpcodeSwitch(state, *instr);
 
             if (state.exitRequested)
                 return true;
@@ -175,14 +160,9 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
             return instr->op;
         };
 
-#define OP_LABEL(name, ...) &&LBL_##name,
-#define IL_OPCODE(name, ...) OP_LABEL(name, __VA_ARGS__)
         static void *kOpLabels[] = {
-#include "il/core/Opcode.def"
-            &&LBL_UNIMPL,
+#include "vm/ops/generated/ThreadedLabels.inc"
         };
-#undef IL_OPCODE
-#undef OP_LABEL
 
         static constexpr size_t kOpLabelCount = sizeof(kOpLabels) / sizeof(kOpLabels[0]);
 
@@ -205,23 +185,7 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
                     return true;
                 DISPATCH_TO(opcode);
 
-#define OP_CASE(name, ...)                                                                         \
-    LBL_##name:                                                                                    \
-    {                                                                                              \
-        vm.traceInstruction(*currentInstr, state.fr);                                              \
-        auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);   \
-        if (vm.finalizeDispatch(state, exec))                                                      \
-            return true;                                                                           \
-        opcode = fetchNext();                                                                      \
-        if (state.exitRequested)                                                                   \
-            return true;                                                                           \
-        DISPATCH_TO(opcode);                                                                       \
-    }
-
-#define IL_OPCODE(name, ...) OP_CASE(name, __VA_ARGS__)
-#include "il/core/Opcode.def"
-#undef IL_OPCODE
-#undef OP_CASE
+#include "vm/ops/generated/ThreadedCases.inc"
 
             LBL_UNIMPL:
             {
@@ -491,47 +455,8 @@ VM::~VM()
     inlineLiteralCache.clear();
 }
 
-#define VM_DISPATCH_IMPL(DISPATCH, HANDLER_EXPR) HANDLER_EXPR
-#define VM_DISPATCH(NAME) VM_DISPATCH_IMPL(NAME, &detail::handle##NAME)
-#define VM_DISPATCH_ALT(DISPATCH, HANDLER_EXPR) VM_DISPATCH_IMPL(DISPATCH, HANDLER_EXPR)
-#define IL_OPCODE(NAME,                                                                            \
-                  MNEMONIC,                                                                        \
-                  RES_ARITY,                                                                       \
-                  RES_TYPE,                                                                        \
-                  MIN_OPS,                                                                         \
-                  MAX_OPS,                                                                         \
-                  OP0,                                                                             \
-                  OP1,                                                                             \
-                  OP2,                                                                             \
-                  SIDE_EFFECTS,                                                                    \
-                  SUCCESSORS,                                                                      \
-                  TERMINATOR,                                                                      \
-                  DISPATCH,                                                                        \
-                  PARSE0,                                                                          \
-                  PARSE1,                                                                          \
-                  PARSE2,                                                                          \
-                  PARSE3)                                                                          \
-    void VM::inline_handle_##NAME(ExecState &st)                                                   \
-    {                                                                                              \
-        const Instr *instr = st.currentInstr;                                                      \
-        if (!instr)                                                                                \
-        {                                                                                          \
-            trapUnimplemented(Opcode::NAME);                                                       \
-        }                                                                                          \
-        auto handler = DISPATCH;                                                                   \
-        if (!handler)                                                                              \
-        {                                                                                          \
-            trapUnimplemented(Opcode::NAME);                                                       \
-        }                                                                                          \
-        ExecResult exec = handler(*this, st.fr, *instr, st.blocks, st.bb, st.ip);                  \
-        handleInlineResult(st, exec);                                                              \
-    }
-
-#include "il/core/Opcode.def"
-#undef IL_OPCODE
-#undef VM_DISPATCH_ALT
-#undef VM_DISPATCH
-#undef VM_DISPATCH_IMPL
+#include "vm/ops/generated/InlineHandlersImpl.inc"
+#include "vm/ops/generated/SwitchDispatchImpl.inc"
 
 /// @brief Execute function @p fn with optional arguments.
 ///
