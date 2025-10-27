@@ -21,7 +21,8 @@ int main()
                            BAD_DIR "/target_missing_quotes.il",
                            BAD_DIR "/block_param_missing_name.il",
                            BAD_DIR "/br_trailing_token.il",
-                           BAD_DIR "/switch_trailing_token.il"};
+                           BAD_DIR "/switch_trailing_token.il",
+                           BAD_DIR "/global_missing_name.il"};
     for (const char *path : files)
     {
         std::ifstream in(path);
