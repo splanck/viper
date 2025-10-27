@@ -313,9 +313,10 @@ RunResult run_process(const std::vector<std::string> &argv,
         cmd += quote_posix_argument(argv[i]);
 #endif
     }
-#ifndef _WIN32
-    cmd += " 2>&1";
-#endif
+    if (!cmd.empty())
+    {
+        cmd += " 2>&1";
+    }
 
     FILE *pipe = POPEN(cmd.c_str(), "r");
     if (!pipe)
@@ -343,9 +344,9 @@ RunResult run_process(const std::vector<std::string> &argv,
     {
         rr.exit_code = status;
     }
+#endif
     // When stderr is redirected to stdout the captured text lives in `out`.
     rr.err = rr.out;
-#endif
     return rr;
 }
 

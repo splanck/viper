@@ -89,6 +89,16 @@ TEST(RunProcess, ReportsPosixExitStatus)
 
     EXPECT_EQ(42, result.exit_code);
 }
+#else
+TEST(RunProcess, CapturesWindowsStderr)
+{
+    const RunResult result =
+        run_process({"cmd", "/C", "echo viper-stderr-sample 1>&2"});
+
+    EXPECT_NE(-1, result.exit_code);
+    const std::string trimmed = trim_trailing_newlines(result.err);
+    EXPECT_NE(std::string::npos, trimmed.find("viper-stderr-sample"));
+}
 #endif
 
 int main(int argc, char **argv)
