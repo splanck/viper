@@ -1,15 +1,25 @@
-/*
- * File: rt_term.c
- * Purpose: Cross-platform terminal control (CLS, COLOR, LOCATE)
- *          and single-key input (blocking/non-blocking).
- * Behavior:
- *   - Only emits ANSI when stdout is a TTY.
- *   - Windows: enables VT processing, then uses ANSI.
- *   - LOCATE is 1-based (row, col).
- *   - COLOR: fg/bg -1 = leave unchanged; 0..7 normal; 8..15 bright; >=16 uses 256-color SGR.
- *   - GETKEY$ returns 1-char string (blocking).
- *   - INKEY$ returns "" if no key available (non-blocking).
- */
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the BASIC runtime's terminal helpers.  These functions provide
+// portable console control for clearing the screen, changing colours, moving the
+// cursor, and reading single-key input in blocking and non-blocking modes.  The
+// implementation hides platform-specific quirks—such as enabling virtual
+// terminal processing on Windows—so higher-level runtime code can rely on a
+// single consistent behaviour.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Terminal control and key-input helpers for the BASIC runtime.
+/// @details Exposes functions used by BASIC statements like `CLS`, `COLOR`,
+///          `LOCATE`, `GETKEY$`, and `INKEY$`.  The helpers only emit ANSI escape
+///          sequences when stdout is attached to a terminal and fall back to
+///          runtime traps for invalid usage.
 
 #include "rt.hpp"
 #include <stdint.h>
@@ -29,6 +39,9 @@
 #include <unistd.h>
 #endif
 
+/// @brief Determine whether stdout is attached to a terminal.
+/// @details Guards terminal escape emission so batch output (e.g. redirected to
+///          a file) remains free of ANSI sequences.
 static int stdout_isatty(void)
 {
     int fd = fileno(stdout);
@@ -36,6 +49,10 @@ static int stdout_isatty(void)
 }
 
 #if defined(_WIN32)
+/// @brief Enable ANSI escape sequence processing on Windows consoles.
+/// @details Lazily toggles the `ENABLE_VIRTUAL_TERMINAL_PROCESSING` flag the
+///          first time terminal output is requested so subsequent writes honour
+///          colour and cursor positioning sequences.
 static void enable_vt(void)
 {
     static int once = 0;
@@ -55,6 +72,9 @@ static void enable_vt(void)
 }
 #endif
 
+/// @brief Emit a raw string to stdout, enabling ANSI support when available.
+/// @details Wraps `fputs` and `fflush` so terminal helpers can centralise VT
+///          enablement and flushing behaviour.
 static void out_str(const char *s)
 {
     if (!s)
@@ -66,6 +86,10 @@ static void out_str(const char *s)
     fflush(stdout);
 }
 
+/// @brief Emit an SGR escape sequence for the requested foreground/background.
+/// @details Converts BASIC colour codes into ANSI escape sequences, supporting
+///          normal, bright, and 256-colour modes.  Negative parameters leave the
+///          corresponding channel unchanged.
 static void sgr_color(int fg, int bg)
 {
     if (fg < 0 && bg < 0)
@@ -116,6 +140,9 @@ static void sgr_color(int fg, int bg)
     out_str(buf);
 }
 
+/// @brief Clear the terminal display when stdout is interactive.
+/// @details Emits the ANSI sequence for clearing the screen and homing the
+///          cursor.  No output is produced when stdout is redirected.
 void rt_term_cls(void)
 {
     if (!stdout_isatty())
@@ -123,6 +150,10 @@ void rt_term_cls(void)
     out_str("\x1b[2J\x1b[H");
 }
 
+/// @brief Adjust terminal foreground/background colours using BASIC codes.
+/// @details Validates the colour range and forwards to @ref sgr_color when
+///          stdout is a terminal.  Negative parameters leave the colour
+///          unchanged to mirror BASIC's semantics.
 void rt_term_color_i32(int32_t fg, int32_t bg)
 {
     if (!stdout_isatty())
@@ -132,6 +163,9 @@ void rt_term_color_i32(int32_t fg, int32_t bg)
     sgr_color((int)fg, (int)bg);
 }
 
+/// @brief Move the cursor to a 1-based row/column pair.
+/// @details Clamps coordinates to the minimum BASIC expects and emits an ANSI
+///          cursor-position sequence when stdout is interactive.
 void rt_term_locate_i32(int32_t row, int32_t col)
 {
     if (!stdout_isatty())
@@ -146,11 +180,17 @@ void rt_term_locate_i32(int32_t row, int32_t col)
 }
 
 #if defined(_WIN32)
+/// @brief Read a single key from the console, blocking until one is available.
+/// @details Uses `_getch` to obtain a byte without echoing it to the console.
 static int readkey_blocking(void)
 {
     return _getch() & 0xFF;
 }
 
+/// @brief Attempt to read a key without blocking, returning success status.
+/// @details Peeks using `_kbhit` and captures the byte with `_getch` when
+///          available.  Returns 1 when a key was read and stores the byte in
+///          @p out.
 static int readkey_nonblocking(int *out)
 {
     if (_kbhit())
@@ -161,6 +201,9 @@ static int readkey_nonblocking(int *out)
     return 0;
 }
 #else
+/// @brief Read a single key from the POSIX terminal, blocking until available.
+/// @details Temporarily disables canonical mode and echo, reads one byte, and
+///          restores the previous terminal attributes regardless of success.
 static int readkey_blocking(void)
 {
     struct termios orig, raw;
@@ -179,6 +222,10 @@ static int readkey_blocking(void)
     return (n == 1) ? (int)ch : 0;
 }
 
+/// @brief Poll the POSIX terminal for a key without blocking.
+/// @details Places the terminal in non-canonical, non-blocking mode and attempts
+///          to read a byte.  When successful the byte is stored in @p out and the
+///          function returns 1.
 static int readkey_nonblocking(int *out)
 {
     struct termios orig, raw;
@@ -203,16 +250,20 @@ static int readkey_nonblocking(int *out)
 }
 #endif
 
-// NOTE: Use the existing empty-string constructor in your runtime.
-// If rt_const_cstr("") is not available, use the canonical helper already
-// used elsewhere to return "" (e.g., rt_empty_string()).
-
+/// @brief Block for a single keystroke and return it as a BASIC string.
+/// @details Delegates to @ref readkey_blocking and wraps the resulting byte via
+///          @ref rt_chr so the runtime's string interning and ownership
+///          conventions are respected.
 rt_string rt_getkey_str(void)
 {
     int code = readkey_blocking();
     return rt_chr((int64_t)code);
 }
 
+/// @brief Non-blocking key read that returns "" when no key is pending.
+/// @details Uses @ref readkey_nonblocking to poll the console.  When a key is
+///          available it is converted using @ref rt_chr; otherwise the canonical
+///          empty string from @ref rt_const_cstr is returned.
 rt_string rt_inkey_str(void)
 {
     int code = 0;

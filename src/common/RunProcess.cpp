@@ -1,10 +1,23 @@
-// File: src/common/RunProcess.cpp
-// Purpose: Provide a portable subprocess launcher for CLI utilities.
-// Key invariants: Commands are executed via the platform `popen` facility, aggregating stdout
-//                 and stderr text while returning normalised status codes when available.
-// Ownership/Lifetime: Callers own argument buffers; the helper duplicates them into a command
-//                     string suitable for the host shell.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the helper used by CLI utilities to launch external processes.
+// The routine builds a shell command line from argv fragments, invokes the
+// platform's `popen` facility, and collects stdout for diagnostic reporting.
+// Centralising the logic keeps process spawning consistent across developer
+// tools.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Subprocess launcher shared by Viper developer tools.
+/// @details Provides @ref run_process, which constructs a shell command string
+///          from argument fragments, captures output, and reports the resulting
+///          exit status in a cross-platform manner.
 
 #include "common/RunProcess.hpp"
 
@@ -22,6 +35,12 @@
 #    define PCLOSE pclose
 #endif
 
+/// @brief Launch a subprocess using the host shell and capture its output.
+/// @details Joins the provided @p argv fragments into a quoted command string,
+///          spawns it via @c popen, and streams stdout into @ref RunResult::output
+///          while recording the exit status when available.  The @p cwd and
+///          @p env parameters are currently ignored, matching the previous
+///          behaviour of the helper.
 RunResult run_process(const std::vector<std::string> &argv,
                       std::optional<std::string> cwd,
                       const std::vector<std::pair<std::string, std::string>> &env)
