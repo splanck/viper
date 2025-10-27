@@ -98,9 +98,16 @@ std::string quote_posix_argument(const std::string &arg)
 
     for (const char ch : arg)
     {
-        if (ch == '\\' || ch == '"')
+        switch (ch)
         {
+        case '\\':
+        case '"':
+        case '$':
+        case '`':
             quoted.push_back('\\');
+            break;
+        default:
+            break;
         }
         quoted.push_back(ch);
     }
