@@ -42,10 +42,37 @@ bool isSrcBreakSpec(const std::string &spec)
     if (pos == std::string::npos || pos + 1 >= spec.size())
         return false;
 
-    // Ensure all characters after the colon are digits.
-    for (std::string::size_type i = pos + 1; i < spec.size(); ++i)
+    // Skip whitespace between the colon and the first digit.
+    auto linePos = pos + 1;
+    while (linePos < spec.size() &&
+           std::isspace(static_cast<unsigned char>(spec[linePos])))
     {
-        if (!std::isdigit(static_cast<unsigned char>(spec[i])))
+        ++linePos;
+    }
+    if (linePos >= spec.size())
+        return false;
+
+    // Ensure characters forming the line component are digits, permitting
+    // trailing whitespace after them.
+    bool sawDigit = false;
+    std::string::size_type i = linePos;
+    for (; i < spec.size(); ++i)
+    {
+        const unsigned char ch = static_cast<unsigned char>(spec[i]);
+        if (std::isdigit(ch))
+        {
+            sawDigit = true;
+            continue;
+        }
+        if (std::isspace(ch))
+            break;
+        return false;
+    }
+    if (!sawDigit)
+        return false;
+    for (; i < spec.size(); ++i)
+    {
+        if (!std::isspace(static_cast<unsigned char>(spec[i])))
             return false;
     }
 
