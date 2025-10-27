@@ -182,7 +182,7 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
             {
                 auto pos = spec.rfind(':');
                 std::string file = trimWhitespace(spec.substr(0, pos));
-                const std::string lineToken = spec.substr(pos + 1);
+                const std::string lineToken = trimWhitespace(spec.substr(pos + 1));
                 int line = 0;
                 if (!tryParseLineNumber(lineToken, line))
                 {
@@ -208,7 +208,7 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
             if (pos != std::string::npos)
             {
                 std::string file = trimWhitespace(spec.substr(0, pos));
-                const std::string lineToken = spec.substr(pos + 1);
+                const std::string lineToken = trimWhitespace(spec.substr(pos + 1));
                 if (file.empty())
                 {
                     reportInvalidLineNumber(lineToken, spec, "--break-src");
