@@ -31,6 +31,14 @@ if(NOT TARGET test_codegen_x86_64_passes)
   viper_add_ctest(test_codegen_x86_64_passes test_codegen_x86_64_passes)
 endif()
 
+if(NOT TARGET test_codegen_x86_64_lowering_rules)
+  viper_add_test(
+    test_codegen_x86_64_lowering_rules
+    ${VIPER_TESTS_DIR}/unit/test_codegen_x86_64_lowering_rules.cpp)
+  target_link_libraries(test_codegen_x86_64_lowering_rules PRIVATE viper_codegen_x86_64)
+  viper_add_ctest(test_codegen_x86_64_lowering_rules test_codegen_x86_64_lowering_rules)
+endif()
+
 function(viper_add_runtime_tests)
   if(TARGET test_rt_string)
     return()
