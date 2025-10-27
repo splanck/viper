@@ -267,11 +267,17 @@ VM::ExecResult VM::executeOpcode(Frame &fr,
     OpcodeHandler handler = index < table.size() ? table[index] : nullptr;
     if (!handler)
     {
+        const std::string blockLabel = bb ? bb->label : std::string();
+        std::string detail = "unimplemented opcode: " + opcodeMnemonic(in.op);
+        if (!blockLabel.empty())
+        {
+            detail += " (block " + blockLabel + ')';
+        }
         RuntimeBridge::trap(TrapKind::InvalidOperation,
-                            "unimplemented opcode: " + opcodeMnemonic(in.op),
-                            {},
+                            detail,
+                            in.loc,
                             fr.func->name,
-                            "");
+                            blockLabel);
         ExecResult res{};
         res.jumped = true;
         return res;
